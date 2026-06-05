@@ -429,15 +429,10 @@ func (c *Controller) deletePolicyRouting(family int, _ string, priority, tableID
 	return nil
 }
 
-// findRulePositions locates all occurrences of a rule in the specified table and chain,
-// searching from lowest to highest priority (bottom to top).
+// findRulePositionsInList locates all occurrences of a rule within an already-fetched
+// `iptables -S <chain>` listing, searching from lowest to highest priority (bottom to top).
 // Returns all matching position indices, or an empty slice if none found.
-func findRulePositions(ipt *iptables.IPTables, rule util.IPTableRule) ([]int, error) {
-	rules, err := ipt.List(rule.Table, rule.Chain)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list iptables rules: %w", err)
-	}
-
+func findRulePositionsInList(rules []string, rule util.IPTableRule) []int {
 	positions := make([]int, 0)
 
 	// Start from the end of the list (lowest priority) and go up to 1 (but skip index 0)
@@ -452,20 +447,19 @@ func findRulePositions(ipt *iptables.IPTables, rule util.IPTableRule) ([]int, er
 		}
 	}
 
-	return positions, nil
+	return positions
 }
 
 // ensureNatPreroutingRulePosition ensures that the nat prerouting rule has a higher priority than the kube-proxy rule.
-func ensureNatPreroutingRulePosition(ipt *iptables.IPTables, rule util.IPTableRule) error {
+// It locates positions within the supplied chain snapshot and reports whether it mutated the chain (via insert),
+// so the caller knows the snapshot's positions are stale and must be refreshed before any index-based deletion.
+func ensureNatPreroutingRulePosition(ipt *iptables.IPTables, rule util.IPTableRule, rules []string) (bool, error) {
 	kubeProxyRule := util.IPTableRule{
 		Table: "nat",
 		Chain: "PREROUTING",
 		Rule:  []string{"-m", "comment", "--comment", "kubernetes service portals", "-j", "KUBE-SERVICES"},
 	}
-	kubeProxyPosList, err := findRulePositions(ipt, kubeProxyRule)
-	if err != nil {
-		return fmt.Errorf("failed to find kube-proxy rule position: %w", err)
-	}
+	kubeProxyPosList := findRulePositionsInList(rules, kubeProxyRule)
 
 	insertPosition := 1
 	if len(kubeProxyPosList) > 0 {
@@ -473,28 +467,26 @@ func ensureNatPreroutingRulePosition(ipt *iptables.IPTables, rule util.IPTableRu
 	}
 
 	// Check if the rule already exists at a higher priority than the kube-proxy rule
-	existingNatPreroutingPosList, err := findRulePositions(ipt, rule)
-	if err != nil {
-		return fmt.Errorf("failed to find nat prerouting rule position: %w", err)
-	}
+	existingNatPreroutingPosList := findRulePositionsInList(rules, rule)
 	if len(existingNatPreroutingPosList) > 0 {
 		pos := existingNatPreroutingPosList[len(existingNatPreroutingPosList)-1]
 		if pos <= insertPosition {
 			klog.V(5).Infof("nat prerouting rule already exists at position %d", pos)
-			return nil
+			return false, nil
 		}
 	}
 
 	klog.Infof("inserting nat prerouting rule %q at position %d", rule.Rule, insertPosition)
-	return ipt.Insert(rule.Table, rule.Chain, insertPosition, rule.Rule...)
+	if err := ipt.Insert(rule.Table, rule.Chain, insertPosition, rule.Rule...); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
-// ensureNatPreroutingRuleNoDuplicate ensures that there are no duplicate nat prerouting rules.
-func ensureNatPreroutingRuleNoDuplicate(ipt *iptables.IPTables, rule util.IPTableRule) error {
-	existingNatPreroutingPosList, err := findRulePositions(ipt, rule)
-	if err != nil {
-		return fmt.Errorf("failed to find nat prerouting rule position: %w", err)
-	}
+// ensureNatPreroutingRuleNoDuplicate ensures that there are no duplicate nat prerouting rules,
+// locating them within the supplied chain snapshot.
+func ensureNatPreroutingRuleNoDuplicate(ipt *iptables.IPTables, rule util.IPTableRule, rules []string) error {
+	existingNatPreroutingPosList := findRulePositionsInList(rules, rule)
 	if len(existingNatPreroutingPosList) == 0 {
 		klog.Warningf("nat prerouting rule not found, skipping duplicate check")
 		return nil
@@ -502,7 +494,7 @@ func ensureNatPreroutingRuleNoDuplicate(ipt *iptables.IPTables, rule util.IPTabl
 
 	// Delete all but the top priority (highest) rule
 	// NOTE: There's a race condition here as iptables rules could be modified by other processes
-	// between our findRulePositions call and the Delete operations below. Since iptables lacks
+	// between the snapshot listing and the Delete operations below. Since iptables lacks
 	// a transaction mechanism, rule positions might change, potentially causing us to delete
 	// incorrect rules. This is an accepted limitation of the current implementation.
 	for _, pos := range existingNatPreroutingPosList[:len(existingNatPreroutingPosList)-1] {
@@ -519,11 +511,29 @@ func ensureNatPreroutingRuleNoDuplicate(ipt *iptables.IPTables, rule util.IPTabl
 func ensureNatPreroutingRule(ipt *iptables.IPTables, rule util.IPTableRule) error {
 	klog.V(3).Infof("ensure nat prerouting rule %q", rule.Rule)
 
-	if err := ensureNatPreroutingRulePosition(ipt, rule); err != nil {
+	// Fetch the PREROUTING chain once and reuse the snapshot for both the position check
+	// and the duplicate check. This keeps the kube-proxy/own position comparison consistent
+	// and avoids redundant `iptables -S` forks on the steady-state (no-op) fast path.
+	rules, err := ipt.List(rule.Table, rule.Chain)
+	if err != nil {
+		return fmt.Errorf("failed to list nat prerouting rules: %w", err)
+	}
+
+	mutated, err := ensureNatPreroutingRulePosition(ipt, rule, rules)
+	if err != nil {
 		return fmt.Errorf("failed to ensure nat prerouting rule position: %w", err)
 	}
 
-	if err := ensureNatPreroutingRuleNoDuplicate(ipt, rule); err != nil {
+	// An insert above shifts subsequent indices, so the snapshot's positions are now stale.
+	// Re-list before the index-based duplicate deletion to avoid deleting the wrong rule.
+	if mutated {
+		rules, err = ipt.List(rule.Table, rule.Chain)
+		if err != nil {
+			return fmt.Errorf("failed to list nat prerouting rules: %w", err)
+		}
+	}
+
+	if err := ensureNatPreroutingRuleNoDuplicate(ipt, rule, rules); err != nil {
 		return fmt.Errorf("failed to ensure nat prerouting rule no duplicate: %w", err)
 	}
 
