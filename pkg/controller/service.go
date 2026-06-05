@@ -541,32 +541,45 @@ func diffSvcPorts(oldPorts, newPorts []v1.ServicePort) (toDel []v1.ServicePort) 
 }
 
 func (c *Controller) checkServiceLBIPBelongToSubnet(svc *v1.Service) error {
-	svc = svc.DeepCopy()
-	if svc.Annotations == nil {
-		svc.Annotations = map[string]string{}
-	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return err
-	}
-
-	isServiceExternalIPFromSubnet := false
-	for _, subnet := range subnets {
-		for _, ingress := range svc.Status.LoadBalancer.Ingress {
-			if util.CIDRContainIP(subnet.Spec.CIDRBlock, ingress.IP) {
-				svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] = subnet.Name
-				isServiceExternalIPFromSubnet = true
-				break
+	// resolve the subnet whose CIDR contains the service external IP.
+	// only list subnets when there is an external IP to match against.
+	desiredSubnet := ""
+	if len(svc.Status.LoadBalancer.Ingress) > 0 {
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets: %v", err)
+			return err
+		}
+		for _, subnet := range subnets {
+			for _, ingress := range svc.Status.LoadBalancer.Ingress {
+				if util.CIDRContainIP(subnet.Spec.CIDRBlock, ingress.IP) {
+					// inner break only, keep the original "last matching subnet wins" semantics
+					desiredSubnet = subnet.Name
+					break
+				}
 			}
 		}
 	}
 
-	if !isServiceExternalIPFromSubnet {
-		delete(svc.Annotations, util.ServiceExternalIPFromSubnetAnnotation)
+	// nothing changed, skip the DeepCopy and the redundant API update to avoid
+	// generating a no-op watch event on every reconcile
+	if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] == desiredSubnet {
+		return nil
 	}
-	klog.Infof("Service %s/%s external IP belongs to subnet: %v", svc.Namespace, svc.Name, isServiceExternalIPFromSubnet)
-	if _, err = c.config.KubeClient.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{}); err != nil {
+
+	newSvc := svc.DeepCopy()
+	if desiredSubnet != "" {
+		if newSvc.Annotations == nil {
+			newSvc.Annotations = map[string]string{}
+		}
+		newSvc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] = desiredSubnet
+	} else {
+		delete(newSvc.Annotations, util.ServiceExternalIPFromSubnetAnnotation)
+	}
+
+	klog.Infof("update service %s/%s external IP subnet annotation: %q -> %q",
+		svc.Namespace, svc.Name, svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation], desiredSubnet)
+	if _, err := c.config.KubeClient.CoreV1().Services(svc.Namespace).Update(context.TODO(), newSvc, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("failed to update service %s/%s: %v", svc.Namespace, svc.Name, err)
 		return err
 	}
