@@ -1108,8 +1108,7 @@ func (c *Controller) getVMLsps() ([]string, error) {
 		if k8serrors.IsNotFound(err) {
 			return vmLsps, nil
 		}
-		klog.Errorf("failed to list vm, %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to list vms: %w", err)
 	}
 
 	for _, vm := range vms.Items {
