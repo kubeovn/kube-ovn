@@ -17,6 +17,7 @@ import (
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -84,26 +85,20 @@ func (c *Controller) setIPSet() error {
 		protocols = append(protocols, c.protocol)
 	}
 
+	allSubnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return err
+	}
+
 	for _, protocol := range protocols {
 		if c.ipsets[protocol] == nil {
 			continue
 		}
 		services := c.getServicesCIDR(protocol)
-		subnets, _, err := c.getDefaultVpcSubnetsCIDR(protocol)
-		if err != nil {
-			klog.Errorf("get subnets failed, %+v", err)
-			return err
-		}
-		subnetsNeedNat, err := c.getSubnetsNeedNAT(protocol)
-		if err != nil {
-			klog.Errorf("get need nat subnets failed, %+v", err)
-			return err
-		}
-		subnetsDistributedGateway, err := c.getSubnetsDistributedGateway(protocol)
-		if err != nil {
-			klog.Errorf("failed to get subnets with centralized gateway: %v", err)
-			return err
-		}
+		subnets, _ := c.getDefaultVpcSubnetsCIDR(allSubnets, protocol)
+		subnetsNeedNat := c.getSubnetsNeedNAT(allSubnets, protocol)
+		subnetsDistributedGateway := c.getSubnetsDistributedGateway(allSubnets, protocol)
 		otherNode, err := c.getOtherNodes(protocol)
 		if err != nil {
 			klog.Errorf("failed to get node, %+v", err)
@@ -139,7 +134,7 @@ func (c *Controller) setIPSet() error {
 			SetID:   OtherNodeSet,
 			Type:    ipsets.IPSetTypeHashNet,
 		}, otherNode)
-		c.reconcileNatOutGoingPolicyIPset(protocol)
+		c.reconcileNatOutGoingPolicyIPset(allSubnets, protocol)
 		c.ipsets[protocol].ApplyUpdates()
 	}
 	return nil
@@ -197,13 +192,8 @@ func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicy
 	}
 }
 
-func (c *Controller) reconcileNatOutGoingPolicyIPset(protocol string) {
-	subnets, err := c.getSubnetsNatOutGoingPolicy(protocol)
-	if err != nil {
-		klog.Errorf("failed to get subnets with NAT outgoing policy rule: %v", err)
-		return
-	}
-
+func (c *Controller) reconcileNatOutGoingPolicyIPset(allSubnets []*kubeovnv1.Subnet, protocol string) {
+	subnets := c.getSubnetsNatOutGoingPolicy(allSubnets, protocol)
 	subnetCidrs := make([]string, 0, len(subnets))
 	natPolicyRuleIDs := strset.New()
 	for _, subnet := range subnets {
@@ -242,17 +232,24 @@ func (c *Controller) setPolicyRouting() error {
 		protocols = append(protocols, c.protocol)
 	}
 
+	allSubnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return err
+	}
+	allPods, err := c.podsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list pods: %v", err)
+		return err
+	}
+
 	for _, protocol := range protocols {
 		if c.ipsets[protocol] == nil {
 			continue
 		}
 
-		localPodIPs, err := c.getLocalPodIPsNeedPR(protocol)
-		if err != nil {
-			klog.Errorf("failed to get local pod ips failed: %+v", err)
-			return err
-		}
-		subnetsNeedPR, err := c.getSubnetsNeedPR(protocol)
+		localPodIPs := c.getLocalPodIPsNeedPR(allPods, protocol)
+		subnetsNeedPR, err := c.getSubnetsNeedPR(allSubnets, protocol)
 		if err != nil {
 			klog.Errorf("failed to get subnets that need policy routing: %+v", err)
 			return err
@@ -645,11 +642,22 @@ func (c *Controller) setIptables() error {
 		kubeovnv1.ProtocolIPv6: nodeIPv6,
 	}
 
-	centralGwNatIPs, err := c.getEgressNatIPByNode(c.config.NodeName)
+	allSubnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to get centralized subnets nat ips on node %s, %v", c.config.NodeName, err)
+		klog.Errorf("failed to list subnets: %v", err)
 		return err
 	}
+
+	// pods are only needed for TProxy rules; skip the full list otherwise
+	var allPods []*v1.Pod
+	if c.config.EnableTProxy {
+		if allPods, err = c.podsLister.List(labels.Everything()); err != nil {
+			klog.Errorf("failed to list pods: %v", err)
+			return err
+		}
+	}
+
+	centralGwNatIPs := c.getEgressNatIPByNode(allSubnets, c.config.NodeName)
 	klog.V(3).Infof("centralized subnets nat ips %v", centralGwNatIPs)
 
 	var (
@@ -824,11 +832,7 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
-		_, subnetCidrs, err := c.getDefaultVpcSubnetsCIDR(protocol)
-		if err != nil {
-			klog.Errorf("get subnets failed, %+v", err)
-			return err
-		}
+		_, subnetCidrs := c.getDefaultVpcSubnetsCIDR(allSubnets, protocol)
 
 		subnetNames := set.New[string]()
 		for _, name := range slices.Sorted(maps.Keys(subnetCidrs)) {
@@ -926,12 +930,12 @@ func (c *Controller) setIptables() error {
 			natPostroutingRules = append(natPostroutingRules[:n-1], rule, natPostroutingRules[n-1])
 		}
 
-		if err = c.reconcileNatOutgoingPolicyIptablesChain(protocol); err != nil {
+		if err = c.reconcileNatOutgoingPolicyIptablesChain(allSubnets, protocol); err != nil {
 			klog.Error(err)
 			return err
 		}
 
-		if err = c.reconcileTProxyIPTableRules(protocol); err != nil {
+		if err = c.reconcileTProxyIPTableRules(allPods, protocol); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1124,7 +1128,7 @@ func clearAndDeleteChainIfExists(ipt *iptables.IPTables, table, chain string) er
 	return nil
 }
 
-func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
+func (c *Controller) reconcileTProxyIPTableRules(allPods []*v1.Pod, protocol string) error {
 	if !c.config.EnableTProxy {
 		return nil
 	}
@@ -1133,7 +1137,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 	tproxyPreRoutingRules := make([]util.IPTableRule, 0)
 	tproxyOutputRules := make([]util.IPTableRule, 0)
 
-	pods, err := c.getTProxyConditionPod(true)
+	pods, err := c.getTProxyConditionPod(allPods, true)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1195,10 +1199,10 @@ func (c *Controller) cleanTProxyIPTableRules(protocol string) {
 	}
 }
 
-func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) error {
+func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(allSubnets []*kubeovnv1.Subnet, protocol string) error {
 	ipt := c.iptables[protocol]
 
-	natPolicySubnetIptables, natPolicyRuleIptablesMap, gcNatPolicySubnetChains, err := c.generateNatOutgoingPolicyChainRules(protocol)
+	natPolicySubnetIptables, natPolicyRuleIptablesMap, gcNatPolicySubnetChains, err := c.generateNatOutgoingPolicyChainRules(allSubnets, protocol)
 	if err != nil {
 		klog.Errorf(`failed to get nat policy post routing rules with err %v `, err)
 		return err
@@ -1227,7 +1231,7 @@ func (c *Controller) reconcileNatOutgoingPolicyIptablesChain(protocol string) er
 	return nil
 }
 
-func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]util.IPTableRule, map[string][]util.IPTableRule, []string, error) {
+func (c *Controller) generateNatOutgoingPolicyChainRules(allSubnets []*kubeovnv1.Subnet, protocol string) ([]util.IPTableRule, map[string][]util.IPTableRule, []string, error) {
 	natPolicySubnetIptables := make([]util.IPTableRule, 0)
 	natPolicyRuleIptablesMap := make(map[string][]util.IPTableRule)
 	natPolicySubnetUIDs := strset.New()
@@ -1235,12 +1239,7 @@ func (c *Controller) generateNatOutgoingPolicyChainRules(protocol string) ([]uti
 	subnetNames := make([]string, 0)
 	subnetMap := make(map[string]*kubeovnv1.Subnet)
 
-	subnets, err := c.getSubnetsNatOutGoingPolicy(protocol)
-	if err != nil {
-		klog.Errorf("failed to get subnets with NAT outgoing policy rule: %v", err)
-		return nil, nil, nil, err
-	}
-
+	subnets := c.getSubnetsNatOutGoingPolicy(allSubnets, protocol)
 	for _, subnet := range subnets {
 		subnetNames = append(subnetNames, subnet.Name)
 		subnetMap[subnet.Name] = subnet
@@ -1772,15 +1771,9 @@ func (c *Controller) setExGateway() error {
 	return nil
 }
 
-func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta][]string, error) {
-	allPods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list pods: %+v", err)
-		return nil, err
-	}
-
+func (c *Controller) getLocalPodIPsNeedPR(pods []*v1.Pod, protocol string) map[policyRouteMeta][]string {
 	localPodIPs := make(map[policyRouteMeta][]string)
-	for _, pod := range allPods {
+	for _, pod := range pods {
 		if !pod.DeletionTimestamp.IsZero() ||
 			pod.Annotations[util.LogicalSwitchAnnotation] == "" ||
 			pod.Annotations[util.IPAddressAnnotation] == "" {
@@ -1844,17 +1837,11 @@ func (c *Controller) getLocalPodIPsNeedPR(protocol string) (map[policyRouteMeta]
 		}
 	}
 
-	return localPodIPs, nil
+	return localPodIPs
 }
 
-func (c *Controller) getSubnetsNeedPR(protocol string) (map[policyRouteMeta]string, error) {
+func (c *Controller) getSubnetsNeedPR(subnets []*kubeovnv1.Subnet, protocol string) (map[policyRouteMeta]string, error) {
 	subnetsNeedPR := make(map[policyRouteMeta]string)
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return nil, err
-	}
-
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)

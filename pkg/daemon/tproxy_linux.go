@@ -13,6 +13,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
@@ -97,8 +98,14 @@ func getProbePorts(pod *corev1.Pod) set.Set[int32] {
 }
 
 func (c *Controller) StartTProxyTCPPortProbe() {
-	pods, err := c.getTProxyConditionPod(false)
+	allPods, err := c.podsLister.List(labels.Everything())
 	if err != nil {
+		klog.Errorf("failed to list pods: %v", err)
+		return
+	}
+	pods, err := c.getTProxyConditionPod(allPods, false)
+	if err != nil {
+		klog.Errorf("failed to get tproxy condition pods: %v", err)
 		return
 	}
 
