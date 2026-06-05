@@ -91,14 +91,8 @@ func (c *Controller) isSubnetNeedNat(subnet *kubeovnv1.Subnet, protocol string) 
 	return false
 }
 
-func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
+func (c *Controller) getSubnetsNeedNAT(subnets []*kubeovnv1.Subnet, protocol string) []string {
 	var subnetsNeedNat []string
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("list subnets failed, %v", err)
-		return nil, err
-	}
-
 	for _, subnet := range subnets {
 		if c.isSubnetNeedNat(subnet, protocol) {
 			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
@@ -107,32 +101,20 @@ func (c *Controller) getSubnetsNeedNAT(protocol string) ([]string, error) {
 			}
 		}
 	}
-	return subnetsNeedNat, nil
+	return subnetsNeedNat
 }
 
-func (c *Controller) getSubnetsNatOutGoingPolicy(protocol string) ([]*kubeovnv1.Subnet, error) {
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("list subnets failed, %v", err)
-		return nil, err
-	}
-
+func (c *Controller) getSubnetsNatOutGoingPolicy(subnets []*kubeovnv1.Subnet, protocol string) []*kubeovnv1.Subnet {
 	var subnetsWithNatPolicy []*kubeovnv1.Subnet
 	for _, subnet := range subnets {
 		if c.isSubnetNeedNat(subnet, protocol) && len(subnet.Status.NatOutgoingPolicyRules) != 0 {
 			subnetsWithNatPolicy = append(subnetsWithNatPolicy, subnet)
 		}
 	}
-	return subnetsWithNatPolicy, nil
+	return subnetsWithNatPolicy
 }
 
-func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, error) {
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return nil, err
-	}
-
+func (c *Controller) getSubnetsDistributedGateway(subnets []*kubeovnv1.Subnet, protocol string) []string {
 	var result []string
 	for _, subnet := range subnets {
 		if subnet.DeletionTimestamp.IsZero() &&
@@ -147,7 +129,7 @@ func (c *Controller) getSubnetsDistributedGateway(protocol string) ([]string, er
 			}
 		}
 	}
-	return result, nil
+	return result
 }
 
 func (c *Controller) getServicesCIDR(protocol string) []string {
@@ -157,13 +139,7 @@ func (c *Controller) getServicesCIDR(protocol string) []string {
 	return c.serviceCIDRStore.V4CIDRs()
 }
 
-func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, map[string]string, error) {
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Error("failed to list subnets")
-		return nil, nil, err
-	}
-
+func (c *Controller) getDefaultVpcSubnetsCIDR(subnets []*kubeovnv1.Subnet, protocol string) ([]string, map[string]string) {
 	ret := make([]string, 0, len(subnets)+1)
 	subnetMap := make(map[string]string, len(subnets)+1)
 
@@ -176,7 +152,7 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(protocol string) ([]string, map[st
 			}
 		}
 	}
-	return ret, subnetMap, nil
+	return ret, subnetMap
 }
 
 func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
@@ -215,15 +191,9 @@ func getCidrByProtocol(cidr, protocol string) (string, error) {
 	return "", nil
 }
 
-func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, error) {
+func (c *Controller) getEgressNatIPByNode(subnets []*kubeovnv1.Subnet, nodeName string) map[string]string {
 	subnetsNatIP := make(map[string]string)
-	subnetList, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets %v", err)
-		return subnetsNatIP, err
-	}
-
-	for _, subnet := range subnetList {
+	for _, subnet := range subnets {
 		if !subnet.Spec.NatOutgoing ||
 			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
 			subnet.Spec.GatewayType != kubeovnv1.GWCentralizedType ||
@@ -246,17 +216,11 @@ func (c *Controller) getEgressNatIPByNode(nodeName string) (map[string]string, e
 			}
 		}
 	}
-	return subnetsNatIP, nil
+	return subnetsNatIP
 }
 
-func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
+func (c *Controller) getTProxyConditionPod(pods []*v1.Pod, needSort bool) ([]*v1.Pod, error) {
 	var filteredPods []*v1.Pod
-	pods, err := c.podsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("list pods failed, %v", err)
-		return nil, err
-	}
-
 	for _, pod := range pods {
 		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
 		if !ok {
