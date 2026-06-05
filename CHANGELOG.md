@@ -439,6 +439,29 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.13 (2026-06-05)
+
+ * [8709a0b54](https://github.com/kubeovn/kube-ovn/commit/8709a0b54efb09800c53d3ca890371effe1ff824) release v1.15.13
+ * [765122430](https://github.com/kubeovn/kube-ovn/commit/76512243063c1f571a86b4718b6e56e0534d9135) chore(deps): update golang to v1.26.4 (#6809)
+ * [b8baba35e](https://github.com/kubeovn/kube-ovn/commit/b8baba35ec1b54de1ca03486a78a9e0a815c6394) fix(controller): correct egress sync status field on ACL update failure (#6804)
+ * [3ea32e215](https://github.com/kubeovn/kube-ovn/commit/3ea32e215d369ba7913ea5cd75b7c2b7d375ba58) fix(controller): populate v6ip from cached EIP in handleAddVpcExternalSubnet (#6799)
+ * [c14378626](https://github.com/kubeovn/kube-ovn/commit/c143786267070fd10be68a9cc39004926bb4d9ef) fix: restrict hook log file permissions (#6794)
+ * [649c65b48](https://github.com/kubeovn/kube-ovn/commit/649c65b4839cb9f63157f27118661e21a859141e) fix: report VEG workload network readiness (#6790)
+ * [caa1c1e9a](https://github.com/kubeovn/kube-ovn/commit/caa1c1e9a6c7eaf305097e4fc119103165e16ea6) fix(veg): raise default bfdd CPU limit (#6788)
+ * [299c5daef](https://github.com/kubeovn/kube-ovn/commit/299c5daef12ffe905fa9326310d91fe909d80148) chore(deps): update Kubernetes and runtime dependencies (#6780)
+ * [91515b676](https://github.com/kubeovn/kube-ovn/commit/91515b6762c5cce3470ae25c918eab64785f2ed4) fix(controller): avoid panic in external VPC sync when no logical switch is found (#6777)
+ * [957132a86](https://github.com/kubeovn/kube-ovn/commit/957132a86d3cf7b1fa6f5143b7f7b7cc1ac2a35e) fix(deps): update golang (#6772)
+ * [09c4a9585](https://github.com/kubeovn/kube-ovn/commit/09c4a95855c685dcb87bc5ce24d8241c7cdada60) prepare for next release
+
+### Contributors
+
+ * Harisudarsan
+ * Mengxin Liu
+ * Rohan
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.15.12 (2026-05-19)
 
  * [88c8e621f](https://github.com/kubeovn/kube-ovn/commit/88c8e621f5b80330914045a22bc0950454d78420) release v1.15.12
