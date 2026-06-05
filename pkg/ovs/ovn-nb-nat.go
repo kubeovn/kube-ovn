@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -460,19 +460,22 @@ func (c *OVNNbClient) listLogicalRouterNatByFilter(lrName string, filter func(ro
 		return nil, err
 	}
 
+	if len(lr.Nat) == 0 {
+		return nil, nil
+	}
+
+	uuidSet := set.New(lr.Nat...)
+	predicate := func(nat *ovnnb.NAT) bool {
+		if !uuidSet.Has(nat.UUID) {
+			return false
+		}
+		return filter == nil || filter(nat)
+	}
+
 	natList := make([]*ovnnb.NAT, 0, len(lr.Nat))
-	for _, uuid := range lr.Nat {
-		nat, err := c.GetNATByUUID(uuid)
-		if err != nil {
-			if errors.Is(err, client.ErrNotFound) {
-				continue
-			}
-			klog.Error(err)
-			return nil, err
-		}
-		if filter == nil || filter(nat) {
-			natList = append(natList, nat)
-		}
+	if err = c.WhereCache(predicate).List(context.Background(), &natList); err != nil {
+		klog.Error(err)
+		return nil, err
 	}
 
 	return natList, nil

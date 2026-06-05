@@ -554,6 +554,14 @@ func (suite *OvnClientTestSuite) testGetNat() {
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
 
+	t.Run("empty logical router returns no nats without scanning cache", func(t *testing.T) {
+		emptyLR := "test_get_nat_empty_lr"
+		require.NoError(t, nbClient.CreateLogicalRouter(emptyLR))
+		nats, err := nbClient.ListNats(emptyLR, "", "", nil)
+		require.NoError(t, err)
+		require.Empty(t, nats)
+	})
+
 	t.Run("snat", func(t *testing.T) {
 		t.Parallel()
 		natType := "snat"

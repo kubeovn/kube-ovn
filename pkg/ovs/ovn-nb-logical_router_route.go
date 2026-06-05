@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
@@ -323,20 +322,6 @@ func (c *OVNNbClient) ClearLogicalRouterStaticRoute(lrName string) error {
 	return nil
 }
 
-// GetLogicalRouterStaticRouteByUUID get logical router static route by UUID
-func (c *OVNNbClient) GetLogicalRouterStaticRouteByUUID(uuid string) (*ovnnb.LogicalRouterStaticRoute, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	route := &ovnnb.LogicalRouterStaticRoute{UUID: uuid}
-	if err := c.Get(ctx, route); err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	return route, nil
-}
-
 // GetLogicalRouterStaticRoute get logical router static route by some attribute,
 // a static route is uniquely identified by router(lrName), policy and ipPrefix when route is not ecmp
 // a static route is uniquely identified by router(lrName), policy, ipPrefix and nexthop when route is ecmp
@@ -470,19 +455,22 @@ func (c *OVNNbClient) listLogicalRouterStaticRoutesByFilter(lrName string, filte
 		return nil, err
 	}
 
+	if len(lr.StaticRoutes) == 0 {
+		return nil, nil
+	}
+
+	uuidSet := set.New(lr.StaticRoutes...)
+	predicate := func(route *ovnnb.LogicalRouterStaticRoute) bool {
+		if !uuidSet.Has(route.UUID) {
+			return false
+		}
+		return filter == nil || filter(route)
+	}
+
 	routeList := make([]*ovnnb.LogicalRouterStaticRoute, 0, len(lr.StaticRoutes))
-	for _, uuid := range lr.StaticRoutes {
-		route, err := c.GetLogicalRouterStaticRouteByUUID(uuid)
-		if err != nil {
-			if errors.Is(err, client.ErrNotFound) {
-				continue
-			}
-			klog.Error(err)
-			return nil, err
-		}
-		if filter == nil || filter(route) {
-			routeList = append(routeList, route)
-		}
+	if err = c.WhereCache(predicate).List(context.Background(), &routeList); err != nil {
+		klog.Error(err)
+		return nil, err
 	}
 
 	return routeList, nil
