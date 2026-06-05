@@ -1288,6 +1288,18 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.40 (2026-06-05)
+
+ * [9ab36e1c4](https://github.com/kubeovn/kube-ovn/commit/9ab36e1c4ed28bd555edda5470286ca13e4de94e) release v1.14.40
+ * [7570bd6c8](https://github.com/kubeovn/kube-ovn/commit/7570bd6c880ae6e23baaf0b636f74af338a9b36d) fix: bump go version to 1.26.4 (#6832)
+ * [afd61b134](https://github.com/kubeovn/kube-ovn/commit/afd61b1345e797e4417c06561c9fe515a8735ef2) fix(loadbalancer): backport ip port mapping updates (#6830)
+ * [91361f981](https://github.com/kubeovn/kube-ovn/commit/91361f9815c5d0ba41a13ac6e276c535773ec7f6) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+
 ## v1.14.39 (2026-05-29)
 
  * [3e7d8629e](https://github.com/kubeovn/kube-ovn/commit/3e7d8629e23ae174baa47862255a18232e805a3d) release v1.14.39
