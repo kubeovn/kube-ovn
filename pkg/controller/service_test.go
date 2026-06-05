@@ -181,40 +181,55 @@ func Test_checkServiceLBIPBelongToSubnet(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		svc            *v1.Service
-		wantUpdate     bool
-		wantAnnotation string // expected value after reconcile, "" means absent
+		name        string
+		svc         *v1.Service
+		wantUpdate  bool
+		wantSubnet  string // expected annotation value after reconcile when wantPresent is true
+		wantPresent bool   // whether the annotation key should exist after reconcile
 	}{
 		{
-			name:           "external IP belongs to subnet sets annotation",
-			svc:            newSvc(nil, "192.168.1.10"),
-			wantUpdate:     true,
-			wantAnnotation: subnetName,
+			name:        "external IP belongs to subnet sets annotation",
+			svc:         newSvc(nil, "192.168.1.10"),
+			wantUpdate:  true,
+			wantSubnet:  subnetName,
+			wantPresent: true,
 		},
 		{
-			name:           "annotation already correct is a no-op",
-			svc:            newSvc(map[string]string{util.ServiceExternalIPFromSubnetAnnotation: subnetName}, "192.168.1.10"),
-			wantUpdate:     false,
-			wantAnnotation: subnetName,
+			name:        "annotation already correct is a no-op",
+			svc:         newSvc(map[string]string{util.ServiceExternalIPFromSubnetAnnotation: subnetName}, "192.168.1.10"),
+			wantUpdate:  false,
+			wantSubnet:  subnetName,
+			wantPresent: true,
 		},
 		{
-			name:           "external IP outside any subnet without annotation is a no-op",
-			svc:            newSvc(nil, "10.0.0.10"),
-			wantUpdate:     false,
-			wantAnnotation: "",
+			name:        "external IP outside any subnet without annotation is a no-op",
+			svc:         newSvc(nil, "10.0.0.10"),
+			wantUpdate:  false,
+			wantPresent: false,
 		},
 		{
-			name:           "no ingress without annotation is a no-op",
-			svc:            newSvc(nil),
-			wantUpdate:     false,
-			wantAnnotation: "",
+			name:        "no ingress without annotation is a no-op",
+			svc:         newSvc(nil),
+			wantUpdate:  false,
+			wantPresent: false,
 		},
 		{
-			name:           "stale annotation removed when external IP no longer matches",
-			svc:            newSvc(map[string]string{util.ServiceExternalIPFromSubnetAnnotation: subnetName}, "10.0.0.10"),
-			wantUpdate:     true,
-			wantAnnotation: "",
+			name:        "hostname-only ingress without annotation is a no-op",
+			svc:         newSvc(nil, ""),
+			wantUpdate:  false,
+			wantPresent: false,
+		},
+		{
+			name:        "stale annotation removed when external IP no longer matches",
+			svc:         newSvc(map[string]string{util.ServiceExternalIPFromSubnetAnnotation: subnetName}, "10.0.0.10"),
+			wantUpdate:  true,
+			wantPresent: false,
+		},
+		{
+			name:        "explicit empty annotation removed when no subnet matches",
+			svc:         newSvc(map[string]string{util.ServiceExternalIPFromSubnetAnnotation: ""}, "10.0.0.10"),
+			wantUpdate:  true,
+			wantPresent: false,
 		},
 	}
 
@@ -244,7 +259,11 @@ func Test_checkServiceLBIPBelongToSubnet(t *testing.T) {
 
 			got, err := kubeClient.CoreV1().Services(ns).Get(context.Background(), svcName, metav1.GetOptions{})
 			require.NoError(t, err)
-			require.Equal(t, tt.wantAnnotation, got.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+			val, ok := got.Annotations[util.ServiceExternalIPFromSubnetAnnotation]
+			require.Equal(t, tt.wantPresent, ok, "unexpected annotation presence, value=%q", val)
+			if tt.wantPresent {
+				require.Equal(t, tt.wantSubnet, val)
+			}
 		})
 	}
 }
