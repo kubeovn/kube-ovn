@@ -662,6 +662,42 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	require.NoError(t, err)
 	require.Equal(t, vips, lb.Vips)
 
+	t.Run("delete vip cleans ipv6 ip port mappings without health check", func(t *testing.T) {
+		lbName := "test-lb-del-vip-ipv6-ip-port-mapping"
+		vip1 := "[fd00:10:96::1]:80"
+		vip2 := "[fd00:10:96::2]:80"
+
+		err := nbClient.CreateLoadBalancer(lbName, "tcp")
+		require.NoError(t, err)
+
+		err = nbClient.LoadBalancerAddVip(lbName, vip1, "[fc00::1]:80", "[fc00::2]:80")
+		require.NoError(t, err)
+		err = nbClient.LoadBalancerAddVip(lbName, vip2, "[fc00::2]:80", "[fc00::3]:80")
+		require.NoError(t, err)
+
+		err = nbClient.LoadBalancerUpdateIPPortMapping(lbName, vip1, map[string]string{
+			"[fc00::1]": "pod-a.ns:0.0.0.0",
+			"[fc00::2]": "pod-shared.ns:0.0.0.0",
+		})
+		require.NoError(t, err)
+		err = nbClient.LoadBalancerUpdateIPPortMapping(lbName, vip2, map[string]string{
+			"[fc00::2]": "pod-shared.ns:0.0.0.0",
+			"[fc00::3]": "pod-b.ns:0.0.0.0",
+		})
+		require.NoError(t, err)
+
+		err = nbClient.LoadBalancerDeleteVip(lbName, vip1, true)
+		require.NoError(t, err)
+
+		lb, err := nbClient.GetLoadBalancer(lbName, false)
+		require.NoError(t, err)
+		require.NotContains(t, lb.Vips, vip1)
+		require.Contains(t, lb.Vips, vip2)
+		require.NotContains(t, lb.IPPortMappings, "[fc00::1]")
+		require.Contains(t, lb.IPPortMappings, "[fc00::2]")
+		require.Contains(t, lb.IPPortMappings, "[fc00::3]")
+	})
+
 	err = nbClient.LoadBalancerAddHealthCheck(lbName, "10.107.43.239:8080", false, nil, nil)
 	require.NoError(t, err)
 

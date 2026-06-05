@@ -155,15 +155,14 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 		return err
 	}
 	if len(lb.IPPortMappings) != 0 {
-		ignoreHealthCheck = false
-	}
-	if !ignoreHealthCheck && lbhc != nil {
-		klog.Infof("clean health check for lb %s with vip %s", lbName, vipEndpoint)
-		// delete ip port mapping
+		klog.Infof("clean ip port mapping for lb %s with vip %s", lbName, vipEndpoint)
 		if err = c.LoadBalancerDeleteIPPortMapping(lbName, vipEndpoint); err != nil {
 			klog.Errorf("failed to delete lb ip port mapping: %v", err)
 			return err
 		}
+	}
+	if !ignoreHealthCheck && lbhc != nil {
+		klog.Infof("clean health check for lb %s with vip %s", lbName, vipEndpoint)
 		if err = c.LoadBalancerDeleteHealthCheck(lbName, lbhc.UUID); err != nil {
 			klog.Errorf("failed to delete lb health check: %v", err)
 			return err
@@ -580,8 +579,11 @@ func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP str
 
 	for backendIP := range targetBackendIPs {
 		if !c.isBackendIPStillUsed(lb, targetVIP, backendIP) {
-			if portMapping, exists := lb.IPPortMappings[backendIP]; exists {
-				unusedBackendIPs[backendIP] = portMapping
+			cleanBackendIP := strings.Trim(backendIP, "[]")
+			for mappingKey, portMapping := range lb.IPPortMappings {
+				if strings.Trim(mappingKey, "[]") == cleanBackendIP {
+					unusedBackendIPs[mappingKey] = portMapping
+				}
 			}
 		}
 	}
