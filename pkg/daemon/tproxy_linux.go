@@ -105,6 +105,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 	}
 	pods, err := c.getTProxyConditionPod(allPods, false)
 	if err != nil {
+		klog.Errorf("failed to get tproxy condition pods: %v", err)
 		return
 	}
 

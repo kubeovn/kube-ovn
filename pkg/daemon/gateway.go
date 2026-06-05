@@ -94,11 +94,16 @@ func (c *Controller) isSubnetNeedNat(subnet *kubeovnv1.Subnet, protocol string) 
 func (c *Controller) getSubnetsNeedNAT(subnets []*kubeovnv1.Subnet, protocol string) []string {
 	var subnetsNeedNat []string
 	for _, subnet := range subnets {
-		if c.isSubnetNeedNat(subnet, protocol) {
-			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			if err == nil && cidrBlock != "" {
-				subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
-			}
+		if !c.isSubnetNeedNat(subnet, protocol) {
+			continue
+		}
+		cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s CIDR block by protocol: %v", subnet.Name, err)
+			continue
+		}
+		if cidrBlock != "" {
+			subnetsNeedNat = append(subnetsNeedNat, cidrBlock)
 		}
 	}
 	return subnetsNeedNat
@@ -124,7 +129,11 @@ func (c *Controller) getSubnetsDistributedGateway(subnets []*kubeovnv1.Subnet, p
 			subnet.Spec.GatewayType == kubeovnv1.GWDistributedType &&
 			(subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == protocol) {
 			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			if err == nil && cidrBlock != "" {
+			if err != nil {
+				klog.Errorf("failed to get subnet %s CIDR block by protocol: %v", subnet.Name, err)
+				continue
+			}
+			if cidrBlock != "" {
 				result = append(result, cidrBlock)
 			}
 		}
@@ -146,7 +155,11 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(subnets []*kubeovnv1.Subnet, proto
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == c.config.ClusterRouter && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.CIDRBlock != "" {
 			cidrBlock, err := getCidrByProtocol(subnet.Spec.CIDRBlock, protocol)
-			if err == nil && cidrBlock != "" {
+			if err != nil {
+				klog.Errorf("failed to get subnet %s CIDR block by protocol: %v", subnet.Name, err)
+				continue
+			}
+			if cidrBlock != "" {
 				ret = append(ret, cidrBlock)
 				subnetMap[subnet.Name] = cidrBlock
 			}
