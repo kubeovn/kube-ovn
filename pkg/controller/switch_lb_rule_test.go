@@ -1,10 +1,18 @@
 package controller
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 func Test_getIPFamilies(t *testing.T) {
@@ -67,8 +75,42 @@ func Test_getIPFamilies(t *testing.T) {
 			}
 
 			if policy != tt.expectedFamilyPolicy {
-				t.Errorf("Expected familiyPolicy %s, but got %s", tt.expectedFamilyPolicy, policy)
+				t.Errorf("Expected familyPolicy %s, but got %s", tt.expectedFamilyPolicy, policy)
 			}
 		})
 	}
+}
+
+func Test_handleDelSwitchLBRuleFallbackToInfoSubnet(t *testing.T) {
+	t.Parallel()
+
+	const (
+		namespace  = "default"
+		slrName    = "test-slr"
+		subnetName = "test-subnet"
+		vip        = "10.0.0.1:8080"
+	)
+
+	fc := newFakeController(t)
+	_, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Create(
+		context.Background(),
+		&kubeovnv1.Vip{ObjectMeta: metav1.ObjectMeta{Name: subnetName}},
+		metav1.CreateOptions{},
+	)
+	require.NoError(t, err)
+
+	fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+	fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
+	fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+
+	err = fc.fakeController.handleDelSwitchLBRule(&SlrInfo{
+		Name:      slrName,
+		Namespace: namespace,
+		Subnet:    subnetName,
+		Vips:      []string{vip},
+	})
+	require.NoError(t, err)
+
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted via SlrInfo.Subnet fallback", subnetName)
 }

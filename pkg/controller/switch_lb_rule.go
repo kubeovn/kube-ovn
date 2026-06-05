@@ -23,6 +23,8 @@ import (
 type SlrInfo struct {
 	Name       string
 	Namespace  string
+	Subnet     string
+	VPC        string
 	IsRecreate bool
 	Vips       []string
 }
@@ -45,6 +47,8 @@ func NewSlrInfo(slr *kubeovnv1.SwitchLBRule) *SlrInfo {
 	return &SlrInfo{
 		Name:      slr.Name,
 		Namespace: namespace,
+		Subnet:    slr.Annotations[util.LogicalSwitchAnnotation],
+		VPC:       slr.Annotations[util.LogicalRouterAnnotation],
 		Vips:      vips,
 	}
 }
@@ -211,6 +215,13 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	)
 
 	name = generateSvcName(info.Name)
+	subnetForVip := ""
+	if svc, e := c.servicesLister.Services(info.Namespace).Get(name); e == nil {
+		subnetForVip = svc.Annotations[util.LogicalSwitchAnnotation]
+	}
+	if subnetForVip == "" {
+		subnetForVip = info.Subnet
+	}
 	if err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete service %s, err: %v", name, err)
@@ -270,6 +281,10 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("delete load balancer health checks matched vip %s, err: %v", info.Vips, err)
 		return err
+	}
+
+	if len(vips) == 0 && subnetForVip != "" {
+		vips[subnetForVip] = struct{}{}
 	}
 
 	for vip := range vips {

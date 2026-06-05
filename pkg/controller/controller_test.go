@@ -68,6 +68,7 @@ func newFakeController(t *testing.T) *fakeController {
 		ClusterRouter:        "ovn-cluster",
 		DefaultLogicalSwitch: "ovn-default",
 		NodeSwitch:           "join",
+		KubeClient:           kubeClient,
 		KubeOvnClient:        kubeovnClient,
 	}
 
