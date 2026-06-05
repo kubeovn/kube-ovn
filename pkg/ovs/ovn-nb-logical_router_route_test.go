@@ -561,6 +561,14 @@ func (suite *OvnClientTestSuite) testListLogicalRouterStaticRoutes() {
 		require.Len(t, result, 1)
 		require.Equal(t, "192.168.70.0/24", result[0].IPPrefix)
 	})
+
+	t.Run("empty logical router returns no routes without scanning cache", func(t *testing.T) {
+		emptyLR := "test-list-routes-empty-lr"
+		require.NoError(t, nbClient.CreateLogicalRouter(emptyLR))
+		result, err := nbClient.ListLogicalRouterStaticRoutes(emptyLR, nil, nil, "", nil)
+		require.NoError(t, err)
+		require.Empty(t, result)
+	})
 }
 
 func (suite *OvnClientTestSuite) testNewLogicalRouterStaticRoute() {

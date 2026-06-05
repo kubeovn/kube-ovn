@@ -460,6 +460,10 @@ func (c *OVNNbClient) listLogicalRouterNatByFilter(lrName string, filter func(ro
 		return nil, err
 	}
 
+	if len(lr.Nat) == 0 {
+		return nil, nil
+	}
+
 	uuidSet := set.New(lr.Nat...)
 	predicate := func(nat *ovnnb.NAT) bool {
 		if !uuidSet.Has(nat.UUID) {

@@ -455,6 +455,10 @@ func (c *OVNNbClient) listLogicalRouterStaticRoutesByFilter(lrName string, filte
 		return nil, err
 	}
 
+	if len(lr.StaticRoutes) == 0 {
+		return nil, nil
+	}
+
 	uuidSet := set.New(lr.StaticRoutes...)
 	predicate := func(route *ovnnb.LogicalRouterStaticRoute) bool {
 		if !uuidSet.Has(route.UUID) {
