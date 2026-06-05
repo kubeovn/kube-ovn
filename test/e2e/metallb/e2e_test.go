@@ -1,6 +1,7 @@
 package kubevirt
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -37,6 +38,7 @@ import (
 const (
 	dockerNetworkName = "kube-ovn-vlan"
 	curlListenPort    = 80
+	tcpLoadBalancer   = "cluster-tcp-loadbalancer"
 )
 
 func init() {
@@ -76,7 +78,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 
 	var cs clientset.Interface
 	var nodeNames []string
-	var clusterName, providerNetworkName, vlanName, subnetName, deployName, containerName, serviceName, serviceName2, containerID, metallbIPPoolName string
+	var clusterName, providerNetworkName, vlanName, subnetName, deployName, deployName2, containerName, serviceName, serviceName2, containerID, metallbIPPoolName string
 	var linkMap map[string]*iproute.Link
 	var routeMap map[string][]iproute.Route
 	var subnetClient *framework.SubnetClient
@@ -100,6 +102,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		providerNetworkClient = f.ProviderNetworkClient()
 		containerName = "client-" + framework.RandomSuffix()
 		deployName = "deploy-" + framework.RandomSuffix()
+		deployName2 = "deploy2-" + framework.RandomSuffix()
 		metallbIPPoolName = "metallb-ip-pool-" + framework.RandomSuffix()
 		serviceName = "service-" + framework.RandomSuffix()
 		serviceName2 = "service2-" + framework.RandomSuffix()
@@ -203,6 +206,8 @@ var _ = framework.Describe("[group:metallb]", func() {
 
 		ginkgo.By("Deleting the deployment " + deployName)
 		deployClient.DeleteSync(deployName)
+		ginkgo.By("Deleting the deployment " + deployName2)
+		deployClient.DeleteSync(deployName2)
 
 		ginkgo.By("Deleting subnet " + subnetName)
 		subnetClient.DeleteSync(subnetName)
@@ -362,11 +367,15 @@ var _ = framework.Describe("[group:metallb]", func() {
 			util.LogicalSwitchAnnotation: subnetName,
 		}
 		podLabels := map[string]string{"app": "nginx"}
+		podLabels2 := map[string]string{"app": "nginx2"}
 
 		args := []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
-		deploy := framework.MakeDeployment(deployName, 3, podLabels, annotations, "nginx", framework.AgnhostImage, "")
+		deploy := framework.MakeDeployment(deployName, 1, podLabels, annotations, "nginx", framework.AgnhostImage, "")
 		deploy.Spec.Template.Spec.Containers[0].Args = args
-		_ = deployClient.CreateSync(deploy)
+		deploy = deployClient.CreateSync(deploy)
+		deploy2 := framework.MakeDeployment(deployName2, 3, podLabels2, annotations, "nginx2", framework.AgnhostImage, "")
+		deploy2.Spec.Template.Spec.Containers[0].Args = args
+		deploy2 = deployClient.CreateSync(deploy2)
 
 		ginkgo.By("Creating the first service for the deployment")
 		ports := []corev1.ServicePort{
@@ -383,13 +392,37 @@ var _ = framework.Describe("[group:metallb]", func() {
 		} else {
 			service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
 		}
-		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
 		}, "first lb service ip is not empty")
+		firstBackendMappingKeys := getDeploymentIPPortMappingKeys(deployClient, deploy.Name)
+		waitLoadBalancerIPPortMappings(tcpLoadBalancer, nil, firstBackendMappingKeys, 30*time.Second)
 
-		ginkgo.By("Creating the second service for the same deployment")
-		service2 := framework.MakeService(serviceName2, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
+		ginkgo.By("Updating the first service external traffic policy to Local")
+		service = serviceClient.Get(serviceName)
+		modifiedService := service.DeepCopy()
+		modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+		serviceClient.PatchSync(service, modifiedService, func(s *corev1.Service) (bool, error) {
+			return s.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyTypeLocal &&
+				len(s.Status.LoadBalancer.Ingress) != 0, nil
+		}, "first lb service external traffic policy is Local")
+		waitLoadBalancerIPPortMappings(tcpLoadBalancer, firstBackendMappingKeys, nil, 30*time.Second)
+
+		ginkgo.By("Scaling the first deployment to three replicas should add new first service mappings")
+		scaleDeploymentAndWait(deployClient, deploy.Name, 3, 2*time.Minute)
+		deploy = deployClient.Get(deploy.Name)
+		firstBackendMappingKeys = getDeploymentIPPortMappingKeys(deployClient, deploy.Name)
+		waitLoadBalancerIPPortMappings(tcpLoadBalancer, firstBackendMappingKeys, nil, 1*time.Minute)
+
+		ginkgo.By("Scaling the first deployment to two replicas should only remove stale first service mappings")
+		oldFirstBackendMappingKeys := firstBackendMappingKeys
+		scaleDeploymentAndWait(deployClient, deploy.Name, 2, 2*time.Minute)
+		deploy = deployClient.Get(deploy.Name)
+		firstBackendMappingKeys = getDeploymentIPPortMappingKeys(deployClient, deploy.Name)
+		waitLoadBalancerIPPortMappings(tcpLoadBalancer, firstBackendMappingKeys, diffIPPortMappingKeys(oldFirstBackendMappingKeys, firstBackendMappingKeys), 1*time.Minute)
+
+		ginkgo.By("Creating the second service for a different deployment")
+		service2 := framework.MakeService(serviceName2, corev1.ServiceTypeLoadBalancer, nil, podLabels2, ports, "")
 		if f.IsDual() {
 			service2.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyPreferDualStack)
 		} else {
@@ -399,6 +432,8 @@ var _ = framework.Describe("[group:metallb]", func() {
 		_ = serviceClient.CreateSync(service2, func(s *corev1.Service) (bool, error) {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
 		}, "second lb service ip is not empty")
+		secondBackendMappingKeys := getDeploymentIPPortMappingKeys(deployClient, deploy2.Name)
+		waitLoadBalancerIPPortMappings(tcpLoadBalancer, append(firstBackendMappingKeys, secondBackendMappingKeys...), nil, 30*time.Second)
 
 		service = f.ServiceClient().Get(serviceName)
 		service2 = f.ServiceClient().Get(serviceName2)
@@ -440,6 +475,7 @@ var _ = framework.Describe("[group:metallb]", func() {
 		for _, ingress := range service.Status.LoadBalancer.Ingress {
 			waitUnderlayServiceFlowCleaned(nodeNames, providerNetworkName, ingress.IP, curlListenPort, 15*time.Second)
 		}
+		waitLoadBalancerIPPortMappings(tcpLoadBalancer, secondBackendMappingKeys, firstBackendMappingKeys, 30*time.Second)
 
 		ginkgo.By("Checking the second service is still reachable after first service deletion")
 		for i, ingress := range service2.Status.LoadBalancer.Ingress {
@@ -576,6 +612,170 @@ func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6,
 	backendPod := f.PodClient().GetPod(backendPodName)
 	backendPodNode := backendPod.Spec.NodeName
 	framework.ExpectEqual(backendPodNode, vipNode)
+}
+
+func getDeploymentIPPortMappingKeys(deployClient *framework.DeploymentClient, deployName string) []string {
+	ginkgo.GinkgoHelper()
+
+	deploy := deployClient.Get(deployName)
+	pods, err := deployClient.GetPods(deploy)
+	framework.ExpectNoError(err)
+
+	seen := make(map[string]struct{})
+	keys := make([]string, 0, len(pods.Items))
+	for _, pod := range pods.Items {
+		if !podReadyForIPPortMapping(pod) {
+			continue
+		}
+
+		for _, podIP := range pod.Status.PodIPs {
+			if podIP.IP == "" {
+				continue
+			}
+
+			key := podIP.IP
+			if util.CheckProtocol(podIP.IP) == apiv1.ProtocolIPv6 {
+				key = fmt.Sprintf("[%s]", podIP.IP)
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			keys = append(keys, key)
+		}
+	}
+
+	framework.ExpectNotEmpty(keys, "deployment %s should have pod IPs", deployName)
+	return keys
+}
+
+func podReadyForIPPortMapping(pod corev1.Pod) bool {
+	if !pod.DeletionTimestamp.IsZero() || pod.Status.Phase != corev1.PodRunning {
+		return false
+	}
+
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+func scaleDeploymentAndWait(deployClient *framework.DeploymentClient, deployName string, replicas int32, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	deployClient.SetScale(deployName, replicas)
+	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
+		deploy := deployClient.Get(deployName)
+		if deploy.Status.ObservedGeneration < deploy.Generation {
+			return false, nil
+		}
+
+		return deploy.Status.Replicas == replicas &&
+			deploy.Status.ReadyReplicas == replicas &&
+			deploy.Status.AvailableReplicas == replicas &&
+			deploy.Status.UpdatedReplicas == replicas, nil
+	}, fmt.Sprintf("deployment %s should have %d ready replicas", deployName, replicas))
+}
+
+func diffIPPortMappingKeys(oldKeys, newKeys []string) []string {
+	newKeySet := make(map[string]struct{}, len(newKeys))
+	for _, key := range newKeys {
+		newKeySet[key] = struct{}{}
+	}
+
+	diff := make([]string, 0, len(oldKeys))
+	for _, key := range oldKeys {
+		if _, ok := newKeySet[key]; !ok {
+			diff = append(diff, key)
+		}
+	}
+	return diff
+}
+
+func getLoadBalancerIPPortMappings(lbName string) (map[string]string, error) {
+	ginkgo.GinkgoHelper()
+
+	cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=ip_port_mappings list Load_Balancer %s", lbName)
+	output, _, err := framework.NBExec(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query load balancer %s: %w", lbName, err)
+	}
+
+	mappings := make(map[string]string)
+	output = bytes.TrimSpace(output)
+	if len(output) == 0 {
+		return mappings, nil
+	}
+
+	if len(output) >= 2 && output[0] == '"' && output[len(output)-1] == '"' {
+		output = output[1 : len(output)-1]
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "" || outputStr == "{}" {
+		return mappings, nil
+	}
+
+	var pairs []string
+	if strings.HasPrefix(outputStr, "{") && strings.HasSuffix(outputStr, "}") {
+		outputStr = outputStr[1 : len(outputStr)-1]
+		pairs = strings.Split(outputStr, ",")
+	} else {
+		pairs = strings.Fields(outputStr)
+	}
+
+	for _, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.Trim(strings.TrimSpace(parts[0]), `"`)
+		value := strings.Trim(strings.TrimSpace(parts[1]), `"`)
+		if key != "" {
+			mappings[key] = value
+		}
+	}
+
+	return mappings, nil
+}
+
+func waitLoadBalancerIPPortMappings(lbName string, presentKeys, absentKeys []string, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+	ginkgo.By("Checking load balancer ip_port_mappings for " + lbName)
+
+	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
+		mappings, err := getLoadBalancerIPPortMappings(lbName)
+		if err != nil {
+			return false, err
+		}
+
+		missingKeys := make([]string, 0)
+		for _, key := range presentKeys {
+			if _, ok := mappings[key]; !ok {
+				missingKeys = append(missingKeys, key)
+			}
+		}
+		unexpectedKeys := make([]string, 0)
+		for _, key := range absentKeys {
+			if _, ok := mappings[key]; ok {
+				unexpectedKeys = append(unexpectedKeys, key)
+			}
+		}
+
+		if len(missingKeys) != 0 || len(unexpectedKeys) != 0 {
+			framework.Logf("load balancer %s ip_port_mappings mismatch: missing=%v unexpected=%v current=%v", lbName, missingKeys, unexpectedKeys, mappings)
+			return false, nil
+		}
+
+		return true, nil
+	}, fmt.Sprintf("load balancer %s ip_port_mappings mismatch, present=%v absent=%v", lbName, presentKeys, absentKeys))
 }
 
 func getVIPNode(containerID, targetIP, clusterName string) string {
