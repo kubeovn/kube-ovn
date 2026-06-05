@@ -1326,7 +1326,7 @@ func Test_scratch(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func newOVSDBServer(t *testing.T, name string, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {
+func newOVSDBServer(t testing.TB, name string, dbModel model.ClientDBModel, schema ovsdb.DatabaseSchema) (*server.OvsdbServer, string) {
 	serverDBModel, err := serverdb.FullDatabaseModel()
 	require.NoError(t, err)
 	serverSchema := serverdb.Schema()
@@ -1366,7 +1366,7 @@ func newOVSDBServer(t *testing.T, name string, dbModel model.ClientDBModel, sche
 	return server, tmpfile
 }
 
-func newOvnNbClient(t *testing.T, ovnNbAddr string, ovnNbTimeout int) (*OVNNbClient, error) {
+func newOvnNbClient(t testing.TB, ovnNbAddr string, ovnNbTimeout int) (*OVNNbClient, error) {
 	nbClient, err := newNbClient(ovnNbAddr, ovnNbTimeout)
 	require.NoError(t, err)
 
