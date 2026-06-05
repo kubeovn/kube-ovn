@@ -722,7 +722,12 @@ func (c *Controller) syncIPCR() error {
 		return err
 	}
 
-	ipMap := strset.New(c.getVMLsps()...)
+	vmLsps, err := c.getVMLsps()
+	if err != nil {
+		klog.Errorf("failed to get vm lsps, %v", err)
+		return err
+	}
+	ipMap := strset.New(vmLsps...)
 	for _, ip := range ips {
 		if !ip.DeletionTimestamp.IsZero() {
 			klog.Infof("enqueue update for removing finalizer to delete ip %s", ip.Name)

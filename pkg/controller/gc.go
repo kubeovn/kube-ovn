@@ -461,8 +461,14 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 	}
 
-	// The lsp for vm pod should not be deleted if vm still exists
-	ipMap.Add(c.getVMLsps()...)
+	// The lsp for vm pod should not be deleted if vm still exists.
+	// Abort the GC cycle on a list failure so we never delete live VM LSPs based on an incomplete keep-set.
+	vmLsps, err := c.getVMLsps()
+	if err != nil {
+		klog.Errorf("failed to get vm lsps, %v", err)
+		return err
+	}
+	ipMap.Add(vmLsps...)
 
 	vips, err := c.virtualIpsLister.List(labels.Everything())
 	if err != nil {
@@ -1086,69 +1092,66 @@ func (c *Controller) isOVNProvided(providerName string, pod *corev1.Pod) (bool, 
 	return false, nil
 }
 
-func (c *Controller) getVMLsps() []string {
+func (c *Controller) getVMLsps() ([]string, error) {
 	var vmLsps []string
 
 	if !c.config.EnableKeepVMIP {
-		return vmLsps
+		return vmLsps, nil
 	}
 
-	nss, err := c.namespacesLister.List(labels.Everything())
+	// A single cluster-wide list avoids a per-namespace apiserver round-trip every GC cycle.
+	// On clusters without the KubeVirt CRD the request returns NotFound, which is treated as
+	// "no VMs" rather than an error. Any other failure is returned so the caller can skip the
+	// GC cycle instead of deleting live VM LSPs based on an incomplete keep-set.
+	vms, err := c.config.KubevirtClient.VirtualMachine(metav1.NamespaceAll).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		klog.Errorf("failed to list namespaces, %v", err)
-		return vmLsps
+		if k8serrors.IsNotFound(err) {
+			return vmLsps, nil
+		}
+		return nil, fmt.Errorf("failed to list vms: %w", err)
 	}
 
-	for _, ns := range nss {
-		vms, err := c.config.KubevirtClient.VirtualMachine(ns.Name).List(context.Background(), metav1.ListOptions{})
-		if err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to list vm in namespace %s, %v", ns, err)
+	for _, vm := range vms.Items {
+		defaultMultus := false
+		for _, network := range vm.Spec.Template.Spec.Networks {
+			if network.Multus != nil && network.Multus.Default {
+				defaultMultus = true
+				break
 			}
-			continue
 		}
-		for _, vm := range vms.Items {
-			defaultMultus := false
-			for _, network := range vm.Spec.Template.Spec.Networks {
-				if network.Multus != nil && network.Multus.Default {
-					defaultMultus = true
-					break
-				}
+		if !defaultMultus {
+			vmLsp := ovs.PodNameToPortName(vm.Name, vm.Namespace, util.OvnProvider)
+			vmLsps = append(vmLsps, vmLsp)
+		}
+
+		nadAnnotation := vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot]
+		if nadAnnotation != "" {
+			attachNets, err := nadutils.ParseNetworkAnnotation(nadAnnotation, vm.Namespace)
+			if err != nil {
+				klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
+				continue
 			}
-			if !defaultMultus {
-				vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, util.OvnProvider)
+			for _, multiNet := range attachNets {
+				provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
+				vmLsp := ovs.PodNameToPortName(vm.Name, vm.Namespace, provider)
 				vmLsps = append(vmLsps, vmLsp)
 			}
+		}
 
-			nadAnnotation := vm.Spec.Template.ObjectMeta.Annotations[nadv1.NetworkAttachmentAnnot]
-			if nadAnnotation != "" {
-				attachNets, err := nadutils.ParseNetworkAnnotation(nadAnnotation, vm.Namespace)
-				if err != nil {
-					klog.Errorf("failed to get attachment subnet of vm %s, %v", vm.Name, err)
-					continue
+		for _, network := range vm.Spec.Template.Spec.Networks {
+			if network.Multus != nil && network.Multus.NetworkName != "" {
+				items := strings.Split(network.Multus.NetworkName, "/")
+				if len(items) != 2 {
+					items = []string{vm.GetNamespace(), items[0]}
 				}
-				for _, multiNet := range attachNets {
-					provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
-					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
-					vmLsps = append(vmLsps, vmLsp)
-				}
-			}
-
-			for _, network := range vm.Spec.Template.Spec.Networks {
-				if network.Multus != nil && network.Multus.NetworkName != "" {
-					items := strings.Split(network.Multus.NetworkName, "/")
-					if len(items) != 2 {
-						items = []string{vm.GetNamespace(), items[0]}
-					}
-					provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
-					vmLsp := ovs.PodNameToPortName(vm.Name, ns.Name, provider)
-					vmLsps = append(vmLsps, vmLsp)
-				}
+				provider := fmt.Sprintf("%s.%s.%s", items[1], items[0], util.OvnProvider)
+				vmLsp := ovs.PodNameToPortName(vm.Name, vm.Namespace, provider)
+				vmLsps = append(vmLsps, vmLsp)
 			}
 		}
 	}
 
-	return vmLsps
+	return vmLsps, nil
 }
 
 func (c *Controller) gcLbSvcPods() error {
