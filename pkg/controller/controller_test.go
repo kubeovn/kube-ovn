@@ -202,6 +202,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	vpcNatGwInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
+	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -231,6 +232,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		vpcSynced:               alwaysReady,
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            alwaysReady,
+		ippoolLister:            ippoolInformer.Lister(),
+		ippoolSynced:            alwaysReady,
 		ipsLister:               ipInformer.Lister(),
 		ipSynced:                alwaysReady,
 		vlansLister:             vlanInformer.Lister(),
@@ -243,6 +246,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		ipam:                    ovnipam.NewIPAM(),
 		recorder:                record.NewFakeRecorder(100),
 		subnetKeyMutex:          keymutex.NewHashed(0),
+		nsKeyMutex:              keymutex.NewHashed(0),
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
