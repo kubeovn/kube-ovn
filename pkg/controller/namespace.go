@@ -156,9 +156,10 @@ func (c *Controller) handleAddNamespace(key string) error {
 			vpc, err := c.vpcsLister.Get(s.Spec.Vpc)
 			if err != nil {
 				if errors.IsNotFound(err) {
-					// this subnet is broken (it references a non-existent VPC) - we just ignore it.
+					// this subnet is broken (it references a non-existent VPC) - we just ignore it
+					// and keep evaluating the remaining subnets.
 					klog.Errorf("vpc %q is not found. Ignoring subnet %q: %v", s.Spec.Vpc, s.Name, err)
-					break
+					continue
 				}
 				klog.Errorf("failed to get vpc %q: %v", s.Spec.Vpc, err)
 				return err
