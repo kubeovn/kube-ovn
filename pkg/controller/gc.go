@@ -1018,7 +1018,7 @@ func (c *Controller) gcStaticRoute() error {
 			if route.Policy != nil {
 				policy = *route.Policy
 			}
-			klog.Infof("gc static route %s %v %s %s", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop)
+			klog.Infof("gc static route %s %v %s %s", route.RouteTable, policy, route.IPPrefix, route.Nexthop)
 			if err = c.deleteStaticRouteFromVpc(
 				c.config.ClusterRouter,
 				route.RouteTable,
@@ -1026,7 +1026,7 @@ func (c *Controller) gcStaticRoute() error {
 				route.Nexthop,
 				reversePolicy(policy),
 			); err != nil {
-				klog.Errorf("failed to delete stale route %s %v %s %s: %v", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop, err)
+				klog.Errorf("failed to delete stale route %s %v %s %s: %v", route.RouteTable, policy, route.IPPrefix, route.Nexthop, err)
 			}
 		}
 	}
