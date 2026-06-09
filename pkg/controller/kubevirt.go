@@ -186,6 +186,15 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 			if sourceNode == "" || targetPod.Spec.NodeName == "" || sourceNode == targetPod.Spec.NodeName {
 				klog.Warningf("VM pod %s/%s migration setup skipped, source node: %s, target node: %s (migration job UID: %s)",
 					targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
+				// The source or target node may not be known yet while the migration is still
+				// in the Scheduling phase; this produces no further phase-change event, so
+				// return an error to requeue with rate limiting and retry once scheduling
+				// completes, instead of dropping the event.
+				// https://github.com/kubeovn/kube-ovn/issues/6823
+				if sourceNode == "" || targetPod.Spec.NodeName == "" {
+					return fmt.Errorf("VM pod %s/%s migration setup deferred, source node %q, target node %q not ready yet (migration job UID %s)",
+						targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
+				}
 				return nil
 			}
 
