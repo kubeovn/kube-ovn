@@ -696,7 +696,7 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 
 		ginkgo.BeforeEach(func() {
 			cs = f.ClientSet
-			f.SkipVersionPriorTo(1, 16, "iptables cleanup in non-primary CNI mode requires v1.16+")
+			f.SkipVersionPriorTo(1, 17, "iptables cleanup in non-primary CNI mode requires v1.17+")
 		})
 
 		ginkgo.It("Should not have kube-ovn iptables chains or rules in non-primary CNI mode", func() {
