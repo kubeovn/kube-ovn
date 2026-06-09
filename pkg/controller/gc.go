@@ -1005,15 +1005,20 @@ func (c *Controller) gcStaticRoute() error {
 			if exist {
 				continue
 			}
-			klog.Infof("gc static route %s %v %s %s", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop)
+			// policy is optional in the OVN schema; an unset value defaults to dst-ip
+			policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+			if route.Policy != nil {
+				policy = *route.Policy
+			}
+			klog.Infof("gc static route %s %v %s %s", route.RouteTable, policy, route.IPPrefix, route.Nexthop)
 			if err = c.deleteStaticRouteFromVpc(
 				c.config.ClusterRouter,
 				route.RouteTable,
 				route.IPPrefix,
 				route.Nexthop,
-				reversePolicy(*route.Policy),
+				reversePolicy(policy),
 			); err != nil {
-				klog.Errorf("failed to delete stale route %s %v %s %s: %v", route.RouteTable, route.Policy, route.IPPrefix, route.Nexthop, err)
+				klog.Errorf("failed to delete stale route %s %v %s %s: %v", route.RouteTable, policy, route.IPPrefix, route.Nexthop, err)
 			}
 		}
 	}
@@ -1026,6 +1031,7 @@ func (c *Controller) gcChassis() error {
 	chassises, err := c.OVNSbClient.ListChassis()
 	if err != nil {
 		klog.Errorf("failed to get all chassis, %v", err)
+		return err
 	}
 	chassisNodes := make(map[string]string, len(*chassises))
 	for _, chassis := range *chassises {
