@@ -89,7 +89,7 @@ func (c *Controller) enqueueDeleteVPCDNS(obj any) {
 	c.delVpcDNSQueue.Add(key)
 }
 
-func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
+func (c *Controller) handleAddOrUpdateVPCDNS(key string) (err error) {
 	klog.Infof("handle add or update vpc dns %s", key)
 	if !enableCoreDNS {
 		return errors.New("failed to add or update vpc-dns, not enabled")
@@ -104,68 +104,71 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
 	}
 
 	defer func() {
-		newVPCDNS := vpcDNS.DeepCopy()
-		newVPCDNS.Status.Active = true
-		if err != nil {
-			newVPCDNS.Status.Active = false
+		active := err == nil
+		if vpcDNS.Status.Active == active {
+			return
 		}
-
-		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
-			newVPCDNS, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update vpc dns status, %w", err)
-			klog.Error(err)
+		newVPCDNS := vpcDNS.DeepCopy()
+		newVPCDNS.Status.Active = active
+		if _, updateErr := c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
+			newVPCDNS, metav1.UpdateOptions{}); updateErr != nil {
+			updateErr = fmt.Errorf("failed to update vpc dns status, %w", updateErr)
+			klog.Error(updateErr)
+			if err == nil {
+				err = updateErr
+			}
 		}
 	}()
 
 	if len(corednsImage) == 0 {
-		err := errors.New("vpc-dns coredns image should be set")
+		err = errors.New("vpc-dns coredns image should be set")
 		klog.Error(err)
 		return err
 	}
 
 	if len(corednsVip) == 0 {
-		err := errors.New("vpc-dns corednsVip should be set")
+		err = errors.New("vpc-dns corednsVip should be set")
 		klog.Error(err)
 		return err
 	}
 
-	if _, err := c.vpcsLister.Get(vpcDNS.Spec.Vpc); err != nil {
-		err := fmt.Errorf("failed to get vpc '%s', err: %w", vpcDNS.Spec.Vpc, err)
+	if _, err = c.vpcsLister.Get(vpcDNS.Spec.Vpc); err != nil {
+		err = fmt.Errorf("failed to get vpc '%s', err: %w", vpcDNS.Spec.Vpc, err)
 		klog.Error(err)
 		return err
 	}
 
-	if _, err := c.subnetsLister.Get(vpcDNS.Spec.Subnet); err != nil {
-		err := fmt.Errorf("failed to get subnet '%s', err: %w", vpcDNS.Spec.Subnet, err)
+	if _, err = c.subnetsLister.Get(vpcDNS.Spec.Subnet); err != nil {
+		err = fmt.Errorf("failed to get subnet '%s', err: %w", vpcDNS.Spec.Subnet, err)
 		klog.Error(err)
 		return err
 	}
 
-	if err := c.checkOvnNad(); err != nil {
-		err := fmt.Errorf("failed to check nad, %w", err)
+	if err = c.checkOvnNad(); err != nil {
+		err = fmt.Errorf("failed to check nad, %w", err)
 		klog.Error(err)
 		return err
 	}
 
-	if err := c.checkVpcDNSDuplicated(vpcDNS); err != nil {
+	if err = c.checkVpcDNSDuplicated(vpcDNS); err != nil {
 		err = fmt.Errorf("failed to deploy %s, %w", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
 
-	if err := c.createOrUpdateVpcDNSDep(vpcDNS); err != nil {
+	if err = c.createOrUpdateVpcDNSDep(vpcDNS); err != nil {
 		err = fmt.Errorf("failed to create or update vpc dns %s, %w", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
 
-	if err := c.createOrUpdateVpcDNSSlr(vpcDNS); err != nil {
+	if err = c.createOrUpdateVpcDNSSlr(vpcDNS); err != nil {
 		err = fmt.Errorf("failed to create or update slr for vpc dns %s, %w", vpcDNS.Name, err)
 		klog.Error(err)
 		return err
 	}
 
-	return err
+	return nil
 }
 
 func (c *Controller) handleDelVpcDNS(key string) error {

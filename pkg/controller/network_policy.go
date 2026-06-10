@@ -85,7 +85,9 @@ func (c *Controller) createAsForNetpol(ns, name, direction, asName string, addre
 	return nil
 }
 
-func (c *Controller) handleUpdateNp(key string) error {
+// handleUpdateNp uses a named return value so that the deferred event recorder
+// observes failures from branches that shadow err with their own declarations.
+func (c *Controller) handleUpdateNp(key string) (err error) {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))

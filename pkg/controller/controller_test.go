@@ -55,6 +55,7 @@ func TestMain(m *testing.M) {
 
 type fakeControllerInformers struct {
 	vpcInformer       kubeovninformer.VpcInformer
+	vpcDNSInformer    kubeovninformer.VpcDnsInformer
 	vpcNatGwInformer  kubeovninformer.VpcNatGatewayInformer
 	subnetInformer    kubeovninformer.SubnetInformer
 	ipInformer        kubeovninformer.IPInformer
@@ -197,6 +198,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}),
 	)
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
+	vpcDNSInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vpcNatGwInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
@@ -206,6 +208,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
+		vpcDNSInformer:    vpcDNSInformer,
 		vpcNatGwInformer:  vpcNatGwInformer,
 		subnetInformer:    subnetInformer,
 		ipInformer:        ipInformer,
@@ -230,6 +233,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		endpointSlicesLister:    endpointSliceInformer.Lister(),
 		vpcsLister:              vpcInformer.Lister(),
 		vpcSynced:               alwaysReady,
+		vpcDNSLister:            vpcDNSInformer.Lister(),
+		vpcDNSSynced:            alwaysReady,
 		subnetsLister:           subnetInformer.Lister(),
 		subnetSynced:            alwaysReady,
 		ippoolLister:            ippoolInformer.Lister(),
