@@ -590,7 +590,6 @@ func (c *Controller) delEipQoSInPod(dp, v4ip, ns string, direction kubeovnv1.QoS
 	}
 
 	gwPods, err := c.getNatGwPods(dp, ns, false)
-
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.V(4).Infof("nat gw pod %s not found, will retry eip qos cleanup", dp)

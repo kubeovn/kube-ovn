@@ -30,7 +30,7 @@ var (
 	// Default resource requirements for gateway containers
 	gwSleepResourceCPU         = resource.MustParse("10m")
 	gwSleepResourceMemory      = resource.MustParse("10Mi")
-	gwBFDDResourceCPU          = resource.MustParse("50m")
+	gwBFDDResourceCPU          = resource.MustParse("200m")
 	gwBFDDResourceMemory       = resource.MustParse("50Mi")
 	gwResourceEphemeralStorage = resource.MustParse("1Gi")
 )
