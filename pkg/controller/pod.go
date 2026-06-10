@@ -2084,6 +2084,12 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 					}
 					return nil, err
 				}
+				if subnet == nil {
+					// getPodDefaultSubnet returns (nil, nil) when the deleting pod's default subnet
+					// no longer exists, leave the orphaned ip cr to gc instead of dereferencing nil
+					klog.Errorf("deleting pod %s/%s default subnet for attach %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, attach.Name)
+					continue
+				}
 				// default subnet may change after pod restart
 				klog.Infof("pod %s/%s attachment network %s use default subnet %s", pod.Namespace, pod.Name, attach.Name, subnet.Name)
 			} else {
