@@ -40,8 +40,12 @@ func TestNeedNewOVNDBTLSCert(t *testing.T) {
 
 		certPath := filepath.Join(dir, "valid.crt")
 		keyPath := filepath.Join(dir, "valid.key")
-		os.WriteFile(certPath, certPEM, 0o600)
-		os.WriteFile(keyPath, keyPEM, 0o600)
+		if err := os.WriteFile(certPath, certPEM, 0o600); err != nil {
+			t.Fatalf("failed to write cert: %v", err)
+		}
+		if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+			t.Fatalf("failed to write key: %v", err)
+		}
 
 		got, err := needNewOVNDBTLSCert(certPath, keyPath)
 		if err != nil {
@@ -66,8 +70,12 @@ func TestNeedNewOVNDBTLSCert(t *testing.T) {
 
 		certPath := filepath.Join(dir, "old.crt")
 		keyPath := filepath.Join(dir, "old.key")
-		os.WriteFile(certPath, certPEM, 0o600)
-		os.WriteFile(keyPath, keyPEM, 0o600)
+		if err := os.WriteFile(certPath, certPEM, 0o600); err != nil {
+			t.Fatalf("failed to write cert: %v", err)
+		}
+		if err := os.WriteFile(keyPath, keyPEM, 0o600); err != nil {
+			t.Fatalf("failed to write key: %v", err)
+		}
 
 		got, err := needNewOVNDBTLSCert(certPath, keyPath)
 		if err != nil {

@@ -22,10 +22,6 @@ import (
 const (
 	ovnDBTLSCertPath = util.SslClientCertPath // /var/run/tls/client.crt
 	ovnDBTLSKeyPath  = util.SslClientKeyPath  // /var/run/tls/client.key
-	ovnDBTLSCAPath   = util.SslCAPath         // /var/run/tls/ca.crt
-
-	ovnDBTLSServerCertPath = util.SslServerCertPath // /var/run/tls/server.crt
-	ovnDBTLSServerKeyPath  = util.SslServerKeyPath  // /var/run/tls/server.key
 
 	ovnDBTLSClientKey = "ovn-db-tls-client"
 )
