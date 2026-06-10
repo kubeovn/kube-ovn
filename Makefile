@@ -212,6 +212,8 @@ install-chart:
 		--set func.SECURE_SERVING=$(or $(SECURE_SERVING),false) \
 		--set func.ENABLE_BIND_LOCAL_IP=$(or $(ENABLE_BIND_LOCAL_IP),true) \
 		--set func.ENABLE_OVN_IPSEC=$(or $(ENABLE_OVN_IPSEC),false) \
+		--set func.ENABLE_OVN_DB_TLS_CERT=$(or $(ENABLE_OVN_DB_TLS_CERT),false) \
+		--set func.ENABLE_OVN_DB_TLS_CERT_ROTATION=$(or $(ENABLE_OVN_DB_TLS_CERT_ROTATION),false) \
 		--set func.ENABLE_TPROXY=$(or $(ENABLE_TPROXY),false) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
 		--set func.ENABLE_ANP=$(or $(ENABLE_ANP),false) \
@@ -243,6 +245,8 @@ upgrade-chart:
 		--set func.SECURE_SERVING=$(or $(SECURE_SERVING),false) \
 		--set func.ENABLE_BIND_LOCAL_IP=$(or $(ENABLE_BIND_LOCAL_IP),true) \
 		--set func.ENABLE_OVN_IPSEC=$(or $(ENABLE_OVN_IPSEC),false) \
+		--set func.ENABLE_OVN_DB_TLS_CERT=$(or $(ENABLE_OVN_DB_TLS_CERT),false) \
+		--set func.ENABLE_OVN_DB_TLS_CERT_ROTATION=$(or $(ENABLE_OVN_DB_TLS_CERT_ROTATION),false) \
 		--set func.ENABLE_TPROXY=$(or $(ENABLE_TPROXY),false) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
 		--set func.ENABLE_ANP=$(or $(ENABLE_ANP),false) \
