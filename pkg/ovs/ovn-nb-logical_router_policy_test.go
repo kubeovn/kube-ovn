@@ -775,6 +775,26 @@ func (suite *OvnClientTestSuite) testBatchAddLogicalRouterPolicy() {
 		require.Len(t, finalPolicyList, 1)
 	})
 
+	t.Run("clean up multiple exact duplicate policies in one pass", func(t *testing.T) {
+		dup1 := nbClient.newLogicalRouterPolicy(priority, match, action, nextHops, nil, nil)
+		dup2 := nbClient.newLogicalRouterPolicy(priority, match, action, nextHops, nil, nil)
+		err = nbClient.CreateLogicalRouterPolicies(lrName, dup1, dup2)
+		require.NoError(t, err)
+
+		policyList, err := nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.NoError(t, err)
+		require.Len(t, policyList, 3)
+
+		lrp.ExternalIDs = map[string]string{"dedup": "survivor"}
+		err = nbClient.BatchAddLogicalRouterPolicy(lrName, lrp)
+		require.NoError(t, err)
+
+		finalPolicyList, err := nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.NoError(t, err)
+		require.Len(t, finalPolicyList, 1)
+		require.Equal(t, lrp.ExternalIDs, finalPolicyList[0].ExternalIDs)
+	})
+
 	t.Run("update policy with different externalIDs", func(t *testing.T) {
 		initialExternalIDs := map[string]string{"key1": "value1"}
 		lrp.ExternalIDs = initialExternalIDs
