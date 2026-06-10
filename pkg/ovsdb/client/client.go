@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -86,22 +87,11 @@ func NewOvsDbClient(
 		backOff = bo
 	}
 	if ssl {
-		cert, err := tls.LoadX509KeyPair(util.SslCertPath, util.SslKeyPath)
+		certPath, keyPath, caPath, legacyCert := ovsdbTLSFiles()
+		tlsConfig, err := newTLSConfig(certPath, keyPath, caPath, serverNameFromOVSDBAddress(addr), legacyCert)
 		if err != nil {
 			klog.Error(err)
-			return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
-		}
-		caCert, err := os.ReadFile(util.SslCACert)
-		if err != nil {
-			klog.Error(err)
-			return nil, fmt.Errorf("failed to read ca cert: %w", err)
-		}
-		certPool := x509.NewCertPool()
-		certPool.AppendCertsFromPEM(caCert)
-		tlsConfig := &tls.Config{
-			Certificates:       []tls.Certificate{cert},
-			RootCAs:            certPool,
-			InsecureSkipVerify: true, // #nosec G402
+			return nil, err
 		}
 		options = append(options, client.WithTLSConfig(tlsConfig))
 	}
@@ -145,4 +135,56 @@ func NewOvsDbClient(
 	}
 
 	return c, nil
+}
+
+func ovsdbTLSFiles() (certPath, keyPath, caPath string, legacyCert bool) {
+	if fileExists(util.SslClientCertPath) && fileExists(util.SslClientKeyPath) && fileExists(util.SslCAPath) {
+		return util.SslClientCertPath, util.SslClientKeyPath, util.SslCAPath, false
+	}
+	return util.SslCertPath, util.SslKeyPath, util.SslCACert, true
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func newTLSConfig(certPath, keyPath, caPath, serverName string, insecureSkipVerify bool) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
+	}
+
+	caCert, err := os.ReadFile(caPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ca cert: %w", err)
+	}
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("failed to append ca cert from %s", caPath)
+	}
+
+	return &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		RootCAs:            certPool,
+		ServerName:         serverName,
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: insecureSkipVerify, // #nosec G402 -- preserved only for legacy kube-ovn-tls fallback during upgrade
+	}, nil
+}
+
+func serverNameFromOVSDBAddress(addr string) string {
+	for endpoint := range strings.SplitSeq(addr, ",") {
+		if !strings.HasPrefix(endpoint, "ssl:") {
+			continue
+		}
+
+		hostPort := strings.TrimPrefix(endpoint, "ssl:")
+		host, _, err := net.SplitHostPort(hostPort)
+		if err != nil {
+			return ""
+		}
+		return strings.Trim(host, "[]")
+	}
+	return ""
 }

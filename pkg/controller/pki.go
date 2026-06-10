@@ -15,10 +15,18 @@ import (
 )
 
 func (c *Controller) InitDefaultOVNIPsecCA() error {
+	return c.initDefaultOVNCA(util.DefaultOVNIPSecCA, "OVN IPSec")
+}
+
+func (c *Controller) InitDefaultOVNDBTLSCA() error {
+	return c.initDefaultOVNCA(util.DefaultOVNDBTLSCA, "OVN DB TLS")
+}
+
+func (c *Controller) initDefaultOVNCA(secretName, displayName string) error {
 	namespace := os.Getenv(util.EnvPodNamespace)
-	_, err := c.config.KubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
+	_, err := c.config.KubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err == nil {
-		klog.Infof("ovn ipsec CA secret already exists, skip")
+		klog.Infof("%s CA secret already exists, skip", displayName)
 		return nil
 	}
 
@@ -54,9 +62,26 @@ func (c *Controller) InitDefaultOVNIPsecCA() error {
 		return err
 	}
 
+	if err = c.ensureOVNCASecret(namespace, secretName, cacert, cakey); err != nil {
+		return err
+	}
+
+	klog.Infof("%s CA secret init successfully", displayName)
+	return nil
+}
+
+func (c *Controller) ensureOVNCASecret(namespace, secretName string, cacert, cakey []byte) error {
+	_, err := c.config.KubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+	if !k8serrors.IsNotFound(err) {
+		return err
+	}
+
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      util.DefaultOVNIPSecCA,
+			Name:      secretName,
 			Namespace: namespace,
 		},
 		Data: map[string][]byte{
@@ -69,6 +94,5 @@ func (c *Controller) InitDefaultOVNIPsecCA() error {
 		return err
 	}
 
-	klog.Infof("OVN IPSec CA secret init successfully")
 	return nil
 }

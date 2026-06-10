@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -1124,6 +1125,12 @@ func (c *Controller) Run(ctx context.Context) {
 	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
 		if err := c.InitDefaultOVNIPsecCA(); err != nil {
 			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
+		}
+	}
+
+	if os.Getenv(util.EnvSSLEnabled) == "true" {
+		if err := c.InitDefaultOVNDBTLSCA(); err != nil {
+			util.LogFatalAndExit(err, "failed to init ovn db tls CA")
 		}
 	}
 

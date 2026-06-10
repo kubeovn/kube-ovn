@@ -350,6 +350,7 @@ const (
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
 	DefaultOVNIPSecCA       = "ovn-ipsec-ca"
+	DefaultOVNDBTLSCA       = "ovn-db-tls-ca"
 	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
 	DefaultOVSCACertKeyPath = "/var/lib/openvswitch/pki/switchca/private/cakey.pem"
 
@@ -401,9 +402,14 @@ const (
 )
 
 const (
-	SslCACert   = "/var/run/tls/cacert"
-	SslCertPath = "/var/run/tls/cert"
-	SslKeyPath  = "/var/run/tls/key"
+	SslCACert         = "/var/run/tls/cacert"
+	SslCertPath       = "/var/run/tls/cert"
+	SslKeyPath        = "/var/run/tls/key"
+	SslCAPath         = "/var/run/tls/ca.crt"
+	SslClientCertPath = "/var/run/tls/client.crt"
+	SslClientKeyPath  = "/var/run/tls/client.key"
+	SslServerCertPath = "/var/run/tls/server.crt"
+	SslServerKeyPath  = "/var/run/tls/server.key"
 )
 
 const (
