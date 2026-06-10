@@ -150,7 +150,11 @@ func (c *OVNNbClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, 
 	}
 
 	lr, err := c.GetLogicalRouter(lrName, true)
-	if lr == nil && err == nil {
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if lr == nil {
 		return nil
 	}
 
@@ -250,7 +254,11 @@ func (c *OVNNbClient) DeleteLogicalRouterStaticRouteByExternalIDs(lrName string,
 // BatchDeleteLogicalRouterStaticRoute batch delete a logical router static route
 func (c *OVNNbClient) BatchDeleteLogicalRouterStaticRoute(lrName string, staticRoutes []*ovnnb.LogicalRouterStaticRoute) error {
 	lr, err := c.GetLogicalRouter(lrName, true)
-	if lr == nil && err == nil {
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if lr == nil {
 		return nil
 	}
 
