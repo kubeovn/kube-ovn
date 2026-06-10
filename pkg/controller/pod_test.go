@@ -943,3 +943,51 @@ func TestHasAliveSiblingVMPod(t *testing.T) {
 		})
 	}
 }
+
+// TestGetPodAttachmentNetDefaultSubnetGone guards against a nil pointer panic:
+// for a terminating pod whose OVN attachment network resolves to no subnet
+// (no per-provider logical_switch annotation and no matching Subnet.Spec.Provider),
+// getPodAttachmentNet falls back to getPodDefaultSubnet, which returns (nil, nil)
+// when the pod's top-level logical_switch annotation points at an already-deleted
+// subnet. The attachment must be skipped so gc can clean its ip cr.
+func TestGetPodAttachmentNetDefaultSubnetGone(t *testing.T) {
+	now := metav1.Now()
+	grace := int64(0)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:                       "test-pod",
+			Namespace:                  metav1.NamespaceDefault,
+			DeletionTimestamp:          &now,
+			DeletionGracePeriodSeconds: &grace,
+			Annotations: map[string]string{
+				nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
+				// top-level default subnet points at a subnet that no longer exists
+				util.LogicalSwitchAnnotation: "deleted-subnet",
+				// no per-provider net1.default.ovn logical_switch annotation, so the
+				// attachment cannot resolve a subnet and falls back to the default
+			},
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		// NAD is an OVN network but no Subnet has Provider == net1.default.ovn
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "net1",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: nadv1.NetworkAttachmentDefinitionSpec{
+					Config: `{"cniVersion": "0.3.1", "name": "net1", "type": "kube-ovn"}`,
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	controller := fakeController.fakeController
+
+	// must not panic; the unresolvable attachment is skipped
+	nets, err := controller.getPodAttachmentNet(pod)
+	require.NoError(t, err)
+	assert.Empty(t, nets)
+}
