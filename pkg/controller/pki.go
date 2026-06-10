@@ -2,9 +2,15 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"os"
-	"os/exec"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -13,6 +19,8 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+const caCertDuration = 10 * 365 * 24 * time.Hour
 
 func (c *Controller) InitDefaultOVNIPsecCA() error {
 	return c.initDefaultOVNCA(util.DefaultOVNIPSecCA, "OVN IPSec")
@@ -34,32 +42,9 @@ func (c *Controller) initDefaultOVNCA(secretName, displayName string) error {
 		return err
 	}
 
-	output, err := exec.Command("ovs-pki", "init", "--force").CombinedOutput()
+	cacert, cakey, err := generateCACertificate()
 	if err != nil {
-		klog.Errorf("ovs-pki init failed: %s", string(output))
-		return err
-	}
-
-	if _, err = os.Stat(util.DefaultOVSCACertPath); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("CA Cert not exist: %s", util.DefaultOVSCACertPath)
-		}
-		return err
-	}
-	if _, err = os.Stat(util.DefaultOVSCACertKeyPath); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("CA Cert Key not exist: %s", util.DefaultOVSCACertKeyPath)
-		}
-		return err
-	}
-
-	cacert, err := os.ReadFile(util.DefaultOVSCACertPath)
-	if err != nil {
-		return err
-	}
-	cakey, err := os.ReadFile(util.DefaultOVSCACertKeyPath)
-	if err != nil {
-		return err
+		return fmt.Errorf("failed to generate CA: %w", err)
 	}
 
 	if err = c.ensureOVNCASecret(namespace, secretName, cacert, cakey); err != nil {
@@ -70,15 +55,48 @@ func (c *Controller) initDefaultOVNCA(secretName, displayName string) error {
 	return nil
 }
 
-func (c *Controller) ensureOVNCASecret(namespace, secretName string, cacert, cakey []byte) error {
-	_, err := c.config.KubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
-	if err == nil {
-		return nil
-	}
-	if !k8serrors.IsNotFound(err) {
-		return err
+func generateCACertificate() (certPEM, keyPEM []byte, err error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate RSA key: %w", err)
 	}
 
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate serial number: %w", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName:   "kube-ovn-ca",
+			Organization: []string{"kube-ovn"},
+		},
+		NotBefore:             time.Now().Add(-1 * time.Second),
+		NotAfter:              time.Now().Add(caCertDuration),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create CA certificate: %w", err)
+	}
+
+	// the signer (decodePrivateKey in signer.go) only accepts PKCS#8 "PRIVATE KEY" blocks
+	keyDER, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal private key: %w", err)
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+
+	return certPEM, keyPEM, nil
+}
+
+func (c *Controller) ensureOVNCASecret(namespace, secretName string, cacert, cakey []byte) error {
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      secretName,
@@ -90,7 +108,11 @@ func (c *Controller) ensureOVNCASecret(namespace, secretName string, cacert, cak
 		},
 	}
 
-	if _, err = c.config.KubeClient.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+	if _, err := c.config.KubeClient.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{}); err != nil {
+		// another controller replica may have created it concurrently
+		if k8serrors.IsAlreadyExists(err) {
+			return nil
+		}
 		return err
 	}
 
