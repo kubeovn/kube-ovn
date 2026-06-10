@@ -26,6 +26,8 @@ const (
 
 	ovnDBTLSServerCertPath = util.SslServerCertPath // /var/run/tls/server.crt
 	ovnDBTLSServerKeyPath  = util.SslServerKeyPath  // /var/run/tls/server.key
+
+	ovnDBTLSClientKey = "ovn-db-tls-client"
 )
 
 // shouldManageOVNDBTLSCert reports whether daemon-side OVN DB TLS cert
@@ -196,4 +198,64 @@ func (c *Controller) requestOVNDBTLSCSR(ctx context.Context, csrName string, key
 			}
 		}
 	}
+}
+
+// SyncOVNDBTLSCerts checks whether a new certificate is needed, requests one
+// from the controller signer, validates it, writes it to disk, and schedules
+// the next rotation check. On any failure, the old certificate stays in place.
+func (c *Controller) SyncOVNDBTLSCerts(key string) error {
+	var certPath, keyPath string
+	var usage v1.KeyUsage
+	var expectedExtKeyUsage []x509.ExtKeyUsage
+
+	switch key {
+	case ovnDBTLSClientKey:
+		certPath = ovnDBTLSCertPath
+		keyPath = ovnDBTLSKeyPath
+		usage = v1.UsageClientAuth
+		expectedExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	default:
+		return fmt.Errorf("unknown ovn db tls key: %s", key)
+	}
+
+	needsRenewal, err := needNewOVNDBTLSCert(certPath, keyPath)
+	if err != nil {
+		return fmt.Errorf("check cert: %w", err)
+	}
+	if !needsRenewal {
+		klog.V(4).Infof("ovn db tls cert %s still valid, skipping", key)
+	} else {
+		klog.Infof("requesting new ovn db tls cert for %s", key)
+		newKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			return fmt.Errorf("generate key: %w", err)
+		}
+
+		csrName := fmt.Sprintf("%s-%s", ovnDBTLSClientKey, c.config.NodeName)
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		defer cancel()
+
+		certPEM, err := c.requestOVNDBTLSCSR(ctx, csrName, newKey, usage)
+		if err != nil {
+			return fmt.Errorf("request cert: %w", err)
+		}
+
+		if err := validateNewOVNDBTLSCert(certPEM, newKey, expectedExtKeyUsage); err != nil {
+			return fmt.Errorf("validate new cert (discarding): %w", err)
+		}
+
+		if err := atomicWriteCert(certPath, certPEM, keyPath, newKey); err != nil {
+			return fmt.Errorf("write cert: %w", err)
+		}
+		klog.Infof("ovn db tls cert %s written successfully", key)
+	}
+
+	// Schedule next check at half-life
+	untilRefresh, err := untilOVNDBTLSCertRefresh(certPath)
+	if err != nil {
+		klog.Errorf("calculating cert refresh time for %s: %v", key, err)
+		untilRefresh = 5 * time.Minute // fallback: retry soon
+	}
+	c.ovnDBTLSQueue.AddAfter(key, untilRefresh)
+	return nil
 }
