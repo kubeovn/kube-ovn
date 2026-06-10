@@ -1005,8 +1005,13 @@ func (c *Controller) wipeCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPolic
 			return fmt.Errorf("failed to get priority maps for cnp %s: %w", cnp.Name, err)
 		}
 
-		delete(priorityNameMap, namePriorityMap[cnp.Name])
-		delete(namePriorityMap, cnp.Name)
+		// Only delete by priority when the CNP actually has an entry in this tier;
+		// otherwise the zero value 0 would wipe the entry of the CNP legitimately
+		// registered at priority 0 in this tier.
+		if priority, ok := namePriorityMap[cnp.Name]; ok {
+			delete(priorityNameMap, priority)
+			delete(namePriorityMap, cnp.Name)
+		}
 	}
 
 	return nil
