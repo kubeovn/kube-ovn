@@ -61,11 +61,13 @@ func TestHandleAddOrUpdateVPCDNS(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, fakeController.fakeInformers.vpcDNSInformer.Informer().GetStore().Add(vpcDNS))
 
-		require.Error(t, ctrl.handleAddOrUpdateVPCDNS(vpcDNS.Name))
+		for range 2 {
+			require.Error(t, ctrl.handleAddOrUpdateVPCDNS(vpcDNS.Name))
 
-		updated, err := ctrl.config.KubeOvnClient.KubeovnV1().VpcDnses().Get(context.Background(), vpcDNS.Name, metav1.GetOptions{})
-		require.NoError(t, err)
-		require.False(t, updated.Status.Active)
+			updated, err := ctrl.config.KubeOvnClient.KubeovnV1().VpcDnses().Get(context.Background(), vpcDNS.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.False(t, updated.Status.Active)
+		}
 	})
 }
 
