@@ -17,7 +17,7 @@ func TestNewTLSConfigUsesClientCertificateAndRootCA(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestCertificateFiles(t, dir)
 
-	config, err := newTLSConfig(certPath, keyPath, caPath, "ovn-sb.kube-system.svc", false)
+	config, err := newTLSConfig(certPath, keyPath, caPath, false)
 	if err != nil {
 		t.Fatalf("newTLSConfig returned error: %v", err)
 	}
@@ -31,19 +31,10 @@ func TestNewTLSConfigUsesClientCertificateAndRootCA(t *testing.T) {
 	if config.RootCAs == nil {
 		t.Fatal("RootCAs = nil, want populated cert pool")
 	}
-}
-
-func TestNewTLSConfigSetsServerName(t *testing.T) {
-	dir := t.TempDir()
-	certPath, keyPath, caPath := writeTestCertificateFiles(t, dir)
-
-	config, err := newTLSConfig(certPath, keyPath, caPath, "ovn-nb.kube-system.svc", false)
-	if err != nil {
-		t.Fatalf("newTLSConfig returned error: %v", err)
-	}
-
-	if config.ServerName != "ovn-nb.kube-system.svc" {
-		t.Fatalf("ServerName = %q, want %q", config.ServerName, "ovn-nb.kube-system.svc")
+	// ServerName must stay empty so tls.Dialer derives it per endpoint;
+	// pinning it would break verification against other HA endpoints.
+	if config.ServerName != "" {
+		t.Fatalf("ServerName = %q, want empty", config.ServerName)
 	}
 }
 
@@ -51,51 +42,13 @@ func TestNewTLSConfigCanPreserveLegacyInsecureSkipVerify(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestCertificateFiles(t, dir)
 
-	config, err := newTLSConfig(certPath, keyPath, caPath, "", true)
+	config, err := newTLSConfig(certPath, keyPath, caPath, true)
 	if err != nil {
 		t.Fatalf("newTLSConfig returned error: %v", err)
 	}
 
 	if !config.InsecureSkipVerify {
 		t.Fatal("InsecureSkipVerify = false, want true for legacy kube-ovn-tls fallback")
-	}
-}
-
-func TestServerNameFromOVSDBAddress(t *testing.T) {
-	tests := []struct {
-		name string
-		addr string
-		want string
-	}{
-		{
-			name: "single ssl host",
-			addr: "ssl:ovn-sb.kube-system.svc:6642",
-			want: "ovn-sb.kube-system.svc",
-		},
-		{
-			name: "single ssl ipv6 style host",
-			addr: "ssl:[ovn-sb.kube-system.svc]:6642",
-			want: "ovn-sb.kube-system.svc",
-		},
-		{
-			name: "first ssl endpoint from list",
-			addr: "tcp:127.0.0.1:6642,ssl:ovn-nb.kube-system.svc:6641",
-			want: "ovn-nb.kube-system.svc",
-		},
-		{
-			name: "no ssl endpoint",
-			addr: "tcp:127.0.0.1:6642",
-			want: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := serverNameFromOVSDBAddress(tt.addr)
-			if got != tt.want {
-				t.Fatalf("serverNameFromOVSDBAddress(%q) = %q, want %q", tt.addr, got, tt.want)
-			}
-		})
 	}
 }
 

@@ -10,7 +10,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 	csrv1 "k8s.io/api/certificates/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -144,10 +147,106 @@ func TestNewCertificateTemplateForProfile(t *testing.T) {
 	if len(clientTemplate.ExtKeyUsage) != 1 || clientTemplate.ExtKeyUsage[0] != x509.ExtKeyUsageClientAuth {
 		t.Fatalf("client ExtKeyUsage = %v, want clientAuth", clientTemplate.ExtKeyUsage)
 	}
+	if len(clientTemplate.IPAddresses) != 0 {
+		t.Fatalf("client IPAddresses = %v, want empty", clientTemplate.IPAddresses)
+	}
 
 	ipsecTemplate := newCertificateTemplateForProfile(certReq, csrSignerProfileIPSec)
 	if len(ipsecTemplate.ExtKeyUsage) != 0 {
 		t.Fatalf("ipsec ExtKeyUsage = %v, want empty to preserve existing behavior", ipsecTemplate.ExtKeyUsage)
+	}
+	if len(ipsecTemplate.IPAddresses) != 0 {
+		t.Fatalf("ipsec IPAddresses = %v, want empty to preserve existing behavior", ipsecTemplate.IPAddresses)
+	}
+}
+
+func TestValidateCSRForProfile(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node-a"},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "10.0.0.1"},
+			},
+		},
+	}
+	informerFactory := informers.NewSharedInformerFactory(fake.NewSimpleClientset(node), 0)
+	nodeInformer := informerFactory.Core().V1().Nodes()
+	require.NoError(t, nodeInformer.Informer().GetStore().Add(node))
+	ctrl := &Controller{nodesLister: nodeInformer.Lister()}
+
+	t.Setenv(util.EnvPodNamespace, "kube-system")
+
+	serverProfile := csrSignerProfileConfig{name: csrSignerProfileOVNDBTLSServer}
+	clientProfile := csrSignerProfileConfig{name: csrSignerProfileOVNDBTLSClient}
+	ipsecProfile := csrSignerProfileConfig{name: csrSignerProfileIPSec}
+
+	tests := []struct {
+		name    string
+		certReq *x509.CertificateRequest
+		profile csrSignerProfileConfig
+		wantErr bool
+	}{
+		{
+			name: "server with allowed service dns and node ip",
+			certReq: &x509.CertificateRequest{
+				DNSNames:    []string{"ovn-nb", "ovn-sb.kube-system.svc", "ovn-nb.kube-system.svc.cluster.local"},
+				IPAddresses: []net.IP{net.ParseIP("10.0.0.1"), net.ParseIP("127.0.0.1")},
+			},
+			profile: serverProfile,
+		},
+		{
+			name: "server with forged dns san",
+			certReq: &x509.CertificateRequest{
+				DNSNames: []string{"kubernetes.default.svc"},
+			},
+			profile: serverProfile,
+			wantErr: true,
+		},
+		{
+			name: "server with non-node ip san",
+			certReq: &x509.CertificateRequest{
+				IPAddresses: []net.IP{net.ParseIP("8.8.8.8")},
+			},
+			profile: serverProfile,
+			wantErr: true,
+		},
+		{
+			name:    "client without sans",
+			certReq: &x509.CertificateRequest{},
+			profile: clientProfile,
+		},
+		{
+			name: "client requesting sans is rejected",
+			certReq: &x509.CertificateRequest{
+				DNSNames: []string{"ovn-sb.kube-system.svc"},
+			},
+			profile: clientProfile,
+			wantErr: true,
+		},
+		{
+			name:    "ipsec without ip sans",
+			certReq: &x509.CertificateRequest{DNSNames: []string{"node-a"}},
+			profile: ipsecProfile,
+		},
+		{
+			name: "ipsec requesting ip sans is rejected",
+			certReq: &x509.CertificateRequest{
+				IPAddresses: []net.IP{net.ParseIP("10.0.0.1")},
+			},
+			profile: ipsecProfile,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ctrl.validateCSRForProfile(tt.certReq, tt.profile)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
 }
 
