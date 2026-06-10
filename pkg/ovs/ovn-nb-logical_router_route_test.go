@@ -336,6 +336,16 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterStaticRoute() {
 		require.NoError(t, err)
 	})
 
+	t.Run("delete static route for duplicate logical router", func(t *testing.T) {
+		dupLrName := "test-del-route-dup-lr"
+		dupLr := &ovnnb.LogicalRouter{Name: dupLrName}
+		require.NoError(t, createLogicalRouter(nbClient, dupLr))
+		require.NoError(t, createLogicalRouter(nbClient, dupLr))
+
+		err := nbClient.DeleteLogicalRouterStaticRoute(dupLrName, &routeTable, &policy, "192.168.30.0/24", "192.168.30.1")
+		require.ErrorContains(t, err, "more than one logical router with same name")
+	})
+
 	t.Run("ecmp policy route", func(t *testing.T) {
 		ipPrefix := "192.168.40.0/24"
 		nexthops := []string{"192.168.50.1", "192.168.60.1"}
@@ -908,5 +918,15 @@ func (suite *OvnClientTestSuite) testBatchDeleteLogicalRouterStaticRoute() {
 	t.Run("delete static route for non-exist logical router", func(t *testing.T) {
 		err := nbClient.BatchDeleteLogicalRouterStaticRoute("non-exist-lrName", []*ovnnb.LogicalRouterStaticRoute{staticRouter})
 		require.NoError(t, err)
+	})
+
+	t.Run("delete static route for duplicate logical router", func(t *testing.T) {
+		dupLrName := "test-batch-del-route-dup-lr"
+		dupLr := &ovnnb.LogicalRouter{Name: dupLrName}
+		require.NoError(t, createLogicalRouter(nbClient, dupLr))
+		require.NoError(t, createLogicalRouter(nbClient, dupLr))
+
+		err := nbClient.BatchDeleteLogicalRouterStaticRoute(dupLrName, []*ovnnb.LogicalRouterStaticRoute{staticRouter})
+		require.ErrorContains(t, err, "more than one logical router with same name")
 	})
 }
