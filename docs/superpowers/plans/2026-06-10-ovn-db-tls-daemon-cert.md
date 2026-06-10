@@ -35,7 +35,7 @@ dist/images/
 - Modify: `pkg/daemon/config.go`（struct ~line 74，pflag ~line 139，赋值 ~line 204）
 - Create: `pkg/daemon/ovndbtls_config_test.go`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `pkg/daemon/ovndbtls_config_test.go`：
 
@@ -69,7 +69,7 @@ func TestParseEnableSSLDaemon(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 ```bash
 go test ./pkg/daemon/ -count=1 -run TestParseEnableSSLDaemon
@@ -77,7 +77,7 @@ go test ./pkg/daemon/ -count=1 -run TestParseEnableSSLDaemon
 
 Expected: FAIL, `undefined: parseEnableSSLFromEnv`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 (a) `config.go` struct `Configuration` 在 `IPSecCertDuration int` 之后加：
 
@@ -109,13 +109,13 @@ func parseEnableSSLFromEnv() bool {
 		EnableOVNDBTLSCertRotation:   *argEnableOVNDBTLSCertRotation,
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 ```bash
 go build ./pkg/daemon/ && go test ./pkg/daemon/ -count=1 -run TestParseEnableSSLDaemon
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/daemon/config.go pkg/daemon/ovndbtls_config_test.go
@@ -132,7 +132,7 @@ git commit -s -m "feat(daemon): add enable-ovn-db-tls-cert-rotation flag and Ena
 
 这是最核心的文件。参考 `ipsec.go` 中 `getSignedCert`（创建 CSR → 等待签发）、`storeCertificate`（写盘）、`needNewCert`（检查是否需要新证书）、`untilCertRefresh`（计算下次刷新时间）的形态，但不引入 IPSec 的 OVS/strongswan 依赖。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `pkg/daemon/ovndbtls_test.go`：
 
@@ -243,13 +243,13 @@ func TestValidateNewOVNDBTLSCert(t *testing.T) {
 
 注意：上面测试中有语法错误（`t.Run "valid cert matches key"` 缺少括号），实现时修正为 `t.Run("valid cert matches key", func(t *testing.T) {`。
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 ```bash
 go test ./pkg/daemon/ -count=1 -run 'TestNeedNewOVNDBTLSCert|TestValidateNewOVNDBTLSCert'
 ```
 
-- [ ] **Step 3: 实现 `pkg/daemon/ovndbtls.go`**
+- [x] **Step 3: 实现 `pkg/daemon/ovndbtls.go`**
 
 ```go
 package daemon
@@ -479,13 +479,13 @@ import (
 
 同时删除未使用的 `"crypto"` import（`crypto.PrivateKey` 没有直接使用，`requestKey` 参数类型是 `*rsa.PrivateKey`）。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 ```bash
 go build ./pkg/daemon/ && go test ./pkg/daemon/ -count=1 -run 'TestNeedNewOVNDBTLSCert|TestValidateNewOVNDBTLSCert' -v
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pkg/daemon/ovndbtls.go pkg/daemon/ovndbtls_test.go
@@ -500,7 +500,7 @@ git commit -s -m "feat(daemon): add ovn db tls cert request, validation, and rot
 - Modify: `pkg/daemon/controller.go`（struct 新增 queue 字段、Run 函数启动 worker）
 - Modify: `pkg/daemon/ovndbtls.go`（新增 SyncOVNDBTLSCerts 入口函数）
 
-- [ ] **Step 1: 在 `controller.go` 的 `Controller` struct 加 queue**
+- [x] **Step 1: 在 `controller.go` 的 `Controller` struct 加 queue**
 
 在 `ipsecQueue` 字段之后加：
 
@@ -508,7 +508,7 @@ git commit -s -m "feat(daemon): add ovn db tls cert request, validation, and rot
 	ovnDBTLSQueue workqueue.TypedRateLimitingInterface[string]
 ```
 
-- [ ] **Step 2: 在 `NewController` 中初始化 queue**
+- [x] **Step 2: 在 `NewController` 中初始化 queue**
 
 在 `ipsecQueue` 初始化行之后加：
 
@@ -516,7 +516,7 @@ git commit -s -m "feat(daemon): add ovn db tls cert request, validation, and rot
 		ovnDBTLSQueue:     newTypedRateLimitingQueue[string]("OVNDBTLS", nil),
 ```
 
-- [ ] **Step 3: 在 `controller.go` 的 Run 函数中启动 worker**
+- [x] **Step 3: 在 `controller.go` 的 Run 函数中启动 worker**
 
 在 `go c.runIPSecWorker(ctx)` 行之后加：
 
@@ -558,7 +558,7 @@ func (c *Controller) processNextOVNDBTLSWorkItem() bool {
 }
 ```
 
-- [ ] **Step 4: 在 `ovndbtls.go` 新增 `SyncOVNDBTLSCerts`**
+- [x] **Step 4: 在 `ovndbtls.go` 新增 `SyncOVNDBTLSCerts`**
 
 在文件末尾追加：
 
@@ -624,13 +624,13 @@ func (c *Controller) SyncOVNDBTLSCerts(key string) error {
 }
 ```
 
-- [ ] **Step 5: 编译确认**
+- [x] **Step 5: 编译确认**
 
 ```bash
 go build ./pkg/daemon/
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pkg/daemon/controller.go pkg/daemon/ovndbtls.go
@@ -641,7 +641,7 @@ git commit -s -m "feat(daemon): register ovn db tls cert rotation queue and work
 
 ### Task 4: 全量测试
 
-- [ ] **Step 1: 运行 daemon 包测试**
+- [x] **Step 1: 运行 daemon 包测试**
 
 ```bash
 go test ./pkg/daemon/ -count=1 -v -run 'TestNeedNewOVNDBTLSCert|TestValidateNewOVNDBTLSCert|TestParseEnableSSLDaemon'
@@ -649,7 +649,7 @@ go test ./pkg/daemon/ -count=1 -v -run 'TestNeedNewOVNDBTLSCert|TestValidateNewO
 
 Expected: 全部 PASS。
 
-- [ ] **Step 2: 编译完整 daemon binary**
+- [x] **Step 2: 编译完整 daemon binary**
 
 ```bash
 go build ./cmd/daemon/
@@ -657,7 +657,7 @@ go build ./cmd/daemon/
 
 Expected: 无错误。
 
-- [ ] **Step 3: Commit（如有 lint fix）**
+- [x] **Step 3: Commit（如有 lint fix）**
 
 如果编译或测试触发了小修复，一起 commit。否则跳过。
 

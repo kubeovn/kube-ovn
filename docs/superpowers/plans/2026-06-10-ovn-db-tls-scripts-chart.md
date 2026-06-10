@@ -37,7 +37,7 @@ charts/kube-ovn/
 
 这是改动量最大的文件（~580 行）。核心变化：OVN DB server 和 northd 使用分离的证书路径。
 
-- [ ] **Step 1: 新增证书路径选择函数**
+- [x] **Step 1: 新增证书路径选择函数**
 
 在文件头部（`ENABLE_SSL` 读取之后）加一个辅助函数：
 
@@ -71,7 +71,7 @@ choose_tls_paths() {
 
 在 `ENABLE_SSL=true` 的分支内调用 `choose_tls_paths`。
 
-- [ ] **Step 2: 替换 start OVN DB 的 SSL 参数**
+- [x] **Step 2: 替换 start OVN DB 的 SSL 参数**
 
 找到 `ovn-ctl` 启动 NB/SB DB 的位置（搜索 `ovn-nb-db-ssl-key`），将：
 
@@ -103,7 +103,7 @@ choose_tls_paths() {
 --ovn-northd-ssl-ca-cert=$TLS_NORTHD_CA \
 ```
 
-- [ ] **Step 3: shellcheck 验证**
+- [x] **Step 3: shellcheck 验证**
 
 ```bash
 shellcheck -x dist/images/start-db.sh 2>&1 | head -20
@@ -111,7 +111,7 @@ shellcheck -x dist/images/start-db.sh 2>&1 | head -20
 
 如有 warning 且与本次改动相关则修复；预存的 warning 可忽略。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add dist/images/start-db.sh
@@ -126,7 +126,7 @@ git commit -s -m "feat(start-db): use separate server/client cert paths for ovn 
 - Modify: `dist/images/start-ovs.sh`（~159 行）
 - Modify: `dist/images/start-controller.sh`（~41 行）
 
-- [ ] **Step 1: start-ovs.sh**
+- [x] **Step 1: start-ovs.sh**
 
 (a) 在 `ENABLE_SSL` 判断块内，替换 `ovn-controller` SSL 参数（搜索 `ovn-controller-ssl-key`）：
 
@@ -153,13 +153,13 @@ fi
 
 (b) 同样替换 `ovn-controller` 的 `ssl:` 连接地址（如果脚本里有构造 ssl: URL 的地方，它们已经通过 `ENABLE_SSL` 控制，不需要改路径，只需要确认它们仍然工作）。
 
-- [ ] **Step 2: start-controller.sh**
+- [x] **Step 2: start-controller.sh**
 
 这个脚本较短，主要设置 `OVN_NB_ADDR` 和 `OVN_SB_ADDR`。SSL 地址格式（`ssl:host:port`）不变，证书加载由 Go binary 的 `pkg/ovsdb/client` 通过文件存在性自动选择，脚本不需要改证书路径。
 
 确认脚本内容——如果它只传地址不传证书路径，则不需要改动，跳过 commit。
 
-- [ ] **Step 3: Commit（如有改动）**
+- [x] **Step 3: Commit（如有改动）**
 
 ```bash
 git add dist/images/start-ovs.sh
@@ -178,7 +178,7 @@ git commit -s -m "feat(start-ovs): use separate client cert paths for ovn db tls
 - Modify: `charts/kube-ovn/templates/controller-deploy.yaml`
 - Modify: `charts/kube-ovn/templates/ovs-ovn-ds.yaml`
 
-- [ ] **Step 1: values.yaml 新增 rotation 开关**
+- [x] **Step 1: values.yaml 新增 rotation 开关**
 
 在 `func` 段 `ENABLE_OVN_DB_TLS_CERT: false` 之后加：
 
@@ -186,7 +186,7 @@ git commit -s -m "feat(start-ovs): use separate client cert paths for ovn db tls
   ENABLE_OVN_DB_TLS_CERT_ROTATION: false
 ```
 
-- [ ] **Step 2: central-deploy.yaml 新增 CA volume**
+- [x] **Step 2: central-deploy.yaml 新增 CA volume**
 
 ovn-central 需要：
 1. 保留现有的 `kube-ovn-tls` volume（legacy fallback）
@@ -226,7 +226,7 @@ initContainers:
 
 **注意**：这个改动需要仔细对照现有 YAML 结构，确保不破坏非 SSL 模式下的行为。如果改动过于侵入，第一阶段可以简化为只在 `ENABLE_OVN_DB_TLS_CERT` 为 true 时才使用 emptyDir（通过 Helm 条件渲染）。
 
-- [ ] **Step 3: controller-deploy.yaml**
+- [x] **Step 3: controller-deploy.yaml**
 
 kube-ovn-controller 的 `/var/run/tls` 同样需要可写（daemon 模式的 ovndbtls 代码需要往里写 client cert）。如果 controller 也需要运行时写证书，同样的 emptyDir + initContainer 模式。
 
@@ -234,13 +234,13 @@ kube-ovn-controller 的 `/var/run/tls` 同样需要可写（daemon 模式的 ovn
 
 **第一阶段简化**：controller 保持从 `kube-ovn-tls` Secret 挂载（legacy 路径），新证书路径暂时只给 ovs-ovn 和 ovn-central 使用。Controller 的 client cert 签发由后续任务完成。
 
-- [ ] **Step 4: ovs-ovn-ds.yaml 新增 rotation flag 和 CA**
+- [x] **Step 4: ovs-ovn-ds.yaml 新增 rotation flag 和 CA**
 
 在 ovs-ovn daemonset 中：
 (a) args 加 `--enable-ovn-db-tls-cert-rotation={{ .Values.func.ENABLE_OVN_DB_TLS_CERT_ROTATION }}`
 (b) 确保 `/var/run/tls` 挂载为可写（ovs-ovn daemon 的 ovndbtls 代码需要往里写 client cert）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add charts/kube-ovn/
@@ -251,7 +251,7 @@ git commit -s -m "chore(chart): mount ovn db tls volumes and expose rotation swi
 
 ### Task 4: 验证
 
-- [ ] **Step 1: Helm 模板渲染**
+- [x] **Step 1: Helm 模板渲染**
 
 ```bash
 helm template test charts/kube-ovn --set networking.ENABLE_SSL=true --set func.ENABLE_OVN_DB_TLS_CERT=true --set func.ENABLE_OVN_DB_TLS_CERT_ROTATION=true 2>/dev/null | grep -E "enable-ovn-db-tls|tls-dir|kube-ovn-tls-source" | head -20
@@ -262,7 +262,7 @@ helm template test charts/kube-ovn --set networking.ENABLE_SSL=true --set func.E
 - ovs-ovn 有 `--enable-ovn-db-tls-cert-rotation=true`
 - ovn-central 有新的 volume 结构
 
-- [ ] **Step 2: 非 SSL 模式渲染不退化**
+- [x] **Step 2: 非 SSL 模式渲染不退化**
 
 ```bash
 helm template test charts/kube-ovn 2>/dev/null | grep -c "enable-ovn-db-tls"
@@ -270,7 +270,7 @@ helm template test charts/kube-ovn 2>/dev/null | grep -c "enable-ovn-db-tls"
 
 确认默认值都是 false。
 
-- [ ] **Step 3: shellcheck 两个改过的脚本**
+- [x] **Step 3: shellcheck 两个改过的脚本**
 
 ```bash
 shellcheck -x dist/images/start-db.sh dist/images/start-ovs.sh 2>&1 | head -20
