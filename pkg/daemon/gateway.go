@@ -2,10 +2,13 @@ package daemon
 
 import (
 	"fmt"
+	"net"
+	"slices"
 	"sort"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
 
@@ -232,16 +235,82 @@ func (c *Controller) getEgressNatIPByNode(subnets []*kubeovnv1.Subnet, nodeName 
 	return subnetsNatIP
 }
 
+// getPodPrimaryNetworkProvider returns the kube-ovn network provider whose allocated
+// IP addresses cover all the pod's primary network IPs, i.e. the network kubelet
+// probes go through. It returns false if the pod's primary network is not managed
+// by kube-ovn, e.g. when kube-ovn works as a secondary CNI.
+func getPodPrimaryNetworkProvider(pod *v1.Pod) (string, bool) {
+	podIPs := util.PodIPs(*pod)
+	if len(podIPs) == 0 {
+		return "", false
+	}
+
+	// check the default provider first so that the common case is deterministic
+	if providerCoversIPs(pod, util.OvnProvider, podIPs) {
+		return util.OvnProvider, true
+	}
+
+	suffix := fmt.Sprintf(util.IPAddressAnnotationTemplate, "")
+	providers := make([]string, 0, 1)
+	for key := range pod.Annotations {
+		if provider, ok := strings.CutSuffix(key, suffix); ok && provider != "" && provider != util.OvnProvider {
+			providers = append(providers, provider)
+		}
+	}
+	slices.Sort(providers)
+	for _, provider := range providers {
+		if providerCoversIPs(pod, provider, podIPs) {
+			return provider, true
+		}
+	}
+	return "", false
+}
+
+// providerCoversIPs returns true if every IP in podIPs is allocated by the given
+// provider according to the pod's ip_address annotation.
+func providerCoversIPs(pod *v1.Pod, provider string, podIPs []string) bool {
+	annotatedIPs := strings.Split(pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)], ",")
+	allocated := make([]net.IP, 0, len(annotatedIPs))
+	for _, ip := range annotatedIPs {
+		if parsed := net.ParseIP(strings.TrimSpace(ip)); parsed != nil {
+			allocated = append(allocated, parsed)
+		}
+	}
+	if len(allocated) == 0 {
+		return false
+	}
+
+	for _, podIP := range podIPs {
+		parsed := net.ParseIP(podIP)
+		if parsed == nil || !slices.ContainsFunc(allocated, parsed.Equal) {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Controller) getTProxyConditionPod(pods []*v1.Pod, needSort bool) ([]*v1.Pod, error) {
 	var filteredPods []*v1.Pod
 	for _, pod := range pods {
-		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
+		provider, ok := getPodPrimaryNetworkProvider(pod)
+		if !ok {
+			// The pod's primary network is not managed by kube-ovn, e.g. kube-ovn works
+			// as a secondary CNI. Kubelet probes go through the primary CNI in that case,
+			// so tproxy must not intercept them.
+			continue
+		}
+
+		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]
 		if !ok {
 			continue
 		}
 
 		subnet, err := c.subnetsLister.Get(subnetName)
 		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				klog.Warningf("subnet %q of pod %s/%s not found, skip", subnetName, pod.Namespace, pod.Name)
+				continue
+			}
 			return nil, fmt.Errorf("failed to get subnet %q: %w", subnetName, err)
 		}
 

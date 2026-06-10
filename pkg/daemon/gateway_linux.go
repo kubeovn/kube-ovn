@@ -1145,9 +1145,9 @@ func (c *Controller) reconcileTProxyIPTableRules(allPods []*v1.Pod, protocol str
 
 	for _, pod := range pods {
 		var podIP string
-		for _, ip := range pod.Status.PodIPs {
-			if util.CheckProtocol(ip.IP) == protocol {
-				podIP = ip.IP
+		for _, ip := range util.PodIPs(*pod) {
+			if util.CheckProtocol(ip) == protocol {
+				podIP = ip
 				break
 			}
 		}
