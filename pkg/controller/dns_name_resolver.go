@@ -57,6 +57,12 @@ func (c *Controller) enqueueDeleteDNSNameResolver(obj any) {
 func (c *Controller) handleAddOrUpdateDNSNameResolver(key string) error {
 	klog.Infof("DNSNameResolver add/update handler called for key: %s", key)
 
+	// the ANP/CNP update queues are constructed only when ANP support is enabled
+	if !c.config.EnableANP {
+		klog.Warningf("DNSNameResolver %s is ignored because ANP support is disabled", key)
+		return nil
+	}
+
 	dnsNameResolver, err := c.dnsNameResolversLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -90,6 +96,12 @@ func (c *Controller) handleAddOrUpdateDNSNameResolver(key string) error {
 
 func (c *Controller) handleDeleteDNSNameResolver(dnsNameResolver *kubeovnv1.DNSNameResolver) error {
 	klog.Infof("DNSNameResolver delete handler called for: %s", dnsNameResolver.Name)
+
+	// the ANP/CNP update queues are constructed only when ANP support is enabled
+	if !c.config.EnableANP {
+		klog.Warningf("DNSNameResolver %s is ignored because ANP support is disabled", dnsNameResolver.Name)
+		return nil
+	}
 
 	anpName, exists := dnsNameResolver.Labels[adminNetworkPolicyKey]
 	if !exists {
