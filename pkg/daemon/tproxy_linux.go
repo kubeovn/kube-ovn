@@ -116,7 +116,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 		}
 
 		podName := pod.Name
-		if vmName := pod.Annotations[util.VMAnnotation]; vmName != "" {
+		if vmName := pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, provider)]; vmName != "" {
 			podName = vmName
 		}
 		iface := ovs.PodNameToPortName(podName, pod.Namespace, provider)
