@@ -1335,6 +1335,31 @@ func TestUpdateCnpPriorityMapEntries(t *testing.T) {
 		require.Equal(t, "test3", ctrl.bnpPrioNameMap[1004])
 		require.Equal(t, int32(1004), ctrl.bnpNamePrioMap[cnp.Name])
 	})
+
+	t.Run("new cnp should not wipe priority 0 entries", func(t *testing.T) {
+		ctrl.anpPrioNameMap = map[int32]string{0: "admin-zero"}
+		ctrl.anpNamePrioMap = map[string]int32{"admin-zero": 0}
+		ctrl.bnpPrioNameMap = map[int32]string{0: "baseline-zero"}
+		ctrl.bnpNamePrioMap = map[string]int32{"baseline-zero": 0}
+
+		cnp := &v1alpha2.ClusterNetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "newcomer",
+			},
+			Spec: v1alpha2.ClusterNetworkPolicySpec{
+				Tier:     v1alpha2.AdminTier,
+				Priority: 5,
+			},
+		}
+
+		err := ctrl.updateCnpPriorityMapEntries(cnp)
+		require.NoError(t, err)
+		require.Equal(t, "admin-zero", ctrl.anpPrioNameMap[0])
+		require.Equal(t, "newcomer", ctrl.anpPrioNameMap[5])
+		require.Equal(t, int32(5), ctrl.anpNamePrioMap["newcomer"])
+		require.Equal(t, "baseline-zero", ctrl.bnpPrioNameMap[0])
+		require.Equal(t, int32(0), ctrl.bnpNamePrioMap["baseline-zero"])
+	})
 }
 
 func TestWipeCnpPriorityMapEntries(t *testing.T) {
@@ -1396,6 +1421,30 @@ func TestWipeCnpPriorityMapEntries(t *testing.T) {
 		require.Equal(t, "", ctrl.anpPrioNameMap[1003])
 		require.Equal(t, int32(0), ctrl.bnpNamePrioMap[cnp.Name])
 		require.Equal(t, "", ctrl.bnpPrioNameMap[1003])
+	})
+
+	t.Run("absent cnp should not wipe priority 0 entries", func(t *testing.T) {
+		ctrl.anpPrioNameMap = map[int32]string{0: "admin-zero"}
+		ctrl.anpNamePrioMap = map[string]int32{"admin-zero": 0}
+		ctrl.bnpPrioNameMap = map[int32]string{0: "baseline-zero"}
+		ctrl.bnpNamePrioMap = map[string]int32{"baseline-zero": 0}
+
+		cnp := &v1alpha2.ClusterNetworkPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "newcomer",
+			},
+			Spec: v1alpha2.ClusterNetworkPolicySpec{
+				Tier:     v1alpha2.AdminTier,
+				Priority: 5,
+			},
+		}
+
+		err := ctrl.wipeCnpPriorityMapEntries(cnp)
+		require.NoError(t, err)
+		require.Equal(t, "admin-zero", ctrl.anpPrioNameMap[0])
+		require.Equal(t, int32(0), ctrl.anpNamePrioMap["admin-zero"])
+		require.Equal(t, "baseline-zero", ctrl.bnpPrioNameMap[0])
+		require.Equal(t, int32(0), ctrl.bnpNamePrioMap["baseline-zero"])
 	})
 }
 
