@@ -13,6 +13,7 @@ import (
 	netAttachv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/listers/k8s.cni.cncf.io/v1"
 	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/time/rate"
+	appsv1api "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -370,8 +371,6 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
-			// Only watch deployments with VpcEgressGatewayLabel or VpcNatGatewayLabel
-			listOption.LabelSelector = fmt.Sprintf("%s,%s", util.VpcEgressGatewayLabel, util.VpcNatGatewayLabel)
 		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTransform(util.TrimManagedFields),
@@ -827,9 +826,20 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add endpoint slice event handler")
 	}
 
-	if _, err = deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddDeployment,
-		UpdateFunc: controller.enqueueUpdateDeployment,
+	if _, err = deploymentInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj any) bool {
+			if deploy, ok := obj.(*appsv1api.Deployment); ok {
+				// Only watch deployments with VpcEgressGatewayLabel or VpcNatGatewayLabel
+				_, hasNatGwLabel := deploy.Labels[util.VpcNatGatewayLabel]
+				_, hasEgressGwLabel := deploy.Labels[util.VpcEgressGatewayLabel]
+				return hasNatGwLabel || hasEgressGwLabel
+			}
+			return false
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddDeployment,
+			UpdateFunc: controller.enqueueUpdateDeployment,
+		},
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add deployment event handler")
 	}
