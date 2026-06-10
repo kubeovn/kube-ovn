@@ -720,6 +720,9 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	if config.EnableDNSNameResolver {
+		if !config.EnableANP {
+			klog.Warning("DNS name resolver is enabled but ANP support is disabled, DNSNameResolver resources will not take effect")
+		}
 		controller.dnsNameResolversLister = dnsNameResolverInformer.Lister()
 		controller.dnsNameResolversSynced = dnsNameResolverInformer.Informer().HasSynced
 		if err := dnsNameResolverInformer.Informer().AddIndexers(cache.Indexers{
