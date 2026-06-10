@@ -161,7 +161,7 @@ else
     OVS_SSL_CERT=/var/run/tls/client.crt
     OVS_SSL_CA=/var/run/tls/ca.crt
   fi
-  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=$OVS_SSL_KEY --ovn-controller-ssl-cert=$OVS_SSL_CERT --ovn-controller-ssl-ca-cert=$OVS_SSL_CA --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
+  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key="$OVS_SSL_KEY" --ovn-controller-ssl-cert="$OVS_SSL_CERT" --ovn-controller-ssl-ca-cert="$OVS_SSL_CA" --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
 fi
 
 chmod 600 /etc/openvswitch/*

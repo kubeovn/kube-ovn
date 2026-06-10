@@ -455,15 +455,15 @@ else
         # clean up stale sockets/pids so a drifted pod can come up on a new node.
         rm -f /var/run/ovn/*.pid /var/run/ovn/*.ctl 2>/dev/null || true
         /usr/share/ovn/scripts/ovn-ctl \
-            --ovn-nb-db-ssl-key=$TLS_SERVER_KEY \
-            --ovn-nb-db-ssl-cert=$TLS_SERVER_CERT \
-            --ovn-nb-db-ssl-ca-cert=$TLS_SERVER_CA \
-            --ovn-sb-db-ssl-key=$TLS_SERVER_KEY \
-            --ovn-sb-db-ssl-cert=$TLS_SERVER_CERT \
-            --ovn-sb-db-ssl-ca-cert=$TLS_SERVER_CA \
-            --ovn-northd-ssl-key=$TLS_NORTHD_KEY \
-            --ovn-northd-ssl-cert=$TLS_NORTHD_CERT \
-            --ovn-northd-ssl-ca-cert=$TLS_NORTHD_CA \
+            --ovn-nb-db-ssl-key="$TLS_SERVER_KEY" \
+            --ovn-nb-db-ssl-cert="$TLS_SERVER_CERT" \
+            --ovn-nb-db-ssl-ca-cert="$TLS_SERVER_CA" \
+            --ovn-sb-db-ssl-key="$TLS_SERVER_KEY" \
+            --ovn-sb-db-ssl-cert="$TLS_SERVER_CERT" \
+            --ovn-sb-db-ssl-ca-cert="$TLS_SERVER_CA" \
+            --ovn-northd-ssl-key="$TLS_NORTHD_KEY" \
+            --ovn-northd-ssl-cert="$TLS_NORTHD_CERT" \
+            --ovn-northd-ssl-ca-cert="$TLS_NORTHD_CA" \
             --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
             restart_northd
         ovn-nbctl --no-leader-only $SSL_OPTIONS set-connection pssl:"${NB_PORT}":["${DB_ADDR}"]
