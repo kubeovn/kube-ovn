@@ -123,3 +123,31 @@ func TestEnsureOVNCASecretKeepsExistingSecret(t *testing.T) {
 		t.Fatalf("cakey = %q, want existing %q", string(secret.Data["cakey"]), "old-key")
 	}
 }
+
+func TestShouldManageOVNDBTLSCert(t *testing.T) {
+	tests := []struct {
+		name      string
+		enableSSL bool
+		enableTLS bool
+		want      bool
+	}{
+		{name: "both enabled", enableSSL: true, enableTLS: true, want: true},
+		{name: "ssl only keeps legacy path", enableSSL: true, enableTLS: false, want: false},
+		{name: "tls cert without ssl is ignored", enableSSL: false, enableTLS: true, want: false},
+		{name: "both disabled", enableSSL: false, enableTLS: false, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Controller{
+				config: &Configuration{
+					EnableSSL:          tt.enableSSL,
+					EnableOVNDBTLSCert: tt.enableTLS,
+				},
+			}
+			if got := c.shouldManageOVNDBTLSCert(); got != tt.want {
+				t.Fatalf("shouldManageOVNDBTLSCert() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

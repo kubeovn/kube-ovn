@@ -30,6 +30,20 @@ func (c *Controller) InitDefaultOVNDBTLSCA() error {
 	return c.initDefaultOVNCA(util.DefaultOVNDBTLSCA, "OVN DB TLS")
 }
 
+// shouldManageOVNDBTLSCert reports whether built-in OVN DB TLS certificate
+// management (CA + CSR signer) is active. The cert switch is meaningless
+// without SSL, so it is ignored (with a warning at startup) in that case.
+func (c *Controller) shouldManageOVNDBTLSCert() bool {
+	if !c.config.EnableOVNDBTLSCert {
+		return false
+	}
+	if !c.config.EnableSSL {
+		klog.Warning("enable-ovn-db-tls-cert requires ENABLE_SSL=true, ignored")
+		return false
+	}
+	return true
+}
+
 func (c *Controller) initDefaultOVNCA(secretName, displayName string) error {
 	namespace := os.Getenv(util.EnvPodNamespace)
 	_, err := c.config.KubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})

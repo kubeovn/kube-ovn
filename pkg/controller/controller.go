@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -1049,7 +1048,8 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 	}
 
-	if config.EnableOVNIPSec {
+	// the signer serves both IPSec CSRs and OVN DB TLS CSRs
+	if config.EnableOVNIPSec || controller.shouldManageOVNDBTLSCert() {
 		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddCsr,
 			UpdateFunc: controller.enqueueUpdateCsr,
@@ -1128,7 +1128,7 @@ func (c *Controller) Run(ctx context.Context) {
 		}
 	}
 
-	if os.Getenv(util.EnvSSLEnabled) == "true" {
+	if c.shouldManageOVNDBTLSCert() {
 		if err := c.InitDefaultOVNDBTLSCA(); err != nil {
 			util.LogFatalAndExit(err, "failed to init ovn db tls CA")
 		}
