@@ -59,6 +59,9 @@ func newRouterLBRuleInfo(rlr *kubeovnv1.RouterLBRule) *RouterLBRuleInfo {
 }
 
 func (c *Controller) requeueRouterLBRulesForEip(eipName string, isRecreate bool) {
+	if !c.config.EnableLb {
+		return
+	}
 	rlrs, err := c.routerLBRuleLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list RouterLBRules for EIP %s: %v", eipName, err)

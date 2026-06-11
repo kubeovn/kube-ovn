@@ -390,7 +390,7 @@ func (c *Controller) patchOvnSnatStatus(key, vpc, v4Eip, v6Eip, v4IpCidr, v6IpCi
 			util.EipV4IpLabel: v4Eip,
 			util.EipV6IpLabel: util.IPv6ToLabelValue(v6Eip),
 		}
-	} else if snat.Labels[util.EipV4IpLabel] != v4Eip || snat.Labels[util.EipV6IpLabel] != v6Eip {
+	} else if snat.Labels[util.EipV4IpLabel] != v4Eip || snat.Labels[util.EipV6IpLabel] != util.IPv6ToLabelValue(v6Eip) {
 		op = "replace"
 		needUpdateLabel = true
 		snat.Labels[util.EipV4IpLabel] = v4Eip
