@@ -38,8 +38,13 @@ type updateSvcObject struct {
 func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
-	klog.V(3).Infof("enqueue add endpoint %s", key)
-	c.addOrUpdateEndpointSliceQueue.Add(key)
+
+	// the queue consumers only run when EnableLb is set, so skip
+	// enqueueing to avoid unbounded accumulation when it is not
+	if c.config.EnableLb {
+		klog.V(3).Infof("enqueue add service %s", key)
+		c.addOrUpdateEndpointSliceQueue.Add(key)
+	}
 
 	if c.config.EnableNP {
 		netpols, err := c.svcMatchNetworkPolicies(svc)
@@ -53,8 +58,9 @@ func (c *Controller) enqueueAddService(obj any) {
 		}
 	}
 
-	if c.config.EnableLbSvc {
-		klog.V(3).Infof("enqueue add service %s", key)
+	// the add service worker also only runs when EnableLb is set
+	if c.config.EnableLb && c.config.EnableLbSvc {
+		klog.V(3).Infof("enqueue add lb service %s", key)
 		c.addServiceQueue.Add(key)
 	}
 }
@@ -78,47 +84,42 @@ func (c *Controller) enqueueDeleteService(obj any) {
 
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
-	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
-	if ok || svc.Spec.ClusterIP != v1.ClusterIPNone && svc.Spec.ClusterIP != "" || svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-		if c.config.EnableNP {
-			netpols, err := c.svcMatchNetworkPolicies(svc)
-			if err != nil {
-				utilruntime.HandleError(err)
-				return
-			}
-
-			for _, np := range netpols {
-				c.updateNpQueue.Add(np)
-			}
+	if c.config.EnableNP {
+		netpols, err := c.svcMatchNetworkPolicies(svc)
+		if err != nil {
+			utilruntime.HandleError(err)
+			return
 		}
 
-		ips := util.ServiceClusterIPs(*svc)
-		if ok {
-			ips = strings.Split(vip, ",")
+		for _, np := range netpols {
+			c.updateNpQueue.Add(np)
 		}
+	}
 
-		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-			for _, ingress := range svc.Status.LoadBalancer.Ingress {
-				ips = append(ips, ingress.IP)
+	if c.config.EnableLb {
+		ips := getVipIps(svc)
+		if len(ips) != 0 {
+			for _, port := range svc.Spec.Ports {
+				vpcSvc := &vpcService{
+					Protocol: port.Protocol,
+					Vpc:      svc.Annotations[util.VpcAnnotation],
+					Svc:      svc,
+				}
+				for _, ip := range ips {
+					vpcSvc.Vips = append(vpcSvc.Vips, util.JoinHostPort(ip, port.Port))
+				}
+				klog.V(3).Infof("delete vpc service: %v", vpcSvc)
+				c.deleteServiceQueue.Add(vpcSvc)
 			}
-		}
-
-		for _, port := range svc.Spec.Ports {
-			vpcSvc := &vpcService{
-				Protocol: port.Protocol,
-				Vpc:      svc.Annotations[util.VpcAnnotation],
-				Svc:      svc,
-			}
-			for _, ip := range ips {
-				vpcSvc.Vips = append(vpcSvc.Vips, util.JoinHostPort(ip, port.Port))
-			}
-			klog.V(3).Infof("delete vpc service: %v", vpcSvc)
-			c.deleteServiceQueue.Add(vpcSvc)
 		}
 	}
 }
 
 func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
+	if !c.config.EnableLb {
+		return
+	}
+
 	oldSvc := oldObj.(*v1.Service)
 	newSvc := newObj.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
@@ -366,7 +367,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 	}
 	// add the svc key which has the same vip
 	vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]
-	if ok {
+	if ok && vip != "" {
 		allSlrs, err := c.switchLBRuleLister.List(labels.Everything())
 		if err != nil {
 			klog.Error(err)
@@ -540,12 +541,18 @@ func (c *Controller) handleAddService(key string) error {
 func getVipIps(svc *v1.Service) []string {
 	var ips []string
 	if vip, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok {
-		ips = strings.Split(vip, ",")
+		for ip := range strings.SplitSeq(vip, ",") {
+			if ip != "" {
+				ips = append(ips, ip)
+			}
+		}
 	} else {
 		ips = util.ServiceClusterIPs(*svc)
 		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
 			for _, ingress := range svc.Status.LoadBalancer.Ingress {
-				ips = append(ips, ingress.IP)
+				if ingress.IP != "" {
+					ips = append(ips, ingress.IP)
+				}
 			}
 		}
 	}
@@ -570,32 +577,56 @@ func diffSvcPorts(oldPorts, newPorts []v1.ServicePort) (toDel []v1.ServicePort) 
 }
 
 func (c *Controller) checkServiceLBIPBelongToSubnet(svc *v1.Service) error {
-	svc = svc.DeepCopy()
-	if svc.Annotations == nil {
-		svc.Annotations = map[string]string{}
-	}
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return err
-	}
-
-	isServiceExternalIPFromSubnet := false
-	for _, subnet := range subnets {
-		for _, ingress := range svc.Status.LoadBalancer.Ingress {
-			if util.CIDRContainIP(subnet.Spec.CIDRBlock, ingress.IP) {
-				svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] = subnet.Name
-				isServiceExternalIPFromSubnet = true
-				break
+	// resolve the subnet whose CIDR contains the service external IP.
+	// only list subnets when there is an external IP to match against.
+	desiredSubnet := ""
+	if len(svc.Status.LoadBalancer.Ingress) > 0 {
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list subnets: %v", err)
+			return err
+		}
+		for _, subnet := range subnets {
+			for _, ingress := range svc.Status.LoadBalancer.Ingress {
+				// ingress entries may carry only a Hostname; skip empty IPs to
+				// avoid noisy error logs from CIDRContainIP
+				if ingress.IP == "" {
+					continue
+				}
+				if util.CIDRContainIP(subnet.Spec.CIDRBlock, ingress.IP) {
+					// inner break only, keep the original "last matching subnet wins" semantics
+					desiredSubnet = subnet.Name
+					break
+				}
 			}
 		}
 	}
 
-	if !isServiceExternalIPFromSubnet {
-		delete(svc.Annotations, util.ServiceExternalIPFromSubnetAnnotation)
+	// nothing changed, skip the DeepCopy and the redundant API update to avoid
+	// generating a no-op watch event on every reconcile. when no subnet matches
+	// the annotation must be absent, so an explicit empty value is still removed.
+	cur, ok := svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation]
+	if desiredSubnet == "" {
+		if !ok {
+			return nil
+		}
+	} else if cur == desiredSubnet {
+		return nil
 	}
-	klog.Infof("Service %s/%s external IP belongs to subnet: %v", svc.Namespace, svc.Name, isServiceExternalIPFromSubnet)
-	if _, err = c.config.KubeClient.CoreV1().Services(svc.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{}); err != nil {
+
+	newSvc := svc.DeepCopy()
+	if desiredSubnet != "" {
+		if newSvc.Annotations == nil {
+			newSvc.Annotations = map[string]string{}
+		}
+		newSvc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] = desiredSubnet
+	} else {
+		delete(newSvc.Annotations, util.ServiceExternalIPFromSubnetAnnotation)
+	}
+
+	klog.Infof("update service %s/%s external IP subnet annotation: %q -> %q",
+		svc.Namespace, svc.Name, cur, desiredSubnet)
+	if _, err := c.config.KubeClient.CoreV1().Services(svc.Namespace).Update(context.TODO(), newSvc, metav1.UpdateOptions{}); err != nil {
 		klog.Errorf("failed to update service %s/%s: %v", svc.Namespace, svc.Name, err)
 		return err
 	}

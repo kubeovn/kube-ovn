@@ -332,6 +332,10 @@ func ParseFlags() (*Configuration, error) {
 		return nil, errors.New("no host nic for vlan")
 	}
 
+	if config.EnableLbSvc && !config.EnableLb {
+		klog.Warning("--enable-lb-svc requires --enable-lb, the loadbalancer service feature will not work")
+	}
+
 	if config.DefaultGateway == "" {
 		gw, err := util.GetGwByCidr(config.DefaultCIDR)
 		if err != nil {
