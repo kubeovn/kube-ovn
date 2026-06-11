@@ -529,6 +529,14 @@ func (config *Configuration) setEncapIPs() error {
 	return nil
 }
 
+// SetDefaultEncapIP updates the default encap IP under the node networks lock,
+// as setEncapIPs/GetEncapIPByNetwork read it concurrently from other goroutines
+func (config *Configuration) SetDefaultEncapIP(ip string) {
+	config.nodeNetworksMutex.Lock()
+	config.DefaultEncapIP = ip
+	config.nodeNetworksMutex.Unlock()
+}
+
 func (config *Configuration) UpdateNodeNetworks(node *corev1.Node) error {
 	newNetworks, err := parseNodeNetworks(node)
 	if err != nil {
@@ -543,12 +551,12 @@ func (config *Configuration) UpdateNodeNetworks(node *corev1.Node) error {
 }
 
 func (config *Configuration) GetEncapIPByNetwork(networkName string) (string, error) {
+	config.nodeNetworksMutex.RLock()
+	defer config.nodeNetworksMutex.RUnlock()
+
 	if networkName == "" {
 		return config.DefaultEncapIP, nil
 	}
-
-	config.nodeNetworksMutex.RLock()
-	defer config.nodeNetworksMutex.RUnlock()
 
 	if ip, ok := config.NodeNetworks[networkName]; ok {
 		return ip, nil
