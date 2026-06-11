@@ -41,6 +41,8 @@ func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Obje
 		*t = *(o.(*corev1.ConfigMap))
 	case *ovnv1.QoSPolicy:
 		*t = *(o.(*ovnv1.QoSPolicy))
+	case *ovnv1.IptablesEIP:
+		*t = *(o.(*ovnv1.IptablesEIP))
 	default:
 		return fmt.Errorf("unsupported type in mock cache: %T", obj)
 	}
@@ -462,4 +464,55 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		require.False(t, resp.Allowed)
 		require.Equal(t, int32(http.StatusBadRequest), resp.Result.Code)
 	})
+}
+
+func TestValidateIptablesDnat(t *testing.T) {
+	newDnat := func(externalPort, internalPort string) *ovnv1.IptablesDnatRule {
+		return &ovnv1.IptablesDnatRule{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+			Spec: ovnv1.IptablesDnatRuleSpec{
+				EIP:          "test-eip",
+				ExternalPort: externalPort,
+				InternalPort: internalPort,
+				InternalIP:   "10.0.0.10",
+				Protocol:     "tcp",
+			},
+		}
+	}
+
+	cache := &mockCache{
+		objects: map[string]runtime.Object{
+			"/test-eip": &ovnv1.IptablesEIP{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-eip"},
+				Spec:       ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"},
+			},
+		},
+	}
+	v := &ValidatingHook{cache: cache}
+
+	tests := []struct {
+		name         string
+		externalPort string
+		internalPort string
+		wantErr      bool
+	}{
+		{name: "valid ports", externalPort: "8080", internalPort: "80", wantErr: false},
+		{name: "min valid port", externalPort: "1", internalPort: "1", wantErr: false},
+		{name: "max valid port", externalPort: "65535", internalPort: "65535", wantErr: false},
+		{name: "external port zero rejected", externalPort: "0", internalPort: "80", wantErr: true},
+		{name: "internal port zero rejected", externalPort: "8080", internalPort: "0", wantErr: true},
+		{name: "external port over range rejected", externalPort: "65536", internalPort: "80", wantErr: true},
+		{name: "external port non-numeric rejected", externalPort: "abc", internalPort: "80", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := v.ValidateIptablesDnat(context.Background(), newDnat(tt.externalPort, tt.internalPort))
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
