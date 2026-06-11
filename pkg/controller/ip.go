@@ -528,7 +528,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
 
 		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update ip CR %s: %w", ipCRName, err)
+			err := fmt.Errorf("failed to update ip CR %s: %w", ipName, err)
 			klog.Error(err)
 			return err
 		}
