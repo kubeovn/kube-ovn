@@ -46,7 +46,8 @@ func (c *Controller) enqueueAddService(obj any) {
 		c.addOrUpdateEndpointSliceQueue.Add(key)
 	}
 
-	if c.config.EnableLbSvc {
+	// the add service worker also only runs when EnableLb is set
+	if c.config.EnableLb && c.config.EnableLbSvc {
 		klog.V(3).Infof("enqueue add lb service %s", key)
 		c.addServiceQueue.Add(key)
 	}

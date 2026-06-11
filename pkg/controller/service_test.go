@@ -218,11 +218,17 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 		require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
 	})
 
-	t.Run("EnableLbSvc=true still feeds addServiceQueue when EnableLb=false", func(t *testing.T) {
+	t.Run("EnableLbSvc=true feeds addServiceQueue only when EnableLb is set", func(t *testing.T) {
 		t.Parallel()
-		c := newController(false, true)
+		c := newController(true, true)
 		c.enqueueAddService(svc)
 		require.Equal(t, 1, c.addServiceQueue.Len())
+		require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
+
+		// the add service worker is gated by EnableLb, so the producer must be too
+		c = newController(false, true)
+		c.enqueueAddService(svc)
+		require.Zero(t, c.addServiceQueue.Len())
 		require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
 	})
 }
