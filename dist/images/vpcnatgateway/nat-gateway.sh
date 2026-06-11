@@ -73,6 +73,8 @@ function show_help() {
     echo "  floating-ip-del          - Delete floating IP mapping"
     echo "  dnat-add                 - Add DNAT rule"
     echo "  dnat-del                 - Delete DNAT rule"
+    echo "  nft-dnat-map-add         - Add nft map-based DNAT rule (Share type)"
+    echo "  nft-dnat-map-del         - Delete nft map-based DNAT rule (Share type)"
     echo "  snat-add                 - Add SNAT rule"
     echo "  snat-del                 - Delete SNAT rule"
     echo "  qos-add                  - Add QoS rule"
@@ -521,6 +523,155 @@ function del_dnat() {
           exec_cmd "$iptables_cmd -t nat -D $existingRule"
           conntrack -D -d "$eip" -p "$protocol" --dport "$dport" 2>/dev/null || true
         fi
+    done
+}
+
+# ===== nftables share DNAT (follows kube-proxy nftables pattern) =====
+#
+# Architecture (two-layer dispatch, same as kube-proxy):
+#   Table: kube-ovn
+#   ├── Base chain: prerouting (type nat hook prerouting priority -150)
+#   │   └── Rule: ip daddr . meta l4proto . th dport vmap @service-ips
+#   ├── Named vmap: service-ips
+#   │   └── Elements: { eip . protocol . port : goto dnat-XXXXX }  (element-level add/delete)
+#   └── Per-identity chains: dnat-XXXXX (one per eip:port:protocol)
+#       └── Rule: numgen random mod N dnat to ip addr . port map { backends }
+#
+# Atomicity: all operations use `nft -f` (single netlink batch transaction).
+# When backends change, only the per-identity chain is flushed + rebuilt.
+# The vmap element is stable (only added/removed when an identity is created/destroyed).
+#
+# Naming conventions:
+#   Shell variables: UPPER_CASE
+#   nft object names: lower_case (Linux/nftables convention, case-sensitive)
+
+NFT_TABLE="kube-ovn"
+NFT_SERVICES_MAP="service-ips"
+NFT_PREROUTING_CHAIN="prerouting"
+
+# Generate a per-identity chain name from eip:port:protocol.
+# Uses md5 hash prefix for uniqueness (same idea as kube-proxy's hashAndTruncate).
+function nft_identity_chain_name() {
+    local eip=$1 dport=$2 protocol=$3
+    local hash
+    hash=$(echo -n "${eip}:${dport}:${protocol}" | md5sum | cut -c1-8)
+    echo "dnat-${hash}"
+}
+
+# Execute an atomic nft transaction. All arguments are nft commands (one per arg).
+# Submitted as a single netlink batch via `nft -f`.
+# Returns 0 on success, non-zero on failure.
+function nft_transaction() {
+    printf '%s\n' "$@" | nft -f -
+}
+
+# Same as nft_transaction but ignores errors (for idempotent cleanup).
+function nft_transaction_ignore_errors() {
+    printf '%s\n' "$@" | nft -f - 2>/dev/null || true
+}
+
+function add_nft_dnat_map() {
+    # Add or update share-type DNAT backends for a given identity.
+    # Uses atomic nft transaction: ensure infrastructure + flush per-identity chain + re-add rule.
+    # All nft add operations are idempotent (no-op if already exists).
+    # Format: eip,dport,protocol,ip1:port1;ip2:port2;ip3:port3
+    check_inited
+    for rule in "$@"
+    do
+        IFS=',' read -r eip dport protocol backends <<< "$rule"
+
+        if [ -z "$eip" ] || [ -z "$dport" ] || [ -z "$protocol" ] || [ -z "$backends" ]; then
+            echo "Error: invalid nft-dnat-map rule: $rule"
+            exit 1
+        fi
+
+        # Parse backends and count them
+        IFS=';' read -ra backend_list <<< "$backends"
+        local count=${#backend_list[@]}
+
+        if [ "$count" -eq 0 ]; then
+            echo "Error: no backends specified in rule: $rule"
+            exit 1
+        fi
+
+        # Determine per-identity chain name
+        local identity_chain
+        identity_chain=$(nft_identity_chain_name "$eip" "$dport" "$protocol")
+
+        # Build numgen random mod N map entries (following kube-proxy pattern)
+        local map_entries=""
+        for i in "${!backend_list[@]}"; do
+            IFS=':' read -r ip port <<< "${backend_list[$i]}"
+            if [ -n "$map_entries" ]; then
+                map_entries="$map_entries, "
+            fi
+            map_entries="$map_entries$i : $ip . $port"
+        done
+
+        # Map protocol name to nft inet_proto keyword
+        local nft_proto
+        nft_proto=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+
+        # Atomic transaction:
+        # 1. Ensure table, base chain, vmap exist (idempotent)
+        # 2. Flush + re-add dispatch rule in base chain
+        # 3. Flush per-identity chain + add new dnat rule
+        # 4. Ensure vmap element points to this chain
+        if ! nft_transaction \
+            "add table ip $NFT_TABLE" \
+            "add chain ip $NFT_TABLE $NFT_PREROUTING_CHAIN { type nat hook prerouting priority -150 ; }" \
+            "add map ip $NFT_TABLE $NFT_SERVICES_MAP { type ipv4_addr . inet_proto . inet_service : verdict ; }" \
+            "flush chain ip $NFT_TABLE $NFT_PREROUTING_CHAIN" \
+            "add rule ip $NFT_TABLE $NFT_PREROUTING_CHAIN ip daddr . meta l4proto . th dport vmap @$NFT_SERVICES_MAP" \
+            "add chain ip $NFT_TABLE $identity_chain" \
+            "flush chain ip $NFT_TABLE $identity_chain" \
+            "add rule ip $NFT_TABLE $identity_chain meta l4proto $nft_proto dnat ip addr . port to numgen random mod $count map { $map_entries }" \
+            "add element ip $NFT_TABLE $NFT_SERVICES_MAP { $eip . $nft_proto . $dport : goto $identity_chain }"
+        then
+            echo "Error: failed to update nft share dnat for $eip:$dport ($protocol)"
+            exit 1
+        fi
+
+        echo "Updated nft share dnat: $eip:$dport ($protocol) -> $backends (chain=$identity_chain)"
+    done
+}
+
+function del_nft_dnat_map() {
+    # Delete a share-type DNAT identity entirely.
+    # Removes vmap element + flushes and deletes per-identity chain.
+    # Format: eip,dport,protocol
+    for rule in "$@"
+    do
+        IFS=',' read -r eip dport protocol <<< "$rule"
+
+        if [ -z "$eip" ] || [ -z "$dport" ] || [ -z "$protocol" ]; then
+            echo "Error: invalid nft-dnat-map identity: $rule"
+            exit 1
+        fi
+
+        # Check if table exists
+        if ! nft list table ip $NFT_TABLE >/dev/null 2>&1; then
+            echo "NFT table $NFT_TABLE does not exist, nothing to delete"
+            return 0
+        fi
+
+        local identity_chain nft_proto
+        identity_chain=$(nft_identity_chain_name "$eip" "$dport" "$protocol")
+        nft_proto=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+
+        # Delete vmap element and per-identity chain.
+        # These are separate operations because nft -f is transactional (all-or-nothing):
+        # if the element doesn't exist, a single transaction would roll back and
+        # leave the chain behind. By splitting, each step is independently idempotent.
+        nft delete element ip $NFT_TABLE $NFT_SERVICES_MAP "{ $eip . $nft_proto . $dport }" 2>/dev/null || true
+        nft_transaction_ignore_errors \
+            "flush chain ip $NFT_TABLE $identity_chain" \
+            "delete chain ip $NFT_TABLE $identity_chain"
+
+        # Clean up conntrack entries for this identity
+        conntrack -D -d "$eip" -p "$protocol" --dport "$dport" 2>/dev/null || true
+
+        echo "Deleted nft share dnat: $eip:$dport ($protocol) (chain=$identity_chain)"
     done
 }
 
@@ -1569,6 +1720,14 @@ case $opt in
     dnat-del)
         echo "dnat-del $*"
         del_dnat "$@"
+        ;;
+    nft-dnat-map-add)
+        echo "nft-dnat-map-add $*"
+        add_nft_dnat_map "$@"
+        ;;
+    nft-dnat-map-del)
+        echo "nft-dnat-map-del $*"
+        del_nft_dnat_map "$@"
         ;;
     snat-add)
         echo "snat-add $*"
