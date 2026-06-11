@@ -17,11 +17,10 @@ import (
 const metricNamespace = "kube_ovn"
 
 var (
-	appName          = "ovn-monitor"
-	isClusterEnabled = true
-	tryConnectCnt    = 0
-	checkNbDbCnt     = 0
-	checkSbDbCnt     = 0
+	appName       = "ovn-monitor"
+	tryConnectCnt = 0
+	checkNbDbCnt  = 0
+	checkSbDbCnt  = 0
 )
 
 // Exporter collects OVN data from the given server and exports them using
@@ -156,9 +155,11 @@ func (e *Exporter) ovnMetricsUpdate() {
 		e.exportLogicalSwitchGauge()
 		e.exportLogicalSwitchPortGauge()
 
-		e.exportOvnClusterEnableGauge()
-		if isClusterEnabled {
+		if e.exportOvnClusterEnableGauge() {
 			e.exportOvnClusterInfoGauge()
+		} else {
+			// clear stale cluster info series exported by previous clustered polls
+			resetOvnClusterMetrics()
 		}
 
 		time.Sleep(time.Duration(e.pollInterval) * time.Second)
@@ -246,7 +247,7 @@ func (e *Exporter) exportLogicalSwitchPortGauge() {
 	e.setLogicalSwitchPortInfoMetric()
 }
 
-func (e *Exporter) exportOvnClusterEnableGauge() {
+func (e *Exporter) exportOvnClusterEnableGauge() bool {
 	metricClusterEnabled.Reset()
 	isClusterEnabled, err := getClusterEnableState(e.Client.Database.Northbound.File.Data.Path)
 	if err != nil {
@@ -257,6 +258,7 @@ func (e *Exporter) exportOvnClusterEnableGauge() {
 	} else {
 		metricClusterEnabled.WithLabelValues(e.Client.System.Hostname, e.Client.Database.Northbound.File.Data.Path).Set(0)
 	}
+	return isClusterEnabled
 }
 
 func (e *Exporter) exportOvnClusterInfoGauge() {
