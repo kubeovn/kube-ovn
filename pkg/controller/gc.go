@@ -294,8 +294,7 @@ func (c *Controller) gcVip() error {
 						klog.Errorf("failed to clean label from vip %s, %v", vip.Name, err)
 						return err
 					}
-					klog.Infof("finish to gc vips")
-					return nil
+					continue
 				}
 				klog.Error(err)
 				return err
