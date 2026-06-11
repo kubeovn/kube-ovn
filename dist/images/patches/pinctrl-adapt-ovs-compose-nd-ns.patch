@@ -1,0 +1,32 @@
+Adapt pinctrl to the new compose_nd_ns() signature introduced by OVS
+branch-3.5 commit 33825c273 ("packets: Add support for unicast ND NS
+compose."). Passing multicast=true keeps the previous behavior: eth_dst
+is derived from the solicited-node multicast address internally, so the
+eth_addr_zero argument is only a placeholder.
+
+Remove this patch once OVN branch-25.03 adapts to the new signature
+upstream (git apply will fail loudly when that happens).
+diff --git a/controller/pinctrl.c b/controller/pinctrl.c
+index 26e17fd..c13bf06 100644
+--- a/controller/pinctrl.c
++++ b/controller/pinctrl.c
+@@ -5465,7 +5465,7 @@ send_self_originated_neigh_packet(struct rconn *swconn,
+                     in6_addr_get_mapped_ipv4(local),
+                     in6_addr_get_mapped_ipv4(target));
+     } else {
+-        compose_nd_ns(&packet, eth, local, target);
++        compose_nd_ns(&packet, true, eth, eth_addr_zero, local, target);
+     }
+ 
+     /* Inject GARP request. */
+@@ -7171,8 +7171,8 @@ pinctrl_handle_nd_ns(struct rconn *swconn, const struct flow *ip_flow,
+             hton128(flow_get_xxreg(&pin->flow_metadata.flow, 0));
+         memcpy(&ipv6_dst, &nexthop_be, sizeof ipv6_dst);
+     }
+-    compose_nd_ns(&packet, ip_flow->dl_src, &ipv6_src,
+-                  &ipv6_dst);
++    compose_nd_ns(&packet, true, ip_flow->dl_src, eth_addr_zero,
++                  &ipv6_src, &ipv6_dst);
+ 
+     /* Reload previous packet metadata and set actions from userdata. */
+     set_actions_and_enqueue_msg(swconn, &packet,
