@@ -38,16 +38,26 @@ type updateSvcObject struct {
 func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
-	klog.V(3).Infof("enqueue add service %s", key)
-	c.addOrUpdateEndpointSliceQueue.Add(key)
 
-	if c.config.EnableLbSvc {
+	// the queue consumers only run when EnableLb is set, so skip
+	// enqueueing to avoid unbounded accumulation when it is not
+	if c.config.EnableLb {
+		klog.V(3).Infof("enqueue add service %s", key)
+		c.addOrUpdateEndpointSliceQueue.Add(key)
+	}
+
+	// the add service worker also only runs when EnableLb is set
+	if c.config.EnableLb && c.config.EnableLbSvc {
 		klog.V(3).Infof("enqueue add lb service %s", key)
 		c.addServiceQueue.Add(key)
 	}
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
+	if !c.config.EnableLb {
+		return
+	}
+
 	var svc *v1.Service
 	switch t := obj.(type) {
 	case *v1.Service:
@@ -88,6 +98,10 @@ func (c *Controller) enqueueDeleteService(obj any) {
 }
 
 func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
+	if !c.config.EnableLb {
+		return
+	}
+
 	oldSvc := oldObj.(*v1.Service)
 	newSvc := newObj.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {

@@ -42,6 +42,10 @@ func findServiceKey(endpointSlice *discoveryv1.EndpointSlice) string {
 }
 
 func (c *Controller) enqueueAddEndpointSlice(obj any) {
+	if !c.config.EnableLb {
+		return
+	}
+
 	key := findServiceKey(obj.(*discoveryv1.EndpointSlice))
 	if key != "" {
 		klog.V(3).Infof("enqueue add endpointSlice %s", key)
@@ -50,6 +54,10 @@ func (c *Controller) enqueueAddEndpointSlice(obj any) {
 }
 
 func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
+	if !c.config.EnableLb {
+		return
+	}
+
 	oldEndpointSlice := oldObj.(*discoveryv1.EndpointSlice)
 	newEndpointSlice := newObj.(*discoveryv1.EndpointSlice)
 	if oldEndpointSlice.ResourceVersion == newEndpointSlice.ResourceVersion {

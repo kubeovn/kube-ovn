@@ -37,7 +37,7 @@ require (
 	github.com/osrg/gobgp/v4 v4.6.0
 	github.com/ovn-kubernetes/libovsdb v0.8.1
 	github.com/parnurzeal/gorequest v0.3.0
-	github.com/prometheus-community/pro-bing v0.8.0
+	github.com/prometheus-community/pro-bing v0.9.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/scylladb/go-set v1.0.2
@@ -50,7 +50,7 @@ require (
 	go.uber.org/zap v1.28.0
 	go.universe.tf/metallb v0.16.1
 	golang.org/x/mod v0.37.0
-	golang.org/x/net v0.55.0
+	golang.org/x/net v0.56.0
 	golang.org/x/sys v0.46.0
 	golang.org/x/time v0.15.0
 	golang.org/x/tools v0.45.0
