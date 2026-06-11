@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
@@ -144,6 +145,92 @@ func Test_getVipIps(t *testing.T) {
 			require.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
+	t.Parallel()
+
+	newController := func(enableLb, enableLbSvc bool) *Controller {
+		return &Controller{
+			config: &Configuration{
+				EnableLb:    enableLb,
+				EnableLbSvc: enableLbSvc,
+			},
+			addServiceQueue:               newTypedRateLimitingQueue[string]("AddService", nil),
+			deleteServiceQueue:            newTypedRateLimitingQueue[*vpcService]("DeleteService", nil),
+			updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
+			addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+		}
+	}
+
+	svc := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "svc",
+			Namespace: metav1.NamespaceDefault,
+		},
+		Spec: v1.ServiceSpec{
+			ClusterIP:  "10.96.0.10",
+			ClusterIPs: []string{"10.96.0.10"},
+			Ports:      []v1.ServicePort{{Name: "tcp", Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+	}
+	updatedSvc := svc.DeepCopy()
+	updatedSvc.ResourceVersion = "2"
+	updatedSvc.Spec.Ports[0].Port = 8080
+
+	eps := &discoveryv1.EndpointSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "svc-abc12",
+			Namespace: metav1.NamespaceDefault,
+			Labels:    map[string]string{discoveryv1.LabelServiceName: "svc"},
+		},
+		Endpoints: []discoveryv1.Endpoint{{Addresses: []string{"10.16.0.2"}}},
+	}
+	updatedEps := eps.DeepCopy()
+	updatedEps.ResourceVersion = "2"
+
+	enqueueAll := func(c *Controller) {
+		c.enqueueAddService(svc)
+		c.enqueueUpdateService(svc, updatedSvc)
+		c.enqueueDeleteService(svc)
+		c.enqueueAddEndpointSlice(eps)
+		c.enqueueUpdateEndpointSlice(eps, updatedEps)
+	}
+
+	t.Run("EnableLb=false skips enqueueing", func(t *testing.T) {
+		t.Parallel()
+		c := newController(false, false)
+		enqueueAll(c)
+		require.Zero(t, c.addServiceQueue.Len())
+		require.Zero(t, c.deleteServiceQueue.Len())
+		require.Zero(t, c.updateServiceQueue.Len())
+		require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
+	})
+
+	t.Run("EnableLb=true enqueues", func(t *testing.T) {
+		t.Parallel()
+		c := newController(true, false)
+		enqueueAll(c)
+		require.Zero(t, c.addServiceQueue.Len())
+		require.Equal(t, 1, c.deleteServiceQueue.Len())
+		require.Equal(t, 1, c.updateServiceQueue.Len())
+		// the same service key from the service/endpointSlice events is deduplicated
+		require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
+	})
+
+	t.Run("EnableLbSvc=true feeds addServiceQueue only when EnableLb is set", func(t *testing.T) {
+		t.Parallel()
+		c := newController(true, true)
+		c.enqueueAddService(svc)
+		require.Equal(t, 1, c.addServiceQueue.Len())
+		require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
+
+		// the add service worker is gated by EnableLb, so the producer must be too
+		c = newController(false, true)
+		c.enqueueAddService(svc)
+		require.Zero(t, c.addServiceQueue.Len())
+		require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
+	})
 }
 
 func Test_checkServiceLBIPBelongToSubnet(t *testing.T) {
