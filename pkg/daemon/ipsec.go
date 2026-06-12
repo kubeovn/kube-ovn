@@ -30,7 +30,7 @@ import (
 const (
 	ipsecCADir   = "/etc/ipsec.d/cacerts"
 	ipsecKeyDir  = "/etc/ovs_ipsec_keys"
-	ipsecReqPath = ipsecKeyDir + "ipsec-req.pem"
+	ipsecReqPath = ipsecKeyDir + "/ipsec-req.pem"
 
 	ipsecPrivKeyPathSpec = ipsecKeyDir + "/ipsec-privkey-%d.pem"
 	ipsecCertPathSpec    = ipsecKeyDir + "/ipsec-cert-%d.pem"

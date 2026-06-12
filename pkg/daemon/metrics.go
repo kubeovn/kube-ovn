@@ -143,6 +143,7 @@ func InitMetrics() {
 	registerSystemParameterMetrics()
 	metrics.Registry.MustRegister(cniOperationHistogram)
 	metrics.Registry.MustRegister(cniWaitAddressResult)
+	metrics.Registry.MustRegister(cniWaitRouteResult)
 	metrics.Registry.MustRegister(cniConnectivityResult)
 }
 

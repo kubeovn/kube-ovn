@@ -87,11 +87,15 @@ func (c *Controller) resyncProviderNetworkStatus() {
 		for _, n := range expectNodes {
 			expectNodeSet[n] = struct{}{}
 		}
-		for _, c := range pn.Status.Conditions {
-			if _, ok := expectNodeSet[c.Node]; !ok {
-				if pn.Status.RemoveNodeConditions(c.Node) {
-					conditionsUpdated = true
-				}
+		var staleNodes []string
+		for _, cond := range pn.Status.Conditions {
+			if _, ok := expectNodeSet[cond.Node]; !ok {
+				staleNodes = append(staleNodes, cond.Node)
+			}
+		}
+		for _, node := range staleNodes {
+			if pn.Status.RemoveNodeConditions(node) {
+				conditionsUpdated = true
 			}
 		}
 
