@@ -260,7 +260,9 @@ func (c *Controller) handleAddNode(key string) (err error) {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
 	}
-	c.enqueueExternalVpcsForReconcile()
+	if _, ok := node.Labels[util.ExGatewayLabel]; ok {
+		c.enqueueExternalVpcsForReconcile()
+	}
 	return nil
 }
 
@@ -506,7 +508,13 @@ func (c *Controller) handleDeleteNode(key string) (err error) {
 		klog.Warningf("Node %s is adding, skip the node delete handler, but it may leave some gc resources behind", key)
 		return nil
 	}
-	return c.deleteNode(key)
+	if err = c.deleteNode(key); err != nil {
+		return err
+	}
+	if _, ok := node.Labels[util.ExGatewayLabel]; ok {
+		c.enqueueExternalVpcsForReconcile()
+	}
+	return nil
 }
 
 func (c *Controller) deleteNode(key string) error {
@@ -569,7 +577,6 @@ func (c *Controller) deleteNode(key string) error {
 		return err
 	}
 
-	c.enqueueExternalVpcsForReconcile()
 	return nil
 }
 

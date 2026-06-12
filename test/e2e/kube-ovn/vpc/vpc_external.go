@@ -10,6 +10,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -41,18 +42,23 @@ func makeProviderNetwork(name string, linkMap map[string]*iproute.Link) *kubeovn
 
 func setNodeGWLabel(cs clientset.Interface, nodeName string, add bool) {
 	ginkgo.GinkgoHelper()
-	node, err := cs.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
-	framework.ExpectNoError(err)
-	updated := node.DeepCopy()
-	if updated.Labels == nil {
-		updated.Labels = make(map[string]string)
-	}
-	if add {
-		updated.Labels[util.ExGatewayLabel] = "true"
-	} else {
-		delete(updated.Labels, util.ExGatewayLabel)
-	}
-	_, err = cs.CoreV1().Nodes().Update(context.Background(), updated, metav1.UpdateOptions{})
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		node, err := cs.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		updated := node.DeepCopy()
+		if updated.Labels == nil {
+			updated.Labels = make(map[string]string)
+		}
+		if add {
+			updated.Labels[util.ExGatewayLabel] = "true"
+		} else {
+			delete(updated.Labels, util.ExGatewayLabel)
+		}
+		_, err = cs.CoreV1().Nodes().Update(context.Background(), updated, metav1.UpdateOptions{})
+		return err
+	})
 	framework.ExpectNoError(err)
 }
 
