@@ -50,6 +50,7 @@ func (c *Controller) gc() error {
 		c.gcVip,
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
+		c.gcRouterLBRules,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -1266,6 +1267,62 @@ func (c *Controller) gcVPCDNS() error {
 		}
 	}
 	klog.Infof("finish to gc vpc dns")
+	return nil
+}
+
+func (c *Controller) gcRouterLBRules() error {
+	if !c.config.EnableLb {
+		return nil
+	}
+
+	klog.Infof("start to gc router lb rules")
+
+	rlrs, err := c.routerLBRuleLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list RouterLBRules: %v", err)
+		return err
+	}
+
+	expectedSvcs := make(map[string]struct{}, len(rlrs))
+	for _, rlr := range rlrs {
+		namespace := rlr.Spec.Namespace
+		if namespace == "" {
+			namespace = metav1.NamespaceDefault
+		}
+		expectedSvcs[namespace+"/"+generateRlrSvcName(rlr.Name)] = struct{}{}
+	}
+
+	svcs, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services for RouterLBRule gc: %v", err)
+		return err
+	}
+
+	for _, svc := range svcs {
+		if svc.Annotations[util.RouterLBRuleVipsAnnotation] == "" {
+			continue
+		}
+		if _, ok := expectedSvcs[svc.Namespace+"/"+svc.Name]; ok {
+			continue
+		}
+
+		klog.Infof("gc: cleaning up orphaned RouterLBRule service %s/%s", svc.Namespace, svc.Name)
+		ports := make([]int32, 0, len(svc.Spec.Ports))
+		for _, p := range svc.Spec.Ports {
+			ports = append(ports, p.Port)
+		}
+		info := &RouterLBRuleInfo{
+			Name:      strings.TrimPrefix(svc.Name, "rlr-"),
+			Namespace: svc.Namespace,
+			Ports:     ports,
+		}
+		if err = c.handleDelRouterLBRule(info); err != nil {
+			klog.Errorf("gc: failed to cleanup orphaned RouterLBRule service %s/%s: %v", svc.Namespace, svc.Name, err)
+			return err
+		}
+	}
+
+	klog.Infof("finish to gc router lb rules")
 	return nil
 }
 

@@ -52,6 +52,8 @@ type SecurityGroupExpansion interface{}
 
 type SubnetExpansion interface{}
 
+type RouterLBRuleExpansion interface{}
+
 type SwitchLBRuleExpansion interface{}
 
 type VipExpansion interface{}
