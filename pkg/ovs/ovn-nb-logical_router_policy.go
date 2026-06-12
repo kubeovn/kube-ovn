@@ -276,6 +276,8 @@ func (c *OVNNbClient) BatchDeleteLogicalRouterPolicyByUUID(lrName string, uuidLi
 		return nil
 	}
 	start := time.Now()
+	// ovsdb-server rejects a mutate set containing duplicate uuids with "set contains duplicate"
+	uuidList = set.New(uuidList...).UnsortedList()
 	ops, err := c.LogicalRouterUpdatePolicyOp(lrName, uuidList, ovsdb.MutateOperationDelete)
 	if err != nil {
 		err := fmt.Errorf("generate operations for removing policies '%v' from logical router %s: %w", uuidList, lrName, err)
@@ -565,7 +567,7 @@ func (c *OVNNbClient) matchLogicalRouterPolicies(policy *ovnnb.LogicalRouterPoli
 			continue
 		}
 		if policyFound != nil {
-			duplicate = append(duplicate, policyFound.UUID)
+			duplicate = append(duplicate, policyOld.UUID)
 		} else {
 			policyFound = policyOld
 		}
