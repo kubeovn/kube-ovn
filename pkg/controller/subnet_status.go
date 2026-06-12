@@ -203,20 +203,20 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 	case kubeovnv1.ProtocolDual:
 		v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
 		cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
-		v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
-		v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
+		v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0], subnet.Spec.AllowAllocateFirstLast)
+		v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1], subnet.Spec.AllowAllocateFirstLast)
 		_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
 		_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
-		v4availableIPs = util.AddressCountBigInt(v4CIDR).Sub(util.CountIPNumsBigInt(v4toSubIPs)).Sub(usingIPs)
-		v6availableIPs = util.AddressCountBigInt(v6CIDR).Sub(util.CountIPNumsBigInt(v6toSubIPs)).Sub(usingIPs)
+		v4availableIPs = util.AddressCountBigInt(v4CIDR, subnet.Spec.AllowAllocateFirstLast).Sub(util.CountIPNumsBigInt(v4toSubIPs)).Sub(usingIPs)
+		v6availableIPs = util.AddressCountBigInt(v6CIDR, subnet.Spec.AllowAllocateFirstLast).Sub(util.CountIPNumsBigInt(v6toSubIPs)).Sub(usingIPs)
 	case kubeovnv1.ProtocolIPv4:
 		_, cidr, _ := net.ParseCIDR(subnet.Spec.CIDRBlock)
-		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-		v4availableIPs = util.AddressCountBigInt(cidr).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
+		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock, subnet.Spec.AllowAllocateFirstLast)
+		v4availableIPs = util.AddressCountBigInt(cidr, subnet.Spec.AllowAllocateFirstLast).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
 	case kubeovnv1.ProtocolIPv6:
 		_, cidr, _ := net.ParseCIDR(subnet.Spec.CIDRBlock)
-		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-		v6availableIPs = util.AddressCountBigInt(cidr).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
+		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock, subnet.Spec.AllowAllocateFirstLast)
+		v6availableIPs = util.AddressCountBigInt(cidr, subnet.Spec.AllowAllocateFirstLast).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
 	}
 
 	if v4availableIPs.Sign() < 0 {

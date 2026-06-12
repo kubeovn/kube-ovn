@@ -286,7 +286,7 @@ func TestFirstIP(t *testing.T) {
 		{
 			name:   "controversy",
 			subnet: "192.168.0.23/32",
-			expect: "192.168.0.24",
+			expect: "192.168.0.23",
 		},
 		{
 			name:   "base31netmask",
@@ -549,6 +549,104 @@ func TestAddressCountBigInt(t *testing.T) {
 			result := AddressCountBigInt(c.network)
 			if result.Int.Cmp(c.want) != 0 {
 				t.Errorf("%v expected %v, but %v got", c.network, c.want, result)
+			}
+		})
+	}
+}
+
+func TestShouldAllocateAll(t *testing.T) {
+	tests := []struct {
+		name      string
+		cidr      string
+		specAllow bool
+		want      bool
+	}{
+		{"ipv4_24_false", "10.0.0.0/24", false, false},
+		{"ipv4_24_true", "10.0.0.0/24", true, true},
+		{"ipv4_30_false", "10.0.0.0/30", false, false},
+		{"ipv4_30_true", "10.0.0.0/30", true, true},
+		{"ipv4_31_auto", "10.0.0.0/31", false, true},
+		{"ipv4_32_auto", "10.0.0.1/32", false, true},
+		{"ipv6_64_false", "fd00::/64", false, false},
+		{"ipv6_64_true", "fd00::/64", true, true},
+		{"ipv6_128_auto", "fd00::1/128", false, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, cidr, _ := net.ParseCIDR(tc.cidr)
+			got := ShouldAllocateAll(cidr, tc.specAllow)
+			if got != tc.want {
+				t.Errorf("ShouldAllocateAll(%s, %v) = %v, want %v", tc.cidr, tc.specAllow, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFirstIPWithAllocateAll(t *testing.T) {
+	tests := []struct {
+		name   string
+		subnet string
+		want   string
+	}{
+		{"ipv4_24", "10.0.0.0/24", "10.0.0.0"},
+		{"ipv4_30", "10.0.0.0/30", "10.0.0.0"},
+		{"ipv4_31", "10.0.0.0/31", "10.0.0.0"},
+		{"ipv4_32", "10.0.0.1/32", "10.0.0.1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FirstIP(tc.subnet, true)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("FirstIP(%s, true) = %s, want %s", tc.subnet, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLastIPWithAllocateAll(t *testing.T) {
+	tests := []struct {
+		name   string
+		subnet string
+		want   string
+	}{
+		{"ipv4_24", "10.0.0.0/24", "10.0.0.255"},
+		{"ipv4_30", "10.0.0.0/30", "10.0.0.3"},
+		{"ipv4_31", "10.0.0.0/31", "10.0.0.1"},
+		{"ipv4_32", "10.0.0.1/32", "10.0.0.1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := LastIP(tc.subnet, true)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("LastIP(%s, true) = %s, want %s", tc.subnet, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAddressCountBigIntWithAllocateAll(t *testing.T) {
+	tests := []struct {
+		name string
+		cidr string
+		want int64
+	}{
+		{"ipv4_24", "10.0.0.0/24", 256}, // all 256 IPs
+		{"ipv4_30", "10.0.0.0/30", 4},   // all 4 IPs
+		{"ipv4_31", "10.0.0.0/31", 2},   // auto-enabled, 2 IPs
+		{"ipv4_32", "10.0.0.1/32", 1},   // auto-enabled, 1 IP
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, network, _ := net.ParseCIDR(tc.cidr)
+			got := AddressCountBigInt(network, true)
+			if !got.EqualInt64(tc.want) {
+				t.Errorf("AddressCountBigInt(%s, true) = %v, want %d", tc.cidr, got, tc.want)
 			}
 		})
 	}

@@ -40,10 +40,12 @@ type Subnet struct {
 	V6Gw         string
 	GatewayMAC   string
 
-	IPPools map[string]*IPPool
+	AllowAllocateFirstLast bool
+	IPPools                map[string]*IPPool
 }
 
-func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
+func NewSubnet(name, cidrStr string, excludeIps []string, allowAllocateFirstLast ...bool) (*Subnet, error) {
+	allocAll := len(allowAllocateFirstLast) > 0 && allowAllocateFirstLast[0]
 	var cidrs []*net.IPNet
 	for cidrBlock := range strings.SplitSeq(cidrStr, ",") {
 		_, cidr, err := net.ParseCIDR(cidrBlock)
@@ -55,7 +57,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	}
 
 	// subnet.Spec.ExcludeIps contains both v4 and v6 addresses
-	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
+	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr, allocAll)
 	v4ExcludeIps, v6ExcludeIps := util.SplitIpsByProtocol(excludeIps)
 	v4Reserved, err := NewIPRangeListFrom(v4ExcludeIps...)
 	if err != nil {
@@ -70,43 +72,44 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 
 	protocol := util.CheckProtocol(cidrStr)
 	subnet := &Subnet{
-		Name:         name,
-		CIDR:         cidrStr,
-		Protocol:     protocol,
-		V4Free:       NewEmptyIPRangeList(),
-		V6Free:       NewEmptyIPRangeList(),
-		V4Reserved:   v4Reserved,
-		V6Reserved:   v6Reserved,
-		V4Using:      NewEmptyIPRangeList(),
-		V6Using:      NewEmptyIPRangeList(),
-		V4NicToIP:    map[string]IP{},
-		V6NicToIP:    map[string]IP{},
-		V4IPToPod:    map[string]string{},
-		V6IPToPod:    map[string]string{},
-		MacToPod:     map[string]string{},
-		NicToMac:     map[string]string{},
-		PodToNicList: map[string][]string{},
-		IPPools:      make(map[string]*IPPool, 0),
+		Name:                   name,
+		CIDR:                   cidrStr,
+		Protocol:               protocol,
+		V4Free:                 NewEmptyIPRangeList(),
+		V6Free:                 NewEmptyIPRangeList(),
+		V4Reserved:             v4Reserved,
+		V6Reserved:             v6Reserved,
+		V4Using:                NewEmptyIPRangeList(),
+		V6Using:                NewEmptyIPRangeList(),
+		V4NicToIP:              map[string]IP{},
+		V6NicToIP:              map[string]IP{},
+		V4IPToPod:              map[string]string{},
+		V6IPToPod:              map[string]string{},
+		MacToPod:               map[string]string{},
+		NicToMac:               map[string]string{},
+		PodToNicList:           map[string][]string{},
+		AllowAllocateFirstLast: allocAll,
+		IPPools:                make(map[string]*IPPool, 0),
 	}
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:
-		firstIP, _ := util.FirstIP(cidrStr)
-		lastIP, _ := util.LastIP(cidrStr)
+		firstIP, _ := util.FirstIP(cidrStr, allocAll)
+		lastIP, _ := util.LastIP(cidrStr, allocAll)
 		subnet.V4CIDR = cidrs[0]
 		subnet.V4Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
 	case kubeovnv1.ProtocolIPv6:
-		firstIP, _ := util.FirstIP(cidrStr)
-		lastIP, _ := util.LastIP(cidrStr)
+		firstIP, _ := util.FirstIP(cidrStr, allocAll)
+		lastIP, _ := util.LastIP(cidrStr, allocAll)
 		subnet.V6CIDR = cidrs[0]
 		subnet.V6Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
 	default:
 		subnet.V4CIDR = cidrs[0]
 		subnet.V6CIDR = cidrs[1]
 		cidrBlocks := strings.Split(cidrStr, ",")
-		v4FirstIP, _ := util.FirstIP(cidrBlocks[0])
-		v4LastIP, _ := util.LastIP(cidrBlocks[0])
-		v6FirstIP, _ := util.FirstIP(cidrBlocks[1])
-		v6LastIP, _ := util.LastIP(cidrBlocks[1])
+		v4FirstIP, _ := util.FirstIP(cidrBlocks[0], allocAll)
+		v4LastIP, _ := util.LastIP(cidrBlocks[0], allocAll)
+		v6FirstIP, _ := util.FirstIP(cidrBlocks[1], allocAll)
+		v6LastIP, _ := util.LastIP(cidrBlocks[1], allocAll)
 		subnet.V4Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", v4FirstIP, v4LastIP))
 		subnet.V6Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", v6FirstIP, v6LastIP))
 	}
@@ -750,8 +753,8 @@ func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 			}
 		}
 
-		firstIP, _ := util.FirstIP(s.V4CIDR.String())
-		lastIP, _ := util.LastIP(s.V4CIDR.String())
+		firstIP, _ := util.FirstIP(s.V4CIDR.String(), s.AllowAllocateFirstLast)
+		lastIP, _ := util.LastIP(s.V4CIDR.String(), s.AllowAllocateFirstLast)
 		pool.V4Reserved = s.V4Reserved.Intersect(pool.V4IPs)
 		pool.V4Using = s.V4Using.Intersect(pool.V4IPs)
 		pool.V4Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
@@ -771,8 +774,8 @@ func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 			}
 		}
 
-		firstIP, _ := util.FirstIP(s.V6CIDR.String())
-		lastIP, _ := util.LastIP(s.V6CIDR.String())
+		firstIP, _ := util.FirstIP(s.V6CIDR.String(), s.AllowAllocateFirstLast)
+		lastIP, _ := util.LastIP(s.V6CIDR.String(), s.AllowAllocateFirstLast)
 		pool.V6Reserved = s.V6Reserved.Intersect(pool.V6IPs)
 		pool.V6Using = s.V6Using.Intersect(pool.V6IPs)
 		pool.V6Free, _ = NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))

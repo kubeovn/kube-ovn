@@ -81,6 +81,28 @@ func BigInt2Ip(ipInt *big.Int) string {
 	return ip.String()
 }
 
+// ShouldAllocateAll returns true if all IPs in the CIDR (including network
+// address and broadcast address) should be allocatable. This is always true
+// for IPv4 /31 and /32 subnets per RFC 3021, or when explicitly enabled.
+func ShouldAllocateAll(cidr *net.IPNet, specAllow bool) bool {
+	if cidr == nil {
+		return false
+	}
+	ones, bits := cidr.Mask.Size()
+	if cidr.IP.To4() != nil {
+		// /31 and /32: RFC 3021 point-to-point and host routes
+		if ones >= 31 {
+			return true
+		}
+	} else {
+		// /128: IPv6 host route
+		if ones == bits {
+			return true
+		}
+	}
+	return specAllow
+}
+
 func SubnetNumber(subnet string) string {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
@@ -107,14 +129,19 @@ func SubnetBroadcast(subnet string) string {
 	return BigInt2Ip(ipInt.Add(ipInt, size))
 }
 
-// FirstIP returns first usable ip address in the subnet
-func FirstIP(subnet string) (string, error) {
+// FirstIP returns first usable ip address in the subnet.
+// When allowAllocateFirstLast is true, the network address itself is included.
+func FirstIP(subnet string, allowAllocateFirstLast ...bool) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		klog.Error(err)
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
-	// Handle ptp network case specially
+	allocAll := len(allowAllocateFirstLast) > 0 && allowAllocateFirstLast[0]
+	if ShouldAllocateAll(cidr, allocAll) {
+		return cidr.IP.String(), nil
+	}
+	// Handle ptp network case specially (/31 is already handled above)
 	if ones, bits := cidr.Mask.Size(); ones+1 == bits {
 		return cidr.IP.String(), nil
 	}
@@ -122,24 +149,26 @@ func FirstIP(subnet string) (string, error) {
 	return BigInt2Ip(ipInt.Add(ipInt, big.NewInt(1))), nil
 }
 
-// LastIP returns last usable ip address in the subnet
-func LastIP(subnet string) (string, error) {
+// LastIP returns last usable ip address in the subnet.
+// When allowAllocateFirstLast is true, the broadcast address is included.
+func LastIP(subnet string, allowAllocateFirstLast ...bool) (string, error) {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
 		klog.Error(err)
 		return "", fmt.Errorf("%s is not a valid cidr", subnet)
 	}
 
+	allocAll := len(allowAllocateFirstLast) > 0 && allowAllocateFirstLast[0]
 	ipInt := IP2BigInt(cidr.IP.String())
-	size := getCIDRSize(cidr)
+	size := getCIDRSize(cidr, ShouldAllocateAll(cidr, allocAll))
 	return BigInt2Ip(ipInt.Add(ipInt, size)), nil
 }
 
-func getCIDRSize(cidr *net.IPNet) *big.Int {
+func getCIDRSize(cidr *net.IPNet, allocateAll bool) *big.Int {
 	ones, bits := cidr.Mask.Size()
 	zeros := uint(bits - ones) // #nosec G115
 	size := big.NewInt(0).Lsh(big.NewInt(1), zeros)
-	if ones+1 == bits {
+	if allocateAll || ones+1 == bits {
 		return big.NewInt(0).Sub(size, big.NewInt(1))
 	}
 	return big.NewInt(0).Sub(size, big.NewInt(2))
@@ -228,12 +257,13 @@ func CheckProtocol(address string) string {
 	return ""
 }
 
-func AddressCountBigInt(network *net.IPNet) internal.BigInt {
+func AddressCountBigInt(network *net.IPNet, allowAllocateFirstLast ...bool) internal.BigInt {
+	allocAll := len(allowAllocateFirstLast) > 0 && allowAllocateFirstLast[0]
 	prefixLen, bits := network.Mask.Size()
 	zeros := uint(bits - prefixLen) // #nosec G115
 	count := big.NewInt(0).Lsh(big.NewInt(1), zeros)
-	// Special case handling for /31 and /32 subnets.
-	if bits-prefixLen >= 2 {
+	if !ShouldAllocateAll(network, allocAll) && bits-prefixLen >= 2 {
+		// Subtract network address and broadcast address
 		count.Sub(count, big.NewInt(2))
 	}
 	return internal.BigInt{Int: *count}
@@ -418,7 +448,8 @@ func SplitStringIP(ipStr string) (string, string) {
 }
 
 // ExpandExcludeIPs used to get exclude ips in range of subnet cidr, excludes cidr addr and broadcast addr
-func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
+func ExpandExcludeIPs(excludeIPs []string, cidr string, allowAllocateFirstLast ...bool) []string {
+	allocAll := len(allowAllocateFirstLast) > 0 && allowAllocateFirstLast[0]
 	rv := []string{}
 	for _, excludeIP := range excludeIPs {
 		if strings.Contains(excludeIP, "..") {
@@ -438,12 +469,14 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 					continue
 				}
 
-				firstIP, err := FirstIP(cidrBlock)
+				_, parsedCIDR, _ := net.ParseCIDR(cidrBlock)
+				blockAllocAll := ShouldAllocateAll(parsedCIDR, allocAll)
+				firstIP, err := FirstIP(cidrBlock, blockAllocAll)
 				if err != nil {
 					klog.Error(err)
 					continue
 				}
-				lastIP, _ := LastIP(cidrBlock)
+				lastIP, _ := LastIP(cidrBlock, blockAllocAll)
 				s1, e1 := s, e
 				if s1.Cmp(IP2BigInt(firstIP)) < 0 {
 					s1 = IP2BigInt(firstIP)
@@ -463,8 +496,12 @@ func ExpandExcludeIPs(excludeIPs []string, cidr string) []string {
 			for cidrBlock := range strings.SplitSeq(cidr, ",") {
 				// exclude ip should be the same protocol with cidr
 				if CheckProtocol(cidrBlock) == CheckProtocol(excludeIP) {
-					// exclude ip should be in the range of cidr and not cidr addr and broadcast addr
-					if CIDRContainIP(cidrBlock, excludeIP) && excludeIP != SubnetNumber(cidrBlock) && excludeIP != SubnetBroadcast(cidrBlock) {
+					_, parsedCIDR, _ := net.ParseCIDR(cidrBlock)
+					blockAllocAll := ShouldAllocateAll(parsedCIDR, allocAll)
+					// exclude ip should be in the range of cidr
+					// when allowAllocateFirstLast, network/broadcast addresses are valid exclude targets
+					if CIDRContainIP(cidrBlock, excludeIP) &&
+						(blockAllocAll || (excludeIP != SubnetNumber(cidrBlock) && excludeIP != SubnetBroadcast(cidrBlock))) {
 						rv = append(rv, excludeIP)
 						break
 					}

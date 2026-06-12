@@ -780,7 +780,7 @@ func TestValidateSubnet(t *testing.T) {
 			},
 		},
 		{
-			name: "Invalid/32Subnet",
+			name: "Valid/32SubnetWithAllocateAll",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "utest-ptpsubnet",
@@ -796,7 +796,7 @@ func TestValidateSubnet(t *testing.T) {
 					GatewayType: kubeovnv1.GWDistributedType,
 				},
 			},
-			err: "validate gateway 10.16.0.0 for cidr 10.16.0.0/32 failed: subnet 10.16.0.0/32 is configured with /32 or /128 netmask",
+			err: "",
 		},
 		{
 			name: "IPv6MTUBelowMinimum",
