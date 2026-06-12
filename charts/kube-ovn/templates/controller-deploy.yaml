@@ -206,7 +206,7 @@ spec:
             - mountPath: /var/log/ovn
               name: ovn-log
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: {{ ternary "ovn-db-tls-client" "kube-ovn-tls" .Values.func.ENABLE_OVN_DB_TLS_CERT }}
           readinessProbe:
             httpGet:
               port: 10660
@@ -247,5 +247,25 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
+        - name: ovn-db-tls-client
+          projected:
+            sources:
+              - secret:
+                  name: ovn-db-tls-client
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+                    - key: ca.crt
+                      path: cacert
+                    - key: client.crt
+                      path: client.crt
+                    - key: client.crt
+                      path: cert
+                    - key: client.key
+                      path: client.key
+                    - key: client.key
+                      path: key
+        {{- end }}
 
-{{- end }}
+	{{- end }}

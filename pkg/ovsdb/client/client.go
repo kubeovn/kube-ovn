@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -162,6 +163,10 @@ func fileExists(path string) bool {
 // for every endpoint in the address list, and tls.Dialer derives the expected
 // server name from the actual dial address when ServerName is empty.
 func newTLSConfig(certPath, keyPath, caPath string, insecureSkipVerify bool) (*tls.Config, error) {
+	if !insecureSkipVerify {
+		return newDynamicTLSConfig(certPath, keyPath, caPath)
+	}
+
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
@@ -182,4 +187,60 @@ func newTLSConfig(certPath, keyPath, caPath string, insecureSkipVerify bool) (*t
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: insecureSkipVerify, // #nosec G402 -- preserved only for legacy kube-ovn-tls fallback during upgrade
 	}, nil
+}
+
+func newDynamicTLSConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
+	if _, err := tls.LoadX509KeyPair(certPath, keyPath); err != nil {
+		return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
+	}
+	if _, err := loadRootCAs(caPath); err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to reload x509 cert key pair: %w", err)
+			}
+			return &cert, nil
+		},
+		MinVersion: tls.VersionTLS12,
+		// The dynamic CA bundle is verified in VerifyConnection on every
+		// handshake so reconnects pick up rotated Secrets without rebuilding the
+		// libovsdb client.
+		InsecureSkipVerify: true, // #nosec G402 -- certificate verification is performed by VerifyConnection
+		VerifyConnection: func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return errors.New("server did not present a certificate")
+			}
+			roots, err := loadRootCAs(caPath)
+			if err != nil {
+				return err
+			}
+			opts := x509.VerifyOptions{
+				DNSName:       state.ServerName,
+				Intermediates: x509.NewCertPool(),
+				Roots:         roots,
+				KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			}
+			for _, cert := range state.PeerCertificates[1:] {
+				opts.Intermediates.AddCert(cert)
+			}
+			_, err = state.PeerCertificates[0].Verify(opts)
+			return err
+		},
+	}, nil
+}
+
+func loadRootCAs(caPath string) (*x509.CertPool, error) {
+	caCert, err := os.ReadFile(caPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ca cert: %w", err)
+	}
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("failed to append ca cert from %s", caPath)
+	}
+	return certPool, nil
 }

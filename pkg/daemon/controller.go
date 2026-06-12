@@ -74,8 +74,6 @@ type Controller struct {
 	caSecretSynced cache.InformerSynced
 	ipsecQueue     workqueue.TypedRateLimitingInterface[string]
 
-	ovnDBTLSQueue workqueue.TypedRateLimitingInterface[string]
-
 	serviceCIDRStore           *util.ServiceCIDRStore
 	serviceCIDRLister          netv1lister.ServiceCIDRLister
 	serviceCIDRSynced          cache.InformerSynced
@@ -156,8 +154,6 @@ func NewController(config *Configuration,
 		caSecretLister: caSecretInformer.Lister(),
 		caSecretSynced: caSecretInformer.Informer().HasSynced,
 		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
-
-		ovnDBTLSQueue: newTypedRateLimitingQueue[string]("OVNDBTLS", nil),
 
 		serviceCIDRStore: util.NewServiceCIDRStore(config.ServiceClusterIPRange),
 		serviceCIDRInformerFactory: informers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
@@ -923,27 +919,6 @@ func (c *Controller) processNextIPSecWorkItem() bool {
 	return true
 }
 
-func (c *Controller) runOVNDBTLSWorker() {
-	for c.processNextOVNDBTLSWorkItem() {
-	}
-}
-
-func (c *Controller) processNextOVNDBTLSWorkItem() bool {
-	key, shutdown := c.ovnDBTLSQueue.Get()
-	if shutdown {
-		return false
-	}
-	defer c.ovnDBTLSQueue.Done(key)
-
-	if err := c.SyncOVNDBTLSCerts(key); err != nil {
-		utilruntime.HandleError(fmt.Errorf("error syncing ovn db tls cert %q: %w, requeuing", key, err))
-		c.ovnDBTLSQueue.AddRateLimited(key)
-		return true
-	}
-	c.ovnDBTLSQueue.Forget(key)
-	return true
-}
-
 func (c *Controller) runUpdateNodeWorker() {
 	for c.processNextUpdateNodeWorkItem() {
 	}
@@ -994,7 +969,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.serviceQueue.ShutDown()
 	defer c.updatePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
-	defer c.ovnDBTLSQueue.ShutDown()
 	defer c.updateNodeQueue.ShutDown()
 	defer c.vswitchClient.Close()
 
@@ -1017,10 +991,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdatePodWorker, time.Second, stopCh)
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
-	if c.shouldManageOVNDBTLSCert() {
-		go wait.Until(c.runOVNDBTLSWorker, time.Second, stopCh)
-		c.ovnDBTLSQueue.Add(ovnDBTLSClientKey) // bootstrap client cert
-	}
 	if c.config.EnableNonPrimaryCNI {
 		// In non-primary CNI mode, iptables cleanup is a one-time operation at startup.
 		// There is no dynamic state to reconcile, so periodic execution is unnecessary.

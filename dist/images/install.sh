@@ -8,6 +8,7 @@ DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
 DUAL_STACK=${DUAL_STACK:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
+ENABLE_OVN_DB_TLS_CERT=${ENABLE_OVN_DB_TLS_CERT:-false}
 ENABLE_VLAN=${ENABLE_VLAN:-false}
 CHECK_GATEWAY=${CHECK_GATEWAY:-true}
 LOGICAL_GATEWAY=${LOGICAL_GATEWAY:-false}
@@ -82,6 +83,11 @@ if [ "$SECURE_SERVING" = "true" ]; then
   PROBE_HTTP_SCHEME="HTTPS"
 fi
 
+if [ "$ENABLE_SSL" != "true" ] && [ "$ENABLE_OVN_DB_TLS_CERT" = "true" ]; then
+  echo "WARNING: ENABLE_OVN_DB_TLS_CERT=true requires ENABLE_SSL=true, disable OVN DB TLS cert management"
+  ENABLE_OVN_DB_TLS_CERT=false
+fi
+
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 RUN_AS_USER=65534 # run as nobody
@@ -91,6 +97,7 @@ fi
 
 KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 LOG_DIR=${LOG_DIR:-/var/log}
+OVN_DB_TLS_DIR=${OVN_DB_TLS_DIR:-/var/run/kube-ovn-tls}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -244,6 +251,118 @@ if [[ $ENABLE_SSL = "true" ]];then
   echo ""
 fi
 
+ensure_ovn_db_tls_secrets() {
+  local node_ips="$1"
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+  trap "rm -rf '$tmp_dir'" RETURN
+
+  if ! command -v openssl &> /dev/null; then
+    echo "ERROR: ENABLE_OVN_DB_TLS_CERT=true requires openssl to generate bootstrap OVN DB TLS Secrets"
+    exit 1
+  fi
+
+  if kubectl get secret -n kube-system ovn-db-tls-ca >/dev/null 2>&1; then
+    kubectl get secret -n kube-system ovn-db-tls-ca -o go-template='{{ index .data "ca.crt" }}' | base64 -d > "$tmp_dir/ca.crt"
+    kubectl get secret -n kube-system ovn-db-tls-ca -o go-template='{{ index .data "ca.key" }}' | base64 -d > "$tmp_dir/ca.key"
+  else
+    openssl req -x509 -newkey rsa:2048 -nodes \
+      -keyout "$tmp_dir/ca.key.raw" \
+      -out "$tmp_dir/ca.crt" \
+      -days 3650 \
+      -sha256 \
+      -subj "/O=kube-ovn/CN=ovn-db-tls-ca"
+    openssl pkcs8 -topk8 -nocrypt -in "$tmp_dir/ca.key.raw" -out "$tmp_dir/ca.key"
+    kubectl create secret generic -n kube-system ovn-db-tls-ca \
+      --from-file=ca.crt="$tmp_dir/ca.crt" \
+      --from-file=ca.key="$tmp_dir/ca.key" \
+      --from-file=ca-bundle.crt="$tmp_dir/ca.crt" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+
+  if ! kubectl get secret -n kube-system ovn-db-tls-server >/dev/null 2>&1; then
+    local server_ext="$tmp_dir/server-ext.cnf"
+    cat > "$server_ext" <<EOF
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = ovn-nb
+DNS.2 = ovn-nb.kube-system
+DNS.3 = ovn-nb.kube-system.svc
+DNS.4 = ovn-nb.kube-system.svc.cluster.local
+DNS.5 = ovn-sb
+DNS.6 = ovn-sb.kube-system
+DNS.7 = ovn-sb.kube-system.svc
+DNS.8 = ovn-sb.kube-system.svc.cluster.local
+EOF
+    local ip_index=1
+    IFS=',' read -ra ovn_db_ips <<< "$node_ips"
+    for ip in "${ovn_db_ips[@]}"; do
+      if [ -n "$ip" ]; then
+        echo "IP.$ip_index = $ip" >> "$server_ext"
+        ip_index=$((ip_index + 1))
+      fi
+    done
+
+    openssl req -newkey rsa:2048 -nodes \
+      -keyout "$tmp_dir/server.key.raw" \
+      -out "$tmp_dir/server.csr" \
+      -subj "/O=kube-ovn/CN=ovn-db-tls-server"
+    openssl pkcs8 -topk8 -nocrypt -in "$tmp_dir/server.key.raw" -out "$tmp_dir/server.key"
+    openssl x509 -req \
+      -in "$tmp_dir/server.csr" \
+      -CA "$tmp_dir/ca.crt" \
+      -CAkey "$tmp_dir/ca.key" \
+      -CAcreateserial \
+      -out "$tmp_dir/server.crt" \
+      -days 3650 \
+      -sha256 \
+      -extfile "$server_ext" \
+      -extensions v3_req
+    kubectl create secret generic -n kube-system ovn-db-tls-server \
+      --from-file=ca.crt="$tmp_dir/ca.crt" \
+      --from-file=ca-bundle.crt="$tmp_dir/ca.crt" \
+      --from-file=server.crt="$tmp_dir/server.crt" \
+      --from-file=server.key="$tmp_dir/server.key" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+
+  if ! kubectl get secret -n kube-system ovn-db-tls-client >/dev/null 2>&1; then
+    local client_ext="$tmp_dir/client-ext.cnf"
+    cat > "$client_ext" <<EOF
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = clientAuth
+EOF
+    openssl req -newkey rsa:2048 -nodes \
+      -keyout "$tmp_dir/client.key.raw" \
+      -out "$tmp_dir/client.csr" \
+      -subj "/O=kube-ovn/CN=ovn-db-tls-client"
+    openssl pkcs8 -topk8 -nocrypt -in "$tmp_dir/client.key.raw" -out "$tmp_dir/client.key"
+    openssl x509 -req \
+      -in "$tmp_dir/client.csr" \
+      -CA "$tmp_dir/ca.crt" \
+      -CAkey "$tmp_dir/ca.key" \
+      -CAcreateserial \
+      -out "$tmp_dir/client.crt" \
+      -days 3650 \
+      -sha256 \
+      -extfile "$client_ext" \
+      -extensions v3_req
+    kubectl create secret generic -n kube-system ovn-db-tls-client \
+      --from-file=ca.crt="$tmp_dir/ca.crt" \
+      --from-file=ca-bundle.crt="$tmp_dir/ca.crt" \
+      --from-file=client.crt="$tmp_dir/client.crt" \
+      --from-file=client.key="$tmp_dir/client.key" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+}
+
 echo "[Step 1/6] Label kube-ovn-master node and label datapath type"
 count=$(kubectl get no -l$LABEL --no-headers | wc -l)
 node_label="$LABEL"
@@ -295,6 +414,11 @@ if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
   echo "Install ovn-central as a single-replica Deployment backed by PVC ovn-central-data"
 else
   echo "Install OVN DB in $addresses"
+fi
+
+if [ "$ENABLE_SSL" = "true" ] && [ "$ENABLE_OVN_DB_TLS_CERT" = "true" ]; then
+  echo "Generate OVN DB TLS bootstrap Secrets"
+  ensure_ovn_db_tls_secrets "$addresses"
 fi
 
 # Pre-compute the YAML fragments that differ between cluster and single mode.
@@ -379,6 +503,82 @@ if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
   OVN_CENTRAL_INIT_CHOWN_CMD="chown -R nobody: /var/run/ovn /var/log/ovn && (chown -R nobody: /etc/ovn 2>/dev/null || echo 'chown /etc/ovn skipped (likely root-squashed NFS); ovn will write as nobody anyway')"
 else
   OVN_CENTRAL_INIT_CHOWN_CMD="chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+fi
+
+if [ "$ENABLE_OVN_DB_TLS_CERT" = "true" ]; then
+  OVN_CENTRAL_TLS_VOLUME_MOUNT="            - mountPath: /var/run/tls
+              name: ovn-db-tls
+              readOnly: true"
+  OVN_CENTRAL_TLS_VOLUME="        - name: ovn-db-tls
+          projected:
+            sources:
+              - secret:
+                  name: ovn-db-tls-server
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+                    - key: ca.crt
+                      path: cacert
+                    - key: server.crt
+                      path: server.crt
+                    - key: server.key
+                      path: server.key
+              - secret:
+                  name: ovn-db-tls-client
+                  items:
+                    - key: client.crt
+                      path: client.crt
+                    - key: client.crt
+                      path: cert
+                    - key: client.key
+                      path: client.key
+                    - key: client.key
+                      path: key"
+  OVN_DB_TLS_CLIENT_VOLUME_NAME="ovn-db-tls-client"
+  OVN_DB_TLS_CLIENT_VOLUME="        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+        - name: ovn-db-tls-client
+          projected:
+            sources:
+              - secret:
+                  name: ovn-db-tls-client
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+                    - key: ca.crt
+                      path: cacert
+                    - key: client.crt
+                      path: client.crt
+                    - key: client.crt
+                      path: cert
+                    - key: client.key
+                      path: client.key
+                    - key: client.key
+                      path: key"
+  OVN_DB_TLS_CNI_ARGS="          - --enable-ovn-db-tls-cert=$ENABLE_OVN_DB_TLS_CERT"
+  OVN_DB_TLS_CNI_VOLUME_MOUNT="          - mountPath: /var/run/tls
+            name: ovn-db-tls-dir"
+  OVN_DB_TLS_CNI_VOLUME="        - name: ovn-db-tls-dir
+          hostPath:
+            path: $OVN_DB_TLS_DIR
+            type: DirectoryOrCreate"
+else
+  OVN_CENTRAL_TLS_VOLUME_MOUNT="            - mountPath: /var/run/tls
+              name: kube-ovn-tls"
+  OVN_CENTRAL_TLS_VOLUME="        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls"
+  OVN_DB_TLS_CLIENT_VOLUME_NAME="kube-ovn-tls"
+  OVN_DB_TLS_CLIENT_VOLUME="        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls"
+  OVN_DB_TLS_CNI_ARGS="          - --enable-ovn-db-tls-cert=$ENABLE_OVN_DB_TLS_CERT"
+  OVN_DB_TLS_CNI_VOLUME_MOUNT=""
+  OVN_DB_TLS_CNI_VOLUME=""
 fi
 
 # BEGIN GENERATED KUBE-OVN CRD BUNDLE
@@ -7095,6 +7295,7 @@ rules:
     verbs:
     - get
     - create
+    - update
   - apiGroups:
     - certificates.k8s.io
     resourceNames:
@@ -7580,8 +7781,7 @@ ${OVN_CENTRAL_AFFINITY_BLOCK}
             - mountPath: /etc/localtime
               name: localtime
               readOnly: true
-            - mountPath: /var/run/tls
-              name: kube-ovn-tls
+${OVN_CENTRAL_TLS_VOLUME_MOUNT}
           readinessProbe:
             exec:
               command:
@@ -7612,10 +7812,7 @@ ${OVN_CENTRAL_CONFIG_VOLUME}
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
+${OVN_CENTRAL_TLS_VOLUME}
 EOF
 
 kubectl apply -f ovn.yaml
@@ -7761,7 +7958,7 @@ spec:
               name: localtime
               readOnly: true
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: $OVN_DB_TLS_CLIENT_VOLUME_NAME
             - mountPath: /var/run/containerd
               name: cruntime
               readOnly: true
@@ -7819,10 +8016,7 @@ spec:
         - hostPath:
             path: /var/run/containerd
           name: cruntime
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
+${OVN_DB_TLS_CLIENT_VOLUME}
 EOF
 
 kubectl apply -f ovs-ovn-ds.yaml
@@ -7920,7 +8114,7 @@ spec:
               name: localtime
               readOnly: true
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: $OVN_DB_TLS_CLIENT_VOLUME_NAME
           readinessProbe:
             exec:
               command:
@@ -7989,10 +8183,7 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
+${OVN_DB_TLS_CLIENT_VOLUME}
 EOF
 kubectl apply -f ovs-ovn-dpdk-ds.yaml
 fi
@@ -8132,6 +8323,7 @@ spec:
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --skip-conntrack-dst-cidrs=$SKIP_CONNTRACK_DST_CIDRS
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
+          - --enable-ovn-db-tls-cert=$ENABLE_OVN_DB_TLS_CERT
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
@@ -8185,7 +8377,7 @@ spec:
             - mountPath: /var/log/ovn
               name: ovn-log
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: $OVN_DB_TLS_CLIENT_VOLUME_NAME
           readinessProbe:
             httpGet:
               port: 10660
@@ -8223,10 +8415,7 @@ spec:
         - name: ovn-log
           hostPath:
             path: $LOG_DIR/ovn
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
+${OVN_DB_TLS_CLIENT_VOLUME}
 
 ---
 kind: DaemonSet
@@ -8340,6 +8529,7 @@ spec:
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --ovn-ipsec-cert-duration=$IPSEC_CERT_DURATION
           - --cert-manager-issuer-name=$CERT_MANAGER_ISSUER_NAME
+${OVN_DB_TLS_CNI_ARGS}
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
         securityContext:
           runAsUser: 0
@@ -8415,6 +8605,7 @@ spec:
           - mountPath: /etc/localtime
             name: localtime
             readOnly: true
+${OVN_DB_TLS_CNI_VOLUME_MOUNT}
         livenessProbe:
           failureThreshold: 3
           initialDelaySeconds: 30
@@ -8496,6 +8687,7 @@ spec:
         - name: local-bin
           hostPath:
             path: /usr/local/bin
+${OVN_DB_TLS_CNI_VOLUME}
 
 ---
 kind: Deployment
@@ -8622,7 +8814,7 @@ spec:
               name: localtime
               readOnly: true
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: $OVN_DB_TLS_CLIENT_VOLUME_NAME
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
           livenessProbe:
@@ -8661,10 +8853,7 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
+${OVN_DB_TLS_CLIENT_VOLUME}
         - name: kube-ovn-log
           hostPath:
             path: $LOG_DIR/kube-ovn
@@ -8812,7 +9001,7 @@ spec:
             - mountPath: /etc/localtime
               name: localtime
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: $OVN_DB_TLS_CLIENT_VOLUME_NAME
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
       nodeSelector:
@@ -8831,10 +9020,7 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: /var/log/kube-ovn
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
+${OVN_DB_TLS_CLIENT_VOLUME}
 EOF
 kubectl apply -f ovn-ic-controller.yaml
 kubectl rollout status deployment/ovn-ic-controller -n kube-system --timeout 60s
@@ -9001,7 +9187,7 @@ spec:
               name: localtime
               readOnly: true
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: $OVN_DB_TLS_CLIENT_VOLUME_NAME
           resources:
             requests:
               cpu: 100m
@@ -9046,10 +9232,7 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
+${OVN_DB_TLS_CLIENT_VOLUME}
 EOF
 
 kubectl apply -f kube-ovn-pinger.yaml

@@ -385,15 +385,16 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 		"--ovn-northd-sb-db="+c.config.OvnSbAddr,
 		"start_ic")
 	if os.Getenv(util.EnvSSLEnabled) == "true" {
+		sslKey, sslCert, sslCA := ovnDBTLSFiles()
 		// #nosec G204
 		cmd = exec.Command("/usr/share/ovn/scripts/ovn-ctl",
 			"--ovn-ic-nb-db="+genHostAddress(icHost, icNbPort),
 			"--ovn-ic-sb-db="+genHostAddress(icHost, icSbPort),
 			"--ovn-northd-nb-db="+c.config.OvnNbAddr,
 			"--ovn-northd-sb-db="+c.config.OvnSbAddr,
-			"--ovn-ic-ssl-key=/var/run/tls/key",
-			"--ovn-ic-ssl-cert=/var/run/tls/cert",
-			"--ovn-ic-ssl-ca-cert=/var/run/tls/cacert",
+			"--ovn-ic-ssl-key="+sslKey,
+			"--ovn-ic-ssl-cert="+sslCert,
+			"--ovn-ic-ssl-ca-cert="+sslCA,
 			"start_ic")
 	}
 	output, err := cmd.CombinedOutput()
@@ -401,6 +402,18 @@ func (c *Controller) startOVNIC(icHost, icNbPort, icSbPort string) error {
 		return fmt.Errorf("output: %s, err: %w", output, err)
 	}
 	return nil
+}
+
+func ovnDBTLSFiles() (keyPath, certPath, caPath string) {
+	if fileExists(util.SslClientCertPath) && fileExists(util.SslClientKeyPath) && fileExists(util.SslCAPath) {
+		return util.SslClientKeyPath, util.SslClientCertPath, util.SslCAPath
+	}
+	return util.SslKeyPath, util.SslCertPath, util.SslCACert
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func (c *Controller) stopOVNIC() error {

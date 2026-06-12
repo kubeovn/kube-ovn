@@ -254,6 +254,7 @@ rules:
     verbs:
     - get
     - create
+    - update
   - apiGroups:
     - certificates.k8s.io
     resourceNames:

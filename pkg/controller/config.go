@@ -213,7 +213,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableDNSNameResolver       = pflag.Bool("enable-dns-name-resolver", false, "Enable support for DNS name resolver")
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
-		argEnableOVNDBTLSCert             = pflag.Bool("enable-ovn-db-tls-cert", false, "Whether to enable built-in certificate management (CA and CSR signer) for OVN DB TLS, requires ENABLE_SSL=true")
+		argEnableOVNDBTLSCert          = pflag.Bool("enable-ovn-db-tls-cert", false, "Whether to enable built-in certificate management (CA and CSR signer) for OVN DB TLS, requires ENABLE_SSL=true")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")

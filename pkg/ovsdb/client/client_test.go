@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func TestNewTLSConfigUsesClientCertificateAndRootCA(t *testing.T) {
+func TestNewTLSConfigReloadsClientCertificateAndRootCA(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestCertificateFiles(t, dir)
 
@@ -22,14 +22,17 @@ func TestNewTLSConfigUsesClientCertificateAndRootCA(t *testing.T) {
 		t.Fatalf("newTLSConfig returned error: %v", err)
 	}
 
-	if config.InsecureSkipVerify {
-		t.Fatal("InsecureSkipVerify = true, want false")
+	if !config.InsecureSkipVerify {
+		t.Fatal("InsecureSkipVerify = false, want true because VerifyConnection performs dynamic CA verification")
 	}
-	if len(config.Certificates) != 1 {
-		t.Fatalf("Certificates length = %d, want 1", len(config.Certificates))
+	if config.GetClientCertificate == nil {
+		t.Fatal("GetClientCertificate = nil, want dynamic client certificate loader")
 	}
-	if config.RootCAs == nil {
-		t.Fatal("RootCAs = nil, want populated cert pool")
+	if config.VerifyConnection == nil {
+		t.Fatal("VerifyConnection = nil, want dynamic CA verifier")
+	}
+	if _, err := config.GetClientCertificate(nil); err != nil {
+		t.Fatalf("GetClientCertificate returned error: %v", err)
 	}
 	// ServerName must stay empty so tls.Dialer derives it per endpoint;
 	// pinning it would break verification against other HA endpoints.
@@ -49,6 +52,12 @@ func TestNewTLSConfigCanPreserveLegacyInsecureSkipVerify(t *testing.T) {
 
 	if !config.InsecureSkipVerify {
 		t.Fatal("InsecureSkipVerify = false, want true for legacy kube-ovn-tls fallback")
+	}
+	if len(config.Certificates) != 1 {
+		t.Fatalf("Certificates length = %d, want 1", len(config.Certificates))
+	}
+	if config.RootCAs == nil {
+		t.Fatal("RootCAs = nil, want populated cert pool")
 	}
 }
 

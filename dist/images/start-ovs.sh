@@ -139,6 +139,53 @@ function gen_conn_str {
   fi
   echo "$x"
 }
+
+function choose_ovn_controller_tls_paths {
+  OVS_SSL_KEY=/var/run/tls/key
+  OVS_SSL_CERT=/var/run/tls/cert
+  OVS_SSL_CA=/var/run/tls/cacert
+  if [[ -f /var/run/tls/client.crt && -f /var/run/tls/client.key && -f /var/run/tls/ca.crt ]]; then
+    OVS_SSL_KEY=/var/run/tls/client.key
+    OVS_SSL_CERT=/var/run/tls/client.crt
+    OVS_SSL_CA=/var/run/tls/ca.crt
+  fi
+}
+
+function restart_ovn_controller {
+  if [[ "$ENABLE_SSL" == "false" ]]; then
+    /usr/share/ovn/scripts/ovn-ctl --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
+  else
+    choose_ovn_controller_tls_paths
+    /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key="$OVS_SSL_KEY" --ovn-controller-ssl-cert="$OVS_SSL_CERT" --ovn-controller-ssl-ca-cert="$OVS_SSL_CA" --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
+  fi
+}
+
+function ovn_controller_tls_hash {
+  if [[ ! -f /var/run/tls/client.crt || ! -f /var/run/tls/client.key || ! -f /var/run/tls/ca.crt ]]; then
+    return 1
+  fi
+  sha256sum /var/run/tls/client.crt /var/run/tls/client.key /var/run/tls/ca.crt | sha256sum | awk '{print $1}'
+}
+
+function watch_ovn_controller_tls {
+  local last_hash=""
+  last_hash=$(ovn_controller_tls_hash || true)
+  while true; do
+    sleep 30
+    local current_hash=""
+    current_hash=$(ovn_controller_tls_hash || true)
+    if [[ -z "$current_hash" || "$current_hash" == "$last_hash" ]]; then
+      continue
+    fi
+    echo "OVN DB TLS client files changed, restarting ovn-controller"
+    if restart_ovn_controller; then
+      last_hash="$current_hash"
+    else
+      echo "failed to restart ovn-controller after OVN DB TLS change"
+    fi
+  done
+}
+
 # Set remote ovn-sb for ovn-controller to connect to
 ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str "${KUBE_OVN_SB_PORT:-6642}")"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval="${OVN_REMOTE_PROBE_INTERVAL}"
@@ -149,19 +196,9 @@ ovs-vsctl set open . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
 ovs-vsctl set open . external-ids:hostname="${NODE_NAME}"
 
 # Start ovn-controller
-if [[ "$ENABLE_SSL" == "false" ]]; then
-  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
-else
-  # Use new client cert paths if available, otherwise legacy shared certs
-  OVS_SSL_KEY=/var/run/tls/key
-  OVS_SSL_CERT=/var/run/tls/cert
-  OVS_SSL_CA=/var/run/tls/cacert
-  if [[ -f /var/run/tls/client.crt && -f /var/run/tls/client.key && -f /var/run/tls/ca.crt ]]; then
-    OVS_SSL_KEY=/var/run/tls/client.key
-    OVS_SSL_CERT=/var/run/tls/client.crt
-    OVS_SSL_CA=/var/run/tls/ca.crt
-  fi
-  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key="$OVS_SSL_KEY" --ovn-controller-ssl-cert="$OVS_SSL_CERT" --ovn-controller-ssl-ca-cert="$OVS_SSL_CA" --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
+restart_ovn_controller
+if [[ "$ENABLE_SSL" != "false" && -f /var/run/tls/client.crt && -f /var/run/tls/client.key && -f /var/run/tls/ca.crt ]]; then
+  watch_ovn_controller_tls &
 fi
 
 chmod 600 /etc/openvswitch/*

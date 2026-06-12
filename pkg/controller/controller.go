@@ -651,6 +651,10 @@ func Run(ctx context.Context, config *Configuration) {
 		anpInformerFactory:     anpInformerFactory,
 	}
 
+	if err = controller.reconcileOVNDBTLSSecrets(ctx); err != nil {
+		util.LogFatalAndExit(err, "failed to reconcile ovn db tls secrets")
+	}
+
 	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
 		config.OvnNbAddr,
 		config.OvnTimeout,
@@ -1084,8 +1088,9 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 	}
 
-	// the signer serves both IPSec CSRs and OVN DB TLS CSRs
-	if config.EnableOVNIPSec || controller.shouldManageOVNDBTLSCert() {
+	// OVN DB TLS certificates are reconciled through Secrets directly. The CSR
+	// signer remains only for IPSec certificates.
+	if config.EnableOVNIPSec {
 		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddCsr,
 			UpdateFunc: controller.enqueueUpdateCsr,
@@ -1164,11 +1169,7 @@ func (c *Controller) Run(ctx context.Context) {
 		}
 	}
 
-	if c.shouldManageOVNDBTLSCert() {
-		if err := c.InitDefaultOVNDBTLSCA(); err != nil {
-			util.LogFatalAndExit(err, "failed to init ovn db tls CA")
-		}
-	}
+	c.startOVNDBTLSManager(ctx)
 
 	// start workers to do all the network operations
 	c.startWorkers(ctx)

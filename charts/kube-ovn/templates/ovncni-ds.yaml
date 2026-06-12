@@ -128,7 +128,7 @@ spec:
           - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
-          - --enable-ovn-db-tls-cert-rotation={{- .Values.func.ENABLE_OVN_DB_TLS_CERT_ROTATION }}
+          - --enable-ovn-db-tls-cert={{- .Values.func.ENABLE_OVN_DB_TLS_CERT }}
           - --set-vxlan-tx-off={{- .Values.func.SET_VXLAN_TX_OFF }}
           - --non-primary-cni-mode={{- .Values.cni_conf.NON_PRIMARY_CNI }}
         securityContext:
@@ -207,9 +207,9 @@ spec:
           - mountPath: /etc/ovs_ipsec_keys
             name: ovs-ipsec-keys
         {{- end }}
-        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT_ROTATION }}
+        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
           # writable dir shared with the ovs-ovn pod via hostPath; the daemon
-          # writes the requested client cert/key here
+          # maintains the requested client cert/key here
           - mountPath: /var/run/tls
             name: ovn-db-tls-dir
         {{- end }}
@@ -298,7 +298,7 @@ spec:
           hostPath:
             path: {{ .Values.OVN_IPSEC_KEY_DIR }}
         {{- end }}
-        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT_ROTATION }}
+        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
         - name: ovn-db-tls-dir
           hostPath:
             path: {{ .Values.OVN_DB_TLS_DIR }}
