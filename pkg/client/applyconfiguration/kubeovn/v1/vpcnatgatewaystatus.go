@@ -32,9 +32,23 @@ type VpcNatGatewayStatusApplyConfiguration struct {
 	// External subnets configured for the NAT gateway
 	ExternalSubnets []string `json:"externalSubnets,omitempty"`
 	// Pod selector configured for the NAT gateway
-	Selector    []string            `json:"selector,omitempty"`
+	Selector []string `json:"selector,omitempty"`
+	// Number of gateway replicas
+	Replicas *int32 `json:"replicas,omitempty"`
+	// Ready state of the NAT gateway
+	Ready *bool `json:"ready,omitempty"`
+	// LAN IP address(es) for the NAT gateway.
+	// For non-HA, this is the single LanIP from spec.
+	// For HA, this is a comma-separated list of all IPs within the NAT gateway pods.
+	LanIP       *string             `json:"lanIp,omitempty"`
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 	Affinity    *corev1.Affinity    `json:"affinity,omitempty"`
+	// Workload information (Deployment or StatefulSet)
+	Workload *VpcNatWorkloadApplyConfiguration `json:"workload,omitempty"`
+	// Internal subnets configured for OVN route injection
+	InternalSubnets []string `json:"internalSubnets,omitempty"`
+	// Internal CIDRs configured for OVN route injection
+	InternalCIDRs []string `json:"internalCIDRs,omitempty"`
 }
 
 // VpcNatGatewayStatusApplyConfiguration constructs a declarative configuration of the VpcNatGatewayStatus type for use with
@@ -71,6 +85,30 @@ func (b *VpcNatGatewayStatusApplyConfiguration) WithSelector(values ...string) *
 	return b
 }
 
+// WithReplicas sets the Replicas field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Replicas field is set to the value of the last call.
+func (b *VpcNatGatewayStatusApplyConfiguration) WithReplicas(value int32) *VpcNatGatewayStatusApplyConfiguration {
+	b.Replicas = &value
+	return b
+}
+
+// WithReady sets the Ready field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Ready field is set to the value of the last call.
+func (b *VpcNatGatewayStatusApplyConfiguration) WithReady(value bool) *VpcNatGatewayStatusApplyConfiguration {
+	b.Ready = &value
+	return b
+}
+
+// WithLanIP sets the LanIP field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LanIP field is set to the value of the last call.
+func (b *VpcNatGatewayStatusApplyConfiguration) WithLanIP(value string) *VpcNatGatewayStatusApplyConfiguration {
+	b.LanIP = &value
+	return b
+}
+
 // WithTolerations adds the given value to the Tolerations field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Tolerations field.
@@ -86,5 +124,33 @@ func (b *VpcNatGatewayStatusApplyConfiguration) WithTolerations(values ...corev1
 // If called multiple times, the Affinity field is set to the value of the last call.
 func (b *VpcNatGatewayStatusApplyConfiguration) WithAffinity(value corev1.Affinity) *VpcNatGatewayStatusApplyConfiguration {
 	b.Affinity = &value
+	return b
+}
+
+// WithWorkload sets the Workload field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Workload field is set to the value of the last call.
+func (b *VpcNatGatewayStatusApplyConfiguration) WithWorkload(value *VpcNatWorkloadApplyConfiguration) *VpcNatGatewayStatusApplyConfiguration {
+	b.Workload = value
+	return b
+}
+
+// WithInternalSubnets adds the given value to the InternalSubnets field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the InternalSubnets field.
+func (b *VpcNatGatewayStatusApplyConfiguration) WithInternalSubnets(values ...string) *VpcNatGatewayStatusApplyConfiguration {
+	for i := range values {
+		b.InternalSubnets = append(b.InternalSubnets, values[i])
+	}
+	return b
+}
+
+// WithInternalCIDRs adds the given value to the InternalCIDRs field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the InternalCIDRs field.
+func (b *VpcNatGatewayStatusApplyConfiguration) WithInternalCIDRs(values ...string) *VpcNatGatewayStatusApplyConfiguration {
+	for i := range values {
+		b.InternalCIDRs = append(b.InternalCIDRs, values[i])
+	}
 	return b
 }
