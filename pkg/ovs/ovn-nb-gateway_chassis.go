@@ -93,9 +93,13 @@ func (c *OVNNbClient) GatewayChassisExist(name string) (bool, error) {
 	return gwChassis != nil, err
 }
 
+func gatewayChassisName(lrpName, chassisName string) string {
+	return lrpName + "-" + chassisName
+}
+
 // newGatewayChassis return gateway chassis with basic information
 func (c *OVNNbClient) newGatewayChassis(lrpName, chassisName string, priority int) (*ovnnb.GatewayChassis, error) {
-	gwChassisName := lrpName + "-" + chassisName
+	gwChassisName := gatewayChassisName(lrpName, chassisName)
 	exists, err := c.GatewayChassisExist(gwChassisName)
 	if err != nil {
 		klog.Error(err)
@@ -131,7 +135,7 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 	deleteOps := make([]ovsdb.Operation, 0, len(chassises))
 
 	for _, chassisName := range chassises {
-		gwChassisName := lrpName + "-" + chassisName
+		gwChassisName := gatewayChassisName(lrpName, chassisName)
 		gwChassis, err := c.GetGatewayChassis(gwChassisName, true)
 		if err != nil {
 			return fmt.Errorf("get gateway chassis %s: %w", gwChassisName, err)
@@ -178,7 +182,7 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 	uuids := make([]string, 0, len(chassises))
 
 	for i, chassisName := range chassises {
-		gwChassisName := lrpName + "-" + chassisName
+		gwChassisName := gatewayChassisName(lrpName, chassisName)
 		gwChassis, err := c.GetGatewayChassis(gwChassisName, true)
 		if err != nil {
 			klog.Error(err)
