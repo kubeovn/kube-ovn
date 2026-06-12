@@ -150,8 +150,32 @@ spec:
             - mountPath: /etc/localtime
               name: localtime
               readOnly: true
+            {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT_ROTATION }}
+            # writable dir shared with the kube-ovn-cni pod via hostPath where
+            # the daemon writes the rotated client cert/key; legacy shared
+            # certs and the CA are overlaid for fallback in start-ovs.sh
+            - mountPath: /var/run/tls
+              name: ovn-db-tls-dir
+            - mountPath: /var/run/tls/ca.crt
+              name: ovn-db-tls-ca
+              subPath: ca.crt
+              readOnly: true
+            - mountPath: /var/run/tls/cacert
+              name: kube-ovn-tls
+              subPath: cacert
+              readOnly: true
+            - mountPath: /var/run/tls/cert
+              name: kube-ovn-tls
+              subPath: cert
+              readOnly: true
+            - mountPath: /var/run/tls/key
+              name: kube-ovn-tls
+              subPath: key
+              readOnly: true
+            {{- else }}
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            {{- end }}
             - mountPath: /var/run/containerd
               name: cruntime
               readOnly: true
@@ -210,6 +234,19 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT_ROTATION }}
+        - name: ovn-db-tls-dir
+          hostPath:
+            path: {{ .Values.OVN_DB_TLS_DIR }}
+            type: DirectoryOrCreate
+        - name: ovn-db-tls-ca
+          secret:
+            optional: true
+            secretName: ovn-db-tls-ca
+            items:
+              - key: cacert
+                path: ca.crt
+        {{- end }}
         - hostPath:
             path: /var/run/containerd
           name: cruntime

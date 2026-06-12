@@ -99,6 +99,8 @@ type Configuration struct {
 	EnableDNSNameResolver       bool
 	EnableOVNIPSec              bool
 	CertManagerIPSecCert        bool
+	EnableSSL                   bool
+	EnableOVNDBTLSCert          bool
 	EnableLiveMigrationOptimize bool
 
 	ExternalGatewaySwitch   string
@@ -137,6 +139,12 @@ type Configuration struct {
 
 	// Skip conntrack for specific destination IP CIDRs
 	SkipConntrackDstCidrs string
+}
+
+// parseEnableSSLFromEnv reads ENABLE_SSL once so the rest of the controller
+// can rely on Configuration.EnableSSL instead of scattered os.Getenv calls.
+func parseEnableSSLFromEnv() bool {
+	return os.Getenv(util.EnvSSLEnabled) == "true"
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -205,6 +213,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableDNSNameResolver       = pflag.Bool("enable-dns-name-resolver", false, "Enable support for DNS name resolver")
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
+		argEnableOVNDBTLSCert             = pflag.Bool("enable-ovn-db-tls-cert", false, "Whether to enable built-in certificate management (CA and CSR signer) for OVN DB TLS, requires ENABLE_SSL=true")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
@@ -314,6 +323,8 @@ func ParseFlags() (*Configuration, error) {
 		EnableMetrics:                  *argEnableMetrics,
 		EnableOVNIPSec:                 *argEnableOVNIPSec,
 		CertManagerIPSecCert:           *argCertManagerIPSecCert,
+		EnableSSL:                      parseEnableSSLFromEnv(),
+		EnableOVNDBTLSCert:             *argEnableOVNDBTLSCert,
 		EnableLiveMigrationOptimize:    *argEnableLiveMigrationOptimize,
 		BfdMinTx:                       *argBfdMinTx,
 		BfdMinRx:                       *argBfdMinRx,

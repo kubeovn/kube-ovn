@@ -1084,7 +1084,8 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 	}
 
-	if config.EnableOVNIPSec {
+	// the signer serves both IPSec CSRs and OVN DB TLS CSRs
+	if config.EnableOVNIPSec || controller.shouldManageOVNDBTLSCert() {
 		if _, err = csrInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddCsr,
 			UpdateFunc: controller.enqueueUpdateCsr,
@@ -1160,6 +1161,12 @@ func (c *Controller) Run(ctx context.Context) {
 	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
 		if err := c.InitDefaultOVNIPsecCA(); err != nil {
 			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
+		}
+	}
+
+	if c.shouldManageOVNDBTLSCert() {
+		if err := c.InitDefaultOVNDBTLSCA(); err != nil {
+			util.LogFatalAndExit(err, "failed to init ovn db tls CA")
 		}
 	}
 

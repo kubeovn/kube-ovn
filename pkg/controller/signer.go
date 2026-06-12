@@ -19,14 +19,34 @@ import (
 	csrv1 "k8s.io/api/certificates/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+type csrSignerProfile string
+
+const (
+	csrSignerProfileIPSec          csrSignerProfile = "ipsec"
+	csrSignerProfileOVNDBTLSServer csrSignerProfile = "ovn-db-tls-server"
+	csrSignerProfileOVNDBTLSClient csrSignerProfile = "ovn-db-tls-client"
+
+	ovnIPSecCSRPrefix       = "ovn-ipsec-"
+	ovnDBTLSServerCSRPrefix = "ovn-db-tls-server-"
+	ovnDBTLSClientCSRPrefix = "ovn-db-tls-client-"
+	certificateDuration     = 10 * 365 * 24 * time.Hour
+)
+
+type csrSignerProfileConfig struct {
+	name         csrSignerProfile
+	caSecretName string
+	usages       []csrv1.KeyUsage
+}
+
 func (c *Controller) validateCsrName(name string) error {
-	after, found := strings.CutPrefix(name, "ovn-ipsec-")
+	after, found := strings.CutPrefix(name, ovnIPSecCSRPrefix)
 	if !found || len(after) == 0 {
 		return fmt.Errorf("CSR name %s is invalid, must be in format ovn-ipsec-<node-name>", name)
 	}
@@ -45,11 +65,117 @@ func (c *Controller) validateCsrName(name string) error {
 	return nil
 }
 
-func (c *Controller) isOVNIPSecCSR(csr *csrv1.CertificateSigningRequest) bool {
-	if csr.Spec.SignerName != util.SignerName ||
-		!strings.HasPrefix(csr.Name, "ovn-ipsec-") ||
-		!slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageIPsecTunnel}) {
+// validateCSRForProfile rejects CSRs whose requested identity exceeds what the
+// profile allows, so that CSR create permission alone cannot be used to obtain
+// a certificate impersonating the OVN DB or another component.
+func (c *Controller) validateCSRForProfile(certReq *x509.CertificateRequest, profile csrSignerProfileConfig) error {
+	switch profile.name {
+	case csrSignerProfileIPSec:
+		if len(certReq.IPAddresses) != 0 {
+			return fmt.Errorf("ipsec CSR must not request IP SANs, got %v", certReq.IPAddresses)
+		}
+		return nil
+	case csrSignerProfileOVNDBTLSServer:
+		return c.validateOVNDBTLSServerSANs(certReq)
+	case csrSignerProfileOVNDBTLSClient:
+		if len(certReq.DNSNames) != 0 || len(certReq.IPAddresses) != 0 {
+			return fmt.Errorf("ovn db tls client CSR must not request SANs, got DNS %v IP %v", certReq.DNSNames, certReq.IPAddresses)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown csr signer profile %s", profile.name)
+	}
+}
+
+func (c *Controller) validateOVNDBTLSServerSANs(certReq *x509.CertificateRequest) error {
+	namespace := os.Getenv(util.EnvPodNamespace)
+	allowedDNS := make(map[string]struct{}, 6)
+	allowedFQDNPrefixes := make([]string, 0, 2)
+	for _, svc := range []string{"ovn-nb", "ovn-sb"} {
+		allowedDNS[svc] = struct{}{}
+		allowedDNS[svc+"."+namespace] = struct{}{}
+		allowedDNS[svc+"."+namespace+".svc"] = struct{}{}
+		// FQDN with cluster domain, e.g. ovn-nb.kube-system.svc.cluster.local
+		allowedFQDNPrefixes = append(allowedFQDNPrefixes, svc+"."+namespace+".svc.")
+	}
+	for _, dnsName := range certReq.DNSNames {
+		if _, ok := allowedDNS[dnsName]; ok {
+			continue
+		}
+		if slices.ContainsFunc(allowedFQDNPrefixes, func(prefix string) bool {
+			return strings.HasPrefix(dnsName, prefix)
+		}) {
+			continue
+		}
+		return fmt.Errorf("DNS SAN %s is not allowed for ovn db tls server certificate", dnsName)
+	}
+
+	if len(certReq.IPAddresses) == 0 {
+		return nil
+	}
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list nodes to validate IP SANs: %w", err)
+	}
+	allowedIPs := make(map[string]struct{}, len(nodes)*2)
+	allowedIPs["127.0.0.1"] = struct{}{}
+	allowedIPs["::1"] = struct{}{}
+	for _, node := range nodes {
+		ipv4, ipv6 := util.GetNodeInternalIP(*node)
+		if ipv4 != "" {
+			allowedIPs[ipv4] = struct{}{}
+		}
+		if ipv6 != "" {
+			allowedIPs[ipv6] = struct{}{}
+		}
+	}
+	for _, ip := range certReq.IPAddresses {
+		if _, ok := allowedIPs[ip.String()]; !ok {
+			return fmt.Errorf("IP SAN %s is not a node internal IP, not allowed for ovn db tls server certificate", ip)
+		}
+	}
+	return nil
+}
+
+func getCSRSignerProfile(csr *csrv1.CertificateSigningRequest) (csrSignerProfileConfig, bool) {
+	if csr.Spec.SignerName != util.SignerName {
+		return csrSignerProfileConfig{}, false
+	}
+
+	switch {
+	case strings.HasPrefix(csr.Name, ovnIPSecCSRPrefix) &&
+		slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageIPsecTunnel}):
+		return csrSignerProfileConfig{
+			name:         csrSignerProfileIPSec,
+			caSecretName: util.DefaultOVNIPSecCA,
+			usages:       []csrv1.KeyUsage{csrv1.UsageIPsecTunnel},
+		}, true
+	case strings.HasPrefix(csr.Name, ovnDBTLSServerCSRPrefix) &&
+		slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageServerAuth}):
+		return csrSignerProfileConfig{
+			name:         csrSignerProfileOVNDBTLSServer,
+			caSecretName: util.DefaultOVNDBTLSCA,
+			usages:       []csrv1.KeyUsage{csrv1.UsageServerAuth},
+		}, true
+	case strings.HasPrefix(csr.Name, ovnDBTLSClientCSRPrefix) &&
+		slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageClientAuth}):
+		return csrSignerProfileConfig{
+			name:         csrSignerProfileOVNDBTLSClient,
+			caSecretName: util.DefaultOVNDBTLSCA,
+			usages:       []csrv1.KeyUsage{csrv1.UsageClientAuth},
+		}, true
+	default:
+		return csrSignerProfileConfig{}, false
+	}
+}
+
+func (c *Controller) isSupportedCSR(csr *csrv1.CertificateSigningRequest) bool {
+	profile, ok := getCSRSignerProfile(csr)
+	if !ok {
 		return false
+	}
+	if profile.name != csrSignerProfileIPSec {
+		return true
 	}
 	if err := c.validateCsrName(csr.Name); err != nil {
 		klog.Warningf("CSR %s validation failed: %v", csr.Name, err)
@@ -60,7 +186,7 @@ func (c *Controller) isOVNIPSecCSR(csr *csrv1.CertificateSigningRequest) bool {
 
 func (c *Controller) enqueueAddCsr(obj any) {
 	req := obj.(*csrv1.CertificateSigningRequest)
-	if !c.isOVNIPSecCSR(req) {
+	if !c.isSupportedCSR(req) {
 		return
 	}
 
@@ -75,7 +201,7 @@ func (c *Controller) enqueueUpdateCsr(oldObj, newObj any) {
 	if oldCsr.ResourceVersion == newCsr.ResourceVersion {
 		return
 	}
-	if !c.isOVNIPSecCSR(newCsr) {
+	if !c.isSupportedCSR(newCsr) {
 		return
 	}
 
@@ -92,6 +218,11 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 		}
 		klog.Error(err)
 		return err
+	}
+
+	profile, ok := getCSRSignerProfile(csr)
+	if !ok {
+		return nil
 	}
 
 	if len(csr.Status.Certificate) != 0 {
@@ -122,8 +253,7 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 		return nil
 	}
 	// From this point we are dealing with an approved CSR
-	// Get CA in from ovn-ipsec-ca
-	caSecret, err := c.config.KubeClient.CoreV1().Secrets(os.Getenv(util.EnvPodNamespace)).Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
+	caSecret, err := c.config.KubeClient.CoreV1().Secrets(os.Getenv(util.EnvPodNamespace)).Get(context.TODO(), profile.caSecretName, metav1.GetOptions{})
 	if err != nil {
 		c.signerFailure(csr, "CAFailure",
 			fmt.Sprintf("Could not get CA certificate and key: %v", err))
@@ -136,6 +266,15 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 		// We don't degrade the status of the controller as this is due to a
 		// malformed CSR rather than an issue with the controller.
 		if err := c.updateCSRStatusConditions(csr, "CSRDecodeFailure", fmt.Sprintf("Could not decode Certificate Request: %v", err)); err != nil {
+			klog.Error(err)
+		}
+		return nil
+	}
+
+	if err := c.validateCSRForProfile(certReq, profile); err != nil {
+		// A CSR requesting an identity beyond what its profile allows is a bad
+		// request, not a controller failure.
+		if err := c.updateCSRStatusConditions(csr, "CSRValidationFailure", fmt.Sprintf("Certificate Request validation failed: %v", err)); err != nil {
 			klog.Error(err)
 		}
 		return nil
@@ -158,7 +297,7 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 
 	// Create a new certificate using the certificate template and certificate.
 	// We can then sign this using the CA.
-	signedCert, err := signCSR(newCertificateTemplate(certReq), certReq.PublicKey, caCert, caKey)
+	signedCert, err := signCSR(newCertificateTemplateForProfile(certReq, profile.name), certReq.PublicKey, caCert, caKey)
 	if err != nil {
 		c.signerFailure(csr, "SigningFailure",
 			fmt.Sprintf("Unable to sign certificate for %v and signer %v: %v", csr.Name, util.SignerName, err))
@@ -234,7 +373,7 @@ func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (ap
 	return approved, denied
 }
 
-func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate {
+func newCertificateTemplateForProfile(certReq *x509.CertificateRequest, profile csrSignerProfile) *x509.Certificate {
 	serialNumber, err := rand.Int(rand.Reader, big.NewInt(1<<62))
 	if err != nil {
 		klog.Errorf("failed to generate serial number: %v", err)
@@ -247,11 +386,20 @@ func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate 
 		SignatureAlgorithm: x509.SHA512WithRSA,
 
 		NotBefore:    time.Now().Add(-1 * time.Second),
-		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour), // CA expire Time 10 year
+		NotAfter:     time.Now().Add(certificateDuration),
 		SerialNumber: serialNumber,
 
 		DNSNames:              certReq.DNSNames,
 		BasicConstraintsValid: true,
+	}
+
+	switch profile {
+	case csrSignerProfileOVNDBTLSServer:
+		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		// server cert SAN must cover the node IPs the OVN DB listens on
+		template.IPAddresses = certReq.IPAddresses
+	case csrSignerProfileOVNDBTLSClient:
+		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
 	}
 
 	return template

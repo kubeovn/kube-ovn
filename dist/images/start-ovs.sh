@@ -152,7 +152,16 @@ ovs-vsctl set open . external-ids:hostname="${NODE_NAME}"
 if [[ "$ENABLE_SSL" == "false" ]]; then
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
 else
-  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
+  # Use new client cert paths if available, otherwise legacy shared certs
+  OVS_SSL_KEY=/var/run/tls/key
+  OVS_SSL_CERT=/var/run/tls/cert
+  OVS_SSL_CA=/var/run/tls/cacert
+  if [[ -f /var/run/tls/client.crt && -f /var/run/tls/client.key && -f /var/run/tls/ca.crt ]]; then
+    OVS_SSL_KEY=/var/run/tls/client.key
+    OVS_SSL_CERT=/var/run/tls/client.crt
+    OVS_SSL_CA=/var/run/tls/ca.crt
+  fi
+  /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key="$OVS_SSL_KEY" --ovn-controller-ssl-cert="$OVS_SSL_CERT" --ovn-controller-ssl-ca-cert="$OVS_SSL_CA" --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
 fi
 
 chmod 600 /etc/openvswitch/*

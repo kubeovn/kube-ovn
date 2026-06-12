@@ -113,6 +113,8 @@ func:
   ENABLE_IC: false
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false
+  ENABLE_OVN_DB_TLS_CERT: false
+  ENABLE_OVN_DB_TLS_CERT_ROTATION: false
   ENABLE_ANP: false
   ENABLE_DNS_NAME_RESOLVER: false
   SET_VXLAN_TX_OFF: false
@@ -172,6 +174,7 @@ log_conf:
 
 OPENVSWITCH_DIR: "/etc/origin/openvswitch"
 OVN_IPSEC_KEY_DIR: "/etc/origin/ovs_ipsec_keys"
+OVN_DB_TLS_DIR: "/var/run/kube-ovn-tls"
 OVN_DIR: "/etc/origin/ovn"
 DISABLE_MODULES_MANAGEMENT: false
 

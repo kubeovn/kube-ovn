@@ -51,9 +51,36 @@ if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
     DB_ADDRESSES="$POD_IPS"
 fi
 
+# Choose TLS certificate paths: if the new DB TLS files exist use them,
+# otherwise fall back to the legacy kube-ovn-tls shared certs.
+function choose_tls_paths {
+    if [[ -f /var/run/tls/server.crt && -f /var/run/tls/server.key && -f /var/run/tls/ca.crt ]]; then
+        TLS_SERVER_KEY=/var/run/tls/server.key
+        TLS_SERVER_CERT=/var/run/tls/server.crt
+        TLS_SERVER_CA=/var/run/tls/ca.crt
+        TLS_CLIENT_KEY=/var/run/tls/client.key
+        TLS_CLIENT_CERT=/var/run/tls/client.crt
+        TLS_CLIENT_CA=/var/run/tls/ca.crt
+        TLS_NORTHD_KEY=/var/run/tls/client.key
+        TLS_NORTHD_CERT=/var/run/tls/client.crt
+        TLS_NORTHD_CA=/var/run/tls/ca.crt
+    else
+        TLS_SERVER_KEY=/var/run/tls/key
+        TLS_SERVER_CERT=/var/run/tls/cert
+        TLS_SERVER_CA=/var/run/tls/cacert
+        TLS_CLIENT_KEY=/var/run/tls/key
+        TLS_CLIENT_CERT=/var/run/tls/cert
+        TLS_CLIENT_CA=/var/run/tls/cacert
+        TLS_NORTHD_KEY=/var/run/tls/key
+        TLS_NORTHD_CERT=/var/run/tls/cert
+        TLS_NORTHD_CA=/var/run/tls/cacert
+    fi
+}
+
 SSL_OPTIONS=
 if [ "$ENABLE_SSL" != "false" ]; then
-    SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
+    choose_tls_paths
+    SSL_OPTIONS="-p $TLS_CLIENT_KEY -c $TLS_CLIENT_CERT -C $TLS_CLIENT_CA"
 fi
 
 . /usr/share/openvswitch/scripts/ovs-lib || exit 1
@@ -428,15 +455,15 @@ else
         # clean up stale sockets/pids so a drifted pod can come up on a new node.
         rm -f /var/run/ovn/*.pid /var/run/ovn/*.ctl 2>/dev/null || true
         /usr/share/ovn/scripts/ovn-ctl \
-            --ovn-nb-db-ssl-key=/var/run/tls/key \
-            --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-            --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-            --ovn-sb-db-ssl-key=/var/run/tls/key \
-            --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-            --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-            --ovn-northd-ssl-key=/var/run/tls/key \
-            --ovn-northd-ssl-cert=/var/run/tls/cert \
-            --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+            --ovn-nb-db-ssl-key="$TLS_SERVER_KEY" \
+            --ovn-nb-db-ssl-cert="$TLS_SERVER_CERT" \
+            --ovn-nb-db-ssl-ca-cert="$TLS_SERVER_CA" \
+            --ovn-sb-db-ssl-key="$TLS_SERVER_KEY" \
+            --ovn-sb-db-ssl-cert="$TLS_SERVER_CERT" \
+            --ovn-sb-db-ssl-ca-cert="$TLS_SERVER_CA" \
+            --ovn-northd-ssl-key="$TLS_NORTHD_KEY" \
+            --ovn-northd-ssl-cert="$TLS_NORTHD_CERT" \
+            --ovn-northd-ssl-ca-cert="$TLS_NORTHD_CA" \
             --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
             restart_northd
         ovn-nbctl --no-leader-only $SSL_OPTIONS set-connection pssl:"${NB_PORT}":["${DB_ADDR}"]
@@ -462,15 +489,15 @@ else
         set -eo pipefail
         if [[ ${result} -eq 1  &&  "$nb_leader_ip" == "${DB_CLUSTER_ADDR}" ]]; then
             ovn_ctl_args="$DEBUG_OPT
-                --ovn-nb-db-ssl-key=/var/run/tls/key \
-                --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-sb-db-ssl-key=/var/run/tls/key \
-                --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-northd-ssl-key=/var/run/tls/key \
-                --ovn-northd-ssl-cert=/var/run/tls/cert \
-                --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+                --ovn-nb-db-ssl-key=$TLS_SERVER_KEY \
+                --ovn-nb-db-ssl-cert=$TLS_SERVER_CERT \
+                --ovn-nb-db-ssl-ca-cert=$TLS_SERVER_CA \
+                --ovn-sb-db-ssl-key=$TLS_SERVER_KEY \
+                --ovn-sb-db-ssl-cert=$TLS_SERVER_CERT \
+                --ovn-sb-db-ssl-ca-cert=$TLS_SERVER_CA \
+                --ovn-northd-ssl-key=$TLS_NORTHD_KEY \
+                --ovn-northd-ssl-cert=$TLS_NORTHD_CERT \
+                --ovn-northd-ssl-ca-cert=$TLS_NORTHD_CA \
                 --db-nb-cluster-local-proto=ssl \
                 --db-sb-cluster-local-proto=ssl \
                 --db-nb-cluster-remote-proto=ssl \
@@ -524,15 +551,15 @@ else
             fi
             set -eo pipefail
             ovn_ctl_args="$DEBUG_OPT
-                --ovn-nb-db-ssl-key=/var/run/tls/key \
-                --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-sb-db-ssl-key=/var/run/tls/key \
-                --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-northd-ssl-key=/var/run/tls/key \
-                --ovn-northd-ssl-cert=/var/run/tls/cert \
-                --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+                --ovn-nb-db-ssl-key=$TLS_SERVER_KEY \
+                --ovn-nb-db-ssl-cert=$TLS_SERVER_CERT \
+                --ovn-nb-db-ssl-ca-cert=$TLS_SERVER_CA \
+                --ovn-sb-db-ssl-key=$TLS_SERVER_KEY \
+                --ovn-sb-db-ssl-cert=$TLS_SERVER_CERT \
+                --ovn-sb-db-ssl-ca-cert=$TLS_SERVER_CA \
+                --ovn-northd-ssl-key=$TLS_NORTHD_KEY \
+                --ovn-northd-ssl-cert=$TLS_NORTHD_CERT \
+                --ovn-northd-ssl-ca-cert=$TLS_NORTHD_CA \
                 --db-nb-cluster-local-proto=ssl \
                 --db-sb-cluster-local-proto=ssl \
                 --db-nb-cluster-remote-proto=ssl \

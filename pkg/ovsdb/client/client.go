@@ -86,22 +86,11 @@ func NewOvsDbClient(
 		backOff = bo
 	}
 	if ssl {
-		cert, err := tls.LoadX509KeyPair(util.SslCertPath, util.SslKeyPath)
+		certPath, keyPath, caPath, legacyCert := ovsdbTLSFiles()
+		tlsConfig, err := newTLSConfig(certPath, keyPath, caPath, legacyCert)
 		if err != nil {
 			klog.Error(err)
-			return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
-		}
-		caCert, err := os.ReadFile(util.SslCACert)
-		if err != nil {
-			klog.Error(err)
-			return nil, fmt.Errorf("failed to read ca cert: %w", err)
-		}
-		certPool := x509.NewCertPool()
-		certPool.AppendCertsFromPEM(caCert)
-		tlsConfig := &tls.Config{
-			Certificates:       []tls.Certificate{cert},
-			RootCAs:            certPool,
-			InsecureSkipVerify: true, // #nosec G402
+			return nil, err
 		}
 		options = append(options, client.WithTLSConfig(tlsConfig))
 	}
@@ -145,4 +134,52 @@ func NewOvsDbClient(
 	}
 
 	return c, nil
+}
+
+func ovsdbTLSFiles() (certPath, keyPath, caPath string, legacyCert bool) {
+	newFiles := []string{util.SslClientCertPath, util.SslClientKeyPath, util.SslCAPath}
+	existing := 0
+	for _, path := range newFiles {
+		if fileExists(path) {
+			existing++
+		}
+	}
+	if existing == len(newFiles) {
+		return util.SslClientCertPath, util.SslClientKeyPath, util.SslCAPath, false
+	}
+	if existing > 0 {
+		klog.Warningf("only some of the ovn db tls client files %v exist, falling back to legacy insecure kube-ovn-tls certificates", newFiles)
+	}
+	return util.SslCertPath, util.SslKeyPath, util.SslCACert, true
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// newTLSConfig leaves ServerName empty on purpose: libovsdb reuses this config
+// for every endpoint in the address list, and tls.Dialer derives the expected
+// server name from the actual dial address when ServerName is empty.
+func newTLSConfig(certPath, keyPath, caPath string, insecureSkipVerify bool) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
+	}
+
+	caCert, err := os.ReadFile(caPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ca cert: %w", err)
+	}
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(caCert) {
+		return nil, fmt.Errorf("failed to append ca cert from %s", caPath)
+	}
+
+	return &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		RootCAs:            certPool,
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: insecureSkipVerify, // #nosec G402 -- preserved only for legacy kube-ovn-tls fallback during upgrade
+	}, nil
 }

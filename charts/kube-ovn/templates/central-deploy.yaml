@@ -104,6 +104,29 @@ spec:
               name: host-config-ovn
             - mountPath: /var/log/ovn
               name: host-log-ovn
+        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
+        # Seed the writable TLS dir with the legacy shared certs so start-db.sh
+        # can fall back to them until the new server/client certs are issued.
+        - name: copy-tls
+          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - "cp -L /tls-source/* /var/run/tls/ 2>/dev/null || true"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsUser: {{ include "kubeovn.runAsUser" . }}
+          volumeMounts:
+            - mountPath: /tls-source
+              name: kube-ovn-tls-source
+              readOnly: true
+            - mountPath: /var/run/tls
+              name: tls-dir
+        {{- end }}
       containers:
         - name: ovn-central
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
@@ -171,8 +194,17 @@ spec:
             - mountPath: /etc/localtime
               name: localtime
               readOnly: true
+            {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
+            - mountPath: /var/run/tls
+              name: tls-dir
+            - mountPath: /var/run/tls/ca.crt
+              name: ovn-db-tls-ca
+              subPath: ca.crt
+              readOnly: true
+            {{- else }}
             - mountPath: /var/run/tls
               name: kube-ovn-tls
+            {{- end }}
           readinessProbe:
             exec:
               command:
@@ -209,10 +241,26 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
+        - name: tls-dir
+          emptyDir: {}
+        - name: kube-ovn-tls-source
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+        - name: ovn-db-tls-ca
+          secret:
+            optional: true
+            secretName: ovn-db-tls-ca
+            items:
+              - key: cacert
+                path: ca.crt
+        {{- else }}
         - name: kube-ovn-tls
           secret:
             optional: true
             secretName: kube-ovn-tls
+        {{- end }}
 
 
 {{- end }}
