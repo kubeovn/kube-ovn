@@ -90,6 +90,8 @@ type FakeControllerOptions struct {
 	RouterLBRules      []*kubeovnv1.RouterLBRule
 	OvnEips            []*kubeovnv1.OvnEip
 	OvnDnatRules       []*kubeovnv1.OvnDnatRule
+	OvnFipRules        []*kubeovnv1.OvnFip
+	OvnSnatRules       []*kubeovnv1.OvnSnatRule
 }
 
 // newFakeControllerWithOptions creates a fake controller with optional pre-populated objects
@@ -202,6 +204,20 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, fip := range opts.OvnFipRules {
+		_, err := kubeovnClient.KubeovnV1().OvnFips().Create(
+			context.Background(), fip, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, snat := range opts.OvnSnatRules {
+		_, err := kubeovnClient.KubeovnV1().OvnSnatRules().Create(
+			context.Background(), snat, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
@@ -242,6 +258,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	routerLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().RouterLBRules()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
+	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
+	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -283,6 +301,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		ovnEipSynced:            alwaysReady,
 		ovnDnatRulesLister:      ovnDnatRuleInformer.Lister(),
 		ovnDnatRuleSynced:       alwaysReady,
+		ovnFipsLister:           ovnFipInformer.Lister(),
+		ovnFipSynced:            alwaysReady,
+		ovnSnatRulesLister:      ovnSnatRuleInformer.Lister(),
+		ovnSnatRuleSynced:       alwaysReady,
 		netAttachLister:         nadInformer.Lister(),
 		netAttachSynced:         alwaysReady,
 		vpcNatGatewayLister:     vpcNatGwInformer.Lister(),
