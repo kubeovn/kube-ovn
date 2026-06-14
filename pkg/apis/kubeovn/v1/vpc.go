@@ -46,6 +46,7 @@ type VpcList struct {
 // +kubebuilder:printcolumn:name="ExtraExternalSubnets",type="string",JSONPath=".status.extraExternalSubnets"
 // +kubebuilder:printcolumn:name="Namespaces",type="string",JSONPath=".spec.namespaces"
 // +kubebuilder:printcolumn:name="DefaultSubnet",type="string",JSONPath=".status.defaultLogicalSwitch"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Vpc struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`

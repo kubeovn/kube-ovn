@@ -12,7 +12,7 @@ import (
 )
 
 func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
-	container := vpcEgressGatewayContainerBFDD("kube-ovn", "10.255.255.255", 100, 100, 5)
+	container := genGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5)
 
 	require.Equal(t, "200m", container.Resources.Requests.Cpu().String())
 	require.Equal(t, "200m", container.Resources.Limits.Cpu().String())

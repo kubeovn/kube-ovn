@@ -135,7 +135,8 @@ func (c *VpcNatGatewayClient) DeleteSync(name string) {
 // WaitToBeReady returns whether the vpc nat gw is ready within timeout.
 func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		if c.Get(name).Spec.LanIP != "" {
+		gw := c.Get(name)
+		if gw.Status.LanIP != "" {
 			return true
 		}
 	}
@@ -145,25 +146,38 @@ func (c *VpcNatGatewayClient) WaitToBeReady(name string, timeout time.Duration) 
 // WaitGwPodReady returns whether the vpc nat gw pod is ready within timeout.
 // gwNamespace is the namespace where the pod resides; if empty, NamespaceSystem is used.
 func (c *VpcNatGatewayClient) WaitGwPodReady(name, gwNamespace string, timeout time.Duration, clientSet clientset.Interface) bool {
-	podName := util.GenNatGwPodName(name)
 	ns := gwNamespace
 	if ns == "" {
 		ns = metav1.NamespaceSystem
 	}
+
+	labels := util.GenNatGwLabels(name)
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
+
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		pod, err := clientSet.CoreV1().Pods(ns).Get(context.Background(), podName, metav1.GetOptions{})
+		pods, err := clientSet.CoreV1().Pods(ns).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
 		if err != nil {
-			if apierrors.IsNotFound(err) {
-				Logf("natgw %s is not ready err: %s", name, err)
-				continue
-			}
-			framework.ExpectNoError(err, "failed to get pod %v", podName)
+			Logf("failed to list pods for natgw %s: %v", name, err)
+			continue
 		}
-		if len(pod.Annotations) != 0 && pod.Annotations[util.VpcNatGatewayInitAnnotation] == "true" {
+		if len(pods.Items) == 0 {
+			Logf("natgw %s is not ready: no pods found", name)
+			continue
+		}
+
+		allReady := true
+		for _, pod := range pods.Items {
+			if pod.Annotations[util.VpcNatGatewayInitAnnotation] != "true" {
+				Logf("natgw pod %s is not ready: not initialized yet", pod.Name)
+				allReady = false
+				break
+			}
+		}
+
+		if allReady {
 			Logf("natgw %s is ready", name)
 			return true
 		}
-		Logf("natgw %s is not ready", name)
 	}
 	return false
 }

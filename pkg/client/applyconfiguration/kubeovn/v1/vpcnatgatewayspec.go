@@ -35,7 +35,12 @@ type VpcNatGatewaySpecApplyConfiguration struct {
 	// External subnets accessible through the NAT gateway
 	ExternalSubnets []string `json:"externalSubnets,omitempty"`
 	// LAN IP address for the NAT gateway. This field is immutable after creation.
+	// Used only when Replicas = 1 (non-HA mode).
 	LanIP *string `json:"lanIp,omitempty"`
+	// Number of gateway replicas for HA support.
+	// When > 1, uses Deployment workload with pod anti-affinity to distribute instances across nodes.
+	// When = 1 or unset, uses StatefulSet workload (legacy mode) for backward compatibility.
+	Replicas *int32 `json:"replicas,omitempty"`
 	// Pod selector for the NAT gateway
 	Selector    []string            `json:"selector,omitempty"`
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
@@ -44,6 +49,16 @@ type VpcNatGatewaySpecApplyConfiguration struct {
 	QoSPolicy *string `json:"qosPolicy,omitempty"`
 	// BGP speaker configuration
 	BgpSpeaker *VpcBgpSpeakerApplyConfiguration `json:"bgpSpeaker,omitempty"`
+	// BFD configuration for health monitoring and automatic failover (HA mode only)
+	BFD *VpcNatGatewayBFDConfigApplyConfiguration `json:"bfd,omitempty"`
+	// Internal subnets by name (resolved to CIDRs) for OVN route injection.
+	// Traffic from these subnets destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+	// This field is cumulative with internalCIDRs.
+	InternalSubnets []string `json:"internalSubnets,omitempty"`
+	// Internal CIDRs for OVN route injection.
+	// Traffic from these CIDRs destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
+	// This field is cumulative with internalSubnets.
+	InternalCIDRs []string `json:"internalCIDRs,omitempty"`
 	// Static routes for the NAT gateway
 	Routes []RouteApplyConfiguration `json:"routes,omitempty"`
 	// Disable default EIP assignment
@@ -101,6 +116,14 @@ func (b *VpcNatGatewaySpecApplyConfiguration) WithLanIP(value string) *VpcNatGat
 	return b
 }
 
+// WithReplicas sets the Replicas field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Replicas field is set to the value of the last call.
+func (b *VpcNatGatewaySpecApplyConfiguration) WithReplicas(value int32) *VpcNatGatewaySpecApplyConfiguration {
+	b.Replicas = &value
+	return b
+}
+
 // WithSelector adds the given value to the Selector field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
 // If called multiple times, values provided by each call will be appended to the Selector field.
@@ -142,6 +165,34 @@ func (b *VpcNatGatewaySpecApplyConfiguration) WithQoSPolicy(value string) *VpcNa
 // If called multiple times, the BgpSpeaker field is set to the value of the last call.
 func (b *VpcNatGatewaySpecApplyConfiguration) WithBgpSpeaker(value *VpcBgpSpeakerApplyConfiguration) *VpcNatGatewaySpecApplyConfiguration {
 	b.BgpSpeaker = value
+	return b
+}
+
+// WithBFD sets the BFD field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BFD field is set to the value of the last call.
+func (b *VpcNatGatewaySpecApplyConfiguration) WithBFD(value *VpcNatGatewayBFDConfigApplyConfiguration) *VpcNatGatewaySpecApplyConfiguration {
+	b.BFD = value
+	return b
+}
+
+// WithInternalSubnets adds the given value to the InternalSubnets field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the InternalSubnets field.
+func (b *VpcNatGatewaySpecApplyConfiguration) WithInternalSubnets(values ...string) *VpcNatGatewaySpecApplyConfiguration {
+	for i := range values {
+		b.InternalSubnets = append(b.InternalSubnets, values[i])
+	}
+	return b
+}
+
+// WithInternalCIDRs adds the given value to the InternalCIDRs field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the InternalCIDRs field.
+func (b *VpcNatGatewaySpecApplyConfiguration) WithInternalCIDRs(values ...string) *VpcNatGatewaySpecApplyConfiguration {
+	for i := range values {
+		b.InternalCIDRs = append(b.InternalCIDRs, values[i])
+	}
 	return b
 }
 

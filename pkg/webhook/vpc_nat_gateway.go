@@ -34,9 +34,10 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	// On update: enforce spec.namespace immutability.
-	// Changing the namespace would create a new StatefulSet in the new namespace while
+	// On update: enforce spec.namespace and HA mode immutability.
+	// 1. Changing the namespace would create a new StatefulSet in the new namespace while
 	// leaving the old one orphaned; there is no migration path for the running workload.
+	// 2. HA to non-HA (or vice-versa) is not supported without a deletion.
 	if len(req.OldObject.Raw) > 0 {
 		gwOld := ovnv1.VpcNatGateway{}
 		if err := v.decoder.DecodeRaw(req.OldObject, &gwOld); err != nil {
@@ -45,6 +46,24 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 		if gwOld.Spec.Namespace != gw.Spec.Namespace {
 			err := fmt.Errorf("VpcNatGateway %q: spec.namespace is immutable (old: %q, new: %q)",
 				gw.Name, gwOld.Spec.Namespace, gw.Spec.Namespace)
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
+
+		oldReplicas := gwOld.Spec.Replicas
+		if oldReplicas == 0 {
+			oldReplicas = 1
+		}
+		newReplicas := gw.Spec.Replicas
+		if newReplicas == 0 {
+			newReplicas = 1
+		}
+
+		if oldReplicas > 1 && newReplicas == 1 {
+			err := fmt.Errorf("VpcNatGateway %q: replica count reduction from HA (>1) to non-HA (1) is not supported; delete and recreate instead", gw.Name)
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
+		if oldReplicas == 1 && newReplicas > 1 {
+			err := fmt.Errorf("VpcNatGateway %q: replica count increase from non-HA (1) to HA (>1) is not supported; delete and recreate instead", gw.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
@@ -361,15 +380,24 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return err
 	}
 
-	if net.ParseIP(gw.Spec.LanIP) == nil {
-		err := fmt.Errorf("lanIP %s is not a valid", gw.Spec.LanIP)
-		return err
+	// Validate LanIP: required only for non-HA mode
+	if isHA := gw.Spec.Replicas > 1; !isHA {
+		if gw.Spec.LanIP == "" {
+			return errors.New("lanIp must be specified")
+		}
+		if net.ParseIP(gw.Spec.LanIP) == nil {
+			return fmt.Errorf("lanIP %s is not a valid IP", gw.Spec.LanIP)
+		}
+		if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIP) {
+			return fmt.Errorf("lanIP %s is not in the range of subnet %s, cidr %v",
+				gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
+		}
 	}
 
-	if !util.CIDRContainIP(subnet.Spec.CIDRBlock, gw.Spec.LanIP) {
-		err := fmt.Errorf("lanIP %s is not in the range of subnet %s, cidr %v",
-			gw.Spec.LanIP, subnet.Name, subnet.Spec.CIDRBlock)
-		return err
+	// Validate BFD configuration if enabled - only check VPC has BFD enabled
+	// CRD validation handles the range checks for minRX, minTX, and multiplier
+	if gw.Spec.BFD.Enabled && !vpc.Spec.EnableBfd {
+		return fmt.Errorf("BFD is enabled on NAT gateway but VPC %s does not have BFD enabled (vpc.spec.enableBfd must be true)", gw.Spec.Vpc)
 	}
 
 	for _, t := range gw.Spec.Tolerations {
