@@ -201,8 +201,18 @@ func addRuleIfNotExist(family int, mark, mask uint32, table int) error {
 		return fmt.Errorf("list rules with mark %x failed err: %w", mark, err)
 	}
 
-	if len(curRules) != 0 {
-		return nil
+	// Only treat the rule as present when its table and mask also match the desired
+	// values. A rule that shares the mark but points at a different table/mask (left over
+	// from a previous configuration or modified externally) would shadow the correct one,
+	// so delete it here and recreate it below instead of skipping silently.
+	for i := range curRules {
+		if curRules[i].Table == table && curRules[i].Mask != nil && *curRules[i].Mask == mask {
+			return nil
+		}
+		klog.Infof("deleting stale tproxy rule %v conflicting with mark %#x table %d", curRules[i], mark, table)
+		if err = netlink.RuleDel(&curRules[i]); err != nil && !errors.Is(err, syscall.ENOENT) {
+			return fmt.Errorf("delete stale rule with mark %x failed err: %w", mark, err)
+		}
 	}
 
 	rule := netlink.NewRule()
