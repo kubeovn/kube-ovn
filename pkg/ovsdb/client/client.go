@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -190,20 +191,27 @@ func newTLSConfig(certPath, keyPath, caPath string, insecureSkipVerify bool) (*t
 }
 
 func newDynamicTLSConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
-	if _, err := tls.LoadX509KeyPair(certPath, keyPath); err != nil {
-		return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
+	watcher, err := certwatcher.New(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create x509 cert watcher: %w", err)
 	}
 	if _, err := loadRootCAs(caPath); err != nil {
 		return nil, err
 	}
 
+	go func() {
+		if err := watcher.Start(context.Background()); err != nil {
+			klog.Errorf("failed to watch x509 cert key pair: %v", err)
+		}
+	}()
+
 	return &tls.Config{
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+			cert, err := watcher.GetCertificate(nil)
 			if err != nil {
-				return nil, fmt.Errorf("failed to reload x509 cert key pair: %w", err)
+				return nil, fmt.Errorf("failed to get x509 cert key pair: %w", err)
 			}
-			return &cert, nil
+			return cert, nil
 		},
 		MinVersion: tls.VersionTLS12,
 		// The dynamic CA bundle is verified in VerifyConnection on every

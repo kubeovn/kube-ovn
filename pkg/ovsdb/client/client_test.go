@@ -41,6 +41,27 @@ func TestNewTLSConfigReloadsClientCertificateAndRootCA(t *testing.T) {
 	}
 }
 
+func TestNewTLSConfigKeepsCachedClientCertificateWhenFilesAreTemporarilyUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath, caPath := writeTestCertificateFiles(t, dir)
+
+	config, err := newTLSConfig(certPath, keyPath, caPath, false)
+	if err != nil {
+		t.Fatalf("newTLSConfig returned error: %v", err)
+	}
+
+	if err := os.Remove(certPath); err != nil {
+		t.Fatalf("failed to remove cert: %v", err)
+	}
+	if err := os.Remove(keyPath); err != nil {
+		t.Fatalf("failed to remove key: %v", err)
+	}
+
+	if _, err := config.GetClientCertificate(nil); err != nil {
+		t.Fatalf("GetClientCertificate returned error after files were removed: %v", err)
+	}
+}
+
 func TestNewTLSConfigCanPreserveLegacyInsecureSkipVerify(t *testing.T) {
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestCertificateFiles(t, dir)
