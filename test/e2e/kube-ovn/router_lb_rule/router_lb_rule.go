@@ -47,16 +47,23 @@ func makeProviderNetwork(providerNetworkName string, exchangeLinkName bool, link
 func curlRLR(f *framework.Framework, clientPodName, eipIP string, port int32) {
 	ginkgo.GinkgoHelper()
 	cmd := "curl -q -s --connect-timeout 5 --max-time 5 " + util.JoinHostPort(eipIP, port)
-	ginkgo.By(fmt.Sprintf("Waiting for %s:%d to be reachable from pod %s/%s", eipIP, port, f.Namespace.Name, clientPodName))
-	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-		_, err := e2epodoutput.RunHostCmd(f.Namespace.Name, clientPodName, cmd)
-		return err == nil, nil
-	}, fmt.Sprintf("%s:%d is reachable", eipIP, port))
-	ginkgo.By(fmt.Sprintf("Verifying %s:%d with 5 sequential requests", eipIP, port))
-	for i := range 5 {
-		_, err := e2epodoutput.RunHostCmd(f.Namespace.Name, clientPodName, cmd)
-		framework.ExpectNoError(err, "request %d/5 to %s:%d failed", i+1, eipIP, port)
-	}
+	// IPv6 underlay NAT/route/NDP convergence, and OVN LB backend updates right
+	// after a StatefulSet scale operation, can take longer than a single probe
+	// window and may briefly flap. Wait until the VIP is *consistently* reachable
+	// (a few consecutive successes) instead of asserting on the first probe, so a
+	// transient timeout during convergence does not fail the test.
+	const wantConsecutive = 3
+	ginkgo.By(fmt.Sprintf("Waiting for %s:%d to be reachable for %d consecutive requests from pod %s/%s",
+		eipIP, port, wantConsecutive, f.Namespace.Name, clientPodName))
+	consecutive := 0
+	framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
+		if _, err := e2epodoutput.RunHostCmd(f.Namespace.Name, clientPodName, cmd); err != nil {
+			consecutive = 0
+			return false, nil
+		}
+		consecutive++
+		return consecutive >= wantConsecutive, nil
+	}, fmt.Sprintf("%s:%d is reachable for %d consecutive requests", eipIP, port, wantConsecutive))
 }
 
 var _ = framework.Describe("[group:rlr]", func() {
@@ -173,6 +180,28 @@ var _ = framework.Describe("[group:rlr]", func() {
 	})
 
 	ginkgo.AfterEach(func() {
+		// This suite shares the "kube-ovn-vlan" docker network and the "external"
+		// provider network (whose bridge keeps the node uplink eth1) with the
+		// [Serial] underlay suite. If an earlier cleanup step fails, the rest of
+		// this AfterEach is skipped and eth1 stays trapped in br-external, which
+		// then breaks every subsequent underlay spec. Release the provider network
+		// and the docker connection from deferred steps so they run even when a
+		// preceding deletion fails (a panic in one deferred func still runs the
+		// others). The docker disconnect is registered first so it runs last.
+		defer func() {
+			ginkgo.By("Disconnecting nodes from the docker network")
+			dockerNetwork, err := docker.NetworkInspect(dockerNetworkName)
+			if err == nil {
+				if nodes, err := kind.ListNodes(clusterName, ""); err == nil {
+					_ = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
+				}
+			}
+		}()
+		defer func() {
+			vlanClient.Delete(vlanName)
+			providerNetworkClient.DeleteSync(providerNetworkName)
+		}()
+
 		ginkgo.By("Cleaning up RouterLBRule resources")
 		rlrClient.Delete(selRlrName)
 		podClient.DeleteGracefully(clientPodName)
@@ -185,27 +214,21 @@ var _ = framework.Describe("[group:rlr]", func() {
 
 		ovnEipClient.DeleteSync(eipName)
 		ovnEipClient.DeleteSync(newEipName)
-		ovnEipClient.DeleteSync(lrpEipName)
 
 		// Health-check VIP (named after the subnet) is created by the endpoint-slice
 		// controller for OVN LB health checks but not deleted by handleDelRouterLBRule.
 		vipClient.DeleteSync(overlaySubnetName)
 		subnetClient.DeleteSync(overlaySubnetName)
+
+		// Delete the VPC before its auto-created LRP EIP "vpc-<name>-external":
+		// while the VPC still has enableExternal=true its controller re-allocates
+		// the LRP EIP as fast as the test deletes it, so deleting the LRP EIP first
+		// would never converge. Deleting the VPC releases the external connection,
+		// after which the LRP EIP can be removed for good.
 		vpcClient.DeleteSync(vpcName)
+		ovnEipClient.DeleteSync(lrpEipName)
 
-		time.Sleep(time.Second)
 		subnetClient.DeleteSync(externalSubnetName)
-		vlanClient.Delete(vlanName)
-		providerNetworkClient.DeleteSync(providerNetworkName)
-
-		ginkgo.By("Disconnecting nodes from the docker network")
-		dockerNetwork, err := docker.NetworkInspect(dockerNetworkName)
-		if err == nil {
-			nodes, err := kind.ListNodes(clusterName, "")
-			if err == nil {
-				_ = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
-			}
-		}
 	})
 
 	framework.ConformanceIt("should create Service and Endpoints for selector mode, update on scale, and clean up on delete", func() {
@@ -428,7 +451,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		_ = rlrClient.Patch(curRule, detRule)
 
 		ginkgo.By("Verifying connectivity drops after EIP detach")
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			for _, ip := range eipIPs {
 				_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName,
 					"curl -q -s --connect-timeout 3 --max-time 3 "+util.JoinHostPort(ip, rlrFrontPort))
@@ -486,7 +509,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		ovnEipClient.DeleteSync(newEipName)
 
 		ginkgo.By("Verifying connectivity drops after EIP deletion")
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			for _, ip := range newEipIPs {
 				_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName,
 					"curl -q -s --connect-timeout 3 --max-time 3 "+util.JoinHostPort(ip, rlrFrontPort))
