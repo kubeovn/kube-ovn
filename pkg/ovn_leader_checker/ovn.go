@@ -587,11 +587,7 @@ func updateTS() error {
 			}
 			args := []string{}
 			if os.Getenv(util.EnvSSLEnabled) == "true" {
-				args = append(args,
-					"--private-key=/var/run/tls/key",
-					"--certificate=/var/run/tls/cert",
-					"--ca-cert=/var/run/tls/cacert",
-				)
+				args = append(args, ovnDBTLSArgs()...)
 			}
 			args = append(args,
 				ovs.MayExist, "ts-add", tsName,
@@ -611,11 +607,8 @@ func updateTS() error {
 			cmd := exec.Command("ovn-ic-nbctl", "ts-del", tsName) // #nosec G204
 			if os.Getenv(util.EnvSSLEnabled) == "true" {
 				// #nosec G204
-				cmd = exec.Command("ovn-ic-nbctl",
-					"--private-key=/var/run/tls/key",
-					"--certificate=/var/run/tls/cert",
-					"--ca-cert=/var/run/tls/cacert",
-					"ts-del", tsName)
+				cmdArgs := append(ovnDBTLSArgs(), "ts-del", tsName)
+				cmd = exec.Command("ovn-ic-nbctl", cmdArgs...)
 			}
 			output, err := cmd.CombinedOutput()
 			if err != nil {
@@ -625,4 +618,24 @@ func updateTS() error {
 	}
 
 	return nil
+}
+
+func ovnDBTLSArgs() []string {
+	if tlsFileExists(util.SslClientKeyPath) && tlsFileExists(util.SslClientCertPath) && tlsFileExists(util.SslCAPath) {
+		return []string{
+			"--private-key=" + util.SslClientKeyPath,
+			"--certificate=" + util.SslClientCertPath,
+			"--ca-cert=" + util.SslCAPath,
+		}
+	}
+	return []string{
+		"--private-key=" + util.SslKeyPath,
+		"--certificate=" + util.SslCertPath,
+		"--ca-cert=" + util.SslCACert,
+	}
+}
+
+func tlsFileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

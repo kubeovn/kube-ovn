@@ -11,7 +11,11 @@ UPDATE_STRATEGY=`kubectl -n $POD_NAMESPACE get ds ovs-ovn -o jsonpath='{.spec.up
 
 SSL_OPTIONS=
 if [ "$ENABLE_SSL" != "false" ]; then
-    SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
+    if [[ -f /var/run/tls/client.crt && -f /var/run/tls/client.key && -f /var/run/tls/ca.crt ]]; then
+        SSL_OPTIONS="-p /var/run/tls/client.key -c /var/run/tls/client.crt -C /var/run/tls/ca.crt"
+    else
+        SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
+    fi
 fi
 
 function gen_conn_str {

@@ -224,8 +224,6 @@ spec:
                   items:
                     - key: ca.crt
                       path: ca.crt
-                    - key: ca.crt
-                      path: cacert
                     - key: server.crt
                       path: server.crt
                     - key: server.key
@@ -235,12 +233,8 @@ spec:
                   items:
                     - key: client.crt
                       path: client.crt
-                    - key: client.crt
-                      path: cert
                     - key: client.key
                       path: client.key
-                    - key: client.key
-                      path: key
         {{- else }}
         - name: kube-ovn-tls
           secret:

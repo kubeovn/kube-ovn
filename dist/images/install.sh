@@ -515,8 +515,6 @@ if [ "$ENABLE_OVN_DB_TLS_CERT" = "true" ]; then
                   items:
                     - key: ca.crt
                       path: ca.crt
-                    - key: ca.crt
-                      path: cacert
                     - key: server.crt
                       path: server.crt
                     - key: server.key
@@ -526,12 +524,8 @@ if [ "$ENABLE_OVN_DB_TLS_CERT" = "true" ]; then
                   items:
                     - key: client.crt
                       path: client.crt
-                    - key: client.crt
-                      path: cert
                     - key: client.key
-                      path: client.key
-                    - key: client.key
-                      path: key"
+                      path: client.key"
   OVN_DB_TLS_CLIENT_VOLUME_NAME="ovn-db-tls-client"
   OVN_DB_TLS_CLIENT_VOLUME="        - name: ovn-db-tls-client
           projected:
@@ -541,16 +535,10 @@ if [ "$ENABLE_OVN_DB_TLS_CERT" = "true" ]; then
                   items:
                     - key: ca.crt
                       path: ca.crt
-                    - key: ca.crt
-                      path: cacert
                     - key: client.crt
                       path: client.crt
-                    - key: client.crt
-                      path: cert
                     - key: client.key
-                      path: client.key
-                    - key: client.key
-                      path: key"
+                      path: client.key"
   OVN_DB_TLS_CNI_ARGS="          - --enable-ovn-db-tls-cert=$ENABLE_OVN_DB_TLS_CERT"
   OVN_DB_TLS_CNI_VOLUME_MOUNT=""
   OVN_DB_TLS_CNI_VOLUME=""

@@ -11,6 +11,14 @@ ovn-ctl status_ovnsb
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
 BIND_LOCAL_ADDR=[${POD_IP:-127.0.0.1}]
 
+function ovn_db_tls_args {
+  if [[ -f /var/run/tls/client.crt && -f /var/run/tls/client.key && -f /var/run/tls/ca.crt ]]; then
+    echo "-p /var/run/tls/client.key -c /var/run/tls/client.crt -C /var/run/tls/ca.crt"
+  else
+    echo "-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
+  fi
+}
+
 # Single-replica (standalone) mode: there is exactly one ovn-central pod and the
 # DB is not clustered, so there is no raft leader to query and no ovn_northd
 # lock to contend. Always mark this pod as the leader for nb/sb/northd, then run
@@ -42,7 +50,8 @@ fi
 if [[ "$ENABLE_SSL" == "false" ]]; then
   nb_leader=$(ovsdb-client query tcp:$BIND_LOCAL_ADDR:6641 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
 else
-  nb_leader=$(ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ssl:$BIND_LOCAL_ADDR:6641 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+  # shellcheck disable=SC2046
+  nb_leader=$(ovsdb-client $(ovn_db_tls_args) query ssl:$BIND_LOCAL_ADDR:6641 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Northbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
 fi
 
 if [[ $nb_leader =~ "true" ]]
@@ -65,7 +74,8 @@ fi
 if [[ "$ENABLE_SSL" == "false" ]]; then
   sb_leader=$(ovsdb-client query tcp:$BIND_LOCAL_ADDR:6642 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
 else
-  sb_leader=$(ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query ssl:$BIND_LOCAL_ADDR:6642 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
+  # shellcheck disable=SC2046
+  sb_leader=$(ovsdb-client $(ovn_db_tls_args) query ssl:$BIND_LOCAL_ADDR:6642 "[\"_Server\",{\"table\":\"Database\",\"where\":[[\"name\",\"==\", \"OVN_Southbound\"]],\"columns\": [\"leader\"],\"op\":\"select\"}]")
 fi
 
 if [[ $sb_leader =~ "true" ]]
@@ -82,7 +92,8 @@ then
        if [[ "$ENABLE_SSL" == "false" ]]; then
          ovsdb-client -v -t 1 steal tcp:$BIND_LOCAL_ADDR:6642  ovn_northd
        else
-         ovsdb-client -v -t 1 -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert steal ssl:$BIND_LOCAL_ADDR:6642  ovn_northd
+         # shellcheck disable=SC2046
+         ovsdb-client -v -t 1 $(ovn_db_tls_args) steal ssl:$BIND_LOCAL_ADDR:6642  ovn_northd
        fi
      fi
    fi

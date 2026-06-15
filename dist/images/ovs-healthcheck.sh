@@ -5,6 +5,14 @@ shopt -s expand_aliases
 OVN_DB_IPS=${OVN_DB_IPS:-}
 ENABLE_SSL=${ENABLE_SSL:-false}
 
+function ovn_db_tls_args {
+  if [[ -f /var/run/tls/client.crt && -f /var/run/tls/client.key && -f /var/run/tls/ca.crt ]]; then
+    echo "-p /var/run/tls/client.key -c /var/run/tls/client.crt -C /var/run/tls/ca.crt"
+  else
+    echo "-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
+  fi
+}
+
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then
     if [[ "$ENABLE_SSL" == "false" ]]; then
@@ -27,7 +35,8 @@ function gen_conn_str {
 if [[ "$ENABLE_SSL" == "false" ]]; then
   ovsdb-client list-dbs
 else
-  ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert list-dbs
+  # shellcheck disable=SC2046
+  ovsdb-client $(ovn_db_tls_args) list-dbs
 fi
 alias ovs-ctl='/usr/share/openvswitch/scripts/ovs-ctl'
 alias ovn-ctl='/usr/share/ovn/scripts/ovn-ctl'
