@@ -7149,6 +7149,7 @@ rules:
       - daemonsets
     verbs:
       - get
+      - update
   - apiGroups:
       - apps
     resources:

@@ -83,66 +83,6 @@ if [ "$ENABLE_SSL" != "false" ]; then
     SSL_OPTIONS="-p $TLS_CLIENT_KEY -c $TLS_CLIENT_CERT -C $TLS_CLIENT_CA"
 fi
 
-function ovn_central_tls_hash {
-    if [[ ! -f /var/run/tls/server.crt || ! -f /var/run/tls/server.key || ! -f /var/run/tls/client.crt || ! -f /var/run/tls/client.key || ! -f /var/run/tls/ca.crt ]]; then
-        return 1
-    fi
-    sha256sum /var/run/tls/server.crt /var/run/tls/server.key /var/run/tls/client.crt /var/run/tls/client.key /var/run/tls/ca.crt | sha256sum | awk '{print $1}'
-}
-
-function restart_ovn_central_for_tls {
-    choose_tls_paths
-    SSL_OPTIONS="-p $TLS_CLIENT_KEY -c $TLS_CLIENT_CERT -C $TLS_CLIENT_CA"
-    /usr/share/ovn/scripts/ovn-ctl \
-        --ovn-nb-db-ssl-key="$TLS_SERVER_KEY" \
-        --ovn-nb-db-ssl-cert="$TLS_SERVER_CERT" \
-        --ovn-nb-db-ssl-ca-cert="$TLS_SERVER_CA" \
-        --ovn-sb-db-ssl-key="$TLS_SERVER_KEY" \
-        --ovn-sb-db-ssl-cert="$TLS_SERVER_CERT" \
-        --ovn-sb-db-ssl-ca-cert="$TLS_SERVER_CA" \
-        --ovn-northd-ssl-key="$TLS_NORTHD_KEY" \
-        --ovn-northd-ssl-cert="$TLS_NORTHD_CERT" \
-        --ovn-northd-ssl-ca-cert="$TLS_NORTHD_CA" \
-        --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
-        restart_northd
-    restore_ovn_central_remotes
-}
-
-function add_ovsdb_remote {
-    local ctl_file="$1"
-    local remote="$2"
-    if ! ovn-appctl -t "$ctl_file" ovsdb-server/list-remotes | grep -Fxq "$remote"; then
-        ovn-appctl -t "$ctl_file" ovsdb-server/add-remote "$remote"
-    fi
-}
-
-function restore_ovn_central_remotes {
-    local ip=""
-    for ip in ${DB_ADDRESSES//,/ }; do
-        add_ovsdb_remote /var/run/ovn/ovnnb_db.ctl "$(gen_listen_addr "$ip" "$NB_PORT")"
-        add_ovsdb_remote /var/run/ovn/ovnsb_db.ctl "$(gen_listen_addr "$ip" "$SB_PORT")"
-    done
-}
-
-function watch_ovn_central_tls {
-    local last_hash=""
-    last_hash=$(ovn_central_tls_hash || true)
-    while true; do
-        sleep 30
-        local current_hash=""
-        current_hash=$(ovn_central_tls_hash || true)
-        if [[ -z "$current_hash" || "$current_hash" == "$last_hash" ]]; then
-            continue
-        fi
-        echo "OVN DB TLS files changed, restarting ovn-central processes"
-        if restart_ovn_central_for_tls; then
-            last_hash="$current_hash"
-        else
-            echo "failed to restart ovn-central processes after OVN DB TLS change"
-        fi
-    done
-}
-
 . /usr/share/openvswitch/scripts/ovs-lib || exit 1
 
 function random_str {
@@ -662,9 +602,6 @@ ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/memory-trim-on-compaction o
 ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/memory-trim-on-compaction on
 
 chmod 600 /etc/ovn/*
-if [[ "$ENABLE_SSL" != "false" && -f /var/run/tls/server.crt && -f /var/run/tls/server.key && -f /var/run/tls/client.crt && -f /var/run/tls/client.key && -f /var/run/tls/ca.crt ]]; then
-    watch_ovn_central_tls &
-fi
 /kube-ovn/kube-ovn-leader-checker \
     --probeInterval=${OVN_LEADER_PROBE_INTERVAL} \
     --enableCompact=${ENABLE_COMPACT} \
