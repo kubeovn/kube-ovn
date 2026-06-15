@@ -439,6 +439,30 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.14 (2026-06-15)
+
+ * [8a9088a6f](https://github.com/kubeovn/kube-ovn/commit/8a9088a6f41b49508e811c7a37509fedfae79c3e) release v1.15.14
+ * [4aad80aef](https://github.com/kubeovn/kube-ovn/commit/4aad80aef22af6c5d993e7a446900dddbedd4ffb) fix(deps): update golang to v0.46.0 (#6862)
+ * [109c350cf](https://github.com/kubeovn/kube-ovn/commit/109c350cf725abf57c2d19022d433d1cb49fe9df) fix(controller): skip service/endpointslice enqueueing when lb is disabled (#6859)
+ * [ee3667cad](https://github.com/kubeovn/kube-ovn/commit/ee3667cadccd447be2a5097e45b53b364175a0d0) fix(images): adapt OVN pinctrl to new OVS compose_nd_ns signature (#6857)
+ * [82cbb956f](https://github.com/kubeovn/kube-ovn/commit/82cbb956faf57502c9d9ded1bed82a52283e88eb) fix(deps): update golang to v0.56.0 (#6855)
+ * [8f6adf46f](https://github.com/kubeovn/kube-ovn/commit/8f6adf46f8c5829881ceb6321ecf2d0cca814371) fix(controller): correct EIP v6 label update in SNAT/DNAT status patch (#6846)
+ * [03b7532fd](https://github.com/kubeovn/kube-ovn/commit/03b7532fd3a98d5008412286c26013f7c2860735) fix(controller): avoid wiping priority-0 CNP map entries on zero-value key (#6844)
+ * [f9a312973](https://github.com/kubeovn/kube-ovn/commit/f9a312973e2da3adffc7caf2465be8948b5dfc59) fix(controller): avoid nil queue panic in DNS name resolver handlers (#6845)
+ * [e096355be](https://github.com/kubeovn/kube-ovn/commit/e096355be40a1027a943c81ec671b37c66419b31) fix(controller): avoid nil pointer panic when attachment default subnet is gone (#6843)
+ * [59d4aff13](https://github.com/kubeovn/kube-ovn/commit/59d4aff131b2ebf3c95d0778d32645eb25191d53) fix(ovs): check error before dereferencing logical router on static route deletion (#6842)
+ * [680185c05](https://github.com/kubeovn/kube-ovn/commit/680185c0507073bc8dae6c9dd110e485f0d656f8) fix(controller): re-enqueue VMI migration when target pod is not yet … (#6834)
+ * [0b5028908](https://github.com/kubeovn/kube-ovn/commit/0b50289081ff66dbc0e32a5ebf66a796672ca3cf) fix(controller): avoid nil pointer panic in chassis and static route gc (#6835)
+ * [fd5ce5d84](https://github.com/kubeovn/kube-ovn/commit/fd5ce5d849346180a447ef551e58e4502b04b0ce) fix(controller): skip orphaned subnet instead of breaking namespace subnet loop (#6836)
+ * [db2a7d979](https://github.com/kubeovn/kube-ovn/commit/db2a7d979db83814cdef040dbd9f98496620d18e) fix(deps): update golang (#6839)
+ * [567077cbb](https://github.com/kubeovn/kube-ovn/commit/567077cbb13c76ae47d5612d92c5c53c3ea3e6a5) prepare for next release
+
+### Contributors
+
+ * Jiri Jezek
+ * Mengxin Liu
+ * renovate[bot]
+
 ## v1.15.13 (2026-06-05)
 
  * [8709a0b54](https://github.com/kubeovn/kube-ovn/commit/8709a0b54efb09800c53d3ca890371effe1ff824) release v1.15.13
