@@ -97,8 +97,6 @@ fi
 
 KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 LOG_DIR=${LOG_DIR:-/var/log}
-OVN_DB_TLS_DIR=${OVN_DB_TLS_DIR:-/var/run/ovn-db-tls}
-
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
@@ -554,12 +552,8 @@ if [ "$ENABLE_OVN_DB_TLS_CERT" = "true" ]; then
                     - key: client.key
                       path: key"
   OVN_DB_TLS_CNI_ARGS="          - --enable-ovn-db-tls-cert=$ENABLE_OVN_DB_TLS_CERT"
-  OVN_DB_TLS_CNI_VOLUME_MOUNT="          - mountPath: /var/run/tls
-            name: ovn-db-tls-dir"
-  OVN_DB_TLS_CNI_VOLUME="        - name: ovn-db-tls-dir
-          hostPath:
-            path: $OVN_DB_TLS_DIR
-            type: DirectoryOrCreate"
+  OVN_DB_TLS_CNI_VOLUME_MOUNT=""
+  OVN_DB_TLS_CNI_VOLUME=""
 else
   OVN_CENTRAL_TLS_VOLUME_MOUNT="            - mountPath: /var/run/tls
               name: kube-ovn-tls"

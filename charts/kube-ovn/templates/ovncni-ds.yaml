@@ -207,12 +207,6 @@ spec:
           - mountPath: /etc/ovs_ipsec_keys
             name: ovs-ipsec-keys
         {{- end }}
-        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
-          # writable dir shared with the ovs-ovn pod via hostPath; the daemon
-          # maintains the requested client cert/key here
-          - mountPath: /var/run/tls
-            name: ovn-db-tls-dir
-        {{- end }}
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
@@ -297,12 +291,6 @@ spec:
         - name: ovs-ipsec-keys
           hostPath:
             path: {{ .Values.OVN_IPSEC_KEY_DIR }}
-        {{- end }}
-        {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
-        - name: ovn-db-tls-dir
-          hostPath:
-            path: {{ .Values.OVN_DB_TLS_DIR }}
-            type: DirectoryOrCreate
         {{- end }}
 
 {{- end }}
