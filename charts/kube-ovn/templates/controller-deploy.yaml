@@ -243,10 +243,6 @@ spec:
         - name: ovn-log
           hostPath:
             path: {{ .Values.log_conf.LOG_DIR }}/ovn
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
         {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
         - name: ovn-db-tls-client
           projected:
@@ -266,6 +262,11 @@ spec:
                       path: client.key
                     - key: client.key
                       path: key
+        {{- else }}
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
         {{- end }}
 
 	{{- end }}

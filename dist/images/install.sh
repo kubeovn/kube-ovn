@@ -97,7 +97,7 @@ fi
 
 KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 LOG_DIR=${LOG_DIR:-/var/log}
-OVN_DB_TLS_DIR=${OVN_DB_TLS_DIR:-/var/run/kube-ovn-tls}
+OVN_DB_TLS_DIR=${OVN_DB_TLS_DIR:-/var/run/ovn-db-tls}
 
 CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
@@ -231,7 +231,7 @@ echo "Enable EIP and SNAT:  $ENABLE_EIP_SNAT"
 echo "Enable Mirror:        $ENABLE_MIRROR"
 echo "-------------------------------"
 
-if [[ $ENABLE_SSL = "true" ]];then
+if [[ $ENABLE_SSL = "true" && $ENABLE_OVN_DB_TLS_CERT != "true" ]];then
   echo "[Step 0/6] Generate SSL key and cert"
   exist=$(kubectl get secret -n kube-system kube-ovn-tls --ignore-not-found)
   if [[ $exist == "" ]];then
@@ -535,11 +535,7 @@ if [ "$ENABLE_OVN_DB_TLS_CERT" = "true" ]; then
                     - key: client.key
                       path: key"
   OVN_DB_TLS_CLIENT_VOLUME_NAME="ovn-db-tls-client"
-  OVN_DB_TLS_CLIENT_VOLUME="        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
-        - name: ovn-db-tls-client
+  OVN_DB_TLS_CLIENT_VOLUME="        - name: ovn-db-tls-client
           projected:
             sources:
               - secret:

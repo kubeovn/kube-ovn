@@ -173,7 +173,7 @@ log_conf:
 
 OPENVSWITCH_DIR: "/etc/origin/openvswitch"
 OVN_IPSEC_KEY_DIR: "/etc/origin/ovs_ipsec_keys"
-OVN_DB_TLS_DIR: "/var/run/kube-ovn-tls"
+OVN_DB_TLS_DIR: "/var/run/ovn-db-tls"
 OVN_DIR: "/etc/origin/ovn"
 DISABLE_MODULES_MANAGEMENT: false
 

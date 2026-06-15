@@ -163,10 +163,6 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
-          secret:
-            optional: true
-            secretName: kube-ovn-tls
         {{- if .Values.func.ENABLE_OVN_DB_TLS_CERT }}
         - name: ovn-db-tls-client
           projected:
@@ -186,6 +182,11 @@ spec:
                       path: client.key
                     - key: client.key
                       path: key
+        {{- else }}
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
         {{- end }}
         - name: kube-ovn-log
           hostPath:
