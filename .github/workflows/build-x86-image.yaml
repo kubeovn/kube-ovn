@@ -2523,8 +2523,8 @@ jobs:
       - name: Collect k8s events
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
-          kubectl get events -A -o yaml > kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
-          tar zcf kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
+          kubectl get events -A -o yaml > kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
+          tar zcf kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
