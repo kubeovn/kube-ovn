@@ -88,16 +88,16 @@ func (c *FakeKubeovnV1) QoSPolicies() v1.QoSPolicyInterface {
 	return newFakeQoSPolicies(c)
 }
 
+func (c *FakeKubeovnV1) RouterLBRules() v1.RouterLBRuleInterface {
+	return newFakeRouterLBRules(c)
+}
+
 func (c *FakeKubeovnV1) SecurityGroups() v1.SecurityGroupInterface {
 	return newFakeSecurityGroups(c)
 }
 
 func (c *FakeKubeovnV1) Subnets() v1.SubnetInterface {
 	return newFakeSubnets(c)
-}
-
-func (c *FakeKubeovnV1) RouterLBRules() v1.RouterLBRuleInterface {
-	return newFakeRouterLBRules(c)
 }
 
 func (c *FakeKubeovnV1) SwitchLBRules() v1.SwitchLBRuleInterface {

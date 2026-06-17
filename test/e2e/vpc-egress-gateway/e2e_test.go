@@ -354,7 +354,18 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 			}, "BFD port status to be cleared for VPC "+vpcName)
 		})
 
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			updatedVpc = vpcClient.Get(vpcName)
+			return updatedVpc.Status.BFDPort.Name != "" &&
+				len(updatedVpc.Status.BFDPort.Chassis) != 0, nil
+		}, "BFD port status to report chassis candidates")
 		framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.Name)
+		framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.BindingStatus)
+		framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.Chassis)
+		if updatedVpc.Status.BFDPort.BindingStatus == "Bound" {
+			framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.ActiveChassis)
+			framework.ExpectNotEmpty(updatedVpc.Status.BFDPort.ActiveNode)
+		}
 		for _, node := range nodes {
 			if slices.Contains(updatedVpc.Status.BFDPort.Nodes, node.Name) {
 				framework.ExpectHaveKey(node.Labels, constants.LabelNodeRoleControlPlane)
@@ -1167,6 +1178,25 @@ func createVegTestGateway(f *framework.Framework, bfd bool, provider, vpcName, i
 	framework.ExpectEqual(veg.Status.Phase, apiv1.PhaseCompleted)
 	framework.ExpectHaveLen(veg.Status.InternalIPs, int(replicas))
 	framework.ExpectHaveLen(veg.Status.ExternalIPs, int(replicas))
+	if bfd {
+		veg = vegClient.WaitUntil(vegName, func(g *apiv1.VpcEgressGateway) (bool, error) {
+			return vegBFDStatusReported(g), nil
+		}, "BFD status to be reported", time.Second, 2*time.Minute)
+		expectedBFDSessions := vegExpectedBFDSessionCount(veg)
+		framework.ExpectTrue(veg.Status.BFD.Enabled)
+		framework.ExpectEqual(veg.Status.BFD.Desired, expectedBFDSessions)
+		framework.ExpectEqual(veg.Status.BFD.Up+veg.Status.BFD.Down, expectedBFDSessions)
+		framework.ExpectHaveLen(veg.Status.BFD.Sessions, int(expectedBFDSessions))
+		for _, session := range veg.Status.BFD.Sessions {
+			framework.ExpectNotEmpty(session.Node)
+			framework.ExpectNotEmpty(session.Nexthop)
+			framework.ExpectNotEmpty(session.LogicalPort)
+			framework.ExpectNotEmpty(session.NBUUID)
+			framework.ExpectNotEmpty(session.NBStatus)
+			framework.ExpectNotEmpty(session.SBUUID)
+			framework.ExpectNotEmpty(session.SBStatus)
+		}
+	}
 	return veg, forwardSubnet, snatSubnetName, snatLabelValue
 }
 
@@ -1318,4 +1348,41 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	)
 	workloadPods, intIPs := validateVegTestWorkload(f, veg, expectedNodes)
 	validateVegTestAccess(f, veg, provider, nadName, forwardSubnet, snatSubnetName, snatLabelValue, workloadPods, intIPs)
+}
+
+func vegBFDStatusReported(veg *apiv1.VpcEgressGateway) bool {
+	expectedSessions := vegExpectedBFDSessionCount(veg)
+	if !veg.Status.BFD.Enabled ||
+		expectedSessions == 0 ||
+		veg.Status.BFD.Desired != expectedSessions ||
+		veg.Status.BFD.Up+veg.Status.BFD.Down != expectedSessions ||
+		len(veg.Status.BFD.Sessions) != int(expectedSessions) {
+		return false
+	}
+
+	for _, session := range veg.Status.BFD.Sessions {
+		if session.Node == "" ||
+			session.Nexthop == "" ||
+			session.LogicalPort == "" ||
+			session.NBUUID == "" ||
+			session.NBStatus == "" ||
+			session.SBUUID == "" ||
+			session.SBStatus == "" {
+			return false
+		}
+	}
+
+	return true
+}
+
+func vegExpectedBFDSessionCount(veg *apiv1.VpcEgressGateway) int32 {
+	var count int32
+	for _, ips := range veg.Status.InternalIPs {
+		for _, ip := range util.SplitTrimmed(ips, ",") {
+			if ip != "" {
+				count++
+			}
+		}
+	}
+	return count
 }

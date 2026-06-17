@@ -130,16 +130,40 @@ type BFDPortStatus struct {
 	Name string `json:"name,omitempty"`
 	// BFD port IP address
 	IP string `json:"ip,omitempty"`
-	// Nodes where BFD port is deployed
+	// Nodes where BFD port is expected to be hosted
 	Nodes []string `json:"nodes,omitempty"`
+	// Chassis contains the expected HA chassis candidates for the BFD port
+	Chassis []BFDPortChassisStatus `json:"chassis,omitempty"`
+	// ActiveNode is the node where the BFD port is currently bound
+	ActiveNode string `json:"activeNode,omitempty"`
+	// ActiveChassis is the chassis where the BFD port is currently bound
+	ActiveChassis string `json:"activeChassis,omitempty"`
+	// BindingStatus reports the BFD port binding state
+	BindingStatus string `json:"bindingStatus,omitempty"`
+	// BFDStatus reports the aggregate BFD session state of the BFD port
+	BFDStatus string `json:"bfdStatus,omitempty"`
+	// Message contains details for the current BFD port state
+	Message string `json:"message,omitempty"`
+}
+
+type BFDPortChassisStatus struct {
+	// Node is the Kubernetes node name for this chassis
+	Node string `json:"node,omitempty"`
+	// Chassis is the OVN chassis name
+	Chassis string `json:"chassis,omitempty"`
+	// Priority is the HA chassis priority
+	Priority int `json:"priority,omitempty"`
+	// Ready indicates whether the chassis exists and can be used
+	Ready bool `json:"ready,omitempty"`
 }
 
 func (s BFDPortStatus) IsEmpty() bool {
-	return s.Name == "" && s.IP == "" && len(s.Nodes) == 0
+	return s.Name == "" && s.IP == "" && len(s.Nodes) == 0 && len(s.Chassis) == 0 &&
+		s.ActiveNode == "" && s.ActiveChassis == "" && s.BindingStatus == "" && s.BFDStatus == "" && s.Message == ""
 }
 
 func (s *BFDPortStatus) Clear() {
-	s.Name, s.IP, s.Nodes = "", "", nil
+	*s = BFDPortStatus{}
 }
 
 type VpcStatus struct {

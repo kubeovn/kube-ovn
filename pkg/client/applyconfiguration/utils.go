@@ -38,6 +38,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.BandwidthLimitApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("BFDPort"):
 		return &kubeovnv1.BFDPortApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("BFDPortChassisStatus"):
+		return &kubeovnv1.BFDPortChassisStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("BFDPortStatus"):
 		return &kubeovnv1.BFDPortStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("BgpConf"):
@@ -146,6 +148,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.QoSPolicyStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("Route"):
 		return &kubeovnv1.RouteApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("RouterLBRule"):
+		return &kubeovnv1.RouterLBRuleApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("RouterLBRulePort"):
+		return &kubeovnv1.RouterLBRulePortApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("RouterLBRuleSpec"):
+		return &kubeovnv1.RouterLBRuleSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("RouterLBRuleStatus"):
+		return &kubeovnv1.RouterLBRuleStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("SecurityGroup"):
 		return &kubeovnv1.SecurityGroupApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("SecurityGroupRule"):
@@ -198,6 +208,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.VpcEgressGatewayApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayBFDConfig"):
 		return &kubeovnv1.VpcEgressGatewayBFDConfigApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayBFDSession"):
+		return &kubeovnv1.VpcEgressGatewayBFDSessionApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayBFDStatus"):
+		return &kubeovnv1.VpcEgressGatewayBFDStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayNodeSelector"):
 		return &kubeovnv1.VpcEgressGatewayNodeSelectorApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayPolicy"):
