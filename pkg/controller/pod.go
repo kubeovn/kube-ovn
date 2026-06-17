@@ -2186,6 +2186,24 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	key := cache.NewObjectName(pod.Namespace, podName).String()
 	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
+	// Handle underlay subnets without CIDR (BYO-DHCP / external DHCP) - only allocate a MAC
+	if podNet.Subnet.Spec.Vlan != "" && podNet.Subnet.Spec.CIDRBlock == "" {
+		klog.Infof("allocating MAC-only for pod %s in underlay subnet %s without CIDR", key, podNet.Subnet.Name)
+
+		annoMAC := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
+		if annoMAC != "" {
+			if _, err := net.ParseMAC(annoMAC); err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
+			// Use the existing MAC annotation
+			return "", "", annoMAC, podNet.Subnet, nil
+		}
+
+		// Generate a new MAC address
+		mac := util.GenerateMac()
+		return "", "", mac, podNet.Subnet, nil
+	}
+
 	var checkVMPod bool
 	isStsPod, _, _ := isStatefulSetPod(pod)
 	// if pod has static vip

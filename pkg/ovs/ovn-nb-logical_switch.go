@@ -20,10 +20,16 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
 	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
 
-	networks, err := util.GetIPAddrWithMask(gateway, cidrBlock)
-	if err != nil {
-		klog.Errorf("failed to get ip %s with mask %s, %v", gateway, cidrBlock, err)
-		return err
+	// underlay subnets without a CIDR (e.g. BYO-DHCP / external DHCP) have no
+	// router-side networks to configure, so skip address/mask computation
+	var switchNetworks string
+	if cidrBlock != "" {
+		networks, err := util.GetIPAddrWithMask(gateway, cidrBlock)
+		if err != nil {
+			klog.Errorf("failed to get ip %s with mask %s, %v", gateway, cidrBlock, err)
+			return err
+		}
+		switchNetworks = networks
 	}
 
 	exist, err := c.LogicalSwitchExists(lsName)
@@ -33,14 +39,14 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 	}
 
 	// only update logical router port networks when logical switch exist
-	if exist {
+	if exist && switchNetworks != "" {
 		if randomAllocateGW {
 			return nil
 		}
 
 		lrp := &ovnnb.LogicalRouterPort{
 			Name:     lrpName,
-			Networks: strings.Split(networks, ","),
+			Networks: strings.Split(switchNetworks, ","),
 		}
 		fields := []any{&lrp.Networks}
 		if gatewayMAC != "" {
@@ -58,8 +64,8 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 		}
 	}
 
-	if needRouter {
-		if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, networks, gatewayMAC); err != nil {
+	if needRouter && switchNetworks != "" {
+		if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, switchNetworks, gatewayMAC); err != nil {
 			klog.Error(err)
 			return err
 		}

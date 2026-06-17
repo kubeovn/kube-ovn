@@ -69,6 +69,16 @@ func (v *ValidatingHook) SubnetUpdateHook(ctx context.Context, req admission.Req
 		return ctrlwebhook.Denied("can't update gateway of cidr when any IPs in Using")
 	}
 
+	// Prevent converting an underlay subnet without CIDR (BYO-DHCP) to one with CIDR and vice versa
+	oldIsUnderlayWithoutCIDR := oldSubnet.Spec.Vlan != "" && oldSubnet.Spec.CIDRBlock == ""
+	newIsUnderlayWithoutCIDR := o.Spec.Vlan != "" && o.Spec.CIDRBlock == ""
+	if oldIsUnderlayWithoutCIDR && !newIsUnderlayWithoutCIDR {
+		return ctrlwebhook.Denied("cannot add cidrBlock to an underlay subnet that was created without one")
+	}
+	if !oldIsUnderlayWithoutCIDR && newIsUnderlayWithoutCIDR {
+		return ctrlwebhook.Denied("cannot remove cidrBlock from an underlay subnet that was created with one")
+	}
+
 	if o.Spec.Vpc != oldSubnet.Spec.Vpc {
 		if oldSubnet.Spec.Vpc != "" || o.Spec.Vpc != util.DefaultVpc {
 			return ctrlwebhook.Denied("vpc can only be changed from empty to ovn-cluster")

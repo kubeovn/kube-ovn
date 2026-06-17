@@ -69,9 +69,9 @@ type SubnetSpec struct {
 	// List of namespaces associated with this subnet.
 	Namespaces []string `json:"namespaces,omitempty"`
 	// CIDR block for the subnet. Immutable after creation.
-	CIDRBlock string `json:"cidrBlock"`
+	CIDRBlock string `json:"cidrBlock,omitempty"`
 	// Gateway IP address for the subnet.
-	Gateway string `json:"gateway"`
+	Gateway string `json:"gateway,omitempty"`
 	// IP addresses to exclude from allocation.
 	ExcludeIps []string `json:"excludeIps,omitempty"`
 	// Provider network name.

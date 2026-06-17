@@ -212,17 +212,22 @@ func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
 }
 
 func formatAddress(subnet *kubeovnv1.Subnet) error {
-	if err := formatCIDR(subnet); err != nil {
-		klog.Error(err)
-		return err
-	}
+	// Underlay subnets without a CIDR (BYO-DHCP / external DHCP) have no address
+	// to normalize - skip CIDR/gateway/excludeIPs formatting which would fail on
+	// an empty CIDRBlock.
+	if subnet.Spec.CIDRBlock != "" {
+		if err := formatCIDR(subnet); err != nil {
+			klog.Error(err)
+			return err
+		}
 
-	if err := formatGateway(subnet); err != nil {
-		klog.Error(err)
-		return err
-	}
+		if err := formatGateway(subnet); err != nil {
+			klog.Error(err)
+			return err
+		}
 
-	formatExcludeIPs(subnet)
+		formatExcludeIPs(subnet)
+	}
 
 	subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 
@@ -568,16 +573,20 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
-		klog.Error(err)
-		return err
-	}
+	if subnet.Spec.CIDRBlock != "" {
+		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+			klog.Error(err)
+			return err
+		}
 
-	// availableIPStr valued from ipam, so leave update subnet.status after ipam process
-	subnet, err = c.calcSubnetStatusIP(subnet)
-	if err != nil {
-		klog.Errorf("calculate subnet %s used ip failed, %v", cachedSubnet.Name, err)
-		return err
+		// availableIPStr valued from ipam, so leave update subnet.status after ipam process
+		subnet, err = c.calcSubnetStatusIP(subnet)
+		if err != nil {
+			klog.Errorf("calculate subnet %s used ip failed, %v", cachedSubnet.Name, err)
+			return err
+		}
+	} else {
+		klog.Infof("subnet %s has no cidrBlock, skipping IPAM (BYO-DHCP / external DHCP)", subnet.Name)
 	}
 
 	subnet, deleted, err := c.handleSubnetFinalizer(subnet)
@@ -1825,7 +1834,7 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 	}
 
 	// calculate subnet status
-	if isU2OIPChanged || isMcastQuerierIPChanged {
+	if (isU2OIPChanged || isMcastQuerierIPChanged) && subnet.Spec.CIDRBlock != "" {
 		if _, err := c.calcSubnetStatusIP(subnet); err != nil {
 			klog.Error(err)
 			return isU2OIPChanged, isMcastQuerierIPChanged, err
