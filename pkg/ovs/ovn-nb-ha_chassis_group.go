@@ -151,6 +151,28 @@ func (c *OVNNbClient) GetHAChassisGroup(name string, ignoreNotFound bool) (*ovnn
 	return group, nil
 }
 
+func (c *OVNNbClient) ListHAChassis(groupName string) ([]ovnnb.HAChassis, error) {
+	group, err := c.GetHAChassisGroup(groupName, true)
+	if err != nil {
+		return nil, err
+	}
+	if group == nil || len(group.HaChassis) == 0 {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	haChassisList := make([]ovnnb.HAChassis, 0, len(group.HaChassis))
+	if err = c.ovsDbClient.WhereCache(func(chassis *ovnnb.HAChassis) bool {
+		return slices.Contains(group.HaChassis, chassis.UUID)
+	}).List(ctx, &haChassisList); err != nil {
+		return nil, fmt.Errorf("failed to list HA chassis for group %q: %w", groupName, err)
+	}
+
+	return haChassisList, nil
+}
+
 // DeleteHAChassisGroup deletes the ha chassis group
 func (c *OVNNbClient) DeleteHAChassisGroup(name string) error {
 	group, err := c.GetHAChassisGroup(name, true)

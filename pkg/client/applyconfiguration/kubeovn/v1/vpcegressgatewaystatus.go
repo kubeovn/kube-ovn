@@ -41,6 +41,8 @@ type VpcEgressGatewayStatusApplyConfiguration struct {
 	Conditions *kubeovnv1.Conditions `json:"conditions,omitempty"`
 	// workload information
 	Workload *VpcEgressWorkloadApplyConfiguration `json:"workload,omitempty"`
+	// BFD information
+	BFD *VpcEgressGatewayBFDStatusApplyConfiguration `json:"bfd,omitempty"`
 }
 
 // VpcEgressGatewayStatusApplyConfiguration constructs a declarative configuration of the VpcEgressGatewayStatus type for use with
@@ -114,5 +116,13 @@ func (b *VpcEgressGatewayStatusApplyConfiguration) WithConditions(value kubeovnv
 // If called multiple times, the Workload field is set to the value of the last call.
 func (b *VpcEgressGatewayStatusApplyConfiguration) WithWorkload(value *VpcEgressWorkloadApplyConfiguration) *VpcEgressGatewayStatusApplyConfiguration {
 	b.Workload = value
+	return b
+}
+
+// WithBFD sets the BFD field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BFD field is set to the value of the last call.
+func (b *VpcEgressGatewayStatusApplyConfiguration) WithBFD(value *VpcEgressGatewayBFDStatusApplyConfiguration) *VpcEgressGatewayStatusApplyConfiguration {
+	b.BFD = value
 	return b
 }

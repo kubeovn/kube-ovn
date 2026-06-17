@@ -66,6 +66,7 @@ type LogicalRouterPort interface {
 type HAChassisGroup interface {
 	CreateHAChassisGroup(name string, chassises []string, externalIDs map[string]string) error
 	GetHAChassisGroup(name string, ignoreNotFound bool) (*ovnnb.HAChassisGroup, error)
+	ListHAChassis(groupName string) ([]ovnnb.HAChassis, error)
 	DeleteHAChassisGroup(name string) error
 }
 
@@ -287,7 +288,17 @@ type NbClient interface {
 
 type SbClient interface {
 	Chassis
+	SbBFD
+	PortBinding
 	Common
+}
+
+type SbBFD interface {
+	ListBFDs(lrpName, dstIP string) ([]ovnsb.BFD, error)
+}
+
+type PortBinding interface {
+	GetPortBinding(logicalPort string, ignoreNotFound bool) (*ovnsb.PortBinding, error)
 }
 
 type Common interface {

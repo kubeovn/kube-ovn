@@ -3929,6 +3929,65 @@ spec:
             type: object
           status:
             properties:
+              bfd:
+                description: BFD information
+                properties:
+                  desired:
+                    description: expected number of BFD sessions
+                    format: int32
+                    type: integer
+                  down:
+                    description: number of BFD sessions with a down status
+                    format: int32
+                    type: integer
+                  enabled:
+                    description: whether BFD is enabled
+                    type: boolean
+                  sessions:
+                    description: BFD session details
+                    items:
+                      properties:
+                        addressFamily:
+                          description: address family of the nexthop
+                          type: integer
+                        chassis:
+                          description: chassis that owns the SB BFD session
+                          type: string
+                        lastTransitionTime:
+                          description: last time the session status changed
+                          format: date-time
+                          type: string
+                        logicalPort:
+                          description: logical router port used by the BFD session
+                          type: string
+                        message:
+                          description: detailed status message
+                          type: string
+                        nbStatus:
+                          description: NB BFD status
+                          type: string
+                        nbUUID:
+                          description: NB BFD UUID
+                          type: string
+                        nexthop:
+                          description: nexthop IP address
+                          type: string
+                        node:
+                          description: node where the gateway nexthop is running
+                          type: string
+                        sbStatus:
+                          description: SB BFD status
+                          type: string
+                        sbUUID:
+                          description: SB BFD UUID
+                          type: string
+                      type: object
+                    type: array
+                  up:
+                    description: number of BFD sessions with an up status
+                    format: int32
+                    type: integer
+                type: object
               conditions:
                 description: Conditions represent the latest available observations
                   of the egress gateway's current state
@@ -6421,14 +6480,53 @@ spec:
             properties:
               bfdPort:
                 properties:
+                  activeChassis:
+                    description: ActiveChassis is the chassis where the BFD port is
+                      currently bound
+                    type: string
+                  activeNode:
+                    description: ActiveNode is the node where the BFD port is currently
+                      bound
+                    type: string
+                  bfdStatus:
+                    description: BFDStatus reports the aggregate BFD session state
+                      of the BFD port
+                    type: string
+                  bindingStatus:
+                    description: BindingStatus reports the BFD port binding state
+                    type: string
+                  chassis:
+                    description: Chassis contains the expected HA chassis candidates
+                      for the BFD port
+                    items:
+                      properties:
+                        chassis:
+                          description: Chassis is the OVN chassis name
+                          type: string
+                        node:
+                          description: Node is the Kubernetes node name for this chassis
+                          type: string
+                        priority:
+                          description: Priority is the HA chassis priority
+                          type: integer
+                        ready:
+                          description: Ready indicates whether the chassis exists
+                            and can be used
+                          type: boolean
+                      type: object
+                    type: array
                   ip:
                     description: BFD port IP address
+                    type: string
+                  message:
+                    description: Message contains details for the current BFD port
+                      state
                     type: string
                   name:
                     description: BFD port name
                     type: string
                   nodes:
-                    description: Nodes where BFD port is deployed
+                    description: Nodes where BFD port is expected to be hosted
                     items:
                       type: string
                     type: array

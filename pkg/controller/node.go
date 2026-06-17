@@ -39,6 +39,7 @@ func (c *Controller) enqueueAddNode(obj any) {
 	key := cache.MetaObjectToName(obj.(*v1.Node)).String()
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
+	c.enqueueVpcsWithBFDPort()
 }
 
 func nodeReady(node *v1.Node) bool {
@@ -83,6 +84,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 			klog.V(3).Infof("enqueue update node %s", key)
 			c.updateNodeQueue.Add(key)
 		}
+		c.enqueueVpcsWithBFDPort()
 	}
 }
 
@@ -107,6 +109,20 @@ func (c *Controller) enqueueDeleteNode(obj any) {
 	klog.V(3).Infof("enqueue delete node %s", key)
 	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
+	c.enqueueVpcsWithBFDPort()
+}
+
+func (c *Controller) enqueueVpcsWithBFDPort() {
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		klog.Warningf("failed to list vpcs for BFD port reconcile: %v", err)
+		return
+	}
+	for _, vpc := range vpcs {
+		if vpc.Spec.BFDPort.IsEnabled() {
+			c.addOrUpdateVpcQueue.AddAfter(vpc.Name, 2*time.Second)
+		}
+	}
 }
 
 func nodeUnderlayAddressSetName(node string, af int) string {

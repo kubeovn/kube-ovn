@@ -48,11 +48,11 @@ type ProviderNetworkExpansion interface{}
 
 type QoSPolicyExpansion interface{}
 
+type RouterLBRuleExpansion interface{}
+
 type SecurityGroupExpansion interface{}
 
 type SubnetExpansion interface{}
-
-type RouterLBRuleExpansion interface{}
 
 type SwitchLBRuleExpansion interface{}
 

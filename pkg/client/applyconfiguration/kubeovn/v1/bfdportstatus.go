@@ -25,8 +25,20 @@ type BFDPortStatusApplyConfiguration struct {
 	Name *string `json:"name,omitempty"`
 	// BFD port IP address
 	IP *string `json:"ip,omitempty"`
-	// Nodes where BFD port is deployed
+	// Nodes where BFD port is expected to be hosted
 	Nodes []string `json:"nodes,omitempty"`
+	// Chassis contains the expected HA chassis candidates for the BFD port
+	Chassis []BFDPortChassisStatusApplyConfiguration `json:"chassis,omitempty"`
+	// ActiveNode is the node where the BFD port is currently bound
+	ActiveNode *string `json:"activeNode,omitempty"`
+	// ActiveChassis is the chassis where the BFD port is currently bound
+	ActiveChassis *string `json:"activeChassis,omitempty"`
+	// BindingStatus reports the BFD port binding state
+	BindingStatus *string `json:"bindingStatus,omitempty"`
+	// BFDStatus reports the aggregate BFD session state of the BFD port
+	BFDStatus *string `json:"bfdStatus,omitempty"`
+	// Message contains details for the current BFD port state
+	Message *string `json:"message,omitempty"`
 }
 
 // BFDPortStatusApplyConfiguration constructs a declarative configuration of the BFDPortStatus type for use with
@@ -58,5 +70,58 @@ func (b *BFDPortStatusApplyConfiguration) WithNodes(values ...string) *BFDPortSt
 	for i := range values {
 		b.Nodes = append(b.Nodes, values[i])
 	}
+	return b
+}
+
+// WithChassis adds the given value to the Chassis field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Chassis field.
+func (b *BFDPortStatusApplyConfiguration) WithChassis(values ...*BFDPortChassisStatusApplyConfiguration) *BFDPortStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithChassis")
+		}
+		b.Chassis = append(b.Chassis, *values[i])
+	}
+	return b
+}
+
+// WithActiveNode sets the ActiveNode field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ActiveNode field is set to the value of the last call.
+func (b *BFDPortStatusApplyConfiguration) WithActiveNode(value string) *BFDPortStatusApplyConfiguration {
+	b.ActiveNode = &value
+	return b
+}
+
+// WithActiveChassis sets the ActiveChassis field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ActiveChassis field is set to the value of the last call.
+func (b *BFDPortStatusApplyConfiguration) WithActiveChassis(value string) *BFDPortStatusApplyConfiguration {
+	b.ActiveChassis = &value
+	return b
+}
+
+// WithBindingStatus sets the BindingStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BindingStatus field is set to the value of the last call.
+func (b *BFDPortStatusApplyConfiguration) WithBindingStatus(value string) *BFDPortStatusApplyConfiguration {
+	b.BindingStatus = &value
+	return b
+}
+
+// WithBFDStatus sets the BFDStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BFDStatus field is set to the value of the last call.
+func (b *BFDPortStatusApplyConfiguration) WithBFDStatus(value string) *BFDPortStatusApplyConfiguration {
+	b.BFDStatus = &value
+	return b
+}
+
+// WithMessage sets the Message field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Message field is set to the value of the last call.
+func (b *BFDPortStatusApplyConfiguration) WithMessage(value string) *BFDPortStatusApplyConfiguration {
+	b.Message = &value
 	return b
 }
