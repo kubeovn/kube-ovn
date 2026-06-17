@@ -373,7 +373,9 @@ func ValidateNetworkBroadcast(cidr, ip string) error {
 			}
 
 			ipStr := IPToString(ipAddr)
-			if SubnetBroadcast(cidrBlock) == ipStr {
+			// IPv6 has no broadcast address (RFC 4291), so the all-ones host
+			// address is a valid unicast IP and must not be rejected here.
+			if CheckProtocol(cidrBlock) == kubeovnv1.ProtocolIPv4 && SubnetBroadcast(cidrBlock) == ipStr {
 				return fmt.Errorf("%s is the broadcast ip in cidr %s", ipStr, cidrBlock)
 			}
 			if SubnetNumber(cidrBlock) == ipStr {
