@@ -21,6 +21,7 @@ ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
 ADD patches/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch $SRC_DIR
 ADD patches/5593e614e51a5dce28941e5bf760f9ee5397cede.patch $SRC_DIR
 ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
+ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
 
@@ -49,8 +50,12 @@ RUN cd /usr/src/ && \
     # increase the default probe interval for large cluster
     git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch
 
-RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && \
+    git init ovn && \
     cd ovn && \
+    git remote add origin https://github.com/ovn-org/ovn.git && \
+    git fetch --depth=1 origin ef8f5c1ac63e8094eaf13507013e310991db45a2 && \
+    git checkout FETCH_HEAD && \
     # change hash type from dp_hash to hash with field src_ip
     git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # modify src route priority
@@ -58,7 +63,9 @@ RUN cd /usr/src/ && git clone -b branch-24.03 --depth=1 https://github.com/ovn-o
     # fix reaching resubmit limit in underlay
     git apply $SRC_DIR/5593e614e51a5dce28941e5bf760f9ee5397cede.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch
+    git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
+    # adapt to the compose_nd_ns() signature change in ovs branch-3.3 commit 3430a01a6
+    git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
