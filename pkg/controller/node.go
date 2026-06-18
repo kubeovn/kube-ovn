@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -35,9 +36,11 @@ func (e *ErrChassisNotFound) Error() string {
 }
 
 func (c *Controller) enqueueAddNode(obj any) {
-	key := cache.MetaObjectToName(obj.(*v1.Node)).String()
+	node := obj.(*v1.Node)
+	key := cache.MetaObjectToName(node).String()
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
+	c.enqueueVpcBFDPortByNodeChange(nil, node)
 }
 
 func nodeReady(node *v1.Node) bool {
@@ -53,13 +56,62 @@ func nodeReady(node *v1.Node) bool {
 	return ready && !networkUnavailable
 }
 
+func (c *Controller) listVpcBFDPorts() ([]*kubeovnv1.Vpc, error) {
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	bfdVpcs := make([]*kubeovnv1.Vpc, 0, len(vpcs))
+	for _, vpc := range vpcs {
+		if vpc.Labels != nil && vpc.Labels[util.VpcExternalLabel] == "true" {
+			continue
+		}
+		if !vpc.Spec.BFDPort.IsEnabled() {
+			continue
+		}
+		bfdVpcs = append(bfdVpcs, vpc)
+	}
+	return bfdVpcs, nil
+}
+
+func (c *Controller) enqueueVpcBFDPortByNodeChange(oldNode, newNode *v1.Node) {
+	vpcs, err := c.listVpcBFDPorts()
+	if err != nil {
+		klog.Errorf("failed to list VPC BFD ports for node change: %v", err)
+		return
+	}
+
+	for _, vpc := range vpcs {
+		selector := labels.Everything()
+		if vpc.Spec.BFDPort.NodeSelector != nil {
+			selector, err = metav1.LabelSelectorAsSelector(vpc.Spec.BFDPort.NodeSelector)
+			if err != nil {
+				klog.Errorf("failed to parse BFD port node selector of vpc %s: %v", vpc.Name, err)
+				c.addOrUpdateVpcQueue.Add(vpc.Name)
+				continue
+			}
+		}
+
+		oldMatched := oldNode != nil && selector.Matches(labels.Set(oldNode.Labels))
+		newMatched := newNode != nil && selector.Matches(labels.Set(newNode.Labels))
+		nodeReadyChanged := oldNode != nil && newNode != nil && oldMatched && newMatched && nodeReady(oldNode) != nodeReady(newNode)
+		if oldMatched != newMatched || nodeReadyChanged {
+			klog.V(3).Infof("enqueue update vpc %s for BFD port triggered by node change", vpc.Name)
+			c.addOrUpdateVpcQueue.Add(vpc.Name)
+		}
+	}
+}
+
 func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
+	nodeReadyChanged := nodeReady(oldNode) != nodeReady(newNode)
+	nodeLabelsChanged := !maps.Equal(oldNode.Labels, newNode.Labels)
 
-	if nodeReady(oldNode) != nodeReady(newNode) ||
+	key := cache.MetaObjectToName(newNode).String()
+	if nodeReadyChanged ||
 		!reflect.DeepEqual(oldNode.Annotations, newNode.Annotations) {
-		key := cache.MetaObjectToName(newNode).String()
 		if len(newNode.Annotations) == 0 || newNode.Annotations[util.AllocatedAnnotation] != "true" {
 			klog.V(3).Infof("enqueue add node %s", key)
 			c.addNodeQueue.Add(key)
@@ -67,6 +119,9 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 			klog.V(3).Infof("enqueue update node %s", key)
 			c.updateNodeQueue.Add(key)
 		}
+	}
+	if nodeReadyChanged || nodeLabelsChanged {
+		c.enqueueVpcBFDPortByNodeChange(oldNode, newNode)
 	}
 }
 
@@ -91,6 +146,7 @@ func (c *Controller) enqueueDeleteNode(obj any) {
 	klog.V(3).Infof("enqueue delete node %s", key)
 	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
+	c.enqueueVpcBFDPortByNodeChange(node, nil)
 }
 
 func nodeUnderlayAddressSetName(node string, af int) string {
