@@ -8,7 +8,7 @@ require (
 	github.com/cert-manager/cert-manager v1.20.2
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
 	github.com/containerd/containerd/v2 v2.3.1
-	github.com/containerd/nerdctl/v2 v2.3.1
+	github.com/containerd/nerdctl/v2 v2.3.2
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.9.1
 	github.com/digitalocean/go-openvswitch v0.0.0-20251118231545-85aec29b8ee6
@@ -190,7 +190,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runtime-spec v1.3.0 // indirect
-	github.com/opencontainers/selinux v1.15.0 // indirect
+	github.com/opencontainers/selinux v1.15.1 // indirect
 	github.com/openshift/api v0.0.0 // indirect
 	github.com/openshift/client-go v3.9.0+incompatible // indirect
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
