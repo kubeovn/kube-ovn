@@ -93,6 +93,7 @@ type Controller struct {
 
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
+	vpcIndexer           cache.Indexer
 	addOrUpdateVpcQueue  workqueue.TypedRateLimitingInterface[string]
 	vpcLastPoliciesMap   *xsync.Map[string, string]
 	delVpcQueue          workqueue.TypedRateLimitingInterface[*kubeovnv1.Vpc]
@@ -756,7 +757,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
 	}
 
-	if err := controller.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
+	if err := controller.setupIndexers(vpcInformer.Informer(), podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
 		util.LogFatalAndExit(err, "failed to set up informer indexers")
 	}
 
