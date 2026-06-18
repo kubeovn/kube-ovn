@@ -289,7 +289,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	learnFromARPRequest := vpc.Spec.EnableExternal
+	learnFromARPRequest := vpc.Spec.EnableExternal || len(vpc.Spec.VpcPeerings) != 0
 	if !learnFromARPRequest {
 		for _, subnetName := range vpc.Status.Subnets {
 			subnet, err := c.subnetsLister.Get(subnetName)
