@@ -12,8 +12,27 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestAggregateVpcBFDStatus(t *testing.T) {
+	up := ovnnb.BFDStatusUp
+	down := ovnnb.BFDStatusDown
+
+	require.Equal(t, bfdPortBFDStatusUnknown, aggregateVpcBFDStatus(nil, nil))
+	require.Equal(t, bfdPortBFDStatusUp, aggregateVpcBFDStatus([]ovnnb.BFD{{Status: &up}}, nil))
+	require.Equal(t, bfdPortBFDStatusDown, aggregateVpcBFDStatus([]ovnnb.BFD{{Status: &down}}, nil))
+	require.Equal(t, bfdPortBFDStatusPartial, aggregateVpcBFDStatus(nil, []ovnsb.BFD{
+		{Status: ovnsb.BFDStatusUp},
+		{Status: ovnsb.BFDStatusDown},
+	}))
+}
+
+func TestMoveChassisToEnd(t *testing.T) {
+	require.Equal(t, []string{"b", "c", "a"}, moveChassisToEnd([]string{"a", "b", "c"}, "a"))
+	require.Equal(t, []string{"a", "b"}, moveChassisToEnd([]string{"a", "b"}, "missing"))
+}
 
 func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 	t.Parallel()

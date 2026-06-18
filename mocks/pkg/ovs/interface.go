@@ -761,6 +761,21 @@ func (mr *MockHAChassisGroupMockRecorder) GetHAChassisGroup(name, ignoreNotFound
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHAChassisGroup", reflect.TypeOf((*MockHAChassisGroup)(nil).GetHAChassisGroup), name, ignoreNotFound)
 }
 
+// ListHAChassis mocks base method.
+func (m *MockHAChassisGroup) ListHAChassis(groupName string) ([]ovnnb.HAChassis, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListHAChassis", groupName)
+	ret0, _ := ret[0].([]ovnnb.HAChassis)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListHAChassis indicates an expected call of ListHAChassis.
+func (mr *MockHAChassisGroupMockRecorder) ListHAChassis(groupName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHAChassis", reflect.TypeOf((*MockHAChassisGroup)(nil).ListHAChassis), groupName)
+}
+
 // MockGatewayChassis is a mock of GatewayChassis interface.
 type MockGatewayChassis struct {
 	ctrl     *gomock.Controller
@@ -4651,6 +4666,21 @@ func (mr *MockNbClientMockRecorder) ListGatewayChassisByLogicalRouterPort(lrpNam
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListGatewayChassisByLogicalRouterPort", reflect.TypeOf((*MockNbClient)(nil).ListGatewayChassisByLogicalRouterPort), lrpName, ignoreNotFound)
 }
 
+// ListHAChassis mocks base method.
+func (m *MockNbClient) ListHAChassis(groupName string) ([]ovnnb.HAChassis, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListHAChassis", groupName)
+	ret0, _ := ret[0].([]ovnnb.HAChassis)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListHAChassis indicates an expected call of ListHAChassis.
+func (mr *MockNbClientMockRecorder) ListHAChassis(groupName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListHAChassis", reflect.TypeOf((*MockNbClient)(nil).ListHAChassis), groupName)
+}
+
 // ListLoadBalancerHealthChecks mocks base method.
 func (m *MockNbClient) ListLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) ([]ovnnb.LoadBalancerHealthCheck, error) {
 	m.ctrl.T.Helper()
@@ -6220,6 +6250,36 @@ func (mr *MockSbClientMockRecorder) GetKubeOvnChassises() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKubeOvnChassises", reflect.TypeOf((*MockSbClient)(nil).GetKubeOvnChassises))
 }
 
+// GetPortBinding mocks base method.
+func (m *MockSbClient) GetPortBinding(logicalPort string, ignoreNotFound bool) (*ovnsb.PortBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPortBinding", logicalPort, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnsb.PortBinding)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPortBinding indicates an expected call of GetPortBinding.
+func (mr *MockSbClientMockRecorder) GetPortBinding(logicalPort, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPortBinding", reflect.TypeOf((*MockSbClient)(nil).GetPortBinding), logicalPort, ignoreNotFound)
+}
+
+// ListBFDs mocks base method.
+func (m *MockSbClient) ListBFDs(lrpName, dstIP string) ([]ovnsb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBFDs", lrpName, dstIP)
+	ret0, _ := ret[0].([]ovnsb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBFDs indicates an expected call of ListBFDs.
+func (mr *MockSbClientMockRecorder) ListBFDs(lrpName, dstIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFDs", reflect.TypeOf((*MockSbClient)(nil).ListBFDs), lrpName, dstIP)
+}
+
 // ListChassis mocks base method.
 func (m *MockSbClient) ListChassis() (*[]ovnsb.Chassis, error) {
 	m.ctrl.T.Helper()
@@ -6280,6 +6340,84 @@ func (m *MockSbClient) UpdateChassisTag(chassisName, nodeName string) error {
 func (mr *MockSbClientMockRecorder) UpdateChassisTag(chassisName, nodeName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassisTag", reflect.TypeOf((*MockSbClient)(nil).UpdateChassisTag), chassisName, nodeName)
+}
+
+// MockSbBFD is a mock of SbBFD interface.
+type MockSbBFD struct {
+	ctrl     *gomock.Controller
+	recorder *MockSbBFDMockRecorder
+	isgomock struct{}
+}
+
+// MockSbBFDMockRecorder is the mock recorder for MockSbBFD.
+type MockSbBFDMockRecorder struct {
+	mock *MockSbBFD
+}
+
+// NewMockSbBFD creates a new mock instance.
+func NewMockSbBFD(ctrl *gomock.Controller) *MockSbBFD {
+	mock := &MockSbBFD{ctrl: ctrl}
+	mock.recorder = &MockSbBFDMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSbBFD) EXPECT() *MockSbBFDMockRecorder {
+	return m.recorder
+}
+
+// ListBFDs mocks base method.
+func (m *MockSbBFD) ListBFDs(lrpName, dstIP string) ([]ovnsb.BFD, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBFDs", lrpName, dstIP)
+	ret0, _ := ret[0].([]ovnsb.BFD)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBFDs indicates an expected call of ListBFDs.
+func (mr *MockSbBFDMockRecorder) ListBFDs(lrpName, dstIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBFDs", reflect.TypeOf((*MockSbBFD)(nil).ListBFDs), lrpName, dstIP)
+}
+
+// MockPortBinding is a mock of PortBinding interface.
+type MockPortBinding struct {
+	ctrl     *gomock.Controller
+	recorder *MockPortBindingMockRecorder
+	isgomock struct{}
+}
+
+// MockPortBindingMockRecorder is the mock recorder for MockPortBinding.
+type MockPortBindingMockRecorder struct {
+	mock *MockPortBinding
+}
+
+// NewMockPortBinding creates a new mock instance.
+func NewMockPortBinding(ctrl *gomock.Controller) *MockPortBinding {
+	mock := &MockPortBinding{ctrl: ctrl}
+	mock.recorder = &MockPortBindingMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPortBinding) EXPECT() *MockPortBindingMockRecorder {
+	return m.recorder
+}
+
+// GetPortBinding mocks base method.
+func (m *MockPortBinding) GetPortBinding(logicalPort string, ignoreNotFound bool) (*ovnsb.PortBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPortBinding", logicalPort, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnsb.PortBinding)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPortBinding indicates an expected call of GetPortBinding.
+func (mr *MockPortBindingMockRecorder) GetPortBinding(logicalPort, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPortBinding", reflect.TypeOf((*MockPortBinding)(nil).GetPortBinding), logicalPort, ignoreNotFound)
 }
 
 // MockCommon is a mock of Common interface.

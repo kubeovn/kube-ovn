@@ -9,6 +9,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
 
 func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
@@ -112,4 +114,37 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 			require.Len(t, messages, tt.wantNotReadyCount)
 		})
 	}
+}
+
+func TestVegBFDSessionStatuses(t *testing.T) {
+	up := ovnnb.BFDStatusUp
+	oldTransition := metav1.Now()
+	oldStatus := kubeovnv1.VpcEgressGatewayBFDStatus{
+		Sessions: []kubeovnv1.VpcEgressGatewayBFDSession{{
+			AddressFamily:      4,
+			Node:               "node-a",
+			Nexthop:            "10.0.0.2",
+			SBStatus:           ovnsb.BFDStatusUp,
+			LastTransitionTime: oldTransition,
+		}},
+	}
+
+	sessions := vegBFDSessionStatuses(
+		4,
+		"bfd@test",
+		map[string]string{"node-a": "10.0.0.2", "node-b": "10.0.0.3"},
+		map[string]ovnnb.BFD{
+			"10.0.0.2": {UUID: "nb-a", DstIP: "10.0.0.2", Status: &up},
+		},
+		map[string]ovnsb.BFD{
+			"10.0.0.2": {UUID: "sb-a", DstIP: "10.0.0.2", Status: ovnsb.BFDStatusUp, ChassisName: "chassis-a"},
+		},
+		oldStatus,
+	)
+
+	require.Len(t, sessions, 2)
+	require.True(t, vegBFDSessionUp(sessions[0]))
+	require.Equal(t, oldTransition, sessions[0].LastTransitionTime)
+	require.False(t, vegBFDSessionUp(sessions[1]))
+	require.Equal(t, "NB BFD session is missing", sessions[1].Message)
 }

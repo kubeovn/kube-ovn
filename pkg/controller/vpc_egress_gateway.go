@@ -6,6 +6,7 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -161,6 +163,7 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 
 	klog.Infof("reconciling vpc-egress-gateway %s", key)
 	gw := cachedGateway.DeepCopy()
+	oldBFDStatus := gw.Status.BFD
 	if gw, err = c.initVpcEgressGatewayStatus(gw); err != nil {
 		return err
 	}
@@ -264,10 +267,32 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 		return err
 	}
 
+	if gw.Spec.BFD.Enabled {
+		if gw.Status.BFD, err = c.collectVpcEgressGatewayBFDStatus(vpc.Status.BFDPort.Name, nodeNexthopIPv4, nodeNexthopIPv6, oldBFDStatus); err != nil {
+			gw.Status.BFD.Enabled = true
+			gw.Status.Conditions.SetCondition(kubeovnv1.ConditionType("BFD"), corev1.ConditionUnknown, "BFDStatusQueryFailed", err.Error(), gw.Generation)
+			c.recorder.Eventf(gw, corev1.EventTypeWarning, "BFDStatusQueryFailed", "%s", err.Error())
+		} else {
+			if gw.Status.BFD.Down != 0 {
+				gw.Status.Conditions.SetCondition(kubeovnv1.ConditionType("BFD"), corev1.ConditionFalse, "BFDSessionDown", "one or more BFD sessions are not up", gw.Generation)
+			} else {
+				gw.Status.Conditions.SetCondition(kubeovnv1.ConditionType("BFD"), corev1.ConditionTrue, "BFDSessionUp", "", gw.Generation)
+			}
+			c.recordVpcEgressGatewayBFDEvents(gw, oldBFDStatus, gw.Status.BFD)
+		}
+	} else {
+		gw.Status.BFD = kubeovnv1.VpcEgressGatewayBFDStatus{}
+		gw.Status.Conditions.RemoveCondition(kubeovnv1.ConditionType("BFD"))
+	}
+
 	if ready && workloadReady {
 		gw.Status.Ready = true
 		gw.Status.Phase = kubeovnv1.PhaseCompleted
 		gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
+		if _, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
+			return err
+		}
+	} else if gw.Spec.BFD.Enabled || oldBFDStatus.Enabled {
 		if _, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
 			return err
 		}
@@ -914,6 +939,165 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 
 	return nil
+}
+
+func (c *Controller) collectVpcEgressGatewayBFDStatus(
+	lrpName string,
+	nodeNexthopIPv4, nodeNexthopIPv6 map[string]string,
+	oldStatus kubeovnv1.VpcEgressGatewayBFDStatus,
+) (kubeovnv1.VpcEgressGatewayBFDStatus, error) {
+	status := kubeovnv1.VpcEgressGatewayBFDStatus{
+		Enabled: true,
+		Desired: safeInt32(len(nodeNexthopIPv4) + len(nodeNexthopIPv6)),
+	}
+	if lrpName == "" {
+		status.Down = status.Desired
+		status.Sessions = append(status.Sessions, vegBFDSessionStatuses(4, "", nodeNexthopIPv4, nil, nil, oldStatus)...)
+		status.Sessions = append(status.Sessions, vegBFDSessionStatuses(6, "", nodeNexthopIPv6, nil, nil, oldStatus)...)
+		return status, nil
+	}
+
+	nbBFDs, err := c.OVNNbClient.ListBFDs(lrpName, "")
+	if err != nil {
+		return status, err
+	}
+	sbBFDs, err := c.OVNSbClient.ListBFDs(lrpName, "")
+	if err != nil {
+		return status, err
+	}
+
+	nbByDstIP := make(map[string]ovnnb.BFD, len(nbBFDs))
+	for _, bfd := range nbBFDs {
+		nbByDstIP[bfd.DstIP] = bfd
+	}
+	sbByDstIP := preferredSbBFDByDstIP(sbBFDs)
+
+	status.Sessions = append(status.Sessions, vegBFDSessionStatuses(4, lrpName, nodeNexthopIPv4, nbByDstIP, sbByDstIP, oldStatus)...)
+	status.Sessions = append(status.Sessions, vegBFDSessionStatuses(6, lrpName, nodeNexthopIPv6, nbByDstIP, sbByDstIP, oldStatus)...)
+	for _, session := range status.Sessions {
+		if vegBFDSessionUp(session) {
+			status.Up++
+		} else {
+			status.Down++
+		}
+	}
+	sort.Slice(status.Sessions, func(i, j int) bool {
+		if status.Sessions[i].AddressFamily != status.Sessions[j].AddressFamily {
+			return status.Sessions[i].AddressFamily < status.Sessions[j].AddressFamily
+		}
+		if status.Sessions[i].Node != status.Sessions[j].Node {
+			return status.Sessions[i].Node < status.Sessions[j].Node
+		}
+		return status.Sessions[i].Nexthop < status.Sessions[j].Nexthop
+	})
+
+	return status, nil
+}
+
+func safeInt32(n int) int32 {
+	const maxInt32 = 1<<31 - 1
+	if n > maxInt32 {
+		return maxInt32
+	}
+	return int32(n) //nolint:gosec // n is bounded by maxInt32 above.
+}
+
+func vegBFDSessionStatuses(
+	af int,
+	lrpName string,
+	nextHops map[string]string,
+	nbByDstIP map[string]ovnnb.BFD,
+	sbByDstIP map[string]ovnsb.BFD,
+	oldStatus kubeovnv1.VpcEgressGatewayBFDStatus,
+) []kubeovnv1.VpcEgressGatewayBFDSession {
+	sessions := make([]kubeovnv1.VpcEgressGatewayBFDSession, 0, len(nextHops))
+	for node, nexthop := range nextHops {
+		session := kubeovnv1.VpcEgressGatewayBFDSession{
+			AddressFamily: af,
+			Node:          node,
+			Nexthop:       nexthop,
+			LogicalPort:   lrpName,
+		}
+		if bfd, ok := nbByDstIP[nexthop]; ok {
+			session.NBUUID = bfd.UUID
+			if bfd.Status != nil {
+				session.NBStatus = *bfd.Status
+			}
+		}
+		if bfd, ok := sbByDstIP[nexthop]; ok {
+			session.SBUUID = bfd.UUID
+			session.SBStatus = bfd.Status
+			session.Chassis = bfd.ChassisName
+		}
+		if session.NBUUID == "" {
+			session.Message = "NB BFD session is missing"
+		} else if session.SBUUID == "" {
+			session.Message = "SB BFD session is missing"
+		}
+		session.LastTransitionTime = vegBFDTransitionTime(session, oldStatus)
+		sessions = append(sessions, session)
+	}
+	return sessions
+}
+
+func preferredSbBFDByDstIP(sbBFDs []ovnsb.BFD) map[string]ovnsb.BFD {
+	result := make(map[string]ovnsb.BFD, len(sbBFDs))
+	for _, bfd := range sbBFDs {
+		current, ok := result[bfd.DstIP]
+		if !ok || current.Status != ovnsb.BFDStatusUp && bfd.Status == ovnsb.BFDStatusUp {
+			result[bfd.DstIP] = bfd
+		}
+	}
+	return result
+}
+
+func vegBFDTransitionTime(session kubeovnv1.VpcEgressGatewayBFDSession, oldStatus kubeovnv1.VpcEgressGatewayBFDStatus) metav1.Time {
+	currentState := vegBFDSessionState(session)
+	for _, oldSession := range oldStatus.Sessions {
+		if oldSession.AddressFamily == session.AddressFamily && oldSession.Node == session.Node && oldSession.Nexthop == session.Nexthop {
+			if vegBFDSessionState(oldSession) == currentState {
+				return oldSession.LastTransitionTime
+			}
+			break
+		}
+	}
+	return metav1.Now()
+}
+
+func vegBFDSessionUp(session kubeovnv1.VpcEgressGatewayBFDSession) bool {
+	return vegBFDSessionState(session) == ovnsb.BFDStatusUp
+}
+
+func vegBFDSessionState(session kubeovnv1.VpcEgressGatewayBFDSession) string {
+	if session.SBStatus != "" {
+		return session.SBStatus
+	}
+	if session.NBStatus != "" {
+		return session.NBStatus
+	}
+	return "missing"
+}
+
+func (c *Controller) recordVpcEgressGatewayBFDEvents(gw *kubeovnv1.VpcEgressGateway, oldStatus, newStatus kubeovnv1.VpcEgressGatewayBFDStatus) {
+	oldByKey := make(map[string]kubeovnv1.VpcEgressGatewayBFDSession, len(oldStatus.Sessions))
+	for _, session := range oldStatus.Sessions {
+		oldByKey[vegBFDSessionKey(session)] = session
+	}
+	for _, session := range newStatus.Sessions {
+		oldSession, ok := oldByKey[vegBFDSessionKey(session)]
+		if ok && vegBFDSessionState(oldSession) == vegBFDSessionState(session) {
+			continue
+		}
+		if vegBFDSessionUp(session) {
+			c.recorder.Eventf(gw, corev1.EventTypeNormal, "BFDSessionUp", "BFD session to nexthop %s on node %s is up", session.Nexthop, session.Node)
+		} else {
+			c.recorder.Eventf(gw, corev1.EventTypeWarning, "BFDSessionDown", "BFD session to nexthop %s on node %s is %s", session.Nexthop, session.Node, vegBFDSessionState(session))
+		}
+	}
+}
+
+func vegBFDSessionKey(session kubeovnv1.VpcEgressGatewayBFDSession) string {
+	return fmt.Sprintf("%d/%s/%s", session.AddressFamily, session.Node, session.Nexthop)
 }
 
 func mergeNodeSelector(nodeSelector []kubeovnv1.VpcEgressGatewayNodeSelector) *corev1.NodeSelector {

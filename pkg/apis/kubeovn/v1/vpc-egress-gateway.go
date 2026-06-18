@@ -203,6 +203,8 @@ type VpcEgressGatewayStatus struct {
 
 	// workload information
 	Workload VpcEgressWorkload `json:"workload"`
+	// BFD information
+	BFD VpcEgressGatewayBFDStatus `json:"bfd,omitempty"`
 }
 
 type VpcEgressWorkload struct {
@@ -211,4 +213,42 @@ type VpcEgressWorkload struct {
 	Name       string `json:"name,omitempty"`
 	// nodes where the workload is running
 	Nodes []string `json:"nodes,omitempty"`
+}
+
+type VpcEgressGatewayBFDStatus struct {
+	// whether BFD is enabled
+	Enabled bool `json:"enabled"`
+	// expected number of BFD sessions
+	Desired int32 `json:"desired,omitempty"`
+	// number of BFD sessions with an up status
+	Up int32 `json:"up,omitempty"`
+	// number of BFD sessions with a down status
+	Down int32 `json:"down,omitempty"`
+	// BFD session details
+	Sessions []VpcEgressGatewayBFDSession `json:"sessions,omitempty"`
+}
+
+type VpcEgressGatewayBFDSession struct {
+	// address family of the nexthop
+	AddressFamily int `json:"addressFamily,omitempty"`
+	// node where the gateway nexthop is running
+	Node string `json:"node,omitempty"`
+	// nexthop IP address
+	Nexthop string `json:"nexthop,omitempty"`
+	// logical router port used by the BFD session
+	LogicalPort string `json:"logicalPort,omitempty"`
+	// NB BFD UUID
+	NBUUID string `json:"nbUUID,omitempty"`
+	// NB BFD status
+	NBStatus string `json:"nbStatus,omitempty"`
+	// SB BFD UUID
+	SBUUID string `json:"sbUUID,omitempty"`
+	// SB BFD status
+	SBStatus string `json:"sbStatus,omitempty"`
+	// chassis that owns the SB BFD session
+	Chassis string `json:"chassis,omitempty"`
+	// last time the session status changed
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+	// detailed status message
+	Message string `json:"message,omitempty"`
 }
