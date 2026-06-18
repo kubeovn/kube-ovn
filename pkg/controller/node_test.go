@@ -3,13 +3,17 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
 
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovs "github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -186,6 +190,173 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newBFDPortVpc(name string, selector map[string]string) *kubeovnv1.Vpc {
+	return &kubeovnv1.Vpc{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: kubeovnv1.VpcSpec{
+			BFDPort: &kubeovnv1.BFDPort{
+				Enabled: true,
+				IP:      "169.254.0.1/32",
+				NodeSelector: &metav1.LabelSelector{
+					MatchLabels: selector,
+				},
+			},
+		},
+	}
+}
+
+func prepareNodeQueueTestController(t *testing.T, vpcs ...*kubeovnv1.Vpc) *Controller {
+	t.Helper()
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Vpcs: vpcs})
+	require.NoError(t, err)
+
+	ctrl := fakeCtrl.fakeController
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.updateNodeQueue = newTypedRateLimitingQueue[string]("UpdateNode", nil)
+	ctrl.deleteNodeQueue = newTypedRateLimitingQueue[string]("DeleteNode", nil)
+	ctrl.deletingNodeObjMap = xsync.NewMap[string, *corev1.Node]()
+	ctrl.addOrUpdateVpcQueue = newTypedRateLimitingQueue[string]("AddOrUpdateVpc", nil)
+	return ctrl
+}
+
+func drainVpcQueue(t *testing.T, ctrl *Controller) []string {
+	t.Helper()
+
+	keys := make([]string, 0, ctrl.addOrUpdateVpcQueue.Len())
+	for ctrl.addOrUpdateVpcQueue.Len() > 0 {
+		key, shutdown := ctrl.addOrUpdateVpcQueue.Get()
+		require.False(t, shutdown)
+		keys = append(keys, key)
+		ctrl.addOrUpdateVpcQueue.Done(key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func TestEnqueueAddNodeEnqueuesMatchingVpcBFDPort(t *testing.T) {
+	ctrl := prepareNodeQueueTestController(t,
+		newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}),
+		newBFDPortVpc("unselected-vpc", map[string]string{"egress": "false"}),
+	)
+
+	ctrl.enqueueAddNode(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "node-a",
+			Labels: map[string]string{"egress": "true"},
+		},
+	})
+
+	require.Equal(t, []string{"selected-vpc"}, drainVpcQueue(t, ctrl))
+}
+
+func TestEnqueueUpdateNodeEnqueuesVpcBFDPortOnSelectorMembershipChange(t *testing.T) {
+	t.Run("node starts matching selector", func(t *testing.T) {
+		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
+		oldNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a"}}
+		newNode := oldNode.DeepCopy()
+		newNode.Labels = map[string]string{"egress": "true"}
+
+		ctrl.enqueueUpdateNode(oldNode, newNode)
+
+		require.Zero(t, ctrl.addNodeQueue.Len())
+		require.Zero(t, ctrl.updateNodeQueue.Len())
+		require.Equal(t, []string{"selected-vpc"}, drainVpcQueue(t, ctrl))
+	})
+
+	t.Run("node stops matching selector", func(t *testing.T) {
+		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
+		oldNode := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "node-a",
+				Labels: map[string]string{"egress": "true"},
+			},
+		}
+		newNode := oldNode.DeepCopy()
+		newNode.Labels = map[string]string{"egress": "false"}
+
+		ctrl.enqueueUpdateNode(oldNode, newNode)
+
+		require.Zero(t, ctrl.addNodeQueue.Len())
+		require.Zero(t, ctrl.updateNodeQueue.Len())
+		require.Equal(t, []string{"selected-vpc"}, drainVpcQueue(t, ctrl))
+	})
+
+	t.Run("unallocated node unrelated label change does not enqueue node or vpc", func(t *testing.T) {
+		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
+		oldNode := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "node-a",
+				Labels: map[string]string{"role": "worker"},
+			},
+		}
+		newNode := oldNode.DeepCopy()
+		newNode.Labels = map[string]string{"role": "gateway"}
+
+		ctrl.enqueueUpdateNode(oldNode, newNode)
+
+		require.Zero(t, ctrl.addNodeQueue.Len())
+		require.Zero(t, ctrl.updateNodeQueue.Len())
+		require.Empty(t, drainVpcQueue(t, ctrl))
+	})
+
+	t.Run("allocated node unrelated label change enqueues update node only", func(t *testing.T) {
+		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
+		oldNode := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:        "node-a",
+				Labels:      map[string]string{"role": "worker"},
+				Annotations: map[string]string{util.AllocatedAnnotation: "true"},
+			},
+		}
+		newNode := oldNode.DeepCopy()
+		newNode.Labels = map[string]string{"role": "gateway"}
+
+		ctrl.enqueueUpdateNode(oldNode, newNode)
+
+		require.Zero(t, ctrl.addNodeQueue.Len())
+		require.Equal(t, 1, ctrl.updateNodeQueue.Len())
+		require.Empty(t, drainVpcQueue(t, ctrl))
+	})
+
+	t.Run("matching node readiness change enqueues", func(t *testing.T) {
+		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
+		oldNode := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "node-a",
+				Labels: map[string]string{"egress": "true"},
+			},
+			Status: corev1.NodeStatus{
+				Conditions: []corev1.NodeCondition{
+					{Type: corev1.NodeReady, Status: corev1.ConditionFalse},
+				},
+			},
+		}
+		newNode := oldNode.DeepCopy()
+		newNode.Status.Conditions = []corev1.NodeCondition{
+			{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
+		}
+
+		ctrl.enqueueUpdateNode(oldNode, newNode)
+
+		require.Equal(t, []string{"selected-vpc"}, drainVpcQueue(t, ctrl))
+	})
+}
+
+func TestEnqueueDeleteNodeEnqueuesMatchingVpcBFDPort(t *testing.T) {
+	ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "node-a",
+			Labels: map[string]string{"egress": "true"},
+		},
+	}
+
+	ctrl.enqueueDeleteNode(cache.DeletedFinalStateUnknown{Obj: node})
+
+	require.Equal(t, []string{"selected-vpc"}, drainVpcQueue(t, ctrl))
 }
 
 func TestCleanDuplicatedChassis(t *testing.T) {
