@@ -18,22 +18,27 @@ echo "tag and push image"
 VERSION=$(cat VERSION)
 set +e
 docker manifest rm kubeovn/kube-ovn:${VERSION}
+docker manifest rm kubeovn/kube-ovn:${VERSION}-almalinux10
 docker manifest rm kubeovn/kube-ovn:${VERSION}-debug
 docker manifest rm kubeovn/vpc-nat-gateway:${VERSION}
 set -e
 
 docker pull kubeovn/kube-ovn:${VERSION}-x86
 docker pull kubeovn/kube-ovn:${VERSION}-arm
+docker pull kubeovn/kube-ovn:${VERSION}-almalinux10-amd64
+docker pull kubeovn/kube-ovn:${VERSION}-almalinux10-arm64
 docker pull kubeovn/vpc-nat-gateway:${VERSION}-x86
 docker pull kubeovn/vpc-nat-gateway:${VERSION}-arm
 docker pull kubeovn/kube-ovn:${VERSION}-debug-x86
 docker pull kubeovn/kube-ovn:${VERSION}-debug-arm
 
 docker manifest create kubeovn/kube-ovn:${VERSION} kubeovn/kube-ovn:${VERSION}-x86 kubeovn/kube-ovn:${VERSION}-arm
+docker manifest create kubeovn/kube-ovn:${VERSION}-almalinux10 kubeovn/kube-ovn:${VERSION}-almalinux10-amd64 kubeovn/kube-ovn:${VERSION}-almalinux10-arm64
 docker manifest create kubeovn/vpc-nat-gateway:${VERSION} kubeovn/vpc-nat-gateway:${VERSION}-x86 kubeovn/vpc-nat-gateway:${VERSION}-arm
 docker manifest create kubeovn/kube-ovn:${VERSION}-debug kubeovn/kube-ovn:${VERSION}-debug-x86 kubeovn/kube-ovn:${VERSION}-debug-arm
 
 docker manifest push kubeovn/kube-ovn:${VERSION}
+docker manifest push kubeovn/kube-ovn:${VERSION}-almalinux10
 docker manifest push kubeovn/vpc-nat-gateway:${VERSION}
 docker manifest push kubeovn/kube-ovn:${VERSION}-debug
 
