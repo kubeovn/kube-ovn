@@ -62,9 +62,12 @@ RUN cd /usr/src/ && \
     # update ovs-sandbox for docker run
     git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch
 
-RUN cd /usr/src/ && git clone -b branch-24.03 --depth=50 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && \
+    git init ovn && \
     cd ovn && \
-    git checkout ef8f5c1ac63e8094eaf13507013e310991db45a2 && \
+    git remote add origin https://github.com/ovn-org/ovn.git && \
+    git fetch --depth=1 origin ef8f5c1ac63e8094eaf13507013e310991db45a2 && \
+    git checkout FETCH_HEAD && \
     # change hash type from dp_hash to hash with field src_ip
     git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # modify src route priority
