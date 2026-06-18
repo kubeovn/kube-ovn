@@ -232,10 +232,16 @@ func (c *OVNNbClient) DeleteNats(lrName, natType, logicalIP string) error {
 
 // DeleteNat delete nat rule
 func (c *OVNNbClient) DeleteNat(lrName, natType, externalIP, logicalIP string) error {
-	nat, err := c.GetNat(lrName, natType, externalIP, logicalIP, false)
+	nat, err := c.GetNat(lrName, natType, externalIP, logicalIP, true)
 	if err != nil {
 		klog.Error(err)
 		return err
+	}
+	if nat == nil {
+		// The NAT row may have already been removed (by another reconcile
+		// or direct lr-nat-del). Return success so callers (e.g. OvnFip)
+		// can clear their finalizer without requeuing forever.
+		return nil
 	}
 
 	// remove nat from logical router
