@@ -53,11 +53,11 @@ build-kube-ovn-dpdk: gen-crd build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg BASE_TAG=$(RELEASE_TAG)-dpdk -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-kube-ovn-almalinux10
-build-kube-ovn-almalinux10: gen-crd build-go
+build-kube-ovn-almalinux10: gen-crd build-debug-almalinux10 build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-almalinux10 --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_TAG=$(RELEASE_TAG)-almalinux10 -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-kube-ovn-arm64-almalinux10
-build-kube-ovn-arm64-almalinux10: gen-crd build-go-arm
+build-kube-ovn-arm64-almalinux10: gen-crd build-debug-arm64-almalinux10 build-go-arm
 	docker build -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-almalinux10 --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_TAG=$(RELEASE_TAG)-almalinux10 -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-dev
@@ -68,6 +68,16 @@ build-dev: gen-crd build-go
 build-debug: gen-crd
 	@DEBUG=1 $(MAKE) build-go
 	docker build -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -f dist/images/Dockerfile dist/images/
+
+.PHONY: build-debug-almalinux10
+build-debug-almalinux10: gen-crd
+	@DEBUG=1 $(MAKE) build-go
+	docker build -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG)-almalinux10 --build-arg BASE_TAG=$(DEBUG_TAG)-almalinux10 -f dist/images/Dockerfile dist/images/
+
+.PHONY: build-debug-arm64-almalinux10
+build-debug-arm64-almalinux10: gen-crd
+	@DEBUG=1 $(MAKE) build-go-arm
+	docker build -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG)-almalinux10 --build-arg BASE_TAG=$(DEBUG_TAG)-almalinux10 -f dist/images/Dockerfile dist/images/
 
 .PHONY: base-amd64
 base-amd64:
@@ -81,7 +91,7 @@ base-amd64-dpdk:
 
 .PHONY: base-amd64-almalinux10
 base-amd64-almalinux10:
-	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY $(PROXY_BUILD_ARGS) -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-almalinux10-amd64 -o type=docker -f dist/images/Dockerfile.base-almalinux10 dist/images/
+	docker buildx build --platform linux/amd64 --build-arg ARCH=amd64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY $(PROXY_BUILD_ARGS) -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-almalinux10-amd64 -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-almalinux10-amd64 -o type=docker -f dist/images/Dockerfile.base-almalinux10 dist/images/
 
 .PHONY: base-arm64
 base-arm64:
@@ -90,7 +100,7 @@ base-arm64:
 
 .PHONY: base-arm64-almalinux10
 base-arm64-almalinux10:
-	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY $(PROXY_BUILD_ARGS) -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-almalinux10-arm64 -o type=docker -f dist/images/Dockerfile.base-almalinux10 dist/images/
+	docker buildx build --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY $(PROXY_BUILD_ARGS) -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-almalinux10-arm64 -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-almalinux10-arm64 -o type=docker -f dist/images/Dockerfile.base-almalinux10 dist/images/
 
 .PHONY: build-kit
 build-kit: gen-crd build-go
@@ -106,7 +116,7 @@ image-kube-ovn-arm64: gen-crd build-go-arm
 	docker buildx build --platform linux/arm64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn-arm64-almalinux10
-image-kube-ovn-arm64-almalinux10: gen-crd build-go-arm
+image-kube-ovn-arm64-almalinux10: gen-crd image-kube-ovn-arm64-debug-almalinux10 build-go-arm
 	docker buildx build --platform linux/arm64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-almalinux10 --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_TAG=$(RELEASE_TAG)-almalinux10 -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn-debug
@@ -114,12 +124,22 @@ image-kube-ovn-debug: gen-crd
 	@DEBUG=1 $(MAKE) build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
+.PHONY: image-kube-ovn-debug-almalinux10
+image-kube-ovn-debug-almalinux10: gen-crd
+	@DEBUG=1 $(MAKE) build-go
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG)-almalinux10 --build-arg BASE_TAG=$(DEBUG_TAG)-almalinux10 -o type=docker -f dist/images/Dockerfile dist/images/
+
+.PHONY: image-kube-ovn-arm64-debug-almalinux10
+image-kube-ovn-arm64-debug-almalinux10: gen-crd
+	@DEBUG=1 $(MAKE) build-go-arm
+	docker buildx build --platform linux/arm64 -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG)-almalinux10 --build-arg BASE_TAG=$(DEBUG_TAG)-almalinux10 -o type=docker -f dist/images/Dockerfile dist/images/
+
 .PHONY: image-kube-ovn-dpdk
 image-kube-ovn-dpdk: gen-crd build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_TAG=$(RELEASE_TAG)-dpdk -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn-almalinux10
-image-kube-ovn-almalinux10: gen-crd build-go
+image-kube-ovn-almalinux10: gen-crd image-kube-ovn-debug-almalinux10 build-go
 	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-almalinux10 --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_TAG=$(RELEASE_TAG)-almalinux10 -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-vpc-nat-gateway
@@ -157,6 +177,7 @@ tar-kube-ovn:
 		$(REGISTRY)/kube-ovn:$(LEGACY_TAG) \
 		$(REGISTRY)/kube-ovn:$(DEBUG_TAG) \
 		$(REGISTRY)/kube-ovn:$(RELEASE_TAG)-almalinux10 \
+		$(REGISTRY)/kube-ovn:$(DEBUG_TAG)-almalinux10 \
 		-o kube-ovn.tar
 
 .PHONY: tar-kube-ovn-dpdk
@@ -180,7 +201,7 @@ base-tar-amd64-dpdk:
 
 .PHONY: base-tar-amd64-almalinux10
 base-tar-amd64-almalinux10:
-	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-almalinux10-amd64 -o image-amd64-almalinux10.tar
+	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-almalinux10-amd64 $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-almalinux10-amd64 -o image-amd64-almalinux10.tar
 
 .PHONY: base-tar-arm64
 base-tar-arm64:
@@ -188,7 +209,7 @@ base-tar-arm64:
 
 .PHONY: base-tar-arm64-almalinux10
 base-tar-arm64-almalinux10:
-	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-almalinux10-arm64 -o image-arm64-almalinux10.tar
+	docker save $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-almalinux10-arm64 $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-almalinux10-arm64 -o image-arm64-almalinux10.tar
 
 .PHONY: lint
 lint: verify-crd

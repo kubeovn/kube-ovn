@@ -180,6 +180,7 @@ jobs:
           dist/images/patches/
           dist/images/go-deps/download-go-deps.sh
           dist/images/go-deps/rebuild-go-deps.sh
+          makefiles/build.mk
           EOF
           if git diff --name-only HEAD^ HEAD | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-almalinux10-base=1 >> "$GITHUB_OUTPUT"
@@ -317,6 +318,7 @@ jobs:
         run: |
           docker load --input image-amd64-almalinux10.tar
           docker tag kubeovn/kube-ovn-base:$TAG-almalinux10-amd64 kubeovn/kube-ovn-base:$TAG-almalinux10
+          docker tag kubeovn/kube-ovn-base:$TAG-debug-almalinux10-amd64 kubeovn/kube-ovn-base:$TAG-debug-almalinux10
 
       - name: Scan base image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -1820,6 +1822,8 @@ jobs:
             tag_suffix: ""
           - name: almalinux10
             tag_suffix: "-almalinux10"
+          - name: almalinux10-debug
+            tag_suffix: "-debug-almalinux10"
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -4431,6 +4435,7 @@ jobs:
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn-dev:$COMMIT-x86
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
           docker tag kubeovn/kube-ovn:$TAG-almalinux10 kubeovn/kube-ovn:$TAG-almalinux10-amd64
+          docker tag kubeovn/kube-ovn:$TAG-debug-almalinux10 kubeovn/kube-ovn:$TAG-debug-almalinux10-amd64
           docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86
           docker tag kubeovn/kube-ovn:$TAG-dpdk kubeovn/kube-ovn:$TAG-dpdk-x86
           docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
@@ -4438,6 +4443,7 @@ jobs:
           docker images
           docker push kubeovn/kube-ovn:$TAG-x86
           docker push kubeovn/kube-ovn:$TAG-almalinux10-amd64
+          docker push kubeovn/kube-ovn:$TAG-debug-almalinux10-amd64
           docker push kubeovn/kube-ovn:$TAG-amd64-legacy
           docker push kubeovn/kube-ovn-dev:$COMMIT-x86
           docker push kubeovn/kube-ovn:$TAG-debug-x86
