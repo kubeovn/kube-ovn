@@ -19,7 +19,7 @@ require (
 	github.com/go-logr/zapr v1.3.0
 	github.com/google/gopacket v1.1.19
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
-	github.com/k8snetworkplumbingwg/sriovnet v1.2.0
+	github.com/k8snetworkplumbingwg/sriovnet v1.3.0
 	github.com/kubeovn/dbus/v5 v5.0.0-20260127130047-cf3ab180f3cc
 	github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf
 	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
