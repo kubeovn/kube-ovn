@@ -917,6 +917,10 @@ func (suite *OvnClientTestSuite) Test_DeleteNat() {
 	suite.testDeleteNat()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteNatIsIdempotent() {
+	suite.testDeleteNatIsIdempotent()
+}
+
 func (suite *OvnClientTestSuite) Test_GetNat() {
 	suite.testGetNat()
 }
