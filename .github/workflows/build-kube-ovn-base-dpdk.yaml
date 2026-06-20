@@ -33,7 +33,7 @@ jobs:
     name: Build AMD64
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           ref: ${{ matrix.branch }}
@@ -70,7 +70,7 @@ jobs:
     name: push
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           ref: ${{ matrix.branch }}
