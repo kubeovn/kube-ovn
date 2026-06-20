@@ -14,6 +14,8 @@ RELEASE_TAG = $(shell cat VERSION)
 DEBUG_TAG = $(shell cat VERSION)-debug
 LEGACY_TAG = $(shell cat VERSION)-amd64-legacy
 VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
+KUBE_OVN_IMAGE_TAG_SUFFIX = $(shell echo $${KUBE_OVN_IMAGE_TAG_SUFFIX:-})
+KUBE_OVN_VERSION = $(shell echo $${KUBE_OVN_VERSION:-$(VERSION)$(KUBE_OVN_IMAGE_TAG_SUFFIX)})
 
 GINKGO = go tool github.com/onsi/ginkgo/v2/ginkgo
 

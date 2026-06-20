@@ -95,7 +95,7 @@ jobs:
         with:
           scan-type: image
           scanners: vuln
-          image-ref: docker.io/kubeovn/kube-ovn-base:${{ env.TAG }}
+          image-ref: docker.io/kubeovn/kube-ovn-base:${{ env.TAG }}-almalinux10
           format: json
           output: trivy-result.json
           ignore-unfixed: true

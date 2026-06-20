@@ -212,7 +212,7 @@ kind-init-single-%:
 
 .PHONY: kind-init-bgp
 kind-init-bgp: kind-clean-bgp kind-init
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	kube_ovn_version=$(KUBE_OVN_VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -226,7 +226,7 @@ kind-init-bgp: kind-clean-bgp kind-init
 
 .PHONY: kind-init-bgp-ha
 kind-init-bgp-ha: kind-clean-bgp kind-init
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	kube_ovn_version=$(KUBE_OVN_VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -240,7 +240,7 @@ kind-init-bgp-ha: kind-clean-bgp kind-init
 
 .PHONY: kind-load-image
 kind-load-image:
-	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(VERSION))
+	$(call kind_load_image,kube-ovn,$(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION))
 
 .PHONY: kind-load-image-vpc-nat-gateway
 kind-load-image-vpc-nat-gateway:
@@ -271,7 +271,7 @@ kind-install: kind-load-image
 	@echo "Generating CRDs with controller-gen and syncing static CRD bundles..."
 	$(MAKE) gen-crd
 	@echo "Installing kube-ovn with synced generated CRDs..."
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
+	sed 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' dist/images/install.sh | bash
 	kubectl describe no
 
 .PHONY: kind-install-ipv4
@@ -314,11 +314,11 @@ kind-install-dev: kind-install-dev-ipv4
 
 .PHONY: kind-install-dev-%
 kind-install-dev-%:
-	@VERSION=$(DEV_TAG) $(MAKE) kind-install-$*
+	@KUBE_OVN_VERSION=$(DEV_TAG) $(MAKE) kind-install-$*
 
 .PHONY: kind-install-debug-%
 kind-install-debug-%:
-	@VERSION=$(DEBUG_TAG) $(MAKE) kind-install-$*
+	@KUBE_OVN_VERSION=$(DEBUG_TAG)$(KUBE_OVN_IMAGE_TAG_SUFFIX) $(MAKE) kind-install-$*
 
 .PHONY: kind-install-debug-valgrind
 kind-install-debug-valgrind: kind-install-debug-valgrind-ipv4
@@ -333,16 +333,16 @@ kind-install-ovn-ic: kind-install-ovn-ic-ipv4
 .PHONY: kind-install-ovn-ic-ipv4
 kind-install-ovn-ic-ipv4:
 	@ENABLE_IC=true $(MAKE) kind-install
-	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
+	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
+	sed 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' dist/images/install-ic-server.sh | bash
 
 	@$(MAKE) kind-config-ovn-ic
 
@@ -362,35 +362,35 @@ kind-config-ovn-ic:
 .PHONY: kind-install-ovn-ic-ipv6
 kind-install-ovn-ic-ipv6:
 	@ENABLE_IC=true $(MAKE) kind-install-ipv6
-	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
+	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) untaint-control-plane
 	sed -e 's/fd00:10:16:/fd00:10:18:/g' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		IPV6=true ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
+	sed 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' dist/images/install-ic-server.sh | bash
 
 	@$(MAKE) kind-config-ovn-ic
 
 .PHONY: kind-install-ovn-ic-dual
 kind-install-ovn-ic-dual:
 	@ENABLE_IC=true $(MAKE) kind-install-dual
-	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
+	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION))
 	kubectl config use-context kind-kube-ovn1
 	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/fd00:10:16:/fd00:10:18:/g' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install-ic-server.sh | bash
+	sed 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' dist/images/install-ic-server.sh | bash
 
 	@$(MAKE) kind-config-ovn-ic
 
@@ -398,7 +398,7 @@ kind-install-ovn-ic-dual:
 kind-install-ovn-submariner: kind-install
 	$(call kind_load_submariner_images,kube-ovn)
 	$(call kind_load_submariner_images,kube-ovn1)
-	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(VERSION))
+	$(call kind_load_image,kube-ovn1,$(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION))
 
 	kubectl config use-context kind-kube-ovn1
 	kubectl create namespace submariner-operator
@@ -407,7 +407,7 @@ kind-install-ovn-submariner: kind-install
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/10.96.0.0/10.112.0.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | bash
 	kubectl describe no
 
@@ -434,7 +434,7 @@ kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image untaint-control
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY))"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_NETWORK_IPV4_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 	kubectl describe no
@@ -446,7 +446,7 @@ kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image untaint-
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY))"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_NETWORK_IPV4_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 	kubectl describe no
@@ -458,7 +458,7 @@ kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image untaint-control
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV6_GATEWAY))"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_NETWORK_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
@@ -469,7 +469,7 @@ kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image untaint-
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV6_GATEWAY))"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_NETWORK_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
@@ -480,7 +480,7 @@ kind-install-underlay-dual: kind-disable-hairpin kind-load-image untaint-control
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY)),$($(UNDERLAY_NETWORK_IPV6_GATEWAY))"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_NETWORK_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_NETWORK_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
@@ -491,7 +491,7 @@ kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image untaint-
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY)),$($(UNDERLAY_NETWORK_IPV6_GATEWAY))"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_NETWORK_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_NETWORK_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
@@ -509,7 +509,7 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 		-e 's@^[[:space:]]*POD_GATEWAY=.*@POD_GATEWAY="$($(UNDERLAY_NETWORK_IPV4_GATEWAY))9,$($(UNDERLAY_NETWORK_IPV6_GATEWAY))f"@' \
 		-e 's@^[[:space:]]*EXCLUDE_IPS=.*@EXCLUDE_IPS="$($(UNDERLAY_NETWORK_IPV4_GATEWAY)),$($(UNDERLAY_NETWORK_IPV4_EXCLUDE_IPS)),$($(UNDERLAY_NETWORK_IPV6_GATEWAY)),$($(UNDERLAY_NETWORK_IPV6_EXCLUDE_IPS))"@' \
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
-		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
+		-e 's/VERSION=.*/VERSION=$(KUBE_OVN_VERSION)/' \
 		dist/images/install.sh | \
 		DUAL_STACK=true ENABLE_VLAN=true \
 		VLAN_NIC=$(KIND_VLAN_NIC) LOGICAL_GATEWAY=true bash
@@ -610,7 +610,7 @@ kind-install-webhook: kind-install
 	kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout 120s
 	kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout 120s
 
-	sed 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' yamls/webhook.yaml | kubectl apply -f -
+	sed 's#image: .*#image: $(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION)#' yamls/webhook.yaml | kubectl apply -f -
 	kubectl rollout status deployment/kube-ovn-webhook -n kube-system --timeout 120s
 
 .PHONY: kind-install-cilium-chaining
@@ -694,7 +694,7 @@ kind-install-cilium-delegate-%:
 kind-install-bgp: kind-install
 	kubectl label node --all ovn.kubernetes.io/bgp=true
 	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local
-	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
+	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION)#' \
 		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1/' \
 		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
 		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
@@ -706,7 +706,7 @@ kind-install-bgp: kind-install
 kind-install-bgp-ha: kind-install
 	kubectl label node --all ovn.kubernetes.io/bgp=true
 	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local
-	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
+	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION)#' \
 		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1,10.0.1.2/' \
 		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
 		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
@@ -780,7 +780,7 @@ kind-install-ovn-ipsec-cert-manager:
 	@$(MAKE) CERT_MANAGER_IPSEC_CERT=true kind-install-ovn-ipsec
 	@$(MAKE) kind-install-cert-manager
 
-	docker run --rm -v "$(CURDIR)":/etc/ovn $(REGISTRY)/kube-ovn:$(VERSION) bash generate-ssl.sh
+	docker run --rm -v "$(CURDIR)":/etc/ovn $(REGISTRY)/kube-ovn:$(KUBE_OVN_VERSION) bash generate-ssl.sh
 
 	kubectl create secret generic -n cert-manager kube-ovn-ca --from-file=tls.key=cakey.pem --from-file=tls.crt=cacert.pem
 	kubectl create secret generic -n kube-system ovn-ipsec-ca --from-file=cacert=cacert.pem
@@ -828,7 +828,7 @@ kind-clean-ovn-submariner: kind-clean
 
 .PHONY: kind-clean-bgp
 kind-clean-bgp: kind-clean-bgp-ha
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+	kube_ovn_version=$(KUBE_OVN_VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -843,7 +843,7 @@ kind-clean-bgp: kind-clean-bgp-ha
 
 .PHONY: kind-clean-bgp-ha
 kind-clean-bgp-ha:
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
+	kube_ovn_version=$(KUBE_OVN_VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp-ha.yaml.j2 -o yamls/clab-bgp-ha.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
