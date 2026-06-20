@@ -395,6 +395,29 @@ func (suite *OvnClientTestSuite) testDeleteNat() {
 	})
 }
 
+// testDeleteNatIsIdempotent verifies that DeleteNat returns success (nil)
+// when the target NAT row is already absent. This prevents callers such as
+// the OvnFip delete handler from entering a stuck requeue loop on the finalizer.
+func (suite *OvnClientTestSuite) testDeleteNatIsIdempotent() {
+	t := suite.T()
+	t.Parallel()
+	nbClient := suite.ovnNBClient
+	lrName := "test-lr-nat-del-idempotent"
+	eip := "192.168.31.100"
+	logicalIP := "10.16.0.42"
+
+	require.NoError(t, nbClient.CreateLogicalRouter(lrName))
+	defer func() { _ = nbClient.DeleteLogicalRouter(lrName) }()
+
+	// (a) Delete a never-existent NAT -> success.
+	require.NoError(t, nbClient.DeleteNat(lrName, ovnnb.NATTypeDNATAndSNAT, eip, logicalIP))
+
+	// (b) Create -> Delete -> Delete: second delete must be a no-op.
+	require.NoError(t, nbClient.AddNat(lrName, ovnnb.NATTypeDNATAndSNAT, eip, logicalIP, "00:00:00:cc:cc:cc", "pod-c.ns", nil))
+	require.NoError(t, nbClient.DeleteNat(lrName, ovnnb.NATTypeDNATAndSNAT, eip, logicalIP))
+	require.NoError(t, nbClient.DeleteNat(lrName, ovnnb.NATTypeDNATAndSNAT, eip, logicalIP))
+}
+
 func (suite *OvnClientTestSuite) testDeleteNats() {
 	t := suite.T()
 	t.Parallel()
