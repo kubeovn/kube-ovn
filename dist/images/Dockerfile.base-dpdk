@@ -21,6 +21,7 @@ ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
 ADD patches/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch $SRC_DIR
 ADD patches/e889d46924085ca0fe38a2847da973dfe6ea100e.patch $SRC_DIR
 ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
+ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
 
@@ -56,7 +57,9 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     # fix reaching resubmit limit in underlay
     git apply $SRC_DIR/e889d46924085ca0fe38a2847da973dfe6ea100e.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch
+    git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
+    # adapt to the compose_nd_ns() signature change in ovs branch-3.5 commit 33825c273
+    git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch
 
 RUN apt install -y build-essential fakeroot \
     autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \

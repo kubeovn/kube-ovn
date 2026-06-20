@@ -8,6 +8,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -15,6 +16,8 @@ const (
 	IndexEPSByService          = "byServiceName"
 	IndexDNSNameResolverByName = "byDNSName"
 	IndexIPBySubnet            = "bySubnet"
+	IndexVpcByBFDPort          = "byBFDPort"
+	IndexVpcBFDPortEnabled     = "enabled"
 )
 
 func indexPodByNode(obj any) ([]string, error) {
@@ -45,6 +48,20 @@ func indexDNSNameResolverByName(obj any) ([]string, error) {
 	return []string{string(r.Spec.Name)}, nil
 }
 
+func indexVpcByBFDPort(obj any) ([]string, error) {
+	vpc, ok := obj.(*kubeovnv1.Vpc)
+	if !ok {
+		return nil, nil
+	}
+	if vpc.Labels != nil && vpc.Labels[util.VpcExternalLabel] == "true" {
+		return nil, nil
+	}
+	if !vpc.Spec.BFDPort.IsEnabled() {
+		return nil, nil
+	}
+	return []string{IndexVpcBFDPortEnabled}, nil
+}
+
 // indexIPBySubnet indexes an IP CR by its primary subnet plus any attach
 // subnets, mirroring the subnets enqueued to updateSubnetStatusQueue on IP
 // add/update/delete. This lets calcSubnetStatusIP look up the IPs of a single
@@ -69,7 +86,10 @@ func indexIPBySubnet(obj any) ([]string, error) {
 // setupIndexers registers custom informer indexers used by hot-path
 // reconciliation loops to avoid O(N) full-store scans. Must be called before
 // the informer factory is started.
-func (c *Controller) setupIndexers(podInformer, epsInformer, ipInformer cache.SharedIndexInformer) error {
+func (c *Controller) setupIndexers(vpcInformer, podInformer, epsInformer, ipInformer cache.SharedIndexInformer) error {
+	if err := vpcInformer.AddIndexers(cache.Indexers{IndexVpcByBFDPort: indexVpcByBFDPort}); err != nil {
+		return err
+	}
 	if err := podInformer.AddIndexers(cache.Indexers{IndexPodByNode: indexPodByNode}); err != nil {
 		return err
 	}
@@ -79,6 +99,7 @@ func (c *Controller) setupIndexers(podInformer, epsInformer, ipInformer cache.Sh
 	if err := ipInformer.AddIndexers(cache.Indexers{IndexIPBySubnet: indexIPBySubnet}); err != nil {
 		return err
 	}
+	c.vpcIndexer = vpcInformer.GetIndexer()
 	c.podIndexer = podInformer.GetIndexer()
 	c.epsIndexer = epsInformer.GetIndexer()
 	c.ipIndexer = ipInformer.GetIndexer()
