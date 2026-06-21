@@ -128,4 +128,9 @@ func (c *Controller) Reconcile() {
 	} else {
 		c.syncSubnetRoutes()
 	}
+
+	// Log BFD status if enabled
+	if c.config.EnableBFD {
+		c.logBFDStatus()
+	}
 }
