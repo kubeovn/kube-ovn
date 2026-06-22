@@ -34,7 +34,7 @@ env:
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.24.0
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.13.4
+  TALOS_VERSION: v1.13.5
 
 jobs:
   build-kube-ovn-base:
