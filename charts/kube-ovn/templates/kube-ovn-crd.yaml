@@ -3606,6 +3606,7 @@ spec:
                 items:
                   type: string
                 type: array
+                x-kubernetes-list-type: set
               externalSubnet:
                 description: external subnet used to create the workload
                 type: string
@@ -3618,10 +3619,11 @@ spec:
                 description: |-
                   optional internal/external IPs used to create the workload
                   these IPs must be in the internal/external subnet
-                  the IPs count must NOT be less than the replicas count
+                  when specified, the IPs count must NOT be less than the replicas count
                 items:
                   type: string
                 type: array
+                x-kubernetes-list-type: set
               internalSubnet:
                 description: |-
                   optional internal subnet used to create the workload
@@ -3701,7 +3703,7 @@ spec:
               policies:
                 description: |-
                   egress policies
-                  at least one policy must be specified
+                  at least one policy or selector must be specified
                 items:
                   properties:
                     ipBlocks:
@@ -3709,6 +3711,7 @@ spec:
                       items:
                         type: string
                       type: array
+                      x-kubernetes-list-type: set
                     snat:
                       default: false
                       description: whether to enable SNAT/MASQUERADE for the egress
@@ -3718,17 +3721,27 @@ spec:
                       items:
                         type: string
                       type: array
+                      x-kubernetes-list-type: set
                   type: object
+                  x-kubernetes-validations:
+                  - message: Each policy MUST have at least one ipBlocks or subnets
+                    rule: has(self.ipBlocks) || has(self.subnets)
                 type: array
               prefix:
                 description: |-
                   optional name prefix used to generate the workload
                   the workload name will be generated as <prefix><vpc-egress-gateway-name>
+                pattern: ^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*[-\.]?$
                 type: string
+                x-kubernetes-validations:
+                - message: This field is immutable.
+                  rule: self == oldSelf
               replicas:
                 default: 1
                 description: workload replicas
                 format: int32
+                maximum: 10
+                minimum: 0
                 type: integer
               resources:
                 description: |-
@@ -3844,6 +3857,10 @@ spec:
                           type: object
                       type: object
                       x-kubernetes-map-type: atomic
+                      x-kubernetes-validations:
+                      - message: Each namespace selector MUST have at least one matchLabels
+                          or matchExpressions
+                        rule: has(self.matchLabels) || has(self.matchExpressions)
                     podSelector:
                       description: |-
                         A label selector is a label query over a set of resources. The result of matchLabels and
@@ -3893,6 +3910,10 @@ spec:
                           type: object
                       type: object
                       x-kubernetes-map-type: atomic
+                      x-kubernetes-validations:
+                      - message: Each pod selector MUST have at least one matchLabels
+                          or matchExpressions
+                        rule: has(self.matchLabels) || has(self.matchExpressions)
                   type: object
                 type: array
               tolerations:
@@ -3942,6 +3963,9 @@ spec:
                   if not specified, the default traffic policy "Cluster" will be used
                   if set to "Local", traffic will be routed to the gateway pod/instance on the same node when available
                   currently it works only for the default vpc
+                enum:
+                - Local
+                - Cluster
                 type: string
               vpc:
                 description: |-
@@ -3951,6 +3975,18 @@ spec:
             required:
             - externalSubnet
             type: object
+            x-kubernetes-validations:
+            - fieldPath: .internalIPs
+              message: Size of Internal IPs MUST be equal to or greater than Replicas
+              rule: '!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs)
+                >= self.replicas'
+            - fieldPath: .externalIPs
+              message: Size of External IPs MUST be equal to or greater than Replicas
+              rule: '!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs)
+                >= self.replicas'
+            - message: Each VPC Egress Gateway MUST have at least one policy or selector
+              rule: (has(self.policies) && size(self.policies) != 0) || (has(self.selectors)
+                && size(self.selectors) != 0)
           status:
             properties:
               conditions:
@@ -4008,6 +4044,10 @@ spec:
                 default: Pending
                 description: Current phase of the egress gateway (Pending, Processing,
                   or Completed)
+                enum:
+                - Pending
+                - Processing
+                - Completed
                 type: string
               ready:
                 default: false
@@ -4016,6 +4056,8 @@ spec:
               replicas:
                 description: used by the scale subresource
                 format: int32
+                maximum: 10
+                minimum: 0
                 type: integer
               workload:
                 description: workload information

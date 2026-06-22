@@ -444,6 +444,9 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		vegName := "veg-" + framework.RandomSuffix()
 		veg := framework.MakeVpcEgressGateway(namespaceName, vegName, vpcName, 2, internalSubnetName, externalSubnetName)
 		veg.Spec.BFD.Enabled = true
+		veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{
+			Subnets: []string{internalSubnetName},
+		}}
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting vpc egress gateway " + vegName)
 			vegClient.DeleteSync(vegName)
@@ -527,6 +530,9 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		podClient := f.PodClient()
 		vegName := "veg-" + framework.RandomSuffix()
 		veg := framework.MakeVpcEgressGateway(namespaceName, vegName, "", 1, internalSubnetName, externalSubnetName)
+		veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{
+			Subnets: []string{internalSubnetName},
+		}}
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting vpc egress gateway " + vegName)
 			vegClient.DeleteSync(vegName)
