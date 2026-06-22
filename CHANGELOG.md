@@ -1312,6 +1312,21 @@
  * zhangzujian
  * 张祖建
 
+## v1.14.41 (2026-06-22)
+
+ * [779f18ea6](https://github.com/kubeovn/kube-ovn/commit/779f18ea6d1fdc0205acd7751997842f193c8768) release v1.14.41
+ * [fd6997467](https://github.com/kubeovn/kube-ovn/commit/fd6997467786689ff784e76e22b7f32ff6206f25) fix(deps): update containerd to v2.2.5 (#6915)
+ * [4cee41d56](https://github.com/kubeovn/kube-ovn/commit/4cee41d5655b030c49d0459408b9ea4defa34039) fix: reconcile vpc bfd ha chassis on node changes (#6899)
+ * [d5fdd3d55](https://github.com/kubeovn/kube-ovn/commit/d5fdd3d5534ff091b533568d802f16f7fb6c1996) fix(ci): fetch pinned OVN for dpdk base (#6897)
+ * [853f53892](https://github.com/kubeovn/kube-ovn/commit/853f5389293e1de320462ef62101f2294ecbbc1a) fix(ci): fetch pinned OVN commit directly (#6892)
+ * [f7c4312cc](https://github.com/kubeovn/kube-ovn/commit/f7c4312cc0e0b5c8213e886453ce8316e7ca2dd4) fix(images): adapt OVN pinctrl to new OVS compose_nd_ns signature
+ * [65f7b001c](https://github.com/kubeovn/kube-ovn/commit/65f7b001cdaeb5bf0d7586ca97e4f9c900673286) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.14.40 (2026-06-05)
 
  * [9ab36e1c4](https://github.com/kubeovn/kube-ovn/commit/9ab36e1c4ed28bd555edda5470286ca13e4de94e) release v1.14.40
