@@ -361,8 +361,8 @@ func (c *OVNNbClient) GetNat(lrName, natType, externalIP, logicalIP string, igno
 			return nat.Type == natType && nat.LogicalIP == logicalIP
 		}
 		// For DNATAndSNAT: if logicalIP given, require externalIP+logicalIP.
-	// Prevents stale Delete (old logicalIP) from clobbering new row.
-	// Empty logicalIP keeps compat for Update/NatExists.
+		// Prevents stale Delete (old logicalIP) from clobbering new row.
+		// Empty logicalIP keeps compat for Update/NatExists.
 		if natType == ovnnb.NATTypeDNATAndSNAT {
 			if nat.Type != natType || nat.ExternalIP != externalIP {
 				return false
