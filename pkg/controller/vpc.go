@@ -787,23 +787,33 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 		return portName, nil, err
 	}
 	if len(nodes) == 0 {
-		err = fmt.Errorf("no nodes found by selector %q", selector.String())
-		klog.Error(err)
-		return portName, nil, err
+		klog.Warningf("no nodes found by selector %q for BFD LRP %s, clearing HA chassis group", selector.String(), portName)
 	}
+	readyNodes := make([]*v1.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if nodeReady(node) {
+			readyNodes = append(readyNodes, node)
+		}
+	}
+	if len(nodes) != 0 && len(readyNodes) == 0 {
+		klog.Warningf("no ready nodes found by selector %q for BFD LRP %s, clearing HA chassis group", selector.String(), portName)
+	}
+	sort.Slice(readyNodes, func(i, j int) bool {
+		return readyNodes[i].Name < readyNodes[j].Name
+	})
 
-	nodeNames := make([]string, 0, len(nodes))
-	chassisCount = min(chassisCount, len(nodes))
+	nodeNames := make([]string, 0, len(readyNodes))
+	chassisCount = min(chassisCount, len(readyNodes))
 	chassisNames := make([]string, 0, chassisCount)
-	for _, nodes := range nodes[:chassisCount] {
-		chassis, err := c.OVNSbClient.GetChassisByHost(nodes.Name)
+	for _, node := range readyNodes[:chassisCount] {
+		chassis, err := c.OVNSbClient.GetChassisByHost(node.Name)
 		if err != nil {
-			err = fmt.Errorf("failed to get chassis of node %s: %w", nodes.Name, err)
+			err = fmt.Errorf("failed to get chassis of node %s: %w", node.Name, err)
 			klog.Error(err)
 			return portName, nil, err
 		}
 		chassisNames = append(chassisNames, chassis.Name)
-		nodeNames = append(nodeNames, nodes.Name)
+		nodeNames = append(nodeNames, node.Name)
 	}
 
 	networks := strings.Split(vpc.Spec.BFDPort.IP, ",")
