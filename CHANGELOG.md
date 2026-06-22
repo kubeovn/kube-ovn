@@ -439,6 +439,23 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.15 (2026-06-22)
+
+ * [6c5e4b9e4](https://github.com/kubeovn/kube-ovn/commit/6c5e4b9e4f075142d5b38dcb08081c54cb170b60) release v1.15.15
+ * [9245913a4](https://github.com/kubeovn/kube-ovn/commit/9245913a43e523d468d114892e0541bf3b0d07f5) fix(deps): update containerd to v2.2.5 (#6916)
+ * [2c9e26bf6](https://github.com/kubeovn/kube-ovn/commit/2c9e26bf690eaa81a2a35d7df55b47503b29c499) fix: reconcile vpc bfd ha chassis on node changes (#6900)
+ * [13edea2d9](https://github.com/kubeovn/kube-ovn/commit/13edea2d97d8ed28f83aa1d737d6fb2fd7f1f1a4) fix(ovs): make DeleteNat idempotent when target NAT row is absent (#6911)
+ * [0f298cb03](https://github.com/kubeovn/kube-ovn/commit/0f298cb032da3ce7f0e70e3d07438bd9adb3fdfe) fix(ci): adapt dpdk base OVN to OVS nd API (#6895)
+ * [b1130f7e7](https://github.com/kubeovn/kube-ovn/commit/b1130f7e74f4eac9a85f5918406ca25491069a76) fix(controller): enable ARP learning on VPC routers that have peerings (#6882)
+ * [946487ce4](https://github.com/kubeovn/kube-ovn/commit/946487ce4eeb25beaeedeba6f765b156033f7df4) fix(subnet): allow all-ones host as gateway for IPv6 subnet (#6883)
+ * [758e6ef64](https://github.com/kubeovn/kube-ovn/commit/758e6ef64b75ee907748fa1b4265f8c4ce23afc7) prepare for next release
+
+### Contributors
+
+ * Apinant.u
+ * Mengxin Liu
+ * 张祖建
+
 ## v1.15.14 (2026-06-15)
 
  * [8a9088a6f](https://github.com/kubeovn/kube-ovn/commit/8a9088a6f41b49508e811c7a37509fedfae79c3e) release v1.15.14
