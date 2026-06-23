@@ -1289,30 +1289,35 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 		}
 	}
 
-	// MAC-only mode (BYO-DHCP / external DHCP): skip all IP address configuration when no
-	// IP was allocated. The interface keeps only its MAC and the VM gets its address from DHCP.
-	if ip != "" {
-		ipDelMap := make(map[string]netlink.Addr)
-		ipAddMap := make(map[string]netlink.Addr)
-		ipAddrs, err := util.AddrList(nodeLink, unix.AF_UNSPEC)
-		if err != nil {
-			err = fmt.Errorf("failed to list addresses on link %s: %w", link, err)
-			klog.Error(err)
-			return err
-		}
+	// List existing addresses up front so stale non-link-local IPs can be flushed. This runs
+	// even in MAC-only mode (BYO-DHCP / external DHCP) where no IP is assigned, so leftover
+	// addresses from a previous (or partial) configuration don't cause unintended routing/ARP
+	// behavior.
+	ipDelMap := make(map[string]netlink.Addr)
+	ipAddMap := make(map[string]netlink.Addr)
+	ipAddrs, err := util.AddrList(nodeLink, unix.AF_UNSPEC)
+	if err != nil {
+		err = fmt.Errorf("failed to list addresses on link %s: %w", link, err)
+		klog.Error(err)
+		return err
+	}
 
-		isIPv6LinkLocalExist := false
-		for _, ipAddr := range ipAddrs {
-			if ipAddr.IP.IsLinkLocalUnicast() {
-				// skip 169.254.0.0/16 and fe80::/10
-				if util.CheckProtocol(ipAddr.IP.String()) == kubeovnv1.ProtocolIPv6 {
-					isIPv6LinkLocalExist = true
-				}
-				continue
+	isIPv6LinkLocalExist := false
+	for _, ipAddr := range ipAddrs {
+		if ipAddr.IP.IsLinkLocalUnicast() {
+			// skip 169.254.0.0/16 and fe80::/10
+			if util.CheckProtocol(ipAddr.IP.String()) == kubeovnv1.ProtocolIPv6 {
+				isIPv6LinkLocalExist = true
 			}
-			ipDelMap[ipAddr.IPNet.String()] = ipAddr
+			continue
 		}
+		ipDelMap[ipAddr.IPNet.String()] = ipAddr
+	}
 
+	// MAC-only mode (BYO-DHCP / external DHCP): skip assigning any IP when none was allocated.
+	// The interface keeps only its MAC and the VM gets its address from DHCP. Stale addresses
+	// collected above are still flushed below.
+	if ip != "" {
 		if ipv6LinkLocalOn && !isIPv6LinkLocalExist && (util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ip) == kubeovnv1.ProtocolDual) {
 			linkLocal, err := macToLinkLocalIPv6(macAddr)
 			if err != nil {
@@ -1339,42 +1344,42 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 			}
 			ipAddMap[ipStr] = *ipAddr
 		}
+	}
 
-		for ip, addr := range ipDelMap {
-			klog.Infof("delete ip address %s on %s", ip, link)
-			if err = netlink.AddrDel(nodeLink, &addr); err != nil {
-				klog.Error(err)
-				return fmt.Errorf("delete address %s: %w", addr, err)
-			}
+	for ip, addr := range ipDelMap {
+		klog.Infof("delete ip address %s on %s", ip, link)
+		if err = netlink.AddrDel(nodeLink, &addr); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("delete address %s: %w", addr, err)
 		}
-		for ip, addr := range ipAddMap {
-			if addr.IP.To4() != nil {
-				if detectIPv4Conflict {
-					ip := addr.IP.String()
-					mac, err := util.ArpDetectIPConflict(link, ip, macAddr)
-					if err != nil {
-						err = fmt.Errorf("failed to detect address conflict for %s on link %s: %w", ip, link, err)
-						klog.Error(err)
-						return err
-					}
-					if mac != nil {
-						return fmt.Errorf("IP address %s has already been used by host with MAC %s", ip, mac)
-					}
-				} else {
-					// when detectIPConflict is true, free arp is already broadcast in the step of announcement
-					if err := util.AnnounceArpAddress(link, addr.IP.String(), macAddr, 1, 1*time.Second); err != nil {
-						klog.Warningf("failed to broadcast free arp with err %v", err)
-					}
+	}
+	for ip, addr := range ipAddMap {
+		if addr.IP.To4() != nil {
+			if detectIPv4Conflict {
+				ip := addr.IP.String()
+				mac, err := util.ArpDetectIPConflict(link, ip, macAddr)
+				if err != nil {
+					err = fmt.Errorf("failed to detect address conflict for %s on link %s: %w", ip, link, err)
+					klog.Error(err)
+					return err
 				}
-			} else if !ipv6DAD {
-				addr.Flags |= unix.IFA_F_NODAD
+				if mac != nil {
+					return fmt.Errorf("IP address %s has already been used by host with MAC %s", ip, mac)
+				}
+			} else {
+				// when detectIPConflict is true, free arp is already broadcast in the step of announcement
+				if err := util.AnnounceArpAddress(link, addr.IP.String(), macAddr, 1, 1*time.Second); err != nil {
+					klog.Warningf("failed to broadcast free arp with err %v", err)
+				}
 			}
+		} else if !ipv6DAD {
+			addr.Flags |= unix.IFA_F_NODAD
+		}
 
-			klog.Infof("add ip address %s to %s", ip, link)
-			if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
-				klog.Error(err)
-				return fmt.Errorf("can not add address %s to nic %s: %w", addr, link, err)
-			}
+		klog.Infof("add ip address %s to %s", ip, link)
+		if err = netlink.AddrAdd(nodeLink, &addr); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("can not add address %s to nic %s: %w", addr, link, err)
 		}
 	}
 

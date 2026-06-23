@@ -25,6 +25,10 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		if subnet.Spec.Gateway != "" {
 			return fmt.Errorf("gateway must be empty for underlay subnet %s without cidrBlock", subnet.Name)
 		}
+		// excludeIps has no meaning without a CIDR to allocate addresses from
+		if len(subnet.Spec.ExcludeIps) != 0 {
+			return fmt.Errorf("excludeIps must be empty for underlay subnet %s without cidrBlock", subnet.Name)
+		}
 		// Skip CIDR-related validations
 	} else {
 		if subnet.Spec.Gateway != "" {
