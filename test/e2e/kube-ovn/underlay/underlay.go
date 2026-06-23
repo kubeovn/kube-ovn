@@ -14,6 +14,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
@@ -23,8 +24,11 @@ import (
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -63,6 +67,21 @@ func nodeDockerNetworkSettings(node kind.Node, networkID string) *dockernetwork.
 		}
 	}
 	return nil
+}
+
+// nadAvailable reports whether the multus NetworkAttachmentDefinition CRD is
+// installed on the cluster. The mac-only secondary-interface spec depends on
+// multus, which the kube-ovn conformance suite does not install by default.
+func nadAvailable(f *framework.Framework) bool {
+	_, err := f.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(f.Namespace.Name).List(context.TODO(), metav1.ListOptions{Limit: 1})
+	if err == nil {
+		return true
+	}
+	if meta.IsNoMatchError(err) || k8serrors.IsNotFound(err) {
+		return false
+	}
+	framework.Logf("unexpected error checking for multus NetworkAttachmentDefinition CRD: %v", err)
+	return false
 }
 
 func waitSubnetStatusUpdate(subnetName string, subnetClient *framework.SubnetClient, expectedUsingIPs int64) {
@@ -250,6 +269,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	var vpcClient *framework.VpcClient
 	var vlanClient *framework.VlanClient
 	var providerNetworkClient *framework.ProviderNetworkClient
+	var ipClient *framework.IPClient
+	var nadClient *framework.NetworkAttachmentDefinitionClient
 	var dockerNetwork *dockernetwork.Inspect
 	var netpolClient *framework.NetworkPolicyClient
 	var containerID string
@@ -263,6 +284,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		vpcClient = f.VpcClient()
 		vlanClient = f.VlanClient()
 		providerNetworkClient = f.ProviderNetworkClient()
+		ipClient = f.IPClient()
+		nadClient = f.NetworkAttachmentDefinitionClient()
 		netpolClient = f.NetworkPolicyClient()
 		namespaceName = f.Namespace.Name
 		podName = "pod-" + framework.RandomSuffix()
@@ -634,6 +657,153 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectHaveLen(links, 1, "should get eth0 information")
 		framework.ExpectEqual(links[0].Mtu, docker.MTU)
+	})
+
+	framework.ConformanceIt("should allocate only a MAC address for an underlay subnet without a CIDR", func() {
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		// A mac-only subnet is an underlay subnet (bound to a vlan) created WITHOUT a
+		// cidrBlock. The guest obtains its IP from an external DHCP server (BYO-DHCP);
+		// kube-ovn only allocates a MAC address per pod NIC. The shared subnetName /
+		// podName / vlanName / providerNetworkName are torn down by the suite-level
+		// AfterEach in the correct order (pod -> subnet -> vlan -> provider network).
+		ginkgo.By("Creating mac-only subnet " + subnetName)
+		subnet := framework.MakeSubnet(subnetName, vlanName, "", "", "", "", nil, nil, []string{namespaceName})
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Validating the subnet is classified as mac-only and reaches Ready")
+		subnet = subnetClient.Get(subnetName)
+		framework.ExpectEqual(subnet.Spec.Protocol, apiv1.ProtocolMac)
+		framework.ExpectEmpty(subnet.Spec.CIDRBlock)
+		// CreateSync already waited for the subnet to be Ready, which only happens
+		// once util.ValidateSubnet accepts the "Mac" protocol and IPAM registers the
+		// CIDR-less subnet.
+		framework.ExpectTrue(subnet.Status.IsReady(), "mac-only subnet should reach the Ready condition")
+
+		// A mac-only subnet allocates no IP, so it cannot back a pod's primary
+		// interface: containerd's CRI requires eth0 to have an address. This spec
+		// therefore validates the controller-side IPAM allocation (mac, no IP) on
+		// the pod object and the IP CR. The realistic data-plane consumption (a
+		// secondary interface whose guest does external DHCP) is covered by the
+		// multus spec below. The pod is created without waiting for it to become
+		// Running because it stays Pending by design.
+		ginkgo.By("Creating pod " + podName + " on the mac-only subnet")
+		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, []string{"sleep", "infinity"}, nil)
+		_ = podClient.Create(pod)
+
+		ginkgo.By("Waiting for the controller to allocate a MAC address to the pod")
+		var allocatedPod *corev1.Pod
+		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			p := podClient.GetPod(podName)
+			if p.Annotations[util.AllocatedAnnotation] == "true" {
+				allocatedPod = p
+				return true, nil
+			}
+			return false, nil
+		}, "the pod to be allocated a mac address")
+
+		ginkgo.By("Validating the pod was allocated a MAC address but no IP")
+		macStr := allocatedPod.Annotations[util.MacAddressAnnotation]
+		framework.ExpectNotEmpty(macStr, "pod should have a MAC address annotation")
+		_, err := net.ParseMAC(macStr)
+		framework.ExpectNoError(err, "pod MAC address should be valid")
+		framework.ExpectEmpty(allocatedPod.Annotations[util.IPAddressAnnotation], "pod should not be assigned an IP address")
+		framework.ExpectEmpty(allocatedPod.Annotations[util.CidrAnnotation], "pod should not have a cidr")
+
+		ginkgo.By("Validating the IP resource records the MAC with no IP address")
+		ipCRName := ovs.PodNameToPortName(podName, namespaceName, util.OvnProvider)
+		ipCR := ipClient.Get(ipCRName)
+		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+		framework.ExpectEqual(ipCR.Spec.PodName, podName)
+		framework.ExpectEqual(strings.ToLower(ipCR.Spec.MacAddress), strings.ToLower(macStr), "IP CR should record the allocated MAC")
+		framework.ExpectEmpty(ipCR.Spec.IPAddress, "IP CR should not record an IP address")
+	})
+
+	framework.ConformanceIt("should allocate only a MAC address for a mac-only subnet attached as a secondary interface", func() {
+		if !nadAvailable(f) {
+			ginkgo.Skip("multus NetworkAttachmentDefinition CRD is not installed")
+		}
+
+		ginkgo.By("Creating provider network " + providerNetworkName)
+		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
+		_ = providerNetworkClient.CreateSync(pn)
+
+		ginkgo.By("Creating vlan " + vlanName)
+		vlan := framework.MakeVlan(vlanName, providerNetworkName, 0)
+		_ = vlanClient.Create(vlan)
+
+		nadName := "nad-mac-" + framework.RandomSuffix()
+		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
+		_ = nadClient.Create(nad)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting network attachment definition " + nadName)
+			nadClient.Delete(nadName)
+		})
+
+		// The mac-only subnet is bound to the NAD provider so it is consumed as a
+		// secondary interface. The pod keeps a normal primary eth0 (IP from
+		// ovn-default), which satisfies the CRI, while the secondary NIC gets only a
+		// MAC and the guest would obtain its IP from an external DHCP server. The
+		// shared subnetName / podName / vlanName / providerNetworkName are cleaned up
+		// by the suite-level AfterEach.
+		ginkgo.By("Creating mac-only subnet " + subnetName + " bound to provider " + provider)
+		subnet := framework.MakeSubnet(subnetName, vlanName, "", "", "", provider, nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Validating the subnet is classified as mac-only and reaches Ready")
+		subnet = subnetClient.Get(subnetName)
+		framework.ExpectEqual(subnet.Spec.Protocol, apiv1.ProtocolMac)
+		framework.ExpectEmpty(subnet.Spec.CIDRBlock)
+		framework.ExpectTrue(subnet.Status.IsReady(), "mac-only subnet should reach the Ready condition")
+
+		ginkgo.By("Creating pod " + podName + " with the mac-only subnet as a secondary interface")
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", namespaceName, nadName)}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, []string{"sleep", "infinity"}, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating the secondary interface was allocated a MAC address but no IP")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.AllocatedAnnotationTemplate, provider), "true")
+		macStr := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, provider)]
+		framework.ExpectNotEmpty(macStr, "secondary interface should have a MAC address annotation")
+		_, err := net.ParseMAC(macStr)
+		framework.ExpectNoError(err, "secondary interface MAC address should be valid")
+		framework.ExpectEmpty(pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)], "secondary interface should not be assigned an IP address")
+		framework.ExpectEmpty(pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)], "secondary interface should not have a cidr")
+
+		ginkgo.By("Validating the IP resource records the MAC with no IP address")
+		ipCRName := ovs.PodNameToPortName(podName, namespaceName, provider)
+		ipCR := ipClient.Get(ipCRName)
+		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+		framework.ExpectEqual(strings.ToLower(ipCR.Spec.MacAddress), strings.ToLower(macStr), "IP CR should record the allocated MAC")
+		framework.ExpectEmpty(ipCR.Spec.IPAddress, "IP CR should not record an IP address")
+
+		ginkgo.By("Validating the secondary network interface inside the pod has the allocated MAC")
+		var secondaryLink string
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			links, err := iproute.AddressShow("", func(cmd ...string) ([]byte, []byte, error) {
+				return framework.KubectlExec(namespaceName, podName, cmd...)
+			})
+			if err != nil {
+				return false, err
+			}
+			for _, link := range links {
+				if strings.EqualFold(link.Address, macStr) {
+					secondaryLink = link.IfName
+					return true, nil
+				}
+			}
+			return false, nil
+		}, "the secondary interface with the allocated MAC to appear in the pod")
+		framework.Logf("found secondary interface %s with MAC %s", secondaryLink, macStr)
 	})
 
 	framework.ConformanceIt("should be able to detect duplicate address", func() {
