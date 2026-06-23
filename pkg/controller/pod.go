@@ -2180,6 +2180,41 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 	return true, true, nil
 }
 
+// acquireMacOnlyAddress allocates only a MAC address (no IP) for a pod NIC on an
+// underlay subnet without a CIDR (BYO-DHCP / external DHCP). The guest obtains its
+// IP from an external DHCP server. MAC allocation goes through IPAM so it is
+// idempotent per NIC (no churn on retries) and the subnet/MAC are tracked, which
+// prevents the GC from cleaning the pod's mac-only IP/LSP resources.
+func (c *Controller) acquireMacOnlyAddress(pod *v1.Pod, podNet *kubeovnNet, key, portName string) (string, string, string, *kubeovnv1.Subnet, error) {
+	klog.Infof("allocating MAC-only address for pod %s in mac-only subnet %s", key, podNet.Subnet.Name)
+
+	// Prefer a per-interface MAC annotation, then fall back to the provider-level one.
+	var macPointer *string
+	if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
+		if macStr := pod.Annotations[perInterfaceMACAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)]; macStr != "" {
+			if _, err := net.ParseMAC(macStr); err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
+			macPointer = &macStr
+		}
+	}
+	if macPointer == nil {
+		if annoMAC := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]; annoMAC != "" {
+			if _, err := net.ParseMAC(annoMAC); err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
+			macPointer = &annoMAC
+		}
+	}
+
+	_, _, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", nil, !podNet.AllowLiveMigration)
+	if err != nil {
+		klog.Errorf("failed to allocate MAC for pod %s in mac-only subnet %s: %v", key, podNet.Subnet.Name, err)
+		return "", "", "", podNet.Subnet, err
+	}
+	return "", "", mac, podNet.Subnet, nil
+}
+
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	// becomes vmNAme when pod is owned by a kubevirt VM
 	podName := c.getNameByPod(pod)
@@ -2187,38 +2222,9 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
 	// Handle underlay subnets without a CIDR (BYO-DHCP / external DHCP): only a MAC is
-	// allocated; the guest obtains its IP from an external DHCP server. MAC allocation
-	// goes through IPAM so it is idempotent per NIC (no churn on retries) and the
-	// subnet/MAC are tracked, which prevents the GC from cleaning the pod's mac-only
-	// IP/LSP resources.
+	// allocated and the guest obtains its IP from an external DHCP server.
 	if podNet.Subnet.Spec.Vlan != "" && podNet.Subnet.Spec.CIDRBlock == "" {
-		klog.Infof("allocating MAC-only address for pod %s in mac-only subnet %s", key, podNet.Subnet.Name)
-
-		// Prefer a per-interface MAC annotation, then fall back to the provider-level one.
-		var macPointer *string
-		if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
-			if macStr := pod.Annotations[perInterfaceMACAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)]; macStr != "" {
-				if _, err := net.ParseMAC(macStr); err != nil {
-					return "", "", "", podNet.Subnet, err
-				}
-				macPointer = &macStr
-			}
-		}
-		if macPointer == nil {
-			if annoMAC := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]; annoMAC != "" {
-				if _, err := net.ParseMAC(annoMAC); err != nil {
-					return "", "", "", podNet.Subnet, err
-				}
-				macPointer = &annoMAC
-			}
-		}
-
-		_, _, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", nil, !podNet.AllowLiveMigration)
-		if err != nil {
-			klog.Errorf("failed to allocate MAC for pod %s in mac-only subnet %s: %v", key, podNet.Subnet.Name, err)
-			return "", "", "", podNet.Subnet, err
-		}
-		return "", "", mac, podNet.Subnet, nil
+		return c.acquireMacOnlyAddress(pod, podNet, key, portName)
 	}
 
 	var checkVMPod bool

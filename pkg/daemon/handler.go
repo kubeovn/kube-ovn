@@ -63,6 +63,17 @@ func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.
 	return nil, false
 }
 
+// isMacOnlyAllocation reports whether the controller allocated only a MAC address
+// for the given provider/interface (BYO-DHCP / external DHCP on an underlay subnet
+// without a CIDR): the pod is marked allocated and has a MAC, but no IP or CIDR.
+// Such NICs must not block on the address/route wait loops in handleAdd.
+func isMacOnlyAllocation(annotations map[string]string, provider, ifName string, appendIfName bool) bool {
+	return util.GetAnnotationWithIfNameOverride(annotations, provider, ifName, util.IPAddressAnnotationTemplate, appendIfName) == "" &&
+		util.GetAnnotationWithIfNameOverride(annotations, provider, ifName, util.AllocatedAnnotationTemplate, appendIfName) == "true" &&
+		util.GetAnnotationWithIfNameOverride(annotations, provider, ifName, util.MacAddressAnnotationTemplate, appendIfName) != "" &&
+		util.GetAnnotationWithIfNameOverride(annotations, provider, ifName, util.CidrAnnotationTemplate, appendIfName) == ""
+}
+
 func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
 	podRequest := request.CniRequest{}
 	if err := req.ReadEntity(&podRequest); err != nil {
@@ -124,10 +135,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		// the controller allocates only a MAC address, leaving the IP and CIDR annotations
 		// empty while still marking the pod as allocated. Such pods must not block on the
 		// address/route wait loops below.
-		macOnly = ip == "" &&
-			util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.AllocatedAnnotationTemplate, appendIfName) == "true" &&
-			util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.MacAddressAnnotationTemplate, appendIfName) != "" &&
-			util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.CidrAnnotationTemplate, appendIfName) == ""
+		macOnly = isMacOnlyAllocation(pod.Annotations, podRequest.Provider, podRequest.IfName, appendIfName)
 		if ip == "" && !macOnly {
 			klog.Infof("wait address for pod %s/%s provider %s", podRequest.PodNamespace, podRequest.PodName, podRequest.Provider)
 			// wait controller assign an address
