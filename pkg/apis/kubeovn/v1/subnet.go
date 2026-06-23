@@ -15,6 +15,10 @@ const (
 	ProtocolIPv4 = "IPv4"
 	ProtocolIPv6 = "IPv6"
 	ProtocolDual = "Dual"
+	// ProtocolMac identifies a "mac-only" subnet: an underlay subnet created
+	// without a CIDR (BYO-DHCP / external DHCP) that allocates only a MAC address
+	// per pod NIC. The guest obtains its IP from an external DHCP server.
+	ProtocolMac = "Mac"
 )
 
 const (

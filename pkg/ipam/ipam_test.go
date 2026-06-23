@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestNewIPAM(t *testing.T) {
@@ -349,6 +351,93 @@ func TestReleaseAddressByPod(t *testing.T) {
 	ipam.ReleaseAddressByPod(dualPodName, dualSubnetName)
 	require.Equal(t, 0, dualSubnet.V4Using.Len())
 	require.Equal(t, 0, dualSubnet.V6Using.Len())
+}
+
+func TestMacOnlySubnet(t *testing.T) {
+	ipam := NewIPAM()
+	macOnlySubnetName := "macOnlySubnet"
+
+	// Registering a subnet with an empty CIDR creates a mac-only subnet entry. This is
+	// what keeps the GC (checkIPOwnerExists) from cleaning mac-only IP/LSP resources.
+	err := ipam.AddOrUpdateSubnet(macOnlySubnetName, "", "", nil)
+	require.NoError(t, err)
+	subnet, ok := ipam.Subnets[macOnlySubnetName]
+	require.True(t, ok)
+	require.Equal(t, kubeovnv1.ProtocolMac, subnet.Protocol)
+	require.Nil(t, subnet.V4CIDR)
+	require.Nil(t, subnet.V6CIDR)
+
+	// Re-registering an existing mac-only subnet is an idempotent no-op.
+	err = ipam.AddOrUpdateSubnet(macOnlySubnetName, "", "", nil)
+	require.NoError(t, err)
+
+	// A random MAC is allocated, with no IP.
+	podName := "pod1.default"
+	nicName := "pod1.default"
+	var mac *string
+	v4, v6, macStr, err := ipam.GetRandomAddress(podName, nicName, mac, macOnlySubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+	require.NotEmpty(t, macStr)
+	_, err = net.ParseMAC(macStr)
+	require.NoError(t, err)
+
+	// Allocation is idempotent per NIC: the same pod/NIC keeps the same MAC (no churn
+	// on retries).
+	v4, v6, macStr2, err := ipam.GetRandomAddress(podName, nicName, mac, macOnlySubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+	require.Equal(t, macStr, macStr2)
+
+	// The MAC is tracked so the NIC is associated with the pod (required for release).
+	require.Equal(t, macStr, subnet.NicToMac[nicName])
+	require.Equal(t, podName, subnet.MacToPod[macStr])
+	require.Contains(t, subnet.PodToNicList[podName], nicName)
+
+	// Releasing the pod cleans up the MAC (no leak).
+	ipam.ReleaseAddressByPod(podName, macOnlySubnetName)
+	require.Empty(t, subnet.NicToMac[nicName])
+	_, ok = subnet.MacToPod[macStr]
+	require.False(t, ok)
+	require.NotContains(t, subnet.PodToNicList[podName], nicName)
+
+	// A static MAC is honored.
+	staticMac := "00:11:22:33:44:55"
+	staticPod := "pod2.default"
+	staticNic := "pod2.default"
+	v4, v6, macStr, err = ipam.GetRandomAddress(staticPod, staticNic, &staticMac, macOnlySubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+	require.Equal(t, staticMac, macStr)
+
+	// Requesting the same static MAC for a different pod conflicts.
+	_, _, _, err = ipam.GetRandomAddress("pod3.default", "pod3.default", &staticMac, macOnlySubnetName, "", nil, true)
+	require.ErrorIs(t, err, ErrConflict)
+
+	// Requesting the same static MAC for the same pod/NIC is idempotent.
+	_, _, macStr, err = ipam.GetRandomAddress(staticPod, staticNic, &staticMac, macOnlySubnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, staticMac, macStr)
+
+	// Allocating from an unregistered mac-only subnet fails (the controller must
+	// register the subnet first).
+	_, _, _, err = ipam.GetRandomAddress(podName, nicName, mac, "unregistered", "", nil, true)
+	require.ErrorIs(t, err, ErrNoSubnet)
+}
+
+func TestMacOnlySubnetCannotStripCIDR(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "v4Subnet"
+	err := ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "10.0.0.1", nil)
+	require.NoError(t, err)
+
+	// Converting an existing IP subnet to mac-only (stripping its CIDR) is invalid.
+	err = ipam.AddOrUpdateSubnet(subnetName, "", "", nil)
+	require.ErrorIs(t, err, ErrInvalidCIDR)
+	require.Equal(t, kubeovnv1.ProtocolIPv4, ipam.Subnets[subnetName].Protocol)
 }
 
 func TestDeleteSubnet(t *testing.T) {

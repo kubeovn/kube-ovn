@@ -2186,21 +2186,38 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	key := cache.NewObjectName(pod.Namespace, podName).String()
 	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 
-	// Handle underlay subnets without CIDR (BYO-DHCP / external DHCP) - only allocate a MAC
+	// Handle underlay subnets without a CIDR (BYO-DHCP / external DHCP): only a MAC is
+	// allocated; the guest obtains its IP from an external DHCP server. MAC allocation
+	// goes through IPAM so it is idempotent per NIC (no churn on retries) and the
+	// subnet/MAC are tracked, which prevents the GC from cleaning the pod's mac-only
+	// IP/LSP resources.
 	if podNet.Subnet.Spec.Vlan != "" && podNet.Subnet.Spec.CIDRBlock == "" {
-		klog.Infof("allocating MAC-only for pod %s in underlay subnet %s without CIDR", key, podNet.Subnet.Name)
+		klog.Infof("allocating MAC-only address for pod %s in mac-only subnet %s", key, podNet.Subnet.Name)
 
-		annoMAC := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]
-		if annoMAC != "" {
-			if _, err := net.ParseMAC(annoMAC); err != nil {
-				return "", "", "", podNet.Subnet, err
+		// Prefer a per-interface MAC annotation, then fall back to the provider-level one.
+		var macPointer *string
+		if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
+			if macStr := pod.Annotations[perInterfaceMACAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)]; macStr != "" {
+				if _, err := net.ParseMAC(macStr); err != nil {
+					return "", "", "", podNet.Subnet, err
+				}
+				macPointer = &macStr
 			}
-			// Use the existing MAC annotation
-			return "", "", annoMAC, podNet.Subnet, nil
+		}
+		if macPointer == nil {
+			if annoMAC := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]; annoMAC != "" {
+				if _, err := net.ParseMAC(annoMAC); err != nil {
+					return "", "", "", podNet.Subnet, err
+				}
+				macPointer = &annoMAC
+			}
 		}
 
-		// Generate a new MAC address
-		mac := util.GenerateMac()
+		_, _, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", nil, !podNet.AllowLiveMigration)
+		if err != nil {
+			klog.Errorf("failed to allocate MAC for pod %s in mac-only subnet %s: %v", key, podNet.Subnet.Name, err)
+			return "", "", "", podNet.Subnet, err
+		}
 		return "", "", mac, podNet.Subnet, nil
 	}
 

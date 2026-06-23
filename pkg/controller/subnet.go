@@ -229,7 +229,13 @@ func formatAddress(subnet *kubeovnv1.Subnet) error {
 		formatExcludeIPs(subnet)
 	}
 
-	subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
+	if subnet.Spec.Vlan != "" && subnet.Spec.CIDRBlock == "" {
+		// Underlay subnet without a CIDR (BYO-DHCP / external DHCP): it allocates only
+		// a MAC address per pod NIC, so it gets its own protocol.
+		subnet.Spec.Protocol = kubeovnv1.ProtocolMac
+	} else {
+		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
+	}
 
 	return nil
 }
@@ -586,7 +592,15 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			return err
 		}
 	} else {
-		klog.Infof("subnet %s has no cidrBlock, skipping IPAM (BYO-DHCP / external DHCP)", subnet.Name)
+		// Mac-only subnet (underlay without CIDR, BYO-DHCP / external DHCP). Register a
+		// lightweight IPAM entry so MAC allocations are tracked and the GC does not
+		// clean the subnet's mac-only IP/LSP resources. It has no IP ranges, so there
+		// is no subnet IP status to calculate.
+		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil); err != nil {
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("registered mac-only subnet %s in IPAM (no cidrBlock, BYO-DHCP / external DHCP)", subnet.Name)
 	}
 
 	subnet, deleted, err := c.handleSubnetFinalizer(subnet)

@@ -134,7 +134,8 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 	protocol := subnet.Spec.Protocol
 	if protocol != "" && protocol != kubeovnv1.ProtocolIPv4 &&
 		protocol != kubeovnv1.ProtocolIPv6 &&
-		protocol != kubeovnv1.ProtocolDual {
+		protocol != kubeovnv1.ProtocolDual &&
+		protocol != kubeovnv1.ProtocolMac {
 		return fmt.Errorf("%s is not a valid protocol type", protocol)
 	}
 
