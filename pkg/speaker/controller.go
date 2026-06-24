@@ -247,4 +247,9 @@ func (c *Controller) Reconcile() {
 		// Default: Pod/Subnet/Service VIP announcements without EIP mode.
 		c.syncSubnetRoutes()
 	}
+
+	// Log BFD status if enabled
+	if c.config.EnableBFD {
+		c.logBFDStatus()
+	}
 }
