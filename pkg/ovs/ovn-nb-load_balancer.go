@@ -580,14 +580,28 @@ func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP str
 
 	for backendIP := range targetBackendIPs {
 		if !c.isBackendIPStillUsed(lb, targetVIP, backendIP) {
-			if portMapping, exists := lb.IPPortMappings[backendIP]; exists {
-				unusedBackendIPs[backendIP] = portMapping
+			if mappingKey, portMapping, exists := findIPPortMapping(lb.IPPortMappings, backendIP); exists {
+				unusedBackendIPs[mappingKey] = portMapping
 			}
 		}
 	}
 
 	klog.V(4).Infof("Found %d unused backend IPs for VIP %s", len(unusedBackendIPs), targetVIP)
 	return unusedBackendIPs
+}
+
+func findIPPortMapping(mappings map[string]string, ip string) (string, string, bool) {
+	if portMapping, exists := mappings[ip]; exists {
+		return ip, portMapping, true
+	}
+
+	cleanIP := strings.Trim(ip, "[]")
+	for mappingKey, portMapping := range mappings {
+		if strings.Trim(mappingKey, "[]") == cleanIP {
+			return mappingKey, portMapping, true
+		}
+	}
+	return "", "", false
 }
 
 // isBackendIPStillUsed checks if a backend IP is still referenced by any other VIP

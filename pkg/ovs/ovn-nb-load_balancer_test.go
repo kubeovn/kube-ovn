@@ -970,6 +970,43 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteIPPortMapping() {
 			}
 		},
 	)
+
+	t.Run("delete bracketed IPv6 ip port mappings from load balancer",
+		func(t *testing.T) {
+			testLbName := "test-lb-del-bracketed-ipv6-ip-port-mapping"
+			err := nbClient.CreateLoadBalancer(testLbName, "tcp")
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := nbClient.DeleteLoadBalancer(testLbName)
+				require.NoError(t, err)
+			})
+
+			vip := "[fd00:10:96::e870]:8080"
+			backend := "[fc00::af4:d]:8080"
+			host, _, err := net.SplitHostPort(backend)
+			require.NoError(t, err)
+			mappingKey := fmt.Sprintf("[%s]", host)
+			mappings := map[string]string{
+				mappingKey: "pod-ipv6.default.ovn:0.0.0.0",
+			}
+
+			err = nbClient.LoadBalancerAddVip(testLbName, vip, backend)
+			require.NoError(t, err)
+			err = nbClient.LoadBalancerAddIPPortMapping(testLbName, vip, mappings)
+			require.NoError(t, err)
+
+			lb, err := nbClient.GetLoadBalancer(testLbName, false)
+			require.NoError(t, err)
+			require.Contains(t, lb.IPPortMappings, mappingKey)
+
+			err = nbClient.LoadBalancerDeleteIPPortMapping(testLbName, vip)
+			require.NoError(t, err)
+
+			lb, err = nbClient.GetLoadBalancer(testLbName, false)
+			require.NoError(t, err)
+			require.NotContains(t, lb.IPPortMappings, mappingKey)
+		},
+	)
 }
 
 func (suite *OvnClientTestSuite) testLoadBalancerWithHealthCheck() {
