@@ -675,7 +675,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		// AfterEach in the correct order (pod -> subnet -> vlan -> provider network).
 		ginkgo.By("Creating mac-only subnet " + subnetName)
 		subnet := framework.MakeSubnet(subnetName, vlanName, "", "", "", "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
+		subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating the subnet is classified as mac-only and reaches Ready")
 		subnet = subnetClient.Get(subnetName)
@@ -757,7 +757,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 		// by the suite-level AfterEach.
 		ginkgo.By("Creating mac-only subnet " + subnetName + " bound to provider " + provider)
 		subnet := framework.MakeSubnet(subnetName, vlanName, "", "", "", provider, nil, nil, nil)
-		subnet = subnetClient.CreateSync(subnet)
+		subnetClient.CreateSync(subnet)
 
 		ginkgo.By("Validating the subnet is classified as mac-only and reaches Ready")
 		subnet = subnetClient.Get(subnetName)
