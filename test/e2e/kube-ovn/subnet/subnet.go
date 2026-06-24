@@ -1446,6 +1446,76 @@ var _ = framework.Describe("[group:subnet]", func() {
 			return false, nil
 		}, fmt.Sprintf("pod %s should have AddressConflict warning event", podName))
 	})
+
+	framework.ConformanceIt("should support allowAllocateFirstLast to allocate network and broadcast addresses", func() {
+		f.SkipVersionPriorTo(1, 17, "AllowAllocateFirstLast is introduced in v1.17")
+
+		ginkgo.By("Creating a /28 subnet with allowAllocateFirstLast enabled")
+		var subnetCIDR, gw, networkAddr, broadcastAddr string
+
+		switch f.ClusterIPFamily {
+		case "ipv4":
+			subnetCIDR = "192.168.210.0/28"
+			gw = "192.168.210.1"
+			networkAddr = "192.168.210.0"
+			broadcastAddr = "192.168.210.15"
+		case "ipv6":
+			subnetCIDR = "fd00:210::/124"
+			gw = "fd00:210::1"
+			networkAddr = "fd00:210::"
+			broadcastAddr = "fd00:210::f"
+		case "dual":
+			subnetCIDR = "192.168.210.0/28,fd00:210::/124"
+			gw = "192.168.210.1,fd00:210::1"
+			networkAddr = "192.168.210.0"
+			broadcastAddr = "192.168.210.15"
+		}
+
+		subnetName = "allocate-first-last-" + framework.RandomSuffix()
+		subnet = framework.MakeSubnet(subnetName, "", subnetCIDR, gw, "", "", nil, nil, []string{namespaceName})
+		subnet.Spec.AllowAllocateFirstLast = true
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Verifying subnet status accounts for all IPs")
+		// With allowAllocateFirstLast, available IPs should include network and broadcast
+		// For /28 IPv4: 16 total - 1 (gateway) = 15 available
+		if f.ClusterIPFamily == "ipv4" || f.ClusterIPFamily == "dual" {
+			// 16 IPs total, minus gateway = 15 available
+			framework.ExpectTrue(subnet.Status.V4AvailableIPs.Int64() >= 15,
+				fmt.Sprintf("expected >= 15 available v4 IPs, got %d", subnet.Status.V4AvailableIPs.Int64()))
+		}
+
+		ginkgo.By("Creating pod with the network address (first IP)")
+		annotations := map[string]string{
+			util.IPAddressAnnotation: networkAddr,
+		}
+		podName = "pod-network-addr-" + framework.RandomSuffix()
+		cmd := []string{"sleep", "infinity"}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Verifying pod got the network address")
+		ipAddr := pod.Annotations[util.IPAddressAnnotation]
+		framework.ExpectContainSubstring(ipAddr, networkAddr)
+
+		ginkgo.By("Deleting the first pod")
+		podClient.DeleteSync(podName)
+
+		ginkgo.By("Creating pod with the broadcast address (last IP)")
+		annotations = map[string]string{
+			util.IPAddressAnnotation: broadcastAddr,
+		}
+		podName = "pod-broadcast-addr-" + framework.RandomSuffix()
+		pod = framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Verifying pod got the broadcast address")
+		ipAddr = pod.Annotations[util.IPAddressAnnotation]
+		framework.ExpectContainSubstring(ipAddr, broadcastAddr)
+
+		ginkgo.By("Deleting the second pod")
+		podClient.DeleteSync(podName)
+	})
 })
 
 func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {

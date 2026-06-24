@@ -990,3 +990,80 @@ func TestGetSubnetV4Mask(t *testing.T) {
 	require.Equal(t, err, ErrNoAvailable)
 	require.Empty(t, mask)
 }
+
+func TestIPAMAllowAllocateFirstLast(t *testing.T) {
+	ipam := NewIPAM()
+
+	// /28 subnet with allowAllocateFirstLast=true: first and last IPs should be allocatable
+	subnetName := "allocateAll"
+	cidr := "10.0.0.0/28"
+	gw := "10.0.0.1"
+	err := ipam.AddOrUpdateSubnet(subnetName, cidr, gw, []string{gw}, true)
+	require.NoError(t, err)
+
+	subnet := ipam.Subnets[subnetName]
+	require.True(t, subnet.AllowAllocateFirstLast)
+
+	// Allocate the network address (10.0.0.0)
+	v4, _, mac, err := ipam.GetStaticAddress("pod1", "pod1.ns", "10.0.0.0", nil, subnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.0", v4)
+	require.NotEmpty(t, mac)
+
+	// Allocate the broadcast address (10.0.0.15)
+	v4, _, mac, err = ipam.GetStaticAddress("pod2", "pod2.ns", "10.0.0.15", nil, subnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.15", v4)
+	require.NotEmpty(t, mac)
+}
+
+func TestIPAMAllowAllocateFirstLastSlash31(t *testing.T) {
+	ipam := NewIPAM()
+
+	// /31 should auto-enable allocateAll (RFC 3021)
+	subnetName := "slash31"
+	cidr := "10.0.0.0/31"
+	gw := "10.0.0.0"
+	err := ipam.AddOrUpdateSubnet(subnetName, cidr, gw, nil)
+	require.NoError(t, err)
+
+	subnet := ipam.Subnets[subnetName]
+	// AllowAllocateFirstLast is not explicitly set, but ShouldAllocateAll returns true
+	_ = subnet
+
+	// Both IPs should be allocatable
+	v4, _, _, err := ipam.GetStaticAddress("pod1", "pod1.ns", "10.0.0.0", nil, subnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.0", v4)
+
+	v4, _, _, err = ipam.GetStaticAddress("pod2", "pod2.ns", "10.0.0.1", nil, subnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4)
+
+	// Random allocation should work
+	ipam2 := NewIPAM()
+	err = ipam2.AddOrUpdateSubnet(subnetName, cidr, gw, []string{gw})
+	require.NoError(t, err)
+	v4, _, _, err = ipam2.GetRandomAddress("pod3", "pod3.ns", nil, subnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4) // .0 is gw (excluded), so .1 is allocated
+}
+
+func TestIPAMAllowAllocateFirstLastDisabled(t *testing.T) {
+	ipam := NewIPAM()
+
+	// /28 without allowAllocateFirstLast: first and last IPs should NOT be allocatable
+	subnetName := "noAllocateAll"
+	cidr := "10.0.0.0/28"
+	gw := "10.0.0.1"
+	err := ipam.AddOrUpdateSubnet(subnetName, cidr, gw, []string{gw})
+	require.NoError(t, err)
+
+	// Try to allocate the network address (10.0.0.0) - should fail
+	_, _, _, err = ipam.GetStaticAddress("pod1", "pod1.ns", "10.0.0.0", nil, subnetName, true)
+	require.Error(t, err) // out of range
+
+	// Try to allocate the broadcast address (10.0.0.15) - should fail
+	_, _, _, err = ipam.GetStaticAddress("pod2", "pod2.ns", "10.0.0.15", nil, subnetName, true)
+	require.Error(t, err) // out of range
+}

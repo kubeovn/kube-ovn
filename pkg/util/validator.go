@@ -25,7 +25,7 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		if !CIDRContainIP(subnet.Spec.CIDRBlock, subnet.Spec.Gateway) {
 			return fmt.Errorf("gateway %s is not in cidr %s", subnet.Spec.Gateway, subnet.Spec.CIDRBlock)
 		}
-		if err := ValidateNetworkBroadcast(subnet.Spec.CIDRBlock, subnet.Spec.Gateway); err != nil {
+		if err := ValidateNetworkBroadcast(subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.AllowAllocateFirstLast); err != nil {
 			klog.Error(err)
 			return fmt.Errorf("validate gateway %s for cidr %s failed: %w", subnet.Spec.Gateway, subnet.Spec.CIDRBlock, err)
 		}
@@ -86,10 +86,13 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 			return err
 		}
 		// check network mask is 32 in ipv4 or 128 in ipv6
-		if err = InvalidNetworkMask(network); err != nil {
-			err = fmt.Errorf("subnet %s cidr %s mask is invalid, due to %w", subnet.Name, cidr, err)
-			klog.Error(err)
-			return err
+		// /32 IPv4 and /128 IPv6 are allowed when allocateAll is effective
+		if !ShouldAllocateAll(network, subnet.Spec.AllowAllocateFirstLast) {
+			if err = InvalidNetworkMask(network); err != nil {
+				err = fmt.Errorf("subnet %s cidr %s mask is invalid, due to %w", subnet.Name, cidr, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
 
@@ -389,13 +392,17 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	return utilerrors.NewAggregate(errors)
 }
 
-func ValidateNetworkBroadcast(cidr, ip string) error {
+func ValidateNetworkBroadcast(cidr, ip string, allowAllocateFirstLast ...bool) error {
+	allocAll := len(allowAllocateFirstLast) > 0 && allowAllocateFirstLast[0]
 	for cidrBlock := range strings.SplitSeq(cidr, ",") {
 		for ipAddr := range strings.SplitSeq(ip, ",") {
 			if CheckProtocol(cidrBlock) != CheckProtocol(ipAddr) {
 				continue
 			}
 			_, network, _ := net.ParseCIDR(cidrBlock)
+			if ShouldAllocateAll(network, allocAll) {
+				continue
+			}
 			if AddressCountBigInt(network).EqualInt64(1) {
 				return fmt.Errorf("subnet %s is configured with /32 or /128 netmask", cidrBlock)
 			}

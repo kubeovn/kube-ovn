@@ -2565,6 +2565,12 @@ spec:
                       type: integer
                   type: object
                 type: array
+              allowAllocateFirstLast:
+                description: |-
+                  AllowAllocateFirstLast allows allocating all IPs in the CIDR including the
+                  network address (first IP) and broadcast address (last IP).
+                  For /31 and /32 IPv4 subnets this is always effective per RFC 3021.
+                type: boolean
               allowEWTraffic:
                 description: Allow east-west traffic across subnets.
                 type: boolean

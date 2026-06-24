@@ -177,8 +177,9 @@ func (ipam *IPAM) ReleaseAddressByNic(podName, nicName, subnetName string) {
 	}
 }
 
-func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string) error {
-	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
+func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string, allowAllocateFirstLast ...bool) error {
+	allocAll := len(allowAllocateFirstLast) > 0 && allowAllocateFirstLast[0]
+	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr, allocAll)
 
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
@@ -234,12 +235,13 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			return err
 		}
 		if (protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv4) &&
-			(subnet.V4CIDR.String() != v4cidrStr || subnet.V4Gw != v4Gw || !subnet.V4Reserved.Equal(v4Reserved)) {
+			(subnet.V4CIDR.String() != v4cidrStr || subnet.V4Gw != v4Gw || !subnet.V4Reserved.Equal(v4Reserved) || subnet.AllowAllocateFirstLast != allocAll) {
 			_, cidr, _ := net.ParseCIDR(v4cidrStr)
 			subnet.V4CIDR = cidr
 			subnet.V4Reserved = v4Reserved
-			firstIP, _ := util.FirstIP(v4cidrStr)
-			lastIP, _ := util.LastIP(v4cidrStr)
+			subnet.AllowAllocateFirstLast = allocAll
+			firstIP, _ := util.FirstIP(v4cidrStr, allocAll)
+			lastIP, _ := util.LastIP(v4cidrStr, allocAll)
 			ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
 			subnet.V4Using = subnet.V4Using.Intersect(ips)
 			subnet.V4Free = ips.Separate(subnet.V4Reserved).Separate(subnet.V4Using)
@@ -281,12 +283,13 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 			}
 		}
 		if (protocol == kubeovnv1.ProtocolDual || protocol == kubeovnv1.ProtocolIPv6) &&
-			(subnet.V6CIDR.String() != v6cidrStr || subnet.V6Gw != v6Gw || !subnet.V6Reserved.Equal(v6Reserved)) {
+			(subnet.V6CIDR.String() != v6cidrStr || subnet.V6Gw != v6Gw || !subnet.V6Reserved.Equal(v6Reserved) || subnet.AllowAllocateFirstLast != allocAll) {
 			_, cidr, _ := net.ParseCIDR(v6cidrStr)
 			subnet.V6CIDR = cidr
 			subnet.V6Reserved = v6Reserved
-			firstIP, _ := util.FirstIP(v6cidrStr)
-			lastIP, _ := util.LastIP(v6cidrStr)
+			subnet.AllowAllocateFirstLast = allocAll
+			firstIP, _ := util.FirstIP(v6cidrStr, allocAll)
+			lastIP, _ := util.LastIP(v6cidrStr, allocAll)
 			ips, _ := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
 			subnet.V6Using = subnet.V6Using.Intersect(ips)
 			subnet.V6Free = ips.Separate(subnet.V6Reserved).Separate(subnet.V6Using)
@@ -337,7 +340,7 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 		return nil
 	}
 
-	subnet, err := NewSubnet(name, cidrStr, excludeIps)
+	subnet, err := NewSubnet(name, cidrStr, excludeIps, allocAll)
 	if err != nil {
 		klog.Errorf("failed to create subnet %s, %v", name, err)
 		return err

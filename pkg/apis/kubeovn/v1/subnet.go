@@ -147,6 +147,11 @@ type SubnetSpec struct {
 	// Enable external LB address support.
 	EnableExternalLBAddress bool `json:"enableExternalLBAddress,omitempty"`
 
+	// AllowAllocateFirstLast allows allocating all IPs in the CIDR including the
+	// network address (first IP) and broadcast address (last IP).
+	// For /31 and /32 IPv4 subnets this is always effective per RFC 3021.
+	AllowAllocateFirstLast bool `json:"allowAllocateFirstLast,omitempty"`
+
 	// Route table associated with the subnet.
 	RouteTable string `json:"routeTable,omitempty"`
 	// Namespace label selectors to associate with this subnet.
