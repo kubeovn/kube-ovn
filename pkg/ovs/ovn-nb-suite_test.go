@@ -921,6 +921,18 @@ func (suite *OvnClientTestSuite) Test_DeleteNatIsIdempotent() {
 	suite.testDeleteNatIsIdempotent()
 }
 
+func (suite *OvnClientTestSuite) Test_AddNatDeleteAndCreateOnSwap() {
+	suite.testAddNatDeleteAndCreateOnSwap()
+}
+
+func (suite *OvnClientTestSuite) Test_GetNatTupleMatchForDnatAndSnat() {
+	suite.testGetNatTupleMatchForDnatAndSnat()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteNatStaleLogicalIPSkipped() {
+	suite.testDeleteNatStaleLogicalIPSkipped()
+}
+
 func (suite *OvnClientTestSuite) Test_GetNat() {
 	suite.testGetNat()
 }

@@ -28,6 +28,10 @@ func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac,
 	// This includes ARP replies for the external_ip, which return the value of external_mac.
 	// All packets transmitted with source IP address equal to external_ip will be sent using the external_mac.
 
+	if natType == ovnnb.NATTypeDNATAndSNAT {
+		return c.addOrUpdateDnatAndSnat(lrName, externalIP, logicalIP, logicalMac, port, options)
+	}
+
 	nat, err := c.newNat(lrName, natType, externalIP, logicalIP, logicalMac, port, func(nat *ovnnb.NAT) {
 		if len(options) == 0 {
 			return
@@ -42,6 +46,46 @@ func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac,
 		return err
 	}
 
+	return c.CreateNats(lrName, nat)
+}
+
+// addOrUpdateDnatAndSnat is the robust path for dnat_and_snat.
+// On EIP primary-pod swap we do a broad Delete (by externalIP) + fresh
+// Create. This avoids libovsdb cache staleness. We bypass newNat to skip
+// the stale "found, ignore".
+func (c *OVNNbClient) addOrUpdateDnatAndSnat(lrName, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
+	if externalIP == "" {
+		err := fmt.Errorf("external ip is required when nat type is %s", ovnnb.NATTypeDNATAndSNAT)
+		klog.Error(err)
+		return err
+	}
+
+	// Broad delete clears any previous row for this EIP (old logicalIP may differ).
+	if err := c.DeleteNat(lrName, ovnnb.NATTypeDNATAndSNAT, externalIP, ""); err != nil {
+		klog.Errorf("failed to clear prior dnat_and_snat external_ip=%s: %v", externalIP, err)
+		return err
+	}
+
+	// Fresh create, direct construction + CreateNats to bypass newNat's cache check.
+	nat := &ovnnb.NAT{
+		UUID:       ovsclient.NamedUUID(),
+		Type:       ovnnb.NATTypeDNATAndSNAT,
+		ExternalIP: externalIP,
+		LogicalIP:  logicalIP,
+	}
+	if logicalMac != "" {
+		nat.ExternalMAC = &logicalMac
+	}
+	if port != "" {
+		nat.LogicalPort = &port
+	}
+	if len(options) > 0 {
+		nat.Options = make(map[string]string, len(options))
+		maps.Copy(nat.Options, options)
+	}
+
+	klog.V(2).Infof("installing dnat_and_snat external_ip=%s logical_ip=%s logical_port=%s",
+		externalIP, logicalIP, port)
 	return c.CreateNats(lrName, nat)
 }
 
@@ -315,6 +359,18 @@ func (c *OVNNbClient) GetNat(lrName, natType, externalIP, logicalIP string, igno
 		}
 		if natType == ovnnb.NATTypeSNAT {
 			return nat.Type == natType && nat.LogicalIP == logicalIP
+		}
+		// For DNATAndSNAT: if logicalIP given, require externalIP+logicalIP.
+		// Prevents stale Delete (old logicalIP) from clobbering new row.
+		// Empty logicalIP keeps compat for Update/NatExists.
+		if natType == ovnnb.NATTypeDNATAndSNAT {
+			if nat.Type != natType || nat.ExternalIP != externalIP {
+				return false
+			}
+			if logicalIP != "" && nat.LogicalIP != logicalIP {
+				return false
+			}
+			return true
 		}
 		return nat.Type == natType && nat.ExternalIP == externalIP
 	}
