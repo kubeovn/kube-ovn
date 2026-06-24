@@ -27,7 +27,7 @@ type BgpConfSpec struct {
 	PeerASN       uint32          `json:"peerASN"`
 	RouterID      string          `json:"routerId,omitempty"`
 	Neighbours    []string        `json:"neighbours"`
-	Password      string          `json:"password,omitempty"`
+	Password      string          `json:"password,omitempty"` //nolint:gosec // BGP password is runtime configuration, not a hardcoded secret.
 	HoldTime      metav1.Duration `json:"holdTime,omitempty"`
 	KeepaliveTime metav1.Duration `json:"keepaliveTime,omitempty"`
 	ConnectTime   metav1.Duration `json:"connectTime,omitempty"`

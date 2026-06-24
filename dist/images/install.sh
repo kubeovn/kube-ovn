@@ -8,6 +8,7 @@ DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
 DUAL_STACK=${DUAL_STACK:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
+KUBE_OVN_TLS_ROTATION_INTERVAL=${KUBE_OVN_TLS_ROTATION_INTERVAL:-8760h}
 ENABLE_VLAN=${ENABLE_VLAN:-false}
 CHECK_GATEWAY=${CHECK_GATEWAY:-true}
 LOGICAL_GATEWAY=${LOGICAL_GATEWAY:-false}
@@ -7218,6 +7219,14 @@ rules:
     - get
     - create
   - apiGroups:
+    - ""
+    resourceNames:
+    - kube-ovn-tls
+    resources:
+    - secrets
+    verbs:
+    - update
+  - apiGroups:
     - certificates.k8s.io
     resourceNames:
     - kubeovn.io/signer
@@ -8273,6 +8282,8 @@ spec:
           env:
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
+            - name: KUBE_OVN_TLS_ROTATION_INTERVAL
+              value: "$KUBE_OVN_TLS_ROTATION_INTERVAL"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
