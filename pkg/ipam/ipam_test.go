@@ -428,6 +428,50 @@ func TestMacOnlySubnet(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoSubnet)
 }
 
+func TestMacOnlySubnetGetStaticAddress(t *testing.T) {
+	ipam := NewIPAM()
+	macOnlySubnetName := "macOnlySubnet"
+	err := ipam.AddOrUpdateSubnet(macOnlySubnetName, "", "", nil)
+	require.NoError(t, err)
+	subnet := ipam.Subnets[macOnlySubnetName]
+
+	// Recovering a mac-only IP CR on init passes an empty IP and the recorded MAC.
+	// GetStaticAddress must register the MAC (instead of failing on the empty IP) so
+	// the address is tracked in IPAM.
+	staticMac := "00:11:22:33:44:55"
+	podName := "pod1.default"
+	nicName := "pod1.default"
+	v4, v6, macStr, err := ipam.GetStaticAddress(podName, nicName, "", &staticMac, macOnlySubnetName, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+	require.Equal(t, staticMac, macStr)
+	require.Equal(t, staticMac, subnet.NicToMac[nicName])
+	require.Equal(t, podName, subnet.MacToPod[staticMac])
+
+	// Re-registering the same pod/NIC/MAC is idempotent.
+	_, _, macStr, err = ipam.GetStaticAddress(podName, nicName, "", &staticMac, macOnlySubnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, staticMac, macStr)
+
+	// An empty IP with no requested MAC still gets a random MAC registered.
+	v4, v6, macStr, err = ipam.GetStaticAddress("pod2.default", "pod2.default", "", nil, macOnlySubnetName, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+	require.NotEmpty(t, macStr)
+	_, err = net.ParseMAC(macStr)
+	require.NoError(t, err)
+
+	// The empty-IP fast path only applies to mac-only subnets: an empty IP on a
+	// regular subnet still fails as before.
+	v4SubnetName := "v4Subnet"
+	err = ipam.AddOrUpdateSubnet(v4SubnetName, "10.0.0.0/24", "10.0.0.1", nil)
+	require.NoError(t, err)
+	_, _, _, err = ipam.GetStaticAddress("pod3.default", "pod3.default", "", &staticMac, v4SubnetName, true)
+	require.Error(t, err)
+}
+
 func TestMacOnlySubnetCannotStripCIDR(t *testing.T) {
 	ipam := NewIPAM()
 	subnetName := "v4Subnet"
