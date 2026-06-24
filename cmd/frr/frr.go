@@ -28,7 +28,7 @@ type Config struct {
 	VNI           string
 	RouteTargets  []string
 	EnableEVPN    bool
-	Password      string
+	Password      string //nolint:gosec // BGP password is runtime configuration, not a hardcoded secret.
 	HoldTime      string
 	KeepaliveTime string
 	ConnectTime   string
