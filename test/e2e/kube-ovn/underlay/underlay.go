@@ -660,6 +660,8 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 	})
 
 	framework.ConformanceIt("should allocate only a MAC address for an underlay subnet without a CIDR", func() {
+		f.SkipVersionPriorTo(1, 17, "Support for mac-only subnets was introduced in v1.17")
+
 		ginkgo.By("Creating provider network " + providerNetworkName)
 		pn := makeProviderNetwork(providerNetworkName, false, linkMap)
 		_ = providerNetworkClient.CreateSync(pn)
