@@ -3,6 +3,7 @@
 set -euo pipefail
 OVN_REMOTE_PROBE_INTERVAL=${OVN_REMOTE_PROBE_INTERVAL:-10000}
 OVN_REMOTE_OPENFLOW_INTERVAL=${OVN_REMOTE_OPENFLOW_INTERVAL:-180}
+ENABLE_SSL=${ENABLE_SSL:-false}
 
 echo "OVN_REMOTE_PROBE_INTERVAL is set to $OVN_REMOTE_PROBE_INTERVAL"
 echo "OVN_REMOTE_OPENFLOW_INTERVAL is set to $OVN_REMOTE_OPENFLOW_INTERVAL"
@@ -125,13 +126,22 @@ ovs-vsctl --may-exist add-br br-int \
   -- set bridge br-int fail-mode=secure
 
 # Set remote ovn-sb for ovn-controller to connect to
-ovs-vsctl set open . external-ids:ovn-remote=tcp:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
+if [[ "$ENABLE_SSL" == "true" ]]; then
+  ovs-vsctl set open . external-ids:ovn-remote=ssl:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
+else
+  ovs-vsctl set open . external-ids:ovn-remote=tcp:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
+fi
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval="${OVN_REMOTE_PROBE_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval="${OVN_REMOTE_OPENFLOW_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-match-northd-version="true"
 ovs-vsctl set open . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
 
 # Start ovn-controller
-ovn-ctl restart_controller
+if [[ "$ENABLE_SSL" == "true" ]]; then
+  ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert restart_controller
+  bash /kube-ovn/kube-ovn-tls-reload.sh ovs &
+else
+  ovn-ctl restart_controller
+fi
 
 tail --follow=name --retry /var/log/openvswitch/ovs-vswitchd.log

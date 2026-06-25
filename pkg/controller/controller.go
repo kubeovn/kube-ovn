@@ -1171,6 +1171,8 @@ func (c *Controller) Run(ctx context.Context) {
 		}
 	}
 
+	c.startKubeOVNTLSManager(ctx)
+
 	// start workers to do all the network operations
 	c.startWorkers(ctx)
 

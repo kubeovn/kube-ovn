@@ -137,6 +137,9 @@ networking:
   # -- Deploy the CNI with SSL encryption in between components.
   # @section -- Network parameters of the CNI
   enableSsl: false
+  # -- How often kube-ovn-controller checks kube-ovn-tls for renewal. Set to 0 to disable.
+  # @section -- Network parameters of the CNI
+  kubeOvnTlsRotationInterval: "8760h"
   # -- Network type can be "geneve" or "vlan".
   # @section -- Network parameters of the CNI
   networkType: geneve

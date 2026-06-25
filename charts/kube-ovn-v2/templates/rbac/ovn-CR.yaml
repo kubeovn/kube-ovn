@@ -248,6 +248,14 @@ rules:
       - get
       - create
   - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - kube-ovn-tls
+    verbs:
+      - update
+  - apiGroups:
       - certificates.k8s.io
     resourceNames:
       - kubeovn.io/signer
