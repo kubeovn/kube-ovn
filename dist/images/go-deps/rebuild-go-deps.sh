@@ -33,6 +33,11 @@ for t in $(cat "$TRIVY_DIR/trivy-targets.txt"); do
             curl -sSf -L --retry 5 https://github.com/kubernetes/kubernetes/archive/refs/tags/$version.tar.gz | \
                 tar -xz --strip-components=1 -C k8s-$version
             cd k8s-$version
+            x_modules=$(go list -m -f '{{.Path}}' all | awk '/^golang[.]org\/x\// { printf "%s@latest ", $0 }')
+            if [ -n "$x_modules" ]; then
+                $GO get $x_modules
+                $GO mod tidy
+            fi
             source hack/lib/util.sh
             source hack/lib/logging.sh
             source hack/lib/version.sh
