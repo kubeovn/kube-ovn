@@ -265,14 +265,14 @@ jobs:
           jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .Target' trivy-result.json | while read f; do
             bin=`basename $f`
             case $bin in
-              loopback|macvlan)
+              loopback|macvlan|ipvlan)
                 echo "Building $bin@$cni_plugins_version from source..."
-                sh -c "cd /tmp && $GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/main/$bin@$cni_plugins_version"
+                sh -c "$GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/main/$bin"
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               portmap)
                 echo "Building $bin@$cni_plugins_version from source..."
-                sh -c "cd /tmp && $GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/meta/$bin@$cni_plugins_version"
+                sh -c "$GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/meta/$bin"
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               kubectl)
