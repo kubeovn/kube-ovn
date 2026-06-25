@@ -15,6 +15,10 @@ const (
 	ProtocolIPv4 = "IPv4"
 	ProtocolIPv6 = "IPv6"
 	ProtocolDual = "Dual"
+	// ProtocolMac identifies a "mac-only" subnet: an underlay subnet created
+	// without a CIDR (BYO-DHCP / external DHCP) that allocates only a MAC address
+	// per pod NIC. The guest obtains its IP from an external DHCP server.
+	ProtocolMac = "Mac"
 )
 
 const (
@@ -69,9 +73,9 @@ type SubnetSpec struct {
 	// List of namespaces associated with this subnet.
 	Namespaces []string `json:"namespaces,omitempty"`
 	// CIDR block for the subnet. Immutable after creation.
-	CIDRBlock string `json:"cidrBlock"`
+	CIDRBlock string `json:"cidrBlock,omitempty"`
 	// Gateway IP address for the subnet.
-	Gateway string `json:"gateway"`
+	Gateway string `json:"gateway,omitempty"`
 	// IP addresses to exclude from allocation.
 	ExcludeIps []string `json:"excludeIps,omitempty"`
 	// Provider network name.

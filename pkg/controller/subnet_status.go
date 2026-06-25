@@ -105,14 +105,16 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		}
 	}
 
-	if _, err = c.calcSubnetStatusIP(subnet); err != nil {
-		klog.Error(err)
-		return err
-	}
+	if subnet.Spec.CIDRBlock != "" {
+		if _, err = c.calcSubnetStatusIP(subnet); err != nil {
+			klog.Error(err)
+			return err
+		}
 
-	if err := c.checkSubnetUsingIPs(subnet); err != nil {
-		klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-		return err
+		if err := c.checkSubnetUsingIPs(subnet); err != nil {
+			klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
+			return err
+		}
 	}
 	return nil
 }

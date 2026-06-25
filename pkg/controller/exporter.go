@@ -44,10 +44,12 @@ func (c *Controller) exportSubnetMetrics() {
 			continue
 		}
 
-		c.exportSubnetAvailableIPsGauge(subnet)
-		c.exportSubnetUsedIPsGauge(subnet)
-		c.exportSubnetIPAMInfo(subnet)
-		c.exportSubnetIPAssignedInfo(subnet)
+		if subnet.Spec.CIDRBlock != "" {
+			c.exportSubnetAvailableIPsGauge(subnet)
+			c.exportSubnetUsedIPsGauge(subnet)
+			c.exportSubnetIPAMInfo(subnet)
+			c.exportSubnetIPAssignedInfo(subnet)
+		}
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
 			c.exportCentralizedSubnetInfo(subnet)

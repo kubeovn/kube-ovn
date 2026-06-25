@@ -212,19 +212,30 @@ func (c *Controller) validateSubnetVlan(subnet *kubeovnv1.Subnet) error {
 }
 
 func formatAddress(subnet *kubeovnv1.Subnet) error {
-	if err := formatCIDR(subnet); err != nil {
-		klog.Error(err)
-		return err
+	// Underlay subnets without a CIDR (BYO-DHCP / external DHCP) have no address
+	// to normalize - skip CIDR/gateway/excludeIPs formatting which would fail on
+	// an empty CIDRBlock.
+	if subnet.Spec.CIDRBlock != "" {
+		if err := formatCIDR(subnet); err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		if err := formatGateway(subnet); err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		formatExcludeIPs(subnet)
 	}
 
-	if err := formatGateway(subnet); err != nil {
-		klog.Error(err)
-		return err
+	if subnet.Spec.Vlan != "" && subnet.Spec.CIDRBlock == "" {
+		// Underlay subnet without a CIDR (BYO-DHCP / external DHCP): it allocates only
+		// a MAC address per pod NIC, so it gets its own protocol.
+		subnet.Spec.Protocol = kubeovnv1.ProtocolMac
+	} else {
+		subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 	}
-
-	formatExcludeIPs(subnet)
-
-	subnet.Spec.Protocol = util.CheckProtocol(subnet.Spec.CIDRBlock)
 
 	return nil
 }
@@ -568,16 +579,28 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
-		klog.Error(err)
-		return err
-	}
+	if subnet.Spec.CIDRBlock != "" {
+		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+			klog.Error(err)
+			return err
+		}
 
-	// availableIPStr valued from ipam, so leave update subnet.status after ipam process
-	subnet, err = c.calcSubnetStatusIP(subnet)
-	if err != nil {
-		klog.Errorf("calculate subnet %s used ip failed, %v", cachedSubnet.Name, err)
-		return err
+		// availableIPStr valued from ipam, so leave update subnet.status after ipam process
+		subnet, err = c.calcSubnetStatusIP(subnet)
+		if err != nil {
+			klog.Errorf("calculate subnet %s used ip failed, %v", cachedSubnet.Name, err)
+			return err
+		}
+	} else {
+		// Mac-only subnet (underlay without CIDR, BYO-DHCP / external DHCP). Register a
+		// lightweight IPAM entry so MAC allocations are tracked and the GC does not
+		// clean the subnet's mac-only IP/LSP resources. It has no IP ranges, so there
+		// is no subnet IP status to calculate.
+		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil); err != nil {
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("registered mac-only subnet %s in IPAM (no cidrBlock, BYO-DHCP / external DHCP)", subnet.Name)
 	}
 
 	subnet, deleted, err := c.handleSubnetFinalizer(subnet)
@@ -1825,7 +1848,7 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 	}
 
 	// calculate subnet status
-	if isU2OIPChanged || isMcastQuerierIPChanged {
+	if (isU2OIPChanged || isMcastQuerierIPChanged) && subnet.Spec.CIDRBlock != "" {
 		if _, err := c.calcSubnetStatusIP(subnet); err != nil {
 			klog.Error(err)
 			return isU2OIPChanged, isMcastQuerierIPChanged, err
