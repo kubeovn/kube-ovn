@@ -152,6 +152,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
 else
   /usr/share/ovn/scripts/ovn-ctl --ovn-controller-ssl-key=/var/run/tls/key --ovn-controller-ssl-cert=/var/run/tls/cert --ovn-controller-ssl-ca-cert=/var/run/tls/cacert --ovn-controller-wrapper="$DEBUG_WRAPPER" restart_controller
+  bash /kube-ovn/kube-ovn-tls-reload.sh ovs &
 fi
 
 chmod 600 /etc/openvswitch/*

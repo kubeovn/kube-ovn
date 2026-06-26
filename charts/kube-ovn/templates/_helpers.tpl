@@ -36,6 +36,17 @@ Number of master nodes
   {{- len (split "," (.Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .))) }}
 {{- end -}}
 
+{{/*
+Kube-OVN TLS is owned by the management cluster in dataPlaneOnly installs.
+Disable local rotation there so a tenant cluster cannot replace the shared CA.
+*/}}
+{{- define "kubeovn.kubeOVNTLSRotationInterval" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+0
+{{- else -}}
+{{ .Values.networking.KUBE_OVN_TLS_ROTATION_INTERVAL }}
+{{- end -}}
+{{- end -}}
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
   {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}
   {{- if $ds -}}

@@ -32,7 +32,8 @@ func CmdMain() {
 	}
 	util.InitLogFilePerm("kube-ovn-ic-controller", os.FileMode(perm))
 
-	stopCh := signals.SetupSignalHandler().Done()
+	ctx := signals.SetupSignalHandler()
+	stopCh := ctx.Done()
 	ctl := ovn_ic_controller.NewController(config)
 	ctl.Run(stopCh)
 }

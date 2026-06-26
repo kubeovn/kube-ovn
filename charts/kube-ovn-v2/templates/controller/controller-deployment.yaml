@@ -169,6 +169,8 @@ spec:
           env:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
+            - name: KUBE_OVN_TLS_ROTATION_INTERVAL
+              value: "{{ .Values.networking.kubeOvnTlsRotationInterval }}"
             - name: POD_NAME
               valueFrom:
                 fieldRef:
