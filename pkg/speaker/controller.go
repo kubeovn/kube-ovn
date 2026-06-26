@@ -45,6 +45,11 @@ type Controller struct {
 	podInformerFactory     kubeinformers.SharedInformerFactory
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	recorder               record.EventRecorder
+
+	// lastBFDPeerStates caches the most recent BFD session state per peer address.
+	// Used by logBFDStatus to suppress repeated logs when state is unchanged.
+	lastBFDPeerStates     map[string]string
+	lastBFDStatsHasErrors bool
 }
 
 func NewController(config *Configuration) *Controller {
@@ -129,8 +134,5 @@ func (c *Controller) Reconcile() {
 		c.syncSubnetRoutes()
 	}
 
-	// Log BFD status if enabled
-	if c.config.EnableBFD {
-		c.logBFDStatus()
-	}
+	c.logBFDStatus()
 }
