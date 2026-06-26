@@ -24,14 +24,9 @@ func bfdSessionStateString(state api.BfdSessionState) string {
 }
 
 // logBFDStatus logs the BFD status for all peers.
-// Guarded by klog verbosity to avoid unnecessary gRPC calls when logging is off.
+// Error/recovery stats are always checked; per-peer state dump is gated by V(3).
 func (c *Controller) logBFDStatus() {
 	if !c.config.EnableBFD {
-		return
-	}
-
-	// Guard with Enabled() to skip gRPC calls when log level is insufficient.
-	if !klog.V(3).Enabled() {
 		return
 	}
 
@@ -45,6 +40,11 @@ func (c *Controller) logBFDStatus() {
 				stats.ReceivedPacket, stats.ReceivedDrop, stats.ReceivedError, stats.InvalidPacket, stats.UnknownPeer)
 		}
 		c.lastBFDStatsHasErrors = hasErrors
+	}
+
+	// Guard per-peer BFD state dump with V(3) to skip gRPC calls when log level is insufficient.
+	if !klog.V(3).Enabled() {
+		return
 	}
 
 	if c.lastBFDPeerStates == nil {
