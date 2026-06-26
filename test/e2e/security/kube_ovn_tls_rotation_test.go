@@ -50,7 +50,7 @@ var _ = framework.Describe("[group:security] kube-ovn TLS rotation", func() {
 	f.SkipNamespaceCreation = true
 
 	framework.ConformanceIt("should reload components without restarting pods when kube-ovn-tls secret is updated", func() {
-		f.SkipVersionPriorTo(1, 17, "kube-ovn TLS rotation was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 15, "kube-ovn TLS rotation was introduced in v1.15")
 
 		cs := f.ClientSet
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
