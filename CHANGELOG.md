@@ -439,6 +439,19 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.16 (2026-06-26)
+
+ * [726b8df0b](https://github.com/kubeovn/kube-ovn/commit/726b8df0bf2ce0bf57456e70f0349997507217d4) release v1.15.16
+ * [b881fdfc6](https://github.com/kubeovn/kube-ovn/commit/b881fdfc68d08d0193679daecb763da63e47316c) fix(deps): update module golang.org/x/tools to v0.47.0 (#6938)
+ * [c776d03fa](https://github.com/kubeovn/kube-ovn/commit/c776d03fae92dc784341509d8f13458cd63da93c) build: refresh kubectl golang.org/x deps and CNI plugin rebuilds (#6929)
+ * [5307cad85](https://github.com/kubeovn/kube-ovn/commit/5307cad85c5b8fe8b5bcf1526f8da2345a11029c) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * renovate[bot]
+ * 张祖建
+
 ## v1.15.15 (2026-06-22)
 
  * [6c5e4b9e4](https://github.com/kubeovn/kube-ovn/commit/6c5e4b9e4f075142d5b38dcb08081c54cb170b60) release v1.15.15
