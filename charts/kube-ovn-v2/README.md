@@ -1101,6 +1101,7 @@ false
   "SET_VXLAN_TX_OFF": false,
   "enableExternalVpcs": false,
   "enableHardwareOffload": false,
+  "enableHostTunnelSrc": false,
   "enableKeepVmIps": true,
   "enableLiveMigrationOptimization": true,
   "enableLoadbalancer": true,
@@ -1134,6 +1135,15 @@ false
 </pre>
 </td>
 			<td>Enable hardware offloads</td>
+		</tr>
+		<tr>
+			<td>features.enableHostTunnelSrc</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Allow a /32 address to be selected as the tunnel source (required on clouds that assign /32 to the host interface)</td>
 		</tr>
 		<tr>
 			<td>features.enableKeepVmIps</td>

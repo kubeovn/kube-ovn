@@ -233,6 +233,9 @@ features:
   # -- Enable optimized live migrations for VMs
   # @section -- Opt-in/out Features
   enableLiveMigrationOptimization: true
+  # -- Allow a /32 address to be selected as the tunnel source (required on clouds that assign /32 to the host interface)
+  # @section -- Opt-in/out Features
+  enableHostTunnelSrc: false
 
   ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true

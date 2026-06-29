@@ -55,6 +55,7 @@ CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
 ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
+HOST_TUNNEL_SRC=${HOST_TUNNEL_SRC:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
@@ -8516,6 +8517,7 @@ spec:
           - --ovn-ipsec-cert-duration=$IPSEC_CERT_DURATION
           - --cert-manager-issuer-name=$CERT_MANAGER_ISSUER_NAME
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
+          - --host-tunnel-src=$HOST_TUNNEL_SRC
         securityContext:
           runAsUser: 0
           privileged: false
