@@ -1,12 +1,13 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -169,13 +170,51 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(subnets []*kubeovnv1.Subnet, proto
 }
 
 func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
-	nodes, err := c.nodesLister.List(labels.Everything())
+	// NOTE: We intentionally use a direct API call here instead of the
+	// nodeInformerFactory lister. The nodeInformerFactory is scoped to the
+	// local node via a metadata.name fieldSelector so that each CNI daemon
+	// only watches itself. Using the lister would therefore return an empty
+	// list for all other nodes, breaking ipset OtherNodeSet programming.
+	//
+	// TODO: The OtherNodeSet / ovn{40,60}other-node ipset design is
+	// fundamentally limited and should be reconsidered:
+	//
+	//   Problem: the set only contains each node's Kubernetes NodeInternalIP
+	//   (the management NIC, e.g. eth0). It completely misses every other IP
+	//   a node may have: ovn0 (join-subnet), OVS bridge IPs, tunnel endpoints,
+	//   secondary NICs, etc. As a result the POSTROUTING "do not nat route
+	//   traffic" rule:
+	//
+	//     ! ovn40subnets src  AND  ! ovn40other-node src  AND
+	//     ovn40subnets-nat dst  →  RETURN (skip MASQUERADE)
+	//
+	//   already silently falls through (does NOT RETURN) for any non-management
+	//   IP on a peer node, meaning the claimed "protect node-to-pod MASQUERADE"
+	//   behaviour is already absent for those IPs in production. The rule only
+	//   covers the single management IP, and real-world traffic from other
+	//   node interfaces already bypasses it without causing failures.
+	//
+	//   A more correct approach, if this RETURN guard is even necessary, would
+	//   be to match on the *local* node's own IPs rather than enumerating all
+	//   peer node IPs:
+	//
+	//     ! ovn40subnets src  AND  ! <localNodeIPs> src  AND
+	//     ovn40subnets-nat dst  →  RETURN
+	//
+	//   or simply drop the second condition entirely:
+	//
+	//     ! ovn40subnets src  AND  ovn40subnets-nat dst  →  RETURN
+	//
+	//   In a proper OVN-based setup the logical router handles return-path
+	//   routing for node-to-pod traffic without requiring iptables MASQUERADE,
+	//   making the OtherNodeSet guard redundant.
+	nodeList, err := c.config.KubeClient.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		klog.Error("failed to list nodes")
+		klog.Errorf("failed to list nodes: %v", err)
 		return nil, err
 	}
-	ret := make([]string, 0, len(nodes)-1)
-	for _, node := range nodes {
+	ret := make([]string, 0, len(nodeList.Items)-1)
+	for _, node := range nodeList.Items {
 		if node.Name == c.config.NodeName {
 			continue
 		}
