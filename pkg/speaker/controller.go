@@ -49,6 +49,8 @@ type Controller struct {
 	// lastBFDPeerStates caches the most recent BFD session state per peer address.
 	// Used by logBFDStatus to suppress repeated logs when state is unchanged.
 	lastBFDPeerStates     map[string]string
+	lastBFDErrorCounters  bfdErrorCounters
+	hasLastBFDStatsSample bool
 	lastBFDStatsHasErrors bool
 }
 
@@ -103,6 +105,10 @@ func NewController(config *Configuration) *Controller {
 		recorder:               recorder,
 	}
 
+	if config.EnableMetrics {
+		registerSpeakerMetrics()
+	}
+
 	return controller
 }
 
@@ -135,4 +141,8 @@ func (c *Controller) Reconcile() {
 	}
 
 	c.logBFDStatus()
+
+	if c.config.EnableMetrics {
+		c.collectMetrics()
+	}
 }

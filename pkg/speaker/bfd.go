@@ -7,6 +7,47 @@ import (
 	"k8s.io/klog/v2"
 )
 
+type bfdErrorCounters struct {
+	receivedDrop  uint64
+	receivedError uint64
+	invalidPacket uint64
+	unknownPeer   uint64
+}
+
+func bfdErrorCountersFromStats(stats *api.BfdState) bfdErrorCounters {
+	return bfdErrorCounters{
+		receivedDrop:  stats.ReceivedDrop,
+		receivedError: stats.ReceivedError,
+		invalidPacket: stats.InvalidPacket,
+		unknownPeer:   stats.UnknownPeer,
+	}
+}
+
+func (curr bfdErrorCounters) hasIncreaseSince(prev bfdErrorCounters) bool {
+	return curr.receivedDrop > prev.receivedDrop ||
+		curr.receivedError > prev.receivedError ||
+		curr.invalidPacket > prev.invalidPacket ||
+		curr.unknownPeer > prev.unknownPeer
+}
+
+func (curr bfdErrorCounters) isResetComparedTo(prev bfdErrorCounters) bool {
+	return curr.receivedDrop < prev.receivedDrop ||
+		curr.receivedError < prev.receivedError ||
+		curr.invalidPacket < prev.invalidPacket ||
+		curr.unknownPeer < prev.unknownPeer
+}
+
+// sub returns the per-counter increase of curr over prev.
+// Callers must ensure curr >= prev (no counter reset) to avoid underflow.
+func (curr bfdErrorCounters) sub(prev bfdErrorCounters) bfdErrorCounters {
+	return bfdErrorCounters{
+		receivedDrop:  curr.receivedDrop - prev.receivedDrop,
+		receivedError: curr.receivedError - prev.receivedError,
+		invalidPacket: curr.invalidPacket - prev.invalidPacket,
+		unknownPeer:   curr.unknownPeer - prev.unknownPeer,
+	}
+}
+
 // bfdSessionStateString converts a BFD session state enum to a human-readable string.
 func bfdSessionStateString(state api.BfdSessionState) string {
 	switch state {
@@ -31,15 +72,31 @@ func (c *Controller) logBFDStatus() {
 	}
 
 	if stats := c.config.BgpServer.GetBfdServerStats(); stats != nil {
-		hasErrors := stats.ReceivedDrop > 0 || stats.ReceivedError > 0 || stats.InvalidPacket > 0 || stats.UnknownPeer > 0
-		if hasErrors {
-			klog.Warningf("BFD server stats: received=%d, dropped=%d, errors=%d, invalid=%d, unknownPeer=%d",
+		curr := bfdErrorCountersFromStats(stats)
+
+		hasNewErrors := false
+		if c.hasLastBFDStatsSample {
+			if curr.isResetComparedTo(c.lastBFDErrorCounters) {
+				// Counter reset/rollover: re-baseline and avoid false positives.
+				hasNewErrors = false
+			} else {
+				hasNewErrors = curr.hasIncreaseSince(c.lastBFDErrorCounters)
+			}
+		}
+
+		if hasNewErrors {
+			delta := curr.sub(c.lastBFDErrorCounters)
+			klog.Warningf("BFD server stats: new errors since last check: dropped=+%d, errors=+%d, invalid=+%d, unknownPeer=+%d (cumulative: received=%d, dropped=%d, errors=%d, invalid=%d, unknownPeer=%d)",
+				delta.receivedDrop, delta.receivedError, delta.invalidPacket, delta.unknownPeer,
 				stats.ReceivedPacket, stats.ReceivedDrop, stats.ReceivedError, stats.InvalidPacket, stats.UnknownPeer)
 		} else if c.lastBFDStatsHasErrors {
 			klog.Infof("BFD server stats recovered: received=%d, dropped=%d, errors=%d, invalid=%d, unknownPeer=%d",
 				stats.ReceivedPacket, stats.ReceivedDrop, stats.ReceivedError, stats.InvalidPacket, stats.UnknownPeer)
 		}
-		c.lastBFDStatsHasErrors = hasErrors
+
+		c.lastBFDErrorCounters = curr
+		c.hasLastBFDStatsSample = true
+		c.lastBFDStatsHasErrors = hasNewErrors
 	}
 
 	// Guard per-peer BFD state dump with V(3) to skip gRPC calls when log level is insufficient.
