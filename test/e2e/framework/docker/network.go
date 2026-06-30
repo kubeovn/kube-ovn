@@ -8,9 +8,11 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"time"
 
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -148,6 +150,21 @@ func NetworkRemove(networkID string) error {
 	}
 	defer cli.Close()
 
-	_, err = cli.NetworkRemove(context.Background(), networkID, client.NetworkRemoveOptions{})
-	return err
+	// Removing a network right after disconnecting its endpoints can fail with
+	// "has active endpoints" while docker asynchronously releases them. Retry
+	// to absorb that convergence window.
+	var lastErr error
+	if err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, time.Minute, true,
+		func(context.Context) (bool, error) {
+			if _, lastErr = cli.NetworkRemove(context.Background(), networkID, client.NetworkRemoveOptions{}); lastErr != nil {
+				return false, nil
+			}
+			return true, nil
+		}); err != nil {
+		if lastErr != nil {
+			return fmt.Errorf("timed out removing docker network %s: %w", networkID, lastErr)
+		}
+		return err
+	}
+	return nil
 }
