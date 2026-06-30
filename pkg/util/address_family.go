@@ -22,6 +22,9 @@ func ProtocolToFamily(protocol string) (int, error) {
 	}
 }
 
+// NormalizeIPFamily converts annotation values to kube-ovn protocol constants.
+// Only lowercase ipv4/ipv6 are accepted by validation; this helper keeps callers
+// working with the same protocol strings used by subnets and IPAM.
 func NormalizeIPFamily(ipFamily string) string {
 	switch ipFamily {
 	case "ipv4":

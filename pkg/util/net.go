@@ -349,6 +349,8 @@ func GetStringIP(v4IP, v6IP string) string {
 
 // GetIPAddrWithMaskForCNI returns IP address with mask for CNI plugin.
 // When ip is empty, it indicates no-IPAM mode (e.g., NAT gateway macvlan without default EIP).
+// When cidr is dual-stack, the CNI path uses the actual allocated IP families
+// and selects the matching mask instead of requiring the pod IP itself to be dual-stack.
 // Returns (ipAddr, noIPAM, error) where noIPAM is true when IP allocation is skipped.
 func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 	if ip == "" {

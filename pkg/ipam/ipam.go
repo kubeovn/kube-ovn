@@ -166,6 +166,8 @@ func (ipam *IPAM) GetStaticAddressWithFamily(podName, nicName, ip string, mac *s
 	return "", "", "", ErrNoAvailable
 }
 
+// validateRequestedIPFamily checks only the request value itself. Subnet
+// compatibility is validated by callers that have subnet context.
 func validateRequestedIPFamily(ipFamily string) error {
 	ipFamily = util.NormalizeIPFamily(ipFamily)
 	if ipFamily == "" || ipFamily == kubeovnv1.ProtocolIPv4 || ipFamily == kubeovnv1.ProtocolIPv6 {

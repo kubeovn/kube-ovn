@@ -32,7 +32,7 @@ func TestWaitNetworkReady_IPGatewayMismatch(t *testing.T) {
 	}
 }
 
-func TestFilterGatewayByIP(t *testing.T) {
+func TestGatewayForCNIIPFamily(t *testing.T) {
 	tests := []struct {
 		name    string
 		ipAddr  string
@@ -66,7 +66,7 @@ func TestFilterGatewayByIP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, filterGatewayByIP(tt.ipAddr, tt.gateway))
+			require.Equal(t, tt.want, gatewayForCNIIPFamily(tt.ipAddr, tt.gateway))
 		})
 	}
 }

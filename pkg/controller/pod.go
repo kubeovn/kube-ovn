@@ -574,7 +574,11 @@ func subnetDHCPOptionsUUIDs(subnet *kubeovnv1.Subnet) *ovs.DHCPOptionsUUIDs {
 	}
 }
 
-func dhcpForPodIP(subnetDHCP *ovs.DHCPOptionsUUIDs, podIP, dhcpV4, dhcpV6 string) (*ovs.DHCPOptionsUUIDs, string, string) {
+// dhcpOptionsForPodIPFamily returns DHCP options that match the IP families
+// actually allocated to the pod. A pod can request one family from a dual-stack
+// subnet, so using the subnet's full DHCP option set would attach DHCP for an
+// address family that is not configured on the port.
+func dhcpOptionsForPodIPFamily(subnetDHCP *ovs.DHCPOptionsUUIDs, podIP, dhcpV4, dhcpV6 string) (*ovs.DHCPOptionsUUIDs, string, string) {
 	filtered := &ovs.DHCPOptionsUUIDs{}
 	if subnetDHCP != nil {
 		*filtered = *subnetDHCP
@@ -609,7 +613,7 @@ func (c *Controller) reconcilePodDHCPOptions(pod *v1.Pod, podNets []*kubeovnNet)
 		podIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		dhcpV4 := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
 		dhcpV6 := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
-		dhcpOptions, dhcpV4, dhcpV6 := dhcpForPodIP(subnetDHCPOptionsUUIDs(subnet), podIP, dhcpV4, dhcpV6)
+		dhcpOptions, dhcpV4, dhcpV6 := dhcpOptionsForPodIPFamily(subnetDHCPOptionsUUIDs(subnet), podIP, dhcpV4, dhcpV6)
 
 		var mtu int
 		var gateway string
@@ -724,7 +728,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 
 			dhcpV4 := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
 			dhcpV6 := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
-			subnetDHCP, dhcpV4, dhcpV6 := dhcpForPodIP(subnetDHCPOptionsUUIDs(subnet), ipStr, dhcpV4, dhcpV6)
+			subnetDHCP, dhcpV4, dhcpV6 := dhcpOptionsForPodIPFamily(subnetDHCPOptionsUUIDs(subnet), ipStr, dhcpV4, dhcpV6)
 
 			var mtu int
 			var gateway string
@@ -2234,6 +2238,8 @@ func (c *Controller) acquireMacOnlyAddress(pod *v1.Pod, podNet *kubeovnNet, key,
 	return "", "", mac, podNet.Subnet, nil
 }
 
+// podNetRequestedIPFamily reads the family request from the annotation scoped to
+// this provider. The default provider naturally maps to ovn.kubernetes.io/ip_family.
 func podNetRequestedIPFamily(pod *v1.Pod, podNet *kubeovnNet) string {
 	if pod == nil || pod.Annotations == nil {
 		return ""
@@ -2241,6 +2247,8 @@ func podNetRequestedIPFamily(pod *v1.Pod, podNet *kubeovnNet) string {
 	return util.NormalizeIPFamily(pod.Annotations[fmt.Sprintf(util.IPFamilyAnnotationTemplate, podNet.ProviderName)])
 }
 
+// validateRequestedIPFamilyForSubnet rejects requests that cannot be satisfied
+// by a single-stack subnet. Dual-stack subnets are handled by family-aware IPAM.
 func validateRequestedIPFamilyForSubnet(ipFamily string, subnet *kubeovnv1.Subnet) error {
 	if ipFamily == "" || subnet == nil || subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == kubeovnv1.ProtocolMac {
 		return nil
@@ -2251,6 +2259,8 @@ func validateRequestedIPFamilyForSubnet(ipFamily string, subnet *kubeovnv1.Subne
 	return nil
 }
 
+// ippoolHasAvailableIPFamily checks availability for the requested family.
+// Without a requested family, it keeps the existing subnet protocol behavior.
 func ippoolHasAvailableIPFamily(ippool *kubeovnv1.IPPool, subnetProtocol, ipFamily string) bool {
 	if ipFamily != "" {
 		switch ipFamily {

@@ -887,34 +887,34 @@ func TestIPPoolHasAvailableIPFamily(t *testing.T) {
 	assert.False(t, ippoolHasAvailableIPFamily(ippool, kubeovnv1.ProtocolDual, ""))
 }
 
-func TestDHCPForPodIP(t *testing.T) {
+func TestDHCPOptionsForPodIPFamily(t *testing.T) {
 	dhcpOptions := &ovs.DHCPOptionsUUIDs{
 		DHCPv4OptionsUUID: "v4-uuid",
 		DHCPv6OptionsUUID: "v6-uuid",
 	}
 
-	filtered, dhcpV4, dhcpV6 := dhcpForPodIP(dhcpOptions, "10.0.0.10", "lease_time=3600", "server_id=00:00:00:00:00:01")
+	filtered, dhcpV4, dhcpV6 := dhcpOptionsForPodIPFamily(dhcpOptions, "10.0.0.10", "lease_time=3600", "server_id=00:00:00:00:00:01")
 	require.NotNil(t, filtered)
 	assert.Equal(t, "v4-uuid", filtered.DHCPv4OptionsUUID)
 	assert.Empty(t, filtered.DHCPv6OptionsUUID)
 	assert.Equal(t, "lease_time=3600", dhcpV4)
 	assert.Empty(t, dhcpV6)
 
-	filtered, dhcpV4, dhcpV6 = dhcpForPodIP(dhcpOptions, "2001:db8::10", "lease_time=3600", "server_id=00:00:00:00:00:01")
+	filtered, dhcpV4, dhcpV6 = dhcpOptionsForPodIPFamily(dhcpOptions, "2001:db8::10", "lease_time=3600", "server_id=00:00:00:00:00:01")
 	require.NotNil(t, filtered)
 	assert.Empty(t, filtered.DHCPv4OptionsUUID)
 	assert.Equal(t, "v6-uuid", filtered.DHCPv6OptionsUUID)
 	assert.Empty(t, dhcpV4)
 	assert.Equal(t, "server_id=00:00:00:00:00:01", dhcpV6)
 
-	filtered, dhcpV4, dhcpV6 = dhcpForPodIP(dhcpOptions, "10.0.0.10,2001:db8::10", "lease_time=3600", "server_id=00:00:00:00:00:01")
+	filtered, dhcpV4, dhcpV6 = dhcpOptionsForPodIPFamily(dhcpOptions, "10.0.0.10,2001:db8::10", "lease_time=3600", "server_id=00:00:00:00:00:01")
 	require.NotNil(t, filtered)
 	assert.Equal(t, "v4-uuid", filtered.DHCPv4OptionsUUID)
 	assert.Equal(t, "v6-uuid", filtered.DHCPv6OptionsUUID)
 	assert.Equal(t, "lease_time=3600", dhcpV4)
 	assert.Equal(t, "server_id=00:00:00:00:00:01", dhcpV6)
 
-	filtered, dhcpV4, dhcpV6 = dhcpForPodIP(dhcpOptions, "", "lease_time=3600", "server_id=00:00:00:00:00:01")
+	filtered, dhcpV4, dhcpV6 = dhcpOptionsForPodIPFamily(dhcpOptions, "", "lease_time=3600", "server_id=00:00:00:00:00:01")
 	require.NotNil(t, filtered)
 	assert.Equal(t, "v4-uuid", filtered.DHCPv4OptionsUUID)
 	assert.Equal(t, "v6-uuid", filtered.DHCPv6OptionsUUID)
