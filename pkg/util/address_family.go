@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"strings"
 
 	"golang.org/x/sys/unix"
 
@@ -27,9 +28,9 @@ func ProtocolToFamily(protocol string) (int, error) {
 // working with the same protocol strings used by subnets and IPAM.
 func NormalizeIPFamily(ipFamily string) string {
 	switch ipFamily {
-	case "ipv4":
+	case strings.ToLower(kubeovnv1.ProtocolIPv4):
 		return kubeovnv1.ProtocolIPv4
-	case "ipv6":
+	case strings.ToLower(kubeovnv1.ProtocolIPv6):
 		return kubeovnv1.ProtocolIPv6
 	default:
 		return ipFamily

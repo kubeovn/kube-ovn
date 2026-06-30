@@ -336,7 +336,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 		if !isIPFamilyAnnotationKey(key) || family == "" {
 			continue
 		}
-		if family != "ipv4" && family != "ipv6" {
+		if family != strings.ToLower(kubeovnv1.ProtocolIPv4) && family != strings.ToLower(kubeovnv1.ProtocolIPv6) {
 			errors = append(errors, fmt.Errorf("%s is not a valid %s", family, key))
 			continue
 		}
