@@ -195,13 +195,40 @@ func (c *Controller) cleanTProxyRoutes(protocol string) {
 	}
 }
 
+// tproxyRulesToCleanup scans the existing rules sharing a tproxy mark and reports which
+// ones must be removed (stale rules pointing at a different table/mask, plus any duplicate
+// of the desired rule) and whether a rule already matching the desired table+mask remains.
+// Returning the full set to delete - instead of stopping at the first match - ensures a
+// stale rule is never left behind to shadow the correct one, regardless of list ordering.
+func tproxyRulesToCleanup(curRules []netlink.Rule, mask uint32, table int) (toDel []netlink.Rule, found bool) {
+	for i := range curRules {
+		if !found && curRules[i].Table == table && curRules[i].Mask != nil && *curRules[i].Mask == mask {
+			found = true
+			continue
+		}
+		toDel = append(toDel, curRules[i])
+	}
+	return toDel, found
+}
+
 func addRuleIfNotExist(family int, mark, mask uint32, table int) error {
 	curRules, err := netlink.RuleListFiltered(family, &netlink.Rule{Mark: mark}, netlink.RT_FILTER_MARK)
 	if err != nil {
 		return fmt.Errorf("list rules with mark %x failed err: %w", mark, err)
 	}
 
-	if len(curRules) != 0 {
+	// A rule that shares the mark but points at a different table/mask (left over from a
+	// previous configuration or modified externally) would shadow the correct one, so
+	// delete every non-matching or duplicate rule and only skip recreation when a rule
+	// with the desired table+mask is already present.
+	toDel, found := tproxyRulesToCleanup(curRules, mask, table)
+	for i := range toDel {
+		klog.Infof("deleting stale tproxy rule %v conflicting with mark %#x table %d", toDel[i], mark, table)
+		if err = netlink.RuleDel(&toDel[i]); err != nil && !errors.Is(err, syscall.ENOENT) {
+			return fmt.Errorf("delete stale rule with mark %x failed err: %w", mark, err)
+		}
+	}
+	if found {
 		return nil
 	}
 

@@ -595,6 +595,15 @@ func getNicExistRoutes(nic netlink.Link, gateway string) ([]netlink.Route, error
 	return existRoutes, nil
 }
 
+// routeIPEqual reports whether two route IP fields (Src/Gw) are equal, treating an
+// unset (nil) value as distinct from any assigned address.
+func routeIPEqual(a, b net.IP) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Equal(b)
+}
+
 func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []string, joinIPv4, joinIPv6, gateway string, srcIPv4, srcIPv6 net.IP) (toAdd, toDel []netlink.Route) {
 	// joinIPv6 is not used for now
 	_ = joinIPv6
@@ -635,57 +644,53 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 			src, gw = srcIPv6, gwV6
 		}
 
+		// Compute the desired route attributes up front so the existence check below can
+		// compare them. Comparing Gw/Scope in addition to Dst/Src lets the periodic
+		// reconcile repair routes whose gateway or scope were modified in place, instead
+		// of only detecting added/removed routes.
+		var priority int
+		scope := netlink.SCOPE_UNIVERSE
+		proto := netlink.RouteProtocol(syscall.RTPROT_STATIC)
+		isJoin := slices.Contains(joinCIDR, c)
+		if isJoin {
+			if util.CheckProtocol(c) == kubeovnv1.ProtocolIPv4 {
+				src = net.ParseIP(joinIPv4)
+			} else {
+				src, priority = nil, 256
+			}
+			gw, scope = nil, netlink.SCOPE_LINK
+			proto = netlink.RouteProtocol(unix.RTPROT_KERNEL)
+		}
+
+		// A route is considered present only when its Dst and the attributes we manage
+		// (Src/Gw/Scope) match the desired values. Priority is intentionally not compared:
+		// it is part of the route key, so re-adding on a priority mismatch would create a
+		// duplicate instead of replacing in place, and the metric of a link route does not
+		// affect connectivity anyway. allRoutes already contains the node nic routes, so a
+		// separate pass over nodeNicRoutes is unnecessary.
 		found := false
 		for _, ar := range allRoutes {
-			if ar.Dst != nil && ar.Dst.String() == c {
-				if slices.Contains(joinCIDR, c) {
-					// Only compare Dst for join subnets
-					found = true
-					klog.V(3).Infof("[routeDiff] joinCIDR route already exists in allRoutes: %v", ar)
-					break
-				} else if (ar.Src == nil && src == nil) || (ar.Src != nil && src != nil && ar.Src.Equal(src)) {
-					// For non-join subnets, both Dst and Src must be the same
-					found = true
-					klog.V(3).Infof("[routeDiff] route already exists in allRoutes: %v", ar)
-					break
-				}
+			if ar.Dst == nil || ar.Dst.String() != c {
+				continue
+			}
+			if routeIPEqual(ar.Src, src) && routeIPEqual(ar.Gw, gw) && ar.Scope == scope {
+				found = true
+				klog.V(3).Infof("[routeDiff] route already exists in allRoutes: %v", ar)
+				break
 			}
 		}
 		if found {
 			continue
 		}
-		for _, r := range nodeNicRoutes {
-			if r.Dst == nil || r.Dst.String() != c {
-				continue
-			}
-			if (src == nil && r.Src == nil) || (src != nil && r.Src != nil && src.Equal(r.Src)) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			var priority int
-			scope := netlink.SCOPE_UNIVERSE
-			proto := netlink.RouteProtocol(syscall.RTPROT_STATIC)
-			if slices.Contains(joinCIDR, c) {
-				if util.CheckProtocol(c) == kubeovnv1.ProtocolIPv4 {
-					src = net.ParseIP(joinIPv4)
-				} else {
-					src, priority = nil, 256
-				}
-				gw, scope = nil, netlink.SCOPE_LINK
-				proto = netlink.RouteProtocol(unix.RTPROT_KERNEL)
-			}
-			_, cidr, _ := net.ParseCIDR(c)
-			toAdd = append(toAdd, netlink.Route{
-				Dst:      cidr,
-				Src:      src,
-				Gw:       gw,
-				Protocol: proto,
-				Scope:    scope,
-				Priority: priority,
-			})
-		}
+		_, cidr, _ := net.ParseCIDR(c)
+		toAdd = append(toAdd, netlink.Route{
+			Dst:      cidr,
+			Src:      src,
+			Gw:       gw,
+			Protocol: proto,
+			Scope:    scope,
+			Priority: priority,
+		})
 	}
 	if len(toAdd) > 0 {
 		klog.Infof("routes to add: %v", toAdd)
