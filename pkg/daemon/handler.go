@@ -46,6 +46,28 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 	return csh
 }
 
+func filterGatewayByIP(ipAddr, gateway string) string {
+	if ipAddr == "" || gateway == "" || util.CheckProtocol(gateway) != kubeovnv1.ProtocolDual {
+		return gateway
+	}
+
+	gateways := util.SplitTrimmed(gateway, ",")
+	filtered := make([]string, 0, len(gateways))
+	for _, ip := range util.SplitTrimmed(ipAddr, ",") {
+		ipProtocol := util.CheckProtocol(ip)
+		for _, gw := range gateways {
+			if util.CheckProtocol(gw) == ipProtocol {
+				filtered = append(filtered, gw)
+				break
+			}
+		}
+	}
+	if len(filtered) == 0 {
+		return gateway
+	}
+	return strings.Join(filtered, ",")
+}
+
 func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.Subnet, bool) {
 	if util.IsOvnProvider(provider) {
 		return nil, true
@@ -174,6 +196,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 			return
 		}
+		gw = filterGatewayByIP(ipAddr, gw)
 
 		oldPodName = podRequest.PodName
 		if s := pod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, podRequest.Provider)]; s != "" {

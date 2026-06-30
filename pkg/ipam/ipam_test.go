@@ -130,6 +130,50 @@ func TestGetRandomAddress(t *testing.T) {
 	require.NotEmpty(t, macStr)
 }
 
+func TestGetRandomAddressWithFamily(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "dualSubnet"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/24,2001:db8::/64", nil)
+	require.NoError(t, err)
+	ipam.Subnets[subnetName] = subnet
+
+	v4, v6, macStr, err := ipam.GetRandomAddressWithFamily("pod1.default", "pod1.default", nil, subnetName, "", "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", v4)
+	require.Equal(t, "2001:db8::1", v6)
+	require.NotEmpty(t, macStr)
+	ip, err := NewIP("10.0.0.1")
+	require.NoError(t, err)
+	require.True(t, subnet.V4Using.Contains(ip))
+	ip, err = NewIP("2001:db8::1")
+	require.NoError(t, err)
+	require.True(t, subnet.V6Using.Contains(ip))
+
+	v4, v6, macStr, err = ipam.GetRandomAddressWithFamily("pod2.default", "pod2.default", nil, subnetName, "", kubeovnv1.ProtocolIPv4, nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.2", v4)
+	require.Empty(t, v6)
+	require.NotEmpty(t, macStr)
+	ip, err = NewIP("10.0.0.2")
+	require.NoError(t, err)
+	require.True(t, subnet.V4Using.Contains(ip))
+	ip, err = NewIP("2001:db8::2")
+	require.NoError(t, err)
+	require.False(t, subnet.V6Using.Contains(ip))
+
+	v4, v6, macStr, err = ipam.GetRandomAddressWithFamily("pod3.default", "pod3.default", nil, subnetName, "", kubeovnv1.ProtocolIPv6, nil, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Equal(t, "2001:db8::2", v6)
+	require.NotEmpty(t, macStr)
+	ip, err = NewIP("10.0.0.3")
+	require.NoError(t, err)
+	require.False(t, subnet.V4Using.Contains(ip))
+	ip, err = NewIP("2001:db8::2")
+	require.NoError(t, err)
+	require.True(t, subnet.V6Using.Contains(ip))
+}
+
 func TestGetStaticAddress(t *testing.T) {
 	ipam := NewIPAM()
 	// test v4 subnet
@@ -234,6 +278,65 @@ func TestGetStaticAddress(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, ip)
 	require.False(t, dualSubnet.V4Using.Contains(ip))
+}
+
+func TestGetStaticAddressWithFamily(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "dualSubnet"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/24,2001:db8::/64", nil)
+	require.NoError(t, err)
+	ipam.Subnets[subnetName] = subnet
+
+	v4, v6, macStr, err := ipam.GetStaticAddressWithFamily("pod1.default", "pod1.default", "10.0.0.10", nil, subnetName, kubeovnv1.ProtocolIPv4, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.10", v4)
+	require.Empty(t, v6)
+	require.NotEmpty(t, macStr)
+	ip, err := NewIP("10.0.0.10")
+	require.NoError(t, err)
+	require.True(t, subnet.V4Using.Contains(ip))
+	ip, err = NewIP("2001:db8::10")
+	require.NoError(t, err)
+	require.False(t, subnet.V6Using.Contains(ip))
+
+	v4, v6, macStr, err = ipam.GetStaticAddressWithFamily("pod2.default", "pod2.default", "2001:db8::10", nil, subnetName, kubeovnv1.ProtocolIPv6, true)
+	require.NoError(t, err)
+	require.Empty(t, v4)
+	require.Equal(t, "2001:db8::10", v6)
+	require.NotEmpty(t, macStr)
+	ip, err = NewIP("10.0.0.10")
+	require.NoError(t, err)
+	require.True(t, subnet.V4Using.Contains(ip))
+	ip, err = NewIP("2001:db8::10")
+	require.NoError(t, err)
+	require.True(t, subnet.V6Using.Contains(ip))
+
+	_, _, _, err = ipam.GetStaticAddressWithFamily("pod3.default", "pod3.default", "2001:db8::11", nil, subnetName, kubeovnv1.ProtocolIPv4, true)
+	require.ErrorIs(t, err, ErrInvalidIPFamily)
+	ip, err = NewIP("2001:db8::11")
+	require.NoError(t, err)
+	require.False(t, subnet.V6Using.Contains(ip))
+
+	_, _, _, err = ipam.GetStaticAddressWithFamily("pod3.default", "pod3.default", "10.0.0.11,2001:db8::11", nil, subnetName, kubeovnv1.ProtocolIPv4, true)
+	require.ErrorIs(t, err, ErrInvalidIPFamily)
+	ip, err = NewIP("10.0.0.11")
+	require.NoError(t, err)
+	require.False(t, subnet.V4Using.Contains(ip))
+	ip, err = NewIP("2001:db8::11")
+	require.NoError(t, err)
+	require.False(t, subnet.V6Using.Contains(ip))
+
+	v4, v6, macStr, err = ipam.GetStaticAddressWithFamily("pod4.default", "pod4.default", "10.0.0.11", nil, subnetName, "", true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.11", v4)
+	require.Equal(t, "2001:db8::1", v6)
+	require.NotEmpty(t, macStr)
+	ip, err = NewIP("10.0.0.11")
+	require.NoError(t, err)
+	require.True(t, subnet.V4Using.Contains(ip))
+	ip, err = NewIP("2001:db8::1")
+	require.NoError(t, err)
+	require.True(t, subnet.V6Using.Contains(ip))
 }
 
 func TestCheckAndAppendIpsForDual(t *testing.T) {

@@ -21,3 +21,14 @@ func ProtocolToFamily(protocol string) (int, error) {
 		return -1, fmt.Errorf("invalid protocol: %s", protocol)
 	}
 }
+
+func NormalizeIPFamily(ipFamily string) string {
+	switch ipFamily {
+	case "ipv4":
+		return kubeovnv1.ProtocolIPv4
+	case "ipv6":
+		return kubeovnv1.ProtocolIPv6
+	default:
+		return ipFamily
+	}
+}

@@ -1099,12 +1099,20 @@ func TestGetIPAddrWithMaskForCNI(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:      "Error: invalid dual stack ip format",
+			name:      "IPv4 address with dual-stack CIDR",
 			ip:        "192.168.1.1",
 			cidr:      "192.168.1.0/24,2001:db8::/32",
-			wantAddr:  "",
+			wantAddr:  "192.168.1.1/24",
 			wantNoIP:  false,
-			wantError: true,
+			wantError: false,
+		},
+		{
+			name:      "IPv6 address with dual-stack CIDR",
+			ip:        "2001:db8::1",
+			cidr:      "192.168.1.0/24,2001:db8::/32",
+			wantAddr:  "2001:db8::1/32",
+			wantNoIP:  false,
+			wantError: false,
 		},
 	}
 

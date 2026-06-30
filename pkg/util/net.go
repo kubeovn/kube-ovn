@@ -357,6 +357,27 @@ func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 		klog.V(3).Infof("skipping IP allocation: ip is empty for cidr %s (no-IPAM mode)", cidr)
 		return "", true, nil
 	}
+	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		if len(cidrBlocks) != 2 {
+			return "", false, fmt.Errorf("invalid dualstack cidr %s", cidr)
+		}
+
+		ipAddrs := make([]string, 0, 2)
+		for ip := range strings.SplitSeq(ip, ",") {
+			var cidrBlock string
+			switch CheckProtocol(ip) {
+			case kubeovnv1.ProtocolIPv4:
+				cidrBlock = cidrBlocks[0]
+			case kubeovnv1.ProtocolIPv6:
+				cidrBlock = cidrBlocks[1]
+			default:
+				return "", false, fmt.Errorf("invalid ip %s", ip)
+			}
+			ipAddrs = append(ipAddrs, fmt.Sprintf("%s/%s", ip, strings.Split(cidrBlock, "/")[1]))
+		}
+		return strings.Join(ipAddrs, ","), false, nil
+	}
 	ipAddr, err := GetIPAddrWithMask(ip, cidr)
 	return ipAddr, false, err
 }

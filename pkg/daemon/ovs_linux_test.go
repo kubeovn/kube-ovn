@@ -31,3 +31,42 @@ func TestWaitNetworkReady_IPGatewayMismatch(t *testing.T) {
 		})
 	}
 }
+
+func TestFilterGatewayByIP(t *testing.T) {
+	tests := []struct {
+		name    string
+		ipAddr  string
+		gateway string
+		want    string
+	}{
+		{
+			name:    "ipv4 only",
+			ipAddr:  "10.0.0.2/24",
+			gateway: "10.0.0.1,fd00::1",
+			want:    "10.0.0.1",
+		},
+		{
+			name:    "ipv6 only",
+			ipAddr:  "fd00::2/64",
+			gateway: "10.0.0.1,fd00::1",
+			want:    "fd00::1",
+		},
+		{
+			name:    "dual stack",
+			ipAddr:  "10.0.0.2/24,fd00::2/64",
+			gateway: "10.0.0.1,fd00::1",
+			want:    "10.0.0.1,fd00::1",
+		},
+		{
+			name:    "single stack gateway",
+			ipAddr:  "10.0.0.2/24",
+			gateway: "10.0.0.1",
+			want:    "10.0.0.1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, filterGatewayByIP(tt.ipAddr, tt.gateway))
+		})
+	}
+}

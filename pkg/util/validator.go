@@ -332,6 +332,24 @@ func validateNatOutgoingPolicyRuleIPs(matchIPStr string) (string, error) {
 func ValidatePodNetwork(annotations map[string]string) error {
 	errors := []error{}
 
+	for key, family := range annotations {
+		if !isIPFamilyAnnotationKey(key) || family == "" {
+			continue
+		}
+		if family != "ipv4" && family != "ipv6" {
+			errors = append(errors, fmt.Errorf("%s is not a valid %s", family, key))
+			continue
+		}
+		normalizedFamily := NormalizeIPFamily(family)
+		if ipAddress := annotations[ipAddressAnnotationKeyForIPFamily(key)]; ipAddress != "" {
+			for ip := range strings.SplitSeq(ipAddress, ",") {
+				if CheckProtocol(ip) != normalizedFamily {
+					errors = append(errors, fmt.Errorf("%s does not match %s %s", ip, key, family))
+				}
+			}
+		}
+	}
+
 	if ipAddress := annotations[IPAddressAnnotation]; ipAddress != "" {
 		// The format of IP Annotation in dual-stack is 10.244.0.0/16,fd00:10:244:0:2::/80
 		for ip := range strings.SplitSeq(ipAddress, ",") {
@@ -438,6 +456,17 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	}
 
 	return utilerrors.NewAggregate(errors)
+}
+
+func isIPFamilyAnnotationKey(key string) bool {
+	return key == IPFamilyAnnotation || strings.HasSuffix(key, ".kubernetes.io/ip_family")
+}
+
+func ipAddressAnnotationKeyForIPFamily(key string) string {
+	if key == IPFamilyAnnotation {
+		return IPAddressAnnotation
+	}
+	return strings.TrimSuffix(key, "/ip_family") + "/ip_address"
 }
 
 func ValidateNetworkBroadcast(cidr, ip string) error {

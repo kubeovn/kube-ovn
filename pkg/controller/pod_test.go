@@ -16,6 +16,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -728,7 +729,7 @@ func TestAcquireStaticAddressHelperPerInterfaceIPAMKey(t *testing.T) {
 	ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{testSubnet})
 
 	// Allocate static IP via the per-interface path
-	v4IP, _, _, subnet, err := ctrl.acquireStaticAddressHelper(pod, podNet, portName, nil, "", nsNets, false, podKey)
+	v4IP, _, _, subnet, err := ctrl.acquireStaticAddressHelper(pod, podNet, portName, nil, "", nsNets, false, podKey, "")
 	require.NoError(t, err)
 	assert.Equal(t, staticIP, v4IP)
 	assert.Equal(t, subnetName, subnet.Name)
@@ -753,6 +754,165 @@ func TestAcquireStaticAddressHelperPerInterfaceIPAMKey(t *testing.T) {
 		"After ReleaseAddressByNic with pod key, PodToNicList should be empty for %q", podKey)
 	assert.Empty(t, ipamSubnet.V4IPToPod[staticIP],
 		"After ReleaseAddressByNic, V4IPToPod should not map %q to any pod", staticIP)
+}
+
+func TestAcquireAddressWithIPFamily(t *testing.T) {
+	dualSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "dual-subnet"},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24,2001:db8::/64",
+			Protocol:  kubeovnv1.ProtocolDual,
+			Provider:  util.OvnProvider,
+		},
+		Status: kubeovnv1.SubnetStatus{
+			V4AvailableIPs: internal.NewBigInt(100),
+			V6AvailableIPs: internal.NewBigInt(100),
+		},
+	}
+
+	t.Run("default network ipv4 only", func(t *testing.T) {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-v4",
+				Namespace: "default",
+				Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: "dual-subnet",
+					util.IPFamilyAnnotation:      "ipv4",
+				},
+			},
+		}
+
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{dualSubnet},
+			Pods:    []*corev1.Pod{pod},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{dualSubnet})
+
+		podNets, err := ctrl.getPodKubeovnNets(pod)
+		require.NoError(t, err)
+		require.Len(t, podNets, 1)
+
+		v4, v6, _, subnet, err := ctrl.acquireAddress(pod, podNets[0])
+		require.NoError(t, err)
+		assert.Equal(t, "dual-subnet", subnet.Name)
+		assert.Equal(t, "10.0.0.1", v4)
+		assert.Empty(t, v6)
+		assert.Equal(t, 1, ctrl.ipam.Subnets["dual-subnet"].V4Using.Len())
+		assert.Equal(t, 0, ctrl.ipam.Subnets["dual-subnet"].V6Using.Len())
+	})
+
+	t.Run("attachment network ipv6 only", func(t *testing.T) {
+		provider := "net1.default.ovn"
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-v6",
+				Namespace: "default",
+				Annotations: map[string]string{
+					fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): "dual-subnet",
+					fmt.Sprintf(util.IPFamilyAnnotationTemplate, provider):      "ipv6",
+				},
+			},
+		}
+		podNet := &kubeovnNet{
+			Type:         providerTypeOriginal,
+			ProviderName: provider,
+			Subnet:       dualSubnet,
+		}
+
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{dualSubnet},
+			Pods:    []*corev1.Pod{pod},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{dualSubnet})
+
+		v4, v6, _, subnet, err := ctrl.acquireAddress(pod, podNet)
+		require.NoError(t, err)
+		assert.Equal(t, "dual-subnet", subnet.Name)
+		assert.Empty(t, v4)
+		assert.Equal(t, "2001:db8::1", v6)
+		assert.Equal(t, 0, ctrl.ipam.Subnets["dual-subnet"].V4Using.Len())
+		assert.Equal(t, 1, ctrl.ipam.Subnets["dual-subnet"].V6Using.Len())
+	})
+
+	t.Run("same nad multiple interfaces can request different families", func(t *testing.T) {
+		provider1 := "net1.default.ovn.net1"
+		provider2 := "net1.default.ovn.net2"
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-multi",
+				Namespace: "default",
+				Annotations: map[string]string{
+					fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider1): "dual-subnet",
+					fmt.Sprintf(util.IPFamilyAnnotationTemplate, provider1):      "ipv4",
+					fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider2): "dual-subnet",
+					fmt.Sprintf(util.IPFamilyAnnotationTemplate, provider2):      "ipv6",
+				},
+			},
+		}
+
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{dualSubnet},
+			Pods:    []*corev1.Pod{pod},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{dualSubnet})
+
+		v4, v6, _, _, err := ctrl.acquireAddress(pod, &kubeovnNet{Type: providerTypeOriginal, ProviderName: provider1, Subnet: dualSubnet})
+		require.NoError(t, err)
+		assert.Equal(t, "10.0.0.1", v4)
+		assert.Empty(t, v6)
+
+		v4, v6, _, _, err = ctrl.acquireAddress(pod, &kubeovnNet{Type: providerTypeOriginal, ProviderName: provider2, Subnet: dualSubnet})
+		require.NoError(t, err)
+		assert.Empty(t, v4)
+		assert.Equal(t, "2001:db8::1", v6)
+	})
+}
+
+func TestIPPoolHasAvailableIPFamily(t *testing.T) {
+	ippool := &kubeovnv1.IPPool{
+		Status: kubeovnv1.IPPoolStatus{
+			V4AvailableIPs: internal.NewBigInt(1),
+			V6AvailableIPs: internal.NewBigInt(0),
+		},
+	}
+
+	assert.True(t, ippoolHasAvailableIPFamily(ippool, kubeovnv1.ProtocolDual, kubeovnv1.ProtocolIPv4))
+	assert.False(t, ippoolHasAvailableIPFamily(ippool, kubeovnv1.ProtocolDual, kubeovnv1.ProtocolIPv6))
+	assert.False(t, ippoolHasAvailableIPFamily(ippool, kubeovnv1.ProtocolDual, ""))
+}
+
+func TestDHCPForPodIP(t *testing.T) {
+	dhcpOptions := &ovs.DHCPOptionsUUIDs{
+		DHCPv4OptionsUUID: "v4-uuid",
+		DHCPv6OptionsUUID: "v6-uuid",
+	}
+
+	filtered, dhcpV4, dhcpV6 := dhcpForPodIP(dhcpOptions, "10.0.0.10", "lease_time=3600", "server_id=00:00:00:00:00:01")
+	require.NotNil(t, filtered)
+	assert.Equal(t, "v4-uuid", filtered.DHCPv4OptionsUUID)
+	assert.Empty(t, filtered.DHCPv6OptionsUUID)
+	assert.Equal(t, "lease_time=3600", dhcpV4)
+	assert.Empty(t, dhcpV6)
+
+	filtered, dhcpV4, dhcpV6 = dhcpForPodIP(dhcpOptions, "2001:db8::10", "lease_time=3600", "server_id=00:00:00:00:00:01")
+	require.NotNil(t, filtered)
+	assert.Empty(t, filtered.DHCPv4OptionsUUID)
+	assert.Equal(t, "v6-uuid", filtered.DHCPv6OptionsUUID)
+	assert.Empty(t, dhcpV4)
+	assert.Equal(t, "server_id=00:00:00:00:00:01", dhcpV6)
+
+	filtered, dhcpV4, dhcpV6 = dhcpForPodIP(dhcpOptions, "10.0.0.10,2001:db8::10", "lease_time=3600", "server_id=00:00:00:00:00:01")
+	require.NotNil(t, filtered)
+	assert.Equal(t, "v4-uuid", filtered.DHCPv4OptionsUUID)
+	assert.Equal(t, "v6-uuid", filtered.DHCPv6OptionsUUID)
+	assert.Equal(t, "lease_time=3600", dhcpV4)
+	assert.Equal(t, "server_id=00:00:00:00:00:01", dhcpV6)
 }
 
 func newIPAMForTest(subnets []*kubeovnv1.Subnet) *ipam.IPAM {
