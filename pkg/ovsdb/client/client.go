@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cenkalti/backoff/v5"
+	"github.com/cenkalti/backoff/v6"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"github.com/ovn-kubernetes/libovsdb/client"
@@ -86,22 +86,10 @@ func NewOvsDbClient(
 		backOff = bo
 	}
 	if ssl {
-		cert, err := tls.LoadX509KeyPair(util.SslCertPath, util.SslKeyPath)
+		tlsConfig, err := newKubeOVNTLSConfig()
 		if err != nil {
 			klog.Error(err)
-			return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
-		}
-		caCert, err := os.ReadFile(util.SslCACert)
-		if err != nil {
-			klog.Error(err)
-			return nil, fmt.Errorf("failed to read ca cert: %w", err)
-		}
-		certPool := x509.NewCertPool()
-		certPool.AppendCertsFromPEM(caCert)
-		tlsConfig := &tls.Config{
-			Certificates:       []tls.Certificate{cert},
-			RootCAs:            certPool,
-			InsecureSkipVerify: true, // #nosec G402
+			return nil, err
 		}
 		options = append(options, client.WithTLSConfig(tlsConfig))
 	}
@@ -145,4 +133,25 @@ func NewOvsDbClient(
 	}
 
 	return c, nil
+}
+
+func newKubeOVNTLSConfig() (*tls.Config, error) {
+	caCert, err := os.ReadFile(util.SslCACert)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ca cert: %w", err)
+	}
+	certPool := x509.NewCertPool()
+	certPool.AppendCertsFromPEM(caCert)
+
+	return &tls.Config{
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			cert, err := tls.LoadX509KeyPair(util.SslCertPath, util.SslKeyPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load x509 cert key pair: %w", err)
+			}
+			return &cert, nil
+		},
+		RootCAs:            certPool,
+		InsecureSkipVerify: true, // #nosec G402
+	}, nil
 }

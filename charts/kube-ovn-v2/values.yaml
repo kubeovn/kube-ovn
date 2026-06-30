@@ -137,6 +137,9 @@ networking:
   # -- Deploy the CNI with SSL encryption in between components.
   # @section -- Network parameters of the CNI
   enableSsl: false
+  # -- How often kube-ovn-controller checks kube-ovn-tls for renewal. Set to 0 to disable.
+  # @section -- Network parameters of the CNI
+  kubeOvnTlsRotationInterval: "8760h"
   # -- Network type can be "geneve" or "vlan".
   # @section -- Network parameters of the CNI
   networkType: geneve
@@ -230,6 +233,9 @@ features:
   # -- Enable optimized live migrations for VMs
   # @section -- Opt-in/out Features
   enableLiveMigrationOptimization: true
+  # -- Allow a /32 address to be selected as the tunnel source (required on clouds that assign /32 to the host interface)
+  # @section -- Opt-in/out Features
+  enableHostTunnelSrc: false
 
   ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true

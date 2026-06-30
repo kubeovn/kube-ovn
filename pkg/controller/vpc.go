@@ -289,7 +289,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
-	learnFromARPRequest := vpc.Spec.EnableExternal
+	learnFromARPRequest := vpc.Spec.EnableExternal || len(vpc.Spec.VpcPeerings) != 0
 	if !learnFromARPRequest {
 		for _, subnetName := range vpc.Status.Subnets {
 			subnet, err := c.subnetsLister.Get(subnetName)
@@ -893,9 +893,7 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 		return portName, nil, err
 	}
 	if len(nodes) == 0 {
-		err = fmt.Errorf("no nodes found by selector %q", selector.String())
-		klog.Error(err)
-		return portName, nil, err
+		klog.Warningf("no nodes found by selector %q for BFD LRP %s, clearing HA chassis group", selector.String(), portName)
 	}
 
 	nodeNames := make([]string, 0, len(nodes))

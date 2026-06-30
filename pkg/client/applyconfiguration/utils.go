@@ -212,10 +212,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.VpcEgressWorkloadApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcNatGateway"):
 		return &kubeovnv1.VpcNatGatewayApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcNatGatewayBFDConfig"):
+		return &kubeovnv1.VpcNatGatewayBFDConfigApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcNatGatewaySpec"):
 		return &kubeovnv1.VpcNatGatewaySpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcNatGatewayStatus"):
 		return &kubeovnv1.VpcNatGatewayStatusApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcNatWorkload"):
+		return &kubeovnv1.VpcNatWorkloadApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcPeering"):
 		return &kubeovnv1.VpcPeeringApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcSpec"):

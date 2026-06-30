@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,6 +20,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/cmd/kubeadm/app/constants"
@@ -39,6 +42,8 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
+
+var uuidRegexp = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 
 func init() {
 	klog.SetOutput(ginkgo.GinkgoWriter)
@@ -269,10 +274,13 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		_ = subnetClient.CreateSync(externalSubnet)
 
 		vpcName := util.DefaultVpc
+		vpc := vpcClient.Get(vpcName)
+		ginkgo.By("Validating local traffic policy without BFD")
+		vegTest(f, false, provider, nadName, vpcName, vpc.Status.DefaultLogicalSwitch, externalSubnetName, replicas, nil)
+
 		cidr := framework.RandomCIDR(f.ClusterIPFamily)
 		bfdIP := framework.RandomIPs(cidr, ";", 1)
 		ginkgo.By("Enabling BFD Port with IP " + bfdIP + " for VPC " + vpcName)
-		vpc := vpcClient.Get(vpcName)
 		patchedVpc := vpc.DeepCopy()
 		patchedVpc.Spec.BFDPort = &apiv1.BFDPort{
 			Enabled: true,
@@ -361,6 +369,127 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		vegTest(f, false, provider, nadName, vpcName, internalSubnetName, externalSubnetName, replicas, nil)
 	})
 
+	framework.ConformanceIt("should update BFD HA chassis group when selected nodes change", func() {
+		f.SkipVersionPriorTo(1, 14, "VPC BFDPort for VpcEgressGateway BFD requires v1.14+")
+		if len(schedulableNodes) < 2 {
+			ginkgo.Skip("at least two schedulable nodes are required")
+		}
+
+		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
+		selectedNode1 := schedulableNodes[0].Name
+		selectedNode2 := schedulableNodes[1].Name
+		labelKey := "veg-bfd-e2e-" + framework.RandomSuffix()
+		labelValue := "selected"
+
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up BFD selector labels")
+			setNodeLabel(f.ClientSet, selectedNode1, labelKey, "")
+			setNodeLabel(f.ClientSet, selectedNode2, labelKey, "")
+		})
+
+		ginkgo.By("Selecting the initial BFD node " + selectedNode1)
+		setNodeLabel(f.ClientSet, selectedNode1, labelKey, labelValue)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, nil)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting network attachment definition " + nadName)
+			nadClient.Delete(nadName)
+		})
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		vpcName := "vpc-" + framework.RandomSuffix()
+		internalSubnetName := "int-" + framework.RandomSuffix()
+		internalCIDR := framework.RandomCIDR(f.ClusterIPFamily)
+		bfdIP := framework.RandomIPs(internalCIDR, ";", 1)
+
+		ginkgo.By("Creating VPC " + vpcName + " with BFDPort nodeSelector")
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting vpc " + vpcName)
+			vpcClient.DeleteSync(vpcName)
+		})
+		vpc := framework.MakeVpc(vpcName, "", false, false, nil)
+		vpc.Spec.BFDPort = &apiv1.BFDPort{
+			Enabled: true,
+			IP:      bfdIP,
+			NodeSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					labelKey: labelValue,
+				},
+			},
+		}
+		_ = vpcClient.CreateSync(vpc)
+
+		ginkgo.By("Creating internal subnet " + internalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting internal subnet " + internalSubnetName)
+			subnetClient.DeleteSync(internalSubnetName)
+		})
+		internalSubnet := framework.MakeSubnet(internalSubnetName, "", internalCIDR, "", vpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(internalSubnet)
+
+		ginkgo.By("Getting docker network " + kindNetwork)
+		network, err := docker.NetworkInspect(kindNetwork)
+		framework.ExpectNoError(err, "getting docker network "+kindNetwork)
+
+		externalSubnet := generateSubnetFromDockerNetwork(externalSubnetName, network, f.HasIPv4(), f.HasIPv6())
+		externalSubnet.Spec.Provider = provider
+
+		ginkgo.By("Creating macvlan subnet " + externalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting external subnet " + externalSubnetName)
+			subnetClient.DeleteSync(externalSubnetName)
+		})
+		_ = subnetClient.CreateSync(externalSubnet)
+
+		vegClient := f.VpcEgressGatewayClient()
+		vegName := "veg-" + framework.RandomSuffix()
+		veg := framework.MakeVpcEgressGateway(namespaceName, vegName, vpcName, 2, internalSubnetName, externalSubnetName)
+		veg.Spec.BFD.Enabled = true
+		veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{
+			Subnets: []string{internalSubnetName},
+		}}
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting vpc egress gateway " + vegName)
+			vegClient.DeleteSync(vegName)
+		})
+
+		ginkgo.By(fmt.Sprintf("Creating BFD vpc egress gateway %s:\n%s", vegName, format.Object(veg, 2)))
+		veg = vegClient.CreateSync(veg)
+		framework.ExpectTrue(veg.Status.Ready)
+		framework.ExpectHaveLen(veg.Status.Workload.Nodes, 2)
+		framework.ExpectHaveLen(veg.Status.InternalIPs, 2)
+		framework.ExpectHaveLen(veg.Status.ExternalIPs, 2)
+
+		groupName := "bfd@" + vpcName
+		waitVpcBFDNodes(vpcClient, vpcName, []string{selectedNode1})
+		waitHAChassisCount(groupName, 1)
+		waitHAChassisGroupCount(groupName, 1)
+		waitLRPHAChassisGroup(groupName, groupName)
+
+		ginkgo.By("Adding BFD selector label to " + selectedNode2)
+		setNodeLabel(f.ClientSet, selectedNode2, labelKey, labelValue)
+		waitVpcBFDNodes(vpcClient, vpcName, []string{selectedNode1, selectedNode2})
+		waitHAChassisCount(groupName, 2)
+		waitHAChassisGroupCount(groupName, 2)
+		waitLRPHAChassisGroup(groupName, groupName)
+
+		ginkgo.By("Removing BFD selector label from " + selectedNode1)
+		setNodeLabel(f.ClientSet, selectedNode1, labelKey, "")
+		waitVpcBFDNodes(vpcClient, vpcName, []string{selectedNode2})
+		waitHAChassisCount(groupName, 1)
+		waitHAChassisGroupCount(groupName, 1)
+		waitLRPHAChassisGroup(groupName, groupName)
+
+		ginkgo.By("Removing all BFD selector labels")
+		setNodeLabel(f.ClientSet, selectedNode2, labelKey, "")
+		waitVpcBFDNodes(vpcClient, vpcName, nil)
+		waitHAChassisCount(groupName, 0)
+		waitHAChassisGroupCount(groupName, 0)
+		waitLRPHAChassisGroup(groupName, groupName)
+	})
+
 	framework.ConformanceIt("should report not ready when workload pod attachment network status is missing", func() {
 		f.SkipVersionPriorTo(1, 17, "VpcEgressGateway workload network status validation was introduced in v1.17")
 
@@ -404,6 +533,9 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		podClient := f.PodClient()
 		vegName := "veg-" + framework.RandomSuffix()
 		veg := framework.MakeVpcEgressGateway(namespaceName, vegName, "", 1, internalSubnetName, externalSubnetName)
+		veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{
+			Subnets: []string{internalSubnetName},
+		}}
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting vpc egress gateway " + vegName)
 			vegClient.DeleteSync(vegName)
@@ -493,12 +625,137 @@ func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.I
 	return framework.MakeSubnet(subnetName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", "", excludeIPs, nil, nil)
 }
 
-func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image, svrPort string, svrIPs, extIPs []string, intIPs map[string][]string, subnetName, nodeName string, snat bool) {
+func setNodeLabel(cs clientset.Interface, nodeName, key, value string) {
+	ginkgo.GinkgoHelper()
+
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		node, err := cs.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if node.Labels == nil {
+			node.Labels = map[string]string{}
+		}
+		if value == "" {
+			delete(node.Labels, key)
+		} else {
+			node.Labels[key] = value
+		}
+		_, err = cs.CoreV1().Nodes().Update(context.Background(), node, metav1.UpdateOptions{})
+		return err
+	})
+	framework.ExpectNoError(err, "updating label %s on node %s", key, nodeName)
+}
+
+func waitVpcBFDNodes(vpcClient *framework.VpcClient, vpcName string, expected []string) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		vpc := vpcClient.Get(vpcName)
+		nodes := slices.Clone(vpc.Status.BFDPort.Nodes)
+		expectedNodes := slices.Clone(expected)
+		slices.Sort(nodes)
+		slices.Sort(expectedNodes)
+		if slices.Equal(nodes, expectedNodes) {
+			return true, nil
+		}
+		framework.Logf("VPC %s BFDPort nodes are %v, expected %v", vpcName, vpc.Status.BFDPort.Nodes, expected)
+		return false, nil
+	}, "VPC "+vpcName+" BFDPort nodes to match")
+}
+
+func waitHAChassisCount(groupName string, expected int) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=_uuid find HA_Chassis external_ids:group=%s", groupName)
+		stdout, _, err := framework.NBExec(cmd)
+		if err != nil {
+			framework.Logf("failed to query HA_Chassis for group %s: %v", groupName, err)
+			return false, nil
+		}
+		count := countNonEmptyLines(string(stdout))
+		if count == expected {
+			return true, nil
+		}
+		framework.Logf("HA_Chassis count for group %s is %d, expected %d: %s", groupName, count, expected, strings.TrimSpace(string(stdout)))
+		return false, nil
+	}, fmt.Sprintf("HA_Chassis count for group %s to be %d", groupName, expected))
+}
+
+func waitHAChassisGroupCount(groupName string, expected int) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=ha_chassis find HA_Chassis_Group name=%s", groupName)
+		stdout, _, err := framework.NBExec(cmd)
+		if err != nil {
+			framework.Logf("failed to query HA_Chassis_Group %s: %v", groupName, err)
+			return false, nil
+		}
+		count := countUUIDs(string(stdout))
+		if count == expected {
+			return true, nil
+		}
+		framework.Logf("HA_Chassis_Group %s has %d HA chassis refs, expected %d: %s", groupName, count, expected, strings.TrimSpace(string(stdout)))
+		return false, nil
+	}, fmt.Sprintf("HA_Chassis_Group %s HA chassis refs to be %d", groupName, expected))
+}
+
+func waitLRPHAChassisGroup(lrpName, groupName string) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		groupCmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=_uuid find HA_Chassis_Group name=%s", groupName)
+		groupStdout, _, err := framework.NBExec(groupCmd)
+		if err != nil {
+			framework.Logf("failed to query HA_Chassis_Group %s uuid: %v", groupName, err)
+			return false, nil
+		}
+		groupUUID := strings.TrimSpace(string(groupStdout))
+		if groupUUID == "" {
+			framework.Logf("HA_Chassis_Group %s does not exist yet", groupName)
+			return false, nil
+		}
+
+		lrpCmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=ha_chassis_group find Logical_Router_Port name=%s", lrpName)
+		lrpStdout, _, err := framework.NBExec(lrpCmd)
+		if err != nil {
+			framework.Logf("failed to query Logical_Router_Port %s HA chassis group: %v", lrpName, err)
+			return false, nil
+		}
+		lrpGroupUUID := strings.TrimSpace(string(lrpStdout))
+		if lrpGroupUUID == groupUUID {
+			return true, nil
+		}
+		framework.Logf("Logical_Router_Port %s is bound to HA chassis group %q, expected %q", lrpName, lrpGroupUUID, groupUUID)
+		return false, nil
+	}, fmt.Sprintf("Logical_Router_Port %s to bind HA_Chassis_Group %s", lrpName, groupName))
+}
+
+func countNonEmptyLines(output string) int {
+	count := 0
+	for line := range strings.SplitSeq(strings.TrimSpace(output), "\n") {
+		if strings.TrimSpace(line) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func countUUIDs(output string) int {
+	return len(uuidRegexp.FindAllString(output, -1))
+}
+
+func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image, svrPort string, svrIPs, extIPs []string, intIPs map[string][]string, subnetName, nodeName, snatLabelValue string, snat bool) {
 	ginkgo.GinkgoHelper()
 
 	podName := "pod-" + framework.RandomSuffix()
 	ginkgo.By("Creating client pod " + podName + " within subnet " + subnetName)
 	labels := map[string]string{"snat": strconv.FormatBool(snat)}
+	if snat {
+		labels["snat"] = snatLabelValue
+	}
 	annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
 	pod := framework.MakePrivilegedPod(namespaceName, podName, labels, annotations, image, []string{"sleep", "infinity"}, nil)
 	pod.Spec.NodeName = nodeName
@@ -602,6 +859,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	}
 
 	vegName := "veg-" + framework.RandomSuffix()
+	snatLabelValue := vegName
 	veg := framework.MakeVpcEgressGateway(namespaceName, vegName, vpcName, replicas, internalSubnetName, externalSubnetName)
 	if rand.Int32N(2) == 0 {
 		veg.Spec.Prefix = fmt.Sprintf("e2e-%s-", framework.RandomSuffix())
@@ -636,7 +894,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 			},
 			PodSelector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"snat": strconv.FormatBool(true),
+					"snat": snatLabelValue,
 				},
 			},
 		}}
@@ -727,6 +985,6 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	if veg.Spec.TrafficPolicy == apiv1.TrafficPolicyLocal {
 		nodeName = veg.Status.Workload.Nodes[0]
 	}
-	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, nodeName, true)
-	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, forwardSubnetName, nodeName, false)
+	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, nodeName, snatLabelValue, true)
+	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, forwardSubnetName, nodeName, snatLabelValue, false)
 }

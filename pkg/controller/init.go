@@ -773,10 +773,12 @@ func (c *Controller) syncSubnetCR() error {
 			klog.Warningf("subnet %s is not ready", subnet.Name)
 			continue
 		}
-		subnet, err = c.calcSubnetStatusIP(subnet)
-		if err != nil {
-			klog.Errorf("failed to calculate subnet %s used ip: %v", cachedSubnet.Name, err)
-			return err
+		if subnet.Spec.CIDRBlock != "" {
+			subnet, err = c.calcSubnetStatusIP(subnet)
+			if err != nil {
+				klog.Errorf("failed to calculate subnet %s used ip: %v", cachedSubnet.Name, err)
+				return err
+			}
 		}
 
 		// only sync subnet spec enableEcmp when subnet.Spec.EnableEcmp is false and c.config.EnableEcmp is true

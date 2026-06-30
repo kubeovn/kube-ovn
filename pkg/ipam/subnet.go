@@ -134,6 +134,46 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 	return subnet, nil
 }
 
+// NewMacOnlySubnet creates a subnet entry for an underlay subnet that has no CIDR
+// (BYO-DHCP / external DHCP). Such a subnet only tracks MAC allocations - it has no
+// IP ranges. Registering it in IPAM keeps MAC allocation idempotent per NIC and
+// prevents the GC from treating the subnet's IP/LSP resources as orphaned.
+func NewMacOnlySubnet(name string) *Subnet {
+	return &Subnet{
+		Name:         name,
+		Protocol:     kubeovnv1.ProtocolMac,
+		V4Free:       NewEmptyIPRangeList(),
+		V6Free:       NewEmptyIPRangeList(),
+		V4Reserved:   NewEmptyIPRangeList(),
+		V6Reserved:   NewEmptyIPRangeList(),
+		V4Available:  NewEmptyIPRangeList(),
+		V6Available:  NewEmptyIPRangeList(),
+		V4Using:      NewEmptyIPRangeList(),
+		V6Using:      NewEmptyIPRangeList(),
+		V4NicToIP:    map[string]IP{},
+		V6NicToIP:    map[string]IP{},
+		V4IPToPod:    map[string]string{},
+		V6IPToPod:    map[string]string{},
+		MacToPod:     map[string]string{},
+		NicToMac:     map[string]string{},
+		PodToNicList: map[string][]string{},
+		IPPools: map[string]*IPPool{"": {
+			V4IPs:       NewEmptyIPRangeList(),
+			V6IPs:       NewEmptyIPRangeList(),
+			V4Free:      NewEmptyIPRangeList(),
+			V6Free:      NewEmptyIPRangeList(),
+			V4Available: NewEmptyIPRangeList(),
+			V6Available: NewEmptyIPRangeList(),
+			V4Reserved:  NewEmptyIPRangeList(),
+			V6Reserved:  NewEmptyIPRangeList(),
+			V4Released:  NewEmptyIPRangeList(),
+			V6Released:  NewEmptyIPRangeList(),
+			V4Using:     NewEmptyIPRangeList(),
+			V6Using:     NewEmptyIPRangeList(),
+		}},
+	}
+}
+
 func (s *Subnet) GetRandomMac(podName, nicName string) string {
 	if mac, ok := s.NicToMac[nicName]; ok {
 		return mac
@@ -195,6 +235,8 @@ func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string
 	}()
 
 	switch s.Protocol {
+	case kubeovnv1.ProtocolMac:
+		return s.getMacOnlyAddress(podName, nicName, mac, checkConflict)
 	case kubeovnv1.ProtocolDual:
 		return s.getDualRandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	case kubeovnv1.ProtocolIPv4:
@@ -202,6 +244,21 @@ func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string
 	default:
 		return s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	}
+}
+
+// getMacOnlyAddress allocates only a MAC address (no IP) for a mac-only subnet.
+// Allocation is idempotent per NIC: a NIC that already has a MAC keeps it. When a
+// static MAC is requested it is validated for conflicts (unless checkConflict is
+// false, e.g. for live-migration). Must be called with s.Mutex held.
+func (s *Subnet) getMacOnlyAddress(podName, nicName string, mac *string, checkConflict bool) (IP, IP, string, error) {
+	if mac == nil || *mac == "" {
+		return nil, nil, s.GetRandomMac(podName, nicName), nil
+	}
+	if err := s.GetStaticMac(podName, nicName, *mac, checkConflict); err != nil {
+		klog.Error(err)
+		return nil, nil, "", err
+	}
+	return nil, nil, *mac, nil
 }
 
 func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
@@ -651,6 +708,20 @@ func (s *Subnet) releaseV6Addr(podName, nicName string) {
 func (s *Subnet) releaseAddr(podName, nicName string) {
 	s.releaseV4Addr(podName, nicName)
 	s.releaseV6Addr(podName, nicName)
+	// A mac-only NIC has no V4/V6 IP entry, so the IP release paths above are no-ops
+	// and leave the MAC behind. Clean it up here. For IP-backed NICs this is a no-op
+	// because releaseV4Addr/releaseV6Addr already removed the MAC once the last IP
+	// family was released.
+	if _, hasV4 := s.V4NicToIP[nicName]; hasV4 {
+		return
+	}
+	if _, hasV6 := s.V6NicToIP[nicName]; hasV6 {
+		return
+	}
+	if mac, ok := s.NicToMac[nicName]; ok {
+		delete(s.NicToMac, nicName)
+		delete(s.MacToPod, mac)
+	}
 }
 
 func (s *Subnet) ReleaseAddress(podName string) {

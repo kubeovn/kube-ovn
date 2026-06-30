@@ -98,7 +98,9 @@ RUN cd /usr/src/ && \
     # increase the default probe interval for large cluster
     git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
     # update ovs-sandbox for docker run
-    git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch
+    git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch && \
+    ovs_commit=$(git rev-parse --short=12 HEAD) && \
+    sed -i -E "s/^(AC_INIT\(\[?openvswitch\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovs_commit}\2\3/" configure.ac
 
 RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
@@ -137,7 +139,9 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     # add null check before sbrec delete calls
     git apply $SRC_DIR/sbrec-delete-null-check.patch && \
     # adapt to the compose_nd_ns() signature change in ovs branch-3.5 commit 33825c273
-    git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch
+    git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch && \
+    ovn_commit=$(git rev-parse --short=12 HEAD) && \
+    sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -193,7 +197,7 @@ ARG ARCH
 # renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
 ARG CNI_PLUGINS_VERSION=v1.9.1
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
-ARG KUBECTL_VERSION=v1.36.1
+ARG KUBECTL_VERSION=v1.36.2
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
 ARG GOBGP_VERSION=4.6.0
 ARG TRIVY_DB_REPOSITORY="public.ecr.aws/aquasecurity/trivy-db:2"

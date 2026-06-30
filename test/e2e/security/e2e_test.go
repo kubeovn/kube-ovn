@@ -9,9 +9,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
@@ -49,6 +51,8 @@ func checkDeployment(f *framework.Framework, name, process string, ports ...stri
 	framework.ExpectNoError(err, "failed to get deployment")
 	err = deployment.WaitForDeploymentComplete(f.ClientSet, deploy)
 	framework.ExpectNoError(err, "deployment failed to complete")
+	deploy, err = f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.TODO(), name, metav1.GetOptions{})
+	framework.ExpectNoError(err, "failed to get deployment")
 
 	ginkgo.By("Getting pods")
 	pods, err := deployment.GetPodsForDeployment(context.Background(), f.ClientSet, deploy)
@@ -92,33 +96,71 @@ func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports 
 
 		c, err := docker.ContainerInspect(pod.Spec.NodeName)
 		framework.ExpectNoError(err)
-		stdout, _, err := docker.Exec(c.ID, nil, "sh", "-c", cmd)
-		framework.ExpectNoError(err)
 
-		listenAddresses := strings.Split(string(bytes.TrimSpace(stdout)), "\n")
-		if len(ports) != 0 {
-			expected := make([]string, 0, len(pod.Status.PodIPs)*len(ports))
-			for _, port := range ports {
-				if listenPodIP {
-					for _, ip := range pod.Status.PodIPs {
-						expected = append(expected, net.JoinHostPort(ip.IP, port))
+		var lastReason string
+		err = wait.PollUntilContextTimeout(context.Background(), 2*time.Second, time.Minute, true, func(_ context.Context) (bool, error) {
+			stdout, _, err := docker.Exec(c.ID, nil, "sh", "-c", cmd)
+			if err != nil {
+				lastReason = err.Error()
+				return false, nil
+			}
+
+			listenAddresses := strings.Split(string(bytes.TrimSpace(stdout)), "\n")
+			if len(ports) != 0 {
+				expected := expectedListenAddresses(pod, listenPodIP, ports...)
+				if !sameStringElements(listenAddresses, expected) {
+					lastReason = fmt.Sprintf("got listen addresses %v, expected %v", listenAddresses, expected)
+					return false, nil
+				}
+			} else {
+				podIPPrefix := strings.TrimSuffix(net.JoinHostPort(pod.Status.PodIP, "999"), "999")
+				for _, addr := range listenAddresses {
+					if listenPodIP && !strings.HasPrefix(addr, podIPPrefix) {
+						lastReason = fmt.Sprintf("got listen address %q, expected prefix %q", addr, podIPPrefix)
+						return false, nil
 					}
-				} else {
-					expected = append(expected, net.JoinHostPort("*", port))
+					if !listenPodIP && !strings.HasPrefix(addr, "*:") {
+						lastReason = fmt.Sprintf("got listen address %q, expected wildcard address", addr)
+						return false, nil
+					}
 				}
 			}
-			framework.ExpectConsistOf(listenAddresses, expected)
+			return true, nil
+		})
+		framework.ExpectNoError(err, "failed to validate %s listen addresses in pod %s/%s on node %s: %s", process, pod.Namespace, pod.Name, pod.Spec.NodeName, lastReason)
+	}
+}
+
+func expectedListenAddresses(pod corev1.Pod, listenPodIP bool, ports ...string) []string {
+	expected := make([]string, 0, len(pod.Status.PodIPs)*len(ports))
+	for _, port := range ports {
+		if listenPodIP {
+			for _, ip := range pod.Status.PodIPs {
+				expected = append(expected, net.JoinHostPort(ip.IP, port))
+			}
 		} else {
-			podIPPrefix := strings.TrimSuffix(net.JoinHostPort(pod.Status.PodIP, "999"), "999")
-			for _, addr := range listenAddresses {
-				if listenPodIP {
-					framework.ExpectTrue(strings.HasPrefix(addr, podIPPrefix))
-				} else {
-					framework.ExpectTrue(strings.HasPrefix(addr, "*:"))
-				}
-			}
+			expected = append(expected, net.JoinHostPort("*", port))
 		}
 	}
+	return expected
+}
+
+func sameStringElements(actual, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+
+	counts := make(map[string]int, len(expected))
+	for _, value := range expected {
+		counts[value]++
+	}
+	for _, value := range actual {
+		if counts[value] == 0 {
+			return false
+		}
+		counts[value]--
+	}
+	return true
 }
 
 var _ = framework.Describe("[group:security]", func() {

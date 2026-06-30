@@ -127,6 +127,7 @@ rules:
     resources:
       - deployments
       - deployments/scale
+      - deployments/status
     verbs:
       - get
       - list
@@ -246,6 +247,14 @@ rules:
     verbs:
       - get
       - create
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    resourceNames:
+      - kube-ovn-tls
+    verbs:
+      - update
   - apiGroups:
       - certificates.k8s.io
     resourceNames:

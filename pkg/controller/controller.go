@@ -13,6 +13,7 @@ import (
 	netAttachv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/listers/k8s.cni.cncf.io/v1"
 	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/time/rate"
+	appsv1api "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -92,6 +93,7 @@ type Controller struct {
 
 	vpcsLister           kubeovnlister.VpcLister
 	vpcSynced            cache.InformerSynced
+	vpcIndexer           cache.Indexer
 	addOrUpdateVpcQueue  workqueue.TypedRateLimitingInterface[string]
 	vpcLastPoliciesMap   *xsync.Map[string, string]
 	delVpcQueue          workqueue.TypedRateLimitingInterface[*kubeovnv1.Vpc]
@@ -359,11 +361,7 @@ func Run(ctx context.Context, config *Configuration) {
 		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	)
 
-	selector, err := labels.Parse(util.VpcEgressGatewayLabel)
-	if err != nil {
-		util.LogFatalAndExit(err, "failed to create label selector for vpc egress gateway workload")
-	}
-
+	var err error
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTransform(util.TrimPodForController),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
@@ -375,12 +373,11 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	// deployment informer used to list/watch vpc egress gateway workloads
+	// deployment informer used to list/watch vpc egress gateway and nat gateway workloads
 	deployInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
-			listOption.LabelSelector = selector.String()
 		}))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTransform(util.TrimManagedFields),
@@ -760,7 +757,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.deleteDNSNameResolverQueue = newTypedRateLimitingQueue[*kubeovnv1.DNSNameResolver]("DeleteDNSNameResolver", nil)
 	}
 
-	if err := controller.setupIndexers(podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
+	if err := controller.setupIndexers(vpcInformer.Informer(), podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
 		util.LogFatalAndExit(err, "failed to set up informer indexers")
 	}
 
@@ -855,9 +852,20 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add endpoint slice event handler")
 	}
 
-	if _, err = deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddDeployment,
-		UpdateFunc: controller.enqueueUpdateDeployment,
+	if _, err = deploymentInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj any) bool {
+			if deploy, ok := obj.(*appsv1api.Deployment); ok {
+				// Only watch deployments with VpcEgressGatewayLabel or VpcNatGatewayLabel
+				_, hasNatGwLabel := deploy.Labels[util.VpcNatGatewayLabel]
+				_, hasEgressGwLabel := deploy.Labels[util.VpcEgressGatewayLabel]
+				return hasNatGwLabel || hasEgressGwLabel
+			}
+			return false
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddDeployment,
+			UpdateFunc: controller.enqueueUpdateDeployment,
+		},
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add deployment event handler")
 	}
@@ -1162,6 +1170,8 @@ func (c *Controller) Run(ctx context.Context) {
 			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
 		}
 	}
+
+	c.startKubeOVNTLSManager(ctx)
 
 	// start workers to do all the network operations
 	c.startWorkers(ctx)

@@ -75,6 +75,19 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 		return "", "", "", ErrNoSubnet
 	}
 
+	// mac-only subnets have no CIDR, so there is no static IP to allocate. When the
+	// caller passes an empty IP (e.g. recovering a mac-only IP CR on init), register
+	// only the MAC so it is tracked in IPAM instead of failing the whole allocation.
+	if ip == "" && subnet.Protocol == kubeovnv1.ProtocolMac {
+		_, _, macStr, err := subnet.GetRandomAddress("", podName, nicName, mac, nil, checkConflict)
+		if err != nil {
+			klog.Errorf("failed to register mac %v for %s from subnet %s: %v", mac, podName, subnetName, err)
+			return "", "", "", err
+		}
+		klog.Infof("register mac %s for %s from mac-only subnet %s", macStr, podName, subnetName)
+		return "", "", macStr, nil
+	}
+
 	var ips []IP
 	var err error
 	var ipAddr IP
@@ -178,6 +191,27 @@ func (ipam *IPAM) ReleaseAddressByNic(podName, nicName, subnetName string) {
 }
 
 func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []string) error {
+	// A mac-only subnet (underlay without CIDR, BYO-DHCP / external DHCP) has no IP
+	// ranges. Register a lightweight entry so MAC allocations are tracked and the GC
+	// does not treat the subnet's IP/LSP resources as orphaned.
+	if cidrStr == "" {
+		ipam.mutex.Lock()
+		defer ipam.mutex.Unlock()
+		if subnet, ok := ipam.Subnets[name]; ok {
+			// Refuse to strip the CIDR from a subnet that already has one - that is an
+			// invalid transition. Re-registering an existing mac-only subnet is a no-op.
+			if subnet.V4CIDR != nil || subnet.V6CIDR != nil {
+				klog.Errorf("subnet %s already has a cidr, cannot convert it to mac-only", name)
+				return ErrInvalidCIDR
+			}
+			subnet.Protocol = kubeovnv1.ProtocolMac
+			return nil
+		}
+		klog.Infof("adding new mac-only subnet %s", name)
+		ipam.Subnets[name] = NewMacOnlySubnet(name)
+		return nil
+	}
+
 	excludeIps = util.ExpandExcludeIPs(excludeIps, cidrStr)
 
 	ipam.mutex.Lock()

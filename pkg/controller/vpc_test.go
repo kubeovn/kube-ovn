@@ -474,3 +474,35 @@ func TestDiffPolicyRouteWithLogical_HandlesLegacyNextHopField(t *testing.T) {
 	require.Empty(t, dels)
 	require.Empty(t, adds)
 }
+
+func TestReconcileVpcBfdLRPClearsHAChassisGroupWhenSelectorMatchesNoNodes(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+
+	vpc := &kubeovnv1.Vpc{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-vpc-bfd"},
+		Spec: kubeovnv1.VpcSpec{
+			BFDPort: &kubeovnv1.BFDPort{
+				Enabled: true,
+				IP:      "169.254.0.1/32",
+				NodeSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"egress": "true"},
+				},
+			},
+		},
+	}
+
+	portName := "bfd@test-vpc-bfd"
+	networks := []string{"169.254.0.1/32"}
+	mockOvnClient.EXPECT().CreateLogicalRouterPort(vpc.Name, portName, "", networks).Return(nil)
+	mockOvnClient.EXPECT().UpdateLogicalRouterPortNetworks(portName, networks).Return(nil)
+	mockOvnClient.EXPECT().UpdateLogicalRouterPortOptions(portName, map[string]string{"bfd-only": "true"}).Return(nil)
+	mockOvnClient.EXPECT().CreateHAChassisGroup(portName, []string{}, map[string]string{"lrp": portName}).Return(nil)
+	mockOvnClient.EXPECT().SetLogicalRouterPortHAChassisGroup(portName, portName).Return(nil)
+
+	name, nodes, err := ctrl.reconcileVpcBfdLRP(vpc)
+	require.NoError(t, err)
+	require.Equal(t, portName, name)
+	require.Empty(t, nodes)
+}

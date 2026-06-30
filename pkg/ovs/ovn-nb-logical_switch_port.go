@@ -33,18 +33,24 @@ func buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace string,
 	addresses = append(addresses, mac)
 	addresses = append(addresses, ipList...)
 
-	// addresses is the first element of addresses
-	lsp.Addresses = []string{strings.TrimSpace(strings.Join(addresses, " "))}
-	lsp.ExternalIDs["vendor"] = util.CniTypeName
+	// MAC-only case (underlay subnet without CIDR / external DHCP): only set the MAC,
+	// no IP address and no port security
+	if ip == "" {
+		lsp.Addresses = []string{mac}
+	} else {
+		// addresses is the first element of addresses
+		lsp.Addresses = []string{strings.TrimSpace(strings.Join(addresses, " "))}
 
-	lsp.PortSecurity = nil
-	if portSecurity {
-		if len(vips) != 0 {
-			addresses = append(addresses, vipList...)
+		lsp.PortSecurity = nil
+		if portSecurity {
+			if len(vips) != 0 {
+				addresses = append(addresses, vipList...)
+			}
+			// addresses is the first element of port_security
+			lsp.PortSecurity = []string{strings.TrimSpace(strings.Join(addresses, " "))}
 		}
-		// addresses is the first element of port_security
-		lsp.PortSecurity = []string{strings.TrimSpace(strings.Join(addresses, " "))}
 	}
+	lsp.ExternalIDs["vendor"] = util.CniTypeName
 
 	// set security groups
 	if len(securityGroups) != 0 {
@@ -134,13 +140,15 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider,
 		return err
 	}
 
-	ipv4CIDR, ipv6CIDR := util.SplitStringIP(cidrBlock)
 	externalIDs := make(map[string]string)
-	if ipv4CIDR != "" {
-		externalIDs["ipv4_network"] = ipv4CIDR
-	}
-	if ipv6CIDR != "" {
-		externalIDs["ipv6_network"] = ipv6CIDR
+	if cidrBlock != "" {
+		ipv4CIDR, ipv6CIDR := util.SplitStringIP(cidrBlock)
+		if ipv4CIDR != "" {
+			externalIDs["ipv4_network"] = ipv4CIDR
+		}
+		if ipv6CIDR != "" {
+			externalIDs["ipv6_network"] = ipv6CIDR
+		}
 	}
 
 	if lsp != nil {

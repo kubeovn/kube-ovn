@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestIndexPodByNode(t *testing.T) {
@@ -205,6 +206,50 @@ func TestIndexersLookup(t *testing.T) {
 	}
 	if len(got) != 3 {
 		t.Fatalf("expected 3 ips for subnet-a (incl. attach), got %d", len(got))
+	}
+}
+
+func TestIndexVpcByBFDPort(t *testing.T) {
+	idx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexVpcByBFDPort: indexVpcByBFDPort})
+	vpcs := []*kubeovnv1.Vpc{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "bfd-enabled"},
+			Spec: kubeovnv1.VpcSpec{
+				BFDPort: &kubeovnv1.BFDPort{Enabled: true},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "bfd-disabled"},
+			Spec: kubeovnv1.VpcSpec{
+				BFDPort: &kubeovnv1.BFDPort{Enabled: false},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "external",
+				Labels: map[string]string{util.VpcExternalLabel: "true"},
+			},
+			Spec: kubeovnv1.VpcSpec{
+				BFDPort: &kubeovnv1.BFDPort{Enabled: true},
+			},
+		},
+	}
+	for _, vpc := range vpcs {
+		if err := idx.Add(vpc); err != nil {
+			t.Fatalf("add vpc: %v", err)
+		}
+	}
+
+	got, err := idx.ByIndex(IndexVpcByBFDPort, IndexVpcBFDPortEnabled)
+	if err != nil {
+		t.Fatalf("ByIndex: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 indexed VPC, got %d", len(got))
+	}
+	vpc, ok := got[0].(*kubeovnv1.Vpc)
+	if !ok || vpc.Name != "bfd-enabled" {
+		t.Fatalf("expected bfd-enabled VPC, got %#v", got[0])
 	}
 }
 

@@ -173,7 +173,7 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 
 		// Check if EIP is still being used by any NAT rules (FIP/DNAT/SNAT) BEFORE cleanup
 		// Only proceed with cleanup and finalizer removal when no NAT rules are using it
-		nat, err := c.getOvnEipNat(cachedEip.Spec.V4Ip)
+		nat, err := c.getOvnEipNat(cachedEip.Spec.V4Ip, cachedEip.Spec.V6Ip)
 		if err != nil {
 			klog.Errorf("failed to get ovn eip %s nat rules, %v", key, err)
 			return err
@@ -444,7 +444,7 @@ func (c *Controller) patchOvnEipStatus(key string, markEIPAsReady bool) error {
 		ovnEip.Status.Type = ovnEip.Spec.Type
 		changed = true
 	}
-	nat, err := c.getOvnEipNat(ovnEip.Spec.V4Ip)
+	nat, err := c.getOvnEipNat(ovnEip.Spec.V4Ip, ovnEip.Spec.V6Ip)
 	if err != nil {
 		err = fmt.Errorf("failed to get ovn eip nat: %w", err)
 		klog.Error(err)
@@ -576,7 +576,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 		return nil
 	}
 	var err error
-	nat, err := c.getOvnEipNat(cachedEip.Spec.V4Ip)
+	nat, err := c.getOvnEipNat(cachedEip.Spec.V4Ip, cachedEip.Spec.V6Ip)
 	if err != nil {
 		err = fmt.Errorf("failed to get ovn eip nat: %w", err)
 		klog.Error(err)
@@ -611,33 +611,60 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	return nil
 }
 
-func (c *Controller) getOvnEipNat(eipV4IP string) (string, error) {
-	nats := make([]string, 0, 3)
-	selector := labels.SelectorFromSet(labels.Set{util.EipV4IpLabel: eipV4IP})
-	dnats, err := c.ovnDnatRulesLister.List(selector)
-	if err != nil {
-		klog.Errorf("failed to get ovn dnats, %v", err)
-		return "", err
+func (c *Controller) getOvnEipNat(eipV4IP, eipV6IP string) (string, error) {
+	usingDnat, usingFip, usingSnat := false, false, false
+	check := func(selector labels.Selector) error {
+		dnats, err := c.ovnDnatRulesLister.List(selector)
+		if err != nil {
+			klog.Errorf("failed to get ovn dnats, %v", err)
+			return err
+		}
+		if len(dnats) != 0 {
+			usingDnat = true
+		}
+		fips, err := c.ovnFipsLister.List(selector)
+		if err != nil {
+			klog.Errorf("failed to get ovn fips, %v", err)
+			return err
+		}
+		if len(fips) != 0 {
+			usingFip = true
+		}
+		snats, err := c.ovnSnatRulesLister.List(selector)
+		if err != nil {
+			klog.Errorf("failed to get ovn snats, %v", err)
+			return err
+		}
+		if len(snats) != 0 {
+			usingSnat = true
+		}
+		return nil
 	}
-	if len(dnats) != 0 {
+
+	// Match NAT rules by the EIP's actual IP family. An empty label value must
+	// never be used as a selector: NAT rules always carry eip_v4_ip, so a
+	// pure-IPv6 EIP (V4Ip="") would otherwise match every IPv6-only rule whose
+	// eip_v4_ip is empty and could never be deleted.
+	if eipV4IP != "" {
+		if err := check(labels.SelectorFromSet(labels.Set{util.EipV4IpLabel: eipV4IP})); err != nil {
+			return "", err
+		}
+	}
+	if eipV6IP != "" {
+		if err := check(labels.SelectorFromSet(labels.Set{util.EipV6IpLabel: util.IPv6ToLabelValue(eipV6IP)})); err != nil {
+			return "", err
+		}
+	}
+
+	nats := make([]string, 0, 3)
+	if usingDnat {
 		nats = append(nats, util.DnatUsingEip)
 	}
-	fips, err := c.ovnFipsLister.List(selector)
-	if err != nil {
-		klog.Errorf("failed to get ovn fips, %v", err)
-		return "", err
-	}
-	if len(fips) != 0 {
+	if usingFip {
 		nats = append(nats, util.FipUsingEip)
 	}
-	snats, err := c.ovnSnatRulesLister.List(selector)
-	if err != nil {
-		klog.Errorf("failed to get ovn snats, %v", err)
-		return "", err
-	}
-	if len(snats) != 0 {
+	if usingSnat {
 		nats = append(nats, util.SnatUsingEip)
 	}
-	nat := strings.Join(nats, ",")
-	return nat, nil
+	return strings.Join(nats, ","), nil
 }

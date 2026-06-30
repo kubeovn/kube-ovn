@@ -32,7 +32,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -1064,7 +1063,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
-						if err = c.OVNNbClient.UpdateSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
+						if err = c.OVNNbClient.EnsureSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err
 						}
@@ -1301,8 +1300,8 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					}
-					if pod.Annotations[util.SnatAnnotation] != "" {
-						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, "", address.IP); err != nil {
+					if snatEip := pod.Annotations[util.SnatAnnotation]; snatEip != "" {
+						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, snatEip, address.IP); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					}
@@ -2181,11 +2180,52 @@ func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool
 	return true, true, nil
 }
 
+// acquireMacOnlyAddress allocates only a MAC address (no IP) for a pod NIC on an
+// underlay subnet without a CIDR (BYO-DHCP / external DHCP). The guest obtains its
+// IP from an external DHCP server. MAC allocation goes through IPAM so it is
+// idempotent per NIC (no churn on retries) and the subnet/MAC are tracked, which
+// prevents the GC from cleaning the pod's mac-only IP/LSP resources.
+func (c *Controller) acquireMacOnlyAddress(pod *v1.Pod, podNet *kubeovnNet, key, portName string) (string, string, string, *kubeovnv1.Subnet, error) {
+	klog.Infof("allocating MAC-only address for pod %s in mac-only subnet %s", key, podNet.Subnet.Name)
+
+	// Prefer a per-interface MAC annotation, then fall back to the provider-level one.
+	var macPointer *string
+	if podNet.NadName != "" && podNet.NadNamespace != "" && podNet.InterfaceName != "" {
+		if macStr := pod.Annotations[perInterfaceMACAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)]; macStr != "" {
+			if _, err := net.ParseMAC(macStr); err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
+			macPointer = &macStr
+		}
+	}
+	if macPointer == nil {
+		if annoMAC := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)]; annoMAC != "" {
+			if _, err := net.ParseMAC(annoMAC); err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
+			macPointer = &annoMAC
+		}
+	}
+
+	_, _, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", nil, !podNet.AllowLiveMigration)
+	if err != nil {
+		klog.Errorf("failed to allocate MAC for pod %s in mac-only subnet %s: %v", key, podNet.Subnet.Name, err)
+		return "", "", "", podNet.Subnet, err
+	}
+	return "", "", mac, podNet.Subnet, nil
+}
+
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	// becomes vmNAme when pod is owned by a kubevirt VM
 	podName := c.getNameByPod(pod)
 	key := cache.NewObjectName(pod.Namespace, podName).String()
 	portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+
+	// Handle underlay subnets without a CIDR (BYO-DHCP / external DHCP): only a MAC is
+	// allocated and the guest obtains its IP from an external DHCP server.
+	if podNet.Subnet.Spec.Vlan != "" && podNet.Subnet.Spec.CIDRBlock == "" {
+		return c.acquireMacOnlyAddress(pod, podNet, key, portName)
+	}
 
 	var checkVMPod bool
 	isStsPod, _, _ := isStatefulSetPod(pod)
@@ -2945,24 +2985,6 @@ func (c *Controller) getVirtualIPs(pod *v1.Pod, podNets []*kubeovnNet) map[strin
 	return vipsMap
 }
 
-func setPodRoutesAnnotation(annotations map[string]string, provider string, routes []request.Route) error {
-	key := fmt.Sprintf(util.RoutesAnnotationTemplate, provider)
-	if len(routes) == 0 {
-		delete(annotations, key)
-		return nil
-	}
-
-	buf, err := json.Marshal(routes)
-	if err != nil {
-		err = fmt.Errorf("failed to marshal routes %+v: %w", routes, err)
-		klog.Error(err)
-		return err
-	}
-	annotations[key] = string(buf)
-
-	return nil
-}
-
 // Check if pod is a VPC NAT gateway using pod annotations
 func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
 	if pod == nil {
@@ -3029,7 +3051,7 @@ func (c *Controller) backfillVpcNatGwLanIPFromPod(pod *v1.Pod, gwName string) er
 		}
 		return err
 	}
-	if gw.Spec.LanIP != "" {
+	if gw.Spec.LanIP != "" || gw.Spec.Replicas > 1 {
 		return nil
 	}
 

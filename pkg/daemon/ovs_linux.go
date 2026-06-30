@@ -129,8 +129,10 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			"external_ids:vendor=" + util.CniTypeName,
 			"external_ids:pod_name=" + podName,
 			"external_ids:pod_namespace=" + podNamespace,
-			"external_ids:ip=" + ipStr,
 			"external_ids:pod_netns=" + netns,
+		}
+		if ip != "" {
+			args = append(args, "external_ids:ip="+ipStr)
 		}
 		if encapIP != "" {
 			args = append(args, "external_ids:encap-ip="+encapIP)
@@ -147,8 +149,10 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			"external_ids:vendor=" + util.CniTypeName,
 			"external_ids:pod_name=" + podName,
 			"external_ids:pod_namespace=" + podNamespace,
-			"external_ids:ip=" + ipStr,
 			"external_ids:pod_netns=" + netns,
+		}
+		if ip != "" {
+			args = append(args, "external_ids:ip="+ipStr)
 		}
 		if encapIP != "" {
 			args = append(args, "external_ids:encap-ip="+encapIP)
@@ -503,6 +507,14 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 		if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, true, false); err != nil {
 			klog.Error(err)
 			return err
+		}
+
+		// MAC-only mode (BYO-DHCP / external DHCP): no IP address was allocated, so skip
+		// IP route and gateway configuration. The VM obtains its address from an external
+		// DHCP server.
+		if ipAddr == "" {
+			klog.Infof("configured MAC-only interface %s for pod %s/%s, skipping IP routes and gateway checks", ifName, podNamespace, podName)
+			return nil
 		}
 
 		if isDefaultRoute {
@@ -1277,6 +1289,10 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 		}
 	}
 
+	// List existing addresses up front so stale non-link-local IPs can be flushed. This runs
+	// even in MAC-only mode (BYO-DHCP / external DHCP) where no IP is assigned, so leftover
+	// addresses from a previous (or partial) configuration don't cause unintended routing/ARP
+	// behavior.
 	ipDelMap := make(map[string]netlink.Addr)
 	ipAddMap := make(map[string]netlink.Addr)
 	ipAddrs, err := util.AddrList(nodeLink, unix.AF_UNSPEC)
@@ -1298,31 +1314,36 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 		ipDelMap[ipAddr.IPNet.String()] = ipAddr
 	}
 
-	if ipv6LinkLocalOn && !isIPv6LinkLocalExist && (util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ip) == kubeovnv1.ProtocolDual) {
-		linkLocal, err := macToLinkLocalIPv6(macAddr)
-		if err != nil {
-			return fmt.Errorf("failed to generate link-local address: %w", err)
-		}
-		ipAddMap[linkLocal.String()] = netlink.Addr{
-			IPNet: &net.IPNet{
-				IP:   linkLocal,
-				Mask: net.CIDRMask(64, 128),
-			},
-		}
-	}
-
-	for ipStr := range strings.SplitSeq(ip, ",") {
-		// Do not reassign same address for link
-		if _, ok := ipDelMap[ipStr]; ok {
-			delete(ipDelMap, ipStr)
-			continue
+	// MAC-only mode (BYO-DHCP / external DHCP): skip assigning any IP when none was allocated.
+	// The interface keeps only its MAC and the VM gets its address from DHCP. Stale addresses
+	// collected above are still flushed below.
+	if ip != "" {
+		if ipv6LinkLocalOn && !isIPv6LinkLocalExist && (util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(ip) == kubeovnv1.ProtocolDual) {
+			linkLocal, err := macToLinkLocalIPv6(macAddr)
+			if err != nil {
+				return fmt.Errorf("failed to generate link-local address: %w", err)
+			}
+			ipAddMap[linkLocal.String()] = netlink.Addr{
+				IPNet: &net.IPNet{
+					IP:   linkLocal,
+					Mask: net.CIDRMask(64, 128),
+				},
+			}
 		}
 
-		ipAddr, err := netlink.ParseAddr(ipStr)
-		if err != nil {
-			return fmt.Errorf("can not parse address %s: %w", ipStr, err)
+		for ipStr := range strings.SplitSeq(ip, ",") {
+			// Do not reassign same address for link
+			if _, ok := ipDelMap[ipStr]; ok {
+				delete(ipDelMap, ipStr)
+				continue
+			}
+
+			ipAddr, err := netlink.ParseAddr(ipStr)
+			if err != nil {
+				return fmt.Errorf("can not parse address %s: %w", ipStr, err)
+			}
+			ipAddMap[ipStr] = *ipAddr
 		}
-		ipAddMap[ipStr] = *ipAddr
 	}
 
 	for ip, addr := range ipDelMap {

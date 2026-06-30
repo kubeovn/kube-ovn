@@ -3,6 +3,7 @@ package kind
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"slices"
@@ -42,13 +43,54 @@ func (n *Node) NetworkConnect(networkID string) error {
 			return nil
 		}
 	}
-	return docker.NetworkConnect(networkID, n.ID)
+	// Connecting a node to the docker network can transiently fail with
+	// "cannot program address ... conflicts with existing route" when a
+	// previous spec's provider-network teardown has not finished flushing the
+	// orphaned route from the node's network namespace. Retry to absorb that
+	// convergence window, and treat an already-connected endpoint as success.
+	var lastErr error
+	if err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, time.Minute, true,
+		func(context.Context) (bool, error) {
+			lastErr = docker.NetworkConnect(networkID, n.ID)
+			if lastErr == nil || strings.Contains(lastErr.Error(), "already exists in network") {
+				lastErr = nil
+				return true, nil
+			}
+			framework.Logf("retrying to connect node %s to docker network %s: %v", n.Name(), networkID, lastErr)
+			return false, nil
+		}); err != nil {
+		if lastErr != nil {
+			return fmt.Errorf("timed out connecting node %s to docker network %s: %w", n.Name(), networkID, lastErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (n *Node) NetworkDisconnect(networkID string) error {
 	for _, settings := range n.NetworkSettings.Networks {
 		if settings.NetworkID == networkID {
-			return docker.NetworkDisconnect(networkID, n.ID)
+			// The node snapshot may be stale: docker can report the container
+			// is no longer connected when a previous connect attempt rolled
+			// back. Treat that as success (idempotent), and retry transient
+			// failures while the endpoint is being released.
+			var lastErr error
+			if err := wait.PollUntilContextTimeout(context.Background(), 2*time.Second, time.Minute, true,
+				func(context.Context) (bool, error) {
+					lastErr = docker.NetworkDisconnect(networkID, n.ID)
+					if lastErr == nil || strings.Contains(lastErr.Error(), "is not connected to network") {
+						lastErr = nil
+						return true, nil
+					}
+					framework.Logf("retrying to disconnect node %s from docker network %s: %v", n.Name(), networkID, lastErr)
+					return false, nil
+				}); err != nil {
+				if lastErr != nil {
+					return fmt.Errorf("timed out disconnecting node %s from docker network %s: %w", n.Name(), networkID, lastErr)
+				}
+				return err
+			}
+			return nil
 		}
 	}
 	return nil

@@ -38,16 +38,16 @@ type VpcEgressGatewayList struct {
 // +kubebuilder:resource:scope="Namespaced",shortName={"vpc-egress-gw","veg"},path="vpc-egress-gateways",singular="vpc-egress-gateway"
 // +kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas,selectorpath=.status.labelSelector
-// +kubebuilder:printcolumn:name="VPC",type="string",JSONPath=".spec.vpc"
-// +kubebuilder:printcolumn:name="REPLICAS",type="integer",JSONPath=".spec.replicas"
-// +kubebuilder:printcolumn:name="BFD ENABLED",type="boolean",JSONPath=".spec.bfd.enabled"
-// +kubebuilder:printcolumn:name="EXTERNAL SUBNET",type="string",JSONPath=".spec.externalSubnet"
-// +kubebuilder:printcolumn:name="PHASE",type="string",JSONPath=".status.phase"
-// +kubebuilder:printcolumn:name="READY",type="boolean",JSONPath=".status.ready"
-// +kubebuilder:printcolumn:name="INTERNAL IPS",type="string",JSONPath=".status.internalIPs",priority=1
-// +kubebuilder:printcolumn:name="EXTERNAL IPS",type="string",JSONPath=".status.externalIPs",priority=1
-// +kubebuilder:printcolumn:name="WORKING NODES",type="string",JSONPath=".status.workload.nodes",priority=1
-// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:printcolumn:name="Vpc",type="string",JSONPath=".spec.vpc"
+// +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
+// +kubebuilder:printcolumn:name="bfd",type="boolean",JSONPath=".spec.bfd.enabled"
+// +kubebuilder:printcolumn:name="External Subnet",type="string",JSONPath=".spec.externalSubnet"
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase"
+// +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
+// +kubebuilder:printcolumn:name="Internal IPs",type="string",JSONPath=".status.internalIPs",priority=1
+// +kubebuilder:printcolumn:name="External IPs",type="string",JSONPath=".status.externalIPs",priority=1
+// +kubebuilder:printcolumn:name="Working Nodes",type="string",JSONPath=".status.workload.nodes",priority=1
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 // vpc egress gateway is used to forward the egress traffic from the VPC to the external network
 type VpcEgressGateway struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -80,6 +80,9 @@ type BandwidthLimit struct {
 	Egress int64 `json:"egress,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas",message="Size of Internal IPs MUST be equal to or greater than Replicas",fieldPath=".internalIPs"
+// +kubebuilder:validation:XValidation:rule="!has(self.externalIPs) || size(self.externalIPs) == 0 || size(self.externalIPs) >= self.replicas",message="Size of External IPs MUST be equal to or greater than Replicas",fieldPath=".externalIPs"
+// +kubebuilder:validation:XValidation:rule="(has(self.policies) && size(self.policies) != 0) || (has(self.selectors) && size(self.selectors) != 0)",message="Each VPC Egress Gateway MUST have at least one policy or selector"
 type VpcEgressGatewaySpec struct {
 	// optional VPC name
 	// if not specified, the default VPC will be used
@@ -92,9 +95,13 @@ type VpcEgressGatewaySpec struct {
 	EvpnConf string `json:"evpnConf,omitempty"`
 	// workload replicas
 	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=10
 	Replicas int32 `json:"replicas,omitempty"`
 	// optional name prefix used to generate the workload
 	// the workload name will be generated as <prefix><vpc-egress-gateway-name>
+	// +kubebuilder:validation:Pattern=`^$|^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*[-\.]?$`
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="This field is immutable."
 	Prefix string `json:"prefix,omitempty"`
 	// optional image used by the workload
 	// if not specified, the default image passed in by kube-ovn-controller will be used
@@ -107,9 +114,11 @@ type VpcEgressGatewaySpec struct {
 	ExternalSubnet string `json:"externalSubnet"`
 	// optional internal/external IPs used to create the workload
 	// these IPs must be in the internal/external subnet
-	// the IPs count must NOT be less than the replicas count
+	// when specified, the IPs count must NOT be less than the replicas count
+	// +listType=set
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	// External IP addresses for the egress gateway
+	// +listType=set
 	ExternalIPs []string `json:"externalIPs,omitempty"`
 	// namespace/pod selectors
 	Selectors []VpcEgressGatewaySelector `json:"selectors,omitempty"`
@@ -118,12 +127,13 @@ type VpcEgressGatewaySpec struct {
 	// if set to "Local", traffic will be routed to the gateway pod/instance on the same node when available
 	// currently it works only for the default vpc
 	// +kubebuilder:default=Cluster
+	// +kubebuilder:validation:Enum=Local;Cluster
 	TrafficPolicy string `json:"trafficPolicy,omitempty"`
 
 	// BFD configuration
 	BFD VpcEgressGatewayBFDConfig `json:"bfd"`
 	// egress policies
-	// at least one policy must be specified
+	// at least one policy or selector must be specified
 	Policies []VpcEgressGatewayPolicy `json:"policies,omitempty"`
 	// optional node selector used to select the nodes where the workload will be running
 	NodeSelector []VpcEgressGatewayNodeSelector `json:"nodeSelector,omitempty"`
@@ -140,8 +150,10 @@ type VpcEgressGatewaySpec struct {
 }
 
 type VpcEgressGatewaySelector struct {
+	// +kubebuilder:validation:XValidation:rule="has(self.matchLabels) || has(self.matchExpressions)",message="Each namespace selector MUST have at least one matchLabels or matchExpressions"
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
-	PodSelector       *metav1.LabelSelector `json:"podSelector,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="has(self.matchLabels) || has(self.matchExpressions)",message="Each pod selector MUST have at least one matchLabels or matchExpressions"
+	PodSelector *metav1.LabelSelector `json:"podSelector,omitempty"`
 }
 
 type VpcEgressGatewayBFDConfig struct {
@@ -165,13 +177,16 @@ type VpcEgressGatewayBFDConfig struct {
 	Multiplier int32 `json:"multiplier,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="has(self.ipBlocks) || has(self.subnets)",message="Each policy MUST have at least one ipBlocks or subnets"
 type VpcEgressGatewayPolicy struct {
 	// whether to enable SNAT/MASQUERADE for the egress traffic
 	// +kubebuilder:default=false
 	SNAT bool `json:"snat"`
 	// CIDRs/subnets targeted by the egress traffic policy
+	// +listType=set
 	IPBlocks []string `json:"ipBlocks,omitempty"`
-	Subnets  []string `json:"subnets,omitempty"`
+	// +listType=set
+	Subnets []string `json:"subnets,omitempty"`
 }
 
 type VpcEgressGatewayNodeSelector struct {
@@ -182,6 +197,8 @@ type VpcEgressGatewayNodeSelector struct {
 
 type VpcEgressGatewayStatus struct {
 	// used by the scale subresource
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=10
 	Replicas int32 `json:"replicas,omitempty"`
 	// Label selector for the egress gateway
 	LabelSelector string `json:"labelSelector,omitempty"`
@@ -192,6 +209,7 @@ type VpcEgressGatewayStatus struct {
 	// Current phase of the egress gateway (Pending, Processing, or Completed)
 	// +kubebuilder:default=Pending
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=Pending;Processing;Completed
 	Phase Phase `json:"phase"`
 	// internal/external IPs used by the workload
 	InternalIPs []string `json:"internalIPs,omitempty"`

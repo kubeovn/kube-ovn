@@ -30,7 +30,7 @@ jobs:
     name: Build arm64
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
 
       - uses: actions/setup-go@v6
@@ -47,7 +47,7 @@ jobs:
           echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
@@ -85,14 +85,14 @@ jobs:
           jq -r '.Results[] | select((.Type=="gobinary") and (.Vulnerabilities!=null)) | .Target' trivy-result.json | while read f; do
             bin=`basename $f`
             case $bin in
-              loopback|macvlan)
+              loopback|macvlan|ipvlan)
                 echo "Building $bin@$cni_plugins_version from source..."
-                sh -c "cd /tmp && $GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/main/$bin@$cni_plugins_version"
+                sh -c "$GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/main/$bin"
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               portmap)
                 echo "Building $bin@$cni_plugins_version from source..."
-                sh -c "cd /tmp && $GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/meta/$bin@$cni_plugins_version"
+                sh -c "$GO_INSTALL $cni_plugins_build_flags github.com/containernetworking/plugins/plugins/meta/$bin"
                 echo "COPY $bin /$f" >> "$dockerfile"
                 ;;
               kubectl)
