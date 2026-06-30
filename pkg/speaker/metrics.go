@@ -110,14 +110,14 @@ var (
 	metricBFDPeerState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_session_state",
-			Help: "Local BFD session state of the peer (0=unspecified,1=admin_down,2=down,3=init,4=up).",
+			Help: "Local BFD session state of the peer (0=unspecified,1=up,2=down,3=admin_down,4=init).",
 		},
 		[]string{"node", "peer"})
 
 	metricBFDPeerRemoteState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_remote_session_state",
-			Help: "Remote BFD session state of the peer (0=unspecified,1=admin_down,2=down,3=init,4=up).",
+			Help: "Remote BFD session state of the peer (0=unspecified,1=up,2=down,3=admin_down,4=init).",
 		},
 		[]string{"node", "peer"})
 
