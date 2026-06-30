@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
+	"gopkg.in/yaml.v3"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -41,45 +42,147 @@ const (
 	addPeerRetryInterval               = 5 * time.Second
 )
 
+// Duration is a wrapper around time.Duration for YAML serialization.
+// Supported formats: string (e.g., "90s", "5m", "1h") or integer (seconds).
+type Duration struct {
+	time.Duration
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler for time.Duration support.
+// Accepts both string format ("90s", "5m", "1h") and integer seconds (360).
+func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
+	switch node.Kind {
+	case yaml.ScalarNode:
+		// Check if it's a string scalar
+		if node.Tag == "!!str" {
+			dur, err := time.ParseDuration(node.Value)
+			if err != nil {
+				return fmt.Errorf("invalid duration %q: %w", node.Value, err)
+			}
+			d.Duration = dur
+			return nil
+		}
+
+		// Check if it's an integer value (seconds)
+		if node.Tag == "!!int" {
+			var n int64
+			if err := node.Decode(&n); err != nil {
+				return fmt.Errorf("invalid duration value: %w", err)
+			}
+			d.Duration = time.Duration(n) * time.Second
+			return nil
+		}
+
+		return fmt.Errorf("invalid duration value: expected string (e.g., '90s') or integer seconds, got %q", node.Value)
+	default:
+		return fmt.Errorf("invalid duration value: expected scalar, got %v", node.Kind)
+	}
+}
+
+func (d Duration) MarshalYAML() (any, error) {
+	return d.String(), nil
+}
+
+// Seconds returns the duration in seconds as uint32.
+func (d Duration) Seconds() uint32 {
+	return uint32(d.Duration.Seconds())
+}
+
+// IsZero returns true if the duration is not set.
+func (d Duration) IsZero() bool {
+	return d.Duration == 0
+}
+
+// IP is a wrapper around net.IP for YAML serialization.
+// It supports string format for both IPv4 and IPv6 addresses (e.g., "192.168.1.1", "2001:db8::1").
+// The embedded net.IP provides all standard IP operations while adding YAML marshaling support.
+type IP struct {
+	net.IP
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler for net.IP support.
+// Accepts string format for IPv4 and IPv6 addresses.
+// Returns an error if the value is not a valid IP address string.
+func (ip *IP) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.ScalarNode {
+		return fmt.Errorf("invalid IP value: expected scalar, got %v", node.Kind)
+	}
+	// Treat null / empty string as "unset".
+	if node.Tag == "!!null" || (node.Tag == "!!str" && node.Value == "") {
+		ip.IP = nil
+		return nil
+	}
+	if node.Tag != "!!str" {
+		return fmt.Errorf("invalid IP value: expected string, got %s", node.Tag)
+	}
+
+	parsedIP := net.ParseIP(node.Value)
+	if parsedIP == nil {
+		return fmt.Errorf("invalid IP address %q", node.Value)
+	}
+	ip.IP = parsedIP
+	return nil
+}
+
+// MarshalYAML implements yaml.Marshaler for net.IP support.
+// Returns the string representation of the IP address.
+func (ip IP) MarshalYAML() (any, error) {
+	if ip.IP == nil {
+		return nil, nil
+	}
+	return ip.IP.String(), nil
+}
+
+// String returns the string representation of the IP address.
+// Returns an empty string if the IP is nil.
+func (ip IP) String() string {
+	if ip.IP == nil {
+		return ""
+	}
+	return ip.IP.String()
+}
+
 type Configuration struct {
-	GrpcHost                    net.IP
-	GrpcPort                    int32
-	ClusterAs                   uint32
-	RouterID                    net.IP
-	PodIPs                      map[string]net.IP
-	NodeIPs                     map[string]net.IP
-	NeighborAddresses           []net.IP
-	NeighborIPv6Addresses       []net.IP
-	AllowedSourceAddresses      []net.IP
-	AllowedSourceIPv6Addresses  []net.IP
-	NeighborLocalAddresses      map[string]net.IP
-	NeighborAs                  uint32
-	AuthPassword                string
-	HoldTime                    float64
-	BgpServer                   *gobgp.BgpServer
-	AnnounceClusterIP           bool
-	GracefulRestart             bool
-	GracefulRestartDeferralTime time.Duration
-	GracefulRestartTime         time.Duration
-	PassiveMode                 bool
-	EbgpMultihopTTL             uint8
-	ExtendedNexthop             bool
-	NatGwMode                   bool
-	EnableMetrics               bool
+	GrpcHost                    IP                `yaml:"grpc-host,omitempty"`
+	GrpcPort                    int32             `yaml:"grpc-port,omitempty"`
+	ClusterAs                   uint32            `yaml:"cluster-as,omitempty"`
+	RouterID                    IP                `yaml:"router-id,omitempty"`
+	PodIPs                      map[string]net.IP `yaml:"-"`
+	NodeIPs                     map[string]IP     `yaml:"node-ips,omitempty"`
+	NeighborAddresses           []IP              `yaml:"neighbor-address,omitempty"`
+	NeighborIPv6Addresses       []IP              `yaml:"neighbor-ipv6-address,omitempty"`
+	AllowedSourceAddresses      []IP              `yaml:"allowed-source-addresses,omitempty"`
+	AllowedSourceIPv6Addresses  []IP              `yaml:"allowed-source-ipv6-addresses,omitempty"`
+	NeighborLocalAddresses      map[string]net.IP `yaml:"-"`
+	NeighborAs                  uint32            `yaml:"neighbor-as,omitempty"`
+	AuthPassword                string            `yaml:"auth-password,omitempty"`
+	HoldTime                    Duration          `yaml:"holdtime,omitempty"`
+	BgpServer                   *gobgp.BgpServer  `yaml:"-"`
+	AnnounceClusterIP           *bool             `yaml:"announce-cluster-ip,omitempty"`
+	GracefulRestart             *bool             `yaml:"graceful-restart,omitempty"`
+	GracefulRestartDeferralTime Duration          `yaml:"graceful-restart-deferral-time,omitempty"`
+	GracefulRestartTime         Duration          `yaml:"graceful-restart-time,omitempty"`
+	PassiveMode                 *bool             `yaml:"passivemode,omitempty"`
+	EbgpMultihopTTL             uint8             `yaml:"ebgp-multihop,omitempty"`
+	ExtendedNexthop             *bool             `yaml:"extended-nexthop,omitempty"`
+	NatGwMode                   *bool             `yaml:"nat-gw-mode,omitempty"`
+	EnableMetrics               *bool             `yaml:"enable-metrics,omitempty"`
 
 	// BFD (Bidirectional Forwarding Detection) configuration
-	EnableBFD              bool
-	BFDMinTX               uint32 // minimum transmit interval in milliseconds (converted to microseconds for GoBGP)
-	BFDMinRX               uint32 // minimum receive interval in milliseconds (converted to microseconds for GoBGP)
-	BFDDetectionMultiplier uint8  // RFC 5880 §6.8.1: valid range 1-255
+	EnableBFD              *bool  `yaml:"enable-bfd,omitempty"`
+	BFDMinTX               uint32 `yaml:"bfd-min-tx,omitempty"`               // minimum transmit interval in milliseconds (converted to microseconds for GoBGP)
+	BFDMinRX               uint32 `yaml:"bfd-min-rx,omitempty"`               // minimum receive interval in milliseconds (converted to microseconds for GoBGP)
+	BFDDetectionMultiplier uint8  `yaml:"bfd-detection-multiplier,omitempty"` // RFC 5880 §6.8.1: valid range 1-255
 
-	NodeName       string
-	KubeConfigFile string
-	KubeClient     kubernetes.Interface
-	KubeOvnClient  clientset.Interface
+	NodeName       string               `yaml:"node-name,omitempty"`
+	KubeConfigFile string               `yaml:"kubeconfig,omitempty"`
+	KubeClient     kubernetes.Interface `yaml:"-"`
+	KubeOvnClient  clientset.Interface  `yaml:"-"`
 
-	PprofPort int32
-	LogPerm   string
+	PprofPort int32  `yaml:"pprof-port,omitempty"`
+	LogPerm   string `yaml:"log-perm,omitempty"`
+
+	ConfigFile string `yaml:"-"`
 }
 
 func ParseFlags() (*Configuration, error) {
@@ -113,6 +216,7 @@ func ParseFlags() (*Configuration, error) {
 		argBFDMinTX                    = pflag.Uint32("bfd-min-tx", 1000, "BFD minimum transmit interval in milliseconds (default 1000, max 4294967)")
 		argBFDMinRX                    = pflag.Uint32("bfd-min-rx", 1000, "BFD minimum receive interval in milliseconds (default 1000, max 4294967)")
 		argBFDDetectionMultiplier      = pflag.Uint8("bfd-detection-multiplier", 3, "BFD detection multiplier (default 3, valid range 1-255 per RFC 5880)")
+		argConfigFile                  = pflag.String("config", os.Getenv(util.EnvKubeOVNBGPSpeakerConfigFile), "Path to speaker config file in yaml format")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -132,14 +236,6 @@ func ParseFlags() (*Configuration, error) {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	ht := argHoldTime.Seconds()
-	if ht > 65536 || ht < 3 {
-		return nil, errors.New("the bgp holdtime must be in the range 3s to 65536s")
-	}
-	if *argEbgpMultihopTTL == 0 {
-		return nil, errors.New("the bgp MultihopTtl must be in the range 1 to 255")
-	}
-
 	podIpsEnv := os.Getenv(util.EnvPodIPs)
 	if podIpsEnv == "" {
 		podIpsEnv = os.Getenv(util.EnvPodIP)
@@ -155,40 +251,67 @@ func ParseFlags() (*Configuration, error) {
 		}
 	}
 
+	// Convert []net.IP from pflag to []IP for YAML support.
+	neighborAddresses := make([]IP, 0, len(*argNeighborAddress))
+	for _, ip := range *argNeighborAddress {
+		neighborAddresses = append(neighborAddresses, IP{IP: ip})
+	}
+	neighborIPv6Addresses := make([]IP, 0, len(*argNeighborIPv6Address))
+	for _, ip := range *argNeighborIPv6Address {
+		neighborIPv6Addresses = append(neighborIPv6Addresses, IP{IP: ip})
+	}
+	allowedSourceAddresses := make([]IP, 0, len(*argAllowedSourceAddresses))
+	for _, ip := range *argAllowedSourceAddresses {
+		allowedSourceAddresses = append(allowedSourceAddresses, IP{IP: ip})
+	}
+	allowedSourceIPv6Addresses := make([]IP, 0, len(*argAllowedSourceIPv6Addresses))
+	for _, ip := range *argAllowedSourceIPv6Addresses {
+		allowedSourceIPv6Addresses = append(allowedSourceIPv6Addresses, IP{IP: ip})
+	}
+
 	config := &Configuration{
-		AnnounceClusterIP:          *argAnnounceClusterIP,
-		GrpcHost:                   *argGrpcHost,
-		GrpcPort:                   *argGrpcPort,
-		ClusterAs:                  *argClusterAs,
-		RouterID:                   *argRouterID,
-		NeighborAddresses:          *argNeighborAddress,
-		NeighborIPv6Addresses:      *argNeighborIPv6Address,
-		AllowedSourceAddresses:     *argAllowedSourceAddresses,
-		AllowedSourceIPv6Addresses: *argAllowedSourceIPv6Addresses,
-		NodeIPs: map[string]net.IP{
-			kubeovnv1.ProtocolIPv4: nodeIPv4,
-			kubeovnv1.ProtocolIPv6: nodeIPv6,
-		},
+		AnnounceClusterIP:           argAnnounceClusterIP,
+		GrpcHost:                    IP{IP: *argGrpcHost},
+		GrpcPort:                    *argGrpcPort,
+		ClusterAs:                   *argClusterAs,
+		RouterID:                    IP{IP: *argRouterID},
+		NeighborAddresses:           neighborAddresses,
+		NeighborIPv6Addresses:       neighborIPv6Addresses,
+		AllowedSourceAddresses:      allowedSourceAddresses,
+		AllowedSourceIPv6Addresses:  allowedSourceIPv6Addresses,
+		NodeIPs:                     map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nodeIPv4}, kubeovnv1.ProtocolIPv6: {IP: nodeIPv6}},
 		PodIPs:                      make(map[string]net.IP, 2),
 		NeighborAs:                  *argNeighborAs,
 		AuthPassword:                *argAuthPassword,
-		HoldTime:                    ht,
+		HoldTime:                    Duration{Duration: *argHoldTime},
 		PprofPort:                   *argPprofPort,
 		NodeName:                    strings.ToLower(*argNodeName),
 		KubeConfigFile:              *argKubeConfigFile,
-		GracefulRestart:             *argGracefulRestart,
-		GracefulRestartDeferralTime: *argGracefulRestartDeferralTime,
-		GracefulRestartTime:         *argDefaultGracefulTime,
-		PassiveMode:                 *argPassiveMode,
+		GracefulRestart:             argGracefulRestart,
+		GracefulRestartDeferralTime: Duration{Duration: *argGracefulRestartDeferralTime},
+		GracefulRestartTime:         Duration{Duration: *argDefaultGracefulTime},
+		PassiveMode:                 argPassiveMode,
 		EbgpMultihopTTL:             *argEbgpMultihopTTL,
-		ExtendedNexthop:             *argExtendedNexthop,
-		NatGwMode:                   *argNatGwMode,
-		EnableMetrics:               *argEnableMetrics,
+		ExtendedNexthop:             argExtendedNexthop,
+		NatGwMode:                   argNatGwMode,
+		EnableMetrics:               argEnableMetrics,
 		LogPerm:                     *argLogPerm,
-		EnableBFD:                   *argEnableBFD,
+		EnableBFD:                   argEnableBFD,
 		BFDMinTX:                    *argBFDMinTX,
 		BFDMinRX:                    *argBFDMinRX,
 		BFDDetectionMultiplier:      *argBFDDetectionMultiplier,
+		ConfigFile:                  *argConfigFile,
+	}
+
+	if config.ConfigFile != "" {
+		fileConfig, err := config.loadFileConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load speaker config, %w", err)
+		}
+
+		if fileConfig != nil {
+			config.mergeFileConfig(fileConfig)
+		}
 	}
 
 	if podIPv4 != "" {
@@ -210,35 +333,49 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
+	// Validate holdtime range after merging file config
+	if config.HoldTime.Duration > 65536*time.Second || config.HoldTime.Duration < 3*time.Second {
+		return nil, errors.New("the bgp holdtime must be in the range 3s to 65536s")
+	}
+
+	if config.EbgpMultihopTTL == 0 {
+		return nil, errors.New("the bgp MultihopTtl must be in the range 1 to 255")
+	}
+
 	for _, addr := range config.NeighborAddresses {
 		if addr.To4() == nil {
-			return nil, fmt.Errorf("invalid neighbor-address format: %s", *argNeighborAddress)
+			return nil, fmt.Errorf("invalid neighbor-address format: expected IPv4, got %v", addr.IP)
 		}
 	}
 	for _, addr := range config.NeighborIPv6Addresses {
 		if addr.To4() != nil {
-			return nil, fmt.Errorf("invalid neighbor-ipv6-address format: %s is not an IPv6 address", addr)
+			return nil, fmt.Errorf("invalid neighbor-ipv6-address format: expected IPv6, got %v", addr.IP)
 		}
 	}
 	for _, addr := range config.AllowedSourceAddresses {
 		if addr.To4() == nil {
-			return nil, fmt.Errorf("invalid allowed-source-addresses format: %s is not an IPv4 address", addr)
+			return nil, fmt.Errorf("invalid allowed-source-addresses format: expected IPv4, got %v", addr.IP)
 		}
 	}
 	for _, addr := range config.AllowedSourceIPv6Addresses {
 		if addr.To4() != nil {
-			return nil, fmt.Errorf("invalid allowed-source-ipv6-addresses format: %s is not an IPv6 address", addr)
+			return nil, fmt.Errorf("invalid allowed-source-ipv6-addresses format: expected IPv6, got %v", addr.IP)
 		}
 	}
 
-	if config.RouterID == nil {
+	// RouterID must be IPv4 per BGP spec (32-bit). Reject IPv6 values early.
+	if config.RouterID.IP != nil && config.RouterID.To4() == nil {
+		return nil, fmt.Errorf("invalid router-id: expected IPv4, got %v", config.RouterID.IP)
+	}
+
+	if config.RouterID.IP == nil {
 		if podIPv4 != "" {
-			config.RouterID = net.ParseIP(podIPv4)
+			config.RouterID = IP{IP: net.ParseIP(podIPv4)}
 		}
 
-		if config.RouterID == nil {
+		if config.RouterID.IP == nil {
 			// RouterID must be an IPv4. If no IPv4 exists on the speaker, fallback to 0.0.0.0 to avoid GoBGP crashing.
-			config.RouterID = net.ParseIP("0.0.0.0")
+			config.RouterID = IP{IP: net.ParseIP("0.0.0.0")}
 		}
 	}
 
@@ -251,6 +388,121 @@ func ParseFlags() (*Configuration, error) {
 	}
 
 	return config, nil
+}
+
+// loadFileConfig loads the speaker config from the file.
+func (config *Configuration) loadFileConfig() (*Configuration, error) {
+	data, err := os.ReadFile(config.ConfigFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var cfg Configuration
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+// mergeFileConfig merges the file config into the current config.
+// Variables from the file will override command line arguments and the default configuration.
+func (config *Configuration) mergeFileConfig(cfg *Configuration) {
+	if cfg.GrpcHost.IP != nil {
+		config.GrpcHost = cfg.GrpcHost
+	}
+	if cfg.GrpcPort != 0 {
+		config.GrpcPort = cfg.GrpcPort
+	}
+	if cfg.ClusterAs != 0 {
+		config.ClusterAs = cfg.ClusterAs
+	}
+	if cfg.RouterID.IP != nil {
+		config.RouterID = cfg.RouterID
+	}
+	if len(cfg.NodeIPs) != 0 {
+		if config.NodeIPs == nil {
+			config.NodeIPs = map[string]IP{}
+		}
+		for k, v := range cfg.NodeIPs {
+			if v.IP != nil {
+				config.NodeIPs[k] = v
+			}
+		}
+	}
+	if len(cfg.NeighborAddresses) != 0 {
+		config.NeighborAddresses = cfg.NeighborAddresses
+	}
+	if len(cfg.NeighborIPv6Addresses) != 0 {
+		config.NeighborIPv6Addresses = cfg.NeighborIPv6Addresses
+	}
+	if len(cfg.AllowedSourceAddresses) != 0 {
+		config.AllowedSourceAddresses = cfg.AllowedSourceAddresses
+	}
+	if len(cfg.AllowedSourceIPv6Addresses) != 0 {
+		config.AllowedSourceIPv6Addresses = cfg.AllowedSourceIPv6Addresses
+	}
+	if cfg.NeighborAs != 0 {
+		config.NeighborAs = cfg.NeighborAs
+	}
+	if cfg.AuthPassword != "" {
+		config.AuthPassword = cfg.AuthPassword
+	}
+	if !cfg.HoldTime.IsZero() {
+		config.HoldTime = cfg.HoldTime
+	}
+	// Boolean pointer fields: only merge if explicitly set in YAML (non-nil)
+	if cfg.AnnounceClusterIP != nil {
+		config.AnnounceClusterIP = cfg.AnnounceClusterIP
+	}
+	if cfg.GracefulRestart != nil {
+		config.GracefulRestart = cfg.GracefulRestart
+	}
+	if !cfg.GracefulRestartDeferralTime.IsZero() {
+		config.GracefulRestartDeferralTime = cfg.GracefulRestartDeferralTime
+	}
+	if !cfg.GracefulRestartTime.IsZero() {
+		config.GracefulRestartTime = cfg.GracefulRestartTime
+	}
+	if cfg.PassiveMode != nil {
+		config.PassiveMode = cfg.PassiveMode
+	}
+	if cfg.EbgpMultihopTTL != 0 {
+		config.EbgpMultihopTTL = cfg.EbgpMultihopTTL
+	}
+	if cfg.ExtendedNexthop != nil {
+		config.ExtendedNexthop = cfg.ExtendedNexthop
+	}
+	if cfg.NatGwMode != nil {
+		config.NatGwMode = cfg.NatGwMode
+	}
+	if cfg.EnableMetrics != nil {
+		config.EnableMetrics = cfg.EnableMetrics
+	}
+	if cfg.EnableBFD != nil {
+		config.EnableBFD = cfg.EnableBFD
+	}
+	if cfg.BFDMinTX != 0 {
+		config.BFDMinTX = cfg.BFDMinTX
+	}
+	if cfg.BFDMinRX != 0 {
+		config.BFDMinRX = cfg.BFDMinRX
+	}
+	if cfg.BFDDetectionMultiplier != 0 {
+		config.BFDDetectionMultiplier = cfg.BFDDetectionMultiplier
+	}
+	if cfg.NodeName != "" {
+		config.NodeName = strings.ToLower(cfg.NodeName)
+	}
+	if cfg.KubeConfigFile != "" {
+		config.KubeConfigFile = cfg.KubeConfigFile
+	}
+	if cfg.PprofPort != 0 {
+		config.PprofPort = cfg.PprofPort
+	}
+	if cfg.LogPerm != "" {
+		config.LogPerm = cfg.LogPerm
+	}
 }
 
 // validateRequiredFlags checks that all required BGP configuration flags are provided.
@@ -270,11 +522,11 @@ func (config *Configuration) validateRequiredFlags() error {
 	// NodeName is only used for the BGP "local" policy match in syncSubnetRoutes;
 	// NAT GW mode runs syncEIPRoutes exclusively and never reads NodeName, so skip
 	// the requirement there to stay compatible with GenNatGwBgpSpeakerContainer.
-	if !config.NatGwMode && config.NodeName == "" {
+	if (config.NatGwMode == nil || !*config.NatGwMode) && config.NodeName == "" {
 		missingFlags = append(missingFlags, "--node-name must be specified (usually via NODE_NAME env from downward API)")
 	}
 
-	if config.EnableBFD {
+	if config.EnableBFD != nil && *config.EnableBFD {
 		if config.BFDDetectionMultiplier == 0 {
 			missingFlags = append(missingFlags, "--bfd-detection-multiplier must be between 1 and 255")
 		}
@@ -335,10 +587,10 @@ func (config *Configuration) initKubeClient() error {
 }
 
 func (config *Configuration) checkGracefulRestartOptions() error {
-	if config.GracefulRestartTime > time.Second*4095 || config.GracefulRestartTime <= 0 {
+	if config.GracefulRestartTime.Duration > 4095*time.Second || config.GracefulRestartTime.Duration <= 0 {
 		return errors.New("GracefulRestartTime should be less than 4095 seconds or more than 0")
 	}
-	if config.GracefulRestartDeferralTime > time.Hour*18 || config.GracefulRestartDeferralTime <= 0 {
+	if config.GracefulRestartDeferralTime.Duration > 18*time.Hour || config.GracefulRestartDeferralTime.Duration <= 0 {
 		return errors.New("GracefulRestartDeferralTime should be less than 18 hours or more than 0")
 	}
 
@@ -359,18 +611,18 @@ func (config *Configuration) initBgpServer() error {
 
 	grpcOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxSize), grpc.MaxSendMsgSize(maxSize)}
 	s := gobgp.NewBgpServer(
-		gobgp.GrpcListenAddress(util.JoinHostPort(config.GrpcHost.String(), config.GrpcPort)),
+		gobgp.GrpcListenAddress(util.JoinHostPort(config.GrpcHost.IP.String(), config.GrpcPort)),
 		gobgp.GrpcOption(grpcOpts),
 		gobgp.LoggerOption(slog.Default(), &logLevel),
 	)
 	go s.Serve()
 
-	peersMap := map[api.Family_Afi][]net.IP{
+	peersMap := map[api.Family_Afi][]IP{
 		api.Family_AFI_IP:  config.NeighborAddresses,
 		api.Family_AFI_IP6: config.NeighborIPv6Addresses,
 	}
 
-	if config.PassiveMode {
+	if config.PassiveMode != nil && *config.PassiveMode {
 		listenPort = bgp.BGP_PORT
 	}
 
@@ -400,15 +652,15 @@ func (config *Configuration) initBgpServer() error {
 	for ipFamily, addresses := range peersMap {
 		for _, addr := range addresses {
 			transport := &api.Transport{
-				PassiveMode: config.PassiveMode,
+				PassiveMode: config.PassiveMode != nil && *config.PassiveMode,
 			}
-			if localAddr := config.getNeighborLocalAddress(addr); localAddr != nil {
+			if localAddr := config.getNeighborLocalAddress(addr.IP); localAddr != nil {
 				transport.LocalAddress = localAddr.String()
 			}
 			peer := &api.Peer{
-				Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: uint64(config.HoldTime)}},
+				Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: uint64(config.HoldTime.Seconds())}},
 				Conf: &api.PeerConf{
-					NeighborAddress: addr.String(),
+					NeighborAddress: addr.IP.String(),
 					PeerAsn:         config.NeighborAs,
 				},
 				Transport: transport,
@@ -422,7 +674,7 @@ func (config *Configuration) initBgpServer() error {
 			if config.AuthPassword != "" {
 				peer.Conf.AuthPassword = config.AuthPassword
 			}
-			if config.GracefulRestart {
+			if config.GracefulRestart != nil && *config.GracefulRestart {
 				if err := config.checkGracefulRestartOptions(); err != nil {
 					err = fmt.Errorf("failed to check graceful restart options: %w", err)
 					klog.Error(err)
@@ -430,8 +682,8 @@ func (config *Configuration) initBgpServer() error {
 				}
 				peer.GracefulRestart = &api.GracefulRestart{
 					Enabled:         true,
-					RestartTime:     uint32(config.GracefulRestartTime.Seconds()),
-					DeferralTime:    uint32(config.GracefulRestartDeferralTime.Seconds()),
+					RestartTime:     config.GracefulRestartTime.Seconds(),
+					DeferralTime:    config.GracefulRestartDeferralTime.Seconds(),
 					LocalRestarting: true,
 				}
 				peer.AfiSafis = []*api.AfiSafi{
@@ -451,7 +703,7 @@ func (config *Configuration) initBgpServer() error {
 
 			// If extended nexthop is enabled, advertise the IPv4 unicast AFI/SAFI even if
 			// we have no IPv4 neighbor
-			if config.ExtendedNexthop {
+			if config.ExtendedNexthop != nil && *config.ExtendedNexthop {
 				peer.AfiSafis = append(peer.AfiSafis, &api.AfiSafi{
 					Config: &api.AfiSafiConfig{
 						Family: &api.Family{
@@ -532,7 +784,7 @@ func (config *Configuration) watchPeerState() {
 			neighborAddr := p.Conf.NeighborAddress.String()
 
 			var bfdState string
-			if config.EnableBFD {
+			if config.EnableBFD != nil && *config.EnableBFD {
 				config.BgpServer.ListBfdPeer(context.Background(), func(addr string, st *api.BfdPeerState) {
 					if addr == neighborAddr && st != nil {
 						bfdState = bfdSessionStateString(st.SessionState)
@@ -559,23 +811,23 @@ func (config *Configuration) initNeighborLocalAddresses() error {
 
 	for _, neighbor := range config.NeighborAddresses {
 		if len(config.AllowedSourceAddresses) != 0 {
-			klog.Infof("Resolving BGP local address for neighbor %s with allowed IPv4 source addresses %v", neighbor, config.AllowedSourceAddresses)
-			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor, config.AllowedSourceAddresses)
+			klog.Infof("Resolving BGP local address for neighbor %s with allowed IPv4 source addresses %v", neighbor.String(), config.AllowedSourceAddresses)
+			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor.IP, toNetIPs(config.AllowedSourceAddresses))
 			if err != nil {
 				return err
 			}
-			config.NeighborLocalAddresses[neighbor.String()] = localAddr
+			config.NeighborLocalAddresses[neighbor.IP.String()] = localAddr
 		}
 	}
 
 	for _, neighbor := range config.NeighborIPv6Addresses {
 		if len(config.AllowedSourceIPv6Addresses) != 0 {
-			klog.Infof("Resolving BGP local address for neighbor %s with allowed IPv6 source addresses %v", neighbor, config.AllowedSourceIPv6Addresses)
-			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor, config.AllowedSourceIPv6Addresses)
+			klog.Infof("Resolving BGP local address for neighbor %s with allowed IPv6 source addresses %v", neighbor.String(), config.AllowedSourceIPv6Addresses)
+			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor.IP, toNetIPs(config.AllowedSourceIPv6Addresses))
 			if err != nil {
 				return err
 			}
-			config.NeighborLocalAddresses[neighbor.String()] = localAddr
+			config.NeighborLocalAddresses[neighbor.IP.String()] = localAddr
 		}
 	}
 
@@ -687,4 +939,16 @@ func validateAllowedLocalAddress(neighborAddress, localAddr net.IP, allowedLocal
 		return nil
 	}
 	return fmt.Errorf("selected local address %s for BGP neighbor %s is not in allowed source address list %v; speaker startup is rejected until route lookup selects an allowed source address", localAddr, neighborAddress, allowedLocalAddresses)
+}
+
+// toNetIPs converts a slice of IP wrappers to a slice of net.IP.
+// It filters out nil IP addresses to prevent downstream errors.
+func toNetIPs(ips []IP) []net.IP {
+	result := make([]net.IP, 0, len(ips))
+	for _, ip := range ips {
+		if ip.IP != nil {
+			result = append(result, ip.IP)
+		}
+	}
+	return result
 }

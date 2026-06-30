@@ -523,6 +523,24 @@ false
 			<td>Args passed to the kube-ovn-speaker pod.</td>
 		</tr>
 		<tr>
+			<td>bgpSpeaker.configMap</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>The name of the configMap that will be mounted in the kube-ovn-speaker pod. The ConfigMap can provide YAML configuration files for kube-ovn-speaker. To use a specific file, pass its mounted file path via '--config' or set 'KUBE_OVN_BGP_SPEAKER_CONFIG_FILE'.</td>
+		</tr>
+		<tr>
+			<td>bgpSpeaker.configMapMountPath</td>
+			<td>string</td>
+			<td><pre lang="json">
+"/etc/kube-ovn/"
+</pre>
+</td>
+			<td>Directory where the ConfigMap will be mounted in the kube-ovn-speaker pod.</td>
+		</tr>
+		<tr>
 			<td>bgpSpeaker.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">
@@ -530,15 +548,6 @@ false
 </pre>
 </td>
 			<td>Enable the kube-ovn-speaker.</td>
-		</tr>
-		<tr>
-			<td>bgpSpeaker.extraEnv</td>
-			<td>list</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-			<td>Extra environment variables to be added to kube-ovn-speaker pods.</td>
 		</tr>
 		<tr>
 			<td>bgpSpeaker.labels</td>

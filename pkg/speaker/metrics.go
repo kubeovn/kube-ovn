@@ -271,7 +271,7 @@ func deleteStaleBFDPeerSeries(node string, last, current map[string]struct{}) {
 // metrics are enabled.
 func (c *Controller) collectMetrics() {
 	c.collectBGPMetrics()
-	if c.config.EnableBFD {
+	if c.config.EnableBFD != nil && *c.config.EnableBFD {
 		c.collectBFDMetrics()
 	}
 }

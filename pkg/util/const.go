@@ -382,9 +382,10 @@ const (
 	EnvHostIP       = "HOST_IP"
 	EnvHostIPs      = "HOST_IPS"
 
-	EnvSSLEnabled                 = "ENABLE_SSL"
-	EnvKubeOVNTLSRotationInterval = "KUBE_OVN_TLS_ROTATION_INTERVAL"
-	EnvGatewayName                = "GATEWAY_NAME"
+	EnvSSLEnabled                  = "ENABLE_SSL"
+	EnvKubeOVNBGPSpeakerConfigFile = "KUBE_OVN_BGP_SPEAKER_CONFIG_FILE"
+	EnvKubeOVNTLSRotationInterval  = "KUBE_OVN_TLS_ROTATION_INTERVAL"
+	EnvGatewayName                 = "GATEWAY_NAME"
 )
 
 const (
