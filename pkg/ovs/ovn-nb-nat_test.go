@@ -91,13 +91,13 @@ func (suite *OvnClientTestSuite) testCreateNats() {
 	require.Error(t, err)
 }
 
-func (suite *OvnClientTestSuite) testUpdateSnat() {
+func (suite *OvnClientTestSuite) testEnsureSnat() {
 	t := suite.T()
 	t.Parallel()
 
 	nbClient := suite.ovnNBClient
 	failedNbClient := suite.failedOvnNBClient
-	lrName := "test-update-snat-lr"
+	lrName := "test-ensure-snat-lr"
 	externalIP := "192.168.30.254"
 	logicalIP := "10.250.0.4"
 	natType := ovnnb.NATTypeSNAT
@@ -106,46 +106,46 @@ func (suite *OvnClientTestSuite) testUpdateSnat() {
 	require.NoError(t, err)
 
 	t.Run("create snat", func(t *testing.T) {
-		err = nbClient.UpdateSnat(lrName, externalIP, logicalIP)
+		err = nbClient.EnsureSnat(lrName, externalIP, logicalIP)
 		require.NoError(t, err)
 
 		lr, err := nbClient.GetLogicalRouter(lrName, false)
 		require.NoError(t, err)
 
-		nat, err := nbClient.GetNat(lrName, natType, "", logicalIP, false)
+		nat, err := nbClient.GetNat(lrName, natType, externalIP, logicalIP, false)
 		require.NoError(t, err)
 
 		require.Contains(t, lr.Nat, nat.UUID)
 	})
 
-	t.Run("update snat", func(t *testing.T) {
+	t.Run("create snat with different external ip", func(t *testing.T) {
 		externalIP := "192.168.30.253"
-		err = nbClient.UpdateSnat(lrName, externalIP, logicalIP)
+		err = nbClient.EnsureSnat(lrName, externalIP, logicalIP)
 		require.NoError(t, err)
 
-		nat, err := nbClient.GetNat(lrName, natType, "", logicalIP, false)
+		nat, err := nbClient.GetNat(lrName, natType, externalIP, logicalIP, false)
 		require.NoError(t, err)
 		require.Equal(t, externalIP, nat.ExternalIP)
 	})
 
-	t.Run("failed client update snat", func(t *testing.T) {
-		err = failedNbClient.UpdateSnat(lrName, externalIP, logicalIP)
+	t.Run("failed client ensure snat", func(t *testing.T) {
+		err = failedNbClient.EnsureSnat(lrName, externalIP, logicalIP)
 		require.Error(t, err)
 	})
 
-	t.Run("update invalid dnat with empty external ip", func(t *testing.T) {
-		err = nbClient.UpdateSnat(lrName, "", logicalIP)
+	t.Run("ensure invalid snat with empty external ip", func(t *testing.T) {
+		err = nbClient.EnsureSnat(lrName, "", logicalIP)
 		require.Error(t, err)
 	})
 
-	t.Run("update invalid dnat with empty logical ip", func(t *testing.T) {
-		err = nbClient.UpdateSnat(lrName, externalIP, "")
+	t.Run("ensure invalid snat with empty logical ip", func(t *testing.T) {
+		err = nbClient.EnsureSnat(lrName, externalIP, "")
 		require.Error(t, err)
 	})
 
-	t.Run("update snat with empty lrName", func(t *testing.T) {
+	t.Run("ensure snat with empty lrName", func(t *testing.T) {
 		externalIP := "192.168.30.253"
-		err = nbClient.UpdateSnat("", externalIP, logicalIP)
+		err = nbClient.EnsureSnat("", externalIP, logicalIP)
 		require.ErrorContains(t, err, "the logical router name is required")
 	})
 }
@@ -254,9 +254,9 @@ func (suite *OvnClientTestSuite) testUpdateNat() {
 
 	err := nbClient.CreateLogicalRouter(lrName)
 	require.NoError(t, err)
-	err = nbClient.UpdateSnat(lrName, externalIP, logicalIP)
+	err = nbClient.EnsureSnat(lrName, externalIP, logicalIP)
 	require.NoError(t, err)
-	nat, err := nbClient.GetNat(lrName, natType, "", logicalIP, false)
+	nat, err := nbClient.GetNat(lrName, natType, externalIP, logicalIP, false)
 	require.NoError(t, err)
 
 	t.Run("update nat", func(t *testing.T) {

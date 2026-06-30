@@ -106,6 +106,17 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 	var fipPodName, podEipName, podFipName string
 	var fipExtraPodName, podExtraEipName, podExtraFipName string
 
+	// multi-snat with same logical_ip but different external_ip
+	var multiSnatEip1Name, multiSnatEip2Name string
+	var multiSnat1Name, multiSnat2Name string
+
+	// multi-fip and multi-dnat with different external_ip from different external subnets
+	var multiFipEip1Name, multiFipEip2Name string
+	var multiFipVip1Name, multiFipVip2Name string
+	var multiFip1Name, multiFip2Name string
+	var multiDnatEip1Name, multiDnatEip2Name string
+	var multiDnat1Name, multiDnat2Name string
+
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
 		subnetClient = f.SubnetClient()
@@ -178,6 +189,24 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipSnatVipName = "ip-snat-vip-" + framework.RandomSuffix()
 		ipSnatEipName = "ip-snat-eip-" + framework.RandomSuffix()
 		ipSnatName = "ip-snat-" + framework.RandomSuffix()
+
+		// multi-snat with same logical_ip but different external_ip
+		multiSnatEip1Name = "multi-snat-eip1-" + framework.RandomSuffix()
+		multiSnatEip2Name = "multi-snat-eip2-" + framework.RandomSuffix()
+		multiSnat1Name = "multi-snat1-" + framework.RandomSuffix()
+		multiSnat2Name = "multi-snat2-" + framework.RandomSuffix()
+
+		// multi-fip and multi-dnat with different external_ip
+		multiFipEip1Name = "multi-fip-eip1-" + framework.RandomSuffix()
+		multiFipEip2Name = "multi-fip-eip2-" + framework.RandomSuffix()
+		multiFipVip1Name = "multi-fip-vip1-" + framework.RandomSuffix()
+		multiFipVip2Name = "multi-fip-vip2-" + framework.RandomSuffix()
+		multiFip1Name = "multi-fip1-" + framework.RandomSuffix()
+		multiFip2Name = "multi-fip2-" + framework.RandomSuffix()
+		multiDnatEip1Name = "multi-dnat-eip1-" + framework.RandomSuffix()
+		multiDnatEip2Name = "multi-dnat-eip2-" + framework.RandomSuffix()
+		multiDnat1Name = "multi-dnat1-" + framework.RandomSuffix()
+		multiDnat2Name = "multi-dnat2-" + framework.RandomSuffix()
 
 		if skip {
 			ginkgo.Skip("underlay spec only runs on kind clusters")
@@ -379,6 +408,40 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ovnSnatRuleClient.DeleteSync(lrpEipSnatName)
 		ginkgo.By("Deleting share ovn snat " + lrpExtraEipSnatName)
 		ovnSnatRuleClient.DeleteSync(lrpExtraEipSnatName)
+
+		// clean up multi-snat resources
+		ginkgo.By("Deleting multi ovn snat " + multiSnat2Name)
+		ovnSnatRuleClient.DeleteSync(multiSnat2Name)
+		ginkgo.By("Deleting multi ovn snat " + multiSnat1Name)
+		ovnSnatRuleClient.DeleteSync(multiSnat1Name)
+		ginkgo.By("Deleting multi ovn eip " + multiSnatEip2Name)
+		ovnEipClient.DeleteSync(multiSnatEip2Name)
+		ginkgo.By("Deleting multi ovn eip " + multiSnatEip1Name)
+		ovnEipClient.DeleteSync(multiSnatEip1Name)
+
+		// clean up multi-fip resources
+		ginkgo.By("Deleting multi ovn fip " + multiFip2Name)
+		ovnFipClient.DeleteSync(multiFip2Name)
+		ginkgo.By("Deleting multi ovn fip " + multiFip1Name)
+		ovnFipClient.DeleteSync(multiFip1Name)
+		ginkgo.By("Deleting multi fip vip " + multiFipVip2Name)
+		vipClient.DeleteSync(multiFipVip2Name)
+		ginkgo.By("Deleting multi fip vip " + multiFipVip1Name)
+		vipClient.DeleteSync(multiFipVip1Name)
+		ginkgo.By("Deleting multi fip eip " + multiFipEip2Name)
+		ovnEipClient.DeleteSync(multiFipEip2Name)
+		ginkgo.By("Deleting multi fip eip " + multiFipEip1Name)
+		ovnEipClient.DeleteSync(multiFipEip1Name)
+
+		// clean up multi-dnat resources
+		ginkgo.By("Deleting multi ovn dnat " + multiDnat2Name)
+		ovnDnatRuleClient.DeleteSync(multiDnat2Name)
+		ginkgo.By("Deleting multi ovn dnat " + multiDnat1Name)
+		ovnDnatRuleClient.DeleteSync(multiDnat1Name)
+		ginkgo.By("Deleting multi dnat eip " + multiDnatEip2Name)
+		ovnEipClient.DeleteSync(multiDnatEip2Name)
+		ginkgo.By("Deleting multi dnat eip " + multiDnatEip1Name)
+		ovnEipClient.DeleteSync(multiDnatEip1Name)
 
 		// clean up nats with ip or ip cidr
 		ginkgo.By("Deleting ovn dnat " + ipDnatName)
@@ -852,6 +915,209 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 
 		// nat with ip crd name and share the same external eip tests all passed
+
+		f.SkipVersionPriorTo(1, 17, "Multiple SNAT rules with the same logical_ip but different external_ip are supported since v1.17")
+		ginkgo.By("1.5 Test multiple snat rules with same logical_ip but different external_ip")
+		ginkgo.By("Creating ovn eip " + multiSnatEip1Name + " on primary external subnet")
+		multiSnatEip1 := makeOvnEip(multiSnatEip1Name, underlaySubnetName, "", "", "", "")
+		multiSnatEip1 = ovnEipClient.CreateSync(multiSnatEip1)
+		framework.ExpectNotEmpty(multiSnatEip1.Status.V4Ip)
+
+		ginkgo.By("Creating ovn eip " + multiSnatEip2Name + " on extra external subnet")
+		multiSnatEip2 := makeOvnEip(multiSnatEip2Name, underlayExtraSubnetName, "", "", "", "")
+		multiSnatEip2 = ovnEipClient.CreateSync(multiSnatEip2)
+		framework.ExpectNotEmpty(multiSnatEip2.Status.V4Ip)
+
+		// Both SNAT rules target the same internal subnet CIDR but use different external EIPs
+		multiSnatLogicalIP := noBfdSubnet.Spec.CIDRBlock
+		ginkgo.By("Creating first ovn snat " + multiSnat1Name + " with eip " + multiSnatEip1Name)
+		multiSnat1 := makeOvnSnat(multiSnat1Name, multiSnatEip1Name, noBfdSubnetName, "", noBfdVpcName, multiSnatLogicalIP)
+		ovnSnatRuleClient.CreateSync(multiSnat1)
+		ginkgo.By("Creating second ovn snat " + multiSnat2Name + " with eip " + multiSnatEip2Name)
+		multiSnat2 := makeOvnSnat(multiSnat2Name, multiSnatEip2Name, noBfdSubnetName, "", noBfdVpcName, multiSnatLogicalIP)
+		ovnSnatRuleClient.CreateSync(multiSnat2)
+
+		ginkgo.By("Verifying both snat rules are ready")
+		multiSnat1 = ovnSnatRuleClient.Get(multiSnat1Name)
+		framework.ExpectTrue(multiSnat1.Status.Ready)
+		framework.ExpectEqual(multiSnat1.Status.Vpc, noBfdVpcName)
+		framework.ExpectEqual(multiSnat1.Status.V4Eip, multiSnatEip1.Status.V4Ip)
+		framework.ExpectNotEmpty(multiSnat1.Status.V4IpCidr)
+
+		multiSnat2 = ovnSnatRuleClient.Get(multiSnat2Name)
+		framework.ExpectTrue(multiSnat2.Status.Ready)
+		framework.ExpectEqual(multiSnat2.Status.Vpc, noBfdVpcName)
+		framework.ExpectEqual(multiSnat2.Status.V4Eip, multiSnatEip2.Status.V4Ip)
+		framework.ExpectNotEmpty(multiSnat2.Status.V4IpCidr)
+
+		ginkgo.By("Verifying the two snat rules have different external IPs but same logical IP")
+		framework.ExpectNotEqual(multiSnat1.Status.V4Eip, multiSnat2.Status.V4Eip)
+		framework.ExpectEqual(multiSnat1.Status.V4IpCidr, multiSnat2.Status.V4IpCidr)
+
+		ginkgo.By("Verifying backend OVN NAT rules match CRD resources")
+		nbSnatOutput, nbStderr, nbErr := framework.NBExec("ovn-nbctl lr-nat-list " + noBfdVpcName)
+		framework.ExpectNoError(nbErr, "failed to list nat rules for vpc %s: %s", noBfdVpcName, string(nbStderr))
+		nbSnatList := string(nbSnatOutput)
+		framework.Logf("OVN NAT list for vpc %s:\n%s", noBfdVpcName, nbSnatList)
+		framework.ExpectContainSubstring(nbSnatList, multiSnat1.Status.V4Eip)
+		framework.ExpectContainSubstring(nbSnatList, multiSnat2.Status.V4Eip)
+
+		ginkgo.By("Deleting first snat " + multiSnat1Name + " and verifying second snat is not affected")
+		ovnSnatRuleClient.DeleteSync(multiSnat1Name)
+
+		multiSnat2 = ovnSnatRuleClient.Get(multiSnat2Name)
+		framework.ExpectTrue(multiSnat2.Status.Ready)
+		framework.ExpectEqual(multiSnat2.Status.V4Eip, multiSnatEip2.Status.V4Ip)
+
+		ginkgo.By("Verifying backend OVN: first snat removed, second snat still present")
+		nbSnatOutput, nbStderr, nbErr = framework.NBExec("ovn-nbctl lr-nat-list " + noBfdVpcName)
+		framework.ExpectNoError(nbErr, "failed to list nat rules for vpc %s: %s", noBfdVpcName, string(nbStderr))
+		nbSnatList = string(nbSnatOutput)
+		framework.Logf("OVN NAT list for vpc %s after deleting first snat:\n%s", noBfdVpcName, nbSnatList)
+		framework.ExpectNotContainSubstring(nbSnatList, multiSnat1.Status.V4Eip)
+		framework.ExpectContainSubstring(nbSnatList, multiSnat2.Status.V4Eip)
+
+		ginkgo.By("Deleting second snat " + multiSnat2Name)
+		ovnSnatRuleClient.DeleteSync(multiSnat2Name)
+
+		ginkgo.By("Verifying backend OVN: all multi-snat rules removed")
+		nbSnatOutput, nbStderr, nbErr = framework.NBExec("ovn-nbctl lr-nat-list " + noBfdVpcName)
+		framework.ExpectNoError(nbErr, "failed to list nat rules for vpc %s: %s", noBfdVpcName, string(nbStderr))
+		nbSnatList = string(nbSnatOutput)
+		framework.Logf("OVN NAT list for vpc %s after deleting second snat:\n%s", noBfdVpcName, nbSnatList)
+		framework.ExpectNotContainSubstring(nbSnatList, multiSnat1.Status.V4Eip)
+		framework.ExpectNotContainSubstring(nbSnatList, multiSnat2.Status.V4Eip)
+
+		ginkgo.By("1.6 Test multiple fip rules with different external_ip from different external subnets")
+		ginkgo.By("Creating ovn eip " + multiFipEip1Name + " on primary external subnet")
+		multiFipEip1 := makeOvnEip(multiFipEip1Name, underlaySubnetName, "", "", "", util.OvnEipTypeNAT)
+		multiFipEip1 = ovnEipClient.CreateSync(multiFipEip1)
+		framework.ExpectNotEmpty(multiFipEip1.Status.V4Ip)
+
+		ginkgo.By("Creating ovn eip " + multiFipEip2Name + " on extra external subnet")
+		multiFipEip2 := makeOvnEip(multiFipEip2Name, underlayExtraSubnetName, "", "", "", util.OvnEipTypeNAT)
+		multiFipEip2 = ovnEipClient.CreateSync(multiFipEip2)
+		framework.ExpectNotEmpty(multiFipEip2.Status.V4Ip)
+
+		ginkgo.By("Creating ovn vip " + multiFipVip1Name)
+		multiFipVip1 := makeOvnVip(namespaceName, multiFipVip1Name, noBfdSubnetName, "", "", "")
+		multiFipVip1 = vipClient.CreateSync(multiFipVip1)
+		framework.ExpectNotEmpty(multiFipVip1.Status.V4ip)
+
+		ginkgo.By("Creating ovn vip " + multiFipVip2Name)
+		multiFipVip2 := makeOvnVip(namespaceName, multiFipVip2Name, noBfdSubnetName, "", "", "")
+		multiFipVip2 = vipClient.CreateSync(multiFipVip2)
+		framework.ExpectNotEmpty(multiFipVip2.Status.V4ip)
+
+		ginkgo.By("Creating first ovn fip " + multiFip1Name + " with eip " + multiFipEip1Name)
+		multiFip1 := makeOvnFip(multiFip1Name, multiFipEip1Name, "", "", noBfdVpcName, multiFipVip1.Status.V4ip)
+		multiFip1 = ovnFipClient.CreateSync(multiFip1)
+		framework.ExpectEqual(multiFip1.Status.V4Eip, multiFipEip1.Status.V4Ip)
+		framework.ExpectEqual(multiFip1.Status.V4Ip, multiFipVip1.Status.V4ip)
+
+		ginkgo.By("Creating second ovn fip " + multiFip2Name + " with eip " + multiFipEip2Name)
+		multiFip2 := makeOvnFip(multiFip2Name, multiFipEip2Name, "", "", noBfdVpcName, multiFipVip2.Status.V4ip)
+		multiFip2 = ovnFipClient.CreateSync(multiFip2)
+		framework.ExpectEqual(multiFip2.Status.V4Eip, multiFipEip2.Status.V4Ip)
+		framework.ExpectEqual(multiFip2.Status.V4Ip, multiFipVip2.Status.V4ip)
+
+		ginkgo.By("Verifying the two fip rules have different external IPs")
+		framework.ExpectNotEqual(multiFip1.Status.V4Eip, multiFip2.Status.V4Eip)
+
+		ginkgo.By("Verifying backend OVN NAT rules for fips")
+		nbFipOutput, nbStderr, nbErr := framework.NBExec("ovn-nbctl lr-nat-list " + noBfdVpcName)
+		framework.ExpectNoError(nbErr, "failed to list nat rules for vpc %s: %s", noBfdVpcName, string(nbStderr))
+		nbFipList := string(nbFipOutput)
+		framework.Logf("OVN NAT list for vpc %s with fips:\n%s", noBfdVpcName, nbFipList)
+		framework.ExpectContainSubstring(nbFipList, multiFip1.Status.V4Eip)
+		framework.ExpectContainSubstring(nbFipList, multiFip2.Status.V4Eip)
+
+		ginkgo.By("Deleting first fip " + multiFip1Name + " and verifying second fip is not affected")
+		ovnFipClient.DeleteSync(multiFip1Name)
+
+		multiFip2 = ovnFipClient.Get(multiFip2Name)
+		framework.ExpectTrue(multiFip2.Status.Ready)
+		framework.ExpectEqual(multiFip2.Status.V4Eip, multiFipEip2.Status.V4Ip)
+
+		ginkgo.By("Verifying backend OVN: first fip removed, second fip still present")
+		nbFipOutput, nbStderr, nbErr = framework.NBExec("ovn-nbctl lr-nat-list " + noBfdVpcName)
+		framework.ExpectNoError(nbErr, "failed to list nat rules for vpc %s: %s", noBfdVpcName, string(nbStderr))
+		nbFipList = string(nbFipOutput)
+		framework.Logf("OVN NAT list for vpc %s after deleting first fip:\n%s", noBfdVpcName, nbFipList)
+		framework.ExpectNotContainSubstring(nbFipList, multiFip1.Status.V4Eip)
+		framework.ExpectContainSubstring(nbFipList, multiFip2.Status.V4Eip)
+
+		ginkgo.By("Deleting second fip " + multiFip2Name)
+		ovnFipClient.DeleteSync(multiFip2Name)
+
+		ginkgo.By("1.7 Test multiple dnat rules with different external_ip from different external subnets")
+		ginkgo.By("Creating ovn eip " + multiDnatEip1Name + " on primary external subnet")
+		multiDnatEip1 := makeOvnEip(multiDnatEip1Name, underlaySubnetName, "", "", "", util.OvnEipTypeNAT)
+		multiDnatEip1 = ovnEipClient.CreateSync(multiDnatEip1)
+		framework.ExpectNotEmpty(multiDnatEip1.Status.V4Ip)
+
+		ginkgo.By("Creating ovn eip " + multiDnatEip2Name + " on extra external subnet")
+		multiDnatEip2 := makeOvnEip(multiDnatEip2Name, underlayExtraSubnetName, "", "", "", util.OvnEipTypeNAT)
+		multiDnatEip2 = ovnEipClient.CreateSync(multiDnatEip2)
+		framework.ExpectNotEmpty(multiDnatEip2.Status.V4Ip)
+
+		ginkgo.By("Creating first ovn dnat " + multiDnat1Name + " with eip " + multiDnatEip1Name)
+		multiDnat1 := makeOvnDnat(multiDnat1Name, multiDnatEip1Name, "", "", noBfdVpcName, "10.0.0.1", "80", "8080", "tcp")
+		multiDnat1 = ovnDnatRuleClient.CreateSync(multiDnat1)
+		framework.ExpectEqual(multiDnat1.Status.V4Eip, multiDnatEip1.Status.V4Ip)
+		framework.ExpectEqual(multiDnat1.Status.V4Ip, "10.0.0.1")
+		framework.ExpectEqual(multiDnat1.Status.ExternalPort, "8080")
+		framework.ExpectEqual(multiDnat1.Status.InternalPort, "80")
+		framework.ExpectEqual(multiDnat1.Status.Protocol, "tcp")
+		framework.ExpectEqual(multiDnat1.Status.Vpc, noBfdVpcName)
+
+		ginkgo.By("Creating second ovn dnat " + multiDnat2Name + " with eip " + multiDnatEip2Name)
+		multiDnat2 := makeOvnDnat(multiDnat2Name, multiDnatEip2Name, "", "", noBfdVpcName, "10.0.0.2", "80", "8080", "tcp")
+		multiDnat2 = ovnDnatRuleClient.CreateSync(multiDnat2)
+		framework.ExpectEqual(multiDnat2.Status.V4Eip, multiDnatEip2.Status.V4Ip)
+		framework.ExpectEqual(multiDnat2.Status.V4Ip, "10.0.0.2")
+		framework.ExpectEqual(multiDnat2.Status.ExternalPort, "8080")
+		framework.ExpectEqual(multiDnat2.Status.InternalPort, "80")
+		framework.ExpectEqual(multiDnat2.Status.Protocol, "tcp")
+		framework.ExpectEqual(multiDnat2.Status.Vpc, noBfdVpcName)
+
+		ginkgo.By("Verifying the two dnat rules have different external IPs")
+		framework.ExpectNotEqual(multiDnat1.Status.V4Eip, multiDnat2.Status.V4Eip)
+
+		ginkgo.By("Verifying backend OVN load balancers match CRD resources")
+		nbLbDetail, nbStderr, nbErr := framework.NBExec("ovn-nbctl", "--columns=name,vips", "--format=json", "list", "Load_Balancer")
+		framework.ExpectNoError(nbErr, "failed to list lb details: %s", string(nbStderr))
+		nbLbDetailStr := string(nbLbDetail)
+		framework.Logf("OVN LB details:\n%s", nbLbDetailStr)
+		framework.ExpectContainSubstring(nbLbDetailStr, multiDnat1.Status.V4Eip+":"+multiDnat1.Status.ExternalPort)
+		framework.ExpectContainSubstring(nbLbDetailStr, multiDnat2.Status.V4Eip+":"+multiDnat2.Status.ExternalPort)
+
+		ginkgo.By("Deleting first dnat " + multiDnat1Name + " and verifying second dnat is not affected")
+		ovnDnatRuleClient.DeleteSync(multiDnat1Name)
+
+		multiDnat2 = ovnDnatRuleClient.Get(multiDnat2Name)
+		framework.ExpectTrue(multiDnat2.Status.Ready)
+		framework.ExpectEqual(multiDnat2.Status.V4Eip, multiDnatEip2.Status.V4Ip)
+
+		ginkgo.By("Verifying backend OVN: first dnat vip removed, second dnat vip still present")
+		nbLbDetail, nbStderr, nbErr = framework.NBExec("ovn-nbctl", "--columns=name,vips", "--format=json", "list", "Load_Balancer")
+		framework.ExpectNoError(nbErr, "failed to list lb details: %s", string(nbStderr))
+		nbLbDetailStr = string(nbLbDetail)
+		framework.Logf("OVN LB details after deleting first dnat:\n%s", nbLbDetailStr)
+		framework.ExpectNotContainSubstring(nbLbDetailStr, multiDnat1.Status.V4Eip+":"+multiDnat1.Status.ExternalPort)
+		framework.ExpectContainSubstring(nbLbDetailStr, multiDnat2.Status.V4Eip+":"+multiDnat2.Status.ExternalPort)
+
+		ginkgo.By("Deleting second dnat " + multiDnat2Name)
+		ovnDnatRuleClient.DeleteSync(multiDnat2Name)
+
+		ginkgo.By("Verifying backend OVN: all multi-dnat lbs removed")
+		nbLbDetail, nbStderr, nbErr = framework.NBExec("ovn-nbctl", "--columns=name,vips", "--format=json", "list", "Load_Balancer")
+		framework.ExpectNoError(nbErr, "failed to list lb details: %s", string(nbStderr))
+		nbLbDetailStr = string(nbLbDetail)
+		framework.Logf("OVN LB details after deleting second dnat:\n%s", nbLbDetailStr)
+		framework.ExpectNotContainSubstring(nbLbDetailStr, multiDnat1.Status.V4Eip+":"+multiDnat1.Status.ExternalPort)
+		framework.ExpectNotContainSubstring(nbLbDetailStr, multiDnat2.Status.V4Eip+":"+multiDnat2.Status.ExternalPort)
+
 		ginkgo.By("2. Test custom vpc with bfd route")
 		ginkgo.By("2.1 Test custom vpc dnat, fip, snat in traditional way")
 		ginkgo.By("Create dnat, fip, snat with eip name and ip or ip cidr")

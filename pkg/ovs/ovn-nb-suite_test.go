@@ -897,8 +897,8 @@ func (suite *OvnClientTestSuite) Test_CreateNats() {
 	suite.testCreateNats()
 }
 
-func (suite *OvnClientTestSuite) Test_UpdateSnat() {
-	suite.testUpdateSnat()
+func (suite *OvnClientTestSuite) Test_EnsureSnat() {
+	suite.testEnsureSnat()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateDnatAndSnat() {
