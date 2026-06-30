@@ -109,7 +109,7 @@ func (ipam *IPAM) GetStaticAddressWithFamily(podName, nicName, ip string, mac *s
 	var err error
 	var ipAddr IP
 	var v4, v6, macStr string
-	staticIPs := make([]IP, 0, 2)
+	var staticIPs []IP
 	for ipStr := range strings.SplitSeq(ip, ",") {
 		if ipFamily != "" && util.CheckProtocol(ipStr) != ipFamily {
 			klog.Errorf("static ip %s does not match requested ip family %s", ipStr, ipFamily)

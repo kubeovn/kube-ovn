@@ -365,7 +365,7 @@ func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 			return "", false, fmt.Errorf("invalid dualstack cidr %s", cidr)
 		}
 
-		ipAddrs := make([]string, 0, 2)
+		var ipAddrs []string
 		for ip := range strings.SplitSeq(ip, ",") {
 			var cidrBlock string
 			switch CheckProtocol(ip) {
