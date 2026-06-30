@@ -3028,18 +3028,18 @@ func (mr *MockNATMockRecorder) UpdateDnatAndSnat(lrName, externalIP, logicalIP, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDnatAndSnat", reflect.TypeOf((*MockNAT)(nil).UpdateDnatAndSnat), lrName, externalIP, logicalIP, lspName, externalMac, gatewayType)
 }
 
-// UpdateSnat mocks base method.
-func (m *MockNAT) UpdateSnat(lrName, externalIP, logicalIP string) error {
+// EnsureSnat mocks base method.
+func (m *MockNAT) EnsureSnat(lrName, externalIP, logicalIP string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateSnat", lrName, externalIP, logicalIP)
+	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdateSnat indicates an expected call of UpdateSnat.
-func (mr *MockNATMockRecorder) UpdateSnat(lrName, externalIP, logicalIP any) *gomock.Call {
+// EnsureSnat indicates an expected call of EnsureSnat.
+func (mr *MockNATMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSnat", reflect.TypeOf((*MockNAT)(nil).UpdateSnat), lrName, externalIP, logicalIP)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNAT)(nil).EnsureSnat), lrName, externalIP, logicalIP)
 }
 
 // MockDHCPOptions is a mock of DHCPOptions interface.
@@ -6041,18 +6041,18 @@ func (mr *MockNbClientMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSgACL", reflect.TypeOf((*MockNbClient)(nil).UpdateSgACL), sg, direction)
 }
 
-// UpdateSnat mocks base method.
-func (m *MockNbClient) UpdateSnat(lrName, externalIP, logicalIP string) error {
+// EnsureSnat mocks base method.
+func (m *MockNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateSnat", lrName, externalIP, logicalIP)
+	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdateSnat indicates an expected call of UpdateSnat.
-func (mr *MockNbClientMockRecorder) UpdateSnat(lrName, externalIP, logicalIP any) *gomock.Call {
+// EnsureSnat indicates an expected call of EnsureSnat.
+func (mr *MockNbClientMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSnat", reflect.TypeOf((*MockNbClient)(nil).UpdateSnat), lrName, externalIP, logicalIP)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNbClient)(nil).EnsureSnat), lrName, externalIP, logicalIP)
 }
 
 // MockSbClient is a mock of SbClient interface.
