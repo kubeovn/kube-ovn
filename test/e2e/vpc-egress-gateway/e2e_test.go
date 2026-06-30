@@ -274,10 +274,13 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		_ = subnetClient.CreateSync(externalSubnet)
 
 		vpcName := util.DefaultVpc
+		vpc := vpcClient.Get(vpcName)
+		ginkgo.By("Validating local traffic policy without BFD")
+		vegTest(f, false, provider, nadName, vpcName, vpc.Status.DefaultLogicalSwitch, externalSubnetName, replicas, nil)
+
 		cidr := framework.RandomCIDR(f.ClusterIPFamily)
 		bfdIP := framework.RandomIPs(cidr, ";", 1)
 		ginkgo.By("Enabling BFD Port with IP " + bfdIP + " for VPC " + vpcName)
-		vpc := vpcClient.Get(vpcName)
 		patchedVpc := vpc.DeepCopy()
 		patchedVpc.Spec.BFDPort = &apiv1.BFDPort{
 			Enabled: true,
@@ -744,12 +747,15 @@ func countUUIDs(output string) int {
 	return len(uuidRegexp.FindAllString(output, -1))
 }
 
-func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image, svrPort string, svrIPs, extIPs []string, intIPs map[string][]string, subnetName, nodeName string, snat bool) {
+func checkEgressAccess(f *framework.Framework, namespaceName, svrPodName, image, svrPort string, svrIPs, extIPs []string, intIPs map[string][]string, subnetName, nodeName, snatLabelValue string, snat bool) {
 	ginkgo.GinkgoHelper()
 
 	podName := "pod-" + framework.RandomSuffix()
 	ginkgo.By("Creating client pod " + podName + " within subnet " + subnetName)
 	labels := map[string]string{"snat": strconv.FormatBool(snat)}
+	if snat {
+		labels["snat"] = snatLabelValue
+	}
 	annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
 	pod := framework.MakePrivilegedPod(namespaceName, podName, labels, annotations, image, []string{"sleep", "infinity"}, nil)
 	pod.Spec.NodeName = nodeName
@@ -853,6 +859,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	}
 
 	vegName := "veg-" + framework.RandomSuffix()
+	snatLabelValue := vegName
 	veg := framework.MakeVpcEgressGateway(namespaceName, vegName, vpcName, replicas, internalSubnetName, externalSubnetName)
 	if rand.Int32N(2) == 0 {
 		veg.Spec.Prefix = fmt.Sprintf("e2e-%s-", framework.RandomSuffix())
@@ -887,7 +894,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 			},
 			PodSelector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					"snat": strconv.FormatBool(true),
+					"snat": snatLabelValue,
 				},
 			},
 		}}
@@ -978,6 +985,6 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	if veg.Spec.TrafficPolicy == apiv1.TrafficPolicyLocal {
 		nodeName = veg.Status.Workload.Nodes[0]
 	}
-	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, nodeName, true)
-	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, forwardSubnetName, nodeName, false)
+	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, nodeName, snatLabelValue, true)
+	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, forwardSubnetName, nodeName, snatLabelValue, false)
 }
