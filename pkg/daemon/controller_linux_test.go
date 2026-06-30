@@ -2,8 +2,6 @@ package daemon
 
 import (
 	"net"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,106 +15,6 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
-
-func TestIsLegacyIptablesMode(t *testing.T) {
-	tests := []struct {
-		name       string
-		setup      func(t *testing.T, dir string)
-		wantLegacy bool
-		wantErr    bool
-	}{
-		{
-			name: "missing legacy binary uses nft mode",
-			setup: func(t *testing.T, dir string) {
-				t.Helper()
-				writeExecutable(t, filepath.Join(dir, "iptables"))
-			},
-		},
-		{
-			name: "iptables and legacy resolve to same binary",
-			setup: func(t *testing.T, dir string) {
-				t.Helper()
-				target := filepath.Join(dir, "xtables-legacy-multi")
-				writeExecutable(t, target)
-				require.NoError(t, os.Symlink(target, filepath.Join(dir, "iptables")))
-				require.NoError(t, os.Symlink(target, filepath.Join(dir, "iptables-legacy")))
-			},
-			wantLegacy: true,
-		},
-		{
-			name: "iptables and legacy resolve to different binaries",
-			setup: func(t *testing.T, dir string) {
-				t.Helper()
-				iptables := filepath.Join(dir, "xtables-nft-multi")
-				legacy := filepath.Join(dir, "xtables-legacy-multi")
-				writeExecutable(t, iptables)
-				writeExecutable(t, legacy)
-				require.NoError(t, os.Symlink(iptables, filepath.Join(dir, "iptables")))
-				require.NoError(t, os.Symlink(legacy, filepath.Join(dir, "iptables-legacy")))
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			tt.setup(t, dir)
-			t.Setenv("PATH", dir)
-
-			got, err := isLegacyIptablesMode()
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, tt.wantLegacy, got)
-		})
-	}
-}
-
-func TestIsLegacyIptablesAvailable(t *testing.T) {
-	tests := []struct {
-		name      string
-		setup     func(t *testing.T, dir string)
-		want      bool
-		wantError bool
-	}{
-		{
-			name: "missing legacy binary",
-		},
-		{
-			name: "legacy binary exists",
-			setup: func(t *testing.T, dir string) {
-				t.Helper()
-				writeExecutable(t, filepath.Join(dir, "iptables-legacy"))
-			},
-			want: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			if tt.setup != nil {
-				tt.setup(t, dir)
-			}
-			t.Setenv("PATH", dir)
-
-			got, err := isLegacyIptablesAvailable()
-			if tt.wantError {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, tt.want, got)
-		})
-	}
-}
-
-func writeExecutable(t *testing.T, path string) {
-	t.Helper()
-	require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755))
-}
 
 func newPodForPolicyRouting(name, namespace, subnetName, podIP string, podIPs []v1.PodIP) *v1.Pod {
 	return &v1.Pod{

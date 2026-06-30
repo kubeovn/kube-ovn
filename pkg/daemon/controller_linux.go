@@ -86,22 +86,9 @@ func isLegacyIptablesMode() (bool, error) {
 	}
 	pathLegacy, err := evalCommandSymlinks("iptables-legacy")
 	if err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			return false, nil
-		}
 		return false, err
 	}
 	return path == pathLegacy, nil
-}
-
-func isLegacyIptablesAvailable() (bool, error) {
-	if _, err := exec.LookPath("iptables-legacy"); err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			return false, nil
-		}
-		return false, fmt.Errorf("failed to search for command %q: %w", "iptables-legacy", err)
-	}
-	return true, nil
 }
 
 func (c *Controller) initRuntime() error {
@@ -111,15 +98,8 @@ func (c *Controller) initRuntime() error {
 		return err
 	}
 	if !ok {
-		legacyAvailable, err := isLegacyIptablesAvailable()
-		if err != nil {
-			klog.Errorf("failed to check iptables-legacy availability: %v", err)
-			return err
-		}
-		if legacyAvailable {
-			// iptables works in nft mode, we should migrate iptables rules
-			c.iptablesObsolete = make(map[string]*iptables.IPTables, 2)
-		}
+		// iptables works in nft mode, we should migrate iptables rules
+		c.iptablesObsolete = make(map[string]*iptables.IPTables, 2)
 	}
 
 	c.iptables = make(map[string]*iptables.IPTables)

@@ -18,32 +18,22 @@ echo "tag and push image"
 VERSION=$(cat VERSION)
 set +e
 docker manifest rm kubeovn/kube-ovn:${VERSION}
-docker manifest rm kubeovn/kube-ovn:${VERSION}-almalinux10
-docker manifest rm kubeovn/kube-ovn:${VERSION}-debug-almalinux10
 docker manifest rm kubeovn/kube-ovn:${VERSION}-debug
 docker manifest rm kubeovn/vpc-nat-gateway:${VERSION}
 set -e
 
 docker pull kubeovn/kube-ovn:${VERSION}-x86
 docker pull kubeovn/kube-ovn:${VERSION}-arm
-docker pull kubeovn/kube-ovn:${VERSION}-almalinux10-amd64
-docker pull kubeovn/kube-ovn:${VERSION}-almalinux10-arm64
-docker pull kubeovn/kube-ovn:${VERSION}-debug-almalinux10-amd64
-docker pull kubeovn/kube-ovn:${VERSION}-debug-almalinux10-arm64
 docker pull kubeovn/vpc-nat-gateway:${VERSION}-x86
 docker pull kubeovn/vpc-nat-gateway:${VERSION}-arm
 docker pull kubeovn/kube-ovn:${VERSION}-debug-x86
 docker pull kubeovn/kube-ovn:${VERSION}-debug-arm
 
 docker manifest create kubeovn/kube-ovn:${VERSION} kubeovn/kube-ovn:${VERSION}-x86 kubeovn/kube-ovn:${VERSION}-arm
-docker manifest create kubeovn/kube-ovn:${VERSION}-almalinux10 kubeovn/kube-ovn:${VERSION}-almalinux10-amd64 kubeovn/kube-ovn:${VERSION}-almalinux10-arm64
-docker manifest create kubeovn/kube-ovn:${VERSION}-debug-almalinux10 kubeovn/kube-ovn:${VERSION}-debug-almalinux10-amd64 kubeovn/kube-ovn:${VERSION}-debug-almalinux10-arm64
 docker manifest create kubeovn/vpc-nat-gateway:${VERSION} kubeovn/vpc-nat-gateway:${VERSION}-x86 kubeovn/vpc-nat-gateway:${VERSION}-arm
 docker manifest create kubeovn/kube-ovn:${VERSION}-debug kubeovn/kube-ovn:${VERSION}-debug-x86 kubeovn/kube-ovn:${VERSION}-debug-arm
 
 docker manifest push kubeovn/kube-ovn:${VERSION}
-docker manifest push kubeovn/kube-ovn:${VERSION}-almalinux10
-docker manifest push kubeovn/kube-ovn:${VERSION}-debug-almalinux10
 docker manifest push kubeovn/vpc-nat-gateway:${VERSION}
 docker manifest push kubeovn/kube-ovn:${VERSION}-debug
 
@@ -52,7 +42,6 @@ echo "create and push base images for the next version ${NEXT_VERSION}"
 set +e
 docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}
 docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}-debug
-docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}-debug-almalinux10
 set -e
 docker pull kubeovn/kube-ovn-base:${VERSION}-amd64
 docker pull kubeovn/kube-ovn-base:${VERSION}-arm64
@@ -60,16 +49,12 @@ docker pull kubeovn/kube-ovn-base:${VERSION}-amd64-legacy
 docker pull kubeovn/kube-ovn-base:${VERSION}-dpdk
 docker pull kubeovn/kube-ovn-base:${VERSION}-debug-amd64
 docker pull kubeovn/kube-ovn-base:${VERSION}-debug-arm64
-docker pull kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-amd64
-docker pull kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-arm64
 docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION} kubeovn/kube-ovn-base:${VERSION}-amd64 kubeovn/kube-ovn-base:${VERSION}-arm64
 docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION}-debug kubeovn/kube-ovn-base:${VERSION}-debug-amd64 kubeovn/kube-ovn-base:${VERSION}-debug-arm64
-docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION}-debug-almalinux10 kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-amd64 kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-arm64
 docker tag kubeovn/kube-ovn-base:${VERSION}-amd64-legacy kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy
 docker tag kubeovn/kube-ovn-base:${VERSION}-dpdk kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
 docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}
 docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}-debug
-docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}-debug-almalinux10
 docker push kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy
 docker push kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
 
@@ -119,16 +104,12 @@ if [ "$current_branch" != "master" ]; then
     kubeovn/vpc-nat-gateway:${VERSION}-arm \
     kubeovn/kube-ovn:${VERSION}-debug-x86 \
     kubeovn/kube-ovn:${VERSION}-debug-arm \
-    kubeovn/kube-ovn:${VERSION}-debug-almalinux10-amd64 \
-    kubeovn/kube-ovn:${VERSION}-debug-almalinux10-arm64 \
     kubeovn/kube-ovn-base:${VERSION}-amd64 \
     kubeovn/kube-ovn-base:${VERSION}-arm64 \
     kubeovn/kube-ovn-base:${VERSION}-amd64-legacy \
     kubeovn/kube-ovn-base:${VERSION}-dpdk \
     kubeovn/kube-ovn-base:${VERSION}-debug-amd64 \
     kubeovn/kube-ovn-base:${VERSION}-debug-arm64 \
-    kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-amd64 \
-    kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-arm64 \
     kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy \
     kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
 
@@ -150,16 +131,13 @@ else
   set +e
   docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}
   docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}-debug
-  docker manifest rm kubeovn/kube-ovn-base:${NEXT_VERSION}-debug-almalinux10
   set -e
   docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION} kubeovn/kube-ovn-base:${VERSION}-amd64 kubeovn/kube-ovn-base:${VERSION}-arm64
   docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION}-debug kubeovn/kube-ovn-base:${VERSION}-debug-amd64 kubeovn/kube-ovn-base:${VERSION}-debug-arm64
-  docker manifest create kubeovn/kube-ovn-base:${NEXT_VERSION}-debug-almalinux10 kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-amd64 kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-arm64
   docker tag kubeovn/kube-ovn-base:${VERSION}-amd64-legacy kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy
   docker tag kubeovn/kube-ovn-base:${VERSION}-dpdk kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
   docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}
   docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}-debug
-  docker manifest push kubeovn/kube-ovn-base:${NEXT_VERSION}-debug-almalinux10
   docker push kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy
   docker push kubeovn/kube-ovn-base:${NEXT_VERSION}-dpdk
 
@@ -202,16 +180,12 @@ else
     kubeovn/vpc-nat-gateway:${VERSION}-arm \
     kubeovn/kube-ovn:${VERSION}-debug-x86 \
     kubeovn/kube-ovn:${VERSION}-debug-arm \
-    kubeovn/kube-ovn:${VERSION}-debug-almalinux10-amd64 \
-    kubeovn/kube-ovn:${VERSION}-debug-almalinux10-arm64 \
     kubeovn/kube-ovn-base:${VERSION}-amd64 \
     kubeovn/kube-ovn-base:${VERSION}-arm64 \
     kubeovn/kube-ovn-base:${VERSION}-amd64-legacy \
     kubeovn/kube-ovn-base:${VERSION}-dpdk \
     kubeovn/kube-ovn-base:${VERSION}-debug-amd64 \
     kubeovn/kube-ovn-base:${VERSION}-debug-arm64 \
-    kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-amd64 \
-    kubeovn/kube-ovn-base:${VERSION}-debug-almalinux10-arm64 \
     kubeovn/kube-ovn-base:${PATCH_NEXT_VERSION}-amd64-legacy \
     kubeovn/kube-ovn-base:${PATCH_NEXT_VERSION}-dpdk \
     kubeovn/kube-ovn-base:${NEXT_VERSION}-amd64-legacy \
