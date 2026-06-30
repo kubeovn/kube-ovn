@@ -26,7 +26,7 @@ func bfdSessionStateString(state api.BfdSessionState) string {
 // logBFDStatus logs the BFD status for all peers.
 // Guarded by klog verbosity to avoid unnecessary gRPC calls when logging is off.
 func (c *Controller) logBFDStatus() {
-	if !c.config.EnableBFD {
+	if c.config.EnableBFD == nil || !*c.config.EnableBFD {
 		return
 	}
 

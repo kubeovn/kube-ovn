@@ -19,14 +19,14 @@ import (
 // reconcileRoutes configures the BGP speaker to announce only the routes we are expected to announce
 // and to withdraw the ones that should not be announced anymore
 func (c *Controller) reconcileRoutes(expectedPrefixes prefixMap) error {
-	if c.config.ExtendedNexthop || len(c.config.NeighborAddresses) != 0 {
+	if (c.config.ExtendedNexthop != nil && *c.config.ExtendedNexthop) || len(c.config.NeighborAddresses) != 0 {
 		err := c.reconcileIPFamily(api.Family_AFI_IP, expectedPrefixes)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile IPv4 routes: %w", err)
 		}
 	}
 
-	if c.config.ExtendedNexthop || len(c.config.NeighborIPv6Addresses) != 0 {
+	if (c.config.ExtendedNexthop != nil && *c.config.ExtendedNexthop) || len(c.config.NeighborIPv6Addresses) != 0 {
 		err := c.reconcileIPFamily(api.Family_AFI_IP6, expectedPrefixes)
 		if err != nil {
 			return fmt.Errorf("failed to reconcile IPv6 routes: %w", err)
@@ -53,7 +53,7 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 			klog.V(5).Infof("announcing route with prefix %s and nexthop: %s", prefix, nextHop)
 
 			route, _ := netlink.RouteGet(nextHop)
-			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.Equal(c.config.RouterID) {
+			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.Equal(c.config.RouterID.IP) {
 				existingPrefixes.Insert(prefix.String())
 				return
 			}
@@ -138,7 +138,7 @@ func (c *Controller) getPathRequest(route string) ([][]*apiutil.Path, error) {
 	// Should this route be advertised to IPv4 or IPv6 peers
 	// If extended-nexthop is enabled, we advertise IPv4 NLRIs to IPv6 peers and IPv6 NLRIs to IPv4 peers
 	neighborAddresses := c.config.NeighborAddresses
-	if c.config.ExtendedNexthop {
+	if c.config.ExtendedNexthop != nil && *c.config.ExtendedNexthop {
 		neighborAddresses = append(neighborAddresses, c.config.NeighborIPv6Addresses...)
 	} else if util.CheckProtocol(route) == kubeovnv1.ProtocolIPv6 {
 		neighborAddresses = c.config.NeighborIPv6Addresses
@@ -173,7 +173,7 @@ func (c *Controller) getPathRequest(route string) ([][]*apiutil.Path, error) {
 			}, {
 				Attr: &api.Attribute_NextHop{
 					NextHop: &api.NextHopAttribute{
-						NextHop: c.getNextHopAttribute(addr).String(),
+						NextHop: c.getNextHopAttribute(addr.IP).String(),
 					},
 				},
 			}},
@@ -206,7 +206,7 @@ func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
 		return localAddr
 	}
 
-	nextHop := c.config.RouterID // If no route is found, fallback to router ID
+	nextHop := c.config.RouterID.IP // If no route is found, fallback to router ID
 
 	// Retrieve the route we use to speak to this neighbor and consider the source as next hop.
 	routes, err := netlink.RouteGet(neighborAddress)
@@ -217,7 +217,7 @@ func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
 	proto := util.CheckProtocol(nextHop.String()) // Is next hop IPv4 or IPv6
 
 	// Preserve the historical fallback for non-whitelist mode.
-	nodeIP := c.config.NodeIPs[proto]
+	nodeIP := c.config.NodeIPs[proto].IP
 	if nodeIP != nil && nextHop.Equal(c.config.PodIPs[proto]) {
 		nextHop = nodeIP
 	}

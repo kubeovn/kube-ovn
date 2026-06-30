@@ -120,7 +120,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 }
 
 func (c *Controller) Reconcile() {
-	if c.config.NatGwMode {
+	if c.config.NatGwMode != nil && *c.config.NatGwMode {
 		err := c.syncEIPRoutes()
 		if err != nil {
 			klog.Errorf("failed to reconcile EIPs: %s", err.Error())
@@ -130,7 +130,7 @@ func (c *Controller) Reconcile() {
 	}
 
 	// Log BFD status if enabled
-	if c.config.EnableBFD {
+	if c.config.EnableBFD != nil && *c.config.EnableBFD {
 		c.logBFDStatus()
 	}
 }

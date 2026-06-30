@@ -28,7 +28,7 @@ func CmdMain() {
 	}
 
 	// Do not try to redirect the logs on the node if we're running in a NAT gateway
-	if !config.NatGwMode {
+	if config.NatGwMode == nil || !*config.NatGwMode {
 		perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
 		if err != nil {
 			util.LogFatalAndExit(err, "failed to parse log-perm")
@@ -39,7 +39,7 @@ func CmdMain() {
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
 	go func() {
-		if config.EnableMetrics {
+		if config.EnableMetrics != nil && *config.EnableMetrics {
 			metrics.InitKlogMetrics()
 			if err = metrics.Run(ctx, nil, util.JoinHostPort("0.0.0.0", config.PprofPort), false, false, "", "", nil); err != nil {
 				util.LogFatalAndExit(err, "failed to run metrics server")
