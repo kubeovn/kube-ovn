@@ -916,6 +916,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		// nat with ip crd name and share the same external eip tests all passed
 
+		f.SkipVersionPriorTo(1, 17, "Multiple SNAT rules with the same logical_ip but different external_ip are supported since v1.17")
 		ginkgo.By("1.5 Test multiple snat rules with same logical_ip but different external_ip")
 		ginkgo.By("Creating ovn eip " + multiSnatEip1Name + " on primary external subnet")
 		multiSnatEip1 := makeOvnEip(multiSnatEip1Name, underlaySubnetName, "", "", "", "")
