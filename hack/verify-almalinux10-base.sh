@@ -145,7 +145,7 @@ require_pattern .github/workflows/build-x86-image.yaml 'kubeovn/kube-ovn-base:\$
 require_pattern .github/workflows/build-x86-image.yaml 'needs\.build-kube-ovn-almalinux10-base\.outputs\.build-almalinux10-base'
 require_pattern .github/workflows/build-x86-image.yaml 'make build-kube-ovn-almalinux10'
 require_pattern .github/workflows/build-x86-image.yaml 'make image-kube-ovn-almalinux10'
-require_pattern .github/workflows/build-x86-image.yaml 'KUBE_OVN_IMAGE_TAG_SUFFIX: -almalinux10'
+reject_pattern .github/workflows/build-x86-image.yaml '^  KUBE_OVN_IMAGE_TAG_SUFFIX: -almalinux10$'
 require_pattern .github/workflows/build-x86-image.yaml 'image-ref: docker\.io/kubeovn/kube-ovn-base:\$\{\{ env\.TAG \}\}-almalinux10'
 require_pattern .github/workflows/build-x86-image.yaml 'tag_suffix: "-almalinux10"'
 require_pattern .github/workflows/build-x86-image.yaml 'tag_suffix: "-debug-almalinux10"'
