@@ -16,6 +16,7 @@ LEGACY_TAG = $(shell cat VERSION)-amd64-legacy
 VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
 KUBE_OVN_IMAGE_TAG_SUFFIX = $(shell echo $${KUBE_OVN_IMAGE_TAG_SUFFIX:-})
 KUBE_OVN_VERSION = $(shell echo $${KUBE_OVN_VERSION:-$(VERSION)$(KUBE_OVN_IMAGE_TAG_SUFFIX)})
+export VPC_NAT_VERSION = $(shell echo $${VPC_NAT_VERSION:-$(VERSION)})
 
 GINKGO = go tool github.com/onsi/ginkgo/v2/ginkgo
 

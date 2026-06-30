@@ -2,7 +2,7 @@
 
 UNTAINT_CONTROL_PLANE ?= true
 
-VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
+VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG)
 
 # Cilium configuration variables (fallback if not defined in main Makefile)
 CILIUM_VERSION ?= v1.18.5

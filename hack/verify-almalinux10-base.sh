@@ -113,6 +113,10 @@ reject_pattern makefiles/build.mk 'almalinux10.*(LEGACY|dpdk)|((LEGACY|dpdk).*al
 
 require_pattern Makefile '^KUBE_OVN_IMAGE_TAG_SUFFIX = \$\(shell echo \$\$\{KUBE_OVN_IMAGE_TAG_SUFFIX:-\}\)$'
 require_pattern Makefile '^KUBE_OVN_VERSION = \$\(shell echo \$\$\{KUBE_OVN_VERSION:-\$\(VERSION\)\$\(KUBE_OVN_IMAGE_TAG_SUFFIX\)\}\)$'
+require_pattern Makefile '^export VPC_NAT_VERSION = \$\(shell echo \$\$\{VPC_NAT_VERSION:-\$\(VERSION\)\}\)$'
+require_pattern dist/images/install.sh '^VPC_NAT_VERSION="\$\{VPC_NAT_VERSION:-\$VERSION\}"$'
+require_pattern dist/images/install.sh 'image: \$REGISTRY/\$VPC_NAT_IMAGE:\$VPC_NAT_VERSION'
+require_pattern makefiles/kind.mk 'VPC_NAT_GW_IMG = \$\(REGISTRY\)/vpc-nat-gateway:\$\(RELEASE_TAG\)'
 require_pattern makefiles/kind.mk 'kube-ovn:\$\(KUBE_OVN_VERSION\)'
 require_pattern makefiles/kind.mk 'VERSION=\$\(KUBE_OVN_VERSION\)'
 require_pattern makefiles/kind.mk 'KUBE_OVN_VERSION=\$\(DEBUG_TAG\)\$\(KUBE_OVN_IMAGE_TAG_SUFFIX\)'

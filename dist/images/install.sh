@@ -98,6 +98,7 @@ CNI_CONF_DIR="/etc/cni/net.d"
 CNI_BIN_DIR="/opt/cni/bin"
 
 VPC_NAT_IMAGE="vpc-nat-gateway"
+VPC_NAT_VERSION="${VPC_NAT_VERSION:-$VERSION}"
 IMAGE_PULL_POLICY="IfNotPresent"
 POD_CIDR="10.16.0.0/16"                     # Do NOT overlap with NODE/SVC/JOIN CIDR
 POD_GATEWAY="10.16.0.1"
@@ -8188,7 +8189,7 @@ metadata:
     kubernetes.io/description: |
       kube-ovn vpc-nat common config
 data:
-  image: $REGISTRY/$VPC_NAT_IMAGE:$VERSION
+  image: $REGISTRY/$VPC_NAT_IMAGE:$VPC_NAT_VERSION
 ---
 kind: ConfigMap
 apiVersion: v1
