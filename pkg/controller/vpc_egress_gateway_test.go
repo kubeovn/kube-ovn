@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -20,6 +21,11 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	require.Equal(t, "50Mi", container.Resources.Limits.Memory().String())
 	ephemeralStorage := container.Resources.Limits[corev1.ResourceEphemeralStorage]
 	require.Equal(t, "1Gi", ephemeralStorage.String())
+}
+
+func TestLocalGatewayPolicyBFDSessionsSkipsEmptySession(t *testing.T) {
+	require.Empty(t, localGatewayPolicyBFDSessions(map[string]string{"10.244.10.4": ""}, "10.244.10.4"))
+	require.Equal(t, set.New("bfd-1"), localGatewayPolicyBFDSessions(map[string]string{"10.244.10.4": "bfd-1"}, "10.244.10.4"))
 }
 
 func newVegWorkloadPod(name, node, podIP, attachment string) *corev1.Pod {
