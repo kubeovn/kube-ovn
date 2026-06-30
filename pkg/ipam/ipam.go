@@ -111,14 +111,14 @@ func (ipam *IPAM) GetStaticAddressWithFamily(podName, nicName, ip string, mac *s
 	var v4, v6, macStr string
 	var staticIPs []IP
 	for ipStr := range strings.SplitSeq(ip, ",") {
-		if ipFamily != "" && util.CheckProtocol(ipStr) != ipFamily {
-			klog.Errorf("static ip %s does not match requested ip family %s", ipStr, ipFamily)
-			return "", "", "", ErrInvalidIPFamily
-		}
 		ip, err := NewIP(ipStr)
 		if err != nil {
 			klog.Errorf("failed to parse ip %s", ipStr)
 			return "", "", "", err
+		}
+		if ipFamily != "" && util.CheckProtocol(ip.String()) != ipFamily {
+			klog.Errorf("static ip %s does not match requested ip family %s", ipStr, ipFamily)
+			return "", "", "", ErrInvalidIPFamily
 		}
 		staticIPs = append(staticIPs, ip)
 	}

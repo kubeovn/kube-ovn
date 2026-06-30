@@ -1114,6 +1114,14 @@ func TestGetIPAddrWithMaskForCNI(t *testing.T) {
 			wantNoIP:  false,
 			wantError: false,
 		},
+		{
+			name:      "Dual-stack CIDR without mask returns error",
+			ip:        "192.168.1.1",
+			cidr:      "192.168.1.0,2001:db8::/32",
+			wantAddr:  "",
+			wantNoIP:  false,
+			wantError: true,
+		},
 	}
 
 	for _, tt := range tests {

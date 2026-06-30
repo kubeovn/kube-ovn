@@ -326,6 +326,11 @@ func TestGetStaticAddressWithFamily(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, subnet.V6Using.Contains(ip))
 
+	_, _, _, err = ipam.GetStaticAddressWithFamily("pod3.default", "pod3.default", "not-an-ip", nil, subnetName, kubeovnv1.ProtocolIPv4, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `invalid IP address "not-an-ip"`)
+	require.NotErrorIs(t, err, ErrInvalidIPFamily)
+
 	v4, v6, macStr, err = ipam.GetStaticAddressWithFamily("pod4.default", "pod4.default", "10.0.0.11", nil, subnetName, "", true)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.11", v4)

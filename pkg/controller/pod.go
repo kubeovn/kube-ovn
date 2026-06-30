@@ -2254,7 +2254,7 @@ func validateRequestedIPFamilyForSubnet(ipFamily string, subnet *kubeovnv1.Subne
 		return nil
 	}
 	if ipFamily != subnet.Spec.Protocol {
-		return fmt.Errorf("%s %s does not match subnet %s protocol %s", util.IPFamilyAnnotation, ipFamily, subnet.Name, subnet.Spec.Protocol)
+		return fmt.Errorf("requested ip family %s does not match subnet %s protocol %s", ipFamily, subnet.Name, subnet.Spec.Protocol)
 	}
 	return nil
 }

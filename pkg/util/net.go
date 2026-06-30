@@ -376,7 +376,11 @@ func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 			default:
 				return "", false, fmt.Errorf("invalid ip %s", ip)
 			}
-			ipAddrs = append(ipAddrs, fmt.Sprintf("%s/%s", ip, strings.Split(cidrBlock, "/")[1]))
+			_, mask, ok := strings.Cut(cidrBlock, "/")
+			if !ok || mask == "" {
+				return "", false, fmt.Errorf("invalid cidr %s", cidrBlock)
+			}
+			ipAddrs = append(ipAddrs, fmt.Sprintf("%s/%s", ip, mask))
 		}
 		return strings.Join(ipAddrs, ","), false, nil
 	}
