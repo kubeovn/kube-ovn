@@ -4,6 +4,7 @@ import (
 	"context"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/osrg/gobgp/v4/api"
 	"github.com/prometheus/client_golang/prometheus"
@@ -171,26 +172,17 @@ func registerSpeakerMetrics() {
 	})
 }
 
-// resetBGPPeerMetrics clears all per-peer BGP series so that peers which no
-// longer exist do not leave stale time series behind. Called before each
-// collection cycle, then the vectors are repopulated with the current peers.
-func resetBGPPeerMetrics() {
-	metricBGPPeerUp.Reset()
-	metricBGPPeerState.Reset()
-	metricBGPPeerFlapCount.Reset()
-	metricBGPPeerOutQueue.Reset()
-	metricBGPPeerReceivedMessages.Reset()
-	metricBGPPeerSentMessages.Reset()
-}
+// metricsCollectTimeout bounds each GoBGP gRPC query issued during metrics
+// collection. The reconcile loop runs serially, so an unbounded gRPC call to a
+// hung GoBGP server would block the whole loop (including route sync), not just
+// metrics; the timeout isolates that failure to the metrics path.
+const metricsCollectTimeout = 3 * time.Second
 
-// resetBFDPeerMetrics clears all per-peer BFD series to avoid stale time series.
-func resetBFDPeerMetrics() {
-	metricBFDPeerUp.Reset()
-	metricBFDPeerState.Reset()
-	metricBFDPeerRemoteState.Reset()
-	metricBFDPeerFailureTransitions.Reset()
-	metricBFDPeerTransmittedPackets.Reset()
-	metricBFDPeerReceivedPackets.Reset()
+// bgpMessageTypes enumerates the "type" label values produced by
+// bgpMessageCounts. It is used to delete stale per-peer message series.
+var bgpMessageTypes = []string{
+	"open", "update", "keepalive", "notification", "refresh",
+	"withdraw_update", "withdraw_prefix", "discarded", "total",
 }
 
 // bgpPeerUpValue returns 1 when the BGP session is established, otherwise 0.
@@ -239,12 +231,17 @@ func (c *Controller) collectMetrics() {
 }
 
 // collectBGPMetrics lists all BGP peers and exports their session state and
-// message counters as Prometheus metrics.
+// message counters as Prometheus metrics. Series belonging to peers that have
+// disappeared since the previous cycle are deleted individually so that a
+// concurrent scrape never observes an empty/partial set of series.
 func (c *Controller) collectBGPMetrics() {
 	node := c.config.NodeName
 
-	resetBGPPeerMetrics()
-	if err := c.config.BgpServer.ListPeer(context.Background(), &api.ListPeerRequest{}, func(peer *api.Peer) {
+	currentPeers := make(map[string]string)
+	ctx, cancel := context.WithTimeout(context.Background(), metricsCollectTimeout)
+	defer cancel()
+
+	if err := c.config.BgpServer.ListPeer(ctx, &api.ListPeerRequest{}, func(peer *api.Peer) {
 		if peer == nil || peer.Conf == nil || peer.State == nil {
 			return
 		}
@@ -252,6 +249,7 @@ func (c *Controller) collectBGPMetrics() {
 		addr := peer.Conf.NeighborAddress
 		asn := strconv.FormatUint(uint64(peer.Conf.PeerAsn), 10)
 		state := peer.State.SessionState
+		currentPeers[addr] = asn
 
 		metricBGPPeerUp.WithLabelValues(node, addr, asn).Set(bgpPeerUpValue(state))
 		metricBGPPeerState.WithLabelValues(node, addr, asn).Set(float64(state))
@@ -267,12 +265,34 @@ func (c *Controller) collectBGPMetrics() {
 			}
 		}
 	}); err != nil {
+		// Keep the previous series on error so a transient gRPC failure does not
+		// blank out the metrics; stale peers are reconciled on the next success.
 		klog.Errorf("failed to list BGP peers for metrics: %v", err)
+		return
 	}
+
+	for addr, asn := range c.lastBGPPeers {
+		// Skip only when the peer is still present with the same ASN. A peer whose
+		// ASN changed keeps its addr but exports a new label set, so its previous
+		// asn-labeled series must still be deleted here to avoid a stale series.
+		if newASN, ok := currentPeers[addr]; ok && newASN == asn {
+			continue
+		}
+		metricBGPPeerUp.DeleteLabelValues(node, addr, asn)
+		metricBGPPeerState.DeleteLabelValues(node, addr, asn)
+		metricBGPPeerFlapCount.DeleteLabelValues(node, addr, asn)
+		metricBGPPeerOutQueue.DeleteLabelValues(node, addr, asn)
+		for _, typ := range bgpMessageTypes {
+			metricBGPPeerReceivedMessages.DeleteLabelValues(node, addr, typ)
+			metricBGPPeerSentMessages.DeleteLabelValues(node, addr, typ)
+		}
+	}
+	c.lastBGPPeers = currentPeers
 }
 
 // collectBFDMetrics exports the BFD server statistics and per-peer session
-// state as Prometheus metrics.
+// state as Prometheus metrics. Disappeared peers are deleted individually to
+// avoid metric flapping during scrapes.
 func (c *Controller) collectBFDMetrics() {
 	node := c.config.NodeName
 
@@ -284,11 +304,15 @@ func (c *Controller) collectBFDMetrics() {
 		metricBFDServerUnknownPeer.WithLabelValues(node).Set(float64(stats.UnknownPeer))
 	}
 
-	resetBFDPeerMetrics()
-	c.config.BgpServer.ListBfdPeer(context.Background(), func(addr string, state *api.BfdPeerState) {
+	currentPeers := make(map[string]struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), metricsCollectTimeout)
+	defer cancel()
+
+	c.config.BgpServer.ListBfdPeer(ctx, func(addr string, state *api.BfdPeerState) {
 		if state == nil {
 			return
 		}
+		currentPeers[addr] = struct{}{}
 
 		metricBFDPeerUp.WithLabelValues(node, addr).Set(bfdPeerUpValue(state.SessionState))
 		metricBFDPeerState.WithLabelValues(node, addr).Set(float64(state.SessionState))
@@ -300,4 +324,17 @@ func (c *Controller) collectBFDMetrics() {
 			metricBFDPeerReceivedPackets.WithLabelValues(node, addr).Set(float64(async.ReceivedPackets))
 		}
 	})
+
+	for addr := range c.lastBFDPeers {
+		if _, ok := currentPeers[addr]; ok {
+			continue
+		}
+		metricBFDPeerUp.DeleteLabelValues(node, addr)
+		metricBFDPeerState.DeleteLabelValues(node, addr)
+		metricBFDPeerRemoteState.DeleteLabelValues(node, addr)
+		metricBFDPeerFailureTransitions.DeleteLabelValues(node, addr)
+		metricBFDPeerTransmittedPackets.DeleteLabelValues(node, addr)
+		metricBFDPeerReceivedPackets.DeleteLabelValues(node, addr)
+	}
+	c.lastBFDPeers = currentPeers
 }
