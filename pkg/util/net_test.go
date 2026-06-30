@@ -1099,7 +1099,7 @@ func TestGetIPAddrWithMaskForCNI(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:      "IPv4 address with dual-stack CIDR",
+			name:      "IPv4-only address with dual-stack CIDR uses IPv4 mask",
 			ip:        "192.168.1.1",
 			cidr:      "192.168.1.0/24,2001:db8::/32",
 			wantAddr:  "192.168.1.1/24",
@@ -1107,7 +1107,7 @@ func TestGetIPAddrWithMaskForCNI(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:      "IPv6 address with dual-stack CIDR",
+			name:      "IPv6-only address with dual-stack CIDR uses IPv6 mask",
 			ip:        "2001:db8::1",
 			cidr:      "192.168.1.0/24,2001:db8::/32",
 			wantAddr:  "2001:db8::1/32",

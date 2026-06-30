@@ -63,6 +63,7 @@ func filterGatewayByIP(ipAddr, gateway string) string {
 		}
 	}
 	if len(filtered) == 0 {
+		klog.Warningf("failed to match gateway %q with ip address %q, keep original gateway", gateway, ipAddr)
 		return gateway
 	}
 	return strings.Join(filtered, ",")

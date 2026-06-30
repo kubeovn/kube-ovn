@@ -576,22 +576,16 @@ func subnetDHCPOptionsUUIDs(subnet *kubeovnv1.Subnet) *ovs.DHCPOptionsUUIDs {
 
 func dhcpForPodIP(subnetDHCP *ovs.DHCPOptionsUUIDs, podIP, dhcpV4, dhcpV6 string) (*ovs.DHCPOptionsUUIDs, string, string) {
 	filtered := &ovs.DHCPOptionsUUIDs{}
+	if subnetDHCP != nil {
+		*filtered = *subnetDHCP
+	}
 	switch util.CheckProtocol(podIP) {
 	case kubeovnv1.ProtocolIPv4:
-		if subnetDHCP != nil {
-			filtered.DHCPv4OptionsUUID = subnetDHCP.DHCPv4OptionsUUID
-		}
+		filtered.DHCPv6OptionsUUID = ""
 		return filtered, dhcpV4, ""
 	case kubeovnv1.ProtocolIPv6:
-		if subnetDHCP != nil {
-			filtered.DHCPv6OptionsUUID = subnetDHCP.DHCPv6OptionsUUID
-		}
+		filtered.DHCPv4OptionsUUID = ""
 		return filtered, "", dhcpV6
-	case kubeovnv1.ProtocolDual:
-		if subnetDHCP != nil {
-			filtered.DHCPv4OptionsUUID = subnetDHCP.DHCPv4OptionsUUID
-			filtered.DHCPv6OptionsUUID = subnetDHCP.DHCPv6OptionsUUID
-		}
 	}
 	return filtered, dhcpV4, dhcpV6
 }

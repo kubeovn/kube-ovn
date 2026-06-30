@@ -913,6 +913,13 @@ func TestDHCPForPodIP(t *testing.T) {
 	assert.Equal(t, "v6-uuid", filtered.DHCPv6OptionsUUID)
 	assert.Equal(t, "lease_time=3600", dhcpV4)
 	assert.Equal(t, "server_id=00:00:00:00:00:01", dhcpV6)
+
+	filtered, dhcpV4, dhcpV6 = dhcpForPodIP(dhcpOptions, "", "lease_time=3600", "server_id=00:00:00:00:00:01")
+	require.NotNil(t, filtered)
+	assert.Equal(t, "v4-uuid", filtered.DHCPv4OptionsUUID)
+	assert.Equal(t, "v6-uuid", filtered.DHCPv6OptionsUUID)
+	assert.Equal(t, "lease_time=3600", dhcpV4)
+	assert.Equal(t, "server_id=00:00:00:00:00:01", dhcpV6)
 }
 
 func newIPAMForTest(subnets []*kubeovnv1.Subnet) *ipam.IPAM {
