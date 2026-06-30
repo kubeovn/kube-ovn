@@ -801,7 +801,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		// update/delete existing policies
 		for _, policy := range policies {
 			nexthop := rules[policy.Match]
-			bfdSessions := set.New(bfdMap[nexthop]).Delete("")
+			bfdSessions := localGatewayPolicyBFDSessions(bfdMap, nexthop)
 			if nexthop == "" {
 				if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
 					err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
@@ -831,7 +831,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		// create new policies
 		for match, nexthop := range rules {
 			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayLocalPolicyPriority, match,
-				ovnnb.LogicalRouterPolicyActionReroute, []string{nexthop}, []string{bfdMap[nexthop]}, externalIDs); err != nil {
+				ovnnb.LogicalRouterPolicyActionReroute, []string{nexthop}, localGatewayPolicyBFDSessions(bfdMap, nexthop).UnsortedList(), externalIDs); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -922,6 +922,10 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 
 	return nil
+}
+
+func localGatewayPolicyBFDSessions(bfdMap map[string]string, nexthop string) set.Set[string] {
+	return set.New(bfdMap[nexthop]).Delete("")
 }
 
 func mergeNodeSelector(nodeSelector []kubeovnv1.VpcEgressGatewayNodeSelector) *corev1.NodeSelector {
