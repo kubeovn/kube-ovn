@@ -114,7 +114,7 @@ func NewController(config *Configuration) *Controller {
 		recorder:               recorder,
 	}
 
-	if config.EnableMetrics {
+	if config.EnableMetrics != nil && *config.EnableMetrics {
 		registerSpeakerMetrics()
 	}
 
@@ -140,7 +140,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 }
 
 func (c *Controller) Reconcile() {
-	if c.config.NatGwMode {
+	if c.config.NatGwMode != nil && *c.config.NatGwMode {
 		err := c.syncEIPRoutes()
 		if err != nil {
 			klog.Errorf("failed to reconcile EIPs: %s", err.Error())
@@ -151,7 +151,7 @@ func (c *Controller) Reconcile() {
 
 	c.logBFDStatus()
 
-	if c.config.EnableMetrics {
+	if c.config.EnableMetrics != nil && *c.config.EnableMetrics {
 		c.collectMetrics()
 	}
 }
