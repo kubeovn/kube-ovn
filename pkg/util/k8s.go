@@ -229,7 +229,7 @@ func InjectedServiceVariables(service string) (string, string) {
 // For example, if T is v1.Pod, it returns "Pod".
 func ObjectKind[T metav1.Object]() string {
 	typ := reflect.TypeFor[T]()
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	return typ.Name()
