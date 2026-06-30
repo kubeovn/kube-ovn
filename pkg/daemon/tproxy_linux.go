@@ -110,11 +110,16 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 	}
 
 	for _, pod := range pods {
+		provider, ok := getPodPrimaryNetworkProvider(pod)
+		if !ok {
+			continue
+		}
+
 		podName := pod.Name
-		if vmName := pod.Annotations[util.VMAnnotation]; vmName != "" {
+		if vmName := pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, provider)]; vmName != "" {
 			podName = vmName
 		}
-		iface := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
+		iface := ovs.PodNameToPortName(podName, pod.Namespace, provider)
 		nsName, err := ovs.GetInterfacePodNs(iface)
 		if err != nil {
 			klog.Errorf("failed to get netns for pod %s/%s: %v", pod.Namespace, pod.Name, err)
@@ -126,10 +131,10 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 		}
 
 		ports := getProbePorts(pod)
-		for _, podIP := range pod.Status.PodIPs {
-			customVPCPodIPToNs.Store(podIP.IP, nsName)
+		for _, podIP := range util.PodIPs(*pod) {
+			customVPCPodIPToNs.Store(podIP, nsName)
 			for _, port := range ports.UnsortedList() {
-				probePortInNs(podIP.IP, port, true, nil)
+				probePortInNs(podIP, port, true, nil)
 			}
 		}
 	}
