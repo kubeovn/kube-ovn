@@ -66,8 +66,8 @@ func TestCheckGracefulRestartOptions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &Configuration{
-				GracefulRestartTime:         tt.restartTime,
-				GracefulRestartDeferralTime: tt.deferralTime,
+				GracefulRestartTime:         Duration{Duration: tt.restartTime},
+				GracefulRestartDeferralTime: Duration{Duration: tt.deferralTime},
 			}
 			err := config.checkGracefulRestartOptions()
 			if tt.expectError == "" {
@@ -89,7 +89,7 @@ func TestGetNeighborLocalAddress(t *testing.T) {
 	require.True(t, localAddress.Equal(config.getNeighborLocalAddress(net.ParseIP(neighbor))))
 
 	config = &Configuration{
-		AllowedSourceAddresses: []net.IP{localAddress},
+		AllowedSourceAddresses: []IP{{IP: localAddress}},
 		NeighborLocalAddresses: map[string]net.IP{},
 	}
 	require.PanicsWithValue(t,
