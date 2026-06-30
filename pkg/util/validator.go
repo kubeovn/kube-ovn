@@ -341,7 +341,7 @@ func ValidatePodNetwork(annotations map[string]string) error {
 			continue
 		}
 		normalizedFamily := NormalizeIPFamily(family)
-		if ipAddress := annotations[ipAddressAnnotationKeyForIPFamily(key)]; ipAddress != "" {
+		for _, ipAddress := range ipAddressAnnotationsForIPFamily(annotations, key) {
 			for ip := range strings.SplitSeq(ipAddress, ",") {
 				if CheckProtocol(ip) != normalizedFamily {
 					errors = append(errors, fmt.Errorf("%s does not match %s %s", ip, key, family))
@@ -467,6 +467,41 @@ func ipAddressAnnotationKeyForIPFamily(key string) string {
 		return IPAddressAnnotation
 	}
 	return strings.TrimSuffix(key, "/ip_family") + "/ip_address"
+}
+
+func ipAddressAnnotationsForIPFamily(annotations map[string]string, key string) []string {
+	ipAddressKeys := ipAddressAnnotationKeysForIPFamily(key)
+	ipAddresses := []string{}
+	for annotationKey, ipAddress := range annotations {
+		if ipAddress == "" {
+			continue
+		}
+		for _, ipAddressKey := range ipAddressKeys {
+			if annotationKey == ipAddressKey || strings.HasPrefix(annotationKey, ipAddressKey+".") {
+				ipAddresses = append(ipAddresses, ipAddress)
+				break
+			}
+		}
+	}
+	return ipAddresses
+}
+
+// ipAddressAnnotationKeysForIPFamily returns the static IP annotation keys that
+// should be checked for an ip_family key. Same-NAD multi-interface pods use
+// <nad>.<ns>.kubernetes.io/ip_address.<ifName> for static IPs while the family
+// annotation is scoped by provider as <nad>.<ns>.ovn.<ifName>.kubernetes.io/ip_family.
+func ipAddressAnnotationKeysForIPFamily(key string) []string {
+	keys := []string{ipAddressAnnotationKeyForIPFamily(key)}
+	provider, ok := strings.CutSuffix(key, ".kubernetes.io/ip_family")
+	if !ok {
+		return keys
+	}
+	parts := strings.Split(provider, ".")
+	if len(parts) > 3 && parts[2] == OvnProvider {
+		ifName := parts[len(parts)-1]
+		keys = append(keys, fmt.Sprintf("%s.%s.kubernetes.io/ip_address.%s", parts[0], parts[1], ifName))
+	}
+	return keys
 }
 
 func ValidateNetworkBroadcast(cidr, ip string) error {

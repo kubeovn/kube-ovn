@@ -77,6 +77,7 @@ func alwaysReady() bool { return true }
 // FakeControllerOptions holds optional parameters for creating a fake controller
 type FakeControllerOptions struct {
 	Subnets            []*kubeovnv1.Subnet
+	IPPools            []*kubeovnv1.IPPool
 	VpcNatGateways     []*kubeovnv1.VpcNatGateway
 	IPs                []*kubeovnv1.IP
 	Vlans              []*kubeovnv1.Vlan
@@ -144,6 +145,13 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	for _, subnet := range opts.Subnets {
 		_, err := kubeovnClient.KubeovnV1().Subnets().Create(
 			context.Background(), subnet, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, ippool := range opts.IPPools {
+		_, err := kubeovnClient.KubeovnV1().IPPools().Create(
+			context.Background(), ippool, metav1.CreateOptions{})
 		if err != nil {
 			return nil, err
 		}

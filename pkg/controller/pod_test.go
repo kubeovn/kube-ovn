@@ -838,6 +838,54 @@ func TestAcquireAddressWithIPFamily(t *testing.T) {
 		assert.Equal(t, 1, ctrl.ipam.Subnets["dual-subnet"].V6Using.Len())
 	})
 
+	t.Run("named ippool honors requested ipv6 family", func(t *testing.T) {
+		poolName := "dual-pool"
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-pool-v6",
+				Namespace: "default",
+				Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: "dual-subnet",
+					util.IPPoolAnnotation:        poolName,
+					util.IPFamilyAnnotation:      "ipv6",
+				},
+			},
+		}
+		ippool := &kubeovnv1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: poolName},
+			Spec: kubeovnv1.IPPoolSpec{
+				Subnet: "dual-subnet",
+				IPs:    []string{"10.0.0.50", "2001:db8::50"},
+			},
+			Status: kubeovnv1.IPPoolStatus{
+				V4AvailableIPs: internal.NewBigInt(1),
+				V6AvailableIPs: internal.NewBigInt(1),
+			},
+		}
+
+		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{dualSubnet},
+			IPPools: []*kubeovnv1.IPPool{ippool},
+			Pods:    []*corev1.Pod{pod},
+		})
+		require.NoError(t, err)
+		ctrl := fakeCtrl.fakeController
+		ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{dualSubnet})
+		require.NoError(t, ctrl.ipam.AddOrUpdateIPPool("dual-subnet", poolName, ippool.Spec.IPs))
+
+		podNets, err := ctrl.getPodKubeovnNets(pod)
+		require.NoError(t, err)
+		require.Len(t, podNets, 1)
+
+		v4, v6, _, subnet, err := ctrl.acquireAddress(pod, podNets[0])
+		require.NoError(t, err)
+		assert.Equal(t, "dual-subnet", subnet.Name)
+		assert.Empty(t, v4)
+		assert.Equal(t, "2001:db8::50", v6)
+		assert.Equal(t, 0, ctrl.ipam.Subnets["dual-subnet"].IPPools[poolName].V4Using.Len())
+		assert.Equal(t, 1, ctrl.ipam.Subnets["dual-subnet"].IPPools[poolName].V6Using.Len())
+	})
+
 	t.Run("same nad multiple interfaces can request different families", func(t *testing.T) {
 		provider1 := "net1.default.ovn.net1"
 		provider2 := "net1.default.ovn.net2"
