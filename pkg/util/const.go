@@ -59,6 +59,7 @@ const (
 	SwitchLBRuleVip            = "switch_lb_vip"
 	KubeHostVMVip              = "kube_host_vm_vip"
 	SwitchLBRuleSubnet         = "switch_lb_subnet"
+	VipAttachSubnetsAnnotation = "ovn.kubernetes.io/vip-last-attach-subnets"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
