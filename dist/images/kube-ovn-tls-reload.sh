@@ -18,12 +18,16 @@ NB_PORT=${NB_PORT:-6641}
 SB_PORT=${SB_PORT:-6642}
 NB_CLUSTER_PORT=${NB_CLUSTER_PORT:-6643}
 SB_CLUSTER_PORT=${SB_CLUSTER_PORT:-6644}
+TLS_MIN_VERSION=${TLS_MIN_VERSION:-}
+TLS_MAX_VERSION=${TLS_MAX_VERSION:-}
+TLS_CIPHER_SUITES=${TLS_CIPHER_SUITES:-}
 DB_CLUSTER_ADDR=${DB_CLUSTER_ADDR:-${POD_IP:-}}
 DB_ADDR=::
 if [[ "${ENABLE_BIND_LOCAL_IP:-false}" == "true" ]]; then
   DB_ADDR=${POD_IP:-}
 fi
 SSL_OPTIONS="-p ${TLS_DIR}/key -c ${TLS_DIR}/cert -C ${TLS_DIR}/cacert"
+. /kube-ovn/ovn-db-ssl-options.sh
 
 case "$COMPONENT" in
   ovs)
@@ -86,16 +90,7 @@ function ovn_central_conn_str {
 }
 
 function ovn_central_ssl_args {
-  printf "%s\n" \
-    "--ovn-nb-db-ssl-key=${TLS_DIR}/key" \
-    "--ovn-nb-db-ssl-cert=${TLS_DIR}/cert" \
-    "--ovn-nb-db-ssl-ca-cert=${TLS_DIR}/cacert" \
-    "--ovn-sb-db-ssl-key=${TLS_DIR}/key" \
-    "--ovn-sb-db-ssl-cert=${TLS_DIR}/cert" \
-    "--ovn-sb-db-ssl-ca-cert=${TLS_DIR}/cacert" \
-    "--ovn-northd-ssl-key=${TLS_DIR}/key" \
-    "--ovn-northd-ssl-cert=${TLS_DIR}/cert" \
-    "--ovn-northd-ssl-ca-cert=${TLS_DIR}/cacert"
+  ovn_db_ssl_args "$TLS_DIR"
 }
 
 function wait_ovn_ctl_status {

@@ -25,6 +25,12 @@ networking:
   # NET_STACK could be dual_stack, ipv4, ipv6
   NET_STACK: ipv4
   ENABLE_SSL: false
+  # Minimum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints.
+  TLS_MIN_VERSION: ""
+  # Maximum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints.
+  TLS_MAX_VERSION: ""
+  # Go TLS cipher suite names. OVN DB server only supports suites mapped by dist/images/ovn-db-ssl-options.sh.
+  TLS_CIPHER_SUITES: []
   KUBE_OVN_TLS_ROTATION_INTERVAL: "8760h"
   # network type could be geneve or vlan
   NETWORK_TYPE: geneve
