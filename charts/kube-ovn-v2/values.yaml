@@ -658,6 +658,15 @@ bgpSpeaker:
   # @section -- BGP speaker configuration
   podLabels: {}
 
+  # -- The name of the configMap that will be mounted in the kube-ovn-speaker pod.
+  # The ConfigMap can provide YAML configuration files for kube-ovn-speaker.
+  # To use a specific file, pass its mounted file path via '--config' or set 'KUBE_OVN_BGP_SPEAKER_CONFIG_FILE'.
+  # @section -- BGP speaker configuration
+  configMap: ""
+  # -- Directory where the ConfigMap will be mounted in the kube-ovn-speaker pod.
+  # @section -- BGP speaker configuration
+  configMapMountPath: "/etc/kube-ovn/"
+
   # -- Extra environment variables to be added to kube-ovn-speaker pods.
   # @section -- BGP speaker configuration
   extraEnv: []
