@@ -5,6 +5,7 @@ import (
 
 	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
@@ -46,4 +47,22 @@ func Test_logicalRouterPortFilter(t *testing.T) {
 			require.True(t, filterFunc(lrp))
 		}
 	}
+}
+
+func TestGcSecurityGroupSkipsVpcEgressGatewayPortGroup(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+
+	mockOvnClient.EXPECT().ListPortGroups(nil).Return([]ovnnb.PortGroup{{
+		Name: "VEG.0b5177562709",
+		ExternalIDs: map[string]string{
+			"af":                 "4",
+			"vendor":             "kube-ovn",
+			"vpc-egress-gateway": "default/egress-ha-a",
+		},
+	}}, nil)
+	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Times(0)
+
+	require.NoError(t, ctrl.gcSecurityGroup())
 }
