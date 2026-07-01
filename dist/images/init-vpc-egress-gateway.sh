@@ -18,7 +18,7 @@ internal_iface="eth0"
 external_iface="net1"
 masquerade_chain="VEG-MASQUERADE"
 
-if [ -n "${INTERNAL_GATEWAY_IPV4}" ]; then
+if [ -n "${INTERNAL_GATEWAY_IPV4}" ] && [ -n "${EXTERNAL_GATEWAY_IPV4}" ]; then
   # ip rules and routes for IPv4
   internal_ipv4=`ip -o route get "${INTERNAL_GATEWAY_IPV4}" | grep -o 'src [^ ]*' | awk '{print $2}'`
   external_ipv4=`ip -o route get "${EXTERNAL_GATEWAY_IPV4}" | grep -o 'src [^ ]*' | awk '{print $2}'`
@@ -57,7 +57,7 @@ if [ -n "${INTERNAL_GATEWAY_IPV4}" ]; then
   done
 fi
 
-if [ -n "${INTERNAL_GATEWAY_IPV6}" ]; then
+if [ -n "${INTERNAL_GATEWAY_IPV6}" ] && [ -n "${EXTERNAL_GATEWAY_IPV6}" ]; then
   # ip rules and routes for IPv6
   internal_ipv6=`ip -o route get "${INTERNAL_GATEWAY_IPV6}" | grep -o 'src [^ ]*' | awk '{print $2}'`
   external_ipv6=`ip -o route get "${EXTERNAL_GATEWAY_IPV6}" | grep -o 'src [^ ]*' | awk '{print $2}'`
