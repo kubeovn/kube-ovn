@@ -98,8 +98,7 @@ spec:
                 - NET_BIND_SERVICE
                 - SYS_NICE
           env:
-            - name: ENABLE_SSL
-              value: "{{ .Values.networking.enableSsl }}"
+{{- include "kubeovn.ovnCentralTLSEnv" . | nindent 12 }}
             - name: NODE_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
             - name: POD_IP

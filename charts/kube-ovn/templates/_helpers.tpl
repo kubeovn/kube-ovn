@@ -37,6 +37,35 @@ Number of master nodes
 {{- end -}}
 
 {{/*
+Environment variables used by the OVN NB/SB database server TLS setup.
+*/}}
+{{- define "kubeovn.ovnCentralTLSEnv" -}}
+- name: ENABLE_SSL
+  value: {{ .Values.networking.ENABLE_SSL | quote }}
+- name: TLS_MIN_VERSION
+  value: {{ .Values.networking.TLS_MIN_VERSION | quote }}
+- name: TLS_MAX_VERSION
+  value: {{ .Values.networking.TLS_MAX_VERSION | quote }}
+- name: TLS_CIPHER_SUITES
+  value: {{ join "," .Values.networking.TLS_CIPHER_SUITES | quote }}
+{{- end -}}
+
+{{/*
+TLS arguments for kube-ovn components that expose HTTPS endpoints.
+*/}}
+{{- define "kubeovn.componentTLSArgs" -}}
+{{- if .Values.networking.TLS_MIN_VERSION }}
+- --tls-min-version={{ .Values.networking.TLS_MIN_VERSION }}
+{{- end }}
+{{- if .Values.networking.TLS_MAX_VERSION }}
+- --tls-max-version={{ .Values.networking.TLS_MAX_VERSION }}
+{{- end }}
+{{- if .Values.networking.TLS_CIPHER_SUITES }}
+- --tls-cipher-suites={{ join "," .Values.networking.TLS_CIPHER_SUITES }}
+{{- end }}
+{{- end -}}
+
+{{/*
 Kube-OVN TLS is owned by the management cluster in dataPlaneOnly installs.
 Disable local rotation there so a tenant cluster cannot replace the shared CA.
 */}}
