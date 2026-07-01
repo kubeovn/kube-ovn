@@ -359,6 +359,63 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		vegTest(f, false, provider, nadName, vpcName, internalSubnetName, externalSubnetName, replicas, nil)
 	})
 
+	framework.ConformanceIt("should be ready with default dual-stack internal subnet and IPv4-only external subnet", func() {
+		if !f.IsDual() {
+			ginkgo.Skip("dual-stack cluster is required")
+		}
+
+		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, nil)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting network attachment definition " + nadName)
+			nadClient.Delete(nadName)
+		})
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		defaultVpc := vpcClient.Get(util.DefaultVpc)
+		defaultSubnet := subnetClient.Get(defaultVpc.Status.DefaultLogicalSwitch)
+		if util.CheckProtocol(defaultSubnet.Spec.CIDRBlock) != apiv1.ProtocolDual {
+			ginkgo.Skip("default subnet is not dual-stack")
+		}
+
+		ginkgo.By("Getting docker network " + kindNetwork)
+		network, err := docker.NetworkInspect(kindNetwork)
+		framework.ExpectNoError(err, "getting docker network "+kindNetwork)
+
+		externalSubnet := generateSubnetFromDockerNetwork(externalSubnetName, network, true, false)
+		externalSubnet.Spec.Provider = provider
+		framework.ExpectEqual(util.CheckProtocol(externalSubnet.Spec.CIDRBlock), apiv1.ProtocolIPv4)
+
+		ginkgo.By("Creating IPv4-only macvlan subnet " + externalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting external subnet " + externalSubnetName)
+			subnetClient.DeleteSync(externalSubnetName)
+		})
+		_ = subnetClient.CreateSync(externalSubnet)
+
+		vegClient := f.VpcEgressGatewayClient()
+		vegName := "veg-" + framework.RandomSuffix()
+		veg := framework.MakeVpcEgressGateway(namespaceName, vegName, "", 1, "", externalSubnetName)
+		veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{
+			Subnets: []string{defaultSubnet.Name},
+		}}
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting vpc egress gateway " + vegName)
+			vegClient.DeleteSync(vegName)
+		})
+
+		ginkgo.By(fmt.Sprintf("Creating vpc egress gateway %s:\n%s", vegName, format.Object(veg, 2)))
+		veg = vegClient.CreateSync(veg)
+		framework.ExpectTrue(veg.Status.Ready)
+		framework.ExpectHaveLen(veg.Status.InternalIPs, 1)
+		framework.ExpectHaveLen(veg.Status.ExternalIPs, 1)
+		_, externalIPv6 := util.SplitStringIP(veg.Status.ExternalIPs[0])
+		framework.ExpectEmpty(externalIPv6)
+	})
+
 	framework.ConformanceIt("should report not ready when workload pod attachment network status is missing", func() {
 		f.SkipVersionPriorTo(1, 17, "VpcEgressGateway workload network status validation was introduced in v1.17")
 
