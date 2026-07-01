@@ -829,8 +829,12 @@ func (c *Controller) gcSecurityGroup() error {
 		if pg.Name == denyAllPg || pg.Name == defaultPg || pg.ExternalIDs[networkPolicyKey] != "" {
 			continue
 		}
+		sg := pg.ExternalIDs[sgKey]
+		if sg == "" {
+			continue
+		}
 		// if port group not exist in security group, delete it
-		if !sgSet.Has(pg.ExternalIDs["sg"]) {
+		if !sgSet.Has(sg) {
 			klog.Infof("ready to gc port group %s", pg.Name)
 			needToDelPgs = append(needToDelPgs, pg.Name)
 		}
