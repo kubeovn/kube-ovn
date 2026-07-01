@@ -40,6 +40,9 @@ NB_CLUSTER_PORT=${NB_CLUSTER_PORT:-6643}
 SB_CLUSTER_PORT=${SB_CLUSTER_PORT:-6644}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-false}
+TLS_MIN_VERSION=${TLS_MIN_VERSION:-}
+TLS_MAX_VERSION=${TLS_MAX_VERSION:-}
+TLS_CIPHER_SUITES=${TLS_CIPHER_SUITES:-}
 
 echo "ENABLE_SSL is set to $ENABLE_SSL"
 echo "ENABLE_BIND_LOCAL_IP is set to $ENABLE_BIND_LOCAL_IP"
@@ -56,6 +59,7 @@ if [ "$ENABLE_SSL" != "false" ]; then
     SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
 fi
 
+. /kube-ovn/ovn-db-ssl-options.sh
 . /usr/share/openvswitch/scripts/ovs-lib || exit 1
 
 function random_str {
@@ -420,16 +424,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
     fi
 else
     if [[ -z "$NODE_IPS" ]]; then
-        /usr/share/ovn/scripts/ovn-ctl \
-            --ovn-nb-db-ssl-key=/var/run/tls/key \
-            --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-            --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-            --ovn-sb-db-ssl-key=/var/run/tls/key \
-            --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-            --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-            --ovn-northd-ssl-key=/var/run/tls/key \
-            --ovn-northd-ssl-cert=/var/run/tls/cert \
-            --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+        /usr/share/ovn/scripts/ovn-ctl $(ovn_db_ssl_args /var/run/tls) \
             --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
             restart_northd
         ovn-nbctl --no-leader-only $SSL_OPTIONS set-connection pssl:"${NB_PORT}":["${DB_ADDR}"]
@@ -455,15 +450,7 @@ else
         set -eo pipefail
         if [[ ${result} -eq 1  &&  "$nb_leader_ip" == "${DB_CLUSTER_ADDR}" ]]; then
             ovn_ctl_args="$DEBUG_OPT
-                --ovn-nb-db-ssl-key=/var/run/tls/key \
-                --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-sb-db-ssl-key=/var/run/tls/key \
-                --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-northd-ssl-key=/var/run/tls/key \
-                --ovn-northd-ssl-cert=/var/run/tls/cert \
-                --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+                $(ovn_db_ssl_args /var/run/tls) \
                 --db-nb-cluster-local-proto=ssl \
                 --db-sb-cluster-local-proto=ssl \
                 --db-nb-cluster-remote-proto=ssl \
@@ -517,15 +504,7 @@ else
             fi
             set -eo pipefail
             ovn_ctl_args="$DEBUG_OPT
-                --ovn-nb-db-ssl-key=/var/run/tls/key \
-                --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-sb-db-ssl-key=/var/run/tls/key \
-                --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-northd-ssl-key=/var/run/tls/key \
-                --ovn-northd-ssl-cert=/var/run/tls/cert \
-                --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+                $(ovn_db_ssl_args /var/run/tls) \
                 --db-nb-cluster-local-proto=ssl \
                 --db-sb-cluster-local-proto=ssl \
                 --db-nb-cluster-remote-proto=ssl \

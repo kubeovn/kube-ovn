@@ -149,6 +149,9 @@ spec:
           - --node-local-dns-ip={{- .Values.networking.nodeLocalDnsIp }}
           - --skip-conntrack-dst-cidrs={{- .Values.networking.skipConntrackDstCidrs }}
           - --secure-serving={{- .Values.features.enableSecureServing }}
+          {{- if or .Values.networking.tlsMinVersion .Values.networking.tlsMaxVersion .Values.networking.tlsCipherSuites }}
+          {{- include "kubeovn.componentTLSArgs" . | nindent 10 }}
+          {{- end }}
           - --enable-ovn-ipsec={{- .Values.features.enableOvnIpsec }}
           - --enable-anp={{- .Values.features.ENABLE_ANP }}
           - --enable-dns-name-resolver={{- .Values.features.ENABLE_DNS_NAME_RESOLVER }}
