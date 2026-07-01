@@ -47,10 +47,14 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 }
 
 func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.Subnet, bool) {
-	if util.IsOvnProvider(provider) {
+	if provider == "" || provider == util.OvnProvider {
 		return nil, true
 	}
-	subnets, _ := csh.Controller.subnetsLister.List(labels.Everything())
+	subnets, err := csh.Controller.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets while checking provider %s: %v", provider, err)
+		return nil, true
+	}
 	// for multi interface attachments the ifname is included in provider, for example, vm-overlay.default.ovn.net1
 	// as a result if ifname is set, we need to append it to subnet provider when comparing with request provider
 	// else no subnet will be found
@@ -76,7 +80,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	klog.V(5).Infof("request body is %v", podRequest)
 	podSubnet, exist := csh.providerExists(podRequest.Provider, podRequest.IfName)
 	if !exist {
-		errMsg := fmt.Errorf("provider %s not bind to any subnet", podRequest.Provider)
+		errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
 		klog.Error(errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
