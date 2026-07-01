@@ -573,6 +573,28 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		}, "WorkloadNetworkNotReady", 2*time.Second, 2*time.Minute)
 		framework.ExpectFalse(veg.Status.Ready)
 	})
+
+	framework.ConformanceIt("should preserve vpc egress gateway port group during controller startup gc", func() {
+		f.SkipVersionPriorTo(1, 14, "VpcEgressGateway port groups require v1.14+")
+
+		vegKey := namespaceName + "/veg-" + framework.RandomSuffix()
+		pgName := "VEG." + util.Sha256Hash([]byte(vegKey))[:12]
+
+		ginkgo.By("Creating vpc egress gateway port group " + pgName)
+		createVpcEgressGatewayPortGroup(pgName, vegKey)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting vpc egress gateway port group " + pgName)
+			deletePortGroup(pgName)
+		})
+		waitPortGroupExists(pgName)
+
+		ginkgo.By("Restarting kube-ovn-controller to trigger startup GC")
+		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
+		deployClient.RestartSync(deployClient.Get("kube-ovn-controller"))
+
+		ginkgo.By("Validating vpc egress gateway port group still exists")
+		waitPortGroupExists(pgName)
+	})
 })
 
 func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.Inspect, ipv4, ipv6 bool) *apiv1.Subnet {
@@ -731,6 +753,51 @@ func waitLRPHAChassisGroup(lrpName, groupName string) {
 		framework.Logf("Logical_Router_Port %s is bound to HA chassis group %q, expected %q", lrpName, lrpGroupUUID, groupUUID)
 		return false, nil
 	}, fmt.Sprintf("Logical_Router_Port %s to bind HA_Chassis_Group %s", lrpName, groupName))
+}
+
+func createVpcEgressGatewayPortGroup(pgName, vegKey string) {
+	ginkgo.GinkgoHelper()
+
+	quotedPgName := shellQuote(pgName)
+	cmd := fmt.Sprintf(
+		"if [ -z \"$(ovn-nbctl --format=csv --data=bare --no-heading --columns=name find Port_Group name=%[1]s)\" ]; then ovn-nbctl pg-add %[1]s; fi; ovn-nbctl set Port_Group %[1]s external_ids:vendor=%[2]s external_ids:vpc-egress-gateway=%[3]s external_ids:af=4",
+		quotedPgName,
+		shellQuote(util.CniTypeName),
+		shellQuote(vegKey),
+	)
+	_, _, err := framework.NBExec(cmd)
+	framework.ExpectNoError(err)
+}
+
+func deletePortGroup(pgName string) {
+	ginkgo.GinkgoHelper()
+
+	quotedPgName := shellQuote(pgName)
+	cmd := fmt.Sprintf("if [ -n \"$(ovn-nbctl --format=csv --data=bare --no-heading --columns=name find Port_Group name=%[1]s)\" ]; then ovn-nbctl pg-del %[1]s; fi", quotedPgName)
+	_, _, err := framework.NBExec(cmd)
+	framework.ExpectNoError(err)
+}
+
+func waitPortGroupExists(pgName string) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=name find Port_Group name=%s", shellQuote(pgName))
+		stdout, _, err := framework.NBExec(cmd)
+		if err != nil {
+			framework.Logf("failed to query Port_Group %s: %v", pgName, err)
+			return false, nil
+		}
+		if strings.TrimSpace(string(stdout)) == pgName {
+			return true, nil
+		}
+		framework.Logf("Port_Group %s does not exist yet: %s", pgName, strings.TrimSpace(string(stdout)))
+		return false, nil
+	}, "Port_Group "+pgName+" to exist")
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 func countNonEmptyLines(output string) int {
