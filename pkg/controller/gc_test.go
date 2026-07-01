@@ -60,6 +60,24 @@ func Test_logicalRouterPortFilter(t *testing.T) {
 	}
 }
 
+func TestGcSecurityGroupSkipsVpcEgressGatewayPortGroup(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+
+	mockOvnClient.EXPECT().ListPortGroups(map[string]string{"vendor": util.CniTypeName}).Return([]ovnnb.PortGroup{{
+		Name: "VEG.0b5177562709",
+		ExternalIDs: map[string]string{
+			"af":                           "4",
+			ovs.ExternalIDVendor:           util.CniTypeName,
+			ovs.ExternalIDVpcEgressGateway: "default/egress-ha-a",
+		},
+	}}, nil)
+	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Times(0)
+
+	require.NoError(t, ctrl.gcSecurityGroup())
+}
+
 func vmTemplate(networks []kubevirtv1.Network, annotations map[string]string) *kubevirtv1.VirtualMachineInstanceTemplateSpec {
 	return &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{Annotations: annotations},
