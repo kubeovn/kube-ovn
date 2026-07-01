@@ -439,6 +439,21 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.17 (2026-07-01)
+
+ * [5287d63c2](https://github.com/kubeovn/kube-ovn/commit/5287d63c236887df7333968a0a717f37d3fd4e31) release v1.15.17
+ * [2acdac085](https://github.com/kubeovn/kube-ovn/commit/2acdac085ba916e2c9e2e694251c4370f4ac2e2d) fix: skip non-security-group port groups in sg gc (#6961)
+ * [b64752b09](https://github.com/kubeovn/kube-ovn/commit/b64752b096a32e8be33691b5a3eb9fa5f53391b3) fix vpc egress local policy without bfd (#6927)
+ * [fe71bb3dc](https://github.com/kubeovn/kube-ovn/commit/fe71bb3dce49e04bc75850f9e2a216e36ccd0501) build: include ovs and ovn commits in version (#6945)
+ * [47de841fd](https://github.com/kubeovn/kube-ovn/commit/47de841fd1e818e2395740a830cd83d535b3b3da) feat: rotate kube-ovn TLS certificates (#6931)
+ * [5ec9e0dab](https://github.com/kubeovn/kube-ovn/commit/5ec9e0dab14164d4aa88161cfc62c82e2d764f87) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * 张祖建
+
 ## v1.15.16 (2026-06-26)
 
  * [726b8df0b](https://github.com/kubeovn/kube-ovn/commit/726b8df0bf2ce0bf57456e70f0349997507217d4) release v1.15.16
