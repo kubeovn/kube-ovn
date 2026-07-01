@@ -137,6 +137,15 @@ networking:
   # -- Deploy the CNI with SSL encryption in between components.
   # @section -- Network parameters of the CNI
   enableSsl: false
+  # -- Minimum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints. Supported values: TLS10, TLS11, TLS12, TLS13. Empty uses the component default.
+  # @section -- Network parameters of the CNI
+  tlsMinVersion: ""
+  # -- Maximum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints. Supported values: TLS10, TLS11, TLS12, TLS13. Empty uses the component default.
+  # @section -- Network parameters of the CNI
+  tlsMaxVersion: ""
+  # -- Go TLS cipher suite names. OVN DB server only supports suites mapped by dist/images/ovn-db-ssl-options.sh.
+  # @section -- Network parameters of the CNI
+  tlsCipherSuites: []
   # -- How often kube-ovn-controller checks kube-ovn-tls for renewal. Set to 0 to disable.
   # @section -- Network parameters of the CNI
   kubeOvnTlsRotationInterval: "8760h"
