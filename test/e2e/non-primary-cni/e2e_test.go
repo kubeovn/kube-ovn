@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	klog "k8s.io/klog/v2"
+	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
@@ -590,6 +591,66 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 				err := testPodConnectivity(pod1, pod2IP, description)
 				framework.ExpectNoError(err, "Ping should succeed between pods in logical network")
 			}
+		})
+	})
+})
+
+var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
+	f := framework.NewDefaultFramework("non-primary-cni-provider-mismatch")
+
+	ginkgo.Context("Provider Mismatch", ginkgo.Label("Feature:Multi-NIC"), func() {
+		ginkgo.It("Should reject attachment provider without matching subnet", func() {
+			f.SkipVersionPriorTo(1, 17, "multiple network attachment validation requires v1.17+")
+
+			namespaceName := f.Namespace.Name
+			nadName := "attachnet-a"
+			podName := "provider-mismatch-pod"
+			mismatchSubnetName := "provider-mismatch-subnet"
+			nadProvider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+			mismatchProvider := fmt.Sprintf("attachnet-b.%s.%s", namespaceName, util.OvnProvider)
+
+			nadClient := f.NetworkAttachmentDefinitionClient()
+			subnetClient := f.SubnetClient()
+			podClient := f.PodClient()
+
+			ginkgo.By("Creating subnet with a different provider")
+			subnet := framework.MakeSubnet(mismatchSubnetName, "", framework.RandomCIDR(f.ClusterIPFamily), "", util.DefaultVpc, mismatchProvider, nil, nil, nil)
+			_ = subnetClient.CreateSync(subnet)
+			ginkgo.DeferCleanup(func() { subnetClient.DeleteSync(mismatchSubnetName) })
+
+			ginkgo.By("Creating NAD whose provider has no matching subnet")
+			nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, nadProvider, nil)
+			_ = nadClient.Create(nad)
+			ginkgo.DeferCleanup(func() { nadClient.Delete(nadName) })
+
+			ginkgo.By("Creating pod that uses the mismatched NAD")
+			annotations := map[string]string{
+				nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", namespaceName, nadName),
+			}
+			pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+			_ = podClient.Create(pod)
+			ginkgo.DeferCleanup(func() { podClient.DeleteGracefully(podName) })
+
+			ginkgo.By("Waiting for kubelet to report sandbox creation failure")
+			wantMessage := fmt.Sprintf("provider %s is not bound to any subnet", nadProvider)
+			gomega.Eventually(func() bool {
+				events, err := f.ClientSet.CoreV1().Events(namespaceName).List(context.Background(), metav1.ListOptions{
+					FieldSelector: fmt.Sprintf("involvedObject.kind=%s,involvedObject.name=%s,type=%s,reason=%s", util.KindPod, podName, corev1.EventTypeWarning, kubeletevents.FailedCreatePodSandBox),
+				})
+				if err != nil {
+					return false
+				}
+				for _, event := range events.Items {
+					if strings.Contains(event.Message, wantMessage) {
+						return true
+					}
+				}
+				return false
+			}, 60*time.Second, time.Second).Should(gomega.BeTrue(), "expected pod event to contain %q", wantMessage)
+
+			pod = podClient.GetPod(podName)
+			framework.ExpectNotEqual(pod.Status.Phase, corev1.PodRunning, "pod should not run when attachment provider has no subnet")
+			framework.ExpectEmpty(pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, nadProvider)], "attachment should not fall back to the default subnet")
 		})
 	})
 })
