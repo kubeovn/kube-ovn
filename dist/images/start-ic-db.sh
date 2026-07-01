@@ -47,21 +47,29 @@ function ovndb_query_leader {
     fi
 }
 
+function format_ovsdb_addr {
+    if [[ "$1" =~ ^[0-9.]+$ || "$1" == *:* ]]; then
+        echo "[$1]"
+    else
+        echo "$1"
+    fi
+}
+
 function gen_conn_str {
     t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
     if [[ "$ENABLE_SSL" == "false" ]]; then
-        x=$(for i in ${t}; do echo -n "tcp:[$i]:$1",; done| sed 's/,$//')
+        x=$(for i in ${t}; do echo -n "tcp:$(format_ovsdb_addr "$i"):$1",; done| sed 's/,$//')
     else
-        x=$(for i in ${t}; do echo -n "ssl:[$i]:$1",; done| sed 's/,$//')
+        x=$(for i in ${t}; do echo -n "ssl:$(format_ovsdb_addr "$i"):$1",; done| sed 's/,$//')
     fi
     echo "$x"
 }
 
 function gen_conn_addr {
     if [[ "$ENABLE_SSL" == "false" ]]; then
-        echo "tcp:[$1]:$2"
+        echo "tcp:$(format_ovsdb_addr "$1"):$2"
     else
-        echo "ssl:[$1]:$2"
+        echo "ssl:$(format_ovsdb_addr "$1"):$2"
     fi
 }
 
