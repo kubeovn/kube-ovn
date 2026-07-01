@@ -118,14 +118,14 @@ var (
 	metricBFDPeerRemoteState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_remote_session_state",
-			Help: "Remote BFD session state of the peer (0=unspecified,1=up,2=down,3=admin_down,4=init).",
+			Help: "Remote BFD session state of the peer (0=unspecified,1=up,2=down,3=admin_down,4=init). Not reported by GoBGP v4.6.0 (always 0); will become meaningful once upstream populates it.",
 		},
 		[]string{"node", "peer"})
 
 	metricBFDPeerFailureTransitions = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_failure_transitions",
-			Help: "Cumulative number of BFD session failure transitions for the peer.",
+			Help: "Cumulative number of BFD session failure transitions for the peer. Not reported by GoBGP v4.6.0 (always 0); will become meaningful once upstream populates it.",
 		},
 		[]string{"node", "peer"})
 
@@ -347,6 +347,10 @@ func (c *Controller) collectBFDMetrics() {
 
 		metricBFDPeerUp.WithLabelValues(node, addr).Set(bfdPeerUpValue(state.SessionState))
 		metricBFDPeerState.WithLabelValues(node, addr).Set(float64(state.SessionState))
+		// GoBGP v4.6.0's getPeerStateList only populates SessionState and BfdAsync,
+		// so RemoteSessionState and FailureTransitions are always 0 here. The series
+		// are still exported (with a note in their Help text) so they start reporting
+		// real values automatically once upstream fills these fields.
 		metricBFDPeerRemoteState.WithLabelValues(node, addr).Set(float64(state.RemoteSessionState))
 		metricBFDPeerFailureTransitions.WithLabelValues(node, addr).Set(float64(state.FailureTransitions))
 
