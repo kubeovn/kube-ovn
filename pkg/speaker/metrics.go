@@ -220,6 +220,52 @@ func bgpMessageCounts(m *api.Message) map[string]float64 {
 	}
 }
 
+// deleteStaleBGPPeerSeries removes the per-peer BGP series for peers that were
+// exported in the previous collection cycle (last) but are no longer reported
+// in the current one (current), or whose ASN changed. A changed ASN keeps the
+// peer address but yields a new peer_asn label set, so the previous asn-labeled
+// series must be dropped to avoid a stale series lingering forever.
+//
+// With the current speaker the neighbor set is fixed at startup (no runtime
+// DeletePeer), so this is normally a no-op; it only deletes when a peer stops
+// appearing in ListPeer, e.g. a future runtime neighbor reconfiguration, an ASN
+// change, or a cycle where the peer was skipped because Conf/State was nil.
+func deleteStaleBGPPeerSeries(node string, last, current map[string]string) {
+	for addr, asn := range last {
+		// Skip only when the peer is still present with the same ASN.
+		if newASN, ok := current[addr]; ok && newASN == asn {
+			continue
+		}
+		metricBGPPeerUp.DeleteLabelValues(node, addr, asn)
+		metricBGPPeerState.DeleteLabelValues(node, addr, asn)
+		metricBGPPeerFlapCount.DeleteLabelValues(node, addr, asn)
+		metricBGPPeerOutQueue.DeleteLabelValues(node, addr, asn)
+		for _, typ := range bgpMessageTypes {
+			metricBGPPeerReceivedMessages.DeleteLabelValues(node, addr, typ)
+			metricBGPPeerSentMessages.DeleteLabelValues(node, addr, typ)
+		}
+	}
+}
+
+// deleteStaleBFDPeerSeries removes the per-peer BFD series for peers that were
+// exported in the previous cycle (last) but are no longer reported (current).
+// Like the BGP variant this is normally a no-op because BFD peers are created
+// once at startup and never removed at runtime; it only deletes when a peer
+// stops appearing in ListBfdPeer (future reconfiguration, or a nil-state skip).
+func deleteStaleBFDPeerSeries(node string, last, current map[string]struct{}) {
+	for addr := range last {
+		if _, ok := current[addr]; ok {
+			continue
+		}
+		metricBFDPeerUp.DeleteLabelValues(node, addr)
+		metricBFDPeerState.DeleteLabelValues(node, addr)
+		metricBFDPeerRemoteState.DeleteLabelValues(node, addr)
+		metricBFDPeerFailureTransitions.DeleteLabelValues(node, addr)
+		metricBFDPeerTransmittedPackets.DeleteLabelValues(node, addr)
+		metricBFDPeerReceivedPackets.DeleteLabelValues(node, addr)
+	}
+}
+
 // collectMetrics refreshes all BGP/BFD Prometheus metrics from the GoBGP server.
 // It is invoked from the reconcile loop and only performs gRPC queries when
 // metrics are enabled.
@@ -271,22 +317,7 @@ func (c *Controller) collectBGPMetrics() {
 		return
 	}
 
-	for addr, asn := range c.lastBGPPeers {
-		// Skip only when the peer is still present with the same ASN. A peer whose
-		// ASN changed keeps its addr but exports a new label set, so its previous
-		// asn-labeled series must still be deleted here to avoid a stale series.
-		if newASN, ok := currentPeers[addr]; ok && newASN == asn {
-			continue
-		}
-		metricBGPPeerUp.DeleteLabelValues(node, addr, asn)
-		metricBGPPeerState.DeleteLabelValues(node, addr, asn)
-		metricBGPPeerFlapCount.DeleteLabelValues(node, addr, asn)
-		metricBGPPeerOutQueue.DeleteLabelValues(node, addr, asn)
-		for _, typ := range bgpMessageTypes {
-			metricBGPPeerReceivedMessages.DeleteLabelValues(node, addr, typ)
-			metricBGPPeerSentMessages.DeleteLabelValues(node, addr, typ)
-		}
-	}
+	deleteStaleBGPPeerSeries(node, c.lastBGPPeers, currentPeers)
 	c.lastBGPPeers = currentPeers
 }
 
@@ -325,16 +356,6 @@ func (c *Controller) collectBFDMetrics() {
 		}
 	})
 
-	for addr := range c.lastBFDPeers {
-		if _, ok := currentPeers[addr]; ok {
-			continue
-		}
-		metricBFDPeerUp.DeleteLabelValues(node, addr)
-		metricBFDPeerState.DeleteLabelValues(node, addr)
-		metricBFDPeerRemoteState.DeleteLabelValues(node, addr)
-		metricBFDPeerFailureTransitions.DeleteLabelValues(node, addr)
-		metricBFDPeerTransmittedPackets.DeleteLabelValues(node, addr)
-		metricBFDPeerReceivedPackets.DeleteLabelValues(node, addr)
-	}
+	deleteStaleBFDPeerSeries(node, c.lastBFDPeers, currentPeers)
 	c.lastBFDPeers = currentPeers
 }
