@@ -4,8 +4,25 @@ import (
 	"testing"
 
 	"github.com/osrg/gobgp/v4/api"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
+
+// countSeries returns the number of series currently exported by a collector.
+// It mirrors what a Prometheus scrape would observe without pulling in the
+// testutil package, which would add a new module dependency.
+func countSeries(c prometheus.Collector) int {
+	ch := make(chan prometheus.Metric)
+	go func() {
+		c.Collect(ch)
+		close(ch)
+	}()
+	n := 0
+	for range ch {
+		n++
+	}
+	return n
+}
 
 func TestBGPPeerUpValue(t *testing.T) {
 	tests := []struct {
@@ -86,4 +103,133 @@ func TestRegisterSpeakerMetricsIdempotent(t *testing.T) {
 		registerSpeakerMetrics()
 		registerSpeakerMetrics()
 	})
+}
+
+// resetBGPPeerMetricVecs clears every per-peer BGP metric vector so a test starts
+// from a clean slate regardless of other tests mutating the package globals.
+func resetBGPPeerMetricVecs() {
+	metricBGPPeerUp.Reset()
+	metricBGPPeerState.Reset()
+	metricBGPPeerFlapCount.Reset()
+	metricBGPPeerOutQueue.Reset()
+	metricBGPPeerReceivedMessages.Reset()
+	metricBGPPeerSentMessages.Reset()
+}
+
+// setBGPPeerSeries populates a full per-peer BGP series set for (node, addr, asn),
+// mirroring what collectBGPMetrics writes for a single peer.
+func setBGPPeerSeries(node, addr, asn string) {
+	metricBGPPeerUp.WithLabelValues(node, addr, asn).Set(1)
+	metricBGPPeerState.WithLabelValues(node, addr, asn).Set(6)
+	metricBGPPeerFlapCount.WithLabelValues(node, addr, asn).Set(0)
+	metricBGPPeerOutQueue.WithLabelValues(node, addr, asn).Set(0)
+	for _, typ := range bgpMessageTypes {
+		metricBGPPeerReceivedMessages.WithLabelValues(node, addr, typ).Set(1)
+		metricBGPPeerSentMessages.WithLabelValues(node, addr, typ).Set(1)
+	}
+}
+
+func TestDeleteStaleBGPPeerSeries(t *testing.T) {
+	const node = "node1"
+
+	t.Run("present peer with same ASN is retained", func(t *testing.T) {
+		resetBGPPeerMetricVecs()
+		setBGPPeerSeries(node, "10.0.0.1", "65001")
+
+		deleteStaleBGPPeerSeries(node,
+			map[string]string{"10.0.0.1": "65001"},
+			map[string]string{"10.0.0.1": "65001"})
+
+		require.Equal(t, 1, countSeries(metricBGPPeerUp))
+		require.Equal(t, len(bgpMessageTypes), countSeries(metricBGPPeerReceivedMessages))
+		require.Equal(t, len(bgpMessageTypes), countSeries(metricBGPPeerSentMessages))
+	})
+
+	t.Run("disappeared peer has all series deleted", func(t *testing.T) {
+		resetBGPPeerMetricVecs()
+		setBGPPeerSeries(node, "10.0.0.1", "65001")
+
+		deleteStaleBGPPeerSeries(node,
+			map[string]string{"10.0.0.1": "65001"},
+			map[string]string{})
+
+		require.Zero(t, countSeries(metricBGPPeerUp))
+		require.Zero(t, countSeries(metricBGPPeerState))
+		require.Zero(t, countSeries(metricBGPPeerFlapCount))
+		require.Zero(t, countSeries(metricBGPPeerOutQueue))
+		require.Zero(t, countSeries(metricBGPPeerReceivedMessages))
+		require.Zero(t, countSeries(metricBGPPeerSentMessages))
+	})
+
+	t.Run("changed ASN drops the old series and keeps the new one", func(t *testing.T) {
+		resetBGPPeerMetricVecs()
+		// Old asn series remain from the previous cycle; the new asn series was
+		// already written by the collection callback for the current cycle.
+		setBGPPeerSeries(node, "10.0.0.1", "65001")
+		setBGPPeerSeries(node, "10.0.0.1", "65002")
+		require.Equal(t, 2, countSeries(metricBGPPeerUp))
+
+		deleteStaleBGPPeerSeries(node,
+			map[string]string{"10.0.0.1": "65001"},
+			map[string]string{"10.0.0.1": "65002"})
+
+		// Exactly one series must remain, and it must be the new-ASN one. Using
+		// DeleteLabelValues as an assertion: it returns true only if the series
+		// existed, so the old-ASN lookup must be false and the new-ASN true.
+		require.Equal(t, 1, countSeries(metricBGPPeerUp))
+		require.False(t, metricBGPPeerUp.DeleteLabelValues(node, "10.0.0.1", "65001"))
+		require.True(t, metricBGPPeerUp.DeleteLabelValues(node, "10.0.0.1", "65002"))
+	})
+
+	resetBGPPeerMetricVecs()
+}
+
+func TestDeleteStaleBFDPeerSeries(t *testing.T) {
+	const node = "node1"
+
+	resetBFD := func() {
+		metricBFDPeerUp.Reset()
+		metricBFDPeerState.Reset()
+		metricBFDPeerRemoteState.Reset()
+		metricBFDPeerFailureTransitions.Reset()
+		metricBFDPeerTransmittedPackets.Reset()
+		metricBFDPeerReceivedPackets.Reset()
+	}
+	setBFD := func(addr string) {
+		metricBFDPeerUp.WithLabelValues(node, addr).Set(1)
+		metricBFDPeerState.WithLabelValues(node, addr).Set(1)
+		metricBFDPeerRemoteState.WithLabelValues(node, addr).Set(1)
+		metricBFDPeerFailureTransitions.WithLabelValues(node, addr).Set(0)
+		metricBFDPeerTransmittedPackets.WithLabelValues(node, addr).Set(1)
+		metricBFDPeerReceivedPackets.WithLabelValues(node, addr).Set(1)
+	}
+
+	t.Run("present peer is retained", func(t *testing.T) {
+		resetBFD()
+		setBFD("10.0.0.1")
+
+		deleteStaleBFDPeerSeries(node,
+			map[string]struct{}{"10.0.0.1": {}},
+			map[string]struct{}{"10.0.0.1": {}})
+
+		require.Equal(t, 1, countSeries(metricBFDPeerUp))
+	})
+
+	t.Run("disappeared peer has all series deleted", func(t *testing.T) {
+		resetBFD()
+		setBFD("10.0.0.1")
+
+		deleteStaleBFDPeerSeries(node,
+			map[string]struct{}{"10.0.0.1": {}},
+			map[string]struct{}{})
+
+		require.Zero(t, countSeries(metricBFDPeerUp))
+		require.Zero(t, countSeries(metricBFDPeerState))
+		require.Zero(t, countSeries(metricBFDPeerRemoteState))
+		require.Zero(t, countSeries(metricBFDPeerFailureTransitions))
+		require.Zero(t, countSeries(metricBFDPeerTransmittedPackets))
+		require.Zero(t, countSeries(metricBFDPeerReceivedPackets))
+	})
+
+	resetBFD()
 }
