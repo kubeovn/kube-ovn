@@ -6,6 +6,7 @@ set -euo pipefail
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
+OVN_SB_HOST=${OVN_SB_HOST:-}
 TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
 FLOW_LIMIT=${FLOW_LIMIT:-10}
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -122,7 +123,14 @@ handle_underlay_bridges
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 function gen_conn_str {
-  if [[ -z "${OVN_DB_IPS}" ]]; then
+  local port=$1
+  if [[ -n "${OVN_SB_HOST}" ]]; then
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+      x="tcp:${OVN_SB_HOST}:${port}"
+    else
+      x="ssl:${OVN_SB_HOST}:${port}"
+    fi
+  elif [[ -z "${OVN_DB_IPS}" ]]; then
     if [[ "$ENABLE_SSL" == "false" ]]; then
       x="tcp:[${OVN_SB_SERVICE_HOST}]:${OVN_SB_SERVICE_PORT}"
     else
@@ -132,9 +140,9 @@ function gen_conn_str {
     t=$(echo -n "${OVN_DB_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
     local port=${1:-${KUBE_OVN_SB_PORT:-6642}}
     if [[ "$ENABLE_SSL" == "false" ]]; then
-      x=$(for i in ${t}; do echo -n "tcp:[$i]:${port}",; done| sed 's/,$//')
+      x=$(for i in ${t}; do echo -n "tcp:[$i]:${port}",; done | sed 's/,$//')
     else
-      x=$(for i in ${t}; do echo -n "ssl:[$i]:${port}",; done| sed 's/,$//')
+      x=$(for i in ${t}; do echo -n "ssl:[$i]:${port}",; done | sed 's/,$//')
     fi
   fi
   echo "$x"
