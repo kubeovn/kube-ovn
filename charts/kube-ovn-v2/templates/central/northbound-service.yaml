@@ -17,7 +17,7 @@ spec:
       protocol: TCP
       port: 6641
       targetPort: 6641
-      {{- if .Values.central.separated.enabled }}
+      {{- if and .Values.central.separated.enabled (or (eq .Values.central.separated.service.type "NodePort") (eq .Values.central.separated.service.type "LoadBalancer")) }}
       nodePort: {{ .Values.central.separated.service.nbNodePort }}
       {{- end }}
   type: {{ ternary .Values.central.separated.service.type "ClusterIP" .Values.central.separated.enabled }}

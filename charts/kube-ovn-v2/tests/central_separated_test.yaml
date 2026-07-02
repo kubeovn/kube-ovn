@@ -33,6 +33,9 @@ tests:
       - equal:
           path: spec.template.spec.hostNetwork
           value: false
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: ovn-central
       - notExists:
           path: spec.template.spec.affinity.podAntiAffinity
       - contains:
@@ -112,6 +115,21 @@ tests:
       - equal:
           path: spec.ports[0].nodePort
           value: 30642
+
+  - it: omits node ports when HCP services are rendered as ClusterIP
+    template: central/northbound-service.yaml
+    set:
+      central.separated.enabled: true
+      central.separated.namespace: hcp
+      central.separated.service.type: ClusterIP
+      central.separated.externalAddresses:
+        - 192.168.138.174
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - notExists:
+          path: spec.ports[0].nodePort
 
   - it: points workload components at the exposed HCP ovn-central node ports
     template: controller/controller-deployment.yaml
