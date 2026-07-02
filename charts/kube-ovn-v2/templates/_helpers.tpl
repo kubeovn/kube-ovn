@@ -168,30 +168,21 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 {{- end -}}
 
 {{- define "kubeovn.ovnDbAddresses" -}}
-{{- if .Values.central.hcp.enabled -}}
-{{- if not .Values.central.hcp.externalAddresses -}}
-{{- fail "central.hcp.externalAddresses must be set when central.hcp.enabled is true" -}}
-{{- end -}}
-{{- join "," .Values.central.hcp.externalAddresses -}}
-{{- else -}}
 {{- include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) -}}
 {{- end -}}
+
+{{- define "kubeovn.ovnNbAddress" -}}
+{{- if not .Values.central.hcp.nbAddress -}}
+{{- fail "central.hcp.nbAddress must be set when central.hcp.enabled is true" -}}
+{{- end -}}
+{{- .Values.central.hcp.nbAddress -}}
 {{- end -}}
 
-{{- define "kubeovn.ovnNbPort" -}}
-{{- if .Values.central.hcp.enabled -}}
-{{- .Values.central.hcp.service.nbNodePort -}}
-{{- else -}}
-6641
+{{- define "kubeovn.ovnSbAddress" -}}
+{{- if not .Values.central.hcp.sbAddress -}}
+{{- fail "central.hcp.sbAddress must be set when central.hcp.enabled is true" -}}
 {{- end -}}
-{{- end -}}
-
-{{- define "kubeovn.ovnSbPort" -}}
-{{- if .Values.central.hcp.enabled -}}
-{{- .Values.central.hcp.service.sbNodePort -}}
-{{- else -}}
-6642
-{{- end -}}
+{{- .Values.central.hcp.sbAddress -}}
 {{- end -}}
 
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
