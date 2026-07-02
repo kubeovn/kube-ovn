@@ -4,8 +4,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
+	kubeovninformerfactory "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestGetCidrByProtocol(t *testing.T) {
@@ -58,4 +62,34 @@ func TestGetCidrByProtocol(t *testing.T) {
 			require.Equal(t, c.expected, got)
 		})
 	}
+}
+
+func TestProviderExistsRequiresSubnetForNamedOvnProvider(t *testing.T) {
+	subnets := []*kubeovnv1.Subnet{{
+		ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
+		Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+	}, {
+		ObjectMeta: metav1.ObjectMeta{Name: "attach-subnet"},
+		Spec:       kubeovnv1.SubnetSpec{Provider: "attachnet-a.default.ovn"},
+	}}
+
+	kubeovnClient := kubeovnfake.NewSimpleClientset()
+	informerFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeovnClient, 0)
+	subnetInformer := informerFactory.Kubeovn().V1().Subnets()
+	for _, subnet := range subnets {
+		require.NoError(t, subnetInformer.Informer().GetStore().Add(subnet))
+	}
+
+	handler := cniServerHandler{Controller: &Controller{subnetsLister: subnetInformer.Lister()}}
+
+	_, ok := handler.providerExists(util.OvnProvider, "")
+	require.True(t, ok)
+
+	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "")
+	require.True(t, ok)
+	require.NotNil(t, subnet)
+	require.Equal(t, "attach-subnet", subnet.Name)
+
+	_, ok = handler.providerExists("attachnet-b.default.ovn", "")
+	require.False(t, ok)
 }
