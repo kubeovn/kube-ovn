@@ -113,6 +113,16 @@ spec:
           env:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
+            {{- if .Values.central.hcp.enabled }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- end }}
             - name: NODE_IPS
               value: "{{ ternary (include "kubeovn.centralRaftAddresses" .) (include "kubeovn.ovnDbAddresses" .) .Values.central.hcp.enabled }}"
             {{- if .Values.central.hcp.enabled }}
@@ -127,6 +137,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
               {{- end }}
+            {{- if not .Values.central.hcp.enabled }}
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -135,6 +146,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- end }}
             - name: POD_IPS
               valueFrom:
                 fieldRef:

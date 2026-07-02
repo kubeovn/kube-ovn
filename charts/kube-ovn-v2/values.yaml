@@ -32,7 +32,7 @@ namespace: kube-system
 # @section -- Global parameters
 clusterDomain: cluster.local
 
-# -- Comma-HCP list of IPs for each master node.
+# -- Comma-separated list of IPs for each master node.
 # If not specified, fallback to auto-identifying masters based on "masterNodesLabels"
 # @section -- Global parameters
 masterNodes: []
@@ -163,10 +163,10 @@ networking:
   # Empty means the default "external" is used.
   # @section -- Network parameters of the CNI
   externalGatewaySwitch: ""
-  # -- Comma-HCP string of NodeLocal DNS IP addresses.
+  # -- Comma-separated string of NodeLocal DNS IP addresses.
   # @section -- Network parameters of the CNI
   nodeLocalDnsIp: ""
-  # -- Comma-HCP list of destination IP CIDRs that should skip conntrack processing.
+  # -- Comma-separated list of destination IP CIDRs that should skip conntrack processing.
   # @section -- Network parameters of the CNI
   skipConntrackDstCidrs: ""
   # -- Enable listening on the metrics endpoint for the CNI daemons.
