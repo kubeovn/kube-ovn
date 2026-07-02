@@ -497,6 +497,10 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		klog.Errorf("ip %s is out of range", ip)
 		return nil, "", ErrOutOfRange
 	}
+	if checkConflict && ((v4 && pool.V4Reserved.Contains(ip)) || (v6 && pool.V6Reserved.Contains(ip))) {
+		klog.Errorf("ip %s is reserved", ip)
+		return nil, "", ErrConflict
+	}
 
 	defer func() {
 		s.pushPodNic(podName, nicName)
