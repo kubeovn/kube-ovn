@@ -2,7 +2,7 @@ kind: Service
 apiVersion: v1
 metadata:
   name: ovn-sb
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -17,7 +17,10 @@ spec:
       protocol: TCP
       port: 6642
       targetPort: 6642
-  type: ClusterIP
+      {{- if .Values.central.separated.enabled }}
+      nodePort: {{ .Values.central.separated.service.sbNodePort }}
+      {{- end }}
+  type: {{ ternary .Values.central.separated.service.type "ClusterIP" .Values.central.separated.enabled }}
   {{- if eq .Values.networking.stack "Dual" }}
   ipFamilyPolicy: PreferDualStack
   {{- end }}
