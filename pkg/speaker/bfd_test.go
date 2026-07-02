@@ -1,6 +1,7 @@
 package speaker
 
 import (
+	"math"
 	"net"
 	"testing"
 
@@ -124,19 +125,7 @@ func TestValidateBFDFlags(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "detection multiplier too large",
-			config: &Configuration{
-				EnableBFD:              true,
-				BFDMinTX:               1000,
-				BFDMinRX:               1000,
-				BFDDetectionMultiplier: 256,
-				NeighborAs:             65001,
-				ClusterAs:              65000,
-				NodeName:               "test-node",
-			},
-			wantErr: true,
-		},
-		{
+			// Upper bound (255) is enforced by the uint8 type, so no >255 test case is needed.
 			name: "detection multiplier zero",
 			config: &Configuration{
 				EnableBFD:              true,
@@ -179,12 +168,51 @@ func TestValidateBFDFlags(t *testing.T) {
 			name: "BFD disabled skips validation",
 			config: &Configuration{
 				EnableBFD:              false,
-				BFDDetectionMultiplier: 999,
+				BFDDetectionMultiplier: 255,
 				NeighborAs:             65001,
 				ClusterAs:              65000,
 				NodeName:               "test-node",
 			},
 			wantErr: false,
+		},
+		{
+			name: "min-tx at overflow boundary is valid",
+			config: &Configuration{
+				EnableBFD:              true,
+				BFDMinTX:               math.MaxUint32 / 1000,
+				BFDMinRX:               1000,
+				BFDDetectionMultiplier: 3,
+				NeighborAs:             65001,
+				ClusterAs:              65000,
+				NodeName:               "test-node",
+			},
+			wantErr: false,
+		},
+		{
+			name: "min-tx exceeds overflow boundary",
+			config: &Configuration{
+				EnableBFD:              true,
+				BFDMinTX:               math.MaxUint32/1000 + 1,
+				BFDMinRX:               1000,
+				BFDDetectionMultiplier: 3,
+				NeighborAs:             65001,
+				ClusterAs:              65000,
+				NodeName:               "test-node",
+			},
+			wantErr: true,
+		},
+		{
+			name: "min-rx exceeds overflow boundary",
+			config: &Configuration{
+				EnableBFD:              true,
+				BFDMinTX:               1000,
+				BFDMinRX:               math.MaxUint32/1000 + 1,
+				BFDDetectionMultiplier: 3,
+				NeighborAs:             65001,
+				ClusterAs:              65000,
+				NodeName:               "test-node",
+			},
+			wantErr: true,
 		},
 	}
 

@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"os"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/osrg/gobgp/v4/api"
+	"github.com/osrg/gobgp/v4/pkg/apiutil"
 	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	gobgp "github.com/osrg/gobgp/v4/pkg/server"
 	"github.com/spf13/pflag"
@@ -69,7 +71,7 @@ type Configuration struct {
 	EnableBFD              bool
 	BFDMinTX               uint32 // minimum transmit interval in milliseconds (converted to microseconds for GoBGP)
 	BFDMinRX               uint32 // minimum receive interval in milliseconds (converted to microseconds for GoBGP)
-	BFDDetectionMultiplier uint32 // detection multiplier (must be <= 255)
+	BFDDetectionMultiplier uint8  // RFC 5880 §6.8.1: valid range 1-255
 
 	NodeName       string
 	KubeConfigFile string
@@ -108,9 +110,9 @@ func ParseFlags() (*Configuration, error) {
 		argEnableMetrics               = pflag.BoolP("enable-metrics", "", true, "Whether to support metrics query")
 		argLogPerm                     = pflag.String("log-perm", "640", "The permission for the log file")
 		argEnableBFD                   = pflag.BoolP("enable-bfd", "", false, "Enable BFD (Bidirectional Forwarding Detection) for fast failure detection")
-		argBFDMinTX                    = pflag.Uint32("bfd-min-tx", 1000, "BFD minimum transmit interval in milliseconds (default 1000ms)")
-		argBFDMinRX                    = pflag.Uint32("bfd-min-rx", 1000, "BFD minimum receive interval in milliseconds (default 1000ms)")
-		argBFDDetectionMultiplier      = pflag.Uint32("bfd-detection-multiplier", 3, "BFD detection multiplier (default 3)")
+		argBFDMinTX                    = pflag.Uint32("bfd-min-tx", 1000, "BFD minimum transmit interval in milliseconds (default 1000, max 4294967)")
+		argBFDMinRX                    = pflag.Uint32("bfd-min-rx", 1000, "BFD minimum receive interval in milliseconds (default 1000, max 4294967)")
+		argBFDDetectionMultiplier      = pflag.Uint8("bfd-detection-multiplier", 3, "BFD detection multiplier (default 3, valid range 1-255 per RFC 5880)")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -273,14 +275,18 @@ func (config *Configuration) validateRequiredFlags() error {
 	}
 
 	if config.EnableBFD {
-		if config.BFDDetectionMultiplier == 0 || config.BFDDetectionMultiplier > 255 {
+		if config.BFDDetectionMultiplier == 0 {
 			missingFlags = append(missingFlags, "--bfd-detection-multiplier must be between 1 and 255")
 		}
 		if config.BFDMinTX == 0 {
 			missingFlags = append(missingFlags, "--bfd-min-tx must be > 0")
+		} else if config.BFDMinTX > math.MaxUint32/1000 {
+			missingFlags = append(missingFlags, "--bfd-min-tx must be <= 4294967 ms to avoid uint32 overflow in ms-to-μs conversion")
 		}
 		if config.BFDMinRX == 0 {
 			missingFlags = append(missingFlags, "--bfd-min-rx must be > 0")
+		} else if config.BFDMinRX > math.MaxUint32/1000 {
+			missingFlags = append(missingFlags, "--bfd-min-rx must be <= 4294967 ms to avoid uint32 overflow in ms-to-μs conversion")
 		}
 	}
 
@@ -337,22 +343,6 @@ func (config *Configuration) checkGracefulRestartOptions() error {
 	}
 
 	return nil
-}
-
-// newBFDPeerConfig creates a BfdPeerConfig from the speaker Configuration.
-// Returns nil when BFD is disabled.
-// GoBGP expects BFD intervals in microseconds (RFC 5880), while CLI flags
-// accept milliseconds for user convenience; this function performs the conversion.
-func newBFDPeerConfig(config *Configuration) *api.BfdPeerConfig {
-	if !config.EnableBFD {
-		return nil
-	}
-	return &api.BfdPeerConfig{
-		Enabled:                  true,
-		DesiredMinimumTxInterval: config.BFDMinTX * 1000, // ms → μs
-		RequiredMinimumReceive:   config.BFDMinRX * 1000, // ms → μs
-		DetectionMultiplier:      config.BFDDetectionMultiplier,
-	}
 }
 
 func (config *Configuration) initBgpServer() error {
@@ -472,12 +462,11 @@ func (config *Configuration) initBgpServer() error {
 				})
 			}
 
-			// Enable BFD if configured
-			if config.EnableBFD {
-				peer.Bfd = newBFDPeerConfig(config)
+			peer.Bfd = newBFDPeerConfig(config)
+			if peer.Bfd != nil {
 				klog.Infof("BFD enabled for peer %s: MinTX=%dms(%dμs), MinRX=%dms(%dμs), Multiplier=%d",
-					addr.String(), config.BFDMinTX, peer.Bfd.DesiredMinimumTxInterval,
-					config.BFDMinRX, peer.Bfd.RequiredMinimumReceive, config.BFDDetectionMultiplier)
+					addr.String(), config.BFDMinTX, config.BFDMinTX*1000,
+					config.BFDMinRX, config.BFDMinRX*1000, config.BFDDetectionMultiplier)
 			}
 
 			logBgpPeer(peer)
@@ -490,6 +479,10 @@ func (config *Configuration) initBgpServer() error {
 	}
 
 	config.BgpServer = s
+
+	// Start watching peer state changes for detailed logging
+	go config.watchPeerState()
+
 	return nil
 }
 
@@ -513,7 +506,7 @@ func addPeerWithRetry(s *gobgp.BgpServer, peer *api.Peer) error {
 	return err
 }
 
-// logBgpPeer logs the BGP peer configuration for debugging purposes.
+// logBgpPeer logs the BGP peer configuration details, masking sensitive information.
 func logBgpPeer(peer *api.Peer) {
 	klog.Infof("BGP Peer Configuration: NeighborAddress=%s, LocalAddress=%s, PeerAsn=%d, HoldTime=%d, PassiveMode=%v, EbgpMultihop=%v, GracefulRestart=%v, AfiSafis=%v, BFD=%v",
 		peer.Conf.NeighborAddress,
@@ -525,6 +518,40 @@ func logBgpPeer(peer *api.Peer) {
 		peer.GracefulRestart,
 		peer.AfiSafis,
 		peer.Bfd)
+}
+
+// watchPeerState monitors BGP peer state changes and logs detailed information
+// including local address when peers go up or down.
+func (config *Configuration) watchPeerState() {
+	err := config.BgpServer.WatchEvent(context.Background(), gobgp.WatchEventMessageCallbacks{
+		OnPeerUpdate: func(peer *apiutil.WatchEventMessage_PeerEvent, _ time.Time) {
+			if peer == nil || peer.Type != apiutil.PEER_EVENT_STATE {
+				return
+			}
+			p := peer.Peer
+			neighborAddr := p.Conf.NeighborAddress.String()
+
+			var bfdState string
+			if config.EnableBFD {
+				config.BgpServer.ListBfdPeer(context.Background(), func(addr string, st *api.BfdPeerState) {
+					if addr == neighborAddr && st != nil {
+						bfdState = bfdSessionStateString(st.SessionState)
+					}
+				})
+			}
+
+			if bfdState != "" {
+				klog.Infof("BGP peer state changed: neighbor=%s, state=%s, localAddress=%s, peerAS=%d, bfd=%s",
+					neighborAddr, p.State.SessionState, p.Transport.LocalAddress, p.Conf.PeerASN, bfdState)
+			} else {
+				klog.Infof("BGP peer state changed: neighbor=%s, state=%s, localAddress=%s, peerAS=%d",
+					neighborAddr, p.State.SessionState, p.Transport.LocalAddress, p.Conf.PeerASN)
+			}
+		},
+	}, gobgp.WatchPeer())
+	if err != nil {
+		klog.Errorf("failed to watch peer state: %v", err)
+	}
 }
 
 func (config *Configuration) initNeighborLocalAddresses() error {
