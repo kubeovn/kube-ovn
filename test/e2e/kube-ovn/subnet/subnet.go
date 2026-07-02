@@ -106,6 +106,26 @@ func checkIPSetOnNode(f *framework.Framework, node string, expectedIPsets []stri
 	}, "")
 }
 
+func waitForPodAddressConflictEvent(f *framework.Framework, podName, namespaceName string) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(500*time.Millisecond, 15*time.Second, func(ctx context.Context) (bool, error) {
+		events, err := f.EventClient().List(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
+		})
+		if err != nil {
+			return false, err
+		}
+		for _, event := range events.Items {
+			if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "AddressConflict") {
+				framework.Logf("Found conflict event: %s", event.Message)
+				return true, nil
+			}
+		}
+		return false, nil
+	}, fmt.Sprintf("pod %s should have AddressConflict warning event", podName))
+}
+
 var _ = framework.Describe("[group:subnet]", func() {
 	f := framework.NewDefaultFramework("subnet")
 
@@ -282,7 +302,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		expectSubnetIPsAvailable(subnet, cidrV4, cidrV6, excludeIPv4, excludeIPv6)
 	})
 
-	framework.ConformanceIt("should allow pod with fixed IP or IP pool in excludeIPs when available IPs is 0", func() {
+	framework.ConformanceIt("should reject pod with fixed IP or IP pool in excludeIPs when available IPs is 0", func() {
 		ginkgo.By("Creating a small subnet with very limited IP range")
 		var smallCIDR string
 		var excludeIPs []string
@@ -338,10 +358,11 @@ var _ = framework.Describe("[group:subnet]", func() {
 			}
 			cmd := []string{"sleep", "infinity"}
 			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-			pod = podClient.CreateSync(pod)
+			_ = podClient.Create(pod)
 
-			ginkgo.By(fmt.Sprintf("Verifying pod gets the %s IPs despite availableIPs being 0", tc.name))
-			framework.ExpectHaveKeyWithValue(pod.Annotations, tc.annotationKey, tc.annotationValue)
+			ginkgo.By(fmt.Sprintf("Verifying pod with %s in excludeIPs is rejected", tc.name))
+			waitForPodAddressConflictEvent(f, podName, namespaceName)
+			framework.ExpectNoError(ipClient.WaitToDisappear(fmt.Sprintf("%s.%s", podName, namespaceName), 0, 15*time.Second))
 
 			ginkgo.By(fmt.Sprintf("Cleaning up test pod for %s", tc.name))
 			podClient.DeleteSync(podName)
@@ -1431,22 +1452,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Expecting pod creation to fail due to MAC conflict")
 		_ = podClient.Create(pod)
 
-		// poll for the AddressConflict warning event instead of using a fixed sleep
-		framework.WaitUntil(500*time.Millisecond, 15*time.Second, func(_ context.Context) (bool, error) {
-			events, err := f.EventClient().List(context.Background(), metav1.ListOptions{
-				FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
-			})
-			if err != nil {
-				return false, err
-			}
-			for _, event := range events.Items {
-				if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "AddressConflict") {
-					framework.Logf("Found conflict event: %s", event.Message)
-					return true, nil
-				}
-			}
-			return false, nil
-		}, fmt.Sprintf("pod %s should have AddressConflict warning event", podName))
+		waitForPodAddressConflictEvent(f, podName, namespaceName)
 	})
 
 	framework.ConformanceIt("should reject pod static IP that conflicts with subnet gateway", func() {
@@ -1468,21 +1474,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		_ = podClient.Create(pod)
 
 		ginkgo.By("Expecting static IP allocation to fail")
-		framework.WaitUntil(500*time.Millisecond, 15*time.Second, func(_ context.Context) (bool, error) {
-			events, err := f.EventClient().List(context.Background(), metav1.ListOptions{
-				FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
-			})
-			if err != nil {
-				return false, err
-			}
-			for _, event := range events.Items {
-				if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "AddressConflict") {
-					framework.Logf("Found conflict event: %s", event.Message)
-					return true, nil
-				}
-			}
-			return false, nil
-		}, fmt.Sprintf("pod %s should have AddressConflict warning event", podName))
+		waitForPodAddressConflictEvent(f, podName, namespaceName)
 
 		ginkgo.By("Checking no IP CR was allocated for the rejected pod")
 		framework.ExpectNoError(ipClient.WaitToDisappear(fmt.Sprintf("%s.%s", podName, namespaceName), 0, 15*time.Second))
