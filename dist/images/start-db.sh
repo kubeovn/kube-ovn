@@ -131,7 +131,7 @@ function gen_conn_str {
     echo "$x"
 }
 
-function get_leader_ip {
+function get_leader_addr {
     # Always use first node ip as leader, this option only take effect
     # when first bootstrap the cluster.
     t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
@@ -364,8 +364,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
         ovn_db_pre_start nb
         ovn_db_pre_start sb
 
-        nb_leader_addr=$(get_leader_ip nb)
-        sb_leader_addr=$(get_leader_ip sb)
+        nb_leader_addr=$(get_leader_addr nb)
+        sb_leader_addr=$(get_leader_addr sb)
         set +eo pipefail
         is_clustered
         result=$?
@@ -492,8 +492,8 @@ else
         ovn_db_pre_start nb
         ovn_db_pre_start sb
 
-        nb_leader_addr=$(get_leader_ip nb)
-        sb_leader_addr=$(get_leader_ip sb)
+        nb_leader_addr=$(get_leader_addr nb)
+        sb_leader_addr=$(get_leader_addr sb)
         set +eo pipefail
         is_clustered
         result=$?

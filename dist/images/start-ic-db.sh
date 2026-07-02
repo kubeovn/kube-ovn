@@ -10,7 +10,7 @@ if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
     DB_ADDR="$POD_IP"
 fi
 
-function get_leader_ip {
+function get_leader_addr {
     t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
     echo -n "${t}" | cut -f 1 -d " "
 }
@@ -170,14 +170,14 @@ if [[ -z "$NODE_IPS" && -z "$LOCAL_IP" ]]; then
     /usr/share/ovn/scripts/ovn-ctl --db-ic-nb-create-insecure-remote=yes --db-ic-sb-create-insecure-remote=yes --db-ic-nb-addr="[::]" --db-ic-sb-addr="[::]" start_ic_ovsdb
     /usr/share/ovn/scripts/ovn-ctl status_ic_ovsdb
 else
-    ic_nb_leader_ip=$(get_leader_ip nb)
-    ic_sb_leader_ip=$(get_leader_ip sb)
+    ic_nb_leader_addr=$(get_leader_addr nb)
+    ic_sb_leader_addr=$(get_leader_addr sb)
     set +eo pipefail
     is_clustered
     result=$?
     set -eo pipefail
     # leader up only when no cluster and on first node
-    if [[ ${result} -eq 1 &&  "$ic_nb_leader_ip" == "${POD_IP}" ]]; then
+    if [[ ${result} -eq 1 &&  "$ic_nb_leader_addr" == "${POD_IP}" ]]; then
         echo "leader start with local ${LOCAL_IP} and cluster $(gen_conn_str 6647)"
         /usr/share/ovn/scripts/ovn-ctl  --db-ic-nb-create-insecure-remote=yes \
         --db-ic-sb-create-insecure-remote=yes \
@@ -199,7 +199,7 @@ else
                 nb_leader=$(ovndb_query_leader nb $i)
                 if [[ $nb_leader =~ "true" ]]
                 then
-                    nb_leader_ip=${i}
+                    ic_nb_leader_addr=${i}
                     break
                 fi
             done
@@ -208,19 +208,19 @@ else
                 sb_leader=$(ovndb_query_leader sb $i)
                 if [[ $sb_leader =~ "true" ]]
                 then
-                    sb_leader_ip=${i}
+                    ic_sb_leader_addr=${i}
                     break
                 fi
             done
         fi
         set -eo pipefail
-        echo "follower start with local ${LOCAL_IP}, ovn-ic-nb leader ${ic_nb_leader_ip} ovn-ic-sb leader ${ic_sb_leader_ip}"
+        echo "follower start with local ${LOCAL_IP}, ovn-ic-nb leader ${ic_nb_leader_addr} ovn-ic-sb leader ${ic_sb_leader_addr}"
         /usr/share/ovn/scripts/ovn-ctl  --db-ic-nb-create-insecure-remote=yes \
         --db-ic-sb-create-insecure-remote=yes \
         --db-ic-sb-cluster-local-addr="[${LOCAL_IP}]" \
         --db-ic-nb-cluster-local-addr="[${LOCAL_IP}]" \
-        --db-ic-nb-cluster-remote-addr="[${ic_nb_leader_ip}]" \
-        --db-ic-sb-cluster-remote-addr="[${ic_sb_leader_ip}]" \
+        --db-ic-nb-cluster-remote-addr="[${ic_nb_leader_addr}]" \
+        --db-ic-sb-cluster-remote-addr="[${ic_sb_leader_addr}]" \
         --ovn-ic-nb-db="$(gen_conn_str 6647)" \
         --ovn-ic-sb-db="$(gen_conn_str 6648)" \
         --db-ic-nb-addr=[$DB_ADDR] \
