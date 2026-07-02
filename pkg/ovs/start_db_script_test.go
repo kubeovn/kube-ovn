@@ -25,7 +25,7 @@ func TestStartDBAddressFunctions(t *testing.T) {
 		{
 			name:      "start-db",
 			path:      filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images", "start-db.sh"),
-			endMarker: "function get_leader_ip",
+			endMarker: "function get_leader_addr",
 		},
 		{
 			name:      "start-ic-db",
