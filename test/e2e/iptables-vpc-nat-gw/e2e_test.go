@@ -286,6 +286,40 @@ func iptablesSaveNat(natGwPodName string) string {
 	return string(stdout)
 }
 
+// nftDnatMapRuleExists checks if the nft map-based DNAT rule exists in the NAT gateway pod.
+// Architecture: table kube-ovn → named vmap "service-ips" → per-identity chain "dnat-XXXXXXXX"
+// The per-identity chain contains: numgen random mod N dnat to ip addr . port map { backends }
+func nftDnatMapRuleExists(natGwPodName, eip, externalPort, protocol string, backends []string) bool {
+	// List the entire table to see all chains and their rules
+	cmd := []string{"nft list table ip kube-ovn 2>/dev/null || true"}
+	stdout, _, err := framework.KubectlExec(framework.KubeOvnNamespace, natGwPodName, cmd...)
+	if err != nil {
+		return false
+	}
+	output := string(stdout)
+
+	// Check if the vmap element for this identity exists (eip . proto . port : goto chain)
+	nftProto := strings.ToLower(protocol)
+	vmapEntry := fmt.Sprintf("%s . %s . %s : goto", eip, nftProto, externalPort)
+	if !strings.Contains(output, vmapEntry) {
+		return false
+	}
+
+	// Check if the rule contains the expected number of backends (mod N)
+	modPattern := fmt.Sprintf(`numgen random mod %d map`, len(backends))
+	if !strings.Contains(output, modPattern) {
+		return false
+	}
+
+	// Check if all backends are present in the rule
+	for _, backend := range backends {
+		if !strings.Contains(output, backend) {
+			return false
+		}
+	}
+	return true
+}
+
 // hairpinSnatChainExists checks if the HAIRPIN_SNAT chain exists in the NAT gateway pod.
 // Returns false on older versions that don't support this feature.
 func hairpinSnatChainExists(natGwPodName string) bool {
@@ -1017,6 +1051,242 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			"DNAT rule should be removed from iptables after DNAT deletion")
 
 		// All cleanup is handled by DeferCleanup above, no need for manual cleanup
+	})
+
+	framework.ConformanceIt("[share-dnat] manage share type DNAT rules with nft map-based LB", func() {
+		f.SkipVersionPriorTo(1, 17, "Share type DNAT was introduced in v1.17")
+
+		// Test-specific variables
+		randomSuffix := framework.RandomSuffix()
+		shareDnatEipName := "share-dnat-eip-" + randomSuffix
+		shareDnatVip1Name := "share-dnat-vip1-" + randomSuffix
+		shareDnatVip2Name := "share-dnat-vip2-" + randomSuffix
+		shareDnatVip3Name := "share-dnat-vip3-" + randomSuffix
+		shareDnatName1 := "share-dnat-1-" + randomSuffix
+		shareDnatName2 := "share-dnat-2-" + randomSuffix
+		shareDnatName3 := "share-dnat-3-" + randomSuffix
+
+		overlaySubnetV4Cidr := "10.0.4.0/24"
+		overlaySubnetV4Gw := "10.0.4.1"
+		lanIP := "10.0.4.254"
+		natgwQoS := ""
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, // skipNADSetup: shared NAD created in BeforeAll
+			nil,  // no custom annotations
+			"",   // gwNamespace: use default (PodNamespace)
+			0,
+		)
+
+		ginkgo.By("Creating iptables vip for share dnat")
+		shareDnatVip1 := framework.MakeVip(f.Namespace.Name, shareDnatVip1Name, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(shareDnatVip1)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up share dnat vip1 " + shareDnatVip1Name)
+			vipClient.DeleteSync(shareDnatVip1Name)
+		})
+		shareDnatVip1 = vipClient.Get(shareDnatVip1Name)
+
+		shareDnatVip2 := framework.MakeVip(f.Namespace.Name, shareDnatVip2Name, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(shareDnatVip2)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up share dnat vip2 " + shareDnatVip2Name)
+			vipClient.DeleteSync(shareDnatVip2Name)
+		})
+		shareDnatVip2 = vipClient.Get(shareDnatVip2Name)
+
+		shareDnatVip3 := framework.MakeVip(f.Namespace.Name, shareDnatVip3Name, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(shareDnatVip3)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up share dnat vip3 " + shareDnatVip3Name)
+			vipClient.DeleteSync(shareDnatVip3Name)
+		})
+		shareDnatVip3 = vipClient.Get(shareDnatVip3Name)
+
+		ginkgo.By("Creating iptables eip for share dnat")
+		shareDnatEip := framework.MakeIptablesEIP(shareDnatEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(shareDnatEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up share dnat eip " + shareDnatEipName)
+			iptablesEIPClient.DeleteSync(shareDnatEipName)
+		})
+		shareDnatEip = iptablesEIPClient.Get(shareDnatEipName)
+
+		ginkgo.By("Creating first share type DNAT rule")
+		vpcNatGwPodName := util.GenNatGwPodName(vpcNatGwName)
+		shareDnat1 := framework.MakeShareIptablesDnatRule(shareDnatName1, shareDnatEipName, "80", "tcp", shareDnatVip1.Status.V4ip, "8080")
+		_ = iptablesDnatRuleClient.CreateSync(shareDnat1)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up share dnat1 " + shareDnatName1)
+			iptablesDnatRuleClient.DeleteSync(shareDnatName1)
+		})
+
+		ginkgo.By("Verifying nft DNAT map rule exists with 1 backend")
+		gomega.Eventually(func() bool {
+			return nftDnatMapRuleExists(vpcNatGwPodName, shareDnatEip.Status.IP, "80", "tcp",
+				[]string{shareDnatVip1.Status.V4ip + " . 8080"})
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"nft DNAT map rule should exist with 1 backend after first share DNAT creation")
+
+		ginkgo.By("Creating second share type DNAT rule with same identity")
+		shareDnat2 := framework.MakeShareIptablesDnatRule(shareDnatName2, shareDnatEipName, "80", "tcp", shareDnatVip2.Status.V4ip, "8080")
+		_ = iptablesDnatRuleClient.CreateSync(shareDnat2)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up share dnat2 " + shareDnatName2)
+			iptablesDnatRuleClient.DeleteSync(shareDnatName2)
+		})
+
+		ginkgo.By("Verifying nft DNAT map rule exists with 2 backends")
+		gomega.Eventually(func() bool {
+			return nftDnatMapRuleExists(vpcNatGwPodName, shareDnatEip.Status.IP, "80", "tcp",
+				[]string{shareDnatVip1.Status.V4ip + " . 8080", shareDnatVip2.Status.V4ip + " . 8080"})
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"nft DNAT map rule should exist with 2 backends after second share DNAT creation")
+
+		ginkgo.By("Creating third share type DNAT rule with same identity")
+		shareDnat3 := framework.MakeShareIptablesDnatRule(shareDnatName3, shareDnatEipName, "80", "tcp", shareDnatVip3.Status.V4ip, "8080")
+		_ = iptablesDnatRuleClient.CreateSync(shareDnat3)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up share dnat3 " + shareDnatName3)
+			iptablesDnatRuleClient.DeleteSync(shareDnatName3)
+		})
+
+		ginkgo.By("Verifying nft DNAT map rule exists with 3 backends")
+		gomega.Eventually(func() bool {
+			return nftDnatMapRuleExists(vpcNatGwPodName, shareDnatEip.Status.IP, "80", "tcp",
+				[]string{shareDnatVip1.Status.V4ip + " . 8080", shareDnatVip2.Status.V4ip + " . 8080", shareDnatVip3.Status.V4ip + " . 8080"})
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"nft DNAT map rule should exist with 3 backends after third share DNAT creation")
+
+		ginkgo.By("Deleting second share DNAT rule")
+		iptablesDnatRuleClient.DeleteSync(shareDnatName2)
+
+		ginkgo.By("Verifying nft DNAT map rule is rebuilt with 2 backends")
+		gomega.Eventually(func() bool {
+			return nftDnatMapRuleExists(vpcNatGwPodName, shareDnatEip.Status.IP, "80", "tcp",
+				[]string{shareDnatVip1.Status.V4ip + " . 8080", shareDnatVip3.Status.V4ip + " . 8080"})
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"nft DNAT map rule should be rebuilt with 2 backends after deleting one share DNAT")
+
+		ginkgo.By("Deleting remaining share DNAT rules")
+		iptablesDnatRuleClient.DeleteSync(shareDnatName1)
+		iptablesDnatRuleClient.DeleteSync(shareDnatName3)
+
+		ginkgo.By("Verifying nft DNAT map rule is removed after all share DNATs are deleted")
+		gomega.Eventually(func() bool {
+			return nftDnatMapRuleExists(vpcNatGwPodName, shareDnatEip.Status.IP, "80", "tcp", nil)
+		}, 30*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"nft DNAT map rule should be removed after all share DNATs are deleted")
+	})
+
+	framework.ConformanceIt("[share-dnat-conflict] verify type conflict between exclusive and share DNAT", func() {
+		f.SkipVersionPriorTo(1, 17, "Share type DNAT was introduced in v1.17")
+
+		// Test-specific variables
+		randomSuffix := framework.RandomSuffix()
+		conflictEipName := "conflict-eip-" + randomSuffix
+		conflictVip1Name := "conflict-vip1-" + randomSuffix
+		conflictVip2Name := "conflict-vip2-" + randomSuffix
+		exclusiveDnatName := "exclusive-dnat-" + randomSuffix
+		shareDnatName := "share-dnat-" + randomSuffix
+
+		overlaySubnetV4Cidr := "10.0.5.0/24"
+		overlaySubnetV4Gw := "10.0.5.1"
+		lanIP := "10.0.5.254"
+		natgwQoS := ""
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, natgwQoS,
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, // skipNADSetup: shared NAD created in BeforeAll
+			nil,  // no custom annotations
+			"",   // gwNamespace: use default (PodNamespace)
+			0,
+		)
+
+		ginkgo.By("Creating vips for conflict test")
+		conflictVip1 := framework.MakeVip(f.Namespace.Name, conflictVip1Name, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(conflictVip1)
+		ginkgo.DeferCleanup(func() {
+			vipClient.DeleteSync(conflictVip1Name)
+		})
+		conflictVip1 = vipClient.Get(conflictVip1Name)
+
+		conflictVip2 := framework.MakeVip(f.Namespace.Name, conflictVip2Name, overlaySubnetName, "", "", "")
+		_ = vipClient.CreateSync(conflictVip2)
+		ginkgo.DeferCleanup(func() {
+			vipClient.DeleteSync(conflictVip2Name)
+		})
+		conflictVip2 = vipClient.Get(conflictVip2Name)
+
+		ginkgo.By("Creating eip for conflict test")
+		conflictEip := framework.MakeIptablesEIP(conflictEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(conflictEip)
+		ginkgo.DeferCleanup(func() {
+			iptablesEIPClient.DeleteSync(conflictEipName)
+		})
+
+		ginkgo.By("Creating exclusive type DNAT rule")
+		exclusiveDnat := framework.MakeIptablesDnatRule(exclusiveDnatName, conflictEipName, "80", "tcp", conflictVip1.Status.V4ip, "8080")
+		_ = iptablesDnatRuleClient.CreateSync(exclusiveDnat)
+		ginkgo.DeferCleanup(func() {
+			iptablesDnatRuleClient.DeleteSync(exclusiveDnatName)
+		})
+
+		ginkgo.By("Verifying share type DNAT with same identity is rejected or never becomes ready")
+		shareDnat := framework.MakeShareIptablesDnatRule(shareDnatName, conflictEipName, "80", "tcp", conflictVip2.Status.V4ip, "8080")
+		_, err := iptablesDnatRuleClient.CreateRaw(shareDnat)
+		if err != nil {
+			// Webhook is deployed and rejected the creation - expected
+			framework.Logf("share DNAT creation rejected by webhook: %v", err)
+		} else {
+			// Webhook is not deployed; the controller's isDnatDuplicated check
+			// will prevent the DNAT from becoming Ready. Verify it stays not-ready.
+			framework.Logf("share DNAT created (no webhook), verifying it does not become ready")
+			gomega.Consistently(func() bool {
+				d := iptablesDnatRuleClient.Get(shareDnatName)
+				return d.Status.Ready
+			}, 15*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+				"share type DNAT should NOT become ready when exclusive type DNAT with same identity exists")
+			// Clean up the conflicting share DNAT before proceeding
+			iptablesDnatRuleClient.Delete(shareDnatName)
+		}
+
+		ginkgo.By("Deleting exclusive DNAT")
+		iptablesDnatRuleClient.DeleteSync(exclusiveDnatName)
+
+		ginkgo.By("Creating share type DNAT after exclusive is deleted")
+		shareDnat = framework.MakeShareIptablesDnatRule(shareDnatName, conflictEipName, "80", "tcp", conflictVip2.Status.V4ip, "8080")
+		_ = iptablesDnatRuleClient.CreateSync(shareDnat)
+		ginkgo.DeferCleanup(func() {
+			iptablesDnatRuleClient.DeleteSync(shareDnatName)
+		})
+
+		ginkgo.By("Verifying exclusive type DNAT with same identity is rejected or never becomes ready")
+		exclusiveDnat = framework.MakeIptablesDnatRule(exclusiveDnatName, conflictEipName, "80", "tcp", conflictVip1.Status.V4ip, "8080")
+		_, err = iptablesDnatRuleClient.CreateRaw(exclusiveDnat)
+		if err != nil {
+			// Webhook is deployed and rejected the creation - expected
+			framework.Logf("exclusive DNAT creation rejected by webhook: %v", err)
+		} else {
+			// Webhook is not deployed; verify it stays not-ready due to isDnatDuplicated
+			framework.Logf("exclusive DNAT created (no webhook), verifying it does not become ready")
+			gomega.Consistently(func() bool {
+				d := iptablesDnatRuleClient.Get(exclusiveDnatName)
+				return d.Status.Ready
+			}, 15*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+				"exclusive type DNAT should NOT become ready when share type DNAT with same identity exists")
+			// Clean up the conflicting exclusive DNAT
+			iptablesDnatRuleClient.Delete(exclusiveDnatName)
+		}
 	})
 
 	framework.ConformanceIt("[3] manage IptablesEIP lifecycle with finalizer and update subnet status", func() {

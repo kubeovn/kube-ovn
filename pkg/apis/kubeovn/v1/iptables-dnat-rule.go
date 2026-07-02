@@ -29,6 +29,7 @@ type IptablesDnatRuleList struct {
 // +kubebuilder:printcolumn:name="InternalIp",type="string",JSONPath=".spec.internalIp"
 // +kubebuilder:printcolumn:name="ExternalPort",type="string",JSONPath=".spec.externalPort"
 // +kubebuilder:printcolumn:name="InternalPort",type="string",JSONPath=".spec.internalPort"
+// +kubebuilder:printcolumn:name="Type",type="string",JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="NatGwDp",type="string",JSONPath=".status.natGwDp"
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
 type IptablesDnatRule struct {
@@ -38,6 +39,20 @@ type IptablesDnatRule struct {
 	Spec   IptablesDnatRuleSpec   `json:"spec"`
 	Status IptablesDnatRuleStatus `json:"status"`
 }
+
+const (
+	// DnatRuleTypeExclusive means the EIP:Port is exclusively used by this DNAT rule.
+	// Only one internal IP:Port can be mapped to a given EIP:Port identity (eip + externalPort + protocol).
+	// This is the original (default) behavior: uses a single iptables DNAT rule for 1:1 port forwarding.
+	// Creating another DNAT rule with the same identity is rejected.
+	DnatRuleTypeExclusive = "exclusive"
+
+	// DnatRuleTypeShare means multiple DNAT rules can share the same EIP:Port.
+	// Different internal IP:Port backends are allowed to coexist under the same identity,
+	// enabling load-balancing across backends. Implemented via nftables jhash map-based DNAT
+	// (distributes traffic by hashing src IP + src port), introduced to support nft LB scenarios.
+	DnatRuleTypeShare = "share"
+)
 
 type IptablesDnatRuleSpec struct {
 	// EIP name for DNAT rule
@@ -50,6 +65,18 @@ type IptablesDnatRuleSpec struct {
 	InternalIP string `json:"internalIp"`
 	// Internal port number to forward traffic to
 	InternalPort string `json:"internalPort"`
+	// Type of the DNAT rule, controls whether the EIP:Port identity can be shared
+	// by multiple internal backends:
+	// - "exclusive" (default): The EIP:Port is exclusively owned by this single DNAT rule.
+	//   Uses iptables DNAT for 1:1 port forwarding. This was the only mode before the
+	//   nft LB feature was introduced; any duplicate identity is rejected.
+	// - "share": Multiple DNAT rules may share the same EIP:Port identity, each
+	//   contributing a different internal IP:Port as a backend. Traffic is distributed
+	//   across backends using nftables jhash map-based DNAT (hash of src IP + src port).
+	// +kubebuilder:validation:Enum=exclusive;share
+	// +kubebuilder:default=exclusive
+	// +optional
+	Type string `json:"type,omitempty"`
 }
 
 type IptablesDnatRuleStatus struct {

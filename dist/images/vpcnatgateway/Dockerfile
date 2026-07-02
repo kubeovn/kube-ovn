@@ -7,6 +7,7 @@ RUN set -ex \
     bash \
     iproute2 \
     iptables iptables-legacy \
+    nftables \
     iputils \
     tcpdump \
     conntrack-tools
