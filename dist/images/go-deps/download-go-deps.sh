@@ -12,14 +12,24 @@ DEPS_DIR=/godeps
 
 mkdir -p "$DEPS_DIR"
 
-curl -sSf -L --retry 5 https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz | \
-    tar -xz -C "$DEPS_DIR" ./loopback ./portmap ./macvlan ./ipvlan
+download_archive() {
+    url=$1
+    file=$(mktemp)
+    curl -sSf -L --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 20 --max-time 300 -o "$file" "$url"
+    echo "$file"
+}
 
-curl -sSf -L --retry 5 https://dl.k8s.io/${KUBECTL_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz | \
-    tar -xz -C "$DEPS_DIR" --strip-components=3 kubernetes/client/bin/kubectl
+cni_archive=$(download_archive "https://github.com/containernetworking/plugins/releases/download/${CNI_PLUGINS_VERSION}/cni-plugins-linux-${ARCH}-${CNI_PLUGINS_VERSION}.tgz")
+tar -xz -f "$cni_archive" -C "$DEPS_DIR" ./loopback ./portmap ./macvlan ./ipvlan
+rm -f "$cni_archive"
 
-curl -sSf -L --retry 5 https://github.com/osrg/gobgp/releases/download/v${GOBGP_VERSION}/gobgp_${GOBGP_VERSION}_linux_${ARCH}.tar.gz | \
-    tar -xz -C "$DEPS_DIR" gobgp
+kubectl_archive=$(download_archive "https://dl.k8s.io/${KUBECTL_VERSION}/kubernetes-client-linux-${ARCH}.tar.gz")
+tar -xz -f "$kubectl_archive" -C "$DEPS_DIR" --strip-components=3 kubernetes/client/bin/kubectl
+rm -f "$kubectl_archive"
+
+gobgp_archive=$(download_archive "https://github.com/osrg/gobgp/releases/download/v${GOBGP_VERSION}/gobgp_${GOBGP_VERSION}_linux_${ARCH}.tar.gz")
+tar -xz -f "$gobgp_archive" -C "$DEPS_DIR" gobgp
+rm -f "$gobgp_archive"
 
 ls -lh "$DEPS_DIR"
 

@@ -1,0 +1,13 @@
+diff --git a/lib/netdev-linux.c b/lib/netdev-linux.c
+index 01701c8d450..391f7cc2c6f 100644
+--- a/lib/netdev-linux.c
++++ b/lib/netdev-linux.c
+@@ -3552,7 +3552,7 @@ netdev_linux_get_addr_list(const struct netdev *netdev_,
+     int ifindex;
+     int error;
+
+-    error = get_ifindex(netdev, &ifindex);
++    error = get_ifindex(netdev_, &ifindex);
+     if (error) {
+         return error;
+     }
