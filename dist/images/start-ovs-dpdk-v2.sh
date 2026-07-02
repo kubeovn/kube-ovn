@@ -4,6 +4,7 @@ set -euo pipefail
 OVN_REMOTE_PROBE_INTERVAL=${OVN_REMOTE_PROBE_INTERVAL:-10000}
 OVN_REMOTE_OPENFLOW_INTERVAL=${OVN_REMOTE_OPENFLOW_INTERVAL:-180}
 ENABLE_SSL=${ENABLE_SSL:-false}
+OVN_SB_ADDR=${OVN_SB_ADDR:-}
 
 echo "OVN_REMOTE_PROBE_INTERVAL is set to $OVN_REMOTE_PROBE_INTERVAL"
 echo "OVN_REMOTE_OPENFLOW_INTERVAL is set to $OVN_REMOTE_OPENFLOW_INTERVAL"
@@ -126,7 +127,9 @@ ovs-vsctl --may-exist add-br br-int \
   -- set bridge br-int fail-mode=secure
 
 # Set remote ovn-sb for ovn-controller to connect to
-if [[ "$ENABLE_SSL" == "true" ]]; then
+if [[ -n "$OVN_SB_ADDR" ]]; then
+  ovs-vsctl set open . external-ids:ovn-remote="$OVN_SB_ADDR"
+elif [[ "$ENABLE_SSL" == "true" ]]; then
   ovs-vsctl set open . external-ids:ovn-remote=ssl:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"
 else
   ovs-vsctl set open . external-ids:ovn-remote=tcp:"${OVN_SB_SERVICE_HOST}":"${OVN_SB_SERVICE_PORT}"

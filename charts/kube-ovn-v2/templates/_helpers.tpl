@@ -113,6 +113,49 @@ Get IPs of master nodes from values
   {{- join "," .Values.masterNodes }}
 {{- end -}}
 
+{{- define "kubeovn.centralNamespace" -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- default .Values.namespace .Values.central.hcp.namespace -}}
+{{- else -}}
+{{- .Values.namespace -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralReplicas" -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- .Values.central.hcp.replicas -}}
+{{- else -}}
+{{- include "kubeovn.nodeCount" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralRaftAddresses" -}}
+{{- $namespace := include "kubeovn.centralNamespace" . -}}
+{{- $addresses := list -}}
+{{- range $i := until (int .Values.central.hcp.replicas) -}}
+{{- $addresses = append $addresses (printf "ovn-central-%d.ovn-central.%s.svc" $i $namespace) -}}
+{{- end -}}
+{{- join "," $addresses -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnDbAddresses" -}}
+{{- include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnNbAddress" -}}
+{{- if not .Values.central.hcp.nbAddress -}}
+{{- fail "central.hcp.nbAddress must be set when central.hcp.enabled is true" -}}
+{{- end -}}
+{{- .Values.central.hcp.nbAddress -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnSbAddress" -}}
+{{- if not .Values.central.hcp.sbAddress -}}
+{{- fail "central.hcp.sbAddress must be set when central.hcp.enabled is true" -}}
+{{- end -}}
+{{- .Values.central.hcp.sbAddress -}}
+{{- end -}}
+
 
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
   {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}

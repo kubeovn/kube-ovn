@@ -1,0 +1,67 @@
+{{- if .Values.central.hcp.enabled }}
+{{- if ne (include "kubeovn.centralNamespace" .) .Values.namespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "kubeovn.centralNamespace" . }}
+---
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ovn-central
+  namespace: {{ include "kubeovn.centralNamespace" . }}
+automountServiceAccountToken: false
+{{-  if .Values.global.registry.imagePullSecrets }}
+imagePullSecrets:
+{{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
+{{- if $secret }}
+  - name: {{ $secret | quote}}
+{{- end }}
+{{- end }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ovn-central
+  namespace: {{ include "kubeovn.centralNamespace" . }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ovn-central
+  namespace: {{ include "kubeovn.centralNamespace" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ovn-central
+subjects:
+  - kind: ServiceAccount
+    name: ovn-central
+    namespace: {{ include "kubeovn.centralNamespace" . }}
+{{- end }}
