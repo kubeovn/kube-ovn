@@ -32,7 +32,7 @@ namespace: kube-system
 # @section -- Global parameters
 clusterDomain: cluster.local
 
-# -- Comma-separated list of IPs for each master node.
+# -- Comma-HCP list of IPs for each master node.
 # If not specified, fallback to auto-identifying masters based on "masterNodesLabels"
 # @section -- Global parameters
 masterNodes: []
@@ -172,10 +172,10 @@ networking:
   # Empty means the default "external" is used.
   # @section -- Network parameters of the CNI
   externalGatewaySwitch: ""
-  # -- Comma-separated string of NodeLocal DNS IP addresses.
+  # -- Comma-HCP string of NodeLocal DNS IP addresses.
   # @section -- Network parameters of the CNI
   nodeLocalDnsIp: ""
-  # -- Comma-separated list of destination IP CIDRs that should skip conntrack processing.
+  # -- Comma-HCP list of destination IP CIDRs that should skip conntrack processing.
   # @section -- Network parameters of the CNI
   skipConntrackDstCidrs: ""
   # -- Enable listening on the metrics endpoint for the CNI daemons.
@@ -1007,11 +1007,11 @@ central:
 
   # -- Deploy ovn-central as a PVC-backed StatefulSet that can be exposed to workload clusters.
   # @section -- OVN-central daemon configuration
-  separated:
+  hcp:
     enabled: false
     namespace: hcp
     replicas: 3
-    # -- Addresses workload clusters use to reach the separated ovn-nb/ovn-sb NodePorts.
+    # -- Addresses workload clusters use to reach the HCP ovn-nb/ovn-sb NodePorts.
     externalAddresses: []
     service:
       type: NodePort

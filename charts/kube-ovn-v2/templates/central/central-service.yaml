@@ -1,4 +1,4 @@
-{{- if .Values.central.separated.enabled }}
+{{- if .Values.central.hcp.enabled }}
 kind: Service
 apiVersion: v1
 metadata:
