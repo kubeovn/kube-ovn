@@ -2474,6 +2474,7 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 
 					if assignedPod, ok := c.ipam.IsIPAssignedToOtherPod(checkIP, net.Subnet.Name, key); ok {
 						klog.Errorf("static address %s for %s has been assigned to %s", staticIP, key, assignedPod)
+						err = ipam.ErrConflict
 						continue
 					}
 
@@ -2484,6 +2485,9 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 				}
 			}
 			klog.Errorf("acquire address from ippool %s for %s failed, %v", ippoolStr, key, err)
+			if err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
 		} else {
 			tempStrs := strings.Split(pod.Name, "-")
 			numStr := tempStrs[len(tempStrs)-1]
@@ -2497,6 +2501,9 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 					}
 				}
 				klog.Errorf("acquire address %s for %s failed, %v", ipPool[index], key, err)
+				if err != nil {
+					return "", "", "", podNet.Subnet, err
+				}
 			}
 		}
 	}

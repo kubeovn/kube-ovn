@@ -106,6 +106,26 @@ func checkIPSetOnNode(f *framework.Framework, node string, expectedIPsets []stri
 	}, "")
 }
 
+func waitForPodAddressConflictEvent(f *framework.Framework, podName, namespaceName string) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(500*time.Millisecond, 15*time.Second, func(ctx context.Context) (bool, error) {
+		events, err := f.EventClient().List(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
+		})
+		if err != nil {
+			return false, err
+		}
+		for _, event := range events.Items {
+			if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "AddressConflict") {
+				framework.Logf("Found conflict event: %s", event.Message)
+				return true, nil
+			}
+		}
+		return false, nil
+	}, fmt.Sprintf("pod %s should have AddressConflict warning event", podName))
+}
+
 var _ = framework.Describe("[group:subnet]", func() {
 	f := framework.NewDefaultFramework("subnet")
 
@@ -115,6 +135,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 	var deployClient *framework.DeploymentClient
 	var subnetClient *framework.SubnetClient
 	var eventClient *framework.EventClient
+	var ipClient *framework.IPClient
 	var namespaceName, subnetName, fakeSubnetName, podNamePrefix, deployName, podName string
 	var cidr, cidrV4, cidrV6, firstIPv4, lastIPv4, firstIPv6, lastIPv6 string
 	var gateways []string
@@ -125,6 +146,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		podClient = f.PodClient()
 		deployClient = f.DeploymentClient()
 		subnetClient = f.SubnetClient()
+		ipClient = f.IPClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		fakeSubnetName = "subnet-" + framework.RandomSuffix()
@@ -280,25 +302,25 @@ var _ = framework.Describe("[group:subnet]", func() {
 		expectSubnetIPsAvailable(subnet, cidrV4, cidrV6, excludeIPv4, excludeIPv6)
 	})
 
-	framework.ConformanceIt("should allow pod with fixed IP or IP pool in excludeIPs when available IPs is 0", func() {
+	framework.ConformanceIt("should reject pod with fixed IP or IP pool using subnet gateway IP", func() {
 		ginkgo.By("Creating a small subnet with very limited IP range")
 		var smallCIDR string
 		var excludeIPs []string
-		var usableIPs []string
+		var gatewayIPs []string
 
 		switch f.ClusterIPFamily {
 		case "ipv4":
 			smallCIDR = "192.168.200.0/30"
 			excludeIPs = []string{"192.168.200.1", "192.168.200.2"}
-			usableIPs = []string{"192.168.200.2"}
+			gatewayIPs = []string{"192.168.200.1"}
 		case "ipv6":
 			smallCIDR = "fd00:192:168:200::/126"
 			excludeIPs = []string{"fd00:192:168:200::1", "fd00:192:168:200::2"}
-			usableIPs = []string{"fd00:192:168:200::2"}
+			gatewayIPs = []string{"fd00:192:168:200::1"}
 		case "dual":
 			smallCIDR = "192.168.200.0/30,fd00:192:168:200::/126"
 			excludeIPs = []string{"192.168.200.1", "192.168.200.2", "fd00:192:168:200::1", "fd00:192:168:200::2"}
-			usableIPs = []string{"192.168.200.2", "fd00:192:168:200::2"}
+			gatewayIPs = []string{"192.168.200.1", "fd00:192:168:200::1"}
 		}
 
 		subnetName = "small-subnet-" + framework.RandomSuffix()
@@ -319,27 +341,28 @@ var _ = framework.Describe("[group:subnet]", func() {
 			{
 				name:            "fix ip",
 				annotationKey:   util.IPAddressAnnotation,
-				annotationValue: strings.Join(usableIPs, ","),
+				annotationValue: strings.Join(gatewayIPs, ","),
 			},
 			{
 				name:            "fix ip pool",
 				annotationKey:   util.IPPoolAnnotation,
-				annotationValue: strings.Join(usableIPs, ","),
+				annotationValue: strings.Join(gatewayIPs, ","),
 			},
 		}
 
 		for _, tc := range testCases {
-			ginkgo.By(fmt.Sprintf("Creating pod with %s annotation that matches excludeIPs", tc.name))
+			ginkgo.By(fmt.Sprintf("Creating pod with %s annotation that uses subnet gateway IP", tc.name))
 			podName = fmt.Sprintf("pod-%s-%s", strings.ReplaceAll(tc.name, " ", "-"), framework.RandomSuffix())
 			annotations := map[string]string{
 				tc.annotationKey: tc.annotationValue,
 			}
 			cmd := []string{"sleep", "infinity"}
 			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-			pod = podClient.CreateSync(pod)
+			_ = podClient.Create(pod)
 
-			ginkgo.By(fmt.Sprintf("Verifying pod gets the %s IPs despite availableIPs being 0", tc.name))
-			framework.ExpectHaveKeyWithValue(pod.Annotations, tc.annotationKey, tc.annotationValue)
+			ginkgo.By(fmt.Sprintf("Verifying pod with %s using subnet gateway IP is rejected", tc.name))
+			waitForPodAddressConflictEvent(f, podName, namespaceName)
+			framework.ExpectNoError(ipClient.WaitToDisappear(fmt.Sprintf("%s.%s", podName, namespaceName), 0, 15*time.Second))
 
 			ginkgo.By(fmt.Sprintf("Cleaning up test pod for %s", tc.name))
 			podClient.DeleteSync(podName)
@@ -1429,22 +1452,32 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("Expecting pod creation to fail due to MAC conflict")
 		_ = podClient.Create(pod)
 
-		// poll for the AddressConflict warning event instead of using a fixed sleep
-		framework.WaitUntil(500*time.Millisecond, 15*time.Second, func(_ context.Context) (bool, error) {
-			events, err := f.EventClient().List(context.Background(), metav1.ListOptions{
-				FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", podName, namespaceName),
-			})
-			if err != nil {
-				return false, err
-			}
-			for _, event := range events.Items {
-				if event.Type == corev1.EventTypeWarning && strings.Contains(event.Message, "AddressConflict") {
-					framework.Logf("Found conflict event: %s", event.Message)
-					return true, nil
-				}
-			}
-			return false, nil
-		}, fmt.Sprintf("pod %s should have AddressConflict warning event", podName))
+		waitForPodAddressConflictEvent(f, podName, namespaceName)
+	})
+
+	framework.ConformanceIt("should reject pod static IP that conflicts with subnet gateway", func() {
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, strings.Join(gateways, ","), "", "", gateways, nil, []string{namespaceName})
+		subnet = subnetClient.CreateSync(subnet)
+
+		staticIP := firstIPv4
+		if staticIP == "" {
+			staticIP = firstIPv6
+		}
+
+		ginkgo.By("Creating pod with static IP that conflicts with subnet gateway")
+		annotations := map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+			util.IPAddressAnnotation:     staticIP,
+		}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		_ = podClient.Create(pod)
+
+		ginkgo.By("Expecting static IP allocation to fail")
+		waitForPodAddressConflictEvent(f, podName, namespaceName)
+
+		ginkgo.By("Checking no IP CR was allocated for the rejected pod")
+		framework.ExpectNoError(ipClient.WaitToDisappear(fmt.Sprintf("%s.%s", podName, namespaceName), 0, 15*time.Second))
 	})
 })
 
