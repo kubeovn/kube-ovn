@@ -7,14 +7,15 @@ templates:
   - central/central-rbac.yaml
   - controller/controller-deployment.yaml
   - ovs-ovn/ovs-ovn-daemonset.yaml
+  - ovs-ovn/ovs-ovn-dpdk-daemonset.yaml
 tests:
   - it: renders ovn-central as a PVC-backed StatefulSet in the HCP namespace
     template: central/central-deployment.yaml
     set:
       central.hcp.enabled: true
       central.hcp.namespace: hcp
-      central.hcp.externalAddresses:
-        - 192.168.138.174
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
       central.hcp.replicas: 3
       central.hcp.storage.size: 5Gi
       central.hcp.storage.storageClassName: topolvm
@@ -60,8 +61,8 @@ tests:
     set:
       central.hcp.enabled: true
       central.hcp.namespace: hcp
-      central.hcp.externalAddresses:
-        - 192.168.138.174
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
     asserts:
       - equal:
           path: metadata.name
@@ -83,8 +84,8 @@ tests:
       central.hcp.namespace: hcp
       central.hcp.service.type: NodePort
       central.hcp.service.nbNodePort: 30641
-      central.hcp.externalAddresses:
-        - 192.168.138.174
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
     asserts:
       - equal:
           path: metadata.namespace
@@ -103,8 +104,8 @@ tests:
       central.hcp.namespace: hcp
       central.hcp.service.type: NodePort
       central.hcp.service.sbNodePort: 30642
-      central.hcp.externalAddresses:
-        - 192.168.138.174
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
     asserts:
       - equal:
           path: metadata.namespace
@@ -122,8 +123,8 @@ tests:
       central.hcp.enabled: true
       central.hcp.namespace: hcp
       central.hcp.service.type: ClusterIP
-      central.hcp.externalAddresses:
-        - 192.168.138.174
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
     asserts:
       - equal:
           path: spec.type
@@ -131,27 +132,47 @@ tests:
       - notExists:
           path: spec.ports[0].nodePort
 
-  - it: points workload components at the exposed HCP ovn-central node ports
+  - it: points workload components at independent HCP OVN DB addresses
     template: controller/controller-deployment.yaml
     set:
       central.hcp.enabled: true
-      central.hcp.externalAddresses:
-        - 192.168.138.174
-      central.hcp.service.nbNodePort: 30641
-      central.hcp.service.sbNodePort: 30642
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: OVN_DB_IPS
-            value: 192.168.138.174
+            name: OVN_NB_ADDR
+            value: tcp:ovn-nb.example.com:6641
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: KUBE_OVN_NB_PORT
-            value: "30641"
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+
+  - it: points ovs-ovn at the HCP OVN SB address
+    template: ovs-ovn/ovs-ovn-daemonset.yaml
+    set:
+      central.hcp.enabled: true
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: KUBE_OVN_SB_PORT
-            value: "30642"
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+
+  - it: points ovs-ovn-dpdk at the HCP OVN SB address
+    template: ovs-ovn/ovs-ovn-dpdk-daemonset.yaml
+    set:
+      central.hcp.enabled: true
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+      ovsOvn.dpdkHybrid.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
