@@ -114,16 +114,16 @@ Get IPs of master nodes from values
 {{- end -}}
 
 {{- define "kubeovn.centralNamespace" -}}
-{{- if .Values.central.separated.enabled -}}
-{{- default .Values.namespace .Values.central.separated.namespace -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- default .Values.namespace .Values.central.hcp.namespace -}}
 {{- else -}}
 {{- .Values.namespace -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "kubeovn.centralReplicas" -}}
-{{- if .Values.central.separated.enabled -}}
-{{- .Values.central.separated.replicas -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- .Values.central.hcp.replicas -}}
 {{- else -}}
 {{- include "kubeovn.nodeCount" . -}}
 {{- end -}}
@@ -132,34 +132,34 @@ Get IPs of master nodes from values
 {{- define "kubeovn.centralRaftAddresses" -}}
 {{- $namespace := include "kubeovn.centralNamespace" . -}}
 {{- $addresses := list -}}
-{{- range $i := until (int .Values.central.separated.replicas) -}}
+{{- range $i := until (int .Values.central.hcp.replicas) -}}
 {{- $addresses = append $addresses (printf "ovn-central-%d.ovn-central.%s.svc" $i $namespace) -}}
 {{- end -}}
 {{- join "," $addresses -}}
 {{- end -}}
 
 {{- define "kubeovn.ovnDbAddresses" -}}
-{{- if .Values.central.separated.enabled -}}
-{{- if not .Values.central.separated.externalAddresses -}}
-{{- fail "central.separated.externalAddresses must be set when central.separated.enabled is true" -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- if not .Values.central.hcp.externalAddresses -}}
+{{- fail "central.hcp.externalAddresses must be set when central.hcp.enabled is true" -}}
 {{- end -}}
-{{- join "," .Values.central.separated.externalAddresses -}}
+{{- join "," .Values.central.hcp.externalAddresses -}}
 {{- else -}}
 {{- include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) -}}
 {{- end -}}
 {{- end -}}
 
 {{- define "kubeovn.ovnNbPort" -}}
-{{- if .Values.central.separated.enabled -}}
-{{- .Values.central.separated.service.nbNodePort -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- .Values.central.hcp.service.nbNodePort -}}
 {{- else -}}
 6641
 {{- end -}}
 {{- end -}}
 
 {{- define "kubeovn.ovnSbPort" -}}
-{{- if .Values.central.separated.enabled -}}
-{{- .Values.central.separated.service.sbNodePort -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- .Values.central.hcp.service.sbNodePort -}}
 {{- else -}}
 6642
 {{- end -}}

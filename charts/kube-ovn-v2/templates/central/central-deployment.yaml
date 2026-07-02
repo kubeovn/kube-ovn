@@ -1,5 +1,5 @@
 {{- $centralImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.central.image) | fromYaml -}}
-kind: {{ ternary "StatefulSet" "Deployment" .Values.central.separated.enabled }}
+kind: {{ ternary "StatefulSet" "Deployment" .Values.central.hcp.enabled }}
 apiVersion: apps/v1
 metadata:
   name: ovn-central
@@ -14,11 +14,11 @@ metadata:
   {{- end }}
 spec:
   replicas: {{ include "kubeovn.centralReplicas" . }}
-  {{- if .Values.central.separated.enabled }}
+  {{- if .Values.central.hcp.enabled }}
   serviceName: ovn-central
   podManagementPolicy: Parallel
   {{- end }}
-  {{- if not .Values.central.separated.enabled }}
+  {{- if not .Values.central.hcp.enabled }}
   strategy:
     rollingUpdate:
       maxSurge: 0
@@ -55,7 +55,7 @@ spec:
           operator: Exists
       affinity:
         {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedRequired" (include "kubeovn.masterNodeRequired" . | fromYamlArray) "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
-        {{- if not .Values.central.separated.enabled }}
+        {{- if not .Values.central.hcp.enabled }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
@@ -64,14 +64,14 @@ spec:
               topologyKey: kubernetes.io/hostname
         {{- end }}
       priorityClassName: system-cluster-critical
-      serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" .Values.central.separated.enabled }}
+      serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" .Values.central.hcp.enabled }}
       automountServiceAccountToken: true
-      hostNetwork: {{ ternary "false" "true" .Values.central.separated.enabled }}
+      hostNetwork: {{ ternary "false" "true" .Values.central.hcp.enabled }}
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
-        - name: {{ ternary "volume-init" "hostpath-init" .Values.central.separated.enabled }}
+        - name: {{ ternary "volume-init" "hostpath-init" .Values.central.hcp.enabled }}
           image: {{ $centralImage.prefix }}{{ $centralImage.repository }}:{{ $centralImage.tag }}
           imagePullPolicy: {{ $centralImage.pullPolicy }}
           command:
@@ -79,23 +79,23 @@ spec:
             - -c
             - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
           securityContext:
-            allowPrivilegeEscalation: {{ ternary "false" "true" .Values.central.separated.enabled }}
+            allowPrivilegeEscalation: {{ ternary "false" "true" .Values.central.hcp.enabled }}
             capabilities:
-              {{- if .Values.central.separated.enabled }}
+              {{- if .Values.central.hcp.enabled }}
               add:
                 - CHOWN
               {{- end }}
               drop:
                 - ALL
-            privileged: {{ ternary "false" "true" .Values.central.separated.enabled }}
+            privileged: {{ ternary "false" "true" .Values.central.hcp.enabled }}
             runAsUser: 0
           volumeMounts:
             - mountPath: /var/run/ovn
-              name: {{ ternary "run-ovn" "host-run-ovn" .Values.central.separated.enabled }}
+              name: {{ ternary "run-ovn" "host-run-ovn" .Values.central.hcp.enabled }}
             - mountPath: /etc/ovn
-              name: {{ ternary "ovn-data" "host-config-ovn" .Values.central.separated.enabled }}
+              name: {{ ternary "ovn-data" "host-config-ovn" .Values.central.hcp.enabled }}
             - mountPath: /var/log/ovn
-              name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.separated.enabled }}
+              name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.hcp.enabled }}
       containers:
         - name: ovn-central
           image: {{ $centralImage.prefix }}{{ $centralImage.repository }}:{{ $centralImage.tag }}
@@ -114,13 +114,13 @@ spec:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
             - name: NODE_IPS
-              value: "{{ ternary (include "kubeovn.centralRaftAddresses" .) (include "kubeovn.ovnDbAddresses" .) .Values.central.separated.enabled }}"
-            {{- if .Values.central.separated.enabled }}
+              value: "{{ ternary (include "kubeovn.centralRaftAddresses" .) (include "kubeovn.ovnDbAddresses" .) .Values.central.hcp.enabled }}"
+            {{- if .Values.central.hcp.enabled }}
             - name: DB_CLUSTER_ADDR
               value: "$(POD_NAME).ovn-central.$(POD_NAMESPACE).svc"
             {{- end }}
             - name: POD_IP
-              {{- if .Values.central.separated.enabled }}
+              {{- if .Values.central.hcp.enabled }}
               value: "$(DB_CLUSTER_ADDR)"
               {{- else }}
               valueFrom:
@@ -140,7 +140,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
-              value: "{{ ternary false .Values.features.ENABLE_BIND_LOCAL_IP .Values.central.separated.enabled }}"
+              value: "{{ ternary false .Values.features.ENABLE_BIND_LOCAL_IP .Values.central.hcp.enabled }}"
             - name: PROBE_INTERVAL
               value: "{{ .Values.ovsOvn.probeInterval }}"
             - name: OVN_NORTHD_PROBE_INTERVAL
@@ -162,12 +162,12 @@ spec:
           {{- end }}
           volumeMounts:
             - mountPath: /var/run/ovn
-              name: {{ ternary "run-ovn" "host-run-ovn" .Values.central.separated.enabled }}
+              name: {{ ternary "run-ovn" "host-run-ovn" .Values.central.hcp.enabled }}
             - mountPath: /etc/ovn
-              name: {{ ternary "ovn-data" "host-config-ovn" .Values.central.separated.enabled }}
+              name: {{ ternary "ovn-data" "host-config-ovn" .Values.central.hcp.enabled }}
             - mountPath: /var/log/ovn
-              name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.separated.enabled }}
-            {{- if not .Values.central.separated.enabled }}
+              name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.hcp.enabled }}
+            {{- if not .Values.central.hcp.enabled }}
             - mountPath: /etc/localtime
               name: localtime
               readOnly: true
@@ -193,7 +193,7 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
-        {{- if .Values.central.separated.enabled }}
+        {{- if .Values.central.hcp.enabled }}
         - name: run-ovn
           emptyDir: {}
         - name: log-ovn
@@ -216,7 +216,7 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
-  {{- if .Values.central.separated.enabled }}
+  {{- if .Values.central.hcp.enabled }}
   volumeClaimTemplates:
     - metadata:
         name: ovn-data
@@ -229,8 +229,8 @@ spec:
           - ReadWriteOnce
         resources:
           requests:
-            storage: {{ .Values.central.separated.storage.size }}
-        {{- if .Values.central.separated.storage.storageClassName }}
-        storageClassName: {{ .Values.central.separated.storage.storageClassName | quote }}
+            storage: {{ .Values.central.hcp.storage.size }}
+        {{- if .Values.central.hcp.storage.storageClassName }}
+        storageClassName: {{ .Values.central.hcp.storage.storageClassName | quote }}
         {{- end }}
   {{- end }}

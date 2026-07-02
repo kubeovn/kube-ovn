@@ -1,4 +1,4 @@
-suite: OVN central separated deployment (v2)
+suite: OVN central HCP deployment (v2)
 templates:
   - central/central-deployment.yaml
   - central/central-service.yaml
@@ -11,13 +11,13 @@ tests:
   - it: renders ovn-central as a PVC-backed StatefulSet in the HCP namespace
     template: central/central-deployment.yaml
     set:
-      central.separated.enabled: true
-      central.separated.namespace: hcp
-      central.separated.externalAddresses:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.externalAddresses:
         - 192.168.138.174
-      central.separated.replicas: 3
-      central.separated.storage.size: 5Gi
-      central.separated.storage.storageClassName: topolvm
+      central.hcp.replicas: 3
+      central.hcp.storage.size: 5Gi
+      central.hcp.storage.storageClassName: topolvm
     asserts:
       - isKind:
           of: StatefulSet
@@ -58,9 +58,9 @@ tests:
   - it: creates a headless service for StatefulSet raft DNS
     template: central/central-service.yaml
     set:
-      central.separated.enabled: true
-      central.separated.namespace: hcp
-      central.separated.externalAddresses:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.externalAddresses:
         - 192.168.138.174
     asserts:
       - equal:
@@ -79,11 +79,11 @@ tests:
   - it: exposes only nb and sb services through fixed node ports
     template: central/northbound-service.yaml
     set:
-      central.separated.enabled: true
-      central.separated.namespace: hcp
-      central.separated.service.type: NodePort
-      central.separated.service.nbNodePort: 30641
-      central.separated.externalAddresses:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.service.type: NodePort
+      central.hcp.service.nbNodePort: 30641
+      central.hcp.externalAddresses:
         - 192.168.138.174
     asserts:
       - equal:
@@ -99,11 +99,11 @@ tests:
   - it: exposes southbound through a fixed node port
     template: central/southbound-service.yaml
     set:
-      central.separated.enabled: true
-      central.separated.namespace: hcp
-      central.separated.service.type: NodePort
-      central.separated.service.sbNodePort: 30642
-      central.separated.externalAddresses:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.service.type: NodePort
+      central.hcp.service.sbNodePort: 30642
+      central.hcp.externalAddresses:
         - 192.168.138.174
     asserts:
       - equal:
@@ -119,10 +119,10 @@ tests:
   - it: omits node ports when HCP services are rendered as ClusterIP
     template: central/northbound-service.yaml
     set:
-      central.separated.enabled: true
-      central.separated.namespace: hcp
-      central.separated.service.type: ClusterIP
-      central.separated.externalAddresses:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.service.type: ClusterIP
+      central.hcp.externalAddresses:
         - 192.168.138.174
     asserts:
       - equal:
@@ -134,11 +134,11 @@ tests:
   - it: points workload components at the exposed HCP ovn-central node ports
     template: controller/controller-deployment.yaml
     set:
-      central.separated.enabled: true
-      central.separated.externalAddresses:
+      central.hcp.enabled: true
+      central.hcp.externalAddresses:
         - 192.168.138.174
-      central.separated.service.nbNodePort: 30641
-      central.separated.service.sbNodePort: 30642
+      central.hcp.service.nbNodePort: 30641
+      central.hcp.service.sbNodePort: 30642
     asserts:
       - contains:
           path: spec.template.spec.containers[0].env
