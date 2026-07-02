@@ -6,6 +6,7 @@ set -euo pipefail
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
+OVN_SB_ADDR=${OVN_SB_ADDR:-}
 TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
 FLOW_LIMIT=${FLOW_LIMIT:-10}
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
@@ -139,7 +140,7 @@ function gen_conn_str {
   echo "$x"
 }
 # Set remote ovn-sb for ovn-controller to connect to
-ovs-vsctl set open . external-ids:ovn-remote="$(gen_conn_str 6642)"
+ovs-vsctl set open . external-ids:ovn-remote="${OVN_SB_ADDR:-$(gen_conn_str "${KUBE_OVN_SB_PORT:-6642}")}"
 ovs-vsctl set open . external-ids:ovn-remote-probe-interval="${OVN_REMOTE_PROBE_INTERVAL}"
 ovs-vsctl set open . external-ids:ovn-openflow-probe-interval="${OVN_REMOTE_OPENFLOW_INTERVAL}"
 
