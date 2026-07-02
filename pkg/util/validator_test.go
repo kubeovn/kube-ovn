@@ -1062,6 +1062,91 @@ func TestValidatePodNetwork(t *testing.T) {
 			},
 			err: "10m is not a valid net1.ns1.kubernetes.io/egress_rate",
 		},
+		{
+			name: "IPFamilyIPv4",
+			annotations: map[string]string{
+				IPFamilyAnnotation:  "ipv4",
+				IPAddressAnnotation: "10.16.0.15",
+			},
+			err: "",
+		},
+		{
+			name: "IPFamilyIPv6",
+			annotations: map[string]string{
+				IPFamilyAnnotation:  "ipv6",
+				IPAddressAnnotation: "fd00::15",
+			},
+			err: "",
+		},
+		{
+			name: "IPFamilyInvalid",
+			annotations: map[string]string{
+				IPFamilyAnnotation: "v4",
+			},
+			err: "v4 is not a valid " + IPFamilyAnnotation,
+		},
+		{
+			name: "IPFamilyUppercaseInvalid",
+			annotations: map[string]string{
+				IPFamilyAnnotation: "IPv4",
+			},
+			err: "IPv4 is not a valid " + IPFamilyAnnotation,
+		},
+		{
+			name: "IPFamilyDualInvalid",
+			annotations: map[string]string{
+				IPFamilyAnnotation: "dual",
+			},
+			err: "dual is not a valid " + IPFamilyAnnotation,
+		},
+		{
+			name: "IPFamilyIPv4MismatchesStaticIPv6",
+			annotations: map[string]string{
+				IPFamilyAnnotation:  "ipv4",
+				IPAddressAnnotation: "fd00::15",
+			},
+			err: "fd00::15 does not match " + IPFamilyAnnotation + " ipv4",
+		},
+		{
+			name: "IPFamilyIPv6MismatchesStaticIPv4",
+			annotations: map[string]string{
+				IPFamilyAnnotation:  "ipv6",
+				IPAddressAnnotation: "10.16.0.15",
+			},
+			err: "10.16.0.15 does not match " + IPFamilyAnnotation + " ipv6",
+		},
+		{
+			name: "ProviderScopedIPFamilyMatchesStaticIP",
+			annotations: map[string]string{
+				"net1.ns1.ovn.kubernetes.io/ip_family":  "ipv6",
+				"net1.ns1.ovn.kubernetes.io/ip_address": "fd00::15",
+			},
+			err: "",
+		},
+		{
+			name: "ProviderScopedIPFamilyMismatchesStaticIP",
+			annotations: map[string]string{
+				"net1.ns1.ovn.kubernetes.io/ip_family":  "ipv4",
+				"net1.ns1.ovn.kubernetes.io/ip_address": "fd00::15",
+			},
+			err: "fd00::15 does not match net1.ns1.ovn.kubernetes.io/ip_family ipv4",
+		},
+		{
+			name: "ProviderScopedIPFamilyMatchesPerInterfaceStaticIP",
+			annotations: map[string]string{
+				"net1.ns1.ovn.net1.kubernetes.io/ip_family": "ipv6",
+				"net1.ns1.kubernetes.io/ip_address.net1":    "fd00::15",
+			},
+			err: "",
+		},
+		{
+			name: "ProviderScopedIPFamilyMismatchesPerInterfaceStaticIP",
+			annotations: map[string]string{
+				"net1.ns1.ovn.net1.kubernetes.io/ip_family": "ipv4",
+				"net1.ns1.kubernetes.io/ip_address.net1":    "fd00::15",
+			},
+			err: "fd00::15 does not match net1.ns1.ovn.net1.kubernetes.io/ip_family ipv4",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
