@@ -375,8 +375,8 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		klog.Errorf("ip %s is out of range", ip)
 		return nil, "", ErrOutOfRange
 	}
-	if checkConflict && ((v4 && pool.V4Reserved.Contains(ip)) || (v6 && pool.V6Reserved.Contains(ip))) {
-		klog.Errorf("ip %s is reserved", ip)
+	if checkConflict && ((v4 && ip.String() == s.V4Gw) || (v6 && ip.String() == s.V6Gw)) {
+		klog.Errorf("ip %s conflicts with subnet gateway", ip)
 		return nil, "", ErrConflict
 	}
 
