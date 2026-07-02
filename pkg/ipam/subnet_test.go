@@ -1194,6 +1194,56 @@ func TestGetStaticAddressReleaseExisting(t *testing.T) {
 		require.False(t, subnet.V4Using.Contains(firstIP))
 	})
 
+	t.Run("IPv4_KeepExistingAddressOnReservedIPConflict", func(t *testing.T) {
+		subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", []string{"10.0.0.2"})
+		require.NoError(t, err)
+
+		podName := "pod1.default"
+		nicName := "nic1"
+		firstIP, err := NewIP("10.0.0.5")
+		require.NoError(t, err)
+		reservedIP, err := NewIP("10.0.0.2")
+		require.NoError(t, err)
+
+		_, mac, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
+		require.NoError(t, err)
+
+		_, _, err = subnet.GetStaticAddress(podName, nicName, reservedIP, nil, false, true)
+		require.ErrorIs(t, err, ErrConflict)
+		require.Equal(t, firstIP, subnet.V4NicToIP[nicName])
+		require.Equal(t, podName, subnet.V4IPToPod[firstIP.String()])
+		require.True(t, subnet.V4Using.Contains(firstIP))
+		require.False(t, subnet.V4Available.Contains(firstIP))
+		require.Empty(t, subnet.V4IPToPod[reservedIP.String()])
+		require.False(t, subnet.V4Using.Contains(reservedIP))
+		require.Equal(t, mac, subnet.NicToMac[nicName])
+	})
+
+	t.Run("IPv6_KeepExistingAddressOnReservedIPConflict", func(t *testing.T) {
+		subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", []string{"2001:db8::2"})
+		require.NoError(t, err)
+
+		podName := "pod1.default"
+		nicName := "nic1"
+		firstIP, err := NewIP("2001:db8::5")
+		require.NoError(t, err)
+		reservedIP, err := NewIP("2001:db8::2")
+		require.NoError(t, err)
+
+		_, mac, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
+		require.NoError(t, err)
+
+		_, _, err = subnet.GetStaticAddress(podName, nicName, reservedIP, nil, false, true)
+		require.ErrorIs(t, err, ErrConflict)
+		require.Equal(t, firstIP, subnet.V6NicToIP[nicName])
+		require.Equal(t, podName, subnet.V6IPToPod[firstIP.String()])
+		require.True(t, subnet.V6Using.Contains(firstIP))
+		require.False(t, subnet.V6Available.Contains(firstIP))
+		require.Empty(t, subnet.V6IPToPod[reservedIP.String()])
+		require.False(t, subnet.V6Using.Contains(reservedIP))
+		require.Equal(t, mac, subnet.NicToMac[nicName])
+	})
+
 	// Test IPv6 scenario
 	t.Run("IPv6_ReleaseExistingAddress", func(t *testing.T) {
 		subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", nil)
