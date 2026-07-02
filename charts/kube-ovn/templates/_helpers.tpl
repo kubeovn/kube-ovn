@@ -76,6 +76,35 @@ cluster mode uses one replica per master node.
 {{- end -}}
 
 {{/*
+Environment variables used by the OVN NB/SB database server TLS setup.
+*/}}
+{{- define "kubeovn.ovnCentralTLSEnv" -}}
+- name: ENABLE_SSL
+  value: {{ .Values.networking.ENABLE_SSL | quote }}
+- name: TLS_MIN_VERSION
+  value: {{ .Values.networking.TLS_MIN_VERSION | quote }}
+- name: TLS_MAX_VERSION
+  value: {{ .Values.networking.TLS_MAX_VERSION | quote }}
+- name: TLS_CIPHER_SUITES
+  value: {{ join "," .Values.networking.TLS_CIPHER_SUITES | quote }}
+{{- end -}}
+
+{{/*
+TLS arguments for kube-ovn components that expose HTTPS endpoints.
+*/}}
+{{- define "kubeovn.componentTLSArgs" -}}
+{{- if .Values.networking.TLS_MIN_VERSION }}
+- --tls-min-version={{ .Values.networking.TLS_MIN_VERSION }}
+{{- end }}
+{{- if .Values.networking.TLS_MAX_VERSION }}
+- --tls-max-version={{ .Values.networking.TLS_MAX_VERSION }}
+{{- end }}
+{{- if .Values.networking.TLS_CIPHER_SUITES }}
+- --tls-cipher-suites={{ join "," .Values.networking.TLS_CIPHER_SUITES }}
+{{- end }}
+{{- end -}}
+
+{{/*
 Replica count for the kube-ovn-controller Deployment.
 - dataPlaneOnly: tenant cluster typically has no `kube-ovn/role=master` node
   label and kube-ovn-controller can run with replicas=1 (active/standby HA is

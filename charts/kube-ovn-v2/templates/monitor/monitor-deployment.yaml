@@ -85,6 +85,9 @@ spec:
           command: ["/kube-ovn/start-ovn-monitor.sh"]
           args:
           - --secure-serving={{- .Values.features.enableSecureServing }}
+          {{- if or .Values.networking.tlsMinVersion .Values.networking.tlsMaxVersion .Values.networking.tlsCipherSuites }}
+          {{- include "kubeovn.componentTLSArgs" . | nindent 10 }}
+          {{- end }}
           - --log_file=/var/log/kube-ovn/kube-ovn-monitor.log
           - --logtostderr=false
           - --alsologtostderr=true
