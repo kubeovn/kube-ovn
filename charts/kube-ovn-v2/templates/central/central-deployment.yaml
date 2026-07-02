@@ -64,7 +64,7 @@ spec:
               topologyKey: kubernetes.io/hostname
         {{- end }}
       priorityClassName: system-cluster-critical
-      serviceAccountName: {{ ternary "ovn" "ovn-ovs" .Values.central.separated.enabled }}
+      serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" .Values.central.separated.enabled }}
       automountServiceAccountToken: true
       hostNetwork: {{ ternary "false" "true" .Values.central.separated.enabled }}
       securityContext:
