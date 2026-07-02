@@ -37,6 +37,15 @@ tests:
       - equal:
           path: spec.template.spec.serviceAccountName
           value: ovn-central
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: POD_NAMESPACE
+      - equal:
+          path: spec.template.spec.containers[0].env[4].name
+          value: DB_CLUSTER_ADDR
       - notExists:
           path: spec.template.spec.affinity.podAntiAffinity
       - contains:
