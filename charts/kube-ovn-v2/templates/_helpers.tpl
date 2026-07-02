@@ -124,6 +124,58 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 {{- end }}
 {{- end -}}
 
+{{- define "kubeovn.centralNamespace" -}}
+{{- if .Values.central.separated.enabled -}}
+{{- default .Values.namespace .Values.central.separated.namespace -}}
+{{- else -}}
+{{- .Values.namespace -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralReplicas" -}}
+{{- if .Values.central.separated.enabled -}}
+{{- .Values.central.separated.replicas -}}
+{{- else -}}
+{{- include "kubeovn.nodeCount" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralRaftAddresses" -}}
+{{- $namespace := include "kubeovn.centralNamespace" . -}}
+{{- $addresses := list -}}
+{{- range $i := until (int .Values.central.separated.replicas) -}}
+{{- $addresses = append $addresses (printf "ovn-central-%d.ovn-central.%s.svc" $i $namespace) -}}
+{{- end -}}
+{{- join "," $addresses -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnDbAddresses" -}}
+{{- if .Values.central.separated.enabled -}}
+{{- if not .Values.central.separated.externalAddresses -}}
+{{- fail "central.separated.externalAddresses must be set when central.separated.enabled is true" -}}
+{{- end -}}
+{{- join "," .Values.central.separated.externalAddresses -}}
+{{- else -}}
+{{- include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnNbPort" -}}
+{{- if .Values.central.separated.enabled -}}
+{{- .Values.central.separated.service.nbNodePort -}}
+{{- else -}}
+6641
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnSbPort" -}}
+{{- if .Values.central.separated.enabled -}}
+{{- .Values.central.separated.service.sbNodePort -}}
+{{- else -}}
+6642
+{{- end -}}
+{{- end -}}
+
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
   {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}
   {{- if $ds -}}
