@@ -17,10 +17,10 @@ spec:
       protocol: TCP
       port: 6642
       targetPort: 6642
-      {{- if and .Values.central.separated.enabled (or (eq .Values.central.separated.service.type "NodePort") (eq .Values.central.separated.service.type "LoadBalancer")) }}
-      nodePort: {{ .Values.central.separated.service.sbNodePort }}
+      {{- if and .Values.central.hcp.enabled (or (eq .Values.central.hcp.service.type "NodePort") (eq .Values.central.hcp.service.type "LoadBalancer")) }}
+      nodePort: {{ .Values.central.hcp.service.sbNodePort }}
       {{- end }}
-  type: {{ ternary .Values.central.separated.service.type "ClusterIP" .Values.central.separated.enabled }}
+  type: {{ ternary .Values.central.hcp.service.type "ClusterIP" .Values.central.hcp.enabled }}
   {{- if eq .Values.networking.stack "Dual" }}
   ipFamilyPolicy: PreferDualStack
   {{- end }}

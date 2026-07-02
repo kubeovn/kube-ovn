@@ -1,4 +1,4 @@
-{{- if .Values.central.separated.enabled }}
+{{- if .Values.central.hcp.enabled }}
 {{- if ne (include "kubeovn.centralNamespace" .) .Values.namespace }}
 apiVersion: v1
 kind: Namespace
