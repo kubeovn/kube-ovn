@@ -8,6 +8,9 @@ DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
 DUAL_STACK=${DUAL_STACK:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
+TLS_MIN_VERSION=${TLS_MIN_VERSION:-}
+TLS_MAX_VERSION=${TLS_MAX_VERSION:-}
+TLS_CIPHER_SUITES=${TLS_CIPHER_SUITES:-}
 KUBE_OVN_TLS_ROTATION_INTERVAL=${KUBE_OVN_TLS_ROTATION_INTERVAL:-8760h}
 ENABLE_VLAN=${ENABLE_VLAN:-false}
 CHECK_GATEWAY=${CHECK_GATEWAY:-true}
@@ -59,6 +62,19 @@ OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
 ENABLE_OVN_LB_PREFER_LOCAL=${ENABLE_OVN_LB_PREFER_LOCAL:-false}
+
+function ovn_central_tls_env {
+  cat <<EOF
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: TLS_MIN_VERSION
+              value: "$TLS_MIN_VERSION"
+            - name: TLS_MAX_VERSION
+              value: "$TLS_MAX_VERSION"
+            - name: TLS_CIPHER_SUITES
+              value: "$TLS_CIPHER_SUITES"
+EOF
+}
 
 PROBE_HTTP_SCHEME="HTTP"
 if [ "$SECURE_SERVING" = "true" ]; then
@@ -7224,8 +7240,7 @@ spec:
                 - NET_BIND_SERVICE
                 - SYS_NICE
           env:
-            - name: ENABLE_SSL
-              value: "$ENABLE_SSL"
+$(ovn_central_tls_env)
             - name: NODE_IPS
               value: $addresses
             - name: POD_IP

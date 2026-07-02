@@ -121,6 +121,121 @@ func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports 
 	}
 }
 
+func containerEnvValues(pods []corev1.Pod, containerName string) map[string]string {
+	ginkgo.GinkgoHelper()
+	framework.ExpectNotEmpty(pods, "no pods found")
+
+	envs := map[string]string{}
+	for _, container := range pods[0].Spec.Containers {
+		if container.Name != containerName {
+			continue
+		}
+		for _, env := range container.Env {
+			envs[env.Name] = env.Value
+		}
+		return envs
+	}
+	framework.Failf("container %s not found in pod %s/%s", containerName, pods[0].Namespace, pods[0].Name)
+	return nil
+}
+
+const ovnDBSSLConfigCommand = `set -euo pipefail
+. /kube-ovn/ovn-db-ssl-options.sh
+expected() {
+  ovn_db_ssl_args /var/run/tls | sed -n "s/^--ovn-$1-db-ssl-$2=//p" | head -n1
+}
+actual() {
+  tr '\000' '\n' < /proc/"$(cat /var/run/ovn/ovn"$1"_db.pid)"/cmdline | sed -n "s/^--ssl-$2=//p" | head -n1
+}
+openssl_probe() {
+  port="$1"
+  shift
+  connect="$POD_IP:$port"
+  case "$POD_IP" in
+    *:*) connect="[$POD_IP]:$port" ;;
+  esac
+  timeout 10 openssl s_client -connect "$connect" -cert /var/run/tls/cert -key /var/run/tls/key -CAfile /var/run/tls/cacert -verify_return_error -brief "$@" </dev/null >/tmp/ovn-db-openssl.out 2>&1
+}
+listening() {
+  ss -Hntl | awk '{print $4}' | grep -Eq "(\]|:)$1$"
+}
+check() {
+  db="$1"
+  field="$2"
+  expected_value="$(expected "$db" "$field")"
+  actual_value="$(actual "$db" "$field")"
+  if [ "$actual_value" != "$expected_value" ]; then
+    echo "ovn-$db ssl_$field: expected <$expected_value>, got <$actual_value>"
+    exit 1
+  fi
+}
+supports_protocol() {
+  protocols="$1"
+  protocol="$2"
+  [ -z "$protocols" ] || [ "$protocols" != "${protocols#*$protocol}" ]
+}
+reject_protocol() {
+  db="$1"
+  port="$2"
+  protocol="$3"
+  option="$4"
+  if openssl_probe "$port" "$option"; then
+    echo "ovn-$db unexpectedly accepted $protocol"
+    exit 1
+  fi
+}
+check_handshake() {
+  db="$1"
+  port="$2"
+  required="${3:-true}"
+  if ! listening "$port"; then
+    if [ "$required" = "true" ]; then
+      echo "ovn-$db is not listening on port $port"
+      exit 1
+    fi
+    return 0
+  fi
+  protocols="$(actual "$db" protocols)"
+  cipher="$(actual "$db" ciphers | cut -d: -f1)"
+  ciphersuite="$(actual "$db" ciphersuites | cut -d: -f1)"
+
+  if [ -n "$cipher" ] && supports_protocol "$protocols" TLSv1.2; then
+    openssl_probe "$port" -tls1_2 -cipher "$cipher" || {
+      echo "ovn-$db rejected expected TLSv1.2 cipher $cipher"
+      cat /tmp/ovn-db-openssl.out
+      exit 1
+    }
+  fi
+  if [ -n "$ciphersuite" ] && supports_protocol "$protocols" TLSv1.3; then
+    openssl_probe "$port" -tls1_3 -ciphersuites "$ciphersuite" || {
+      echo "ovn-$db rejected expected TLSv1.3 ciphersuite $ciphersuite"
+      cat /tmp/ovn-db-openssl.out
+      exit 1
+    }
+  fi
+
+  case "${TLS_MIN_VERSION:-}" in
+    1.2 | "TLS 1.2" | TLS12)
+      reject_protocol "$db" "$port" TLSv1.1 -tls1_1
+      ;;
+    1.3 | "TLS 1.3" | TLS13)
+      reject_protocol "$db" "$port" TLSv1.1 -tls1_1
+      reject_protocol "$db" "$port" TLSv1.2 -tls1_2
+      ;;
+  esac
+}
+check nb protocols
+check nb ciphers
+check nb ciphersuites
+check sb protocols
+check sb ciphers
+check sb ciphersuites
+check_handshake nb "${NB_PORT:-6641}"
+check_handshake sb "${SB_PORT:-6642}"
+check_handshake nb "${NB_CLUSTER_PORT:-6643}" false
+check_handshake sb "${SB_CLUSTER_PORT:-6644}" false
+`
+
 var _ = framework.Describe("[group:security]", func() {
 	f := framework.NewDefaultFramework("security")
 	f.SkipNamespaceCreation = true
@@ -133,6 +248,36 @@ var _ = framework.Describe("[group:security]", func() {
 
 	framework.ConformanceIt("ovn db should listen on specified addresses for client connections", func() {
 		checkDeployment(f, "ovn-central", "ovsdb-server", strconv.Itoa(int(util.NBDatabasePort)), strconv.Itoa(int(util.SBDatabasePort)))
+	})
+
+	framework.ConformanceIt("ovn db should apply configured server TLS options", func() {
+		f.SkipVersionPriorTo(1, 15, "OVN DB server TLS options were introduced in v1.15")
+
+		ginkgo.By("Getting deployment ovn-central")
+		deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.TODO(), "ovn-central", metav1.GetOptions{})
+		framework.ExpectNoError(err, "failed to get deployment")
+		err = deployment.WaitForDeploymentComplete(f.ClientSet, deploy)
+		framework.ExpectNoError(err, "deployment failed to complete")
+		deploy, err = f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.TODO(), "ovn-central", metav1.GetOptions{})
+		framework.ExpectNoError(err, "failed to get deployment")
+
+		ginkgo.By("Getting pods")
+		pods, err := deployment.GetPodsForDeployment(context.Background(), f.ClientSet, deploy)
+		framework.ExpectNoError(err, "failed to get pods")
+		framework.ExpectNotEmpty(pods.Items)
+
+		envs := containerEnvValues(pods.Items, "ovn-central")
+		if envs["ENABLE_SSL"] != "true" {
+			ginkgo.Skip("kube-ovn TLS is disabled")
+		}
+		if envs["TLS_MIN_VERSION"] == "" && envs["TLS_MAX_VERSION"] == "" && envs["TLS_CIPHER_SUITES"] == "" {
+			ginkgo.Skip("OVN DB server TLS options are not configured")
+		}
+
+		for _, pod := range pods.Items {
+			stdout, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "ovn-central", "bash", "-c", ovnDBSSLConfigCommand)
+			framework.ExpectNoError(err, "failed to validate OVN DB server TLS options in pod %s/%s\nstdout:\n%s\nstderr:\n%s", pod.Namespace, pod.Name, stdout, stderr)
+		}
 	})
 
 	framework.ConformanceIt("kube-ovn-controller should listen on specified addresses", func() {
