@@ -207,6 +207,19 @@ func TestGetV4StaticAddress(t *testing.T) {
 	require.Equal(t, "pod1.default", usingPod)
 }
 
+func TestGetStaticAddressRejectsReservedIP(t *testing.T) {
+	subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", []string{"10.0.0.1"})
+	require.NoError(t, err)
+
+	ip, err := NewIP("10.0.0.1")
+	require.NoError(t, err)
+
+	allocatedIP, mac, err := subnet.GetStaticAddress("pod.default", "pod.default", ip, nil, false, true)
+	require.ErrorIs(t, err, ErrConflict)
+	require.Nil(t, allocatedIP)
+	require.Empty(t, mac)
+}
+
 func TestGetV4StaticAddressPTP(t *testing.T) {
 	excludeIps := []string{
 		"10.0.0.0",
@@ -266,7 +279,7 @@ func TestGetV6StaticAddress(t *testing.T) {
 	// 2. pod2 has v6 ip and mac should get specified ip and mac
 	podName = "pod2.default"
 	nicName = "pod2.default"
-	v6 = "2001:db8::4"
+	v6 = "2001:db8::5"
 	macIn := "00:11:22:33:44:56"
 	v6IP, err = NewIP(v6)
 	require.NoError(t, err)
@@ -295,7 +308,7 @@ func TestGetV6StaticAddress(t *testing.T) {
 	// 4. pod4 has the same mac with pod2 should get error
 	podName = "pod4.default"
 	nicName = "pod4.default"
-	v6 = "2001:db8::5"
+	v6 = "2001:db8::6"
 	macIn = "00:11:22:33:44:56"
 	v6IP, err = NewIP(v6)
 	require.NoError(t, err)

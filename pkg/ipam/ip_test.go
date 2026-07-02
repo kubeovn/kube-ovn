@@ -603,8 +603,8 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	require.NoError(t, err)
 
 	ip, _, _, err = ipam.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.10.10", nil, subnetName, true)
-	require.NoError(t, err)
-	require.Equal(t, ip, "10.16.10.10")
+	require.ErrorIs(t, err, ErrConflict)
+	require.Empty(t, ip)
 
 	v4UsingIPStr, _, v4AvailableIPStr, _ := ipam.GetSubnetIPRangeString(subnetName, []string{"10.16.10.10"})
 	require.Equal(t, v4UsingIPStr, "")
@@ -613,8 +613,8 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	err = ipam.AddOrUpdateSubnet(subnetName, "10.16.10.0/28", "10.16.10.1", []string{"10.16.10.1"})
 	require.NoError(t, err)
 	v4UsingIPStr, _, v4AvailableIPStr, _ = ipam.GetSubnetIPRangeString(subnetName, nil)
-	require.Equal(t, v4UsingIPStr, "10.16.10.10")
-	require.Equal(t, v4AvailableIPStr, "10.16.10.2-10.16.10.9,10.16.10.11-10.16.10.14")
+	require.Equal(t, v4UsingIPStr, "")
+	require.Equal(t, v4AvailableIPStr, "10.16.10.2-10.16.10.14")
 
 	// IPv6
 
