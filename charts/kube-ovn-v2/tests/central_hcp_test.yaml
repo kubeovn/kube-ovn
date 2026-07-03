@@ -65,6 +65,27 @@ tests:
           path: spec.volumeClaimTemplates[0].spec.storageClassName
           value: topolvm
 
+  - it: creates dedicated namespaced RBAC for HCP ovn-central
+    template: central/central-rbac.yaml
+    documentIndex: 1
+    set:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: ovn-central
+      - equal:
+          path: metadata.namespace
+          value: hcp
+      - equal:
+          path: automountServiceAccountToken
+          value: true
+
   - it: creates a headless service for StatefulSet raft DNS
     template: central/central-service.yaml
     set:
