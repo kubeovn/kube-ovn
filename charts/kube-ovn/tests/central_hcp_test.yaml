@@ -38,6 +38,9 @@ tests:
           path: spec.template.spec.serviceAccountName
           value: ovn-central
       - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: true
+      - equal:
           path: spec.template.spec.containers[0].env[4].name
           value: POD_NAME
       - equal:
@@ -77,7 +80,7 @@ tests:
           value: hcp
       - equal:
           path: automountServiceAccountToken
-          value: true
+          value: false
 
   - it: creates a headless service for StatefulSet raft DNS
     template: central-svc.yaml

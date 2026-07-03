@@ -12,7 +12,7 @@ kind: ServiceAccount
 metadata:
   name: ovn-central
   namespace: {{ include "kubeovn.centralNamespace" . }}
-automountServiceAccountToken: true
+automountServiceAccountToken: false
 {{-  if .Values.global.registry.imagePullSecrets }}
 imagePullSecrets:
 {{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
