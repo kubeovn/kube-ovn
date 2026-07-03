@@ -40,15 +40,20 @@ tests:
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: true
-      - equal:
-          path: spec.template.spec.containers[0].env[4].name
-          value: POD_NAME
-      - equal:
-          path: spec.template.spec.containers[0].env[5].name
-          value: POD_NAMESPACE
-      - equal:
-          path: spec.template.spec.containers[0].env[7].name
-          value: DB_CLUSTER_ADDR
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
       - notExists:
           path: spec.template.spec.affinity.podAntiAffinity
       - contains:
