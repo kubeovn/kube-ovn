@@ -23,7 +23,7 @@ spec:
       {{- if and $hcp.enabled (or (eq $hcpSvc.type "NodePort") (eq $hcpSvc.type "LoadBalancer")) }}
       nodePort: {{ $hcpSvc.sbNodePort }}
       {{- end }}
-  type: {{ ternary $hcpSvc.type ($svc.type | default "ClusterIP") $hcp.enabled }}
+  type: {{ ternary ($hcpSvc.type | default "ClusterIP") ($svc.type | default "ClusterIP") $hcp.enabled }}
   {{- if and (not $hcp.enabled) (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
   loadBalancerIP: {{ $svc.loadBalancerIP | quote }}
   {{- end }}
