@@ -1,21 +1,258 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/keymutex"
 	"k8s.io/utils/set"
 
+	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func requireRecorderEvent(t *testing.T, recorder *record.FakeRecorder) string {
+	t.Helper()
+	select {
+	case event := <-recorder.Events:
+		return event
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event")
+		return ""
+	}
+}
+
+func TestRecordVpcEgressGatewayEvent(t *testing.T) {
+	recorder := record.NewFakeRecorder(1)
+	c := &Controller{recorder: recorder}
+	gw := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "egress-gw",
+			Namespace: "default",
+		},
+	}
+
+	c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "ReconcileWorkloadFailed", "boom")
+
+	require.Equal(t, "Warning ReconcileWorkloadFailed boom", requireRecorderEvent(t, recorder))
+}
+
+func TestRecordVpcEgressGatewayError(t *testing.T) {
+	tests := []struct {
+		reason string
+		err    error
+	}{
+		{reason: "UpdateStatusFailed", err: errors.New("status update failed")},
+		{reason: "GetVpcFailed", err: errors.New("vpc lookup failed")},
+		{reason: "GetPodSelectorFailed", err: errors.New("selector invalid")},
+		{reason: "ListWorkloadPodsFailed", err: errors.New("pod list failed")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.reason, func(t *testing.T) {
+			recorder := record.NewFakeRecorder(1)
+			c := &Controller{recorder: recorder}
+			gw := &kubeovnv1.VpcEgressGateway{}
+
+			err := c.recordVpcEgressGatewayError(gw, tt.reason, tt.err)
+
+			require.ErrorIs(t, err, tt.err)
+			require.Equal(t, "Warning "+tt.reason+" "+tt.err.Error(), requireRecorderEvent(t, recorder))
+		})
+	}
+}
+
+func TestRecordVpcEgressGatewayKeyError(t *testing.T) {
+	recorder := record.NewFakeRecorder(1)
+	c := &Controller{recorder: recorder}
+	sourceErr := errors.New("cache unavailable")
+
+	err := c.recordVpcEgressGatewayKeyError("default", "egress-gw", "GetVpcEgressGatewayFailed", sourceErr)
+
+	require.ErrorIs(t, err, sourceErr)
+	require.Equal(t, "Warning GetVpcEgressGatewayFailed cache unavailable", requireRecorderEvent(t, recorder))
+}
+
+func TestVpcEgressGatewayReadyConditionChanged(t *testing.T) {
+	gw := &kubeovnv1.VpcEgressGateway{}
+	gw.Generation = 2
+	gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "Processing", "waiting", gw.Generation)
+
+	require.False(t, vpcEgressGatewayReadyConditionChanged(gw, corev1.ConditionFalse, "Processing", "waiting"))
+	require.True(t, vpcEgressGatewayReadyConditionChanged(gw, corev1.ConditionFalse, "Processing", "still waiting"))
+	require.True(t, vpcEgressGatewayReadyConditionChanged(gw, corev1.ConditionTrue, "ReconcileSuccess", ""))
+}
+
+func TestSetVpcEgressGatewayNotReadyClearsStaleReady(t *testing.T) {
+	gw := &kubeovnv1.VpcEgressGateway{}
+	gw.Generation = 2
+	gw.Status.Ready = true
+	gw.Status.Phase = kubeovnv1.PhaseCompleted
+	gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
+
+	changed := setVpcEgressGatewayNotReady(gw, "ReconcileOVNRoutesFailed", "route failed")
+
+	require.True(t, changed)
+	require.False(t, gw.Status.Ready)
+	require.Equal(t, kubeovnv1.PhaseProcessing, gw.Status.Phase)
+	condition := gw.Status.Conditions.GetCondition(kubeovnv1.Ready)
+	require.NotNil(t, condition)
+	require.Equal(t, corev1.ConditionFalse, condition.Status)
+	require.Equal(t, "ReconcileOVNRoutesFailed", condition.Reason)
+	require.Equal(t, "route failed", condition.Message)
+}
+
+func TestFailVpcEgressGatewayReconcilePreservesErrors(t *testing.T) {
+	reconcileErr := errors.New("route failed")
+	statusErr := errors.New("status update failed")
+	gw := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "egress-gw",
+			Namespace: "default",
+		},
+		Status: kubeovnv1.VpcEgressGatewayStatus{
+			Ready: true,
+			Phase: kubeovnv1.PhaseCompleted,
+		},
+	}
+	gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
+	client := kubeovnfake.NewSimpleClientset(gw)
+	client.PrependReactor("update", "vpc-egress-gateways", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, statusErr
+	})
+	c := &Controller{
+		config:   &Configuration{KubeOvnClient: client},
+		recorder: record.NewFakeRecorder(2),
+	}
+
+	err := c.failVpcEgressGatewayReconcile(gw, "ReconcileOVNRoutesFailed", reconcileErr)
+	require.ErrorIs(t, err, reconcileErr)
+	require.ErrorIs(t, err, statusErr)
+	require.False(t, gw.Status.Ready)
+	require.Equal(t, kubeovnv1.PhaseProcessing, gw.Status.Phase)
+}
+
+func TestFailVpcEgressGatewayReconcileRecordsRepeatedFailure(t *testing.T) {
+	reconcileErr := errors.New("route failed")
+	gw := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "egress-gw",
+			Namespace:  "default",
+			Generation: 2,
+		},
+	}
+	gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "ReconcileOVNRoutesFailed", reconcileErr.Error(), gw.Generation)
+	client := kubeovnfake.NewSimpleClientset(gw)
+	client.PrependReactor("update", "vpc-egress-gateways", func(action ktesting.Action) (bool, runtime.Object, error) {
+		return true, action.(ktesting.UpdateAction).GetObject(), nil
+	})
+	recorder := record.NewFakeRecorder(1)
+	c := &Controller{
+		config:   &Configuration{KubeOvnClient: client},
+		recorder: recorder,
+	}
+
+	err := c.failVpcEgressGatewayReconcile(gw, "ReconcileOVNRoutesFailed", reconcileErr)
+	require.ErrorIs(t, err, reconcileErr)
+	require.Equal(t, "Warning ReconcileOVNRoutesFailed route failed", requireRecorderEvent(t, recorder))
+}
+
+func newVpcEgressGatewayDeleteController(t *testing.T, gw *kubeovnv1.VpcEgressGateway) (*Controller, *kubeovnfake.Clientset, *record.FakeRecorder) {
+	t.Helper()
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(gw))
+	kubeOvnClient := kubeovnfake.NewSimpleClientset(gw)
+	// The generated client uses a hyphenated resource name that the object tracker cannot infer from the kind.
+	kubeOvnClient.PrependReactor("update", "vpc-egress-gateways", func(action ktesting.Action) (bool, runtime.Object, error) {
+		return true, action.(ktesting.UpdateAction).GetObject(), nil
+	})
+
+	mockCtrl := gomock.NewController(t)
+	mockOvnClient := mockovs.NewMockNbClient(mockCtrl)
+	mockOvnClient.EXPECT().FindBFD(gomock.Any()).Return(nil, nil)
+	mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(util.DefaultVpc, -1, gomock.Any()).Return(nil)
+	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Return(nil)
+	mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).Times(2)
+	recorder := record.NewFakeRecorder(2)
+
+	c := &Controller{
+		config: &Configuration{
+			ClusterRouter: util.DefaultVpc,
+			KubeOvnClient: kubeOvnClient,
+		},
+		OVNNbClient:              mockOvnClient,
+		recorder:                 recorder,
+		vpcEgressGatewayKeyMutex: keymutex.NewHashed(0),
+		vpcEgressGatewayLister:   kubeovnlister.NewVpcEgressGatewayLister(indexer),
+	}
+	return c, kubeOvnClient, recorder
+}
+
+func TestHandleDelVpcEgressGatewayReturnsFinalizerUpdateError(t *testing.T) {
+	updateErr := errors.New("update failed")
+	gw := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "egress-gw",
+			Namespace:  "default",
+			Finalizers: []string{util.KubeOVNControllerFinalizer},
+		},
+	}
+	c, kubeOvnClient, recorder := newVpcEgressGatewayDeleteController(t, gw)
+	kubeOvnClient.PrependReactor("update", "vpc-egress-gateways", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, updateErr
+	})
+
+	err := c.handleDelVpcEgressGateway("default/egress-gw")
+	require.ErrorIs(t, err, updateErr)
+	require.Equal(t, "Warning DeleteFailed failed to remove finalizer from vpc-egress-gateway default/egress-gw: update failed", requireRecorderEvent(t, recorder))
+}
+
+func TestHandleDelVpcEgressGatewayDoesNotRecordSuccessWithoutFinalizer(t *testing.T) {
+	gw := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "egress-gw",
+			Namespace: "default",
+		},
+	}
+	c, _, recorder := newVpcEgressGatewayDeleteController(t, gw)
+
+	require.NoError(t, c.handleDelVpcEgressGateway("default/egress-gw"))
+	select {
+	case event := <-recorder.Events:
+		t.Fatalf("unexpected event %q", event)
+	default:
+	}
+}
+
+func TestHandleDelVpcEgressGatewayRecordsSuccessAfterFinalizerUpdate(t *testing.T) {
+	gw := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "egress-gw",
+			Namespace:  "default",
+			Finalizers: []string{util.KubeOVNControllerFinalizer},
+		},
+	}
+	c, _, recorder := newVpcEgressGatewayDeleteController(t, gw)
+
+	require.NoError(t, c.handleDelVpcEgressGateway("default/egress-gw"))
+	require.Equal(t, "Normal DeleteSuccess VpcEgressGateway default/egress-gw deleted successfully", requireRecorderEvent(t, recorder))
+}
 
 func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	container := genGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5)
