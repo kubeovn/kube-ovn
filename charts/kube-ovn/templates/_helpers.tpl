@@ -68,11 +68,30 @@ Replica count for the ovn-central Deployment. Single mode always uses 1;
 cluster mode uses one replica per master node.
 */}}
 {{- define "kubeovn.ovnCentralReplicas" -}}
-{{- if eq .Values.OVN_CENTRAL_MODE "single" -}}
+{{- if index .Values "ovn-central" "hcp" "enabled" -}}
+{{- index .Values "ovn-central" "hcp" "replicas" -}}
+{{- else if eq .Values.OVN_CENTRAL_MODE "single" -}}
 1
 {{- else -}}
 {{- include "kubeovn.nodeCount" . -}}
 {{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralNamespace" -}}
+{{- if index .Values "ovn-central" "hcp" "enabled" -}}
+{{- default .Values.namespace (index .Values "ovn-central" "hcp" "namespace") -}}
+{{- else -}}
+{{- .Values.namespace -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralRaftAddresses" -}}
+{{- $namespace := include "kubeovn.centralNamespace" . -}}
+{{- $addresses := list -}}
+{{- range $i := until (int (index .Values "ovn-central" "hcp" "replicas")) -}}
+{{- $addresses = append $addresses (printf "ovn-central-%d.ovn-central.%s.svc" $i $namespace) -}}
+{{- end -}}
+{{- join "," $addresses -}}
 {{- end -}}
 
 {{/*
@@ -135,12 +154,28 @@ Value of the NODE_IPS / OVN_DB_IPS env variable.
   - cluster (default raft): emit comma-separated master node IPs.
 */}}
 {{- define "kubeovn.ovnCentralNodeIPs" -}}
-{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{- if index .Values "ovn-central" "hcp" "enabled" -}}
+{{- include "kubeovn.centralRaftAddresses" . -}}
+{{- else if eq .Values.installMode "dataPlaneOnly" -}}
 {{ required "installMode=dataPlaneOnly requires externalOvnCentral.endpoint (the management cluster's ovn-nb / ovn-sb VIP)" .Values.externalOvnCentral.endpoint }}
 {{- else if eq .Values.OVN_CENTRAL_MODE "single" -}}
 {{- else -}}
 {{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}
 {{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnNbAddress" -}}
+{{- if not (index .Values "ovn-central" "hcp" "nbAddress") -}}
+{{- fail "ovn-central.hcp.nbAddress must be set when ovn-central.hcp.enabled is true" -}}
+{{- end -}}
+{{- index .Values "ovn-central" "hcp" "nbAddress" -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnSbAddress" -}}
+{{- if not (index .Values "ovn-central" "hcp" "sbAddress") -}}
+{{- fail "ovn-central.hcp.sbAddress must be set when ovn-central.hcp.enabled is true" -}}
+{{- end -}}
+{{- index .Values "ovn-central" "hcp" "sbAddress" -}}
 {{- end -}}
 
 {{/*

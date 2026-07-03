@@ -1,0 +1,23 @@
+{{- if include "kubeovn.renderControlPlane" . }}
+{{- if index .Values "ovn-central" "hcp" "enabled" }}
+kind: Service
+apiVersion: v1
+metadata:
+  name: ovn-central
+  namespace: {{ include "kubeovn.centralNamespace" . }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: nb-raft
+      protocol: TCP
+      port: 6643
+      targetPort: 6643
+    - name: sb-raft
+      protocol: TCP
+      port: 6644
+      targetPort: 6644
+  selector:
+    app: ovn-central
+{{- end }}
+{{- end }}

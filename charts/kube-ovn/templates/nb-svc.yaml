@@ -1,12 +1,16 @@
 {{- if include "kubeovn.renderControlPlane" . }}
 {{- $svc := index .Values "ovn-central" "service" }}
+{{- $hcp := index .Values "ovn-central" "hcp" }}
+{{- $hcpSvc := index .Values "ovn-central" "hcp" "service" }}
+{{- if not $hcp.enabled }}
 {{- include "kubeovn.validateService" . }}
+{{- end }}
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
-  namespace: {{ .Values.namespace }}
-  {{- if and (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
+  namespace: {{ include "kubeovn.centralNamespace" . }}
+  {{- if and (not $hcp.enabled) (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
   annotations:
     # MetalLB allows multiple Services to share a single VIP only when they
     # carry the same allow-shared-ip annotation. The three ovn-* Services all
@@ -21,11 +25,14 @@ spec:
       protocol: TCP
       port: 6641
       targetPort: 6641
-  type: {{ $svc.type | default "ClusterIP" }}
-  {{- if and (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
+      {{- if and $hcp.enabled (or (eq $hcpSvc.type "NodePort") (eq $hcpSvc.type "LoadBalancer")) }}
+      nodePort: {{ $hcpSvc.nbNodePort }}
+      {{- end }}
+  type: {{ ternary $hcpSvc.type ($svc.type | default "ClusterIP") $hcp.enabled }}
+  {{- if and (not $hcp.enabled) (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
   loadBalancerIP: {{ $svc.loadBalancerIP | quote }}
   {{- end }}
-  {{- if and (or (eq $svc.type "LoadBalancer") (eq $svc.type "NodePort")) $svc.externalTrafficPolicy }}
+  {{- if and (not $hcp.enabled) (or (eq $svc.type "LoadBalancer") (eq $svc.type "NodePort")) $svc.externalTrafficPolicy }}
   externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
   {{- end }}
   {{- if eq .Values.networking.NET_STACK "dual_stack" }}
@@ -33,7 +40,7 @@ spec:
   {{- end }}
   selector:
     app: ovn-central
-    {{- if ne .Values.OVN_CENTRAL_MODE "single" }}
+    {{- if or $hcp.enabled (ne .Values.OVN_CENTRAL_MODE "single") }}
     ovn-nb-leader: "true"
     {{- end }}
   sessionAffinity: None
