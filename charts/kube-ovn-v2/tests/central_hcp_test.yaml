@@ -75,7 +75,7 @@ tests:
 
   - it: creates dedicated namespaced RBAC for HCP ovn-central
     template: central/central-rbac.yaml
-    documentIndex: 1
+    documentIndex: 0
     set:
       central.hcp.enabled: true
       central.hcp.namespace: hcp
