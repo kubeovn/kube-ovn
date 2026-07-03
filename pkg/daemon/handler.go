@@ -46,6 +46,33 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 	return csh
 }
 
+// gatewayForCNIIPFamily returns only the gateway entries matching the address
+// families configured on the container interface. A single-family pod can still
+// carry a dual-stack subnet gateway annotation, but CNI route and gateway checks
+// must use only gateways that the interface can actually reach.
+func gatewayForCNIIPFamily(ipAddr, gateway string) string {
+	if ipAddr == "" || gateway == "" || util.CheckProtocol(gateway) != kubeovnv1.ProtocolDual {
+		return gateway
+	}
+
+	gateways := util.SplitTrimmed(gateway, ",")
+	filtered := make([]string, 0, len(gateways))
+	for _, ip := range util.SplitTrimmed(ipAddr, ",") {
+		ipProtocol := util.CheckProtocol(ip)
+		for _, gw := range gateways {
+			if util.CheckProtocol(gw) == ipProtocol {
+				filtered = append(filtered, gw)
+				break
+			}
+		}
+	}
+	if len(filtered) == 0 {
+		klog.Warningf("failed to match gateway %q with ip address %q, keep original gateway", gateway, ipAddr)
+		return gateway
+	}
+	return strings.Join(filtered, ",")
+}
+
 func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.Subnet, bool) {
 	if util.IsOvnProvider(provider) {
 		return nil, true
@@ -174,6 +201,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 			return
 		}
+		gw = gatewayForCNIIPFamily(ipAddr, gw)
 
 		oldPodName = podRequest.PodName
 		if s := pod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, podRequest.Provider)]; s != "" {

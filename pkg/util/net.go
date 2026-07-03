@@ -349,6 +349,8 @@ func GetStringIP(v4IP, v6IP string) string {
 
 // GetIPAddrWithMaskForCNI returns IP address with mask for CNI plugin.
 // When ip is empty, it indicates no-IPAM mode (e.g., NAT gateway macvlan without default EIP).
+// When cidr is dual-stack, the CNI path uses the actual allocated IP families
+// and selects the matching mask instead of requiring the pod IP itself to be dual-stack.
 // Returns (ipAddr, noIPAM, error) where noIPAM is true when IP allocation is skipped.
 func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 	if ip == "" {
@@ -356,6 +358,31 @@ func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 		// IP is not allocated by Kube-OVN, but cidr still comes from subnet configuration
 		klog.V(3).Infof("skipping IP allocation: ip is empty for cidr %s (no-IPAM mode)", cidr)
 		return "", true, nil
+	}
+	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		if len(cidrBlocks) != 2 {
+			return "", false, fmt.Errorf("invalid dualstack cidr %s", cidr)
+		}
+
+		var ipAddrs []string
+		for ip := range strings.SplitSeq(ip, ",") {
+			var cidrBlock string
+			switch CheckProtocol(ip) {
+			case kubeovnv1.ProtocolIPv4:
+				cidrBlock = cidrBlocks[0]
+			case kubeovnv1.ProtocolIPv6:
+				cidrBlock = cidrBlocks[1]
+			default:
+				return "", false, fmt.Errorf("invalid ip %s", ip)
+			}
+			_, mask, ok := strings.Cut(cidrBlock, "/")
+			if !ok || mask == "" {
+				return "", false, fmt.Errorf("invalid cidr %s", cidrBlock)
+			}
+			ipAddrs = append(ipAddrs, fmt.Sprintf("%s/%s", ip, mask))
+		}
+		return strings.Join(ipAddrs, ","), false, nil
 	}
 	ipAddr, err := GetIPAddrWithMask(ip, cidr)
 	return ipAddr, false, err

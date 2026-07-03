@@ -561,7 +561,7 @@ func (c *Controller) ipAcquireAddress(ip *kubeovnv1.IP, subnet *kubeovnv1.Subnet
 		err = fmt.Errorf("failed to get random address for ip %s, %w", ip.Name, err)
 	} else {
 		// static address
-		v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPtr, subnet.Name, true)
+		v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPtr, subnet.Name, true, "")
 		if err == nil {
 			return v4IP, v6IP, mac, nil
 		}
