@@ -113,6 +113,34 @@ Get IPs of master nodes from values
   {{- join "," .Values.masterNodes }}
 {{- end -}}
 
+{{/*
+Environment variables used by the OVN NB/SB database server TLS setup.
+*/}}
+{{- define "kubeovn.ovnCentralTLSEnv" -}}
+- name: ENABLE_SSL
+  value: {{ .Values.networking.enableSsl | quote }}
+- name: TLS_MIN_VERSION
+  value: {{ .Values.networking.tlsMinVersion | quote }}
+- name: TLS_MAX_VERSION
+  value: {{ .Values.networking.tlsMaxVersion | quote }}
+- name: TLS_CIPHER_SUITES
+  value: {{ join "," .Values.networking.tlsCipherSuites | quote }}
+{{- end -}}
+
+{{/*
+TLS arguments for kube-ovn components that expose HTTPS endpoints.
+*/}}
+{{- define "kubeovn.componentTLSArgs" -}}
+{{- if .Values.networking.tlsMinVersion }}
+- --tls-min-version={{ .Values.networking.tlsMinVersion }}
+{{- end }}
+{{- if .Values.networking.tlsMaxVersion }}
+- --tls-max-version={{ .Values.networking.tlsMaxVersion }}
+{{- end }}
+{{- if .Values.networking.tlsCipherSuites }}
+- --tls-cipher-suites={{ join "," .Values.networking.tlsCipherSuites }}
+{{- end }}
+{{- end -}}
 
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
   {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}
