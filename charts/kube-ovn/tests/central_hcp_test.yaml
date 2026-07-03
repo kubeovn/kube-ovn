@@ -75,6 +75,9 @@ tests:
       - equal:
           path: metadata.namespace
           value: hcp
+      - equal:
+          path: automountServiceAccountToken
+          value: true
 
   - it: creates a headless service for StatefulSet raft DNS
     template: central-svc.yaml
