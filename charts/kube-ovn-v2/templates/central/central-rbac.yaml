@@ -1,11 +1,4 @@
 {{- if .Values.central.hcp.enabled }}
-{{- if ne (include "kubeovn.centralNamespace" .) .Values.namespace }}
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: {{ include "kubeovn.centralNamespace" . }}
----
-{{- end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
