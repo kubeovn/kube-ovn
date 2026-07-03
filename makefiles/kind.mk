@@ -863,9 +863,6 @@ kind-install-multus-cilium-kubeovn-non-primary-%:
 	@echo "  - Multus: Multi-CNI support"
 	@echo "  - Cilium: Primary CNI"
 	@echo "  - Kube-OVN: Secondary CNI for additional network interfaces"
-	@echo ""
-	@echo "You can now run non-primary CNI tests with:"
-	@echo "  make kube-ovn-non-primary-cni-e2e"
 
 # v2 chart variant for non-primary CNI deployment
 .PHONY: kind-install-multus-cilium-kubeovn-non-primary-v2
@@ -884,9 +881,6 @@ kind-install-multus-cilium-kubeovn-non-primary-v2-%:
 	@echo "  - Multus: Multi-CNI support"
 	@echo "  - Cilium: Primary CNI"
 	@echo "  - Kube-OVN: Secondary CNI for additional network interfaces"
-	@echo ""
-	@echo "You can now run non-primary CNI tests with:"
-	@echo "  make kube-ovn-non-primary-cni-e2e"
 
 # Convenience target for the most common use case (IPv4)
 .PHONY: kind-setup-non-primary-cni
