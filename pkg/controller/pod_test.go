@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -1356,4 +1358,46 @@ func TestGetPodAttachmentNetIPAMOnlyNADGone(t *testing.T) {
 	require.Len(t, nets, 1)
 	assert.Equal(t, "net1.default", nets[0].ProviderName)
 	assert.Equal(t, "ipam-net1", nets[0].Subnet.Name)
+}
+
+func TestHandleAddOrUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
+			},
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods: []*corev1.Pod{pod},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "net1",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: nadv1.NetworkAttachmentDefinitionSpec{
+					Config: `{"cniVersion":"0.3.1","name":"net1","type":"macvlan","ipam":{"type":"kube-ovn"}}`,
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	controller := fakeController.fakeController
+	controller.config.EnableNonPrimaryCNI = true
+
+	err = controller.handleAddOrUpdatePod("default/test-pod")
+	require.Error(t, err)
+
+	recorder := controller.recorder.(*record.FakeRecorder)
+	select {
+	case event := <-recorder.Events:
+		assert.Contains(t, event, "Warning AcquireAddressFailed")
+		assert.Contains(t, event, "no subnet found for IPAM network net1.default")
+	case <-time.After(time.Second):
+		t.Fatal("expected pod event")
+	}
 }
