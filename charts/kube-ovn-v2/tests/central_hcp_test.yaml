@@ -170,6 +170,36 @@ tests:
       - notExists:
           path: spec.ports[0].nodePort
 
+  - it: defaults empty HCP NB service type to ClusterIP
+    template: central/northbound-service.yaml
+    set:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.service.type: ""
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - notExists:
+          path: spec.ports[0].nodePort
+
+  - it: defaults empty HCP SB service type to ClusterIP
+    template: central/southbound-service.yaml
+    set:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.service.type: ""
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - notExists:
+          path: spec.ports[0].nodePort
+
   - it: points workload components at independent HCP OVN DB addresses
     template: controller/controller-deployment.yaml
     set:
