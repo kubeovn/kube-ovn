@@ -150,6 +150,101 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		}
 	})
 
+	framework.ConformanceIt("should allocate requested IP family for attachment interface", func() {
+		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		if !f.IsDual() {
+			ginkgo.Skip("This test requires a dual-stack cluster")
+		}
+
+		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		ginkgo.By("Creating subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet.Spec.Provider = provider
+		subnet = subnetClient.CreateSync(subnet)
+
+		for _, family := range []string{apiv1.ProtocolIPv4, apiv1.ProtocolIPv6} {
+			ginkgo.By("Creating pod " + podName + " with " + family + " attachment IP family")
+			annotations := map[string]string{
+				nadv1.NetworkAttachmentAnnot:                           fmt.Sprintf("%s/%s", nad.Namespace, nad.Name),
+				fmt.Sprintf(util.IPFamilyAnnotationTemplate, provider): strings.ToLower(family),
+			}
+			cmd := []string{"sleep", "infinity"}
+			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+			pod = podClient.CreateSync(pod)
+
+			ginkgo.By("Validating pod annotations")
+			framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+			framework.Logf("pod network status:\n%s", pod.Annotations[nadv1.NetworkStatusAnnot])
+			ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+			cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
+			gateway := pod.Annotations[fmt.Sprintf(util.GatewayAnnotationTemplate, provider)]
+			mac := pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, provider)]
+			framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.AllocatedAnnotationTemplate, provider), "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider), subnet.Name)
+			framework.ExpectIPInCIDR(ip, cidr)
+			framework.ExpectMAC(mac)
+
+			ipv4, ipv6 := util.SplitStringIP(ip)
+			gatewayV4, gatewayV6 := util.SplitStringIP(gateway)
+			switch family {
+			case apiv1.ProtocolIPv4:
+				framework.ExpectNotEmpty(ipv4)
+				framework.ExpectEmpty(ipv6)
+				framework.ExpectNotEmpty(gatewayV4)
+			case apiv1.ProtocolIPv6:
+				framework.ExpectEmpty(ipv4)
+				framework.ExpectNotEmpty(ipv6)
+				framework.ExpectNotEmpty(gatewayV6)
+			}
+
+			ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
+			ginkgo.By("Validating IP resource " + ipName)
+			ipCR := ipClient.Get(ipName)
+			framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+			framework.ExpectEqual(ipCR.Spec.PodName, podName)
+			framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
+			framework.ExpectEqual(ipCR.Spec.NodeName, pod.Spec.NodeName)
+			framework.ExpectEqual(ipCR.Spec.IPAddress, ip)
+			framework.ExpectEqual(ipCR.Spec.MacAddress, mac)
+			framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
+			framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
+
+			ginkgo.By("Getting attachment interface name")
+			statuses, err := nadutils.GetNetworkStatus(pod)
+			framework.ExpectNoError(err)
+			var ifaceName string
+			nadKey := cache.MetaObjectToName(nad).String()
+			for _, status := range statuses {
+				if status.Name == nadKey {
+					framework.ExpectConsistOf(status.IPs, strings.Split(ip, ","))
+					framework.ExpectEqual(status.Mac, mac)
+					ifaceName = status.Interface
+					break
+				}
+			}
+			framework.ExpectNotEmpty(ifaceName)
+
+			ginkgo.By("Validating attachment interface IPs")
+			links, err := iproute.AddressShow(ifaceName, func(cmd ...string) ([]byte, []byte, error) {
+				return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+			})
+			framework.ExpectNoError(err)
+			framework.ExpectHaveLen(links, 1)
+			framework.ExpectEqual(links[0].Address, mac)
+			framework.ExpectConsistOf(links[0].NonLinkLocalIPs(), strings.Split(ip, ","))
+
+			ginkgo.By("Deleting pod " + podName)
+			podClient.DeleteSync(podName)
+			ipClient.DeleteSync(ipName)
+		}
+	})
+
 	framework.ConformanceIt("should be able to create attachment interface with custom routes", func() {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
 
