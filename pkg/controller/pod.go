@@ -342,6 +342,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	podNets, err := c.getPodKubeovnNets(newPod)
 	if err != nil {
 		klog.Errorf("failed to get newPod nets %v", err)
+		c.recorder.Eventf(newPod, v1.EventTypeWarning, "AcquireAddressFailed", "%s", err.Error())
 		return
 	}
 
@@ -1430,6 +1431,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to pod nets %v", err)
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", "%s", err.Error())
 		return err
 	}
 

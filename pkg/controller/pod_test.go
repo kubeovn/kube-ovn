@@ -1210,6 +1210,46 @@ func TestGetPodAttachmentNetDefaultSubnetGone(t *testing.T) {
 }
 
 func TestHandleAddOrUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
+	controller := newIPAMSubnetMissingController(t)
+
+	err := controller.handleAddOrUpdatePod("default/test-pod")
+	require.Error(t, err)
+
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+}
+
+func TestEnqueueUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
+	controller := newIPAMSubnetMissingController(t)
+	oldPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pod",
+			Namespace:       metav1.NamespaceDefault,
+			ResourceVersion: "1",
+			Annotations:     map[string]string{},
+		},
+	}
+	newPod, err := controller.podsLister.Pods(metav1.NamespaceDefault).Get("test-pod")
+	require.NoError(t, err)
+	newPod = newPod.DeepCopy()
+	newPod.ResourceVersion = "2"
+
+	controller.enqueueUpdatePod(oldPod, newPod)
+
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+}
+
+func TestHandleUpdatePodSecurityRecordsIPAMSubnetMissingEvent(t *testing.T) {
+	controller := newIPAMSubnetMissingController(t)
+
+	err := controller.handleUpdatePodSecurity("default/test-pod")
+	require.Error(t, err)
+
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+}
+
+func newIPAMSubnetMissingController(t *testing.T) *Controller {
+	t.Helper()
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod",
@@ -1237,15 +1277,18 @@ func TestHandleAddOrUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
 	require.NoError(t, err)
 	controller := fakeController.fakeController
 	controller.config.EnableNonPrimaryCNI = true
+	return controller
+}
 
-	err = controller.handleAddOrUpdatePod("default/test-pod")
-	require.Error(t, err)
+func assertPodEvent(t *testing.T, controller *Controller, parts ...string) {
+	t.Helper()
 
 	recorder := controller.recorder.(*record.FakeRecorder)
 	select {
 	case event := <-recorder.Events:
-		assert.Contains(t, event, "Warning AcquireAddressFailed")
-		assert.Contains(t, event, "no subnet found for IPAM network net1.default")
+		for _, part := range parts {
+			assert.Contains(t, event, part)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("expected pod event")
 	}
