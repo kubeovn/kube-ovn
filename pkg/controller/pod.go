@@ -2088,7 +2088,6 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			if subnetName == "" {
 				// when ifName is provided in request, the `provider` in subnet spec will not match
 				// since it does not contain substring for interface name and wrong subnet will be selected
-				// and it goes to default subnet
 				for _, subnet := range subnets {
 					if subnetMatches(subnet, providerName, attach.InterfaceRequest) {
 						subnetName = subnet.Name
@@ -2099,42 +2098,26 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			klog.V(5).Infof("found subnet %s for provider %s", subnetName, providerName)
 			var subnet *kubeovnv1.Subnet
 			if subnetName == "" {
-				// attachment network not specify subnet, use pod default subnet or namespace subnet
-				// uses default subnet based on namespace annotation
-				// in this it goes to `ovn-default` and that explains the ipam error because the address is not in the range
-				subnet, err = c.getPodDefaultSubnet(pod)
-				if err != nil {
-					klog.Errorf("failed to pod default subnet, %v", err)
-					if k8serrors.IsNotFound(err) {
-						if ignoreSubnetNotExist {
-							klog.Errorf("deleting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
-							continue
-						}
-					}
-					return nil, err
-				}
-				if subnet == nil {
-					// getPodDefaultSubnet returns (nil, nil) when the deleting pod's default subnet
-					// no longer exists, leave the orphaned ip cr to gc instead of dereferencing nil
-					klog.Errorf("deleting pod %s/%s default subnet for attach %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, attach.Name)
+				err = fmt.Errorf("provider %s is not bound to any subnet", providerName)
+				if ignoreSubnetNotExist {
+					klog.Errorf("deleting pod %s/%s attach %s %v, gc will clean its ip cr", pod.Namespace, pod.Name, attach.Name, err)
 					continue
 				}
-				// default subnet may change after pod restart
-				klog.Infof("pod %s/%s attachment network %s use default subnet %s", pod.Namespace, pod.Name, attach.Name, subnet.Name)
-			} else {
-				subnet, err = c.subnetsLister.Get(subnetName)
-				if err != nil {
-					klog.Errorf("failed to get subnet %s, %v", subnetName, err)
-					if k8serrors.IsNotFound(err) {
-						if ignoreSubnetNotExist {
-							klog.Errorf("deleting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
-							// just continue to next attach subnet
-							// ip name is unique, so it is ok if the other subnet release it
-							continue
-						}
+				klog.Error(err)
+				return nil, err
+			}
+			subnet, err = c.subnetsLister.Get(subnetName)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s, %v", subnetName, err)
+				if k8serrors.IsNotFound(err) {
+					if ignoreSubnetNotExist {
+						klog.Errorf("deleting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
+						// just continue to next attach subnet
+						// ip name is unique, so it is ok if the other subnet release it
+						continue
 					}
-					return nil, err
 				}
+				return nil, err
 			}
 
 			// we send no macrequest or ip request so these should be empty in the response here

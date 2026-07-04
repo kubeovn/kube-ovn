@@ -490,6 +490,63 @@ func TestGetPodKubeovnNetsNonPrimaryCNI(t *testing.T) {
 	}
 }
 
+func TestGetPodKubeovnNetsReturnsErrorWhenAttachmentProviderHasNoSubnet(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "default",
+			Annotations: map[string]string{
+				nadv1.NetworkAttachmentAnnot: `[{"name": "attachnet-a"}]`,
+			},
+		},
+	}
+	nad := &nadv1.NetworkAttachmentDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "attachnet-a",
+			Namespace: "default",
+		},
+		Spec: nadv1.NetworkAttachmentDefinitionSpec{
+			Config: `{
+				"cniVersion": "0.3.1",
+				"name": "attachnet-a",
+				"type": "kube-ovn",
+				"server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
+				"provider": "attachnet-a.default.ovn"
+			}`,
+		},
+	}
+	subnets := []*kubeovnv1.Subnet{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
+			Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock: "10.3.0.0/16",
+				Provider:  util.OvnProvider,
+				Default:   true,
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "mismatch-subnet"},
+			Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock: "10.244.0.0/24",
+				Provider:  "attachnet-b.default.ovn",
+			},
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{nad},
+		Subnets:            subnets,
+		Pods:               []*corev1.Pod{pod},
+	})
+	require.NoError(t, err)
+
+	nets, err := fakeController.fakeController.getPodKubeovnNets(pod)
+
+	require.Error(t, err)
+	require.Nil(t, nets)
+	require.Contains(t, err.Error(), "provider attachnet-a.default.ovn is not bound to any subnet")
+}
+
 func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 	tests := []struct {
 		name           string
