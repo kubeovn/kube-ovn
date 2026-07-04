@@ -263,6 +263,31 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 	})
 
+	framework.ConformanceIt("should reject requested IP family that does not match single-stack subnet", func() {
+		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		if f.IsDual() {
+			ginkgo.Skip("This test requires a single-stack cluster")
+		}
+
+		requestedFamily := apiv1.ProtocolIPv4
+		if f.HasIPv4() {
+			requestedFamily = apiv1.ProtocolIPv6
+		}
+
+		ginkgo.By("Creating pod " + podName + " with mismatched " + requestedFamily + " IP family on " + subnet.Spec.Protocol + " subnet")
+		annotations := map[string]string{util.IPFamilyAnnotation: strings.ToLower(requestedFamily)}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		_ = podClient.Create(pod)
+
+		ginkgo.By("Waiting for pod " + podName + " to have event indicating IP family mismatch")
+		events := f.EventClient().WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
+		framework.ExpectContainSubstring(events[0].Message, fmt.Sprintf("requested ip family %s does not match subnet %s protocol %s", requestedFamily, subnetName, subnet.Spec.Protocol))
+
+		ginkgo.By("Validating pod " + podName + " is not allocated")
+		pod = podClient.GetPod(podName)
+		framework.ExpectNotHaveKey(pod.Annotations, util.AllocatedAnnotation)
+	})
+
 	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", func() {
 		if f.IsDual() {
 			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
