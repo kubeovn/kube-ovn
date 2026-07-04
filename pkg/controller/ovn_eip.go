@@ -611,6 +611,19 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	return nil
 }
 
+// hasActiveNat reports whether any of the listed NAT rules is still active, i.e.
+// not marked for deletion. A NAT rule that already carries a DeletionTimestamp is
+// on its way out but may still linger in the lister cache; counting it would keep
+// the EIP's status.nat from being reset once the rule is finally gone.
+func hasActiveNat[T metav1.Object](nats []T) bool {
+	for _, nat := range nats {
+		if nat.GetDeletionTimestamp().IsZero() {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Controller) getOvnEipNat(eipV4IP, eipV6IP string) (string, error) {
 	usingDnat, usingFip, usingSnat := false, false, false
 	check := func(selector labels.Selector) error {
@@ -619,7 +632,7 @@ func (c *Controller) getOvnEipNat(eipV4IP, eipV6IP string) (string, error) {
 			klog.Errorf("failed to get ovn dnats, %v", err)
 			return err
 		}
-		if len(dnats) != 0 {
+		if hasActiveNat(dnats) {
 			usingDnat = true
 		}
 		fips, err := c.ovnFipsLister.List(selector)
@@ -627,7 +640,7 @@ func (c *Controller) getOvnEipNat(eipV4IP, eipV6IP string) (string, error) {
 			klog.Errorf("failed to get ovn fips, %v", err)
 			return err
 		}
-		if len(fips) != 0 {
+		if hasActiveNat(fips) {
 			usingFip = true
 		}
 		snats, err := c.ovnSnatRulesLister.List(selector)
@@ -635,7 +648,7 @@ func (c *Controller) getOvnEipNat(eipV4IP, eipV6IP string) (string, error) {
 			klog.Errorf("failed to get ovn snats, %v", err)
 			return err
 		}
-		if len(snats) != 0 {
+		if hasActiveNat(snats) {
 			usingSnat = true
 		}
 		return nil

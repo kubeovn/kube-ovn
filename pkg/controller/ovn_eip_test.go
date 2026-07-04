@@ -96,4 +96,70 @@ func Test_getOvnEipNat(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, nat)
 	})
+
+	// Regression for #6982: a NAT rule that is being deleted still lingers in the
+	// lister cache with a DeletionTimestamp set. It must not be counted, otherwise
+	// the EIP's status.nat can never be reset once the rule is finally gone.
+	now := metav1.Now()
+	deletingSnat := &kubeovnv1.OvnSnatRule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "snat-deleting",
+			DeletionTimestamp: &now,
+			Finalizers:        []string{util.KubeOVNControllerFinalizer},
+			Labels:            map[string]string{util.EipV4IpLabel: "192.168.0.5"},
+		},
+	}
+
+	t.Run("NAT rule marked for deletion is not counted", func(t *testing.T) {
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			OvnSnatRules: []*kubeovnv1.OvnSnatRule{deletingSnat},
+		})
+		require.NoError(t, err)
+		nat, err := fc.fakeController.getOvnEipNat("192.168.0.5", "")
+		require.NoError(t, err)
+		require.Empty(t, nat)
+	})
+
+	t.Run("active NAT is counted while a deleting sibling is ignored", func(t *testing.T) {
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			OvnDnatRules: []*kubeovnv1.OvnDnatRule{ipv4Dnat},
+			OvnSnatRules: []*kubeovnv1.OvnSnatRule{deletingSnat},
+		})
+		require.NoError(t, err)
+		nat, err := fc.fakeController.getOvnEipNat("192.168.0.5", "")
+		require.NoError(t, err)
+		require.Equal(t, util.DnatUsingEip, nat)
+	})
+}
+
+func TestHasActiveNat(t *testing.T) {
+	now := metav1.Now()
+	active := &kubeovnv1.OvnSnatRule{ObjectMeta: metav1.ObjectMeta{Name: "active"}}
+	deleting := &kubeovnv1.OvnSnatRule{ObjectMeta: metav1.ObjectMeta{
+		Name:              "deleting",
+		DeletionTimestamp: &now,
+		Finalizers:        []string{util.KubeOVNControllerFinalizer},
+	}}
+
+	tests := []struct {
+		name string
+		nats []*kubeovnv1.OvnSnatRule
+		want bool
+	}{
+		{"empty", nil, false},
+		{"single active", []*kubeovnv1.OvnSnatRule{active}, true},
+		{"single deleting", []*kubeovnv1.OvnSnatRule{deleting}, false},
+		{"all deleting", []*kubeovnv1.OvnSnatRule{deleting, deleting}, false},
+		{"mixed active and deleting", []*kubeovnv1.OvnSnatRule{deleting, active}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, hasActiveNat(tt.nats))
+		})
+	}
+
+	// Exercise the generic across the other NAT types to ensure they all satisfy
+	// the metav1.Object constraint.
+	require.True(t, hasActiveNat([]*kubeovnv1.OvnDnatRule{{ObjectMeta: metav1.ObjectMeta{Name: "dnat"}}}))
+	require.True(t, hasActiveNat([]*kubeovnv1.OvnFip{{ObjectMeta: metav1.ObjectMeta{Name: "fip"}}}))
 }
