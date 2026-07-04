@@ -462,7 +462,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 
 	pod1 := "pod1.ns"
 	pod1Nic1 := "pod1nic1.ns"
-	freeIP1 := ipam.Subnets[subnetName].V4Free.At(0).Start().String()
+	freeIP1 := "1.1.1.2"
 	ip, _, _, err := ipam.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName, true)
 	require.NoError(t, err)
 	require.Equal(t, freeIP1, ip)
@@ -606,6 +606,10 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ip, "10.16.10.10")
 
+	ip, _, _, err = ipam.GetStaticAddress("pod2.ns", "pod2.ns", "10.16.10.1", nil, subnetName, true)
+	require.ErrorIs(t, err, ErrConflict)
+	require.Empty(t, ip)
+
 	v4UsingIPStr, _, v4AvailableIPStr, _ := ipam.GetSubnetIPRangeString(subnetName, []string{"10.16.10.10"})
 	require.Equal(t, v4UsingIPStr, "")
 	require.Equal(t, v4AvailableIPStr, "10.16.10.2-10.16.10.9,10.16.10.11-10.16.10.14")
@@ -650,7 +654,7 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 
 	pod1 = "pod1.ns"
 	pod1Nic1 = "pod1nic1.ns"
-	freeIP1 = ipam.Subnets[subnetName].V6Free.At(0).Start().String()
+	freeIP1 = "fd00::2"
 	_, ip, _, err = ipam.GetStaticAddress(pod1, pod1Nic1, freeIP1, nil, subnetName, true)
 	require.NoError(t, err)
 	require.Equal(t, freeIP1, ip)
@@ -809,8 +813,8 @@ func TestAddOrUpdateSubnet(t *testing.T) {
 
 	pod1 = "pod1.ns"
 	pod1Nic1 = "pod1nic1.ns"
-	freeIP41 := ipam.Subnets[subnetName].V4Free.At(0).Start().String()
-	freeIP61 := ipam.Subnets[subnetName].V6Free.At(0).Start().String()
+	freeIP41 := "10.0.0.2"
+	freeIP61 := "fd00::2"
 	dualIP := fmt.Sprintf("%s,%s", freeIP41, freeIP61)
 	ip4, ip6, _, err := ipam.GetStaticAddress(pod1, pod1Nic1, dualIP, nil, subnetName, true)
 	require.NoError(t, err)
