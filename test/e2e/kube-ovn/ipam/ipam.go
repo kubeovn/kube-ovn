@@ -17,11 +17,73 @@ import (
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
 )
 
 const ippoolUpdateTimeout = 2 * time.Minute
+
+func expectPodIPFamily(pod *corev1.Pod, family string) {
+	ginkgo.GinkgoHelper()
+
+	ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IPAddressAnnotation])
+	switch family {
+	case apiv1.ProtocolIPv4:
+		framework.ExpectNotEmpty(ipv4)
+		framework.ExpectEmpty(ipv6)
+		framework.ExpectConsistOf(util.PodIPs(*pod), []string{ipv4})
+	case apiv1.ProtocolIPv6:
+		framework.ExpectEmpty(ipv4)
+		framework.ExpectNotEmpty(ipv6)
+		framework.ExpectConsistOf(util.PodIPs(*pod), []string{ipv6})
+	case apiv1.ProtocolDual:
+		framework.ExpectNotEmpty(ipv4)
+		framework.ExpectNotEmpty(ipv6)
+		framework.ExpectConsistOf(util.PodIPs(*pod), []string{ipv4, ipv6})
+	default:
+		framework.Failf("unexpected IP family %q", family)
+	}
+}
+
+func expectDefaultIPCRFamily(f *framework.Framework, pod *corev1.Pod, subnetName, family string) {
+	ginkgo.GinkgoHelper()
+
+	ipName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+	ipCR := f.IPClient().Get(ipName)
+	framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+	framework.ExpectEqual(ipCR.Spec.PodName, pod.Name)
+	framework.ExpectEqual(ipCR.Spec.Namespace, pod.Namespace)
+	framework.ExpectEqual(ipCR.Spec.NodeName, pod.Spec.NodeName)
+	framework.ExpectEqual(ipCR.Spec.IPAddress, pod.Annotations[util.IPAddressAnnotation])
+	ipv4, ipv6 := util.SplitStringIP(pod.Annotations[util.IPAddressAnnotation])
+	framework.ExpectEqual(ipCR.Spec.V4IPAddress, ipv4)
+	framework.ExpectEqual(ipCR.Spec.V6IPAddress, ipv6)
+
+	switch family {
+	case apiv1.ProtocolIPv4:
+		framework.ExpectNotEmpty(ipCR.Spec.V4IPAddress)
+		framework.ExpectEmpty(ipCR.Spec.V6IPAddress)
+	case apiv1.ProtocolIPv6:
+		framework.ExpectEmpty(ipCR.Spec.V4IPAddress)
+		framework.ExpectNotEmpty(ipCR.Spec.V6IPAddress)
+	case apiv1.ProtocolDual:
+		framework.ExpectNotEmpty(ipCR.Spec.V4IPAddress)
+		framework.ExpectNotEmpty(ipCR.Spec.V6IPAddress)
+	}
+}
+
+func expectEth0IPs(pod *corev1.Pod, expectedIPs []string) {
+	ginkgo.GinkgoHelper()
+
+	links, err := iproute.AddressShow("eth0", func(cmd ...string) ([]byte, []byte, error) {
+		return framework.KubectlExec(pod.Namespace, pod.Name, cmd...)
+	})
+	framework.ExpectNoError(err)
+	framework.ExpectHaveLen(links, 1)
+	framework.ExpectConsistOf(links[0].NonLinkLocalIPs(), expectedIPs)
+}
 
 var _ = framework.Describe("[group:ipam]", func() {
 	f := framework.NewDefaultFramework("ipam")
@@ -110,6 +172,120 @@ var _ = framework.Describe("[group:ipam]", func() {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 
 		framework.ExpectConsistOf(util.PodIPs(*pod), strings.Split(ip, ","))
+	})
+
+	framework.ConformanceIt("should allocate requested IP family for pod on dual-stack subnet", func() {
+		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		if !f.IsDual() {
+			ginkgo.Skip("This test requires a dual-stack cluster")
+		}
+
+		cmd := []string{"sleep", "infinity"}
+		cases := []struct {
+			name        string
+			annotations map[string]string
+			family      string
+		}{
+			{
+				name:   "default dual-stack allocation",
+				family: apiv1.ProtocolDual,
+			},
+			{
+				name:        "IPv4-only allocation",
+				annotations: map[string]string{util.IPFamilyAnnotation: strings.ToLower(apiv1.ProtocolIPv4)},
+				family:      apiv1.ProtocolIPv4,
+			},
+			{
+				name:        "IPv6-only allocation",
+				annotations: map[string]string{util.IPFamilyAnnotation: strings.ToLower(apiv1.ProtocolIPv6)},
+				family:      apiv1.ProtocolIPv6,
+			},
+		}
+
+		for _, tt := range cases {
+			ginkgo.By("Creating pod " + podName + " with " + tt.name)
+			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, tt.annotations, f.KubeOVNImage, cmd, nil)
+			pod = podClient.CreateSync(pod)
+
+			ginkgo.By("Validating pod annotations")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+			expectPodIPFamily(pod, tt.family)
+			expectDefaultIPCRFamily(f, pod, subnetName, tt.family)
+			expectEth0IPs(pod, util.PodIPs(*pod))
+
+			ginkgo.By("Deleting pod " + podName)
+			podClient.DeleteSync(podName)
+			f.IPClient().DeleteSync(ovs.PodNameToPortName(podName, namespaceName, util.OvnProvider))
+		}
+	})
+
+	framework.ConformanceIt("should allocate requested IP family from named dual-stack IPPool", func() {
+		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		if !f.IsDual() {
+			ginkgo.Skip("This test requires a dual-stack cluster")
+		}
+
+		ginkgo.By("Creating IPPool " + ippoolName)
+		poolIPs := strings.Split(framework.RandomIPs(cidr, ",", 2), ",")
+		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, []string{namespaceName})
+		ippool = ippoolClient.CreateSync(ippool)
+		framework.ExpectNotEmpty(ippool.Status.V4AvailableIPRange)
+		framework.ExpectNotEmpty(ippool.Status.V6AvailableIPRange)
+
+		cmd := []string{"sleep", "infinity"}
+		for _, family := range []string{apiv1.ProtocolIPv6, apiv1.ProtocolIPv4} {
+			ginkgo.By("Creating pod " + podName + " with " + family + " IP family from IPPool " + ippoolName)
+			annotations := map[string]string{
+				util.IPFamilyAnnotation: strings.ToLower(family),
+				util.IPPoolAnnotation:   ippoolName,
+			}
+			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
+			pod = podClient.CreateSync(pod)
+
+			ginkgo.By("Validating pod allocation")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippoolName)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+			expectPodIPFamily(pod, family)
+			expectDefaultIPCRFamily(f, pod, subnetName, family)
+			framework.ExpectContainElement(poolIPs, pod.Annotations[util.IPAddressAnnotation])
+			expectEth0IPs(pod, util.PodIPs(*pod))
+
+			ginkgo.By("Deleting pod " + podName)
+			podClient.DeleteSync(podName)
+			f.IPClient().DeleteSync(ovs.PodNameToPortName(podName, namespaceName, util.OvnProvider))
+		}
+	})
+
+	framework.ConformanceIt("should reject requested IP family that does not match single-stack subnet", func() {
+		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		if f.IsDual() {
+			ginkgo.Skip("This test requires a single-stack cluster")
+		}
+
+		requestedFamily := apiv1.ProtocolIPv4
+		if f.HasIPv4() {
+			requestedFamily = apiv1.ProtocolIPv6
+		}
+
+		ginkgo.By("Creating pod " + podName + " with mismatched " + requestedFamily + " IP family on " + subnet.Spec.Protocol + " subnet")
+		annotations := map[string]string{util.IPFamilyAnnotation: strings.ToLower(requestedFamily)}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		_ = podClient.Create(pod)
+
+		ginkgo.By("Waiting for pod " + podName + " to have event indicating IP family mismatch")
+		events := f.EventClient().WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
+		framework.ExpectContainSubstring(events[0].Message, fmt.Sprintf("requested ip family %s does not match subnet %s protocol %s", requestedFamily, subnetName, subnet.Spec.Protocol))
+
+		ginkgo.By("Validating pod " + podName + " is not allocated")
+		pod = podClient.GetPod(podName)
+		framework.ExpectNotHaveKey(pod.Annotations, util.AllocatedAnnotation)
 	})
 
 	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", func() {
