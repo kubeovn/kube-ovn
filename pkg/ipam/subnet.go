@@ -350,6 +350,40 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		v6 = s.V6CIDR != nil
 	}
 
+	if v4 && !s.V4CIDR.Contains(net.IP(ip)) {
+		klog.Errorf("ip %s is out of range", ip)
+		return nil, "", ErrOutOfRange
+	}
+	if v6 && !s.V6CIDR.Contains(net.IP(ip)) {
+		klog.Errorf("ip %s is out of range", ip)
+		return nil, "", ErrOutOfRange
+	}
+
+	var pool *IPPool
+	for _, p := range s.IPPools {
+		if v4 && p.V4IPs.Contains(ip) {
+			pool = p
+			break
+		}
+		if v6 && p.V6IPs.Contains(ip) {
+			pool = p
+			break
+		}
+	}
+
+	if pool == nil {
+		klog.Errorf("ip %s is out of range", ip)
+		return nil, "", ErrOutOfRange
+	}
+	gateway := s.V4Gw
+	if v6 {
+		gateway = s.V6Gw
+	}
+	if checkConflict && net.IP(ip).Equal(net.ParseIP(gateway)) {
+		klog.Errorf("ip %s conflicts with subnet gateway", ip)
+		return nil, "", ErrConflict
+	}
+
 	// Release existing address for this nicName if it exists and is different from requested IP
 	// For dual-stack scenarios, preserve the other protocol's address
 	if v4 && s.V4NicToIP[nicName] != nil && !s.V4NicToIP[nicName].Equal(ip) {
@@ -392,31 +426,6 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 				s.MacToPod[preservedMac] = podName
 			}
 		}
-	}
-	if v4 && !s.V4CIDR.Contains(net.IP(ip)) {
-		klog.Errorf("ip %s is out of range", ip)
-		return nil, "", ErrOutOfRange
-	}
-	if v6 && !s.V6CIDR.Contains(net.IP(ip)) {
-		klog.Errorf("ip %s is out of range", ip)
-		return nil, "", ErrOutOfRange
-	}
-
-	var pool *IPPool
-	for _, p := range s.IPPools {
-		if v4 && p.V4IPs.Contains(ip) {
-			pool = p
-			break
-		}
-		if v6 && p.V6IPs.Contains(ip) {
-			pool = p
-			break
-		}
-	}
-
-	if pool == nil {
-		klog.Errorf("ip %s is out of range", ip)
-		return nil, "", ErrOutOfRange
 	}
 
 	defer func() {

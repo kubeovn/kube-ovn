@@ -201,6 +201,15 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 				subnet.Spec.U2OInterconnectionIP,
 				subnet.Name, subnet.Spec.CIDRBlock)
 		}
+		gatewayV4, gatewayV6 := SplitStringIP(subnet.Spec.Gateway)
+		u2oV4, u2oV6 := SplitStringIP(subnet.Spec.U2OInterconnectionIP)
+		gatewayV4IP, gatewayV6IP := net.ParseIP(gatewayV4), net.ParseIP(gatewayV6)
+		u2oV4IP, u2oV6IP := net.ParseIP(u2oV4), net.ParseIP(u2oV6)
+		if (u2oV4IP != nil && gatewayV4IP != nil && u2oV4IP.Equal(gatewayV4IP)) ||
+			(u2oV6IP != nil && gatewayV6IP != nil && u2oV6IP.Equal(gatewayV6IP)) {
+			return fmt.Errorf("u2oInterconnectionIP %s conflicts with subnet gateway %s",
+				subnet.Spec.U2OInterconnectionIP, subnet.Spec.Gateway)
+		}
 	}
 
 	return nil
