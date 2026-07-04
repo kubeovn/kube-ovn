@@ -572,6 +572,55 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 	}
 }
 
+func TestAcquireStaticAddressHelperReturnsConflictForGatewayLiteralIPPool(t *testing.T) {
+	subnetName := "test-subnet"
+	staticIP := "10.0.0.2"
+	testSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock:  "10.0.0.0/30",
+			Gateway:    staticIP,
+			Protocol:   kubeovnv1.ProtocolIPv4,
+			Provider:   util.OvnProvider,
+			ExcludeIps: []string{staticIP},
+		},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "default",
+			Annotations: map[string]string{
+				util.IPPoolAnnotation: staticIP,
+			},
+		},
+	}
+	podNet := &kubeovnNet{
+		Subnet:       testSubnet,
+		ProviderName: util.OvnProvider,
+	}
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{testSubnet},
+		Pods:    []*corev1.Pod{pod},
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{testSubnet})
+	ctrl.ipam.Subnets[subnetName].V4Gw = staticIP
+
+	_, _, _, _, err = ctrl.acquireStaticAddressHelper(
+		pod,
+		podNet,
+		"default.test-pod",
+		nil,
+		staticIP,
+		[]*kubeovnNet{podNet},
+		false,
+		"default/test-pod",
+	)
+	require.ErrorIs(t, err, ipam.ErrConflict)
+}
+
 func newIPAMForTest(subnets []*kubeovnv1.Subnet) *ipam.IPAM {
 	ipamInstance := ipam.NewIPAM()
 	for _, subnet := range subnets {
