@@ -677,7 +677,7 @@ diagnose(){
   set -eu
 
   kubectl get svc kubernetes -n default
-  kubectl get sa -n kube-system ovn
+  kubectl get sa -n $KUBE_OVN_NS ovn
   kubectl get clusterrole system:ovn
   kubectl get clusterrolebinding ovn
 
@@ -958,8 +958,8 @@ dbtool(){
           declare podNameArray
           declare nodeIps
 
-          if [[ $(kubectl get deployment -n kube-system ovn-central -o jsonpath='{.spec.template.spec.containers[0].env[1]}') =~ "NODE_IPS" ]]; then
-            nodeIpVals=`kubectl get deployment -n kube-system ovn-central -o jsonpath='{.spec.template.spec.containers[0].env[1].value}'`
+          if [[ $(kubectl get deployment -n $KUBE_OVN_NS ovn-central -o jsonpath='{.spec.template.spec.containers[0].env[1]}') =~ "NODE_IPS" ]]; then
+            nodeIpVals=`kubectl get deployment -n $KUBE_OVN_NS ovn-central -o jsonpath='{.spec.template.spec.containers[0].env[1].value}'`
             nodeIps=(${nodeIpVals//,/ })
           else
             nodeIps=`kubectl get node -lkube-ovn/role=master -o wide | grep -v "INTERNAL-IP" | awk '{print $6}'`
@@ -1047,23 +1047,23 @@ dbtool(){
 }
 
 reload(){
-  kubectl delete pod -n kube-system -l app=ovn-central
-  kubectl rollout status deployment/ovn-central -n kube-system
-  kubectl rollout restart daemonset/ovs-ovn -n kube-system
-  kubectl delete pod -n kube-system -l app=kube-ovn-controller
-  kubectl rollout status deployment/kube-ovn-controller -n kube-system
-  kubectl delete pod -n kube-system -l app=kube-ovn-cni
-  kubectl rollout status daemonset/kube-ovn-cni -n kube-system
-  kubectl delete pod -n kube-system -l app=kube-ovn-pinger
-  kubectl rollout status daemonset/kube-ovn-pinger -n kube-system
-  kubectl delete pod -n kube-system -l app=kube-ovn-monitor
-  kubectl rollout status deployment/kube-ovn-monitor -n kube-system
+  kubectl delete pod -n $KUBE_OVN_NS -l app=ovn-central
+  kubectl rollout status deployment/ovn-central -n $KUBE_OVN_NS
+  kubectl rollout restart daemonset/ovs-ovn -n $KUBE_OVN_NS
+  kubectl delete pod -n $KUBE_OVN_NS -l app=kube-ovn-controller
+  kubectl rollout status deployment/kube-ovn-controller -n $KUBE_OVN_NS
+  kubectl delete pod -n $KUBE_OVN_NS -l app=kube-ovn-cni
+  kubectl rollout status daemonset/kube-ovn-cni -n $KUBE_OVN_NS
+  kubectl delete pod -n $KUBE_OVN_NS -l app=kube-ovn-pinger
+  kubectl rollout status daemonset/kube-ovn-pinger -n $KUBE_OVN_NS
+  kubectl delete pod -n $KUBE_OVN_NS -l app=kube-ovn-monitor
+  kubectl rollout status deployment/kube-ovn-monitor -n $KUBE_OVN_NS
 }
 
 env-check(){
   set +e
 
-  KUBE_OVN_NS=kube-system
+  KUBE_OVN_NS=${KUBE_OVN_NS:-kube-system}
   podNames=`kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
     nodeName=$(kubectl get pod $pod -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
@@ -1076,31 +1076,31 @@ env-check(){
 
 init_dir() {
     mkdir -p kubectl-ko-log
-    podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
+    podNames=`kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
     for pod in $podNames; do
-      nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+      nodeName=$(kubectl get pod "$pod" -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
       mkdir -p ./kubectl-ko-log/$nodeName/
     done
 }
 
 log_kube_ovn(){
   echo "Collecting kube-ovn logging files"
-  podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
+  podNames=`kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
-    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+    nodeName=$(kubectl get pod "$pod" -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
     mkdir -p ./kubectl-ko-log/$nodeName/kube-ovn
-    kubectl cp $pod:/var/log/kube-ovn ./kubectl-ko-log/$nodeName/kube-ovn -n kube-system -c cni-server > /dev/null || :
+    kubectl cp $pod:/var/log/kube-ovn ./kubectl-ko-log/$nodeName/kube-ovn -n $KUBE_OVN_NS -c cni-server > /dev/null || :
   done
 }
 
 log_ovn_ovs(){
   component_param=$1
   echo "Collecting $component_param logging files"
-  podNames=`kubectl get pod -n kube-system -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
+  podNames=`kubectl get pod -n $KUBE_OVN_NS -l app=ovs -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
-    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+    nodeName=$(kubectl get pod "$pod" -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
     mkdir -p ./kubectl-ko-log/$nodeName/$component_param
-    kubectl cp $pod:/var/log/$component_param ./kubectl-ko-log/$nodeName/$component_param -n kube-system > /dev/null || :
+    kubectl cp $pod:/var/log/$component_param ./kubectl-ko-log/$nodeName/$component_param -n $KUBE_OVN_NS > /dev/null || :
   done
 }
 
@@ -1108,83 +1108,83 @@ log_linux(){
   component_param=$1
   sub_component_param=$2
   echo "Collecting $component_param $sub_component_param files"
-  podNames=`kubectl get pod -n kube-system -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
+  podNames=`kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[*].metadata.name}'`
   for pod in $podNames; do
-    nodeName=$(kubectl get pod "$pod" -n kube-system -o jsonpath={.spec.nodeName})
+    nodeName=$(kubectl get pod "$pod" -n $KUBE_OVN_NS -o jsonpath={.spec.nodeName})
     mkdir -p ./kubectl-ko-log/$nodeName/$component_param
     case $sub_component_param in
       dmesg)
-        kubectl exec $pod -n kube-system -- dmesg -T > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- dmesg -T > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       iptables-legacy)
-        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/iptables-legacy -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** legacy filter v4 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/iptables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** legacy nat v4 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/iptables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** legacy filter v6 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/ip6tables-legacy -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** legacy nat v6 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/ip6tables-legacy -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       iptables-nft)
-        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/iptables-nft -V > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** nft filter v4 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/iptables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** nft nat v4 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- /usr/sbin/iptables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/iptables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** nft filter v6 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/ip6tables-nft -S >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** nft nat v6 ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- /usr/sbin/ip6tables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- /usr/sbin/ip6tables-nft -S -t nat >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       route)
-        kubectl exec $pod -n kube-system -- ip -4 route show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-        kubectl exec $pod -n kube-system -- ip -6 route show >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ip -4 route show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ip -6 route show >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       link)
-        kubectl exec $pod -n kube-system -- ip -d -s link show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ip -d -s link show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       neigh)
-        kubectl exec $pod -n kube-system -- ip -4 n > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
-        kubectl exec $pod -n kube-system -- ip -6 n >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ip -4 n > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ip -6 n >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       xfrm)
         echo "****************** policy ******************" > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- ip xfrm policy >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ip xfrm policy >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** state ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- ip xfrm state >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ip xfrm state >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       memory)
-        kubectl exec $pod -n kube-system -- free -m > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- free -m > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       top)
-        kubectl exec $pod -n kube-system -- top -b -n 1 > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- top -b -n 1 > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       sysctl)
-        kubectl exec $pod -n kube-system -- sysctl -a > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- sysctl -a > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       netstat)
-        kubectl exec $pod -n kube-system -- netstat -tunlp > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- netstat -tunlp > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       addr)
-        kubectl exec $pod -n kube-system -- ip addr show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ip addr show > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       ipset)
-        kubectl exec $pod -n kube-system -- ipset list > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ipset list > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       tcp)
-        kubectl exec $pod -n kube-system -- cat /proc/net/sockstat > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- cat /proc/net/sockstat > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
       ipsec)
         echo "****************** config ******************" > ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- cat /etc/ipsec.conf >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- cat /etc/ipsec.conf >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** ca certs ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- ipsec listcacerts >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ipsec listcacerts >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** certs ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- ipsec listcerts >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ipsec listcerts >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         echo "****************** status ******************" >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log
-        kubectl exec $pod -n kube-system -- ipsec statusall >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
+        kubectl exec $pod -n $KUBE_OVN_NS -- ipsec statusall >> ./kubectl-ko-log/$nodeName/$component_param/$sub_component_param.log || :
         ;;
     esac
   done
@@ -1464,7 +1464,7 @@ perf(){
   isfailed=true
   for i in {0..300}
   do
-    if kubectl wait pod --for=condition=Ready -l app=$PERF_LABEL -n kube-system 2>/dev/null ; then
+    if kubectl wait pod --for=condition=Ready -l app=$PERF_LABEL -n $KUBE_OVN_NS 2>/dev/null ; then
       isfailed=false
       break
     fi
@@ -1560,11 +1560,11 @@ multicastHostPerfTest() {
   serverNic=$(getAddressNic test-host-server $serverHostIP)
 
   clientovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $clientNode | awk '{print $2}')
-  PERF_GC_COMMAND+=("kubectl exec $clientovsPod -n kube-system -- ip maddr del 01:00:5e:00:00:64 dev $clientNic")
-  kubectl exec $clientovsPod -n kube-system -- ip maddr add 01:00:5e:00:00:64 dev $clientNic
+  PERF_GC_COMMAND+=("kubectl exec $clientovsPod -n $KUBE_OVN_NS -- ip maddr del 01:00:5e:00:00:64 dev $clientNic")
+  kubectl exec $clientovsPod -n $KUBE_OVN_NS -- ip maddr add 01:00:5e:00:00:64 dev $clientNic
   serverovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $serverNode | awk '{print $2}')
-  PERF_GC_COMMAND+=("kubectl exec $serverovsPod -n kube-system -- ip maddr del 01:00:5e:00:00:64 dev $serverNic")
-  kubectl exec $serverovsPod -n kube-system -- ip maddr add 01:00:5e:00:00:64 dev $serverNic
+  PERF_GC_COMMAND+=("kubectl exec $serverovsPod -n $KUBE_OVN_NS -- ip maddr del 01:00:5e:00:00:64 dev $serverNic")
+  kubectl exec $serverovsPod -n $KUBE_OVN_NS -- ip maddr add 01:00:5e:00:00:64 dev $serverNic
   genMulticastPerfResult test-host-server test-host-client
 }
 
@@ -1574,9 +1574,9 @@ multicastPerfTest() {
   clientNs=$(kubectl ko vsctl $clientNode --column=external_ids find interface external_ids:iface-id=test-client.$KUBE_OVN_NS | awk -F 'pod_netns=' '{print $2}' | grep -o 'cni-[0-9a-f]\{8\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{12\}')
   serverNs=$(kubectl ko vsctl $serverNode --column=external_ids find interface external_ids:iface-id=test-server.$KUBE_OVN_NS | awk -F 'pod_netns=' '{print $2}' | grep -o 'cni-[0-9a-f]\{8\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{4\}-[0-9a-f]\{12\}')
   clientovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $clientNode | awk '{print $2}')
-  kubectl exec $clientovsPod -n kube-system -- ip netns exec $clientNs ip maddr add 01:00:5e:00:00:64 dev eth0
+  kubectl exec $clientovsPod -n $KUBE_OVN_NS -- ip netns exec $clientNs ip maddr add 01:00:5e:00:00:64 dev eth0
   serverovsPod=$(kubectl get pod -owide -A |grep ovs-ovn | grep $serverNode | awk '{print $2}')
-  kubectl exec $serverovsPod -n kube-system -- ip netns exec $serverNs ip maddr add 01:00:5e:00:00:64 dev eth0
+  kubectl exec $serverovsPod -n $KUBE_OVN_NS -- ip netns exec $serverNs ip maddr add 01:00:5e:00:00:64 dev eth0
   genMulticastPerfResult test-server test-client
 }
 
@@ -1619,18 +1619,18 @@ getPodRecoverTime(){
   start_time=$(date +%s.%N)
   echo "Delete ovn central $component_name pod"
   if [[ $component_name == "nb" ]]; then
-    kubectl delete pod $OVN_NB_POD -n kube-system
+    kubectl delete pod $OVN_NB_POD -n $KUBE_OVN_NS
   elif [[ $component_name == "sb" ]]; then
-    kubectl delete pod $OVN_SB_POD -n kube-system
+    kubectl delete pod $OVN_SB_POD -n $KUBE_OVN_NS
   elif [[ $component_name == "northd" ]]; then
-    kubectl delete pod $OVN_NORTHD_POD -n kube-system
+    kubectl delete pod $OVN_NORTHD_POD -n $KUBE_OVN_NS
   fi
   echo "Waiting for ovn central $component_name pod running"
-  replicas=$(kubectl get deployment -n kube-system ovn-central -o jsonpath={.spec.replicas})
-  availableNum=$(kubectl get deployment -n kube-system | grep ovn-central | awk {'print $4'})
+  replicas=$(kubectl get deployment -n $KUBE_OVN_NS ovn-central -o jsonpath={.spec.replicas})
+  availableNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
   while [ $availableNum != $replicas ]
   do
-    availableNum=$(kubectl get deployment -n kube-system | grep ovn-central | awk {'print $4'})
+    availableNum=$(kubectl get deployment -n $KUBE_OVN_NS | grep ovn-central | awk {'print $4'})
     sleep 0.001
   done
 
