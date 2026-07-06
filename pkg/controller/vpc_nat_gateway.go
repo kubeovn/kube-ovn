@@ -524,9 +524,14 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 			}
 			// extract vpc nad interface name
 			providers, err := c.getPodProviders(pod)
-			if err != nil || len(providers) == 0 {
+			if err != nil {
 				klog.Errorf("failed to get providers for pod %s/%s: %v", pod.Namespace, pod.Name, err)
 				return fmt.Errorf("failed to get providers for pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			}
+			if len(providers) == 0 {
+				err = fmt.Errorf("no kube-ovn providers found for pod %s/%s", pod.Namespace, pod.Name)
+				klog.Error(err)
+				return err
 			}
 			// if more than one provider exists, use the first one
 			provider := providers[0]
