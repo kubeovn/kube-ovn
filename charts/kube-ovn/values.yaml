@@ -18,6 +18,7 @@ image:
   pullPolicy: IfNotPresent
 
 namespace: kube-system
+installMode: full
 MASTER_NODES: ""
 MASTER_NODES_LABEL: "kube-ovn/role=master"
 
