@@ -1,0 +1,34 @@
+From e490f5ac0b644101913c2a3db8e03d85e859deff Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Thu, 10 Apr 2025 01:28:59 +0000
+Subject: [PATCH] change default hash type from dp_hash to hash with field
+ src_ip
+
+---
+ lib/actions.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/lib/actions.c b/lib/actions.c
+index ed9b70882..12e5e6bb0 100644
+--- a/lib/actions.c
++++ b/lib/actions.c
+@@ -1653,13 +1653,14 @@ encode_SELECT(const struct ovnact_select *select,
+     struct ofpact_group *og;
+ 
+     struct ds ds = DS_EMPTY_INITIALIZER;
+-    ds_put_format(&ds, "type=select,selection_method=%s",
+-                  select->hash_fields ? "hash": "dp_hash");
+     if (select->hash_fields) {
+-      ds_put_format(&ds, ",fields(%s)", select->hash_fields);
++        ds_put_format(&ds, "type=select,selection_method=hash,fields(%s)",
++                      select->hash_fields);
++    } else {
++        ds_put_format(&ds, "type=select,selection_method=hash,fields=ip_src");
+     }
+ 
+     if (ovs_feature_is_supported(OVS_DP_HASH_L4_SYM_SUPPORT) &&
+         !select->hash_fields) {
+         /* Select dp-hash l4_symmetric by setting the upper 32bits of
+          * selection_method_param to value 1 (1 << 32): */
+-- 
+2.43.0
