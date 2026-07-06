@@ -358,8 +358,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 				}
 				mtuStr := node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork)]
 				if mtuStr != "" {
-					if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
-						errMsg := fmt.Errorf("failed to parse provider network MTU %s: %w", mtuStr, err)
+					var errMsg error
+					if mtu, err = strconv.Atoi(mtuStr); err != nil {
+						errMsg = fmt.Errorf("failed to parse provider network MTU %s: %w", mtuStr, err)
+					} else if mtu <= 0 {
+						errMsg = fmt.Errorf("invalid provider network MTU %q: must be a positive integer", mtuStr)
+					}
+					if errMsg != nil {
 						klog.Error(errMsg)
 						if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 							klog.Errorf("failed to write response: %v", err)
