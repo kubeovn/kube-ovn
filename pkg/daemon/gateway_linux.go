@@ -620,6 +620,14 @@ func (c *Controller) updateIptablesChain(ipt *iptables.IPTables, table, chain, p
 	return nil
 }
 
+func centralizedNatOutgoingNonSynDropRule(cidr, matchset string) util.IPTableRule {
+	return util.IPTableRule{
+		Table: MANGLE,
+		Chain: OvnPostrouting,
+		Rule:  strings.Fields(fmt.Sprintf(`-s %s -p tcp -m tcp --tcp-flags SYN NONE -m conntrack --ctstate NEW -m set ! --match-set %s dst -j DROP`, cidr, matchset)),
+	}
+}
+
 func (c *Controller) setIptables() error {
 	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -909,6 +917,8 @@ func (c *Controller) setIptables() error {
 			// insert the rule before the one for nat outgoing
 			n := len(natPostroutingRules)
 			natPostroutingRules = append(natPostroutingRules[:n-1], rule, natPostroutingRules[n-1])
+			// Drop orphan non-SYN packets before conntrack confirm to avoid poisoning later SNAT.
+			manglePostroutingRules = append(manglePostroutingRules, centralizedNatOutgoingNonSynDropRule(cidr, matchset))
 		}
 
 		if err = c.reconcileNatOutgoingPolicyIptablesChain(protocol); err != nil {
