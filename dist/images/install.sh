@@ -3660,6 +3660,8 @@ spec:
             properties:
               id:
                 description: VLAN ID (0-4095). This field is immutable after creation.
+                maximum: 4095
+                minimum: 0
                 type: integer
               provider:
                 description: Provider network name. This field is immutable after
@@ -3670,6 +3672,8 @@ spec:
                 type: string
               vlanId:
                 description: deprecated fields, use ID & Provider instead
+                maximum: 4095
+                minimum: 0
                 type: integer
             required:
             - provider
