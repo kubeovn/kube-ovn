@@ -1,0 +1,224 @@
+suite: OVN central HCP deployment
+templates:
+  - central-deploy.yaml
+  - central-hcp-rbac.yaml
+  - central-svc.yaml
+  - nb-svc.yaml
+  - sb-svc.yaml
+  - controller-deploy.yaml
+  - ovsovn-ds.yaml
+  - ovn-dpdk-ds.yaml
+tests:
+  - it: renders ovn-central as a PVC-backed StatefulSet in the HCP namespace
+    template: central-deploy.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.namespace: hcp
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+      ovn-central.hcp.replicas: 3
+      ovn-central.hcp.storage.size: 5Gi
+      ovn-central.hcp.storage.storageClassName: topolvm
+    asserts:
+      - isKind:
+          of: StatefulSet
+      - equal:
+          path: metadata.namespace
+          value: hcp
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.serviceName
+          value: ovn-central
+      - equal:
+          path: spec.template.spec.hostNetwork
+          value: false
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: ovn-central
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NODE_IPS
+            value: ovn-central-0.ovn-central.hcp.svc,ovn-central-1.ovn-central.hcp.svc,ovn-central-2.ovn-central.hcp.svc
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_CLUSTER_ADDR
+            value: $(POD_NAME).ovn-central.$(POD_NAMESPACE).svc
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
+          value: 5Gi
+      - equal:
+          path: spec.volumeClaimTemplates[0].spec.storageClassName
+          value: topolvm
+
+  - it: creates dedicated namespaced RBAC for HCP ovn-central
+    template: central-hcp-rbac.yaml
+    documentIndex: 0
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.namespace: hcp
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - equal:
+          path: metadata.name
+          value: ovn-central
+      - equal:
+          path: metadata.namespace
+          value: hcp
+      - equal:
+          path: automountServiceAccountToken
+          value: false
+
+  - it: creates a headless service for StatefulSet raft DNS
+    template: central-svc.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.namespace: hcp
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: metadata.name
+          value: ovn-central
+      - equal:
+          path: metadata.namespace
+          value: hcp
+      - equal:
+          path: spec.clusterIP
+          value: None
+      - equal:
+          path: spec.publishNotReadyAddresses
+          value: true
+
+  - it: exposes nb and sb through HCP node ports
+    template: nb-svc.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.namespace: hcp
+      ovn-central.hcp.service.type: NodePort
+      ovn-central.hcp.service.nbNodePort: 30641
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: hcp
+      - equal:
+          path: spec.type
+          value: NodePort
+      - equal:
+          path: spec.ports[0].nodePort
+          value: 30641
+
+  - it: omits node ports when HCP services are rendered as ClusterIP
+    template: nb-svc.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.namespace: hcp
+      ovn-central.hcp.service.type: ClusterIP
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - notExists:
+          path: spec.ports[0].nodePort
+
+  - it: defaults empty HCP NB service type to ClusterIP
+    template: nb-svc.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.namespace: hcp
+      ovn-central.hcp.service.type: ""
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - notExists:
+          path: spec.ports[0].nodePort
+
+  - it: defaults empty HCP SB service type to ClusterIP
+    template: sb-svc.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.namespace: hcp
+      ovn-central.hcp.service.type: ""
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - notExists:
+          path: spec.ports[0].nodePort
+
+  - it: points workload components at independent HCP OVN DB addresses
+    template: controller-deploy.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:ovn-nb.example.com:6641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+
+  - it: points ovs-ovn at the HCP OVN SB address
+    template: ovsovn-ds.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+
+  - it: points ovs-ovn-dpdk at the HCP OVN SB address
+    template: ovn-dpdk-ds.yaml
+    set:
+      HYBRID_DPDK: true
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642

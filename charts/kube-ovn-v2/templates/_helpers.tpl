@@ -64,7 +64,7 @@ a dry-run/template call and return nothing.
 {{- $ips := list -}}
 {{- range $node := $nodes.items -}}
   {{- range $label, $value := $.Values.masterNodesLabels }}
-  {{- if eq (index $node.metadata.labels $label) $value -}}
+  {{- if and (hasKey $node.metadata.labels $label) (or (eq ($value | toString) "") (eq (index $node.metadata.labels $label) ($value | toString))) -}}
     {{- range $address := $node.status.addresses -}}
       {{- if eq $address.type "InternalIP" -}}
         {{- $ips = append $ips $address.address -}}
@@ -96,6 +96,24 @@ Get IPs of master nodes from values
 {{- end -}}
 
 {{/*
+Build hardcodedRequired list for kube-ovn.affinities.nodeAffinity from masterNodesLabels.
+Each label gets its own nodeSelectorTerm so multiple labels use OR semantics
+(matching the kubeovn.nodeIPs helper which also uses OR).
+Uses Exists operator for empty/nil-value labels and In for specific values.
+*/}}
+{{- define "kubeovn.masterNodeRequired" -}}
+{{- $terms := list -}}
+{{- range $key, $value := .Values.masterNodesLabels -}}
+  {{- if eq ($value | toString) "" -}}
+    {{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "Exists"))) -}}
+  {{- else -}}
+    {{- $terms = append $terms (dict "matchExpressions" (list (dict "key" $key "operator" "In" "values" (list ($value | toString))))) -}}
+  {{- end -}}
+{{- end -}}
+{{- $terms | toYaml -}}
+{{- end -}}
+
+{{/*
 Environment variables used by the OVN NB/SB database server TLS setup.
 */}}
 {{- define "kubeovn.ovnCentralTLSEnv" -}}
@@ -122,6 +140,49 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 {{- if .Values.networking.tlsCipherSuites }}
 - --tls-cipher-suites={{ join "," .Values.networking.tlsCipherSuites }}
 {{- end }}
+{{- end -}}
+
+{{- define "kubeovn.centralNamespace" -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- default .Values.namespace .Values.central.hcp.namespace -}}
+{{- else -}}
+{{- .Values.namespace -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralReplicas" -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- .Values.central.hcp.replicas -}}
+{{- else -}}
+{{- include "kubeovn.nodeCount" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralRaftAddresses" -}}
+{{- $namespace := include "kubeovn.centralNamespace" . -}}
+{{- $addresses := list -}}
+{{- range $i := until (int .Values.central.hcp.replicas) -}}
+{{- $addresses = append $addresses (printf "ovn-central-%d.ovn-central.%s.svc" $i $namespace) -}}
+{{- end -}}
+{{- join "," $addresses -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnDbAddresses" -}}
+{{- include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnNbAddress" -}}
+{{- if not .Values.central.hcp.nbAddress -}}
+{{- fail "central.hcp.nbAddress must be set when central.hcp.enabled is true" -}}
+{{- end -}}
+{{- .Values.central.hcp.nbAddress -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnSbAddress" -}}
+{{- if not .Values.central.hcp.sbAddress -}}
+{{- fail "central.hcp.sbAddress must be set when central.hcp.enabled is true" -}}
+{{- end -}}
+{{- .Values.central.hcp.sbAddress -}}
 {{- end -}}
 
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}

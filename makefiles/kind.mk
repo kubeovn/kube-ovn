@@ -282,6 +282,23 @@ kind-install-ipv6:
 kind-install-dual:
 	@DUAL_STACK=true $(MAKE) kind-install
 
+.PHONY: kind-install-single-replica
+kind-install-single-replica:
+	@ENABLE_SINGLE_REPLICA_OVN=true OVN_CENTRAL_STORAGE_CLASS=standard $(MAKE) kind-install
+
+# Kamaji split-cluster setup: brings up a mgmt kind cluster running Kamaji +
+# kube-ovn controlPlaneOnly, plus a docker-container tenant worker joined to
+# the Kamaji-hosted tenant apiserver and running kube-ovn dataPlaneOnly.
+# Requires `kubeovn/kube-ovn:dev` to already exist locally (run
+# `make build-dev` first).
+.PHONY: kind-install-kamaji
+kind-install-kamaji:
+	@KUBEOVN_IMAGE=$(REGISTRY)/kube-ovn:$(DEV_TAG) ./hack/kamaji-e2e.sh setup
+
+.PHONY: kind-clean-kamaji
+kind-clean-kamaji:
+	@./hack/kamaji-e2e.sh teardown
+
 .PHONY: kind-install-overlay
 kind-install-overlay: kind-install-overlay-ipv4
 

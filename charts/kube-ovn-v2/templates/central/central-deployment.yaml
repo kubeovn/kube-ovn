@@ -1,8 +1,8 @@
-kind: Deployment
+kind: {{ ternary "StatefulSet" "Deployment" .Values.central.hcp.enabled }}
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -12,12 +12,18 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  replicas: {{ include "kubeovn.nodeCount" . }}
+  replicas: {{ include "kubeovn.centralReplicas" . }}
+  {{- if .Values.central.hcp.enabled }}
+  serviceName: ovn-central
+  podManagementPolicy: Parallel
+  {{- end }}
+  {{- if not .Values.central.hcp.enabled }}
   strategy:
     rollingUpdate:
       maxSurge: 0
       maxUnavailable: 1
     type: RollingUpdate
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: ovn-central
@@ -47,22 +53,24 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
-        {{- include "kube-ovn.affinities.nodeAffinity" (dict "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
+        {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedRequired" (include "kubeovn.masterNodeRequired" . | fromYamlArray) "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
+        {{- if not .Values.central.hcp.enabled }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
                   app.kubernetes.io/name: ovn-central
               topologyKey: kubernetes.io/hostname
+        {{- end }}
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn-ovs
+      serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" .Values.central.hcp.enabled }}
       automountServiceAccountToken: true
-      hostNetwork: true
+      hostNetwork: {{ ternary "false" "true" .Values.central.hcp.enabled }}
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
-        - name: hostpath-init
+        - name: {{ ternary "volume-init" "hostpath-init" .Values.central.hcp.enabled }}
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
@@ -70,19 +78,23 @@ spec:
             - -c
             - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
           securityContext:
-            allowPrivilegeEscalation: true
+            allowPrivilegeEscalation: {{ ternary "false" "true" .Values.central.hcp.enabled }}
             capabilities:
+              {{- if .Values.central.hcp.enabled }}
+              add:
+                - CHOWN
+              {{- end }}
               drop:
                 - ALL
-            privileged: true
+            privileged: {{ ternary "false" "true" .Values.central.hcp.enabled }}
             runAsUser: 0
           volumeMounts:
             - mountPath: /var/run/ovn
-              name: host-run-ovn
+              name: {{ ternary "run-ovn" "host-run-ovn" .Values.central.hcp.enabled }}
             - mountPath: /etc/ovn
-              name: host-config-ovn
+              name: {{ ternary "ovn-data" "host-config-ovn" .Values.central.hcp.enabled }}
             - mountPath: /var/log/ovn
-              name: host-log-ovn
+              name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.hcp.enabled }}
       containers:
         - name: ovn-central
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
@@ -99,12 +111,7 @@ spec:
                 - SYS_NICE
           env:
 {{- include "kubeovn.ovnCentralTLSEnv" . | nindent 12 }}
-            - name: NODE_IPS
-              value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
+            {{- if .Values.central.hcp.enabled }}
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -113,12 +120,37 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- end }}
+            - name: NODE_IPS
+              value: "{{ ternary (include "kubeovn.centralRaftAddresses" .) (include "kubeovn.ovnDbAddresses" .) .Values.central.hcp.enabled }}"
+            {{- if .Values.central.hcp.enabled }}
+            - name: DB_CLUSTER_ADDR
+              value: "$(POD_NAME).ovn-central.$(POD_NAMESPACE).svc"
+            {{- end }}
+            - name: POD_IP
+              {{- if .Values.central.hcp.enabled }}
+              value: "$(DB_CLUSTER_ADDR)"
+              {{- else }}
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+              {{- end }}
+            {{- if not .Values.central.hcp.enabled }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- end }}
             - name: POD_IPS
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
-              value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+              value: "{{ ternary false .Values.features.ENABLE_BIND_LOCAL_IP .Values.central.hcp.enabled }}"
             - name: PROBE_INTERVAL
               value: "{{ .Values.ovsOvn.probeInterval }}"
             - name: OVN_NORTHD_PROBE_INTERVAL
@@ -140,14 +172,16 @@ spec:
           {{- end }}
           volumeMounts:
             - mountPath: /var/run/ovn
-              name: host-run-ovn
+              name: {{ ternary "run-ovn" "host-run-ovn" .Values.central.hcp.enabled }}
             - mountPath: /etc/ovn
-              name: host-config-ovn
+              name: {{ ternary "ovn-data" "host-config-ovn" .Values.central.hcp.enabled }}
             - mountPath: /var/log/ovn
-              name: host-log-ovn
+              name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.hcp.enabled }}
+            {{- if not .Values.central.hcp.enabled }}
             - mountPath: /etc/localtime
               name: localtime
               readOnly: true
+            {{- end }}
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -170,6 +204,12 @@ spec:
         kubernetes.io/os: "linux"
         {{ .Values.masterNodesLabels | toYaml | nindent 8 }}
       volumes:
+        {{- if .Values.central.hcp.enabled }}
+        - name: run-ovn
+          emptyDir: {}
+        - name: log-ovn
+          emptyDir: {}
+        {{- else }}
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
@@ -182,8 +222,26 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        {{- end }}
         - name: kube-ovn-tls
           secret:
             optional: true
             secretName: kube-ovn-tls
-
+  {{- if .Values.central.hcp.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: ovn-data
+        labels:
+          app.kubernetes.io/name: ovn-central
+          app.kubernetes.io/part-of: kube-ovn
+          app: ovn-central
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.central.hcp.storage.size }}
+        {{- if .Values.central.hcp.storage.storageClassName }}
+        storageClassName: {{ .Values.central.hcp.storage.storageClassName | quote }}
+        {{- end }}
+  {{- end }}

@@ -164,6 +164,14 @@ networking:
   # -- Enable EIP and SNAT.
   # @section -- Network parameters of the CNI
   enableEipSnat: true
+  # -- Namespace where ovn-external-gw-config ConfigMap is located.
+  # Empty means it will use the same namespace as the controller (PodNamespace).
+  # @section -- Network parameters of the CNI
+  externalGatewayConfigNs: ""
+  # -- The name of the external gateway switch (OVS bridge providing external network).
+  # Empty means the default "external" is used.
+  # @section -- Network parameters of the CNI
+  externalGatewaySwitch: ""
   # -- Comma-separated string of NodeLocal DNS IP addresses.
   # @section -- Network parameters of the CNI
   nodeLocalDnsIp: ""
@@ -799,6 +807,24 @@ central:
   extraEnv: []
   #  - name: CUSTOM_ENV_VAR
   #    value: "custom-value"
+
+  # -- Deploy ovn-central as a PVC-backed StatefulSet that can be exposed to workload clusters.
+  # @section -- OVN-central daemon configuration
+  hcp:
+    enabled: false
+    namespace: hcp
+    replicas: 3
+    # -- OVN NB address used by workload clusters, for example tcp:ovn-nb.example.com:6641.
+    nbAddress: ""
+    # -- OVN SB address used by workload clusters, for example tcp:ovn-sb.example.com:6642.
+    sbAddress: ""
+    service:
+      type: NodePort
+      nbNodePort: 30641
+      sbNodePort: 30642
+    storage:
+      size: 5Gi
+      storageClassName: ""
 
   # -- ovn-central resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
