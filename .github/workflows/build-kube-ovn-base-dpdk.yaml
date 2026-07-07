@@ -45,7 +45,10 @@ jobs:
 
       - name: Build
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
+        env:
+          IMAGE_REF_NAME: ${{ matrix.branch }}
         run: |
+          export IMAGE_REVISION=$(git rev-parse HEAD)
           make base-amd64-dpdk
           make base-tar-amd64-dpdk
 
