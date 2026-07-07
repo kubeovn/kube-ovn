@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
@@ -7,7 +8,7 @@ metadata:
     kubernetes.io/description: |
       kube-ovn controller
 spec:
-  replicas: {{ include "kubeovn.nodeCount" . }}
+  replicas: {{ include "kubeovn.controllerReplicas" . }}
   selector:
     matchLabels:
       app: kube-ovn-controller
@@ -180,8 +181,19 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if index .Values "ovn-central" "hcp" "enabled" }}
+            - name: OVN_NB_ADDR
+              value: "{{ include "kubeovn.ovnNbAddress" . }}"
+            - name: OVN_SB_ADDR
+              value: "{{ include "kubeovn.ovnSbAddress" . }}"
+            {{- else }}
             - name: OVN_DB_IPS
-              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
+            - name: KUBE_OVN_NB_PORT
+              value: "{{ include "kubeovn.ovnNbPort" . }}"
+            - name: KUBE_OVN_SB_PORT
+              value: "{{ include "kubeovn.ovnSbPort" . }}"
+            {{- end }}
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -243,3 +255,5 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+
+{{- end }}

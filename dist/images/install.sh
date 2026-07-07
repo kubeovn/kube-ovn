@@ -76,6 +76,24 @@ function ovn_central_tls_env {
 EOF
 }
 
+# Single-replica ovn-central mode: deploy a single Deployment-managed pod with
+# OVN DB stored on a PVC, so the pod can drift to another node on host failure.
+# When enabled, NODE_IPS/OVN_DB_IPS are passed empty so clients fall back to the
+# ovn-nb / ovn-sb Service ClusterIPs auto-injected via OVN_*_SERVICE_HOST.
+ENABLE_SINGLE_REPLICA_OVN=${ENABLE_SINGLE_REPLICA_OVN:-false}
+OVN_CENTRAL_PVC_SIZE=${OVN_CENTRAL_PVC_SIZE:-10Gi}
+# Empty means use the cluster's default StorageClass. For real cross-node drift
+# pick one that supports cross-node attach (NFS-CSI, Ceph RBD, cloud EBS, ...).
+OVN_CENTRAL_STORAGE_CLASS=${OVN_CENTRAL_STORAGE_CLASS:-}
+
+# Service exposure for ovn-nb / ovn-sb / ovn-northd. Default ClusterIP is
+# only reachable from inside the cluster. Switch to LoadBalancer (or NodePort)
+# to expose the OVN DB to data-plane components running outside the
+# management cluster (e.g. Kamaji-style separated control/data planes).
+OVN_CENTRAL_SERVICE_TYPE=${OVN_CENTRAL_SERVICE_TYPE:-ClusterIP}
+OVN_CENTRAL_LB_IP=${OVN_CENTRAL_LB_IP:-}
+OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY=${OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY:-}
+
 PROBE_HTTP_SCHEME="HTTP"
 if [ "$SECURE_SERVING" = "true" ]; then
   PROBE_HTTP_SCHEME="HTTPS"
@@ -262,7 +280,123 @@ echo ""
 echo "[Step 2/6] Install OVN components"
 addresses=$(kubectl get no -lkube-ovn/role=master --no-headers -o wide | awk '{print $6}' | tr \\n ',' | sed 's/,$//')
 count=$(kubectl get no -lkube-ovn/role=master --no-headers | wc -l)
-echo "Install OVN DB in $addresses"
+
+# Reject in-place OVN_CENTRAL_MODE switches that would silently drop the live
+# OVN DB. Mirror the Helm chart's lookup-based guard so install.sh users get
+# the same protection. The Deployment's host-config-ovn volume tells us
+# whether the existing release is raft (hostPath) or single (PVC).
+if kubectl get deployment -n kube-system ovn-central >/dev/null 2>&1; then
+  existing_host_path=$(kubectl get deployment -n kube-system ovn-central \
+    -o jsonpath='{.spec.template.spec.volumes[?(@.name=="host-config-ovn")].hostPath.path}' 2>/dev/null)
+  existing_pvc=$(kubectl get deployment -n kube-system ovn-central \
+    -o jsonpath='{.spec.template.spec.volumes[?(@.name=="host-config-ovn")].persistentVolumeClaim.claimName}' 2>/dev/null)
+  if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ] && [ -n "$existing_host_path" ]; then
+    echo "ERROR: Refusing to switch in place from raft cluster mode (hostPath /etc/ovn) to single-replica mode (PVC)."
+    echo "       The new ovn-central pod would start against an empty PVC and lose all live OVN state."
+    echo "       Migrate explicitly: backup the DB, kubectl delete deployment ovn-central, then re-run install.sh."
+    exit 1
+  fi
+  if [ "$ENABLE_SINGLE_REPLICA_OVN" != "true" ] && [ -n "$existing_pvc" ]; then
+    echo "ERROR: Refusing to switch in place from single-replica mode (PVC) to raft cluster mode (hostPath)."
+    echo "       The cluster-mode ovn-central would start without the PVC-backed DB. Migrate explicitly."
+    exit 1
+  fi
+fi
+
+if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
+  # In single-replica mode the OVN DB lives on a PVC, so NODE_IPS/OVN_DB_IPS
+  # must be empty (clients use the Service ClusterIPs) and the Deployment runs
+  # exactly one pod.
+  addresses=""
+  count=1
+  echo "Install ovn-central as a single-replica Deployment backed by PVC ovn-central-data"
+else
+  echo "Install OVN DB in $addresses"
+fi
+
+# Pre-compute the YAML fragments that differ between cluster and single mode.
+# These are injected into the ovn.yaml HEREDOC below via ${VAR} expansion.
+if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
+  OVN_NB_LEADER_SELECTOR=""
+  OVN_SB_LEADER_SELECTOR=""
+  OVN_NORTHD_LEADER_SELECTOR=""
+  OVN_CENTRAL_STRATEGY_BODY="    type: Recreate"
+  OVN_CENTRAL_AFFINITY_BLOCK=""
+  OVN_CENTRAL_CONFIG_VOLUME="        - name: host-config-ovn
+          persistentVolumeClaim:
+            claimName: ovn-central-data"
+  OVN_CENTRAL_PVC_BLOCK="---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: ovn-central-data
+  namespace: kube-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: ${OVN_CENTRAL_PVC_SIZE}"
+  if [ -n "${OVN_CENTRAL_STORAGE_CLASS}" ]; then
+    OVN_CENTRAL_PVC_BLOCK="${OVN_CENTRAL_PVC_BLOCK}
+  storageClassName: \"${OVN_CENTRAL_STORAGE_CLASS}\""
+  fi
+else
+  OVN_NB_LEADER_SELECTOR='    ovn-nb-leader: "true"'
+  OVN_SB_LEADER_SELECTOR='    ovn-sb-leader: "true"'
+  OVN_NORTHD_LEADER_SELECTOR='    ovn-northd-leader: "true"'
+  OVN_CENTRAL_STRATEGY_BODY="    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate"
+  OVN_CENTRAL_AFFINITY_BLOCK="      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: ovn-central
+              topologyKey: kubernetes.io/hostname"
+  OVN_CENTRAL_CONFIG_VOLUME="        - name: host-config-ovn
+          hostPath:
+            path: /etc/origin/ovn"
+  OVN_CENTRAL_PVC_BLOCK=""
+fi
+
+# Optional LoadBalancer / NodePort tweaks for the three ovn-central Services.
+OVN_CENTRAL_LB_BLOCK=""
+if [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] && [ -n "$OVN_CENTRAL_LB_IP" ]; then
+  OVN_CENTRAL_LB_BLOCK="  loadBalancerIP: \"$OVN_CENTRAL_LB_IP\""
+fi
+OVN_CENTRAL_ETP_BLOCK=""
+if { [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] || [ "$OVN_CENTRAL_SERVICE_TYPE" = "NodePort" ]; } && [ -n "$OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY" ]; then
+  OVN_CENTRAL_ETP_BLOCK="  externalTrafficPolicy: $OVN_CENTRAL_EXTERNAL_TRAFFIC_POLICY"
+fi
+# MetalLB shared-IP annotation for the three Services so they can colocate on
+# the same loadBalancerIP. Harmless on non-MetalLB providers.
+OVN_CENTRAL_SVC_ANNOTATIONS=""
+if [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] && [ -n "$OVN_CENTRAL_LB_IP" ]; then
+  OVN_CENTRAL_SVC_ANNOTATIONS="  annotations:
+    metallb.universe.tf/allow-shared-ip: kube-ovn-central"
+fi
+# externalOvnCentral.endpoint is a single IP, so all three OVN Services must
+# land on the same VIP. Without an explicit loadBalancerIP cloud LB controllers
+# assign three separate IPs and tenant clusters can only reach one of NB/SB/
+# northd. Mirror the Helm chart's kubeovn.validateService guard here.
+if [ "$OVN_CENTRAL_SERVICE_TYPE" = "LoadBalancer" ] && [ -z "$OVN_CENTRAL_LB_IP" ]; then
+  echo "ERROR: OVN_CENTRAL_SERVICE_TYPE=LoadBalancer requires OVN_CENTRAL_LB_IP to be set so the three OVN Services share a single VIP."
+  echo "       Pick a VIP, configure your LB controller to assign it (MetalLB allow-shared-ip annotation is emitted automatically), then re-run install.sh."
+  exit 1
+fi
+
+# /etc/ovn is mounted from a PVC in single-replica mode. Some backends (e.g.
+# root-squashed NFS, which the docs recommend for failover) reject chown by
+# root, so make the OVN DB directory's chown best-effort there. ovn-central
+# runs as `nobody` and creates new files with the right owner regardless.
+if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
+  OVN_CENTRAL_INIT_CHOWN_CMD="chown -R nobody: /var/run/ovn /var/log/ovn && (chown -R nobody: /etc/ovn 2>/dev/null || echo 'chown /etc/ovn skipped (likely root-squashed NFS); ovn will write as nobody anyway')"
+else
+  OVN_CENTRAL_INIT_CHOWN_CMD="chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+fi
 
 # BEGIN GENERATED KUBE-OVN CRD BUNDLE
 cat <<'EOF' > kube-ovn-crd.yaml
@@ -7101,23 +7235,27 @@ kubectl apply -f kube-ovn-cni-sa.yaml
 kubectl apply -f kube-ovn-app-sa.yaml
 
 cat <<EOF > ovn.yaml
+${OVN_CENTRAL_PVC_BLOCK}
 ---
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-nb
   namespace: kube-system
+${OVN_CENTRAL_SVC_ANNOTATIONS}
 spec:
   ports:
     - name: ovn-nb
       protocol: TCP
       port: 6641
       targetPort: 6641
-  type: ClusterIP
+  type: ${OVN_CENTRAL_SERVICE_TYPE}
+${OVN_CENTRAL_LB_BLOCK}
+${OVN_CENTRAL_ETP_BLOCK}
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
-    ovn-nb-leader: "true"
+${OVN_NB_LEADER_SELECTOR}
   sessionAffinity: None
 
 ---
@@ -7126,17 +7264,20 @@ apiVersion: v1
 metadata:
   name: ovn-sb
   namespace: kube-system
+${OVN_CENTRAL_SVC_ANNOTATIONS}
 spec:
   ports:
     - name: ovn-sb
       protocol: TCP
       port: 6642
       targetPort: 6642
-  type: ClusterIP
+  type: ${OVN_CENTRAL_SERVICE_TYPE}
+${OVN_CENTRAL_LB_BLOCK}
+${OVN_CENTRAL_ETP_BLOCK}
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
-    ovn-sb-leader: "true"
+${OVN_SB_LEADER_SELECTOR}
   sessionAffinity: None
 
 ---
@@ -7145,17 +7286,20 @@ apiVersion: v1
 metadata:
   name: ovn-northd
   namespace: kube-system
+${OVN_CENTRAL_SVC_ANNOTATIONS}
 spec:
   ports:
     - name: ovn-northd
       protocol: TCP
       port: 6643
       targetPort: 6643
-  type: ClusterIP
+  type: ${OVN_CENTRAL_SERVICE_TYPE}
+${OVN_CENTRAL_LB_BLOCK}
+${OVN_CENTRAL_ETP_BLOCK}
   ${SVC_YAML_IPFAMILYPOLICY}
   selector:
     app: ovn-central
-    ovn-northd-leader: "true"
+${OVN_NORTHD_LEADER_SELECTOR}
   sessionAffinity: None
 ---
 kind: Deployment
@@ -7169,10 +7313,7 @@ metadata:
 spec:
   replicas: $count
   strategy:
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
-    type: RollingUpdate
+${OVN_CENTRAL_STRATEGY_BODY}
   selector:
     matchLabels:
       app: ovn-central
@@ -7190,13 +7331,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchLabels:
-                  app: ovn-central
-              topologyKey: kubernetes.io/hostname
+${OVN_CENTRAL_AFFINITY_BLOCK}
       priorityClassName: system-cluster-critical
       serviceAccountName: ovn-ovs
       automountServiceAccountToken: true
@@ -7210,7 +7345,7 @@ spec:
           command:
             - sh
             - -c
-            - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+            - "$OVN_CENTRAL_INIT_CHOWN_CMD"
           securityContext:
             allowPrivilegeEscalation: true
             capabilities:
@@ -7242,7 +7377,7 @@ spec:
           env:
 $(ovn_central_tls_env)
             - name: NODE_IPS
-              value: $addresses
+              value: "$addresses"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -7316,9 +7451,7 @@ $(ovn_central_tls_env)
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
-        - name: host-config-ovn
-          hostPath:
-            path: /etc/origin/ovn
+${OVN_CENTRAL_CONFIG_VOLUME}
         - name: host-log-ovn
           hostPath:
             path: $LOG_DIR/ovn
@@ -7447,7 +7580,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: $addresses
+              value: "$addresses"
             - name: DEBUG_WRAPPER
               value: "$DEBUG_WRAPPER"
             - name: OVN_REMOTE_PROBE_INTERVAL
@@ -7599,7 +7732,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: $addresses
+              value: "$addresses"
             - name: OVN_REMOTE_PROBE_INTERVAL
               value: "10000"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
@@ -7879,7 +8012,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: OVN_DB_IPS
-              value: $addresses
+              value: "$addresses"
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -8510,7 +8643,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: OVN_DB_IPS
-              value: $addresses
+              value: "$addresses"
           resources:
             requests:
               cpu: 300m

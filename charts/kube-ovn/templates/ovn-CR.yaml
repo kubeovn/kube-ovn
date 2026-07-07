@@ -1,3 +1,11 @@
+{{- /*
+ClusterRoles / Role partitioned by installMode:
+- system:ovn          : data plane (kube-ovn-controller, ic-controller)
+- system:ovn-ovs      : both planes (ovn-central in mgmt, ovs-ovn in tenant)
+- system:kube-ovn-cni : data plane
+- secret-reader-ovn-ipsec / system:kube-ovn-app : data plane
+*/}}
+{{- if include "kubeovn.renderDataPlane" . }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -267,6 +275,7 @@ rules:
       - customresourcedefinitions
     verbs:
       - get
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -301,6 +310,7 @@ rules:
     verbs:
       - get
       - list
+{{- if include "kubeovn.renderDataPlane" . }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -430,3 +440,4 @@ rules:
       - subjectaccessreviews
     verbs:
       - create
+{{- end }}

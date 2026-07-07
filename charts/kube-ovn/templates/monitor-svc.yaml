@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderFullOnly" . }}
 kind: Service
 apiVersion: v1
 metadata:
@@ -16,3 +17,5 @@ spec:
   {{- if eq .Values.networking.NET_STACK "dual_stack" }}
   ipFamilyPolicy: PreferDualStack
   {{- end }}
+
+{{- end }}

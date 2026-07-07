@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -17,3 +18,5 @@ metadata:
   namespace: {{ .Values.namespace }}
 data:
   enable-vpc-nat-gw: "{{ .Values.func.ENABLE_NAT_GW }}"
+
+{{- end }}

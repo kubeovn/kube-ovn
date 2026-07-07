@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
@@ -122,8 +123,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if index .Values "ovn-central" "hcp" "enabled" }}
+            - name: OVN_SB_ADDR
+              value: "{{ include "kubeovn.ovnSbAddress" . }}"
+            {{- else }}
             - name: OVN_DB_IPS
-              value: "{{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
+            - name: KUBE_OVN_SB_PORT
+              value: "{{ include "kubeovn.ovnSbPort" . }}"
+            {{- end }}
             - name: OVN_REMOTE_PROBE_INTERVAL
               value: "{{ .Values.networking.OVN_REMOTE_PROBE_INTERVAL }}"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
@@ -210,3 +218,5 @@ spec:
         - hostPath:
             path: /var/run/containerd
           name: cruntime
+
+{{- end }}

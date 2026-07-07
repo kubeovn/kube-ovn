@@ -189,8 +189,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if .Values.central.hcp.enabled }}
+            - name: OVN_NB_ADDR
+              value: "{{ include "kubeovn.ovnNbAddress" . }}"
+            - name: OVN_SB_ADDR
+              value: "{{ include "kubeovn.ovnSbAddress" . }}"
+            {{- else }}
             - name: OVN_DB_IPS
-              value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnDbAddresses" . }}"
+            {{- end }}
             - name: POD_IP
               valueFrom:
                 fieldRef:
