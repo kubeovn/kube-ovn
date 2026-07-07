@@ -1,12 +1,15 @@
 {{- if include "kubeovn.renderControlPlane" . }}
 {{- $svc := index .Values "ovn-central" "service" }}
+{{- $hcp := index .Values "ovn-central" "hcp" }}
+{{- if not $hcp.enabled }}
 {{- include "kubeovn.validateService" . }}
+{{- end }}
 kind: Service
 apiVersion: v1
 metadata:
   name: ovn-northd
-  namespace: {{ .Values.namespace }}
-  {{- if and (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
+  namespace: {{ include "kubeovn.centralNamespace" . }}
+  {{- if and (not $hcp.enabled) (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
   annotations:
     metallb.universe.tf/allow-shared-ip: kube-ovn-central
   {{- end }}
@@ -16,11 +19,11 @@ spec:
       protocol: TCP
       port: 6643
       targetPort: 6643
-  type: {{ $svc.type | default "ClusterIP" }}
-  {{- if and (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
+  type: {{ ternary "ClusterIP" ($svc.type | default "ClusterIP") $hcp.enabled }}
+  {{- if and (not $hcp.enabled) (eq $svc.type "LoadBalancer") $svc.loadBalancerIP }}
   loadBalancerIP: {{ $svc.loadBalancerIP | quote }}
   {{- end }}
-  {{- if and (or (eq $svc.type "LoadBalancer") (eq $svc.type "NodePort")) $svc.externalTrafficPolicy }}
+  {{- if and (not $hcp.enabled) (or (eq $svc.type "LoadBalancer") (eq $svc.type "NodePort")) $svc.externalTrafficPolicy }}
   externalTrafficPolicy: {{ $svc.externalTrafficPolicy }}
   {{- end }}
   {{- if eq .Values.networking.NET_STACK "dual_stack" }}
@@ -28,7 +31,7 @@ spec:
   {{- end }}
   selector:
     app: ovn-central
-    {{- if ne .Values.OVN_CENTRAL_MODE "single" }}
+    {{- if or $hcp.enabled (ne .Values.OVN_CENTRAL_MODE "single") }}
     ovn-northd-leader: "true"
     {{- end }}
   sessionAffinity: None

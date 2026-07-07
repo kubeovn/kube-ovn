@@ -1,7 +1,8 @@
+{{- if .Values.central.hcp.enabled }}
 kind: Service
 apiVersion: v1
 metadata:
-  name: ovn-northd
+  name: ovn-central
   namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
@@ -12,17 +13,18 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
   ports:
-    - name: ovn-northd
+    - name: nb-raft
       protocol: TCP
       port: 6643
       targetPort: 6643
-  type: ClusterIP
-  {{- if eq .Values.networking.stack "Dual" }}
-  ipFamilyPolicy: PreferDualStack
-  {{- end }}
+    - name: sb-raft
+      protocol: TCP
+      port: 6644
+      targetPort: 6644
   selector:
     app.kubernetes.io/name: ovn-central
     app.kubernetes.io/part-of: kube-ovn
-    ovn-northd-leader: "true"
-  sessionAffinity: None
+{{- end }}
