@@ -195,6 +195,21 @@ DPDK_CPU: "1000m"  # Default CPU configuration
 DPDK_MEMORY: "2Gi"  # Default Memory configuration
 
 ovn-central:
+  hcp:
+    enabled: false
+    namespace: hcp
+    replicas: 3
+    # OVN NB address used by workload clusters, for example tcp:ovn-nb.example.com:6641.
+    nbAddress: ""
+    # OVN SB address used by workload clusters, for example tcp:ovn-sb.example.com:6642.
+    sbAddress: ""
+    service:
+      type: NodePort
+      nbNodePort: 30641
+      sbNodePort: 30642
+    storage:
+      size: 5Gi
+      storageClassName: ""
   requests:
     cpu: "300m"
     memory: "200Mi"
