@@ -370,8 +370,8 @@ trace(){
           cmd="ndisc6 -q $gateway $nicName"
           output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd ndisc6 -q $gateway $nicName")
         else
-          cmd="arping -c3 -C1 -i1 -I $nicName $gateway"
-          output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd arping -c3 -C1 -i1 -I $nicName $gateway")
+          cmd="arping -c3 -f -i1 -I $nicName $gateway"
+          output=$(kubectl exec "$ovnCni" -c cni-server -n $KUBE_OVN_NS -- sh -c "$nsenterCmd arping -c3 -f -i1 -I $nicName $gateway")
         fi
 
         if [ $? -ne 0 ]; then

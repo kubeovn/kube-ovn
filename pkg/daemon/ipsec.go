@@ -219,8 +219,8 @@ func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 	klog.Infof("ovs system id: %s", cn)
 
 	cmd := exec.Command("openssl", "req", "-new", "-text",
-		"-extensions", "v3_req",
 		"-addext", "subjectAltName = DNS:"+cn,
+		"-addext", "extendedKeyUsage = ipsecTunnel",
 		"-subj", "/C=CN/O=kubeovn/OU=kube-ovn/CN="+cn,
 		"-key", newPrivKeyPath,
 		"-out", ipsecReqPath) // #nosec

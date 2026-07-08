@@ -2,39 +2,10 @@
 # renovate: datasource=golang-version depName=go
 ARG GO_VERSION=1.26.5
 
-FROM ubuntu:24.04 AS openssl-builder
-
-ARG DEBIAN_FRONTEND=noninteractive
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    sed -i 's/^Types: deb$/Types: deb deb-src/g' /etc/apt/sources.list.d/ubuntu.sources && \
-    apt update && \
-    apt install -y apt-src && \
-    apt-src update && \
-    apt-src install openssl
-
-RUN cd openssl-* && \
-    sed -i '/^CONFARGS/a CONFARGS += enable-fips no-unit-test' debian/rules && \
-    echo >> debian/control && \
-    echo 'Package: libssl3t64-fips' >> debian/control && \
-    echo 'Section: libs' >> debian/control && \
-    echo 'Architecture: any' >> debian/control && \
-    echo 'Multi-Arch: same' >> debian/control && \
-    echo 'Depends: libssl3t64 (= ${binary:Version}), ${misc:Depends}' >> debian/control && \
-    echo 'Description: OpenSSL fips module' >> debian/control && \
-    echo 'usr/lib/ssl/fipsmodule.cnf' >> debian/libssl3t64-fips.install && \
-    echo 'usr/lib/*/ossl-modules/fips.so' >> debian/libssl3t64-fips.install && \
-    DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
-
-RUN mkdir /packages/ && \
-    cp *fips*.deb /packages
-
-FROM ubuntu:24.04 AS ovs-builder
+FROM almalinux:10 AS ovs-builder
 
 ARG ARCH
 ARG LEGACY
-ARG DEBIAN_FRONTEND=noninteractive
 ARG SRC_DIR='/usr/src'
 
 ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
@@ -46,6 +17,7 @@ ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
 ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
 ADD patches/53b9837f7fe89cd63af735b039b8c26107d6579d.patch $SRC_DIR
 ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
+ADD patches/fix-netdev-get-ifindex-type.patch $SRC_DIR
 ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
 ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
@@ -69,9 +41,12 @@ ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
 ADD patches/sbrec-delete-null-check.patch $SRC_DIR
 ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt update && apt install -y git curl
+RUN dnf -y --setopt=install_weak_deps=False install \
+        autoconf automake bzip2 checkpolicy curl-minimal diffutils file findutils gcc gcc-c++ git \
+        graphviz hostname iproute libcap-ng libcap-ng-devel libtool make openssl openssl-devel \
+        pkgconf-pkg-config procps-ng python3-devel python3-setuptools python3-sphinx \
+        rpm-build selinux-policy-devel systemd-rpm-macros unbound unbound-devel wget which && \
+    dnf clean all
 
 RUN cd /usr/src/ && \
     git clone -b branch-3.5 --depth=1 https://github.com/openvswitch/ovs.git && \
@@ -94,6 +69,8 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/53b9837f7fe89cd63af735b039b8c26107d6579d.patch && \
     # netdev: reduce cpu utilization for getting device addresses
     git apply $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
+    # netdev: fix get_ifindex type for rpm build
+    git apply $SRC_DIR/fix-netdev-get-ifindex-type.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
     git apply $SRC_DIR/d088c5d8c263552c5a31d87813991aee30ab74de.patch && \
     # increase the default probe interval for large cluster
@@ -101,9 +78,14 @@ RUN cd /usr/src/ && \
     # update ovs-sandbox for docker run
     git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch && \
     ovs_commit=$(git rev-parse --short=12 HEAD) && \
-    sed -i -E "s/^(AC_INIT\(\[?openvswitch\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovs_commit}\2\3/" configure.ac
+    sed -i -E "s/^(AC_INIT\(\[?openvswitch\]?, \[?[^],)]+)(\]?)(,.*)$/\1.g${ovs_commit}\2\3/" configure.ac && \
+    sed -i \
+        -e 's/module-init-tools/kmod/g' \
+        -e 's/ unbound$/ unbound-libs/' \
+        rhel/openvswitch-fedora.spec.in
 
-RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && \
+    git clone -b branch-25.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # change default hash type from dp_hash to hash with field src_ip
     git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
@@ -123,14 +105,14 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     git apply $SRC_DIR/a297b840c2c9f118c7ce6133077087b5999f12dd.patch && \
     # ovn-controller: make activation strategy work for single chassis
     git apply $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
-	# skip node local dns ip conntrack when set acl
+    # skip node local dns ip conntrack when set acl
     git apply $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
-	# loadbalancer select local backend first
+    # loadbalancer select local backend first
     git apply $SRC_DIR/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch && \
     # fix lr-lb dnat with multiple distributed gateway ports
     git apply $SRC_DIR/e5916eb53abc3b7d28c407c3c47566c46116090a.patch && \
     # support dedicated BFD LRP
-    git apply $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \	
+    git apply $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \
     # northd: add nb option version_compatibility
     git apply $SRC_DIR/e76880e792af56b2a3836098105079f5f8f1ff26.patch && \
     # northd: skip arp/nd request for lrp addresses from localnet ports
@@ -144,34 +126,37 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     # adapt to the compose_nd_ns() signature change in ovs branch-3.5 commit 33825c273
     git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
-    sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
-
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt update && \
-    apt install -y wget build-essential fakeroot && \
-    apt install -y autoconf automake bzip2 debhelper-compat dh-exec dh-python dh-sequence-python3 dh-sequence-sphinxdoc \
-    graphviz iproute2 libcap-ng-dev libdbus-1-dev libnuma-dev libpcap-dev libssl-dev libtool libunbound-dev \
-    pkg-config procps python3-all-dev python3-setuptools python3-sortedcontainers python3-sphinx
+    sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1.g${ovn_commit}\2\3/" configure.ac && \
+    sed -i 's/module-init-tools/kmod/g' rhel/ovn-fedora.spec.in
 
 RUN cd /usr/src/ovs && \
     ./boot.sh && \
-    ./configure && \
-    rm -rf .git && \
-    CONFIGURE_OPTS='CFLAGS="-fPIC"' && \
-    if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS='CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"'; fi && \
-    DATAPATH_CONFIGURE_OPTS='--prefix=/usr' EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS make debian-deb
+    if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then export CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"; else export CFLAGS="-fPIC"; fi && \
+    ./configure --prefix=/usr --localstatedir=/var --sysconfdir=/etc && \
+    make rpm-fedora RPMBUILD_OPT="--nodeps --without check --without dpdk --without afxdp --without usdt --define 'debug_package %{nil}'"
 
 RUN cd /usr/src/ovn && \
-    sed -i 's/OVN/ovn/g' debian/changelog && \
-    rm -rf .git && \
     ./boot.sh && \
-    CONFIGURE_OPTS='--with-ovs-build=/usr/src/ovs/_debian CFLAGS="-fPIC"' && \
-    if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS="--with-ovs-build=/usr/src/ovs/_debian CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
-    OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
+    if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then export CFLAGS="-O2 -g -msse4.2 -mpopcnt -fPIC"; else export CFLAGS="-fPIC"; fi && \
+    ./configure --prefix=/usr --localstatedir=/var --sysconfdir=/etc --with-ovs-source=/usr/src/ovs --with-ovs-build=/usr/src/ovs && \
+    make rpm-fedora RPMBUILD_OPT="--nodeps --without check --define 'debug_package %{nil}'"
+
+RUN mkdir -p /packages && \
+    find /usr/src/ovs/rpm/rpmbuild/RPMS -type f \( \
+        -name 'openvswitch-[0-9]*.rpm' -o \
+        -name 'python3-openvswitch-*.rpm' \
+    \) -exec cp -v {} /packages/ \; && \
+    find /usr/src/ovn/rpm/rpmbuild/RPMS -type f \( \
+        -name 'ovn-[0-9]*.rpm' -o \
+        -name 'ovn-central-[0-9]*.rpm' -o \
+        -name 'ovn-host-[0-9]*.rpm' \
+    \) -exec cp -v {} /packages/ \; && \
+    install -m 0755 /usr/src/ovs/tutorial/ovs-sandbox /packages/ovs-sandbox && \
+    install -m 0755 /usr/src/ovs/ipsec/ovs-monitor-ipsec.in /packages/ovs-monitor-ipsec && \
+    sed -i 's|@PYTHON3@|/usr/bin/python3|g' /packages/ovs-monitor-ipsec
 
 RUN mkdir -p /usr/src/openbfdd && \
-    curl -sSf -L --retry 5 https://github.com/dyninc/OpenBFDD/archive/e35f43ad8d2b3f084e96a84c392528a90d05a287.tar.gz | \
+    curl -sSf -L --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 20 --max-time 300 https://github.com/dyninc/OpenBFDD/archive/e35f43ad8d2b3f084e96a84c392528a90d05a287.tar.gz | \
     tar -xz -C /usr/src/openbfdd --strip-components=1
 
 ADD OpenBFDD-compile.patch /usr/src/
@@ -184,15 +169,24 @@ RUN cd /usr/src/openbfdd && \
     autoupdate && \
     ./autogen.sh && \
     ./configure --enable-silent-rules && \
-    make -j8
+    make -j8 && \
+    install -m 0755 bfdd-beacon bfdd-control /packages/
 
-RUN mkdir /packages/ && \
-    mv /usr/src/openbfdd/bfdd-beacon /usr/src/openbfdd/bfdd-control /packages/ && \
-    cp /usr/src/openvswitch-*deb /packages && \
-    cp /usr/src/python3-openvswitch*deb /packages && \
-    cp /usr/src/ovn-*deb /packages && \
-    cp /usr/src/ovs/tutorial/ovs-sandbox /packages && \
-    cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
+FROM almalinux:10 AS iptables-legacy-builder
+
+RUN dnf -y --enablerepo=crb --setopt=install_weak_deps=False install \
+        autoconf automake bison dnf-plugins-core flex gcc kernel-headers libmnl-devel \
+        libnetfilter_conntrack-devel libnfnetlink-devel libnftnl-devel libpcap-devel \
+        libselinux-devel libtool make pkgconf-pkg-config rpm-build systemd-rpm-macros && \
+    cd /tmp && \
+    dnf -y --refresh --enablerepo=baseos-source download --source iptables && \
+    rpm -ivh iptables-*.src.rpm && \
+    rpmbuild -bb --with legacy --nodeps --define 'dist .el10_1' --define 'debug_package %{nil}' /root/rpmbuild/SPECS/iptables.spec && \
+    mkdir -p /packages && \
+    find /root/rpmbuild/RPMS -type f \( \
+        -name 'iptables-legacy-[0-9]*.rpm' -o \
+        -name 'iptables-legacy-libs-[0-9]*.rpm' \
+    \) -exec cp -v {} /packages/ \;
 
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
@@ -213,99 +207,88 @@ FROM golang:$GO_VERSION-alpine AS go-deps
 
 RUN apk --no-cache add bash curl jq git
 ADD go-deps/rebuild-go-deps.sh /
-RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
-    bash -x /rebuild-go-deps.sh
+COPY --from=trivy /godeps /trivy
+RUN TRIVY_DIR=/trivy bash -x /rebuild-go-deps.sh
 
-FROM ubuntu:24.04 AS ubuntu
+FROM almalinux:10 AS runtime
 
-RUN rm -rf /etc/localtime
-RUN rm -f /usr/lib/apt/methods/mirror
-RUN usermod -s /usr/sbin/nologin sync
-RUN usermod -s /usr/sbin/nologin ubuntu
-RUN apt remove -y --allow-remove-essential --auto-remove login
-
-FROM scratch
-
-LABEL "org.opencontainers.image.ref.name"="ubuntu"
-LABEL "org.opencontainers.image.version"="24.04"
+LABEL "org.opencontainers.image.ref.name"="almalinux10"
+LABEL "org.opencontainers.image.version"="10"
 
 ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 CMD ["/bin/bash"]
 
-COPY --from=ubuntu / /
-
 ARG ARCH
-ARG DEBIAN_FRONTEND=noninteractive
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt update && apt upgrade -y && \
-    apt install ca-certificates netbase ethtool iproute2 ncat libunbound8 \
-        kmod iptables python3-netifaces python3-sortedcontainers tcpdump ipvsadm ipset curl \
-        uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
-        logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
-        libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
-        -y --no-install-recommends --auto-remove && \
-    apt remove -y --allow-remove-essential --auto-remove login && \
-    setcap CAP_NET_ADMIN+eip $(readlink -f $(which conntrack)) && \
-    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ethtool)) && \
-    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ip)) && \
-    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ipset)) && \
-    setcap CAP_NET_ADMIN+eip $(readlink -f $(which traceroute)) && \
-    setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-legacy-multi)) && \
-    setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-nft-multi)) && \
-    setcap CAP_NET_RAW+eip $(readlink -f $(which arping)) && \
-    setcap CAP_NET_RAW+eip $(readlink -f $(which ndisc6)) && \
-    setcap CAP_NET_RAW+eip $(readlink -f $(which tcpdump)) && \
-    setcap CAP_SYS_ADMIN+eip $(readlink -f $(which nsenter)) && \
-    setcap CAP_SYS_ADMIN+eip $(readlink -f $(which sysctl)) && \
-    setcap CAP_SYS_MODULE+eip $(readlink -f $(which modprobe)) && \
-    setcap CAP_SYS_NICE+eip $(readlink -f $(which nice)) && \
-    rm -rf /var/lib/apt/lists/* && \
-    rm -rf /etc/localtime && \
-    rm -f /usr/bin/nc && \
-    rm -f /usr/bin/netcat && \
-    rm -f /usr/lib/apt/methods/mirror
-
-RUN mkdir -p /var/run/openvswitch && \
-    mkdir -p /var/run/ovn && \
-    mkdir -p /etc/cni/net.d && \
-    mkdir -p /opt/cni/bin
-
-ARG DUMB_INIT_VERSION="1.2.5"
-RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch) && \
-    chmod +x /usr/bin/dumb-init
-
-RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
-    cp /godeps/loopback /godeps/portmap /godeps/macvlan /godeps/ipvlan ./ && \
-    cp /godeps/kubectl /godeps/gobgp /usr/bin/
-
+COPY --from=ovs-builder /packages /packages
+COPY --from=iptables-legacy-builder /packages /packages
 ARG DEBUG=false
 
-RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
-    cp /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
-    cp /packages/ovs-sandbox /usr/bin/ && chmod +x /usr/bin/ovs-sandbox && \
-    setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
-    dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb /packages/ovn-*.deb && \
-    rm -rf /var/lib/openvswitch/pki/ && \
-    chown -R nobody: /var/lib/logrotate && \
-    setcap CAP_NET_ADMIN+eip $(readlink -f $(which ovs-dpctl)) && \
-    if [ "${DEBUG}" != "true" ]; then \
-        setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
-        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)) && \
-        dpkg --purge gpgv apt; \
-    else \
-        apt update && apt install -y --no-install-recommends gdb valgrind && \
-        rm -rf /var/lib/apt/lists/* && \
-        dpkg -i /packages/*.ddeb; \
-    fi
+RUN dnf -y upgrade && \
+    dnf -y --setopt=install_weak_deps=False install \
+        epel-release && \
+    dnf -y --setopt=install_weak_deps=False install \
+        bind-utils ca-certificates conntrack-tools curl-minimal ethtool findutils initscripts-service iproute ipset iptables-nft \
+        iputils ipvsadm kmod libcap logrotate net-tools nmap-ncat ndisc6 openssl procps-ng \
+        python3-netifaces python3-sortedcontainers strongswan tcpdump traceroute \
+        unbound-libs util-linux \
+        /packages/iptables-legacy-[0-9]*.rpm /packages/iptables-legacy-libs-[0-9]*.rpm && \
+    dnf -y --setopt=install_weak_deps=False install \
+        /packages/openvswitch-[0-9]*.rpm /packages/python3-openvswitch-*.rpm \
+        /packages/ovn-[0-9]*.rpm /packages/ovn-central-[0-9]*.rpm /packages/ovn-host-[0-9]*.rpm && \
+    if [ "$DEBUG" = "true" ]; then dnf -y --setopt=install_weak_deps=False install gdb valgrind; fi && \
+    install -m 0755 /packages/ovs-sandbox /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
+    install -m 0755 /packages/ovs-monitor-ipsec /usr/share/openvswitch/scripts/ovs-monitor-ipsec && \
+    ln -s /usr/sbin/strongswan /usr/sbin/ipsec && \
+    ln -s /etc/strongswan/ipsec.conf /etc/ipsec.conf && \
+    ln -s /etc/strongswan/ipsec.secrets /etc/ipsec.secrets && \
+    ln -s /etc/strongswan/ipsec.d /etc/ipsec.d && \
+    mkdir -p /etc/strongswan.d && \
+    touch /etc/strongswan.d/ovs.conf && \
+    mkdir -p /etc/init.d && \
+    printf '%s\n' '#!/bin/sh' 'exec /usr/sbin/strongswan "$@"' > /etc/init.d/ipsec && \
+    printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+        '  start) exec /usr/share/openvswitch/scripts/ovs-ctl --ike-daemon=strongswan start-ovs-ipsec ;;' \
+        '  stop) exec /usr/share/openvswitch/scripts/ovs-ctl stop-ovs-ipsec ;;' \
+        '  restart|force-reload) /usr/share/openvswitch/scripts/ovs-ctl stop-ovs-ipsec || true; exec /usr/share/openvswitch/scripts/ovs-ctl --ike-daemon=strongswan start-ovs-ipsec ;;' \
+        '  status) pgrep -f ovs-monitor-ipsec >/dev/null ;;' \
+        '  *) echo "Usage: $0 {start|stop|restart|force-reload|status}" >&2; exit 2 ;;' \
+        'esac' > /etc/init.d/openvswitch-ipsec && \
+    chmod +x /etc/init.d/ipsec /etc/init.d/openvswitch-ipsec && \
+    dnf clean all && \
+    rm -rf /packages /var/cache/dnf /var/tmp/* /tmp/* /etc/localtime && \
+    rm -f /usr/bin/nc /usr/bin/netcat
 
-RUN --mount=type=bind,target=/packages,from=openssl-builder,source=/packages \
-    dpkg -i /packages/*.deb && \
-    openssl fipsinstall -out /usr/lib/ssl/fipsmodule.cnf -module $(find / -name fips.so) && \
-    sed -i --follow-symlinks \
-        -e '/^\[provider_sect\]/a fips = fips_sect' \
-        -e '/^\[default_sect\]/a activate = 1' \
-        -e '$a \\n.include /usr/lib/ssl/fipsmodule.cnf' \
-        /usr/lib/ssl/openssl.cnf
+RUN mkdir -p /var/run/openvswitch /var/run/ovn /etc/cni/net.d /opt/cni/bin
+
+ARG DUMB_INIT_VERSION="1.2.5"
+RUN curl -sSf -L --retry 5 --retry-all-errors --retry-delay 5 --connect-timeout 20 --max-time 300 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-init/releases/download/v${DUMB_INIT_VERSION}/dumb-init_${DUMB_INIT_VERSION}_$(arch) && \
+    chmod +x /usr/bin/dumb-init
+
+COPY --from=go-deps /godeps/loopback /godeps/portmap /godeps/macvlan /godeps/ipvlan /
+COPY --from=go-deps /godeps/kubectl /godeps/gobgp /usr/bin/
+
+RUN ldconfig && \
+    chown -R nobody: /var/lib/logrotate && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(command -v conntrack)) && \
+    setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(command -v ethtool)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(command -v ip)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(command -v ipset)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(command -v traceroute)) && \
+    setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(command -v xtables-legacy-multi)) && \
+    setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(command -v xtables-nft-multi)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(command -v arping)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(command -v ndisc6)) && \
+    setcap CAP_NET_RAW+eip $(readlink -f $(command -v tcpdump)) && \
+    setcap CAP_SYS_ADMIN+eip $(readlink -f $(command -v nsenter)) && \
+    setcap CAP_SYS_ADMIN+eip $(readlink -f $(command -v sysctl)) && \
+    setcap CAP_SYS_MODULE+eip $(readlink -f $(command -v modprobe)) && \
+    setcap CAP_SYS_NICE+eip $(readlink -f $(command -v nice)) && \
+    setcap CAP_NET_ADMIN+eip $(readlink -f $(command -v ovs-dpctl)) && \
+    if [ "$DEBUG" != "true" ]; then \
+        setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(command -v ovsdb-server)) && \
+        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(command -v ovs-vswitchd)); \
+    fi && \
+    rm -rf /var/lib/openvswitch/pki/
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
