@@ -7863,7 +7863,10 @@ spec:
               chmod +t /usr/local/sbin
               chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
               iptables -V
-              /usr/share/openvswitch/scripts/ovs-ctl load-kmod
+              /usr/share/openvswitch/scripts/ovs-ctl load-kmod || true
+              ln -sf /bin/true /usr/local/sbin/modprobe
+              ln -sf /bin/true /usr/local/sbin/modinfo
+              ln -sf /bin/true /usr/local/sbin/rmmod
           securityContext:
             allowPrivilegeEscalation: true
             capabilities:

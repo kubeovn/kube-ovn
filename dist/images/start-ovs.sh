@@ -1,7 +1,36 @@
 #!/bin/bash
-set -euo pipefail
+set -Eeuo pipefail
 
+function report_error {
+  local exit_code=$?
+  echo "start-ovs.sh failed at line $1: $2 (exit ${exit_code})" | tee -a /dev/termination-log
+  dump_ovs_diagnostics
+  return "${exit_code}"
+}
+trap 'report_error "$LINENO" "$BASH_COMMAND"' ERR
 
+function dump_ovs_diagnostics {
+  {
+    echo "----- ovs diagnostics -----"
+    id || true
+    getcap -v /usr/sbin/ovs-vswitchd /usr/sbin/ovsdb-server /usr/bin/nice /usr/bin/kmod 2>&1 || true
+    ls -ld /sys/module/openvswitch "/lib/modules/$(uname -r)" /etc/openvswitch /var/run/openvswitch /var/log/openvswitch 2>&1 || true
+    tail -n 80 /var/log/openvswitch/*.log 2>&1 || true
+  } >> /dev/termination-log
+}
+
+function run_or_log {
+  local output
+  local rc
+  set +e
+  output="$("$@" 2>&1)"
+  rc=$?
+  set -e
+  if [ "${rc}" -ne 0 ]; then
+    printf '%s\n' "${output}" | tee -a /dev/termination-log >&2
+  fi
+  return "${rc}"
+}
 
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
@@ -45,6 +74,8 @@ function cgroup_match {
 }
 
 function quit {
+  exit_code=$?
+  set +e
   set -x
   gen_name=$(kubectl -n "${POD_NAMESPACE}" get pod "${POD_NAME}" -o jsonpath='{.metadata.generateName}')
   revision_hash=$(kubectl -n "${POD_NAMESPACE}" get pod "${POD_NAME}" -o jsonpath='{.metadata.labels.controller-revision-hash}')
@@ -67,7 +98,7 @@ function quit {
     fi
   fi
 
-  exit 0
+  exit "${exit_code}"
 }
 trap quit EXIT
 
@@ -75,7 +106,7 @@ trap quit EXIT
 iptables -V
 
 # Start ovsdb
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random --ovsdb-server-wrapper="${DEBUG_WRAPPER}"
+run_or_log /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random --ovsdb-server-wrapper="${DEBUG_WRAPPER}"
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
 # amount of RSS it uses on hosts with many cores
 # https://bugzilla.redhat.com/show_bug.cgi?id=1571379
@@ -119,7 +150,7 @@ function handle_underlay_bridges() {
 handle_underlay_bridges
 
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall --ovs-vswitchd-wrapper="$DEBUG_WRAPPER"
+run_or_log /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall --ovs-vswitchd-wrapper="$DEBUG_WRAPPER"
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
 function gen_conn_str {

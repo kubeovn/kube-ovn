@@ -9,6 +9,7 @@ include makefiles/e2e.mk
 COMMA = ,
 HELM_OVN_DB_TLS_ARGS = $(if $(TLS_MIN_VERSION),--set networking.TLS_MIN_VERSION=$(TLS_MIN_VERSION),) $(if $(TLS_MAX_VERSION),--set networking.TLS_MAX_VERSION=$(TLS_MAX_VERSION),) $(if $(TLS_CIPHER_SUITES),--set 'networking.TLS_CIPHER_SUITES={$(TLS_CIPHER_SUITES)}',)
 HELM_OVN_DB_TLS_ARGS_V2 = $(if $(TLS_MIN_VERSION),--set networking.tlsMinVersion=$(TLS_MIN_VERSION),) $(if $(TLS_MAX_VERSION),--set networking.tlsMaxVersion=$(TLS_MAX_VERSION),) $(if $(TLS_CIPHER_SUITES),--set 'networking.tlsCipherSuites={$(TLS_CIPHER_SUITES)}',)
+HELM_WAIT_TIMEOUT ?= 10m
 
 REGISTRY = kubeovn
 DEV_TAG = dev
@@ -191,7 +192,7 @@ check-kube-ovn-pod-restarts:
 install-chart:
 	@timeout 120 bash -c 'until kubectl get node -l node-role.kubernetes.io/control-plane -o name 2>/dev/null | grep -q .; do echo "Waiting for control-plane nodes to be labeled..."; sleep 2; done'
 	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
-	helm install kubeovn ./charts/kube-ovn --wait \
+	helm install kubeovn ./charts/kube-ovn --wait --timeout=$(HELM_WAIT_TIMEOUT) \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set image.pullPolicy=$(or $(IMAGE_PULL_POLICY),IfNotPresent) \
 		--set OVN_DIR=$(or $(OVN_DIR),/etc/origin/ovn) \
@@ -223,7 +224,7 @@ install-chart:
 
 .PHONY: upgrade-chart
 upgrade-chart:
-	helm upgrade kubeovn ./charts/kube-ovn --wait \
+	helm upgrade kubeovn ./charts/kube-ovn --wait --timeout=$(HELM_WAIT_TIMEOUT) \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		--set image.pullPolicy=$(or $(IMAGE_PULL_POLICY),IfNotPresent) \
 		--set OVN_DIR=$(or $(OVN_DIR),/etc/origin/ovn) \
@@ -258,7 +259,7 @@ upgrade-chart:
 install-chart-v2:
 	@timeout 120 bash -c 'until kubectl get node -l node-role.kubernetes.io/control-plane -o name 2>/dev/null | grep -q .; do echo "Waiting for control-plane nodes to be labeled..."; sleep 2; done'
 	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
-	helm install kubeovn ./charts/kube-ovn-v2 --wait \
+	helm install kubeovn ./charts/kube-ovn-v2 --wait --timeout=$(HELM_WAIT_TIMEOUT) \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		$(HELM_OVN_DB_TLS_ARGS_V2) \
 		--set cni.nonPrimaryCNI=$(or $(ENABLE_NON_PRIMARY_CNI),false) \
@@ -266,7 +267,7 @@ install-chart-v2:
 
 .PHONY: upgrade-chart-v2
 upgrade-chart-v2:
-	helm upgrade kubeovn ./charts/kube-ovn-v2 --wait \
+	helm upgrade kubeovn ./charts/kube-ovn-v2 --wait --timeout=$(HELM_WAIT_TIMEOUT) \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		$(HELM_OVN_DB_TLS_ARGS_V2) \
 		--set cni.nonPrimaryCNI=$(or $(ENABLE_NON_PRIMARY_CNI),false) \
