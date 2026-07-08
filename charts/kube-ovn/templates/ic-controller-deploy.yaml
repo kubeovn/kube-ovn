@@ -93,12 +93,19 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- if eq .Values.installMode "dataPlaneOnly" }}
+            - name: OVN_NB_ADDR
+              value: "{{ include "kubeovn.externalOvnNbAddress" . }}"
+            - name: OVN_SB_ADDR
+              value: "{{ include "kubeovn.externalOvnSbAddress" . }}"
+            {{- else }}
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
             - name: KUBE_OVN_NB_PORT
               value: "{{ include "kubeovn.ovnNbPort" . }}"
             - name: KUBE_OVN_SB_PORT
               value: "{{ include "kubeovn.ovnSbPort" . }}"
+            {{- end }}
           resources:
             requests:
               cpu: 300m

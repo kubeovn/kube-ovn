@@ -138,7 +138,9 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 - --tls-max-version={{ .Values.networking.tlsMaxVersion }}
 {{- end }}
 {{- if .Values.networking.tlsCipherSuites }}
-- --tls-cipher-suites={{ join "," .Values.networking.tlsCipherSuites }}
+{{- range .Values.networking.tlsCipherSuites }}
+- --tls-cipher-suites={{ . }}
+{{- end }}
 {{- end }}
 {{- end -}}
 

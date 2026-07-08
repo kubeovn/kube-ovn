@@ -19,6 +19,12 @@ tests:
       ovn-central.hcp.replicas: 3
       ovn-central.hcp.storage.size: 5Gi
       ovn-central.hcp.storage.storageClassName: topolvm
+      ovn-central.nodeSelector.dedicated: hcp-ovn
+      ovn-central.tolerations:
+        - key: dedicated
+          operator: Equal
+          value: hcp-ovn
+          effect: NoSchedule
     asserts:
       - isKind:
           of: StatefulSet
@@ -32,6 +38,12 @@ tests:
           path: spec.serviceName
           value: ovn-central
       - equal:
+          path: spec.persistentVolumeClaimRetentionPolicy.whenDeleted
+          value: Delete
+      - equal:
+          path: spec.persistentVolumeClaimRetentionPolicy.whenScaled
+          value: Delete
+      - equal:
           path: spec.template.spec.hostNetwork
           value: false
       - equal:
@@ -40,6 +52,20 @@ tests:
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: true
+      - isNotNull:
+          path: spec.template.spec.affinity.podAntiAffinity
+      - notExists:
+          path: spec.template.spec.affinity.nodeAffinity
+      - equal:
+          path: spec.template.spec.nodeSelector.dedicated
+          value: hcp-ovn
+      - contains:
+          path: spec.template.spec.tolerations
+          content:
+            key: dedicated
+            operator: Equal
+            value: hcp-ovn
+            effect: NoSchedule
       - contains:
           path: spec.template.spec.containers[0].env
           content:
