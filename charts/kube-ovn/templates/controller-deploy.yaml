@@ -186,6 +186,11 @@ spec:
               value: "{{ include "kubeovn.ovnNbAddress" . }}"
             - name: OVN_SB_ADDR
               value: "{{ include "kubeovn.ovnSbAddress" . }}"
+            {{- else if eq .Values.installMode "dataPlaneOnly" }}
+            - name: OVN_NB_ADDR
+              value: "{{ include "kubeovn.externalOvnNbAddress" . }}"
+            - name: OVN_SB_ADDR
+              value: "{{ include "kubeovn.externalOvnSbAddress" . }}"
             {{- else }}
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
