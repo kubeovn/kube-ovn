@@ -369,6 +369,63 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		vegTest(f, false, provider, nadName, vpcName, internalSubnetName, externalSubnetName, replicas, nil)
 	})
 
+	framework.ConformanceIt("should be ready with default dual-stack internal subnet and IPv4-only external subnet", func() {
+		if !f.IsDual() {
+			ginkgo.Skip("dual-stack cluster is required")
+		}
+
+		provider := fmt.Sprintf("%s.%s", nadName, namespaceName)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeMacvlanNetworkAttachmentDefinition(nadName, namespaceName, "eth0", "bridge", provider, nil)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting network attachment definition " + nadName)
+			nadClient.Delete(nadName)
+		})
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		defaultVpc := vpcClient.Get(util.DefaultVpc)
+		defaultSubnet := subnetClient.Get(defaultVpc.Status.DefaultLogicalSwitch)
+		if util.CheckProtocol(defaultSubnet.Spec.CIDRBlock) != apiv1.ProtocolDual {
+			ginkgo.Skip("default subnet is not dual-stack")
+		}
+
+		ginkgo.By("Getting docker network " + kindNetwork)
+		network, err := docker.NetworkInspect(kindNetwork)
+		framework.ExpectNoError(err, "getting docker network "+kindNetwork)
+
+		externalSubnet := generateSubnetFromDockerNetwork(externalSubnetName, network, true, false)
+		externalSubnet.Spec.Provider = provider
+		framework.ExpectEqual(util.CheckProtocol(externalSubnet.Spec.CIDRBlock), apiv1.ProtocolIPv4)
+
+		ginkgo.By("Creating IPv4-only macvlan subnet " + externalSubnetName)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting external subnet " + externalSubnetName)
+			subnetClient.DeleteSync(externalSubnetName)
+		})
+		_ = subnetClient.CreateSync(externalSubnet)
+
+		vegClient := f.VpcEgressGatewayClient()
+		vegName := "veg-" + framework.RandomSuffix()
+		veg := framework.MakeVpcEgressGateway(namespaceName, vegName, "", 1, "", externalSubnetName)
+		veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{
+			Subnets: []string{defaultSubnet.Name},
+		}}
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting vpc egress gateway " + vegName)
+			vegClient.DeleteSync(vegName)
+		})
+
+		ginkgo.By(fmt.Sprintf("Creating vpc egress gateway %s:\n%s", vegName, format.Object(veg, 2)))
+		veg = vegClient.CreateSync(veg)
+		framework.ExpectTrue(veg.Status.Ready)
+		framework.ExpectHaveLen(veg.Status.InternalIPs, 1)
+		framework.ExpectHaveLen(veg.Status.ExternalIPs, 1)
+		_, externalIPv6 := util.SplitStringIP(veg.Status.ExternalIPs[0])
+		framework.ExpectEmpty(externalIPv6)
+	})
+
 	framework.ConformanceIt("should update BFD HA chassis group when selected nodes change", func() {
 		f.SkipVersionPriorTo(1, 14, "VPC BFDPort for VpcEgressGateway BFD requires v1.14+")
 		if len(schedulableNodes) < 2 {
@@ -573,6 +630,28 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		}, "WorkloadNetworkNotReady", 2*time.Second, 2*time.Minute)
 		framework.ExpectFalse(veg.Status.Ready)
 	})
+
+	framework.ConformanceIt("should preserve vpc egress gateway port group during controller startup gc", func() {
+		f.SkipVersionPriorTo(1, 14, "VpcEgressGateway port groups require v1.14+")
+
+		vegKey := namespaceName + "/veg-" + framework.RandomSuffix()
+		pgName := "VEG." + util.Sha256Hash([]byte(vegKey))[:12]
+
+		ginkgo.By("Creating vpc egress gateway port group " + pgName)
+		createVpcEgressGatewayPortGroup(pgName, vegKey)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting vpc egress gateway port group " + pgName)
+			deletePortGroup(pgName)
+		})
+		waitPortGroupExists(pgName)
+
+		ginkgo.By("Restarting kube-ovn-controller to trigger startup GC")
+		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
+		deployClient.RestartSync(deployClient.Get("kube-ovn-controller"))
+
+		ginkgo.By("Validating vpc egress gateway port group still exists")
+		waitPortGroupExists(pgName)
+	})
 })
 
 func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.Inspect, ipv4, ipv6 bool) *apiv1.Subnet {
@@ -731,6 +810,51 @@ func waitLRPHAChassisGroup(lrpName, groupName string) {
 		framework.Logf("Logical_Router_Port %s is bound to HA chassis group %q, expected %q", lrpName, lrpGroupUUID, groupUUID)
 		return false, nil
 	}, fmt.Sprintf("Logical_Router_Port %s to bind HA_Chassis_Group %s", lrpName, groupName))
+}
+
+func createVpcEgressGatewayPortGroup(pgName, vegKey string) {
+	ginkgo.GinkgoHelper()
+
+	quotedPgName := shellQuote(pgName)
+	cmd := fmt.Sprintf(
+		"if [ -z \"$(ovn-nbctl --format=csv --data=bare --no-heading --columns=name find Port_Group name=%[1]s)\" ]; then ovn-nbctl pg-add %[1]s; fi; ovn-nbctl set Port_Group %[1]s external_ids:vendor=%[2]s external_ids:vpc-egress-gateway=%[3]s external_ids:af=4",
+		quotedPgName,
+		shellQuote(util.CniTypeName),
+		shellQuote(vegKey),
+	)
+	_, _, err := framework.NBExec(cmd)
+	framework.ExpectNoError(err)
+}
+
+func deletePortGroup(pgName string) {
+	ginkgo.GinkgoHelper()
+
+	quotedPgName := shellQuote(pgName)
+	cmd := fmt.Sprintf("if [ -n \"$(ovn-nbctl --format=csv --data=bare --no-heading --columns=name find Port_Group name=%[1]s)\" ]; then ovn-nbctl pg-del %[1]s; fi", quotedPgName)
+	_, _, err := framework.NBExec(cmd)
+	framework.ExpectNoError(err)
+}
+
+func waitPortGroupExists(pgName string) {
+	ginkgo.GinkgoHelper()
+
+	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=name find Port_Group name=%s", shellQuote(pgName))
+		stdout, _, err := framework.NBExec(cmd)
+		if err != nil {
+			framework.Logf("failed to query Port_Group %s: %v", pgName, err)
+			return false, nil
+		}
+		if strings.TrimSpace(string(stdout)) == pgName {
+			return true, nil
+		}
+		framework.Logf("Port_Group %s does not exist yet: %s", pgName, strings.TrimSpace(string(stdout)))
+		return false, nil
+	}, "Port_Group "+pgName+" to exist")
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 func countNonEmptyLines(output string) int {

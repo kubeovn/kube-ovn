@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/brianvoe/gofakeit/v7 v7.15.0
@@ -34,7 +34,7 @@ require (
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
-	github.com/osrg/gobgp/v4 v4.6.0
+	github.com/osrg/gobgp/v4 v4.7.0
 	github.com/ovn-kubernetes/libovsdb v0.8.1
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.9.1
@@ -54,7 +54,7 @@ require (
 	golang.org/x/sys v0.46.0
 	golang.org/x/time v0.15.0
 	golang.org/x/tools v0.47.0
-	google.golang.org/grpc v1.81.1
+	google.golang.org/grpc v1.82.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.3.0
 	k8s.io/api v0.36.2
 	k8s.io/apiextensions-apiserver v0.36.2
@@ -72,7 +72,7 @@ require (
 	kubevirt.io/client-go v1.8.4
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/network-policy-api v0.1.8-0.20251209142732-3910463a5686
-	sigs.k8s.io/structured-merge-diff/v6 v6.4.0
+	sigs.k8s.io/structured-merge-diff/v6 v6.4.1
 )
 
 require (
@@ -248,7 +248,7 @@ require (
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect

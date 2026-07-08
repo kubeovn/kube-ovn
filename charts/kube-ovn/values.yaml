@@ -56,6 +56,12 @@ networking:
   # NET_STACK could be dual_stack, ipv4, ipv6
   NET_STACK: ipv4
   ENABLE_SSL: false
+  # Minimum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints.
+  TLS_MIN_VERSION: ""
+  # Maximum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints.
+  TLS_MAX_VERSION: ""
+  # Go TLS cipher suite names. OVN DB server only supports suites mapped by dist/images/ovn-db-ssl-options.sh.
+  TLS_CIPHER_SUITES: []
   KUBE_OVN_TLS_ROTATION_INTERVAL: "8760h"
   # network type could be geneve or vlan
   NETWORK_TYPE: geneve
@@ -189,6 +195,21 @@ DPDK_CPU: "1000m"  # Default CPU configuration
 DPDK_MEMORY: "2Gi"  # Default Memory configuration
 
 ovn-central:
+  hcp:
+    enabled: false
+    namespace: hcp
+    replicas: 3
+    # OVN NB address used by workload clusters, for example tcp:ovn-nb.example.com:6641.
+    nbAddress: ""
+    # OVN SB address used by workload clusters, for example tcp:ovn-sb.example.com:6642.
+    sbAddress: ""
+    service:
+      type: NodePort
+      nbNodePort: 30641
+      sbNodePort: 30642
+    storage:
+      size: 5Gi
+      storageClassName: ""
   requests:
     cpu: "300m"
     memory: "200Mi"

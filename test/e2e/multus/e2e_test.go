@@ -1,21 +1,27 @@
 package multus
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -148,6 +154,48 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			framework.ExpectContainElement(actualRoutes, request.Route{Destination: nadIPv6CIDR})
 			framework.ExpectNotContainElement(actualRoutes, request.Route{Destination: "default", Gateway: nadIPv6Gateway})
 		}
+	})
+
+	framework.ConformanceIt("should reject ovn attachment provider without matching subnet", func() {
+		f.SkipVersionPriorTo(1, 15, "multiple network attachment validation requires v1.15+")
+
+		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+		mismatchProvider := fmt.Sprintf("%s-mismatch.%s.%s", nadName, namespaceName, util.OvnProvider)
+
+		ginkgo.By("Creating subnet " + subnetName + " with a different provider")
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", util.DefaultVpc, mismatchProvider, nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		ginkgo.By("Creating pod " + podName)
+		annotations := map[string]string{nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", nad.Namespace, nad.Name)}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		_ = podClient.Create(pod)
+
+		ginkgo.By("Waiting for kubelet to report sandbox creation failure")
+		wantMessage := fmt.Sprintf("no address allocated to pod %s/%s provider %s", namespaceName, podName, util.OvnProvider)
+		gomega.Eventually(func() bool {
+			events, err := f.ClientSet.CoreV1().Events(namespaceName).List(context.Background(), metav1.ListOptions{
+				FieldSelector: fmt.Sprintf("involvedObject.kind=%s,involvedObject.name=%s,type=%s,reason=%s", util.KindPod, podName, corev1.EventTypeWarning, kubeletevents.FailedCreatePodSandBox),
+			})
+			if err != nil {
+				return false
+			}
+			for _, event := range events.Items {
+				if strings.Contains(event.Message, wantMessage) {
+					return true
+				}
+			}
+			return false
+		}, 60*time.Second, time.Second).Should(gomega.BeTrue(), "expected pod event to contain %q", wantMessage)
+
+		pod = podClient.GetPod(podName)
+		framework.ExpectNotEqual(pod.Status.Phase, corev1.PodRunning, "pod should not run when attachment provider has no subnet")
+		framework.ExpectEmpty(pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)], "attachment should not fall back to the default subnet")
 	})
 
 	framework.ConformanceIt("should be able to create attachment interface with custom routes", func() {

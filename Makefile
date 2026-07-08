@@ -7,6 +7,8 @@ include makefiles/talos.mk
 include makefiles/e2e.mk
 
 COMMA = ,
+HELM_OVN_DB_TLS_ARGS = $(if $(TLS_MIN_VERSION),--set networking.TLS_MIN_VERSION=$(TLS_MIN_VERSION),) $(if $(TLS_MAX_VERSION),--set networking.TLS_MAX_VERSION=$(TLS_MAX_VERSION),) $(if $(TLS_CIPHER_SUITES),--set 'networking.TLS_CIPHER_SUITES={$(TLS_CIPHER_SUITES)}',)
+HELM_OVN_DB_TLS_ARGS_V2 = $(if $(TLS_MIN_VERSION),--set networking.tlsMinVersion=$(TLS_MIN_VERSION),) $(if $(TLS_MAX_VERSION),--set networking.tlsMaxVersion=$(TLS_MAX_VERSION),) $(if $(TLS_CIPHER_SUITES),--set 'networking.tlsCipherSuites={$(TLS_CIPHER_SUITES)}',)
 
 REGISTRY = kubeovn
 DEV_TAG = dev
@@ -197,6 +199,7 @@ install-chart:
 		--set DISABLE_MODULES_MANAGEMENT=$(or $(DISABLE_MODULES_MANAGEMENT),false) \
 		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(or $(MOUNT_LOCAL_BIN_DIR),true) \
 		--set networking.ENABLE_SSL=$(or $(ENABLE_SSL),false) \
+		$(HELM_OVN_DB_TLS_ARGS) \
 		--set networking.NETWORK_TYPE=$(or $(NETWORK_TYPE),geneve) \
 		--set networking.TUNNEL_TYPE=$(or $(TUNNEL_TYPE),geneve) \
 		--set networking.vlan.VLAN_INTERFACE_NAME=$(or $(VLAN_INTERFACE_NAME),) \
@@ -228,6 +231,7 @@ upgrade-chart:
 		--set DISABLE_MODULES_MANAGEMENT=$(or $(DISABLE_MODULES_MANAGEMENT),false) \
 		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(or $(MOUNT_LOCAL_BIN_DIR),true) \
 		--set networking.ENABLE_SSL=$(or $(ENABLE_SSL),false) \
+		$(HELM_OVN_DB_TLS_ARGS) \
 		--set networking.NETWORK_TYPE=$(or $(NETWORK_TYPE),geneve) \
 		--set networking.TUNNEL_TYPE=$(or $(TUNNEL_TYPE),geneve) \
 		--set networking.vlan.VLAN_INTERFACE_NAME=$(or $(VLAN_INTERFACE_NAME),) \
@@ -256,6 +260,7 @@ install-chart-v2:
 	kubectl label node --overwrite -l node-role.kubernetes.io/control-plane kube-ovn/role=master
 	helm install kubeovn ./charts/kube-ovn-v2 --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
+		$(HELM_OVN_DB_TLS_ARGS_V2) \
 		--set cni.nonPrimaryCNI=$(or $(ENABLE_NON_PRIMARY_CNI),false) \
 		--set cni.configPriority=$(or $(CNI_CONFIG_PRIORITY),01)
 
@@ -263,6 +268,7 @@ install-chart-v2:
 upgrade-chart-v2:
 	helm upgrade kubeovn ./charts/kube-ovn-v2 --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
+		$(HELM_OVN_DB_TLS_ARGS_V2) \
 		--set cni.nonPrimaryCNI=$(or $(ENABLE_NON_PRIMARY_CNI),false) \
 		--set cni.configPriority=$(or $(CNI_CONFIG_PRIORITY),01)
 	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
@@ -300,6 +306,6 @@ changelog:
 .PHONY: local-dev
 local-dev:
 	@DEBUG=1 $(MAKE) build-go
-	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
-	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
+	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 	@$(MAKE) kind-init kind-install

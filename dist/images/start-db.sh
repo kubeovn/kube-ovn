@@ -40,6 +40,9 @@ NB_CLUSTER_PORT=${NB_CLUSTER_PORT:-6643}
 SB_CLUSTER_PORT=${SB_CLUSTER_PORT:-6644}
 ENABLE_SSL=${ENABLE_SSL:-false}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-false}
+TLS_MIN_VERSION=${TLS_MIN_VERSION:-}
+TLS_MAX_VERSION=${TLS_MAX_VERSION:-}
+TLS_CIPHER_SUITES=${TLS_CIPHER_SUITES:-}
 
 echo "ENABLE_SSL is set to $ENABLE_SSL"
 echo "ENABLE_BIND_LOCAL_IP is set to $ENABLE_BIND_LOCAL_IP"
@@ -56,6 +59,7 @@ if [ "$ENABLE_SSL" != "false" ]; then
     SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
 fi
 
+. /kube-ovn/ovn-db-ssl-options.sh
 . /usr/share/openvswitch/scripts/ovs-lib || exit 1
 
 function random_str {
@@ -70,25 +74,64 @@ function gen_listen_addr {
     fi
 }
 
+function format_ovsdb_addr {
+    if [[ "$1" =~ ^[0-9.]+$ || "$1" == *:* ]]; then
+        echo "[$1]"
+    else
+        echo "$1"
+    fi
+}
+
+function expand_k8s_svc_addr {
+    if [[ "$1" != *.svc ]]; then
+        echo "$1"
+        return
+    fi
+
+    local fqdn
+    fqdn=$(getent hosts "$1" | awk -v addr="$1" '{ for (i = 2; i <= NF; i++) { if ($i ~ "^" addr "\\.") { print $i; exit } } }')
+    if [[ -z "$fqdn" ]]; then
+        echo "ERROR! failed to resolve Kubernetes service address $1 to a FQDN" >&2
+        exit 1
+    fi
+    echo "$fqdn"
+}
+
+function normalize_raft_addrs {
+    local old_db_cluster_addr="$DB_CLUSTER_ADDR"
+    DB_CLUSTER_ADDR="$(expand_k8s_svc_addr "$DB_CLUSTER_ADDR")"
+    POD_IP="$(expand_k8s_svc_addr "${POD_IP:-}")"
+    if [[ -n "$old_db_cluster_addr" && "${POD_IP:-}" == "$old_db_cluster_addr" ]]; then
+        POD_IP="$DB_CLUSTER_ADDR"
+    fi
+
+    local addrs=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
+    local normalized=()
+    for addr in ${addrs}; do
+        normalized=(${normalized[*]} "$(expand_k8s_svc_addr "$addr")")
+    done
+    NODE_IPS="$(IFS=,; echo "${normalized[*]}")"
+}
+
 function gen_conn_addr {
     if [[ "$ENABLE_SSL" == "false" ]]; then
-        echo "tcp:[$1]:$2"
+        echo "tcp:$(format_ovsdb_addr "$1"):$2"
     else
-        echo "ssl:[$1]:$2"
+        echo "ssl:$(format_ovsdb_addr "$1"):$2"
     fi
 }
 
 function gen_conn_str {
     t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
     if [[ "$ENABLE_SSL" == "false" ]]; then
-        x=$(for i in ${t}; do echo -n "tcp:[$i]:$1",; done| sed 's/,$//')
+        x=$(for i in ${t}; do echo -n "tcp:$(format_ovsdb_addr "$i"):$1",; done| sed 's/,$//')
     else
-        x=$(for i in ${t}; do echo -n "ssl:[$i]:$1",; done| sed 's/,$//')
+        x=$(for i in ${t}; do echo -n "ssl:$(format_ovsdb_addr "$i"):$1",; done| sed 's/,$//')
     fi
     echo "$x"
 }
 
-function get_leader_ip {
+function get_leader_addr {
     # Always use first node ip as leader, this option only take effect
     # when first bootstrap the cluster.
     t=$(echo -n "${NODE_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
@@ -151,6 +194,10 @@ function set_nb_version_compatibility() {
         fi
     fi
 }
+
+if [[ -n "${NODE_IPS:-}" ]]; then
+    normalize_raft_addrs
+fi
 
 # create a new db file and join it to the cluster
 # if the nb/sb db file is corrupted
@@ -317,19 +364,19 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
         ovn_db_pre_start nb
         ovn_db_pre_start sb
 
-        nb_leader_ip=$(get_leader_ip nb)
-        sb_leader_ip=$(get_leader_ip sb)
+        nb_leader_addr=$(get_leader_addr nb)
+        sb_leader_addr=$(get_leader_addr sb)
         set +eo pipefail
         is_clustered
         result=$?
         set -eo pipefail
         # leader up only when no cluster and on the first/only node
-        if [[ ${result} -eq 1 && "$nb_leader_ip" == "$DB_CLUSTER_ADDR" ]]; then
+        if [[ ${result} -eq 1 && "$nb_leader_addr" == "$DB_CLUSTER_ADDR" ]]; then
             ovn_ctl_args="$DEBUG_OPT \
                 --db-nb-create-insecure-remote=yes \
                 --db-sb-create-insecure-remote=yes \
-                --db-nb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
-                --db-sb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
+                --db-nb-cluster-local-addr=$(format_ovsdb_addr "$DB_CLUSTER_ADDR") \
+                --db-sb-cluster-local-addr=$(format_ovsdb_addr "$DB_CLUSTER_ADDR") \
                 --db-nb-cluster-local-port=$NB_CLUSTER_PORT \
                 --db-sb-cluster-local-port=$SB_CLUSTER_PORT \
                 --db-nb-addr=[$DB_ADDR] \
@@ -366,7 +413,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                     nb_leader=$(ovndb_query_leader nb $i)
                     if [[ $nb_leader =~ "true" ]]
                     then
-                        nb_leader_ip=${i}
+                        nb_leader_addr=${i}
                         break
                     fi
                 done
@@ -375,7 +422,7 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                     sb_leader=$(ovndb_query_leader sb $i)
                     if [[ $sb_leader =~ "true" ]]
                     then
-                        sb_leader_ip=${i}
+                        sb_leader_addr=${i}
                         break
                     fi
                 done
@@ -385,10 +432,10 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
             ovn_ctl_args="$DEBUG_OPT \
                 --db-nb-create-insecure-remote=yes \
                 --db-sb-create-insecure-remote=yes \
-                --db-nb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
-                --db-sb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
-                --db-nb-cluster-remote-addr=[$nb_leader_ip] \
-                --db-sb-cluster-remote-addr=[$sb_leader_ip] \
+                --db-nb-cluster-local-addr=$(format_ovsdb_addr "$DB_CLUSTER_ADDR") \
+                --db-sb-cluster-local-addr=$(format_ovsdb_addr "$DB_CLUSTER_ADDR") \
+                --db-nb-cluster-remote-addr=$(format_ovsdb_addr "$nb_leader_addr") \
+                --db-sb-cluster-remote-addr=$(format_ovsdb_addr "$sb_leader_addr") \
                 --db-nb-cluster-local-port=$NB_CLUSTER_PORT \
                 --db-sb-cluster-local-port=$SB_CLUSTER_PORT \
                 --db-nb-cluster-remote-port=$NB_CLUSTER_PORT \
@@ -427,16 +474,7 @@ else
         # Standalone (single-replica) mode. Same rationale as the non-SSL branch:
         # clean up stale sockets/pids so a drifted pod can come up on a new node.
         rm -f /var/run/ovn/*.pid /var/run/ovn/*.ctl 2>/dev/null || true
-        /usr/share/ovn/scripts/ovn-ctl \
-            --ovn-nb-db-ssl-key=/var/run/tls/key \
-            --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-            --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-            --ovn-sb-db-ssl-key=/var/run/tls/key \
-            --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-            --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-            --ovn-northd-ssl-key=/var/run/tls/key \
-            --ovn-northd-ssl-cert=/var/run/tls/cert \
-            --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+        /usr/share/ovn/scripts/ovn-ctl $(ovn_db_ssl_args /var/run/tls) \
             --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
             restart_northd
         ovn-nbctl --no-leader-only $SSL_OPTIONS set-connection pssl:"${NB_PORT}":["${DB_ADDR}"]
@@ -454,29 +492,21 @@ else
         ovn_db_pre_start nb
         ovn_db_pre_start sb
 
-        nb_leader_ip=$(get_leader_ip nb)
-        sb_leader_ip=$(get_leader_ip sb)
+        nb_leader_addr=$(get_leader_addr nb)
+        sb_leader_addr=$(get_leader_addr sb)
         set +eo pipefail
         is_clustered
         result=$?
         set -eo pipefail
-        if [[ ${result} -eq 1  &&  "$nb_leader_ip" == "${DB_CLUSTER_ADDR}" ]]; then
+        if [[ ${result} -eq 1  &&  "$nb_leader_addr" == "${DB_CLUSTER_ADDR}" ]]; then
             ovn_ctl_args="$DEBUG_OPT
-                --ovn-nb-db-ssl-key=/var/run/tls/key \
-                --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-sb-db-ssl-key=/var/run/tls/key \
-                --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-northd-ssl-key=/var/run/tls/key \
-                --ovn-northd-ssl-cert=/var/run/tls/cert \
-                --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+                $(ovn_db_ssl_args /var/run/tls) \
                 --db-nb-cluster-local-proto=ssl \
                 --db-sb-cluster-local-proto=ssl \
                 --db-nb-cluster-remote-proto=ssl \
                 --db-sb-cluster-remote-proto=ssl \
-                --db-nb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
-                --db-sb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
+                --db-nb-cluster-local-addr=$(format_ovsdb_addr "$DB_CLUSTER_ADDR") \
+                --db-sb-cluster-local-addr=$(format_ovsdb_addr "$DB_CLUSTER_ADDR") \
                 --db-nb-addr=[$DB_ADDR] \
                 --db-sb-addr=[$DB_ADDR] \
                 --db-nb-port=$NB_PORT \
@@ -508,7 +538,7 @@ else
                     nb_leader=$(ovndb_query_leader nb $i)
                     if [[ $nb_leader =~ "true" ]]
                     then
-                      nb_leader_ip=${i}
+                      nb_leader_addr=${i}
                       break
                     fi
                 done
@@ -517,30 +547,22 @@ else
                     sb_leader=$(ovndb_query_leader sb $i)
                     if [[ $sb_leader =~ "true" ]]
                     then
-                      sb_leader_ip=${i}
+                      sb_leader_addr=${i}
                       break
                     fi
                 done
             fi
             set -eo pipefail
             ovn_ctl_args="$DEBUG_OPT
-                --ovn-nb-db-ssl-key=/var/run/tls/key \
-                --ovn-nb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-nb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-sb-db-ssl-key=/var/run/tls/key \
-                --ovn-sb-db-ssl-cert=/var/run/tls/cert \
-                --ovn-sb-db-ssl-ca-cert=/var/run/tls/cacert \
-                --ovn-northd-ssl-key=/var/run/tls/key \
-                --ovn-northd-ssl-cert=/var/run/tls/cert \
-                --ovn-northd-ssl-ca-cert=/var/run/tls/cacert \
+                $(ovn_db_ssl_args /var/run/tls) \
                 --db-nb-cluster-local-proto=ssl \
                 --db-sb-cluster-local-proto=ssl \
                 --db-nb-cluster-remote-proto=ssl \
                 --db-sb-cluster-remote-proto=ssl \
-                --db-nb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
-                --db-sb-cluster-local-addr=[$DB_CLUSTER_ADDR] \
-                --db-nb-cluster-remote-addr=[$nb_leader_ip] \
-                --db-sb-cluster-remote-addr=[$sb_leader_ip] \
+                --db-nb-cluster-local-addr=$(format_ovsdb_addr "$DB_CLUSTER_ADDR") \
+                --db-sb-cluster-local-addr=$(format_ovsdb_addr "$DB_CLUSTER_ADDR") \
+                --db-nb-cluster-remote-addr=$(format_ovsdb_addr "$nb_leader_addr") \
+                --db-sb-cluster-remote-addr=$(format_ovsdb_addr "$sb_leader_addr") \
                 --db-nb-cluster-local-port=$NB_CLUSTER_PORT \
                 --db-sb-cluster-local-port=$SB_CLUSTER_PORT \
                 --db-nb-cluster-remote-port=$NB_CLUSTER_PORT \

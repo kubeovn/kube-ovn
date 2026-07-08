@@ -1059,7 +1059,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -2966,6 +2966,9 @@ jobs:
           NET_STACK: "${{ matrix.ip-family }}"
           ENABLE_SSL: "${{ matrix.ssl }}"
           ENABLE_BIND_LOCAL_IP: "${{ matrix.bind-local }}"
+          TLS_MIN_VERSION: "${{ matrix.ssl == 'true' && 'TLS12' || '' }}"
+          TLS_MAX_VERSION: "${{ matrix.ssl == 'true' && 'TLS13' || '' }}"
+          TLS_CIPHER_SUITES: "${{ matrix.ssl == 'true' && 'TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_AES_256_GCM_SHA384' || '' }}"
         run: make kind-install-chart
 
       - name: Run E2E

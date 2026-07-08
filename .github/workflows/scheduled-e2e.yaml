@@ -1082,8 +1082,12 @@ jobs:
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
+          tls_env=""
+          if [[ "${{ matrix.ssl }}" == "true" ]]; then
+            tls_env="TLS_MIN_VERSION=TLS12 TLS_MAX_VERSION=TLS13 TLS_CIPHER_SUITES=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_AES_256_GCM_SHA384"
+          fi
           docker pull kubeovn/kube-ovn:$version
-          sudo VERSION=$version ENABLE_SSL=${{ matrix.ssl }} \
+          sudo VERSION=$version ENABLE_SSL=${{ matrix.ssl }} $tls_env \
             ENABLE_BIND_LOCAL_IP=${{ matrix.bind-local }} \
             make kind-install-${{ matrix.ip-family }}
 

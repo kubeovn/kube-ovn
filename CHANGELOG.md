@@ -439,6 +439,42 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.18 (2026-07-07)
+
+ * [2ae3cf5c5](https://github.com/kubeovn/kube-ovn/commit/2ae3cf5c5c488943378ec5f53a26a8c126fd3b3b) release v1.15.18
+ * [701125fbc](https://github.com/kubeovn/kube-ovn/commit/701125fbc7e8b4673c1f025d2b12ad40486ac472) [release-1.15] feat: support HCP ovn-central chart deployment (#6993)
+ * [1bf35be6b](https://github.com/kubeovn/kube-ovn/commit/1bf35be6b19694b85bc9e7c199b49b559f45f950) chore(deps): update module golang.org/x/text to v0.39.0 (#7003)
+ * [d300cf2f9](https://github.com/kubeovn/kube-ovn/commit/d300cf2f93fa4305355ac888ca97c57553fb1070) fix: restore ip_src hash for policy route ECMP (#6997)
+ * [73b760abe](https://github.com/kubeovn/kube-ovn/commit/73b760abeed74d96934867d9258eaf2d3b786ef9) fix(kubectl-ko): honor KUBE_OVN_NS instead of hardcoded kube-system namespace (#6992)
+ * [009176cdf](https://github.com/kubeovn/kube-ovn/commit/009176cdf7b64aeba2a9708911b76608e397619e) fix: reject subnet gateway static IP allocation (#6981)
+ * [400168fcb](https://github.com/kubeovn/kube-ovn/commit/400168fcb842af049cb5b8ce8f526fbf05ceefc0) fix: require subnet for attachment provider (#6966)
+ * [d61772e51](https://github.com/kubeovn/kube-ovn/commit/d61772e515186d7b60497c75165b0d88d0571e44) feat: configure OVN DB server TLS options (#6977)
+ * [2e3397465](https://github.com/kubeovn/kube-ovn/commit/2e3397465e3c89044ea75ff987b3d2f33a934edd) fix veg init for mismatched IP families (#6963)
+ * [2a57edc69](https://github.com/kubeovn/kube-ovn/commit/2a57edc69bff920e0217b4ece3c6531f794f7dfa) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * dmitriy-bty
+ * renovate[bot]
+ * 张祖建
+
+## v1.15.17 (2026-07-01)
+
+ * [5287d63c2](https://github.com/kubeovn/kube-ovn/commit/5287d63c236887df7333968a0a717f37d3fd4e31) release v1.15.17
+ * [2acdac085](https://github.com/kubeovn/kube-ovn/commit/2acdac085ba916e2c9e2e694251c4370f4ac2e2d) fix: skip non-security-group port groups in sg gc (#6961)
+ * [b64752b09](https://github.com/kubeovn/kube-ovn/commit/b64752b096a32e8be33691b5a3eb9fa5f53391b3) fix vpc egress local policy without bfd (#6927)
+ * [fe71bb3dc](https://github.com/kubeovn/kube-ovn/commit/fe71bb3dce49e04bc75850f9e2a216e36ccd0501) build: include ovs and ovn commits in version (#6945)
+ * [47de841fd](https://github.com/kubeovn/kube-ovn/commit/47de841fd1e818e2395740a830cd83d535b3b3da) feat: rotate kube-ovn TLS certificates (#6931)
+ * [5ec9e0dab](https://github.com/kubeovn/kube-ovn/commit/5ec9e0dab14164d4aa88161cfc62c82e2d764f87) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * 张祖建
+
 ## v1.15.16 (2026-06-26)
 
  * [726b8df0b](https://github.com/kubeovn/kube-ovn/commit/726b8df0bf2ce0bf57456e70f0349997507217d4) release v1.15.16

@@ -46,11 +46,42 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 	return csh
 }
 
+// gatewayForCNIIPFamily returns only the gateway entries matching the address
+// families configured on the container interface. A single-family pod can still
+// carry a dual-stack subnet gateway annotation, but CNI route and gateway checks
+// must use only gateways that the interface can actually reach.
+func gatewayForCNIIPFamily(ipAddr, gateway string) string {
+	if ipAddr == "" || gateway == "" || util.CheckProtocol(gateway) != kubeovnv1.ProtocolDual {
+		return gateway
+	}
+
+	gateways := util.SplitTrimmed(gateway, ",")
+	filtered := make([]string, 0, len(gateways))
+	for _, ip := range util.SplitTrimmed(ipAddr, ",") {
+		ipProtocol := util.CheckProtocol(ip)
+		for _, gw := range gateways {
+			if util.CheckProtocol(gw) == ipProtocol {
+				filtered = append(filtered, gw)
+				break
+			}
+		}
+	}
+	if len(filtered) == 0 {
+		klog.Warningf("failed to match gateway %q with ip address %q, keep original gateway", gateway, ipAddr)
+		return gateway
+	}
+	return strings.Join(filtered, ",")
+}
+
 func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.Subnet, bool) {
-	if util.IsOvnProvider(provider) {
+	if provider == "" || provider == util.OvnProvider {
 		return nil, true
 	}
-	subnets, _ := csh.Controller.subnetsLister.List(labels.Everything())
+	subnets, err := csh.Controller.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets while checking provider %s: %v", provider, err)
+		return nil, true
+	}
 	// for multi interface attachments the ifname is included in provider, for example, vm-overlay.default.ovn.net1
 	// as a result if ifname is set, we need to append it to subnet provider when comparing with request provider
 	// else no subnet will be found
@@ -87,7 +118,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	klog.V(5).Infof("request body is %v", podRequest)
 	podSubnet, exist := csh.providerExists(podRequest.Provider, podRequest.IfName)
 	if !exist {
-		errMsg := fmt.Errorf("provider %s not bind to any subnet", podRequest.Provider)
+		errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
 		klog.Error(errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
@@ -174,6 +205,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			}
 			return
 		}
+		gw = gatewayForCNIIPFamily(ipAddr, gw)
 
 		oldPodName = podRequest.PodName
 		if s := pod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, podRequest.Provider)]; s != "" {
@@ -326,8 +358,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 				}
 				mtuStr := node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork)]
 				if mtuStr != "" {
-					if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
-						errMsg := fmt.Errorf("failed to parse provider network MTU %s: %w", mtuStr, err)
+					var errMsg error
+					if mtu, err = strconv.Atoi(mtuStr); err != nil {
+						errMsg = fmt.Errorf("failed to parse provider network MTU %s: %w", mtuStr, err)
+					} else if mtu <= 0 {
+						errMsg = fmt.Errorf("invalid provider network MTU %q: must be a positive integer", mtuStr)
+					}
+					if errMsg != nil {
 						klog.Error(errMsg)
 						if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 							klog.Errorf("failed to write response: %v", err)

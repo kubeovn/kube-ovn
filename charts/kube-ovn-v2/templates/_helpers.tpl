@@ -113,6 +113,77 @@ Get IPs of master nodes from values
   {{- join "," .Values.masterNodes }}
 {{- end -}}
 
+{{/*
+Environment variables used by the OVN NB/SB database server TLS setup.
+*/}}
+{{- define "kubeovn.ovnCentralTLSEnv" -}}
+- name: ENABLE_SSL
+  value: {{ .Values.networking.enableSsl | quote }}
+- name: TLS_MIN_VERSION
+  value: {{ .Values.networking.tlsMinVersion | quote }}
+- name: TLS_MAX_VERSION
+  value: {{ .Values.networking.tlsMaxVersion | quote }}
+- name: TLS_CIPHER_SUITES
+  value: {{ join "," .Values.networking.tlsCipherSuites | quote }}
+{{- end -}}
+
+{{/*
+TLS arguments for kube-ovn components that expose HTTPS endpoints.
+*/}}
+{{- define "kubeovn.componentTLSArgs" -}}
+{{- if .Values.networking.tlsMinVersion }}
+- --tls-min-version={{ .Values.networking.tlsMinVersion }}
+{{- end }}
+{{- if .Values.networking.tlsMaxVersion }}
+- --tls-max-version={{ .Values.networking.tlsMaxVersion }}
+{{- end }}
+{{- if .Values.networking.tlsCipherSuites }}
+- --tls-cipher-suites={{ join "," .Values.networking.tlsCipherSuites }}
+{{- end }}
+{{- end -}}
+
+{{- define "kubeovn.centralNamespace" -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- default .Values.namespace .Values.central.hcp.namespace -}}
+{{- else -}}
+{{- .Values.namespace -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralReplicas" -}}
+{{- if .Values.central.hcp.enabled -}}
+{{- .Values.central.hcp.replicas -}}
+{{- else -}}
+{{- include "kubeovn.nodeCount" . -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.centralRaftAddresses" -}}
+{{- $namespace := include "kubeovn.centralNamespace" . -}}
+{{- $addresses := list -}}
+{{- range $i := until (int .Values.central.hcp.replicas) -}}
+{{- $addresses = append $addresses (printf "ovn-central-%d.ovn-central.%s.svc" $i $namespace) -}}
+{{- end -}}
+{{- join "," $addresses -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnDbAddresses" -}}
+{{- include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnNbAddress" -}}
+{{- if not .Values.central.hcp.nbAddress -}}
+{{- fail "central.hcp.nbAddress must be set when central.hcp.enabled is true" -}}
+{{- end -}}
+{{- .Values.central.hcp.nbAddress -}}
+{{- end -}}
+
+{{- define "kubeovn.ovnSbAddress" -}}
+{{- if not .Values.central.hcp.sbAddress -}}
+{{- fail "central.hcp.sbAddress must be set when central.hcp.enabled is true" -}}
+{{- end -}}
+{{- .Values.central.hcp.sbAddress -}}
+{{- end -}}
 
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
   {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}

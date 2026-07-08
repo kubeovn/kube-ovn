@@ -156,6 +156,9 @@ spec:
           - --node-local-dns-ip={{- .Values.networking.nodeLocalDnsIp }}
           - --skip-conntrack-dst-cidrs={{- .Values.networking.skipConntrackDstCidrs }}
           - --secure-serving={{- .Values.features.enableSecureServing }}
+          {{- if or .Values.networking.tlsMinVersion .Values.networking.tlsMaxVersion .Values.networking.tlsCipherSuites }}
+          {{- include "kubeovn.componentTLSArgs" . | nindent 10 }}
+          {{- end }}
           - --enable-ovn-ipsec={{- .Values.features.enableOvnIpsec }}
           - --enable-anp={{- .Values.features.ENABLE_ANP }}
           - --enable-dns-name-resolver={{- .Values.features.ENABLE_DNS_NAME_RESOLVER }}
@@ -190,8 +193,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- if .Values.central.hcp.enabled }}
+            - name: OVN_NB_ADDR
+              value: "{{ include "kubeovn.ovnNbAddress" . }}"
+            - name: OVN_SB_ADDR
+              value: "{{ include "kubeovn.ovnSbAddress" . }}"
+            {{- else }}
             - name: OVN_DB_IPS
-              value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnDbAddresses" . }}"
+            {{- end }}
             - name: POD_IP
               valueFrom:
                 fieldRef:

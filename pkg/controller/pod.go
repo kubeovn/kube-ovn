@@ -574,6 +574,26 @@ func subnetDHCPOptionsUUIDs(subnet *kubeovnv1.Subnet) *ovs.DHCPOptionsUUIDs {
 	}
 }
 
+// dhcpOptionsForPodIPFamily returns DHCP options that match the IP families
+// actually allocated to the pod. A pod can request one family from a dual-stack
+// subnet, so using the subnet's full DHCP option set would attach DHCP for an
+// address family that is not configured on the port.
+func dhcpOptionsForPodIPFamily(subnetDHCP *ovs.DHCPOptionsUUIDs, podIP, dhcpV4, dhcpV6 string) (*ovs.DHCPOptionsUUIDs, string, string) {
+	filtered := &ovs.DHCPOptionsUUIDs{}
+	if subnetDHCP != nil {
+		*filtered = *subnetDHCP
+	}
+	switch util.CheckProtocol(podIP) {
+	case kubeovnv1.ProtocolIPv4:
+		filtered.DHCPv6OptionsUUID = ""
+		return filtered, dhcpV4, ""
+	case kubeovnv1.ProtocolIPv6:
+		filtered.DHCPv4OptionsUUID = ""
+		return filtered, "", dhcpV6
+	}
+	return filtered, dhcpV4, dhcpV6
+}
+
 // reconcilePodDHCPOptions reconciles per-port DHCP_Options for already-allocated pods.
 // It delegates all DHCP logic (stale detection, create/update/cleanup, LSP pointer update)
 // to ReconcilePortDHCPOptions in the OVS layer.
@@ -590,8 +610,10 @@ func (c *Controller) reconcilePodDHCPOptions(pod *v1.Pod, podNets []*kubeovnNet)
 
 		subnet := podNet.Subnet
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
+		podIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		dhcpV4 := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
 		dhcpV6 := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
+		dhcpOptions, dhcpV4, dhcpV6 := dhcpOptionsForPodIPFamily(subnetDHCPOptionsUUIDs(subnet), podIP, dhcpV4, dhcpV6)
 
 		var mtu int
 		var gateway string
@@ -607,7 +629,7 @@ func (c *Controller) reconcilePodDHCPOptions(pod *v1.Pod, podNets []*kubeovnNet)
 		}
 
 		if _, _, err := c.OVNNbClient.ReconcilePortDHCPOptions(
-			subnet.Name, portName, subnetDHCPOptionsUUIDs(subnet),
+			subnet.Name, portName, dhcpOptions,
 			subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
 		); err != nil {
 			klog.Errorf("failed to reconcile DHCP options for port %s: %v", portName, err)
@@ -706,6 +728,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 
 			dhcpV4 := pod.Annotations[fmt.Sprintf(util.DHCPv4OptionsAnnotationTemplate, podNet.ProviderName)]
 			dhcpV6 := pod.Annotations[fmt.Sprintf(util.DHCPv6OptionsAnnotationTemplate, podNet.ProviderName)]
+			subnetDHCP, dhcpV4, dhcpV6 := dhcpOptionsForPodIPFamily(subnetDHCPOptionsUUIDs(subnet), ipStr, dhcpV4, dhcpV6)
 
 			var mtu int
 			var gateway string
@@ -720,7 +743,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			}
 
 			dhcpOptions, hasPerPortDHCP, err := c.OVNNbClient.ReconcilePortDHCPOptions(
-				subnet.Name, portName, subnetDHCPOptionsUUIDs(subnet),
+				subnet.Name, portName, subnetDHCP,
 				subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
 			)
 			if err != nil {
@@ -2065,7 +2088,6 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			if subnetName == "" {
 				// when ifName is provided in request, the `provider` in subnet spec will not match
 				// since it does not contain substring for interface name and wrong subnet will be selected
-				// and it goes to default subnet
 				for _, subnet := range subnets {
 					if subnetMatches(subnet, providerName, attach.InterfaceRequest) {
 						subnetName = subnet.Name
@@ -2076,42 +2098,26 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			klog.V(5).Infof("found subnet %s for provider %s", subnetName, providerName)
 			var subnet *kubeovnv1.Subnet
 			if subnetName == "" {
-				// attachment network not specify subnet, use pod default subnet or namespace subnet
-				// uses default subnet based on namespace annotation
-				// in this it goes to `ovn-default` and that explains the ipam error because the address is not in the range
-				subnet, err = c.getPodDefaultSubnet(pod)
-				if err != nil {
-					klog.Errorf("failed to pod default subnet, %v", err)
-					if k8serrors.IsNotFound(err) {
-						if ignoreSubnetNotExist {
-							klog.Errorf("deleting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
-							continue
-						}
-					}
-					return nil, err
-				}
-				if subnet == nil {
-					// getPodDefaultSubnet returns (nil, nil) when the deleting pod's default subnet
-					// no longer exists, leave the orphaned ip cr to gc instead of dereferencing nil
-					klog.Errorf("deleting pod %s/%s default subnet for attach %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, attach.Name)
+				err = fmt.Errorf("provider %s is not bound to any subnet", providerName)
+				if ignoreSubnetNotExist {
+					klog.Errorf("deleting pod %s/%s attach %s %v, gc will clean its ip cr", pod.Namespace, pod.Name, attach.Name, err)
 					continue
 				}
-				// default subnet may change after pod restart
-				klog.Infof("pod %s/%s attachment network %s use default subnet %s", pod.Namespace, pod.Name, attach.Name, subnet.Name)
-			} else {
-				subnet, err = c.subnetsLister.Get(subnetName)
-				if err != nil {
-					klog.Errorf("failed to get subnet %s, %v", subnetName, err)
-					if k8serrors.IsNotFound(err) {
-						if ignoreSubnetNotExist {
-							klog.Errorf("deleting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
-							// just continue to next attach subnet
-							// ip name is unique, so it is ok if the other subnet release it
-							continue
-						}
+				klog.Error(err)
+				return nil, err
+			}
+			subnet, err = c.subnetsLister.Get(subnetName)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s, %v", subnetName, err)
+				if k8serrors.IsNotFound(err) {
+					if ignoreSubnetNotExist {
+						klog.Errorf("deleting pod %s/%s attach subnet %s already not exist, gc will clean its ip cr", pod.Namespace, pod.Name, subnetName)
+						// just continue to next attach subnet
+						// ip name is unique, so it is ok if the other subnet release it
+						continue
 					}
-					return nil, err
 				}
+				return nil, err
 			}
 
 			// we send no macrequest or ip request so these should be empty in the response here
@@ -2215,6 +2221,49 @@ func (c *Controller) acquireMacOnlyAddress(pod *v1.Pod, podNet *kubeovnNet, key,
 	return "", "", mac, podNet.Subnet, nil
 }
 
+// podNetRequestedIPFamily reads the family request from the annotation scoped to
+// this provider. The default provider naturally maps to ovn.kubernetes.io/ip_family.
+func podNetRequestedIPFamily(pod *v1.Pod, podNet *kubeovnNet) string {
+	if pod == nil || pod.Annotations == nil {
+		return ""
+	}
+	return util.NormalizeIPFamily(pod.Annotations[fmt.Sprintf(util.IPFamilyAnnotationTemplate, podNet.ProviderName)])
+}
+
+// validateRequestedIPFamilyForSubnet rejects requests that cannot be satisfied
+// by a single-stack subnet. Dual-stack subnets are handled by family-aware IPAM.
+func validateRequestedIPFamilyForSubnet(ipFamily string, subnet *kubeovnv1.Subnet) error {
+	if ipFamily == "" || subnet == nil || subnet.Spec.Protocol == kubeovnv1.ProtocolDual || subnet.Spec.Protocol == kubeovnv1.ProtocolMac {
+		return nil
+	}
+	if ipFamily != subnet.Spec.Protocol {
+		return fmt.Errorf("requested ip family %s does not match subnet %s protocol %s", ipFamily, subnet.Name, subnet.Spec.Protocol)
+	}
+	return nil
+}
+
+// ippoolHasAvailableIPFamily checks availability for the requested family.
+// Without a requested family, it keeps the existing subnet protocol behavior.
+func ippoolHasAvailableIPFamily(ippool *kubeovnv1.IPPool, subnetProtocol, ipFamily string) bool {
+	if ipFamily != "" {
+		switch ipFamily {
+		case kubeovnv1.ProtocolIPv4:
+			return ippool.Status.V4AvailableIPs.Int64() != 0
+		case kubeovnv1.ProtocolIPv6:
+			return ippool.Status.V6AvailableIPs.Int64() != 0
+		}
+	}
+
+	switch subnetProtocol {
+	case kubeovnv1.ProtocolDual:
+		return ippool.Status.V4AvailableIPs.Int64() != 0 && ippool.Status.V6AvailableIPs.Int64() != 0
+	case kubeovnv1.ProtocolIPv4:
+		return ippool.Status.V4AvailableIPs.Int64() != 0
+	default:
+		return ippool.Status.V6AvailableIPs.Int64() != 0
+	}
+}
+
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	// becomes vmNAme when pod is owned by a kubevirt VM
 	podName := c.getNameByPod(pod)
@@ -2225,6 +2274,10 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 	// allocated and the guest obtains its IP from an external DHCP server.
 	if podNet.Subnet.Spec.Vlan != "" && podNet.Subnet.Spec.CIDRBlock == "" {
 		return c.acquireMacOnlyAddress(pod, podNet, key, portName)
+	}
+	requestedIPFamily := podNetRequestedIPFamily(pod, podNet)
+	if err := validateRequestedIPFamilyForSubnet(requestedIPFamily, podNet.Subnet); err != nil {
+		return "", "", "", podNet.Subnet, err
 	}
 
 	var checkVMPod bool
@@ -2311,20 +2364,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 						return "", "", "", podNet.Subnet, err
 					}
 
-					switch podNet.Subnet.Spec.Protocol {
-					case kubeovnv1.ProtocolDual:
-						if ippool.Status.V4AvailableIPs.Int64() == 0 || ippool.Status.V6AvailableIPs.Int64() == 0 {
-							continue
-						}
-					case kubeovnv1.ProtocolIPv4:
-						if ippool.Status.V4AvailableIPs.Int64() == 0 {
-							continue
-						}
-
-					default:
-						if ippool.Status.V6AvailableIPs.Int64() == 0 {
-							continue
-						}
+					if !ippoolHasAvailableIPFamily(ippool, podNet.Subnet.Spec.Protocol, requestedIPFamily) {
+						continue
 					}
 
 					for _, net := range nsNets {
@@ -2355,13 +2396,13 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			// subnet.namespace.kubernetes.io/ip_address.ifName = ipAddress
 			annoKey := perInterfaceIPAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
 			if ipStr := pod.Annotations[annoKey]; ipStr != "" {
-				return c.acquireStaticAddressHelper(pod, podNet, portName, macPointer, ippoolStr, nsNets, isStsPod, key)
+				return c.acquireStaticAddressHelper(pod, podNet, portName, macPointer, ippoolStr, nsNets, isStsPod, key, requestedIPFamily)
 			}
 		}
 
 		var skippedAddrs []string
 		for {
-			ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, podNet.Subnet.Name, "", skippedAddrs, !podNet.AllowLiveMigration)
+			ipv4, ipv6, mac, err := c.ipam.GetRandomAddressWithFamily(key, portName, macPointer, podNet.Subnet.Name, "", requestedIPFamily, skippedAddrs, !podNet.AllowLiveMigration)
 			if err != nil {
 				klog.Error(err)
 				return "", "", "", podNet.Subnet, err
@@ -2384,10 +2425,10 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		}
 	}
 
-	return c.acquireStaticAddressHelper(pod, podNet, portName, macPointer, ippoolStr, nsNets, isStsPod, key)
+	return c.acquireStaticAddressHelper(pod, podNet, portName, macPointer, ippoolStr, nsNets, isStsPod, key, requestedIPFamily)
 }
 
-func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet, portName string, macPointer *string, ippoolStr string, nsNets []*kubeovnNet, isStsPod bool, key string) (string, string, string, *kubeovnv1.Subnet, error) {
+func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet, portName string, macPointer *string, ippoolStr string, nsNets []*kubeovnNet, isStsPod bool, key, requestedIPFamily string) (string, string, string, *kubeovnv1.Subnet, error) {
 	var v4IP, v6IP, mac string
 	var err error
 
@@ -2396,7 +2437,7 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 		annotationKey := perInterfaceIPAnnotationKey(podNet.NadName, podNet.NadNamespace, podNet.InterfaceName)
 		if ipStr := pod.Annotations[annotationKey]; ipStr != "" {
 			for _, net := range nsNets {
-				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
+				v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration, requestedIPFamily)
 				if err == nil {
 					return v4IP, v6IP, mac, net.Subnet, nil
 				}
@@ -2407,7 +2448,7 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 
 	if ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]; ipStr != "" {
 		for _, net := range nsNets {
-			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration)
+			v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipStr, macPointer, net.Subnet.Name, net.AllowLiveMigration, requestedIPFamily)
 			if err == nil {
 				return v4IP, v6IP, mac, net.Subnet, nil
 			}
@@ -2438,7 +2479,7 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 				return "", "", "", podNet.Subnet, err
 			}
 			for {
-				ipv4, ipv6, mac, err := c.ipam.GetRandomAddress(key, portName, macPointer, pool.Spec.Subnet, ipPool[0], skippedAddrs, !podNet.AllowLiveMigration)
+				ipv4, ipv6, mac, err := c.ipam.GetRandomAddressWithFamily(key, portName, macPointer, pool.Spec.Subnet, ipPool[0], requestedIPFamily, skippedAddrs, !podNet.AllowLiveMigration)
 				if err != nil {
 					klog.Error(err)
 					return "", "", "", podNet.Subnet, err
@@ -2474,16 +2515,20 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 
 					if assignedPod, ok := c.ipam.IsIPAssignedToOtherPod(checkIP, net.Subnet.Name, key); ok {
 						klog.Errorf("static address %s for %s has been assigned to %s", staticIP, key, assignedPod)
+						err = ipam.ErrConflict
 						continue
 					}
 
-					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIP, macPointer, net.Subnet.Name, net.AllowLiveMigration)
+					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, staticIP, macPointer, net.Subnet.Name, net.AllowLiveMigration, requestedIPFamily)
 					if err == nil {
 						return v4IP, v6IP, mac, net.Subnet, nil
 					}
 				}
 			}
 			klog.Errorf("acquire address from ippool %s for %s failed, %v", ippoolStr, key, err)
+			if err != nil {
+				return "", "", "", podNet.Subnet, err
+			}
 		} else {
 			tempStrs := strings.Split(pod.Name, "-")
 			numStr := tempStrs[len(tempStrs)-1]
@@ -2491,12 +2536,15 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 
 			if index < len(ipPool) {
 				for _, net := range nsNets {
-					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipPool[index], macPointer, net.Subnet.Name, net.AllowLiveMigration)
+					v4IP, v6IP, mac, err = c.acquireStaticAddress(key, portName, ipPool[index], macPointer, net.Subnet.Name, net.AllowLiveMigration, requestedIPFamily)
 					if err == nil {
 						return v4IP, v6IP, mac, net.Subnet, nil
 					}
 				}
 				klog.Errorf("acquire address %s for %s failed, %v", ipPool[index], key, err)
+				if err != nil {
+					return "", "", "", podNet.Subnet, err
+				}
 			}
 		}
 	}
@@ -2504,7 +2552,7 @@ func (c *Controller) acquireStaticAddressHelper(pod *v1.Pod, podNet *kubeovnNet,
 	return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 }
 
-func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, subnet string, liveMigration bool) (string, string, string, error) {
+func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, subnet string, liveMigration bool, requestedIPFamily string) (string, string, string, error) {
 	var v4IP, v6IP, macStr string
 	var err error
 	for ipStr := range strings.SplitSeq(ip, ",") {
@@ -2513,7 +2561,7 @@ func (c *Controller) acquireStaticAddress(key, nicName, ip string, mac *string, 
 		}
 	}
 
-	if v4IP, v6IP, macStr, err = c.ipam.GetStaticAddress(key, nicName, ip, mac, subnet, !liveMigration); err != nil {
+	if v4IP, v6IP, macStr, err = c.ipam.GetStaticAddressWithFamily(key, nicName, ip, mac, subnet, requestedIPFamily, !liveMigration); err != nil {
 		klog.Errorf("failed to get static ip %v, mac %v, subnet %v, err %v", ip, mac, subnet, err)
 		return "", "", "", err
 	}

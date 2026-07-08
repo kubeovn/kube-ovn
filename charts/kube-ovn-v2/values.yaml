@@ -137,6 +137,15 @@ networking:
   # -- Deploy the CNI with SSL encryption in between components.
   # @section -- Network parameters of the CNI
   enableSsl: false
+  # -- Minimum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints. Supported values: TLS10, TLS11, TLS12, TLS13. Empty uses the component default.
+  # @section -- Network parameters of the CNI
+  tlsMinVersion: ""
+  # -- Maximum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints. Supported values: TLS10, TLS11, TLS12, TLS13. Empty uses the component default.
+  # @section -- Network parameters of the CNI
+  tlsMaxVersion: ""
+  # -- Go TLS cipher suite names. OVN DB server only supports suites mapped by dist/images/ovn-db-ssl-options.sh.
+  # @section -- Network parameters of the CNI
+  tlsCipherSuites: []
   # -- How often kube-ovn-controller checks kube-ovn-tls for renewal. Set to 0 to disable.
   # @section -- Network parameters of the CNI
   kubeOvnTlsRotationInterval: "8760h"
@@ -995,6 +1004,24 @@ central:
   extraEnv: []
   #  - name: CUSTOM_ENV_VAR
   #    value: "custom-value"
+
+  # -- Deploy ovn-central as a PVC-backed StatefulSet that can be exposed to workload clusters.
+  # @section -- OVN-central daemon configuration
+  hcp:
+    enabled: false
+    namespace: hcp
+    replicas: 3
+    # -- OVN NB address used by workload clusters, for example tcp:ovn-nb.example.com:6641.
+    nbAddress: ""
+    # -- OVN SB address used by workload clusters, for example tcp:ovn-sb.example.com:6642.
+    sbAddress: ""
+    service:
+      type: NodePort
+      nbNodePort: 30641
+      sbNodePort: 30642
+    storage:
+      size: 5Gi
+      storageClassName: ""
 
   # -- ovn-central resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/

@@ -189,6 +189,15 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 				subnet.Spec.U2OInterconnectionIP,
 				subnet.Name, subnet.Spec.CIDRBlock)
 		}
+		gatewayV4, gatewayV6 := SplitStringIP(subnet.Spec.Gateway)
+		u2oV4, u2oV6 := SplitStringIP(subnet.Spec.U2OInterconnectionIP)
+		gatewayV4IP, gatewayV6IP := net.ParseIP(gatewayV4), net.ParseIP(gatewayV6)
+		u2oV4IP, u2oV6IP := net.ParseIP(u2oV4), net.ParseIP(u2oV6)
+		if (u2oV4IP != nil && gatewayV4IP != nil && u2oV4IP.Equal(gatewayV4IP)) ||
+			(u2oV6IP != nil && gatewayV6IP != nil && u2oV6IP.Equal(gatewayV6IP)) {
+			return fmt.Errorf("u2oInterconnectionIP %s conflicts with subnet gateway %s",
+				subnet.Spec.U2OInterconnectionIP, subnet.Spec.Gateway)
+		}
 	}
 
 	return nil
@@ -332,6 +341,24 @@ func validateNatOutgoingPolicyRuleIPs(matchIPStr string) (string, error) {
 func ValidatePodNetwork(annotations map[string]string) error {
 	errors := []error{}
 
+	for key, family := range annotations {
+		if !isIPFamilyAnnotationKey(key) || family == "" {
+			continue
+		}
+		if family != strings.ToLower(kubeovnv1.ProtocolIPv4) && family != strings.ToLower(kubeovnv1.ProtocolIPv6) {
+			errors = append(errors, fmt.Errorf("%s is not a valid %s", family, key))
+			continue
+		}
+		normalizedFamily := NormalizeIPFamily(family)
+		for _, ipAddress := range ipAddressAnnotationsForIPFamily(annotations, key) {
+			for ip := range strings.SplitSeq(ipAddress, ",") {
+				if CheckProtocol(ip) != normalizedFamily {
+					errors = append(errors, fmt.Errorf("%s does not match %s %s", ip, key, family))
+				}
+			}
+		}
+	}
+
 	if ipAddress := annotations[IPAddressAnnotation]; ipAddress != "" {
 		// The format of IP Annotation in dual-stack is 10.244.0.0/16,fd00:10:244:0:2::/80
 		for ip := range strings.SplitSeq(ipAddress, ",") {
@@ -438,6 +465,52 @@ func ValidatePodNetwork(annotations map[string]string) error {
 	}
 
 	return utilerrors.NewAggregate(errors)
+}
+
+func isIPFamilyAnnotationKey(key string) bool {
+	return key == IPFamilyAnnotation || strings.HasSuffix(key, ".kubernetes.io/ip_family")
+}
+
+func ipAddressAnnotationKeyForIPFamily(key string) string {
+	if key == IPFamilyAnnotation {
+		return IPAddressAnnotation
+	}
+	return strings.TrimSuffix(key, "/ip_family") + "/ip_address"
+}
+
+func ipAddressAnnotationsForIPFamily(annotations map[string]string, key string) []string {
+	ipAddressKeys := ipAddressAnnotationKeysForIPFamily(key)
+	ipAddresses := []string{}
+	for annotationKey, ipAddress := range annotations {
+		if ipAddress == "" {
+			continue
+		}
+		for _, ipAddressKey := range ipAddressKeys {
+			if annotationKey == ipAddressKey || strings.HasPrefix(annotationKey, ipAddressKey+".") {
+				ipAddresses = append(ipAddresses, ipAddress)
+				break
+			}
+		}
+	}
+	return ipAddresses
+}
+
+// ipAddressAnnotationKeysForIPFamily returns the static IP annotation keys that
+// should be checked for an ip_family key. Same-NAD multi-interface pods use
+// <nad>.<ns>.kubernetes.io/ip_address.<ifName> for static IPs while the family
+// annotation is scoped by provider as <nad>.<ns>.ovn.<ifName>.kubernetes.io/ip_family.
+func ipAddressAnnotationKeysForIPFamily(key string) []string {
+	keys := []string{ipAddressAnnotationKeyForIPFamily(key)}
+	provider, ok := strings.CutSuffix(key, ".kubernetes.io/ip_family")
+	if !ok {
+		return keys
+	}
+	parts := strings.Split(provider, ".")
+	if len(parts) > 3 && parts[2] == OvnProvider {
+		ifName := parts[len(parts)-1]
+		keys = append(keys, fmt.Sprintf("%s.%s.kubernetes.io/ip_address.%s", parts[0], parts[1], ifName))
+	}
+	return keys
 }
 
 func ValidateNetworkBroadcast(cidr, ip string) error {

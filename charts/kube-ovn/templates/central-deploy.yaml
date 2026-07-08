@@ -9,6 +9,7 @@ OVN_CENTRAL_MODE. `lookup` returns empty during dry-run / template, so this
 only fires on a real install/upgrade against a cluster.
 */}}
 {{- $existing := lookup "apps/v1" "Deployment" .Values.namespace "ovn-central" }}
+{{- if not (index .Values "ovn-central" "hcp" "enabled") }}
 {{- if $existing }}
   {{- range $existing.spec.template.spec.volumes }}
     {{- if eq .name "host-config-ovn" }}
@@ -21,16 +22,21 @@ only fires on a real install/upgrade against a cluster.
     {{- end }}
   {{- end }}
 {{- end }}
-kind: Deployment
+{{- end }}
+kind: {{ ternary "StatefulSet" "Deployment" (index .Values "ovn-central" "hcp" "enabled") }}
 apiVersion: apps/v1
 metadata:
   name: ovn-central
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "kubeovn.centralNamespace" . }}
   annotations:
     kubernetes.io/description: |
       OVN components: northd, nb and sb.
 spec:
   replicas: {{ include "kubeovn.ovnCentralReplicas" . }}
+  {{- if index .Values "ovn-central" "hcp" "enabled" }}
+  serviceName: ovn-central
+  podManagementPolicy: Parallel
+  {{- else }}
   strategy:
     {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
     type: Recreate
@@ -40,6 +46,7 @@ spec:
       maxUnavailable: 1
     type: RollingUpdate
     {{- end }}
+  {{- end }}
   selector:
     matchLabels:
       app: ovn-central
@@ -58,6 +65,7 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
+        {{- if not (index .Values "ovn-central" "hcp" "enabled") }}
         {{- if ne .Values.OVN_CENTRAL_MODE "single" }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -66,21 +74,25 @@ spec:
                   app: ovn-central
               topologyKey: kubernetes.io/hostname
         {{- end }}
+        {{- end }}
         {{- include "kubeovn.masterNodeAffinity" . | nindent 8 }}
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn-ovs
+      serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" (index .Values "ovn-central" "hcp" "enabled") }}
       automountServiceAccountToken: true
-      hostNetwork: true
+      hostNetwork: {{ ternary "false" "true" (index .Values "ovn-central" "hcp" "enabled") }}
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
-        - name: hostpath-init
+        - name: {{ ternary "volume-init" "hostpath-init" (index .Values "ovn-central" "hcp" "enabled") }}
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - sh
             - -c
+            {{- if index .Values "ovn-central" "hcp" "enabled" }}
+            - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
+            {{- else }}
             {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
             # /etc/ovn comes from a PVC in single-replica mode. Backends like
             # root-squashed NFS reject chown by root, so make the OVN DB
@@ -90,20 +102,25 @@ spec:
             {{- else }}
             - "chown -R nobody: /var/run/ovn /etc/ovn /var/log/ovn"
             {{- end }}
+            {{- end }}
           securityContext:
-            allowPrivilegeEscalation: true
+            allowPrivilegeEscalation: {{ ternary "false" "true" (index .Values "ovn-central" "hcp" "enabled") }}
             capabilities:
+              {{- if index .Values "ovn-central" "hcp" "enabled" }}
+              add:
+                - CHOWN
+              {{- end }}
               drop:
                 - ALL
-            privileged: true
+            privileged: {{ ternary "false" "true" (index .Values "ovn-central" "hcp" "enabled") }}
             runAsUser: 0
           volumeMounts:
             - mountPath: /var/run/ovn
-              name: host-run-ovn
+              name: {{ ternary "run-ovn" "host-run-ovn" (index .Values "ovn-central" "hcp" "enabled") }}
             - mountPath: /etc/ovn
-              name: host-config-ovn
+              name: {{ ternary "ovn-data" "host-config-ovn" (index .Values "ovn-central" "hcp" "enabled") }}
             - mountPath: /var/log/ovn
-              name: host-log-ovn
+              name: {{ ternary "log-ovn" "host-log-ovn" (index .Values "ovn-central" "hcp" "enabled") }}
       containers:
         - name: ovn-central
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
@@ -119,14 +136,8 @@ spec:
                 - NET_BIND_SERVICE
                 - SYS_NICE
           env:
-            - name: ENABLE_SSL
-              value: "{{ .Values.networking.ENABLE_SSL }}"
-            - name: NODE_IPS
-              value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
+{{- include "kubeovn.ovnCentralTLSEnv" . | nindent 12 }}
+            {{- if index .Values "ovn-central" "hcp" "enabled" }}
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -135,12 +146,37 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            {{- end }}
+            - name: NODE_IPS
+              value: "{{ include "kubeovn.ovnCentralNodeIPs" . }}"
+            {{- if index .Values "ovn-central" "hcp" "enabled" }}
+            - name: DB_CLUSTER_ADDR
+              value: "$(POD_NAME).ovn-central.$(POD_NAMESPACE).svc"
+            {{- end }}
+            - name: POD_IP
+              {{- if index .Values "ovn-central" "hcp" "enabled" }}
+              value: "$(DB_CLUSTER_ADDR)"
+              {{- else }}
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+              {{- end }}
+            {{- if not (index .Values "ovn-central" "hcp" "enabled") }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- end }}
             - name: POD_IPS
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
-              value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
+              value: "{{ ternary false .Values.func.ENABLE_BIND_LOCAL_IP (index .Values "ovn-central" "hcp" "enabled") }}"
             - name: PROBE_INTERVAL
               value: "{{ .Values.networking.PROBE_INTERVAL }}"
             - name: OVN_NORTHD_PROBE_INTERVAL
@@ -163,14 +199,16 @@ spec:
               ephemeral-storage: {{ index .Values "ovn-central" "limits" "ephemeral-storage" }}
           volumeMounts:
             - mountPath: /var/run/ovn
-              name: host-run-ovn
+              name: {{ ternary "run-ovn" "host-run-ovn" (index .Values "ovn-central" "hcp" "enabled") }}
             - mountPath: /etc/ovn
-              name: host-config-ovn
+              name: {{ ternary "ovn-data" "host-config-ovn" (index .Values "ovn-central" "hcp" "enabled") }}
             - mountPath: /var/log/ovn
-              name: host-log-ovn
+              name: {{ ternary "log-ovn" "host-log-ovn" (index .Values "ovn-central" "hcp" "enabled") }}
+            {{- if not (index .Values "ovn-central" "hcp" "enabled") }}
             - mountPath: /etc/localtime
               name: localtime
               readOnly: true
+            {{- end }}
             - mountPath: /var/run/tls
               name: kube-ovn-tls
           readinessProbe:
@@ -192,6 +230,12 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        {{- if index .Values "ovn-central" "hcp" "enabled" }}
+        - name: run-ovn
+          emptyDir: {}
+        - name: log-ovn
+          emptyDir: {}
+        {{- else }}
         - name: host-run-ovn
           hostPath:
             path: /run/ovn
@@ -209,10 +253,27 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
+        {{- end }}
         - name: kube-ovn-tls
           secret:
             optional: true
             secretName: kube-ovn-tls
+  {{- if index .Values "ovn-central" "hcp" "enabled" }}
+  volumeClaimTemplates:
+    - metadata:
+        name: ovn-data
+        labels:
+          app: ovn-central
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ index .Values "ovn-central" "hcp" "storage" "size" }}
+        {{- if index .Values "ovn-central" "hcp" "storage" "storageClassName" }}
+        storageClassName: {{ index .Values "ovn-central" "hcp" "storage" "storageClassName" | quote }}
+        {{- end }}
+  {{- end }}
 
 
 {{- end }}
