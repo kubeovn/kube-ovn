@@ -36,6 +36,9 @@ spec:
   {{- if index .Values "ovn-central" "hcp" "enabled" }}
   serviceName: ovn-central
   podManagementPolicy: Parallel
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
   {{- else }}
   strategy:
     {{- if eq .Values.OVN_CENTRAL_MODE "single" }}
@@ -58,15 +61,13 @@ spec:
         type: infra
     spec:
       tolerations:
-        - effect: NoSchedule
-          operator: Exists
-        - effect: NoExecute
-          operator: Exists
+        {{- with (index .Values "ovn-central" "tolerations") }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
-        {{- if not (index .Values "ovn-central" "hcp" "enabled") }}
-        {{- if ne .Values.OVN_CENTRAL_MODE "single" }}
+        {{- if or (index .Values "ovn-central" "hcp" "enabled") (ne .Values.OVN_CENTRAL_MODE "single") }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
@@ -74,8 +75,9 @@ spec:
                   app: ovn-central
               topologyKey: kubernetes.io/hostname
         {{- end }}
-        {{- end }}
+        {{- if not (index .Values "ovn-central" "hcp" "enabled") }}
         {{- include "kubeovn.masterNodeAffinity" . | nindent 8 }}
+        {{- end }}
       priorityClassName: system-cluster-critical
       serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" (index .Values "ovn-central" "hcp" "enabled") }}
       automountServiceAccountToken: true
@@ -227,8 +229,11 @@ spec:
             periodSeconds: 15
             failureThreshold: 5
             timeoutSeconds: 45
+      {{- $nodeSelector := index .Values "ovn-central" "nodeSelector" }}
+      {{- if $nodeSelector }}
       nodeSelector:
-        kubernetes.io/os: "linux"
+        {{- toYaml $nodeSelector | nindent 8 }}
+      {{- end }}
       volumes:
         {{- if index .Values "ovn-central" "hcp" "enabled" }}
         - name: run-ovn

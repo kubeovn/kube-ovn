@@ -41,14 +41,11 @@ OVN_CENTRAL_MODE: "cluster"
 installMode: full
 
 # When installMode=dataPlaneOnly, the agents and controller cannot rely on a
-# local ovn-central Service. Set externalOvnCentral.endpoint to the IP address
-# that exposes the management cluster's ovn-nb / ovn-sb Services (typically a
-# LoadBalancer VIP reachable from this cluster). DNS hostnames work with OVN
-# >= 22.03 but use an IP literal if you need to support older OVN versions —
-# the OVN connection string format `tcp:[host]:port` parses brackets only as
-# IP literals in older code paths.
+# local ovn-central Service. Set nbEndpoint/sbEndpoint to the addresses that
+# expose the management cluster's ovn-nb / ovn-sb Services.
 externalOvnCentral:
-  endpoint: ""
+  nbEndpoint: ""
+  sbEndpoint: ""
   nbPort: 6641
   sbPort: 6642
 
@@ -188,6 +185,13 @@ DPDK_CPU: "1000m" # Default CPU configuration
 DPDK_MEMORY: "2Gi" # Default Memory configuration
 
 ovn-central:
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+  nodeSelector:
+    kubernetes.io/os: "linux"
   hcp:
     enabled: false
     namespace: hcp

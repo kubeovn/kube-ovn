@@ -16,6 +16,9 @@ spec:
   {{- if .Values.central.hcp.enabled }}
   serviceName: ovn-central
   podManagementPolicy: Parallel
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
   {{- end }}
   {{- if not .Values.central.hcp.enabled }}
   strategy:
@@ -53,15 +56,13 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       affinity:
-        {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedRequired" (include "kubeovn.masterNodeRequired" . | fromYamlArray) "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
-        {{- if not .Values.central.hcp.enabled }}
+        {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedRequired" (ternary (list) (include "kubeovn.masterNodeRequired" . | fromYamlArray) .Values.central.hcp.enabled) "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
                   app.kubernetes.io/name: ovn-central
               topologyKey: kubernetes.io/hostname
-        {{- end }}
       priorityClassName: system-cluster-critical
       serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" .Values.central.hcp.enabled }}
       automountServiceAccountToken: true
@@ -202,7 +203,9 @@ spec:
             timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
+        {{- if not .Values.central.hcp.enabled }}
         {{ .Values.masterNodesLabels | toYaml | nindent 8 }}
+        {{- end }}
       volumes:
         {{- if .Values.central.hcp.enabled }}
         - name: run-ovn
