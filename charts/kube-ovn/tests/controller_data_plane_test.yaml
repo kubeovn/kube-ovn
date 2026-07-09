@@ -1,0 +1,133 @@
+suite: Kube-OVN controller data plane deployment
+templates:
+  - controller-deploy.yaml
+tests:
+  - it: preserves controller replica override outside dataPlaneOnly
+    set:
+      installMode: full
+      MASTER_NODES: "10.0.0.1,10.0.0.2,10.0.0.3"
+      kube-ovn-controller.replicas: 4
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 4
+
+  - it: renders TLS cipher suites as readable repeated args
+    set:
+      installMode: full
+      MASTER_NODES: "10.0.0.1"
+      networking.TLS_CIPHER_SUITES:
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+
+  - it: uses one dataPlaneOnly controller replica for one node
+    set:
+      installMode: dataPlaneOnly
+      MASTER_NODES: "10.0.0.1"
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+      kube-ovn-controller.replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: caps dataPlaneOnly controller replicas at two
+    set:
+      installMode: dataPlaneOnly
+      MASTER_NODES: "10.0.0.1,10.0.0.2,10.0.0.3"
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+      kube-ovn-controller.replicas: 1
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: uses Kubernetes node count instead of master node count for dataPlaneOnly replicas
+    kubernetesProvider:
+      scheme:
+        "v1/Node":
+          gvr:
+            version: v1
+            resource: nodes
+          namespaced: false
+      objects:
+        - kind: Node
+          apiVersion: v1
+          metadata:
+            name: node-1
+            labels: {}
+        - kind: Node
+          apiVersion: v1
+          metadata:
+            name: node-2
+            labels: {}
+        - kind: Node
+          apiVersion: v1
+          metadata:
+            name: node-3
+            labels: {}
+    set:
+      installMode: dataPlaneOnly
+      MASTER_NODES: "10.0.0.1"
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: renders independent external OVN DB addresses for dataPlaneOnly
+    set:
+      installMode: dataPlaneOnly
+      MASTER_NODES: "10.0.0.1"
+      externalOvnCentral.nbEndpoint: 10.0.0.11
+      externalOvnCentral.nbPort: 30641
+      externalOvnCentral.sbEndpoint: 10.0.0.12
+      externalOvnCentral.sbPort: 30642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:10.0.0.11:30641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:10.0.0.12:30642
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_DB_IPS
+
+  - it: renders IPv6 external OVN DB addresses for dataPlaneOnly
+    set:
+      installMode: dataPlaneOnly
+      MASTER_NODES: "10.0.0.1"
+      externalOvnCentral.nbEndpoint: "fd00::11"
+      externalOvnCentral.nbPort: 30641
+      externalOvnCentral.sbEndpoint: "[fd00::12]"
+      externalOvnCentral.sbPort: 30642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:[fd00::11]:30641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:[fd00::12]:30642
