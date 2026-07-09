@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -1312,4 +1314,89 @@ func TestGetPodAttachmentNetDefaultSubnetGone(t *testing.T) {
 	nets, err := controller.getPodAttachmentNet(pod)
 	require.NoError(t, err)
 	assert.Empty(t, nets)
+}
+
+func TestHandleAddOrUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
+	controller := newIPAMSubnetMissingController(t)
+
+	err := controller.handleAddOrUpdatePod("default/test-pod")
+	require.Error(t, err)
+
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+}
+
+func TestEnqueueUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
+	controller := newIPAMSubnetMissingController(t)
+	oldPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-pod",
+			Namespace:       metav1.NamespaceDefault,
+			ResourceVersion: "1",
+			Annotations:     map[string]string{},
+		},
+	}
+	newPod, err := controller.podsLister.Pods(metav1.NamespaceDefault).Get("test-pod")
+	require.NoError(t, err)
+	newPod = newPod.DeepCopy()
+	newPod.ResourceVersion = "2"
+
+	controller.enqueueUpdatePod(oldPod, newPod)
+
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+}
+
+func TestHandleUpdatePodSecurityRecordsIPAMSubnetMissingEvent(t *testing.T) {
+	controller := newIPAMSubnetMissingController(t)
+
+	err := controller.handleUpdatePodSecurity("default/test-pod")
+	require.Error(t, err)
+
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+}
+
+func newIPAMSubnetMissingController(t *testing.T) *Controller {
+	t.Helper()
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
+			},
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods: []*corev1.Pod{pod},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "net1",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: nadv1.NetworkAttachmentDefinitionSpec{
+					Config: `{"cniVersion":"0.3.1","name":"net1","type":"macvlan","ipam":{"type":"kube-ovn"}}`,
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	controller := fakeController.fakeController
+	controller.config.EnableNonPrimaryCNI = true
+	return controller
+}
+
+func assertPodEvent(t *testing.T, controller *Controller, parts ...string) {
+	t.Helper()
+
+	recorder := controller.recorder.(*record.FakeRecorder)
+	select {
+	case event := <-recorder.Events:
+		for _, part := range parts {
+			assert.Contains(t, event, part)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected pod event")
+	}
 }

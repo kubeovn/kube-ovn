@@ -16,6 +16,7 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 	"github.com/scylladb/go-set/strset"
+	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -341,6 +342,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	podNets, err := c.getPodKubeovnNets(newPod)
 	if err != nil {
 		klog.Errorf("failed to get newPod nets %v", err)
+		c.recorder.Eventf(newPod, v1.EventTypeWarning, "AcquireAddressFailed", "%s", err.Error())
 		return
 	}
 
@@ -523,6 +525,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", "%s", err.Error())
 		return err
 	}
 
@@ -1428,6 +1431,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to pod nets %v", err)
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", "%s", err.Error())
 		return err
 	}
 
@@ -2135,7 +2139,11 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 			}
 			result = append(result, ret)
 		} else {
+			if !isKubeOVNIPAMNetwork(netCfg) {
+				continue
+			}
 			providerName = fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
+			foundSubnet := false
 			for _, subnet := range subnets {
 				if subnet.Spec.Provider == providerName {
 					result = append(result, &kubeovnNet{
@@ -2148,12 +2156,32 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 						NadNamespace:  attach.Namespace,
 						InterfaceName: attach.InterfaceRequest,
 					})
+					foundSubnet = true
 					break
 				}
+			}
+			if !foundSubnet {
+				if ignoreSubnetNotExist {
+					klog.Errorf("deleting pod %s/%s IPAM network %s has no matching subnet, gc will clean its ip cr", pod.Namespace, pod.Name, providerName)
+					continue
+				}
+				return nil, fmt.Errorf("no subnet found for IPAM network %s", providerName)
 			}
 		}
 	}
 	return result, nil
+}
+
+func isKubeOVNIPAMNetwork(netCfg *multustypes.DelegateNetConf) bool {
+	if netCfg.Conf.IPAM.Type == util.CniTypeName {
+		return true
+	}
+	for _, plugin := range netCfg.ConfList.Plugins {
+		if plugin.IPAM.Type == util.CniTypeName {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) validatePodIP(podName, subnetName, ipv4, ipv6 string) (bool, bool, error) {
