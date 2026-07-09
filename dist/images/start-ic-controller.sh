@@ -2,6 +2,8 @@
 set -euo pipefail
 ENABLE_SSL=${ENABLE_SSL:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
+OVN_NB_ADDR=${OVN_NB_ADDR:-}
+OVN_SB_ADDR=${OVN_SB_ADDR:-}
 KUBE_OVN_NB_PORT=${KUBE_OVN_NB_PORT:-6641}
 KUBE_OVN_SB_PORT=${KUBE_OVN_SB_PORT:-6642}
 
@@ -31,8 +33,8 @@ function gen_conn_str {
   echo "$x"
 }
 
-nb_addr="$(gen_conn_str "$KUBE_OVN_NB_PORT")"
-sb_addr="$(gen_conn_str "$KUBE_OVN_SB_PORT")"
+nb_addr="${OVN_NB_ADDR:-$(gen_conn_str "$KUBE_OVN_NB_PORT")}"
+sb_addr="${OVN_SB_ADDR:-$(gen_conn_str "$KUBE_OVN_SB_PORT")}"
 
 for ((i=0; i<3; i++)); do
   if [[ "$ENABLE_SSL" == "false" ]]; then
