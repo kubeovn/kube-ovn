@@ -6,6 +6,7 @@ templates:
   - nb-svc.yaml
   - sb-svc.yaml
   - controller-deploy.yaml
+  - ic-controller-deploy.yaml
   - ovsovn-ds.yaml
   - ovn-dpdk-ds.yaml
 tests:
@@ -207,6 +208,25 @@ tests:
   - it: points workload components at independent HCP OVN DB addresses
     template: controller-deploy.yaml
     set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:ovn-nb.example.com:6641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+
+  - it: points ic-controller at independent HCP OVN DB addresses
+    template: ic-controller-deploy.yaml
+    set:
+      func.ENABLE_IC: true
       ovn-central.hcp.enabled: true
       ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
       ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
