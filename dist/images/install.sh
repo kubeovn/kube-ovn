@@ -322,7 +322,13 @@ if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
   OVN_SB_LEADER_SELECTOR=""
   OVN_NORTHD_LEADER_SELECTOR=""
   OVN_CENTRAL_STRATEGY_BODY="    type: Recreate"
-  OVN_CENTRAL_AFFINITY_BLOCK=""
+  OVN_CENTRAL_AFFINITY_BLOCK="      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: ovn-central
+              topologyKey: kubernetes.io/hostname"
   OVN_CENTRAL_CONFIG_VOLUME="        - name: host-config-ovn
           persistentVolumeClaim:
             claimName: ovn-central-data"

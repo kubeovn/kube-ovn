@@ -998,7 +998,6 @@ central:
   # -- Labels to be added to ovn-central pods.
   # @section -- OVN-central daemon configuration
   podLabels: {}
-
   # -- Extra environment variables to be added to ovn-central pods.
   # @section -- OVN-central daemon configuration
   extraEnv: []
