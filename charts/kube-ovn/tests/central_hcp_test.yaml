@@ -6,6 +6,7 @@ templates:
   - nb-svc.yaml
   - sb-svc.yaml
   - controller-deploy.yaml
+  - ic-controller-deploy.yaml
   - ovsovn-ds.yaml
   - ovn-dpdk-ds.yaml
 tests:
@@ -19,6 +20,12 @@ tests:
       ovn-central.hcp.replicas: 3
       ovn-central.hcp.storage.size: 5Gi
       ovn-central.hcp.storage.storageClassName: topolvm
+      ovn-central.nodeSelector.dedicated: hcp-ovn
+      ovn-central.tolerations:
+        - key: dedicated
+          operator: Equal
+          value: hcp-ovn
+          effect: NoSchedule
     asserts:
       - isKind:
           of: StatefulSet
@@ -32,6 +39,12 @@ tests:
           path: spec.serviceName
           value: ovn-central
       - equal:
+          path: spec.persistentVolumeClaimRetentionPolicy.whenDeleted
+          value: Delete
+      - equal:
+          path: spec.persistentVolumeClaimRetentionPolicy.whenScaled
+          value: Delete
+      - equal:
           path: spec.template.spec.hostNetwork
           value: false
       - equal:
@@ -40,6 +53,20 @@ tests:
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: true
+      - isNotNull:
+          path: spec.template.spec.affinity.podAntiAffinity
+      - notExists:
+          path: spec.template.spec.affinity.nodeAffinity
+      - equal:
+          path: spec.template.spec.nodeSelector.dedicated
+          value: hcp-ovn
+      - contains:
+          path: spec.template.spec.tolerations
+          content:
+            key: dedicated
+            operator: Equal
+            value: hcp-ovn
+            effect: NoSchedule
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -181,6 +208,25 @@ tests:
   - it: points workload components at independent HCP OVN DB addresses
     template: controller-deploy.yaml
     set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:ovn-nb.example.com:6641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+
+  - it: points ic-controller at independent HCP OVN DB addresses
+    template: ic-controller-deploy.yaml
+    set:
+      func.ENABLE_IC: true
       ovn-central.hcp.enabled: true
       ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
       ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642

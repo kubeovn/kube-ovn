@@ -64,6 +64,18 @@ Number of master nodes
 {{- end -}}
 
 {{/*
+Number of Kubernetes nodes, falling back to MASTER_NODES for offline rendering.
+*/}}
+{{- define "kubeovn.k8sNodeCount" -}}
+{{- $nodes := lookup "v1" "Node" "" "" -}}
+{{- if and $nodes $nodes.items -}}
+{{- len $nodes.items -}}
+{{- else -}}
+{{- include "kubeovn.nodeCount" . -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Replica count for the ovn-central Deployment. Single mode always uses 1;
 cluster mode uses one replica per master node.
 */}}
@@ -119,7 +131,9 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 - --tls-max-version={{ .Values.networking.TLS_MAX_VERSION }}
 {{- end }}
 {{- if .Values.networking.TLS_CIPHER_SUITES }}
-- --tls-cipher-suites={{ join "," .Values.networking.TLS_CIPHER_SUITES }}
+{{- range .Values.networking.TLS_CIPHER_SUITES }}
+- --tls-cipher-suites={{ . }}
+{{- end }}
 {{- end }}
 {{- end -}}
 
@@ -137,18 +151,15 @@ Disable local rotation there so a tenant cluster cannot replace the shared CA.
 
 {{/*
 Replica count for the kube-ovn-controller Deployment.
-- dataPlaneOnly: tenant cluster typically has no `kube-ovn/role=master` node
-  label and kube-ovn-controller can run with replicas=1 (active/standby HA is
-  configured via leader election, not horizontal scale). Use 1 by default,
-  letting operators override via `kube-ovn-controller.replicas`.
-- everywhere else: keep the historical behaviour of one replica per master.
+dataPlaneOnly runs against external HCP ovn-central, so cap controller
+replicas at two while allowing single-node clusters to run one.
 */}}
 {{- define "kubeovn.controllerReplicas" -}}
 {{- $override := dig "replicas" nil (index .Values "kube-ovn-controller") -}}
-{{- if $override -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{- min 2 (include "kubeovn.k8sNodeCount" . | int) -}}
+{{- else if $override -}}
 {{ $override }}
-{{- else if eq .Values.installMode "dataPlaneOnly" -}}
-1
 {{- else -}}
 {{- include "kubeovn.nodeCount" . -}}
 {{- end -}}
@@ -156,10 +167,7 @@ Replica count for the kube-ovn-controller Deployment.
 
 {{/*
 Value of the NODE_IPS / OVN_DB_IPS env variable.
-  - dataPlaneOnly: emit externalOvnCentral.endpoint so agents/controller dial
-    the management cluster's exposed ovn-nb / ovn-sb via the configured LB IP.
-    Required — empty would fall back to OVN_NB_SERVICE_HOST which is not
-    injected in this mode because no local ovn-nb Service is rendered.
+  - dataPlaneOnly: invalid; workload components use OVN_NB_ADDR/OVN_SB_ADDR.
   - single (control-plane / full): emit empty so start-db.sh takes the
     standalone path and clients fall back to Service ClusterIP via the
     auto-injected OVN_*_SERVICE_HOST env vars.
@@ -169,10 +177,28 @@ Value of the NODE_IPS / OVN_DB_IPS env variable.
 {{- if index .Values "ovn-central" "hcp" "enabled" -}}
 {{- include "kubeovn.centralRaftAddresses" . -}}
 {{- else if eq .Values.installMode "dataPlaneOnly" -}}
-{{ required "installMode=dataPlaneOnly requires externalOvnCentral.endpoint (the management cluster's ovn-nb / ovn-sb VIP)" .Values.externalOvnCentral.endpoint }}
+{{- fail "installMode=dataPlaneOnly uses OVN_NB_ADDR/OVN_SB_ADDR; do not render OVN_DB_IPS" -}}
 {{- else if eq .Values.OVN_CENTRAL_MODE "single" -}}
 {{- else -}}
 {{ .Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .) }}
+{{- end -}}
+{{- end -}}
+
+{{- define "kubeovn.externalOvnNbAddress" -}}
+{{- $endpoint := required "installMode=dataPlaneOnly requires externalOvnCentral.nbEndpoint" .Values.externalOvnCentral.nbEndpoint -}}
+tcp:{{ include "kubeovn.externalOvnHost" $endpoint }}:{{ .Values.externalOvnCentral.nbPort | default 6641 }}
+{{- end -}}
+
+{{- define "kubeovn.externalOvnSbAddress" -}}
+{{- $endpoint := required "installMode=dataPlaneOnly requires externalOvnCentral.sbEndpoint" .Values.externalOvnCentral.sbEndpoint -}}
+tcp:{{ include "kubeovn.externalOvnHost" $endpoint }}:{{ .Values.externalOvnCentral.sbPort | default 6642 }}
+{{- end -}}
+
+{{- define "kubeovn.externalOvnHost" -}}
+{{- if and (contains ":" .) (not (hasPrefix "[" .)) -}}
+[{{ . }}]
+{{- else -}}
+{{ . }}
 {{- end -}}
 {{- end -}}
 
@@ -193,17 +219,16 @@ Value of the NODE_IPS / OVN_DB_IPS env variable.
 {{/*
 Validate the ovn-central.service block. Currently the only invariant we
 enforce is that LoadBalancer service type must come with an explicit
-loadBalancerIP, because externalOvnCentral.endpoint is a single IP and we
-need all three Services (ovn-nb / ovn-sb / ovn-northd) to land on the same
-VIP. Without it cloud LBs allocate three different IPs and tenant clusters
-can only reach one DB. Use {{- include "kubeovn.validateService" . }}
+loadBalancerIP, because ovn-nb / ovn-sb / ovn-northd should land on the same
+stable VIP when exposed through that Service type. Without it cloud LBs may
+allocate three different IPs unexpectedly. Use {{- include "kubeovn.validateService" . }}
 anywhere a Service is rendered so the validation runs on every template.
 */}}
 {{- define "kubeovn.validateService" -}}
 {{- $svc := index .Values "ovn-central" "service" -}}
 {{- if eq $svc.type "LoadBalancer" -}}
 {{- if not $svc.loadBalancerIP -}}
-{{- fail "ovn-central.service.type=LoadBalancer requires ovn-central.service.loadBalancerIP to be set so the three OVN Services share a single VIP. Without it cloud LB controllers allocate three separate IPs and externalOvnCentral.endpoint (single IP) can only reach one of NB/SB/northd. Pick a VIP, configure your LB controller to assign it (MetalLB allow-shared-ip annotation is emitted automatically), then re-run helm." -}}
+{{- fail "ovn-central.service.type=LoadBalancer requires ovn-central.service.loadBalancerIP to be set so ovn-nb / ovn-sb / ovn-northd share a stable VIP. Pick a VIP, configure your LB controller to assign it (MetalLB allow-shared-ip annotation is emitted automatically), then re-run helm." -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

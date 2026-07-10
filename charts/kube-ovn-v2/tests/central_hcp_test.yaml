@@ -6,8 +6,10 @@ templates:
   - central/southbound-service.yaml
   - central/central-rbac.yaml
   - controller/controller-deployment.yaml
+  - ic/ic-controller-deploy.yaml
   - ovs-ovn/ovs-ovn-daemonset.yaml
   - ovs-ovn/ovs-ovn-dpdk-daemonset.yaml
+  - hooks/upgrade-ovs-ovn.yaml
 tests:
   - it: renders ovn-central as a PVC-backed StatefulSet in the HCP namespace
     template: central/central-deployment.yaml
@@ -32,6 +34,12 @@ tests:
           path: spec.serviceName
           value: ovn-central
       - equal:
+          path: spec.persistentVolumeClaimRetentionPolicy.whenDeleted
+          value: Delete
+      - equal:
+          path: spec.persistentVolumeClaimRetentionPolicy.whenScaled
+          value: Delete
+      - equal:
           path: spec.template.spec.hostNetwork
           value: false
       - equal:
@@ -54,8 +62,10 @@ tests:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
-      - notExists:
+      - isNotNull:
           path: spec.template.spec.affinity.podAntiAffinity
+      - notExists:
+          path: spec.template.spec.affinity.nodeAffinity
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -72,6 +82,48 @@ tests:
       - equal:
           path: spec.volumeClaimTemplates[0].spec.storageClassName
           value: topolvm
+
+  - it: renders TLS cipher suites as readable repeated args
+    template: controller/controller-deployment.yaml
+    set:
+      masterNodes:
+        - 10.0.0.1
+      networking.tlsCipherSuites:
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+
+  - it: preserves user node affinity for HCP ovn-central
+    template: central/central-deployment.yaml
+    set:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+      central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution:
+        - matchExpressions:
+            - key: topology.kubernetes.io/zone
+              operator: In
+              values:
+                - zone-a
+    asserts:
+      - contains:
+          path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms
+          content:
+            matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: In
+                values:
+                  - zone-a
 
   - it: creates dedicated namespaced RBAC for HCP ovn-central
     template: central/central-rbac.yaml
@@ -218,6 +270,25 @@ tests:
             name: OVN_SB_ADDR
             value: tcp:ovn-sb.example.com:6642
 
+  - it: points ic-controller at independent HCP OVN DB addresses
+    template: ic/ic-controller-deploy.yaml
+    set:
+      features.enableOvnInterconnections: true
+      central.hcp.enabled: true
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:ovn-nb.example.com:6641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+
   - it: points ovs-ovn at the HCP OVN SB address
     template: ovs-ovn/ovs-ovn-daemonset.yaml
     set:
@@ -244,3 +315,19 @@ tests:
           content:
             name: OVN_SB_ADDR
             value: tcp:ovn-sb.example.com:6642
+
+  - it: points ovs upgrade hook at the HCP OVN NB address
+    template: hooks/upgrade-ovs-ovn.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    set:
+      central.hcp.enabled: true
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:ovn-nb.example.com:6641
