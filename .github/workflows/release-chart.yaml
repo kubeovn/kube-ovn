@@ -29,8 +29,48 @@ jobs:
         with:
           skip_existing: true
           packages_with_index: true
+          mark_as_latest: false
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Clean up chart releases
+        env:
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          GH_REPO: "${{ github.repository }}"
+        run: |
+          version=$(awk '/^version:/ {print $2}' charts/kube-ovn/Chart.yaml)
+
+          # chart-releaser creates one release per chart: kube-ovn-<version> and
+          # kube-ovn-v2-<version>. The v2 one is redundant (the chart itself is
+          # served from the gh-pages index and the OCI registry), so delete it.
+          if gh release view "kube-ovn-v2-${version}" >/dev/null 2>&1; then
+            gh release delete "kube-ovn-v2-${version}" --yes
+          fi
+
+          # Rename the kube-ovn-<version> release so it becomes the release of
+          # the plain git tag v1.x.y, unless that release already exists.
+          if gh release view "kube-ovn-${version}" >/dev/null 2>&1; then
+            if gh release view "${version}" >/dev/null 2>&1; then
+              gh release delete "kube-ovn-${version}" --yes
+            elif git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
+              gh release edit "kube-ovn-${version}" --tag "${version}" --title "${version}"
+            fi
+          fi
+
+      - name: Mark highest version as latest release
+        env:
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          GH_REPO: "${{ github.repository }}"
+        run: |
+          latest=$(gh api "repos/${GH_REPO}/releases" --paginate \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' | \
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          if [ -n "${latest}" ]; then
+            echo "Marking ${latest} as the latest release"
+            release_id=$(gh api "repos/${GH_REPO}/releases/tags/${latest}" --jq '.id')
+            gh api -X PATCH "repos/${GH_REPO}/releases/${release_id}" \
+              -f make_latest=true >/dev/null
+          fi
 
       - name: Login to GitHub Container Registry
         run: |
