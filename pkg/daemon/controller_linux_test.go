@@ -32,6 +32,143 @@ func newPodForPolicyRouting(name, namespace, subnetName, podIP string, podIPs []
 	}
 }
 
+func TestRouteDiff(t *testing.T) {
+	t.Parallel()
+
+	mustCIDR := func(s string) *net.IPNet {
+		_, ipNet, err := net.ParseCIDR(s)
+		require.NoError(t, err)
+		return ipNet
+	}
+
+	const (
+		overlayCIDR = "10.16.0.0/16"
+		joinV4CIDR  = "100.64.0.0/16"
+		joinV6CIDR  = "fd00:100:64::/64"
+		gateway     = "100.64.0.1"
+		joinIPv4    = "100.64.0.2"
+	)
+	nodeIPv4 := net.ParseIP("192.168.0.2")
+
+	// overlayRoute builds a kernel route for the overlay subnet with the given gw/scope.
+	overlayRoute := func(gw net.IP, scope netlink.Scope) netlink.Route {
+		return netlink.Route{Dst: mustCIDR(overlayCIDR), Src: nodeIPv4, Gw: gw, Scope: scope}
+	}
+
+	tests := []struct {
+		name        string
+		nodeNic     []netlink.Route
+		allRoutes   []netlink.Route
+		cidrs       []string
+		joinCIDR    []string
+		wantAddDst  []string
+		wantDelDst  []string
+		validateAdd func(t *testing.T, toAdd []netlink.Route)
+	}{
+		{
+			name:      "correct overlay route present -> no add",
+			allRoutes: []netlink.Route{overlayRoute(net.ParseIP(gateway), netlink.SCOPE_UNIVERSE)},
+			cidrs:     []string{overlayCIDR},
+		},
+		{
+			name:       "overlay route with tampered gw -> re-add to repair",
+			allRoutes:  []netlink.Route{overlayRoute(net.ParseIP("100.64.0.99"), netlink.SCOPE_UNIVERSE)},
+			cidrs:      []string{overlayCIDR},
+			wantAddDst: []string{overlayCIDR},
+			validateAdd: func(t *testing.T, toAdd []netlink.Route) {
+				require.True(t, toAdd[0].Gw.Equal(net.ParseIP(gateway)))
+				require.Equal(t, netlink.SCOPE_UNIVERSE, toAdd[0].Scope)
+			},
+		},
+		{
+			name:       "overlay route with tampered scope -> re-add to repair",
+			allRoutes:  []netlink.Route{overlayRoute(net.ParseIP(gateway), netlink.SCOPE_LINK)},
+			cidrs:      []string{overlayCIDR},
+			wantAddDst: []string{overlayCIDR},
+		},
+		{
+			name:       "overlay route missing -> add",
+			cidrs:      []string{overlayCIDR},
+			wantAddDst: []string{overlayCIDR},
+		},
+		{
+			name: "correct join route present -> no add",
+			allRoutes: []netlink.Route{
+				{Dst: mustCIDR(joinV4CIDR), Src: net.ParseIP(joinIPv4), Scope: netlink.SCOPE_LINK},
+			},
+			cidrs:    []string{joinV4CIDR},
+			joinCIDR: []string{joinV4CIDR},
+		},
+		{
+			name: "join route with tampered gw -> re-add to repair",
+			allRoutes: []netlink.Route{
+				{Dst: mustCIDR(joinV4CIDR), Src: net.ParseIP(joinIPv4), Gw: net.ParseIP(gateway), Scope: netlink.SCOPE_LINK},
+			},
+			cidrs:      []string{joinV4CIDR},
+			joinCIDR:   []string{joinV4CIDR},
+			wantAddDst: []string{joinV4CIDR},
+			validateAdd: func(t *testing.T, toAdd []netlink.Route) {
+				require.Nil(t, toAdd[0].Gw)
+				require.Equal(t, netlink.SCOPE_LINK, toAdd[0].Scope)
+			},
+		},
+		{
+			name: "join IPv6 route present (priority ignored) -> no add",
+			allRoutes: []netlink.Route{
+				// metric differs from the desired 256, but priority is not compared so the
+				// route is still considered present and is not re-added.
+				{Dst: mustCIDR(joinV6CIDR), Scope: netlink.SCOPE_LINK, Priority: 100},
+			},
+			cidrs:    []string{joinV6CIDR},
+			joinCIDR: []string{joinV6CIDR},
+		},
+		{
+			name: "join IPv6 route with tampered scope -> re-add to repair",
+			allRoutes: []netlink.Route{
+				{Dst: mustCIDR(joinV6CIDR), Scope: netlink.SCOPE_UNIVERSE, Priority: 256},
+			},
+			cidrs:      []string{joinV6CIDR},
+			joinCIDR:   []string{joinV6CIDR},
+			wantAddDst: []string{joinV6CIDR},
+			validateAdd: func(t *testing.T, toAdd []netlink.Route) {
+				require.Equal(t, netlink.SCOPE_LINK, toAdd[0].Scope)
+				require.Equal(t, 256, toAdd[0].Priority)
+			},
+		},
+		{
+			name:       "stale route on node nic not in cidrs -> delete",
+			nodeNic:    []netlink.Route{{Dst: mustCIDR("10.99.0.0/16"), Scope: netlink.SCOPE_UNIVERSE}},
+			cidrs:      []string{overlayCIDR},
+			wantAddDst: []string{overlayCIDR},
+			wantDelDst: []string{"10.99.0.0/16"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			toAdd, toDel := routeDiff(tt.nodeNic, tt.allRoutes, tt.cidrs, tt.joinCIDR, joinIPv4, "", gateway, nodeIPv4, nil)
+
+			gotAddDst := make([]string, 0, len(toAdd))
+			for _, r := range toAdd {
+				gotAddDst = append(gotAddDst, r.Dst.String())
+			}
+			require.ElementsMatch(t, tt.wantAddDst, gotAddDst)
+
+			gotDelDst := make([]string, 0, len(toDel))
+			for _, r := range toDel {
+				gotDelDst = append(gotDelDst, r.Dst.String())
+			}
+			require.ElementsMatch(t, tt.wantDelDst, gotDelDst)
+
+			if tt.validateAdd != nil {
+				tt.validateAdd(t, toAdd)
+			}
+		})
+	}
+}
+
 func TestGetPolicyRouting(t *testing.T) {
 	t.Parallel()
 
