@@ -233,6 +233,208 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 	})
 }
 
+func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
+	t.Parallel()
+
+	newController := func() *Controller {
+		return &Controller{
+			config:             &Configuration{EnableLb: true},
+			updateServiceQueue: newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
+		}
+	}
+
+	baseSvc := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "svc",
+			Namespace:       metav1.NamespaceDefault,
+			ResourceVersion: "1",
+		},
+		Spec: v1.ServiceSpec{
+			ClusterIP:  "10.96.0.10",
+			ClusterIPs: []string{"10.96.0.10"},
+			Ports:      []v1.ServicePort{{Name: "tcp", Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		mutateOld func(svc *v1.Service)
+		mutate    func(svc *v1.Service)
+		enqueued  bool
+	}{
+		{
+			name: "third-party annotation churn is skipped",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{"third-party/annotation": "changed"}
+			},
+			enqueued: false,
+		},
+		{
+			name: "status-only update is skipped",
+			mutate: func(svc *v1.Service) {
+				svc.Status.Conditions = []metav1.Condition{{Type: "Foo", Status: metav1.ConditionTrue}}
+			},
+			enqueued: false,
+		},
+		{
+			name: "port change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Spec.Ports[0].Port = 8080
+			},
+			enqueued: true,
+		},
+		{
+			name: "vpc annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.VpcAnnotation: "custom-vpc"}
+			},
+			enqueued: true,
+		},
+		{
+			name: "switch lb rule vip annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.SwitchLBRuleVipsAnnotation: "10.0.0.1"}
+			},
+			enqueued: true,
+		},
+		{
+			name: "cluster ip change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Spec.ClusterIP = "10.96.0.11"
+				svc.Spec.ClusterIPs = []string{"10.96.0.11"}
+			},
+			enqueued: true,
+		},
+		{
+			name: "deletion timestamp change is enqueued",
+			mutate: func(svc *v1.Service) {
+				now := metav1.Now()
+				svc.DeletionTimestamp = &now
+			},
+			enqueued: true,
+		},
+		{
+			name: "loadbalancer service is enqueued even on annotation churn",
+			mutateOld: func(svc *v1.Service) {
+				svc.Spec.Type = v1.ServiceTypeLoadBalancer
+			},
+			mutate: func(svc *v1.Service) {
+				svc.Spec.Type = v1.ServiceTypeLoadBalancer
+				svc.Annotations = map[string]string{"third-party/annotation": "changed"}
+			},
+			enqueued: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			oldSvc := baseSvc.DeepCopy()
+			newSvc := baseSvc.DeepCopy()
+			newSvc.ResourceVersion = "2"
+			if tt.mutateOld != nil {
+				tt.mutateOld(oldSvc)
+			}
+			tt.mutate(newSvc)
+
+			c := newController()
+			c.enqueueUpdateService(oldSvc, newSvc)
+			if tt.enqueued {
+				require.Equal(t, 1, c.updateServiceQueue.Len())
+			} else {
+				require.Zero(t, c.updateServiceQueue.Len())
+			}
+		})
+	}
+}
+
+func Test_enqueueUpdateEndpointSliceSkipsContentlessUpdates(t *testing.T) {
+	t.Parallel()
+
+	newController := func() *Controller {
+		return &Controller{
+			config:                        &Configuration{EnableLb: true},
+			addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+		}
+	}
+
+	ready := true
+	baseEps := &discoveryv1.EndpointSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "svc-abc12",
+			Namespace:       metav1.NamespaceDefault,
+			ResourceVersion: "1",
+			Labels:          map[string]string{discoveryv1.LabelServiceName: "svc"},
+		},
+		Endpoints: []discoveryv1.Endpoint{{
+			Addresses:  []string{"10.16.0.2"},
+			Conditions: discoveryv1.EndpointConditions{Ready: &ready},
+		}},
+		Ports: []discoveryv1.EndpointPort{{Port: &[]int32{80}[0]}},
+	}
+
+	tests := []struct {
+		name     string
+		mutate   func(eps *discoveryv1.EndpointSlice)
+		enqueued bool
+	}{
+		{
+			name: "trigger-time annotation churn is skipped",
+			mutate: func(eps *discoveryv1.EndpointSlice) {
+				eps.Annotations = map[string]string{"endpoints.kubernetes.io/last-change-trigger-time": "changed"}
+			},
+			enqueued: false,
+		},
+		{
+			name: "endpoint ready condition change is enqueued",
+			mutate: func(eps *discoveryv1.EndpointSlice) {
+				notReady := false
+				eps.Endpoints[0].Conditions.Ready = &notReady
+			},
+			enqueued: true,
+		},
+		{
+			name: "endpoint address change is enqueued",
+			mutate: func(eps *discoveryv1.EndpointSlice) {
+				eps.Endpoints[0].Addresses = []string{"10.16.0.3"}
+			},
+			enqueued: true,
+		},
+		{
+			name: "port change is enqueued",
+			mutate: func(eps *discoveryv1.EndpointSlice) {
+				eps.Ports[0].Port = &[]int32{8080}[0]
+			},
+			enqueued: true,
+		},
+		{
+			name: "service-name label change is enqueued",
+			mutate: func(eps *discoveryv1.EndpointSlice) {
+				eps.Labels[discoveryv1.LabelServiceName] = "svc2"
+			},
+			enqueued: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			oldEps := baseEps.DeepCopy()
+			newEps := baseEps.DeepCopy()
+			newEps.ResourceVersion = "2"
+			tt.mutate(newEps)
+
+			c := newController()
+			c.enqueueUpdateEndpointSlice(oldEps, newEps)
+			if tt.enqueued {
+				require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
+			} else {
+				require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
+			}
+		})
+	}
+}
+
 func Test_checkServiceLBIPBelongToSubnet(t *testing.T) {
 	const (
 		ns         = metav1.NamespaceDefault
