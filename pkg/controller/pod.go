@@ -1993,6 +1993,12 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 					providerName = fmt.Sprintf("%s.%s", providerName, attach.InterfaceRequest)
 				}
 
+				// IPAM-only attachments (e.g. ipvlan/macvlan with ipam.type kube-ovn) bind to a
+				// subnet whose provider is "<nad>.<namespace>" without the ".ovn" suffix, and the
+				// add path never appends the interface name to it. Match this form as well so the
+				// IP is released here instead of leaking (the periodic gc does not reclaim it).
+				ipamProviderName := fmt.Sprintf("%s.%s", attach.Name, attach.Namespace)
+
 				// if interface name is provided this means providerName will contain interface name
 				// say vm-overlay.default.ovn.net1 which will not match the `provider` definition in the config object
 				// for each interface then we need annotation
@@ -2001,8 +2007,11 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				subnetName := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, providerName)]
 				if subnetName == "" {
 					for _, subnet := range subnets {
-						if subnet.Spec.Provider == providerName {
+						if subnet.Spec.Provider == providerName || subnet.Spec.Provider == ipamProviderName {
 							subnetName = subnet.Name
+							// use the subnet's real provider so the released IP CR name
+							// (pod.namespace.provider) matches what was allocated
+							providerName = subnet.Spec.Provider
 							break
 						}
 					}
