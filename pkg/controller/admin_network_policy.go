@@ -33,7 +33,6 @@ const (
 type ChangedName struct {
 	// the rule name can be omitted default, add isMatch to append check for rule update
 	isMatch     bool
-	oldRuleName string
 	curRuleName string
 }
 
@@ -81,10 +80,12 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 		return
 	}
 
-	// Acls should be updated when action or ports of ingress/egress rule has been changed
+	// Acls should be updated when name, action or ports of ingress/egress rule has been changed.
+	// The rule name is part of both the acl name and the address set name referenced by the acl match,
+	// so a renamed rule requires the acls to be recreated together with the address sets.
 	for index, rule := range newAnpObj.Spec.Ingress {
 		oldRule := oldAnpObj.Spec.Ingress[index]
-		if oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
+		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
 			// It's difficult to distinguish which rule has changed and update acls for that rule, so go through the anp add process to recreate acls.
 			// If we want to get fine-grained changes over rule, maybe it's a better way to add a new queue to process the change
 			c.addAnpQueue.Add(newAnpObj.Name)
@@ -94,7 +95,7 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 
 	for index, rule := range newAnpObj.Spec.Egress {
 		oldRule := oldAnpObj.Spec.Egress[index]
-		if oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
+		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
 			c.addAnpQueue.Add(newAnpObj.Name)
 			return
 		}
@@ -112,15 +113,11 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 		c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: newAnpObj.Name, field: ChangedSubject})
 	}
 
-	// Rule name or peer selector in ingress/egress rule has changed, the corresponding address-set need be updated
+	// Peer selector in ingress/egress rule has changed, the corresponding address-set need be updated
 	ruleChanged := false
 	var changedIngressRuleNames, changedEgressRuleNames [util.AnpMaxRules]ChangedName
 	for index, rule := range newAnpObj.Spec.Ingress {
 		oldRule := oldAnpObj.Spec.Ingress[index]
-		if oldRule.Name != rule.Name {
-			changedIngressRuleNames[index] = ChangedName{oldRuleName: oldRule.Name, curRuleName: rule.Name}
-			ruleChanged = true
-		}
 		if !reflect.DeepEqual(oldRule.From, rule.From) {
 			changedIngressRuleNames[index] = ChangedName{curRuleName: rule.Name}
 			ruleChanged = true
@@ -133,10 +130,6 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 	ruleChanged = false
 	for index, rule := range newAnpObj.Spec.Egress {
 		oldRule := oldAnpObj.Spec.Egress[index]
-		if oldRule.Name != rule.Name {
-			changedEgressRuleNames[index] = ChangedName{oldRuleName: oldRule.Name, curRuleName: rule.Name}
-			ruleChanged = true
-		}
 		if !reflect.DeepEqual(oldRule.To, rule.To) {
 			changedEgressRuleNames[index] = ChangedName{curRuleName: rule.Name}
 			ruleChanged = true
@@ -470,21 +463,6 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 					klog.Errorf("failed to set ingress address-set for anp rule %s/%s, %v", anpName, rule.Name, err)
 					return err
 				}
-
-				if changed.ruleNames[index].oldRuleName != "" {
-					oldRuleName := changed.ruleNames[index].oldRuleName
-					// Normally the name can not be changed, but when the name really changes, the old address set should be deleted
-					// There is no description in the Name comments that it cannot be changed
-					oldAsV4Name, oldAsV6Name := getAnpAddressSetName(pgName, oldRuleName, index, true)
-
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV4Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV4Name, err)
-						// just record error log
-					}
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV6Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV6Name, err)
-					}
-				}
 			}
 		}
 	}
@@ -514,21 +492,6 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 					if err := c.reconcileDNSNameResolversForANP(anpName, currentDomainNames); err != nil {
 						klog.Errorf("failed to reconcile DNSNameResolvers for egress rule %s/%s, %v", anpName, rule.Name, err)
 						return err
-					}
-				}
-
-				if changed.ruleNames[index].oldRuleName != "" {
-					oldRuleName := changed.ruleNames[index].oldRuleName
-					// Normally the name can not be changed, but when the name really changes, the old address set should be deleted
-					// There is no description in the Name comments that it cannot be changed
-					oldAsV4Name, oldAsV6Name := getAnpAddressSetName(pgName, oldRuleName, index, false)
-
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV4Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV4Name, err)
-						// just record error log
-					}
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV6Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV6Name, err)
 					}
 				}
 			}
