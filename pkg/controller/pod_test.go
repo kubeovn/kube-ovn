@@ -1097,3 +1097,47 @@ func TestGetPodAttachmentNetDefaultSubnetGone(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, nets)
 }
+
+// TestGetPodAttachmentNetIPAMOnlyNADGone reproduces issue #6943: when an IPAM-only
+// attachment (e.g. ipvlan with ipam.type kube-ovn) is deleted after its NAD has
+// already been removed, the cleanup path must still resolve the attachment to its
+// subnet so the IP is released. The subnet provider is "<nad>.<namespace>" without
+// the ".ovn" suffix, so the returned net must carry that exact provider name so the
+// released IP CR name matches what was allocated.
+func TestGetPodAttachmentNetIPAMOnlyNADGone(t *testing.T) {
+	now := metav1.Now()
+	grace := int64(0)
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:                       "test-pod",
+			Namespace:                  metav1.NamespaceDefault,
+			DeletionTimestamp:          &now,
+			DeletionGracePeriodSeconds: &grace,
+			Annotations: map[string]string{
+				nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
+			},
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		// NAD intentionally absent: it was deleted before the pod.
+		Subnets: []*kubeovnv1.Subnet{
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "ipam-net1"},
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock: "10.1.0.0/16",
+					// IPAM-only provider: no ".ovn" suffix
+					Provider: "net1.default",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	controller := fakeController.fakeController
+
+	nets, err := controller.getPodAttachmentNet(pod)
+	require.NoError(t, err)
+	require.Len(t, nets, 1)
+	assert.Equal(t, "net1.default", nets[0].ProviderName)
+	assert.Equal(t, "ipam-net1", nets[0].Subnet.Name)
+}
