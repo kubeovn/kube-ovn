@@ -7815,7 +7815,7 @@ $(ovn_central_tls_env)
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 15
-            failureThreshold: 5
+            failureThreshold: 8
             timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
