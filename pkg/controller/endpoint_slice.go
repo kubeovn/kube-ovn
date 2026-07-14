@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -65,6 +66,15 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 	}
 
 	if len(oldEndpointSlice.Endpoints) == 0 && len(newEndpointSlice.Endpoints) == 0 {
+		return
+	}
+
+	// skip metadata-only churn, e.g. the endpoints.kubernetes.io/last-change-trigger-time
+	// annotation refresh: the LB backends are computed solely from endpoints, ports and
+	// the owning service.
+	if getServiceForEndpointSlice(oldEndpointSlice) == getServiceForEndpointSlice(newEndpointSlice) &&
+		reflect.DeepEqual(oldEndpointSlice.Endpoints, newEndpointSlice.Endpoints) &&
+		reflect.DeepEqual(oldEndpointSlice.Ports, newEndpointSlice.Ports) {
 		return
 	}
 
