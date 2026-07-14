@@ -53,9 +53,9 @@ func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {
 		return
 	}
 
-	// Acls should be updated when name, action or ports of ingress/egress rule has been changed.
-	// The rule name is part of both the acl name and the address set name referenced by the acl match,
-	// so a renamed rule requires the acls to be recreated together with the address sets.
+	// ACLs should be updated when the name, action, or ports of an ingress/egress rule have changed.
+	// The rule name is part of both the ACL name and the address set name referenced by the ACL match,
+	// so a renamed rule requires the ACLs to be recreated together with the address sets.
 	for index, rule := range newBanp.Spec.Ingress {
 		oldRule := oldBanp.Spec.Ingress[index]
 		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
