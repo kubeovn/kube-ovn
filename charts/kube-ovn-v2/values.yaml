@@ -564,6 +564,7 @@ ovsOvn:
   # @section -- OVS/OVN daemons configuration
   ovsDirectory: "/etc/origin/openvswitch"
   # -- Directory on the node where Open vSwitch (OVS) IPSEC keys live.
+  # @section -- OVS/OVN daemons configuration
   ovsIpsecKeysDirectory: "/etc/origin/ovs_ipsec_keys"
   # -- Directory on the node where Open Virtual Network (OVN) lives.
   # @section -- OVS/OVN daemons configuration

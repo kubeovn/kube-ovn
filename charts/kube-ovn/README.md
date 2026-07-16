@@ -53,5 +53,9 @@ and use the following options to install this Helm-chart:
 --set cni_conf.MOUNT_LOCAL_BIN_DIR=false
 --set OPENVSWITCH_DIR=/var/lib/openvswitch
 --set OVN_DIR=/var/lib/ovn
+--set OVN_IPSEC_KEY_DIR=/var/lib/ovs_ipsec_keys
 --set DISABLE_MODULES_MANAGEMENT=true
 ```
+
+`OVN_IPSEC_KEY_DIR` only becomes a host mount when `func.ENABLE_OVN_IPSEC` is enabled, but setting it up
+front keeps IPSEC from failing later with `mkdir /etc/origin: read-only file system`.
