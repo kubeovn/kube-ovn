@@ -39,9 +39,14 @@ ovsOvn:
   disableModulesManagement: true
   ovsDirectory: "/var/lib/openvswitch"
   ovnDirectory: "/var/lib/ovn"
+  ovsIpsecKeysDirectory: "/var/lib/ovs_ipsec_keys"
 cni:
   mountToolingDirectory: false
 ```
+
+All three `ovsOvn` directories must point outside `/etc`, which is read-only on Talos. `ovsIpsecKeysDirectory`
+only becomes a host mount when `features.enableOvnIpsec` is enabled, but setting it up front keeps IPSEC
+from failing later with `mkdir /etc/origin: read-only file system`.
 
 ## How to regenerate this README
 
@@ -1707,6 +1712,15 @@ false
 			<td>Directory on the node where Open vSwitch (OVS) lives.</td>
 		</tr>
 		<tr>
+			<td>ovsOvn.ovsIpsecKeysDirectory</td>
+			<td>string</td>
+			<td><pre lang="json">
+"/etc/origin/ovs_ipsec_keys"
+</pre>
+</td>
+			<td>Directory on the node where Open vSwitch (OVS) IPSEC keys live.</td>
+		</tr>
+		<tr>
 			<td>ovsOvn.podAnnotations</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -2011,25 +2025,3 @@ false
 		</tr>
 	</tbody>
 </table>
-
-<h3>Other Values</h3>
-<table>
-	<thead>
-		<th>Key</th>
-		<th>Type</th>
-		<th>Default</th>
-		<th>Description</th>
-	</thead>
-	<tbody>
-	<tr>
-		<td>ovsOvn.ovsIpsecKeysDirectory</td>
-		<td>string</td>
-		<td><pre lang="json">
-"/etc/origin/ovs_ipsec_keys"
-</pre>
-</td>
-		<td>Directory on the node where Open vSwitch (OVS) IPSEC keys live.</td>
-	</tr>
-	</tbody>
-</table>
-
