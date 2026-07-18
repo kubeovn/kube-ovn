@@ -49,7 +49,7 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
 # renovate: datasource=github-releases depName=cilium packageName=cilium/cilium
-CILIUM_VERSION = v1.19.5
+CILIUM_VERSION = v1.19.6
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 # renovate: datasource=github-releases depName=cert-manager packageName=cert-manager/cert-manager
