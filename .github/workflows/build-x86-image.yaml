@@ -81,7 +81,7 @@ jobs:
         with:
           driver-opts: env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: steps.check.outputs.build-base == 1
         id: setup-go
         with:
@@ -177,7 +177,7 @@ jobs:
 
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: go.mod
@@ -400,7 +400,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -458,7 +458,7 @@ jobs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: go.mod
@@ -540,7 +540,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -741,7 +741,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1103,7 +1103,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1299,7 +1299,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1458,7 +1458,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1610,7 +1610,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2028,7 +2028,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2173,7 +2173,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2450,7 +2450,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2598,7 +2598,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2761,7 +2761,7 @@ jobs:
           # restart docker
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2918,7 +2918,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3147,7 +3147,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3325,7 +3325,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3470,7 +3470,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3615,7 +3615,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3755,7 +3755,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3899,7 +3899,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -4013,7 +4013,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -4152,7 +4152,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
