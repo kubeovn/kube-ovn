@@ -39,9 +39,14 @@ ovsOvn:
   disableModulesManagement: true
   ovsDirectory: "/var/lib/openvswitch"
   ovnDirectory: "/var/lib/ovn"
+  ovsIpsecKeysDirectory: "/var/lib/ovs_ipsec_keys"
 cni:
   mountToolingDirectory: false
 ```
+
+All three `ovsOvn` directories must point outside `/etc`, which is read-only on Talos. `ovsIpsecKeysDirectory`
+only becomes a host mount when `features.enableOvnIpsec` is enabled, but setting it up front keeps IPSEC
+from failing later with `mkdir /etc/origin: read-only file system`.
 
 ## Migrate from v1 to v2 Chart
 

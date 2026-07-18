@@ -309,7 +309,7 @@ spec:
             path: {{ .Values.cni.toolingDirectory }}
         {{- end }}
         {{- if .Values.features.enableOvnIpsec }}
-          - name: ovs-ipsec-keys
-            hostPath:
-              path: {{ .Values.ovsOvn.ovsIpsecKeysDirectory }}
+        - name: ovs-ipsec-keys
+          hostPath:
+            path: {{ .Values.ovsOvn.ovsIpsecKeysDirectory }}
         {{- end }}
