@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +29,7 @@ type nftProtocolPort struct {
 type nftNATPolicy struct {
 	SubnetCIDR string
 	RuleID     string
+	Order      int
 	SrcIPs     []string
 	DstIPs     []string
 	Action     string
@@ -212,7 +214,7 @@ func nftSubnetNeedsNAT(subnet *kubeovnv1.Subnet) bool {
 }
 
 func addNFTNATPolicies(snapshot *nftFamilySnapshot, subnet *kubeovnv1.Subnet, cidr string) error {
-	for _, rule := range subnet.Status.NatOutgoingPolicyRules {
+	for order, rule := range subnet.Status.NatOutgoingPolicyRules {
 		if rule.RuleID == "" {
 			continue
 		}
@@ -230,6 +232,7 @@ func addNFTNATPolicies(snapshot *nftFamilySnapshot, subnet *kubeovnv1.Subnet, ci
 		snapshot.NATPolicies = append(snapshot.NATPolicies, nftNATPolicy{
 			SubnetCIDR: cidr,
 			RuleID:     rule.RuleID,
+			Order:      order,
 			SrcIPs:     srcIPs,
 			DstIPs:     dstIPs,
 			Action:     rule.Action,
@@ -416,6 +419,12 @@ func sortedUniqueProtocolPorts(values []nftProtocolPort) []nftProtocolPort {
 
 func sortedUniqueNATPolicies(values []nftNATPolicy) []nftNATPolicy {
 	slices.SortFunc(values, func(a, b nftNATPolicy) int {
+		if n := cmp.Compare(a.SubnetCIDR, b.SubnetCIDR); n != 0 {
+			return n
+		}
+		if n := cmp.Compare(a.Order, b.Order); n != 0 {
+			return n
+		}
 		return cmp.Compare(nftNATPolicyKey(a), nftNATPolicyKey(b))
 	})
 	return slices.CompactFunc(values, func(a, b nftNATPolicy) bool {
@@ -426,6 +435,7 @@ func sortedUniqueNATPolicies(values []nftNATPolicy) []nftNATPolicy {
 func nftNATPolicyKey(policy nftNATPolicy) string {
 	return strings.Join([]string{
 		policy.SubnetCIDR,
+		strconv.Itoa(policy.Order),
 		policy.RuleID,
 		strings.Join(policy.SrcIPs, ","),
 		strings.Join(policy.DstIPs, ","),
