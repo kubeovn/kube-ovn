@@ -1,9 +1,15 @@
 package daemon
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"strconv"
+	"strings"
 
 	"sigs.k8s.io/knftables"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const nftGatewayTable = "kube-ovn"
@@ -19,6 +25,9 @@ func (b *nftGatewayBackend) renderFull(snapshot gatewayNFTSnapshot) *knftables.T
 		b.renderNFTBaseSchema(tx, family)
 		b.renderNFTSets(tx, family)
 		b.renderNFTNATRules(tx, family)
+		b.renderNFTPolicyRules(tx, family)
+		b.renderNFTTProxyRules(tx, family)
+		b.renderNFTFilterAndMangleRules(tx, family)
 	}
 	return tx
 }
@@ -112,6 +121,15 @@ func (*nftGatewayBackend) renderNFTSets(tx *knftables.Transaction, snapshot nftF
 	for i := range sets {
 		tx.Add(&sets[i])
 	}
+	for _, policy := range snapshot.NATPolicies {
+		id := nftNATPolicyID(policy)
+		if len(policy.SrcIPs) != 0 {
+			tx.Add(&knftables.Set{Family: family, Table: table, Name: "nat-policy-" + id + "-src", Type: addressType, Flags: interval})
+		}
+		if len(policy.DstIPs) != 0 {
+			tx.Add(&knftables.Set{Family: family, Table: table, Name: "nat-policy-" + id + "-dst", Type: addressType, Flags: interval})
+		}
+	}
 
 	for _, item := range snapshot.ClusterIPPorts {
 		addNFTSetElement(tx, family, table, "cluster-ip-ports", item.Address, item.Protocol, strconv.FormatInt(int64(item.Port), 10))
@@ -136,6 +154,15 @@ func (*nftGatewayBackend) renderNFTSets(tx *knftables.Transaction, snapshot nftF
 	}
 	for _, item := range snapshot.LocalNodePorts {
 		addNFTSetElement(tx, family, table, "local-nodeports", item.Protocol, strconv.FormatInt(int64(item.Port), 10))
+	}
+	for _, policy := range snapshot.NATPolicies {
+		id := nftNATPolicyID(policy)
+		for _, item := range policy.SrcIPs {
+			addNFTSetElement(tx, family, table, "nat-policy-"+id+"-src", item)
+		}
+		for _, item := range policy.DstIPs {
+			addNFTSetElement(tx, family, table, "nat-policy-"+id+"-dst", item)
+		}
 	}
 }
 
@@ -222,6 +249,110 @@ func addNFTRule(tx *knftables.Transaction, family knftables.Family, table, chain
 		Rule:    rule,
 		Comment: new(comment),
 	})
+}
+
+func (*nftGatewayBackend) renderNFTPolicyRules(tx *knftables.Transaction, snapshot nftFamilySnapshot) {
+	family, table := snapshot.Family, nftSnapshotTable(snapshot)
+	ipToken := nftIPToken(family)
+	for _, policy := range snapshot.NATPolicies {
+		id := nftNATPolicyID(policy)
+		parts := []any{ipToken + " saddr", policy.SubnetCIDR}
+		if len(policy.SrcIPs) != 0 {
+			parts = append(parts, ipToken+" saddr @nat-policy-"+id+"-src")
+		}
+		if len(policy.DstIPs) != 0 {
+			parts = append(parts, ipToken+" daddr @nat-policy-"+id+"-dst")
+		}
+		switch strings.ToLower(policy.Action) {
+		case "nat":
+			parts = append(parts, "masquerade fully-random")
+		case "forward":
+			parts = append(parts, "accept")
+		default:
+			continue
+		}
+		addNFTRule(tx, family, table, "nat-policy", knftables.Concat(parts...), "nat-policy:"+id)
+	}
+	addNFTRule(tx, family, table, "nat-policy", "return", "nat-policy:return")
+}
+
+func (*nftGatewayBackend) renderNFTTProxyRules(tx *knftables.Transaction, snapshot nftFamilySnapshot) {
+	if snapshot.NodeInternalIP == "" {
+		return
+	}
+	family, table := snapshot.Family, nftSnapshotTable(snapshot)
+	ipToken := nftIPToken(family)
+	tproxyFamily := ipToken
+	tproxyAddress := snapshot.NodeInternalIP + ":" + strconv.Itoa(util.TProxyListenPort)
+	if family == knftables.IPv6Family {
+		tproxyAddress = "[" + snapshot.NodeInternalIP + "]:" + strconv.Itoa(util.TProxyListenPort)
+	}
+	for _, target := range snapshot.TProxyTargets {
+		match := knftables.Concat(ipToken+" daddr", target.Address, "tcp dport", target.Port)
+		addNFTRule(tx, family, table, "tproxy-output", knftables.Concat(
+			match,
+			"meta mark set", fmt.Sprintf("%#x", TProxyOutputMark),
+		), "tproxy-output:"+target.Address+":"+strconv.FormatInt(int64(target.Port), 10))
+		addNFTRule(tx, family, table, "tproxy-prerouting", knftables.Concat(
+			match,
+			"tproxy", tproxyFamily, "to", tproxyAddress,
+			"meta mark set", fmt.Sprintf("%#x", TProxyPreroutingMark),
+		), "tproxy-prerouting:"+target.Address+":"+strconv.FormatInt(int64(target.Port), 10))
+	}
+}
+
+func (*nftGatewayBackend) renderNFTFilterAndMangleRules(tx *knftables.Transaction, snapshot nftFamilySnapshot) {
+	family, table := snapshot.Family, nftSnapshotTable(snapshot)
+	ipToken := nftIPToken(family)
+	for _, counter := range snapshot.SubnetCounters {
+		id := nftStableID(counter.UID + "|" + counter.CIDR)
+		egress := "subnet-" + id + "-egress"
+		ingress := "subnet-" + id + "-ingress"
+		tx.Add(&knftables.Counter{Family: family, Table: table, Name: egress, Comment: new(counter.Name + " egress")})
+		tx.Add(&knftables.Counter{Family: family, Table: table, Name: ingress, Comment: new(counter.Name + " ingress")})
+		addNFTRule(tx, family, table, "filter-forward", knftables.Concat(
+			ipToken+" saddr", counter.CIDR, "counter name", egress,
+		), "counter:"+egress)
+		addNFTRule(tx, family, table, "filter-forward", knftables.Concat(
+			ipToken+" daddr", counter.CIDR, "counter name", ingress,
+		), "counter:"+ingress)
+	}
+
+	addNFTRule(tx, family, table, "filter-input", ipToken+" saddr @subnets accept", "filter-input-source")
+	addNFTRule(tx, family, table, "filter-input", ipToken+" daddr @subnets accept", "filter-input-destination")
+	addNFTRule(tx, family, table, "filter-forward", ipToken+" saddr @subnets accept", "filter-forward-source")
+	addNFTRule(tx, family, table, "filter-forward", ipToken+" daddr @subnets accept", "filter-forward-destination")
+	addNFTRule(tx, family, table, "filter-output", "udp dport { 6081, 4789 } meta mark set 0", "filter-output-tunnel-unmark")
+	addNFTRule(tx, family, table, "mangle-postrouting", knftables.Concat(
+		ipToken+" saddr @subnets",
+		"tcp flags & rst == rst",
+		"ct state invalid drop",
+	), "mangle-invalid-rst")
+	for _, item := range snapshot.CentralizedSNATs {
+		addNFTRule(tx, family, table, "mangle-postrouting", knftables.Concat(
+			ipToken+" saddr", item.CIDR,
+			"tcp flags & syn == 0",
+			"ct state new",
+			ipToken+" daddr != @subnets",
+			"drop",
+		), "mangle-centralized-orphan:"+item.CIDR)
+	}
+}
+
+func nftIPToken(family knftables.Family) string {
+	if family == knftables.IPv6Family {
+		return "ip6"
+	}
+	return "ip"
+}
+
+func nftNATPolicyID(policy nftNATPolicy) string {
+	return nftStableID(policy.SubnetCIDR + "|" + policy.RuleID)
+}
+
+func nftStableID(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:6])
 }
 
 func nftSnapshotTable(snapshot nftFamilySnapshot) string {
