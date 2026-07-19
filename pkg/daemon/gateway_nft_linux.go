@@ -161,6 +161,11 @@ func (b *nftGatewayBackend) ReadSubnetCounters(ctx context.Context) error {
 	}
 
 	metadata := nftCounterMetadataByName(*b.applied)
+	for key := range b.counterValues {
+		if _, ok := metadata[key]; !ok {
+			delete(b.counterValues, key)
+		}
+	}
 	for family, reader := range b.readers {
 		counters, err := reader.ListCounters(ctx)
 		if err != nil {
