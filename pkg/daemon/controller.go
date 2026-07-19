@@ -81,7 +81,8 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	protocol string
+	protocol              string
+	gatewayBackendManager *gatewayBackendManager
 
 	ControllerRuntime
 
@@ -177,6 +178,9 @@ func NewController(config *Configuration,
 	if err = controller.initRuntime(); err != nil {
 		return nil, err
 	}
+	iptablesBackend := &iptablesGatewayBackend{controller: controller}
+	controller.gatewayBackendManager = newGatewayBackendManager(iptablesBackend)
+	controller.gatewayBackendManager.current = iptablesBackend
 
 	podInformerFactory.Start(stopCh)
 	nodeInformerFactory.Start(stopCh)
@@ -976,10 +980,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
-	if err := c.setIPSet(); err != nil {
-		util.LogFatalAndExit(err, "failed to set ipsets")
-	}
-
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
 	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
@@ -992,10 +992,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
 	if c.config.EnableNonPrimaryCNI {
-		// In non-primary CNI mode, iptables cleanup is a one-time operation at startup.
-		// There is no dynamic state to reconcile, so periodic execution is unnecessary.
-		if err := c.cleanupIptablesInNonPrimaryCNIMode(); err != nil {
-			klog.Errorf("failed to cleanup iptables in non-primary CNI mode: %v", err)
+		// 非主 CNI 模式只在启动时清理一次；没有需要周期协调的动态 netfilter 状态。
+		if err := c.cleanupKubeOVNIptablesAndIPSets(); err != nil {
+			klog.Errorf("非主 CNI 模式清理 Kube-OVN netfilter 对象失败: %v", err)
 		}
 	} else {
 		go wait.Until(c.runGateway, 3*time.Second, stopCh)
