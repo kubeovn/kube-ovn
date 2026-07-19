@@ -1089,7 +1089,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add gateway event and metrics is introduced in v1.12")
-		nftablesMode := f.IsKubeProxyNFTables()
+		nftablesMode := f.IsGatewayNFTables()
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
@@ -1490,7 +1490,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
 	ginkgo.GinkgoHelper()
-	if f.IsKubeProxyNFTables() {
+	if f.IsGatewayNFTables() {
 		return
 	}
 
@@ -1548,7 +1548,7 @@ func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet
 
 func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
 	ginkgo.GinkgoHelper()
-	if f.IsKubeProxyNFTables() {
+	if f.IsGatewayNFTables() {
 		return
 	}
 
