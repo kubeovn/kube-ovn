@@ -1,12 +1,13 @@
 package framework
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/onsi/ginkgo/v2"
 )
 
-func (f *Framework) IsKubeProxyNFTables() bool {
+func (f *Framework) IsGatewayNFTables() bool {
 	ginkgo.GinkgoHelper()
 
 	daemonSetClient := f.DaemonSetClientNS(KubeOvnNamespace)
@@ -15,7 +16,18 @@ func (f *Framework) IsKubeProxyNFTables() bool {
 	ExpectNoError(err)
 	ExpectNotEmpty(pods.Items)
 
-	mode, _, err := ExecShellInContainer(f, pods.Items[0].Namespace, pods.Items[0].Name, "cni-server", "curl -fsS http://localhost:10249/proxyMode")
+	pod := pods.Items[0]
+	metricsURL := fmt.Sprintf("http://%s:10665/metrics", pod.Status.PodIP)
+	metrics, _, err := ExecShellInContainer(f, pod.Namespace, pod.Name, "cni-server", "curl -fsS "+metricsURL)
 	ExpectNoError(err)
-	return strings.TrimSpace(mode) == "nftables"
+	return gatewayBackendIsNFTables(metrics)
+}
+
+func gatewayBackendIsNFTables(metrics string) bool {
+	for line := range strings.Lines(metrics) {
+		if strings.TrimSpace(line) == `kube_ovn_gateway_netfilter_backend{backend="nftables"} 1` {
+			return true
+		}
+	}
+	return false
 }

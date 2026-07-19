@@ -54,7 +54,7 @@ var _ = framework.Describe("[group:service-cidr]", func() {
 	framework.ConformanceIt("should propagate a runtime ServiceCIDR object into node ipsets and remove it on deletion", func() {
 		f.SkipVersionPriorTo(skipVersionMajor, skipVersionMinor, "ServiceCIDR support landed in v1.17")
 		skipIfNoServiceCIDRAPI(cs)
-		if f.IsKubeProxyNFTables() {
+		if f.IsGatewayNFTables() {
 			ginkgo.Skip("nft 网关后端按实际 Service 同步，不维护 ServiceCIDR ipset")
 		}
 

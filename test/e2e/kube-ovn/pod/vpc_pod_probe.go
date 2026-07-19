@@ -202,7 +202,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int32, exist bool) {
 	ginkgo.GinkgoHelper()
-	if f.IsKubeProxyNFTables() {
+	if f.IsGatewayNFTables() {
 		return
 	}
 
