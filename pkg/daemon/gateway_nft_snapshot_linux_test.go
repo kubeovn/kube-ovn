@@ -180,6 +180,34 @@ func TestBuildNFTGatewaySnapshotPreservesNATPolicyOrder(t *testing.T) {
 	require.Equal(t, []string{"z-rule", "a-rule"}, []string{v4.NATPolicies[0].RuleID, v4.NATPolicies[1].RuleID})
 }
 
+func TestBuildNFTGatewaySnapshotSkipsEmptyNATPolicyMatch(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "empty-match", UID: types.UID("uid-empty-match")},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:         util.DefaultVpc,
+			CIDRBlock:   "10.19.0.0/24",
+			GatewayType: kubeovnv1.GWDistributedType,
+			NatOutgoing: true,
+		},
+		Status: kubeovnv1.SubnetStatus{NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRuleStatus{{
+			RuleID: "empty",
+			NatOutgoingPolicyRule: kubeovnv1.NatOutgoingPolicyRule{
+				Action: "nat",
+			},
+		}}},
+	}
+
+	snapshot, err := buildNFTGatewaySnapshot(nftSnapshotInput{
+		Protocol:      kubeovnv1.ProtocolIPv4,
+		ClusterRouter: util.DefaultVpc,
+		Subnets:       []*kubeovnv1.Subnet{subnet},
+	})
+	require.NoError(t, err)
+
+	v4 := nftFamilySnapshotForTest(t, snapshot, knftables.IPv4Family)
+	require.Empty(t, v4.NATPolicies)
+}
+
 func nftFamilySnapshotForTest(t *testing.T, snapshot gatewayNFTSnapshot, family knftables.Family) nftFamilySnapshot {
 	t.Helper()
 	for _, item := range snapshot.Families {

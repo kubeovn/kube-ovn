@@ -218,6 +218,9 @@ func addNFTNATPolicies(snapshot *nftFamilySnapshot, subnet *kubeovnv1.Subnet, ci
 		if rule.RuleID == "" {
 			continue
 		}
+		if rule.Match.SrcIPs == "" && rule.Match.DstIPs == "" {
+			continue
+		}
 		srcIPs, err := nftAddressesForFamily(rule.Match.SrcIPs, snapshot.Family)
 		if err != nil {
 			return fmt.Errorf("解析子网 %s NAT Policy %s 源地址: %w", subnet.Name, rule.RuleID, err)
