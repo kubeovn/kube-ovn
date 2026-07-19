@@ -370,6 +370,33 @@ false
 			<td>Extra environment variables to be added to kube-ovn-cni pods.</td>
 		</tr>
 		<tr>
+			<td>agent.gatewayNetfilterDetectTimeout</td>
+			<td>string</td>
+			<td><pre lang="json">
+"30s"
+</pre>
+</td>
+			<td>冷启动等待 kube-proxy 模式就绪的最长时间。</td>
+		</tr>
+		<tr>
+			<td>agent.gatewayNetfilterMode</td>
+			<td>string</td>
+			<td><pre lang="json">
+"auto"
+</pre>
+</td>
+			<td>网关 netfilter 后端：auto、iptables 或 nftables。</td>
+		</tr>
+		<tr>
+			<td>agent.kubeProxyModeEndpoint</td>
+			<td>string</td>
+			<td><pre lang="json">
+"http://localhost:10249/proxyMode"
+</pre>
+</td>
+			<td>本机 kube-proxy 的 proxyMode 端点。</td>
+		</tr>
+		<tr>
 			<td>agent.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
