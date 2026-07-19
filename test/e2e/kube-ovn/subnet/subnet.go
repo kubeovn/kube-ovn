@@ -1089,6 +1089,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add gateway event and metrics is introduced in v1.12")
+		nftablesMode := f.IsKubeProxyNFTables()
 
 		ginkgo.By("Creating subnet " + subnetName)
 		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
@@ -1099,23 +1100,25 @@ var _ = framework.Describe("[group:subnet]", func() {
 		framework.ExpectNoError(err)
 		framework.ExpectNotEmpty(nodes.Items)
 
-		for _, node := range nodes.Items {
-			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
+		if !nftablesMode {
+			for _, node := range nodes.Items {
+				ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
 
-			if cidrV4 != "" {
-				expectedRules := []string{
-					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
-					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
-				}
+				if cidrV4 != "" {
+					expectedRules := []string{
+						fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
+						fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
+					}
 
-				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, true)
-			}
-			if cidrV6 != "" {
-				expectedRules := []string{
-					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
-					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+					iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, true)
 				}
-				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, true)
+				if cidrV6 != "" {
+					expectedRules := []string{
+						fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+						fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+					}
+					iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, true)
+				}
 			}
 		}
 
@@ -1155,22 +1158,24 @@ var _ = framework.Describe("[group:subnet]", func() {
 		ginkgo.By("when remove subnet the iptables rules will remove")
 		subnetClient.DeleteSync(subnetName)
 
-		for _, node := range nodes.Items {
-			ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
-			if cidrV4 != "" {
-				expectedRules := []string{
-					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
-					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
-				}
+		if !nftablesMode {
+			for _, node := range nodes.Items {
+				ginkgo.By("Checking iptables rules on node " + node.Name + " for subnet " + subnetName)
+				if cidrV4 != "" {
+					expectedRules := []string{
+						fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
+						fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV4, util.OvnSubnetGatewayIptables, subnetName),
+					}
 
-				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, false)
-			}
-			if cidrV6 != "" {
-				expectedRules := []string{
-					fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
-					fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+					iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv4, expectedRules, false)
 				}
-				iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, false)
+				if cidrV6 != "" {
+					expectedRules := []string{
+						fmt.Sprintf(`-A %s -d %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+						fmt.Sprintf(`-A %s -s %s -m comment --comment "%s,%s"`, "FORWARD", cidrV6, util.OvnSubnetGatewayIptables, subnetName),
+					}
+					iptables.CheckIptablesRulesOnNode(f, node.Name, "filter", "FORWARD", apiv1.ProtocolIPv6, expectedRules, false)
+				}
 			}
 		}
 	})
@@ -1485,6 +1490,9 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
 	ginkgo.GinkgoHelper()
+	if f.IsKubeProxyNFTables() {
+		return
+	}
 
 	ginkgo.By(fmt.Sprintf("Checking nat policy rule ipset existed: %v", shouldExist))
 	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
@@ -1540,6 +1548,9 @@ func checkNatPolicyIPsets(f *framework.Framework, cs clientset.Interface, subnet
 
 func checkNatPolicyRules(f *framework.Framework, cs clientset.Interface, subnet *apiv1.Subnet, cidrV4, cidrV6 string, shouldExist bool) {
 	ginkgo.GinkgoHelper()
+	if f.IsKubeProxyNFTables() {
+		return
+	}
 
 	ginkgo.By(fmt.Sprintf("Checking nat policy rule existed: %v", shouldExist))
 	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)

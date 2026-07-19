@@ -202,6 +202,9 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 
 func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int32, exist bool) {
 	ginkgo.GinkgoHelper()
+	if f.IsKubeProxyNFTables() {
+		return
+	}
 
 	nodeName := pod.Spec.NodeName
 	node, err := f.ClientSet.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})

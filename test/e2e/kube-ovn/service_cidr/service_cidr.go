@@ -54,6 +54,9 @@ var _ = framework.Describe("[group:service-cidr]", func() {
 	framework.ConformanceIt("should propagate a runtime ServiceCIDR object into node ipsets and remove it on deletion", func() {
 		f.SkipVersionPriorTo(skipVersionMajor, skipVersionMinor, "ServiceCIDR support landed in v1.17")
 		skipIfNoServiceCIDRAPI(cs)
+		if f.IsKubeProxyNFTables() {
+			ginkgo.Skip("nft 网关后端按实际 Service 同步，不维护 ServiceCIDR ipset")
+		}
 
 		// One CIDR per cluster family. Daemon only manages an ipset for a
 		// family when that family is enabled on the node, so probing the
