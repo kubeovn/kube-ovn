@@ -1155,6 +1155,16 @@ agent:
   #  - name: CUSTOM_ENV_VAR
   #    value: "custom-value"
 
+  # -- 网关 netfilter 后端：auto、iptables 或 nftables。
+  # @section -- CNI agent configuration
+  gatewayNetfilterMode: auto
+  # -- 本机 kube-proxy 的 proxyMode 端点。
+  # @section -- CNI agent configuration
+  kubeProxyModeEndpoint: http://localhost:10249/proxyMode
+  # -- 冷启动等待 kube-proxy 模式就绪的最长时间。
+  # @section -- CNI agent configuration
+  gatewayNetfilterDetectTimeout: 30s
+
   # -- Agent daemon resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- CNI agent configuration
