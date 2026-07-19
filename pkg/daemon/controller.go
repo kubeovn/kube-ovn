@@ -203,6 +203,12 @@ func NewController(config *Configuration,
 	controller.gatewayBackendManager.factories[gatewayNetfilterModeNFTables] = func() (gatewayNetfilterBackend, error) {
 		return newNFTGatewayBackend(controller)
 	}
+	controller.gatewayBackendManager.warning = func(reason, message string) {
+		node, err := controller.nodesLister.Get(controller.config.NodeName)
+		if err == nil {
+			controller.recorder.Event(node, v1.EventTypeWarning, reason, message)
+		}
+	}
 
 	podInformerFactory.Start(stopCh)
 	nodeInformerFactory.Start(stopCh)

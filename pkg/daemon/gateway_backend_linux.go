@@ -25,6 +25,7 @@ type gatewayBackendManager struct {
 	detector  *proxyModeDetector
 	stability proxyModeStability
 	coldStart bool
+	warning   func(reason, message string)
 }
 
 func newGatewayBackendManager(backends ...gatewayNetfilterBackend) *gatewayBackendManager {
@@ -43,6 +44,8 @@ func (m *gatewayBackendManager) Reconcile(ctx context.Context) error {
 	desired, detectErr := m.desiredMode(ctx)
 	current := m.currentBackend()
 	if detectErr != nil {
+		metricGatewayNetfilterDetectFailures.Inc()
+		m.warn("GatewayNetfilterDetectFailed", detectErr.Error())
 		if current == nil {
 			return detectErr
 		}
@@ -51,15 +54,24 @@ func (m *gatewayBackendManager) Reconcile(ctx context.Context) error {
 
 	target, err := m.ensureBackend(desired)
 	if err != nil {
+		metricGatewayNetfilterSwitchFailures.Inc()
+		m.warn("GatewayNetfilterSwitchFailed", err.Error())
 		if current != nil {
 			return errors.Join(err, current.Reconcile(ctx))
 		}
 		return err
 	}
 	if current != nil && current.Name() == target.Name() {
+		setGatewayNetfilterBackendMetric(current.Name())
 		return current.Reconcile(ctx)
 	}
-	return m.switchTo(ctx, target)
+	if err := m.switchTo(ctx, target); err != nil {
+		metricGatewayNetfilterSwitchFailures.Inc()
+		m.warn("GatewayNetfilterSwitchFailed", err.Error())
+		return err
+	}
+	setGatewayNetfilterBackendMetric(target.Name())
+	return nil
 }
 
 func (m *gatewayBackendManager) ReadSubnetCounters(ctx context.Context) error {
@@ -136,6 +148,22 @@ func (m *gatewayBackendManager) currentBackend() gatewayNetfilterBackend {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	return m.current
+}
+
+func (m *gatewayBackendManager) warn(reason, message string) {
+	if m.warning != nil {
+		m.warning(reason, message)
+	}
+}
+
+func setGatewayNetfilterBackendMetric(mode gatewayNetfilterMode) {
+	for _, backend := range []gatewayNetfilterMode{gatewayNetfilterModeIPTables, gatewayNetfilterModeNFTables} {
+		value := 0.0
+		if backend == mode {
+			value = 1
+		}
+		metricGatewayNetfilterBackend.WithLabelValues(string(backend)).Set(value)
+	}
 }
 
 func (m *gatewayBackendManager) switchTo(ctx context.Context, target gatewayNetfilterBackend) error {

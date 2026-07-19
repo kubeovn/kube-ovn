@@ -136,15 +136,67 @@ var (
 	}, []string{
 		"hostname",
 	})
+
+	metricGatewayNetfilterBackend = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "kube_ovn_gateway_netfilter_backend",
+		Help: "当前网关 netfilter 后端，当前后端为 1。",
+	}, []string{"backend"})
+	metricGatewayNetfilterDetectFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "kube_ovn_gateway_netfilter_detect_failures_total",
+		Help: "kube-proxy 模式探测失败次数。",
+	})
+	metricGatewayNetfilterSwitchFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "kube_ovn_gateway_netfilter_switch_failures_total",
+		Help: "网关 netfilter 后端切换失败次数。",
+	})
+	metricGatewayNFTTransactions = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "kube_ovn_gateway_nft_transactions_total",
+		Help: "Kube-OVN nft transaction 执行次数。",
+	})
+	metricGatewayNFTTransactionFailures = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "kube_ovn_gateway_nft_transaction_failures_total",
+		Help: "Kube-OVN nft transaction 失败次数。",
+	})
+	metricGatewayNFTTransactionDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "kube_ovn_gateway_nft_transaction_duration_seconds",
+		Help:    "Kube-OVN nft transaction 执行耗时。",
+		Buckets: prometheus.DefBuckets,
+	})
+	metricGatewayNFTRepairs = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "kube_ovn_gateway_nft_repairs_total",
+		Help: "Kube-OVN nft 漂移修复次数。",
+	})
 )
 
 func InitMetrics() {
 	registerOvnSubnetGatewayMetrics()
 	registerSystemParameterMetrics()
+	if err := registerGatewayNetfilterMetrics(metrics.Registry); err != nil {
+		panic(err)
+	}
 	metrics.Registry.MustRegister(cniOperationHistogram)
 	metrics.Registry.MustRegister(cniWaitAddressResult)
 	metrics.Registry.MustRegister(cniWaitRouteResult)
 	metrics.Registry.MustRegister(cniConnectivityResult)
+}
+
+func registerGatewayNetfilterMetrics(registry prometheus.Registerer) error {
+	metricGatewayNetfilterBackend.WithLabelValues(string(gatewayNetfilterModeIPTables)).Set(0)
+	metricGatewayNetfilterBackend.WithLabelValues(string(gatewayNetfilterModeNFTables)).Set(0)
+	for _, collector := range []prometheus.Collector{
+		metricGatewayNetfilterBackend,
+		metricGatewayNetfilterDetectFailures,
+		metricGatewayNetfilterSwitchFailures,
+		metricGatewayNFTTransactions,
+		metricGatewayNFTTransactionFailures,
+		metricGatewayNFTTransactionDuration,
+		metricGatewayNFTRepairs,
+	} {
+		if err := registry.Register(collector); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func registerOvnSubnetGatewayMetrics() {
