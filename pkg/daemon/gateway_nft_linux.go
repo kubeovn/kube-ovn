@@ -5,26 +5,90 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/knftables"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const nftGatewayTable = "kube-ovn"
 
 type nftGatewayBackend struct {
+	mutex         sync.Mutex
+	controller    *Controller
 	writer        knftables.Interface
 	readers       map[knftables.Family]knftables.Interface
 	buildSnapshot func() (gatewayNFTSnapshot, error)
 	applied       *gatewayNFTSnapshot
 	lastAudit     time.Time
 	auditInterval time.Duration
+	counterValues map[string]nftCounterValue
+}
+
+type nftCounterValue struct {
+	packets uint64
+	bytes   uint64
+}
+
+type nftCounterMetadata struct {
+	subnetName string
+	cidr       string
+	direction  string
+	protocol   string
+}
+
+func newNFTGatewayBackend(controller *Controller) (*nftGatewayBackend, error) {
+	writer, err := knftables.New("", "", knftables.EmulateDestroy)
+	if err != nil {
+		return nil, fmt.Errorf("初始化 nft writer: %w", err)
+	}
+	readers := make(map[knftables.Family]knftables.Interface, 2)
+	for _, family := range []knftables.Family{knftables.IPv4Family, knftables.IPv6Family} {
+		reader, err := knftables.New(family, nftGatewayTable)
+		if err != nil {
+			return nil, fmt.Errorf("初始化 %s nft reader: %w", family, err)
+		}
+		readers[family] = reader
+	}
+	backend := &nftGatewayBackend{
+		controller:    controller,
+		writer:        writer,
+		readers:       readers,
+		auditInterval: 5 * time.Minute,
+		counterValues: make(map[string]nftCounterValue),
+	}
+	backend.buildSnapshot = controller.buildNFTSnapshot
+	return backend, nil
+}
+
+func (*nftGatewayBackend) Name() gatewayNetfilterMode {
+	return gatewayNetfilterModeNFTables
+}
+
+func (b *nftGatewayBackend) Cleanup(ctx context.Context) error {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	tx := b.writer.NewTransaction()
+	for _, family := range []knftables.Family{knftables.IPv4Family, knftables.IPv6Family} {
+		tx.Destroy(&knftables.Table{Family: family, Name: nftGatewayTable})
+	}
+	if err := b.writer.Run(ctx, tx); err != nil {
+		return fmt.Errorf("清理 Kube-OVN nft table: %w", err)
+	}
+	b.applied = nil
+	b.lastAudit = time.Time{}
+	clear(b.counterValues)
+	return nil
 }
 
 func (b *nftGatewayBackend) Reconcile(ctx context.Context) error {
@@ -32,6 +96,9 @@ func (b *nftGatewayBackend) Reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	initial := b.applied == nil
 
 	var (
 		tx      *knftables.Transaction
@@ -50,6 +117,11 @@ func (b *nftGatewayBackend) Reconcile(ctx context.Context) error {
 		tx = b.renderDiff(*b.applied, desired)
 	}
 	if tx.NumOperations() != 0 {
+		if initial {
+			if err := b.writer.Check(ctx, tx); err != nil {
+				return fmt.Errorf("校验 nft transaction: %w", err)
+			}
+		}
 		if err := b.writer.Run(ctx, tx); err != nil {
 			if knftables.IsNotFound(err) {
 				b.applied = nil
@@ -64,6 +136,127 @@ func (b *nftGatewayBackend) Reconcile(ctx context.Context) error {
 		b.lastAudit = time.Now()
 	}
 	return nil
+}
+
+func (b *nftGatewayBackend) ReadSubnetCounters(ctx context.Context) error {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	if b.applied == nil || b.controller == nil {
+		return nil
+	}
+
+	metadata := nftCounterMetadataByName(*b.applied)
+	for family, reader := range b.readers {
+		counters, err := reader.ListCounters(ctx)
+		if err != nil {
+			if knftables.IsNotFound(err) {
+				continue
+			}
+			return fmt.Errorf("读取 %s nft counter: %w", family, err)
+		}
+		for _, counter := range counters {
+			key := string(family) + "/" + counter.Name
+			meta, ok := metadata[key]
+			if !ok {
+				continue
+			}
+			current := nftCounterValue{packets: nftUint64(counter.Packets), bytes: nftUint64(counter.Bytes)}
+			previous, exists := b.counterValues[key]
+			b.counterValues[key] = current
+			if !exists || current.packets < previous.packets || current.bytes < previous.bytes {
+				continue
+			}
+			metricName := strings.Join([]string{meta.subnetName, meta.direction, meta.protocol}, "/")
+			metricOvnSubnetGatewayPackets.WithLabelValues(b.controller.config.NodeName, metricName, meta.cidr, meta.direction, meta.protocol).Add(float64(current.packets - previous.packets))
+			metricOvnSubnetGatewayPacketBytes.WithLabelValues(b.controller.config.NodeName, metricName, meta.cidr, meta.direction, meta.protocol).Add(float64(current.bytes - previous.bytes))
+		}
+	}
+	return nil
+}
+
+func (c *Controller) buildNFTSnapshot() (gatewayNFTSnapshot, error) {
+	services, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		return gatewayNFTSnapshot{}, fmt.Errorf("列出 Service: %w", err)
+	}
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return gatewayNFTSnapshot{}, fmt.Errorf("列出 Subnet: %w", err)
+	}
+	nodes, err := c.nodesLister.List(labels.Everything())
+	if err != nil {
+		return gatewayNFTSnapshot{}, fmt.Errorf("列出 Node: %w", err)
+	}
+
+	var tproxyPods []*corev1.Pod
+	if c.config.EnableTProxy {
+		pods, err := c.podsLister.List(labels.Everything())
+		if err != nil {
+			return gatewayNFTSnapshot{}, fmt.Errorf("列出 Pod: %w", err)
+		}
+		tproxyPods, err = c.getTProxyConditionPod(pods, true)
+		if err != nil {
+			return gatewayNFTSnapshot{}, err
+		}
+	}
+	localAddresses, err := localNFTAddresses()
+	if err != nil {
+		return gatewayNFTSnapshot{}, err
+	}
+	return buildNFTGatewaySnapshot(nftSnapshotInput{
+		Protocol:       c.protocol,
+		ClusterRouter:  c.config.ClusterRouter,
+		NodeName:       c.config.NodeName,
+		Services:       services,
+		Subnets:        subnets,
+		Nodes:          nodes,
+		TProxyPods:     tproxyPods,
+		LocalAddresses: localAddresses,
+	})
+}
+
+func localNFTAddresses() ([]string, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("列出本机网络接口: %w", err)
+	}
+	var result []string
+	for _, iface := range interfaces {
+		addresses, err := iface.Addrs()
+		if err != nil {
+			return nil, fmt.Errorf("列出接口 %s 地址: %w", iface.Name, err)
+		}
+		for _, address := range addresses {
+			ip, _, err := net.ParseCIDR(address.String())
+			if err == nil {
+				result = append(result, ip.String())
+			}
+		}
+	}
+	return sortedUniqueStrings(result), nil
+}
+
+func nftCounterMetadataByName(snapshot gatewayNFTSnapshot) map[string]nftCounterMetadata {
+	result := make(map[string]nftCounterMetadata)
+	for _, family := range snapshot.Families {
+		protocol := kubeovnv1.ProtocolIPv4
+		if family.Family == knftables.IPv6Family {
+			protocol = kubeovnv1.ProtocolIPv6
+		}
+		for _, counter := range family.SubnetCounters {
+			egress, ingress := nftSubnetCounterNames(counter)
+			result[string(family.Family)+"/"+egress] = nftCounterMetadata{subnetName: counter.Name, cidr: counter.CIDR, direction: "egress", protocol: protocol}
+			result[string(family.Family)+"/"+ingress] = nftCounterMetadata{subnetName: counter.Name, cidr: counter.CIDR, direction: "ingress", protocol: protocol}
+		}
+	}
+	return result
+}
+
+func nftUint64(value *uint64) uint64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func (b *nftGatewayBackend) auditDue() bool {

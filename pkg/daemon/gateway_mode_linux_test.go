@@ -5,10 +5,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestParseGatewayNetfilterMode(t *testing.T) {
@@ -78,4 +82,44 @@ func TestDetectorColdStartFallback(t *testing.T) {
 	mode, err := detector.detectColdStart(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, gatewayNetfilterModeNFTables, mode)
+}
+
+func TestDetectorColdStartWaitsForProxyMode(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) < 3 {
+			http.Error(w, "尚未就绪", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = io.WriteString(w, "nftables\n")
+	}))
+	defer server.Close()
+
+	detector := newProxyModeDetector(server.URL, time.Second, func(context.Context) (gatewayNetfilterMode, error) {
+		return gatewayNetfilterModeIPTables, nil
+	})
+	mode, err := detector.detectColdStart(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, gatewayNetfilterModeNFTables, mode)
+	require.GreaterOrEqual(t, requests.Load(), int32(3))
+}
+
+func TestDetectKubeProxyModeFromConfig(t *testing.T) {
+	client := fake.NewSimpleClientset(&corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "kube-proxy", Namespace: "kube-system"},
+		Data:       map[string]string{"config.conf": "mode: nftables\n"},
+	})
+	controller := &Controller{config: &Configuration{KubeClient: client}}
+
+	mode, err := controller.detectKubeProxyModeFromConfig(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, gatewayNetfilterModeNFTables, mode)
+}
+
+func TestDetectKubeProxyModeWithoutConfig(t *testing.T) {
+	controller := &Controller{config: &Configuration{KubeClient: fake.NewSimpleClientset()}}
+
+	mode, err := controller.detectKubeProxyModeFromConfig(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, gatewayNetfilterModeIPTables, mode)
 }
