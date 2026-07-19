@@ -2,8 +2,13 @@ package daemon
 
 import (
 	"context"
+	"errors"
+	"net"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/knftables"
@@ -181,4 +186,171 @@ func TestRenderNFTCounters(t *testing.T) {
 
 	second := renderTestSnapshot(t, family)
 	require.NotContains(t, second, "delete counter")
+}
+
+func TestNFTReconcileSetElementDiff(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family:  knftables.IPv4Family,
+		Table:   nftGatewayTable,
+		Subnets: []string{"10.16.0.0/24", "10.17.0.0/24"},
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        fake,
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	desired.Families[0].Subnets = []string{"10.17.0.0/24", "10.18.0.0/24"}
+	require.NoError(t, backend.Reconcile(context.Background()))
+
+	fake.RLock()
+	dump := fake.LastTransaction.String()
+	fake.RUnlock()
+	require.Contains(t, dump, "delete element ip kube-ovn subnets { 10.16.0.0/24 }")
+	require.Contains(t, dump, "add element ip kube-ovn subnets { 10.18.0.0/24 }")
+	require.NotContains(t, dump, "add table")
+	require.Equal(t, 2, fake.LastTransaction.NumOperations())
+}
+
+func TestNFTReconcilePolicyChainDiff(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family: knftables.IPv4Family,
+		Table:  nftGatewayTable,
+		NATPolicies: []nftNATPolicy{{
+			SubnetCIDR: "10.16.0.0/24",
+			RuleID:     "rule-1",
+			Action:     "nat",
+		}},
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        fake,
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	desired.Families[0].NATPolicies[0].Action = "forward"
+	require.NoError(t, backend.Reconcile(context.Background()))
+
+	fake.RLock()
+	dump := fake.LastTransaction.String()
+	fake.RUnlock()
+	require.Contains(t, dump, "flush chain ip kube-ovn nat-policy")
+	require.NotContains(t, dump, "flush chain ip kube-ovn tproxy-output")
+	require.NotContains(t, dump, "flush chain ip kube-ovn nat-postrouting")
+}
+
+func TestNFTReconcileFailureKeepsAppliedSnapshot(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	writer := &failingNFTInterface{Interface: fake}
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family:  knftables.IPv4Family,
+		Table:   nftGatewayTable,
+		Subnets: []string{"10.16.0.0/24"},
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        writer,
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	applied := *backend.applied
+	desired.Families[0].Subnets = []string{"10.17.0.0/24"}
+	writer.fail = true
+	require.Error(t, backend.Reconcile(context.Background()))
+	require.True(t, reflect.DeepEqual(applied, *backend.applied))
+}
+
+func TestNFTAuditRepairsElementDrift(t *testing.T) {
+	fake := knftables.NewFake(knftables.IPv4Family, nftGatewayTable)
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family:  knftables.IPv4Family,
+		Table:   nftGatewayTable,
+		Subnets: []string{"10.16.0.0/24"},
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        fake,
+		readers:       map[knftables.Family]knftables.Interface{knftables.IPv4Family: fake},
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+		auditInterval: time.Minute,
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	external := fake.NewTransaction()
+	external.Delete(&knftables.Element{Set: "subnets", Key: []string{"10.16.0.0/24"}})
+	require.NoError(t, fake.Run(context.Background(), external))
+	backend.lastAudit = time.Now().Add(-2 * time.Minute)
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	fake.RLock()
+	dump := fake.LastTransaction.String()
+	fake.RUnlock()
+	require.Contains(t, dump, "add element ip kube-ovn subnets { 10.16.0.0/24 }")
+}
+
+func TestNFTAuditRepairsRuleDrift(t *testing.T) {
+	fake := knftables.NewFake(knftables.IPv4Family, nftGatewayTable)
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family:  knftables.IPv4Family,
+		Table:   nftGatewayTable,
+		Subnets: []string{"10.16.0.0/24"},
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        fake,
+		readers:       map[knftables.Family]knftables.Interface{knftables.IPv4Family: fake},
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+		auditInterval: time.Minute,
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	fake.RLock()
+	handle := *fake.Table.Chains["nat-postrouting"].Rules[0].Handle
+	fake.RUnlock()
+	external := fake.NewTransaction()
+	external.Delete(&knftables.Rule{Chain: "nat-postrouting", Handle: &handle})
+	require.NoError(t, fake.Run(context.Background(), external))
+	backend.lastAudit = time.Now().Add(-2 * time.Minute)
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	fake.RLock()
+	dump := fake.LastTransaction.String()
+	fake.RUnlock()
+	require.Contains(t, dump, "flush chain ip kube-ovn nat-postrouting")
+	require.Contains(t, dump, `comment "nat-service"`)
+}
+
+type failingNFTInterface struct {
+	knftables.Interface
+	fail bool
+}
+
+func (f *failingNFTInterface) Run(ctx context.Context, tx *knftables.Transaction) error {
+	if f.fail {
+		return errors.New("事务失败")
+	}
+	return f.Interface.Run(ctx, tx)
+}
+
+func BenchmarkNFTSnapshotDiff(b *testing.B) {
+	oldFamily := nftFamilySnapshot{Family: knftables.IPv4Family, Table: nftGatewayTable}
+	oldFamily.ClusterIPPorts = make([]nftAddressPort, 10_000)
+	for i := range oldFamily.ClusterIPPorts {
+		oldFamily.ClusterIPPorts[i] = nftAddressPort{
+			Address:  net.IPv4(10, byte(i>>16), byte(i>>8), byte(i)).String(),
+			Protocol: "tcp",
+			Port:     int32(1 + i%65535),
+		}
+	}
+	newFamily := oldFamily
+	newFamily.ClusterIPPorts = slices.Clone(oldFamily.ClusterIPPorts)
+	newFamily.ClusterIPPorts[len(newFamily.ClusterIPPorts)-1].Port = 443
+	backend := &nftGatewayBackend{writer: knftables.NewFake("", "")}
+	oldSnapshot := gatewayNFTSnapshot{Families: []nftFamilySnapshot{oldFamily}}
+	newSnapshot := gatewayNFTSnapshot{Families: []nftFamilySnapshot{newFamily}}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = backend.renderDiff(oldSnapshot, newSnapshot)
+	}
 }
