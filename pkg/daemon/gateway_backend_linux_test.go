@@ -3,7 +3,11 @@ package daemon
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -110,4 +114,65 @@ func TestKubeOVNIPSetProtocol(t *testing.T) {
 		require.Equal(t, tt.owned, owned)
 		require.Equal(t, tt.protocol, protocol)
 	}
+}
+
+func TestGatewayBackendManagerAutoSwitchesAfterStableDetection(t *testing.T) {
+	proxyMode := "nftables"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, proxyMode)
+	}))
+	defer server.Close()
+
+	calls := []string{}
+	iptablesBackend := &recordingGatewayBackend{name: gatewayNetfilterModeIPTables, calls: &calls}
+	nftBackend := &recordingGatewayBackend{name: gatewayNetfilterModeNFTables, calls: &calls}
+	manager := newGatewayBackendManager(iptablesBackend, nftBackend)
+	manager.current = iptablesBackend
+	manager.mode = gatewayNetfilterModeAuto
+	manager.detector = newProxyModeDetector(server.URL, time.Second, nil)
+	manager.coldStart = true
+
+	require.NoError(t, manager.Reconcile(context.Background()))
+	require.Equal(t, []string{"nftables:reconcile", "iptables:cleanup"}, calls)
+
+	calls = nil
+	proxyMode = "iptables"
+	require.NoError(t, manager.Reconcile(context.Background()))
+	require.NoError(t, manager.Reconcile(context.Background()))
+	require.Equal(t, []string{"nftables:reconcile", "nftables:reconcile"}, calls)
+	require.NoError(t, manager.Reconcile(context.Background()))
+	require.Equal(t, []string{
+		"nftables:reconcile",
+		"nftables:reconcile",
+		"iptables:reconcile",
+		"nftables:cleanup",
+	}, calls)
+}
+
+func TestGatewayBackendManagerKeepsCurrentOnDetectionFailure(t *testing.T) {
+	calls := []string{}
+	nftBackend := &recordingGatewayBackend{name: gatewayNetfilterModeNFTables, calls: &calls}
+	manager := newGatewayBackendManager(nftBackend)
+	manager.current = nftBackend
+	manager.mode = gatewayNetfilterModeAuto
+	manager.detector = newProxyModeDetector("http://127.0.0.1:1/proxyMode", 10*time.Millisecond, nil)
+
+	require.Error(t, manager.Reconcile(context.Background()))
+	require.Equal(t, []string{"nftables:reconcile"}, calls)
+	require.Equal(t, nftBackend, manager.current)
+}
+
+func TestGatewayBackendManagerKeepsCurrentWhenFactoryFails(t *testing.T) {
+	calls := []string{}
+	iptablesBackend := &recordingGatewayBackend{name: gatewayNetfilterModeIPTables, calls: &calls}
+	manager := newGatewayBackendManager(iptablesBackend)
+	manager.current = iptablesBackend
+	manager.mode = gatewayNetfilterModeNFTables
+	manager.factories[gatewayNetfilterModeNFTables] = func() (gatewayNetfilterBackend, error) {
+		return nil, errors.New("nft 不可用")
+	}
+
+	require.Error(t, manager.Reconcile(context.Background()))
+	require.Equal(t, []string{"iptables:reconcile"}, calls)
+	require.Equal(t, iptablesBackend, manager.current)
 }

@@ -181,6 +181,28 @@ func NewController(config *Configuration,
 	iptablesBackend := &iptablesGatewayBackend{controller: controller}
 	controller.gatewayBackendManager = newGatewayBackendManager(iptablesBackend)
 	controller.gatewayBackendManager.current = iptablesBackend
+	modeValue := config.GatewayNetfilterMode
+	if modeValue == "" {
+		modeValue = string(gatewayNetfilterModeIPTables)
+	}
+	mode, err := parseGatewayNetfilterMode(modeValue)
+	if err != nil {
+		return nil, err
+	}
+	controller.gatewayBackendManager.mode = mode
+	controller.gatewayBackendManager.coldStart = mode == gatewayNetfilterModeAuto
+	endpoint := config.KubeProxyModeEndpoint
+	if endpoint == "" {
+		endpoint = "http://localhost:10249/proxyMode"
+	}
+	timeout := config.GatewayNetfilterDetectTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	controller.gatewayBackendManager.detector = newProxyModeDetector(endpoint, timeout, controller.detectKubeProxyModeFromConfig)
+	controller.gatewayBackendManager.factories[gatewayNetfilterModeNFTables] = func() (gatewayNetfilterBackend, error) {
+		return newNFTGatewayBackend(controller)
+	}
 
 	podInformerFactory.Start(stopCh)
 	nodeInformerFactory.Start(stopCh)
@@ -995,6 +1017,11 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 		// 非主 CNI 模式只在启动时清理一次；没有需要周期协调的动态 netfilter 状态。
 		if err := c.cleanupKubeOVNIptablesAndIPSets(); err != nil {
 			klog.Errorf("非主 CNI 模式清理 Kube-OVN netfilter 对象失败: %v", err)
+		}
+		if backend, err := newNFTGatewayBackend(c); err != nil {
+			klog.Errorf("非主 CNI 模式初始化 nft cleanup 失败: %v", err)
+		} else if err := backend.Cleanup(context.Background()); err != nil {
+			klog.Errorf("非主 CNI 模式清理 Kube-OVN nft table 失败: %v", err)
 		}
 	} else {
 		go wait.Until(c.runGateway, 3*time.Second, stopCh)

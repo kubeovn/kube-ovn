@@ -320,6 +320,18 @@ func TestNFTAuditRepairsRuleDrift(t *testing.T) {
 	require.Contains(t, dump, `comment "nat-service"`)
 }
 
+func TestNFTCleanupBothFamilies(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	backend := &nftGatewayBackend{writer: fake}
+
+	require.NoError(t, backend.Cleanup(context.Background()))
+	fake.RLock()
+	dump := fake.LastTransaction.String()
+	fake.RUnlock()
+	require.Contains(t, dump, "destroy table ip kube-ovn")
+	require.Contains(t, dump, "destroy table ip6 kube-ovn")
+}
+
 type failingNFTInterface struct {
 	knftables.Interface
 	fail bool
