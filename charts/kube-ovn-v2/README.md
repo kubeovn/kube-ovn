@@ -272,28 +272,28 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 			<td>agent.gatewayNetfilterDetectTimeout</td>
 			<td>string</td>
 			<td><pre lang="json">
-"30s"
+""
 </pre>
 </td>
-			<td>冷启动等待 kube-proxy 模式就绪的最长时间。</td>
+			<td>冷启动等待 kube-proxy 模式就绪的最长时间；留空使用 daemon 默认值 30s。</td>
 		</tr>
 		<tr>
 			<td>agent.gatewayNetfilterMode</td>
 			<td>string</td>
 			<td><pre lang="json">
-"auto"
+""
 </pre>
 </td>
-			<td>网关 netfilter 后端：auto、iptables 或 nftables。</td>
+			<td>网关 netfilter 后端：auto、iptables 或 nftables；留空使用 daemon 默认值 auto。</td>
 		</tr>
 		<tr>
 			<td>agent.kubeProxyModeEndpoint</td>
 			<td>string</td>
 			<td><pre lang="json">
-"http://localhost:10249/proxyMode"
+""
 </pre>
 </td>
-			<td>本机 kube-proxy 的 proxyMode 端点。</td>
+			<td>本机 kube-proxy 的 proxyMode 端点；留空使用 daemon 默认端点。</td>
 		</tr>
 		<tr>
 			<td>agent.labels</td>
