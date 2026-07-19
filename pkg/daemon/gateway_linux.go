@@ -976,12 +976,11 @@ func (c *Controller) setIptables() error {
 	return nil
 }
 
-func (c *Controller) cleanupIptablesInNonPrimaryCNIMode() error {
-	if c.iptables == nil {
-		return nil
-	}
-
+func (c *Controller) cleanupKubeOVNIptablesAndIPSets() error {
 	for _, protocol := range getProtocols(c.protocol) {
+		if c.iptables == nil {
+			break
+		}
 		// Clean up both the default (nft) and legacy iptables backends to handle
 		// environments where kube-ovn previously ran in legacy mode.
 		iptInstances := []*iptables.IPTables{c.iptables[protocol]}
@@ -1043,7 +1042,42 @@ func (c *Controller) cleanupIptablesInNonPrimaryCNIMode() error {
 		}
 	}
 
+	if c.k8sipsets == nil {
+		return nil
+	}
+	sets, err := c.k8sipsets.ListSets()
+	if err != nil {
+		return fmt.Errorf("列出 Kube-OVN ipset: %w", err)
+	}
+	for _, name := range sets {
+		protocol, owned := kubeOVNIPSetProtocol(name)
+		if !owned {
+			continue
+		}
+		if manager := c.ipsets[protocol]; manager != nil {
+			manager.RemoveIPSet(formatIPsetUnPrefix(name))
+		}
+	}
+	for _, protocol := range getProtocols(c.protocol) {
+		if manager := c.ipsets[protocol]; manager != nil {
+			manager.QueueResync()
+			manager.ApplyUpdates()
+			manager.ApplyDeletions()
+		}
+	}
+
 	return nil
+}
+
+func kubeOVNIPSetProtocol(name string) (string, bool) {
+	switch {
+	case strings.HasPrefix(name, "ovn40"):
+		return kubeovnv1.ProtocolIPv4, true
+	case strings.HasPrefix(name, "ovn60"):
+		return kubeovnv1.ProtocolIPv6, true
+	default:
+		return "", false
+	}
 }
 
 func getKubeOVNBaseIptablesRulesForCleanup(protocol string) []util.IPTableRule {

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"slices"
@@ -18,14 +19,11 @@ import (
 )
 
 func (c *Controller) runGateway() {
-	if err := c.setIPSet(); err != nil {
-		klog.Errorf("failed to set gw ipsets")
+	if err := c.gatewayBackendManager.Reconcile(context.Background()); err != nil {
+		klog.Errorf("协调网关 netfilter 后端失败: %v", err)
 	}
 	if err := c.setPolicyRouting(); err != nil {
 		klog.Errorf("failed to set gw policy routing")
-	}
-	if err := c.setIptables(); err != nil {
-		klog.Errorf("failed to set gw iptables")
 	}
 
 	if err := c.setGatewayBandwidth(); err != nil {
@@ -37,7 +35,6 @@ func (c *Controller) runGateway() {
 	if err := c.setExGateway(); err != nil {
 		klog.Errorf("failed to set ex gateway, %v", err)
 	}
-	c.gcIPSet()
 }
 
 func (c *Controller) setGatewayBandwidth() error {
