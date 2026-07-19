@@ -188,6 +188,19 @@ func TestRenderNFTCounters(t *testing.T) {
 	require.NotContains(t, second, "delete counter")
 }
 
+func TestNFTReadSubnetCountersPrunesRemovedBaselines(t *testing.T) {
+	applied := gatewayNFTSnapshot{}
+	backend := &nftGatewayBackend{
+		controller:    &Controller{},
+		readers:       map[knftables.Family]knftables.Interface{},
+		applied:       &applied,
+		counterValues: map[string]nftCounterValue{"ip/subnet-removed-egress": {}},
+	}
+
+	require.NoError(t, backend.ReadSubnetCounters(context.Background()))
+	require.Empty(t, backend.counterValues)
+}
+
 func TestNFTReconcileSetElementDiff(t *testing.T) {
 	fake := knftables.NewFake("", "")
 	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
