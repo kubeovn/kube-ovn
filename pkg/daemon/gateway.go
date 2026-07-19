@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"slices"
@@ -28,9 +29,10 @@ func (c *Controller) runGateway() {
 		name      string
 		reconcile func() error
 	}{
-		{name: "setIPSet", reconcile: c.setIPSet},
+		{name: "reconcileGatewayNetfilter", reconcile: func() error {
+			return c.gatewayBackendManager.Reconcile(context.Background())
+		}},
 		{name: "setPolicyRouting", reconcile: c.setPolicyRouting},
-		{name: "setIptables", reconcile: c.setIptables},
 		{name: "setGatewayBandwidth", reconcile: c.setGatewayBandwidth},
 		{name: "setICGateway", reconcile: c.setICGateway},
 		{name: "setExGateway", reconcile: c.setExGateway},
@@ -40,7 +42,7 @@ func (c *Controller) runGateway() {
 			klog.Errorf("gateway reconciliation stage %s failed: %v", stage.name, err)
 		}
 	}
-	c.gcIPSet()
+
 }
 
 func (c *Controller) setGatewayBandwidth() error {
