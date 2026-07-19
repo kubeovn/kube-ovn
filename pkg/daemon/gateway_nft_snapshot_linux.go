@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"net"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -350,7 +351,7 @@ func nftAddressesForFamily(value string, family knftables.Family) ([]string, err
 			result = append(result, address)
 		}
 	}
-	return sortedUniqueStrings(result), nil
+	return compactNFTIntervals(result), nil
 }
 
 func isNFTAddressFamily(address string, family knftables.Family) bool {
@@ -381,9 +382,9 @@ func normalizeNFTFamilySnapshot(snapshot *nftFamilySnapshot) {
 	snapshot.ClusterIPPorts = sortedUniqueAddressPorts(snapshot.ClusterIPPorts)
 	snapshot.ServiceVIPPorts = sortedUniqueAddressPorts(snapshot.ServiceVIPPorts)
 	snapshot.LocalNodePorts = sortedUniqueProtocolPorts(snapshot.LocalNodePorts)
-	snapshot.Subnets = sortedUniqueStrings(snapshot.Subnets)
-	snapshot.NATSubnets = sortedUniqueStrings(snapshot.NATSubnets)
-	snapshot.DistributedGWSubnets = sortedUniqueStrings(snapshot.DistributedGWSubnets)
+	snapshot.Subnets = compactNFTIntervals(snapshot.Subnets)
+	snapshot.NATSubnets = compactNFTIntervals(snapshot.NATSubnets)
+	snapshot.DistributedGWSubnets = compactNFTIntervals(snapshot.DistributedGWSubnets)
 	snapshot.OtherNodeIPs = sortedUniqueStrings(snapshot.OtherNodeIPs)
 	snapshot.NodeIPs = sortedUniqueStrings(snapshot.NodeIPs)
 	snapshot.NATPolicies = sortedUniqueNATPolicies(snapshot.NATPolicies)
@@ -395,6 +396,56 @@ func normalizeNFTFamilySnapshot(snapshot *nftFamilySnapshot) {
 func sortedUniqueStrings(values []string) []string {
 	slices.Sort(values)
 	return slices.Compact(values)
+}
+
+func compactNFTIntervals(values []string) []string {
+	prefixes := make([]netip.Prefix, 0, len(values))
+	for _, value := range values {
+		var (
+			prefix netip.Prefix
+			err    error
+		)
+		if strings.Contains(value, "/") {
+			prefix, err = netip.ParsePrefix(value)
+		} else {
+			var address netip.Addr
+			address, err = netip.ParseAddr(value)
+			if err == nil {
+				prefix = netip.PrefixFrom(address, address.BitLen())
+			}
+		}
+		if err != nil {
+			return sortedUniqueStrings(values)
+		}
+		prefixes = append(prefixes, prefix.Masked())
+	}
+
+	slices.SortFunc(prefixes, func(a, b netip.Prefix) int {
+		if n := a.Addr().Compare(b.Addr()); n != 0 {
+			return n
+		}
+		return cmp.Compare(a.Bits(), b.Bits())
+	})
+	compacted := make([]netip.Prefix, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		if len(compacted) != 0 {
+			existing := compacted[len(compacted)-1]
+			if existing.Bits() <= prefix.Bits() && existing.Contains(prefix.Addr()) {
+				continue
+			}
+		}
+		compacted = append(compacted, prefix)
+	}
+
+	result := make([]string, 0, len(compacted))
+	for _, prefix := range compacted {
+		if prefix.Bits() == prefix.Addr().BitLen() {
+			result = append(result, prefix.Addr().String())
+		} else {
+			result = append(result, prefix.String())
+		}
+	}
+	return result
 }
 
 func sortedUniqueAddressPorts(values []nftAddressPort) []nftAddressPort {
