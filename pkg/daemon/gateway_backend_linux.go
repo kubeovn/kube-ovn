@@ -62,8 +62,16 @@ func (m *gatewayBackendManager) Reconcile(ctx context.Context) error {
 		return err
 	}
 	if current != nil && current.Name() == target.Name() {
+		if err := current.Reconcile(ctx); err != nil {
+			return err
+		}
+		if err := m.cleanupAbandonedReadyBackend(ctx, current.Name()); err != nil {
+			metricGatewayNetfilterSwitchFailures.Inc()
+			m.warn("GatewayNetfilterSwitchFailed", err.Error())
+			return err
+		}
 		setGatewayNetfilterBackendMetric(current.Name())
-		return current.Reconcile(ctx)
+		return nil
 	}
 	if err := m.switchTo(ctx, target); err != nil {
 		metricGatewayNetfilterSwitchFailures.Inc()
@@ -154,6 +162,21 @@ func (m *gatewayBackendManager) warn(reason, message string) {
 	if m.warning != nil {
 		m.warning(reason, message)
 	}
+}
+
+func (m *gatewayBackendManager) cleanupAbandonedReadyBackend(ctx context.Context, current gatewayNetfilterMode) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	if m.ready == nil || m.ready.Name() == current {
+		return nil
+	}
+	if err := m.ready.Cleanup(ctx); err != nil {
+		m.degraded = true
+		return fmt.Errorf("清理已放弃的 %s 后端: %w", m.ready.Name(), err)
+	}
+	m.ready = nil
+	m.degraded = false
+	return nil
 }
 
 func setGatewayNetfilterBackendMetric(mode gatewayNetfilterMode) {
