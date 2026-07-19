@@ -208,6 +208,36 @@ func TestBuildNFTGatewaySnapshotSkipsEmptyNATPolicyMatch(t *testing.T) {
 	require.Empty(t, v4.NATPolicies)
 }
 
+func TestBuildNFTGatewaySnapshotCompactsOverlappingNATPolicyAddresses(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "overlap", UID: types.UID("uid-overlap")},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:         util.DefaultVpc,
+			CIDRBlock:   "10.18.0.0/24",
+			GatewayType: kubeovnv1.GWDistributedType,
+			NatOutgoing: true,
+		},
+		Status: kubeovnv1.SubnetStatus{NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRuleStatus{{
+			RuleID: "rule-overlap",
+			NatOutgoingPolicyRule: kubeovnv1.NatOutgoingPolicyRule{
+				Match: kubeovnv1.NatOutGoingPolicyMatch{
+					SrcIPs: "10.0.0.0/8,10.1.0.0/16,10.1.2.3",
+				},
+				Action: util.NatPolicyRuleActionNat,
+			},
+		}}},
+	}
+
+	snapshot, err := buildNFTGatewaySnapshot(nftSnapshotInput{
+		Protocol:      kubeovnv1.ProtocolIPv4,
+		ClusterRouter: util.DefaultVpc,
+		Subnets:       []*kubeovnv1.Subnet{subnet},
+	})
+	require.NoError(t, err)
+	v4 := nftFamilySnapshotForTest(t, snapshot, knftables.IPv4Family)
+	require.Equal(t, []string{"10.0.0.0/8"}, v4.NATPolicies[0].SrcIPs)
+}
+
 func nftFamilySnapshotForTest(t *testing.T, snapshot gatewayNFTSnapshot, family knftables.Family) nftFamilySnapshot {
 	t.Helper()
 	for _, item := range snapshot.Families {
