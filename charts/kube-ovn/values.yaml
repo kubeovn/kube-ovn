@@ -86,6 +86,12 @@ networking:
   NODE_SUBNET: "join"
   ENABLE_ECMP: false
   ENABLE_METRICS: true
+  # 网关 netfilter 后端：auto、iptables 或 nftables。
+  GATEWAY_NETFILTER_MODE: auto
+  # 本机 kube-proxy 的 proxyMode 端点。
+  KUBE_PROXY_MODE_ENDPOINT: http://localhost:10249/proxyMode
+  # 冷启动等待 kube-proxy 模式就绪的最长时间。
+  GATEWAY_NETFILTER_DETECT_TIMEOUT: 30s
   # comma-separated string of nodelocal DNS ip addresses
   NODE_LOCAL_DNS_IP: ""
   # comma-separated list of destination IP CIDRs that should skip conntrack processing
