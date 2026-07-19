@@ -97,6 +97,31 @@ func TestGatewayBackendManagerRetriesCleanup(t *testing.T) {
 	require.False(t, manager.degraded)
 }
 
+func TestGatewayBackendManagerCleansAbandonedReadyBackend(t *testing.T) {
+	calls := []string{}
+	iptablesBackend := &recordingGatewayBackend{
+		name:       gatewayNetfilterModeIPTables,
+		calls:      &calls,
+		cleanupErr: errors.New("清理失败"),
+	}
+	nftBackend := &recordingGatewayBackend{name: gatewayNetfilterModeNFTables, calls: &calls}
+	manager := newGatewayBackendManager(iptablesBackend, nftBackend)
+	manager.current = iptablesBackend
+
+	require.Error(t, manager.switchTo(context.Background(), nftBackend))
+	manager.mode = gatewayNetfilterModeIPTables
+	require.NoError(t, manager.Reconcile(context.Background()))
+	require.Equal(t, []string{
+		"nftables:reconcile",
+		"iptables:cleanup",
+		"iptables:reconcile",
+		"nftables:cleanup",
+	}, calls)
+	require.Equal(t, iptablesBackend, manager.current)
+	require.Nil(t, manager.ready)
+	require.False(t, manager.degraded)
+}
+
 func TestKubeOVNIPSetProtocol(t *testing.T) {
 	tests := []struct {
 		name     string
