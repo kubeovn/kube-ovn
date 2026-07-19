@@ -82,7 +82,7 @@ func (b *nftGatewayBackend) Cleanup(ctx context.Context) error {
 	for _, family := range []knftables.Family{knftables.IPv4Family, knftables.IPv6Family} {
 		tx.Destroy(&knftables.Table{Family: family, Name: nftGatewayTable})
 	}
-	if err := b.writer.Run(ctx, tx); err != nil {
+	if err := b.runTransaction(ctx, tx, false); err != nil {
 		return fmt.Errorf("清理 Kube-OVN nft table: %w", err)
 	}
 	b.applied = nil
@@ -117,16 +117,14 @@ func (b *nftGatewayBackend) Reconcile(ctx context.Context) error {
 		tx = b.renderDiff(*b.applied, desired)
 	}
 	if tx.NumOperations() != 0 {
-		if initial {
-			if err := b.writer.Check(ctx, tx); err != nil {
-				return fmt.Errorf("校验 nft transaction: %w", err)
-			}
-		}
-		if err := b.writer.Run(ctx, tx); err != nil {
+		if err := b.runTransaction(ctx, tx, initial); err != nil {
 			if knftables.IsNotFound(err) {
 				b.applied = nil
 			}
 			return fmt.Errorf("执行 nft transaction: %w", err)
+		}
+		if audited && !initial {
+			metricGatewayNFTRepairs.Inc()
 		}
 	}
 
@@ -136,6 +134,23 @@ func (b *nftGatewayBackend) Reconcile(ctx context.Context) error {
 		b.lastAudit = time.Now()
 	}
 	return nil
+}
+
+func (b *nftGatewayBackend) runTransaction(ctx context.Context, tx *knftables.Transaction, check bool) error {
+	if check {
+		if err := b.writer.Check(ctx, tx); err != nil {
+			metricGatewayNFTTransactionFailures.Inc()
+			return fmt.Errorf("校验 nft transaction: %w", err)
+		}
+	}
+	metricGatewayNFTTransactions.Inc()
+	start := time.Now()
+	err := b.writer.Run(ctx, tx)
+	metricGatewayNFTTransactionDuration.Observe(time.Since(start).Seconds())
+	if err != nil {
+		metricGatewayNFTTransactionFailures.Inc()
+	}
+	return err
 }
 
 func (b *nftGatewayBackend) ReadSubnetCounters(ctx context.Context) error {
