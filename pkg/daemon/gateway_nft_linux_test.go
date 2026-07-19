@@ -123,3 +123,62 @@ func renderTestSnapshot(t *testing.T, family nftFamilySnapshot) string {
 	require.NoError(t, fake.Check(context.Background(), tx))
 	return tx.String()
 }
+
+func TestRenderNFTNATPolicy(t *testing.T) {
+	dump := renderTestSnapshot(t, nftFamilySnapshot{
+		Family: knftables.IPv4Family,
+		Table:  nftGatewayTable,
+		NATPolicies: []nftNATPolicy{
+			{SubnetCIDR: "10.16.0.0/24", RuleID: "nat-rule", SrcIPs: []string{"10.16.0.10"}, DstIPs: []string{"0.0.0.0/0"}, Action: "nat"},
+			{SubnetCIDR: "10.16.0.0/24", RuleID: "forward-rule", DstIPs: []string{"192.0.2.0/24"}, Action: "forward"},
+		},
+	})
+
+	require.Contains(t, dump, "masquerade fully-random")
+	require.Contains(t, dump, "accept")
+	require.Contains(t, dump, "add rule ip kube-ovn nat-policy return")
+	require.NotContains(t, dump, "0x90001")
+	require.NotContains(t, dump, "0x90002")
+}
+
+func TestRenderNFTTProxyAndMangle(t *testing.T) {
+	dump := renderTestSnapshot(t, nftFamilySnapshot{
+		Family:         knftables.IPv4Family,
+		Table:          nftGatewayTable,
+		NodeInternalIP: "192.168.1.10",
+		Subnets:        []string{"10.16.0.0/16"},
+		CentralizedSNATs: []nftCentralizedSNAT{{
+			CIDR: "10.16.1.0/24",
+			IP:   "192.168.1.20",
+		}},
+		TProxyTargets: []nftTProxyTarget{{Address: "10.30.0.2", Port: 8080}},
+	})
+
+	require.Contains(t, dump, "tcp dport 8080 meta mark set 0x90003")
+	require.Contains(t, dump, "tcp dport 8080 tproxy ip to 192.168.1.10:8102 meta mark set 0x90004")
+	require.Contains(t, dump, "udp dport { 6081, 4789 } meta mark set 0")
+	require.Contains(t, dump, "tcp flags & rst == rst ct state invalid drop")
+	require.Contains(t, dump, "ip saddr 10.16.1.0/24 tcp flags & syn == 0 ct state new ip daddr != @subnets drop")
+}
+
+func TestRenderNFTCounters(t *testing.T) {
+	family := nftFamilySnapshot{
+		Family: knftables.IPv4Family,
+		Table:  nftGatewayTable,
+		SubnetCounters: []nftSubnetCounter{{
+			UID:  "uid-subnet-a",
+			Name: "subnet-a",
+			CIDR: "10.16.0.0/24",
+		}},
+	}
+	dump := renderTestSnapshot(t, family)
+
+	require.Contains(t, dump, "add counter ip kube-ovn subnet-")
+	require.Contains(t, dump, "counter name subnet-")
+	require.Contains(t, dump, `comment "subnet-a egress"`)
+	require.Contains(t, dump, `comment "subnet-a ingress"`)
+	require.NotContains(t, dump, "delete counter")
+
+	second := renderTestSnapshot(t, family)
+	require.NotContains(t, second, "delete counter")
+}
