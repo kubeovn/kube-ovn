@@ -71,6 +71,7 @@ require (
 	kubevirt.io/api v1.8.4
 	kubevirt.io/client-go v1.8.4
 	sigs.k8s.io/controller-runtime v0.24.1
+	sigs.k8s.io/knftables v0.0.21
 	sigs.k8s.io/network-policy-api v0.1.8-0.20251209142732-3910463a5686
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
 )
@@ -281,7 +282,6 @@ require (
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.35.0 // indirect
 	sigs.k8s.io/gateway-api v1.6.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
-	sigs.k8s.io/knftables v0.0.21 // indirect
 	sigs.k8s.io/kustomize/api v0.21.1 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.21.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
