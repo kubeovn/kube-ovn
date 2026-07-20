@@ -502,6 +502,18 @@ jobs:
         mode:
           - overlay
           - underlay
+        kube-proxy-mode:
+          - default
+        include:
+          - ip-family: ipv4
+            mode: overlay
+            kube-proxy-mode: nftables
+          - ip-family: ipv6
+            mode: overlay
+            kube-proxy-mode: nftables
+          - ip-family: dual
+            mode: overlay
+            kube-proxy-mode: nftables
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -588,7 +600,11 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          kind_target=kind-init-${{ matrix.ip-family }}
+          if [ "${{ matrix.kube-proxy-mode }}" = "nftables" ]; then
+            kind_target=kind-init-nftables-${{ matrix.ip-family }}
+          fi
+          make kind-ghcr-pull "$kind_target"
 
       - name: Install Kube-OVN
         id: install
@@ -606,28 +622,28 @@ jobs:
       - name: Collect k8s events
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
-          kubectl get events -A -o yaml > k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-events.yaml
-          tar zcf k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-events.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-events.yaml
+          kubectl get events -A -o yaml > k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-events.yaml
+          tar zcf k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-events.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-events
-          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-events.tar.gz
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-events
+          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-events.tar.gz
 
       - name: Collect apiserver audit logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
-          tar zcf k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-audit-log.tar.gz kube-apiserver-audit.log
+          tar zcf k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-audit-log
-          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-audit-log.tar.gz
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-audit-log
+          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-audit-log.tar.gz
 
 
       - name: Check kube ovn pod restarts
@@ -639,14 +655,14 @@ jobs:
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
-          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
-          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-ko-log
+          path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-${{ matrix.kube-proxy-mode }}-ko-log.tar.gz
 
       - name: Check valgrind result
         run: |
@@ -1070,6 +1086,18 @@ jobs:
         mode:
           - overlay
           - underlay
+        kube-proxy-mode:
+          - default
+        include:
+          - ip-family: ipv4
+            mode: overlay
+            kube-proxy-mode: nftables
+          - ip-family: ipv6
+            mode: overlay
+            kube-proxy-mode: nftables
+          - ip-family: dual
+            mode: overlay
+            kube-proxy-mode: nftables
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -1151,7 +1179,11 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          kind_target=kind-init-${{ matrix.ip-family }}
+          if [ "${{ matrix.kube-proxy-mode }}" = "nftables" ]; then
+            kind_target=kind-init-nftables-${{ matrix.ip-family }}
+          fi
+          make kind-ghcr-pull "$kind_target"
 
       - name: Install Kube-OVN
         id: install
@@ -1173,28 +1205,28 @@ jobs:
       - name: Collect k8s events
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
-          kubectl get events -A -o yaml > kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
-          tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
+          kubectl get events -A -o yaml > kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-events.yaml
+          tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-events.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
-          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
+          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-events
+          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-events.tar.gz
 
       - name: Collect apiserver audit logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
-          tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
+          tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
-          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz
+          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-audit-log
+          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-audit-log.tar.gz
 
 
       - name: Check kube ovn pod restarts
@@ -1206,14 +1238,14 @@ jobs:
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
+          mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
-          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
-          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
+          name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-ko-log
+          path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-${{ matrix.kube-proxy-mode }}-ko-log.tar.gz
 
       - name: Check valgrind result
         run: |

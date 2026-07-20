@@ -1020,14 +1020,14 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
 	if c.config.EnableNonPrimaryCNI {
-		// 非主 CNI 模式只在启动时清理一次；没有需要周期协调的动态 netfilter 状态。
+		// Non-primary CNI mode only cleans up once at startup because it has no dynamic netfilter state to reconcile.
 		if err := c.cleanupKubeOVNIptablesAndIPSets(); err != nil {
-			klog.Errorf("非主 CNI 模式清理 Kube-OVN netfilter 对象失败: %v", err)
+			klog.Errorf("failed to clean up Kube-OVN netfilter objects in non-primary CNI mode: %v", err)
 		}
 		if backend, err := newNFTGatewayBackend(c); err != nil {
-			klog.Errorf("非主 CNI 模式初始化 nft cleanup 失败: %v", err)
+			klog.Errorf("failed to initialize nftables cleanup in non-primary CNI mode: %v", err)
 		} else if err := backend.Cleanup(context.Background()); err != nil {
-			klog.Errorf("非主 CNI 模式清理 Kube-OVN nft table 失败: %v", err)
+			klog.Errorf("failed to clean up the Kube-OVN nftables table in non-primary CNI mode: %v", err)
 		}
 	} else {
 		go wait.Until(c.runGateway, 3*time.Second, stopCh)

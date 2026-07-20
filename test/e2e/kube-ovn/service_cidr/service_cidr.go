@@ -55,7 +55,7 @@ var _ = framework.Describe("[group:service-cidr]", func() {
 		f.SkipVersionPriorTo(skipVersionMajor, skipVersionMinor, "ServiceCIDR support landed in v1.17")
 		skipIfNoServiceCIDRAPI(cs)
 		if f.IsGatewayNFTables() {
-			ginkgo.Skip("nft 网关后端按实际 Service 同步，不维护 ServiceCIDR ipset")
+			ginkgo.Skip("the nftables gateway backend tracks actual Services and does not maintain a ServiceCIDR ipset")
 		}
 
 		// One CIDR per cluster family. Daemon only manages an ipset for a

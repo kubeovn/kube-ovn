@@ -352,7 +352,7 @@ type failingNFTInterface struct {
 
 func (f *failingNFTInterface) Run(ctx context.Context, tx *knftables.Transaction) error {
 	if f.fail {
-		return errors.New("事务失败")
+		return errors.New("transaction failed")
 	}
 	return f.Interface.Run(ctx, tx)
 }

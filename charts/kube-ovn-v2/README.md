@@ -275,7 +275,7 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 ""
 </pre>
 </td>
-			<td>冷启动等待 kube-proxy 模式就绪的最长时间；留空使用 daemon 默认值 30s。</td>
+			<td>Maximum time to wait for the kube-proxy mode during cold start; leave empty to use the daemon default of 30s.</td>
 		</tr>
 		<tr>
 			<td>agent.gatewayNetfilterMode</td>
@@ -284,7 +284,7 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 ""
 </pre>
 </td>
-			<td>网关 netfilter 后端：auto、iptables 或 nftables；留空使用 daemon 默认值 auto。</td>
+			<td>Gateway netfilter backend: auto, iptables, or nftables; leave empty to use the daemon default of auto.</td>
 		</tr>
 		<tr>
 			<td>agent.kubeProxyModeEndpoint</td>
@@ -293,7 +293,7 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 ""
 </pre>
 </td>
-			<td>本机 kube-proxy 的 proxyMode 端点；留空使用 daemon 默认端点。</td>
+			<td>Local kube-proxy proxyMode endpoint; leave empty to use the daemon default endpoint.</td>
 		</tr>
 		<tr>
 			<td>agent.labels</td>

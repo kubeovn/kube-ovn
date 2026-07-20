@@ -245,6 +245,6 @@ func nftFamilySnapshotForTest(t *testing.T, snapshot gatewayNFTSnapshot, family 
 			return item
 		}
 	}
-	require.FailNow(t, "未找到 nft family", string(family))
+	require.FailNow(t, "nftables family not found", string(family))
 	return nftFamilySnapshot{}
 }

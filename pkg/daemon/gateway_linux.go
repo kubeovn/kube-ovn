@@ -1047,7 +1047,7 @@ func (c *Controller) cleanupKubeOVNIptablesAndIPSets() error {
 	}
 	sets, err := c.k8sipsets.ListSets()
 	if err != nil {
-		return fmt.Errorf("列出 Kube-OVN ipset: %w", err)
+		return fmt.Errorf("list Kube-OVN ipsets: %w", err)
 	}
 	for _, name := range sets {
 		protocol, owned := kubeOVNIPSetProtocol(name)

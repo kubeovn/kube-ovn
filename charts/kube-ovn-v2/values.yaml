@@ -1155,13 +1155,13 @@ agent:
   #  - name: CUSTOM_ENV_VAR
   #    value: "custom-value"
 
-  # -- 网关 netfilter 后端：auto、iptables 或 nftables；留空使用 daemon 默认值 auto。
+  # -- Gateway netfilter backend: auto, iptables, or nftables; leave empty to use the daemon default of auto.
   # @section -- CNI agent configuration
   gatewayNetfilterMode: ""
-  # -- 本机 kube-proxy 的 proxyMode 端点；留空使用 daemon 默认端点。
+  # -- Local kube-proxy proxyMode endpoint; leave empty to use the daemon default endpoint.
   # @section -- CNI agent configuration
   kubeProxyModeEndpoint: ""
-  # -- 冷启动等待 kube-proxy 模式就绪的最长时间；留空使用 daemon 默认值 30s。
+  # -- Maximum time to wait for the kube-proxy mode during cold start; leave empty to use the daemon default of 30s.
   # @section -- CNI agent configuration
   gatewayNetfilterDetectTimeout: ""
 

@@ -139,32 +139,32 @@ var (
 
 	metricGatewayNetfilterBackend = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kube_ovn_gateway_netfilter_backend",
-		Help: "当前网关 netfilter 后端，当前后端为 1。",
+		Help: "Current gateway netfilter backend; the active backend is set to 1.",
 	}, []string{"backend"})
 	metricGatewayNetfilterDetectFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "kube_ovn_gateway_netfilter_detect_failures_total",
-		Help: "kube-proxy 模式探测失败次数。",
+		Help: "Number of kube-proxy mode detection failures.",
 	})
 	metricGatewayNetfilterSwitchFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "kube_ovn_gateway_netfilter_switch_failures_total",
-		Help: "网关 netfilter 后端切换失败次数。",
+		Help: "Number of gateway netfilter backend switch failures.",
 	})
 	metricGatewayNFTTransactions = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "kube_ovn_gateway_nft_transactions_total",
-		Help: "Kube-OVN nft transaction 执行次数。",
+		Help: "Number of Kube-OVN nftables transactions.",
 	})
 	metricGatewayNFTTransactionFailures = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "kube_ovn_gateway_nft_transaction_failures_total",
-		Help: "Kube-OVN nft transaction 失败次数。",
+		Help: "Number of failed Kube-OVN nftables transactions.",
 	})
 	metricGatewayNFTTransactionDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "kube_ovn_gateway_nft_transaction_duration_seconds",
-		Help:    "Kube-OVN nft transaction 执行耗时。",
+		Help:    "Duration of Kube-OVN nftables transactions.",
 		Buckets: prometheus.DefBuckets,
 	})
 	metricGatewayNFTRepairs = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "kube_ovn_gateway_nft_repairs_total",
-		Help: "Kube-OVN nft 漂移修复次数。",
+		Help: "Number of Kube-OVN nftables drift repairs.",
 	})
 )
 
