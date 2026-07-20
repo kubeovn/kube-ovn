@@ -56,6 +56,19 @@ const (
 	// IPv4 address; the webhook rejects share on an IPv6-only EIP and the controller requeues
 	// while the EIP is still being allocated (v4 not yet assigned).
 	DnatRuleTypeShare = "share"
+
+	// DnatSessionAffinityNone disables client-IP session affinity (default): backends are
+	// selected purely by numgen random per new connection and then pinned by conntrack.
+	DnatSessionAffinityNone = ""
+
+	// DnatSessionAffinityClientIP enables client-IP session affinity for share type DNAT:
+	// connections from the same client IP are pinned to the same backend for a sticky window
+	// (see SessionAffinityTimeoutSeconds), following the kube-proxy nftables affinity pattern.
+	DnatSessionAffinityClientIP = "ClientIP"
+
+	// DefaultDnatSessionAffinityTimeoutSeconds is the default sticky window (3h, matching
+	// Kubernetes' default) applied when SessionAffinity is ClientIP but no timeout is set.
+	DefaultDnatSessionAffinityTimeoutSeconds int32 = 10800
 )
 
 type IptablesDnatRuleSpec struct {
@@ -83,6 +96,21 @@ type IptablesDnatRuleSpec struct {
 	// +kubebuilder:default=exclusive
 	// +optional
 	Type string `json:"type,omitempty"`
+	// SessionAffinity controls client-IP session affinity for share type DNAT. Only "" (none,
+	// default) and "ClientIP" are supported, and it is ignored for exclusive type. When set to
+	// "ClientIP", connections from the same client IP are pinned to the same backend for
+	// SessionAffinityTimeoutSeconds, implemented with per-backend nftables affinity sets
+	// (kube-proxy nftables pattern).
+	// +kubebuilder:validation:Enum="";ClientIP
+	// +optional
+	SessionAffinity string `json:"sessionAffinity,omitempty"`
+	// SessionAffinityTimeoutSeconds is the sticky window, in seconds, for ClientIP affinity.
+	// It is only used when SessionAffinity is "ClientIP"; when unset (0) the controller applies
+	// the default of 10800 (3h). Must be in the range 1-86400 when set.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=86400
+	// +optional
+	SessionAffinityTimeoutSeconds int32 `json:"sessionAffinityTimeoutSeconds,omitempty"`
 }
 
 type IptablesDnatRuleStatus struct {
