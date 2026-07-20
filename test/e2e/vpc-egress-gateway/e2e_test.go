@@ -956,6 +956,72 @@ func addEcmpRoutes(namespaceName, podName string, destinations, nextHops []strin
 	}
 }
 
+func verifyBFDDZeroSessionsTriggersRestart(f *framework.Framework, namespaceName string, pod corev1.Pod) {
+	ginkgo.GinkgoHelper()
+
+	const bfddContainer = "bfdd"
+	podClient := f.PodClientNS(namespaceName)
+
+	ginkgo.By("Waiting for the BFD session in gateway pod " + pod.Name)
+	framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		stdout, stderr, err := framework.ExecCommandInContainer(f, namespaceName, pod.Name, bfddContainer, "bfdd-control", "status")
+		if err != nil {
+			framework.Logf("failed to get BFD status from pod %s/%s: %v, stderr: %s", namespaceName, pod.Name, err, stderr)
+			return false, nil
+		}
+		return strings.Contains(stdout, "There are ") && !strings.Contains(stdout, "There are 0 sessions:"), nil
+	}, "BFD session to be established in gateway pod "+pod.Name)
+
+	pod = *podClient.GetPod(pod.Name)
+	initialRestartCount := containerRestartCount(pod, bfddContainer)
+
+	ginkgo.By("Continuously removing BFD sessions from gateway pod " + pod.Name)
+	const injectZeroSessions = `nohup bash -c '
+while true; do
+  IFS=, read -ra peers <<< "${BFD_PEER_IPS:-}"
+  for peer in "${peers[@]}"; do
+    if [[ -n "${peer}" ]]; then
+      bfdd-control block "${peer}"
+    fi
+  done
+  bfdd-control session all kill
+  sleep 0.1
+done
+' >/tmp/bfdd-zero-sessions-inject.log 2>&1 </dev/null &`
+	_, stderr, err := framework.ExecShellInContainer(f, namespaceName, pod.Name, bfddContainer, injectZeroSessions)
+	framework.ExpectNoError(err, "failed to inject zero BFD sessions in pod %s/%s: %s", namespaceName, pod.Name, stderr)
+
+	ginkgo.By("Validating the gateway pod reports zero BFD sessions")
+	framework.WaitUntil(200*time.Millisecond, 10*time.Second, func(_ context.Context) (bool, error) {
+		stdout, _, err := framework.ExecCommandInContainer(f, namespaceName, pod.Name, bfddContainer, "bfdd-control", "status")
+		return err == nil && strings.Contains(stdout, "There are 0 sessions:"), nil
+	}, "gateway pod to report zero BFD sessions")
+
+	ginkgo.By("Waiting for the bfdd liveness probe to restart the container")
+	framework.WaitUntil(time.Second, 45*time.Second, func(_ context.Context) (bool, error) {
+		currentPod := podClient.GetPod(pod.Name)
+		return containerRestartCount(*currentPod, bfddContainer) > initialRestartCount, nil
+	}, "bfdd container to restart after consecutive zero-session health check failures")
+
+	ginkgo.By("Validating the BFD session recovers after the bfdd container restart")
+	framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		stdout, _, err := framework.ExecCommandInContainer(f, namespaceName, pod.Name, bfddContainer, "bfdd-control", "status")
+		return err == nil && strings.Contains(stdout, "There are ") && !strings.Contains(stdout, "There are 0 sessions:"), nil
+	}, "BFD session to recover after bfdd container restart")
+}
+
+func containerRestartCount(pod corev1.Pod, containerName string) int32 {
+	ginkgo.GinkgoHelper()
+
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == containerName {
+			return status.RestartCount
+		}
+	}
+	framework.Failf("container %s not found in pod %s/%s", containerName, pod.Namespace, pod.Name)
+	return 0
+}
+
 func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, internalSubnetName, externalSubnetName string, replicas int32, expectedNodes []string) {
 	ginkgo.GinkgoHelper()
 
@@ -1075,6 +1141,9 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	framework.ExpectConsistOf(veg.Status.Workload.Nodes, podNodes)
 	if len(expectedNodes) != 0 {
 		framework.ExpectConsistOf(podNodes, expectedNodes)
+	}
+	if bfd {
+		verifyBFDDZeroSessionsTriggersRestart(f, namespaceName, workloadPods.Items[0])
 	}
 
 	svrPodName := "svr-" + framework.RandomSuffix()
