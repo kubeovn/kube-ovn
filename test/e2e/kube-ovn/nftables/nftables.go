@@ -1,7 +1,6 @@
 package nftables
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/onsi/ginkgo/v2"
@@ -39,7 +38,7 @@ var _ = framework.Describe("[group:nftables]", func() {
 			}
 
 			ginkgo.By("checking the backend metric")
-			metricsURL := fmt.Sprintf("http://%s:10665/metrics", pod.Status.PodIP)
+			metricsURL := framework.GatewayMetricsURL(pod.Status.PodIP)
 			metrics, _, err := framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "cni-server", "curl -fsS "+metricsURL)
 			framework.ExpectNoError(err)
 			framework.ExpectContainSubstring(metrics, `kube_ovn_gateway_netfilter_backend{backend="nftables"} 1`)
