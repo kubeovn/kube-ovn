@@ -74,7 +74,7 @@ var _ = framework.Describe("[group:service]", func() {
 		portStr := strconv.Itoa(int(port))
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, podLabels, annotations, framework.AgnhostImage, nil, args)
-		_ = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(pod)
 
 		ginkgo.By("Creating service " + serviceName)
 		ports := []corev1.ServicePort{{
@@ -89,15 +89,20 @@ var _ = framework.Describe("[group:service]", func() {
 			return len(s.Spec.Ports) != 0 && s.Spec.Ports[0].NodePort != 0, nil
 		}, "node port is allocated")
 
-		ginkgo.By("Creating pod " + hostPodName + " with host network")
-		cmd := []string{"sleep", "infinity"}
-		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
-		hostPod.Spec.HostNetwork = true
-		_ = podClient.CreateSync(hostPod)
-
 		ginkgo.By("Getting nodes")
 		nodeList, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
 		framework.ExpectNoError(err)
+		hostNodeName := otherNodeName(nodeList.Items, pod.Spec.NodeName)
+		if hostNodeName == "" {
+			ginkgo.Skip("this test requires at least two schedulable nodes")
+		}
+
+		ginkgo.By("Creating pod " + hostPodName + " with host network on node " + hostNodeName)
+		cmd := []string{"sleep", "infinity"}
+		hostPod := framework.MakePod(namespaceName, hostPodName, nil, nil, f.KubeOVNImage, cmd, nil)
+		hostPod.Spec.HostNetwork = true
+		hostPod.Spec.NodeName = hostNodeName
+		_ = podClient.CreateSync(hostPod)
 
 		nodePort := service.Spec.Ports[0].NodePort
 		fnCheck := func(nodeName, nodeIP string, nodePort int32) {
@@ -205,3 +210,12 @@ var _ = framework.Describe("[group:service]", func() {
 		checkContainsClusterIP(v6ClusterIP, true)
 	})
 })
+
+func otherNodeName(nodes []corev1.Node, excluded string) string {
+	for _, node := range nodes {
+		if node.Name != excluded {
+			return node.Name
+		}
+	}
+	return ""
+}
