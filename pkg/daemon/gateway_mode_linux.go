@@ -29,7 +29,7 @@ func parseGatewayNetfilterMode(value string) (gatewayNetfilterMode, error) {
 	case gatewayNetfilterModeAuto, gatewayNetfilterModeIPTables, gatewayNetfilterModeNFTables:
 		return mode, nil
 	default:
-		return "", fmt.Errorf("不支持的网关 netfilter 模式 %q", value)
+		return "", fmt.Errorf("unsupported gateway netfilter mode %q", value)
 	}
 }
 
@@ -74,7 +74,7 @@ func (d *proxyModeDetector) detectHTTP(ctx context.Context) (gatewayNetfilterMod
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("kube-proxy proxyMode 返回状态码 %d", resp.StatusCode)
+		return "", fmt.Errorf("kube-proxy proxyMode returned status code %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 32))
 	if err != nil {
@@ -93,7 +93,7 @@ func gatewayNetfilterModeForProxyMode(mode string) (gatewayNetfilterMode, error)
 	case "nftables":
 		return gatewayNetfilterModeNFTables, nil
 	default:
-		return "", fmt.Errorf("未知的 kube-proxy 模式 %q", mode)
+		return "", fmt.Errorf("unknown kube-proxy mode %q", mode)
 	}
 }
 
@@ -103,18 +103,18 @@ func (c *Controller) detectKubeProxyModeFromConfig(ctx context.Context) (gateway
 		if k8serrors.IsNotFound(err) {
 			return gatewayNetfilterModeIPTables, nil
 		}
-		return "", fmt.Errorf("读取 kube-proxy ConfigMap: %w", err)
+		return "", fmt.Errorf("read kube-proxy ConfigMap: %w", err)
 	}
 
 	raw := configMap.Data["config.conf"]
 	if raw == "" {
-		return "", errors.New("kube-proxy ConfigMap 缺少 config.conf")
+		return "", errors.New("kube-proxy ConfigMap is missing config.conf")
 	}
 	config := struct {
 		Mode string `json:"mode"`
 	}{}
 	if err := yaml.Unmarshal([]byte(raw), &config); err != nil {
-		return "", fmt.Errorf("解析 kube-proxy config.conf: %w", err)
+		return "", fmt.Errorf("parse kube-proxy config.conf: %w", err)
 	}
 	return gatewayNetfilterModeForProxyMode(config.Mode)
 }

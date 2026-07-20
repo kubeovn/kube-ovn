@@ -179,7 +179,7 @@ func addNFTSubnets(snapshot *nftFamilySnapshot, input nftSnapshotInput) error {
 
 		cidr, err := nftCIDRForFamily(subnet.Spec.CIDRBlock, snapshot.Family)
 		if err != nil {
-			return fmt.Errorf("解析子网 %s CIDR: %w", subnet.Name, err)
+			return fmt.Errorf("parse CIDR for subnet %s: %w", subnet.Name, err)
 		}
 		if cidr == "" {
 			continue
@@ -224,11 +224,11 @@ func addNFTNATPolicies(snapshot *nftFamilySnapshot, subnet *kubeovnv1.Subnet, ci
 		}
 		srcIPs, err := nftAddressesForFamily(rule.Match.SrcIPs, snapshot.Family)
 		if err != nil {
-			return fmt.Errorf("解析子网 %s NAT Policy %s 源地址: %w", subnet.Name, rule.RuleID, err)
+			return fmt.Errorf("parse source address for NAT policy %s in subnet %s: %w", rule.RuleID, subnet.Name, err)
 		}
 		dstIPs, err := nftAddressesForFamily(rule.Match.DstIPs, snapshot.Family)
 		if err != nil {
-			return fmt.Errorf("解析子网 %s NAT Policy %s 目标地址: %w", subnet.Name, rule.RuleID, err)
+			return fmt.Errorf("parse destination address for NAT policy %s in subnet %s: %w", rule.RuleID, subnet.Name, err)
 		}
 		if (rule.Match.SrcIPs != "" && len(srcIPs) == 0) || (rule.Match.DstIPs != "" && len(dstIPs) == 0) {
 			continue
@@ -345,7 +345,7 @@ func nftAddressesForFamily(value string, family knftables.Family) ([]string, err
 		} else if ip := net.ParseIP(item); ip != nil {
 			address = ip.String()
 		} else {
-			return nil, fmt.Errorf("无效地址 %q", item)
+			return nil, fmt.Errorf("invalid address %q", item)
 		}
 		if isNFTAddressFamily(address, family) {
 			result = append(result, address)

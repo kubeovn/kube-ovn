@@ -88,7 +88,7 @@ func TestDetectorColdStartWaitsForProxyMode(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if requests.Add(1) < 3 {
-			http.Error(w, "尚未就绪", http.StatusServiceUnavailable)
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
 		_, _ = io.WriteString(w, "nftables\n")

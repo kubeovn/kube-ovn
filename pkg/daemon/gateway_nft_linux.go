@@ -50,13 +50,13 @@ type nftCounterMetadata struct {
 func newNFTGatewayBackend(controller *Controller) (*nftGatewayBackend, error) {
 	writer, err := knftables.New("", "", knftables.EmulateDestroy)
 	if err != nil {
-		return nil, fmt.Errorf("初始化 nft writer: %w", err)
+		return nil, fmt.Errorf("initialize nftables writer: %w", err)
 	}
 	readers := make(map[knftables.Family]knftables.Interface, 2)
 	for _, family := range []knftables.Family{knftables.IPv4Family, knftables.IPv6Family} {
 		reader, err := knftables.New(family, nftGatewayTable)
 		if err != nil {
-			return nil, fmt.Errorf("初始化 %s nft reader: %w", family, err)
+			return nil, fmt.Errorf("initialize %s nftables reader: %w", family, err)
 		}
 		readers[family] = reader
 	}
@@ -83,7 +83,7 @@ func (b *nftGatewayBackend) Cleanup(ctx context.Context) error {
 		tx.Destroy(&knftables.Table{Family: family, Name: nftGatewayTable})
 	}
 	if err := b.runTransaction(ctx, tx, false); err != nil {
-		return fmt.Errorf("清理 Kube-OVN nft table: %w", err)
+		return fmt.Errorf("clean up Kube-OVN nftables table: %w", err)
 	}
 	b.applied = nil
 	b.lastAudit = time.Time{}
@@ -121,7 +121,7 @@ func (b *nftGatewayBackend) Reconcile(ctx context.Context) error {
 			if knftables.IsNotFound(err) {
 				b.applied = nil
 			}
-			return fmt.Errorf("执行 nft transaction: %w", err)
+			return fmt.Errorf("execute nftables transaction: %w", err)
 		}
 		if audited && !initial {
 			metricGatewayNFTRepairs.Inc()
@@ -140,7 +140,7 @@ func (b *nftGatewayBackend) runTransaction(ctx context.Context, tx *knftables.Tr
 	if check {
 		if err := b.writer.Check(ctx, tx); err != nil {
 			metricGatewayNFTTransactionFailures.Inc()
-			return fmt.Errorf("校验 nft transaction: %w", err)
+			return fmt.Errorf("validate nftables transaction: %w", err)
 		}
 	}
 	metricGatewayNFTTransactions.Inc()
@@ -172,7 +172,7 @@ func (b *nftGatewayBackend) ReadSubnetCounters(ctx context.Context) error {
 			if knftables.IsNotFound(err) {
 				continue
 			}
-			return fmt.Errorf("读取 %s nft counter: %w", family, err)
+			return fmt.Errorf("read %s nftables counter: %w", family, err)
 		}
 		for _, counter := range counters {
 			key := string(family) + "/" + counter.Name
@@ -197,22 +197,22 @@ func (b *nftGatewayBackend) ReadSubnetCounters(ctx context.Context) error {
 func (c *Controller) buildNFTSnapshot() (gatewayNFTSnapshot, error) {
 	services, err := c.servicesLister.List(labels.Everything())
 	if err != nil {
-		return gatewayNFTSnapshot{}, fmt.Errorf("列出 Service: %w", err)
+		return gatewayNFTSnapshot{}, fmt.Errorf("list Services: %w", err)
 	}
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		return gatewayNFTSnapshot{}, fmt.Errorf("列出 Subnet: %w", err)
+		return gatewayNFTSnapshot{}, fmt.Errorf("list Subnets: %w", err)
 	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
-		return gatewayNFTSnapshot{}, fmt.Errorf("列出 Node: %w", err)
+		return gatewayNFTSnapshot{}, fmt.Errorf("list Nodes: %w", err)
 	}
 
 	var tproxyPods []*corev1.Pod
 	if c.config.EnableTProxy {
 		pods, err := c.podsLister.List(labels.Everything())
 		if err != nil {
-			return gatewayNFTSnapshot{}, fmt.Errorf("列出 Pod: %w", err)
+			return gatewayNFTSnapshot{}, fmt.Errorf("list Pods: %w", err)
 		}
 		tproxyPods, err = c.getTProxyConditionPod(pods, true)
 		if err != nil {
@@ -238,13 +238,13 @@ func (c *Controller) buildNFTSnapshot() (gatewayNFTSnapshot, error) {
 func localNFTAddresses() ([]string, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return nil, fmt.Errorf("列出本机网络接口: %w", err)
+		return nil, fmt.Errorf("list local network interfaces: %w", err)
 	}
 	var result []string
 	for _, iface := range interfaces {
 		addresses, err := iface.Addrs()
 		if err != nil {
-			return nil, fmt.Errorf("列出接口 %s 地址: %w", iface.Name, err)
+			return nil, fmt.Errorf("list addresses on interface %s: %w", iface.Name, err)
 		}
 		for _, address := range addresses {
 			ip, _, err := net.ParseCIDR(address.String())
@@ -834,7 +834,7 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 				b.renderFullFamily(tx, family)
 				continue
 			}
-			return nil, fmt.Errorf("审计 %s nft table: %w", family.Family, err)
+			return nil, fmt.Errorf("audit %s nftables table: %w", family.Family, err)
 		}
 		if !slices.Contains(objects["chain"], "schema-v1") {
 			tx.Delete(&knftables.Table{Family: family.Family, Name: nftSnapshotTable(family)})
@@ -854,7 +854,7 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 			}
 			actual, err := reader.ListElements(ctx, "set", name)
 			if err != nil {
-				return nil, fmt.Errorf("审计 %s nft set %s: %w", family.Family, name, err)
+				return nil, fmt.Errorf("audit %s nftables set %s: %w", family.Family, name, err)
 			}
 			renderNFTElementMapDiff(tx, family, name, nftElementsToKeys(actual), nftSetElements(family)[name])
 		}
@@ -909,7 +909,7 @@ func nftRulesDrifted(ctx context.Context, reader knftables.Interface, snapshot n
 		}
 		rules, err := reader.ListRules(ctx, chain)
 		if err != nil {
-			return false, fmt.Errorf("审计 %s nft chain %s: %w", snapshot.Family, chain, err)
+			return false, fmt.Errorf("audit %s nftables chain %s: %w", snapshot.Family, chain, err)
 		}
 		comments := make([]string, 0, len(rules))
 		for _, rule := range rules {
