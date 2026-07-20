@@ -20,7 +20,7 @@ import (
 
 func (c *Controller) runGateway() {
 	if err := c.gatewayBackendManager.Reconcile(context.Background()); err != nil {
-		klog.Errorf("协调网关 netfilter 后端失败: %v", err)
+		klog.Errorf("failed to reconcile the gateway netfilter backend: %v", err)
 	}
 	if err := c.setPolicyRouting(); err != nil {
 		klog.Errorf("failed to set gw policy routing")

@@ -1010,7 +1010,7 @@ func (c *Controller) loopEncapIPCheck() {
 
 func (c *Controller) ovnMetricsUpdate() {
 	if err := c.gatewayBackendManager.ReadSubnetCounters(context.Background()); err != nil {
-		klog.Errorf("读取网关子网计数器失败: %v", err)
+		klog.Errorf("failed to read gateway subnet counters: %v", err)
 	}
 
 	resetSysParaMetrics()

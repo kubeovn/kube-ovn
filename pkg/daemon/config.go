@@ -145,9 +145,9 @@ func ParseFlags() *Configuration {
 		argOVNIPSecCertDuration          = pflag.Int("ovn-ipsec-cert-duration", 2*365*24*60*60, "The duration requested for IPSec certificates (seconds)")
 		argSetVxlanTxOff                 = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                       = pflag.String("log-perm", "640", "The permission for the log file")
-		argGatewayNetfilterMode          = pflag.String("gateway-netfilter-mode", "auto", "网关 netfilter 后端：auto、iptables 或 nftables")
-		argKubeProxyModeEndpoint         = pflag.String("kube-proxy-mode-endpoint", "http://localhost:10249/proxyMode", "本机 kube-proxy proxyMode 端点")
-		argGatewayNetfilterDetectTimeout = pflag.Duration("gateway-netfilter-detect-timeout", 30*time.Second, "kube-proxy 模式冷启动探测最长等待时间")
+		argGatewayNetfilterMode          = pflag.String("gateway-netfilter-mode", "auto", "gateway netfilter backend: auto, iptables, or nftables")
+		argKubeProxyModeEndpoint         = pflag.String("kube-proxy-mode-endpoint", "http://localhost:10249/proxyMode", "local kube-proxy proxyMode endpoint")
+		argGatewayNetfilterDetectTimeout = pflag.Duration("gateway-netfilter-detect-timeout", 30*time.Second, "maximum time to detect the kube-proxy mode during cold start")
 
 		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")

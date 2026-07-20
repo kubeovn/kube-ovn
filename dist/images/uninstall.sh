@@ -6,7 +6,7 @@ ovs-vsctl set open . external_ids:ovn-encap-type=stt
 /usr/share/openvswitch/scripts/ovs-ctl stop
 ovs-dpctl del-dp ovs-system
 
-# 只删除 Kube-OVN 自有 nft table。
+# Only delete the nft table owned by Kube-OVN.
 nft list table ip kube-ovn >/dev/null 2>&1 && nft delete table ip kube-ovn || true
 nft list table ip6 kube-ovn >/dev/null 2>&1 && nft delete table ip6 kube-ovn || true
 

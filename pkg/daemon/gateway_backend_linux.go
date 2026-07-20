@@ -95,13 +95,13 @@ func (m *gatewayBackendManager) desiredMode(ctx context.Context) (gatewayNetfilt
 		return m.mode, nil
 	}
 	if m.detector == nil {
-		return "", errors.New("kube-proxy 模式探测器未初始化")
+		return "", errors.New("kube-proxy mode detector is not initialized")
 	}
 
 	if m.coldStart {
 		mode, err := m.detector.detectColdStart(ctx)
 		if err != nil {
-			return "", fmt.Errorf("冷启动探测 kube-proxy 模式: %w", err)
+			return "", fmt.Errorf("detect kube-proxy mode during cold start: %w", err)
 		}
 		m.coldStart = false
 		m.stability = proxyModeStability{}
@@ -110,7 +110,7 @@ func (m *gatewayBackendManager) desiredMode(ctx context.Context) (gatewayNetfilt
 
 	mode, err := m.detector.detectHTTP(ctx)
 	if err != nil {
-		return "", fmt.Errorf("探测 kube-proxy 模式: %w", err)
+		return "", fmt.Errorf("detect kube-proxy mode: %w", err)
 	}
 	current := m.currentBackend()
 	if current != nil && current.Name() == mode {
@@ -135,12 +135,12 @@ func (m *gatewayBackendManager) ensureBackend(mode gatewayNetfilterMode) (gatewa
 		return backend, nil
 	}
 	if factory == nil {
-		return nil, fmt.Errorf("网关 netfilter 后端 %s 不可用", mode)
+		return nil, fmt.Errorf("gateway netfilter backend %s is unavailable", mode)
 	}
 
 	backend, err := factory()
 	if err != nil {
-		return nil, fmt.Errorf("初始化 %s 后端: %w", mode, err)
+		return nil, fmt.Errorf("initialize %s backend: %w", mode, err)
 	}
 	m.mutex.Lock()
 	if existing := m.backends[mode]; existing != nil {
@@ -172,7 +172,7 @@ func (m *gatewayBackendManager) cleanupAbandonedReadyBackend(ctx context.Context
 	}
 	if err := m.ready.Cleanup(ctx); err != nil {
 		m.degraded = true
-		return fmt.Errorf("清理已放弃的 %s 后端: %w", m.ready.Name(), err)
+		return fmt.Errorf("clean up abandoned %s backend: %w", m.ready.Name(), err)
 	}
 	m.ready = nil
 	m.degraded = false
@@ -194,7 +194,7 @@ func (m *gatewayBackendManager) switchTo(ctx context.Context, target gatewayNetf
 	defer m.mutex.Unlock()
 
 	if err := target.Reconcile(ctx); err != nil {
-		return fmt.Errorf("准备 %s 后端: %w", target.Name(), err)
+		return fmt.Errorf("prepare %s backend: %w", target.Name(), err)
 	}
 
 	old := m.current
@@ -202,7 +202,7 @@ func (m *gatewayBackendManager) switchTo(ctx context.Context, target gatewayNetf
 	if old != nil && old.Name() != target.Name() {
 		if err := old.Cleanup(ctx); err != nil {
 			m.degraded = true
-			return fmt.Errorf("清理 %s 后端: %w", old.Name(), err)
+			return fmt.Errorf("clean up %s backend: %w", old.Name(), err)
 		}
 	}
 

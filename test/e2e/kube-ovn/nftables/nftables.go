@@ -12,8 +12,8 @@ import (
 var _ = framework.Describe("[group:nftables]", func() {
 	f := framework.NewDefaultFramework("nftables")
 
-	framework.ConformanceIt("应在 kube-proxy nftables 模式下启用并清理旧后端", func() {
-		f.SkipVersionPriorTo(1, 17, "Kube-OVN nftables 网关后端从 v1.17 起支持")
+	framework.ConformanceIt("should enable the nftables backend and clean up the old backend in kube-proxy nftables mode", func() {
+		f.SkipVersionPriorTo(1, 17, "the Kube-OVN nftables gateway backend is supported since v1.17")
 
 		daemonSetClient := f.DaemonSetClientNS("kube-system")
 		daemonSet := daemonSetClient.Get("kube-ovn-cni")
@@ -25,10 +25,10 @@ var _ = framework.Describe("[group:nftables]", func() {
 			mode, _, err := framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "cni-server", "curl -fsS http://localhost:10249/proxyMode")
 			framework.ExpectNoError(err)
 			if strings.TrimSpace(mode) != "nftables" {
-				ginkgo.Skip("当前集群未使用 kube-proxy nftables 模式")
+				ginkgo.Skip("the current cluster is not using kube-proxy nftables mode")
 			}
 
-			ginkgo.By("核对 Kube-OVN nft table")
+			ginkgo.By("checking the Kube-OVN nftables table")
 			if f.HasIPv4() {
 				_, _, err = framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "cni-server", "nft list table ip kube-ovn")
 				framework.ExpectNoError(err)
@@ -38,13 +38,13 @@ var _ = framework.Describe("[group:nftables]", func() {
 				framework.ExpectNoError(err)
 			}
 
-			ginkgo.By("核对 backend metric")
+			ginkgo.By("checking the backend metric")
 			metricsURL := fmt.Sprintf("http://%s:10665/metrics", pod.Status.PodIP)
 			metrics, _, err := framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "cni-server", "curl -fsS "+metricsURL)
 			framework.ExpectNoError(err)
 			framework.ExpectContainSubstring(metrics, `kube_ovn_gateway_netfilter_backend{backend="nftables"} 1`)
 
-			ginkgo.By("核对旧 iptables 和 ipset 对象已清理")
+			ginkgo.By("checking that old iptables and ipset objects are removed")
 			_, _, err = framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "cni-server", "! iptables-save | grep -E 'OVN-|ovn40' && ! ip6tables-save | grep -E 'OVN-|ovn60' && ! ipset list -name | grep -E '^ovn(40|60)'")
 			framework.ExpectNoError(err)
 		}

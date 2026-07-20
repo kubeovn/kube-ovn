@@ -56,7 +56,7 @@ func TestGatewayBackendManagerKeepsCurrentWhenPrepareFails(t *testing.T) {
 	newBackend := &recordingGatewayBackend{
 		name:         gatewayNetfilterModeNFTables,
 		calls:        &calls,
-		reconcileErr: errors.New("准备失败"),
+		reconcileErr: errors.New("prepare failed"),
 	}
 	manager := newGatewayBackendManager(oldBackend, newBackend)
 	manager.current = oldBackend
@@ -72,7 +72,7 @@ func TestGatewayBackendManagerRetriesCleanup(t *testing.T) {
 	oldBackend := &recordingGatewayBackend{
 		name:       gatewayNetfilterModeIPTables,
 		calls:      &calls,
-		cleanupErr: errors.New("清理失败"),
+		cleanupErr: errors.New("cleanup failed"),
 	}
 	newBackend := &recordingGatewayBackend{name: gatewayNetfilterModeNFTables, calls: &calls}
 	manager := newGatewayBackendManager(oldBackend, newBackend)
@@ -102,7 +102,7 @@ func TestGatewayBackendManagerCleansAbandonedReadyBackend(t *testing.T) {
 	iptablesBackend := &recordingGatewayBackend{
 		name:       gatewayNetfilterModeIPTables,
 		calls:      &calls,
-		cleanupErr: errors.New("清理失败"),
+		cleanupErr: errors.New("cleanup failed"),
 	}
 	nftBackend := &recordingGatewayBackend{name: gatewayNetfilterModeNFTables, calls: &calls}
 	manager := newGatewayBackendManager(iptablesBackend, nftBackend)
@@ -194,7 +194,7 @@ func TestGatewayBackendManagerKeepsCurrentWhenFactoryFails(t *testing.T) {
 	manager.current = iptablesBackend
 	manager.mode = gatewayNetfilterModeNFTables
 	manager.factories[gatewayNetfilterModeNFTables] = func() (gatewayNetfilterBackend, error) {
-		return nil, errors.New("nft 不可用")
+		return nil, errors.New("nftables unavailable")
 	}
 
 	require.Error(t, manager.Reconcile(context.Background()))

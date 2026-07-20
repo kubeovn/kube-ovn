@@ -86,11 +86,11 @@ networking:
   NODE_SUBNET: "join"
   ENABLE_ECMP: false
   ENABLE_METRICS: true
-  # 网关 netfilter 后端：auto、iptables 或 nftables；留空使用 daemon 默认值 auto。
+  # Gateway netfilter backend: auto, iptables, or nftables; leave empty to use the daemon default of auto.
   GATEWAY_NETFILTER_MODE: ""
-  # 本机 kube-proxy 的 proxyMode 端点；留空使用 daemon 默认端点。
+  # Local kube-proxy proxyMode endpoint; leave empty to use the daemon default endpoint.
   KUBE_PROXY_MODE_ENDPOINT: ""
-  # 冷启动等待 kube-proxy 模式就绪的最长时间；留空使用 daemon 默认值 30s。
+  # Maximum time to wait for the kube-proxy mode during cold start; leave empty to use the daemon default of 30s.
   GATEWAY_NETFILTER_DETECT_TIMEOUT: ""
   # comma-separated string of nodelocal DNS ip addresses
   NODE_LOCAL_DNS_IP: ""
