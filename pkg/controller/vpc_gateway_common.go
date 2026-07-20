@@ -91,11 +91,13 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
+					// Re-register BFD peers when the daemon reports zero sessions.
+					Command: []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"},
 				},
 			},
 			InitialDelaySeconds: 1,
 			PeriodSeconds:       5,
+			TimeoutSeconds:      3,
 		},
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
