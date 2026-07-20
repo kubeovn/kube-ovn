@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -244,6 +243,19 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 	}
 
 	if dnatNew.Spec != dnatOld.Spec {
+		// Type is immutable after creation
+		oldType := dnatOld.Spec.Type
+		if oldType == "" {
+			oldType = ovnv1.DnatRuleTypeExclusive
+		}
+		newType := dnatNew.Spec.Type
+		if newType == "" {
+			newType = ovnv1.DnatRuleTypeExclusive
+		}
+		if oldType != newType {
+			return ctrlwebhook.Errored(http.StatusBadRequest, fmt.Errorf("dnat type is immutable after creation: cannot change from %q to %q", oldType, newType))
+		}
+
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
@@ -521,20 +533,12 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return errors.New("parameter \"internalPort\" cannot be empty")
 	}
 
-	if port, err := strconv.Atoi(dnat.Spec.ExternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse externalPort %s: %w", dnat.Spec.ExternalPort, err)
-		return errMsg
-	} else if port < 0 || port > 65535 {
-		err := fmt.Errorf("externalPort %s is not a valid port", dnat.Spec.ExternalPort)
-		return err
+	if err := util.ValidatePort(dnat.Spec.ExternalPort); err != nil {
+		return fmt.Errorf("externalPort %s is not a valid port: %w", dnat.Spec.ExternalPort, err)
 	}
 
-	if port, err := strconv.Atoi(dnat.Spec.InternalPort); err != nil {
-		errMsg := fmt.Errorf("failed to parse internalIP %s: %w", dnat.Spec.InternalPort, err)
-		return errMsg
-	} else if port < 0 || port > 65535 {
-		err := fmt.Errorf("internalIP %s is not a valid port", dnat.Spec.InternalPort)
-		return err
+	if err := util.ValidatePort(dnat.Spec.InternalPort); err != nil {
+		return fmt.Errorf("internalPort %s is not a valid port: %w", dnat.Spec.InternalPort, err)
 	}
 
 	if net.ParseIP(dnat.Spec.InternalIP) == nil {
@@ -546,6 +550,53 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		!strings.EqualFold(dnat.Spec.Protocol, "udp") {
 		err := fmt.Errorf("invalid iptable protocol: %s,supported params: \"tcp\", \"udp\"", dnat.Spec.Protocol)
 		return err
+	}
+
+	// Default type to Exclusive if empty
+	dnatType := dnat.Spec.Type
+	if dnatType == "" {
+		dnatType = ovnv1.DnatRuleTypeExclusive
+	}
+
+	// Share type DNAT is implemented with IPv4-only nft rules (ip daddr / ip saddr).
+	// Reject it for a v6-only EIP. EIPs that are still being allocated (both addresses
+	// empty) are allowed here; the controller requeues until the IPv4 address is ready.
+	if dnatType == ovnv1.DnatRuleTypeShare && eip.Spec.V4ip == "" && eip.Spec.V6ip != "" {
+		return fmt.Errorf("dnat %q cannot use type=share: EIP %q is IPv6-only, share dnat only supports IPv4", dnat.Name, dnat.Spec.EIP)
+	}
+
+	// Check type conflict with existing DNAT rules sharing the same identity
+	if eip.Spec.NatGwDp != "" {
+		dnatList := &ovnv1.IptablesDnatRuleList{}
+		if err := v.cache.List(ctx, dnatList, cli.MatchingLabels{
+			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
+			util.VpcDnatEPortLabel:      dnat.Spec.ExternalPort,
+		}); err != nil {
+			return fmt.Errorf("failed to list iptables DNAT rules: %w", err)
+		}
+
+		for _, existing := range dnatList.Items {
+			// Skip self (for update hooks)
+			if existing.Name == dnat.Name {
+				continue
+			}
+			// Only check same identity (EIP + Protocol)
+			if existing.Spec.EIP != dnat.Spec.EIP || existing.Spec.Protocol != dnat.Spec.Protocol {
+				continue
+			}
+
+			existingType := existing.Spec.Type
+			if existingType == "" {
+				existingType = ovnv1.DnatRuleTypeExclusive
+			}
+
+			// Both must be Share type to coexist
+			if dnatType != ovnv1.DnatRuleTypeShare || existingType != ovnv1.DnatRuleTypeShare {
+				return fmt.Errorf("dnat %q (type=%s) conflicts with existing dnat %q (type=%s) sharing the same identity (eip=%s, port=%s, protocol=%s): both must be type=share to coexist",
+					dnat.Name, dnatType, existing.Name, existingType,
+					dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol)
+			}
+		}
 	}
 
 	// Check FIP/DNAT exclusivity: FIP claims all traffic to the EIP (EXCLUSIVE_DNAT),

@@ -642,6 +642,9 @@ spec:
     - jsonPath: .spec.internalPort
       name: InternalPort
       type: string
+    - jsonPath: .spec.type
+      name: Type
+      type: string
     - jsonPath: .status.natGwDp
       name: NatGwDp
       type: string
@@ -685,6 +688,23 @@ spec:
                 type: string
               protocol:
                 description: Protocol type (TCP or UDP)
+                type: string
+              type:
+                default: exclusive
+                description: |-
+                  Type of the DNAT rule, controls whether the EIP:Port identity can be shared
+                  by multiple internal backends:
+                  - "exclusive" (default): The EIP:Port is exclusively owned by this single DNAT rule.
+                    Uses iptables DNAT for 1:1 port forwarding. This was the only mode before the
+                    nft LB feature was introduced; any duplicate identity is rejected.
+                  - "share": Multiple DNAT rules may share the same EIP:Port identity, each
+                    contributing a different internal IP:Port as a backend. Traffic is distributed
+                    across backends using nftables numgen random map-based DNAT: each new connection
+                    picks a backend at random and is then pinned by conntrack (connection-level
+                    balancing, no client-IP affinity).
+                enum:
+                - exclusive
+                - share
                 type: string
             type: object
           status:

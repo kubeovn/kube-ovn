@@ -553,7 +553,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Name, dnat.Spec.ExternalPort, dnat.Spec.Protocol); dup || err != nil {
+	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Name, dnat.Spec.ExternalPort, dnat.Spec.Protocol, dnat.Spec.Type); dup || err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -564,11 +564,29 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to handle add finalizer for dnat, %v", err)
 		return err
 	}
-	if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
-		eip.Status.IP, dnat.Spec.InternalIP,
-		dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {
-		klog.Errorf("failed to create dnat, %v", err)
-		return err
+
+	switch dnat.Spec.Type {
+	case kubeovnv1.DnatRuleTypeShare:
+		// Share type: use nft map-based DNAT
+		backends, err := c.getShareBackends(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol, dnat.Name)
+		if err != nil {
+			klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
+			return err
+		}
+		// Add current DNAT's backend
+		backends = append(backends, fmt.Sprintf("%s:%s", dnat.Spec.InternalIP, dnat.Spec.InternalPort))
+		if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol, eip.Status.IP, dnat.Spec.ExternalPort, backends); err != nil {
+			klog.Errorf("failed to create nft dnat map, %v", err)
+			return err
+		}
+	default:
+		// Exclusive type (default): use iptables DNAT
+		if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
+			eip.Status.IP, dnat.Spec.InternalIP,
+			dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {
+			klog.Errorf("failed to create dnat, %v", err)
+			return err
+		}
 	}
 	if err = c.patchDnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
@@ -642,6 +660,13 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 	}
 	klog.V(3).Infof("handle update dnat %s", key)
 
+	// add or update should make sure vpc nat enabled. Checked before validateDnatRule and the
+	// isDnatDuplicated lister scan (matching handleAddIptablesDnatRule) so we do not scan when
+	// the NAT GW is disabled.
+	if vpcNatEnabled != "true" {
+		return errors.New("iptables nat gw not enable")
+	}
+
 	if err := c.validateDnatRule(cachedDnat); err != nil {
 		return err
 	}
@@ -651,13 +676,9 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Name, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol); dup || err != nil {
+	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Name, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol, cachedDnat.Spec.Type); dup || err != nil {
 		klog.Errorf("failed to update dnat, %v", err)
 		return err
-	}
-	// add or update should make sure vpc nat enabled
-	if vpcNatEnabled != "true" {
-		return errors.New("iptables nat gw not enable")
 	}
 
 	if eip.Spec.NatGwDp == "" {
@@ -717,11 +738,28 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		if err = c.finalDeleteDnatInPod(key, cachedDnat); err != nil {
 			return err
 		}
-		if err = c.createDnatInPod(eip.Spec.NatGwDp, newProtocol,
-			newV4ip, newInternalIP,
-			newExternalPort, newInternalPort); err != nil {
-			klog.Errorf("failed to create dnat %s, %v", key, err)
-			return err
+
+		switch cachedDnat.Spec.Type {
+		case kubeovnv1.DnatRuleTypeShare:
+			// Share type: rebuild nft rule with updated backends
+			backends, err := c.getShareBackends(eip.Spec.NatGwDp, cachedDnat.Spec.EIP, newExternalPort, newProtocol, cachedDnat.Name)
+			if err != nil {
+				klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
+				return err
+			}
+			backends = append(backends, fmt.Sprintf("%s:%s", newInternalIP, newInternalPort))
+			if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, newProtocol, newV4ip, newExternalPort, backends); err != nil {
+				klog.Errorf("failed to create nft dnat map for %s, %v", key, err)
+				return err
+			}
+		default:
+			// Exclusive type: use iptables DNAT
+			if err = c.createDnatInPod(eip.Spec.NatGwDp, newProtocol,
+				newV4ip, newInternalIP,
+				newExternalPort, newInternalPort); err != nil {
+				klog.Errorf("failed to create dnat %s, %v", key, err)
+				return err
+			}
 		}
 		if err = c.patchDnatStatus(key, newV4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 			klog.Errorf("failed to patch status for dnat %s, %v", key, err)
@@ -776,11 +814,33 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 			klog.V(3).Infof("dnat %s: all pods started before redo mark, rules intact, skip", key)
 			return nil
 		}
-		if err = c.createDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
-			cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
-			cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
-			klog.Errorf("failed to create dnat %s, %v", key, err)
-			return err
+
+		switch cachedDnat.Spec.Type {
+		case kubeovnv1.DnatRuleTypeShare:
+			// Share type: rebuild nft rule with all backends.
+			// Identity fields are read from Status (redo replays the last successfully-applied
+			// state after a gateway pod restart), except eipName which uses Spec.EIP on purpose:
+			// getShareBackends filters siblings by their Spec.EIP, so the lookup key must also be
+			// Spec.EIP to match. In the normal redo case Spec.EIP == Status EIP; they can only
+			// diverge in the rare "EIP renamed while not-yet-Ready + pod restart" corner case.
+			backends, err := c.getShareBackends(cachedDnat.Status.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Status.ExternalPort, cachedDnat.Status.Protocol, cachedDnat.Name)
+			if err != nil {
+				klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
+				return err
+			}
+			backends = append(backends, fmt.Sprintf("%s:%s", cachedDnat.Status.InternalIP, cachedDnat.Status.InternalPort))
+			if err = c.createNftDnatMapInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol, cachedDnat.Status.V4ip, cachedDnat.Status.ExternalPort, backends); err != nil {
+				klog.Errorf("failed to create nft dnat map for %s, %v", key, err)
+				return err
+			}
+		default:
+			// Exclusive type: use iptables DNAT
+			if err = c.createDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
+				cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
+				cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
+				klog.Errorf("failed to create dnat %s, %v", key, err)
+				return err
+			}
 		}
 		if err = c.patchDnatStatus(key, "", "", "", "", true); err != nil {
 			klog.Errorf("failed to patch status for dnat %s, %v", key, err)
@@ -1842,6 +1902,12 @@ func (c *Controller) finalDeleteDnatInPod(key string, cachedDnat *kubeovnv1.Ipta
 	}
 	if statusV4ip == "" || statusNatGwDp == "" {
 		klog.Warningf("dnat %s: skip status-based cleanup due to incomplete identity (v4ip=%q, natGwDp=%q)", key, statusV4ip, statusNatGwDp)
+	} else if cachedDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
+		// Share type: rebuild nft rule with remaining backends, or delete if none are left
+		if err := c.cleanupShareDnatInPod(key, statusNatGwDp, cachedDnat.Spec.EIP, statusProtocol, statusV4ip, statusExternalPort, cachedDnat.Name); err != nil {
+			klog.Error(err)
+			firstErr = err
+		}
 	} else if err := c.deleteDnatInPod(statusNatGwDp, statusProtocol,
 		statusV4ip, statusExternalPort); err != nil {
 		klog.Errorf("failed to delete dnat %s, %v", key, err)
@@ -1869,7 +1935,16 @@ func (c *Controller) finalDeleteDnatInPod(key string, cachedDnat *kubeovnv1.Ipta
 			return firstErr
 		}
 		if specV4ip != statusV4ip || specNatGwDp != statusNatGwDp || specProtocol != statusProtocol || specExternalPort != statusExternalPort {
-			if err = c.deleteDnatInPod(specNatGwDp, specProtocol, specV4ip, specExternalPort); err != nil {
+			if cachedDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
+				// Share type: the stale rule lives in nftables, not iptables.
+				// Rebuild the nft map without this DNAT's backend, or delete entirely.
+				if err = c.cleanupShareDnatInPod(key, specNatGwDp, cachedDnat.Spec.EIP, specProtocol, specV4ip, specExternalPort, cachedDnat.Name); err != nil {
+					klog.Errorf("failed spec-based nft cleanup for dnat %s, %v", key, err)
+					if firstErr == nil {
+						firstErr = err
+					}
+				}
+			} else if err = c.deleteDnatInPod(specNatGwDp, specProtocol, specV4ip, specExternalPort); err != nil {
 				klog.Errorf("failed spec-based cleanup for dnat %s, %v", key, err)
 				if firstErr == nil {
 					firstErr = err
@@ -2123,28 +2198,6 @@ func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 		}
 	}
 	return firstErr
-}
-
-func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort, protocol string) (bool, error) {
-	// Check if the tuple "eip:external port:protocol" is already used by another DNAT rule
-	dnats, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
-		util.VpcNatGatewayNameLabel: gwName,
-		util.VpcDnatEPortLabel:      externalPort,
-	}))
-	if err != nil {
-		if !k8serrors.IsNotFound(err) {
-			return false, err
-		}
-	}
-	if len(dnats) != 0 {
-		for _, d := range dnats {
-			if d.Name != dnatName && d.Spec.EIP == eipName && d.Spec.Protocol == protocol {
-				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s', same protocol'%s' is used by dnat %s", dnatName, eipName, externalPort, protocol, d.Name)
-				return true, err
-			}
-		}
-	}
-	return false, nil
 }
 
 func (c *Controller) updateIptableLabels(name, op, natType string, labels map[string]string) error {

@@ -51,6 +51,13 @@ func (c *IptablesDnatClient) Create(dnat *apiv1.IptablesDnatRule) *apiv1.Iptable
 	return dnat.DeepCopy()
 }
 
+// CreateRaw creates a new iptables dnat and returns the result without auto-failing on error.
+// Use this when testing expected validation failures.
+func (c *IptablesDnatClient) CreateRaw(dnat *apiv1.IptablesDnatRule) (*apiv1.IptablesDnatRule, error) {
+	ginkgo.GinkgoHelper()
+	return c.IptablesDnatRuleInterface.Create(context.TODO(), dnat, metav1.CreateOptions{})
+}
+
 // CreateSync creates a new iptables dnat according to the framework specifications, and waits for it to be ready.
 func (c *IptablesDnatClient) CreateSync(dnat *apiv1.IptablesDnatRule) *apiv1.IptablesDnatRule {
 	ginkgo.GinkgoHelper()
@@ -173,5 +180,12 @@ func MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, interna
 			InternalPort: internalPort,
 		},
 	}
+	return dnat
+}
+
+// MakeShareIptablesDnatRule creates a share type iptables DNAT rule.
+func MakeShareIptablesDnatRule(name, eip, externalPort, protocol, internalIP, internalPort string) *apiv1.IptablesDnatRule {
+	dnat := MakeIptablesDnatRule(name, eip, externalPort, protocol, internalIP, internalPort)
+	dnat.Spec.Type = apiv1.DnatRuleTypeShare
 	return dnat
 }
