@@ -1142,7 +1142,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	if len(expectedNodes) != 0 {
 		framework.ExpectConsistOf(podNodes, expectedNodes)
 	}
-	if bfd {
+	if bfd && !f.VersionPriorTo(1, 15) {
 		verifyBFDDZeroSessionsTriggersRestart(f, namespaceName, workloadPods.Items[0])
 	}
 
