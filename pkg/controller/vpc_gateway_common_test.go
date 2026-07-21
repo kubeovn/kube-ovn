@@ -96,12 +96,11 @@ func TestBFDDHealthcheck(t *testing.T) {
 			wantHealthy:  true,
 		},
 		{
-			name:         "zero sessions re-registers peers and fails",
+			name:         "zero sessions fails without mutating peer configuration",
 			statusOutput: "There are 0 sessions:",
-			wantAllowed:  []string{"10.0.0.1", "fd00::1"},
 		},
 		{
-			name:           "status failure fails without re-registering peers",
+			name:           "status failure fails without mutating peer configuration",
 			statusOutput:   "control socket unavailable",
 			statusExitCode: "2",
 		},
