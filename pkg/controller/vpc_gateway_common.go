@@ -91,11 +91,13 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
+					// Restart bfdd when its local session table remains empty.
+					Command: []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"},
 				},
 			},
 			InitialDelaySeconds: 1,
 			PeriodSeconds:       5,
+			TimeoutSeconds:      3,
 		},
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{

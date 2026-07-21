@@ -3,6 +3,11 @@ package controller
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,6 +54,14 @@ func TestGenGatewayBFDDContainer(t *testing.T) {
 	assert.NotNil(t, container.StartupProbe)
 	assert.NotNil(t, container.LivenessProbe)
 	assert.NotNil(t, container.ReadinessProbe)
+	assert.Equal(t, []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"}, container.LivenessProbe.Exec.Command)
+	assert.Equal(t, int32(1), container.LivenessProbe.InitialDelaySeconds)
+	assert.Equal(t, int32(5), container.LivenessProbe.PeriodSeconds)
+	assert.Equal(t, int32(3), container.LivenessProbe.TimeoutSeconds, "liveness probe must terminate blocked bfdd-control calls")
+	assert.Equal(t, []string{"bfdd-control", "status"}, container.ReadinessProbe.Exec.Command)
+	assert.Equal(t, int32(3), container.ReadinessProbe.InitialDelaySeconds)
+	assert.Equal(t, int32(3), container.ReadinessProbe.PeriodSeconds)
+	assert.Equal(t, int32(1), container.ReadinessProbe.FailureThreshold)
 
 	assert.Equal(t, gwBFDDResourceCPU, container.Resources.Requests[corev1.ResourceCPU])
 	assert.Equal(t, gwBFDDResourceMemory, container.Resources.Requests[corev1.ResourceMemory])
@@ -56,6 +69,100 @@ func TestGenGatewayBFDDContainer(t *testing.T) {
 
 	assert.False(t, *container.SecurityContext.Privileged)
 	assert.Equal(t, int64(65534), *container.SecurityContext.RunAsUser)
+}
+
+func TestBFDDHealthcheck(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is required to test the BFD health check")
+	}
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current filename")
+	}
+	healthcheckPath := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images", "bfdd-healthcheck.sh")
+
+	tests := []struct {
+		name           string
+		statusOutput   string
+		statusExitCode string
+		wantHealthy    bool
+		wantAllowed    []string
+	}{
+		{
+			name:         "existing session is healthy",
+			statusOutput: "There are 1 sessions:",
+			wantHealthy:  true,
+		},
+		{
+			name:         "zero sessions fails without mutating peer configuration",
+			statusOutput: "There are 0 sessions:",
+		},
+		{
+			name:           "status failure fails without mutating peer configuration",
+			statusOutput:   "control socket unavailable",
+			statusExitCode: "2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDir := t.TempDir()
+			binDir := filepath.Join(testDir, "bin")
+			if err := os.Mkdir(binDir, 0o755); err != nil {
+				t.Fatalf("failed to create mock binary directory: %v", err)
+			}
+
+			allowLog := filepath.Join(testDir, "allow.log")
+			mockControl := filepath.Join(binDir, "bfdd-control")
+			mockScript := `#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  status)
+    printf '%s\n' "${STATUS_OUTPUT:-}"
+    exit "${STATUS_EXIT_CODE:-0}"
+    ;;
+  allow)
+    printf '%s\n' "${2:-}" >> "${ALLOW_LOG}"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`
+			if err := os.WriteFile(mockControl, []byte(mockScript), 0o755); err != nil {
+				t.Fatalf("failed to create mock bfdd-control: %v", err)
+			}
+
+			cmd := exec.Command(bash, healthcheckPath) // #nosec G204 -- path is derived from the test source location
+			cmd.Env = append(os.Environ(),
+				"PATH="+binDir+":"+os.Getenv("PATH"),
+				"STATUS_OUTPUT="+tt.statusOutput,
+				"STATUS_EXIT_CODE="+tt.statusExitCode,
+				"ALLOW_LOG="+allowLog,
+				"BFD_PEER_IPS=10.0.0.1,fd00::1",
+			)
+			output, err := cmd.CombinedOutput()
+			if tt.wantHealthy {
+				assert.NoError(t, err, "health check output: %s", output)
+			} else {
+				assert.Error(t, err, "health check output: %s", output)
+			}
+
+			var allowed []string
+			content, err := os.ReadFile(allowLog)
+			switch {
+			case err == nil:
+				allowed = strings.Fields(string(content))
+			case os.IsNotExist(err):
+			default:
+				t.Fatalf("failed to read allowed peer log: %v", err)
+			}
+			assert.Equal(t, tt.wantAllowed, allowed)
+		})
+	}
 }
 
 func TestGenGatewaySleepContainer(t *testing.T) {
