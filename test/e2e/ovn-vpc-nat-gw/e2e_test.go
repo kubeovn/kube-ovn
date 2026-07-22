@@ -56,8 +56,8 @@ func makeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *kubeovnv1.OvnEip {
 	return framework.MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage)
 }
 
-func makeOvnVip(namespaceName, name, subnet, v4ip, v6ip, vipType string) *kubeovnv1.Vip {
-	return framework.MakeVip(namespaceName, name, subnet, v4ip, v6ip, vipType)
+func makeOvnVip(namespaceName, name, subnet, v4ip, v6ip, vipType string, attachSubnets []string) *kubeovnv1.Vip {
+	return framework.MakeVip(namespaceName, name, subnet, v4ip, v6ip, vipType, attachSubnets)
 }
 
 func makeOvnFip(name, ovnEip, ipType, ipName, vpc, v4Ip string) *kubeovnv1.OvnFip {
@@ -697,7 +697,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectHaveKeyWithValue(lrpEipSnat.Labels, util.EipV4IpLabel, noBfdLrpEip.Spec.V4Ip)
 
 		ginkgo.By("Creating share vip")
-		shareVip := framework.MakeVip(namespaceName, sharedVipName, noBfdSubnetName, "", "", "")
+		shareVip := framework.MakeVip(namespaceName, sharedVipName, noBfdSubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(shareVip)
 		ginkgo.By("Creating the first ovn fip with share eip vip should be ok")
 		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShouldOkName, noBfdlrpEipName, util.Vip, sharedVipName, "", "")
@@ -1000,12 +1000,12 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectNotEmpty(multiFipEip2.Status.V4Ip)
 
 		ginkgo.By("Creating ovn vip " + multiFipVip1Name)
-		multiFipVip1 := makeOvnVip(namespaceName, multiFipVip1Name, noBfdSubnetName, "", "", "")
+		multiFipVip1 := makeOvnVip(namespaceName, multiFipVip1Name, noBfdSubnetName, "", "", "", nil)
 		multiFipVip1 = vipClient.CreateSync(multiFipVip1)
 		framework.ExpectNotEmpty(multiFipVip1.Status.V4ip)
 
 		ginkgo.By("Creating ovn vip " + multiFipVip2Name)
-		multiFipVip2 := makeOvnVip(namespaceName, multiFipVip2Name, noBfdSubnetName, "", "", "")
+		multiFipVip2 := makeOvnVip(namespaceName, multiFipVip2Name, noBfdSubnetName, "", "", "", nil)
 		multiFipVip2 = vipClient.CreateSync(multiFipVip2)
 		framework.ExpectNotEmpty(multiFipVip2.Status.V4ip)
 
@@ -1145,7 +1145,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Test ovn fip with eip name and ip")
 		ginkgo.By("Creating ovn vip " + ipFipVipName)
-		ipFipVip := makeOvnVip(namespaceName, ipFipVipName, bfdSubnetName, "", "", "")
+		ipFipVip := makeOvnVip(namespaceName, ipFipVipName, bfdSubnetName, "", "", "", nil)
 		ipFipVip = vipClient.CreateSync(ipFipVip)
 		framework.ExpectNotEmpty(ipFipVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipFipEipName)
@@ -1160,7 +1160,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Test ovn dnat with eip name and ip")
 		ginkgo.By("Creating ovn vip " + ipDnatVipName)
-		ipDnatVip := makeOvnVip(namespaceName, ipDnatVipName, bfdSubnetName, "", "", "")
+		ipDnatVip := makeOvnVip(namespaceName, ipDnatVipName, bfdSubnetName, "", "", "", nil)
 		ipDnatVip = vipClient.CreateSync(ipDnatVip)
 		framework.ExpectNotEmpty(ipDnatVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipDnatEipName)
@@ -1188,7 +1188,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Test ovn snat with eip name and ip")
 		ginkgo.By("Creating ovn vip " + ipSnatVipName)
-		ipSnatVip := makeOvnVip(namespaceName, ipSnatVipName, bfdSubnetName, "", "", "")
+		ipSnatVip := makeOvnVip(namespaceName, ipSnatVipName, bfdSubnetName, "", "", "", nil)
 		ipSnatVip = vipClient.CreateSync(ipSnatVip)
 		framework.ExpectNotEmpty(ipSnatVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipSnatEipName)
