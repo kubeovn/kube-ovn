@@ -354,6 +354,9 @@ kube-ovn-connectivity-e2e:
 
 .PHONY: kube-ovn-underlay-metallb-e2e
 kube-ovn-underlay-metallb-e2e:
+	kubectl -n kube-system get configmap kube-proxy -o json | jq '.data["config.conf"] |= sub("strictARP: false"; "strictARP: true")' | kubectl apply -f -
+	kubectl -n kube-system rollout restart daemonset/kube-proxy
+	kubectl -n kube-system rollout status daemonset/kube-proxy --timeout=180s
 	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/metallb
 	E2E_BRANCH=$(E2E_BRANCH) \

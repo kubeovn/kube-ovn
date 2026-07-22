@@ -19,6 +19,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const localExternalVIPKeyPrefix = "kube-ovn.io/local-external-vip/"
+
 // CreateLoadBalancer create loadbalancer
 func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	var (
@@ -179,13 +181,22 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 	ops, err = c.LoadBalancerOp(
 		lbName,
 		func(lb *ovnnb.LoadBalancer) []model.Mutation {
-			return []model.Mutation{
+			mutations := []model.Mutation{
 				{
 					Field:   &lb.Vips,
 					Value:   map[string]string{vipEndpoint: lb.Vips[vipEndpoint]},
 					Mutator: ovsdb.MutateOperationDelete,
 				},
 			}
+			key := localExternalVIPKeyPrefix + vipEndpoint
+			if value, ok := lb.ExternalIDs[key]; ok {
+				mutations = append(mutations, model.Mutation{
+					Field:   &lb.ExternalIDs,
+					Value:   map[string]string{key: value},
+					Mutator: ovsdb.MutateOperationDelete,
+				})
+			}
+			return mutations
 		},
 	)
 	if err != nil {
@@ -199,6 +210,53 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 	if err = c.Transact("lb-add", ops); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to delete vip %s from load balancers %s: %w", vipEndpoint, lbName, err)
+	}
+	return nil
+}
+
+// SetLoadBalancerVIPExternalTrafficLocal records the node LSP of the chassis
+// announcing an external VIP of a LoadBalancer Service with
+// externalTrafficPolicy=Local.
+func (c *OVNNbClient) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP string) error {
+	key := localExternalVIPKeyPrefix + vip
+	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		if vipNodeLSP != "" {
+			if lb.ExternalIDs[key] == vipNodeLSP {
+				return nil
+			}
+			mutations := make([]model.Mutation, 0, 2)
+			if oldValue, ok := lb.ExternalIDs[key]; ok {
+				mutations = append(mutations, model.Mutation{
+					Field:   &lb.ExternalIDs,
+					Value:   map[string]string{key: oldValue},
+					Mutator: ovsdb.MutateOperationDelete,
+				})
+			}
+			mutations = append(mutations, model.Mutation{
+				Field:   &lb.ExternalIDs,
+				Value:   map[string]string{key: vipNodeLSP},
+				Mutator: ovsdb.MutateOperationInsert,
+			})
+			return mutations
+		}
+
+		if _, ok := lb.ExternalIDs[key]; !ok {
+			return nil
+		}
+		return []model.Mutation{{
+			Field:   &lb.ExternalIDs,
+			Value:   map[string]string{key: lb.ExternalIDs[key]},
+			Mutator: ovsdb.MutateOperationDelete,
+		}}
+	})
+	if err != nil {
+		return fmt.Errorf("failed to generate operations when updating external traffic local marker for vip %s on load balancer %s: %w", vip, lbName, err)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	if err = c.Transact("lb-update-external-vip", ops); err != nil {
+		return fmt.Errorf("failed to update external traffic local marker for vip %s on load balancer %s: %w", vip, lbName, err)
 	}
 	return nil
 }

@@ -258,6 +258,10 @@ type Controller struct {
 	epsIndexer                    cache.Indexer
 	addOrUpdateEndpointSliceQueue workqueue.TypedRateLimitingInterface[string]
 	epKeyMutex                    keymutex.KeyMutex
+	serviceL2StatusMutex          sync.RWMutex
+	serviceL2StatusIndexer        cache.Indexer
+	serviceL2StatusSynced         cache.InformerSynced
+	serviceL2StatusStarted        bool
 
 	deploymentsLister appsv1.DeploymentLister
 	deploymentsSynced cache.InformerSynced
@@ -776,6 +780,10 @@ func Run(ctx context.Context, config *Configuration) {
 	// They may be missing on clusters upgraded from <v1.16 via Helm, which does not
 	// re-apply the `crds/` directory on `helm upgrade`. Best-effort start with periodic retry.
 	controller.StartBgpEvpnConfInformerFactory(ctx)
+
+	// MetalLB is optional. When its ServiceL2Status API is available, use it to
+	// identify the chassis announcing each underlay LoadBalancer VIP.
+	controller.StartServiceL2StatusInformer(ctx)
 
 	// Wait for the caches to be synced before starting workers
 	controller.informerFactory.Start(ctx.Done())

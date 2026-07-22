@@ -348,6 +348,52 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 	}
 }
 
+func TestEnqueueUpdateServiceReconcilesEndpointSliceOnExternalTrafficPolicyChange(t *testing.T) {
+	oldSvc := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "svc",
+			Namespace:       metav1.NamespaceDefault,
+			ResourceVersion: "1",
+		},
+		Spec: v1.ServiceSpec{
+			Type:                  v1.ServiceTypeLoadBalancer,
+			ClusterIP:             "10.96.0.10",
+			ClusterIPs:            []string{"10.96.0.10"},
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeLocal,
+			Ports:                 []v1.ServicePort{{Name: "tcp", Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+	}
+	newSvc := oldSvc.DeepCopy()
+	newSvc.ResourceVersion = "2"
+	newSvc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeCluster
+
+	c := &Controller{
+		config: &Configuration{
+			EnableLb:               true,
+			EnableOVNLBPreferLocal: true,
+		},
+		updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
+		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+	}
+	t.Cleanup(c.updateServiceQueue.ShutDown)
+	t.Cleanup(c.addOrUpdateEndpointSliceQueue.ShutDown)
+
+	c.enqueueUpdateService(oldSvc, newSvc)
+
+	require.Equal(t, 1, c.updateServiceQueue.Len())
+	require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
+	key, shutdown := c.addOrUpdateEndpointSliceQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "default/svc", key)
+	c.addOrUpdateEndpointSliceQueue.Done(key)
+
+	c.config.EnableOVNLBPreferLocal = false
+	c.addOrUpdateEndpointSliceQueue = newTypedRateLimitingQueue[string]("UpdateEndpointSliceDisabled", nil)
+	t.Cleanup(c.addOrUpdateEndpointSliceQueue.ShutDown)
+	c.enqueueUpdateService(oldSvc, newSvc)
+	require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
+}
+
 func Test_enqueueUpdateEndpointSliceSkipsContentlessUpdates(t *testing.T) {
 	t.Parallel()
 
