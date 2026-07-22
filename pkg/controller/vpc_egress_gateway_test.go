@@ -1,6 +1,11 @@
 package controller
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -21,6 +26,104 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	require.Equal(t, "50Mi", container.Resources.Limits.Memory().String())
 	ephemeralStorage := container.Resources.Limits[corev1.ResourceEphemeralStorage]
 	require.Equal(t, "1Gi", ephemeralStorage.String())
+
+	require.NotNil(t, container.StartupProbe)
+	require.NotNil(t, container.LivenessProbe)
+	require.NotNil(t, container.ReadinessProbe)
+	require.Equal(t, []string{"bash", "/kube-ovn/bfdd-prestart.sh"}, container.StartupProbe.Exec.Command)
+	require.Equal(t, []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"}, container.LivenessProbe.Exec.Command)
+	require.EqualValues(t, 3, container.LivenessProbe.TimeoutSeconds)
+	require.Equal(t, []string{"bfdd-control", "status"}, container.ReadinessProbe.Exec.Command)
+}
+
+func TestBFDDHealthcheck(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is required to test the BFD health check")
+	}
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current filename")
+	}
+	healthcheckPath := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images", "bfdd-healthcheck.sh")
+
+	tests := []struct {
+		name           string
+		statusOutput   string
+		statusExitCode string
+		wantHealthy    bool
+		wantAllowed    []string
+	}{
+		{
+			name:         "existing session is healthy",
+			statusOutput: "There are 1 sessions:",
+			wantHealthy:  true,
+		},
+		{
+			name:         "zero sessions fails without mutating peer configuration",
+			statusOutput: "There are 0 sessions:",
+		},
+		{
+			name:           "status failure fails without mutating peer configuration",
+			statusOutput:   "control socket unavailable",
+			statusExitCode: "2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDir := t.TempDir()
+			binDir := filepath.Join(testDir, "bin")
+			require.NoError(t, os.Mkdir(binDir, 0o755))
+
+			allowLog := filepath.Join(testDir, "allow.log")
+			mockControl := filepath.Join(binDir, "bfdd-control")
+			mockScript := `#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  status)
+    printf '%s\n' "${STATUS_OUTPUT:-}"
+    exit "${STATUS_EXIT_CODE:-0}"
+    ;;
+  allow)
+    printf '%s\n' "${2:-}" >> "${ALLOW_LOG}"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`
+			require.NoError(t, os.WriteFile(mockControl, []byte(mockScript), 0o755))
+
+			cmd := exec.Command(bash, healthcheckPath) // #nosec G204 -- path is derived from the test source location
+			cmd.Env = append(os.Environ(),
+				"PATH="+binDir+":"+os.Getenv("PATH"),
+				"STATUS_OUTPUT="+tt.statusOutput,
+				"STATUS_EXIT_CODE="+tt.statusExitCode,
+				"ALLOW_LOG="+allowLog,
+				"BFD_PEER_IPS=10.0.0.1,fd00::1",
+			)
+			output, err := cmd.CombinedOutput()
+			if tt.wantHealthy {
+				require.NoError(t, err, "health check output: %s", output)
+			} else {
+				require.Error(t, err, "health check output: %s", output)
+			}
+
+			var allowed []string
+			content, err := os.ReadFile(allowLog)
+			switch {
+			case err == nil:
+				allowed = strings.Fields(string(content))
+			case os.IsNotExist(err):
+			default:
+				t.Fatalf("failed to read allowed peer log: %v", err)
+			}
+			require.Equal(t, tt.wantAllowed, allowed)
+		})
+	}
 }
 
 func TestLocalGatewayPolicyBFDSessionsSkipsEmptySession(t *testing.T) {
