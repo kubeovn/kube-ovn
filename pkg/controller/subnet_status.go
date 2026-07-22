@@ -50,22 +50,25 @@ func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet
 func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
-		if reason == "ValidateLogicalSwitchFailed" {
+		switch reason {
+		case "ValidateLogicalSwitchFailed":
 			subnet.Status.NotValidated(reason, errStr)
-		} else {
+		case "ValidateLogicalSwitchSuccess":
 			subnet.Status.Validated(reason, "")
 		}
 		subnet.Status.NotReady(reason, errStr)
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
-		subnet.Status.Validated(reason, "")
-		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, errStr)
-		if reason == "SetPrivateLogicalSwitchSuccess" ||
-			reason == "ResetLogicalSwitchAclSuccess" ||
-			reason == "ReconcileCentralizedGatewaySuccess" ||
-			reason == "SetNonOvnSubnetSuccess" {
+		switch reason {
+		case "ValidateLogicalSwitchSuccess":
+			subnet.Status.Validated(reason, "")
+		case "SetPrivateLogicalSwitchSuccess",
+			"ResetLogicalSwitchAclSuccess",
+			"ReconcileCentralizedGatewaySuccess",
+			"SetNonOvnSubnetSuccess":
 			subnet.Status.Ready(reason, "")
 		}
+		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, errStr)
 	}
 
 	bytes, err := subnet.Status.Bytes()
