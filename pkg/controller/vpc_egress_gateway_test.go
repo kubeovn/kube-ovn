@@ -1,16 +1,118 @@
 package controller
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/keymutex"
 	"k8s.io/utils/set"
 
+	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestRecordVpcEgressGatewayEvent(t *testing.T) {
+	recorder := record.NewFakeRecorder(1)
+	c := &Controller{recorder: recorder}
+	gw := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "egress-gw",
+			Namespace: "default",
+		},
+	}
+
+	c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "ReconcileWorkloadFailed", "boom")
+
+	var event string
+	select {
+	case event = <-recorder.Events:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event")
+	}
+	require.Contains(t, event, corev1.EventTypeWarning)
+	require.Contains(t, event, "ReconcileWorkloadFailed")
+	require.Contains(t, event, "boom")
+}
+
+func TestVpcEgressGatewayReadyConditionChanged(t *testing.T) {
+	gw := &kubeovnv1.VpcEgressGateway{}
+	gw.Generation = 2
+	gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "Processing", "waiting", gw.Generation)
+
+	require.False(t, vpcEgressGatewayReadyConditionChanged(gw, corev1.ConditionFalse, "Processing", "waiting"))
+	require.True(t, vpcEgressGatewayReadyConditionChanged(gw, corev1.ConditionFalse, "Processing", "still waiting"))
+	require.True(t, vpcEgressGatewayReadyConditionChanged(gw, corev1.ConditionTrue, "ReconcileSuccess", ""))
+}
+
+func TestSetVpcEgressGatewayNotReadyClearsStaleReady(t *testing.T) {
+	gw := &kubeovnv1.VpcEgressGateway{}
+	gw.Generation = 2
+	gw.Status.Ready = true
+	gw.Status.Phase = kubeovnv1.PhaseCompleted
+	gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
+
+	changed := setVpcEgressGatewayNotReady(gw, "ReconcileOVNRoutesFailed", "route failed")
+
+	require.True(t, changed)
+	require.False(t, gw.Status.Ready)
+	require.Equal(t, kubeovnv1.PhaseProcessing, gw.Status.Phase)
+	condition := gw.Status.Conditions.GetCondition(kubeovnv1.Ready)
+	require.NotNil(t, condition)
+	require.Equal(t, corev1.ConditionFalse, condition.Status)
+	require.Equal(t, "ReconcileOVNRoutesFailed", condition.Reason)
+	require.Equal(t, "route failed", condition.Message)
+}
+
+func TestHandleDelVpcEgressGatewayReturnsFinalizerUpdateError(t *testing.T) {
+	updateErr := errors.New("update failed")
+	gw := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "egress-gw",
+			Namespace:  "default",
+			Finalizers: []string{util.KubeOVNControllerFinalizer},
+		},
+	}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(gw))
+	kubeOvnClient := kubeovnfake.NewSimpleClientset(gw)
+	kubeOvnClient.PrependReactor("update", "vpc-egress-gateways", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, updateErr
+	})
+
+	mockCtrl := gomock.NewController(t)
+	mockOvnClient := mockovs.NewMockNbClient(mockCtrl)
+	mockOvnClient.EXPECT().FindBFD(gomock.Any()).Return(nil, nil)
+	mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(util.DefaultVpc, -1, gomock.Any()).Return(nil)
+	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Return(nil)
+	mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).Times(2)
+
+	c := &Controller{
+		config: &Configuration{
+			ClusterRouter: util.DefaultVpc,
+			KubeOvnClient: kubeOvnClient,
+		},
+		OVNNbClient:              mockOvnClient,
+		recorder:                 record.NewFakeRecorder(10),
+		vpcEgressGatewayKeyMutex: keymutex.NewHashed(0),
+		vpcEgressGatewayLister:   kubeovnlister.NewVpcEgressGatewayLister(indexer),
+	}
+
+	err := c.handleDelVpcEgressGateway("default/egress-gw")
+	require.ErrorIs(t, err, updateErr)
+}
 
 func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	container := genGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5)
