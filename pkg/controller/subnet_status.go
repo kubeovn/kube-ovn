@@ -57,6 +57,7 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 			subnet.Status.Validated(reason, "")
 		}
 		subnet.Status.NotReady(reason, errStr)
+		setSubnetReadyObservedGeneration(subnet)
 		c.recorder.Eventf(subnet, v1.EventTypeWarning, reason, "%s", errStr)
 	} else {
 		switch reason {
@@ -67,6 +68,7 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 			"ReconcileCentralizedGatewaySuccess",
 			"SetNonOvnSubnetSuccess":
 			subnet.Status.Ready(reason, "")
+			setSubnetReadyObservedGeneration(subnet)
 		}
 		c.recorder.Eventf(subnet, v1.EventTypeNormal, reason, "%s", errStr)
 	}
@@ -81,6 +83,12 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 		return err
 	}
 	return nil
+}
+
+func setSubnetReadyObservedGeneration(subnet *kubeovnv1.Subnet) {
+	if condition := subnet.Status.GetCondition(kubeovnv1.Ready); condition != nil {
+		condition.ObservedGeneration = subnet.Generation
+	}
 }
 
 func (c *Controller) handleUpdateSubnetStatus(key string) error {

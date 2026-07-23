@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
 
@@ -91,8 +90,7 @@ func (c *SubnetClient) UpdateSync(subnet *apiv1.Subnet, options metav1.UpdateOpt
 	ginkgo.GinkgoHelper()
 
 	s := c.Update(subnet, options, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
-	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
+	ExpectTrue(c.WaitToBeReadyWithGeneration(s.Name, s.Generation, timeout))
 	// Get the newest subnet after it becomes ready
 	return c.Get(s.Name).DeepCopy()
 }
@@ -131,8 +129,7 @@ func (c *SubnetClient) PatchSync(original, modified *apiv1.Subnet) *apiv1.Subnet
 	ginkgo.GinkgoHelper()
 
 	s := c.Patch(original, modified, timeout)
-	ExpectTrue(c.WaitToBeUpdated(s, timeout))
-	ExpectTrue(c.WaitToBeReady(s.Name, timeout))
+	ExpectTrue(c.WaitToBeReadyWithGeneration(s.Name, s.Generation, timeout))
 	// Get the newest subnet after it becomes ready
 	return c.Get(s.Name).DeepCopy()
 }
@@ -202,19 +199,19 @@ func (c *SubnetClient) WaitToBeReady(name string, timeout time.Duration) bool {
 	return c.WaitConditionToBe(name, apiv1.Ready, true, timeout)
 }
 
-// WaitToBeUpdated returns whether the subnet is updated within timeout.
-func (c *SubnetClient) WaitToBeUpdated(subnet *apiv1.Subnet, timeout time.Duration) bool {
-	Logf("Waiting up to %v for subnet %s to be updated", timeout, subnet.Name)
-	rv, _ := big.NewInt(0).SetString(subnet.ResourceVersion, 10)
+// WaitToBeReadyWithGeneration returns whether the subnet's current generation is ready.
+func (c *SubnetClient) WaitToBeReadyWithGeneration(name string, generation int64, timeout time.Duration) bool {
+	Logf("Waiting up to %v for subnet %s generation %d to be ready", timeout, name, generation)
 	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
-		s := c.Get(subnet.Name)
-		if current, _ := big.NewInt(0).SetString(s.ResourceVersion, 10); current.Cmp(rv) > 0 {
-			Logf("Subnet %s updated", subnet.Name)
+		subnet := c.Get(name)
+		condition := subnet.Status.GetCondition(apiv1.Ready)
+		if condition != nil && condition.Status == corev1.ConditionTrue && condition.ObservedGeneration >= generation {
+			Logf("Subnet %s generation %d is ready", name, generation)
 			return true
 		}
-		Logf("Subnet %s still not updated", subnet.Name)
+		Logf("Subnet %s generation %d still not ready", name, generation)
 	}
-	Logf("Subnet %s was not updated within %v", subnet.Name, timeout)
+	Logf("Subnet %s generation %d was not ready within %v", name, generation, timeout)
 	return false
 }
 
