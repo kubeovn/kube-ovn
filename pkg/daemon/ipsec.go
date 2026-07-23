@@ -28,14 +28,15 @@ import (
 )
 
 const (
-	ipsecCADir   = "/etc/ipsec.d/cacerts"
-	ipsecKeyDir  = "/etc/ovs_ipsec_keys"
-	ipsecReqPath = ipsecKeyDir + "/ipsec-req.pem"
+	ipsecCADir  = "/etc/ipsec.d/cacerts"
+	ipsecKeyDir = "/etc/ovs_ipsec_keys"
 
 	ipsecPrivKeyPathSpec = ipsecKeyDir + "/ipsec-privkey-%d.pem"
 	ipsecCertPathSpec    = ipsecKeyDir + "/ipsec-cert-%d.pem"
 	ipsecCACertPathSpec  = ipsecKeyDir + "/ipsec-cacert-%s.pem"
 )
+
+var ipsecReqPath = ipsecKeyDir + "/ipsec-req.pem"
 
 type pkiFiles struct {
 	privateKeyPath  string
@@ -219,8 +220,8 @@ func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 	klog.Infof("ovs system id: %s", cn)
 
 	cmd := exec.Command("openssl", "req", "-new", "-text",
-		"-extensions", "v3_req",
 		"-addext", "subjectAltName = DNS:"+cn,
+		"-addext", "extendedKeyUsage = ipsecTunnel",
 		"-subj", "/C=CN/O=kubeovn/OU=kube-ovn/CN="+cn,
 		"-key", newPrivKeyPath,
 		"-out", ipsecReqPath) // #nosec

@@ -139,15 +139,24 @@ case "${altstyle}" in
     fedora)
 cat >> "${sbin}/iptables-wrapper" <<EOF
 # Update links to point to the selected binaries
-alternatives --set iptables "/usr/sbin/iptables-\${mode}" > /dev/null || failed=1
+alternatives --set iptables "/usr/sbin/iptables-\${mode}" > /dev/null 2>&1 || true
+alternatives --set ip6tables "/usr/sbin/ip6tables-\${mode}" > /dev/null 2>&1 || true
+for cmd in iptables iptables-save iptables-restore ip6tables ip6tables-save ip6tables-restore; do
+    rm -f "/usr/local/sbin/\${cmd}"
+    ln -s "${sbin}/xtables-\${mode}-multi" "/usr/local/sbin/\${cmd}"
+done 2>/dev/null || failed=1
 EOF
     ;;
 
     debian)
 cat >> "${sbin}/iptables-wrapper" <<EOF
 # Update links to point to the selected binaries
-update-alternatives --set iptables "/usr/sbin/iptables-\${mode}" > /dev/null || failed=1
-update-alternatives --set ip6tables "/usr/sbin/ip6tables-\${mode}" > /dev/null || failed=1
+update-alternatives --set iptables "/usr/sbin/iptables-\${mode}" > /dev/null 2>&1 || true
+update-alternatives --set ip6tables "/usr/sbin/ip6tables-\${mode}" > /dev/null 2>&1 || true
+for cmd in iptables iptables-save iptables-restore ip6tables ip6tables-save ip6tables-restore; do
+    rm -f "/usr/local/sbin/\${cmd}"
+    ln -s "${sbin}/xtables-\${mode}-multi" "/usr/local/sbin/\${cmd}"
+done 2>/dev/null || failed=1
 EOF
     ;;
 
@@ -182,10 +191,11 @@ case "${altstyle}" in
 	alternatives \
             --install /usr/sbin/iptables iptables /usr/sbin/iptables-wrapper 100 \
             --slave /usr/sbin/iptables-restore iptables-restore /usr/sbin/iptables-wrapper \
-            --slave /usr/sbin/iptables-save iptables-save /usr/sbin/iptables-wrapper \
-            --slave /usr/sbin/ip6tables iptables /usr/sbin/iptables-wrapper \
-            --slave /usr/sbin/ip6tables-restore iptables-restore /usr/sbin/iptables-wrapper \
-            --slave /usr/sbin/ip6tables-save iptables-save /usr/sbin/iptables-wrapper
+            --slave /usr/sbin/iptables-save iptables-save /usr/sbin/iptables-wrapper
+	alternatives \
+            --install /usr/sbin/ip6tables ip6tables /usr/sbin/iptables-wrapper 100 \
+            --slave /usr/sbin/ip6tables-restore ip6tables-restore /usr/sbin/iptables-wrapper \
+            --slave /usr/sbin/ip6tables-save ip6tables-save /usr/sbin/iptables-wrapper
 	;;
 
     debian)
