@@ -57,7 +57,7 @@ func TestGenGatewayBFDDContainer(t *testing.T) {
 	assert.Equal(t, []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"}, container.LivenessProbe.Exec.Command)
 	assert.Equal(t, int32(1), container.LivenessProbe.InitialDelaySeconds)
 	assert.Equal(t, int32(5), container.LivenessProbe.PeriodSeconds)
-	assert.Equal(t, int32(3), container.LivenessProbe.TimeoutSeconds, "liveness probe must terminate blocked bfdd-control calls")
+	assert.Equal(t, int32(10), container.LivenessProbe.TimeoutSeconds, "liveness probe must terminate blocked bfdd-control calls")
 	assert.Equal(t, []string{"bfdd-control", "status"}, container.ReadinessProbe.Exec.Command)
 	assert.Equal(t, int32(3), container.ReadinessProbe.InitialDelaySeconds)
 	assert.Equal(t, int32(3), container.ReadinessProbe.PeriodSeconds)
