@@ -262,6 +262,9 @@ function ovn_db_pre_start() {
                 if [ $(($now - $birth_time)) -ge 120 ]; then
                     echo "ovn db file $db_file exists for more than 120s, remove it."
                     rm -f "$db_file" || return 1
+                    # also remove the raft header so the next startup does a clean
+                    # join-cluster instead of rebuilding a broken DB from stale peer IDs
+                    rm -f "$hdr_file" || return 1
                 fi
                 return
             fi

@@ -200,7 +200,7 @@ spec:
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 15
-            failureThreshold: 5
+            failureThreshold: 10
             timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"
