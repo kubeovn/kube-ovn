@@ -81,7 +81,8 @@ type Controller struct {
 
 	recorder record.EventRecorder
 
-	protocol string
+	protocol              string
+	gatewayBackendManager *gatewayBackendManager
 
 	ControllerRuntime
 
@@ -156,7 +157,8 @@ func NewController(config *Configuration,
 		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
 
 		serviceCIDRStore: util.NewServiceCIDRStore(config.ServiceClusterIPRange),
-		serviceCIDRInformerFactory: informers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		serviceCIDRInformerFactory: informers.NewSharedInformerFactoryWithOptions(
+			config.KubeClient, 0,
 			informers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 				listOption.AllowWatchBookmarks = true
 			}),
@@ -176,6 +178,36 @@ func NewController(config *Configuration,
 
 	if err = controller.initRuntime(); err != nil {
 		return nil, err
+	}
+	iptablesBackend := &iptablesGatewayBackend{controller: controller}
+	controller.gatewayBackendManager = newGatewayBackendManager(iptablesBackend)
+	controller.gatewayBackendManager.current = iptablesBackend
+	modeValue := config.GatewayNetfilterMode
+	if modeValue == "" {
+		modeValue = string(gatewayNetfilterModeIPTables)
+	}
+	mode, err := parseGatewayNetfilterMode(modeValue)
+	if err != nil {
+		return nil, err
+	}
+	controller.gatewayBackendManager.mode = mode
+	controller.gatewayBackendManager.coldStart = mode == gatewayNetfilterModeAuto
+	endpoint := config.KubeProxyModeEndpoint
+	if endpoint == "" {
+		endpoint = "http://localhost:10249/proxyMode"
+	}
+	timeout := config.GatewayNetfilterDetectTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	controller.gatewayBackendManager.detector = newProxyModeDetector(endpoint, timeout, controller.detectKubeProxyModeFromConfig)
+	controller.gatewayBackendManager.factories[gatewayNetfilterModeNFTables] = func() (gatewayNetfilterBackend, error) {
+		return newNFTGatewayBackend(controller)
+	}
+	controller.gatewayBackendManager.warning = func(reason, message string) {
+		if err := controller.recordGatewayNetfilterWarning(reason, message); err != nil {
+			klog.ErrorS(err, "Failed to record gateway netfilter warning", "reason", reason)
+		}
 	}
 
 	podInformerFactory.Start(stopCh)
@@ -239,6 +271,15 @@ func NewController(config *Configuration,
 	}
 
 	return controller, nil
+}
+
+func (c *Controller) recordGatewayNetfilterWarning(reason, message string) error {
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		return fmt.Errorf("get node %q for gateway netfilter warning: %w", c.config.NodeName, err)
+	}
+	c.recorder.Event(node, v1.EventTypeWarning, reason, message)
+	return nil
 }
 
 func (c *Controller) enqueueAddIPSecCA(obj any) {
@@ -976,10 +1017,6 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(recompute, 10*time.Minute, stopCh)
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
-	if err := c.setIPSet(); err != nil {
-		util.LogFatalAndExit(err, "failed to set ipsets")
-	}
-
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
 	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
@@ -992,10 +1029,14 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(c.runUpdateNodeWorker, time.Second, stopCh)
 	go wait.Until(c.runIPSecWorker, 3*time.Second, stopCh)
 	if c.config.EnableNonPrimaryCNI {
-		// In non-primary CNI mode, iptables cleanup is a one-time operation at startup.
-		// There is no dynamic state to reconcile, so periodic execution is unnecessary.
-		if err := c.cleanupIptablesInNonPrimaryCNIMode(); err != nil {
-			klog.Errorf("failed to cleanup iptables in non-primary CNI mode: %v", err)
+		// Non-primary CNI mode only cleans up once at startup because it has no dynamic netfilter state to reconcile.
+		if err := c.cleanupKubeOVNIptablesAndIPSets(); err != nil {
+			klog.Errorf("failed to clean up Kube-OVN netfilter objects in non-primary CNI mode: %v", err)
+		}
+		if backend, err := newNFTGatewayBackend(c); err != nil {
+			klog.Errorf("failed to initialize nftables cleanup in non-primary CNI mode: %v", err)
+		} else if err := backend.Cleanup(context.Background()); err != nil {
+			klog.Errorf("failed to clean up the Kube-OVN nftables table in non-primary CNI mode: %v", err)
 		}
 	} else {
 		go wait.Until(c.runGateway, 3*time.Second, stopCh)

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -1008,7 +1009,9 @@ func (c *Controller) loopEncapIPCheck() {
 }
 
 func (c *Controller) ovnMetricsUpdate() {
-	c.setOvnSubnetGatewayMetric()
+	if err := c.gatewayBackendManager.ReadSubnetCounters(context.Background()); err != nil {
+		klog.Errorf("failed to read gateway subnet counters: %v", err)
+	}
 
 	resetSysParaMetrics()
 	c.setIPLocalPortRangeMetric()

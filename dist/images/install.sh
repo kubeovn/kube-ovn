@@ -32,6 +32,9 @@ ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
 ENABLE_METRICS=${ENABLE_METRICS:-true}
+GATEWAY_NETFILTER_MODE=${GATEWAY_NETFILTER_MODE:-auto}
+KUBE_PROXY_MODE_ENDPOINT=${KUBE_PROXY_MODE_ENDPOINT:-http://localhost:10249/proxyMode}
+GATEWAY_NETFILTER_DETECT_TIMEOUT=${GATEWAY_NETFILTER_DETECT_TIMEOUT:-30s}
 # comma-separated string of nodelocal DNS ip addresses
 NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
 # comma-separated list of destination IP CIDRs that should skip conntrack processing
@@ -8553,6 +8556,9 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=200
           - --enable-metrics=$ENABLE_METRICS
+          - --gateway-netfilter-mode=$GATEWAY_NETFILTER_MODE
+          - --kube-proxy-mode-endpoint=$KUBE_PROXY_MODE_ENDPOINT
+          - --gateway-netfilter-detect-timeout=$GATEWAY_NETFILTER_DETECT_TIMEOUT
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY

@@ -269,6 +269,33 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 			<td>Extra environment variables to be added to kube-ovn-cni pods.</td>
 		</tr>
 		<tr>
+			<td>agent.gatewayNetfilterDetectTimeout</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Maximum time to wait for the kube-proxy mode during cold start; leave empty to use the daemon default of 30s.</td>
+		</tr>
+		<tr>
+			<td>agent.gatewayNetfilterMode</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Gateway netfilter backend: auto, iptables, or nftables; leave empty to use the daemon default of auto.</td>
+		</tr>
+		<tr>
+			<td>agent.kubeProxyModeEndpoint</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Local kube-proxy proxyMode endpoint; leave empty to use the daemon default endpoint.</td>
+		</tr>
+		<tr>
 			<td>agent.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -2750,4 +2777,3 @@ true
 	</tr>
 	</tbody>
 </table>
-
