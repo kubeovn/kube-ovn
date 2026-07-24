@@ -1830,6 +1830,18 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		}
 		return subnet, nil
 	}
+	if poolName := strings.TrimSpace(pod.Annotations[util.IPPoolAnnotation]); poolName != "" &&
+		!strings.ContainsAny(poolName, ",;") && net.ParseIP(poolName) == nil {
+		pool, err := c.ippoolLister.Get(poolName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get ippool %s: %w", poolName, err)
+		}
+		subnet, err := c.subnetsLister.Get(pool.Spec.Subnet)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get subnet %s for ippool %s: %w", pool.Spec.Subnet, poolName, err)
+		}
+		return subnet, nil
+	}
 
 	ns, err := c.namespacesLister.Get(pod.Namespace)
 	if err != nil {

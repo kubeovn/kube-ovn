@@ -33,6 +33,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	var stsClient *framework.StatefulSetClient
 	var subnetClient *framework.SubnetClient
 	var ippoolClient *framework.IPPoolClient
+	var ipClient *framework.IPClient
 	var namespaceName, subnetName, subnetName2, ippoolName, ippoolName2, podName, deployName, stsName, stsName2 string
 	var subnet *apiv1.Subnet
 	var cidr string
@@ -45,6 +46,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 		stsClient = f.StatefulSetClient()
 		subnetClient = f.SubnetClient()
 		ippoolClient = f.IPPoolClient()
+		ipClient = f.IPClient()
 		namespaceName = f.Namespace.Name
 		subnetName = "subnet-" + framework.RandomSuffix()
 		subnetName2 = "subnet2-" + framework.RandomSuffix()
@@ -412,6 +414,64 @@ var _ = framework.Describe("[group:ipam]", func() {
 			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 		}
+	})
+
+	framework.ConformanceIt("should infer the default subnet from a named ippool", func() {
+		f.SkipVersionPriorTo(1, 17, "Default subnet inference from a named IPPool was introduced in v1.17")
+
+		poolCIDR := framework.RandomCIDR(f.ClusterIPFamily)
+		ginkgo.By("Creating subnet " + subnetName2 + " without binding it to the namespace")
+		poolSubnet := framework.MakeSubnet(subnetName2, "", poolCIDR, "", "", "", nil, nil, nil)
+		poolSubnet = subnetClient.CreateSync(poolSubnet)
+
+		poolIPs := framework.RandomIPPool(poolCIDR, 3)
+		poolV4, poolV6 := util.SplitIpsByProtocol(poolIPs)
+		v4Range, err := ipam.NewIPRangeListFrom(poolV4...)
+		framework.ExpectNoError(err)
+		v6Range, err := ipam.NewIPRangeListFrom(poolV6...)
+		framework.ExpectNoError(err)
+		ginkgo.By("Creating ippool " + ippoolName2 + " in subnet " + subnetName2)
+		ippool := framework.MakeIPPool(ippoolName2, subnetName2, poolIPs, nil)
+		_ = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Creating deployment " + deployName + " with only the ippool annotation")
+		annotations := map[string]string{util.IPPoolAnnotation: ippoolName2}
+		deploy := framework.MakeDeployment(deployName, 1, map[string]string{"app": deployName}, annotations, "pause", framework.PauseImage, "")
+		deploy = deployClient.CreateSync(deploy)
+
+		pods, err := deployClient.GetPods(deploy)
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(pods.Items, 1)
+		pod := pods.Items[0]
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, poolSubnet.Name)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, poolSubnet.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, poolSubnet.Spec.Gateway)
+		for _, podIP := range util.PodIPs(pod) {
+			ip, err := ipam.NewIP(podIP)
+			framework.ExpectNoError(err)
+			poolRange := v4Range
+			if strings.ContainsRune(podIP, ':') {
+				poolRange = v6Range
+			}
+			framework.ExpectTrue(poolRange.Contains(ip), "Pod IP %s should be contained by IPPool %v", podIP, poolIPs)
+		}
+
+		ginkgo.By("Waiting for ippool usage to reflect the pod allocation")
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			pool := ippoolClient.Get(ippoolName2)
+			v4Allocated := !f.HasIPv4() || !pool.Status.V4UsingIPs.EqualInt64(0)
+			v6Allocated := !f.HasIPv6() || !pool.Status.V6UsingIPs.EqualInt64(0)
+			return v4Allocated && v6Allocated, nil
+		}, "")
+
+		ginkgo.By("Deleting deployment " + deployName + " and waiting for ippool addresses to be released")
+		deployClient.DeleteSync(deployName)
+		framework.ExpectNoError(ipClient.WaitToDisappear(fmt.Sprintf("%s.%s", pod.Name, pod.Namespace), 0, 30*time.Second))
+		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			pool := ippoolClient.Get(ippoolName2)
+			return pool.Status.V4UsingIPs.EqualInt64(0) && pool.Status.V6UsingIPs.EqualInt64(0), nil
+		}, "")
 	})
 
 	framework.ConformanceIt("should support IPPool feature", func() {
