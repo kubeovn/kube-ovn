@@ -32,7 +32,7 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	require.NotNil(t, container.ReadinessProbe)
 	require.Equal(t, []string{"bash", "/kube-ovn/bfdd-prestart.sh"}, container.StartupProbe.Exec.Command)
 	require.Equal(t, []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"}, container.LivenessProbe.Exec.Command)
-	require.EqualValues(t, 3, container.LivenessProbe.TimeoutSeconds)
+	require.EqualValues(t, 10, container.LivenessProbe.TimeoutSeconds)
 	require.Equal(t, []string{"bfdd-control", "status"}, container.ReadinessProbe.Exec.Command)
 }
 
