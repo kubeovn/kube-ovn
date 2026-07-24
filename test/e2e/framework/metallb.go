@@ -51,6 +51,18 @@ func (c *MetallbClientSet) CreateL2Advertisement(advertisement *metallbv1beta1.L
 	return result, err
 }
 
+func (c *MetallbClientSet) UpdateL2Advertisement(advertisement *metallbv1beta1.L2Advertisement) (*metallbv1beta1.L2Advertisement, error) {
+	result := &metallbv1beta1.L2Advertisement{}
+	err := c.client.Put().
+		Namespace("metallb-system").
+		Resource("l2advertisements").
+		Name(advertisement.Name).
+		Body(advertisement).
+		Do(context.TODO()).
+		Into(result)
+	return result, err
+}
+
 func (c *MetallbClientSet) MakeL2Advertisement(name string, ipAddressPools []string) *metallbv1beta1.L2Advertisement {
 	return &metallbv1beta1.L2Advertisement{
 		ObjectMeta: metav1.ObjectMeta{

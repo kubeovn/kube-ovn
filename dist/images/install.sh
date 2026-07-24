@@ -7227,6 +7227,14 @@ rules:
       - list
       - watch
   - apiGroups:
+      - metallb.io
+    resources:
+      - servicel2statuses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - apps
     resources:
       - statefulsets
