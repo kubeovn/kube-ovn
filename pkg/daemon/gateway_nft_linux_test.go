@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/knftables"
 )
@@ -396,6 +397,62 @@ func TestNFTAuditRestoresCountersBeforeRules(t *testing.T) {
 	require.NotEqual(t, -1, counterPosition)
 	require.NotEqual(t, -1, rulePosition)
 	require.Less(t, counterPosition, rulePosition)
+}
+
+func TestNFTAuditRepairsObjectDefinitionDrift(t *testing.T) {
+	fake := knftables.NewFake(knftables.IPv4Family, nftGatewayTable)
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family:  knftables.IPv4Family,
+		Table:   nftGatewayTable,
+		Subnets: []string{"10.16.0.0/24"},
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        fake,
+		readers:       map[knftables.Family]knftables.Interface{knftables.IPv4Family: fake},
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+		auditInterval: time.Minute,
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	badPriority := knftables.BaseChainPriority("123")
+	fake.Lock()
+	fake.Table.Chains["filter-input"].Priority = &badPriority
+	fake.Table.Sets["subnets"].Flags = nil
+	fake.Unlock()
+	external := fake.NewTransaction()
+	external.Add(&knftables.Chain{Name: "unexpected"})
+	require.NoError(t, fake.Run(context.Background(), external))
+	backend.lastAudit = time.Now().Add(-2 * time.Minute)
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	fake.RLock()
+	priority := *fake.Table.Chains["filter-input"].Priority
+	flags := slices.Clone(fake.Table.Sets["subnets"].Flags)
+	_, unexpectedChainExists := fake.Table.Chains["unexpected"]
+	fake.RUnlock()
+	require.Equal(t, knftables.FilterPriority+"-10", priority)
+	require.Contains(t, flags, knftables.IntervalFlag)
+	require.False(t, unexpectedChainExists)
+}
+
+func TestNFTAuditDoesNotCountHealthyRefreshAsRepair(t *testing.T) {
+	fake := knftables.NewFake(knftables.IPv4Family, nftGatewayTable)
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family: knftables.IPv4Family,
+		Table:  nftGatewayTable,
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        fake,
+		readers:       map[knftables.Family]knftables.Interface{knftables.IPv4Family: fake},
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+		auditInterval: time.Minute,
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	before := testutil.ToFloat64(metricGatewayNFTRepairs)
+	backend.lastAudit = time.Now().Add(-2 * time.Minute)
+	require.NoError(t, backend.Reconcile(context.Background()))
+	require.Equal(t, before, testutil.ToFloat64(metricGatewayNFTRepairs))
 }
 
 func TestNFTCleanupBothFamilies(t *testing.T) {
