@@ -157,7 +157,8 @@ func NewController(config *Configuration,
 		ipsecQueue:     newTypedRateLimitingQueue[string]("IPSecCA", nil),
 
 		serviceCIDRStore: util.NewServiceCIDRStore(config.ServiceClusterIPRange),
-		serviceCIDRInformerFactory: informers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+		serviceCIDRInformerFactory: informers.NewSharedInformerFactoryWithOptions(
+			config.KubeClient, 0,
 			informers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 				listOption.AllowWatchBookmarks = true
 			}),
@@ -204,9 +205,8 @@ func NewController(config *Configuration,
 		return newNFTGatewayBackend(controller)
 	}
 	controller.gatewayBackendManager.warning = func(reason, message string) {
-		node, err := controller.nodesLister.Get(controller.config.NodeName)
-		if err == nil {
-			controller.recorder.Event(node, v1.EventTypeWarning, reason, message)
+		if err := controller.recordGatewayNetfilterWarning(reason, message); err != nil {
+			klog.ErrorS(err, "Failed to record gateway netfilter warning", "reason", reason)
 		}
 	}
 
@@ -271,6 +271,15 @@ func NewController(config *Configuration,
 	}
 
 	return controller, nil
+}
+
+func (controller *Controller) recordGatewayNetfilterWarning(reason, message string) error {
+	node, err := controller.nodesLister.Get(controller.config.NodeName)
+	if err != nil {
+		return fmt.Errorf("get node %q for gateway netfilter warning: %w", controller.config.NodeName, err)
+	}
+	controller.recorder.Event(node, v1.EventTypeWarning, reason, message)
+	return nil
 }
 
 func (c *Controller) enqueueAddIPSecCA(obj any) {
