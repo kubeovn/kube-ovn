@@ -122,6 +122,18 @@ func TestGatewayBackendManagerCleansAbandonedReadyBackend(t *testing.T) {
 	require.False(t, manager.degraded)
 }
 
+func TestGatewayBackendManagerCleansInactiveBackendOnStartup(t *testing.T) {
+	calls := []string{}
+	iptablesBackend := &recordingGatewayBackend{name: gatewayNetfilterModeIPTables, calls: &calls}
+	nftBackend := &recordingGatewayBackend{name: gatewayNetfilterModeNFTables, calls: &calls}
+	manager := newGatewayBackendManager(iptablesBackend, nftBackend)
+	manager.current = iptablesBackend
+	manager.mode = gatewayNetfilterModeIPTables
+
+	require.NoError(t, manager.Reconcile(context.Background()))
+	require.Equal(t, []string{"iptables:reconcile", "nftables:cleanup"}, calls)
+}
+
 func TestKubeOVNIPSetProtocol(t *testing.T) {
 	tests := []struct {
 		name     string
