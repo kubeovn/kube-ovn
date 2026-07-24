@@ -97,7 +97,7 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 			},
 			InitialDelaySeconds: 1,
 			PeriodSeconds:       5,
-			TimeoutSeconds:      3,
+			TimeoutSeconds:      10,
 		},
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
