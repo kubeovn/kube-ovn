@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 )
 
 type recordingGatewayBackend struct {
@@ -246,4 +249,15 @@ func TestGatewayBackendManagerKeepsCurrentWhenFactoryFails(t *testing.T) {
 	require.Error(t, manager.Reconcile(context.Background()))
 	require.Equal(t, []string{"iptables:reconcile"}, calls)
 	require.Equal(t, iptablesBackend, manager.current)
+}
+
+func TestRecordGatewayNetfilterWarningReturnsNodeLookupError(t *testing.T) {
+	controller := &Controller{
+		config:      &Configuration{NodeName: "missing-node"},
+		nodesLister: listerv1.NewNodeLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})),
+		recorder:    record.NewFakeRecorder(1),
+	}
+
+	err := controller.recordGatewayNetfilterWarning("TestReason", "test message")
+	require.ErrorContains(t, err, "missing-node")
 }
