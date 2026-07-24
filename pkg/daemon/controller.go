@@ -273,12 +273,12 @@ func NewController(config *Configuration,
 	return controller, nil
 }
 
-func (controller *Controller) recordGatewayNetfilterWarning(reason, message string) error {
-	node, err := controller.nodesLister.Get(controller.config.NodeName)
+func (c *Controller) recordGatewayNetfilterWarning(reason, message string) error {
+	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
-		return fmt.Errorf("get node %q for gateway netfilter warning: %w", controller.config.NodeName, err)
+		return fmt.Errorf("get node %q for gateway netfilter warning: %w", c.config.NodeName, err)
 	}
-	controller.recorder.Event(node, v1.EventTypeWarning, reason, message)
+	c.recorder.Event(node, v1.EventTypeWarning, reason, message)
 	return nil
 }
 
