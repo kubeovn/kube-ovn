@@ -186,6 +186,40 @@ func TestGatewayBackendManagerAutoSwitchesAfterStableDetection(t *testing.T) {
 	}, calls)
 }
 
+func TestGatewayBackendManagerResetsStabilityOnDetectionFailure(t *testing.T) {
+	fail := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if fail {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = io.WriteString(w, "nftables")
+	}))
+	defer server.Close()
+
+	calls := []string{}
+	iptablesBackend := &recordingGatewayBackend{name: gatewayNetfilterModeIPTables, calls: &calls}
+	nftBackend := &recordingGatewayBackend{name: gatewayNetfilterModeNFTables, calls: &calls}
+	manager := newGatewayBackendManager(iptablesBackend, nftBackend)
+	manager.current = iptablesBackend
+	manager.mode = gatewayNetfilterModeAuto
+	manager.detector = newProxyModeDetector(server.URL, time.Second, nil)
+
+	for range 3 {
+		fail = false
+		require.NoError(t, manager.Reconcile(context.Background()))
+		require.Equal(t, iptablesBackend, manager.current)
+		fail = true
+		require.Error(t, manager.Reconcile(context.Background()))
+	}
+
+	fail = false
+	for range 3 {
+		require.NoError(t, manager.Reconcile(context.Background()))
+	}
+	require.Equal(t, nftBackend, manager.current)
+}
+
 func TestGatewayBackendManagerKeepsCurrentOnDetectionFailure(t *testing.T) {
 	calls := []string{}
 	nftBackend := &recordingGatewayBackend{name: gatewayNetfilterModeNFTables, calls: &calls}

@@ -112,6 +112,7 @@ func (m *gatewayBackendManager) desiredMode(ctx context.Context) (gatewayNetfilt
 
 	mode, err := m.detector.detectHTTP(ctx)
 	if err != nil {
+		m.stability = proxyModeStability{}
 		return "", fmt.Errorf("detect kube-proxy mode: %w", err)
 	}
 	current := m.currentBackend()
