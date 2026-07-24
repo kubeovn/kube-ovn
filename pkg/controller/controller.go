@@ -241,6 +241,10 @@ type Controller struct {
 	endpointSlicesSynced          cache.InformerSynced
 	addOrUpdateEndpointSliceQueue workqueue.TypedRateLimitingInterface[string]
 	epKeyMutex                    keymutex.KeyMutex
+	serviceL2StatusMutex          sync.RWMutex
+	serviceL2StatusIndexer        cache.Indexer
+	serviceL2StatusSynced         cache.InformerSynced
+	serviceL2StatusStarted        bool
 
 	deploymentsLister appsv1.DeploymentLister
 	deploymentsSynced cache.InformerSynced
@@ -697,6 +701,10 @@ func Run(ctx context.Context, config *Configuration) {
 	// Start and sync NAD informer first, as many resources depend on NAD cache
 	// NAD CRD is optional, so we check if it exists before starting the informer
 	controller.StartNetAttachInformerFactory(ctx)
+
+	// MetalLB is optional. When its ServiceL2Status API is available, use it to
+	// identify the chassis announcing each underlay LoadBalancer VIP.
+	controller.StartServiceL2StatusInformer(ctx)
 
 	// Wait for the caches to be synced before starting workers
 	controller.informerFactory.Start(ctx.Done())
