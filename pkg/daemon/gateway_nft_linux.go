@@ -297,7 +297,7 @@ func (b *nftGatewayBackend) renderFullFamily(tx *knftables.Transaction, family n
 	b.renderNFTNATRules(tx, family)
 	b.renderNFTPolicyRules(tx, family)
 	b.renderNFTTProxyRules(tx, family)
-	b.renderNFTFilterAndMangleRules(tx, family)
+	b.renderNFTFilterAndMangleRules(tx, family, true)
 }
 
 func (*nftGatewayBackend) renderNFTBaseSchema(tx *knftables.Transaction, snapshot nftFamilySnapshot) {
@@ -508,13 +508,15 @@ func (*nftGatewayBackend) renderNFTTProxyRules(tx *knftables.Transaction, snapsh
 	}
 }
 
-func (*nftGatewayBackend) renderNFTFilterAndMangleRules(tx *knftables.Transaction, snapshot nftFamilySnapshot) {
+func (*nftGatewayBackend) renderNFTFilterAndMangleRules(tx *knftables.Transaction, snapshot nftFamilySnapshot, includeCounterObjects bool) {
 	family, table := snapshot.Family, nftSnapshotTable(snapshot)
 	ipToken := nftIPToken(family)
 	for _, counter := range snapshot.SubnetCounters {
 		egress, ingress := nftSubnetCounterNames(counter)
-		tx.Add(&knftables.Counter{Family: family, Table: table, Name: egress, Comment: new(counter.Name + " egress")})
-		tx.Add(&knftables.Counter{Family: family, Table: table, Name: ingress, Comment: new(counter.Name + " ingress")})
+		if includeCounterObjects {
+			tx.Add(&knftables.Counter{Family: family, Table: table, Name: egress, Comment: new(counter.Name + " egress")})
+			tx.Add(&knftables.Counter{Family: family, Table: table, Name: ingress, Comment: new(counter.Name + " ingress")})
+		}
 		addNFTRule(tx, family, table, "filter-forward", knftables.Concat(
 			ipToken+" saddr", counter.CIDR, "counter name", egress,
 		), "counter:"+egress)
@@ -580,7 +582,7 @@ func (b *nftGatewayBackend) renderDiff(oldSnapshot, newSnapshot gatewayNFTSnapsh
 			b.renderNFTNATRules(tx, newFamily)
 			b.renderNFTPolicyRules(tx, newFamily)
 			b.renderNFTTProxyRules(tx, newFamily)
-			b.renderNFTFilterAndMangleRules(tx, newFamily)
+			b.renderNFTFilterAndMangleRules(tx, newFamily, true)
 			continue
 		}
 
@@ -616,7 +618,7 @@ func (b *nftGatewayBackend) renderDiff(oldSnapshot, newSnapshot gatewayNFTSnapsh
 		}
 		if filterChanged {
 			flushNFTChains(tx, newFamily, "filter-input", "filter-forward", "filter-output", "mangle-postrouting")
-			b.renderNFTFilterAndMangleRules(tx, newFamily)
+			b.renderNFTFilterAndMangleRules(tx, newFamily, true)
 		}
 
 		for _, name := range sortedMapKeys(oldDefinitions) {
@@ -841,6 +843,18 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 			b.renderFullFamily(tx, family)
 			continue
 		}
+		missingChain := false
+		for _, chain := range nftRuleChainNames() {
+			if !slices.Contains(objects["chain"], chain) {
+				missingChain = true
+				break
+			}
+		}
+		if missingChain {
+			tx.Delete(&knftables.Table{Family: family.Family, Name: nftSnapshotTable(family)})
+			b.renderFullFamily(tx, family)
+			continue
+		}
 
 		definitions := nftSetDefinitions(family)
 		for _, name := range sortedMapKeys(definitions) {
@@ -859,19 +873,11 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 			renderNFTElementMapDiff(tx, family, name, nftElementsToKeys(actual), nftSetElements(family)[name])
 		}
 
-		ruleDrift, err := nftRulesDrifted(ctx, reader, family, objects["chain"])
-		if err != nil {
-			return nil, err
-		}
-		if ruleDrift {
-			b.renderNFTBaseSchema(tx, family)
-			renderNFTSetDefinitions(tx, family)
-			flushNFTChains(tx, family, nftRuleChainNames()...)
-			b.renderNFTNATRules(tx, family)
-			b.renderNFTPolicyRules(tx, family)
-			b.renderNFTTProxyRules(tx, family)
-			b.renderNFTFilterAndMangleRules(tx, family)
-		}
+		flushNFTChains(tx, family, nftRuleChainNames()...)
+		b.renderNFTNATRules(tx, family)
+		b.renderNFTPolicyRules(tx, family)
+		b.renderNFTTProxyRules(tx, family)
+		b.renderNFTFilterAndMangleRules(tx, family, false)
 
 		for _, name := range objects["set"] {
 			if strings.HasPrefix(name, "nat-policy-") {
@@ -880,15 +886,13 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 				}
 			}
 		}
-		if !ruleDrift {
-			for _, counter := range family.SubnetCounters {
-				egress, ingress := nftSubnetCounterNames(counter)
-				if !slices.Contains(objects["counter"], egress) {
-					tx.Add(&knftables.Counter{Family: family.Family, Table: nftSnapshotTable(family), Name: egress, Comment: new(counter.Name + " egress")})
-				}
-				if !slices.Contains(objects["counter"], ingress) {
-					tx.Add(&knftables.Counter{Family: family.Family, Table: nftSnapshotTable(family), Name: ingress, Comment: new(counter.Name + " ingress")})
-				}
+		for _, counter := range family.SubnetCounters {
+			egress, ingress := nftSubnetCounterNames(counter)
+			if !slices.Contains(objects["counter"], egress) {
+				tx.Add(&knftables.Counter{Family: family.Family, Table: nftSnapshotTable(family), Name: egress, Comment: new(counter.Name + " egress")})
+			}
+			if !slices.Contains(objects["counter"], ingress) {
+				tx.Add(&knftables.Counter{Family: family.Family, Table: nftSnapshotTable(family), Name: ingress, Comment: new(counter.Name + " ingress")})
 			}
 		}
 		expectedCounters := nftExpectedCounterNames(family)
@@ -899,31 +903,6 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 		}
 	}
 	return tx, nil
-}
-
-func nftRulesDrifted(ctx context.Context, reader knftables.Interface, snapshot nftFamilySnapshot, actualChains []string) (bool, error) {
-	expected := nftExpectedRuleComments(snapshot)
-	for _, chain := range nftRuleChainNames() {
-		if !slices.Contains(actualChains, chain) {
-			return true, nil
-		}
-		rules, err := reader.ListRules(ctx, chain)
-		if err != nil {
-			return false, fmt.Errorf("audit %s nftables chain %s: %w", snapshot.Family, chain, err)
-		}
-		comments := make([]string, 0, len(rules))
-		for _, rule := range rules {
-			if rule.Comment == nil {
-				comments = append(comments, "")
-			} else {
-				comments = append(comments, *rule.Comment)
-			}
-		}
-		if !reflect.DeepEqual(comments, expected[chain]) {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func nftRuleChainNames() []string {
@@ -940,63 +919,6 @@ func nftRuleChainNames() []string {
 		"nat-host-service",
 		"nat-postrouting",
 	}
-}
-
-func nftExpectedRuleComments(snapshot nftFamilySnapshot) map[string][]string {
-	comments := map[string][]string{
-		"nodeport-local":        {"nodeport-vip-guard", "nodeport-local-match", "nodeport-local-return"},
-		"nodeport-local-action": {"nodeport-other-node", "nodeport-distributed", "nodeport-centralized"},
-		"nat-policy":            {},
-		"tproxy-prerouting":     {},
-		"tproxy-output":         {},
-		"filter-input":          {"filter-input-source", "filter-input-destination"},
-		"filter-forward":        {},
-		"filter-output":         {"filter-output-tunnel-unmark"},
-		"mangle-postrouting":    {"mangle-invalid-rst"},
-		"nat-host-service":      {},
-		"nat-postrouting": {
-			"nat-service",
-			"nat-subnet-between",
-			"nat-nodeport",
-			"nat-direct-routing",
-			"nat-route-traffic",
-			"nat-policy",
-		},
-	}
-	if snapshot.NodeInternalIP != "" {
-		comments["nat-host-service"] = append(comments["nat-host-service"], "host-service-snat")
-	}
-	for _, item := range snapshot.CentralizedSNATs {
-		comments["nat-postrouting"] = append(comments["nat-postrouting"], "nat-centralized-snat:"+item.CIDR)
-	}
-	comments["nat-postrouting"] = append(comments["nat-postrouting"], "nat-default")
-
-	for _, policy := range snapshot.NATPolicies {
-		switch strings.ToLower(policy.Action) {
-		case "nat", "forward":
-			comments["nat-policy"] = append(comments["nat-policy"], "nat-policy:"+nftNATPolicyID(policy))
-		}
-	}
-	comments["nat-policy"] = append(comments["nat-policy"], "nat-policy:return")
-
-	if snapshot.NodeInternalIP != "" {
-		for _, target := range snapshot.TProxyTargets {
-			suffix := target.Address + ":" + strconv.FormatInt(int64(target.Port), 10)
-			comments["tproxy-output"] = append(comments["tproxy-output"], "tproxy-output:"+suffix)
-			comments["tproxy-prerouting"] = append(comments["tproxy-prerouting"], "tproxy-prerouting:"+suffix)
-		}
-	}
-
-	for _, counter := range snapshot.SubnetCounters {
-		egress, ingress := nftSubnetCounterNames(counter)
-		comments["filter-forward"] = append(comments["filter-forward"], "counter:"+egress)
-		comments["filter-forward"] = append(comments["filter-forward"], "counter:"+ingress)
-	}
-	comments["filter-forward"] = append(comments["filter-forward"], "filter-forward-source", "filter-forward-destination")
-	for _, item := range snapshot.CentralizedSNATs {
-		comments["mangle-postrouting"] = append(comments["mangle-postrouting"], "mangle-centralized-orphan:"+item.CIDR)
-	}
-	return comments
 }
 
 func nftExpectedCounterNames(snapshot nftFamilySnapshot) []string {
