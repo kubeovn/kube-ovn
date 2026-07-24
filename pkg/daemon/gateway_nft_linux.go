@@ -872,6 +872,15 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 			}
 			renderNFTElementMapDiff(tx, family, name, nftElementsToKeys(actual), nftSetElements(family)[name])
 		}
+		for _, counter := range family.SubnetCounters {
+			egress, ingress := nftSubnetCounterNames(counter)
+			if !slices.Contains(objects["counter"], egress) {
+				tx.Add(&knftables.Counter{Family: family.Family, Table: nftSnapshotTable(family), Name: egress, Comment: new(counter.Name + " egress")})
+			}
+			if !slices.Contains(objects["counter"], ingress) {
+				tx.Add(&knftables.Counter{Family: family.Family, Table: nftSnapshotTable(family), Name: ingress, Comment: new(counter.Name + " ingress")})
+			}
+		}
 
 		flushNFTChains(tx, family, nftRuleChainNames()...)
 		b.renderNFTNATRules(tx, family)
@@ -884,15 +893,6 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 				if _, expected := definitions[name]; !expected {
 					tx.Delete(&knftables.Set{Family: family.Family, Table: nftSnapshotTable(family), Name: name})
 				}
-			}
-		}
-		for _, counter := range family.SubnetCounters {
-			egress, ingress := nftSubnetCounterNames(counter)
-			if !slices.Contains(objects["counter"], egress) {
-				tx.Add(&knftables.Counter{Family: family.Family, Table: nftSnapshotTable(family), Name: egress, Comment: new(counter.Name + " egress")})
-			}
-			if !slices.Contains(objects["counter"], ingress) {
-				tx.Add(&knftables.Counter{Family: family.Family, Table: nftSnapshotTable(family), Name: ingress, Comment: new(counter.Name + " ingress")})
 			}
 		}
 		expectedCounters := nftExpectedCounterNames(family)

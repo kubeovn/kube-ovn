@@ -365,6 +365,39 @@ func TestNFTAuditRepairsRuleContentDrift(t *testing.T) {
 	require.Contains(t, dump, `comment "nat-service"`)
 }
 
+func TestNFTAuditRestoresCountersBeforeRules(t *testing.T) {
+	fake := knftables.NewFake(knftables.IPv4Family, nftGatewayTable)
+	counter := nftSubnetCounter{UID: "subnet-uid", Name: "subnet-a", CIDR: "10.16.0.0/24"}
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family:         knftables.IPv4Family,
+		Table:          nftGatewayTable,
+		SubnetCounters: []nftSubnetCounter{counter},
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        fake,
+		readers:       map[knftables.Family]knftables.Interface{knftables.IPv4Family: fake},
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+		auditInterval: time.Minute,
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	egress, _ := nftSubnetCounterNames(counter)
+	fake.Lock()
+	delete(fake.Table.Counters, egress)
+	fake.Unlock()
+	backend.lastAudit = time.Now().Add(-2 * time.Minute)
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	fake.RLock()
+	dump := fake.LastTransaction.String()
+	fake.RUnlock()
+	counterPosition := strings.Index(dump, "add counter ip kube-ovn "+egress)
+	rulePosition := strings.Index(dump, "counter name "+egress)
+	require.NotEqual(t, -1, counterPosition)
+	require.NotEqual(t, -1, rulePosition)
+	require.Less(t, counterPosition, rulePosition)
+}
+
 func TestNFTCleanupBothFamilies(t *testing.T) {
 	fake := knftables.NewFake("", "")
 	backend := &nftGatewayBackend{writer: fake}
