@@ -148,6 +148,11 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 		newPorts: newSvc.Spec.Ports,
 	}
 	c.updateServiceQueue.Add(updateSvc)
+	if c.config.EnableOVNLBPreferLocal &&
+		newSvc.Spec.Type == v1.ServiceTypeLoadBalancer &&
+		oldSvc.Spec.ExternalTrafficPolicy != newSvc.Spec.ExternalTrafficPolicy {
+		c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(newSvc).String())
+	}
 }
 
 func (c *Controller) handleDeleteService(service *vpcService) error {

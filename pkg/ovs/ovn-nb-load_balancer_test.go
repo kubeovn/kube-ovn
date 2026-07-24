@@ -15,6 +15,7 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
@@ -538,6 +539,8 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	t := suite.T()
 	t.Parallel()
 
+	const markedVIP = "10.96.0.3:443"
+
 	var (
 		nbClient    = suite.ovnNBClient
 		lbName      = "test-lb-del-vip"
@@ -563,9 +566,10 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 		err = nbClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
 		require.NoError(t, err)
 	}
+	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, markedVIP, "node-worker-1"))
 
 	deletedVips = []string{
-		"10.96.0.3:443",
+		markedVIP,
 		"[fd00:10:96::e84f]:8080",
 		"10.96.0.100:1443", // non-existent vip
 	}
@@ -579,6 +583,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	lb, err = nbClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
 	require.Equal(t, vips, lb.Vips)
+	require.NotContains(t, lb.ExternalIDs, localExternalVIPKeyPrefix+markedVIP)
 
 	err = nbClient.LoadBalancerAddHealthCheck(lbName, "10.107.43.239:8080", false, nil, nil)
 	require.NoError(t, err)
@@ -616,6 +621,45 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 
 	err = nbClient.LoadBalancerDeleteVip(lbName, "10.107.43.239:8080", ignoreHealthCheck)
 	require.ErrorContains(t, err, "more than one load balancer with same name")
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerVIPExternalTrafficLocal() {
+	t := suite.T()
+	t.Parallel()
+
+	const (
+		lbName = "test-lb-external-vip-marker"
+		vipA   = "10.96.0.100:80"
+		vipB   = "10.96.0.101:80"
+	)
+
+	nbClient := suite.ovnNBClient
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, vipA, "node-worker-1"))
+	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, vipB, "node-worker-2"))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, util.CniTypeName, lb.ExternalIDs["vendor"])
+	require.Equal(t, "node-worker-1", lb.ExternalIDs[localExternalVIPKeyPrefix+vipA])
+	require.Equal(t, "node-worker-2", lb.ExternalIDs[localExternalVIPKeyPrefix+vipB])
+
+	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, vipA, "node-worker-1"))
+	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, vipA, "node-worker-3"))
+
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "node-worker-3", lb.ExternalIDs[localExternalVIPKeyPrefix+vipA])
+	require.Equal(t, "node-worker-2", lb.ExternalIDs[localExternalVIPKeyPrefix+vipB])
+
+	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, vipA, ""))
+
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	_, exists := lb.ExternalIDs[localExternalVIPKeyPrefix+vipA]
+	require.False(t, exists)
+	require.Equal(t, "node-worker-2", lb.ExternalIDs[localExternalVIPKeyPrefix+vipB])
+	require.Equal(t, util.CniTypeName, lb.ExternalIDs["vendor"])
 }
 
 func (suite *OvnClientTestSuite) testLoadBalancerAddIPPortMapping() {
