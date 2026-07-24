@@ -99,7 +99,9 @@ func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj any) {
 		oldDnat.Spec.Protocol != newDnat.Spec.Protocol ||
 		oldDnat.Spec.InternalIP != newDnat.Spec.InternalIP ||
 		oldDnat.Spec.ExternalPort != newDnat.Spec.ExternalPort ||
-		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort {
+		oldDnat.Spec.InternalPort != newDnat.Spec.InternalPort ||
+		oldDnat.Spec.SessionAffinity != newDnat.Spec.SessionAffinity ||
+		oldDnat.Spec.SessionAffinityTimeoutSeconds != newDnat.Spec.SessionAffinityTimeoutSeconds {
 		klog.V(3).Infof("enqueue update dnat %s", key)
 		c.updateIptablesDnatRuleQueue.Add(key)
 		return
@@ -575,7 +577,7 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		}
 		// Add current DNAT's backend
 		backends = append(backends, fmt.Sprintf("%s:%s", dnat.Spec.InternalIP, dnat.Spec.InternalPort))
-		if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol, eip.Status.IP, dnat.Spec.ExternalPort, backends); err != nil {
+		if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol, eip.Status.IP, dnat.Spec.ExternalPort, backends, dnat.Spec.SessionAffinity, dnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
 			klog.Errorf("failed to create nft dnat map, %v", err)
 			return err
 		}
@@ -748,7 +750,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 				return err
 			}
 			backends = append(backends, fmt.Sprintf("%s:%s", newInternalIP, newInternalPort))
-			if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, newProtocol, newV4ip, newExternalPort, backends); err != nil {
+			if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, newProtocol, newV4ip, newExternalPort, backends, cachedDnat.Spec.SessionAffinity, cachedDnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
 				klog.Errorf("failed to create nft dnat map for %s, %v", key, err)
 				return err
 			}
@@ -829,7 +831,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 				return err
 			}
 			backends = append(backends, fmt.Sprintf("%s:%s", cachedDnat.Status.InternalIP, cachedDnat.Status.InternalPort))
-			if err = c.createNftDnatMapInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol, cachedDnat.Status.V4ip, cachedDnat.Status.ExternalPort, backends); err != nil {
+			if err = c.createNftDnatMapInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol, cachedDnat.Status.V4ip, cachedDnat.Status.ExternalPort, backends, cachedDnat.Spec.SessionAffinity, cachedDnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
 				klog.Errorf("failed to create nft dnat map for %s, %v", key, err)
 				return err
 			}
@@ -1904,7 +1906,7 @@ func (c *Controller) finalDeleteDnatInPod(key string, cachedDnat *kubeovnv1.Ipta
 		klog.Warningf("dnat %s: skip status-based cleanup due to incomplete identity (v4ip=%q, natGwDp=%q)", key, statusV4ip, statusNatGwDp)
 	} else if cachedDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
 		// Share type: rebuild nft rule with remaining backends, or delete if none are left
-		if err := c.cleanupShareDnatInPod(key, statusNatGwDp, cachedDnat.Spec.EIP, statusProtocol, statusV4ip, statusExternalPort, cachedDnat.Name); err != nil {
+		if err := c.cleanupShareDnatInPod(key, statusNatGwDp, cachedDnat.Spec.EIP, statusProtocol, statusV4ip, statusExternalPort, cachedDnat.Name, cachedDnat.Spec.SessionAffinity, cachedDnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
 			klog.Error(err)
 			firstErr = err
 		}
@@ -1938,7 +1940,7 @@ func (c *Controller) finalDeleteDnatInPod(key string, cachedDnat *kubeovnv1.Ipta
 			if cachedDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
 				// Share type: the stale rule lives in nftables, not iptables.
 				// Rebuild the nft map without this DNAT's backend, or delete entirely.
-				if err = c.cleanupShareDnatInPod(key, specNatGwDp, cachedDnat.Spec.EIP, specProtocol, specV4ip, specExternalPort, cachedDnat.Name); err != nil {
+				if err = c.cleanupShareDnatInPod(key, specNatGwDp, cachedDnat.Spec.EIP, specProtocol, specV4ip, specExternalPort, cachedDnat.Name, cachedDnat.Spec.SessionAffinity, cachedDnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
 					klog.Errorf("failed spec-based nft cleanup for dnat %s, %v", key, err)
 					if firstErr == nil {
 						firstErr = err

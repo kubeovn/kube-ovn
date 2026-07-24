@@ -567,7 +567,7 @@ kind-install-metallb-pool-from-underlay: kind-install-metallb-pool-from-underlay
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw:
 	@$(MAKE) kind-load-image-vpc-nat-gateway
-	@$(MAKE) ENABLE_NAT_GW=true CNI_CONFIG_PRIORITY=10 kind-install
+	@$(MAKE) ENABLE_NAT_GW=true ENABLE_NFTABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 kind-install
 	@$(MAKE) kind-install-multus
 
 .PHONY: kind-install-kubevirt

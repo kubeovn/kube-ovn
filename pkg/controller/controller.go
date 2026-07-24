@@ -253,6 +253,9 @@ type Controller struct {
 	updateServiceQueue workqueue.TypedRateLimitingInterface[*updateSvcObject]
 	svcKeyMutex        keymutex.KeyMutex
 
+	addOrUpdateNftableLbSvcQueue workqueue.TypedRateLimitingInterface[string]
+	nftableLbSvcKeyMutex         keymutex.KeyMutex
+
 	endpointSlicesLister          discoveryv1.EndpointSliceLister
 	endpointSlicesSynced          cache.InformerSynced
 	epsIndexer                    cache.Indexer
@@ -575,6 +578,9 @@ func Run(ctx context.Context, config *Configuration) {
 		deleteServiceQueue: newTypedRateLimitingQueue[*vpcService]("DeleteService", nil),
 		updateServiceQueue: newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		svcKeyMutex:        keymutex.NewHashed(numKeyLocks),
+
+		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
+		nftableLbSvcKeyMutex:         keymutex.NewHashed(numKeyLocks),
 
 		endpointSlicesLister:          endpointSliceInformer.Lister(),
 		endpointSlicesSynced:          endpointSliceInformer.Informer().HasSynced,
@@ -1251,6 +1257,7 @@ func (c *Controller) shutdown() {
 	c.addServiceQueue.ShutDown()
 	c.deleteServiceQueue.ShutDown()
 	c.updateServiceQueue.ShutDown()
+	c.addOrUpdateNftableLbSvcQueue.ShutDown()
 	c.addOrUpdateEndpointSliceQueue.ShutDown()
 
 	c.addVlanQueue.ShutDown()
@@ -1435,6 +1442,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
+
+		if c.config.EnableNftableLbSvc {
+			go wait.Until(runWorker("add/update nftable lb service", c.addOrUpdateNftableLbSvcQueue, c.handleAddOrUpdateNftableLbService), time.Second, ctx.Done())
+		}
 
 		go wait.Until(runWorker("add/update router lb rule", c.addRouterLBRuleQueue, c.handleAddOrUpdateRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete router lb rule", c.delRouterLBRuleQueue, c.handleDelRouterLBRule), time.Second, ctx.Done())

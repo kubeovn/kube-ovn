@@ -28,6 +28,7 @@ LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-false}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
+ENABLE_NFTABLE_LB_SVC=${ENABLE_NFTABLE_LB_SVC:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
@@ -1091,6 +1092,26 @@ spec:
               protocol:
                 description: Protocol type (TCP or UDP)
                 type: string
+              sessionAffinity:
+                description: |-
+                  SessionAffinity controls client-IP session affinity for share type DNAT. Only "" (none,
+                  default) and "ClientIP" are supported, and it is ignored for exclusive type. When set to
+                  "ClientIP", connections from the same client IP are pinned to the same backend for
+                  SessionAffinityTimeoutSeconds, implemented with per-backend nftables affinity sets
+                  (kube-proxy nftables pattern).
+                enum:
+                - ""
+                - ClientIP
+                type: string
+              sessionAffinityTimeoutSeconds:
+                description: |-
+                  SessionAffinityTimeoutSeconds is the sticky window, in seconds, for ClientIP affinity.
+                  It is only used when SessionAffinity is "ClientIP"; when unset (0) the controller applies
+                  the default of 10800 (3h). Must be in the range 1-86400 when set.
+                format: int32
+                maximum: 86400
+                minimum: 0
+                type: integer
               type:
                 default: exclusive
                 description: |-
@@ -8346,6 +8367,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --enable-lb-svc=$ENABLE_LB_SVC
+          - --enable-nftable-lb-svc=$ENABLE_NFTABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP

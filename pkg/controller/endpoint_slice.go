@@ -51,6 +51,7 @@ func (c *Controller) enqueueAddEndpointSlice(obj any) {
 	if key != "" {
 		klog.V(3).Infof("enqueue add endpointSlice %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
+		c.enqueueNftableLbService(key)
 	}
 }
 
@@ -82,6 +83,7 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 	if key != "" {
 		klog.V(3).Infof("enqueue update endpointSlice for service %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
+		c.enqueueNftableLbService(key)
 	}
 }
 

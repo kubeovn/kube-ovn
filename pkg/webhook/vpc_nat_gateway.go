@@ -565,6 +565,24 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return fmt.Errorf("dnat %q cannot use type=share: EIP %q is IPv6-only, share dnat only supports IPv4", dnat.Name, dnat.Spec.EIP)
 	}
 
+	// Validate client-IP session affinity fields.
+	switch dnat.Spec.SessionAffinity {
+	case ovnv1.DnatSessionAffinityNone:
+		// none: timeout must not be set
+		if dnat.Spec.SessionAffinityTimeoutSeconds != 0 {
+			return fmt.Errorf("dnat %q sets sessionAffinityTimeoutSeconds but sessionAffinity is not ClientIP", dnat.Name)
+		}
+	case ovnv1.DnatSessionAffinityClientIP:
+		if dnatType != ovnv1.DnatRuleTypeShare {
+			return fmt.Errorf("dnat %q cannot use sessionAffinity=ClientIP: it is only supported for type=share", dnat.Name)
+		}
+		if dnat.Spec.SessionAffinityTimeoutSeconds < 0 || dnat.Spec.SessionAffinityTimeoutSeconds > 86400 {
+			return fmt.Errorf("dnat %q sessionAffinityTimeoutSeconds %d is out of range [0, 86400]", dnat.Name, dnat.Spec.SessionAffinityTimeoutSeconds)
+		}
+	default:
+		return fmt.Errorf("dnat %q has invalid sessionAffinity %q, supported values: \"\", \"ClientIP\"", dnat.Name, dnat.Spec.SessionAffinity)
+	}
+
 	// Check type conflict with existing DNAT rules sharing the same identity
 	if eip.Spec.NatGwDp != "" {
 		dnatList := &ovnv1.IptablesDnatRuleList{}
@@ -611,7 +629,74 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		}
 	}
 
+	// Reject a share DNAT identity (eip+externalPort+protocol) that is already owned by a
+	// different nftable LoadBalancer service, or that mixes a service-managed rule with a
+	// manually-created one. All rules under one identity share a single nft map, so allowing
+	// different owners would merge their backends and cross-talk traffic between them.
+	if dnatType == ovnv1.DnatRuleTypeShare {
+		newOwner := nftableLbDnatOwnerKey(dnat)
+		allDnats := &ovnv1.IptablesDnatRuleList{}
+		if err := v.cache.List(ctx, allDnats); err != nil {
+			return fmt.Errorf("failed to list iptables DNAT rules: %w", err)
+		}
+		for i := range allDnats.Items {
+			existing := &allDnats.Items[i]
+			if existing.Name == dnat.Name {
+				continue
+			}
+			// Skip rules that are being deleted: they are on their way out and must not block
+			// a replacement rule of the same identity (e.g. when the controller recreates a
+			// rule to apply changed session-affinity settings).
+			if !existing.DeletionTimestamp.IsZero() {
+				continue
+			}
+			existingType := existing.Spec.Type
+			if existingType == "" {
+				existingType = ovnv1.DnatRuleTypeExclusive
+			}
+			if existingType != ovnv1.DnatRuleTypeShare {
+				continue
+			}
+			if existing.Spec.EIP != dnat.Spec.EIP ||
+				existing.Spec.ExternalPort != dnat.Spec.ExternalPort ||
+				!strings.EqualFold(existing.Spec.Protocol, dnat.Spec.Protocol) {
+				continue
+			}
+			if nftableLbDnatOwnerKey(existing) != newOwner {
+				return fmt.Errorf("dnat %q conflicts with existing share dnat %q: identity (eip=%s, port=%s, protocol=%s) is already in use by %s; a given EIP:port can back only one owner",
+					dnat.Name, existing.Name, dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol, nftableLbDnatOwnerDesc(existing))
+			}
+			// All backends of one share identity are programmed into a single nft map, so the
+			// session-affinity settings must be consistent across every rule of that identity;
+			// otherwise the map built by the last writer would be non-deterministic.
+			if existing.Spec.SessionAffinity != dnat.Spec.SessionAffinity ||
+				existing.Spec.SessionAffinityTimeoutSeconds != dnat.Spec.SessionAffinityTimeoutSeconds {
+				return fmt.Errorf("dnat %q conflicts with existing share dnat %q: same identity (eip=%s, port=%s, protocol=%s) must use identical sessionAffinity settings",
+					dnat.Name, existing.Name, dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol)
+			}
+		}
+	}
+
 	return nil
+}
+
+// nftableLbDnatOwnerKey returns the owning Service key (namespace/name) encoded in a share
+// DNAT rule's labels, or "" when the rule is not managed by the nftable LB service feature.
+func nftableLbDnatOwnerKey(dnat *ovnv1.IptablesDnatRule) string {
+	ns := dnat.Labels[util.NftableLbSvcNsLabel]
+	name := dnat.Labels[util.NftableLbSvcNameLabel]
+	if ns == "" && name == "" {
+		return ""
+	}
+	return ns + "/" + name
+}
+
+// nftableLbDnatOwnerDesc renders a human-readable description of a share DNAT identity owner.
+func nftableLbDnatOwnerDesc(dnat *ovnv1.IptablesDnatRule) string {
+	if key := nftableLbDnatOwnerKey(dnat); key != "" {
+		return "service " + key
+	}
+	return "a manually-created share DNAT rule"
 }
 
 func (v *ValidatingHook) ValidateIptablesSnat(ctx context.Context, snat *ovnv1.IptablesSnatRule) error {
