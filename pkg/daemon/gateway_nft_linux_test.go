@@ -333,6 +333,38 @@ func TestNFTAuditRepairsRuleDrift(t *testing.T) {
 	require.Contains(t, dump, `comment "nat-service"`)
 }
 
+func TestNFTAuditRepairsRuleContentDrift(t *testing.T) {
+	fake := knftables.NewFake(knftables.IPv4Family, nftGatewayTable)
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family:  knftables.IPv4Family,
+		Table:   nftGatewayTable,
+		Subnets: []string{"10.16.0.0/24"},
+	}}}
+	backend := &nftGatewayBackend{
+		writer:        fake,
+		readers:       map[knftables.Family]knftables.Interface{knftables.IPv4Family: fake},
+		buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil },
+		auditInterval: time.Minute,
+	}
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	fake.RLock()
+	rule := fake.Table.Chains["nat-postrouting"].Rules[0]
+	handle, comment := *rule.Handle, *rule.Comment
+	fake.RUnlock()
+	external := fake.NewTransaction()
+	external.Replace(&knftables.Rule{Chain: "nat-postrouting", Handle: &handle, Rule: "accept", Comment: &comment})
+	require.NoError(t, fake.Run(context.Background(), external))
+	backend.lastAudit = time.Now().Add(-2 * time.Minute)
+
+	require.NoError(t, backend.Reconcile(context.Background()))
+	fake.RLock()
+	dump := fake.LastTransaction.String()
+	fake.RUnlock()
+	require.Contains(t, dump, "flush chain ip kube-ovn nat-postrouting")
+	require.Contains(t, dump, `comment "nat-service"`)
+}
+
 func TestNFTCleanupBothFamilies(t *testing.T) {
 	fake := knftables.NewFake("", "")
 	backend := &nftGatewayBackend{writer: fake}
