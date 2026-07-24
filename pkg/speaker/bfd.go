@@ -67,7 +67,7 @@ func bfdSessionStateString(state api.BfdSessionState) string {
 // logBFDStatus logs the BFD status for all peers.
 // Error/recovery stats are always checked; per-peer state dump is gated by V(3).
 func (c *Controller) logBFDStatus() {
-	if !c.config.EnableBFD {
+	if c.config.EnableBFD == nil || !*c.config.EnableBFD {
 		return
 	}
 
@@ -134,7 +134,7 @@ func (c *Controller) logBFDStatus() {
 // GoBGP expects BFD intervals in microseconds (RFC 5880), while CLI flags
 // accept milliseconds for user convenience; this function performs the conversion.
 func newBFDPeerConfig(config *Configuration) *api.BfdPeerConfig {
-	if !config.EnableBFD {
+	if config.EnableBFD == nil || !*config.EnableBFD {
 		return nil
 	}
 	return &api.BfdPeerConfig{
