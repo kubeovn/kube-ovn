@@ -15,24 +15,26 @@ type gatewayNetfilterBackend interface {
 }
 
 type gatewayBackendManager struct {
-	mutex     sync.RWMutex
-	backends  map[gatewayNetfilterMode]gatewayNetfilterBackend
-	factories map[gatewayNetfilterMode]func() (gatewayNetfilterBackend, error)
-	current   gatewayNetfilterBackend
-	ready     gatewayNetfilterBackend
-	degraded  bool
-	mode      gatewayNetfilterMode
-	detector  *proxyModeDetector
-	stability proxyModeStability
-	coldStart bool
-	warning   func(reason, message string)
+	mutex          sync.RWMutex
+	backends       map[gatewayNetfilterMode]gatewayNetfilterBackend
+	factories      map[gatewayNetfilterMode]func() (gatewayNetfilterBackend, error)
+	current        gatewayNetfilterBackend
+	ready          gatewayNetfilterBackend
+	degraded       bool
+	mode           gatewayNetfilterMode
+	detector       *proxyModeDetector
+	stability      proxyModeStability
+	coldStart      bool
+	initialCleanup bool
+	warning        func(reason, message string)
 }
 
 func newGatewayBackendManager(backends ...gatewayNetfilterBackend) *gatewayBackendManager {
 	manager := &gatewayBackendManager{
-		backends:  make(map[gatewayNetfilterMode]gatewayNetfilterBackend, len(backends)),
-		factories: make(map[gatewayNetfilterMode]func() (gatewayNetfilterBackend, error)),
-		mode:      gatewayNetfilterModeIPTables,
+		backends:       make(map[gatewayNetfilterMode]gatewayNetfilterBackend, len(backends)),
+		factories:      make(map[gatewayNetfilterMode]func() (gatewayNetfilterBackend, error)),
+		mode:           gatewayNetfilterModeIPTables,
+		initialCleanup: true,
 	}
 	for _, backend := range backends {
 		manager.backends[backend.Name()] = backend
@@ -65,7 +67,7 @@ func (m *gatewayBackendManager) Reconcile(ctx context.Context) error {
 		if err := current.Reconcile(ctx); err != nil {
 			return err
 		}
-		if err := m.cleanupAbandonedReadyBackend(ctx, current.Name()); err != nil {
+		if err := m.cleanupInactiveBackend(ctx, current.Name()); err != nil {
 			metricGatewayNetfilterSwitchFailures.Inc()
 			m.warn("GatewayNetfilterSwitchFailed", err.Error())
 			return err
@@ -164,18 +166,43 @@ func (m *gatewayBackendManager) warn(reason, message string) {
 	}
 }
 
-func (m *gatewayBackendManager) cleanupAbandonedReadyBackend(ctx context.Context, current gatewayNetfilterMode) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	if m.ready == nil || m.ready.Name() == current {
+func (m *gatewayBackendManager) cleanupInactiveBackend(ctx context.Context, current gatewayNetfilterMode) error {
+	m.mutex.RLock()
+	backend := m.ready
+	initialCleanup := m.initialCleanup
+	m.mutex.RUnlock()
+	if backend == nil || backend.Name() == current {
+		if !initialCleanup {
+			return nil
+		}
+		for _, mode := range []gatewayNetfilterMode{gatewayNetfilterModeIPTables, gatewayNetfilterModeNFTables} {
+			if mode == current {
+				continue
+			}
+			var err error
+			backend, err = m.ensureBackend(mode)
+			if err != nil {
+				return fmt.Errorf("initialize inactive %s backend: %w", mode, err)
+			}
+			break
+		}
+	}
+	if backend == nil {
 		return nil
 	}
-	if err := m.ready.Cleanup(ctx); err != nil {
+	if err := backend.Cleanup(ctx); err != nil {
+		m.mutex.Lock()
 		m.degraded = true
-		return fmt.Errorf("clean up abandoned %s backend: %w", m.ready.Name(), err)
+		m.mutex.Unlock()
+		return fmt.Errorf("clean up inactive %s backend: %w", backend.Name(), err)
 	}
-	m.ready = nil
+	m.mutex.Lock()
+	if m.ready != nil && m.ready.Name() == backend.Name() {
+		m.ready = nil
+	}
+	m.initialCleanup = false
 	m.degraded = false
+	m.mutex.Unlock()
 	return nil
 }
 
@@ -208,6 +235,7 @@ func (m *gatewayBackendManager) switchTo(ctx context.Context, target gatewayNetf
 
 	m.current = target
 	m.ready = nil
+	m.initialCleanup = false
 	m.degraded = false
 	return nil
 }
