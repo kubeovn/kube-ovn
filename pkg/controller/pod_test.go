@@ -992,6 +992,62 @@ func TestIPPoolHasAvailableIPFamily(t *testing.T) {
 	assert.False(t, ippoolHasAvailableIPFamily(ippool, kubeovnv1.ProtocolDual, ""))
 }
 
+func TestGetPodDefaultSubnetUsesNamedIPPoolSubnet(t *testing.T) {
+	const (
+		namespaceName   = "test-ns"
+		namespaceSubnet = "namespace-subnet"
+		poolName        = "pool-a"
+		poolSubnet      = "pool-subnet"
+	)
+
+	ctrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Namespaces: []*corev1.Namespace{{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespaceName,
+				Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: namespaceSubnet,
+				},
+			},
+		}},
+		Subnets: []*kubeovnv1.Subnet{
+			{ObjectMeta: metav1.ObjectMeta{Name: namespaceSubnet}},
+			{ObjectMeta: metav1.ObjectMeta{Name: poolSubnet}},
+		},
+		IPPools: []*kubeovnv1.IPPool{{
+			ObjectMeta: metav1.ObjectMeta{Name: poolName},
+			Spec:       kubeovnv1.IPPoolSpec{Subnet: poolSubnet},
+		}},
+	})
+	require.NoError(t, err)
+
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name:      "test-pod",
+		Namespace: namespaceName,
+		Annotations: map[string]string{
+			util.IPPoolAnnotation: poolName,
+		},
+	}}
+
+	subnet, err := ctrl.fakeController.getPodDefaultSubnet(pod)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	assert.Equal(t, poolSubnet, subnet.Name)
+
+	for _, staticPool := range []string{
+		"10.0.0.10",
+		"10.0.0.10,10.0.0.11",
+		"10.0.0.10;10.0.0.11",
+	} {
+		t.Run("legacy static pool "+staticPool, func(t *testing.T) {
+			pod.Annotations[util.IPPoolAnnotation] = staticPool
+			subnet, err := ctrl.fakeController.getPodDefaultSubnet(pod)
+			require.NoError(t, err)
+			require.NotNil(t, subnet)
+			assert.Equal(t, namespaceSubnet, subnet.Name)
+		})
+	}
+}
+
 func TestDHCPOptionsForPodIPFamily(t *testing.T) {
 	dhcpOptions := &ovs.DHCPOptionsUUIDs{
 		DHCPv4OptionsUUID: "v4-uuid",
