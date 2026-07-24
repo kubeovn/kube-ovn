@@ -546,7 +546,7 @@ func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6,
 
 	ginkgo.By("checking vip node is same as backend pod's host")
 	if !isIPv6 {
-		cmd = strings.Fields(fmt.Sprintf("arping -c 5 -W 2 %s", targetIP))
+		cmd = strings.Fields(fmt.Sprintf("arping -c 5 -w 10 %s", targetIP))
 		output, _, err := docker.Exec(containerID, nil, cmd...)
 		if err != nil {
 			framework.Failf("arping failed: %v, output: %s", err, output)
