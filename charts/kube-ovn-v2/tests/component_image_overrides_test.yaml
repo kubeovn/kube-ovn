@@ -35,3 +35,16 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].image
           value: docker.io/kubeovn/kube-ovn:v1.17.0
+
+  - it: uses the Kubernetes capability name without the CAP_ prefix
+    template: agent/agent-daemonset.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.add
+          content: SYS_PTRACE
+      - notContains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.add
+          content: CAP_SYS_PTRACE
