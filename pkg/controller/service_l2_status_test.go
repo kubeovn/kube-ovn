@@ -159,6 +159,9 @@ func TestClearLoadBalancerVIPExternalTrafficLocal(t *testing.T) {
 	fakeController.mockOvnClient.EXPECT().
 		SetLoadBalancerVIPExternalTrafficLocal("tcp-lb", "10.0.0.10:80", "").
 		Return(nil)
+	fakeController.mockOvnClient.EXPECT().
+		LoadBalancerDeleteIPPortMapping("tcp-lb", "10.0.0.10:80").
+		Return(nil)
 
 	err := fakeController.fakeController.clearLoadBalancerVIPExternalTrafficLocal(
 		service, "tcp-lb", "udp-lb", "sctp-lb",

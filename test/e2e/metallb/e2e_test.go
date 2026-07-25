@@ -501,7 +501,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		return env
 	}
 
-	runInternalVIPTopologyCase := func(env *internalVIPTestEnvironment, topology internalVIPClientTopology) {
+	createInternalVIPClient := func(env *internalVIPTestEnvironment, topology internalVIPClientTopology) *corev1.Pod {
 		var nodeName string
 		switch topology {
 		case internalVIPClientOnVIPNode:
@@ -525,9 +525,38 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			nil,
 		)
 		client.Spec.NodeName = nodeName
-		client = f.PodClient().CreateSync(client)
+		return f.PodClient().CreateSync(client)
+	}
+
+	runInternalVIPTopologyCase := func(env *internalVIPTestEnvironment, topology internalVIPClientTopology) {
+		client := createInternalVIPClient(env, topology)
 		defer f.PodClient().DeleteSync(client.Name)
 		checkInternalPodVIPBackend(f, client, env.vip, env.vipNode)
+	}
+
+	moveInternalVIPNode := func(env *internalVIPTestEnvironment, newVIPNode, lbName string, expectBackendL2Lookup bool) {
+		oldVIPNode := env.vipNode
+		ginkgo.By(fmt.Sprintf("Moving the L2Advertisement from %s to %s", oldVIPNode, newVIPNode))
+		advertisement := env.l2Advertisement.DeepCopy()
+		advertisement.Spec.NodeSelectors = []metav1.LabelSelector{{
+			MatchLabels: map[string]string{
+				"kubernetes.io/hostname": newVIPNode,
+			},
+		}}
+		updatedAdvertisement, err := f.MetallbClientSet.UpdateL2Advertisement(advertisement)
+		framework.ExpectNoError(err)
+		env.l2Advertisement = updatedAdvertisement
+		waitVIPNodeFromService(f, env.service.Name, newVIPNode, 30*time.Second)
+
+		waitLoadBalancerVIPNodeMarker(lbName, env.vip, util.NodeLspName(newVIPNode), 30*time.Second)
+		waitUnderlayVIPBypassLFlow(env.vip, curlListenPort, 30*time.Second)
+		waitUnderlayVIPNodeLFlowCleaned(env.vip, util.NodeLspName(oldVIPNode), curlListenPort, 30*time.Second)
+		waitUnderlayVIPNodeLFlow(env.vip, util.NodeLspName(newVIPNode), curlListenPort, 30*time.Second)
+		if expectBackendL2Lookup {
+			waitUnderlayVIPBackendLFlowAbsent(env.backendPods, oldVIPNode, 30*time.Second)
+			waitUnderlayVIPBackendLFlows(env.backendPods, newVIPNode, 30*time.Second)
+		}
+		env.vipNode = newVIPNode
 	}
 
 	enableU2O := func(env *internalVIPTestEnvironment) {
@@ -700,6 +729,22 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			}
 		}
 
+		ginkgo.By("Refreshing endpoints while the first service uses externalTrafficPolicy=Cluster")
+		deployClient.SetScale(deployName, 2)
+		deployClient.RolloutStatus(deployName)
+		for _, ingress := range service.Status.LoadBalancer.Ingress {
+			if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
+				waitLoadBalancerVIPBackendCount(tcpLoadBalancer, ingress.IP, curlListenPort, 2, 30*time.Second)
+			}
+		}
+		deployClient.SetScale(deployName, 3)
+		deployClient.RolloutStatus(deployName)
+		for _, ingress := range service.Status.LoadBalancer.Ingress {
+			if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
+				waitLoadBalancerVIPBackendCount(tcpLoadBalancer, ingress.IP, curlListenPort, 3, 30*time.Second)
+			}
+		}
+
 		ginkgo.By("Switching the first service back to externalTrafficPolicy=Local")
 		modifiedService = service.DeepCopy()
 		modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
@@ -855,24 +900,8 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, env.vip, util.NodeLspName(firstVIPNode), 30*time.Second)
 
 		moveVIP := func(oldVIPNode, newVIPNode string) {
-			ginkgo.By(fmt.Sprintf("Moving the L2Advertisement from %s to %s", oldVIPNode, newVIPNode))
-			advertisement := env.l2Advertisement.DeepCopy()
-			advertisement.Spec.NodeSelectors = []metav1.LabelSelector{{
-				MatchLabels: map[string]string{
-					"kubernetes.io/hostname": newVIPNode,
-				},
-			}}
-			updatedAdvertisement, err := f.MetallbClientSet.UpdateL2Advertisement(advertisement)
-			framework.ExpectNoError(err)
-			env.l2Advertisement = updatedAdvertisement
-			waitVIPNodeFromService(f, env.service.Name, newVIPNode, 30*time.Second)
-
-			waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, env.vip, util.NodeLspName(newVIPNode), 30*time.Second)
-			waitUnderlayVIPBypassLFlow(env.vip, curlListenPort, 30*time.Second)
-			waitUnderlayVIPNodeLFlowCleaned(env.vip, util.NodeLspName(oldVIPNode), curlListenPort, 30*time.Second)
-			waitUnderlayVIPNodeLFlow(env.vip, util.NodeLspName(newVIPNode), curlListenPort, 30*time.Second)
-			waitUnderlayVIPBackendLFlowAbsent(env.backendPods, oldVIPNode, 30*time.Second)
-			waitUnderlayVIPBackendLFlows(env.backendPods, newVIPNode, 30*time.Second)
+			framework.ExpectEqual(env.vipNode, oldVIPNode)
+			moveInternalVIPNode(env, newVIPNode, tcpLoadBalancer, true)
 		}
 
 		moveVIP(firstVIPNode, secondVIPNode)
@@ -885,6 +914,31 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		runInternalVIPTopologyCase(env, internalVIPClientOnNonVIPBackendNode)
 		runInternalVIPTopologyCase(env, internalVIPClientOnNonBackendNode)
 		disableU2O(env)
+	})
+
+	framework.ConformanceIt("should keep ClientIP session affinity on the announcing node when the internal underlay VIP moves", func() {
+		env := setupInternalVIPEnvironment()
+		client := createInternalVIPClient(env, internalVIPClientOnNonBackendNode)
+		defer f.PodClient().DeleteSync(client.Name)
+
+		ginkgo.By("Enabling ClientIP session affinity on the LoadBalancer service")
+		modifiedService := env.service.DeepCopy()
+		modifiedService.Spec.SessionAffinity = corev1.ServiceAffinityClientIP
+		env.service = serviceClient.PatchSync(env.service, modifiedService, func(s *corev1.Service) (bool, error) {
+			return s.Spec.SessionAffinity == corev1.ServiceAffinityClientIP, nil
+		}, "sessionAffinity is ClientIP")
+
+		tcpSessionLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPSessionLoadBalancer
+		framework.ExpectNotEmpty(tcpSessionLoadBalancer, "default VPC TCP session load balancer should be set")
+		waitLoadBalancerVIPNodeMarker(tcpSessionLoadBalancer, env.vip, util.NodeLspName(env.vipNode), 30*time.Second)
+		waitUnderlayVIPAffinityLFlow(env.vip, util.NodeLspName(env.vipNode), 30*time.Second)
+		checkInternalPodVIPBackend(f, client, env.vip, env.vipNode)
+
+		oldVIPNodeLSP := util.NodeLspName(env.vipNode)
+		moveInternalVIPNode(env, env.nonVIPBackendNode, tcpSessionLoadBalancer, false)
+		waitUnderlayVIPAffinityLFlowCleaned(env.vip, oldVIPNodeLSP, 30*time.Second)
+		waitUnderlayVIPAffinityLFlow(env.vip, util.NodeLspName(env.vipNode), 30*time.Second)
+		checkInternalPodVIPBackend(f, client, env.vip, env.vipNode)
 	})
 })
 
@@ -972,6 +1026,38 @@ func hasLoadBalancerExternalID(lbName, key, value string) (bool, error) {
 		return false, fmt.Errorf("finding load balancer %s external ID %s: %w, stderr: %s", lbName, key, err, stderr)
 	}
 	return strings.TrimSpace(string(stdout)) != "", nil
+}
+
+func waitLoadBalancerVIPBackendCount(lbName, vip string, port int32, expectedCount int, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	vipKey := util.JoinHostPort(vip, port)
+	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
+		backendList, err := getLoadBalancerVIPBackends(lbName, vipKey)
+		if err != nil {
+			return false, nil
+		}
+		if backendList == "" {
+			return expectedCount == 0, nil
+		}
+		return len(strings.Split(backendList, ",")) == expectedCount, nil
+	}, fmt.Sprintf("load balancer %s VIP %s should have %d backends", lbName, vipKey, expectedCount))
+}
+
+func getLoadBalancerVIPBackends(lbName, vipKey string) (string, error) {
+	stdout, stderr, err := framework.NBExec(
+		"ovn-nbctl",
+		"--data=bare",
+		"--no-heading",
+		"get",
+		"Load_Balancer",
+		lbName,
+		fmt.Sprintf("'vips:%q'", vipKey),
+	)
+	if err != nil {
+		return "", fmt.Errorf("getting load balancer %s vip %s backends: %w, stderr: %s", lbName, vipKey, err, stderr)
+	}
+	return strings.Trim(strings.TrimSpace(string(stdout)), `"`), nil
 }
 
 func waitUnderlayVIPBypassLFlow(vip string, port int32, timeout time.Duration) {
@@ -1072,6 +1158,29 @@ func waitUnderlayVIPBackendLFlow(backendPod corev1.Pod, vipNode string, expected
 		return flow.pipeline == "ingress" && flow.tableID == 28 && flow.priority == 55 &&
 			flow.match == match && flow.actions == actions
 	})
+}
+
+func waitUnderlayVIPAffinityLFlow(vip, vipNodeLSP string, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	waitLogicalFlowCount(1, timeout, "session affinity lflow should be resident on the announcing node", func(flow logicalFlow) bool {
+		return isUnderlayVIPAffinityLFlow(flow, vip, vipNodeLSP)
+	})
+}
+
+func waitUnderlayVIPAffinityLFlowCleaned(vip, vipNodeLSP string, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	waitLogicalFlowCount(0, timeout, "session affinity lflow should be absent from the old announcing node", func(flow logicalFlow) bool {
+		return isUnderlayVIPAffinityLFlow(flow, vip, vipNodeLSP)
+	})
+}
+
+func isUnderlayVIPAffinityLFlow(flow logicalFlow, vip, vipNodeLSP string) bool {
+	return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 150 &&
+		strings.Contains(flow.match, fmt.Sprintf("ip4.dst == %s", vip)) &&
+		strings.Contains(flow.match, fmt.Sprintf("is_chassis_resident(\"%s\")", vipNodeLSP)) &&
+		strings.Contains(flow.actions, "ct_lb_mark")
 }
 
 func podIPv4(pod corev1.Pod) string {
