@@ -405,7 +405,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 	}
 
 	setupInternalVIPEnvironment := func() *internalVIPTestEnvironment {
-		f.SkipVersionPriorTo(1, 17, "Internal underlay MetalLB VIP access was introduced in v1.17.")
+		f.SkipVersionPriorTo(1, 15, "Internal underlay MetalLB VIP access was introduced in v1.15.")
 		if !f.HasIPv4() {
 			ginkgo.Skip("internal MetalLB VIP topology cases require IPv4")
 		}
