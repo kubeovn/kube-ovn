@@ -697,9 +697,6 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nodeNexthops map[string]set.Set[string], sources set.Set[string]) error {
 	nextHops := flattenVpcEgressGatewayNexthops(nodeNexthops)
-	if nextHops.Len() == 0 {
-		return nil
-	}
 
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:           util.CniTypeName,
@@ -860,10 +857,13 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		klog.Error(err)
 		return err
 	}
-	matches := set.New(
-		fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
-		fmt.Sprintf("ip%d.src == $%s", af, asName),
-	)
+	matches := set.New[string]()
+	if nextHops.Len() != 0 {
+		matches.Insert(
+			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
+			fmt.Sprintf("ip%d.src == $%s", af, asName),
+		)
+	}
 	for _, policy := range policies {
 		if matches.Has(policy.Match) {
 			if updateVpcEgressGatewayPolicyNexthops(policy, nextHops, bfdIDs) {

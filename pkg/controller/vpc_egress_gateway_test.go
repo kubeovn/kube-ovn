@@ -72,14 +72,20 @@ func TestLocalGatewayPolicyBFDSessions(t *testing.T) {
 	require.Empty(t, localGatewayPolicyBFDSessions(nil, set.New("10.16.1.10")))
 }
 
-func TestReconcileVpcEgressGatewayOVNRoutesConvergesLocalBFDNexthops(t *testing.T) {
-	const (
-		nodeName = "node-1"
-		lrName   = "vpc-router"
-		lrpName  = "bfd-lrp"
-		bfdIP    = "10.0.0.1"
-	)
+type vegOVNRouteFixture struct {
+	fc                               *fakeController
+	gw                               *kubeovnv1.VpcEgressGateway
+	nodeName, lrName, lrpName, bfdIP string
+	externalIDs                      map[string]string
+	pgName, asName                   string
+	localPolicies                    []*ovnnb.LogicalRouterPolicy
+	clusterPolicies                  []*ovnnb.LogicalRouterPolicy
+	dropPolicies                     []*ovnnb.LogicalRouterPolicy
+	allPolicies                      []*ovnnb.LogicalRouterPolicy
+}
 
+func newVegOVNRouteFixture(t *testing.T) *vegOVNRouteFixture {
+	const nodeName = "node-1"
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: []*corev1.Node{{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        nodeName,
@@ -88,114 +94,157 @@ func TestReconcileVpcEgressGatewayOVNRoutesConvergesLocalBFDNexthops(t *testing.
 	}}})
 	require.NoError(t, err)
 
-	gw := &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "veg"},
-		Spec: kubeovnv1.VpcEgressGatewaySpec{
-			TrafficPolicy: kubeovnv1.TrafficPolicyLocal,
-			BFD: kubeovnv1.VpcEgressGatewayBFDConfig{
-				Enabled:    true,
-				MinTX:      100,
-				MinRX:      200,
-				Multiplier: 3,
+	f := &vegOVNRouteFixture{
+		fc:       fc,
+		nodeName: nodeName,
+		lrName:   "vpc-router",
+		lrpName:  "bfd-lrp",
+		bfdIP:    "10.0.0.1",
+		gw: &kubeovnv1.VpcEgressGateway{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "veg"},
+			Spec: kubeovnv1.VpcEgressGatewaySpec{
+				TrafficPolicy: kubeovnv1.TrafficPolicyLocal,
+				BFD: kubeovnv1.VpcEgressGatewayBFDConfig{
+					Enabled:    true,
+					MinTX:      100,
+					MinRX:      200,
+					Multiplier: 3,
+				},
 			},
 		},
+		externalIDs: map[string]string{
+			ovs.ExternalIDVendor:           util.CniTypeName,
+			ovs.ExternalIDVpcEgressGateway: "default/veg",
+			"af":                           "4",
+		},
+		pgName: vegPortGroupName("default/veg"),
+		asName: vegAddressSetName("default/veg", 4),
 	}
-	externalIDs := map[string]string{
-		ovs.ExternalIDVendor:           util.CniTypeName,
-		ovs.ExternalIDVpcEgressGateway: "default/veg",
-		"af":                           "4",
-	}
-	pgName := vegPortGroupName("default/veg")
-	asName := vegAddressSetName("default/veg", 4)
 	localPgName := "node.node.1"
 	localMatches := []string{
-		fmt.Sprintf("ip4.src == $%s_ip4 && ip4.src == $%s_ip4", localPgName, pgName),
-		fmt.Sprintf("ip4.src == $%s_ip4 && ip4.src == $%s", localPgName, asName),
+		fmt.Sprintf("ip4.src == $%s_ip4 && ip4.src == $%s_ip4", localPgName, f.pgName),
+		fmt.Sprintf("ip4.src == $%s_ip4 && ip4.src == $%s", localPgName, f.asName),
 	}
 	clusterMatches := []string{
-		fmt.Sprintf("ip4.src == $%s_ip4", pgName),
-		fmt.Sprintf("ip4.src == $%s", asName),
+		fmt.Sprintf("ip4.src == $%s_ip4", f.pgName),
+		fmt.Sprintf("ip4.src == $%s", f.asName),
 	}
-	localPolicies := []*ovnnb.LogicalRouterPolicy{
+	f.localPolicies = []*ovnnb.LogicalRouterPolicy{
 		{UUID: "local-1", Match: localMatches[0], Nexthops: []string{"10.16.1.10", "10.16.1.11"}, BFDSessions: []string{"bfd-1", "bfd-2"}},
 		{UUID: "local-2", Match: localMatches[1], Nexthops: []string{"10.16.1.10", "10.16.1.11"}, BFDSessions: []string{"bfd-1", "bfd-2"}},
 	}
-	clusterPolicies := []*ovnnb.LogicalRouterPolicy{
+	f.clusterPolicies = []*ovnnb.LogicalRouterPolicy{
 		{UUID: "cluster-1", Match: clusterMatches[0], Nexthops: []string{"10.16.1.10", "10.16.1.11"}, BFDSessions: []string{"bfd-1", "bfd-2"}},
 		{UUID: "cluster-2", Match: clusterMatches[1], Nexthops: []string{"10.16.1.10", "10.16.1.11"}, BFDSessions: []string{"bfd-1", "bfd-2"}},
 	}
-	dropPolicies := []*ovnnb.LogicalRouterPolicy{
+	f.dropPolicies = []*ovnnb.LogicalRouterPolicy{
 		{UUID: "drop-1", Match: clusterMatches[0]},
 		{UUID: "drop-2", Match: clusterMatches[1]},
 	}
-	allPolicies := append(append([]*ovnnb.LogicalRouterPolicy{}, localPolicies...), clusterPolicies...)
+	f.allPolicies = append(append([]*ovnnb.LogicalRouterPolicy{}, f.localPolicies...), f.clusterPolicies...)
+	return f
+}
 
-	expectResources := func() {
-		fc.mockOvnClient.EXPECT().CreatePortGroup(pgName, externalIDs).Return(nil)
-		fc.mockOvnClient.EXPECT().PortGroupSetPorts(pgName, gomock.Any()).Return(nil)
-		fc.mockOvnClient.EXPECT().CreateAddressSet(asName, externalIDs).Return(nil)
-		fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(asName).Return(nil)
+func (f *vegOVNRouteFixture) expectResources() {
+	f.fc.mockOvnClient.EXPECT().CreatePortGroup(f.pgName, f.externalIDs).Return(nil)
+	f.fc.mockOvnClient.EXPECT().PortGroupSetPorts(f.pgName, gomock.Any()).Return(nil)
+	f.fc.mockOvnClient.EXPECT().CreateAddressSet(f.asName, f.externalIDs).Return(nil)
+	f.fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(f.asName).Return(nil)
+}
+
+func (f *vegOVNRouteFixture) expectPolicyUpdates(bfdEnabled bool) {
+	f.fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(f.lrName, util.EgressGatewayLocalPolicyPriority, f.externalIDs, false).Return(f.localPolicies, nil)
+	f.fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(f.lrName, util.EgressGatewayPolicyPriority, f.externalIDs, false).Return(f.clusterPolicies, nil)
+	f.fc.mockOvnClient.EXPECT().UpdateLogicalRouterPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(4)
+	if bfdEnabled {
+		f.fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(f.lrName, util.EgressGatewayDropPolicyPriority, f.externalIDs, false).Return(f.dropPolicies, nil)
+	} else {
+		f.fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(f.lrName, util.EgressGatewayDropPolicyPriority, f.externalIDs).Return(nil)
 	}
-	expectPolicies := func(bfdEnabled bool) {
-		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false).Return(localPolicies, nil)
-		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(lrName, util.EgressGatewayPolicyPriority, externalIDs, false).Return(clusterPolicies, nil)
-		fc.mockOvnClient.EXPECT().UpdateLogicalRouterPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(4)
-		if bfdEnabled {
-			fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs, false).Return(dropPolicies, nil)
-		} else {
-			fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs).Return(nil)
-		}
+}
+
+func (f *vegOVNRouteFixture) requirePolicyState(t *testing.T, nextHops, bfdSessions set.Set[string]) {
+	for _, policy := range f.allPolicies {
+		require.Equal(t, nextHops, set.New(policy.Nexthops...))
+		require.Equal(t, bfdSessions, set.New(policy.BFDSessions...))
 	}
-	requirePolicyState := func(nextHops, bfdSessions set.Set[string]) {
-		for _, policy := range allPolicies {
-			require.Equal(t, nextHops, set.New(policy.Nexthops...))
-			require.Equal(t, bfdSessions, set.New(policy.BFDSessions...))
-		}
+}
+
+func TestReconcileVpcEgressGatewayOVNRoutesDeletesRoutesWithoutNexthops(t *testing.T) {
+	f := newVegOVNRouteFixture(t)
+	for _, policy := range f.allPolicies {
+		policy.Nexthops = []string{"10.16.1.10"}
+		policy.BFDSessions = []string{"bfd-1"}
 	}
+
+	f.expectResources()
+	f.fc.mockOvnClient.EXPECT().FindBFD(f.externalIDs).Return([]ovnnb.BFD{{
+		UUID: "bfd-1", DstIP: "10.16.1.10", LogicalPort: f.lrpName,
+	}}, nil)
+	f.fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(f.lrName, util.EgressGatewayLocalPolicyPriority, f.externalIDs, false).
+		Return(f.localPolicies, nil)
+	for _, policy := range f.localPolicies {
+		f.fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID(f.lrName, policy.UUID).Return(nil)
+	}
+	f.fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(f.lrName, util.EgressGatewayPolicyPriority, f.externalIDs, false).
+		Return(f.clusterPolicies, nil)
+	for _, policy := range f.clusterPolicies {
+		f.fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID(f.lrName, policy.UUID).Return(nil)
+	}
+	f.fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(f.lrName, util.EgressGatewayDropPolicyPriority, f.externalIDs, false).
+		Return(f.dropPolicies, nil)
+	f.fc.mockOvnClient.EXPECT().DeleteBFD("bfd-1").Return(nil)
+
+	err := f.fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(f.gw, 4, f.lrName, f.lrpName, f.bfdIP, nil, nil)
+	require.NoError(t, err)
+}
+
+func TestReconcileVpcEgressGatewayOVNRoutesConvergesLocalBFDNexthops(t *testing.T) {
+	f := newVegOVNRouteFixture(t)
 
 	// Converge from two nexthops to one and delete the stale BFD row.
-	expectResources()
-	fc.mockOvnClient.EXPECT().FindBFD(externalIDs).Return([]ovnnb.BFD{
-		{UUID: "bfd-1", DstIP: "10.16.1.10", LogicalPort: lrpName},
-		{UUID: "bfd-2", DstIP: "10.16.1.11", LogicalPort: lrpName},
+	f.expectResources()
+	f.fc.mockOvnClient.EXPECT().FindBFD(f.externalIDs).Return([]ovnnb.BFD{
+		{UUID: "bfd-1", DstIP: "10.16.1.10", LogicalPort: f.lrpName},
+		{UUID: "bfd-2", DstIP: "10.16.1.11", LogicalPort: f.lrpName},
 	}, nil)
-	expectPolicies(true)
-	fc.mockOvnClient.EXPECT().DeleteBFD("bfd-2").Return(nil)
-	err = fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(gw, 4, lrName, lrpName, bfdIP, map[string]set.Set[string]{
-		nodeName: set.New("10.16.1.10"),
+	f.expectPolicyUpdates(true)
+	f.fc.mockOvnClient.EXPECT().DeleteBFD("bfd-2").Return(nil)
+	err := f.fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(f.gw, 4, f.lrName, f.lrpName, f.bfdIP, map[string]set.Set[string]{
+		f.nodeName: set.New("10.16.1.10"),
 	}, nil)
 	require.NoError(t, err)
-	requirePolicyState(set.New("10.16.1.10"), set.New("bfd-1"))
+	f.requirePolicyState(t, set.New("10.16.1.10"), set.New("bfd-1"))
 
 	// Restore the second nexthop and its BFD row.
-	expectResources()
-	fc.mockOvnClient.EXPECT().FindBFD(externalIDs).Return([]ovnnb.BFD{
-		{UUID: "bfd-1", DstIP: "10.16.1.10", LogicalPort: lrpName},
+	f.expectResources()
+	f.fc.mockOvnClient.EXPECT().FindBFD(f.externalIDs).Return([]ovnnb.BFD{
+		{UUID: "bfd-1", DstIP: "10.16.1.10", LogicalPort: f.lrpName},
 	}, nil)
-	fc.mockOvnClient.EXPECT().CreateBFD(lrpName, "10.16.1.11", 100, 200, 3, externalIDs).
+	f.fc.mockOvnClient.EXPECT().CreateBFD(f.lrpName, "10.16.1.11", 100, 200, 3, f.externalIDs).
 		Return(&ovnnb.BFD{UUID: "bfd-2", DstIP: "10.16.1.11"}, nil)
-	expectPolicies(true)
-	err = fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(gw, 4, lrName, lrpName, bfdIP, map[string]set.Set[string]{
-		nodeName: set.New("10.16.1.10", "10.16.1.11"),
+	f.expectPolicyUpdates(true)
+	err = f.fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(f.gw, 4, f.lrName, f.lrpName, f.bfdIP, map[string]set.Set[string]{
+		f.nodeName: set.New("10.16.1.10", "10.16.1.11"),
 	}, nil)
 	require.NoError(t, err)
-	requirePolicyState(set.New("10.16.1.10", "10.16.1.11"), set.New("bfd-1", "bfd-2"))
+	f.requirePolicyState(t, set.New("10.16.1.10", "10.16.1.11"), set.New("bfd-1", "bfd-2"))
 
 	// Disabling BFD keeps ECMP nexthops and removes policy sessions and BFD rows.
-	gw.Spec.BFD.Enabled = false
-	expectResources()
-	fc.mockOvnClient.EXPECT().FindBFD(externalIDs).Return([]ovnnb.BFD{
-		{UUID: "bfd-1", DstIP: "10.16.1.10", LogicalPort: lrpName},
-		{UUID: "bfd-2", DstIP: "10.16.1.11", LogicalPort: lrpName},
+	f.gw.Spec.BFD.Enabled = false
+	f.expectResources()
+	f.fc.mockOvnClient.EXPECT().FindBFD(f.externalIDs).Return([]ovnnb.BFD{
+		{UUID: "bfd-1", DstIP: "10.16.1.10", LogicalPort: f.lrpName},
+		{UUID: "bfd-2", DstIP: "10.16.1.11", LogicalPort: f.lrpName},
 	}, nil)
-	expectPolicies(false)
-	fc.mockOvnClient.EXPECT().DeleteBFD("bfd-1").Return(nil)
-	fc.mockOvnClient.EXPECT().DeleteBFD("bfd-2").Return(nil)
-	err = fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(gw, 4, lrName, lrpName, "", map[string]set.Set[string]{
-		nodeName: set.New("10.16.1.10", "10.16.1.11"),
+	f.expectPolicyUpdates(false)
+	f.fc.mockOvnClient.EXPECT().DeleteBFD("bfd-1").Return(nil)
+	f.fc.mockOvnClient.EXPECT().DeleteBFD("bfd-2").Return(nil)
+	err = f.fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(f.gw, 4, f.lrName, f.lrpName, "", map[string]set.Set[string]{
+		f.nodeName: set.New("10.16.1.10", "10.16.1.11"),
 	}, nil)
 	require.NoError(t, err)
-	requirePolicyState(set.New("10.16.1.10", "10.16.1.11"), set.New[string]())
+	f.requirePolicyState(t, set.New("10.16.1.10", "10.16.1.11"), set.New[string]())
 }
 
 func newVegWorkloadPod(name, node, podIP, attachment string) *corev1.Pod {
