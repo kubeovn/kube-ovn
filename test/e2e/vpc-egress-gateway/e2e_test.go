@@ -30,6 +30,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
+	"k8s.io/utils/set"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -43,7 +44,10 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 )
 
-var uuidRegexp = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+var (
+	uuidRegexp    = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
+	ipTokenRegexp = regexp.MustCompile(`[0-9A-Fa-f:.]+`)
+)
 
 func init() {
 	klog.SetOutput(ginkgo.GinkgoWriter)
@@ -904,6 +908,43 @@ func waitPortGroupExists(pgName string) {
 	}, "Port_Group "+pgName+" to exist")
 }
 
+func waitVpcEgressGatewayPolicyNexthops(vegKey string, priority, af int, expected []string) {
+	ginkgo.GinkgoHelper()
+	want := set.New(expected...)
+
+	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		cmd := fmt.Sprintf(
+			"ovn-nbctl --format=csv --data=bare --no-heading --columns=nexthops find Logical_Router_Policy priority=%d external_ids:vpc-egress-gateway=%s external_ids:af=%d",
+			priority,
+			shellQuote(vegKey),
+			af,
+		)
+		stdout, _, err := framework.NBExec(cmd)
+		if err != nil {
+			framework.Logf("failed to query policies for %s: %v", vegKey, err)
+			return false, nil
+		}
+
+		lines := strings.Split(strings.TrimSpace(string(stdout)), "\n")
+		if len(lines) == 0 || lines[0] == "" {
+			return false, nil
+		}
+		for _, line := range lines {
+			got := set.New[string]()
+			for _, token := range ipTokenRegexp.FindAllString(line, -1) {
+				if net.ParseIP(token) != nil {
+					got.Insert(token)
+				}
+			}
+			if !want.Equal(got) {
+				framework.Logf("gateway %s policy nexthops are %v, expected %v", vegKey, got.UnsortedList(), expected)
+				return false, nil
+			}
+		}
+		return true, nil
+	}, fmt.Sprintf("gateway %s priority %d IPv%d policy nexthops", vegKey, priority, af))
+}
+
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
@@ -1207,7 +1248,7 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 			framework.ExpectNotContainElement(podNodes, pod.Spec.NodeName)
 		}
 		podNodes = append(podNodes, pod.Spec.NodeName)
-		intIPs[pod.Spec.NodeName] = util.PodIPs(pod)
+		intIPs[pod.Spec.NodeName] = append(intIPs[pod.Spec.NodeName], util.PodIPs(pod)...)
 	}
 	uniquePodNodes := slices.Clone(podNodes)
 	slices.Sort(uniquePodNodes)
@@ -1215,6 +1256,20 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	framework.ExpectEqual(veg.Status.Workload.Nodes, uniquePodNodes)
 	if len(expectedNodes) != 0 {
 		framework.ExpectConsistOf(uniquePodNodes, expectedNodes)
+	}
+	expectedNexthops := make([]string, 0, len(veg.Status.InternalIPs)*2)
+	for _, ips := range veg.Status.InternalIPs {
+		expectedNexthops = append(expectedNexthops, strings.Split(ips, ",")...)
+	}
+	expectedIPv4, expectedIPv6 := util.SplitIpsByProtocol(expectedNexthops)
+	if antiAffinityMode == apiv1.PodAntiAffinityPreferred {
+		vegKey := namespaceName + "/" + vegName
+		if len(expectedIPv4) != 0 {
+			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayPolicyPriority, 4, expectedIPv4)
+		}
+		if len(expectedIPv6) != 0 {
+			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayPolicyPriority, 6, expectedIPv6)
+		}
 	}
 	if bfd && !f.VersionPriorTo(1, 15) {
 		verifyBFDDZeroSessionsTriggersRestart(f, namespaceName, workloadPods.Items[0])
@@ -1247,11 +1302,30 @@ func vegTest(f *framework.Framework, bfd bool, provider, nadName, vpcName, inter
 	for _, ips := range veg.Status.ExternalIPs {
 		extIPs = append(extIPs, strings.Split(ips, ",")...)
 	}
+	checkAccess := func(nodeName string) {
+		checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, nodeName, snatLabelValue, true)
+		checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, forwardSubnetName, nodeName, snatLabelValue, false)
+	}
 
 	var nodeName string
 	if veg.Spec.TrafficPolicy == apiv1.TrafficPolicyLocal {
 		nodeName = veg.Status.Workload.Nodes[0]
 	}
-	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, nodeName, snatLabelValue, true)
-	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, forwardSubnetName, nodeName, snatLabelValue, false)
+	checkAccess(nodeName)
+
+	if antiAffinityMode == apiv1.PodAntiAffinityPreferred {
+		original := veg.DeepCopy()
+		modified := veg.DeepCopy()
+		modified.Spec.TrafficPolicy = apiv1.TrafficPolicyLocal
+		veg = vegClient.PatchSync(original, modified)
+
+		vegKey := namespaceName + "/" + vegName
+		if len(expectedIPv4) != 0 {
+			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayLocalPolicyPriority, 4, expectedIPv4)
+		}
+		if len(expectedIPv6) != 0 {
+			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayLocalPolicyPriority, 6, expectedIPv6)
+		}
+		checkAccess(veg.Status.Workload.Nodes[0])
+	}
 }
