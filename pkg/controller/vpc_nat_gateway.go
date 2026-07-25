@@ -1478,7 +1478,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 					Tolerations:  gw.Spec.Tolerations,
 					// Merge pod anti-affinity for HA with user-specified affinity
 					Affinity: mergeGatewayAffinity(
-						genGatewayPodAntiAffinity(labels),
+						genGatewayPodAntiAffinity(labels, kubeovnv1.PodAntiAffinityRequired),
 						&gw.Spec.Affinity,
 					),
 				},

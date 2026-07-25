@@ -174,19 +174,22 @@ func genGatewaySleepContainer(image string) corev1.Container {
 	}
 }
 
-// genGatewayPodAntiAffinity creates pod anti-affinity rules to ensure gateway instances
-// run on different nodes. This is essential for HA deployments.
-func genGatewayPodAntiAffinity(labels map[string]string) *corev1.Affinity {
-	return &corev1.Affinity{
-		PodAntiAffinity: &corev1.PodAntiAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-				LabelSelector: &metav1.LabelSelector{
-					MatchLabels: labels,
-				},
-				TopologyKey: corev1.LabelHostname,
-			}},
-		},
+// genGatewayPodAntiAffinity creates pod anti-affinity rules for gateway instances.
+func genGatewayPodAntiAffinity(labels map[string]string, mode string) *corev1.Affinity {
+	term := corev1.PodAffinityTerm{
+		LabelSelector: &metav1.LabelSelector{MatchLabels: labels},
+		TopologyKey:   corev1.LabelHostname,
 	}
+	antiAffinity := &corev1.PodAntiAffinity{}
+	if mode == kubeovnv1.PodAntiAffinityPreferred {
+		antiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{{
+			Weight:          100,
+			PodAffinityTerm: term,
+		}}
+	} else {
+		antiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []corev1.PodAffinityTerm{term}
+	}
+	return &corev1.Affinity{PodAntiAffinity: antiAffinity}
 }
 
 // genGatewayDeploymentStrategy creates the standard rolling update strategy for gateway deployments.

@@ -3700,6 +3700,17 @@ spec:
                       type: object
                   type: object
                 type: array
+              podAntiAffinity:
+                default: Required
+                description: |-
+                  Pod anti-affinity mode for gateway workload replicas.
+                  Required spreads replicas across nodes and is the default. Preferred allows
+                  co-located replicas but does not provide node-level HA. Changing from
+                  Preferred to Required only takes effect when pods are recreated.
+                enum:
+                - Required
+                - Preferred
+                type: string
               policies:
                 description: |-
                   egress policies

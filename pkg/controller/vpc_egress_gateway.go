@@ -536,7 +536,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 				},
 				Spec: corev1.PodSpec{
 					Affinity: mergeGatewayAffinity(
-						genGatewayPodAntiAffinity(labels),
+						genGatewayPodAntiAffinity(labels, gw.Spec.PodAntiAffinity),
 						&corev1.Affinity{
 							NodeAffinity: &corev1.NodeAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: mergeNodeSelector(gw.Spec.NodeSelector),

@@ -178,13 +178,38 @@ func TestGenGatewaySleepContainer(t *testing.T) {
 
 func TestGenGatewayPodAntiAffinity(t *testing.T) {
 	labels := map[string]string{"app": "vpc-nat-gw", "vpc": "test-vpc"}
-	affinity := genGatewayPodAntiAffinity(labels)
+	tests := []struct {
+		name      string
+		mode      string
+		required  bool
+		preferred bool
+	}{
+		{name: "empty defaults to required", required: true},
+		{name: "required", mode: kubeovnv1.PodAntiAffinityRequired, required: true},
+		{name: "preferred", mode: kubeovnv1.PodAntiAffinityPreferred, preferred: true},
+	}
 
-	assert.NotNil(t, affinity.PodAntiAffinity)
-	terms := affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
-	assert.Len(t, terms, 1)
-	assert.Equal(t, labels, terms[0].LabelSelector.MatchLabels)
-	assert.Equal(t, corev1.LabelHostname, terms[0].TopologyKey)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			affinity := genGatewayPodAntiAffinity(labels, tt.mode)
+			assert.NotNil(t, affinity.PodAntiAffinity)
+			if tt.required {
+				terms := affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
+				assert.Len(t, terms, 1)
+				assert.Equal(t, labels, terms[0].LabelSelector.MatchLabels)
+				assert.Equal(t, corev1.LabelHostname, terms[0].TopologyKey)
+				assert.Empty(t, affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+			}
+			if tt.preferred {
+				terms := affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+				assert.Len(t, terms, 1)
+				assert.Equal(t, int32(100), terms[0].Weight)
+				assert.Equal(t, labels, terms[0].PodAffinityTerm.LabelSelector.MatchLabels)
+				assert.Equal(t, corev1.LabelHostname, terms[0].PodAffinityTerm.TopologyKey)
+				assert.Empty(t, affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution)
+			}
+		})
+	}
 }
 
 func TestGenGatewayDeploymentStrategy(t *testing.T) {
