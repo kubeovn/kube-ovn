@@ -157,7 +157,7 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
-              - CAP_SYS_PTRACE
+              - SYS_PTRACE
               - SYS_NICE
         env:
           - name: ENABLE_SSL
