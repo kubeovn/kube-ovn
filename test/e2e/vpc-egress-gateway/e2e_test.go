@@ -926,7 +926,8 @@ func waitVpcEgressGatewayPolicyNexthops(vegKey string, priority, af int, expecte
 		}
 
 		lines := strings.Split(strings.TrimSpace(string(stdout)), "\n")
-		if len(lines) == 0 || lines[0] == "" {
+		if len(lines) != 2 || lines[0] == "" {
+			framework.Logf("gateway %s has %d matching policies, expected 2", vegKey, len(lines))
 			return false, nil
 		}
 		for _, line := range lines {
