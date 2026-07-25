@@ -236,7 +236,7 @@ func mergeGatewayAffinity(affinities ...*corev1.Affinity) *corev1.Affinity {
 //   - ovnClient: OVN northbound client for BFD operations
 //   - bfdIP: BFD port IP (empty string disables BFD)
 //   - lrpName: Logical router port name for BFD sessions
-//   - nextHops: Map of node names to nexthop IPs
+//   - nextHops: Set of nexthop IPs
 //   - minTX, minRX, multiplier: BFD timing parameters
 //   - externalIDs: External IDs for tagging BFD sessions
 //
@@ -248,7 +248,7 @@ func reconcileGatewayBFD(
 	ovnClient ovs.NbClient,
 	bfdIP string,
 	lrpName string,
-	nextHops map[string]string,
+	nextHops set.Set[string],
 	minTX, minRX, multiplier int32,
 	externalIDs map[string]string,
 ) (bfdIDs set.Set[string], bfdMap map[string]string, staleBFDIDs set.Set[string], err error) {
@@ -260,7 +260,7 @@ func reconcileGatewayBFD(
 
 	bfdIDs = set.New[string]()
 	staleBFDIDs = set.New[string]()
-	bfdDstIPs := set.New(slices.Collect(maps.Values(nextHops))...)
+	bfdDstIPs := nextHops.Clone()
 	bfdMap = make(map[string]string, bfdDstIPs.Len())
 
 	// Process existing BFD sessions
@@ -318,7 +318,7 @@ func cleanupStaleBFD(ovnClient ovs.NbClient, staleBFDIDs set.Set[string]) error 
 //   - ovnClient: OVN northbound client for BFD operations
 //   - bfdIP: BFD port IP (empty string disables BFD)
 //   - lrpName: Logical router port name for BFD sessions
-//   - nextHops: Map of node names to nexthop IPs
+//   - nextHops: Set of nexthop IPs
 //   - minTX, minRX, multiplier: BFD timing parameters
 //   - externalIDs: External IDs for tagging BFD sessions (should include gateway-specific identifiers)
 //
@@ -329,7 +329,7 @@ func reconcileGatewayBFDWithCleanup(
 	ovnClient ovs.NbClient,
 	bfdIP string,
 	lrpName string,
-	nextHops map[string]string,
+	nextHops set.Set[string],
 	minTX, minRX, multiplier int32,
 	externalIDs map[string]string,
 ) (set.Set[string], error) {

@@ -10,6 +10,7 @@ import (
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
@@ -23,9 +24,48 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	require.Equal(t, "1Gi", ephemeralStorage.String())
 }
 
-func TestLocalGatewayPolicyBFDSessionsSkipsEmptySession(t *testing.T) {
-	require.Empty(t, localGatewayPolicyBFDSessions(map[string]string{"10.244.10.4": ""}, "10.244.10.4"))
-	require.Equal(t, set.New("bfd-1"), localGatewayPolicyBFDSessions(map[string]string{"10.244.10.4": "bfd-1"}, "10.244.10.4"))
+func TestFlattenVpcEgressGatewayNexthops(t *testing.T) {
+	nextHops := flattenVpcEgressGatewayNexthops(map[string]set.Set[string]{
+		"node-1": set.New("10.16.1.10", "10.16.1.11"),
+		"node-2": set.New("10.16.2.10"),
+	})
+	require.Equal(t, set.New("10.16.1.10", "10.16.1.11", "10.16.2.10"), nextHops)
+}
+
+func TestUpdateVpcEgressGatewayPolicyNexthops(t *testing.T) {
+	policy := &ovnnb.LogicalRouterPolicy{
+		Nexthops:    []string{"10.16.1.10", "10.16.1.11"},
+		BFDSessions: []string{"bfd-1", "bfd-2"},
+	}
+
+	changed := updateVpcEgressGatewayPolicyNexthops(policy, set.New("10.16.1.10"), set.New("bfd-1"))
+	require.True(t, changed)
+	require.Equal(t, set.New("10.16.1.10"), set.New(policy.Nexthops...))
+	require.Equal(t, set.New("bfd-1"), set.New(policy.BFDSessions...))
+
+	changed = updateVpcEgressGatewayPolicyNexthops(policy, set.New("10.16.1.10", "10.16.1.11"), set.New[string]())
+	require.True(t, changed)
+	require.Equal(t, set.New("10.16.1.10", "10.16.1.11"), set.New(policy.Nexthops...))
+	require.Empty(t, policy.BFDSessions)
+
+	require.False(t, updateVpcEgressGatewayPolicyNexthops(
+		policy,
+		set.New("10.16.1.11", "10.16.1.10"),
+		set.New[string](),
+	))
+}
+
+func TestLocalGatewayPolicyBFDSessions(t *testing.T) {
+	bfdMap := map[string]string{
+		"10.16.1.10": "bfd-1",
+		"10.16.1.11": "bfd-2",
+		"10.16.2.10": "bfd-3",
+	}
+	require.Equal(t,
+		set.New("bfd-1", "bfd-2"),
+		localGatewayPolicyBFDSessions(bfdMap, set.New("10.16.1.10", "10.16.1.11")),
+	)
+	require.Empty(t, localGatewayPolicyBFDSessions(nil, set.New("10.16.1.10")))
 }
 
 func newVegWorkloadPod(name, node, podIP, attachment string) *corev1.Pod {
@@ -59,6 +99,10 @@ func newVegWorkloadPod(name, node, podIP, attachment string) *corev1.Pod {
 func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 	attachmentNetwork := "default/eth1"
 	readyAttachment := `[{"name":"default/eth1","ips":["172.17.1.10"]}]`
+	sameNodePod1 := newVegWorkloadPod("veg-1", "node-1", "10.16.1.10", readyAttachment)
+	sameNodePod1.Status.PodIPs = append(sameNodePod1.Status.PodIPs, corev1.PodIP{IP: "fd00:10::10"})
+	sameNodePod2 := newVegWorkloadPod("veg-2", "node-1", "10.16.1.11", `[{"name":"default/eth1","ips":["172.17.1.11"]}]`)
+	sameNodePod2.Status.PodIPs = append(sameNodePod2.Status.PodIPs, corev1.PodIP{IP: "fd00:10::11"})
 
 	tests := []struct {
 		name                string
@@ -66,7 +110,8 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 		wantInternalIPs     []string
 		wantExternalIPs     []string
 		wantNodes           []string
-		wantNodeNexthopIPv4 map[string]string
+		wantNodeNexthopIPv4 map[string]set.Set[string]
+		wantNodeNexthopIPv6 map[string]set.Set[string]
 		wantNotReadyCount   int
 	}{
 		{
@@ -78,18 +123,17 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 			wantInternalIPs:     []string{"10.16.1.10", "10.16.1.11"},
 			wantExternalIPs:     []string{"172.17.1.10", "172.17.1.11"},
 			wantNodes:           []string{"node-1", "node-2"},
-			wantNodeNexthopIPv4: map[string]string{"node-1": "10.16.1.10", "node-2": "10.16.1.11"},
+			wantNodeNexthopIPv4: map[string]set.Set[string]{"node-1": set.New("10.16.1.10"), "node-2": set.New("10.16.1.11")},
+			wantNodeNexthopIPv6: map[string]set.Set[string]{},
 		},
 		{
-			name: "workload pods on the same node",
-			pods: []*corev1.Pod{
-				newVegWorkloadPod("veg-1", "node-1", "10.16.1.10", readyAttachment),
-				newVegWorkloadPod("veg-2", "node-1", "10.16.1.11", `[{"name":"default/eth1","ips":["172.17.1.11"]}]`),
-			},
-			wantInternalIPs:     []string{"10.16.1.10", "10.16.1.11"},
+			name:                "workload pods on the same node",
+			pods:                []*corev1.Pod{sameNodePod1, sameNodePod2},
+			wantInternalIPs:     []string{"10.16.1.10,fd00:10::10", "10.16.1.11,fd00:10::11"},
 			wantExternalIPs:     []string{"172.17.1.10", "172.17.1.11"},
 			wantNodes:           []string{"node-1"},
-			wantNodeNexthopIPv4: map[string]string{"node-1": "10.16.1.11"},
+			wantNodeNexthopIPv4: map[string]set.Set[string]{"node-1": set.New("10.16.1.10", "10.16.1.11")},
+			wantNodeNexthopIPv6: map[string]set.Set[string]{"node-1": set.New("fd00:10::10", "fd00:10::11")},
 		},
 		{
 			name: "one workload pod misses attachment network",
@@ -100,7 +144,8 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 			wantInternalIPs:     []string{"10.16.1.10"},
 			wantExternalIPs:     []string{"172.17.1.10"},
 			wantNodes:           []string{"node-1"},
-			wantNodeNexthopIPv4: map[string]string{"node-1": "10.16.1.10"},
+			wantNodeNexthopIPv4: map[string]set.Set[string]{"node-1": set.New("10.16.1.10")},
+			wantNodeNexthopIPv6: map[string]set.Set[string]{},
 			wantNotReadyCount:   2,
 		},
 		{
@@ -112,7 +157,8 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 			wantInternalIPs:     []string{"10.16.1.10"},
 			wantExternalIPs:     []string{"172.17.1.10"},
 			wantNodes:           []string{"node-1"},
-			wantNodeNexthopIPv4: map[string]string{"node-1": "10.16.1.10"},
+			wantNodeNexthopIPv4: map[string]set.Set[string]{"node-1": set.New("10.16.1.10")},
+			wantNodeNexthopIPv6: map[string]set.Set[string]{},
 			wantNotReadyCount:   2,
 		},
 	}
@@ -125,12 +171,13 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 				},
 			}
 
-			nodeNexthopIPv4, _, messages := collectVpcEgressGatewayWorkloadStatus(gw, tt.pods, attachmentNetwork)
+			nodeNexthopIPv4, nodeNexthopIPv6, messages := collectVpcEgressGatewayWorkloadStatus(gw, tt.pods, attachmentNetwork)
 
 			require.Equal(t, tt.wantInternalIPs, gw.Status.InternalIPs)
 			require.Equal(t, tt.wantExternalIPs, gw.Status.ExternalIPs)
 			require.Equal(t, tt.wantNodes, gw.Status.Workload.Nodes)
 			require.Equal(t, tt.wantNodeNexthopIPv4, nodeNexthopIPv4)
+			require.Equal(t, tt.wantNodeNexthopIPv6, nodeNexthopIPv6)
 			require.Len(t, messages, tt.wantNotReadyCount)
 		})
 	}
