@@ -15,10 +15,12 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -1507,6 +1509,40 @@ func TestHandleUpdatePodSecuritySkipsNonOVNNetworkWithoutSuccess(t *testing.T) {
 	assertNoPodEvent(t, controller)
 }
 
+func TestHandleUpdatePodSecurityReportsOnlyProcessedOVNNetworks(t *testing.T) {
+	const ipamProvider = "net1.default"
+	pod, ovnSubnet := podEventFixture()
+	pod.Annotations[util.AllocatedAnnotation] = "true"
+	pod.Annotations[util.IPAddressAnnotation] = "10.0.0.2"
+	pod.Annotations[util.MacAddressAnnotation] = "00:00:00:00:00:01"
+	pod.Annotations[nadv1.NetworkAttachmentAnnot] = `[{"name":"net1"}]`
+	pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, ipamProvider)] = "true"
+	pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, ipamProvider)] = "10.1.0.2"
+	ipamSubnet := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "ipam-subnet"}, Spec: kubeovnv1.SubnetSpec{
+		CIDRBlock: "10.1.0.0/24", Protocol: kubeovnv1.ProtocolIPv4, Provider: ipamProvider,
+	}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods:    []*corev1.Pod{pod},
+		Subnets: []*kubeovnv1.Subnet{ovnSubnet, ipamSubnet},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{{
+			ObjectMeta: metav1.ObjectMeta{Name: "net1", Namespace: metav1.NamespaceDefault},
+			Spec:       nadv1.NetworkAttachmentDefinitionSpec{Config: ipamNADConfig(util.CniTypeName)},
+		}},
+	})
+	require.NoError(t, err)
+	portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortSecurity(false, portName, "00:00:00:00:00:01", "10.0.0.2", "").Return(nil)
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, false).Return(&ovnnb.LogicalSwitchPort{Name: portName, ExternalIDs: map[string]string{}}, nil)
+	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortExternalIDs(portName, map[string]string{"security_groups": ""}).Return(nil)
+
+	err = fc.fakeController.handleUpdatePodSecurity("default/test-pod")
+
+	require.NoError(t, err)
+	event := assertPodEvent(t, fc.fakeController, "Normal PodSecurityUpdated", "provider=ovn", "logicalSwitchPort=test-pod.default")
+	assert.NotContains(t, event, "provider="+ipamProvider)
+	assert.NotContains(t, event, "logicalSwitchPort=test-pod.default.net1.default")
+}
+
 func TestHandleDeletePodRecordsReleasedPort(t *testing.T) {
 	pod, subnet := podEventFixture()
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
@@ -1595,6 +1631,119 @@ func TestHandleAddOrUpdatePodRecordsAllocationDHCPFailureOnce(t *testing.T) {
 	require.EqualError(t, err, "allocate dhcp failed")
 	assertPodEvent(t, fc.fakeController, "Warning PodNetworkAllocationFailed", "stage=reconcilePortDHCPOptions", "allocate dhcp failed")
 	assertNoPodEvent(t, fc.fakeController)
+}
+
+func TestReconcileAllocateSubnetsSpecificFailureEventsIncludeStage(t *testing.T) {
+	t.Run("acquire address", func(t *testing.T) {
+		pod, subnet := podEventFixture()
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+		require.NoError(t, err)
+
+		_, err = fc.fakeController.reconcileAllocateSubnets(pod, []*kubeovnNet{{Type: providerTypeOriginal, ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
+
+		require.Error(t, err)
+		assertPodEvent(t, fc.fakeController, "Warning AcquireAddressFailed", "stage=acquireAddress", err.Error())
+	})
+
+	t.Run("validate network broadcast", func(t *testing.T) {
+		pod, subnet := podEventFixture()
+		pod.Annotations[util.VipAnnotation] = "broadcast-vip"
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+		require.NoError(t, err)
+		vip := &kubeovnv1.Vip{
+			ObjectMeta: metav1.ObjectMeta{Name: "broadcast-vip", Labels: map[string]string{}},
+			Spec:       kubeovnv1.VipSpec{Subnet: subnet.Name},
+			Status:     kubeovnv1.VipStatus{V4ip: "10.0.0.0", Mac: "00:00:00:00:00:01"},
+		}
+		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{})
+		require.NoError(t, err)
+		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+		require.NoError(t, indexer.Add(vip))
+		fc.fakeController.virtualIpsLister = kubeovnlister.NewVipLister(indexer)
+
+		_, err = fc.fakeController.reconcileAllocateSubnets(pod, []*kubeovnNet{{Type: providerTypeOriginal, ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
+
+		require.Error(t, err)
+		assertPodEvent(t, fc.fakeController, "Warning ValidatePodNetworkFailed", "stage=validateNetworkBroadcast", err.Error())
+	})
+
+	t.Run("get vlan info", func(t *testing.T) {
+		pod, subnet := podEventFixture()
+		subnet.Spec.Vlan = "missing-vlan"
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+
+		_, err = fc.fakeController.reconcileAllocateSubnets(pod, []*kubeovnNet{{Type: providerTypeOriginal, ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
+
+		require.Error(t, err)
+		assertPodEvent(t, fc.fakeController, "Warning GetVlanInfoFailed", "stage=getVlanInfo", err.Error())
+	})
+
+	t.Run("create logical switch port", func(t *testing.T) {
+		pod, subnet := podEventFixture()
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+		fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&ovs.DHCPOptionsUUIDs{}, false, nil)
+		fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("create port failed"))
+
+		_, err = fc.fakeController.reconcileAllocateSubnets(pod, []*kubeovnNet{{Type: providerTypeOriginal, ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
+
+		require.EqualError(t, err, "create port failed")
+		assertPodEvent(t, fc.fakeController, "Warning CreateOVNPortFailed", "stage=createLogicalSwitchPort", err.Error())
+	})
+
+	t.Run("set logical switch port layer2 forward", func(t *testing.T) {
+		pod, subnet := podEventFixture()
+		pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, util.OvnProvider)] = "true"
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+		fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&ovs.DHCPOptionsUUIDs{}, false, nil)
+		fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		fc.mockOvnClient.EXPECT().EnablePortLayer2forward(gomock.Any()).Return(errors.New("enable layer2 forward failed"))
+
+		_, err = fc.fakeController.reconcileAllocateSubnets(pod, []*kubeovnNet{{Type: providerTypeOriginal, ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
+
+		require.EqualError(t, err, "enable layer2 forward failed")
+		assertPodEvent(t, fc.fakeController, "Warning SetOVNPortL2ForwardFailed", "stage=setLogicalSwitchPortLayer2Forward", err.Error())
+	})
+}
+
+func TestHandleAddOrUpdatePodReportsActualAllocatedSubnet(t *testing.T) {
+	pod, subnetA := podEventFixture()
+	pod.Annotations = map[string]string{
+		util.IPAddressAnnotation:  "10.1.0.2",
+		util.MacAddressAnnotation: "00:00:00:00:00:01",
+	}
+	subnetB := subnetA.DeepCopy()
+	subnetB.Name = "subnet-b"
+	subnetB.Spec.CIDRBlock = "10.1.0.0/24"
+	subnetB.Spec.Gateway = "10.1.0.1"
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+		Name: metav1.NamespaceDefault,
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation: "subnet-a,subnet-b",
+		},
+	}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods:       []*corev1.Pod{pod},
+		Subnets:    []*kubeovnv1.Subnet{subnetA, subnetB},
+		Namespaces: []*corev1.Namespace{namespace},
+	})
+	require.NoError(t, err)
+	require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnetA.Name, subnetA.Spec.CIDRBlock, subnetA.Spec.Gateway, nil))
+	require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnetB.Name, subnetB.Spec.CIDRBlock, subnetB.Spec.Gateway, nil))
+	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return(nil, nil)
+	fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&ovs.DHCPOptionsUUIDs{}, false, nil).Times(2)
+	fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort("subnet-b", gomock.Any(), "10.1.0.2", "00:00:00:00:00:01", pod.Name, pod.Namespace, false, "", "", false, gomock.Any(), util.DefaultVpc).Return(nil)
+
+	err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
+
+	require.NoError(t, err)
+	event := assertPodEvent(t, fc.fakeController, "Normal PodNetworkAllocated", "provider=ovn", "subnet=subnet-b", "ip=10.1.0.2")
+	assert.NotContains(t, event, "subnet=subnet-a")
 }
 
 func TestHandleAddOrUpdatePodRecordsHotplugUpdate(t *testing.T) {
@@ -1821,7 +1970,7 @@ func ipamNADConfig(ipamType string) string {
 	return fmt.Sprintf(`{"cniVersion":"0.3.1","name":"net1","type":"macvlan","ipam":{"type":%q}}`, ipamType)
 }
 
-func assertPodEvent(t *testing.T, controller *Controller, parts ...string) {
+func assertPodEvent(t *testing.T, controller *Controller, parts ...string) string {
 	t.Helper()
 
 	recorder := controller.recorder.(*record.FakeRecorder)
@@ -1830,8 +1979,10 @@ func assertPodEvent(t *testing.T, controller *Controller, parts ...string) {
 		for _, part := range parts {
 			assert.Contains(t, event, part)
 		}
+		return event
 	case <-time.After(time.Second):
 		t.Fatal("expected pod event")
+		return ""
 	}
 }
 

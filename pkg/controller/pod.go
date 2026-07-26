@@ -683,10 +683,11 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		// the subnet may changed when alloc static ip from the latter subnet after ns supports multi subnets
 		v4IP, v6IP, mac, subnet, err := c.acquireAddress(pod, podNet)
 		if err != nil {
-			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", "%s", err.Error())
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "AcquireAddressFailed", "stage=acquireAddress error=%v", err)
 			klog.Error(err)
 			return nil, err
 		}
+		podNet.Subnet = subnet
 		ipStr := util.GetStringIP(v4IP, v6IP)
 		patch[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] = ipStr
 		if mac == "" {
@@ -711,7 +712,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		}
 		if err := util.ValidateNetworkBroadcast(podNet.Subnet.Spec.CIDRBlock, ipStr); err != nil {
 			klog.Errorf("validate pod %s/%s failed: %v", namespace, name, err)
-			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", "%s", err.Error())
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "ValidatePodNetworkFailed", "stage=validateNetworkBroadcast error=%v", err)
 			return nil, err
 		}
 
@@ -724,7 +725,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				vlan, err := c.vlansLister.Get(subnet.Spec.Vlan)
 				if err != nil {
 					klog.Error(err)
-					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", "%s", err.Error())
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "GetVlanInfoFailed", "stage=getVlanInfo error=%v", err)
 					return nil, err
 				}
 				patch[fmt.Sprintf(util.VlanIDAnnotationTemplate, podNet.ProviderName)] = strconv.Itoa(vlan.Spec.ID)
@@ -793,14 +794,14 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
 			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
 				portSecurity, securityGroupAnnotation, vips, enableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
-				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", "%s", err.Error())
+				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", "stage=createLogicalSwitchPort error=%v", err)
 				klog.Errorf("%v", err)
 				return nil, err
 			}
 
 			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
 				if err := c.OVNNbClient.EnablePortLayer2forward(portName); err != nil {
-					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", "%s", err.Error())
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", "stage=setLogicalSwitchPortLayer2Forward error=%v", err)
 					klog.Errorf("%v", err)
 					return nil, err
 				}
@@ -1510,7 +1511,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 	}
 
 	vipsMap := c.getVirtualIPs(pod, podNets)
-	processed := false
+	updatedPodNets := make([]*kubeovnNet, 0, len(podNets))
 
 	// associated with security group
 	for _, podNet := range podNets {
@@ -1550,10 +1551,10 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "PodSecurityUpdateFailed", "stage=reconcilePortSg error=%v", err)
 			return err
 		}
-		processed = true
+		updatedPodNets = append(updatedPodNets, podNet)
 	}
-	if processed {
-		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodSecurityUpdated", "%s", c.podNetworkEventDetails(pod, podNets))
+	if len(updatedPodNets) != 0 {
+		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodSecurityUpdated", "%s", c.podNetworkEventDetails(pod, updatedPodNets))
 	}
 	return nil
 }
