@@ -530,8 +530,8 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	}
 
 	// check and do hotnoplug nic
-	var hotplugChanged bool
-	if pod, hotplugChanged, err = c.syncKubeOvnNet(pod, podNets); err != nil {
+	var hotplugDetails string
+	if pod, hotplugDetails, err = c.syncKubeOvnNet(pod, podNets); err != nil {
 		klog.Errorf("failed to sync pod nets %v", err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkUpdateFailed", "stage=syncKubeOvnNet error=%v", err)
 		return err
@@ -575,11 +575,14 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		return err
 	}
 
-	details := c.podNetworkEventDetails(pod, podNets)
 	if len(needAllocatePodNets) != 0 {
-		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkAllocated", "%s", details)
-	} else if hotplugChanged || len(needRoutePodNets) != 0 {
-		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkUpdated", "%s", details)
+		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkAllocated", "%s", c.podNetworkEventDetails(pod, needAllocatePodNets))
+	} else if hotplugDetails != "" || len(needRoutePodNets) != 0 {
+		details := []string{hotplugDetails}
+		if routeDetails := c.podNetworkEventDetails(pod, needRoutePodNets); routeDetails != "" {
+			details = append(details, routeDetails)
+		}
+		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkUpdated", "%s", strings.TrimPrefix(strings.Join(details, "; "), "; "))
 	}
 	return nil
 }
@@ -663,7 +666,6 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	name := pod.Name
 	klog.Infof("sync pod %s/%s allocated", namespace, name)
 
-	vipsMap := c.getVirtualIPs(pod, needAllocatePodNets)
 	isVMPod, vmName := isVMPod(pod)
 	podType := getPodType(pod)
 	podName := c.getNameByPod(pod)
@@ -737,7 +739,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				portSecurity = true
 			}
 
-			vips := vipsMap[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
+			vips := c.getVirtualIPs(pod, []*kubeovnNet{podNet})[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
 			for ip := range strings.SplitSeq(vips, ",") {
 				if ip != "" && net.ParseIP(ip) == nil {
 					klog.Errorf("invalid vip address '%s' for pod %s", ip, name)
@@ -1212,6 +1214,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if keepIPCR {
+			stage = "checkStatefulSetOwner"
 			isOwnerRefDeleted, ipcrToDelete, err = appendCheckPodNetToDel(c, pod, stsName, util.KindStatefulSet)
 			if err != nil {
 				klog.Error(err)
@@ -1254,6 +1257,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				// running the VM. If another live sibling exists (e.g. a
 				// live-migration destination while the completed source is being
 				// GC'd), its memberships must not be wiped out.
+				stage = "listVMPodSiblings"
 				siblings, listErr := c.podsLister.Pods(pod.Namespace).List(labels.Everything())
 				if listErr != nil {
 					klog.Errorf("failed to list pods in namespace %s: %v", pod.Namespace, listErr)
@@ -1263,6 +1267,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if keepIPCR {
+			stage = "checkVMOwner"
 			isOwnerRefDeleted, ipcrToDelete, err = appendCheckPodNetToDel(c, pod, vmName, util.KindVirtualMachineInstance)
 			if err != nil {
 				klog.Error(err)
@@ -1303,10 +1308,12 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				released = append(released, "logicalSwitchPort="+port.Name)
 				ipCR, err := c.ipsLister.Get(port.Name)
 				if err != nil {
-					if !k8serrors.IsNotFound(err) {
-						klog.Errorf("failed to get ip %s: %v", port.Name, err)
+					if k8serrors.IsNotFound(err) {
+						continue
 					}
-					continue
+					stage = "getIPCR"
+					klog.Errorf("failed to get ip %s: %v", port.Name, err)
+					return err
 				}
 				if ipCR.Labels[util.IPReservedLabel] != "true" {
 					klog.Infof("delete orphaned vm attachment ip CR %s", ipCR.Name)
@@ -1563,7 +1570,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 // there is no mac or ip address request here in the object generated from here
 // interface name in providerName is used for annotation for ip address
 
-func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, bool, error) {
+func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, string, error) {
 	podName := c.getNameByPod(pod)
 	key := cache.NewObjectName(pod.Namespace, podName).String()
 	targetPortNameList := strset.NewWithSize(len(podNets))
@@ -1571,25 +1578,33 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	annotationsNeedToDel := []string{}
 	annotationsNeedToAdd := make(map[string]string)
 	subnetUsedByPort := make(map[string]string)
+	changedPodNets := []*kubeovnNet{}
+	hotplugDetails := []string{}
 
 	for _, podNet := range podNets {
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 		targetPortNameList.Add(portName)
+		changed := false
 		if podNet.IPRequest != "" && pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] != podNet.IPRequest {
 			klog.Infof("pod %s/%s use custom IP %s for provider %s", pod.Namespace, pod.Name, podNet.IPRequest, podNet.ProviderName)
 			annotationsNeedToAdd[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] = podNet.IPRequest
+			changed = true
 		}
 
 		if podNet.MacRequest != "" && pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)] != podNet.MacRequest {
 			klog.Infof("pod %s/%s use custom MAC %s for provider %s", pod.Namespace, pod.Name, podNet.MacRequest, podNet.ProviderName)
 			annotationsNeedToAdd[fmt.Sprintf(util.MacAddressAnnotationTemplate, podNet.ProviderName)] = podNet.MacRequest
+			changed = true
+		}
+		if changed {
+			changedPodNets = append(changedPodNets, podNet)
 		}
 	}
 
 	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
-		return nil, false, err
+		return nil, "", err
 	}
 
 	for _, port := range ports {
@@ -1598,6 +1613,13 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 			subnetUsedByPort[port.Name] = port.ExternalIDs["ls"]
 			portNameSlice := strings.Split(port.Name, ".")
 			providerName := strings.Join(portNameSlice[2:], ".")
+			hotplugDetails = append(hotplugDetails, fmt.Sprintf("provider=%s subnet=%s ip=%s mac=%s logicalSwitchPort=%s",
+				providerName,
+				port.ExternalIDs["ls"],
+				pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)],
+				pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, providerName)],
+				port.Name,
+			))
 			if providerName == util.OvnProvider {
 				continue
 			}
@@ -1606,7 +1628,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	}
 
 	if len(portsNeedToDel) == 0 && len(annotationsNeedToAdd) == 0 {
-		return pod, false, nil
+		return pod, "", nil
 	}
 
 	for _, portNeedDel := range portsNeedToDel {
@@ -1614,12 +1636,12 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 		c.ipam.ReleaseAddressByNic(key, portNeedDel, subnetUsedByPort[portNeedDel])
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
-			return nil, false, err
+			return nil, "", err
 		}
 		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portNeedDel, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete ip %s, %v", portNeedDel, err)
-				return nil, false, err
+				return nil, "", err
 			}
 		}
 	}
@@ -1638,26 +1660,29 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	}
 
 	if len(patch) == 0 {
-		return pod, len(portsNeedToDel) != 0, nil
+		return pod, strings.Join(hotplugDetails, "; "), nil
 	}
 
 	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil, false, nil
+			return nil, "", nil
 		}
 		klog.Errorf("failed to clean annotations for pod %s/%s: %v", pod.Namespace, pod.Name, err)
-		return nil, false, err
+		return nil, "", err
 	}
 
 	if pod, err = c.config.KubeClient.CoreV1().Pods(pod.Namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{}); err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil, false, nil
+			return nil, "", nil
 		}
 		klog.Errorf("failed to get pod %s/%s: %v", pod.Namespace, pod.Name, err)
-		return nil, false, err
+		return nil, "", err
 	}
 
-	return pod, true, nil
+	if details := c.podNetworkEventDetails(pod, changedPodNets); details != "" {
+		hotplugDetails = append(hotplugDetails, details)
+	}
+	return pod, strings.Join(hotplugDetails, "; "), nil
 }
 
 func (c *Controller) podNetworkEventDetails(pod *v1.Pod, podNets []*kubeovnNet) string {
