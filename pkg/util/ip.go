@@ -24,7 +24,20 @@ func Uint32ToIPv6(n [4]uint32) string {
 	)
 }
 
-// IPv6ToLabelValue sanitizes an IPv6 address for use as a Kubernetes label value (colons are not allowed).
+// IPv6ToLabelValue sanitizes an IPv6 address for use as a Kubernetes label value.
+// Colons are not allowed in label values, and a label value must start and end
+// with an alphanumeric character, which a zero-compressed address (e.g. "::1"
+// or "fd00::") would otherwise violate after the colons are replaced.
 func IPv6ToLabelValue(ip string) string {
-	return strings.ReplaceAll(ip, ":", "-")
+	if ip == "" {
+		return ""
+	}
+	v := strings.ReplaceAll(ip, ":", "-")
+	if v[0] == '-' {
+		v = "0" + v
+	}
+	if v[len(v)-1] == '-' {
+		v += "0"
+	}
+	return v
 }

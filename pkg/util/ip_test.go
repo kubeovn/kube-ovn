@@ -3,6 +3,8 @@ package util
 import (
 	"net"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 func TestUint32ToIPv4(t *testing.T) {
@@ -61,6 +63,29 @@ func TestUint32ToIPv6(t *testing.T) {
 		result := Uint32ToIPv6(tt.input)
 		if result != tt.expected {
 			t.Errorf("Uint32ToIPv6(%v) = %s; want %s", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestIPv6ToLabelValue(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", ""},
+		{"1001:11d0:303:21c1:2000::100", "1001-11d0-303-21c1-2000--100"},
+		{"::1", "0--1"},
+		{"fd00:100::", "fd00-100--0"},
+		{"::", "0--0"},
+	}
+
+	for _, tt := range tests {
+		result := IPv6ToLabelValue(tt.input)
+		if result != tt.expected {
+			t.Errorf("IPv6ToLabelValue(%s) = %s; want %s", tt.input, result, tt.expected)
+		}
+		if errs := validation.IsValidLabelValue(result); len(errs) != 0 {
+			t.Errorf("IPv6ToLabelValue(%s) = %s is not a valid label value: %v", tt.input, result, errs)
 		}
 	}
 }
