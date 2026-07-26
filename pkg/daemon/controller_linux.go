@@ -39,6 +39,12 @@ const (
 	kernelModuleIP6Tables = "ip6_tables"
 )
 
+var (
+	setInterfaceBandwidth = ovs.SetInterfaceBandwidth
+	configInterfaceMirror = ovs.ConfigInterfaceMirror
+	setNetemQos           = ovs.SetNetemQos
+)
+
 // ControllerRuntime represents runtime specific controller members
 type ControllerRuntime struct {
 	iptables         map[string]*iptables.IPTables
@@ -887,31 +893,35 @@ func (c *Controller) handleUpdatePod(key string) error {
 	ovsEgress := pod.Annotations[util.IngressRateAnnotation]
 	ovsIngressBurst := pod.Annotations[util.EgressBurstAnnotation]
 	ovsEgressBurst := pod.Annotations[util.IngressBurstAnnotation]
-	err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID, ovsIngress, ovsEgress, ovsIngressBurst, ovsEgressBurst)
+	err = setInterfaceBandwidth(podName, pod.Namespace, ifaceID, ovsIngress, ovsEgress, ovsIngressBurst, ovsEgressBurst)
 	if err != nil {
 		klog.Error(err)
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=bandwidth provider=%s interface=%s node=%s: %v", util.OvnProvider, ifaceID, c.config.NodeName, err)
 		return err
 	}
-	err = ovs.ConfigInterfaceMirror(c.config.EnableMirror, pod.Annotations[util.MirrorControlAnnotation], ifaceID)
+	err = configInterfaceMirror(c.config.EnableMirror, pod.Annotations[util.MirrorControlAnnotation], ifaceID)
 	if err != nil {
 		klog.Error(err)
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=mirror provider=%s interface=%s node=%s: %v", util.OvnProvider, ifaceID, c.config.NodeName, err)
 		return err
 	}
 	// set linux-netem qos
-	err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[util.NetemQosLatencyAnnotation], pod.Annotations[util.NetemQosLimitAnnotation], pod.Annotations[util.NetemQosLossAnnotation], pod.Annotations[util.NetemQosJitterAnnotation])
+	err = setNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[util.NetemQosLatencyAnnotation], pod.Annotations[util.NetemQosLimitAnnotation], pod.Annotations[util.NetemQosLossAnnotation], pod.Annotations[util.NetemQosJitterAnnotation])
 	if err != nil {
 		klog.Error(err)
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=netem provider=%s interface=%s node=%s: %v", util.OvnProvider, ifaceID, c.config.NodeName, err)
 		return err
 	}
+	processed := []string{fmt.Sprintf("provider=%s interface=%s", util.OvnProvider, ifaceID)}
 
 	// set multus-nic bandwidth
 	attachNets, err := nadutils.ParsePodNetworkAnnotation(pod)
 	if err != nil {
-		if _, ok := err.(*nadv1.NoK8sNetworkError); ok {
-			return nil
+		if _, ok := err.(*nadv1.NoK8sNetworkError); !ok {
+			klog.Error(err)
+			c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=parseNetworkAttachment provider=unknown interface=unknown node=%s: %v", c.config.NodeName, err)
+			return err
 		}
-		klog.Error(err)
-		return err
 	}
 	for _, multiNet := range attachNets {
 		provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
@@ -921,28 +931,33 @@ func (c *Controller) handleUpdatePod(key string) error {
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
 			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
 
-			err = ovs.SetInterfaceBandwidth(podName, pod.Namespace, ifaceID,
+			err = setInterfaceBandwidth(podName, pod.Namespace, ifaceID,
 				pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)],
 				pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)],
 				pod.Annotations[fmt.Sprintf(util.EgressBurstAnnotationTemplate, provider)],
 				pod.Annotations[fmt.Sprintf(util.IngressBurstAnnotationTemplate, provider)])
 			if err != nil {
 				klog.Error(err)
+				c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=bandwidth provider=%s interface=%s node=%s: %v", provider, ifaceID, c.config.NodeName, err)
 				return err
 			}
-			err = ovs.ConfigInterfaceMirror(c.config.EnableMirror, pod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)], ifaceID)
+			err = configInterfaceMirror(c.config.EnableMirror, pod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)], ifaceID)
 			if err != nil {
 				klog.Error(err)
+				c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=mirror provider=%s interface=%s node=%s: %v", provider, ifaceID, c.config.NodeName, err)
 				return err
 			}
-			err = ovs.SetNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)])
+			err = setNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)])
 			if err != nil {
 				klog.Error(err)
+				c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=netem provider=%s interface=%s node=%s: %v", provider, ifaceID, c.config.NodeName, err)
 				return err
 			}
+			processed = append(processed, fmt.Sprintf("provider=%s interface=%s", provider, ifaceID))
 		}
 	}
 
+	c.recorder.Eventf(pod, v1.EventTypeNormal, "PodQoSUpdated", "Updated pod QoS: node=%s %s", c.config.NodeName, strings.Join(processed, ", "))
 	return nil
 }
 
