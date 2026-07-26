@@ -385,7 +385,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "Non-primary CNI with NAD provider skips default network override",
+			name: "Non-primary CNI with NAD provider attaches subnet NAD as additional network",
 			gw: v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-gateway",
@@ -402,7 +402,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			enableNonPrimaryCNI:  true,
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
-				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
+				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet, namespace/subnet",
 				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
 				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
 			},
@@ -426,7 +426,7 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			enableNonPrimaryCNI:  true,
 			expected: map[string]string{
 				VpcNatGatewayAnnotation:      "test-gateway",
-				nadv1.NetworkAttachmentAnnot: "default/tenant-nad, kube-system/external-subnet",
+				nadv1.NetworkAttachmentAnnot: "default/tenant-nad, kube-system/external-subnet, namespace/subnet",
 				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
 				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
 			},
