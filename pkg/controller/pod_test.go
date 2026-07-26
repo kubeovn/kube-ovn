@@ -1361,7 +1361,7 @@ func TestGetPodAttachmentNetIPAMOnlyNADGone(t *testing.T) {
 }
 
 func TestHandleAddOrUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
-	controller := newIPAMSubnetMissingController(t, util.CniTypeName)
+	controller := newIPAMSubnetMissingController(t, ipamNADConfig(util.CniTypeName))
 
 	err := controller.handleAddOrUpdatePod("default/test-pod")
 	require.Error(t, err)
@@ -1370,7 +1370,7 @@ func TestHandleAddOrUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
 }
 
 func TestEnqueueUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
-	controller := newIPAMSubnetMissingController(t, util.CniTypeName)
+	controller := newIPAMSubnetMissingController(t, ipamNADConfig(util.CniTypeName))
 	oldPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            "test-pod",
@@ -1390,7 +1390,7 @@ func TestEnqueueUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
 }
 
 func TestHandleUpdatePodSecurityRecordsIPAMSubnetMissingEvent(t *testing.T) {
-	controller := newIPAMSubnetMissingController(t, util.CniTypeName)
+	controller := newIPAMSubnetMissingController(t, ipamNADConfig(util.CniTypeName))
 
 	err := controller.handleUpdatePodSecurity("default/test-pod")
 	require.Error(t, err)
@@ -1399,7 +1399,7 @@ func TestHandleUpdatePodSecurityRecordsIPAMSubnetMissingEvent(t *testing.T) {
 }
 
 func TestGetPodAttachmentNetIgnoresNonKubeOVNIPAMWithoutSubnet(t *testing.T) {
-	controller := newIPAMSubnetMissingController(t, "host-local")
+	controller := newIPAMSubnetMissingController(t, ipamNADConfig("host-local"))
 	pod, err := controller.podsLister.Pods(metav1.NamespaceDefault).Get("test-pod")
 	require.NoError(t, err)
 
@@ -1408,7 +1408,54 @@ func TestGetPodAttachmentNetIgnoresNonKubeOVNIPAMWithoutSubnet(t *testing.T) {
 	assert.Empty(t, nets)
 }
 
-func newIPAMSubnetMissingController(t *testing.T, ipamType string) *Controller {
+func TestGetPodAttachmentNetIPAMConflistWithoutSubnet(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  string
+		wantErr bool
+	}{
+		{
+			name:    "Kube-OVN IPAM returns an error",
+			config:  `{"cniVersion":"0.3.1","name":"net1","plugins":[{"type":"macvlan","ipam":{"type":"kube-ovn"}}]}`,
+			wantErr: true,
+		},
+		{
+			name:   "non-Kube-OVN IPAM is ignored",
+			config: `{"cniVersion":"0.3.1","name":"net1","plugins":[{"type":"macvlan","ipam":{"type":"host-local"}}]}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			controller := newIPAMSubnetMissingController(t, tt.config)
+			pod, err := controller.podsLister.Pods(metav1.NamespaceDefault).Get("test-pod")
+			require.NoError(t, err)
+
+			nets, err := controller.getPodAttachmentNet(pod)
+			if tt.wantErr {
+				require.EqualError(t, err, "provider net1.default is not bound to any subnet")
+				return
+			}
+			require.NoError(t, err)
+			assert.Empty(t, nets)
+		})
+	}
+}
+
+func TestGetPodAttachmentNetIgnoresMissingKubeOVNIPAMSubnetForDeletingPod(t *testing.T) {
+	controller := newIPAMSubnetMissingController(t, ipamNADConfig(util.CniTypeName))
+	pod, err := controller.podsLister.Pods(metav1.NamespaceDefault).Get("test-pod")
+	require.NoError(t, err)
+	pod = pod.DeepCopy()
+	now := metav1.Now()
+	pod.DeletionTimestamp = &now
+
+	nets, err := controller.getPodAttachmentNet(pod)
+	require.NoError(t, err)
+	assert.Empty(t, nets)
+}
+
+func newIPAMSubnetMissingController(t *testing.T, config string) *Controller {
 	t.Helper()
 
 	pod := &corev1.Pod{
@@ -1430,7 +1477,7 @@ func newIPAMSubnetMissingController(t *testing.T, ipamType string) *Controller {
 					Namespace: metav1.NamespaceDefault,
 				},
 				Spec: nadv1.NetworkAttachmentDefinitionSpec{
-					Config: fmt.Sprintf(`{"cniVersion":"0.3.1","name":"net1","type":"macvlan","ipam":{"type":%q}}`, ipamType),
+					Config: config,
 				},
 			},
 		},
@@ -1439,6 +1486,10 @@ func newIPAMSubnetMissingController(t *testing.T, ipamType string) *Controller {
 	controller := fakeController.fakeController
 	controller.config.EnableNonPrimaryCNI = true
 	return controller
+}
+
+func ipamNADConfig(ipamType string) string {
+	return fmt.Sprintf(`{"cniVersion":"0.3.1","name":"net1","type":"macvlan","ipam":{"type":%q}}`, ipamType)
 }
 
 func assertPodEvent(t *testing.T, controller *Controller, parts ...string) {
