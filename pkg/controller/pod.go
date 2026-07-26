@@ -576,7 +576,11 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	}
 
 	if len(needAllocatePodNets) != 0 {
-		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkAllocated", "%s", c.podNetworkEventDetails(pod, needAllocatePodNets))
+		details := c.podNetworkEventDetails(pod, needAllocatePodNets)
+		if hotplugDetails != "" {
+			details += "; " + hotplugDetails
+		}
+		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkAllocated", "%s", details)
 	} else if hotplugDetails != "" || len(needRoutePodNets) != 0 {
 		details := []string{hotplugDetails}
 		if routeDetails := c.podNetworkEventDetails(pod, needRoutePodNets); routeDetails != "" {
@@ -1298,6 +1302,12 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			switch {
 			case vmOrphanedPorts[port.Name]:
 				// Orphaned attachment LSP from NAD hotplug: delete and release its IP.
+				stage = "getIPCR"
+				ipCR, getErr := c.ipsLister.Get(port.Name)
+				if getErr != nil && !k8serrors.IsNotFound(getErr) {
+					klog.Errorf("failed to get ip %s: %v", port.Name, getErr)
+					return getErr
+				}
 				klog.Infof("delete orphaned vm attachment lsp %s", port.Name)
 				stage = "deleteLogicalSwitchPort"
 				if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
@@ -1306,14 +1316,8 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				}
 				changed = true
 				released = append(released, "logicalSwitchPort="+port.Name)
-				ipCR, err := c.ipsLister.Get(port.Name)
-				if err != nil {
-					if k8serrors.IsNotFound(err) {
-						continue
-					}
-					stage = "getIPCR"
-					klog.Errorf("failed to get ip %s: %v", port.Name, err)
-					return err
+				if k8serrors.IsNotFound(getErr) {
+					continue
 				}
 				if ipCR.Labels[util.IPReservedLabel] != "true" {
 					klog.Infof("delete orphaned vm attachment ip CR %s", ipCR.Name)
@@ -1570,6 +1574,26 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 // there is no mac or ip address request here in the object generated from here
 // interface name in providerName is used for annotation for ip address
 
+func stalePortNetworkDetails(pod *v1.Pod, podName string, port ovnnb.LogicalSwitchPort) (string, string, error) {
+	portPrefix := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
+	providerName := util.OvnProvider
+	if port.Name != portPrefix {
+		var ok bool
+		providerName, ok = strings.CutPrefix(port.Name, portPrefix+".")
+		if !ok || providerName == "" {
+			return "", "", fmt.Errorf("logical switch port %q does not match pod prefix %q", port.Name, portPrefix)
+		}
+	}
+	details := fmt.Sprintf("provider=%s subnet=%s ip=%s mac=%s logicalSwitchPort=%s",
+		providerName,
+		port.ExternalIDs["ls"],
+		pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)],
+		pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, providerName)],
+		port.Name,
+	)
+	return providerName, details, nil
+}
+
 func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, string, error) {
 	podName := c.getNameByPod(pod)
 	key := cache.NewObjectName(pod.Namespace, podName).String()
@@ -1609,17 +1633,14 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 
 	for _, port := range ports {
 		if !targetPortNameList.Has(port.Name) {
+			providerName, details, parseErr := stalePortNetworkDetails(pod, podName, port)
+			if parseErr != nil {
+				klog.Warning(parseErr)
+				continue
+			}
 			portsNeedToDel = append(portsNeedToDel, port.Name)
 			subnetUsedByPort[port.Name] = port.ExternalIDs["ls"]
-			portNameSlice := strings.Split(port.Name, ".")
-			providerName := strings.Join(portNameSlice[2:], ".")
-			hotplugDetails = append(hotplugDetails, fmt.Sprintf("provider=%s subnet=%s ip=%s mac=%s logicalSwitchPort=%s",
-				providerName,
-				port.ExternalIDs["ls"],
-				pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)],
-				pod.Annotations[fmt.Sprintf(util.MacAddressAnnotationTemplate, providerName)],
-				port.Name,
-			))
+			hotplugDetails = append(hotplugDetails, details)
 			if providerName == util.OvnProvider {
 				continue
 			}
