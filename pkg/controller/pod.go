@@ -1633,13 +1633,14 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 
 	for _, port := range ports {
 		if !targetPortNameList.Has(port.Name) {
+			portsNeedToDel = append(portsNeedToDel, port.Name)
+			subnetUsedByPort[port.Name] = port.ExternalIDs["ls"]
 			providerName, details, parseErr := stalePortNetworkDetails(pod, podName, port)
 			if parseErr != nil {
 				klog.Warning(parseErr)
+				hotplugDetails = append(hotplugDetails, fmt.Sprintf("provider=unknown subnet=%s ip= mac= logicalSwitchPort=%s", port.ExternalIDs["ls"], port.Name))
 				continue
 			}
-			portsNeedToDel = append(portsNeedToDel, port.Name)
-			subnetUsedByPort[port.Name] = port.ExternalIDs["ls"]
 			hotplugDetails = append(hotplugDetails, details)
 			if providerName == util.OvnProvider {
 				continue
