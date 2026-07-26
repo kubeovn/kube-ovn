@@ -2170,11 +2170,12 @@ func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
 				}
 			}
 			if !foundSubnet {
+				err = fmt.Errorf("provider %s is not bound to any subnet", providerName)
 				if ignoreSubnetNotExist {
-					klog.Errorf("deleting pod %s/%s IPAM network %s has no matching subnet, gc will clean its ip cr", pod.Namespace, pod.Name, providerName)
+					klog.Errorf("deleting pod %s/%s IPAM network %s %v, gc will clean its ip cr", pod.Namespace, pod.Name, providerName, err)
 					continue
 				}
-				return nil, fmt.Errorf("no subnet found for IPAM network %s", providerName)
+				return nil, err
 			}
 		}
 	}

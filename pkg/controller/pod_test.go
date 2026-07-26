@@ -1361,16 +1361,16 @@ func TestGetPodAttachmentNetIPAMOnlyNADGone(t *testing.T) {
 }
 
 func TestHandleAddOrUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
-	controller := newIPAMSubnetMissingController(t)
+	controller := newIPAMSubnetMissingController(t, util.CniTypeName)
 
 	err := controller.handleAddOrUpdatePod("default/test-pod")
 	require.Error(t, err)
 
-	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "provider net1.default is not bound to any subnet")
 }
 
 func TestEnqueueUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
-	controller := newIPAMSubnetMissingController(t)
+	controller := newIPAMSubnetMissingController(t, util.CniTypeName)
 	oldPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            "test-pod",
@@ -1386,19 +1386,29 @@ func TestEnqueueUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
 
 	controller.enqueueUpdatePod(oldPod, newPod)
 
-	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "provider net1.default is not bound to any subnet")
 }
 
 func TestHandleUpdatePodSecurityRecordsIPAMSubnetMissingEvent(t *testing.T) {
-	controller := newIPAMSubnetMissingController(t)
+	controller := newIPAMSubnetMissingController(t, util.CniTypeName)
 
 	err := controller.handleUpdatePodSecurity("default/test-pod")
 	require.Error(t, err)
 
-	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "no subnet found for IPAM network net1.default")
+	assertPodEvent(t, controller, "Warning AcquireAddressFailed", "provider net1.default is not bound to any subnet")
 }
 
-func newIPAMSubnetMissingController(t *testing.T) *Controller {
+func TestGetPodAttachmentNetIgnoresNonKubeOVNIPAMWithoutSubnet(t *testing.T) {
+	controller := newIPAMSubnetMissingController(t, "host-local")
+	pod, err := controller.podsLister.Pods(metav1.NamespaceDefault).Get("test-pod")
+	require.NoError(t, err)
+
+	nets, err := controller.getPodAttachmentNet(pod)
+	require.NoError(t, err)
+	assert.Empty(t, nets)
+}
+
+func newIPAMSubnetMissingController(t *testing.T, ipamType string) *Controller {
 	t.Helper()
 
 	pod := &corev1.Pod{
@@ -1420,7 +1430,7 @@ func newIPAMSubnetMissingController(t *testing.T) *Controller {
 					Namespace: metav1.NamespaceDefault,
 				},
 				Spec: nadv1.NetworkAttachmentDefinitionSpec{
-					Config: `{"cniVersion":"0.3.1","name":"net1","type":"macvlan","ipam":{"type":"kube-ovn"}}`,
+					Config: fmt.Sprintf(`{"cniVersion":"0.3.1","name":"net1","type":"macvlan","ipam":{"type":%q}}`, ipamType),
 				},
 			},
 		},
