@@ -925,13 +925,13 @@ func (c *Controller) handleUpdatePod(key string) error {
 	}
 	for _, multiNet := range attachNets {
 		provider := fmt.Sprintf("%s.%s.%s", multiNet.Name, multiNet.Namespace, util.OvnProvider)
+		multiNetPodName := pod.Name
 		if pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, provider)] != "" {
-			podName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, provider)]
+			multiNetPodName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, provider)]
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-			ifaceID = ovs.PodNameToPortName(podName, pod.Namespace, provider)
-
-			err = setInterfaceBandwidth(podName, pod.Namespace, ifaceID,
+			ifaceID = ovs.PodNameToPortName(multiNetPodName, pod.Namespace, provider)
+			err = setInterfaceBandwidth(multiNetPodName, pod.Namespace, ifaceID,
 				pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)],
 				pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)],
 				pod.Annotations[fmt.Sprintf(util.EgressBurstAnnotationTemplate, provider)],
@@ -947,7 +947,7 @@ func (c *Controller) handleUpdatePod(key string) error {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=mirror provider=%s interface=%s node=%s: %v", provider, ifaceID, c.config.NodeName, err)
 				return err
 			}
-			err = setNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)])
+			err = setNetemQos(multiNetPodName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)])
 			if err != nil {
 				klog.Error(err)
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=netem provider=%s interface=%s node=%s: %v", provider, ifaceID, c.config.NodeName, err)

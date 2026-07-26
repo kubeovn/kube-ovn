@@ -171,6 +171,29 @@ func TestHandleUpdatePodSuccessEmitsOneEventWithProcessedInterfaces(t *testing.T
 	requireNoPodEvent(t, recorder)
 }
 
+func TestHandleUpdatePodKeepsMultusPodNamesIndependent(t *testing.T) {
+	pod := newPodQoSTestPod("default/net1,default/net2")
+	pod.Annotations["net1.default.ovn.kubernetes.io/virtualmachine"] = "vm-one"
+	pod.Annotations["net2.default.ovn.kubernetes.io/allocated"] = "true"
+	calls := stubPodQoSFunctions(t, "", "", nil)
+	controller, recorder := newPodQoSTestController(t, pod)
+
+	require.NoError(t, controller.handleUpdatePod("default/pod"))
+	expectedInterfaces := []string{
+		"pod.default",
+		"vm-one.default.net1.default.ovn",
+		"pod.default.net2.default.ovn",
+	}
+	for _, stage := range []string{"bandwidth", "mirror", "netem"} {
+		require.Equal(t, expectedInterfaces, calls[stage])
+	}
+	requirePodEvent(t, recorder,
+		"Normal", "PodQoSUpdated",
+		"provider=net1.default.ovn interface=vm-one.default.net1.default.ovn",
+		"provider=net2.default.ovn interface=pod.default.net2.default.ovn")
+	requireNoPodEvent(t, recorder)
+}
+
 func TestHandleUpdatePodNetworkAttachmentParseFailureEmitsOneEvent(t *testing.T) {
 	stubPodQoSFunctions(t, "", "", nil)
 	pod := newPodQoSTestPod("[")
