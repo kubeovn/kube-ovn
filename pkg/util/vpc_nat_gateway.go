@@ -97,6 +97,19 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 	return s
 }
 
+// hasNetworkAttachment reports whether networks, a comma-separated
+// k8s.v1.cni.cncf.io/networks value, already references nad (a "namespace/name"
+// NAD reference), ignoring any "@ifname" interface-name suffix on each entry.
+func hasNetworkAttachment(networks, nad string) bool {
+	for _, n := range strings.Split(networks, ",") {
+		ref, _, _ := strings.Cut(strings.TrimSpace(n), "@")
+		if ref == nad {
+			return true
+		}
+	}
+	return false
+}
+
 // GenNatGwPodAnnotations generates Pod template annotations for a NAT gateway.
 // userAnnotations contains user-defined annotations from gw.Spec.Annotations. System annotations
 // are set on top of it, overwriting any conflicts. additionalNetworks is optional, used when
@@ -161,7 +174,9 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	if additionalNetworks != "" {
 		attachedNetworks = additionalNetworks + ", " + attachedNetworks
 	}
-	if internalNad != "" {
+	// Skip internalNad if the user already listed it in additionalNetworks, e.g. via the
+	// manual workaround used before this NAD was auto-attached, so it isn't attached twice.
+	if internalNad != "" && !hasNetworkAttachment(additionalNetworks, internalNad) {
 		attachedNetworks += ", " + internalNad
 	}
 	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks

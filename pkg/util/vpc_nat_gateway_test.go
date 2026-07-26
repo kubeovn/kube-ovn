@@ -433,6 +433,30 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "Non-primary CNI does not duplicate subnet NAD already in additional networks",
+			gw: v1.VpcNatGateway{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-gateway",
+				},
+				Spec: v1.VpcNatGatewaySpec{
+					Subnet: "internal-subnet",
+					LanIP:  "10.20.30.40",
+				},
+			},
+			externalNadName:      "external-subnet",
+			externalNadNamespace: metav1.NamespaceSystem,
+			provider:             "subnet.namespace.ovn",
+			additionalNetworks:   "namespace/subnet",
+			enableNonPrimaryCNI:  true,
+			expected: map[string]string{
+				VpcNatGatewayAnnotation:      "test-gateway",
+				nadv1.NetworkAttachmentAnnot: "namespace/subnet, kube-system/external-subnet",
+				fmt.Sprintf(LogicalSwitchAnnotationTemplate, "subnet.namespace.ovn"): "internal-subnet",
+				fmt.Sprintf(IPAddressAnnotationTemplate, "subnet.namespace.ovn"):     "10.20.30.40",
+			},
+			expectError: false,
+		},
+		{
 			name: "No static LAN IP",
 			gw: v1.VpcNatGateway{
 				ObjectMeta: metav1.ObjectMeta{
