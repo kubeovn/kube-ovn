@@ -1165,6 +1165,9 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	stage := "prepare"
 	released := []string{}
 	var podNets []*kubeovnNet
+	var keepIPCR, isOwnerRefToDel, isOwnerRefDeleted bool
+	var ipcrToDelete []string
+	var vmOrphanedPorts map[string]bool
 	c.podKeyMutex.LockKey(key)
 	defer func() {
 		_ = c.podKeyMutex.UnlockKey(key)
@@ -1172,8 +1175,10 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkReleaseFailed", "stage=%s error=%v", stage, err)
 		} else if changed {
 			details := strings.Join(released, "; ")
-			if networkDetails := c.podNetworkEventDetails(pod, podNets); networkDetails != "" {
-				details += "; " + networkDetails
+			if !keepIPCR {
+				if networkDetails := c.podNetworkEventDetails(pod, podNets); networkDetails != "" {
+					details += "; " + networkDetails
+				}
 			}
 			c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkReleased", "%s", strings.TrimPrefix(details, "; "))
 		}
@@ -1204,9 +1209,6 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
-	var keepIPCR, isOwnerRefToDel, isOwnerRefDeleted bool
-	var ipcrToDelete []string
-	var vmOrphanedPorts map[string]bool
 	isStsPod, stsName, stsUID := isStatefulSetPod(pod)
 	if isStsPod {
 		if !pod.DeletionTimestamp.IsZero() {

@@ -1677,7 +1677,7 @@ func TestHandleDeletePodRecordsReleasedPort(t *testing.T) {
 	err = fc.fakeController.handleDeletePod("default/test-pod")
 
 	require.NoError(t, err)
-	assertPodEvent(t, fc.fakeController, "Normal PodNetworkReleased", "logicalSwitchPort=test-pod.default", "subnet=subnet-a")
+	assertPodEvent(t, fc.fakeController, "Normal PodNetworkReleased", "provider=ovn", "subnet=subnet-a", "logicalSwitchPort=test-pod.default")
 }
 
 func TestHandleDeletePodRecordsFailure(t *testing.T) {
@@ -1764,7 +1764,8 @@ func TestHandleDeletePodRetriesOrphanedVMPortIPLookupFailure(t *testing.T) {
 	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), portName, metav1.GetOptions{})
 	assert.True(t, k8serrors.IsNotFound(err))
 	assert.Empty(t, fc.fakeController.ipam.GetPodAddress("default/test-vm"))
-	assertPodEvent(t, fc.fakeController, "Normal PodNetworkReleased", "logicalSwitchPort="+portName, "ipCR="+portName, "ipam="+portName)
+	event := assertPodEvent(t, fc.fakeController, "Normal PodNetworkReleased", "logicalSwitchPort="+portName, "ipCR="+portName, "ipam="+portName)
+	assert.NotContains(t, event, "provider=ovn")
 	assertNoPodEvent(t, fc.fakeController)
 }
 
