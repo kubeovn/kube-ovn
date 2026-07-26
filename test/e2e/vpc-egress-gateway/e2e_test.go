@@ -1220,7 +1220,7 @@ func validateVegTestWorkload(f *framework.Framework, veg *apiv1.VpcEgressGateway
 	uniquePodNodes := slices.Clone(podNodes)
 	slices.Sort(uniquePodNodes)
 	uniquePodNodes = slices.Compact(uniquePodNodes)
-	framework.ExpectEqual(veg.Status.Workload.Nodes, uniquePodNodes)
+	framework.ExpectConsistOf(veg.Status.Workload.Nodes, uniquePodNodes)
 	if len(expectedNodes) != 0 {
 		framework.ExpectConsistOf(uniquePodNodes, expectedNodes)
 	}
