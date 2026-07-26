@@ -91,7 +91,7 @@ func (csh cniServerHandler) recordCNIPodEvent(pod *v1.Pod, podRequest *request.C
 	if ifName == "" {
 		ifName = "eth0"
 	}
-	details := []string{podRequest.ContainerID, podRequest.NetNs}
+	details := []string{podRequest.ContainerID, podRequest.NetNs, podRequest.DeviceID}
 	details = append(details, cniEventInterfaceNames(podRequest.ContainerID, podRequest.IfName)...)
 	for _, detail := range details {
 		if detail != "" {

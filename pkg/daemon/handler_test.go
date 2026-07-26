@@ -86,11 +86,11 @@ func TestRecordCNIPodEventRedactsRuntimeDetails(t *testing.T) {
 	handler := cniEventTestHandler(t, nil, nil, recorder)
 	podRequest := &request.CniRequest{
 		PodName: "pod", PodNamespace: "ns", Provider: "provider",
-		ContainerID: "1234567890abcdef", NetNs: "/runtime/netns/pod",
+		ContainerID: "1234567890abcdef", NetNs: "/runtime/netns/pod", DeviceID: "0000:65:00.1",
 	}
 	handler.recordCNIPodEvent(
 		podForCNIEvent(nil, podRequest), podRequest, v1.EventTypeWarning, "PodNetworkConfigureFailed",
-		`stage=configure-nic error=failed on 1234567890ab_h in /runtime/netns/pod for 1234567890abcdef: boom`,
+		`stage=configure-nic error=failed on device 0000:65:00.1 and 1234567890ab_h in /runtime/netns/pod for 1234567890abcdef: boom`,
 	)
 
 	event := requireSingleCNIEvent(t, recorder)
@@ -100,6 +100,7 @@ func TestRecordCNIPodEventRedactsRuntimeDetails(t *testing.T) {
 	require.NotContains(t, event.message, "1234567890ab")
 	require.NotContains(t, event.message, podRequest.ContainerID)
 	require.NotContains(t, event.message, podRequest.NetNs)
+	require.NotContains(t, event.message, podRequest.DeviceID)
 }
 
 func TestRecordCNIPodEventHandlesUnsafeDerivedNameInputs(t *testing.T) {
