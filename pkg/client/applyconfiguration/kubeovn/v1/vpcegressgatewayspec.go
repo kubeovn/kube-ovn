@@ -60,6 +60,11 @@ type VpcEgressGatewaySpecApplyConfiguration struct {
 	// if set to "Local", traffic will be routed to the gateway pod/instance on the same node when available
 	// currently it works only for the default vpc
 	TrafficPolicy *string `json:"trafficPolicy,omitempty"`
+	// Pod anti-affinity mode for gateway workload replicas.
+	// Required spreads replicas across nodes and is the default. Preferred allows
+	// co-located replicas but does not provide node-level HA. Changing from
+	// Preferred to Required only takes effect when pods are recreated.
+	PodAntiAffinity *string `json:"podAntiAffinity,omitempty"`
 	// BFD configuration
 	BFD *VpcEgressGatewayBFDConfigApplyConfiguration `json:"bfd,omitempty"`
 	// egress policies
@@ -185,6 +190,14 @@ func (b *VpcEgressGatewaySpecApplyConfiguration) WithSelectors(values ...*VpcEgr
 // If called multiple times, the TrafficPolicy field is set to the value of the last call.
 func (b *VpcEgressGatewaySpecApplyConfiguration) WithTrafficPolicy(value string) *VpcEgressGatewaySpecApplyConfiguration {
 	b.TrafficPolicy = &value
+	return b
+}
+
+// WithPodAntiAffinity sets the PodAntiAffinity field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PodAntiAffinity field is set to the value of the last call.
+func (b *VpcEgressGatewaySpecApplyConfiguration) WithPodAntiAffinity(value string) *VpcEgressGatewaySpecApplyConfiguration {
+	b.PodAntiAffinity = &value
 	return b
 }
 

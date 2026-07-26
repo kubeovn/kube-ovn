@@ -178,13 +178,38 @@ func TestGenGatewaySleepContainer(t *testing.T) {
 
 func TestGenGatewayPodAntiAffinity(t *testing.T) {
 	labels := map[string]string{"app": "vpc-nat-gw", "vpc": "test-vpc"}
-	affinity := genGatewayPodAntiAffinity(labels)
+	tests := []struct {
+		name      string
+		mode      string
+		required  bool
+		preferred bool
+	}{
+		{name: "empty defaults to required", required: true},
+		{name: "required", mode: kubeovnv1.PodAntiAffinityRequired, required: true},
+		{name: "preferred", mode: kubeovnv1.PodAntiAffinityPreferred, preferred: true},
+	}
 
-	assert.NotNil(t, affinity.PodAntiAffinity)
-	terms := affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
-	assert.Len(t, terms, 1)
-	assert.Equal(t, labels, terms[0].LabelSelector.MatchLabels)
-	assert.Equal(t, corev1.LabelHostname, terms[0].TopologyKey)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			affinity := genGatewayPodAntiAffinity(labels, tt.mode)
+			assert.NotNil(t, affinity.PodAntiAffinity)
+			if tt.required {
+				terms := affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
+				assert.Len(t, terms, 1)
+				assert.Equal(t, labels, terms[0].LabelSelector.MatchLabels)
+				assert.Equal(t, corev1.LabelHostname, terms[0].TopologyKey)
+				assert.Empty(t, affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+			}
+			if tt.preferred {
+				terms := affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+				assert.Len(t, terms, 1)
+				assert.Equal(t, int32(100), terms[0].Weight)
+				assert.Equal(t, labels, terms[0].PodAffinityTerm.LabelSelector.MatchLabels)
+				assert.Equal(t, corev1.LabelHostname, terms[0].PodAffinityTerm.TopologyKey)
+				assert.Empty(t, affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution)
+			}
+		})
+	}
 }
 
 func TestGenGatewayDeploymentStrategy(t *testing.T) {
@@ -330,23 +355,24 @@ func TestReconcileGatewayBFD(t *testing.T) {
 
 	t.Run("no existing BFD sessions, create new", func(t *testing.T) {
 		m := new(mockOvnNbClient)
-		nextHops := map[string]string{"node1": "10.0.1.10"}
+		nextHops := set.New("10.0.1.10", "10.0.1.11")
 
 		m.On("FindBFD", externalIDs).Return([]ovnnb.BFD{}, nil)
 		m.On("CreateBFD", lrpName, "10.0.1.10", int(minTX), int(minRX), int(multiplier), externalIDs).Return(&ovnnb.BFD{UUID: "uuid-1", DstIP: "10.0.1.10"}, nil)
+		m.On("CreateBFD", lrpName, "10.0.1.11", int(minTX), int(minRX), int(multiplier), externalIDs).Return(&ovnnb.BFD{UUID: "uuid-2", DstIP: "10.0.1.11"}, nil)
 
 		bfdIDs, bfdMap, staleBFDIDs, err := reconcileGatewayBFD(m, bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
 
 		assert.NoError(t, err)
-		assert.True(t, bfdIDs.Equal(set.New("uuid-1")))
-		assert.Equal(t, map[string]string{"10.0.1.10": "uuid-1"}, bfdMap)
+		assert.True(t, bfdIDs.Equal(set.New("uuid-1", "uuid-2")))
+		assert.Equal(t, map[string]string{"10.0.1.10": "uuid-1", "10.0.1.11": "uuid-2"}, bfdMap)
 		assert.Equal(t, 0, staleBFDIDs.Len())
 		m.AssertExpectations(t)
 	})
 
 	t.Run("existing valid and stale BFD sessions", func(t *testing.T) {
 		m := new(mockOvnNbClient)
-		nextHops := map[string]string{"node1": "10.0.1.10"}
+		nextHops := set.New("10.0.1.10")
 		existingBFDs := []ovnnb.BFD{
 			{UUID: "uuid-valid", DstIP: "10.0.1.10", LogicalPort: lrpName},
 			{UUID: "uuid-stale-ip", DstIP: "10.0.1.11", LogicalPort: lrpName},
@@ -366,7 +392,7 @@ func TestReconcileGatewayBFD(t *testing.T) {
 
 	t.Run("bfdIP is empty, disable BFD", func(t *testing.T) {
 		m := new(mockOvnNbClient)
-		nextHops := map[string]string{"node1": "10.0.1.10"}
+		nextHops := set.New("10.0.1.10")
 		existingBFDs := []ovnnb.BFD{
 			{UUID: "uuid-any", DstIP: "10.0.1.10", LogicalPort: lrpName},
 		}

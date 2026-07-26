@@ -81,14 +81,39 @@ func podReady(pod *corev1.Pod) bool {
 	return false
 }
 
-func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods []*corev1.Pod, attachmentNetworkName string) (map[string]string, map[string]string, []string) {
-	nodeNexthopIPv4 := make(map[string]string, int(gw.Spec.Replicas))
-	nodeNexthopIPv6 := make(map[string]string, int(gw.Spec.Replicas))
+func insertNodeNexthop(nodeNexthops map[string]set.Set[string], nodeName, nexthop string) {
+	if nodeNexthops[nodeName] == nil {
+		nodeNexthops[nodeName] = set.New[string]()
+	}
+	nodeNexthops[nodeName].Insert(nexthop)
+}
+
+func flattenVpcEgressGatewayNexthops(nodeNexthops map[string]set.Set[string]) set.Set[string] {
+	nextHops := set.New[string]()
+	for _, nodeNextHops := range nodeNexthops {
+		nextHops.Insert(nodeNextHops.UnsortedList()...)
+	}
+	return nextHops
+}
+
+func updateVpcEgressGatewayPolicyNexthops(policy *ovnnb.LogicalRouterPolicy, nextHops, bfdSessions set.Set[string]) bool {
+	if nextHops.Equal(set.New(policy.Nexthops...)) && bfdSessions.Equal(set.New(policy.BFDSessions...)) {
+		return false
+	}
+	policy.Nexthops = nextHops.UnsortedList()
+	policy.BFDSessions = bfdSessions.UnsortedList()
+	return true
+}
+
+func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods []*corev1.Pod, attachmentNetworkName string) (map[string]set.Set[string], map[string]set.Set[string], []string) {
+	nodeNexthopIPv4 := make(map[string]set.Set[string], int(gw.Spec.Replicas))
+	nodeNexthopIPv6 := make(map[string]set.Set[string], int(gw.Spec.Replicas))
 	notReadyMessages := make([]string, 0)
+	workloadNodes := set.New[string]()
 
 	gw.Status.InternalIPs = nil
 	gw.Status.ExternalIPs = nil
-	gw.Status.Workload.Nodes = make([]string, 0, len(pods))
+	gw.Status.Workload.Nodes = nil
 
 	for _, pod := range pods {
 		if !pod.DeletionTimestamp.IsZero() {
@@ -118,15 +143,16 @@ func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods 
 
 		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
 		if len(ipv4) != 0 {
-			nodeNexthopIPv4[pod.Spec.NodeName] = ipv4[0]
+			insertNodeNexthop(nodeNexthopIPv4, pod.Spec.NodeName, ipv4[0])
 		}
 		if len(ipv6) != 0 {
-			nodeNexthopIPv6[pod.Spec.NodeName] = ipv6[0]
+			insertNodeNexthop(nodeNexthopIPv6, pod.Spec.NodeName, ipv6[0])
 		}
 		gw.Status.InternalIPs = append(gw.Status.InternalIPs, strings.Join(ips, ","))
 		gw.Status.ExternalIPs = append(gw.Status.ExternalIPs, strings.Join(extIPs, ","))
-		gw.Status.Workload.Nodes = append(gw.Status.Workload.Nodes, pod.Spec.NodeName)
+		workloadNodes.Insert(pod.Spec.NodeName)
 	}
+	gw.Status.Workload.Nodes = workloadNodes.SortedList()
 
 	if len(gw.Status.ExternalIPs) != int(gw.Spec.Replicas) {
 		notReadyMessages = append(notReadyMessages, fmt.Sprintf("expected %d ready workload pods with network %s, got %d", gw.Spec.Replicas, attachmentNetworkName, len(gw.Status.ExternalIPs)))
@@ -534,7 +560,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 				},
 				Spec: corev1.PodSpec{
 					Affinity: mergeGatewayAffinity(
-						genGatewayPodAntiAffinity(labels),
+						genGatewayPodAntiAffinity(labels, gw.Spec.PodAntiAffinity),
 						&corev1.Affinity{
 							NodeAffinity: &corev1.NodeAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: mergeNodeSelector(gw.Spec.NodeSelector),
@@ -669,10 +695,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	return attachmentNetworkName, ipv4Src, ipv6Src, deploy, nil
 }
 
-func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nextHops map[string]string, sources set.Set[string]) error {
-	if len(nextHops) == 0 {
-		return nil
-	}
+func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nodeNexthops map[string]set.Set[string], sources set.Set[string]) error {
+	nextHops := flattenVpcEgressGatewayNexthops(nodeNexthops)
 
 	externalIDs := map[string]string{
 		ovs.ExternalIDVendor:           util.CniTypeName,
@@ -768,8 +792,8 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 
 	// reconcile LR policy
 	if gw.Spec.TrafficPolicy == kubeovnv1.TrafficPolicyLocal {
-		rules := make(map[string]string, len(nextHops))
-		for nodeName, nexthop := range nextHops {
+		rules := make(map[string]set.Set[string], len(nodeNexthops))
+		for nodeName, nodeNextHops := range nodeNexthops {
 			node, err := c.nodesLister.Get(nodeName)
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
@@ -785,8 +809,8 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				return err
 			}
 			localPgName := strings.ReplaceAll(portName, "-", ".")
-			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s_ip%d", af, localPgName, af, af, pgName, af)] = nexthop
-			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s", af, localPgName, af, af, asName)] = nexthop
+			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s_ip%d", af, localPgName, af, af, pgName, af)] = nodeNextHops
+			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s", af, localPgName, af, af, asName)] = nodeNextHops
 		}
 		policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
 		if err != nil {
@@ -795,25 +819,16 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		}
 		// update/delete existing policies
 		for _, policy := range policies {
-			nexthop := rules[policy.Match]
-			bfdSessions := localGatewayPolicyBFDSessions(bfdMap, nexthop)
-			if nexthop == "" {
+			nextHops := rules[policy.Match]
+			if nextHops.Len() == 0 {
 				if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
 					err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
 					klog.Error(err)
 					return err
 				}
 			} else {
-				var changed bool
-				if len(policy.Nexthops) != 1 || policy.Nexthops[0] != nexthop {
-					policy.Nexthops = []string{nexthop}
-					changed = true
-				}
-				if !bfdSessions.Equal(set.New(policy.BFDSessions...)) {
-					policy.BFDSessions = bfdSessions.UnsortedList()
-					changed = true
-				}
-				if changed {
+				bfdSessions := localGatewayPolicyBFDSessions(bfdMap, nextHops)
+				if updateVpcEgressGatewayPolicyNexthops(policy, nextHops, bfdSessions) {
 					if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
 						err = fmt.Errorf("failed to update logical router policy %s: %w", policy.UUID, err)
 						klog.Error(err)
@@ -824,9 +839,9 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			delete(rules, policy.Match)
 		}
 		// create new policies
-		for match, nexthop := range rules {
+		for match, nextHops := range rules {
 			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayLocalPolicyPriority, match,
-				ovnnb.LogicalRouterPolicyActionReroute, []string{nexthop}, localGatewayPolicyBFDSessions(bfdMap, nexthop).UnsortedList(), externalIDs); err != nil {
+				ovnnb.LogicalRouterPolicyActionReroute, nextHops.UnsortedList(), localGatewayPolicyBFDSessions(bfdMap, nextHops).UnsortedList(), externalIDs); err != nil {
 				klog.Error(err)
 				return err
 			}
@@ -842,16 +857,16 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		klog.Error(err)
 		return err
 	}
-	matches := set.New(
-		fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
-		fmt.Sprintf("ip%d.src == $%s", af, asName),
-	)
-	bfdIPs := set.New(slices.Collect(maps.Values(nextHops))...)
-	bfdSessions := bfdIDs.UnsortedList()
+	matches := set.New[string]()
+	if nextHops.Len() != 0 {
+		matches.Insert(
+			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
+			fmt.Sprintf("ip%d.src == $%s", af, asName),
+		)
+	}
 	for _, policy := range policies {
 		if matches.Has(policy.Match) {
-			if !bfdIPs.Equal(set.New(policy.Nexthops...)) || !bfdIDs.Equal(set.New(policy.BFDSessions...)) {
-				policy.Nexthops, policy.BFDSessions = bfdIPs.UnsortedList(), bfdSessions
+			if updateVpcEgressGatewayPolicyNexthops(policy, nextHops, bfdIDs) {
 				if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
 					err = fmt.Errorf("failed to update bfd sessions of logical router policy %s: %w", policy.UUID, err)
 					klog.Error(err)
@@ -869,7 +884,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	for _, match := range matches.UnsortedList() {
 		if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayPolicyPriority, match,
-			ovnnb.LogicalRouterPolicyActionReroute, bfdIPs.UnsortedList(), bfdSessions, externalIDs); err != nil {
+			ovnnb.LogicalRouterPolicyActionReroute, nextHops.UnsortedList(), bfdIDs.UnsortedList(), externalIDs); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -916,8 +931,14 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	return nil
 }
 
-func localGatewayPolicyBFDSessions(bfdMap map[string]string, nexthop string) set.Set[string] {
-	return set.New(bfdMap[nexthop]).Delete("")
+func localGatewayPolicyBFDSessions(bfdMap map[string]string, nextHops set.Set[string]) set.Set[string] {
+	bfdSessions := set.New[string]()
+	for nextHop := range nextHops {
+		if bfdID := bfdMap[nextHop]; bfdID != "" {
+			bfdSessions.Insert(bfdID)
+		}
+	}
+	return bfdSessions
 }
 
 func mergeNodeSelector(nodeSelector []kubeovnv1.VpcEgressGatewayNodeSelector) *corev1.NodeSelector {

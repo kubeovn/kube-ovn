@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"k8s.io/utils/set"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -1478,7 +1479,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 					Tolerations:  gw.Spec.Tolerations,
 					// Merge pod anti-affinity for HA with user-specified affinity
 					Affinity: mergeGatewayAffinity(
-						genGatewayPodAntiAffinity(labels),
+						genGatewayPodAntiAffinity(labels, kubeovnv1.PodAntiAffinityRequired),
 						&gw.Spec.Affinity,
 					),
 				},
@@ -1989,7 +1990,7 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGatew
 		c.OVNNbClient,
 		bfdIP,
 		bfdLrp,
-		nextHopsAF,
+		set.New(slices.Collect(maps.Values(nextHopsAF))...),
 		gw.Spec.BFD.MinTX,
 		gw.Spec.BFD.MinRX,
 		gw.Spec.BFD.Multiplier,
