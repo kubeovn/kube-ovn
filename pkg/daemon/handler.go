@@ -59,12 +59,41 @@ func podForCNIEvent(pod *v1.Pod, podRequest *request.CniRequest) *v1.Pod {
 	}
 }
 
+func cniEventInterfaceNames(containerID, ifName string) []string {
+	ifNames := []string{ifName}
+	if ifName == "" {
+		ifNames = append(ifNames, "eth0")
+	}
+
+	var names []string
+	for _, name := range ifNames {
+		if name == "eth0" {
+			if len(containerID) >= 12 {
+				names = append(names, containerID[:12]+"_h", containerID[:12]+"_c")
+			}
+			continue
+		}
+		if strings.HasPrefix(name, "pod") && len(name) == 14 {
+			name = name[3 : len(name)-4]
+		}
+		prefixLen := 12 - len(name)
+		if prefixLen < 0 || len(containerID) < prefixLen {
+			continue
+		}
+		prefix := containerID[:prefixLen] + "_" + name
+		names = append(names, prefix+"_h", prefix+"_c")
+	}
+	return names
+}
+
 func (csh cniServerHandler) recordCNIPodEvent(pod *v1.Pod, podRequest *request.CniRequest, eventType, reason, message string) {
 	ifName := podRequest.IfName
 	if ifName == "" {
 		ifName = "eth0"
 	}
-	for _, detail := range []string{podRequest.ContainerID, podRequest.NetNs} {
+	details := []string{podRequest.ContainerID, podRequest.NetNs}
+	details = append(details, cniEventInterfaceNames(podRequest.ContainerID, podRequest.IfName)...)
+	for _, detail := range details {
 		if detail != "" {
 			message = strings.ReplaceAll(message, detail, "<redacted>")
 		}

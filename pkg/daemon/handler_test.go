@@ -90,14 +90,31 @@ func TestRecordCNIPodEventRedactsRuntimeDetails(t *testing.T) {
 	}
 	handler.recordCNIPodEvent(
 		podForCNIEvent(nil, podRequest), podRequest, v1.EventTypeWarning, "PodNetworkConfigureFailed",
-		`stage=configure-nic error=failed in /runtime/netns/pod for 1234567890abcdef: boom`,
+		`stage=configure-nic error=failed on 1234567890ab_h in /runtime/netns/pod for 1234567890abcdef: boom`,
 	)
 
 	event := requireSingleCNIEvent(t, recorder)
 	require.Contains(t, event.message, "stage=configure-nic")
 	require.Contains(t, event.message, "boom")
+	require.NotContains(t, event.message, "1234567890ab_h")
+	require.NotContains(t, event.message, "1234567890ab")
 	require.NotContains(t, event.message, podRequest.ContainerID)
 	require.NotContains(t, event.message, podRequest.NetNs)
+}
+
+func TestRecordCNIPodEventHandlesUnsafeDerivedNameInputs(t *testing.T) {
+	recorder := &cniEventRecorder{}
+	handler := cniEventTestHandler(t, nil, nil, recorder)
+	podRequest := &request.CniRequest{
+		PodName: "pod", PodNamespace: "ns", Provider: "provider",
+		ContainerID: "short", IfName: "interface-name-longer-than-twelve",
+	}
+	require.NotPanics(t, func() {
+		handler.recordCNIPodEvent(
+			podForCNIEvent(nil, podRequest), podRequest, v1.EventTypeWarning, "PodNetworkConfigureFailed", "stage=configure-nic error=boom",
+		)
+	})
+	require.Contains(t, requireSingleCNIEvent(t, recorder).message, "error=boom")
 }
 
 func TestHandleAddSuccessEvent(t *testing.T) {
@@ -200,6 +217,8 @@ func TestHandleDelFailureEvent(t *testing.T) {
 	require.Equal(t, "PodNetworkRemoveFailed", event.reason)
 	require.Contains(t, event.message, "stage=delete-nic")
 	require.Contains(t, event.message, "exit status 1")
+	require.NotContains(t, event.message, "12345678_net1_h")
+	require.NotContains(t, event.message, "12345678")
 	pod := event.object.(*v1.Pod)
 	require.Equal(t, "deleted", pod.Name)
 	require.Equal(t, "ns", pod.Namespace)
