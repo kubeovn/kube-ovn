@@ -101,7 +101,7 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 // k8s.v1.cni.cncf.io/networks value, already references nad (a "namespace/name"
 // NAD reference), ignoring any "@ifname" interface-name suffix on each entry.
 func hasNetworkAttachment(networks, nad string) bool {
-	for _, n := range strings.Split(networks, ",") {
+	for n := range strings.SplitSeq(networks, ",") {
 		ref, _, _ := strings.Cut(strings.TrimSpace(n), "@")
 		if ref == nad {
 			return true
