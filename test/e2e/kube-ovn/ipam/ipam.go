@@ -417,7 +417,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should infer the default subnet from a named ippool", func() {
-		f.SkipVersionPriorTo(1, 17, "Default subnet inference from a named IPPool was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 15, "Default subnet inference from a named IPPool was introduced in v1.15")
 
 		poolCIDR := framework.RandomCIDR(f.ClusterIPFamily)
 		ginkgo.By("Creating subnet " + subnetName2 + " without binding it to the namespace")
