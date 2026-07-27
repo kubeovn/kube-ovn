@@ -157,7 +157,7 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 	})
 
 	framework.ConformanceIt("should allocate requested IP family for attachment interface", func() {
-		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
 		if !f.IsDual() {
 			ginkgo.Skip("This test requires a dual-stack cluster")
 		}

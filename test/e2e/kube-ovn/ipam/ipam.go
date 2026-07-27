@@ -177,7 +177,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should allocate requested IP family for pod on dual-stack subnet", func() {
-		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
 		if !f.IsDual() {
 			ginkgo.Skip("This test requires a dual-stack cluster")
 		}
@@ -227,7 +227,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should allocate requested IP family from named dual-stack IPPool", func() {
-		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
 		if !f.IsDual() {
 			ginkgo.Skip("This test requires a dual-stack cluster")
 		}
@@ -266,7 +266,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should reject requested IP family that does not match single-stack subnet", func() {
-		f.SkipVersionPriorTo(1, 18, "Per-pod IP family selection was introduced in v1.18")
+		f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
 		if f.IsDual() {
 			ginkgo.Skip("This test requires a single-stack cluster")
 		}
