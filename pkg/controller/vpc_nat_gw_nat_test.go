@@ -2,12 +2,16 @@ package controller
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestValidateDnat(t *testing.T) {
@@ -547,4 +551,144 @@ func TestDeleteSnatInPod_NatGwExistsPodMissing(t *testing.T) {
 	require.NoError(t, err)
 	err = fc.fakeController.deleteSnatInPod("test-gw", "10.0.0.1", "192.168.1.0/24")
 	require.Error(t, err, "should return error to retry when pod is temporarily absent")
+}
+
+// shareDnat builds an IptablesDnatRule with the identity labels that getShareBackends
+// and isDnatDuplicated select on. dnatType may be "" (defaults to exclusive behavior).
+func shareDnat(name, gw, eip, eport, proto, intIP, intPort, dnatType string) *kubeovnv1.IptablesDnatRule {
+	return &kubeovnv1.IptablesDnatRule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+			Labels: map[string]string{
+				util.VpcNatGatewayNameLabel: gw,
+				util.VpcDnatEPortLabel:      eport,
+			},
+		},
+		Spec: kubeovnv1.IptablesDnatRuleSpec{
+			EIP:          eip,
+			ExternalPort: eport,
+			Protocol:     proto,
+			InternalIP:   intIP,
+			InternalPort: intPort,
+			Type:         dnatType,
+		},
+	}
+}
+
+// dnatListerController returns a Controller whose iptablesDnatRulesLister is backed by the
+// given objects, so lister-based helpers can be unit tested without a running informer.
+func dnatListerController(t *testing.T, dnats ...*kubeovnv1.IptablesDnatRule) *Controller {
+	t.Helper()
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	for _, d := range dnats {
+		require.NoError(t, indexer.Add(d))
+	}
+	return &Controller{iptablesDnatRulesLister: kubeovnlister.NewIptablesDnatRuleLister(indexer)}
+}
+
+func TestDedupSortedBackends(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{name: "nil", in: nil, want: nil},
+		{name: "empty entries dropped", in: []string{"", ""}, want: nil},
+		{
+			name: "dedup and sort",
+			in:   []string{"10.0.0.2:80", "10.0.0.1:80", "10.0.0.2:80", "", "10.0.0.3:80"},
+			want: []string{"10.0.0.1:80", "10.0.0.2:80", "10.0.0.3:80"},
+		},
+		{
+			name: "already unique stays sorted",
+			in:   []string{"10.0.0.1:80", "10.0.0.2:80"},
+			want: []string{"10.0.0.1:80", "10.0.0.2:80"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, dedupSortedBackends(tt.in))
+		})
+	}
+}
+
+func TestGetShareBackends(t *testing.T) {
+	t.Parallel()
+
+	deleting := shareDnat("deleting", "gw", "eip", "80", "tcp", "10.0.0.5", "8080", kubeovnv1.DnatRuleTypeShare)
+	deleting.DeletionTimestamp = &metav1.Time{Time: time.Unix(1, 0)}
+
+	c := dnatListerController(t,
+		shareDnat("self", "gw", "eip", "80", "tcp", "10.0.0.9", "8080", kubeovnv1.DnatRuleTypeShare),
+		shareDnat("d1", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeShare),
+		shareDnat("d2", "gw", "eip", "80", "tcp", "10.0.0.2", "8080", kubeovnv1.DnatRuleTypeShare),
+		shareDnat("exclusive", "gw", "eip", "80", "tcp", "10.0.0.3", "8080", kubeovnv1.DnatRuleTypeExclusive),
+		shareDnat("other-proto", "gw", "eip", "80", "udp", "10.0.0.4", "8080", kubeovnv1.DnatRuleTypeShare),
+		shareDnat("other-eip", "gw", "eip2", "80", "tcp", "10.0.0.6", "8080", kubeovnv1.DnatRuleTypeShare),
+		shareDnat("incomplete", "gw", "eip", "80", "tcp", "", "8080", kubeovnv1.DnatRuleTypeShare),
+		deleting,
+	)
+
+	backends, err := c.getShareBackends("gw", "eip", "80", "tcp", "self")
+	require.NoError(t, err)
+	// Self is excluded; only ready share siblings with the same identity are returned.
+	// Exclusive, other protocol/eip, incomplete spec and deleting rules are filtered out.
+	assert.ElementsMatch(t, []string{"10.0.0.1:8080", "10.0.0.2:8080"}, backends)
+}
+
+func TestIsDnatDuplicated(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		existing *kubeovnv1.IptablesDnatRule
+		newType  string
+		wantDup  bool
+	}{
+		{
+			name:     "exclusive vs existing exclusive is duplicate",
+			existing: shareDnat("other", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeExclusive),
+			newType:  kubeovnv1.DnatRuleTypeExclusive,
+			wantDup:  true,
+		},
+		{
+			name:     "share vs existing share coexist",
+			existing: shareDnat("other", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeShare),
+			newType:  kubeovnv1.DnatRuleTypeShare,
+			wantDup:  false,
+		},
+		{
+			name:     "exclusive vs existing share is duplicate",
+			existing: shareDnat("other", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeShare),
+			newType:  kubeovnv1.DnatRuleTypeExclusive,
+			wantDup:  true,
+		},
+		{
+			name:     "share vs existing exclusive is duplicate",
+			existing: shareDnat("other", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeExclusive),
+			newType:  kubeovnv1.DnatRuleTypeShare,
+			wantDup:  true,
+		},
+		{
+			name:     "different protocol is not duplicate",
+			existing: shareDnat("other", "gw", "eip", "80", "udp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeExclusive),
+			newType:  kubeovnv1.DnatRuleTypeExclusive,
+			wantDup:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := dnatListerController(t, tt.existing)
+			dup, err := c.isDnatDuplicated("gw", "eip", "new", "80", "tcp", tt.newType)
+			assert.Equal(t, tt.wantDup, dup)
+			if tt.wantDup {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

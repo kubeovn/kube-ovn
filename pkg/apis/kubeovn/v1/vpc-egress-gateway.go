@@ -8,6 +8,9 @@ import (
 const (
 	TrafficPolicyLocal   = "Local"
 	TrafficPolicyCluster = "Cluster"
+
+	PodAntiAffinityRequired  = "Required"
+	PodAntiAffinityPreferred = "Preferred"
 )
 
 // Phase represents resource phase
@@ -129,6 +132,13 @@ type VpcEgressGatewaySpec struct {
 	// +kubebuilder:default=Cluster
 	// +kubebuilder:validation:Enum=Local;Cluster
 	TrafficPolicy string `json:"trafficPolicy,omitempty"`
+	// Pod anti-affinity mode for gateway workload replicas.
+	// Required spreads replicas across nodes and is the default. Preferred allows
+	// co-located replicas but does not provide node-level HA. Changing from
+	// Preferred to Required only takes effect when pods are recreated.
+	// +kubebuilder:default=Required
+	// +kubebuilder:validation:Enum=Required;Preferred
+	PodAntiAffinity string `json:"podAntiAffinity,omitempty"`
 
 	// BFD configuration
 	BFD VpcEgressGatewayBFDConfig `json:"bfd"`

@@ -48,3 +48,12 @@ if echo ${sb_status} | grep "disconnected" && echo ${sb_role} | grep "candidate"
     echo "sb health check failed"
     exit 1
 fi
+
+if echo ${nb_status} | grep -q "joining"; then
+    echo "nb health check failed: stuck in joining state"
+    exit 1
+fi
+if echo ${sb_status} | grep -q "joining"; then
+    echo "sb health check failed: stuck in joining state"
+    exit 1
+fi

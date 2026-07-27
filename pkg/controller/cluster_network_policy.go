@@ -326,19 +326,6 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 					klog.Errorf("failed to set ingress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
 					return err
 				}
-
-				if changed.ruleNames[index].oldRuleName != "" {
-					oldRuleName := changed.ruleNames[index].oldRuleName
-					oldAsV4Name, oldAsV6Name := getAnpAddressSetName(pgName, oldRuleName, index, true)
-
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV4Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV4Name, err)
-						// just record error log
-					}
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV6Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV6Name, err)
-					}
-				}
 			}
 		}
 	}
@@ -361,19 +348,6 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 					if err := c.reconcileDNSNameResolversForANP(cnpName, getCnpDomainsNames(desiredCnp)); err != nil {
 						klog.Errorf("failed to reconcile DNSNameResolvers for egress rule %s/%s, %v", cnpName, rule.Name, err)
 						return err
-					}
-				}
-
-				if changed.ruleNames[index].oldRuleName != "" {
-					oldRuleName := changed.ruleNames[index].oldRuleName
-					oldAsV4Name, oldAsV6Name := getAnpAddressSetName(pgName, oldRuleName, index, false)
-
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV4Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV4Name, err)
-						// just record error log
-					}
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV6Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV6Name, err)
 					}
 				}
 			}
@@ -877,33 +851,28 @@ func shouldUpdateCnpPortGroup(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) boo
 	return !reflect.DeepEqual(oldCnp.Spec.Subject, newCnp.Spec.Subject)
 }
 
-// getCnpAddressSetsToUpdate returns the ingress/egress address sets that need to be updated following a ClusterNetworkPolicy update
+// getCnpAddressSetsToUpdate returns the ingress/egress address sets that need to be updated following a ClusterNetworkPolicy update.
+// Rule renames are not handled here: they recreate the ACLs from scratch via shouldRecreateCnpACLs.
 func getCnpAddressSetsToUpdate(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) (ingress, egress [util.CnpMaxRules]ChangedName) {
-	// Search through every ingress rule for changed names or changed selectors
+	// Search through every ingress rule for changed selectors
 	for index, rule := range newCnp.Spec.Ingress {
 		oldRule := oldCnp.Spec.Ingress[index]
 		change := ChangedName{}
 
-		if !reflect.DeepEqual(oldRule.From, rule.From) || oldRule.Name != rule.Name {
+		if !reflect.DeepEqual(oldRule.From, rule.From) {
 			change.curRuleName = rule.Name
-		}
-		if oldRule.Name != rule.Name {
-			change.oldRuleName = oldRule.Name
 		}
 
 		ingress[index] = change
 	}
 
-	// Search through every egress rule for changed names or changed selectors
+	// Search through every egress rule for changed selectors
 	for index, rule := range newCnp.Spec.Egress {
 		oldRule := oldCnp.Spec.Egress[index]
 		change := ChangedName{}
 
-		if !reflect.DeepEqual(oldRule.To, rule.To) || oldRule.Name != rule.Name {
+		if !reflect.DeepEqual(oldRule.To, rule.To) {
 			change.curRuleName = rule.Name
-		}
-		if oldRule.Name != rule.Name {
-			change.oldRuleName = oldRule.Name
 		}
 
 		egress[index] = change
@@ -930,18 +899,20 @@ func shouldRecreateCnpACLs(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) bool {
 		return true
 	}
 
-	// ACLs must be re-created if ingress rules action or ports have changed
+	// ACLs must be re-created if ingress rules name, action or ports have changed.
+	// The rule name is part of both the acl name and the address set name referenced by the acl match,
+	// so a renamed rule requires the acls to be recreated together with the address sets.
 	for index, rule := range newCnp.Spec.Ingress {
 		oldRule := oldCnp.Spec.Ingress[index]
-		if oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
+		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
 			return true
 		}
 	}
 
-	// ACLs must be re-created if egress rules action or ports have changed
+	// ACLs must be re-created if egress rules name, action or ports have changed
 	for index, rule := range newCnp.Spec.Egress {
 		oldRule := oldCnp.Spec.Egress[index]
-		if oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
+		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
 			return true
 		}
 	}

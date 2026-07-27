@@ -97,7 +97,8 @@ tests:
           path: spec.template.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms
           count: 2
 
-  - it: retains only kubernetes.io/os in nodeSelector
+  - it: keeps master labels in nodeSelector when HCP is disabled
+    template: central/central-deployment.yaml
     set:
       masterNodes:
         - "10.0.0.1"
@@ -108,4 +109,6 @@ tests:
       - equal:
           path: spec.template.spec.nodeSelector
           value:
+            kube-ovn/role: master
             kubernetes.io/os: "linux"
+            node-role.kubernetes.io/control-plane: ""

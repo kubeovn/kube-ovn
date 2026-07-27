@@ -162,7 +162,7 @@ spec:
               - NET_BIND_SERVICE
               - NET_RAW
               - SYS_ADMIN
-              - CAP_SYS_PTRACE
+              - SYS_PTRACE
               - SYS_NICE
         env:
           - name: ENABLE_SSL
@@ -309,7 +309,7 @@ spec:
             path: {{ .Values.cni.toolingDirectory }}
         {{- end }}
         {{- if .Values.features.enableOvnIpsec }}
-          - name: ovs-ipsec-keys
-            hostPath:
-              path: {{ .Values.ovsOvn.ovsIpsecKeysDirectory }}
+        - name: ovs-ipsec-keys
+          hostPath:
+            path: {{ .Values.ovsOvn.ovsIpsecKeysDirectory }}
         {{- end }}

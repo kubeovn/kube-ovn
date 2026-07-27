@@ -151,8 +151,13 @@ spec:
                   fieldPath: metadata.namespace
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
+            {{- if .Values.central.hcp.enabled }}
+            - name: OVN_NB_ADDR
+              value: "{{ include "kubeovn.ovnNbAddress" . }}"
+            {{- else }}
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+            {{- end }}
             - name: OVN_VERSION_COMPATIBILITY
               value: {{ .Values.ovsOvn.upgrade.versionCompatibility | quote }}
           command:

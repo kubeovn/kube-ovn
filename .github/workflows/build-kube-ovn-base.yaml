@@ -46,7 +46,7 @@ jobs:
         with:
           driver-opts: env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         id: setup-go
         with:
@@ -59,7 +59,9 @@ jobs:
         env:
           GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+          IMAGE_REF_NAME: ${{ matrix.branch }}
         run: |
+          export IMAGE_REVISION=$(git rev-parse HEAD)
           make base-${{ matrix.arch }}
           make base-tar-${{ matrix.arch }}
 

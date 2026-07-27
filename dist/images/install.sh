@@ -322,7 +322,13 @@ if [ "$ENABLE_SINGLE_REPLICA_OVN" = "true" ]; then
   OVN_SB_LEADER_SELECTOR=""
   OVN_NORTHD_LEADER_SELECTOR=""
   OVN_CENTRAL_STRATEGY_BODY="    type: Recreate"
-  OVN_CENTRAL_AFFINITY_BLOCK=""
+  OVN_CENTRAL_AFFINITY_BLOCK="      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: ovn-central
+              topologyKey: kubernetes.io/hostname"
   OVN_CENTRAL_CONFIG_VOLUME="        - name: host-config-ovn
           persistentVolumeClaim:
             claimName: ovn-central-data"
@@ -1038,6 +1044,9 @@ spec:
     - jsonPath: .spec.internalPort
       name: InternalPort
       type: string
+    - jsonPath: .spec.type
+      name: Type
+      type: string
     - jsonPath: .status.natGwDp
       name: NatGwDp
       type: string
@@ -1081,6 +1090,23 @@ spec:
                 type: string
               protocol:
                 description: Protocol type (TCP or UDP)
+                type: string
+              type:
+                default: exclusive
+                description: |-
+                  Type of the DNAT rule, controls whether the EIP:Port identity can be shared
+                  by multiple internal backends:
+                  - "exclusive" (default): The EIP:Port is exclusively owned by this single DNAT rule.
+                    Uses iptables DNAT for 1:1 port forwarding. This was the only mode before the
+                    nft LB feature was introduced; any duplicate identity is rejected.
+                  - "share": Multiple DNAT rules may share the same EIP:Port identity, each
+                    contributing a different internal IP:Port as a backend. Traffic is distributed
+                    across backends using nftables numgen random map-based DNAT: each new connection
+                    picks a backend at random and is then pinned by conntrack (connection-level
+                    balancing, no client-IP affinity).
+                enum:
+                - exclusive
+                - share
                 type: string
             type: object
           status:
@@ -3660,6 +3686,8 @@ spec:
             properties:
               id:
                 description: VLAN ID (0-4095). This field is immutable after creation.
+                maximum: 4095
+                minimum: 0
                 type: integer
               provider:
                 description: Provider network name. This field is immutable after
@@ -3670,6 +3698,8 @@ spec:
                 type: string
               vlanId:
                 description: deprecated fields, use ID & Provider instead
+                maximum: 4095
+                minimum: 0
                 type: integer
             required:
             - provider
@@ -4079,6 +4109,17 @@ spec:
                       type: object
                   type: object
                 type: array
+              podAntiAffinity:
+                default: Required
+                description: |-
+                  Pod anti-affinity mode for gateway workload replicas.
+                  Required spreads replicas across nodes and is the default. Preferred allows
+                  co-located replicas but does not provide node-level HA. Changing from
+                  Preferred to Required only takes effect when pods are recreated.
+                enum:
+                - Required
+                - Preferred
+                type: string
               policies:
                 description: |-
                   egress policies
@@ -7785,7 +7826,7 @@ $(ovn_central_tls_env)
                 - /kube-ovn/ovn-healthcheck.sh
             initialDelaySeconds: 30
             periodSeconds: 15
-            failureThreshold: 5
+            failureThreshold: 10
             timeoutSeconds: 45
       nodeSelector:
         kubernetes.io/os: "linux"

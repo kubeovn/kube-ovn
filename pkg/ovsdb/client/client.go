@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cenkalti/backoff/v6"
+	"github.com/cenkalti/backoff/v7"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"github.com/ovn-kubernetes/libovsdb/client"

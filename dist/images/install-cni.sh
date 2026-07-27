@@ -2,8 +2,27 @@
 
 set -u -e
 
+exit_with_error(){
+  echo "$1"
+  exit 1
+}
+
+# Copy to a temp file on the same filesystem, then rename over the
+# destination. A plain `cp -f` truncates and rewrites the destination
+# inode in place, so kubelet may exec a partially written binary
+# during the copy window.
+install_binary(){
+  local src=$1 dst=$2
+  local tmp="${dst}.tmp.$$"
+  rm -f "${dst}".tmp.*
+  if ! cp -f "$src" "$tmp" || ! mv -f "$tmp" "$dst"; then
+    rm -f "$tmp"
+    exit_with_error "Failed to install $src to $dst"
+  fi
+}
+
 mkdir -p /usr/local/bin
-cp -f /kube-ovn/kubectl-ko /usr/local/bin/
+install_binary /kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
 chmod +x /usr/local/bin/kubectl-ko
 
 for ip in $(echo "${POD_IPS}" | tr ',' ' '); do
@@ -16,11 +35,6 @@ for ip in $(echo "${POD_IPS}" | tr ',' ' '); do
     echo 0 > /proc/sys/net/ipv4/conf/all/rp_filter;
   fi
 done
-
-exit_with_error(){
-  echo "$1"
-  exit 1
-}
 
 CNI_BIN_SRC=/kube-ovn/kube-ovn
 CNI_BIN_DST=/opt/cni/bin/kube-ovn
@@ -37,10 +51,10 @@ MACVLAN_BIN_DST=/opt/cni/bin/macvlan
 IPVLAN_BIN_SRC=/ipvlan
 IPVLAN_BIN_DST=/opt/cni/bin/ipvlan
 
-yes | cp -f $LOOPBACK_BIN_SRC $LOOPBACK_BIN_DST || exit_with_error "Failed to copy $LOOPBACK_BIN_SRC to $LOOPBACK_BIN_DST"
-yes | cp -f $PORTMAP_BIN_SRC $PORTMAP_BIN_DST || exit_with_error "Failed to copy $PORTMAP_BIN_SRC to $PORTMAP_BIN_DST"
-yes | cp -f $CNI_BIN_SRC $CNI_BIN_DST || exit_with_error "Failed to copy $CNI_BIN_SRC to $CNI_BIN_DST"
-yes | cp -f $MACVLAN_BIN_SRC $MACVLAN_BIN_DST || exit_with_error "Failed to copy $MACVLAN_BIN_SRC to $MACVLAN_BIN_DST"
-yes | cp -f $IPVLAN_BIN_SRC $IPVLAN_BIN_DST || exit_with_error "Failed to copy $IPVLAN_BIN_SRC to $IPVLAN_BIN_DST"
+install_binary "$LOOPBACK_BIN_SRC" "$LOOPBACK_BIN_DST"
+install_binary "$PORTMAP_BIN_SRC" "$PORTMAP_BIN_DST"
+install_binary "$CNI_BIN_SRC" "$CNI_BIN_DST"
+install_binary "$MACVLAN_BIN_SRC" "$MACVLAN_BIN_DST"
+install_binary "$IPVLAN_BIN_SRC" "$IPVLAN_BIN_DST"
 
 ./kube-ovn-daemon --install-cni-config $@ || exit_with_error "Failed to install cni config"

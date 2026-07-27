@@ -855,6 +855,44 @@ func TestValidateSubnet(t *testing.T) {
 			},
 		},
 		{
+			name: "U2OInterconnectionIPConflictsWithGateway",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-u2o-interconnection-ip-gateway-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:                  DefaultVpc,
+					Protocol:             kubeovnv1.ProtocolIPv4,
+					CIDRBlock:            "10.16.0.0/16",
+					Gateway:              "10.16.0.1",
+					Provider:             OvnProvider,
+					GatewayType:          kubeovnv1.GWDistributedType,
+					U2OInterconnection:   true,
+					U2OInterconnectionIP: "10.16.0.1",
+				},
+			},
+			err: "u2oInterconnectionIP 10.16.0.1 conflicts with subnet gateway 10.16.0.1",
+		},
+		{
+			name: "U2OInterconnectionIPv6CanonicalConflictsWithGateway",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-u2o-interconnection-ip-v6-gateway-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:                  DefaultVpc,
+					Protocol:             kubeovnv1.ProtocolIPv6,
+					CIDRBlock:            "2001:db8::/64",
+					Gateway:              "2001:0db8:0000:0000:0000:0000:0000:0001",
+					Provider:             OvnProvider,
+					GatewayType:          kubeovnv1.GWDistributedType,
+					U2OInterconnection:   true,
+					U2OInterconnectionIP: "2001:db8::1",
+				},
+			},
+			err: "u2oInterconnectionIP 2001:db8::1 conflicts with subnet gateway 2001:0db8:0000:0000:0000:0000:0000:0001",
+		},
+		{
 			name: "IPv6MTUAtMinimumAllowed",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{

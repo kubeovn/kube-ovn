@@ -203,6 +203,10 @@ var _ = ginkgo.Describe("[IPAM]", func() {
 				gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 				gomega.Expect(ip).To(gomega.Equal("10.16.10.10"))
 
+				ip, _, _, err = im.GetStaticAddress("pod2.ns", "pod2.ns", "10.16.10.1", nil, subnetName, true)
+				gomega.Expect(err).Should(gomega.MatchError(ipam.ErrConflict))
+				gomega.Expect(ip).To(gomega.BeEmpty())
+
 				v4UsingIPStr, _, v4AvailableIPStr, _ := im.GetSubnetIPRangeString(subnetName, []string{"10.16.10.10"})
 				gomega.Expect(v4UsingIPStr).To(gomega.Equal(""))
 				gomega.Expect(v4AvailableIPStr).To(gomega.Equal("10.16.10.2-10.16.10.9,10.16.10.11-10.16.10.14"))

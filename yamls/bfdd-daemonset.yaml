@@ -192,6 +192,7 @@ spec:
                 - status
             initialDelaySeconds: 1
             periodSeconds: 5
+            timeoutSeconds: 10
           readinessProbe:
             exec:
               command:

@@ -302,3 +302,89 @@ func TestAnpACLAction(t *testing.T) {
 		})
 	}
 }
+
+func prepareAnpQueueTestController(t *testing.T) *Controller {
+	t.Helper()
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+
+	ctrl := fakeCtrl.fakeController
+	ctrl.addAnpQueue = newTypedRateLimitingQueue[string]("AddAdminNetworkPolicy", nil)
+	ctrl.updateAnpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateAdminNetworkPolicy", nil)
+	return ctrl
+}
+
+func newTestAnp(ingressRuleName, egressRuleName string, peerLabels map[string]string) *v1alpha1.AdminNetworkPolicy {
+	return &v1alpha1.AdminNetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-anp"},
+		Spec: v1alpha1.AdminNetworkPolicySpec{
+			Priority: 10,
+			Subject:  v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+			Ingress: []v1alpha1.AdminNetworkPolicyIngressRule{{
+				Name:   ingressRuleName,
+				Action: v1alpha1.AdminNetworkPolicyRuleActionDeny,
+				From: []v1alpha1.AdminNetworkPolicyIngressPeer{{
+					Namespaces: &metav1.LabelSelector{MatchLabels: peerLabels},
+				}},
+			}},
+			Egress: []v1alpha1.AdminNetworkPolicyEgressRule{{
+				Name:   egressRuleName,
+				Action: v1alpha1.AdminNetworkPolicyRuleActionDeny,
+				To: []v1alpha1.AdminNetworkPolicyEgressPeer{{
+					Namespaces: &metav1.LabelSelector{MatchLabels: peerLabels},
+				}},
+			}},
+		},
+	}
+}
+
+// A renamed rule must be handled by the add queue: the rule name is part of the acl name and of the
+// address set name referenced by the acl match, so only recreating the acls keeps them consistent.
+func TestEnqueueUpdateAnpRuleRename(t *testing.T) {
+	t.Parallel()
+
+	t.Run("renamed ingress rule recreates acls via add queue", func(t *testing.T) {
+		ctrl := prepareAnpQueueTestController(t)
+		oldAnp := newTestAnp("old-rule", "egress-rule", map[string]string{"app": "a"})
+		newAnp := newTestAnp("new-rule", "egress-rule", map[string]string{"app": "a"})
+
+		ctrl.enqueueUpdateAnp(oldAnp, newAnp)
+
+		require.Equal(t, 1, ctrl.addAnpQueue.Len())
+		require.Zero(t, ctrl.updateAnpQueue.Len())
+	})
+
+	t.Run("renamed egress rule recreates acls via add queue", func(t *testing.T) {
+		ctrl := prepareAnpQueueTestController(t)
+		oldAnp := newTestAnp("ingress-rule", "old-rule", map[string]string{"app": "a"})
+		newAnp := newTestAnp("ingress-rule", "new-rule", map[string]string{"app": "a"})
+
+		ctrl.enqueueUpdateAnp(oldAnp, newAnp)
+
+		require.Equal(t, 1, ctrl.addAnpQueue.Len())
+		require.Zero(t, ctrl.updateAnpQueue.Len())
+	})
+
+	t.Run("renamed rule with peer change recreates acls via add queue", func(t *testing.T) {
+		ctrl := prepareAnpQueueTestController(t)
+		oldAnp := newTestAnp("ingress-rule", "old-rule", map[string]string{"app": "a"})
+		newAnp := newTestAnp("ingress-rule", "new-rule", map[string]string{"app": "b"})
+
+		ctrl.enqueueUpdateAnp(oldAnp, newAnp)
+
+		require.Equal(t, 1, ctrl.addAnpQueue.Len())
+		require.Zero(t, ctrl.updateAnpQueue.Len())
+	})
+
+	t.Run("peer change only goes through update queue", func(t *testing.T) {
+		ctrl := prepareAnpQueueTestController(t)
+		oldAnp := newTestAnp("ingress-rule", "egress-rule", map[string]string{"app": "a"})
+		newAnp := newTestAnp("ingress-rule", "egress-rule", map[string]string{"app": "b"})
+
+		ctrl.enqueueUpdateAnp(oldAnp, newAnp)
+
+		require.Zero(t, ctrl.addAnpQueue.Len())
+		require.Equal(t, 2, ctrl.updateAnpQueue.Len())
+	})
+}

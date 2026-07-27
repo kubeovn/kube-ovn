@@ -32,12 +32,16 @@ type Vlan struct {
 
 type VlanSpec struct {
 	// deprecated fields, use ID & Provider instead
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4095
 	VlanID int `json:"vlanId,omitempty"`
 	// Deprecated: in favor of provider
 	// +kubebuilder:validation:Optional
 	ProviderInterfaceName string `json:"providerInterfaceName,omitempty"`
 
 	// VLAN ID (0-4095). This field is immutable after creation.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4095
 	ID int `json:"id"`
 	// Provider network name. This field is immutable after creation.
 	// +kubebuilder:validation:Required

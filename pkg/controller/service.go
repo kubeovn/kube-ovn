@@ -110,6 +110,19 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 
 	oldClusterIps := getVipIps(oldSvc)
 	newClusterIps := getVipIps(newSvc)
+
+	// skip updates that touch none of the fields consumed by handleUpdateService,
+	// e.g. status noise or third-party annotation churn bumping the resource version.
+	// LoadBalancer services are always enqueued: their reconcile also depends on
+	// status.loadBalancer.ingress and the lb-svc attachment deployment.
+	if newSvc.Spec.Type != v1.ServiceTypeLoadBalancer &&
+		oldSvc.DeletionTimestamp.Equal(newSvc.DeletionTimestamp) &&
+		oldSvc.Annotations[util.VpcAnnotation] == newSvc.Annotations[util.VpcAnnotation] &&
+		slices.Equal(oldClusterIps, newClusterIps) &&
+		reflect.DeepEqual(oldSvc.Spec, newSvc.Spec) {
+		return
+	}
+
 	var ipsToDel []string
 	for _, oldClusterIP := range oldClusterIps {
 		if !slices.Contains(newClusterIps, oldClusterIP) {

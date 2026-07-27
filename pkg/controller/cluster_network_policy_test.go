@@ -170,6 +170,8 @@ func TestGetCnpAddressSetsToUpdate(t *testing.T) {
 			egress:  false,
 		},
 		{
+			// A renamed rule is handled by recreating the ACLs (see shouldRecreateCnpACLs),
+			// not by the address set update path.
 			name: "changed ingress name",
 			oldCnp: &v1alpha2.ClusterNetworkPolicy{
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
@@ -198,7 +200,7 @@ func TestGetCnpAddressSetsToUpdate(t *testing.T) {
 								{
 									Namespaces: &metav1.LabelSelector{
 										MatchLabels: map[string]string{
-											"label2": "value",
+											"label1": "value",
 										},
 									},
 								},
@@ -207,7 +209,7 @@ func TestGetCnpAddressSetsToUpdate(t *testing.T) {
 					},
 				},
 			},
-			ingress: true,
+			ingress: false,
 			egress:  false,
 		},
 		{
@@ -252,6 +254,8 @@ func TestGetCnpAddressSetsToUpdate(t *testing.T) {
 			egress:  true,
 		},
 		{
+			// A renamed rule is handled by recreating the ACLs (see shouldRecreateCnpACLs),
+			// not by the address set update path.
 			name: "changed egress name",
 			oldCnp: &v1alpha2.ClusterNetworkPolicy{
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
@@ -280,7 +284,7 @@ func TestGetCnpAddressSetsToUpdate(t *testing.T) {
 								{
 									Namespaces: &metav1.LabelSelector{
 										MatchLabels: map[string]string{
-											"label2": "value",
+											"label1": "value",
 										},
 									},
 								},
@@ -290,7 +294,7 @@ func TestGetCnpAddressSetsToUpdate(t *testing.T) {
 				},
 			},
 			ingress: false,
-			egress:  true,
+			egress:  false,
 		},
 		{
 			name: "changed ingress/egress",
@@ -483,6 +487,52 @@ func TestShouldRecreateCnpACLs(t *testing.T) {
 						{
 							Name:   "test2",
 							Action: "test2",
+						},
+					},
+				},
+			},
+			result: true,
+		},
+		{
+			// The rule name is part of the acl name and of the address set name referenced by
+			// the acl match, so a renamed rule must recreate the acls.
+			name: "ingress rule renamed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "old-name",
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
+						{
+							Name: "new-name",
+						},
+					},
+				},
+			},
+			result: true,
+		},
+		{
+			name: "egress rule renamed",
+			oldCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "old-name",
+						},
+					},
+				},
+			},
+			newCnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Name: "new-name",
 						},
 					},
 				},

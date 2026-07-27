@@ -191,8 +191,17 @@ func mvCNIConf(configDir, configFile, confName string) error {
 		return err
 	}
 
+	// Clean up temp files left over from a previous interrupted install.
+	if leftovers, _ := filepath.Glob(cniConfPath + ".tmp.*"); len(leftovers) > 0 {
+		for _, f := range leftovers {
+			if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+				klog.Warningf("failed to remove stale temp file %s: %v", f, err)
+			}
+		}
+	}
+
 	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
-	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306,G703
+	return util.AtomicWriteFile(cniConfPath, data, 0o600)
 }
 
 func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, cfg *daemon.Configuration) (err error) {

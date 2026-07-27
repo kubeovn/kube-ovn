@@ -91,11 +91,13 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 		LivenessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
+					// Restart bfdd when its local session table remains empty.
+					Command: []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"},
 				},
 			},
 			InitialDelaySeconds: 1,
 			PeriodSeconds:       5,
+			TimeoutSeconds:      10,
 		},
 		ReadinessProbe: &corev1.Probe{
 			ProbeHandler: corev1.ProbeHandler{
@@ -172,19 +174,22 @@ func genGatewaySleepContainer(image string) corev1.Container {
 	}
 }
 
-// genGatewayPodAntiAffinity creates pod anti-affinity rules to ensure gateway instances
-// run on different nodes. This is essential for HA deployments.
-func genGatewayPodAntiAffinity(labels map[string]string) *corev1.Affinity {
-	return &corev1.Affinity{
-		PodAntiAffinity: &corev1.PodAntiAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-				LabelSelector: &metav1.LabelSelector{
-					MatchLabels: labels,
-				},
-				TopologyKey: corev1.LabelHostname,
-			}},
-		},
+// genGatewayPodAntiAffinity creates pod anti-affinity rules for gateway instances.
+func genGatewayPodAntiAffinity(labels map[string]string, mode string) *corev1.Affinity {
+	term := corev1.PodAffinityTerm{
+		LabelSelector: &metav1.LabelSelector{MatchLabels: labels},
+		TopologyKey:   corev1.LabelHostname,
 	}
+	antiAffinity := &corev1.PodAntiAffinity{}
+	if mode == kubeovnv1.PodAntiAffinityPreferred {
+		antiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = []corev1.WeightedPodAffinityTerm{{
+			Weight:          100,
+			PodAffinityTerm: term,
+		}}
+	} else {
+		antiAffinity.RequiredDuringSchedulingIgnoredDuringExecution = []corev1.PodAffinityTerm{term}
+	}
+	return &corev1.Affinity{PodAntiAffinity: antiAffinity}
 }
 
 // genGatewayDeploymentStrategy creates the standard rolling update strategy for gateway deployments.
@@ -231,7 +236,7 @@ func mergeGatewayAffinity(affinities ...*corev1.Affinity) *corev1.Affinity {
 //   - ovnClient: OVN northbound client for BFD operations
 //   - bfdIP: BFD port IP (empty string disables BFD)
 //   - lrpName: Logical router port name for BFD sessions
-//   - nextHops: Map of node names to nexthop IPs
+//   - nextHops: Set of nexthop IPs
 //   - minTX, minRX, multiplier: BFD timing parameters
 //   - externalIDs: External IDs for tagging BFD sessions
 //
@@ -243,7 +248,7 @@ func reconcileGatewayBFD(
 	ovnClient ovs.NbClient,
 	bfdIP string,
 	lrpName string,
-	nextHops map[string]string,
+	nextHops set.Set[string],
 	minTX, minRX, multiplier int32,
 	externalIDs map[string]string,
 ) (bfdIDs set.Set[string], bfdMap map[string]string, staleBFDIDs set.Set[string], err error) {
@@ -255,7 +260,7 @@ func reconcileGatewayBFD(
 
 	bfdIDs = set.New[string]()
 	staleBFDIDs = set.New[string]()
-	bfdDstIPs := set.New(slices.Collect(maps.Values(nextHops))...)
+	bfdDstIPs := nextHops.Clone()
 	bfdMap = make(map[string]string, bfdDstIPs.Len())
 
 	// Process existing BFD sessions
@@ -313,7 +318,7 @@ func cleanupStaleBFD(ovnClient ovs.NbClient, staleBFDIDs set.Set[string]) error 
 //   - ovnClient: OVN northbound client for BFD operations
 //   - bfdIP: BFD port IP (empty string disables BFD)
 //   - lrpName: Logical router port name for BFD sessions
-//   - nextHops: Map of node names to nexthop IPs
+//   - nextHops: Set of nexthop IPs
 //   - minTX, minRX, multiplier: BFD timing parameters
 //   - externalIDs: External IDs for tagging BFD sessions (should include gateway-specific identifiers)
 //
@@ -324,7 +329,7 @@ func reconcileGatewayBFDWithCleanup(
 	ovnClient ovs.NbClient,
 	bfdIP string,
 	lrpName string,
-	nextHops map[string]string,
+	nextHops set.Set[string],
 	minTX, minRX, multiplier int32,
 	externalIDs map[string]string,
 ) (set.Set[string], error) {

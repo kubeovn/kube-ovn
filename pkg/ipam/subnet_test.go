@@ -207,6 +207,45 @@ func TestGetV4StaticAddress(t *testing.T) {
 	require.Equal(t, "pod1.default", usingPod)
 }
 
+func TestGetStaticAddressRejectsGatewayIP(t *testing.T) {
+	tests := []struct {
+		name    string
+		cidr    string
+		gateway string
+		ip      string
+	}{
+		{
+			name:    "IPv4",
+			cidr:    "10.0.0.0/24",
+			gateway: "10.0.0.1",
+			ip:      "10.0.0.1",
+		},
+		{
+			name:    "IPv6Canonical",
+			cidr:    "2001:db8::/64",
+			gateway: "2001:0db8:0000:0000:0000:0000:0000:0001",
+			ip:      "2001:db8::1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			subnet, err := NewSubnet(tt.name, tt.cidr, nil)
+			require.NoError(t, err)
+			subnet.V4Gw = tt.gateway
+			subnet.V6Gw = tt.gateway
+
+			ip, err := NewIP(tt.ip)
+			require.NoError(t, err)
+
+			allocatedIP, mac, err := subnet.GetStaticAddress("pod.default", "pod.default", ip, nil, false, true)
+			require.ErrorIs(t, err, ErrConflict)
+			require.Nil(t, allocatedIP)
+			require.Empty(t, mac)
+		})
+	}
+}
+
 func TestGetV4StaticAddressPTP(t *testing.T) {
 	excludeIps := []string{
 		"10.0.0.0",
@@ -266,7 +305,7 @@ func TestGetV6StaticAddress(t *testing.T) {
 	// 2. pod2 has v6 ip and mac should get specified ip and mac
 	podName = "pod2.default"
 	nicName = "pod2.default"
-	v6 = "2001:db8::4"
+	v6 = "2001:db8::5"
 	macIn := "00:11:22:33:44:56"
 	v6IP, err = NewIP(v6)
 	require.NoError(t, err)
@@ -295,7 +334,7 @@ func TestGetV6StaticAddress(t *testing.T) {
 	// 4. pod4 has the same mac with pod2 should get error
 	podName = "pod4.default"
 	nicName = "pod4.default"
-	v6 = "2001:db8::5"
+	v6 = "2001:db8::6"
 	macIn = "00:11:22:33:44:56"
 	v6IP, err = NewIP(v6)
 	require.NoError(t, err)
@@ -1179,6 +1218,58 @@ func TestGetStaticAddressReleaseExisting(t *testing.T) {
 		_, exists := subnet.V4IPToPod["10.0.0.5"]
 		require.False(t, exists)
 		require.False(t, subnet.V4Using.Contains(firstIP))
+	})
+
+	t.Run("IPv4_KeepExistingAddressOnGatewayIPConflict", func(t *testing.T) {
+		subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", nil)
+		require.NoError(t, err)
+		subnet.V4Gw = "10.0.0.2"
+
+		podName := "pod1.default"
+		nicName := "nic1"
+		firstIP, err := NewIP("10.0.0.5")
+		require.NoError(t, err)
+		gatewayIP, err := NewIP("10.0.0.2")
+		require.NoError(t, err)
+
+		_, mac, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
+		require.NoError(t, err)
+
+		_, _, err = subnet.GetStaticAddress(podName, nicName, gatewayIP, nil, false, true)
+		require.ErrorIs(t, err, ErrConflict)
+		require.Equal(t, firstIP, subnet.V4NicToIP[nicName])
+		require.Equal(t, podName, subnet.V4IPToPod[firstIP.String()])
+		require.True(t, subnet.V4Using.Contains(firstIP))
+		require.False(t, subnet.V4Available.Contains(firstIP))
+		require.Empty(t, subnet.V4IPToPod[gatewayIP.String()])
+		require.False(t, subnet.V4Using.Contains(gatewayIP))
+		require.Equal(t, mac, subnet.NicToMac[nicName])
+	})
+
+	t.Run("IPv6_KeepExistingAddressOnGatewayIPConflict", func(t *testing.T) {
+		subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", nil)
+		require.NoError(t, err)
+		subnet.V6Gw = "2001:db8::2"
+
+		podName := "pod1.default"
+		nicName := "nic1"
+		firstIP, err := NewIP("2001:db8::5")
+		require.NoError(t, err)
+		gatewayIP, err := NewIP("2001:db8::2")
+		require.NoError(t, err)
+
+		_, mac, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
+		require.NoError(t, err)
+
+		_, _, err = subnet.GetStaticAddress(podName, nicName, gatewayIP, nil, false, true)
+		require.ErrorIs(t, err, ErrConflict)
+		require.Equal(t, firstIP, subnet.V6NicToIP[nicName])
+		require.Equal(t, podName, subnet.V6IPToPod[firstIP.String()])
+		require.True(t, subnet.V6Using.Contains(firstIP))
+		require.False(t, subnet.V6Available.Contains(firstIP))
+		require.Empty(t, subnet.V6IPToPod[gatewayIP.String()])
+		require.False(t, subnet.V6Using.Contains(gatewayIP))
+		require.Equal(t, mac, subnet.NicToMac[nicName])
 	})
 
 	// Test IPv6 scenario

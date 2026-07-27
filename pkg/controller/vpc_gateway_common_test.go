@@ -3,6 +3,11 @@ package controller
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,6 +54,14 @@ func TestGenGatewayBFDDContainer(t *testing.T) {
 	assert.NotNil(t, container.StartupProbe)
 	assert.NotNil(t, container.LivenessProbe)
 	assert.NotNil(t, container.ReadinessProbe)
+	assert.Equal(t, []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"}, container.LivenessProbe.Exec.Command)
+	assert.Equal(t, int32(1), container.LivenessProbe.InitialDelaySeconds)
+	assert.Equal(t, int32(5), container.LivenessProbe.PeriodSeconds)
+	assert.Equal(t, int32(10), container.LivenessProbe.TimeoutSeconds, "liveness probe must terminate blocked bfdd-control calls")
+	assert.Equal(t, []string{"bfdd-control", "status"}, container.ReadinessProbe.Exec.Command)
+	assert.Equal(t, int32(3), container.ReadinessProbe.InitialDelaySeconds)
+	assert.Equal(t, int32(3), container.ReadinessProbe.PeriodSeconds)
+	assert.Equal(t, int32(1), container.ReadinessProbe.FailureThreshold)
 
 	assert.Equal(t, gwBFDDResourceCPU, container.Resources.Requests[corev1.ResourceCPU])
 	assert.Equal(t, gwBFDDResourceMemory, container.Resources.Requests[corev1.ResourceMemory])
@@ -56,6 +69,100 @@ func TestGenGatewayBFDDContainer(t *testing.T) {
 
 	assert.False(t, *container.SecurityContext.Privileged)
 	assert.Equal(t, int64(65534), *container.SecurityContext.RunAsUser)
+}
+
+func TestBFDDHealthcheck(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is required to test the BFD health check")
+	}
+
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current filename")
+	}
+	healthcheckPath := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images", "bfdd-healthcheck.sh")
+
+	tests := []struct {
+		name           string
+		statusOutput   string
+		statusExitCode string
+		wantHealthy    bool
+		wantAllowed    []string
+	}{
+		{
+			name:         "existing session is healthy",
+			statusOutput: "There are 1 sessions:",
+			wantHealthy:  true,
+		},
+		{
+			name:         "zero sessions fails without mutating peer configuration",
+			statusOutput: "There are 0 sessions:",
+		},
+		{
+			name:           "status failure fails without mutating peer configuration",
+			statusOutput:   "control socket unavailable",
+			statusExitCode: "2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDir := t.TempDir()
+			binDir := filepath.Join(testDir, "bin")
+			if err := os.Mkdir(binDir, 0o755); err != nil {
+				t.Fatalf("failed to create mock binary directory: %v", err)
+			}
+
+			allowLog := filepath.Join(testDir, "allow.log")
+			mockControl := filepath.Join(binDir, "bfdd-control")
+			mockScript := `#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  status)
+    printf '%s\n' "${STATUS_OUTPUT:-}"
+    exit "${STATUS_EXIT_CODE:-0}"
+    ;;
+  allow)
+    printf '%s\n' "${2:-}" >> "${ALLOW_LOG}"
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`
+			if err := os.WriteFile(mockControl, []byte(mockScript), 0o755); err != nil {
+				t.Fatalf("failed to create mock bfdd-control: %v", err)
+			}
+
+			cmd := exec.Command(bash, healthcheckPath) // #nosec G204 -- path is derived from the test source location
+			cmd.Env = append(os.Environ(),
+				"PATH="+binDir+":"+os.Getenv("PATH"),
+				"STATUS_OUTPUT="+tt.statusOutput,
+				"STATUS_EXIT_CODE="+tt.statusExitCode,
+				"ALLOW_LOG="+allowLog,
+				"BFD_PEER_IPS=10.0.0.1,fd00::1",
+			)
+			output, err := cmd.CombinedOutput()
+			if tt.wantHealthy {
+				assert.NoError(t, err, "health check output: %s", output)
+			} else {
+				assert.Error(t, err, "health check output: %s", output)
+			}
+
+			var allowed []string
+			content, err := os.ReadFile(allowLog)
+			switch {
+			case err == nil:
+				allowed = strings.Fields(string(content))
+			case os.IsNotExist(err):
+			default:
+				t.Fatalf("failed to read allowed peer log: %v", err)
+			}
+			assert.Equal(t, tt.wantAllowed, allowed)
+		})
+	}
 }
 
 func TestGenGatewaySleepContainer(t *testing.T) {
@@ -71,13 +178,38 @@ func TestGenGatewaySleepContainer(t *testing.T) {
 
 func TestGenGatewayPodAntiAffinity(t *testing.T) {
 	labels := map[string]string{"app": "vpc-nat-gw", "vpc": "test-vpc"}
-	affinity := genGatewayPodAntiAffinity(labels)
+	tests := []struct {
+		name      string
+		mode      string
+		required  bool
+		preferred bool
+	}{
+		{name: "empty defaults to required", required: true},
+		{name: "required", mode: kubeovnv1.PodAntiAffinityRequired, required: true},
+		{name: "preferred", mode: kubeovnv1.PodAntiAffinityPreferred, preferred: true},
+	}
 
-	assert.NotNil(t, affinity.PodAntiAffinity)
-	terms := affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
-	assert.Len(t, terms, 1)
-	assert.Equal(t, labels, terms[0].LabelSelector.MatchLabels)
-	assert.Equal(t, corev1.LabelHostname, terms[0].TopologyKey)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			affinity := genGatewayPodAntiAffinity(labels, tt.mode)
+			assert.NotNil(t, affinity.PodAntiAffinity)
+			if tt.required {
+				terms := affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
+				assert.Len(t, terms, 1)
+				assert.Equal(t, labels, terms[0].LabelSelector.MatchLabels)
+				assert.Equal(t, corev1.LabelHostname, terms[0].TopologyKey)
+				assert.Empty(t, affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution)
+			}
+			if tt.preferred {
+				terms := affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+				assert.Len(t, terms, 1)
+				assert.Equal(t, int32(100), terms[0].Weight)
+				assert.Equal(t, labels, terms[0].PodAffinityTerm.LabelSelector.MatchLabels)
+				assert.Equal(t, corev1.LabelHostname, terms[0].PodAffinityTerm.TopologyKey)
+				assert.Empty(t, affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution)
+			}
+		})
+	}
 }
 
 func TestGenGatewayDeploymentStrategy(t *testing.T) {
@@ -223,23 +355,24 @@ func TestReconcileGatewayBFD(t *testing.T) {
 
 	t.Run("no existing BFD sessions, create new", func(t *testing.T) {
 		m := new(mockOvnNbClient)
-		nextHops := map[string]string{"node1": "10.0.1.10"}
+		nextHops := set.New("10.0.1.10", "10.0.1.11")
 
 		m.On("FindBFD", externalIDs).Return([]ovnnb.BFD{}, nil)
 		m.On("CreateBFD", lrpName, "10.0.1.10", int(minTX), int(minRX), int(multiplier), externalIDs).Return(&ovnnb.BFD{UUID: "uuid-1", DstIP: "10.0.1.10"}, nil)
+		m.On("CreateBFD", lrpName, "10.0.1.11", int(minTX), int(minRX), int(multiplier), externalIDs).Return(&ovnnb.BFD{UUID: "uuid-2", DstIP: "10.0.1.11"}, nil)
 
 		bfdIDs, bfdMap, staleBFDIDs, err := reconcileGatewayBFD(m, bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
 
 		assert.NoError(t, err)
-		assert.True(t, bfdIDs.Equal(set.New("uuid-1")))
-		assert.Equal(t, map[string]string{"10.0.1.10": "uuid-1"}, bfdMap)
+		assert.True(t, bfdIDs.Equal(set.New("uuid-1", "uuid-2")))
+		assert.Equal(t, map[string]string{"10.0.1.10": "uuid-1", "10.0.1.11": "uuid-2"}, bfdMap)
 		assert.Equal(t, 0, staleBFDIDs.Len())
 		m.AssertExpectations(t)
 	})
 
 	t.Run("existing valid and stale BFD sessions", func(t *testing.T) {
 		m := new(mockOvnNbClient)
-		nextHops := map[string]string{"node1": "10.0.1.10"}
+		nextHops := set.New("10.0.1.10")
 		existingBFDs := []ovnnb.BFD{
 			{UUID: "uuid-valid", DstIP: "10.0.1.10", LogicalPort: lrpName},
 			{UUID: "uuid-stale-ip", DstIP: "10.0.1.11", LogicalPort: lrpName},
@@ -259,7 +392,7 @@ func TestReconcileGatewayBFD(t *testing.T) {
 
 	t.Run("bfdIP is empty, disable BFD", func(t *testing.T) {
 		m := new(mockOvnNbClient)
-		nextHops := map[string]string{"node1": "10.0.1.10"}
+		nextHops := set.New("10.0.1.10")
 		existingBFDs := []ovnnb.BFD{
 			{UUID: "uuid-any", DstIP: "10.0.1.10", LogicalPort: lrpName},
 		}

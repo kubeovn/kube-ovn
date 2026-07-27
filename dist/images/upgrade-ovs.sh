@@ -3,6 +3,7 @@
 set -ex
 
 OVN_DB_IPS=${OVN_DB_IPS:-}
+OVN_NB_ADDR=${OVN_NB_ADDR:-}
 ENABLE_SSL=${ENABLE_SSL:-false}
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
 OVN_VERSION_COMPATIBILITY=${OVN_VERSION_COMPATIBILITY:-}
@@ -32,7 +33,7 @@ function gen_conn_str {
   echo "$x"
 }
 
-nb_addr="$(gen_conn_str 6641)"
+nb_addr="${OVN_NB_ADDR:-$(gen_conn_str 6641)}"
 while true; do
   if [ x`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options | grep -o 'version_compatibility='` != "x" ]; then
     value=`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options:version_compatibility | sed -e 's/^"//' -e 's/"$//'`
