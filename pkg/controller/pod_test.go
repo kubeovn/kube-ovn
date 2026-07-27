@@ -9,9 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -568,6 +570,65 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 				require.NoError(t, err, tt.description)
 				assert.Equal(t, tt.expectedSubnet, subnet.Name, tt.description)
 			}
+		})
+	}
+}
+
+func TestGetPodDefaultSubnetUsesNamedIPPoolSubnet(t *testing.T) {
+	const (
+		namespaceName   = "test-ns"
+		namespaceSubnet = "namespace-subnet"
+		poolName        = "pool-a"
+		poolSubnet      = "pool-subnet"
+	)
+
+	ippool := &kubeovnv1.IPPool{
+		ObjectMeta: metav1.ObjectMeta{Name: poolName},
+		Spec:       kubeovnv1.IPPoolSpec{Subnet: poolSubnet},
+	}
+	ctrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Namespaces: []*corev1.Namespace{{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespaceName,
+				Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: namespaceSubnet,
+				},
+			},
+		}},
+		Subnets: []*kubeovnv1.Subnet{
+			{ObjectMeta: metav1.ObjectMeta{Name: namespaceSubnet}},
+			{ObjectMeta: metav1.ObjectMeta{Name: poolSubnet}},
+		},
+	})
+	require.NoError(t, err)
+	ippoolIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, ippoolIndexer.Add(ippool))
+	ctrl.fakeController.ippoolLister = kubeovnlister.NewIPPoolLister(ippoolIndexer)
+
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name:      "test-pod",
+		Namespace: namespaceName,
+		Annotations: map[string]string{
+			util.IPPoolAnnotation: poolName,
+		},
+	}}
+
+	subnet, err := ctrl.fakeController.getPodDefaultSubnet(pod)
+	require.NoError(t, err)
+	require.NotNil(t, subnet)
+	assert.Equal(t, poolSubnet, subnet.Name)
+
+	for _, staticPool := range []string{
+		"10.0.0.10",
+		"10.0.0.10,10.0.0.11",
+		"10.0.0.10;10.0.0.11",
+	} {
+		t.Run("legacy static pool "+staticPool, func(t *testing.T) {
+			pod.Annotations[util.IPPoolAnnotation] = staticPool
+			subnet, err := ctrl.fakeController.getPodDefaultSubnet(pod)
+			require.NoError(t, err)
+			require.NotNil(t, subnet)
+			assert.Equal(t, namespaceSubnet, subnet.Name)
 		})
 	}
 }
