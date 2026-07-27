@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		oldVpc.Spec.EnableExternal != newVpc.Spec.EnableExternal ||
 		oldVpc.Spec.EnableBfd != newVpc.Spec.EnableBfd ||
 		vpcBFDPortChanged(oldVpc.Spec.BFDPort, newVpc.Spec.BFDPort) ||
+		!reflect.DeepEqual(oldVpc.Spec.DynamicRouting, newVpc.Spec.DynamicRouting) ||
 		oldVpc.Labels[util.VpcExternalLabel] != newVpc.Labels[util.VpcExternalLabel] ||
 		!slices.Equal(oldVpc.Status.Subnets, newVpc.Status.Subnets) {
 		// TODO:// label VpcExternalLabel replace with spec enable external
@@ -307,7 +309,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	if err = c.createVpcRouter(key, learnFromARPRequest); err != nil {
+	if err = c.createVpcRouter(vpc, learnFromARPRequest); err != nil {
 		klog.Errorf("failed to create vpc router for vpc %s: %v", key, err)
 		return err
 	}
@@ -740,6 +742,11 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 				}
 			}
 		}
+	}
+
+	if err := c.reconcileVpcDynamicRoutingLrpOptions(vpc); err != nil {
+		klog.Errorf("failed to reconcile dynamic routing lrp options for vpc %s: %v", vpc.Name, err)
+		return err
 	}
 
 	// custom vpc enable bfd
@@ -1280,7 +1287,8 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 }
 
 // createVpcRouter create router to connect logical switches in vpc
-func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error {
+func (c *Controller) createVpcRouter(vpc *kubeovnv1.Vpc, learnFromARPRequest bool) error {
+	lr := vpc.Name
 	if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
 		klog.Errorf("create logical router %s failed: %v", lr, err)
 		return err
@@ -1299,6 +1307,25 @@ func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error 
 	if !learnFromARPRequest {
 		lrOptions["always_learn_from_arp_request"] = "false"
 	}
+	if dr := vpc.Spec.DynamicRouting; dr.IsEnabled() {
+		lrOptions["dynamic-routing"] = "true"
+		if len(dr.Redistribute) != 0 {
+			redistribute := make([]string, 0, len(dr.Redistribute))
+			for _, t := range dr.Redistribute {
+				redistribute = append(redistribute, string(t))
+			}
+			lrOptions["dynamic-routing-redistribute"] = strings.Join(redistribute, ",")
+		}
+		if dr.LocalOnly {
+			lrOptions["dynamic-routing-redistribute-local-only"] = "true"
+		}
+		if dr.VrfName != "" {
+			lrOptions["dynamic-routing-vrf-name"] = dr.VrfName
+		}
+		if dr.VrfID != 0 {
+			lrOptions["dynamic-routing-vrf-id"] = strconv.FormatUint(uint64(dr.VrfID), 10)
+		}
+	}
 	if !maps.Equal(vpcRouter.Options, lrOptions) {
 		vpcRouter.Options = lrOptions
 		if err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options); err != nil {
@@ -1313,6 +1340,42 @@ func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error 
 // deleteVpcRouter delete router to connect logical switches in vpc
 func (c *Controller) deleteVpcRouter(lr string) error {
 	return c.OVNNbClient.DeleteLogicalRouter(lr)
+}
+
+// reconcileVpcDynamicRoutingLrpOptions sets or clears the dynamic-routing-maintain-vrf
+// option on the VPC's external gateway LRPs so that ovn-controller manages the VRF
+// on the gateway chassis when dynamic routing is enabled
+func (c *Controller) reconcileVpcDynamicRoutingLrpOptions(vpc *kubeovnv1.Vpc) error {
+	maintainVrf := ""
+	if dr := vpc.Spec.DynamicRouting; dr.IsEnabled() && dr.MaintainVrf {
+		maintainVrf = "true"
+	}
+
+	subnets := make([]string, 0, len(vpc.Spec.ExtraExternalSubnets)+1)
+	if c.config.ExternalGatewaySwitch != "" {
+		subnets = append(subnets, c.config.ExternalGatewaySwitch)
+	}
+	subnets = append(subnets, vpc.Spec.ExtraExternalSubnets...)
+
+	for _, subnet := range subnets {
+		lrpName := fmt.Sprintf("%s-%s", vpc.Name, subnet)
+		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		if lrp == nil {
+			continue
+		}
+		if err = c.OVNNbClient.UpdateLogicalRouterPortOptions(lrpName, map[string]string{
+			"dynamic-routing-maintain-vrf": maintainVrf,
+		}); err != nil {
+			klog.Errorf("failed to update dynamic routing options of lrp %s: %v", lrpName, err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
