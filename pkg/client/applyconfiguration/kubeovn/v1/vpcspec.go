@@ -44,6 +44,8 @@ type VpcSpecApplyConfiguration struct {
 	// optional BFD LRP configuration
 	// currently the LRP is used for vpc external gateway only
 	BFDPort *BFDPortApplyConfiguration `json:"bfdPort,omitempty"`
+	// optional OVN dynamic routing configuration
+	DynamicRouting *VpcDynamicRoutingApplyConfiguration `json:"dynamicRouting,omitempty"`
 }
 
 // VpcSpecApplyConfiguration constructs a declarative configuration of the VpcSpec type for use with
@@ -140,5 +142,13 @@ func (b *VpcSpecApplyConfiguration) WithEnableBfd(value bool) *VpcSpecApplyConfi
 // If called multiple times, the BFDPort field is set to the value of the last call.
 func (b *VpcSpecApplyConfiguration) WithBFDPort(value *BFDPortApplyConfiguration) *VpcSpecApplyConfiguration {
 	b.BFDPort = value
+	return b
+}
+
+// WithDynamicRouting sets the DynamicRouting field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DynamicRouting field is set to the value of the last call.
+func (b *VpcSpecApplyConfiguration) WithDynamicRouting(value *VpcDynamicRoutingApplyConfiguration) *VpcSpecApplyConfiguration {
+	b.DynamicRouting = value
 	return b
 }

@@ -612,5 +612,27 @@ func ValidateVpc(vpc *kubeovnv1.Vpc) error {
 		}
 	}
 
+	if dr := vpc.Spec.DynamicRouting; dr.IsEnabled() {
+		if len(dr.Redistribute) == 0 {
+			return errors.New("redistribute must be set explicitly when dynamic routing is enabled")
+		}
+		seen := make(map[kubeovnv1.RedistributeType]struct{}, len(dr.Redistribute))
+		for _, t := range dr.Redistribute {
+			switch t {
+			case kubeovnv1.RedistributeConnected, kubeovnv1.RedistributeConnectedAsHost,
+				kubeovnv1.RedistributeStatic, kubeovnv1.RedistributeNAT, kubeovnv1.RedistributeLB:
+			default:
+				return fmt.Errorf("unknown redistribute type: %s", t)
+			}
+			if _, ok := seen[t]; ok {
+				return fmt.Errorf("duplicate redistribute type: %s", t)
+			}
+			seen[t] = struct{}{}
+		}
+		if dr.VrfName != "" && (len(dr.VrfName) > 15 || strings.ContainsAny(dr.VrfName, "/ \t\n\f\r")) {
+			return fmt.Errorf("vrfName %q must be a valid linux interface name (no '/' or whitespace, max 15 chars)", dr.VrfName)
+		}
+	}
+
 	return nil
 }
