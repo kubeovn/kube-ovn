@@ -127,18 +127,18 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	}
 
 	if c.config.EnableLb && c.config.EnableOVNLBPreferLocal {
-		if svc.Spec.Type == v1.ServiceTypeLoadBalancer && svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal {
-			if len(svc.Status.LoadBalancer.Ingress) > 0 {
-				for _, ingress := range svc.Status.LoadBalancer.Ingress {
-					if ingress.IP != "" {
-						lbVips = append(lbVips, ingress.IP)
-					}
+		if svc.Spec.Type == v1.ServiceTypeLoadBalancer {
+			for _, ingress := range svc.Status.LoadBalancer.Ingress {
+				if ingress.IP != "" {
+					lbVips = append(lbVips, ingress.IP)
 				}
 			}
-			isPreferLocalBackend = true
-			externalVIPNode, serviceL2StatusReady, err = c.getServiceL2StatusNode(namespace, name)
-			if err != nil {
-				return err
+			if svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal {
+				isPreferLocalBackend = true
+				externalVIPNode, serviceL2StatusReady, err = c.getServiceL2StatusNode(namespace, name)
+				if err != nil {
+					return err
+				}
 			}
 		} else if svc.Spec.Type == v1.ServiceTypeClusterIP && svc.Spec.InternalTrafficPolicy != nil && *svc.Spec.InternalTrafficPolicy == v1.ServiceInternalTrafficPolicyLocal {
 			isPreferLocalBackend = true
@@ -183,6 +183,9 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	}
 	if c.config.EnableOVNLBPreferLocal {
 		if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, tcpLb, udpLb, sctpLb); err != nil {
+			return err
+		}
+		if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, oldTCPLb, oldUDPLb, oldSctpLb); err != nil {
 			return err
 		}
 	}
@@ -408,6 +411,9 @@ func (c *Controller) clearLoadBalancerVIPExternalTrafficLocal(svc *v1.Service, t
 			vip := util.JoinHostPort(ingress.IP, port.Port)
 			if err := c.OVNNbClient.SetLoadBalancerVIPExternalTrafficLocal(lb, vip, ""); err != nil {
 				return fmt.Errorf("couldn't clear external local vip marker %s on LB %s: %w", vip, lb, err)
+			}
+			if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
+				return fmt.Errorf("couldn't clear external local vip ip port mapping %s on LB %s: %w", vip, lb, err)
 			}
 		}
 	}
