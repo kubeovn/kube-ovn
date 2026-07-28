@@ -59,6 +59,26 @@ func (c *OVNNbClient) CreateAddressSet(asName string, externalIDs map[string]str
 	return nil
 }
 
+// normalizeAddresses formats CIDR addresses to keep them the same in both nb and sb,
+// and drops duplicate elements which would make the update fail. An address whose CIDR
+// cannot be parsed is kept as is. The returned set is order independent, so it can be
+// compared against the addresses currently stored in the database.
+// The given slice is never modified: it may be owned by the caller.
+func normalizeAddresses(addresses []string) *strset.Set {
+	result := strset.NewWithSize(len(addresses))
+	for _, addr := range addresses {
+		if strings.ContainsRune(addr, '/') {
+			if _, ipNet, err := net.ParseCIDR(addr); err != nil {
+				klog.Warningf("failed to parse CIDR %q: %v", addr, err)
+			} else {
+				addr = ipNet.String()
+			}
+		}
+		result.Add(addr)
+	}
+	return result
+}
+
 // AddressSetUpdateAddress update addresses,
 // clear addresses when addresses is empty
 func (c *OVNNbClient) AddressSetUpdateAddress(asName string, addresses ...string) error {
@@ -68,27 +88,19 @@ func (c *OVNNbClient) AddressSetUpdateAddress(asName string, addresses ...string
 		return fmt.Errorf("get address set %s: %w", asName, err)
 	}
 
-	// format CIDR to keep addresses the same in both nb and sb
-	for i, addr := range addresses {
-		if strings.ContainsRune(addr, '/') {
-			_, ipNet, err := net.ParseCIDR(addr)
-			if err != nil {
-				klog.Warningf("failed to parse CIDR %q: %v", addr, err)
-				continue
-			}
-			addresses[i] = ipNet.String()
-		}
+	// the current addresses are read from the local ovsdb cache, so comparing them
+	// costs nothing and saves a needless nb transaction when nothing has changed
+	expected := normalizeAddresses(addresses)
+	if expected.IsEqual(strset.New(as.Addresses...)) {
+		return nil
 	}
 
-	// update will failed when slice contains duplicate elements
-	addresses = strset.New(addresses...).List()
-
 	// clear addresses when addresses is empty
-	as.Addresses = addresses
+	as.Addresses = expected.List()
 
 	if err := c.UpdateAddressSet(as, &as.Addresses); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("set address set %s addresses %v: %w", asName, addresses, err)
+		return fmt.Errorf("set address set %s addresses %v: %w", asName, as.Addresses, err)
 	}
 
 	return nil

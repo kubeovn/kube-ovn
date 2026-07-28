@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,6 +10,49 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func Test_normalizeAddresses(t *testing.T) {
+	t.Parallel()
+
+	t.Run("format CIDR and keep the unparsable ones", func(t *testing.T) {
+		t.Parallel()
+
+		result := normalizeAddresses([]string{"192.168.1.5/24", "2001:db8::1/64", "192.168.1.1", "192.168.1.1/xx"})
+		require.ElementsMatch(t, []string{"192.168.1.0/24", "2001:db8::/64", "192.168.1.1", "192.168.1.1/xx"}, result.List())
+	})
+
+	t.Run("drop duplicate elements after formatting", func(t *testing.T) {
+		t.Parallel()
+
+		result := normalizeAddresses([]string{"192.168.1.1", "192.168.1.1", "192.168.1.5/24", "192.168.1.9/24"})
+		require.ElementsMatch(t, []string{"192.168.1.1", "192.168.1.0/24"}, result.List())
+	})
+
+	// the result is used to decide whether the address set needs to be updated,
+	// so addresses given in a different order must compare as equal
+	t.Run("compare equal regardless of the input order", func(t *testing.T) {
+		t.Parallel()
+
+		addresses := []string{"1.2.3.4", "1.2.3.5", "1.2.3.6", "10.0.0.0/8", "fe80::1"}
+		reversed := slices.Clone(addresses)
+		slices.Reverse(reversed)
+		require.True(t, normalizeAddresses(addresses).IsEqual(normalizeAddresses(reversed)))
+	})
+
+	t.Run("leave the given slice untouched", func(t *testing.T) {
+		t.Parallel()
+
+		addresses := []string{"192.168.1.5/24", "192.168.1.1"}
+		normalizeAddresses(addresses)
+		require.Equal(t, []string{"192.168.1.5/24", "192.168.1.1"}, addresses)
+	})
+
+	t.Run("empty addresses", func(t *testing.T) {
+		t.Parallel()
+
+		require.Empty(t, normalizeAddresses(nil).List())
+	})
+}
 
 func newAddressSet(name string, externalIDs map[string]string) *ovnnb.AddressSet {
 	return &ovnnb.AddressSet{
@@ -170,6 +214,30 @@ func (suite *OvnClientTestSuite) testAddressSetUpdateAddress() {
 	t.Run("update address set with invalid address", func(t *testing.T) {
 		err := nbClient.AddressSetUpdateAddress(asName, "192.168.1.1/xx")
 		require.NoError(t, err)
+	})
+
+	t.Run("keep the addresses when nothing changes", func(t *testing.T) {
+		addresses := []string{"10.16.0.1", "10.16.0.2", "10.16.0.3"}
+		require.NoError(t, nbClient.AddressSetUpdateAddress(asName, addresses...))
+
+		// updating with the same addresses in a different order is a no-op
+		reversed := slices.Clone(addresses)
+		slices.Reverse(reversed)
+		require.NoError(t, nbClient.AddressSetUpdateAddress(asName, reversed...))
+
+		as, err := nbClient.GetAddressSet(asName, false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, addresses, as.Addresses)
+	})
+
+	t.Run("leave the given addresses untouched", func(t *testing.T) {
+		addresses := []string{"192.168.100.5/24", "192.168.100.1"}
+		require.NoError(t, nbClient.AddressSetUpdateAddress(asName, addresses...))
+		require.Equal(t, []string{"192.168.100.5/24", "192.168.100.1"}, addresses)
+
+		as, err := nbClient.GetAddressSet(asName, false)
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{"192.168.100.0/24", "192.168.100.1"}, as.Addresses)
 	})
 }
 
