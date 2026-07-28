@@ -134,6 +134,7 @@ type LoadBalancer interface {
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerDeleteIPPortMapping(lbName, vip string) error
+	SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP string) error
 	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error

@@ -108,6 +108,8 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	var (
 		lbVips                   []string
 		vip, vpcName, subnetName string
+		externalVIPNode          string
+		serviceL2StatusReady     = true
 		ok                       bool
 		ignoreHealthCheck        = true
 		isPreferLocalBackend     = false
@@ -125,15 +127,19 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	}
 
 	if c.config.EnableLb && c.config.EnableOVNLBPreferLocal {
-		if svc.Spec.Type == v1.ServiceTypeLoadBalancer && svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal {
-			if len(svc.Status.LoadBalancer.Ingress) > 0 {
-				for _, ingress := range svc.Status.LoadBalancer.Ingress {
-					if ingress.IP != "" {
-						lbVips = append(lbVips, ingress.IP)
-					}
+		if svc.Spec.Type == v1.ServiceTypeLoadBalancer {
+			for _, ingress := range svc.Status.LoadBalancer.Ingress {
+				if ingress.IP != "" {
+					lbVips = append(lbVips, ingress.IP)
 				}
 			}
-			isPreferLocalBackend = true
+			if svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal {
+				isPreferLocalBackend = true
+				externalVIPNode, serviceL2StatusReady, err = c.getServiceL2StatusNode(namespace, name)
+				if err != nil {
+					return err
+				}
+			}
 		} else if svc.Spec.Type == v1.ServiceTypeClusterIP && svc.Spec.InternalTrafficPolicy != nil && *svc.Spec.InternalTrafficPolicy == v1.ServiceInternalTrafficPolicyLocal {
 			isPreferLocalBackend = true
 		}
@@ -174,6 +180,14 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	oldTCPLb, oldUDPLb, oldSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		tcpLb, udpLb, sctpLb, oldTCPLb, oldUDPLb, oldSctpLb = oldTCPLb, oldUDPLb, oldSctpLb, tcpLb, udpLb, sctpLb
+	}
+	if c.config.EnableOVNLBPreferLocal {
+		if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, tcpLb, udpLb, sctpLb); err != nil {
+			return err
+		}
+		if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, oldTCPLb, oldUDPLb, oldSctpLb); err != nil {
+			return err
+		}
 	}
 
 	for _, lbVip := range lbVips {
@@ -226,6 +240,21 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				if err = c.OVNNbClient.LoadBalancerAddVip(lb, vip, backends...); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
 					return err
+				}
+				if isPreferLocalBackend &&
+					svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
+					svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal &&
+					serviceL2StatusReady &&
+					slices.ContainsFunc(svc.Status.LoadBalancer.Ingress, func(ingress v1.LoadBalancerIngress) bool {
+						return ingress.IP == lbVip
+					}) {
+					vipNodeLSP := ""
+					if externalVIPNode != "" {
+						vipNodeLSP = util.NodeLspName(externalVIPNode)
+					}
+					if err = c.OVNNbClient.SetLoadBalancerVIPExternalTrafficLocal(lb, vip, vipNodeLSP); err != nil {
+						return fmt.Errorf("couldn't mark external local vip %s on LB %s: %w", vip, lb, err)
+					}
 				}
 
 				if isPreferLocalBackend && len(ipPortMapping) != 0 {
@@ -353,6 +382,41 @@ func (c *Controller) replaceEndpointAddressesWithSecondaryIPs(endpointSlices []*
 		}
 	}
 
+	return nil
+}
+
+func (c *Controller) clearLoadBalancerVIPExternalTrafficLocal(svc *v1.Service, tcpLb, udpLb, sctpLb string) error {
+	if svc.Spec.Type != v1.ServiceTypeLoadBalancer ||
+		svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal {
+		return nil
+	}
+
+	for _, ingress := range svc.Status.LoadBalancer.Ingress {
+		if ingress.IP == "" {
+			continue
+		}
+		for _, port := range svc.Spec.Ports {
+			var lb string
+			switch port.Protocol {
+			case v1.ProtocolTCP:
+				lb = tcpLb
+			case v1.ProtocolUDP:
+				lb = udpLb
+			case v1.ProtocolSCTP:
+				lb = sctpLb
+			}
+			if lb == "" {
+				continue
+			}
+			vip := util.JoinHostPort(ingress.IP, port.Port)
+			if err := c.OVNNbClient.SetLoadBalancerVIPExternalTrafficLocal(lb, vip, ""); err != nil {
+				return fmt.Errorf("couldn't clear external local vip marker %s on LB %s: %w", vip, lb, err)
+			}
+			if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
+				return fmt.Errorf("couldn't clear external local vip ip port mapping %s on LB %s: %w", vip, lb, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -892,14 +956,11 @@ func getSubnetByProvider(pod *v1.Pod, provider string) (string, error) {
 	return subnetName, nil
 }
 
-// getVpcByProvider returns the VPC linked to a provider on a pod
-func getVpcByProvider(pod *v1.Pod, provider string) (string, error) {
-	vpcName, exists := pod.Annotations[fmt.Sprintf(util.LogicalRouterAnnotationTemplate, provider)]
-	if !exists {
-		return "", fmt.Errorf("couldn't find vpc linked to provider %s", provider)
-	}
-
-	return vpcName, nil
+// getVpcByProvider returns the VPC linked to a provider on a pod.
+// For underlay subnets without LogicalGateway or U2OInterconnection,
+// the logical_router annotation is not set, so an empty string is returned.
+func getVpcByProvider(pod *v1.Pod, provider string) string {
+	return pod.Annotations[fmt.Sprintf(util.LogicalRouterAnnotationTemplate, provider)]
 }
 
 // getEndpointVpcAndSubnet returns the VPC/subnet for a pod and a set of addresses attached to it
@@ -921,10 +982,7 @@ func (c *Controller) getEndpointVpcAndSubnet(pod *v1.Pod, addresses []string) (s
 	}
 
 	// Retrieve the VPC
-	vpc, err := getVpcByProvider(pod, provider)
-	if err != nil {
-		return "", "", err
-	}
+	vpc := getVpcByProvider(pod, provider)
 
 	return vpc, subnet, nil
 }

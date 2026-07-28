@@ -384,6 +384,20 @@ func TestServiceHasSelector(t *testing.T) {
 	}
 }
 
+func TestGetVpcByProviderAllowsMissingAnnotation(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "underlay-pod",
+			Namespace: "default",
+			Annotations: map[string]string{
+				fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider): "underlay-subnet",
+			},
+		},
+	}
+
+	require.Empty(t, getVpcByProvider(pod, util.OvnProvider))
+}
+
 func TestServiceHealthChecksDisabled(t *testing.T) {
 	tests := []struct {
 		name     string
