@@ -4053,7 +4053,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          n_worker=2 make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
