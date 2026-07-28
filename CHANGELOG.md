@@ -439,6 +439,32 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.20 (2026-07-28)
+
+ * [81e594023](https://github.com/kubeovn/kube-ovn/commit/81e5940236e11f3527620c9cb3d1f426c216ab80) release v1.15.20
+ * [6b271f3e0](https://github.com/kubeovn/kube-ovn/commit/6b271f3e03134e64bbc934f13ef03445ef452e0a) [release-1.15] fix(metallb): preserve internal underlay VIP traffic (#7066)
+ * [b9229726f](https://github.com/kubeovn/kube-ovn/commit/b9229726f48f1e13507d9008cb3e82e63916d3a4) feat: infer pod subnet from named IPPool (#7083)
+ * [69b6ba9f7](https://github.com/kubeovn/kube-ovn/commit/69b6ba9f7446512edbbd2750e03c1131437041c0) fix(deps): update vulnerable Go modules (#7079)
+ * [3455ec1ac](https://github.com/kubeovn/kube-ovn/commit/3455ec1acb5fd13d5908dc20dc104ffe0299f7fa) [release-1.15] fix(chart): correct v2 agent capability name (#7075)
+ * [c6b5e381b](https://github.com/kubeovn/kube-ovn/commit/c6b5e381bebb2f5dcd4336176c947c74e35205ef) Revert "fix: prevent subnet status update loop in patchSubnetStatus (#7058)" (#7069)
+ * [fee5e3f53](https://github.com/kubeovn/kube-ovn/commit/fee5e3f538a2d8372aaa107a190e8719b773199d) fix(controller): extend BFD liveness probe timeout (#7064)
+ * [8dd20f7da](https://github.com/kubeovn/kube-ovn/commit/8dd20f7da9913ae3cb02560ce651c0abac522a39) fix: prevent subnet status update loop in patchSubnetStatus (#7058)
+ * [9f779e9f2](https://github.com/kubeovn/kube-ovn/commit/9f779e9f23b8f750d3a7b26e775e9a0f220ba4f5) fix(gateway): recover missing BFD sessions (#7051)
+ * [44b993bf6](https://github.com/kubeovn/kube-ovn/commit/44b993bf6fe11b2fdd578d2dd2a26acabce5ae1b) fix(chart): correct ovs-ipsec-keys volume indentation and Talos IPSEC docs (#7041)
+ * [88b440446](https://github.com/kubeovn/kube-ovn/commit/88b440446ad95ed6b5ccd76048b0f3856cb72207) fix ipam only ip leak (#7034)
+ * [4856c9a1b](https://github.com/kubeovn/kube-ovn/commit/4856c9a1b3ef28b07c3c87d6254081c358658022) ci: clean up chart releases and keep latest release correct (#7032)
+ * [e98bc1d17](https://github.com/kubeovn/kube-ovn/commit/e98bc1d1738530d5529157b9061f71b882426026) prepare for next release
+
+### Contributors
+
+ * Abdd
+ * Aleksei Sviridkin
+ * Mengxin Liu
+ * changluyi
+ * xieyanker
+ * zhangzujian
+ * 张祖建
+
 ## v1.15.19 (2026-07-10)
 
  * [247189e75](https://github.com/kubeovn/kube-ovn/commit/247189e75d5d034825e7772d49ad160f613bca97) release v1.15.19
