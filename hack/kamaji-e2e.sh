@@ -50,6 +50,7 @@ HCP_OVN_REPLICAS=${HCP_OVN_REPLICAS:-1}
 HCP_OVN_NB_NODE_PORT=${HCP_OVN_NB_NODE_PORT:-30641}
 HCP_OVN_SB_NODE_PORT=${HCP_OVN_SB_NODE_PORT:-30642}
 E2E_IP_FAMILY=${E2E_IP_FAMILY:-ipv4}
+TENANT_KUBE_PROXY_NAME=${TENANT_KUBE_PROXY_NAME:-kube-proxy-hcp-e2e}
 
 CERT_MANAGER_VERSION=${CERT_MANAGER_VERSION:-v1.15.3}
 METALLB_VERSION=${METALLB_VERSION:-v0.14.8}
@@ -113,6 +114,23 @@ tenant_dns_service_ips_yaml() {
   esac
 }
 
+tenant_addons_yaml() {
+  case "$E2E_IP_FAMILY" in
+    ipv4 | dual)
+      cat <<EOF
+  addons:
+    coreDNS: {}
+EOF
+      ;;
+    ipv6)
+      ;;
+    *)
+      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
+      return 1
+      ;;
+  esac
+}
+
 cmd_vars() {
   local endpoint
   endpoint=$(hcp_ovn_endpoint)
@@ -131,7 +149,7 @@ cmd_kubeconfig() {
 
 require_tools() {
   local missing=()
-  for t in docker kind kubectl helm python3; do
+  for t in docker kind kubectl helm; do
     command -v "$t" >/dev/null 2>&1 || missing+=("$t")
   done
   if [ ${#missing[@]} -gt 0 ]; then
@@ -234,10 +252,11 @@ EOF
 }
 
 cmd_render_tenant_control_plane() {
-  local dns_service_ips pod_cidr service_cidr
+  local addons dns_service_ips pod_cidr service_cidr
   pod_cidr=$(tenant_pod_cidr)
   service_cidr=$(tenant_service_cidr)
   dns_service_ips=$(tenant_dns_service_ips_yaml)
+  addons=$(tenant_addons_yaml)
   cat <<EOF
 apiVersion: kamaji.clastix.io/v1alpha1
 kind: TenantControlPlane
@@ -275,9 +294,7 @@ spec:
     serviceCidr: $service_cidr
     dnsServiceIPs:
 $dns_service_ips
-  addons:
-    coreDNS: {}
-    kubeProxy: {}
+$addons
 EOF
 }
 
@@ -285,62 +302,192 @@ cmd_render_tenant_worker_kubelet_env() {
   echo "KUBELET_EXTRA_ARGS=--fail-swap-on=false"
 }
 
-patch_tenant_kube_proxy_command() {
-  local container_index command_patch
+tenant_api_server_hostport() {
+  local server
+  server=$(kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" config view --raw \
+    -o jsonpath='{.clusters[0].cluster.server}')
+  server=${server#https://}
+  server=${server#http://}
+  echo "$server"
+}
 
-  echo ">>> Waiting for tenant kube-proxy DaemonSet..."
-  for _ in $(seq 1 60); do
-    if kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-      get daemonset kube-proxy >/dev/null 2>&1; then
-      break
-    fi
-    sleep 2
-  done
-  if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    get daemonset kube-proxy >/dev/null 2>&1; then
+cmd_render_tenant_kube_proxy_manifest() {
+  local api_server pod_cidr
+  api_server=${1:-}
+  if [ -z "$api_server" ]; then
+    api_server=$(tenant_api_server_hostport)
+  fi
+  pod_cidr=$(tenant_pod_cidr)
+
+  cat <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: $TENANT_KUBE_PROXY_NAME
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: $TENANT_KUBE_PROXY_NAME
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:node-proxier
+subjects:
+  - kind: ServiceAccount
+    name: $TENANT_KUBE_PROXY_NAME
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: $TENANT_KUBE_PROXY_NAME
+  namespace: kube-system
+rules:
+  - apiGroups:
+      - ""
+    resourceNames:
+      - $TENANT_KUBE_PROXY_NAME
+    resources:
+      - configmaps
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: $TENANT_KUBE_PROXY_NAME
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: $TENANT_KUBE_PROXY_NAME
+subjects:
+  - kind: ServiceAccount
+    name: $TENANT_KUBE_PROXY_NAME
+    namespace: kube-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: $TENANT_KUBE_PROXY_NAME
+  namespace: kube-system
+  labels:
+    app: kube-proxy
+data:
+  config.conf: |-
+    apiVersion: kubeproxy.config.k8s.io/v1alpha1
+    bindAddress: 0.0.0.0
+    clientConnection:
+      kubeconfig: /var/lib/kube-proxy/kubeconfig.conf
+    clusterCIDR: $pod_cidr
+    conntrack:
+      maxPerCore: 0
+      min: 0
+    kind: KubeProxyConfiguration
+  kubeconfig.conf: |-
+    apiVersion: v1
+    kind: Config
+    clusters:
+      - cluster:
+          certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          server: https://$api_server
+        name: default
+    contexts:
+      - context:
+          cluster: default
+          namespace: default
+          user: default
+        name: default
+    current-context: default
+    users:
+      - name: default
+        user:
+          tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: $TENANT_KUBE_PROXY_NAME
+  namespace: kube-system
+  labels:
+    app: kube-proxy
+    k8s-app: kube-proxy
+spec:
+  selector:
+    matchLabels:
+      k8s-app: kube-proxy
+  template:
+    metadata:
+      labels:
+        app: kube-proxy
+        k8s-app: kube-proxy
+    spec:
+      serviceAccountName: $TENANT_KUBE_PROXY_NAME
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: kube-proxy
+          image: registry.k8s.io/kube-proxy:$TENANT_K8S_VERSION
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/local/bin/kube-proxy
+            - --config=/var/lib/kube-proxy/config.conf
+            - --hostname-override=\$(NODE_NAME)
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: kube-proxy
+              mountPath: /var/lib/kube-proxy
+            - name: xtables-lock
+              mountPath: /run/xtables.lock
+            - name: lib-modules
+              mountPath: /lib/modules
+              readOnly: true
+      volumes:
+        - name: kube-proxy
+          configMap:
+            name: $TENANT_KUBE_PROXY_NAME
+        - name: xtables-lock
+          hostPath:
+            path: /run/xtables.lock
+            type: FileOrCreate
+        - name: lib-modules
+          hostPath:
+            path: /lib/modules
+EOF
+}
+
+install_tenant_kube_proxy() {
+  local config
+
+  echo ">>> Installing tenant kube-proxy..."
+  cmd_render_tenant_kube_proxy_manifest > "$JOB_DIR/tenant-kube-proxy.yaml"
+  if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" apply \
+    -f "$JOB_DIR/tenant-kube-proxy.yaml"; then
     diagnose_tenant_cluster
     diagnose_tenant_worker
     return 1
   fi
 
-  container_index=$(kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    get daemonset kube-proxy -o json |
-    python3 -c 'import json, sys
-daemonset = json.load(sys.stdin)
-for index, container in enumerate(daemonset["spec"]["template"]["spec"]["containers"]):
-    if container.get("name") == "kube-proxy":
-        print(index)
-        break
-else:
-    raise SystemExit("kube-proxy DaemonSet has no kube-proxy container")'
-)
-  command_patch=$(KUBE_PROXY_CONTAINER_INDEX="$container_index" python3 - <<'PY'
-import json
-import os
-
-print(json.dumps([
-    {
-        "op": "replace",
-        "path": f"/spec/template/spec/containers/{os.environ['KUBE_PROXY_CONTAINER_INDEX']}/command",
-        "value": [
-            "/usr/local/bin/kube-proxy",
-            "--config=/var/lib/kube-proxy/config.conf",
-            "--hostname-override=$(NODE_NAME)",
-            "--conntrack-max-per-core=0",
-            "--conntrack-min=0",
-        ],
-    },
-]))
-PY
-)
-  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    patch daemonset kube-proxy --type json -p "$command_patch"
-  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    get daemonset kube-proxy -o jsonpath='{.spec.template.spec.containers[0].command}{"\n"}'
+  config=$(kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    get configmap "$TENANT_KUBE_PROXY_NAME" -o jsonpath='{.data.config\.conf}')
+  echo "$config" | grep -Fx "  maxPerCore: 0" >/dev/null
+  echo "$config" | grep -Fx "  min: 0" >/dev/null
 
   echo ">>> Waiting for tenant kube-proxy..."
   if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    rollout status ds/kube-proxy --timeout=180s; then
+    rollout status "ds/$TENANT_KUBE_PROXY_NAME" --timeout=180s; then
     diagnose_tenant_cluster
     diagnose_tenant_worker
     return 1
@@ -707,6 +854,17 @@ install_data_plane() {
     return 1
   fi
 
+  if [ "$E2E_IP_FAMILY" = "ipv6" ]; then
+    echo ">>> Patching kube-ovn-pinger for IPv6-only tenant bootstrap..."
+    if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+      patch daemonset kube-ovn-pinger --type merge \
+      -p '{"spec":{"template":{"spec":{"hostNetwork":true,"dnsPolicy":"Default"}}}}'; then
+      diagnose_tenant_cluster
+      diagnose_tenant_worker
+      return 1
+    fi
+  fi
+
   echo ">>> Waiting for tenant data-plane components..."
   if ! KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system rollout status \
     deploy/kube-ovn-controller --timeout=300s; then
@@ -726,6 +884,14 @@ install_data_plane() {
     diagnose_tenant_worker
     return 1
   fi
+  if [ "$E2E_IP_FAMILY" = "ipv6" ]; then
+    if ! KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system rollout status \
+      ds/kube-ovn-pinger --timeout=300s; then
+      diagnose_tenant_cluster
+      diagnose_tenant_worker
+      return 1
+    fi
+  fi
 }
 
 cmd_setup() {
@@ -739,7 +905,7 @@ cmd_setup() {
   setup_local_registry
   setup_tenant_worker
   join_tenant_worker
-  patch_tenant_kube_proxy_command
+  install_tenant_kube_proxy
   install_data_plane
   echo ""
   echo "=== Kamaji e2e environment ready ==="
@@ -762,12 +928,13 @@ case "${1:-}" in
   render-mgmt-values)   cmd_render_mgmt_values ;;
   render-tenant-values) cmd_render_tenant_values ;;
   render-tenant-control-plane) cmd_render_tenant_control_plane ;;
+  render-tenant-kube-proxy-manifest) cmd_render_tenant_kube_proxy_manifest "${2:-}" ;;
   render-tenant-worker-docker-args) cmd_render_tenant_worker_docker_args ;;
   render-tenant-worker-kubelet-env) cmd_render_tenant_worker_kubelet_env ;;
   render-tenant-kubeovn-image) cmd_render_tenant_kubeovn_image ;;
   *)
     cat >&2 <<USAGE
-Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image>
+Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-tenant-kube-proxy-manifest|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image>
 
   setup       Bring up the mgmt kind cluster + Kamaji + tenant worker and
               install both halves of kube-ovn.
@@ -780,6 +947,8 @@ Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-value
               Print the tenant Helm values used by setup.
   render-tenant-control-plane
               Print the TenantControlPlane manifest used by setup.
+  render-tenant-kube-proxy-manifest
+              Print the tenant kube-proxy manifest applied by setup.
   render-tenant-worker-docker-args
               Print the docker run arguments used for the tenant worker.
   render-tenant-worker-kubelet-env
