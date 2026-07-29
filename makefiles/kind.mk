@@ -289,9 +289,10 @@ kind-install-dual:
 kind-install-single-replica:
 	@ENABLE_SINGLE_REPLICA_OVN=true OVN_CENTRAL_STORAGE_CLASS=standard $(MAKE) kind-install
 
-# Kamaji split-cluster setup: brings up a mgmt kind cluster running Kamaji +
-# kube-ovn controlPlaneOnly, plus a docker-container tenant worker joined to
-# the Kamaji-hosted tenant apiserver and running kube-ovn dataPlaneOnly.
+# Kamaji-backed setup for kube-ovn's hosted OVN central chart path. It brings
+# up a mgmt kind cluster running Kamaji plus kube-ovn HCP control-plane
+# components, and a docker-container tenant worker joined to the Kamaji-hosted
+# tenant apiserver and running kube-ovn data-plane components.
 # Requires `kubeovn/kube-ovn:dev` to already exist locally (run
 # `make build-dev` first).
 .PHONY: kind-install-kamaji

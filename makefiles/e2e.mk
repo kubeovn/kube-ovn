@@ -261,14 +261,16 @@ kube-ovn-single-replica-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/single-replica/single-replica.test -- $(TEST_BIN_ARGS)
 
-# Kamaji split-cluster e2e. Runs against the tenant cluster the setup script
-# brings up; expects KUBECONFIG and KUBE_OVN_KAMAJI_MGMT_VIP exported via
-# `eval $(./hack/kamaji-e2e.sh vars)` (the setup target does this for you).
+# Kamaji-backed e2e for kube-ovn's hosted OVN central chart path. Runs against
+# the tenant cluster the setup script brings up; expects KUBECONFIG and the
+# kube-ovn HCP OVN DB addresses exported via
+# `./hack/kamaji-e2e.sh vars`.
 .PHONY: kube-ovn-kamaji-e2e
 kube-ovn-kamaji-e2e:
 	$(GINKGO_E2E_BUILD) ./test/e2e/kamaji
 	$(eval export KUBECONFIG=$(shell ./hack/kamaji-e2e.sh kubeconfig))
-	$(eval export KUBE_OVN_KAMAJI_MGMT_VIP=$(shell awk -F= '/KUBE_OVN_KAMAJI_MGMT_VIP/{print $$2}' <(./hack/kamaji-e2e.sh vars)))
+	$(eval export KUBE_OVN_HCP_OVN_NB_ADDR=$(shell ./hack/kamaji-e2e.sh vars | awk -F= '/KUBE_OVN_HCP_OVN_NB_ADDR/{print $$2}'))
+	$(eval export KUBE_OVN_HCP_OVN_SB_ADDR=$(shell ./hack/kamaji-e2e.sh vars | awk -F= '/KUBE_OVN_HCP_OVN_SB_ADDR/{print $$2}'))
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \

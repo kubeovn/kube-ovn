@@ -3,6 +3,7 @@ package kamaji
 import (
 	"context"
 	"flag"
+	"net"
 	"os"
 	"strings"
 	"testing"
@@ -33,61 +34,65 @@ func TestE2E(t *testing.T) {
 	e2e.RunE2ETests(t)
 }
 
-// isDataPlaneOnlyMode reports whether the cluster behind --kubeconfig was
-// installed with kube-ovn's installMode=dataPlaneOnly. We detect via the
-// kube-ovn-controller env vars: in dataPlaneOnly the chart wires
-// `OVN_DB_IPS` to externalOvnCentral.endpoint, which is non-empty.
-func isDataPlaneOnlyMode(f *framework.Framework) bool {
+// controllerEnv returns the kube-ovn-controller environment variables from the
+// tenant cluster behind --kubeconfig.
+func controllerEnv(f *framework.Framework) map[string]string {
 	ginkgo.GinkgoHelper()
 
 	deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).
 		Get(context.TODO(), "kube-ovn-controller", metav1.GetOptions{})
 	if err != nil {
-		return false
+		return nil
 	}
 	for _, c := range deploy.Spec.Template.Spec.Containers {
 		if c.Name != "kube-ovn-controller" {
 			continue
 		}
+		values := make(map[string]string, len(c.Env))
 		for _, env := range c.Env {
-			if env.Name == "OVN_DB_IPS" && env.Value != "" {
-				return true
-			}
+			values[env.Name] = env.Value
 		}
+		return values
 	}
-	return false
+	return nil
 }
 
-// externalOvnVIP returns the configured ovn-central VIP the data plane was
-// pointed at. Read from KUBE_OVN_KAMAJI_MGMT_VIP (set by hack/kamaji-e2e.sh)
-// when present, otherwise from kube-ovn-controller's OVN_DB_IPS env.
-func externalOvnVIP(f *framework.Framework) string {
-	if v := os.Getenv("KUBE_OVN_KAMAJI_MGMT_VIP"); v != "" {
+// usesHostedOVNCentralAddresses reports whether the tenant cluster workloads
+// use explicit hosted OVN DB addresses instead of the in-cluster OVN_DB_IPS.
+func usesHostedOVNCentralAddresses(f *framework.Framework) bool {
+	env := controllerEnv(f)
+	return env["OVN_NB_ADDR"] != "" && env["OVN_SB_ADDR"] != "" && env["OVN_DB_IPS"] == ""
+}
+
+func hcpOVNNBAddress(f *framework.Framework) string {
+	if v := os.Getenv("KUBE_OVN_HCP_OVN_NB_ADDR"); v != "" {
 		return v
 	}
-	deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).
-		Get(context.TODO(), "kube-ovn-controller", metav1.GetOptions{})
-	framework.ExpectNoError(err)
-	for _, c := range deploy.Spec.Template.Spec.Containers {
-		if c.Name != "kube-ovn-controller" {
-			continue
-		}
-		for _, env := range c.Env {
-			if env.Name == "OVN_DB_IPS" {
-				return strings.Split(env.Value, ",")[0]
-			}
-		}
+	return controllerEnv(f)["OVN_NB_ADDR"]
+}
+
+func hcpOVNSBAddress(f *framework.Framework) string {
+	if v := os.Getenv("KUBE_OVN_HCP_OVN_SB_ADDR"); v != "" {
+		return v
 	}
-	return ""
+	return controllerEnv(f)["OVN_SB_ADDR"]
+}
+
+func hostAndPort(addr string) (string, string) {
+	ginkgo.GinkgoHelper()
+
+	host, port, err := net.SplitHostPort(strings.TrimPrefix(addr, "tcp:"))
+	framework.ExpectNoError(err)
+	return strings.Trim(host, "[]"), port
 }
 
 var _ = framework.Describe("[group:kamaji]", func() {
 	f := framework.NewDefaultFramework("kamaji")
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 18, "kube-ovn Kamaji split-cluster mode was introduced in v1.18")
-		if !isDataPlaneOnlyMode(f) {
-			ginkgo.Skip("kube-ovn is not installed in dataPlaneOnly mode; skipping the Kamaji suite")
+		f.SkipVersionPriorTo(1, 18, "kube-ovn hosted OVN central support is required")
+		if !usesHostedOVNCentralAddresses(f) {
+			ginkgo.Skip("kube-ovn data-plane workloads are not using hosted OVN DB addresses; skipping the Kamaji-backed suite")
 		}
 	})
 
@@ -100,11 +105,24 @@ var _ = framework.Describe("[group:kamaji]", func() {
 			"dataPlaneOnly should default kube-ovn-controller to 1 replica via kubeovn.controllerReplicas")
 	})
 
-	ginkgo.It("data-plane components dial the external ovn-central endpoint", func() {
-		vip := externalOvnVIP(f)
-		gomega.Expect(vip).NotTo(gomega.BeEmpty(),
-			"could not determine external ovn-central VIP from chart or env")
-		framework.Logf("expecting ESTAB connections to %s:6642 from the tenant cluster", vip)
+	ginkgo.It("data-plane components use the hosted OVN DB addresses", func() {
+		env := controllerEnv(f)
+		nbAddr := hcpOVNNBAddress(f)
+		sbAddr := hcpOVNSBAddress(f)
+
+		gomega.Expect(nbAddr).NotTo(gomega.BeEmpty(),
+			"could not determine HCP OVN NB address from chart or env")
+		gomega.Expect(sbAddr).NotTo(gomega.BeEmpty(),
+			"could not determine HCP OVN SB address from chart or env")
+		gomega.Expect(env["OVN_NB_ADDR"]).To(gomega.Equal(nbAddr))
+		gomega.Expect(env["OVN_SB_ADDR"]).To(gomega.Equal(sbAddr))
+		gomega.Expect(env).NotTo(gomega.HaveKey("OVN_DB_IPS"))
+	})
+
+	ginkgo.It("data-plane components dial the hosted ovn-central endpoint", func() {
+		sbAddr := hcpOVNSBAddress(f)
+		host, port := hostAndPort(sbAddr)
+		framework.Logf("expecting ESTAB connections to %s from the tenant cluster", sbAddr)
 
 		pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.TODO(),
 			metav1.ListOptions{LabelSelector: "app=ovs"})
@@ -113,14 +131,14 @@ var _ = framework.Describe("[group:kamaji]", func() {
 
 		pod := pods.Items[0]
 		stdout, stderr, err := framework.ExecShellInPod(context.TODO(), f, pod.Namespace, pod.Name,
-			"ss -tn state established '( dport = :6642 )'")
+			"ss -tn state established '( dport = :"+port+" )'")
 		framework.ExpectNoError(err, "exec ss in ovs-ovn pod: stderr=%s", stderr)
-		gomega.Expect(stdout).To(gomega.ContainSubstring(vip),
-			"expected an ESTAB connection from %s/%s to %s:6642; got:\n%s",
-			pod.Namespace, pod.Name, vip, stdout)
+		gomega.Expect(stdout).To(gomega.ContainSubstring(host),
+			"expected an ESTAB connection from %s/%s to %s; got:\n%s",
+			pod.Namespace, pod.Name, sbAddr, stdout)
 	})
 
-	ginkgo.It("tenant pods receive an IP from the OVN subnet via the external control plane", func() {
+	ginkgo.It("tenant pods receive an IP from the OVN subnet through the hosted ovn-central path", func() {
 		podClient := f.PodClient()
 		name := "kamaji-smoke-" + framework.RandomSuffix()
 

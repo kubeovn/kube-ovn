@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 #
-# Set up / tear down a local Kamaji-style split-cluster environment to
-# exercise kube-ovn's `installMode=controlPlaneOnly` + `dataPlaneOnly`
-# Helm flow end to end.
+# Set up / tear down a local Kamaji-backed tenant cluster environment to
+# exercise kube-ovn's hosted OVN central Helm flow end to end.
+#
+# Kamaji provides the tenant Kubernetes control plane. Kube-OVN HCP is the
+# chart path under test (`ovn-central.hcp.enabled=true`); it is not the same
+# feature as Kamaji.
 #
 # Layout the script produces:
 #
 #   kind cluster `mgmt`         -- runs Kamaji + cert-manager + MetalLB.
-#       └── kube-ovn controlPlaneOnly install: ovn-central (single-replica,
-#           PVC-backed) + ovn-nb/ovn-sb/ovn-northd Services exposed on a
-#           MetalLB VIP (shared via the allow-shared-ip annotation).
+#       └── kube-ovn controlPlaneOnly + ovn-central.hcp.enabled install:
+#           ovn-central StatefulSet (single-replica in CI, PVC-backed) plus
+#           ovn-nb/ovn-sb NodePort Services in the kube-ovn HCP namespace.
 #   docker container `tenant-worker-0`
 #       └── kubeadm-joined to the Kamaji-hosted tenant apiserver (also on a
 #           MetalLB VIP), running ovs-ovn / kube-ovn-cni / kube-ovn-controller
-#           via the dataPlaneOnly install pointed at the mgmt LB.
+#           via the dataPlaneOnly install pointed at the HCP OVN DB addresses.
 #
 # The accompanying Ginkgo suite under test/e2e/kamaji verifies the resulting
 # cross-cluster connection and a basic Pod-gets-OVN-IP smoke test.
@@ -23,6 +26,8 @@
 #   teardown   tear it down
 #   kubeconfig print the path to the tenant kubeconfig (used by the e2e job)
 #   vars       print the env variables the e2e suite consumes
+#   render-mgmt-values   print the mgmt Helm values used by setup
+#   render-tenant-values print the tenant Helm values used by setup
 #
 # Notes:
 # - The tenant worker uses containerd's native snapshotter to dodge a known
@@ -39,6 +44,11 @@ TENANT_K8S_VERSION=${TENANT_K8S_VERSION:-v1.30.2}
 MGMT_LB_VIP=${MGMT_LB_VIP:-172.18.255.210}
 TENANT_LB_VIP_RANGE_START=${TENANT_LB_VIP_RANGE_START:-172.18.255.200}
 TENANT_LB_VIP_RANGE_END=${TENANT_LB_VIP_RANGE_END:-172.18.255.250}
+HCP_NAMESPACE=${HCP_NAMESPACE:-hcp}
+HCP_OVN_ENDPOINT=${HCP_OVN_ENDPOINT:-}
+HCP_OVN_REPLICAS=${HCP_OVN_REPLICAS:-1}
+HCP_OVN_NB_NODE_PORT=${HCP_OVN_NB_NODE_PORT:-30641}
+HCP_OVN_SB_NODE_PORT=${HCP_OVN_SB_NODE_PORT:-30642}
 
 CERT_MANAGER_VERSION=${CERT_MANAGER_VERSION:-v1.15.3}
 METALLB_VERSION=${METALLB_VERSION:-v0.14.8}
@@ -50,10 +60,13 @@ REGISTRY_NAME=${REGISTRY_NAME:-kamaji-e2e-reg}
 CHART_DIR=${CHART_DIR:-$(cd "$(dirname "$0")/.." && pwd)/charts/kube-ovn}
 
 cmd_vars() {
+  local endpoint
+  endpoint=$(hcp_ovn_endpoint)
   cat <<EOF
 JOB_DIR=$JOB_DIR
 KUBECONFIG=$JOB_DIR/tenant.kubeconfig
-KUBE_OVN_KAMAJI_MGMT_VIP=$MGMT_LB_VIP
+KUBE_OVN_HCP_OVN_NB_ADDR=tcp:$endpoint:$HCP_OVN_NB_NODE_PORT
+KUBE_OVN_HCP_OVN_SB_ADDR=tcp:$endpoint:$HCP_OVN_SB_NODE_PORT
 KUBE_OVN_KAMAJI_TENANT_WORKER=tenant-worker-0
 EOF
 }
@@ -78,6 +91,86 @@ ensure_image() {
     echo "ERROR: $KUBEOVN_IMAGE not found in local docker; build it first (make build-dev)" >&2
     exit 1
   fi
+}
+
+hcp_ovn_endpoint() {
+  if [ -n "$HCP_OVN_ENDPOINT" ]; then
+    echo "$HCP_OVN_ENDPOINT"
+    return
+  fi
+  docker inspect "$MGMT_KIND_NAME-control-plane" \
+    -f '{{.NetworkSettings.Networks.kind.IPAddress}}'
+}
+
+hcp_ovn_nb_addr() {
+  echo "tcp:$(hcp_ovn_endpoint):$HCP_OVN_NB_NODE_PORT"
+}
+
+hcp_ovn_sb_addr() {
+  echo "tcp:$(hcp_ovn_endpoint):$HCP_OVN_SB_NODE_PORT"
+}
+
+cmd_render_mgmt_values() {
+  cat <<EOF
+namespace: kube-system
+installMode: controlPlaneOnly
+
+image:
+  pullPolicy: Never
+
+global:
+  registry:
+    address: docker.io/kubeovn
+  images:
+    kubeovn:
+      repository: kube-ovn
+      tag: dev
+
+ovn-central:
+  hcp:
+    enabled: true
+    namespace: $HCP_NAMESPACE
+    replicas: $HCP_OVN_REPLICAS
+    nbAddress: $(hcp_ovn_nb_addr)
+    sbAddress: $(hcp_ovn_sb_addr)
+    service:
+      type: NodePort
+      nbNodePort: $HCP_OVN_NB_NODE_PORT
+      sbNodePort: $HCP_OVN_SB_NODE_PORT
+    storage:
+      storageClassName: standard
+      size: 5Gi
+
+networking:
+  ENABLE_SSL: false
+EOF
+}
+
+cmd_render_tenant_values() {
+  cat <<EOF
+namespace: kube-system
+installMode: dataPlaneOnly
+
+image:
+  pullPolicy: Never
+
+global:
+  registry:
+    address: docker.io/kubeovn
+  images:
+    kubeovn:
+      repository: kube-ovn
+      tag: dev
+
+ovn-central:
+  hcp:
+    enabled: true
+    nbAddress: $(hcp_ovn_nb_addr)
+    sbAddress: $(hcp_ovn_sb_addr)
+
+networking:
+  ENABLE_SSL: false
+EOF
 }
 
 setup_mgmt_cluster() {
@@ -138,40 +231,15 @@ EOF
 }
 
 install_control_plane() {
-  echo ">>> Installing kube-ovn (controlPlaneOnly) on mgmt..."
-  cat > "$JOB_DIR/mgmt-values.yaml" <<EOF
-namespace: kube-system
-installMode: controlPlaneOnly
-OVN_CENTRAL_MODE: single
-
-image:
-  pullPolicy: Never
-
-global:
-  registry:
-    address: docker.io/kubeovn
-  images:
-    kubeovn:
-      repository: kube-ovn
-      tag: dev
-
-ovn-central:
-  storage:
-    storageClassName: standard
-    size: 5Gi
-  service:
-    type: LoadBalancer
-    loadBalancerIP: $MGMT_LB_VIP
-    externalTrafficPolicy: Local
-
-networking:
-  ENABLE_SSL: false
-EOF
+  echo ">>> Installing kube-ovn hosted OVN central on mgmt..."
+  kubectl --context="kind-$MGMT_KIND_NAME" create namespace "$HCP_NAMESPACE" \
+    --dry-run=client -o yaml | kubectl --context="kind-$MGMT_KIND_NAME" apply -f -
+  cmd_render_mgmt_values > "$JOB_DIR/mgmt-values.yaml"
   helm install --kube-context="kind-$MGMT_KIND_NAME" \
     kube-ovn "$CHART_DIR" \
     -n kube-system -f "$JOB_DIR/mgmt-values.yaml"
   kubectl --context="kind-$MGMT_KIND_NAME" wait --for=condition=Ready \
-    pod -n kube-system -l app=ovn-central --timeout=300s
+    pod -n "$HCP_NAMESPACE" -l app=ovn-central --timeout=300s
 }
 
 create_tenant_control_plane() {
@@ -292,30 +360,8 @@ join_tenant_worker() {
 }
 
 install_data_plane() {
-  echo ">>> Installing kube-ovn (dataPlaneOnly) on tenant..."
-  cat > "$JOB_DIR/tenant-values.yaml" <<EOF
-namespace: kube-system
-installMode: dataPlaneOnly
-
-externalOvnCentral:
-  endpoint: $MGMT_LB_VIP
-  nbPort: 6641
-  sbPort: 6642
-
-image:
-  pullPolicy: Never
-
-global:
-  registry:
-    address: docker.io/kubeovn
-  images:
-    kubeovn:
-      repository: kube-ovn
-      tag: dev
-
-networking:
-  ENABLE_SSL: false
-EOF
+  echo ">>> Installing kube-ovn (HCP data plane) on tenant..."
+  cmd_render_tenant_values > "$JOB_DIR/tenant-values.yaml"
   helm install --kubeconfig "$JOB_DIR/tenant.kubeconfig" \
     kube-ovn "$CHART_DIR" \
     -n kube-system --create-namespace -f "$JOB_DIR/tenant-values.yaml"
@@ -355,19 +401,25 @@ cmd_teardown() {
 }
 
 case "${1:-}" in
-  setup)      cmd_setup ;;
-  teardown)   cmd_teardown ;;
-  kubeconfig) cmd_kubeconfig ;;
-  vars)       cmd_vars ;;
+  setup)                cmd_setup ;;
+  teardown)             cmd_teardown ;;
+  kubeconfig)           cmd_kubeconfig ;;
+  vars)                 cmd_vars ;;
+  render-mgmt-values)   cmd_render_mgmt_values ;;
+  render-tenant-values) cmd_render_tenant_values ;;
   *)
     cat >&2 <<USAGE
-Usage: $0 <setup|teardown|kubeconfig|vars>
+Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values>
 
   setup       Bring up the mgmt kind cluster + Kamaji + tenant worker and
               install both halves of kube-ovn.
   teardown    Tear everything down.
   kubeconfig  Print the path to the tenant kubeconfig (used by the e2e job).
   vars        Print the env vars consumed by the Ginkgo e2e suite.
+  render-mgmt-values
+              Print the mgmt Helm values used by setup.
+  render-tenant-values
+              Print the tenant Helm values used by setup.
 USAGE
     exit 1 ;;
 esac
