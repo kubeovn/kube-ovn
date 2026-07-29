@@ -72,11 +72,18 @@ chart_net_stack() {
   esac
 }
 
+hosted_ovn_central_net_stack() {
+  # The hosted OVN central runs in the IPv4 kind management cluster and exposes
+  # its OVN NB/SB databases through IPv4 NodePorts. The tenant data plane below
+  # still uses chart_net_stack, so IPv6 and dual-stack coverage applies to the
+  # Kube-OVN data-plane cluster instead of Kamaji's management-cluster plumbing.
+  chart_net_stack >/dev/null || return 1
+  echo "ipv4"
+}
+
 tenant_pod_cidr() {
   case "$E2E_IP_FAMILY" in
-    ipv4) echo "10.16.0.0/16" ;;
-    ipv6) echo "fd00:10:16::/112" ;;
-    dual) echo "10.16.0.0/16" ;;
+    ipv4 | ipv6 | dual) echo "10.16.0.0/16" ;;
     *)
       echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
       return 1
@@ -86,9 +93,7 @@ tenant_pod_cidr() {
 
 tenant_service_cidr() {
   case "$E2E_IP_FAMILY" in
-    ipv4) echo "10.96.0.0/12" ;;
-    ipv6) echo "fd00:10:96::/112" ;;
-    dual) echo "10.96.0.0/12" ;;
+    ipv4 | ipv6 | dual) echo "10.96.0.0/12" ;;
     *)
       echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
       return 1
@@ -98,13 +103,7 @@ tenant_service_cidr() {
 
 tenant_dns_service_ips_yaml() {
   case "$E2E_IP_FAMILY" in
-    ipv4)
-      echo "      - 10.96.0.10"
-      ;;
-    ipv6)
-      echo "      - fd00:10:96::10"
-      ;;
-    dual)
+    ipv4 | ipv6 | dual)
       echo "      - 10.96.0.10"
       ;;
     *)
@@ -132,7 +131,7 @@ cmd_kubeconfig() {
 
 require_tools() {
   local missing=()
-  for t in docker kind kubectl helm; do
+  for t in docker kind kubectl helm python3; do
     command -v "$t" >/dev/null 2>&1 || missing+=("$t")
   done
   if [ ${#missing[@]} -gt 0 ]; then
@@ -167,7 +166,7 @@ hcp_ovn_sb_addr() {
 
 cmd_render_mgmt_values() {
   local net_stack
-  net_stack=$(chart_net_stack)
+  net_stack=$(hosted_ovn_central_net_stack)
   cat <<EOF
 namespace: kube-system
 installMode: controlPlaneOnly
@@ -269,9 +268,9 @@ spec:
     admissionControllers: [ResourceQuota, LimitRanger]
   networkProfile:
     port: 6443
-    # Kamaji validates podCidr and serviceCidr as single CIDRs. In the dual
-    # Kube-OVN data-plane job, keep the tenant Kubernetes control plane on
-    # IPv4 while Helm renders Kube-OVN with networking.NET_STACK=dual_stack.
+    # Kamaji provisions the tenant Kubernetes control plane only. Keep this
+    # bootstrap control plane on IPv4 while Helm renders the Kube-OVN data
+    # plane with the requested E2E_IP_FAMILY.
     podCidr: $pod_cidr
     serviceCidr: $service_cidr
     dnsServiceIPs:
@@ -284,6 +283,53 @@ EOF
 
 cmd_render_tenant_worker_kubelet_env() {
   echo "KUBELET_EXTRA_ARGS=--fail-swap-on=false"
+}
+
+cmd_patch_kube_proxy_config() {
+  sed -E '
+    /^conntrack:/,/^[^[:space:]]/ {
+      s/^([[:space:]]*)maxPerCore: .*/\1maxPerCore: 0/
+      s/^([[:space:]]*)min: .*/\1min: 0/
+    }
+  '
+}
+
+patch_tenant_kube_proxy_config() {
+  local config patch
+
+  echo ">>> Waiting for tenant kube-proxy ConfigMap..."
+  for _ in $(seq 1 60); do
+    if config=$(kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+      get configmap kube-proxy -o jsonpath='{.data.config\.conf}' 2>/dev/null); then
+      break
+    fi
+    sleep 2
+  done
+  if [ -z "${config:-}" ]; then
+    diagnose_tenant_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
+
+  echo ">>> Disabling tenant kube-proxy conntrack sysctl writes..."
+  config=$(printf '%s\n' "$config" | cmd_patch_kube_proxy_config)
+  patch=$(KUBE_PROXY_CONFIG="$config" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({"data": {"config.conf": os.environ["KUBE_PROXY_CONFIG"]}}))
+PY
+)
+  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    patch configmap kube-proxy --type merge -p "$patch"
+  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    delete pod -l k8s-app=kube-proxy --ignore-not-found
+  if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    rollout status ds/kube-proxy --timeout=180s; then
+    diagnose_tenant_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
 }
 
 cmd_render_tenant_kubeovn_image() {
@@ -678,6 +724,7 @@ cmd_setup() {
   setup_local_registry
   setup_tenant_worker
   join_tenant_worker
+  patch_tenant_kube_proxy_config
   install_data_plane
   echo ""
   echo "=== Kamaji e2e environment ready ==="
@@ -703,9 +750,10 @@ case "${1:-}" in
   render-tenant-worker-docker-args) cmd_render_tenant_worker_docker_args ;;
   render-tenant-worker-kubelet-env) cmd_render_tenant_worker_kubelet_env ;;
   render-tenant-kubeovn-image) cmd_render_tenant_kubeovn_image ;;
+  patch-kube-proxy-config) cmd_patch_kube_proxy_config ;;
   *)
     cat >&2 <<USAGE
-Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image>
+Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image|patch-kube-proxy-config>
 
   setup       Bring up the mgmt kind cluster + Kamaji + tenant worker and
               install both halves of kube-ovn.
@@ -724,6 +772,8 @@ Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-value
               Print the kubelet env file used by the tenant worker.
   render-tenant-kubeovn-image
               Print the kube-ovn image reference rendered by tenant Helm values.
+  patch-kube-proxy-config
+              Read kube-proxy config from stdin and disable conntrack sysctl writes.
 USAGE
     exit 1 ;;
 esac

@@ -68,6 +68,17 @@ done
 "$SCRIPT" render-tenant-worker-docker-args > "$TMP_DIR/tenant-worker-docker-args"
 "$SCRIPT" render-tenant-worker-kubelet-env > "$TMP_DIR/tenant-worker-kubelet-env"
 "$SCRIPT" render-tenant-kubeovn-image > "$TMP_DIR/tenant-kubeovn-image"
+cat > "$TMP_DIR/kube-proxy-config.in" <<'EOF'
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+bindAddress: 0.0.0.0
+conntrack:
+  maxPerCore: 32768
+  min: 131072
+  tcpCloseWaitTimeout: 1h0m0s
+mode: iptables
+EOF
+"$SCRIPT" patch-kube-proxy-config < "$TMP_DIR/kube-proxy-config.in" > "$TMP_DIR/kube-proxy-config.out"
 
 require_line "$TMP_DIR/mgmt-values-ipv4.yaml" "  NET_STACK: ipv4"
 require_line "$TMP_DIR/tenant-values-ipv4.yaml" "  NET_STACK: ipv4"
@@ -75,13 +86,13 @@ require_line "$TMP_DIR/tenant-tcp-ipv4.yaml" "    podCidr: 10.16.0.0/16"
 require_line "$TMP_DIR/tenant-tcp-ipv4.yaml" "    serviceCidr: 10.96.0.0/12"
 require_line "$TMP_DIR/tenant-tcp-ipv4.yaml" "      - 10.96.0.10"
 
-require_line "$TMP_DIR/mgmt-values-ipv6.yaml" "  NET_STACK: ipv6"
+require_line "$TMP_DIR/mgmt-values-ipv6.yaml" "  NET_STACK: ipv4"
 require_line "$TMP_DIR/tenant-values-ipv6.yaml" "  NET_STACK: ipv6"
-require_line "$TMP_DIR/tenant-tcp-ipv6.yaml" "    podCidr: fd00:10:16::/112"
-require_line "$TMP_DIR/tenant-tcp-ipv6.yaml" "    serviceCidr: fd00:10:96::/112"
-require_line "$TMP_DIR/tenant-tcp-ipv6.yaml" "      - fd00:10:96::10"
+require_line "$TMP_DIR/tenant-tcp-ipv6.yaml" "    podCidr: 10.16.0.0/16"
+require_line "$TMP_DIR/tenant-tcp-ipv6.yaml" "    serviceCidr: 10.96.0.0/12"
+require_line "$TMP_DIR/tenant-tcp-ipv6.yaml" "      - 10.96.0.10"
 
-require_line "$TMP_DIR/mgmt-values-dual.yaml" "  NET_STACK: dual_stack"
+require_line "$TMP_DIR/mgmt-values-dual.yaml" "  NET_STACK: ipv4"
 require_line "$TMP_DIR/tenant-values-dual.yaml" "  NET_STACK: dual_stack"
 require_line "$TMP_DIR/tenant-tcp-dual.yaml" "    podCidr: 10.16.0.0/16"
 require_line "$TMP_DIR/tenant-tcp-dual.yaml" "    serviceCidr: 10.96.0.0/12"
@@ -101,6 +112,10 @@ require_line "$TMP_DIR/tenant-worker-docker-args" "--cgroupns=private"
 reject_text "$TMP_DIR/tenant-worker-docker-args" "--cgroupns=host"
 require_line "$TMP_DIR/tenant-worker-kubelet-env" "KUBELET_EXTRA_ARGS=--fail-swap-on=false"
 require_line "$TMP_DIR/tenant-kubeovn-image" "docker.io/kubeovn/kube-ovn:dev"
+require_line "$TMP_DIR/kube-proxy-config.out" "  maxPerCore: 0"
+require_line "$TMP_DIR/kube-proxy-config.out" "  min: 0"
+reject_text "$TMP_DIR/kube-proxy-config.out" "  maxPerCore: 32768"
+reject_text "$TMP_DIR/kube-proxy-config.out" "  min: 131072"
 
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_NB_ADDR"
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_SB_ADDR"
