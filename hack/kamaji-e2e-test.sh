@@ -40,6 +40,20 @@ require_text() {
   }
 }
 
+require_order() {
+  local file=$1
+  local before=$2
+  local after=$3
+  local before_line after_line
+
+  before_line=$(grep -Fn -- "$before" "$file" | head -n1 | cut -d: -f1)
+  after_line=$(grep -Fn -- "$after" "$file" | head -n1 | cut -d: -f1)
+  if [ -z "$before_line" ] || [ -z "$after_line" ] || [ "$before_line" -ge "$after_line" ]; then
+    echo "expected '$before' before '$after' in $file" >&2
+    exit 1
+  fi
+}
+
 require_line "$TMP_DIR/mgmt-values.yaml" "installMode: controlPlaneOnly"
 require_line "$TMP_DIR/mgmt-values.yaml" "    enabled: true"
 require_line "$TMP_DIR/mgmt-values.yaml" "    namespace: hcp"
@@ -126,11 +140,10 @@ reject_text "$TMP_DIR/kube-proxy-config.out" "  maxPerCore: 32768"
 reject_text "$TMP_DIR/kube-proxy-config.out" "  min: 131072"
 require_line "$TMP_DIR/kube-proxy-config-defaults.out" "  maxPerCore: 0"
 require_line "$TMP_DIR/kube-proxy-config-defaults.out" "  min: 0"
-require_text "$SCRIPT" "KUBE_PROXY_CONFIGMAP_NAME"
-require_text "$SCRIPT" "kube-proxy-hcp-e2e"
-require_text "$SCRIPT" "patch daemonset kube-proxy"
-require_text "$SCRIPT" "kube-ovn.io/hcp-e2e-kube-proxy-config-sha"
-require_text "$SCRIPT" "/configMap/name"
+awk '/^cmd_setup\(\)/,/^}/' "$SCRIPT" > "$TMP_DIR/cmd-setup"
+require_order "$TMP_DIR/cmd-setup" "patch_tenant_kube_proxy_config" "join_tenant_worker"
+require_text "$SCRIPT" "patch configmap kube-proxy --type merge"
+reject_text "$SCRIPT" "patch daemonset kube-proxy"
 
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_NB_ADDR"
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_SB_ADDR"

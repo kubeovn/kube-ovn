@@ -57,7 +57,6 @@ METALLB_VERSION=${METALLB_VERSION:-v0.14.8}
 KUBEOVN_IMAGE=${KUBEOVN_IMAGE:-kubeovn/kube-ovn:dev}
 JOB_DIR=${JOB_DIR:-/tmp/kamaji-e2e}
 REGISTRY_NAME=${REGISTRY_NAME:-kamaji-e2e-reg}
-KUBE_PROXY_CONFIGMAP_NAME=${KUBE_PROXY_CONFIGMAP_NAME:-kube-proxy-hcp-e2e}
 
 CHART_DIR=${CHART_DIR:-$(cd "$(dirname "$0")/.." && pwd)/charts/kube-ovn}
 
@@ -321,7 +320,7 @@ cmd_patch_kube_proxy_config() {
 }
 
 patch_tenant_kube_proxy_config() {
-  local annotation_patch config config_file config_sha volume_index volume_patch
+  local config patch
 
   echo ">>> Waiting for tenant kube-proxy ConfigMap..."
   for _ in $(seq 1 60); do
@@ -339,70 +338,21 @@ patch_tenant_kube_proxy_config() {
 
   echo ">>> Disabling tenant kube-proxy conntrack sysctl writes..."
   config=$(printf '%s\n' "$config" | cmd_patch_kube_proxy_config)
-  config_file="$JOB_DIR/kube-proxy-config.conf"
-  printf '%s\n' "$config" > "$config_file"
-  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    create configmap "$KUBE_PROXY_CONFIGMAP_NAME" \
-    --from-file="config.conf=$config_file" \
-    --dry-run=client -o yaml |
-    kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system apply -f -
-
-  config_sha=$(KUBE_PROXY_CONFIG="$config" python3 - <<'PY'
-import hashlib
-import os
-
-print(hashlib.sha256(os.environ["KUBE_PROXY_CONFIG"].encode()).hexdigest())
-PY
-)
-  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    get configmap "$KUBE_PROXY_CONFIGMAP_NAME" -o jsonpath='{.data.config\.conf}{"\n"}'
-
-  volume_index=$(kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    get daemonset kube-proxy -o json |
-    python3 -c 'import json, sys
-daemonset = json.load(sys.stdin)
-for index, volume in enumerate(daemonset["spec"]["template"]["spec"]["volumes"]):
-    if volume.get("name") == "kube-proxy":
-        print(index)
-        break
-else:
-    raise SystemExit("kube-proxy DaemonSet has no kube-proxy volume")'
-)
-  volume_patch=$(KUBE_PROXY_CONFIGMAP_NAME="$KUBE_PROXY_CONFIGMAP_NAME" KUBE_PROXY_VOLUME_INDEX="$volume_index" python3 - <<'PY'
+  patch=$(KUBE_PROXY_CONFIG="$config" python3 - <<'PY'
 import json
 import os
 
-print(json.dumps([
-    {
-        "op": "replace",
-        "path": f"/spec/template/spec/volumes/{os.environ['KUBE_PROXY_VOLUME_INDEX']}/configMap/name",
-        "value": os.environ["KUBE_PROXY_CONFIGMAP_NAME"],
-    },
-]))
+print(json.dumps({"data": {"config.conf": os.environ["KUBE_PROXY_CONFIG"]}}))
 PY
 )
   kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    patch daemonset kube-proxy --type json -p "$volume_patch"
-
-  annotation_patch=$(KUBE_PROXY_CONFIG_SHA="$config_sha" python3 - <<'PY'
-import json
-import os
-
-print(json.dumps({
-    "spec": {
-        "template": {
-            "metadata": {
-                "annotations": {
-                    "kube-ovn.io/hcp-e2e-kube-proxy-config-sha": os.environ["KUBE_PROXY_CONFIG_SHA"],
-                },
-            },
-        },
-    },
-}))
-PY
-)
+    patch configmap kube-proxy --type merge -p "$patch"
   kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    patch daemonset kube-proxy --type merge -p "$annotation_patch"
+    get configmap kube-proxy -o jsonpath='{.data.config\.conf}{"\n"}'
+}
+
+wait_tenant_kube_proxy_rollout() {
+  echo ">>> Waiting for tenant kube-proxy..."
   if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
     rollout status ds/kube-proxy --timeout=180s; then
     diagnose_tenant_cluster
@@ -800,10 +750,11 @@ cmd_setup() {
   setup_prereqs
   install_control_plane
   create_tenant_control_plane
+  patch_tenant_kube_proxy_config
   setup_local_registry
   setup_tenant_worker
   join_tenant_worker
-  patch_tenant_kube_proxy_config
+  wait_tenant_kube_proxy_rollout
   install_data_plane
   echo ""
   echo "=== Kamaji e2e environment ready ==="
