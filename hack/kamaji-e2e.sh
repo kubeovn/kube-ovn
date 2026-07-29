@@ -277,88 +277,11 @@ spec:
 $dns_service_ips
   addons:
     coreDNS: {}
-    kubeProxy: {}
 EOF
 }
 
 cmd_render_tenant_worker_kubelet_env() {
   echo "KUBELET_EXTRA_ARGS=--fail-swap-on=false"
-}
-
-cmd_patch_kube_proxy_config() {
-  awk '
-    function emit_conntrack_limits() {
-      if (in_conntrack && !emitted_limits) {
-        print "  maxPerCore: 0"
-        print "  min: 0"
-        emitted_limits = 1
-      }
-    }
-
-    /^conntrack:[[:space:]]*$/ {
-      print
-      in_conntrack = 1
-      emitted_limits = 0
-      next
-    }
-
-    in_conntrack && /^[^[:space:]]/ {
-      emit_conntrack_limits()
-      in_conntrack = 0
-    }
-
-    in_conntrack && /^[[:space:]]*(maxPerCore|min):/ {
-      next
-    }
-
-    { print }
-
-    END {
-      emit_conntrack_limits()
-    }
-  '
-}
-
-patch_tenant_kube_proxy_config() {
-  local config patch
-
-  echo ">>> Waiting for tenant kube-proxy ConfigMap..."
-  for _ in $(seq 1 60); do
-    if config=$(kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-      get configmap kube-proxy -o jsonpath='{.data.config\.conf}' 2>/dev/null); then
-      break
-    fi
-    sleep 2
-  done
-  if [ -z "${config:-}" ]; then
-    diagnose_tenant_cluster
-    diagnose_tenant_worker
-    return 1
-  fi
-
-  echo ">>> Disabling tenant kube-proxy conntrack sysctl writes..."
-  config=$(printf '%s\n' "$config" | cmd_patch_kube_proxy_config)
-  patch=$(KUBE_PROXY_CONFIG="$config" python3 - <<'PY'
-import json
-import os
-
-print(json.dumps({"data": {"config.conf": os.environ["KUBE_PROXY_CONFIG"]}}))
-PY
-)
-  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    patch configmap kube-proxy --type merge -p "$patch"
-  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    get configmap kube-proxy -o jsonpath='{.data.config\.conf}{"\n"}'
-}
-
-wait_tenant_kube_proxy_rollout() {
-  echo ">>> Waiting for tenant kube-proxy..."
-  if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    rollout status ds/kube-proxy --timeout=180s; then
-    diagnose_tenant_cluster
-    diagnose_tenant_worker
-    return 1
-  fi
 }
 
 cmd_render_tenant_kubeovn_image() {
@@ -750,11 +673,9 @@ cmd_setup() {
   setup_prereqs
   install_control_plane
   create_tenant_control_plane
-  patch_tenant_kube_proxy_config
   setup_local_registry
   setup_tenant_worker
   join_tenant_worker
-  wait_tenant_kube_proxy_rollout
   install_data_plane
   echo ""
   echo "=== Kamaji e2e environment ready ==="
@@ -780,10 +701,9 @@ case "${1:-}" in
   render-tenant-worker-docker-args) cmd_render_tenant_worker_docker_args ;;
   render-tenant-worker-kubelet-env) cmd_render_tenant_worker_kubelet_env ;;
   render-tenant-kubeovn-image) cmd_render_tenant_kubeovn_image ;;
-  patch-kube-proxy-config) cmd_patch_kube_proxy_config ;;
   *)
     cat >&2 <<USAGE
-Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image|patch-kube-proxy-config>
+Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image>
 
   setup       Bring up the mgmt kind cluster + Kamaji + tenant worker and
               install both halves of kube-ovn.
@@ -802,8 +722,6 @@ Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-value
               Print the kubelet env file used by the tenant worker.
   render-tenant-kubeovn-image
               Print the kube-ovn image reference rendered by tenant Helm values.
-  patch-kube-proxy-config
-              Read kube-proxy config from stdin and disable conntrack sysctl writes.
 USAGE
     exit 1 ;;
 esac
