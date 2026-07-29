@@ -277,11 +277,74 @@ spec:
 $dns_service_ips
   addons:
     coreDNS: {}
+    kubeProxy: {}
 EOF
 }
 
 cmd_render_tenant_worker_kubelet_env() {
   echo "KUBELET_EXTRA_ARGS=--fail-swap-on=false"
+}
+
+patch_tenant_kube_proxy_command() {
+  local container_index command_patch
+
+  echo ">>> Waiting for tenant kube-proxy DaemonSet..."
+  for _ in $(seq 1 60); do
+    if kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+      get daemonset kube-proxy >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+  if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    get daemonset kube-proxy >/dev/null 2>&1; then
+    diagnose_tenant_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
+
+  container_index=$(kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    get daemonset kube-proxy -o json |
+    python3 -c 'import json, sys
+daemonset = json.load(sys.stdin)
+for index, container in enumerate(daemonset["spec"]["template"]["spec"]["containers"]):
+    if container.get("name") == "kube-proxy":
+        print(index)
+        break
+else:
+    raise SystemExit("kube-proxy DaemonSet has no kube-proxy container")'
+)
+  command_patch=$(KUBE_PROXY_CONTAINER_INDEX="$container_index" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps([
+    {
+        "op": "replace",
+        "path": f"/spec/template/spec/containers/{os.environ['KUBE_PROXY_CONTAINER_INDEX']}/command",
+        "value": [
+            "/usr/local/bin/kube-proxy",
+            "--config=/var/lib/kube-proxy/config.conf",
+            "--hostname-override=$(NODE_NAME)",
+            "--conntrack-max-per-core=0",
+            "--conntrack-min=0",
+        ],
+    },
+]))
+PY
+)
+  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    patch daemonset kube-proxy --type json -p "$command_patch"
+  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    get daemonset kube-proxy -o jsonpath='{.spec.template.spec.containers[0].command}{"\n"}'
+
+  echo ">>> Waiting for tenant kube-proxy..."
+  if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    rollout status ds/kube-proxy --timeout=180s; then
+    diagnose_tenant_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
 }
 
 cmd_render_tenant_kubeovn_image() {
@@ -676,6 +739,7 @@ cmd_setup() {
   setup_local_registry
   setup_tenant_worker
   join_tenant_worker
+  patch_tenant_kube_proxy_command
   install_data_plane
   echo ""
   echo "=== Kamaji e2e environment ready ==="
