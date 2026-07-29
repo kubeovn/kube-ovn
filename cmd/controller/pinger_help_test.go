@@ -24,7 +24,6 @@ func TestCommandHelpDescriptions(t *testing.T) {
 		"kube-ovn-leader-checker",
 		"kube-ovn-ic-controller",
 	} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			help := runHelp(t, bins[name], name)
 			if strings.Contains(help, "default:") {
