@@ -382,8 +382,15 @@ install_control_plane() {
   helm install --kube-context="kind-$MGMT_KIND_NAME" \
     kube-ovn "$CHART_DIR" \
     -n kube-system -f "$JOB_DIR/mgmt-values.yaml"
-  kubectl --context="kind-$MGMT_KIND_NAME" wait --for=condition=Ready \
-    pod -n "$HCP_NAMESPACE" -l app=ovn-central --timeout=300s
+  if ! kubectl --context="kind-$MGMT_KIND_NAME" wait --for=condition=Ready \
+    pod -n "$HCP_NAMESPACE" -l app=ovn-central --timeout=300s; then
+    diagnose_mgmt_cluster
+    return 1
+  fi
+  if ! verify_hcp_ovn_services; then
+    diagnose_mgmt_cluster
+    return 1
+  fi
 }
 
 create_tenant_control_plane() {
@@ -436,6 +443,17 @@ diagnose_tenant_worker() {
     echo "### crictl pods"
     docker exec tenant-worker-0 crictl pods || true
     echo
+    echo "### selected crictl logs"
+    docker exec tenant-worker-0 sh -c '
+      crictl ps -a --no-trunc 2>/dev/null |
+        awk "NR > 1 && /kube-proxy|kube-ovn-controller|cni-server|openvswitch|ovs-ovn|pinger|coredns/ {print \$1, \$NF}" |
+        while read -r cid cname; do
+          [ -n "$cid" ] || continue
+          echo "----- $cname $cid -----"
+          crictl logs "$cid" 2>&1 | tail -n 200 || true
+        done
+    ' || true
+    echo
     echo "### /var/lib/kubelet/config.yaml"
     docker exec tenant-worker-0 cat /var/lib/kubelet/config.yaml || true
     echo
@@ -446,6 +464,105 @@ diagnose_tenant_worker() {
     docker exec tenant-worker-0 cat /etc/default/kubelet || true
   } > "$diagnostics_dir/tenant-worker.log" 2>&1 || true
   echo ">>> tenant worker diagnostics written to $diagnostics_dir/tenant-worker.log"
+}
+
+diagnose_mgmt_cluster() {
+  local diagnostics_dir="$JOB_DIR/diagnostics"
+  mkdir -p "$diagnostics_dir"
+  {
+    echo "### mgmt nodes"
+    kubectl --context="kind-$MGMT_KIND_NAME" get nodes -o wide || true
+    echo
+    echo "### mgmt pods"
+    kubectl --context="kind-$MGMT_KIND_NAME" get pods -A -o wide --show-labels || true
+    echo
+    echo "### mgmt services"
+    kubectl --context="kind-$MGMT_KIND_NAME" get svc -A -o wide || true
+    echo
+    echo "### hcp ovn endpoints"
+    kubectl --context="kind-$MGMT_KIND_NAME" -n "$HCP_NAMESPACE" get endpoints,endpointslices -o wide || true
+    echo
+    echo "### ovn-central pod labels"
+    kubectl --context="kind-$MGMT_KIND_NAME" -n "$HCP_NAMESPACE" get pod -l app=ovn-central \
+      -o jsonpath='{range .items[*]}{.metadata.name}{" labels="}{.metadata.labels}{"\n"}{end}' || true
+    echo
+    echo "### ovn-central describe"
+    kubectl --context="kind-$MGMT_KIND_NAME" -n "$HCP_NAMESPACE" describe pod -l app=ovn-central || true
+    echo
+    echo "### ovn-central logs"
+    kubectl --context="kind-$MGMT_KIND_NAME" -n "$HCP_NAMESPACE" logs -l app=ovn-central \
+      --all-containers --tail=200 || true
+    echo
+    echo "### tenant control-plane pods"
+    kubectl --context="kind-$MGMT_KIND_NAME" -n default get pods -o wide --show-labels || true
+    echo
+    echo "### tenant control-plane describe"
+    kubectl --context="kind-$MGMT_KIND_NAME" -n default describe pods || true
+    echo
+    echo "### tenant control-plane logs"
+    kubectl --context="kind-$MGMT_KIND_NAME" -n default logs -l kamaji.clastix.io/name=tenant \
+      --all-containers --tail=200 || true
+    echo
+    echo "### mgmt events"
+    kubectl --context="kind-$MGMT_KIND_NAME" get events -A --sort-by=.lastTimestamp || true
+  } > "$diagnostics_dir/mgmt-cluster.log" 2>&1 || true
+  echo ">>> mgmt cluster diagnostics written to $diagnostics_dir/mgmt-cluster.log"
+}
+
+diagnose_tenant_cluster() {
+  local diagnostics_dir="$JOB_DIR/diagnostics"
+  mkdir -p "$diagnostics_dir"
+  {
+    echo "### tenant nodes"
+    KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl get nodes -o wide || true
+    echo
+    echo "### tenant pods"
+    KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl get pods -A -o wide --show-labels || true
+    echo
+    echo "### tenant services"
+    KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl get svc -A -o wide || true
+    echo
+    echo "### tenant endpoints"
+    KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl get endpoints,endpointslices -A -o wide || true
+    echo
+    echo "### kube-system describe"
+    KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system describe pods || true
+    echo
+    echo "### kube-system logs"
+    KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system logs \
+      -l 'app in (kube-ovn-cni,kube-ovn-controller,ovs,kube-ovn-pinger,kube-proxy,kube-dns)' \
+      --all-containers --tail=200 || true
+    echo
+    echo "### kube-system previous logs"
+    KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system logs \
+      -l 'app in (kube-ovn-cni,kube-ovn-controller,ovs,kube-ovn-pinger,kube-proxy,kube-dns)' \
+      --all-containers --previous --tail=200 || true
+    echo
+    echo "### tenant events"
+    KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl get events -A --sort-by=.lastTimestamp || true
+  } > "$diagnostics_dir/tenant-cluster.log" 2>&1 || true
+  echo ">>> tenant cluster diagnostics written to $diagnostics_dir/tenant-cluster.log"
+}
+
+verify_hcp_ovn_services() {
+  local endpoint
+  endpoint=$(hcp_ovn_endpoint)
+  echo ">>> Verifying hosted OVN central services..."
+  for svc in ovn-nb ovn-sb; do
+    for i in $(seq 1 60); do
+      if [ -n "$(kubectl --context="kind-$MGMT_KIND_NAME" -n "$HCP_NAMESPACE" get endpoints "$svc" \
+          -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null)" ]; then
+        break
+      fi
+      if [ "$i" -eq 60 ]; then
+        echo "ERROR: hosted OVN central service $svc has no endpoint" >&2
+        return 1
+      fi
+      sleep 2
+    done
+  done
+  docker run --rm --network=kind --entrypoint bash "$TENANT_KIND_NODE_IMAGE" -c \
+    "timeout 5 bash -c '</dev/tcp/$endpoint/$HCP_OVN_NB_NODE_PORT' && timeout 5 bash -c '</dev/tcp/$endpoint/$HCP_OVN_SB_NODE_PORT'"
 }
 
 setup_local_registry() {
@@ -502,9 +619,13 @@ CFG
 
 join_tenant_worker() {
   echo ">>> Generating kubeadm join command..."
-  docker run --rm --network=kind -v "$JOB_DIR/tenant.kubeconfig:/kc:ro" \
+  if ! docker run --rm --network=kind -v "$JOB_DIR/tenant.kubeconfig:/kc:ro" \
     --entrypoint kubeadm "$TENANT_KIND_NODE_IMAGE" \
-    --kubeconfig=/kc token create --print-join-command > "$JOB_DIR/join.txt"
+    --kubeconfig=/kc token create --print-join-command > "$JOB_DIR/join.txt"; then
+    diagnose_mgmt_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
   local join_cmd
   join_cmd=$(grep "^kubeadm join" "$JOB_DIR/join.txt")
   echo ">>> Joining tenant-worker-0 to tenant apiserver..."
@@ -517,17 +638,33 @@ join_tenant_worker() {
 install_data_plane() {
   echo ">>> Installing kube-ovn (HCP data plane) on tenant..."
   cmd_render_tenant_values > "$JOB_DIR/tenant-values.yaml"
-  helm install --kubeconfig "$JOB_DIR/tenant.kubeconfig" \
+  if ! helm install --kubeconfig "$JOB_DIR/tenant.kubeconfig" \
     kube-ovn "$CHART_DIR" \
-    -n kube-system --create-namespace -f "$JOB_DIR/tenant-values.yaml"
+    -n kube-system --create-namespace -f "$JOB_DIR/tenant-values.yaml"; then
+    diagnose_tenant_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
 
   echo ">>> Waiting for tenant data-plane components..."
-  KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system rollout status \
-    deploy/kube-ovn-controller --timeout=300s
-  KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system rollout status \
-    ds/ovs-ovn --timeout=300s
-  KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system rollout status \
-    ds/kube-ovn-cni --timeout=300s
+  if ! KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system rollout status \
+    deploy/kube-ovn-controller --timeout=300s; then
+    diagnose_tenant_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
+  if ! KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system rollout status \
+    ds/ovs-ovn --timeout=300s; then
+    diagnose_tenant_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
+  if ! KUBECONFIG="$JOB_DIR/tenant.kubeconfig" kubectl -n kube-system rollout status \
+    ds/kube-ovn-cni --timeout=300s; then
+    diagnose_tenant_cluster
+    diagnose_tenant_worker
+    return 1
+  fi
 }
 
 cmd_setup() {
