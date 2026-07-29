@@ -57,7 +57,7 @@ METALLB_VERSION=${METALLB_VERSION:-v0.14.8}
 KUBEOVN_IMAGE=${KUBEOVN_IMAGE:-kubeovn/kube-ovn:dev}
 JOB_DIR=${JOB_DIR:-/tmp/kamaji-e2e}
 REGISTRY_NAME=${REGISTRY_NAME:-kamaji-e2e-reg}
-KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT=${KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT:-75}
+KUBE_PROXY_CONFIGMAP_NAME=${KUBE_PROXY_CONFIGMAP_NAME:-kube-proxy-hcp-e2e}
 
 CHART_DIR=${CHART_DIR:-$(cd "$(dirname "$0")/.." && pwd)/charts/kube-ovn}
 
@@ -321,7 +321,7 @@ cmd_patch_kube_proxy_config() {
 }
 
 patch_tenant_kube_proxy_config() {
-  local config patch
+  local config config_file config_sha patch
 
   echo ">>> Waiting for tenant kube-proxy ConfigMap..."
   for _ in $(seq 1 60); do
@@ -339,19 +339,53 @@ patch_tenant_kube_proxy_config() {
 
   echo ">>> Disabling tenant kube-proxy conntrack sysctl writes..."
   config=$(printf '%s\n' "$config" | cmd_patch_kube_proxy_config)
-  patch=$(KUBE_PROXY_CONFIG="$config" python3 - <<'PY'
-import json
+  config_file="$JOB_DIR/kube-proxy-config.conf"
+  printf '%s\n' "$config" > "$config_file"
+  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    create configmap "$KUBE_PROXY_CONFIGMAP_NAME" \
+    --from-file="config.conf=$config_file" \
+    --dry-run=client -o yaml |
+    kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system apply -f -
+
+  config_sha=$(KUBE_PROXY_CONFIG="$config" python3 - <<'PY'
+import hashlib
 import os
 
-print(json.dumps({"data": {"config.conf": os.environ["KUBE_PROXY_CONFIG"]}}))
+print(hashlib.sha256(os.environ["KUBE_PROXY_CONFIG"].encode()).hexdigest())
 PY
 )
   kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    patch configmap kube-proxy --type merge -p "$patch"
-  echo ">>> Waiting ${KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT}s for kubelet ConfigMap cache propagation..."
-  sleep "$KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT"
+    get configmap "$KUBE_PROXY_CONFIGMAP_NAME" -o jsonpath='{.data.config\.conf}{"\n"}'
+
+  patch=$(KUBE_PROXY_CONFIGMAP_NAME="$KUBE_PROXY_CONFIGMAP_NAME" KUBE_PROXY_CONFIG_SHA="$config_sha" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({
+    "spec": {
+        "template": {
+            "metadata": {
+                "annotations": {
+                    "kube-ovn.io/hcp-e2e-kube-proxy-config-sha": os.environ["KUBE_PROXY_CONFIG_SHA"],
+                },
+            },
+            "spec": {
+                "volumes": [
+                    {
+                        "name": "kube-proxy",
+                        "configMap": {
+                            "name": os.environ["KUBE_PROXY_CONFIGMAP_NAME"],
+                        },
+                    },
+                ],
+            },
+        },
+    },
+}))
+PY
+)
   kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    delete pod -l k8s-app=kube-proxy --ignore-not-found
+    patch daemonset kube-proxy --type strategic -p "$patch"
   if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
     rollout status ds/kube-proxy --timeout=180s; then
     diagnose_tenant_cluster
