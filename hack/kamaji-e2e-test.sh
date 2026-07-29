@@ -130,6 +130,7 @@ require_text "$SCRIPT" "KUBE_PROXY_CONFIGMAP_NAME"
 require_text "$SCRIPT" "kube-proxy-hcp-e2e"
 require_text "$SCRIPT" "patch daemonset kube-proxy"
 require_text "$SCRIPT" "kube-ovn.io/hcp-e2e-kube-proxy-config-sha"
+require_text "$SCRIPT" "/configMap/name"
 
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_NB_ADDR"
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_SB_ADDR"

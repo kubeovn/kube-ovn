@@ -321,7 +321,7 @@ cmd_patch_kube_proxy_config() {
 }
 
 patch_tenant_kube_proxy_config() {
-  local config config_file config_sha patch
+  local annotation_patch config config_file config_sha volume_index volume_patch
 
   echo ">>> Waiting for tenant kube-proxy ConfigMap..."
   for _ in $(seq 1 60); do
@@ -357,7 +357,34 @@ PY
   kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
     get configmap "$KUBE_PROXY_CONFIGMAP_NAME" -o jsonpath='{.data.config\.conf}{"\n"}'
 
-  patch=$(KUBE_PROXY_CONFIGMAP_NAME="$KUBE_PROXY_CONFIGMAP_NAME" KUBE_PROXY_CONFIG_SHA="$config_sha" python3 - <<'PY'
+  volume_index=$(kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    get daemonset kube-proxy -o json |
+    python3 -c 'import json, sys
+daemonset = json.load(sys.stdin)
+for index, volume in enumerate(daemonset["spec"]["template"]["spec"]["volumes"]):
+    if volume.get("name") == "kube-proxy":
+        print(index)
+        break
+else:
+    raise SystemExit("kube-proxy DaemonSet has no kube-proxy volume")'
+)
+  volume_patch=$(KUBE_PROXY_CONFIGMAP_NAME="$KUBE_PROXY_CONFIGMAP_NAME" KUBE_PROXY_VOLUME_INDEX="$volume_index" python3 - <<'PY'
+import json
+import os
+
+print(json.dumps([
+    {
+        "op": "replace",
+        "path": f"/spec/template/spec/volumes/{os.environ['KUBE_PROXY_VOLUME_INDEX']}/configMap/name",
+        "value": os.environ["KUBE_PROXY_CONFIGMAP_NAME"],
+    },
+]))
+PY
+)
+  kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
+    patch daemonset kube-proxy --type json -p "$volume_patch"
+
+  annotation_patch=$(KUBE_PROXY_CONFIG_SHA="$config_sha" python3 - <<'PY'
 import json
 import os
 
@@ -369,23 +396,13 @@ print(json.dumps({
                     "kube-ovn.io/hcp-e2e-kube-proxy-config-sha": os.environ["KUBE_PROXY_CONFIG_SHA"],
                 },
             },
-            "spec": {
-                "volumes": [
-                    {
-                        "name": "kube-proxy",
-                        "configMap": {
-                            "name": os.environ["KUBE_PROXY_CONFIGMAP_NAME"],
-                        },
-                    },
-                ],
-            },
         },
     },
 }))
 PY
 )
   kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
-    patch daemonset kube-proxy --type strategic -p "$patch"
+    patch daemonset kube-proxy --type merge -p "$annotation_patch"
   if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
     rollout status ds/kube-proxy --timeout=180s; then
     diagnose_tenant_cluster
