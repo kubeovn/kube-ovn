@@ -76,7 +76,7 @@ func ParseFlags() (*Configuration, error) {
 		argExternalDNS     = pflag.String("external-dns", "", "check external dns resolve from pod; empty disables external dns check")
 		argExternalAddress = pflag.String("external-address", "", "check ping connection to external addresses; empty disables external ping check")
 		argTargetIPPorts   = pflag.String("target-ip-ports", "", "target protocol ip and port, eg: 'tcp-169.254.1.1-8080,udp-169.254.2.2-8081'")
-		argNetworkMode     = pflag.String("network-mode", "kube-ovn", "The cni plugin current cluster used, default: kube-ovn")
+		argNetworkMode     = pflag.String("network-mode", "kube-ovn", "The CNI plugin currently used by the cluster")
 		argEnableMetrics   = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 
 		argPollTimeout                     = pflag.Int("ovs.timeout", 2, "Timeout on JSON-RPC requests to OVS.")
