@@ -1719,13 +1719,20 @@ jobs:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
-  kube-ovn-hcp-e2e:
-    name: Kube-OVN Hosted OVN Central E2E
+  kube-ovn-hosted-ovn-central-e2e:
+    name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }})
     needs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -1781,18 +1788,20 @@ jobs:
           docker load --input kube-ovn.tar
           docker tag "kubeovn/kube-ovn:$(cat VERSION)" kubeovn/kube-ovn:dev
 
-      - name: Verify HCP values
+      - name: Verify hosted OVN central values
         run: bash hack/kamaji-e2e-test.sh
 
-      - name: Create HCP environment
+      - name: Create hosted OVN central environment
         id: install
+        env:
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make kind-install-kamaji
 
-      - name: Run HCP E2E
+      - name: Run hosted OVN central E2E
         id: e2e
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
-          E2E_IP_FAMILY: ipv4
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: overlay
         run: make kube-ovn-kamaji-e2e
 
@@ -1804,14 +1813,30 @@ jobs:
           if [ -s "$tenant_kubeconfig" ]; then
             KUBECONFIG="$tenant_kubeconfig" kubectl get events -A -o yaml > hcp-e2e-tenant-events.yaml || true
           fi
-          tar zcf hcp-e2e-events.tar.gz hcp-e2e-*-events.yaml
+          tar zcf hcp-e2e-${{ matrix.ip-family }}-events.tar.gz hcp-e2e-*-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: hcp-e2e-events
-          path: hcp-e2e-events.tar.gz
+          name: hcp-e2e-${{ matrix.ip-family }}-events
+          path: hcp-e2e-${{ matrix.ip-family }}-events.tar.gz
+
+      - name: Collect hosted OVN central diagnostics
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          job_dir="${JOB_DIR:-/tmp/kamaji-e2e}"
+          if [ -d "$job_dir/diagnostics" ]; then
+            tar -C "$job_dir" -zcf hcp-e2e-${{ matrix.ip-family }}-diagnostics.tar.gz diagnostics
+          fi
+
+      - name: Upload hosted OVN central diagnostics
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: hcp-e2e-${{ matrix.ip-family }}-diagnostics
+          path: hcp-e2e-${{ matrix.ip-family }}-diagnostics.tar.gz
+          if-no-files-found: ignore
 
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1819,18 +1844,18 @@ jobs:
           tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
           if [ -s "$tenant_kubeconfig" ]; then
             KUBECONFIG="$tenant_kubeconfig" make kubectl-ko-log
-            mv kubectl-ko-log.tar.gz hcp-e2e-ko-log.tar.gz
+            mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
           fi
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: hcp-e2e-ko-log
-          path: hcp-e2e-ko-log.tar.gz
+          name: hcp-e2e-${{ matrix.ip-family }}-ko-log
+          path: hcp-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
           if-no-files-found: ignore
 
-      - name: Clean HCP environment
+      - name: Clean hosted OVN central environment
         if: always()
         run: make kind-clean-kamaji
 
@@ -4377,7 +4402,7 @@ jobs:
       - kube-ovn-underlay-metallb-e2e
       - multus-conformance-e2e
       - non-primary-cni-e2e
-      - kube-ovn-hcp-e2e
+      - kube-ovn-hosted-ovn-central-e2e
       - vpc-egress-gateway-e2e
       - ovn-vpc-nat-gw-conformance-e2e
       - iptables-vpc-nat-gw-conformance-e2e

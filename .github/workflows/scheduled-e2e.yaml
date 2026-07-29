@@ -1503,8 +1503,8 @@ jobs:
         run: |
           make check-kube-ovn-pod-restarts
 
-  kube-ovn-hcp-e2e:
-    name: Kube-OVN Hosted OVN Central E2E
+  kube-ovn-hosted-ovn-central-e2e:
+    name: Kube-OVN Hosted OVN Central E2E (${{ matrix.branch }}, ${{ matrix.ip-family }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -1512,6 +1512,10 @@ jobs:
       matrix:
         branch:
           - master
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
     steps:
       - uses: actions/checkout@v7
 
@@ -1565,21 +1569,23 @@ jobs:
           docker pull kubeovn/kube-ovn:$version
           docker tag kubeovn/kube-ovn:$version kubeovn/kube-ovn:dev
 
-      - name: Verify HCP values
+      - name: Verify hosted OVN central values
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: bash hack/kamaji-e2e-test.sh
 
-      - name: Create HCP environment
+      - name: Create hosted OVN central environment
         id: install
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        env:
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
         run: make kind-install-kamaji
 
-      - name: Run HCP E2E
+      - name: Run hosted OVN central E2E
         id: e2e
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         env:
           E2E_BRANCH: ${{ matrix.branch }}
-          E2E_IP_FAMILY: ipv4
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: overlay
         run: make kube-ovn-kamaji-e2e
 
@@ -1592,14 +1598,31 @@ jobs:
           if [ -s "$tenant_kubeconfig" ]; then
             KUBECONFIG="$tenant_kubeconfig" kubectl get events -A -o yaml > hcp-e2e-tenant-events.yaml || true
           fi
-          tar zcf hcp-e2e-events.tar.gz hcp-e2e-*-events.yaml
+          tar zcf hcp-e2e-${{ matrix.ip-family }}-events.tar.gz hcp-e2e-*-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: hcp-e2e-${{ matrix.branch }}-events
-          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}/hcp-e2e-events.tar.gz
+          name: hcp-e2e-${{ matrix.branch }}-${{ matrix.ip-family }}-events
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}/hcp-e2e-${{ matrix.ip-family }}-events.tar.gz
+
+      - name: Collect hosted OVN central diagnostics
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        run: |
+          job_dir="${JOB_DIR:-/tmp/kamaji-e2e}"
+          if [ -d "$job_dir/diagnostics" ]; then
+            tar -C "$job_dir" -zcf hcp-e2e-${{ matrix.ip-family }}-diagnostics.tar.gz diagnostics
+          fi
+
+      - name: Upload hosted OVN central diagnostics
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: hcp-e2e-${{ matrix.branch }}-${{ matrix.ip-family }}-diagnostics
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}/hcp-e2e-${{ matrix.ip-family }}-diagnostics.tar.gz
+          if-no-files-found: ignore
 
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1608,18 +1631,18 @@ jobs:
           tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
           if [ -s "$tenant_kubeconfig" ]; then
             KUBECONFIG="$tenant_kubeconfig" make kubectl-ko-log
-            mv kubectl-ko-log.tar.gz hcp-e2e-ko-log.tar.gz
+            mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
           fi
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: hcp-e2e-${{ matrix.branch }}-ko-log
-          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}/hcp-e2e-ko-log.tar.gz
+          name: hcp-e2e-${{ matrix.branch }}-${{ matrix.ip-family }}-ko-log
+          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}/hcp-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
           if-no-files-found: ignore
 
-      - name: Clean HCP environment
+      - name: Clean hosted OVN central environment
         if: always()
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: make kind-clean-kamaji

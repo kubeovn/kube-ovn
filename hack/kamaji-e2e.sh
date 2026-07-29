@@ -49,6 +49,7 @@ HCP_OVN_ENDPOINT=${HCP_OVN_ENDPOINT:-}
 HCP_OVN_REPLICAS=${HCP_OVN_REPLICAS:-1}
 HCP_OVN_NB_NODE_PORT=${HCP_OVN_NB_NODE_PORT:-30641}
 HCP_OVN_SB_NODE_PORT=${HCP_OVN_SB_NODE_PORT:-30642}
+E2E_IP_FAMILY=${E2E_IP_FAMILY:-ipv4}
 
 CERT_MANAGER_VERSION=${CERT_MANAGER_VERSION:-v1.15.3}
 METALLB_VERSION=${METALLB_VERSION:-v0.14.8}
@@ -58,6 +59,60 @@ JOB_DIR=${JOB_DIR:-/tmp/kamaji-e2e}
 REGISTRY_NAME=${REGISTRY_NAME:-kamaji-e2e-reg}
 
 CHART_DIR=${CHART_DIR:-$(cd "$(dirname "$0")/.." && pwd)/charts/kube-ovn}
+
+chart_net_stack() {
+  case "$E2E_IP_FAMILY" in
+    ipv4) echo "ipv4" ;;
+    ipv6) echo "ipv6" ;;
+    dual) echo "dual_stack" ;;
+    *)
+      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
+      return 1
+      ;;
+  esac
+}
+
+tenant_pod_cidr() {
+  case "$E2E_IP_FAMILY" in
+    ipv4) echo "10.16.0.0/16" ;;
+    ipv6) echo "fd00:10:16::/112" ;;
+    dual) echo "10.16.0.0/16" ;;
+    *)
+      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
+      return 1
+      ;;
+  esac
+}
+
+tenant_service_cidr() {
+  case "$E2E_IP_FAMILY" in
+    ipv4) echo "10.96.0.0/12" ;;
+    ipv6) echo "fd00:10:96::/112" ;;
+    dual) echo "10.96.0.0/12" ;;
+    *)
+      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
+      return 1
+      ;;
+  esac
+}
+
+tenant_dns_service_ips_yaml() {
+  case "$E2E_IP_FAMILY" in
+    ipv4)
+      echo "      - 10.96.0.10"
+      ;;
+    ipv6)
+      echo "      - fd00:10:96::10"
+      ;;
+    dual)
+      echo "      - 10.96.0.10"
+      ;;
+    *)
+      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
+      return 1
+      ;;
+  esac
+}
 
 cmd_vars() {
   local endpoint
@@ -111,6 +166,8 @@ hcp_ovn_sb_addr() {
 }
 
 cmd_render_mgmt_values() {
+  local net_stack
+  net_stack=$(chart_net_stack)
   cat <<EOF
 namespace: kube-system
 installMode: controlPlaneOnly
@@ -142,11 +199,14 @@ ovn-central:
       size: 5Gi
 
 networking:
+  NET_STACK: $net_stack
   ENABLE_SSL: false
 EOF
 }
 
 cmd_render_tenant_values() {
+  local net_stack
+  net_stack=$(chart_net_stack)
   cat <<EOF
 namespace: kube-system
 installMode: dataPlaneOnly
@@ -169,8 +229,92 @@ ovn-central:
     sbAddress: $(hcp_ovn_sb_addr)
 
 networking:
+  NET_STACK: $net_stack
   ENABLE_SSL: false
 EOF
+}
+
+cmd_render_tenant_control_plane() {
+  local dns_service_ips pod_cidr service_cidr
+  pod_cidr=$(tenant_pod_cidr)
+  service_cidr=$(tenant_service_cidr)
+  dns_service_ips=$(tenant_dns_service_ips_yaml)
+  cat <<EOF
+apiVersion: kamaji.clastix.io/v1alpha1
+kind: TenantControlPlane
+metadata:
+  name: tenant
+  namespace: default
+spec:
+  dataStore: default
+  controlPlane:
+    deployment:
+      replicas: 1
+      resources:
+        apiServer:
+          requests: {cpu: 100m, memory: 256Mi}
+          limits:   {cpu: "1", memory: 1Gi}
+        controllerManager:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits:   {cpu: 500m, memory: 512Mi}
+        scheduler:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits:   {cpu: 500m, memory: 512Mi}
+    service:
+      serviceType: LoadBalancer
+  kubernetes:
+    version: $TENANT_K8S_VERSION
+    kubelet:
+      cgroupfs: systemd
+    admissionControllers: [ResourceQuota, LimitRanger]
+  networkProfile:
+    port: 6443
+    # Kamaji validates podCidr and serviceCidr as single CIDRs. In the dual
+    # Kube-OVN data-plane job, keep the tenant Kubernetes control plane on
+    # IPv4 while Helm renders Kube-OVN with networking.NET_STACK=dual_stack.
+    podCidr: $pod_cidr
+    serviceCidr: $service_cidr
+    dnsServiceIPs:
+$dns_service_ips
+  addons:
+    coreDNS: {}
+    kubeProxy: {}
+EOF
+}
+
+cmd_render_tenant_worker_kubelet_env() {
+  echo "KUBELET_EXTRA_ARGS=--fail-swap-on=false"
+}
+
+cmd_render_tenant_kubeovn_image() {
+  echo "docker.io/kubeovn/kube-ovn:dev"
+}
+
+local_registry_kubeovn_image() {
+  echo "localhost:5000/kubeovn/kube-ovn:dev"
+}
+
+tenant_registry_kubeovn_image() {
+  local reg_ip=$1
+  echo "$reg_ip:5000/kubeovn/kube-ovn:dev"
+}
+
+cmd_render_tenant_worker_docker_args() {
+  printf '%s\n' \
+    -d \
+    --name tenant-worker-0 \
+    --privileged \
+    --network=kind \
+    --hostname tenant-worker-0 \
+    --tmpfs /run \
+    --tmpfs /tmp \
+    --volume /var \
+    -v /lib/modules:/lib/modules:ro \
+    --security-opt apparmor=unconfined \
+    --security-opt seccomp=unconfined \
+    --cgroupns=private \
+    --restart=on-failure:1 \
+    --init=false
 }
 
 setup_mgmt_cluster() {
@@ -244,40 +388,7 @@ install_control_plane() {
 
 create_tenant_control_plane() {
   echo ">>> Creating TenantControlPlane via Kamaji..."
-  cat > "$JOB_DIR/tenant-tcp.yaml" <<EOF
-apiVersion: kamaji.clastix.io/v1alpha1
-kind: TenantControlPlane
-metadata:
-  name: tenant
-  namespace: default
-spec:
-  dataStore: default
-  controlPlane:
-    deployment:
-      replicas: 1
-      resources:
-        apiServer:
-          requests: {cpu: 100m, memory: 256Mi}
-          limits:   {cpu: "1", memory: 1Gi}
-        controllerManager:
-          requests: {cpu: 100m, memory: 128Mi}
-          limits:   {cpu: 500m, memory: 512Mi}
-        scheduler:
-          requests: {cpu: 100m, memory: 128Mi}
-          limits:   {cpu: 500m, memory: 512Mi}
-    service:
-      serviceType: LoadBalancer
-  kubernetes:
-    version: $TENANT_K8S_VERSION
-    kubelet:
-      cgroupfs: systemd
-    admissionControllers: [ResourceQuota, LimitRanger]
-  networkProfile:
-    port: 6443
-  addons:
-    coreDNS: {}
-    kubeProxy: {}
-EOF
+  cmd_render_tenant_control_plane > "$JOB_DIR/tenant-tcp.yaml"
   kubectl --context="kind-$MGMT_KIND_NAME" apply -f "$JOB_DIR/tenant-tcp.yaml"
 
   echo ">>> Waiting for TenantControlPlane Ready..."
@@ -294,6 +405,49 @@ EOF
   echo ">>> tenant kubeconfig written to $JOB_DIR/tenant.kubeconfig"
 }
 
+diagnose_tenant_worker() {
+  local diagnostics_dir="$JOB_DIR/diagnostics"
+  mkdir -p "$diagnostics_dir"
+  {
+    echo "### docker ps"
+    docker ps -a || true
+    echo
+    echo "### docker inspect tenant-worker-0"
+    docker inspect tenant-worker-0 || true
+    echo
+    echo "### docker logs tenant-worker-0"
+    docker logs tenant-worker-0 || true
+    echo
+    echo "### systemctl status kubelet"
+    docker exec tenant-worker-0 systemctl status kubelet --no-pager --lines=80 || true
+    echo
+    echo "### journalctl -xeu kubelet"
+    docker exec tenant-worker-0 journalctl -xeu kubelet --no-pager -n 200 || true
+    echo
+    echo "### systemctl status containerd"
+    docker exec tenant-worker-0 systemctl status containerd --no-pager --lines=80 || true
+    echo
+    echo "### journalctl -xeu containerd"
+    docker exec tenant-worker-0 journalctl -xeu containerd --no-pager -n 120 || true
+    echo
+    echo "### crictl ps -a"
+    docker exec tenant-worker-0 crictl ps -a || true
+    echo
+    echo "### crictl pods"
+    docker exec tenant-worker-0 crictl pods || true
+    echo
+    echo "### /var/lib/kubelet/config.yaml"
+    docker exec tenant-worker-0 cat /var/lib/kubelet/config.yaml || true
+    echo
+    echo "### /var/lib/kubelet/kubeadm-flags.env"
+    docker exec tenant-worker-0 cat /var/lib/kubelet/kubeadm-flags.env || true
+    echo
+    echo "### /etc/default/kubelet"
+    docker exec tenant-worker-0 cat /etc/default/kubelet || true
+  } > "$diagnostics_dir/tenant-worker.log" 2>&1 || true
+  echo ">>> tenant worker diagnostics written to $diagnostics_dir/tenant-worker.log"
+}
+
 setup_local_registry() {
   echo ">>> Starting local registry on the kind network..."
   docker rm -f "$REGISTRY_NAME" >/dev/null 2>&1 || true
@@ -302,26 +456,24 @@ setup_local_registry() {
   sleep 3
   REG_IP=$(docker inspect "$REGISTRY_NAME" \
     -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-  docker tag "$KUBEOVN_IMAGE" "localhost:5000/${KUBEOVN_IMAGE#*/}"
-  docker push "localhost:5000/${KUBEOVN_IMAGE#*/}" >/dev/null
+  docker tag "$KUBEOVN_IMAGE" "$(local_registry_kubeovn_image)"
+  docker push "$(local_registry_kubeovn_image)" >/dev/null
   echo "$REG_IP" > "$JOB_DIR/reg-ip"
 }
 
 setup_tenant_worker() {
   local reg_ip
+  local -a docker_args
   reg_ip=$(cat "$JOB_DIR/reg-ip")
   echo ">>> Spawning tenant-worker-0..."
   docker rm -f tenant-worker-0 >/dev/null 2>&1 || true
-  docker run -d --name tenant-worker-0 \
-    --privileged --network=kind \
-    --hostname tenant-worker-0 \
-    --tmpfs /run --tmpfs /tmp \
-    -v /lib/modules:/lib/modules:ro \
-    --security-opt apparmor=unconfined \
-    --security-opt seccomp=unconfined \
-    --cgroupns=host \
-    "$TENANT_KIND_NODE_IMAGE" >/dev/null
+  mapfile -t docker_args < <(cmd_render_tenant_worker_docker_args)
+  docker run "${docker_args[@]}" "$TENANT_KIND_NODE_IMAGE" >/dev/null
   sleep 8
+
+  echo ">>> Configuring tenant-worker-0 kubelet flags..."
+  cmd_render_tenant_worker_kubelet_env | docker exec -i tenant-worker-0 sh -c \
+    'mkdir -p /etc/default && cat > /etc/default/kubelet'
 
   echo ">>> Reconfiguring containerd to use native snapshotter + allow local registry..."
   docker exec tenant-worker-0 sh -c "
@@ -343,9 +495,9 @@ CFG
   sleep 6
 
   echo ">>> Pre-pulling $KUBEOVN_IMAGE on tenant worker..."
-  docker exec tenant-worker-0 crictl pull "$reg_ip:5000/${KUBEOVN_IMAGE#*/}"
+  docker exec tenant-worker-0 crictl pull "$(tenant_registry_kubeovn_image "$reg_ip")"
   docker exec tenant-worker-0 ctr -n k8s.io images tag --force \
-    "$reg_ip:5000/${KUBEOVN_IMAGE#*/}" "docker.io/${KUBEOVN_IMAGE#*/}"
+    "$(tenant_registry_kubeovn_image "$reg_ip")" "$(cmd_render_tenant_kubeovn_image)"
 }
 
 join_tenant_worker() {
@@ -356,7 +508,10 @@ join_tenant_worker() {
   local join_cmd
   join_cmd=$(grep "^kubeadm join" "$JOB_DIR/join.txt")
   echo ">>> Joining tenant-worker-0 to tenant apiserver..."
-  docker exec tenant-worker-0 bash -c "$join_cmd --ignore-preflight-errors=all"
+  if ! docker exec tenant-worker-0 bash -c "$join_cmd --ignore-preflight-errors=all"; then
+    diagnose_tenant_worker
+    return 1
+  fi
 }
 
 install_data_plane() {
@@ -396,7 +551,7 @@ cmd_teardown() {
   echo ">>> Tearing down Kamaji e2e environment..."
   kind delete cluster --name "$MGMT_KIND_NAME" 2>/dev/null || true
   docker rm -f tenant-worker-0 "$REGISTRY_NAME" 2>/dev/null || true
-  docker rmi "localhost:5000/${KUBEOVN_IMAGE#*/}" 2>/dev/null || true
+  docker rmi "$(local_registry_kubeovn_image)" 2>/dev/null || true
   rm -rf "$JOB_DIR"
 }
 
@@ -407,9 +562,13 @@ case "${1:-}" in
   vars)                 cmd_vars ;;
   render-mgmt-values)   cmd_render_mgmt_values ;;
   render-tenant-values) cmd_render_tenant_values ;;
+  render-tenant-control-plane) cmd_render_tenant_control_plane ;;
+  render-tenant-worker-docker-args) cmd_render_tenant_worker_docker_args ;;
+  render-tenant-worker-kubelet-env) cmd_render_tenant_worker_kubelet_env ;;
+  render-tenant-kubeovn-image) cmd_render_tenant_kubeovn_image ;;
   *)
     cat >&2 <<USAGE
-Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values>
+Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image>
 
   setup       Bring up the mgmt kind cluster + Kamaji + tenant worker and
               install both halves of kube-ovn.
@@ -420,6 +579,14 @@ Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-value
               Print the mgmt Helm values used by setup.
   render-tenant-values
               Print the tenant Helm values used by setup.
+  render-tenant-control-plane
+              Print the TenantControlPlane manifest used by setup.
+  render-tenant-worker-docker-args
+              Print the docker run arguments used for the tenant worker.
+  render-tenant-worker-kubelet-env
+              Print the kubelet env file used by the tenant worker.
+  render-tenant-kubeovn-image
+              Print the kube-ovn image reference rendered by tenant Helm values.
 USAGE
     exit 1 ;;
 esac

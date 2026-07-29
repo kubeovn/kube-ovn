@@ -3,6 +3,7 @@ package kamaji
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -86,6 +88,40 @@ func hostAndPort(addr string) (string, string) {
 	return strings.Trim(host, "[]"), port
 }
 
+func requiredPodAddressFamilies(ipFamily string) (bool, bool, error) {
+	switch ipFamily {
+	case "", "ipv4":
+		return true, false, nil
+	case "ipv6":
+		return false, true, nil
+	case "dual":
+		return true, true, nil
+	default:
+		return false, false, fmt.Errorf("unsupported E2E_IP_FAMILY %q", ipFamily)
+	}
+}
+
+func podAddressFamilies(pod *corev1.Pod) (bool, bool) {
+	ips := append([]string{}, util.PodIPs(*pod)...)
+	if annotation := pod.Annotations[util.IPAddressAnnotation]; annotation != "" {
+		ips = append(ips, strings.Split(annotation, ",")...)
+	}
+
+	var hasIPv4, hasIPv6 bool
+	for _, ipText := range ips {
+		ip := net.ParseIP(strings.TrimSpace(ipText))
+		if ip == nil {
+			continue
+		}
+		if ip.To4() != nil {
+			hasIPv4 = true
+		} else {
+			hasIPv6 = true
+		}
+	}
+	return hasIPv4, hasIPv6
+}
+
 var _ = framework.Describe("[group:kamaji]", func() {
 	f := framework.NewDefaultFramework("kamaji")
 
@@ -155,6 +191,19 @@ var _ = framework.Describe("[group:kamaji]", func() {
 			"pod should carry an ovn.kubernetes.io/ip_address annotation")
 		gomega.Expect(pod.Status.PodIP).NotTo(gomega.BeEmpty(),
 			"pod IP should be set by kubelet from the kube-ovn CNI")
+		wantIPv4, wantIPv6, err := requiredPodAddressFamilies(os.Getenv("E2E_IP_FAMILY"))
+		framework.ExpectNoError(err)
+		hasIPv4, hasIPv6 := podAddressFamilies(pod)
+		if wantIPv4 {
+			gomega.Expect(hasIPv4).To(gomega.BeTrue(),
+				"pod should have an IPv4 address when E2E_IP_FAMILY=%q; status PodIPs=%v annotation=%q",
+				os.Getenv("E2E_IP_FAMILY"), pod.Status.PodIPs, pod.Annotations[util.IPAddressAnnotation])
+		}
+		if wantIPv6 {
+			gomega.Expect(hasIPv6).To(gomega.BeTrue(),
+				"pod should have an IPv6 address when E2E_IP_FAMILY=%q; status PodIPs=%v annotation=%q",
+				os.Getenv("E2E_IP_FAMILY"), pod.Status.PodIPs, pod.Annotations[util.IPAddressAnnotation])
+		}
 		framework.Logf("tenant pod %s/%s allocated %s via OVN (logical_switch=%s)",
 			pod.Namespace, pod.Name, pod.Status.PodIP,
 			pod.Annotations[util.LogicalSwitchAnnotation])

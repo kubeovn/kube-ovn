@@ -297,7 +297,7 @@ kind-install-single-replica:
 # `make build-dev` first).
 .PHONY: kind-install-kamaji
 kind-install-kamaji:
-	@KUBEOVN_IMAGE=$(REGISTRY)/kube-ovn:$(DEV_TAG) ./hack/kamaji-e2e.sh setup
+	@E2E_IP_FAMILY=$(E2E_IP_FAMILY) KUBEOVN_IMAGE=$(REGISTRY)/kube-ovn:$(DEV_TAG) ./hack/kamaji-e2e.sh setup
 
 .PHONY: kind-clean-kamaji
 kind-clean-kamaji:
