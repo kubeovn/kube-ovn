@@ -79,6 +79,14 @@ conntrack:
 mode: iptables
 EOF
 "$SCRIPT" patch-kube-proxy-config < "$TMP_DIR/kube-proxy-config.in" > "$TMP_DIR/kube-proxy-config.out"
+cat > "$TMP_DIR/kube-proxy-config-defaults.in" <<'EOF'
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+conntrack:
+  tcpCloseWaitTimeout: 1h0m0s
+mode: iptables
+EOF
+"$SCRIPT" patch-kube-proxy-config < "$TMP_DIR/kube-proxy-config-defaults.in" > "$TMP_DIR/kube-proxy-config-defaults.out"
 
 require_line "$TMP_DIR/mgmt-values-ipv4.yaml" "  NET_STACK: ipv4"
 require_line "$TMP_DIR/tenant-values-ipv4.yaml" "  NET_STACK: ipv4"
@@ -116,6 +124,8 @@ require_line "$TMP_DIR/kube-proxy-config.out" "  maxPerCore: 0"
 require_line "$TMP_DIR/kube-proxy-config.out" "  min: 0"
 reject_text "$TMP_DIR/kube-proxy-config.out" "  maxPerCore: 32768"
 reject_text "$TMP_DIR/kube-proxy-config.out" "  min: 131072"
+require_line "$TMP_DIR/kube-proxy-config-defaults.out" "  maxPerCore: 0"
+require_line "$TMP_DIR/kube-proxy-config-defaults.out" "  min: 0"
 
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_NB_ADDR"
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_SB_ADDR"

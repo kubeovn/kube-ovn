@@ -286,10 +286,35 @@ cmd_render_tenant_worker_kubelet_env() {
 }
 
 cmd_patch_kube_proxy_config() {
-  sed -E '
-    /^conntrack:/,/^[^[:space:]]/ {
-      s/^([[:space:]]*)maxPerCore: .*/\1maxPerCore: 0/
-      s/^([[:space:]]*)min: .*/\1min: 0/
+  awk '
+    function emit_conntrack_limits() {
+      if (in_conntrack && !emitted_limits) {
+        print "  maxPerCore: 0"
+        print "  min: 0"
+        emitted_limits = 1
+      }
+    }
+
+    /^conntrack:[[:space:]]*$/ {
+      print
+      in_conntrack = 1
+      emitted_limits = 0
+      next
+    }
+
+    in_conntrack && /^[^[:space:]]/ {
+      emit_conntrack_limits()
+      in_conntrack = 0
+    }
+
+    in_conntrack && /^[[:space:]]*(maxPerCore|min):/ {
+      next
+    }
+
+    { print }
+
+    END {
+      emit_conntrack_limits()
     }
   '
 }
