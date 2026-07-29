@@ -200,14 +200,6 @@ kind-init-iptables-%: kind-clean
 	@kube_proxy_mode=iptables auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
 	@$(MAKE) kind-create
 
-.PHONY: kind-init-nft
-kind-init-nft: kind-init-nft-ipv4
-
-.PHONY: kind-init-nft-ipv4 kind-init-nft-ipv6 kind-init-nft-dual
-kind-init-nft-ipv4 kind-init-nft-ipv6 kind-init-nft-dual: kind-clean
-	@kube_proxy_mode=iptables auditing=$(KIND_AUDITING) ip_family=$(patsubst kind-init-nft-%,%,$@) $(MAKE) kind-generate-config
-	@$(MAKE) kind-create
-
 .PHONY: kind-init-nftables
 kind-init-nftables: kind-init-nftables-ipv4
 

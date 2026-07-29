@@ -503,7 +503,7 @@ jobs:
           - overlay
           - underlay
         kube-proxy-mode:
-          - ipvs
+          - iptables
         include:
           - ip-family: ipv4
             mode: overlay
@@ -514,15 +514,6 @@ jobs:
           - ip-family: dual
             mode: overlay
             kube-proxy-mode: nftables
-          - ip-family: ipv4
-            mode: overlay
-            kube-proxy-mode: nft
-          - ip-family: ipv6
-            mode: overlay
-            kube-proxy-mode: nft
-          - ip-family: dual
-            mode: overlay
-            kube-proxy-mode: nft
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -610,14 +601,11 @@ jobs:
         run: |
           pipx install jinjanator
           case "${{ matrix.kube-proxy-mode }}" in
-            ipvs)
-              kind_target=kind-init-${{ matrix.ip-family }}
+            iptables)
+              kind_target=kind-init-iptables-${{ matrix.ip-family }}
               ;;
             nftables)
               kind_target=kind-init-nftables-${{ matrix.ip-family }}
-              ;;
-            nft)
-              kind_target=kind-init-nft-${{ matrix.ip-family }}
               ;;
             *)
               echo "unsupported kube-proxy mode: ${{ matrix.kube-proxy-mode }}"
@@ -1107,7 +1095,7 @@ jobs:
           - overlay
           - underlay
         kube-proxy-mode:
-          - ipvs
+          - iptables
         include:
           - ip-family: ipv4
             mode: overlay
@@ -1118,15 +1106,6 @@ jobs:
           - ip-family: dual
             mode: overlay
             kube-proxy-mode: nftables
-          - ip-family: ipv4
-            mode: overlay
-            kube-proxy-mode: nft
-          - ip-family: ipv6
-            mode: overlay
-            kube-proxy-mode: nft
-          - ip-family: dual
-            mode: overlay
-            kube-proxy-mode: nft
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -1209,14 +1188,11 @@ jobs:
         run: |
           pipx install jinjanator
           case "${{ matrix.kube-proxy-mode }}" in
-            ipvs)
-              kind_target=kind-init-${{ matrix.ip-family }}
+            iptables)
+              kind_target=kind-init-iptables-${{ matrix.ip-family }}
               ;;
             nftables)
               kind_target=kind-init-nftables-${{ matrix.ip-family }}
-              ;;
-            nft)
-              kind_target=kind-init-nft-${{ matrix.ip-family }}
               ;;
             *)
               echo "unsupported kube-proxy mode: ${{ matrix.kube-proxy-mode }}"
