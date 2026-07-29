@@ -57,6 +57,7 @@ METALLB_VERSION=${METALLB_VERSION:-v0.14.8}
 KUBEOVN_IMAGE=${KUBEOVN_IMAGE:-kubeovn/kube-ovn:dev}
 JOB_DIR=${JOB_DIR:-/tmp/kamaji-e2e}
 REGISTRY_NAME=${REGISTRY_NAME:-kamaji-e2e-reg}
+KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT=${KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT:-75}
 
 CHART_DIR=${CHART_DIR:-$(cd "$(dirname "$0")/.." && pwd)/charts/kube-ovn}
 
@@ -347,6 +348,8 @@ PY
 )
   kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
     patch configmap kube-proxy --type merge -p "$patch"
+  echo ">>> Waiting ${KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT}s for kubelet ConfigMap cache propagation..."
+  sleep "$KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT"
   kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \
     delete pod -l k8s-app=kube-proxy --ignore-not-found
   if ! kubectl --kubeconfig "$JOB_DIR/tenant.kubeconfig" -n kube-system \

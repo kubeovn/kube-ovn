@@ -126,6 +126,7 @@ reject_text "$TMP_DIR/kube-proxy-config.out" "  maxPerCore: 32768"
 reject_text "$TMP_DIR/kube-proxy-config.out" "  min: 131072"
 require_line "$TMP_DIR/kube-proxy-config-defaults.out" "  maxPerCore: 0"
 require_line "$TMP_DIR/kube-proxy-config-defaults.out" "  min: 0"
+require_text "$SCRIPT" "KUBE_PROXY_CONFIGMAP_PROPAGATION_WAIT"
 
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_NB_ADDR"
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_SB_ADDR"
