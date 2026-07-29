@@ -500,11 +500,19 @@ jobs:
           - ipv6
           - dual
         mode:
-          - overlay
           - underlay
         kube-proxy-mode:
-          - iptables
+          - ipvs
         include:
+          - ip-family: ipv4
+            mode: overlay
+            kube-proxy-mode: iptables
+          - ip-family: ipv6
+            mode: overlay
+            kube-proxy-mode: iptables
+          - ip-family: dual
+            mode: overlay
+            kube-proxy-mode: iptables
           - ip-family: ipv4
             mode: overlay
             kube-proxy-mode: nftables
@@ -601,6 +609,9 @@ jobs:
         run: |
           pipx install jinjanator
           case "${{ matrix.kube-proxy-mode }}" in
+            ipvs)
+              kind_target=kind-init-${{ matrix.ip-family }}
+              ;;
             iptables)
               kind_target=kind-init-iptables-${{ matrix.ip-family }}
               ;;
@@ -1092,11 +1103,19 @@ jobs:
           - ipv6
           - dual
         mode:
-          - overlay
           - underlay
         kube-proxy-mode:
-          - iptables
+          - ipvs
         include:
+          - ip-family: ipv4
+            mode: overlay
+            kube-proxy-mode: iptables
+          - ip-family: ipv6
+            mode: overlay
+            kube-proxy-mode: iptables
+          - ip-family: dual
+            mode: overlay
+            kube-proxy-mode: iptables
           - ip-family: ipv4
             mode: overlay
             kube-proxy-mode: nftables
@@ -1188,6 +1207,9 @@ jobs:
         run: |
           pipx install jinjanator
           case "${{ matrix.kube-proxy-mode }}" in
+            ipvs)
+              kind_target=kind-init-${{ matrix.ip-family }}
+              ;;
             iptables)
               kind_target=kind-init-iptables-${{ matrix.ip-family }}
               ;;
