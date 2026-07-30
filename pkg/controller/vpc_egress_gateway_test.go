@@ -10,8 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -24,6 +26,7 @@ import (
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -87,6 +90,72 @@ func TestRecordVpcEgressGatewayKeyError(t *testing.T) {
 
 	require.ErrorIs(t, err, sourceErr)
 	require.Equal(t, "Warning GetVpcEgressGatewayFailed cache unavailable", requireRecorderEvent(t, recorder))
+}
+
+func TestUpdateVpcEgressGatewayStatusRetriesConflictWithLatestObject(t *testing.T) {
+	stale := &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "egress-gw",
+			Namespace:       "default",
+			ResourceVersion: "1",
+			Generation:      2,
+		},
+		Spec: kubeovnv1.VpcEgressGatewaySpec{
+			Replicas: 2,
+		},
+		Status: kubeovnv1.VpcEgressGatewayStatus{
+			Ready: true,
+			Phase: kubeovnv1.PhaseCompleted,
+			BFD: kubeovnv1.VpcEgressGatewayBFDStatus{
+				Enabled: true,
+				Desired: 4,
+				Up:      4,
+			},
+		},
+	}
+	stale.Status.Conditions.SetReady("ReconcileSuccess", stale.Generation)
+	latest := stale.DeepCopy()
+	latest.ResourceVersion = "2"
+	latest.Spec.Replicas = 3
+	latest.Status = kubeovnv1.VpcEgressGatewayStatus{
+		Ready: false,
+		Phase: kubeovnv1.PhaseProcessing,
+	}
+
+	client := kubeovnfake.NewSimpleClientset(latest)
+	getAttempts := 0
+	client.PrependReactor("get", "vpc-egress-gateways", func(ktesting.Action) (bool, runtime.Object, error) {
+		getAttempts++
+		return true, latest.DeepCopy(), nil
+	})
+	updateAttempts := 0
+	var updated *kubeovnv1.VpcEgressGateway
+	client.PrependReactor("update", "vpc-egress-gateways", func(action ktesting.Action) (bool, runtime.Object, error) {
+		updateAttempts++
+		obj := action.(ktesting.UpdateAction).GetObject().(*kubeovnv1.VpcEgressGateway)
+		if updateAttempts == 1 {
+			return true, nil, k8serrors.NewConflict(
+				schema.GroupResource{Group: "kubeovn.io", Resource: "vpc-egress-gateways"},
+				obj.Name,
+				errors.New("stale resource version"),
+			)
+		}
+		updated = obj.DeepCopy()
+		return true, updated, nil
+	})
+	c := &Controller{
+		config: &Configuration{KubeOvnClient: client},
+	}
+
+	result, err := c.updateVpcEgressGatewayStatus(stale)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, getAttempts)
+	require.Equal(t, 2, updateAttempts)
+	require.Equal(t, updated, result)
+	require.Equal(t, "2", updated.ResourceVersion)
+	require.Equal(t, int32(3), updated.Spec.Replicas)
+	require.Equal(t, stale.Status, updated.Status)
 }
 
 func TestVpcEgressGatewayReadyConditionChanged(t *testing.T) {
@@ -597,4 +666,40 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 			require.Len(t, messages, tt.wantNotReadyCount)
 		})
 	}
+}
+
+func TestVegBFDSessionStatuses(t *testing.T) {
+	up := ovnnb.BFDStatusUp
+	oldTransition := metav1.Now()
+	oldStatus := kubeovnv1.VpcEgressGatewayBFDStatus{
+		Sessions: []kubeovnv1.VpcEgressGatewayBFDSession{{
+			AddressFamily:      4,
+			Node:               "node-a",
+			Nexthop:            "10.0.0.2",
+			SBStatus:           ovnsb.BFDStatusUp,
+			LastTransitionTime: oldTransition,
+		}},
+	}
+
+	sessions := vegBFDSessionStatuses(
+		4,
+		"bfd@test",
+		map[string]set.Set[string]{
+			"node-a": set.New("10.0.0.2"),
+			"node-b": set.New("10.0.0.3"),
+		},
+		map[string]ovnnb.BFD{
+			"10.0.0.2": {UUID: "nb-a", DstIP: "10.0.0.2", Status: &up},
+		},
+		map[string]ovnsb.BFD{
+			"10.0.0.2": {UUID: "sb-a", DstIP: "10.0.0.2", Status: ovnsb.BFDStatusUp, ChassisName: "chassis-a"},
+		},
+		oldStatus,
+	)
+
+	require.Len(t, sessions, 2)
+	require.True(t, vegBFDSessionUp(sessions[0]))
+	require.Equal(t, oldTransition, sessions[0].LastTransitionTime)
+	require.False(t, vegBFDSessionUp(sessions[1]))
+	require.Equal(t, "NB BFD session is missing", sessions[1].Message)
 }

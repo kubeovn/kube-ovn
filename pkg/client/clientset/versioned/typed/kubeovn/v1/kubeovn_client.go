@@ -43,9 +43,9 @@ type KubeovnV1Interface interface {
 	OvnSnatRulesGetter
 	ProviderNetworksGetter
 	QoSPoliciesGetter
+	RouterLBRulesGetter
 	SecurityGroupsGetter
 	SubnetsGetter
-	RouterLBRulesGetter
 	SwitchLBRulesGetter
 	VipsGetter
 	VlansGetter
@@ -120,16 +120,16 @@ func (c *KubeovnV1Client) QoSPolicies() QoSPolicyInterface {
 	return newQoSPolicies(c)
 }
 
+func (c *KubeovnV1Client) RouterLBRules() RouterLBRuleInterface {
+	return newRouterLBRules(c)
+}
+
 func (c *KubeovnV1Client) SecurityGroups() SecurityGroupInterface {
 	return newSecurityGroups(c)
 }
 
 func (c *KubeovnV1Client) Subnets() SubnetInterface {
 	return newSubnets(c)
-}
-
-func (c *KubeovnV1Client) RouterLBRules() RouterLBRuleInterface {
-	return newRouterLBRules(c)
 }
 
 func (c *KubeovnV1Client) SwitchLBRules() SwitchLBRuleInterface {

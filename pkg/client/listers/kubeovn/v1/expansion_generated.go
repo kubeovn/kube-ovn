@@ -78,6 +78,10 @@ type ProviderNetworkListerExpansion interface{}
 // QoSPolicyLister.
 type QoSPolicyListerExpansion interface{}
 
+// RouterLBRuleListerExpansion allows custom methods to be added to
+// RouterLBRuleLister.
+type RouterLBRuleListerExpansion interface{}
+
 // SecurityGroupListerExpansion allows custom methods to be added to
 // SecurityGroupLister.
 type SecurityGroupListerExpansion interface{}
@@ -85,10 +89,6 @@ type SecurityGroupListerExpansion interface{}
 // SubnetListerExpansion allows custom methods to be added to
 // SubnetLister.
 type SubnetListerExpansion interface{}
-
-// RouterLBRuleListerExpansion allows custom methods to be added to
-// RouterLBRuleLister.
-type RouterLBRuleListerExpansion interface{}
 
 // SwitchLBRuleListerExpansion allows custom methods to be added to
 // SwitchLBRuleLister.

@@ -24,8 +24,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+)
+
+const (
+	bfdPortBindingStatusDisabled = "Disabled"
+	bfdPortBindingStatusBound    = "Bound"
+	bfdPortBindingStatusUnbound  = "Unbound"
+	bfdPortBindingStatusDegraded = "Degraded"
+	bfdPortBFDStatusUp           = "Up"
+	bfdPortBFDStatusDown         = "Down"
+	bfdPortBFDStatusPartial      = "Partial"
+	bfdPortBFDStatusUnknown      = "Unknown"
+	bfdPortRepairPendingMessage  = "BFD sessions are down after being established"
 )
 
 func (c *Controller) enqueueAddVpc(obj any) {
@@ -639,24 +653,29 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
-	bfdPortName, bfdPortNodes, err := c.reconcileVpcBfdLRP(vpc)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
+	oldBFDPortStatus := vpc.Status.BFDPort
+	bfdPortStatus, reconcileErr := c.reconcileVpcBfdLRP(vpc)
 	if vpc.Spec.BFDPort == nil || !vpc.Spec.BFDPort.Enabled {
 		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{}
 	} else {
-		vpc.Status.BFDPort = kubeovnv1.BFDPortStatus{
-			Name:  bfdPortName,
-			IP:    strings.Join(util.SplitTrimmed(vpc.Spec.BFDPort.IP, ","), ","),
-			Nodes: bfdPortNodes,
+		vpc.Status.BFDPort = bfdPortStatus
+		if shouldMarkVpcBFDPortRepair(oldBFDPortStatus, vpc.Status.BFDPort) {
+			vpc.Status.BFDPort.Message = bfdPortRepairPendingMessage
 		}
 	}
 	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().
 		UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
 		klog.Error(err)
 		return err
+	}
+	c.recordVpcBFDPortEvents(vpc, oldBFDPortStatus, vpc.Status.BFDPort)
+	if vpc.Spec.BFDPort.IsEnabled() &&
+		(vpc.Status.BFDPort.BindingStatus != bfdPortBindingStatusBound || vpc.Status.BFDPort.BFDStatus == bfdPortBFDStatusDown) {
+		c.addOrUpdateVpcQueue.AddAfter(vpc.Name, 5*time.Second)
+	}
+	if reconcileErr != nil {
+		klog.Error(reconcileErr)
+		return reconcileErr
 	}
 
 	return nil
@@ -784,21 +803,28 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 	return nil
 }
 
-func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, error) {
+func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (kubeovnv1.BFDPortStatus, error) {
 	portName := "bfd@" + vpc.Name
+	status := kubeovnv1.BFDPortStatus{
+		Name:          portName,
+		BindingStatus: bfdPortBindingStatusDisabled,
+		BFDStatus:     bfdPortBFDStatusUnknown,
+	}
 	if vpc.Spec.BFDPort == nil || !vpc.Spec.BFDPort.Enabled {
 		if err := c.OVNNbClient.DeleteLogicalRouterPort(portName); err != nil {
 			err = fmt.Errorf("failed to delete BFD LRP %s: %w", portName, err)
 			klog.Error(err)
-			return portName, nil, err
+			return status, err
 		}
 		if err := c.OVNNbClient.DeleteHAChassisGroup(portName); err != nil {
 			err = fmt.Errorf("failed to delete HA chassis group %s: %w", portName, err)
 			klog.Error(err)
-			return portName, nil, err
+			return status, err
 		}
-		return portName, nil, nil
+		return kubeovnv1.BFDPortStatus{}, nil
 	}
+	status.IP = strings.Join(util.SplitTrimmed(vpc.Spec.BFDPort.IP, ","), ",")
+	status.BindingStatus = bfdPortBindingStatusDegraded
 
 	var err error
 	chassisCount := 3
@@ -808,7 +834,8 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 		if selector, err = metav1.LabelSelectorAsSelector(vpc.Spec.BFDPort.NodeSelector); err != nil {
 			err = fmt.Errorf("failed to parse node selector %q: %w", vpc.Spec.BFDPort.NodeSelector.String(), err)
 			klog.Error(err)
-			return portName, nil, err
+			status.Message = err.Error()
+			return status, err
 		}
 	}
 
@@ -816,8 +843,10 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 	if err != nil {
 		err = fmt.Errorf("failed to list nodes with selector %q: %w", vpc.Spec.BFDPort.NodeSelector, err)
 		klog.Error(err)
-		return portName, nil, err
+		status.Message = err.Error()
+		return status, err
 	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
 	if len(nodes) == 0 {
 		klog.Warningf("no nodes found by selector %q for BFD LRP %s, clearing HA chassis group", selector.String(), portName)
 	}
@@ -828,37 +857,221 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 	for _, node := range nodes[:chassisCount] {
 		chassis, err := c.OVNSbClient.GetChassisByHost(node.Name)
 		if err != nil {
-			err = fmt.Errorf("failed to get chassis of node %s: %w", node.Name, err)
-			klog.Error(err)
-			return portName, nil, err
+			klog.Warningf("failed to get chassis of node %s: %v", node.Name, err)
+			status.Chassis = append(status.Chassis, kubeovnv1.BFDPortChassisStatus{Node: node.Name})
+			nodeNames = append(nodeNames, node.Name)
+			continue
 		}
 		chassisNames = append(chassisNames, chassis.Name)
 		nodeNames = append(nodeNames, node.Name)
+		status.Chassis = append(status.Chassis, kubeovnv1.BFDPortChassisStatus{
+			Node:    node.Name,
+			Chassis: chassis.Name,
+			Ready:   true,
+		})
+	}
+	status.Nodes = nodeNames
+	if len(chassisNames) == 0 && len(nodes) != 0 {
+		err = fmt.Errorf("no available chassis found for BFD LRP %s", portName)
+		klog.Error(err)
+		status.Message = err.Error()
+		return status, err
+	}
+	if vpc.Status.BFDPort.BFDStatus == bfdPortBFDStatusDown &&
+		vpc.Status.BFDPort.ActiveChassis != "" &&
+		vpc.Status.BFDPort.Message == bfdPortRepairPendingMessage {
+		chassisNames = moveChassisToEnd(chassisNames, vpc.Status.BFDPort.ActiveChassis)
+		status.Message = fmt.Sprintf("demoting active chassis %s because BFD sessions are down", vpc.Status.BFDPort.ActiveChassis)
+		c.recorder.Eventf(vpc, v1.EventTypeWarning, "BFDPortRepairStarted", "%s", status.Message)
 	}
 
 	networks := util.SplitTrimmed(vpc.Spec.BFDPort.IP, ",")
 	if err = c.OVNNbClient.CreateLogicalRouterPort(vpc.Name, portName, "", networks); err != nil {
 		klog.Error(err)
-		return portName, nil, err
+		status.Message = err.Error()
+		return status, err
 	}
 	if err = c.OVNNbClient.UpdateLogicalRouterPortNetworks(portName, networks); err != nil {
 		klog.Error(err)
-		return portName, nil, err
+		status.Message = err.Error()
+		return status, err
 	}
 	if err = c.OVNNbClient.UpdateLogicalRouterPortOptions(portName, map[string]string{"bfd-only": "true"}); err != nil {
 		klog.Error(err)
-		return portName, nil, err
+		status.Message = err.Error()
+		return status, err
 	}
 	if err = c.OVNNbClient.CreateHAChassisGroup(portName, chassisNames, map[string]string{"lrp": portName}); err != nil {
 		klog.Error(err)
-		return portName, nil, err
+		status.Message = err.Error()
+		return status, err
 	}
 	if err = c.OVNNbClient.SetLogicalRouterPortHAChassisGroup(portName, portName); err != nil {
 		klog.Error(err)
-		return portName, nil, err
+		status.Message = err.Error()
+		return status, err
+	}
+	if len(chassisNames) == 0 {
+		return status, nil
 	}
 
-	return portName, nodeNames, nil
+	if err = c.fillVpcBFDPortRuntimeStatus(&status); err != nil {
+		klog.Error(err)
+		status.Message = err.Error()
+		return status, err
+	}
+
+	return status, nil
+}
+
+func (c *Controller) fillVpcBFDPortRuntimeStatus(status *kubeovnv1.BFDPortStatus) error {
+	haChassisList, err := c.OVNNbClient.ListHAChassis(status.Name)
+	if err != nil {
+		return err
+	}
+	priorityByChassis := make(map[string]int, len(haChassisList))
+	for _, chassis := range haChassisList {
+		priorityByChassis[chassis.ChassisName] = chassis.Priority
+	}
+	for i := range status.Chassis {
+		status.Chassis[i].Priority = priorityByChassis[status.Chassis[i].Chassis]
+	}
+
+	portBinding, err := c.OVNSbClient.GetPortBinding(status.Name, true)
+	if err != nil {
+		return err
+	}
+	if portBinding == nil || portBinding.Chassis == nil || *portBinding.Chassis == "" {
+		status.BindingStatus = bfdPortBindingStatusUnbound
+		status.Message = "BFD LRP is not bound to any chassis"
+	} else {
+		status.ActiveChassis = *portBinding.Chassis
+		status.ActiveNode = bfdPortNodeByChassis(status.Chassis, status.ActiveChassis)
+		status.BindingStatus = bfdPortBindingStatusBound
+		status.Message = ""
+	}
+
+	nbBFDs, err := c.OVNNbClient.ListBFDs(status.Name, "")
+	if err != nil {
+		return err
+	}
+	sbBFDs, err := c.OVNSbClient.ListBFDs(status.Name, "")
+	if err != nil {
+		return err
+	}
+	status.BFDStatus = aggregateVpcBFDStatus(nbBFDs, sbBFDs)
+	return nil
+}
+
+func bfdPortNodeByChassis(chassisStatus []kubeovnv1.BFDPortChassisStatus, chassis string) string {
+	for _, item := range chassisStatus {
+		if item.Chassis == chassis {
+			return item.Node
+		}
+	}
+	return ""
+}
+
+func moveChassisToEnd(chassisNames []string, chassis string) []string {
+	if chassis == "" || len(chassisNames) < 2 {
+		return chassisNames
+	}
+	result := make([]string, 0, len(chassisNames))
+	var found bool
+	for _, name := range chassisNames {
+		if name == chassis {
+			found = true
+			continue
+		}
+		result = append(result, name)
+	}
+	if found {
+		result = append(result, chassis)
+		return result
+	}
+	return chassisNames
+}
+
+func aggregateVpcBFDStatus(_ []ovnnb.BFD, sbBFDs []ovnsb.BFD) string {
+	if len(sbBFDs) == 0 {
+		return bfdPortBFDStatusUnknown
+	}
+
+	var up, down int
+	for _, bfd := range sbBFDs {
+		if bfd.Status == ovnsb.BFDStatusUp {
+			up++
+		} else {
+			down++
+		}
+	}
+	if up != 0 && down == 0 {
+		return bfdPortBFDStatusUp
+	}
+	if up != 0 {
+		return bfdPortBFDStatusPartial
+	}
+	return bfdPortBFDStatusDown
+}
+
+func shouldMarkVpcBFDPortRepair(oldStatus, newStatus kubeovnv1.BFDPortStatus) bool {
+	if oldStatus.ActiveChassis == "" || newStatus.ActiveChassis == "" {
+		return false
+	}
+	if newStatus.BindingStatus != bfdPortBindingStatusBound || newStatus.BFDStatus != bfdPortBFDStatusDown {
+		return false
+	}
+	return oldStatus.BFDStatus == bfdPortBFDStatusUp || oldStatus.BFDStatus == bfdPortBFDStatusPartial
+}
+
+func (c *Controller) recordVpcBFDPortEvents(vpc *kubeovnv1.Vpc, oldStatus, newStatus kubeovnv1.BFDPortStatus) {
+	if reflect.DeepEqual(oldStatus, newStatus) {
+		return
+	}
+	switch {
+	case oldStatus.BindingStatus != bfdPortBindingStatusUnbound && newStatus.BindingStatus == bfdPortBindingStatusUnbound:
+		c.recorder.Eventf(vpc, v1.EventTypeWarning, "BFDPortUnbound", "%s", newStatus.Message)
+	case oldStatus.ActiveChassis != "" && newStatus.ActiveChassis != "" && oldStatus.ActiveChassis != newStatus.ActiveChassis:
+		c.recorder.Eventf(vpc, v1.EventTypeNormal, "BFDPortRebound", "BFD port moved from chassis %s to %s", oldStatus.ActiveChassis, newStatus.ActiveChassis)
+	case oldStatus.ActiveChassis == "" && newStatus.ActiveChassis != "":
+		c.recorder.Eventf(vpc, v1.EventTypeNormal, "BFDPortBound", "BFD port bound to chassis %s", newStatus.ActiveChassis)
+	}
+
+	if oldStatus.BFDStatus != newStatus.BFDStatus {
+		switch newStatus.BFDStatus {
+		case bfdPortBFDStatusDown:
+			c.recorder.Eventf(vpc, v1.EventTypeWarning, "BFDSessionDown", "BFD port %s sessions are down", newStatus.Name)
+		case bfdPortBFDStatusUp:
+			c.recorder.Eventf(vpc, v1.EventTypeNormal, "BFDSessionUp", "BFD port %s sessions are up", newStatus.Name)
+			if oldStatus.BFDStatus == bfdPortBFDStatusDown {
+				c.recorder.Eventf(vpc, v1.EventTypeNormal, "BFDPortRepairSucceeded", "BFD port %s recovered", newStatus.Name)
+			}
+		}
+	}
+}
+
+func (c *Controller) enqueueBFDStatusResync() {
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		klog.Warningf("failed to list vpcs for BFD status resync: %v", err)
+	} else {
+		for _, vpc := range vpcs {
+			if vpc.Spec.BFDPort.IsEnabled() {
+				c.addOrUpdateVpcQueue.Add(vpc.Name)
+			}
+		}
+	}
+
+	gateways, err := c.vpcEgressGatewayLister.List(labels.Everything())
+	if err != nil {
+		klog.Warningf("failed to list vpc egress gateways for BFD status resync: %v", err)
+		return
+	}
+	for _, gateway := range gateways {
+		if gateway.Spec.BFD.Enabled {
+			c.addOrUpdateVpcEgressGatewayQueue.Add(cache.MetaObjectToName(gateway).String())
+		}
+	}
 }
 
 func (c *Controller) addPolicyRouteToVpc(vpcName string, policy *kubeovnv1.PolicyRoute, externalIDs map[string]string) error {
@@ -1033,8 +1246,7 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 	existsMap = make(map[string]*kubeovnv1.PolicyRoute, len(exists))
 
 	for _, item := range exists {
-		if item.ExternalIDs["vpc-egress-gateway"] != "" || item.ExternalIDs["subnet"] != "" ||
-			item.ExternalIDs["isU2ORoutePolicy"] == "true" {
+		if !isVpcSpecManagedLogicalRouterPolicy(item) {
 			continue
 		}
 		policy := &kubeovnv1.PolicyRoute{
@@ -1060,6 +1272,13 @@ func diffPolicyRouteWithLogical(exists []*ovnnb.LogicalRouterPolicy, target []*k
 		dels = append(dels, item)
 	}
 	return dels, adds
+}
+
+func isVpcSpecManagedLogicalRouterPolicy(item *ovnnb.LogicalRouterPolicy) bool {
+	return item.ExternalIDs[ovs.ExternalIDVpcEgressGateway] == "" &&
+		item.ExternalIDs[ovs.ExternalIDVpcNatGateway] == "" &&
+		item.ExternalIDs["subnet"] == "" &&
+		item.ExternalIDs["isU2ORoutePolicy"] != "true"
 }
 
 func getPolicyRouteItemKey(item *kubeovnv1.PolicyRoute) (key string) {
