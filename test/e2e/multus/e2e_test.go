@@ -228,9 +228,14 @@ func (e multusAttachmentExpecter) expectAttachmentInterfaceIPFamily(pod *corev1.
 	framework.ExpectNotContainElement(actualRoutes, request.Route{Destination: otherFamilyCIDR})
 	framework.ExpectTrue(hasNonLinkLocalConnectedRouteForFamily(actualRoutes, attachment.family))
 	framework.ExpectFalse(hasNonLinkLocalConnectedRouteForFamily(actualRoutes, oppositeIPFamily(attachment.family)))
-	framework.ExpectContainElement(actualRoutes, request.Route{Destination: "default", Gateway: familyGateway})
+	if pod.Annotations[fmt.Sprintf(util.DefaultRouteAnnotationTemplate, attachment.provider)] == "true" {
+		framework.ExpectContainElement(actualRoutes, request.Route{Destination: "default", Gateway: familyGateway})
+		framework.ExpectTrue(podHasDefaultRouteForFamily(pod, attachment.ifaceName, attachment.family))
+	} else {
+		framework.ExpectNotContainElement(actualRoutes, request.Route{Destination: "default", Gateway: familyGateway})
+		framework.ExpectFalse(podHasDefaultRouteForFamily(pod, attachment.ifaceName, attachment.family))
+	}
 	framework.ExpectNotContainElement(actualRoutes, request.Route{Destination: "default", Gateway: otherFamilyGateway})
-	framework.ExpectTrue(podHasDefaultRouteForFamily(pod, attachment.ifaceName, attachment.family))
 	framework.ExpectFalse(podHasDefaultRouteForFamily(pod, attachment.ifaceName, oppositeIPFamily(attachment.family)))
 }
 
@@ -475,7 +480,6 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 			nadv1.NetworkAttachmentAnnot:                               string(networksAnnotation),
 			fmt.Sprintf(util.IPFamilyAnnotationTemplate, providerNet1): strings.ToLower(apiv1.ProtocolIPv4),
 			fmt.Sprintf(util.IPFamilyAnnotationTemplate, providerNet2): strings.ToLower(apiv1.ProtocolIPv6),
-			fmt.Sprintf(util.DefaultRouteAnnotationTemplate, provider): "true",
 		}
 		cmd := []string{"sleep", "infinity"}
 		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
