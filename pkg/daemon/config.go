@@ -37,53 +37,56 @@ type Configuration struct {
 	CniConfName      string
 
 	// interface being used for tunnel
-	tunnelIface               string
-	Iface                     string
-	HostTunnelSrc             bool
-	DPDKTunnelIface           string
-	MTU                       int
-	MSS                       int
-	EnableMirror              bool
-	MirrorNic                 string
-	BindSocket                string
-	OvsSocket                 string
-	KubeConfigFile            string
-	KubeClient                kubernetes.Interface
-	KubeOvnClient             clientset.Interface
-	CertManagerClient         certmanagerclientset.Interface
-	PodName                   string
-	PodNamespace              string
-	NodeName                  string
-	NodeIPv4                  string
-	NodeIPv6                  string
-	ServiceClusterIPRange     string
-	ClusterRouter             string
-	NodeSwitch                string
-	EncapChecksum             bool
-	EnablePprof               bool
-	MacLearningFallback       bool
-	PprofPort                 int32
-	SecureServing             bool
-	NetworkType               string
-	DefaultProviderName       string
-	DefaultInterfaceName      string
-	ExternalGatewayConfigNS   string
-	ExternalGatewaySwitch     string // provider network underlay vlan subnet
-	EnableMetrics             bool
-	EnableOVNIPSec            bool
-	CertManagerIPSecCert      bool
-	CertManagerIssuerName     string
-	IPSecCertDuration         int
-	EnableArpDetectIPConflict bool
-	KubeletDir                string
-	EnableVerboseConnCheck    bool
-	TCPConnCheckPort          int32
-	UDPConnCheckPort          int32
-	EnableTProxy              bool
-	OVSVsctlConcurrency       int32
-	SetVxlanTxOff             bool
-	LogPerm                   string
-	EnableNonPrimaryCNI       bool
+	tunnelIface                   string
+	Iface                         string
+	HostTunnelSrc                 bool
+	DPDKTunnelIface               string
+	MTU                           int
+	MSS                           int
+	EnableMirror                  bool
+	MirrorNic                     string
+	BindSocket                    string
+	OvsSocket                     string
+	KubeConfigFile                string
+	KubeClient                    kubernetes.Interface
+	KubeOvnClient                 clientset.Interface
+	CertManagerClient             certmanagerclientset.Interface
+	PodName                       string
+	PodNamespace                  string
+	NodeName                      string
+	NodeIPv4                      string
+	NodeIPv6                      string
+	ServiceClusterIPRange         string
+	ClusterRouter                 string
+	NodeSwitch                    string
+	EncapChecksum                 bool
+	EnablePprof                   bool
+	MacLearningFallback           bool
+	PprofPort                     int32
+	SecureServing                 bool
+	NetworkType                   string
+	DefaultProviderName           string
+	DefaultInterfaceName          string
+	ExternalGatewayConfigNS       string
+	ExternalGatewaySwitch         string // provider network underlay vlan subnet
+	EnableMetrics                 bool
+	EnableOVNIPSec                bool
+	CertManagerIPSecCert          bool
+	CertManagerIssuerName         string
+	IPSecCertDuration             int
+	EnableArpDetectIPConflict     bool
+	KubeletDir                    string
+	EnableVerboseConnCheck        bool
+	TCPConnCheckPort              int32
+	UDPConnCheckPort              int32
+	EnableTProxy                  bool
+	OVSVsctlConcurrency           int32
+	SetVxlanTxOff                 bool
+	LogPerm                       string
+	EnableNonPrimaryCNI           bool
+	GatewayNetfilterMode          string
+	KubeProxyModeEndpoint         string
+	GatewayNetfilterDetectTimeout time.Duration
 
 	// TLS configuration for secure serving
 	TLSMinVersion   string
@@ -123,25 +126,28 @@ func ParseFlags() *Configuration {
 		argSecureServing         = pflag.Bool("secure-serving", false, "Enable secure serving")
 		argMacLearningFallback   = pflag.Bool("mac-learning-fallback", false, "Fallback to the legacy MAC learning mode")
 
-		argsNetworkType              = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
-		argsDefaultProviderName      = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
-		argsDefaultInterfaceName     = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
-		argExternalGatewayConfigNS   = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
-		argExternalGatewaySwitch     = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
-		argEnableMetrics             = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
-		argEnableArpDetectIPConflict = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in underlay network")
-		argKubeletDir                = pflag.String("kubelet-dir", "/var/lib/kubelet", "Path of the kubelet dir, default: /var/lib/kubelet")
-		argEnableVerboseConnCheck    = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
-		argTCPConnectivityCheckPort  = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
-		argUDPConnectivityCheckPort  = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
-		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
-		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
-		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
-		argCertManagerIPSecCert      = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
-		argCertManagerIssuerName     = pflag.String("cert-manager-issuer-name", "kube-ovn", "The cert-manager issuer name to request certificates from")
-		argOVNIPSecCertDuration      = pflag.Int("ovn-ipsec-cert-duration", 2*365*24*60*60, "The duration requested for IPSec certificates (seconds)")
-		argSetVxlanTxOff             = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
-		argLogPerm                   = pflag.String("log-perm", "640", "The permission for the log file")
+		argsNetworkType                  = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
+		argsDefaultProviderName          = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
+		argsDefaultInterfaceName         = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
+		argExternalGatewayConfigNS       = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
+		argExternalGatewaySwitch         = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
+		argEnableMetrics                 = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
+		argEnableArpDetectIPConflict     = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in underlay network")
+		argKubeletDir                    = pflag.String("kubelet-dir", "/var/lib/kubelet", "Path of the kubelet dir, default: /var/lib/kubelet")
+		argEnableVerboseConnCheck        = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
+		argTCPConnectivityCheckPort      = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
+		argUDPConnectivityCheckPort      = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
+		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
+		argOVSVsctlConcurrency           = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
+		argEnableOVNIPSec                = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
+		argCertManagerIPSecCert          = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
+		argCertManagerIssuerName         = pflag.String("cert-manager-issuer-name", "kube-ovn", "The cert-manager issuer name to request certificates from")
+		argOVNIPSecCertDuration          = pflag.Int("ovn-ipsec-cert-duration", 2*365*24*60*60, "The duration requested for IPSec certificates (seconds)")
+		argSetVxlanTxOff                 = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
+		argLogPerm                       = pflag.String("log-perm", "640", "The permission for the log file")
+		argGatewayNetfilterMode          = pflag.String("gateway-netfilter-mode", "auto", "gateway netfilter backend: auto, iptables, or nftables")
+		argKubeProxyModeEndpoint         = pflag.String("kube-proxy-mode-endpoint", "http://localhost:10249/proxyMode", "local kube-proxy proxyMode endpoint")
+		argGatewayNetfilterDetectTimeout = pflag.Duration("gateway-netfilter-detect-timeout", 30*time.Second, "maximum time to detect the kube-proxy mode during cold start")
 
 		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
@@ -171,53 +177,56 @@ func ParseFlags() *Configuration {
 	pflag.Parse()
 
 	config := &Configuration{
-		InstallCNIConfig:          *argInstallCNIConfig,
-		CniConfDir:                *argCniConfDir,
-		CniConfFile:               *argCniConfFile,
-		CniConfName:               *argsCniConfName,
-		Iface:                     *argIface,
-		HostTunnelSrc:             *argHostTunnelSrc,
-		DPDKTunnelIface:           *argDPDKTunnelIface,
-		MTU:                       *argMTU,
-		EnableMirror:              *argEnableMirror,
-		MirrorNic:                 *argMirrorNic,
-		BindSocket:                *argBindSocket,
-		OvsSocket:                 *argOvsSocket,
-		KubeConfigFile:            *argKubeConfigFile,
-		EnablePprof:               *argEnablePprof,
-		SecureServing:             *argSecureServing,
-		PprofPort:                 *argPprofPort,
-		MacLearningFallback:       *argMacLearningFallback,
-		NodeName:                  os.Getenv(util.EnvNodeName),
-		PodNamespace:              os.Getenv(util.EnvPodNamespace),
-		PodName:                   os.Getenv(util.EnvPodName),
-		ServiceClusterIPRange:     *argServiceClusterIPRange,
-		ClusterRouter:             *argClusterRouter,
-		NodeSwitch:                *argNodeSwitch,
-		EncapChecksum:             *argEncapChecksum,
-		NetworkType:               *argsNetworkType,
-		DefaultProviderName:       *argsDefaultProviderName,
-		DefaultInterfaceName:      *argsDefaultInterfaceName,
-		ExternalGatewayConfigNS:   *argExternalGatewayConfigNS,
-		ExternalGatewaySwitch:     *argExternalGatewaySwitch,
-		EnableMetrics:             *argEnableMetrics,
-		EnableOVNIPSec:            *argEnableOVNIPSec,
-		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
-		KubeletDir:                *argKubeletDir,
-		EnableVerboseConnCheck:    *argEnableVerboseConnCheck,
-		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
-		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
-		EnableTProxy:              *argEnableTProxy,
-		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
-		SetVxlanTxOff:             *argSetVxlanTxOff,
-		LogPerm:                   *argLogPerm,
-		TLSMinVersion:             *argTLSMinVersion,
-		TLSMaxVersion:             *argTLSMaxVersion,
-		TLSCipherSuites:           *argTLSCipherSuites,
-		CertManagerIPSecCert:      *argCertManagerIPSecCert,
-		CertManagerIssuerName:     *argCertManagerIssuerName,
-		IPSecCertDuration:         *argOVNIPSecCertDuration,
-		EnableNonPrimaryCNI:       *argNonPrimaryCNI,
+		InstallCNIConfig:              *argInstallCNIConfig,
+		CniConfDir:                    *argCniConfDir,
+		CniConfFile:                   *argCniConfFile,
+		CniConfName:                   *argsCniConfName,
+		Iface:                         *argIface,
+		HostTunnelSrc:                 *argHostTunnelSrc,
+		DPDKTunnelIface:               *argDPDKTunnelIface,
+		MTU:                           *argMTU,
+		EnableMirror:                  *argEnableMirror,
+		MirrorNic:                     *argMirrorNic,
+		BindSocket:                    *argBindSocket,
+		OvsSocket:                     *argOvsSocket,
+		KubeConfigFile:                *argKubeConfigFile,
+		EnablePprof:                   *argEnablePprof,
+		SecureServing:                 *argSecureServing,
+		PprofPort:                     *argPprofPort,
+		MacLearningFallback:           *argMacLearningFallback,
+		NodeName:                      os.Getenv(util.EnvNodeName),
+		PodNamespace:                  os.Getenv(util.EnvPodNamespace),
+		PodName:                       os.Getenv(util.EnvPodName),
+		ServiceClusterIPRange:         *argServiceClusterIPRange,
+		ClusterRouter:                 *argClusterRouter,
+		NodeSwitch:                    *argNodeSwitch,
+		EncapChecksum:                 *argEncapChecksum,
+		NetworkType:                   *argsNetworkType,
+		DefaultProviderName:           *argsDefaultProviderName,
+		DefaultInterfaceName:          *argsDefaultInterfaceName,
+		ExternalGatewayConfigNS:       *argExternalGatewayConfigNS,
+		ExternalGatewaySwitch:         *argExternalGatewaySwitch,
+		EnableMetrics:                 *argEnableMetrics,
+		EnableOVNIPSec:                *argEnableOVNIPSec,
+		EnableArpDetectIPConflict:     *argEnableArpDetectIPConflict,
+		KubeletDir:                    *argKubeletDir,
+		EnableVerboseConnCheck:        *argEnableVerboseConnCheck,
+		TCPConnCheckPort:              *argTCPConnectivityCheckPort,
+		UDPConnCheckPort:              *argUDPConnectivityCheckPort,
+		EnableTProxy:                  *argEnableTProxy,
+		OVSVsctlConcurrency:           *argOVSVsctlConcurrency,
+		SetVxlanTxOff:                 *argSetVxlanTxOff,
+		LogPerm:                       *argLogPerm,
+		TLSMinVersion:                 *argTLSMinVersion,
+		TLSMaxVersion:                 *argTLSMaxVersion,
+		TLSCipherSuites:               *argTLSCipherSuites,
+		CertManagerIPSecCert:          *argCertManagerIPSecCert,
+		CertManagerIssuerName:         *argCertManagerIssuerName,
+		IPSecCertDuration:             *argOVNIPSecCertDuration,
+		EnableNonPrimaryCNI:           *argNonPrimaryCNI,
+		GatewayNetfilterMode:          *argGatewayNetfilterMode,
+		KubeProxyModeEndpoint:         *argKubeProxyModeEndpoint,
+		GatewayNetfilterDetectTimeout: *argGatewayNetfilterDetectTimeout,
 	}
 
 	return config

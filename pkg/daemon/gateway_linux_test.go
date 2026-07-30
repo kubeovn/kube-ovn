@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -94,4 +96,91 @@ func TestFindRulePositionsInList(t *testing.T) {
 			require.Equal(t, tc.expected, findRulePositionsInList(tc.rules, tc.rule))
 		})
 	}
+}
+
+func TestGenerateHostServiceSNATRules(t *testing.T) {
+	services := []*corev1.Service{
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
+			Spec: corev1.ServiceSpec{
+				ClusterIPs: []string{"10.96.0.10", "fd00:10:96::10"},
+				Ports: []corev1.ServicePort{
+					{Protocol: corev1.ProtocolTCP, Port: 80},
+					{Protocol: corev1.ProtocolUDP, Port: 53},
+					{Protocol: corev1.ProtocolSCTP, Port: 90},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "headless"},
+			Spec: corev1.ServiceSpec{
+				ClusterIP: corev1.ClusterIPNone,
+				Ports:     []corev1.ServicePort{{Protocol: corev1.ProtocolTCP, Port: 80}},
+			},
+		},
+	}
+
+	rules := generateHostServiceSNATRules(services, "IPv4", "ovn40subnets", "172.18.0.2")
+	require.Equal(t, []util.IPTableRule{
+		{
+			Table: NAT,
+			Chain: OvnPostrouting,
+			Rule:  strings.Fields(`-p tcp -m addrtype --src-type LOCAL -m set --match-set ovn40subnets dst -m conntrack --ctstate DNAT --ctorigdst 10.96.0.10 --ctorigdstport 80 -j SNAT --to-source 172.18.0.2`),
+		},
+		{
+			Table: NAT,
+			Chain: OvnPostrouting,
+			Rule:  strings.Fields(`-p udp -m addrtype --src-type LOCAL -m set --match-set ovn40subnets dst -m conntrack --ctstate DNAT --ctorigdst 10.96.0.10 --ctorigdstport 53 -j SNAT --to-source 172.18.0.2`),
+		},
+	}, rules)
+
+	require.Empty(t, generateHostServiceSNATRules(services, "IPv4", "ovn40subnets", ""))
+}
+
+func TestGenerateServiceNodePortLocalRules(t *testing.T) {
+	services := []*corev1.Service{
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "remote"},
+			Spec: corev1.ServiceSpec{
+				ClusterIPs:            []string{"10.96.0.10", "fd00:10:96::10"},
+				ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+				Ports: []corev1.ServicePort{
+					{Protocol: corev1.ProtocolTCP, NodePort: 30080},
+					{Protocol: corev1.ProtocolUDP, NodePort: 30053},
+					{Protocol: corev1.ProtocolTCP},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "cluster"},
+			Spec: corev1.ServiceSpec{
+				ClusterIPs: []string{"10.96.0.11"},
+				Ports:      []corev1.ServicePort{{Protocol: corev1.ProtocolTCP, NodePort: 30081}},
+			},
+		},
+	}
+
+	rules := generateServiceNodePortLocalRules(services, "IPv4", "ovn40other-node")
+	require.Equal(t, []util.IPTableRule{
+		{
+			Table: NAT,
+			Chain: OvnPrerouting,
+			Rule:  strings.Fields(`-p tcp -m addrtype --dst-type LOCAL -m tcp --dport 30080 -j MARK --set-xmark 0x80000/0x80000`),
+		},
+		{
+			Table: NAT,
+			Chain: OvnPrerouting,
+			Rule:  strings.Fields(`-p tcp -m set --match-set ovn40other-node src -m addrtype --dst-type LOCAL -m tcp --dport 30080 -j MARK --set-xmark 0x4000/0x4000`),
+		},
+		{
+			Table: NAT,
+			Chain: OvnPrerouting,
+			Rule:  strings.Fields(`-p udp -m addrtype --dst-type LOCAL -m udp --dport 30053 -j MARK --set-xmark 0x80000/0x80000`),
+		},
+		{
+			Table: NAT,
+			Chain: OvnPrerouting,
+			Rule:  strings.Fields(`-p udp -m set --match-set ovn40other-node src -m addrtype --dst-type LOCAL -m udp --dport 30053 -j MARK --set-xmark 0x4000/0x4000`),
+		},
+	}, rules)
 }

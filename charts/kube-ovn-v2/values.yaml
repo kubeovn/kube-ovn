@@ -1155,6 +1155,16 @@ agent:
   #  - name: CUSTOM_ENV_VAR
   #    value: "custom-value"
 
+  # -- Gateway netfilter backend: auto, iptables, or nftables; leave empty to use the daemon default of auto.
+  # @section -- CNI agent configuration
+  gatewayNetfilterMode: ""
+  # -- Local kube-proxy proxyMode endpoint; leave empty to use the daemon default endpoint.
+  # @section -- CNI agent configuration
+  kubeProxyModeEndpoint: ""
+  # -- Maximum time to wait for the kube-proxy mode during cold start; leave empty to use the daemon default of 30s.
+  # @section -- CNI agent configuration
+  gatewayNetfilterDetectTimeout: ""
+
   # -- Agent daemon resource limits & requests.
   # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
   # @section -- CNI agent configuration

@@ -193,8 +193,20 @@ kind-init-deepflow: kind-clean
 	$(call kind_create_cluster,yamls/kind.yaml,kube-ovn,0)
 
 .PHONY: kind-init-iptables
-kind-init-iptables:
-	@kube_proxy_mode=iptables $(MAKE) kind-init
+kind-init-iptables: kind-init-iptables-ipv4
+
+.PHONY: kind-init-iptables-%
+kind-init-iptables-%: kind-clean
+	@kube_proxy_mode=iptables auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
+	@$(MAKE) kind-create
+
+.PHONY: kind-init-nftables
+kind-init-nftables: kind-init-nftables-ipv4
+
+.PHONY: kind-init-nftables-%
+kind-init-nftables-%: kind-clean
+	@kube_proxy_mode=nftables auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
+	@$(MAKE) kind-create
 
 .PHONY: kind-init-ha
 kind-init-ha: kind-init-ha-ipv4
