@@ -11,15 +11,20 @@ import (
 )
 
 func Test_enqueueUpdateOvnEip(t *testing.T) {
-	newTestController := func() *Controller {
-		return &Controller{
+	newTestController := func(t *testing.T) *Controller {
+		ctrl := &Controller{
 			updateOvnEipQueue: newTypedRateLimitingQueue[string]("UpdateOvnEip", nil),
 			resetOvnEipQueue:  newTypedRateLimitingQueue[string]("ResetOvnEip", nil),
 		}
+		t.Cleanup(func() {
+			ctrl.updateOvnEipQueue.ShutDown()
+			ctrl.resetOvnEipQueue.ShutDown()
+		})
+		return ctrl
 	}
 
 	t.Run("v6 ip change is rejected via resetOvnEipQueue, not updateOvnEipQueue", func(t *testing.T) {
-		ctrl := newTestController()
+		ctrl := newTestController(t)
 		oldEip := &kubeovnv1.OvnEip{
 			ObjectMeta: metav1.ObjectMeta{Name: "eip-v6"},
 			Spec:       kubeovnv1.OvnEipSpec{V6Ip: "fc00:1::a"},
@@ -36,7 +41,7 @@ func Test_enqueueUpdateOvnEip(t *testing.T) {
 	})
 
 	t.Run("v4 ip change is rejected via resetOvnEipQueue", func(t *testing.T) {
-		ctrl := newTestController()
+		ctrl := newTestController(t)
 		oldEip := &kubeovnv1.OvnEip{
 			ObjectMeta: metav1.ObjectMeta{Name: "eip-v4"},
 			Spec:       kubeovnv1.OvnEipSpec{V4Ip: "192.168.0.5"},
@@ -51,7 +56,7 @@ func Test_enqueueUpdateOvnEip(t *testing.T) {
 	})
 
 	t.Run("v4 ip assigned from empty is queued via updateOvnEipQueue", func(t *testing.T) {
-		ctrl := newTestController()
+		ctrl := newTestController(t)
 		oldEip := &kubeovnv1.OvnEip{
 			ObjectMeta: metav1.ObjectMeta{Name: "eip-assign"},
 			Spec:       kubeovnv1.OvnEipSpec{V4Ip: "", V6Ip: "fc00:1::a"},
@@ -66,7 +71,7 @@ func Test_enqueueUpdateOvnEip(t *testing.T) {
 	})
 
 	t.Run("v6 ip assigned from empty is queued via updateOvnEipQueue", func(t *testing.T) {
-		ctrl := newTestController()
+		ctrl := newTestController(t)
 		oldEip := &kubeovnv1.OvnEip{
 			ObjectMeta: metav1.ObjectMeta{Name: "eip-assign-v6"},
 			Spec:       kubeovnv1.OvnEipSpec{V4Ip: "192.168.0.5", V6Ip: ""},
