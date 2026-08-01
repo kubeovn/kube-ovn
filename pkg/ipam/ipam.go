@@ -258,11 +258,12 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 					continue
 				}
 				p.V4Using = p.V4Using.Intersect(ips)
-				p.V4Free = ips.Intersect(p.V4IPs).Separate(p.V4Using)
 				p.V4Reserved = subnet.V4Reserved.Intersect(p.V4IPs)
+				p.V4Free = ips.Intersect(p.V4IPs).Separate(p.V4Using).Separate(p.V4Reserved)
 				p.V4Available = p.V4Free.Clone()
 				p.V4Released = NewEmptyIPRangeList()
 				pool.V4Free = pool.V4Free.Separate(p.V4IPs)
+				pool.V4Using = pool.V4Using.Separate(p.V4Using)
 				pool.V4Reserved = pool.V4Reserved.Separate(p.V4Reserved)
 			}
 			pool.V4Available = pool.V4Free.Clone()
@@ -305,11 +306,12 @@ func (ipam *IPAM) AddOrUpdateSubnet(name, cidrStr, gw string, excludeIps []strin
 					continue
 				}
 				p.V6Using = p.V6Using.Intersect(ips)
-				p.V6Free = ips.Intersect(p.V6IPs).Separate(p.V6Using)
 				p.V6Reserved = subnet.V6Reserved.Intersect(p.V6IPs)
+				p.V6Free = ips.Intersect(p.V6IPs).Separate(p.V6Using).Separate(p.V6Reserved)
 				p.V6Available = p.V6Free.Clone()
 				p.V6Released = NewEmptyIPRangeList()
 				pool.V6Free = pool.V6Free.Separate(p.V6IPs)
+				pool.V6Using = pool.V6Using.Separate(p.V6Using)
 				pool.V6Reserved = pool.V6Reserved.Separate(p.V6Reserved)
 			}
 			pool.V6Available = pool.V6Free.Clone()
