@@ -1231,3 +1231,130 @@ func TestGetSubnetV4Mask(t *testing.T) {
 	require.Equal(t, err, ErrNoAvailable)
 	require.Empty(t, mask)
 }
+
+func TestIPAMNamedPoolDoesNotAllocateNewlyExcludedAddresses(t *testing.T) {
+	tests := []struct {
+		name    string
+		cidr    string
+		gateway string
+		poolIP  string
+		family  string
+	}{
+		{
+			name:    "IPv4",
+			cidr:    "10.0.0.0/30",
+			gateway: "10.0.0.1",
+			poolIP:  "10.0.0.2",
+			family:  kubeovnv1.ProtocolIPv4,
+		},
+		{
+			name:    "IPv6",
+			cidr:    "fd00::/126",
+			gateway: "fd00::1",
+			poolIP:  "fd00::2",
+			family:  kubeovnv1.ProtocolIPv6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ipam := NewIPAM()
+			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway}))
+			require.NoError(t, ipam.AddOrUpdateIPPool("subnet", "pool", []string{tt.poolIP}))
+			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway, tt.poolIP}))
+
+			v4IP, v6IP, _, err := ipam.GetRandomAddressWithFamily("pod", "nic", nil, "subnet", "pool", tt.family, nil, true)
+			require.ErrorIs(t, err, ErrNoAvailable)
+			require.Empty(t, v4IP)
+			require.Empty(t, v6IP)
+		})
+	}
+}
+
+func TestIPAMRemovedPoolReturnsAddressesToDefaultPool(t *testing.T) {
+	tests := []struct {
+		name     string
+		cidr     string
+		gateway  string
+		poolIP   string
+		wantV4IP string
+		wantV6IP string
+	}{
+		{
+			name:     "IPv4",
+			cidr:     "10.0.0.0/29",
+			gateway:  "10.0.0.1",
+			poolIP:   "10.0.0.2",
+			wantV4IP: "10.0.0.2",
+		},
+		{
+			name:     "IPv6",
+			cidr:     "fd00::/125",
+			gateway:  "fd00::1",
+			poolIP:   "fd00::2",
+			wantV6IP: "fd00::2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ipam := NewIPAM()
+			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway}))
+			require.NoError(t, ipam.AddOrUpdateIPPool("subnet", "pool", []string{tt.poolIP}))
+			ipam.RemoveIPPool("subnet", "pool")
+
+			v4IP, v6IP, _, err := ipam.GetStaticAddress("pod", "nic", tt.poolIP, nil, "subnet", true)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantV4IP, v4IP)
+			require.Equal(t, tt.wantV6IP, v6IP)
+		})
+	}
+}
+
+func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
+	tests := []struct {
+		name    string
+		cidr    string
+		gateway string
+		poolIP  string
+		family  string
+	}{
+		{
+			name:    "IPv4",
+			cidr:    "10.0.0.0/30",
+			gateway: "10.0.0.1",
+			poolIP:  "10.0.0.2",
+			family:  kubeovnv1.ProtocolIPv4,
+		},
+		{
+			name:    "IPv6",
+			cidr:    "fd00::/126",
+			gateway: "fd00::1",
+			poolIP:  "fd00::2",
+			family:  kubeovnv1.ProtocolIPv6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ipam := NewIPAM()
+			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway}))
+			require.NoError(t, ipam.AddOrUpdateIPPool("subnet", "pool", []string{tt.poolIP}))
+			_, _, _, err := ipam.GetRandomAddressWithFamily("pod", "nic", nil, "subnet", "pool", tt.family, nil, true)
+			require.NoError(t, err)
+
+			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway, tt.poolIP}))
+			ipam.ReleaseAddressByNic("pod", "nic", "subnet")
+
+			v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange := ipam.IPPoolStatistics("subnet", "pool")
+			require.Equal(t, "0", v4Available.String())
+			require.Equal(t, "0", v4Using.String())
+			require.Equal(t, "0", v6Available.String())
+			require.Equal(t, "0", v6Using.String())
+			require.Empty(t, v4AvailableRange)
+			require.Empty(t, v4UsingRange)
+			require.Empty(t, v6AvailableRange)
+			require.Empty(t, v6UsingRange)
+		})
+	}
+}

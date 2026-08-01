@@ -667,12 +667,14 @@ func (s *Subnet) releaseV4Addr(podName, nicName string) {
 		klog.Infof("release v4 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
 		changed = true
 	}
-	s.V4Available.Add(ip)
 	s.V4Using.Remove(ip)
+	if !changed {
+		s.V4Available.Add(ip)
+	}
 	for _, pool := range s.IPPools {
 		if pool.V4Using.Remove(ip) {
-			pool.V4Available.Add(ip)
 			if !changed {
+				pool.V4Available.Add(ip)
 				if pool.V4Released.Add(ip) {
 					klog.Infof("release v4 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
 				}
@@ -713,12 +715,14 @@ func (s *Subnet) releaseV6Addr(podName, nicName string) {
 		klog.Infof("release v6 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
 		changed = true
 	}
-	s.V6Available.Add(ip)
 	s.V6Using.Remove(ip)
+	if !changed {
+		s.V6Available.Add(ip)
+	}
 	for _, pool := range s.IPPools {
 		if pool.V6Using.Remove(ip) {
-			pool.V6Available.Add(ip)
 			if !changed {
+				pool.V6Available.Add(ip)
 				if pool.V6Released.Add(ip) {
 					klog.Infof("release v6 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
 				}
@@ -916,6 +920,8 @@ func (s *Subnet) RemoveIPPool(name string) {
 	}
 
 	defaultPool := s.IPPools[""]
+	defaultPool.V4IPs = defaultPool.V4IPs.Merge(p.V4IPs)
+	defaultPool.V6IPs = defaultPool.V6IPs.Merge(p.V6IPs)
 	defaultPool.V4Free = defaultPool.V4Free.Merge(p.V4Free)
 	defaultPool.V6Free = defaultPool.V6Free.Merge(p.V6Free)
 	defaultPool.V4Available = defaultPool.V4Available.Merge(p.V4Available)
