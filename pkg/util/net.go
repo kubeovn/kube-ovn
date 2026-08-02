@@ -376,9 +376,9 @@ func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 			default:
 				return "", false, fmt.Errorf("invalid ip %s", ip)
 			}
-			_, mask, ok := strings.Cut(cidrBlock, "/")
-			if !ok || mask == "" {
-				return "", false, fmt.Errorf("invalid cidr %s", cidrBlock)
+			mask, err := maskFromCIDR(cidrBlock)
+			if err != nil {
+				return "", false, err
 			}
 			ipAddrs = append(ipAddrs, fmt.Sprintf("%s/%s", ip, mask))
 		}
@@ -388,30 +388,55 @@ func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 	return ipAddr, false, err
 }
 
+// maskFromCIDR returns the mask length of a CIDR block, e.g. "24" for "10.16.0.0/24".
+// It returns an error when the CIDR carries no mask, so that callers report a failure
+// instead of panicking on a malformed value.
+func maskFromCIDR(cidr string) (string, error) {
+	_, mask, ok := strings.Cut(cidr, "/")
+	if !ok || mask == "" {
+		return "", fmt.Errorf("invalid cidr %s", cidr)
+	}
+	return mask, nil
+}
+
 func GetIPAddrWithMask(ip, cidr string) (string, error) {
 	var ipAddr string
 	ips := strings.Split(ip, ",")
 	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
 		cidrBlocks := strings.Split(cidr, ",")
-		if len(cidrBlocks) == 2 {
-			if len(ips) == 2 {
-				v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
-				v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
-				ipAddr = v4IP + "," + v6IP
-			} else {
-				err := fmt.Errorf("ip %s should be dualstack", ip)
-				klog.Error(err)
-				return "", err
-			}
+		if len(cidrBlocks) != 2 {
+			err := fmt.Errorf("invalid dualstack cidr %s", cidr)
+			klog.Error(err)
+			return "", err
 		}
+		if len(ips) != 2 {
+			err := fmt.Errorf("ip %s should be dualstack", ip)
+			klog.Error(err)
+			return "", err
+		}
+		v4Mask, err := maskFromCIDR(cidrBlocks[0])
+		if err != nil {
+			klog.Error(err)
+			return "", err
+		}
+		v6Mask, err := maskFromCIDR(cidrBlocks[1])
+		if err != nil {
+			klog.Error(err)
+			return "", err
+		}
+		ipAddr = fmt.Sprintf("%s/%s,%s/%s", ips[0], v4Mask, ips[1], v6Mask)
 	} else {
-		if len(ips) == 1 {
-			ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
-		} else {
+		if len(ips) != 1 {
 			err := fmt.Errorf("ip %s should be singlestack", ip)
 			klog.Error(err)
-			return ipAddr, err
+			return "", err
 		}
+		mask, err := maskFromCIDR(cidr)
+		if err != nil {
+			klog.Error(err)
+			return "", err
+		}
+		ipAddr = fmt.Sprintf("%s/%s", ip, mask)
 	}
 	return ipAddr, nil
 }

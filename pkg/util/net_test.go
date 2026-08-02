@@ -1049,6 +1049,46 @@ func TestGetIPAddrWithMask(t *testing.T) {
 	}
 }
 
+// TestGetIPAddrWithMaskCIDRWithoutMask makes sure a CIDR carrying no mask is reported
+// as an error instead of panicking with an index out of range.
+func TestGetIPAddrWithMaskCIDRWithoutMask(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		cidr string
+	}{
+		{name: "empty cidr", ip: "192.168.1.1", cidr: ""},
+		{name: "bare ip as cidr", ip: "192.168.1.1", cidr: "192.168.1.0"},
+		{name: "cidr with trailing slash", ip: "192.168.1.1", cidr: "192.168.1.0/"},
+		{name: "empty ip and cidr", ip: "", cidr: ""},
+		{name: "bare ipv6 as cidr", ip: "2001:db8::1", cidr: "2001:db8::"},
+		{name: "dualstack cidr missing ipv6 mask", ip: "192.168.1.1,2001:db8::1", cidr: "192.168.1.0/24,2001:db8::"},
+		{name: "dualstack cidr missing ipv4 mask", ip: "192.168.1.1,2001:db8::1", cidr: "192.168.1.0,2001:db8::/32"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				got, err := GetIPAddrWithMask(tt.ip, tt.cidr)
+				require.Error(t, err)
+				require.Empty(t, got)
+			})
+		})
+	}
+}
+
+// TestGetIPAddrWithMaskForCNICIDRWithoutMask covers the single stack branch of
+// GetIPAddrWithMaskForCNI, which delegates to GetIPAddrWithMask. The dual stack
+// branch already rejected such input.
+func TestGetIPAddrWithMaskForCNICIDRWithoutMask(t *testing.T) {
+	require.NotPanics(t, func() {
+		got, noIPAM, err := GetIPAddrWithMaskForCNI("192.168.1.1", "192.168.1.0")
+		require.Error(t, err)
+		require.Empty(t, got)
+		require.False(t, noIPAM)
+	})
+}
+
 func TestGetIPAddrWithMaskForCNI(t *testing.T) {
 	tests := []struct {
 		name      string
