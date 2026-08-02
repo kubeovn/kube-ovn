@@ -1077,6 +1077,8 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 		gateway string
 		poolIP  string
 		family  string
+		v4Using string
+		v6Using string
 	}{
 		{
 			name:    "IPv4",
@@ -1084,6 +1086,8 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 			gateway: "10.0.0.1",
 			poolIP:  "10.0.0.2",
 			family:  kubeovnv1.ProtocolIPv4,
+			v4Using: "1",
+			v6Using: "0",
 		},
 		{
 			name:    "IPv6",
@@ -1091,6 +1095,8 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 			gateway: "fd00::1",
 			poolIP:  "fd00::2",
 			family:  kubeovnv1.ProtocolIPv6,
+			v4Using: "0",
+			v6Using: "1",
 		},
 	}
 
@@ -1103,6 +1109,13 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 			require.NoError(t, err)
 
 			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway, tt.poolIP}))
+			_, defaultV4Using, _, defaultV6Using, _, _, _, _ := ipam.IPPoolStatistics("subnet", "")
+			require.Equal(t, "0", defaultV4Using.String())
+			require.Equal(t, "0", defaultV6Using.String())
+			_, namedV4Using, _, namedV6Using, _, _, _, _ := ipam.IPPoolStatistics("subnet", "pool")
+			require.Equal(t, tt.v4Using, namedV4Using.String())
+			require.Equal(t, tt.v6Using, namedV6Using.String())
+
 			ipam.ReleaseAddressByNic("pod", "nic", "subnet")
 
 			v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange := ipam.IPPoolStatistics("subnet", "pool")
