@@ -1358,3 +1358,49 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 		})
 	}
 }
+
+func TestIPAMNamedPoolStaticAddressRemainsAllocatableAfterSubnetUpdate(t *testing.T) {
+	tests := []struct {
+		name       string
+		cidr       string
+		gateway    string
+		poolIP     string
+		excludedIP string
+		wantV4IP   string
+		wantV6IP   string
+	}{
+		{
+			name:       "IPv4",
+			cidr:       "10.0.0.0/29",
+			gateway:    "10.0.0.1",
+			poolIP:     "10.0.0.2",
+			excludedIP: "10.0.0.6",
+			wantV4IP:   "10.0.0.2",
+		},
+		{
+			name:       "IPv6",
+			cidr:       "fd00::/125",
+			gateway:    "fd00::1",
+			poolIP:     "fd00::2",
+			excludedIP: "fd00::6",
+			wantV6IP:   "fd00::2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Repeat with fresh IPAM instances to ensure allocation does not depend on Go map iteration order.
+			for range 100 {
+				ipam := NewIPAM()
+				require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway}))
+				require.NoError(t, ipam.AddOrUpdateIPPool("subnet", "pool", []string{tt.poolIP}))
+				require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway, tt.excludedIP}))
+
+				v4IP, v6IP, _, err := ipam.GetStaticAddress("pod", "nic", tt.poolIP, nil, "subnet", true)
+				require.NoError(t, err)
+				require.Equal(t, tt.wantV4IP, v4IP)
+				require.Equal(t, tt.wantV6IP, v6IP)
+			}
+		})
+	}
+}
