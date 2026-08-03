@@ -3785,23 +3785,23 @@ spec:
                   If not specified, there will be no bandwidth limit.
                 properties:
                   egress:
-                    anyOf:
-                    - type: integer
-                    - type: string
                     description: egress bandwidth limit, specified as an integer in
                       Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per
                       second
                     pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$
                     x-kubernetes-int-or-string: true
+                    x-kubernetes-validations:
+                    - message: bandwidth must not be negative
+                      rule: 'type(self) == int ? self >= 0 : true'
                   ingress:
-                    anyOf:
-                    - type: integer
-                    - type: string
                     description: ingress bandwidth limit, specified as an integer
                       in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits
                       per second
                     pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$
                     x-kubernetes-int-or-string: true
+                    x-kubernetes-validations:
+                    - message: bandwidth must not be negative
+                      rule: 'type(self) == int ? self >= 0 : true'
                 type: object
               bfd:
                 description: BFD configuration
