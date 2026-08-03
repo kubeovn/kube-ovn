@@ -3968,7 +3968,7 @@ spec:
                     description: egress bandwidth limit, specified as an integer in
                       Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per
                       second
-                    pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+|[numkMGTPE]|[KMGTPE]i))$
+                    pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$
                     x-kubernetes-int-or-string: true
                   ingress:
                     anyOf:
@@ -3977,7 +3977,7 @@ spec:
                     description: ingress bandwidth limit, specified as an integer
                       in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits
                       per second
-                    pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+|[numkMGTPE]|[KMGTPE]i))$
+                    pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$
                     x-kubernetes-int-or-string: true
                 type: object
               bfd:

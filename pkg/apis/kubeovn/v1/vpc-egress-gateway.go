@@ -89,17 +89,17 @@ func (g *VpcEgressGateway) Ready() bool {
 type BandwidthLimit struct {
 	// ingress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
 	// +kubebuilder:validation:XIntOrString
-	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+|[numkMGTPE]|[KMGTPE]i))$`
+	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
 	Ingress intstr.IntOrString `json:"ingress,omitempty"`
 	// egress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
 	// +kubebuilder:validation:XIntOrString
-	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+|[numkMGTPE]|[KMGTPE]i))$`
+	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
 	Egress intstr.IntOrString `json:"egress,omitempty"`
 }
 
 const (
 	maxBandwidthMbps     = math.MaxInt64 / 1_000_000
-	bandwidthRatePattern = `^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+|[numkMGTPE]|[KMGTPE]i))$`
+	bandwidthRatePattern = `^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
 )
 
 var bandwidthRateRegexp = regexp.MustCompile(bandwidthRatePattern)
@@ -123,7 +123,7 @@ func bandwidthRateToMbps(rate intstr.IntOrString) (int64, error) {
 		return 0, errors.New("bandwidth must not be negative")
 	}
 	if !bandwidthRateRegexp.MatchString(value) {
-		return 0, fmt.Errorf("bandwidth %q must be an integer in Mbps or a non-negative Kubernetes quantity", value)
+		return 0, fmt.Errorf("bandwidth %q must be an integer in Mbps or a quantity with unit M, Mi, G, or Gi", value)
 	}
 	if mbps, err := strconv.ParseInt(value, 10, 64); err == nil {
 		if mbps > maxBandwidthMbps {
