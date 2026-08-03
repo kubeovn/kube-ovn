@@ -411,7 +411,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 	})
 
 	framework.DisruptiveIt("ovn db should recover automatically when the db is missing and the raft header is invalid", func() {
-		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
 
 		ginkgo.By("Getting deployment ovn-central")
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
