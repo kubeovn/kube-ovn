@@ -85,6 +85,16 @@ func expectEth0IPs(pod *corev1.Pod, expectedIPs []string) {
 	framework.ExpectConsistOf(links[0].NonLinkLocalIPs(), expectedIPs)
 }
 
+func waitForIPPoolCounts(f *framework.Framework, client *framework.IPPoolClient, name string, available, using int64) *apiv1.IPPool {
+	ginkgo.GinkgoHelper()
+
+	return client.WaitUntil(name, func(pool *apiv1.IPPool) (bool, error) {
+		v4Ready := !f.HasIPv4() || (pool.Status.V4AvailableIPs.EqualInt64(available) && pool.Status.V4UsingIPs.EqualInt64(using))
+		v6Ready := !f.HasIPv6() || (pool.Status.V6AvailableIPs.EqualInt64(available) && pool.Status.V6UsingIPs.EqualInt64(using))
+		return v4Ready && v6Ready, nil
+	}, fmt.Sprintf("available=%d and using=%d for each supported IP family", available, using), time.Second, 30*time.Second)
+}
+
 var _ = framework.Describe("[group:ipam]", func() {
 	f := framework.NewDefaultFramework("ipam")
 
@@ -943,6 +953,128 @@ var _ = framework.Describe("[group:ipam]", func() {
 		ginkgo.By("Waiting for pod " + podName + " to have event indicating IP allocation failure")
 		eventClient := f.EventClient()
 		_ = eventClient.WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
+	})
+
+	framework.ConformanceIt("should not allocate newly excluded addresses from a named IPPool", func() {
+		f.SkipVersionPriorTo(1, 17, "Preserving named IPPool state during subnet reconciliation was introduced in v1.17")
+
+		staticIP := framework.RandomIPs(cidr, ",", 1)
+		poolIPs := strings.Split(staticIP, ",")
+		ginkgo.By("Creating IPPool " + ippoolName + " with addresses " + staticIP)
+		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
+		_ = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Adding the IPPool addresses to subnet excludeIps")
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.ExcludeIps = append(slices.Clone(subnet.Spec.ExcludeIps), poolIPs...)
+		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		ginkgo.By("Creating pod " + podName + " from the exhausted IPPool")
+		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		_ = podClient.Create(pod)
+
+		ginkgo.By("Waiting for pod " + podName + " to report IP allocation failure")
+		_ = f.EventClient().WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
+		pod = podClient.GetPod(podName)
+		framework.ExpectNotHaveKey(pod.Annotations, util.AllocatedAnnotation)
+
+		ippool = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, 0)
+		framework.ExpectEmpty(ippool.Status.V4AvailableIPRange)
+		framework.ExpectEmpty(ippool.Status.V6AvailableIPRange)
+	})
+
+	framework.ConformanceIt("should not make an excluded IPPool address available after release", func() {
+		f.SkipVersionPriorTo(1, 17, "Preserving named IPPool state during subnet reconciliation was introduced in v1.17")
+
+		staticIP := framework.RandomIPs(cidr, ",", 1)
+		poolIPs := strings.Split(staticIP, ",")
+		ginkgo.By("Creating IPPool " + ippoolName + " with addresses " + staticIP)
+		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
+		_ = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Creating pod " + podName + " from IPPool " + ippoolName)
+		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, staticIP)
+
+		ginkgo.By("Adding the allocated addresses to subnet excludeIps")
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.ExcludeIps = append(slices.Clone(subnet.Spec.ExcludeIps), poolIPs...)
+		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+		_ = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, 1)
+
+		ginkgo.By("Deleting pod " + podName + " and waiting for its addresses to be released")
+		podClient.DeleteSync(podName)
+		framework.ExpectNoError(ipClient.WaitToDisappear(ovs.PodNameToPortName(podName, namespaceName, util.OvnProvider), 0, 30*time.Second))
+
+		ippool = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, 0)
+		framework.ExpectEmpty(ippool.Status.V4AvailableIPRange)
+		framework.ExpectEmpty(ippool.Status.V6AvailableIPRange)
+	})
+
+	framework.ConformanceIt("should preserve named IPPool ownership after subnet reconciliation", func() {
+		f.SkipVersionPriorTo(1, 17, "Preserving named IPPool state during subnet reconciliation was introduced in v1.17")
+
+		replicas := 5
+		candidates := strings.Split(framework.RandomIPs(cidr, ";", replicas+1), ";")
+		staticIPs := candidates[:replicas]
+		poolIPs := make([]string, 0, replicas*2)
+		for _, staticIP := range staticIPs {
+			poolIPs = append(poolIPs, strings.Split(staticIP, ",")...)
+		}
+
+		ginkgo.By("Creating IPPool " + ippoolName + " with addresses " + strings.Join(staticIPs, ";"))
+		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
+		_ = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Updating subnet excludeIps with addresses outside the named IPPool")
+		modifiedSubnet := subnet.DeepCopy()
+		modifiedSubnet.Spec.ExcludeIps = append(slices.Clone(subnet.Spec.ExcludeIps), strings.Split(candidates[replicas], ",")...)
+		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
+
+		ginkgo.By("Creating deployment " + deployName + " with static addresses owned by IPPool " + ippoolName)
+		labels := map[string]string{"app": deployName}
+		annotations := map[string]string{util.IPPoolAnnotation: strings.Join(staticIPs, ";")}
+		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
+		deploy = deployClient.CreateSync(deploy)
+
+		pods, err := deployClient.GetPods(deploy)
+		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
+		framework.ExpectHaveLen(pods.Items, replicas)
+		allocatedIPs := make([]string, 0, replicas)
+		for _, pod := range pods.Items {
+			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+			framework.ExpectContainElement(staticIPs, pod.Annotations[util.IPAddressAnnotation])
+			allocatedIPs = append(allocatedIPs, pod.Annotations[util.IPAddressAnnotation])
+		}
+		framework.ExpectConsistOf(allocatedIPs, staticIPs)
+		_ = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, int64(replicas))
+	})
+
+	framework.ConformanceIt("should return deleted IPPool addresses to the default pool", func() {
+		f.SkipVersionPriorTo(1, 17, "Returning deleted IPPool addresses to the default pool was introduced in v1.17")
+
+		staticIP := framework.RandomIPs(cidr, ",", 1)
+		poolIPs := strings.Split(staticIP, ",")
+		ginkgo.By("Creating IPPool " + ippoolName + " with addresses " + staticIP)
+		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
+		_ = ippoolClient.CreateSync(ippool)
+
+		ginkgo.By("Deleting IPPool " + ippoolName)
+		ippoolClient.DeleteSync(ippoolName)
+
+		ginkgo.By("Creating pod " + podName + " with the former IPPool addresses from the default pool")
+		annotations := map[string]string{
+			util.IPAddressAnnotation:     staticIP,
+			util.LogicalSwitchAnnotation: subnetName,
+		}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, staticIP)
+		framework.ExpectConsistOf(util.PodIPs(*pod), poolIPs)
 	})
 
 	framework.ConformanceIt("should be able to allocate IP from IPPools in different subnets", func() {
