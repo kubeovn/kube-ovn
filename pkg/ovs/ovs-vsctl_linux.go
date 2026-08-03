@@ -12,6 +12,8 @@ import (
 )
 
 func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
+	const maxBandwidthRateMbps int64 = math.MaxInt64 / 1_000_000
+
 	if rate == "" {
 		return 0, nil
 	}
@@ -23,7 +25,7 @@ func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
 	if value < 0 {
 		return 0, fmt.Errorf("bandwidth rate %q must not be negative", rate)
 	}
-	if value > math.MaxInt64/scale {
+	if value > maxBandwidthRateMbps || value > math.MaxInt64/scale {
 		return 0, fmt.Errorf("bandwidth rate %q overflows when scaled by %d", rate, scale)
 	}
 	return value * scale, nil
