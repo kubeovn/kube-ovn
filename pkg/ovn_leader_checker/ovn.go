@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -370,7 +371,12 @@ func compactOvnDatabase(db string) {
 //	  "cluster_id": "6d240b86-177e-4f17-aded-ed1b7b364d97"
 //	}
 func backupRaftHeader(db string) {
-	args := []string{"db-raft-header", fmt.Sprintf("/etc/ovn/ovn%s_db.db", db)}
+	backupRaftHeaderAt(db, "/etc/ovn")
+}
+
+func backupRaftHeaderAt(db, dbDir string) {
+	dbFile := filepath.Join(dbDir, fmt.Sprintf("ovn%s_db.db", db))
+	args := []string{"db-raft-header", dbFile}
 	hdr, err := exec.Command("ovsdb-tool", args...).CombinedOutput() // #nosec G204
 	if err != nil {
 		klog.Errorf("failed to backup raft header of ovn%s database: error = %v, output = %s", db, err, string(hdr))
@@ -383,8 +389,22 @@ func backupRaftHeader(db string) {
 		return
 	}
 
-	hdr, _ = json.MarshalIndent(data, "", "  ")
-	hdrFile := fmt.Sprintf("/etc/ovn/ovn%s_db.hdr", db)
+	dbCID, err := exec.Command("ovsdb-tool", "db-cid", dbFile).CombinedOutput() // #nosec G204
+	if err != nil {
+		klog.Errorf("failed to get cluster ID of ovn%s database: error = %v, output = %s", db, err, string(dbCID))
+		return
+	}
+	if err := validateRaftHeader(data, strings.TrimSpace(string(dbCID))); err != nil {
+		klog.Errorf("refusing to backup invalid raft header of ovn%s database: %v", db, err)
+		return
+	}
+
+	hdr, err = json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		klog.Errorf("failed to marshal raft header json content for ovn%s database: %v", db, err)
+		return
+	}
+	hdrFile := filepath.Join(dbDir, fmt.Sprintf("ovn%s_db.hdr", db))
 	content, err := os.ReadFile(hdrFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -407,6 +427,27 @@ func backupRaftHeader(db string) {
 	}
 
 	klog.Infof("succeeded to backup raft header of ovn%s database to file %s with content:\n%s", db, hdrFile, string(hdr))
+}
+
+func validateRaftHeader(data map[string]any, dbCID string) error {
+	const zeroUUID = "00000000-0000-0000-0000-000000000000"
+
+	clusterID, ok := data["cluster_id"].(string)
+	if !ok || clusterID == "" || clusterID == zeroUUID {
+		return errors.New("missing or zero cluster ID")
+	}
+	if dbCID == "" || dbCID == zeroUUID {
+		return errors.New("database has missing or zero cluster ID")
+	}
+	if clusterID != dbCID {
+		return fmt.Errorf("header cluster ID %s does not match database cluster ID %s", clusterID, dbCID)
+	}
+
+	serverID, ok := data["server_id"].(string)
+	if !ok || serverID == "" || serverID == zeroUUID {
+		return errors.New("missing or zero server ID")
+	}
+	return nil
 }
 
 func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
