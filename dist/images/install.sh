@@ -3968,8 +3968,10 @@ spec:
                     pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$
                     x-kubernetes-int-or-string: true
                     x-kubernetes-validations:
-                    - message: bandwidth must not be negative
-                      rule: 'type(self) == int ? self >= 0 : true'
+                    - message: integer bandwidth must be between 0 and 9223372036854
+                        Mbps
+                      rule: 'type(self) == int ? self >= 0 && self <= 9223372036854
+                        : true'
                   ingress:
                     description: ingress bandwidth limit, specified as an integer
                       in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits
@@ -3977,8 +3979,10 @@ spec:
                     pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$
                     x-kubernetes-int-or-string: true
                     x-kubernetes-validations:
-                    - message: bandwidth must not be negative
-                      rule: 'type(self) == int ? self >= 0 : true'
+                    - message: integer bandwidth must be between 0 and 9223372036854
+                        Mbps
+                      rule: 'type(self) == int ? self >= 0 && self <= 9223372036854
+                        : true'
                 type: object
               bfd:
                 description: BFD configuration

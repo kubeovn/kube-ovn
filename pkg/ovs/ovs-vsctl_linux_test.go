@@ -1,10 +1,42 @@
 package ovs
 
 import (
+	"math"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestParseAndScaleBandwidthRate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		rate    string
+		want    int64
+		wantErr string
+	}{
+		{name: "empty is zero", rate: "", want: 0},
+		{name: "zero", rate: "0", want: 0},
+		{name: "normal", rate: "100", want: 100_000_000},
+		{name: "maximum safe", rate: "9223372036854", want: 9_223_372_036_854_000_000},
+		{name: "one over maximum safe", rate: "9223372036855", wantErr: "overflows"},
+		{name: "invalid", rate: "invalid", wantErr: "invalid bandwidth rate"},
+		{name: "negative", rate: "-1", wantErr: "must not be negative"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAndScaleBandwidthRate(tt.rate, 1_000_000)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
 
 func (suite *OvnClientTestSuite) testSetInterfaceBandwidth() {
 	t := suite.T()
@@ -15,14 +47,38 @@ func (suite *OvnClientTestSuite) testSetInterfaceBandwidth() {
 	require.Error(t, err)
 }
 
+func TestSetInterfaceBandwidthRejectsInvalidRatesBeforeOVS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		ingress string
+		egress  string
+		wantErr string
+	}{
+		{name: "invalid ingress", ingress: "invalid", egress: "0", wantErr: "invalid ingress bandwidth"},
+		{name: "negative ingress", ingress: "-1", egress: "0", wantErr: "must not be negative"},
+		{name: "overflowing ingress", ingress: "9223372036854776", egress: "0", wantErr: "overflows"},
+		{name: "invalid egress", ingress: "0", egress: "invalid", wantErr: "invalid egress bandwidth"},
+		{name: "negative egress", ingress: "0", egress: "-1", wantErr: "must not be negative"},
+		{name: "overflowing egress", ingress: "0", egress: "9223372036855", wantErr: "overflows"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := SetInterfaceBandwidth("podName", "podNS", "eth0", tt.ingress, tt.egress, "", "")
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
 func TestComputeIngressPolicingBurstKbit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
-		rateKbit int
+		rateKbit int64
 		burst    string
-		want     int
+		want     int64
 	}{
 		{name: "default 80% when burst empty", rateKbit: 10000, burst: "", want: 8000},
 		{name: "literal zero is honored", rateKbit: 10000, burst: "0", want: 0},
@@ -30,6 +86,7 @@ func TestComputeIngressPolicingBurstKbit(t *testing.T) {
 		{name: "default with zero rate", rateKbit: 0, burst: "", want: 0},
 		{name: "non-empty burst with zero rate is forced to 0", rateKbit: 0, burst: "5", want: 0},
 		{name: "unparseable burst falls back to default", rateKbit: 10000, burst: "abc", want: 8000},
+		{name: "overflowing burst falls back to default", rateKbit: 10000, burst: strconv.FormatInt(math.MaxInt64, 10), want: 8000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -43,15 +100,16 @@ func TestComputeHtbBurstBytes(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		rateBPS int
+		rateBPS int64
 		burst   string
-		want    int
+		want    int64
 	}{
 		{name: "default 80% when burst empty", rateBPS: 100_000_000, burst: "", want: 10_000_000},
 		{name: "literal zero is honored", rateBPS: 100_000_000, burst: "0", want: 0},
 		{name: "explicit value in Mbit", rateBPS: 100_000_000, burst: "5", want: 625_000},
 		{name: "non-empty burst with zero rate is forced to 0", rateBPS: 0, burst: "5", want: 0},
 		{name: "unparseable burst falls back to default", rateBPS: 100_000_000, burst: "abc", want: 10_000_000},
+		{name: "overflowing burst falls back to default", rateBPS: 100_000_000, burst: strconv.FormatInt(math.MaxInt64, 10), want: 10_000_000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
