@@ -956,7 +956,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should not allocate newly excluded addresses from a named IPPool", func() {
-		f.SkipVersionPriorTo(1, 17, "Preserving named IPPool state during subnet reconciliation was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 15, "Preserving named IPPool state during subnet reconciliation was introduced in v1.15")
 
 		staticIP := framework.RandomIPs(cidr, ",", 1)
 		poolIPs := strings.Split(staticIP, ",")
@@ -985,7 +985,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should not make an excluded IPPool address available after release", func() {
-		f.SkipVersionPriorTo(1, 17, "Preserving named IPPool state during subnet reconciliation was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 15, "Preserving named IPPool state during subnet reconciliation was introduced in v1.15")
 
 		staticIP := framework.RandomIPs(cidr, ",", 1)
 		poolIPs := strings.Split(staticIP, ",")
@@ -1015,7 +1015,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should preserve named IPPool ownership after subnet reconciliation", func() {
-		f.SkipVersionPriorTo(1, 17, "Preserving named IPPool state during subnet reconciliation was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 15, "Preserving named IPPool state during subnet reconciliation was introduced in v1.15")
 
 		replicas := 5
 		candidates := strings.Split(framework.RandomIPs(cidr, ";", replicas+1), ";")
@@ -1054,7 +1054,7 @@ var _ = framework.Describe("[group:ipam]", func() {
 	})
 
 	framework.ConformanceIt("should return deleted IPPool addresses to the default pool", func() {
-		f.SkipVersionPriorTo(1, 17, "Returning deleted IPPool addresses to the default pool was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 15, "Returning deleted IPPool addresses to the default pool was introduced in v1.15")
 
 		staticIP := framework.RandomIPs(cidr, ",", 1)
 		poolIPs := strings.Split(staticIP, ",")
