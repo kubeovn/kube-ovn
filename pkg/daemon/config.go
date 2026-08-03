@@ -105,10 +105,10 @@ func ParseFlags() *Configuration {
 		argCniConfFile      = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
 		argsCniConfName     = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/")
 
-		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma. When empty, the default route interface is used")
+		argIface                 = pflag.String("iface", "", "The interface used for inter-host pod communication; may be a NIC name or comma-separated regular expressions. When empty, the interface that owns POD_IP or a node internal IP is used. The node tunnel interface annotation and DPDK mode take precedence")
 		argHostTunnelSrc         = pflag.Bool("host-tunnel-src", false, "Enable /32 address selection for the tunnel source, excludes localhost addresses unless explicitly allowed.")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
-		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks. When set to 0, the host interface MTU minus 100 is used")
+		argMTU                   = pflag.Int("mtu", 0, "The pod interface MTU. When set to 0, it is derived from the selected interface MTU based on the network type and IP family")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror")
 		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn")
 		argBindSocket            = pflag.String("bind-socket", defaultBindSocket, "The socket daemon bind to.")

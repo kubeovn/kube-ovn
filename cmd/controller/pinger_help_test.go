@@ -42,8 +42,9 @@ func TestCommandHelpDescriptions(t *testing.T) {
 			"when empty, the first IP in node-switch-cidr is used",
 		},
 		"kube-ovn-daemon": {
-			"when empty, the default route interface is used",
-			"when set to 0, the host interface MTU minus 100 is used",
+			"when empty, the interface that owns POD_IP or a node internal IP is used",
+			"the node tunnel interface annotation and DPDK mode take precedence",
+			"when set to 0, it is derived from the selected interface MTU based on the network type and IP family",
 		},
 	} {
 		help := runHelp(t, bins[name], name)
