@@ -94,13 +94,13 @@ type BandwidthLimit struct {
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
 	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 0 : true",message="bandwidth must not be negative"
-	Ingress BandwidthRate `json:"ingress,omitempty"`
+	Ingress *BandwidthRate `json:"ingress,omitempty"`
 	// egress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
 	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
 	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 0 : true",message="bandwidth must not be negative"
-	Egress BandwidthRate `json:"egress,omitempty"`
+	Egress *BandwidthRate `json:"egress,omitempty"`
 }
 
 const (
@@ -117,13 +117,13 @@ type BandwidthRate struct {
 }
 
 // BandwidthRateFromInt64 returns a BandwidthRate containing an integer Mbps value.
-func BandwidthRateFromInt64(value int64) BandwidthRate {
-	return BandwidthRate{Type: intstr.Int, IntVal: value}
+func BandwidthRateFromInt64(value int64) *BandwidthRate {
+	return &BandwidthRate{Type: intstr.Int, IntVal: value}
 }
 
 // BandwidthRateFromString returns a BandwidthRate containing a quantity string.
-func BandwidthRateFromString(value string) BandwidthRate {
-	return BandwidthRate{Type: intstr.String, StrVal: value}
+func BandwidthRateFromString(value string) *BandwidthRate {
+	return &BandwidthRate{Type: intstr.String, StrVal: value}
 }
 
 // UnmarshalJSON implements json.Unmarshaller.
@@ -137,7 +137,7 @@ func (rate *BandwidthRate) UnmarshalJSON(value []byte) error {
 		if err := json.Unmarshal(value, &stringValue); err != nil {
 			return err
 		}
-		*rate = BandwidthRateFromString(stringValue)
+		*rate = *BandwidthRateFromString(stringValue)
 		return nil
 	}
 
@@ -148,7 +148,7 @@ func (rate *BandwidthRate) UnmarshalJSON(value []byte) error {
 	if err := json.Unmarshal(value, &integerValue); err != nil {
 		return fmt.Errorf("bandwidth rate must be a JSON integer or string: %w", err)
 	}
-	*rate = BandwidthRateFromInt64(integerValue)
+	*rate = *BandwidthRateFromInt64(integerValue)
 	return nil
 }
 
@@ -164,7 +164,11 @@ func (rate BandwidthRate) MarshalJSON() ([]byte, error) {
 	}
 }
 
-func bandwidthRateToMbps(rate BandwidthRate) (int64, error) {
+// Mbps returns the rate normalized to whole Mbps.
+func (rate *BandwidthRate) Mbps() (int64, error) {
+	if rate == nil {
+		return 0, nil
+	}
 	if rate.Type == intstr.Int {
 		if rate.IntVal < 0 {
 			return 0, errors.New("bandwidth must not be negative")
@@ -213,11 +217,11 @@ func (b *BandwidthLimit) Mbps() (int64, int64, error) {
 	if b == nil {
 		return 0, 0, nil
 	}
-	ingress, err := bandwidthRateToMbps(b.Ingress)
+	ingress, err := b.Ingress.Mbps()
 	if err != nil {
 		return 0, 0, fmt.Errorf("invalid ingress bandwidth: %w", err)
 	}
-	egress, err := bandwidthRateToMbps(b.Egress)
+	egress, err := b.Egress.Mbps()
 	if err != nil {
 		return 0, 0, fmt.Errorf("invalid egress bandwidth: %w", err)
 	}
