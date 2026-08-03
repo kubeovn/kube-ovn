@@ -307,7 +307,7 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	framework.ExpectNotEqual(newBirth, birth, "birth time of db file %q on node %s should change after corruption recovery", dbFileHost, nodeName)
 }
 
-var _ = framework.Describe("[group:ha]", func() {
+var _ = framework.SerialDescribe("[group:ha]", func() {
 	f := framework.NewDefaultFramework("ha")
 	f.SkipNamespaceCreation = true
 	kindNodes := make(map[string]*kind.Node)
