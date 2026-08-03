@@ -55,6 +55,10 @@ func dbFileHostPath(db string) string {
 	return fmt.Sprintf("/etc/origin/ovn/ovn%s_db.db", db)
 }
 
+func raftHeaderFileHostPath(db string) string {
+	return fmt.Sprintf("/etc/origin/ovn/ovn%s_db.hdr", db)
+}
+
 var dbNames = map[string]string{
 	"nb": ovnnb.DatabaseName,
 	"sb": ovnsb.DatabaseName,
@@ -404,5 +408,43 @@ var _ = framework.Describe("[group:ha]", func() {
 			framework.Failf("ovn db server ids from cluster status do not match those from db files:\nfrom db files:\n%s\nfrom cluster status:\n%s",
 				format.Object(dbSids, 2), format.Object(clusterDbSids, 2))
 		}
+	})
+
+	framework.DisruptiveIt("ovn db should recover automatically when the db is missing and the raft header is invalid", func() {
+		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+
+		ginkgo.By("Getting deployment ovn-central")
+		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
+		deploy := deployClient.Get("ovn-central")
+		replicas := *deploy.Spec.Replicas
+		framework.ExpectNotZero(replicas)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Restoring deployment ovn-central replicas to " + strconv.Itoa(int(replicas)))
+			deployClient.SetScale(deploy.Name, replicas)
+		})
+
+		ginkgo.By("Waiting for deployment ovn-central to be ready")
+		deployClient.RolloutStatus(deploy.Name)
+
+		const zeroClusterID = "00000000-0000-0000-0000-000000000000"
+		dbFile := dbFilePath("nb")
+		dbFileHost := dbFileHostPath("nb")
+		hdrFileHost := raftHeaderFileHostPath("nb")
+		poisonCmd := fmt.Sprintf(`
+for i in $(seq 1 30); do
+    [ -s %[1]q ] && break
+    sleep 1
+done
+test -s %[1]q
+sed -i -E 's/"cluster_id": "[^"]+"/"cluster_id": "%[2]s"/' %[1]q
+grep -q '"cluster_id": "%[2]s"' %[1]q
+rm -f %[3]q
+`, hdrFileHost, zeroClusterID, dbFileHost)
+
+		corruptAndRecover(f, deploy, dbFile, dbFileHost, poisonCmd, kindNodes)
+
+		ginkgo.By("Checking every ovn-central pod sees a converged three-member OVN DB cluster")
+		clusterDbSids := getDbSidsFromClusterStatus(f, deploy)
+		framework.ExpectHaveLen(clusterDbSids["nb"], int(replicas), "unexpected number of ovnnb db servers after invalid raft header recovery")
 	})
 })
