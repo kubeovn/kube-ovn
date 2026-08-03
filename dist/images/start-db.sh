@@ -202,8 +202,9 @@ fi
 function rejoin_db_from_raft_header() {
     local db_file="$1"
     local hdr_file="$2"
-    local local_addr="$3"
-    shift 3
+    local db_name="$3"
+    local local_addr="$4"
+    shift 4
     local remote_addr=("$@")
 
     if [ ${#remote_addr[*]} -ne 0 ]; then
@@ -221,6 +222,23 @@ function rejoin_db_from_raft_header() {
         echo "backup database file left by failed rejoin $db_file to $db_bak"
         mv "$db_file" "$db_bak" || return 2
     fi
+
+    local server_id
+    server_id=$(sed -nE 's/.*"server_id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$hdr_file" | head -n 1)
+    if [ ${#remote_addr[*]} -ne 0 ] && echo -n "$server_id" | grep -qE '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+        local db_rejoin="$db_file.rejoin-$(date +%s)-$(random_str)"
+        echo "rejoining $db_name cluster with server id $server_id from raft header file $hdr_file"
+        if ovsdb-tool --sid "$server_id" join-cluster "$db_rejoin" "$db_name" "$local_addr" "${remote_addr[@]}"; then
+            echo "use database file $db_rejoin"
+            mv "$db_rejoin" "$db_file" || return 2
+            local hdr_bak="$hdr_file.invalid-$(date +%s)-$(random_str)"
+            echo "backup unusable raft header file $hdr_file to $hdr_bak"
+            mv "$hdr_file" "$hdr_bak" || return 2
+            return 0
+        fi
+        echo "failed to rejoin $db_name cluster with server id $server_id"
+    fi
+
     local hdr_bak="$hdr_file.invalid-$(date +%s)-$(random_str)"
     echo "backup unusable raft header file $hdr_file to $hdr_bak"
     mv "$hdr_file" "$hdr_bak" || return 2
@@ -274,7 +292,7 @@ function ovn_db_pre_start() {
             mv "$db_file" "$db_bak" || return 1
             if [ -e "$hdr_file" ]; then
                 local rejoin_status=0
-                rejoin_db_from_raft_header "$db_file" "$hdr_file" "$local_addr" "${remote_addr[@]}" || rejoin_status=$?
+                rejoin_db_from_raft_header "$db_file" "$hdr_file" "$db" "$local_addr" "${remote_addr[@]}" || rejoin_status=$?
                 if [ $rejoin_status -eq 0 ]; then
                     return
                 elif [ $rejoin_status -ne 1 ]; then
@@ -342,7 +360,7 @@ function ovn_db_pre_start() {
     elif [ -e "$hdr_file" ]; then
         echo "db file $db_file is missing, while raft header file $hdr_file exists."
         local rejoin_status=0
-        rejoin_db_from_raft_header "$db_file" "$hdr_file" "$local_addr" "${remote_addr[@]}" || rejoin_status=$?
+        rejoin_db_from_raft_header "$db_file" "$hdr_file" "$db" "$local_addr" "${remote_addr[@]}" || rejoin_status=$?
         if [ $rejoin_status -eq 0 ]; then
             return
         elif [ $rejoin_status -ne 1 ]; then

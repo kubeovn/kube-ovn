@@ -80,7 +80,7 @@ func TestBackupRaftHeaderWritesHeaderMatchingDatabaseClusterID(t *testing.T) {
 	}
 }
 
-func TestOvnDBPreStartFallsBackWhenRaftHeaderCannotRejoin(t *testing.T) {
+func TestOvnDBPreStartRejoinsWithHeaderServerIDWhenClusterIDIsInvalid(t *testing.T) {
 	dbDir := t.TempDir()
 	hdrFile := filepath.Join(dbDir, "ovnnb_db.hdr")
 	if err := os.WriteFile(hdrFile, []byte(raftHeaderJSON(zeroClusterID, validServerID)), 0o600); err != nil {
@@ -101,6 +101,14 @@ random_str() { echo abc123; }
 ovsdb-tool() {
     case "$1" in
         rejoin-cluster) : > "$2"; return 1 ;;
+        --sid)
+            test "$2" = %q
+            test "$3" = join-cluster
+            test "$5" = OVN_Northbound
+            test "$6" = tcp:10.0.0.1:6643
+            test "$7" = tcp:10.0.0.2:6643
+            printf 'joined-with-server-id' > "$4"
+            ;;
         create) : > "$2" ;;
         transact) return 0 ;;
         *) return 1 ;;
@@ -108,11 +116,12 @@ ovsdb-tool() {
 }
 %s
 ovn_db_pre_start nb
+grep -q 'joined-with-server-id' %q
 test ! -e %q
 test ! -e %q
-test -e %q
 compgen -G %q >/dev/null
-`, functions, filepath.Join(dbDir, "ovnnb_db.db"), hdrFile, filepath.Join(dbDir, "ovnnb_local_config.db"), filepath.Join(dbDir, "ovnnb_db.db.failed-rejoin-*"))
+compgen -G %q >/dev/null
+`, validServerID, functions, filepath.Join(dbDir, "ovnnb_db.db"), hdrFile, filepath.Join(dbDir, "ovnnb_local_config.db"), filepath.Join(dbDir, "ovnnb_db.db.failed-rejoin-*"), hdrFile+".invalid-*")
 
 	cmd := exec.Command("bash", "-c", harness)
 	if output, err := cmd.CombinedOutput(); err != nil {
