@@ -11,63 +11,63 @@ while :; do
   sleep 1
 done
 
-for gw in $(kubectl get vpc-nat-gw -o name); do
+for gw in $(kubectl get vpc-nat-gateways.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $gw
 done
 
-for vd in $(kubectl  get vpc-dns -o name); do
+for vd in $(kubectl  get vpc-dnses.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $vd
 done
 
-for vip in $(kubectl get vip -o name); do
+for vip in $(kubectl get vips.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $vip
 done
 
-for snat in $(kubectl get snat -o name); do
+for snat in $(kubectl get iptables-snat-rules.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $snat
 done
 
-for dnat in $(kubectl get dnat -o name); do
+for dnat in $(kubectl get iptables-dnat-rules.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $dnat
 done
 
-for fip in $(kubectl get fip -o name); do
+for fip in $(kubectl get iptables-fip-rules.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $fip
 done
 
-for eip in $(kubectl get eip -o name); do
+for eip in $(kubectl get iptables-eips.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $eip
 done
 
-for odnat in $(kubectl get odnat -o name); do
+for odnat in $(kubectl get ovn-dnat-rules.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $odnat
 done
 
-for osnat in $(kubectl get osnat -o name); do
+for osnat in $(kubectl get ovn-snat-rules.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $osnat
 done
 
-for ofip in $(kubectl get ofip -o name); do
+for ofip in $(kubectl get ovn-fips.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $ofip
 done
 
-for oeip in $(kubectl get oeip -o name); do
+for oeip in $(kubectl get ovn-eips.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $oeip
 done
 
-for slr in $(kubectl get switch-lb-rule -o name); do
+for slr in $(kubectl get switch-lb-rules.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $slr
 done
 
-for ippool in $(kubectl get ippool -o name); do
+for ippool in $(kubectl get ippools.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $ippool
 done
 
-for vlan in $(kubectl get vlan -o name); do
+for vlan in $(kubectl get vlans.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $vlan
 done
 
-for pn in $(kubectl get provider-network -o name); do
+for pn in $(kubectl get provider-networks.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $pn
 done
 
@@ -109,7 +109,7 @@ kubectl delete --ignore-not-found clusterrolebinding vpc-dns
 kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
 # remove finalizers
-for resource_type in subnet vpc ip; do
+for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io; do
   for resource in $(kubectl get "$resource_type" -o name); do
     kubectl patch "$resource" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
   done
