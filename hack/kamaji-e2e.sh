@@ -61,15 +61,23 @@ REGISTRY_NAME=${REGISTRY_NAME:-kamaji-e2e-reg}
 
 CHART_DIR=${CHART_DIR:-$(cd "$(dirname "$0")/.." && pwd)/charts/kube-ovn}
 
-chart_net_stack() {
+require_e2e_ip_family() {
   case "$E2E_IP_FAMILY" in
-    ipv4) echo "ipv4" ;;
-    ipv6) echo "ipv6" ;;
-    dual) echo "dual_stack" ;;
+    ipv4 | ipv6 | dual) ;;
     *)
       echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
       return 1
       ;;
+  esac
+}
+
+chart_net_stack() {
+  require_e2e_ip_family || return 1
+
+  case "$E2E_IP_FAMILY" in
+    ipv4) echo "ipv4" ;;
+    ipv6) echo "ipv6" ;;
+    dual) echo "dual_stack" ;;
   esac
 }
 
@@ -83,38 +91,23 @@ hosted_ovn_central_net_stack() {
 }
 
 tenant_pod_cidr() {
-  case "$E2E_IP_FAMILY" in
-    ipv4 | ipv6 | dual) echo "10.16.0.0/16" ;;
-    *)
-      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
-      return 1
-      ;;
-  esac
+  require_e2e_ip_family || return 1
+  echo "10.16.0.0/16"
 }
 
 tenant_service_cidr() {
-  case "$E2E_IP_FAMILY" in
-    ipv4 | ipv6 | dual) echo "10.96.0.0/12" ;;
-    *)
-      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
-      return 1
-      ;;
-  esac
+  require_e2e_ip_family || return 1
+  echo "10.96.0.0/12"
 }
 
 tenant_dns_service_ips_yaml() {
-  case "$E2E_IP_FAMILY" in
-    ipv4 | ipv6 | dual)
-      echo "      - 10.96.0.10"
-      ;;
-    *)
-      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
-      return 1
-      ;;
-  esac
+  require_e2e_ip_family || return 1
+  echo "      - 10.96.0.10"
 }
 
 tenant_addons_yaml() {
+  require_e2e_ip_family || return 1
+
   case "$E2E_IP_FAMILY" in
     ipv4 | dual)
       cat <<EOF
@@ -123,10 +116,6 @@ tenant_addons_yaml() {
 EOF
       ;;
     ipv6)
-      ;;
-    *)
-      echo "unsupported E2E_IP_FAMILY: $E2E_IP_FAMILY" >&2
-      return 1
       ;;
   esac
 }
@@ -311,14 +300,7 @@ tenant_api_server_hostport() {
   echo "$server"
 }
 
-cmd_render_tenant_kube_proxy_manifest() {
-  local api_server pod_cidr
-  api_server=${1:-}
-  if [ -z "$api_server" ]; then
-    api_server=$(tenant_api_server_hostport)
-  fi
-  pod_cidr=$(tenant_pod_cidr)
-
+render_tenant_kube_proxy_rbac() {
   cat <<EOF
 apiVersion: v1
 kind: ServiceAccount
@@ -368,6 +350,14 @@ subjects:
     name: $TENANT_KUBE_PROXY_NAME
     namespace: kube-system
 ---
+EOF
+}
+
+render_tenant_kube_proxy_configmap() {
+  local api_server=$1
+  local pod_cidr=$2
+
+  cat <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -406,6 +396,11 @@ data:
         user:
           tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
 ---
+EOF
+}
+
+render_tenant_kube_proxy_daemonset() {
+  cat <<EOF
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -466,6 +461,19 @@ spec:
           hostPath:
             path: /lib/modules
 EOF
+}
+
+cmd_render_tenant_kube_proxy_manifest() {
+  local api_server pod_cidr
+  api_server=${1:-}
+  if [ -z "$api_server" ]; then
+    api_server=$(tenant_api_server_hostport)
+  fi
+  pod_cidr=$(tenant_pod_cidr)
+
+  render_tenant_kube_proxy_rbac
+  render_tenant_kube_proxy_configmap "$api_server" "$pod_cidr"
+  render_tenant_kube_proxy_daemonset
 }
 
 install_tenant_kube_proxy() {

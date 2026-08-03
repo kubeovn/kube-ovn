@@ -43,9 +43,7 @@ func controllerEnv(f *framework.Framework) map[string]string {
 
 	deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).
 		Get(context.TODO(), "kube-ovn-controller", metav1.GetOptions{})
-	if err != nil {
-		return nil
-	}
+	framework.ExpectNoError(err, "get kube-ovn-controller deployment")
 	for _, c := range deploy.Spec.Template.Spec.Containers {
 		if c.Name != "kube-ovn-controller" {
 			continue
@@ -56,6 +54,7 @@ func controllerEnv(f *framework.Framework) map[string]string {
 		}
 		return values
 	}
+	framework.Fail("kube-ovn-controller container not found in kube-ovn-controller deployment")
 	return nil
 }
 
@@ -66,18 +65,21 @@ func usesHostedOVNCentralAddresses(f *framework.Framework) bool {
 	return env["OVN_NB_ADDR"] != "" && env["OVN_SB_ADDR"] != "" && env["OVN_DB_IPS"] == ""
 }
 
-func hcpOVNNBAddress(f *framework.Framework) string {
-	if v := os.Getenv("KUBE_OVN_HCP_OVN_NB_ADDR"); v != "" {
-		return v
-	}
-	return controllerEnv(f)["OVN_NB_ADDR"]
+func hcpOVNNBAddress() string {
+	return requiredHostedOVNAddress("KUBE_OVN_HCP_OVN_NB_ADDR")
 }
 
-func hcpOVNSBAddress(f *framework.Framework) string {
-	if v := os.Getenv("KUBE_OVN_HCP_OVN_SB_ADDR"); v != "" {
-		return v
-	}
-	return controllerEnv(f)["OVN_SB_ADDR"]
+func hcpOVNSBAddress() string {
+	return requiredHostedOVNAddress("KUBE_OVN_HCP_OVN_SB_ADDR")
+}
+
+func requiredHostedOVNAddress(name string) string {
+	ginkgo.GinkgoHelper()
+
+	value := os.Getenv(name)
+	gomega.Expect(value).NotTo(gomega.BeEmpty(),
+		"%s must be set by the hosted OVN central E2E harness", name)
+	return value
 }
 
 func hostAndPort(addr string) (string, string) {
@@ -127,36 +129,33 @@ var _ = framework.Describe("[group:kamaji]", func() {
 
 	ginkgo.BeforeEach(func() {
 		f.SkipVersionPriorTo(1, 18, "kube-ovn hosted OVN central support is required")
-		if !usesHostedOVNCentralAddresses(f) {
-			ginkgo.Skip("kube-ovn data-plane workloads are not using hosted OVN DB addresses; skipping the Kamaji-backed suite")
-		}
+		hcpOVNNBAddress()
+		hcpOVNSBAddress()
+		gomega.Expect(usesHostedOVNCentralAddresses(f)).To(gomega.BeTrue(),
+			"kube-ovn data-plane workloads must use hosted OVN DB addresses; the Kamaji-backed suite must fail rather than skip when hosted OVN central is not under test")
 	})
 
-	ginkgo.It("kube-ovn-controller runs with replicas=1 in dataPlaneOnly", func() {
+	ginkgo.It("kube-ovn-controller runs with replicas=1 in hosted OVN central dataPlaneOnly", func() {
 		deploy, err := f.ClientSet.AppsV1().Deployments(framework.KubeOvnNamespace).
 			Get(context.TODO(), "kube-ovn-controller", metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		framework.ExpectNotNil(deploy.Spec.Replicas)
 		gomega.Expect(*deploy.Spec.Replicas).To(gomega.BeEquivalentTo(1),
-			"dataPlaneOnly should default kube-ovn-controller to 1 replica via kubeovn.controllerReplicas")
+			"hosted OVN central dataPlaneOnly should default kube-ovn-controller to 1 replica via kubeovn.controllerReplicas")
 	})
 
 	ginkgo.It("data-plane components use the hosted OVN DB addresses", func() {
 		env := controllerEnv(f)
-		nbAddr := hcpOVNNBAddress(f)
-		sbAddr := hcpOVNSBAddress(f)
+		nbAddr := hcpOVNNBAddress()
+		sbAddr := hcpOVNSBAddress()
 
-		gomega.Expect(nbAddr).NotTo(gomega.BeEmpty(),
-			"could not determine HCP OVN NB address from chart or env")
-		gomega.Expect(sbAddr).NotTo(gomega.BeEmpty(),
-			"could not determine HCP OVN SB address from chart or env")
 		gomega.Expect(env["OVN_NB_ADDR"]).To(gomega.Equal(nbAddr))
 		gomega.Expect(env["OVN_SB_ADDR"]).To(gomega.Equal(sbAddr))
 		gomega.Expect(env).NotTo(gomega.HaveKey("OVN_DB_IPS"))
 	})
 
 	ginkgo.It("data-plane components dial the hosted ovn-central endpoint", func() {
-		sbAddr := hcpOVNSBAddress(f)
+		sbAddr := hcpOVNSBAddress()
 		host, port := hostAndPort(sbAddr)
 		framework.Logf("expecting ESTAB connections to %s from the tenant cluster", sbAddr)
 
@@ -180,10 +179,9 @@ var _ = framework.Describe("[group:kamaji]", func() {
 
 		pod := framework.MakePod(f.Namespace.Name, name, nil, nil,
 			framework.AgnhostImage, nil, nil)
-		_ = podClient.CreateSync(pod)
+		pod = podClient.CreateSync(pod)
 		ginkgo.DeferCleanup(func() { podClient.DeleteSync(name) })
 
-		pod = podClient.GetPod(name)
 		framework.ExpectNotNil(pod, "pod should exist after CreateSync")
 		gomega.Expect(pod.Annotations[util.AllocatedAnnotation]).To(gomega.Equal("true"),
 			"pod should be annotated by kube-ovn-controller via the external OVN DB")
