@@ -155,17 +155,17 @@ func ParseFlags() (*Configuration, error) {
 
 		argDefaultLogicalSwitch  = pflag.String("default-ls", util.DefaultSubnet, "The default logical switch name")
 		argDefaultCIDR           = pflag.String("default-cidr", "10.16.0.0/16", "Default CIDR for namespace with no logical switch annotation")
-		argDefaultGateway        = pflag.String("default-gateway", "", "Default gateway for default-cidr (default the first ip in default-cidr)")
+		argDefaultGateway        = pflag.String("default-gateway", "", "Default gateway for default-cidr. When empty, the first IP in default-cidr is used")
 		argDefaultGatewayCheck   = pflag.Bool("default-gateway-check", true, "Check switch for the default subnet's gateway")
-		argDefaultLogicalGateway = pflag.Bool("default-logical-gateway", false, "Create a logical gateway for the default subnet instead of using underlay gateway. Take effect only when the default subnet is in underlay mode. (default false)")
-		argDefaultExcludeIps     = pflag.String("default-exclude-ips", "", "Exclude ips in default switch (default gateway address)")
+		argDefaultLogicalGateway = pflag.Bool("default-logical-gateway", false, "Create a logical gateway for the default subnet instead of using underlay gateway. Take effect only when the default subnet is in underlay mode.")
+		argDefaultExcludeIps     = pflag.String("default-exclude-ips", "", "Exclude IPs in the default switch. When empty, the default gateway address is excluded")
 
 		argDefaultU2OInterconnection = pflag.Bool("default-u2o-interconnection", false, "usage for underlay to overlay interconnection")
 
 		argClusterRouter     = pflag.String("cluster-router", util.DefaultVpc, "The router name for cluster router")
 		argNodeSwitch        = pflag.String("node-switch", "join", "The name of node gateway switch which help node to access pod network")
 		argNodeSwitchCIDR    = pflag.String("node-switch-cidr", "100.64.0.0/16", "The cidr for node switch")
-		argNodeSwitchGateway = pflag.String("node-switch-gateway", "", "The gateway for node switch (default the first ip in node-switch-cidr)")
+		argNodeSwitchGateway = pflag.String("node-switch-gateway", "", "The gateway for node switch. When empty, the first IP in node-switch-cidr is used")
 
 		argServiceClusterIPRange = pflag.String("service-cluster-ip-range", "10.96.0.0/12", "The kubernetes service cluster ip range")
 
@@ -193,7 +193,7 @@ func ParseFlags() (*Configuration, error) {
 		argPodNicType                  = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
 		argEnableLb                    = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
-		argNPEnforcement               = pflag.String("np-enforcement", "standard", "Network policy enforcement (standard, lax), default is standard")
+		argNPEnforcement               = pflag.String("np-enforcement", "standard", "Network policy enforcement mode: standard or lax")
 		argEnableEipSnat               = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
 		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", false, "Enable external vpc support")
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
@@ -207,14 +207,14 @@ func ParseFlags() (*Configuration, error) {
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
 
-		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
-		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
-		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network which mappings with an ovs bridge, default: external")
-		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The vlanId of port ln-ovn-external, default: 0")
+		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config")
+		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch, which is an OVS bridge that provides external network access")
+		argExternalGatewayNet      = pflag.String("external-gateway-net", "external", "The name of the external network mapped to an OVS bridge")
+		argExternalGatewayVlanID   = pflag.Int("external-gateway-vlanid", 0, "The VLAN ID of port ln-ovn-external")
 		argNodeLocalDNSIP          = pflag.String("node-local-dns-ip", "", "Comma-separated string of nodelocal DNS ip addresses")
 
-		argGCInterval      = pflag.Int("gc-interval", 360, "The interval between GC processes, default 360 seconds. If set to 0, GC will be disabled")
-		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval between inspect processes, default 20 seconds")
+		argGCInterval      = pflag.Int("gc-interval", 360, "The interval in seconds between GC processes. If set to 0, GC will be disabled")
+		argInspectInterval = pflag.Int("inspect-interval", 20, "The interval in seconds between inspect processes")
 
 		argBfdMinTx      = pflag.Int("bfd-min-tx", 100, "This is the minimum interval, in milliseconds, ovn would like to use when transmitting BFD Control packets")
 		argBfdMinRx      = pflag.Int("bfd-min-rx", 100, "This is the minimum interval, in milliseconds, between received BFD Control packets")
