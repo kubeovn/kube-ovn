@@ -997,21 +997,18 @@ func TestIPAMNamedPoolDoesNotAllocateNewlyExcludedAddresses(t *testing.T) {
 		cidr    string
 		gateway string
 		poolIP  string
-		family  string
 	}{
 		{
 			name:    "IPv4",
 			cidr:    "10.0.0.0/30",
 			gateway: "10.0.0.1",
 			poolIP:  "10.0.0.2",
-			family:  kubeovnv1.ProtocolIPv4,
 		},
 		{
 			name:    "IPv6",
 			cidr:    "fd00::/126",
 			gateway: "fd00::1",
 			poolIP:  "fd00::2",
-			family:  kubeovnv1.ProtocolIPv6,
 		},
 	}
 
@@ -1022,7 +1019,7 @@ func TestIPAMNamedPoolDoesNotAllocateNewlyExcludedAddresses(t *testing.T) {
 			require.NoError(t, ipam.AddOrUpdateIPPool("subnet", "pool", []string{tt.poolIP}))
 			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway, tt.poolIP}))
 
-			v4IP, v6IP, _, err := ipam.GetRandomAddressWithFamily("pod", "nic", nil, "subnet", "pool", tt.family, nil, true)
+			v4IP, v6IP, _, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "pool", nil, true)
 			require.ErrorIs(t, err, ErrNoAvailable)
 			require.Empty(t, v4IP)
 			require.Empty(t, v6IP)
@@ -1076,7 +1073,6 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 		cidr    string
 		gateway string
 		poolIP  string
-		family  string
 		v4Using string
 		v6Using string
 	}{
@@ -1085,7 +1081,6 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 			cidr:    "10.0.0.0/30",
 			gateway: "10.0.0.1",
 			poolIP:  "10.0.0.2",
-			family:  kubeovnv1.ProtocolIPv4,
 			v4Using: "1",
 			v6Using: "0",
 		},
@@ -1094,7 +1089,6 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 			cidr:    "fd00::/126",
 			gateway: "fd00::1",
 			poolIP:  "fd00::2",
-			family:  kubeovnv1.ProtocolIPv6,
 			v4Using: "0",
 			v6Using: "1",
 		},
@@ -1105,7 +1099,7 @@ func TestIPAMReleasedExcludedAddressDoesNotBecomeAvailable(t *testing.T) {
 			ipam := NewIPAM()
 			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway}))
 			require.NoError(t, ipam.AddOrUpdateIPPool("subnet", "pool", []string{tt.poolIP}))
-			_, _, _, err := ipam.GetRandomAddressWithFamily("pod", "nic", nil, "subnet", "pool", tt.family, nil, true)
+			_, _, _, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "pool", nil, true)
 			require.NoError(t, err)
 
 			require.NoError(t, ipam.AddOrUpdateSubnet("subnet", tt.cidr, tt.gateway, []string{tt.gateway, tt.poolIP}))
