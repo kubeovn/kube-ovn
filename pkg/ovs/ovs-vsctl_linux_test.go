@@ -14,20 +14,23 @@ func TestParseAndScaleBandwidthRate(t *testing.T) {
 	tests := []struct {
 		name    string
 		rate    string
+		scale   int64
 		want    int64
 		wantErr string
 	}{
-		{name: "empty is zero", rate: "", want: 0},
-		{name: "zero", rate: "0", want: 0},
-		{name: "normal", rate: "100", want: 100_000_000},
-		{name: "maximum safe", rate: "9223372036854", want: 9_223_372_036_854_000_000},
-		{name: "one over maximum safe", rate: "9223372036855", wantErr: "overflows"},
-		{name: "invalid", rate: "invalid", wantErr: "invalid bandwidth rate"},
-		{name: "negative", rate: "-1", wantErr: "must not be negative"},
+		{name: "empty is zero", rate: "", scale: 1_000_000, want: 0},
+		{name: "zero", rate: "0", scale: 1_000_000, want: 0},
+		{name: "normal", rate: "100", scale: 1_000_000, want: 100_000_000},
+		{name: "unified maximum in Kbit", rate: "9223372036854", scale: 1000, want: 9_223_372_036_854_000},
+		{name: "unified maximum in bits", rate: "9223372036854", scale: 1_000_000, want: 9_223_372_036_854_000_000},
+		{name: "one over unified maximum in Kbit", rate: "9223372036855", scale: 1000, wantErr: "overflows"},
+		{name: "one over unified maximum in bits", rate: "9223372036855", scale: 1_000_000, wantErr: "overflows"},
+		{name: "invalid", rate: "invalid", scale: 1_000_000, wantErr: "invalid bandwidth rate"},
+		{name: "negative", rate: "-1", scale: 1_000_000, wantErr: "must not be negative"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseAndScaleBandwidthRate(tt.rate, 1_000_000)
+			got, err := parseAndScaleBandwidthRate(tt.rate, tt.scale)
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
@@ -58,7 +61,7 @@ func TestSetInterfaceBandwidthRejectsInvalidRatesBeforeOVS(t *testing.T) {
 	}{
 		{name: "invalid ingress", ingress: "invalid", egress: "0", wantErr: "invalid ingress bandwidth"},
 		{name: "negative ingress", ingress: "-1", egress: "0", wantErr: "must not be negative"},
-		{name: "overflowing ingress", ingress: "9223372036854776", egress: "0", wantErr: "overflows"},
+		{name: "ingress above unified maximum", ingress: "9223372036855", egress: "0", wantErr: "overflows"},
 		{name: "invalid egress", ingress: "0", egress: "invalid", wantErr: "invalid egress bandwidth"},
 		{name: "negative egress", ingress: "0", egress: "-1", wantErr: "must not be negative"},
 		{name: "overflowing egress", ingress: "0", egress: "9223372036855", wantErr: "overflows"},
@@ -87,6 +90,8 @@ func TestComputeIngressPolicingBurstKbit(t *testing.T) {
 		{name: "non-empty burst with zero rate is forced to 0", rateKbit: 0, burst: "5", want: 0},
 		{name: "unparseable burst falls back to default", rateKbit: 10000, burst: "abc", want: 8000},
 		{name: "overflowing burst falls back to default", rateKbit: 10000, burst: strconv.FormatInt(math.MaxInt64, 10), want: 8000},
+		{name: "maximum rate uses overflow-safe default", rateKbit: math.MaxInt64, burst: "", want: 7_378_697_629_483_820_645},
+		{name: "maximum rate uses overflow-safe invalid burst fallback", rateKbit: math.MaxInt64, burst: "abc", want: 7_378_697_629_483_820_645},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

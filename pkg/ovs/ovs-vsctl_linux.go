@@ -22,14 +22,18 @@ func computeIngressPolicingBurstKbit(rateKbit int64, burstMbit string) int64 {
 		return 0
 	}
 	if burstMbit == "" {
-		return rateKbit * 8 / 10
+		return defaultIngressPolicingBurstKbit(rateKbit)
 	}
 	v, err := strconv.ParseInt(burstMbit, 10, 64)
 	if err != nil || v > math.MaxInt64/1000 || v < math.MinInt64/1000 {
 		klog.Warningf("invalid ingress burst value %q, falling back to default", burstMbit)
-		return rateKbit * 8 / 10
+		return defaultIngressPolicingBurstKbit(rateKbit)
 	}
 	return v * 1000
+}
+
+func defaultIngressPolicingBurstKbit(rateKbit int64) int64 {
+	return rateKbit/10*8 + rateKbit%10*8/10
 }
 
 // computeHtbBurstBytes returns the linux-htb other_config:burst value (bytes) to write.
@@ -52,6 +56,8 @@ func computeHtbBurstBytes(rateBPS int64, burstMbit string) int64 {
 }
 
 func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
+	const maxBandwidthRateMbps int64 = math.MaxInt64 / 1_000_000
+
 	if rate == "" {
 		return 0, nil
 	}
@@ -63,7 +69,7 @@ func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
 	if value < 0 {
 		return 0, fmt.Errorf("bandwidth rate %q must not be negative", rate)
 	}
-	if value > math.MaxInt64/scale {
+	if value > maxBandwidthRateMbps || value > math.MaxInt64/scale {
 		return 0, fmt.Errorf("bandwidth rate %q overflows when scaled by %d", rate, scale)
 	}
 	return value * scale, nil
