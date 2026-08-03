@@ -3400,13 +3400,21 @@ spec:
                   If not specified, there will be no bandwidth limit.
                 properties:
                   egress:
-                    description: egress bandwidth limit in Mbps
-                    format: int64
-                    type: integer
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: egress bandwidth limit, specified as an integer in
+                      Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per
+                      second
+                    x-kubernetes-int-or-string: true
                   ingress:
-                    description: ingress bandwidth limit in Mbps
-                    format: int64
-                    type: integer
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: ingress bandwidth limit, specified as an integer
+                      in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits
+                      per second
+                    x-kubernetes-int-or-string: true
                 type: object
               bfd:
                 description: BFD configuration
