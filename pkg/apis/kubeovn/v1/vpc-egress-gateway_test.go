@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"math"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -79,6 +80,8 @@ func TestBandwidthLimitJSON(t *testing.T) {
 
 func TestBandwidthRateMbps(t *testing.T) {
 	const formatErr = "must be an integer in Mbps or a quantity with unit M, Mi, G, or Gi"
+	maxBandwidth := strconv.FormatInt(MaxBandwidthMbps, 10)
+	overMaxBandwidth := strconv.FormatInt(MaxBandwidthMbps+1, 10)
 
 	tests := []struct {
 		name    string
@@ -88,19 +91,19 @@ func TestBandwidthRateMbps(t *testing.T) {
 	}{
 		{name: "nil", rate: nil, want: 0},
 		{name: "integer Mbps", rate: BandwidthRateFromInt64(1024), want: 1024},
-		{name: "maximum integer Mbps", rate: BandwidthRateFromInt64(maxBandwidthMbps), want: maxBandwidthMbps},
-		{name: "one over maximum integer Mbps", rate: BandwidthRateFromInt64(maxBandwidthMbps + 1), wantErr: "exceeds the supported maximum"},
+		{name: "maximum integer Mbps", rate: BandwidthRateFromInt64(MaxBandwidthMbps), want: MaxBandwidthMbps},
+		{name: "one over maximum integer Mbps", rate: BandwidthRateFromInt64(MaxBandwidthMbps + 1), wantErr: "exceeds the supported maximum"},
 		{name: "numeric string Mbps", rate: BandwidthRateFromString("1024"), want: 1024},
-		{name: "maximum numeric string Mbps", rate: BandwidthRateFromString("9223372036854"), want: maxBandwidthMbps},
-		{name: "one over maximum numeric string Mbps", rate: BandwidthRateFromString("9223372036855"), wantErr: "exceeds the supported maximum"},
+		{name: "maximum numeric string Mbps", rate: BandwidthRateFromString(maxBandwidth), want: MaxBandwidthMbps},
+		{name: "one over maximum numeric string Mbps", rate: BandwidthRateFromString(overMaxBandwidth), wantErr: "exceeds the supported maximum"},
 		{name: "decimal SI megabit quantity", rate: BandwidthRateFromString("100M"), want: 100},
 		{name: "binary SI mebibit quantity", rate: BandwidthRateFromString("100Mi"), want: 105},
 		{name: "decimal SI quantity", rate: BandwidthRateFromString("1G"), want: 1000},
 		{name: "binary SI quantity", rate: BandwidthRateFromString("1Gi"), want: 1074},
 		{name: "fractional decimal SI quantity", rate: BandwidthRateFromString("1.5G"), want: 1500},
 		{name: "fractional binary SI quantity", rate: BandwidthRateFromString(".5Gi"), want: 537},
-		{name: "maximum suffixed quantity", rate: BandwidthRateFromString("9223372036854M"), want: maxBandwidthMbps},
-		{name: "one over maximum suffixed quantity", rate: BandwidthRateFromString("9223372036855M"), wantErr: "exceeds the supported maximum"},
+		{name: "maximum suffixed quantity", rate: BandwidthRateFromString(maxBandwidth + "M"), want: MaxBandwidthMbps},
+		{name: "one over maximum suffixed quantity", rate: BandwidthRateFromString(overMaxBandwidth + "M"), wantErr: "exceeds the supported maximum"},
 		{name: "zero", rate: BandwidthRateFromInt64(0), want: 0},
 		{name: "negative integer", rate: BandwidthRateFromInt64(-1), wantErr: "must not be negative"},
 		{name: "negative quantity", rate: BandwidthRateFromString("-1G"), wantErr: "must not be negative"},
@@ -133,9 +136,9 @@ func TestBandwidthRateMbps(t *testing.T) {
 }
 
 func TestMaxBandwidthMbpsFitsOVSEgressRate(t *testing.T) {
-	require.Equal(t, int64(9_223_372_036_854), maxBandwidthMbps)
-	require.LessOrEqual(t, maxBandwidthMbps, int64(math.MaxInt64/1_000_000))
-	require.Greater(t, maxBandwidthMbps+1, int64(math.MaxInt64/1_000_000))
+	require.Equal(t, int64(9_223_372_036_854), MaxBandwidthMbps)
+	require.LessOrEqual(t, MaxBandwidthMbps, int64(math.MaxInt64/1_000_000))
+	require.Greater(t, MaxBandwidthMbps+1, int64(math.MaxInt64/1_000_000))
 }
 
 func TestBandwidthLimitMbps(t *testing.T) {

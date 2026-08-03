@@ -105,9 +105,9 @@ type BandwidthLimit struct {
 
 const (
 	bandwidthRatePattern = `^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
-	// maxBandwidthMbps is the largest whole Mbps value that can be converted to
+	// MaxBandwidthMbps is the largest whole Mbps value that can be converted to
 	// the signed int64 bits-per-second value used by OVS without overflowing.
-	maxBandwidthMbps int64 = math.MaxInt64 / 1_000_000
+	MaxBandwidthMbps int64 = math.MaxInt64 / 1_000_000
 )
 
 var bandwidthRateRegexp = regexp.MustCompile(bandwidthRatePattern)
@@ -176,8 +176,8 @@ func (rate *BandwidthRate) Mbps() (int64, error) {
 		if rate.IntVal < 0 {
 			return 0, errors.New("bandwidth must not be negative")
 		}
-		if rate.IntVal > maxBandwidthMbps {
-			return 0, fmt.Errorf("bandwidth %d exceeds the supported maximum of %d Mbps", rate.IntVal, maxBandwidthMbps)
+		if rate.IntVal > MaxBandwidthMbps {
+			return 0, fmt.Errorf("bandwidth %d exceeds the supported maximum of %d Mbps", rate.IntVal, MaxBandwidthMbps)
 		}
 		return rate.IntVal, nil
 	}
@@ -198,10 +198,10 @@ func (rate *BandwidthRate) Mbps() (int64, error) {
 	if value[0] >= '0' && value[0] <= '9' && !strings.ContainsAny(value, ".MGi") {
 		mbps, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, maxBandwidthMbps)
+			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, MaxBandwidthMbps)
 		}
-		if mbps > maxBandwidthMbps {
-			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, maxBandwidthMbps)
+		if mbps > MaxBandwidthMbps {
+			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, MaxBandwidthMbps)
 		}
 		return mbps, nil
 	}
@@ -213,9 +213,9 @@ func (rate *BandwidthRate) Mbps() (int64, error) {
 	if quantity.Sign() < 0 {
 		return 0, errors.New("bandwidth must not be negative")
 	}
-	maxQuantity := resource.NewScaledQuantity(maxBandwidthMbps, resource.Mega)
+	maxQuantity := resource.NewScaledQuantity(MaxBandwidthMbps, resource.Mega)
 	if quantity.Cmp(*maxQuantity) > 0 {
-		return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, maxBandwidthMbps)
+		return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, MaxBandwidthMbps)
 	}
 	return quantity.ScaledValue(resource.Mega), nil
 }
