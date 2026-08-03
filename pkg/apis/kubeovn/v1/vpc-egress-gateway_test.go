@@ -13,7 +13,7 @@ func TestBandwidthRateJSON(t *testing.T) {
 	tests := []struct {
 		name  string
 		value string
-		want  BandwidthRate
+		want  *BandwidthRate
 	}{
 		{name: "integer", value: `1024`, want: BandwidthRateFromInt64(1024)},
 		{name: "integer beyond int32", value: `2147483648`, want: BandwidthRateFromInt64(math.MaxInt32 + 1)},
@@ -26,7 +26,7 @@ func TestBandwidthRateJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var got BandwidthRate
 			require.NoError(t, json.Unmarshal([]byte(tt.value), &got))
-			require.Equal(t, tt.want, got)
+			require.Equal(t, *tt.want, got)
 
 			marshaled, err := json.Marshal(got)
 			require.NoError(t, err)
@@ -45,21 +45,48 @@ func TestBandwidthRateJSON(t *testing.T) {
 func TestBandwidthLimitUnmarshalJSON(t *testing.T) {
 	var bandwidth BandwidthLimit
 	require.NoError(t, json.Unmarshal([]byte(`{"ingress":2147483648,"egress":"1Gi"}`), &bandwidth))
+	require.NotNil(t, bandwidth.Ingress)
 	require.Equal(t, intstr.Int, bandwidth.Ingress.Type)
 	require.Equal(t, int64(math.MaxInt32+1), bandwidth.Ingress.IntVal)
+	require.NotNil(t, bandwidth.Egress)
 	require.Equal(t, intstr.String, bandwidth.Egress.Type)
 	require.Equal(t, "1Gi", bandwidth.Egress.StrVal)
 }
 
-func TestBandwidthRateToMbps(t *testing.T) {
+func TestBandwidthLimitJSON(t *testing.T) {
+	tests := []struct {
+		name      string
+		bandwidth BandwidthLimit
+		wantJSON  string
+	}{
+		{name: "empty", bandwidth: BandwidthLimit{}, wantJSON: `{}`},
+		{name: "ingress only", bandwidth: BandwidthLimit{Ingress: BandwidthRateFromString("1Gi")}, wantJSON: `{"ingress":"1Gi"}`},
+		{name: "explicit zero", bandwidth: BandwidthLimit{Ingress: BandwidthRateFromInt64(0)}, wantJSON: `{"ingress":0}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			value, err := json.Marshal(tt.bandwidth)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantJSON, string(value))
+
+			var got BandwidthLimit
+			require.NoError(t, json.Unmarshal(value, &got))
+			require.Equal(t, tt.bandwidth, got)
+		})
+	}
+}
+
+func TestBandwidthRateMbps(t *testing.T) {
 	const formatErr = "must be an integer in Mbps or a quantity with unit M, Mi, G, or Gi"
 
 	tests := []struct {
 		name    string
-		rate    BandwidthRate
+		rate    *BandwidthRate
 		want    int64
 		wantErr string
 	}{
+		{name: "nil", rate: nil, want: 0},
 		{name: "integer Mbps", rate: BandwidthRateFromInt64(1024), want: 1024},
 		{name: "maximum int64 integer Mbps", rate: BandwidthRateFromInt64(math.MaxInt64), want: math.MaxInt64},
 		{name: "numeric string Mbps", rate: BandwidthRateFromString("1024"), want: 1024},
@@ -86,12 +113,12 @@ func TestBandwidthRateToMbps(t *testing.T) {
 		{name: "invalid quantity", rate: BandwidthRateFromString("fast"), wantErr: formatErr},
 		{name: "plain numeric overflow", rate: BandwidthRateFromString("9223372036854775808"), wantErr: "exceeds the supported maximum"},
 		{name: "suffixed quantity overflow", rate: BandwidthRateFromString("9223372036854775808M"), wantErr: "exceeds the supported maximum"},
-		{name: "unsupported type", rate: BandwidthRate{Type: 2}, wantErr: "unsupported bandwidth rate type"},
+		{name: "unsupported type", rate: &BandwidthRate{Type: 2}, wantErr: "unsupported bandwidth rate type"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := bandwidthRateToMbps(tt.rate)
+			got, err := tt.rate.Mbps()
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
@@ -107,6 +134,16 @@ func TestBandwidthLimitMbps(t *testing.T) {
 	ingress, egress, err := noBandwidth.Mbps()
 	require.NoError(t, err)
 	require.Zero(t, ingress)
+	require.Zero(t, egress)
+
+	ingress, egress, err = (&BandwidthLimit{}).Mbps()
+	require.NoError(t, err)
+	require.Zero(t, ingress)
+	require.Zero(t, egress)
+
+	ingress, egress, err = (&BandwidthLimit{Ingress: BandwidthRateFromInt64(1024)}).Mbps()
+	require.NoError(t, err)
+	require.Equal(t, int64(1024), ingress)
 	require.Zero(t, egress)
 
 	ingress, egress, err = (&BandwidthLimit{
