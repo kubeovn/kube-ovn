@@ -1,8 +1,16 @@
 package v1
 
 import (
+	"errors"
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 const (
@@ -75,12 +83,71 @@ func (g *VpcEgressGateway) Ready() bool {
 }
 
 // BandwidthLimit represents the bandwidth limit for the egress gateway in both ingress and egress directions.
-// The bandwidth is specified in Mbps. If not specified, there will be no bandwidth limit.
+// Integer values and numeric strings are specified in Mbps. Kubernetes quantity strings such as 100M or 1Gi are specified in bits per second.
+// If not specified, there will be no bandwidth limit.
 type BandwidthLimit struct {
-	// ingress bandwidth limit in Mbps
-	Ingress int64 `json:"ingress,omitempty"`
-	// egress bandwidth limit in Mbps
-	Egress int64 `json:"egress,omitempty"`
+	// ingress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+	Ingress intstr.IntOrString `json:"ingress,omitempty"`
+	// egress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+	Egress intstr.IntOrString `json:"egress,omitempty"`
+}
+
+const maxBandwidthMbps = math.MaxInt64 / 1_000_000
+
+func bandwidthRateToMbps(rate intstr.IntOrString) (int64, error) {
+	if rate.Type == intstr.Int {
+		if rate.IntVal < 0 {
+			return 0, errors.New("bandwidth must not be negative")
+		}
+		return int64(rate.IntVal), nil
+	}
+	if rate.Type != intstr.String {
+		return 0, fmt.Errorf("unsupported IntOrString type %d", rate.Type)
+	}
+
+	value := strings.TrimSpace(rate.StrVal)
+	if value == "" {
+		return 0, errors.New("bandwidth must not be empty")
+	}
+	if mbps, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if mbps < 0 {
+			return 0, errors.New("bandwidth must not be negative")
+		}
+		if mbps > maxBandwidthMbps {
+			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum", value)
+		}
+		return mbps, nil
+	}
+
+	quantity, err := resource.ParseQuantity(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid Kubernetes quantity %q: %w", value, err)
+	}
+	if quantity.Sign() < 0 {
+		return 0, errors.New("bandwidth must not be negative")
+	}
+	maxQuantity := resource.NewScaledQuantity(maxBandwidthMbps, resource.Mega)
+	if quantity.Cmp(*maxQuantity) > 0 {
+		return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum", value)
+	}
+	return quantity.ScaledValue(resource.Mega), nil
+}
+
+// Mbps returns the ingress and egress limits normalized to whole Mbps.
+// Positive quantities below a whole Mbps are rounded up so they do not silently disable the limit.
+func (b *BandwidthLimit) Mbps() (int64, int64, error) {
+	if b == nil {
+		return 0, 0, nil
+	}
+	ingress, err := bandwidthRateToMbps(b.Ingress)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid ingress bandwidth: %w", err)
+	}
+	egress, err := bandwidthRateToMbps(b.Egress)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid egress bandwidth: %w", err)
+	}
+	return ingress, egress, nil
 }
 
 // +kubebuilder:validation:XValidation:rule="!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas",message="Size of Internal IPs MUST be equal to or greater than Replicas",fieldPath=".internalIPs"

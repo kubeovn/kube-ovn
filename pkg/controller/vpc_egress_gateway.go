@@ -603,16 +603,19 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
 	}
 	if gw.Spec.Bandwidth != nil {
-		// set ingress/egress bandwidth limit in Mbps
-		if gw.Spec.Bandwidth.Ingress > 0 {
+		ingressMbps, egressMbps, err := gw.Spec.Bandwidth.Mbps()
+		if err != nil {
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		if ingressMbps > 0 {
 			// The 'ingress' on the VpcEgressGateway CRD refers to traffic entering the VPC from external.
 			// From the gateway pod's perspective, this is egress traffic of the primary network interface.
-			annotations[util.EgressRateAnnotation] = strconv.FormatInt(gw.Spec.Bandwidth.Ingress, 10)
+			annotations[util.EgressRateAnnotation] = strconv.FormatInt(ingressMbps, 10)
 		}
-		if gw.Spec.Bandwidth.Egress > 0 {
+		if egressMbps > 0 {
 			// The 'egress' on the VpcEgressGateway CRD refers to traffic leaving the VPC.
 			// From the gateway pod's perspective, this is ingress traffic of the primary network interface.
-			annotations[util.IngressRateAnnotation] = strconv.FormatInt(gw.Spec.Bandwidth.Egress, 10)
+			annotations[util.IngressRateAnnotation] = strconv.FormatInt(egressMbps, 10)
 		}
 	}
 
