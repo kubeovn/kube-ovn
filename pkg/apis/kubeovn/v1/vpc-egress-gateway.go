@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -88,31 +90,89 @@ func (g *VpcEgressGateway) Ready() bool {
 // If not specified, there will be no bandwidth limit.
 type BandwidthLimit struct {
 	// ingress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
-	Ingress intstr.IntOrString `json:"ingress,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 0 : true",message="bandwidth must not be negative"
+	Ingress BandwidthRate `json:"ingress,omitempty"`
 	// egress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
-	Egress intstr.IntOrString `json:"egress,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 0 : true",message="bandwidth must not be negative"
+	Egress BandwidthRate `json:"egress,omitempty"`
 }
 
 const (
-	maxBandwidthMbps     = math.MaxInt64 / 1_000_000
 	bandwidthRatePattern = `^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
 )
 
 var bandwidthRateRegexp = regexp.MustCompile(bandwidthRatePattern)
 
-func bandwidthRateToMbps(rate intstr.IntOrString) (int64, error) {
+// BandwidthRate holds either an int64 Mbps value or a Kubernetes quantity string.
+type BandwidthRate struct {
+	Type   intstr.Type `json:"-"`
+	IntVal int64       `json:"-"`
+	StrVal string      `json:"-"`
+}
+
+// BandwidthRateFromInt64 returns a BandwidthRate containing an integer Mbps value.
+func BandwidthRateFromInt64(value int64) BandwidthRate {
+	return BandwidthRate{Type: intstr.Int, IntVal: value}
+}
+
+// BandwidthRateFromString returns a BandwidthRate containing a quantity string.
+func BandwidthRateFromString(value string) BandwidthRate {
+	return BandwidthRate{Type: intstr.String, StrVal: value}
+}
+
+// UnmarshalJSON implements json.Unmarshaller.
+func (rate *BandwidthRate) UnmarshalJSON(value []byte) error {
+	value = bytes.TrimSpace(value)
+	if len(value) == 0 {
+		return errors.New("cannot unmarshal empty JSON as bandwidth rate")
+	}
+	if value[0] == '"' {
+		var stringValue string
+		if err := json.Unmarshal(value, &stringValue); err != nil {
+			return err
+		}
+		*rate = BandwidthRateFromString(stringValue)
+		return nil
+	}
+
+	if (value[0] < '0' || value[0] > '9') && value[0] != '-' {
+		return errors.New("bandwidth rate must be a JSON integer or string")
+	}
+	var integerValue int64
+	if err := json.Unmarshal(value, &integerValue); err != nil {
+		return fmt.Errorf("bandwidth rate must be a JSON integer or string: %w", err)
+	}
+	*rate = BandwidthRateFromInt64(integerValue)
+	return nil
+}
+
+// MarshalJSON implements json.Marshaller.
+func (rate BandwidthRate) MarshalJSON() ([]byte, error) {
+	switch rate.Type {
+	case intstr.Int:
+		return json.Marshal(rate.IntVal)
+	case intstr.String:
+		return json.Marshal(rate.StrVal)
+	default:
+		return nil, fmt.Errorf("unsupported bandwidth rate type %d", rate.Type)
+	}
+}
+
+func bandwidthRateToMbps(rate BandwidthRate) (int64, error) {
 	if rate.Type == intstr.Int {
 		if rate.IntVal < 0 {
 			return 0, errors.New("bandwidth must not be negative")
 		}
-		return int64(rate.IntVal), nil
+		return rate.IntVal, nil
 	}
 	if rate.Type != intstr.String {
-		return 0, fmt.Errorf("unsupported IntOrString type %d", rate.Type)
+		return 0, fmt.Errorf("unsupported bandwidth rate type %d", rate.Type)
 	}
 
 	value := rate.StrVal
@@ -125,8 +185,9 @@ func bandwidthRateToMbps(rate intstr.IntOrString) (int64, error) {
 	if !bandwidthRateRegexp.MatchString(value) {
 		return 0, fmt.Errorf("bandwidth %q must be an integer in Mbps or a quantity with unit M, Mi, G, or Gi", value)
 	}
-	if mbps, err := strconv.ParseInt(value, 10, 64); err == nil {
-		if mbps > maxBandwidthMbps {
+	if value[0] >= '0' && value[0] <= '9' && !strings.ContainsAny(value, ".MGi") {
+		mbps, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
 			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum", value)
 		}
 		return mbps, nil
@@ -139,7 +200,7 @@ func bandwidthRateToMbps(rate intstr.IntOrString) (int64, error) {
 	if quantity.Sign() < 0 {
 		return 0, errors.New("bandwidth must not be negative")
 	}
-	maxQuantity := resource.NewScaledQuantity(maxBandwidthMbps, resource.Mega)
+	maxQuantity := resource.NewScaledQuantity(math.MaxInt64, resource.Mega)
 	if quantity.Cmp(*maxQuantity) > 0 {
 		return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum", value)
 	}

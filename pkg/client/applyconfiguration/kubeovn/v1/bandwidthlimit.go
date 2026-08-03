@@ -19,7 +19,7 @@ limitations under the License.
 package v1
 
 import (
-	intstr "k8s.io/apimachinery/pkg/util/intstr"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 // BandwidthLimitApplyConfiguration represents a declarative configuration of the BandwidthLimit type for use
@@ -30,9 +30,9 @@ import (
 // If not specified, there will be no bandwidth limit.
 type BandwidthLimitApplyConfiguration struct {
 	// ingress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
-	Ingress *intstr.IntOrString `json:"ingress,omitempty"`
+	Ingress *kubeovnv1.BandwidthRate `json:"ingress,omitempty"`
 	// egress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
-	Egress *intstr.IntOrString `json:"egress,omitempty"`
+	Egress *kubeovnv1.BandwidthRate `json:"egress,omitempty"`
 }
 
 // BandwidthLimitApplyConfiguration constructs a declarative configuration of the BandwidthLimit type for use with
@@ -44,7 +44,7 @@ func BandwidthLimit() *BandwidthLimitApplyConfiguration {
 // WithIngress sets the Ingress field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Ingress field is set to the value of the last call.
-func (b *BandwidthLimitApplyConfiguration) WithIngress(value intstr.IntOrString) *BandwidthLimitApplyConfiguration {
+func (b *BandwidthLimitApplyConfiguration) WithIngress(value kubeovnv1.BandwidthRate) *BandwidthLimitApplyConfiguration {
 	b.Ingress = &value
 	return b
 }
@@ -52,7 +52,7 @@ func (b *BandwidthLimitApplyConfiguration) WithIngress(value intstr.IntOrString)
 // WithEgress sets the Egress field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Egress field is set to the value of the last call.
-func (b *BandwidthLimitApplyConfiguration) WithEgress(value intstr.IntOrString) *BandwidthLimitApplyConfiguration {
+func (b *BandwidthLimitApplyConfiguration) WithEgress(value kubeovnv1.BandwidthRate) *BandwidthLimitApplyConfiguration {
 	b.Egress = &value
 	return b
 }
