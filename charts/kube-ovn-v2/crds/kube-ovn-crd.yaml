@@ -1940,6 +1940,8 @@ spec:
                 description: Optional explicit list of VLAN interface names to preserve
                   (e.g., eth0.10, bond0.20)
                 items:
+                  maxLength: 15
+                  pattern: ^[a-zA-Z0-9_-]+\.[0-9]{1,4}$
                   type: string
                 type: array
             required:

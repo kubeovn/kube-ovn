@@ -58,7 +58,8 @@ type ProviderNetworkSpec struct {
 	// Enable automatic detection and preservation of VLAN interfaces
 	PreserveVlanInterfaces bool `json:"preserveVlanInterfaces,omitempty"`
 	// Optional explicit list of VLAN interface names to preserve (e.g., eth0.10, bond0.20)
-	// +kubebuilder:validation:Items={Type=string,Pattern=`^[a-zA-Z0-9_-]+\\.[0-9]{1,4}$`}
+	// +kubebuilder:validation:items:Pattern=`^[a-zA-Z0-9_-]+\.[0-9]{1,4}$`
+	// +kubebuilder:validation:items:MaxLength=15
 	VlanInterfaces []string `json:"vlanInterfaces,omitempty"`
 }
 
