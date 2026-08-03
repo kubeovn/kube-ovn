@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -87,12 +88,21 @@ func (g *VpcEgressGateway) Ready() bool {
 // If not specified, there will be no bandwidth limit.
 type BandwidthLimit struct {
 	// ingress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+	// +kubebuilder:validation:XIntOrString
+	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+|[numkMGTPE]|[KMGTPE]i))$`
 	Ingress intstr.IntOrString `json:"ingress,omitempty"`
 	// egress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+	// +kubebuilder:validation:XIntOrString
+	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+|[numkMGTPE]|[KMGTPE]i))$`
 	Egress intstr.IntOrString `json:"egress,omitempty"`
 }
 
-const maxBandwidthMbps = math.MaxInt64 / 1_000_000
+const (
+	maxBandwidthMbps     = math.MaxInt64 / 1_000_000
+	bandwidthRatePattern = `^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+|[numkMGTPE]|[KMGTPE]i))$`
+)
+
+var bandwidthRateRegexp = regexp.MustCompile(bandwidthRatePattern)
 
 func bandwidthRateToMbps(rate intstr.IntOrString) (int64, error) {
 	if rate.Type == intstr.Int {
@@ -105,14 +115,17 @@ func bandwidthRateToMbps(rate intstr.IntOrString) (int64, error) {
 		return 0, fmt.Errorf("unsupported IntOrString type %d", rate.Type)
 	}
 
-	value := strings.TrimSpace(rate.StrVal)
+	value := rate.StrVal
 	if value == "" {
 		return 0, errors.New("bandwidth must not be empty")
 	}
+	if strings.HasPrefix(value, "-") {
+		return 0, errors.New("bandwidth must not be negative")
+	}
+	if !bandwidthRateRegexp.MatchString(value) {
+		return 0, fmt.Errorf("bandwidth %q must be an integer in Mbps or a non-negative Kubernetes quantity", value)
+	}
 	if mbps, err := strconv.ParseInt(value, 10, 64); err == nil {
-		if mbps < 0 {
-			return 0, errors.New("bandwidth must not be negative")
-		}
 		if mbps > maxBandwidthMbps {
 			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum", value)
 		}
