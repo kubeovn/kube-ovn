@@ -49,7 +49,7 @@ type VpcEgressGatewaySpecApplyConfiguration struct {
 	ExternalSubnet *string `json:"externalSubnet,omitempty"`
 	// optional internal/external IPs used to create the workload
 	// these IPs must be in the internal/external subnet
-	// the IPs count must NOT be less than the replicas count
+	// when specified, the IPs count must NOT be less than the replicas count
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	// External IP addresses for the egress gateway
 	ExternalIPs []string `json:"externalIPs,omitempty"`
@@ -68,7 +68,7 @@ type VpcEgressGatewaySpecApplyConfiguration struct {
 	// BFD configuration
 	BFD *VpcEgressGatewayBFDConfigApplyConfiguration `json:"bfd,omitempty"`
 	// egress policies
-	// at least one policy must be specified
+	// at least one policy or selector must be specified
 	Policies []VpcEgressGatewayPolicyApplyConfiguration `json:"policies,omitempty"`
 	// optional node selector used to select the nodes where the workload will be running
 	NodeSelector []VpcEgressGatewayNodeSelectorApplyConfiguration `json:"nodeSelector,omitempty"`

@@ -146,6 +146,14 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.QoSPolicyStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("Route"):
 		return &kubeovnv1.RouteApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("RouterLBRule"):
+		return &kubeovnv1.RouterLBRuleApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("RouterLBRulePort"):
+		return &kubeovnv1.RouterLBRulePortApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("RouterLBRuleSpec"):
+		return &kubeovnv1.RouterLBRuleSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("RouterLBRuleStatus"):
+		return &kubeovnv1.RouterLBRuleStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("SecurityGroup"):
 		return &kubeovnv1.SecurityGroupApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("SecurityGroupRule"):
