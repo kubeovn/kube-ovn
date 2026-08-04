@@ -139,7 +139,7 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 
 {{/*
 Replica count for the kube-ovn-controller Deployment.
-dataPlaneOnly runs against external HCP ovn-central, so cap controller
+dataPlaneOnly runs against a hosted ovn-central, so cap controller
 replicas at two while allowing single-node clusters to run one.
 */}}
 {{- define "kubeovn.controllerReplicas" -}}
@@ -275,7 +275,7 @@ Render gate for components that only make sense in a single-cluster install:
 - pre-upgrade-ovs-ovn / upgrade-ovs-ovn hooks (upgrade-ovs.sh waits on a local
   deploy/ovn-central, so it fails on tenant-only installs)
 Use `kubeovn.renderFullOnly` when the resource is not yet ready for the
-Kamaji-style split deployments.
+split-cluster hosted ovn-central deployment.
 */}}
 {{- define "kubeovn.renderFullOnly" -}}
 {{- if eq .Values.installMode "full" -}}

@@ -1,6 +1,7 @@
 # Makefile for managing kind environments
 
 UNTAINT_CONTROL_PLANE ?= true
+TENANT_CONTROL_PLANE_REPLICAS ?= 1
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
@@ -286,14 +287,15 @@ kind-install-dual:
 kind-install-single-replica:
 	@ENABLE_SINGLE_REPLICA_OVN=true OVN_CENTRAL_STORAGE_CLASS=standard $(MAKE) kind-install
 
-# Kamaji split-cluster setup: brings up a mgmt kind cluster running Kamaji +
-# kube-ovn controlPlaneOnly, plus a docker-container tenant worker joined to
-# the Kamaji-hosted tenant apiserver and running kube-ovn dataPlaneOnly.
+# Kamaji-backed setup for kube-ovn's hosted OVN central chart path. It brings
+# up a mgmt kind cluster running Kamaji plus kube-ovn HCP control-plane
+# components, and a docker-container tenant worker joined to the Kamaji-hosted
+# tenant apiserver and running kube-ovn data-plane components.
 # Requires `kubeovn/kube-ovn:dev` to already exist locally (run
 # `make build-dev` first).
 .PHONY: kind-install-kamaji
 kind-install-kamaji:
-	@KUBEOVN_IMAGE=$(REGISTRY)/kube-ovn:$(DEV_TAG) ./hack/kamaji-e2e.sh setup
+	@E2E_IP_FAMILY=$(E2E_IP_FAMILY) TENANT_CONTROL_PLANE_REPLICAS=$(TENANT_CONTROL_PLANE_REPLICAS) KUBEOVN_IMAGE=$(REGISTRY)/kube-ovn:$(DEV_TAG) ./hack/kamaji-e2e.sh setup
 
 .PHONY: kind-clean-kamaji
 kind-clean-kamaji:
