@@ -33,7 +33,7 @@ func AtomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	if err = tmp.Close(); err != nil {
 		return err
 	}
-	if err = os.Rename(tmpName, path); err != nil {
+	if err = os.Rename(tmpName, path); err != nil { // #nosec G703 -- writing to the caller-selected destination is the purpose of this helper.
 		return err
 	}
 
