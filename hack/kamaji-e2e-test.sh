@@ -216,10 +216,12 @@ require_text "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" "name: Kube-O
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" ipv4 single 1
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" ipv6 single 1
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" dual single 1
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" ipv4 ha 3
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" ipv6 ha 3
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" dual ha 3
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv4 single 1
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv6 single 1
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" dual single 1
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv4 ha 3
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv6 ha 3
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" dual ha 3

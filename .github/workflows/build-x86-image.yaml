@@ -1739,6 +1739,9 @@ jobs:
           - ip-family: dual
             tenant-control-plane: single
             tenant-control-plane-replicas: 1
+          - ip-family: ipv4
+            tenant-control-plane: ha
+            tenant-control-plane-replicas: 3
           - ip-family: ipv6
             tenant-control-plane: ha
             tenant-control-plane-replicas: 3
