@@ -1524,6 +1524,10 @@ jobs:
             tenant-control-plane: single
             tenant-control-plane-replicas: 1
           - branch: master
+            ip-family: ipv6
+            tenant-control-plane: ha
+            tenant-control-plane-replicas: 3
+          - branch: master
             ip-family: dual
             tenant-control-plane: ha
             tenant-control-plane-replicas: 3

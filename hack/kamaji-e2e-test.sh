@@ -12,7 +12,9 @@ export HCP_OVN_ENDPOINT=10.0.0.10
 "$SCRIPT" render-mgmt-values > "$TMP_DIR/mgmt-values.yaml"
 "$SCRIPT" render-tenant-values > "$TMP_DIR/tenant-values.yaml"
 "$SCRIPT" render-tenant-control-plane > "$TMP_DIR/tenant-tcp.yaml"
+"$SCRIPT" render-mgmt-kind-config > "$TMP_DIR/mgmt-kind.yaml"
 TENANT_CONTROL_PLANE_REPLICAS=3 "$SCRIPT" render-tenant-control-plane > "$TMP_DIR/tenant-tcp-ha.yaml"
+TENANT_CONTROL_PLANE_REPLICAS=3 "$SCRIPT" render-mgmt-kind-config > "$TMP_DIR/mgmt-kind-ha.yaml"
 "$SCRIPT" vars > "$TMP_DIR/vars"
 
 require_line() {
@@ -42,6 +44,35 @@ require_text() {
   }
 }
 
+require_count() {
+  local file=$1
+  local expected=$2
+  local text=$3
+  local actual
+  actual=$(grep -Fc -- "$text" "$file" || true)
+  if [ "$actual" != "$expected" ]; then
+    echo "expected $expected occurrence(s) in $file, got $actual: $text" >&2
+    exit 1
+  fi
+}
+
+require_workflow_case() {
+  local file=$1
+  local family=$2
+  local control_plane=$3
+  local replicas=$4
+  awk -v family="$family" -v control_plane="$control_plane" -v replicas="$replicas" '
+    $0 == "          - ip-family: " family || $0 == "            ip-family: " family {in_case=1; next}
+    in_case && $0 == "            tenant-control-plane: " control_plane {seen_control_plane=1; next}
+    in_case && seen_control_plane && $0 == "            tenant-control-plane-replicas: " replicas {found=1}
+    in_case && $0 ~ /^          - / {in_case=0; seen_control_plane=0}
+    END {exit found ? 0 : 1}
+  ' "$file" || {
+    echo "missing workflow case in $file: $family, $control_plane, replicas=$replicas" >&2
+    exit 1
+  }
+}
+
 require_line "$TMP_DIR/mgmt-values.yaml" "installMode: controlPlaneOnly"
 require_line "$TMP_DIR/mgmt-values.yaml" "    enabled: true"
 require_line "$TMP_DIR/mgmt-values.yaml" "    namespace: hcp"
@@ -57,8 +88,18 @@ require_line "$TMP_DIR/tenant-values.yaml" "    enabled: true"
 require_line "$TMP_DIR/tenant-values.yaml" "    nbAddress: tcp:10.0.0.10:30641"
 require_line "$TMP_DIR/tenant-values.yaml" "    sbAddress: tcp:10.0.0.10:30642"
 reject_text "$TMP_DIR/tenant-values.yaml" "externalOvnCentral"
+require_count "$TMP_DIR/mgmt-kind.yaml" 0 "  - role: worker"
+require_count "$TMP_DIR/mgmt-kind-ha.yaml" 3 "  - role: worker"
+require_count "$TMP_DIR/mgmt-kind-ha.yaml" 3 "      kube-ovn/tenant-control-plane: \"true\""
 require_line "$TMP_DIR/tenant-tcp.yaml" "      replicas: 1"
+reject_text "$TMP_DIR/tenant-tcp.yaml" "      nodeSelector:"
+reject_text "$TMP_DIR/tenant-tcp.yaml" "      affinity:"
 require_line "$TMP_DIR/tenant-tcp-ha.yaml" "      replicas: 3"
+require_line "$TMP_DIR/tenant-tcp-ha.yaml" "      nodeSelector:"
+require_line "$TMP_DIR/tenant-tcp-ha.yaml" "        kube-ovn/tenant-control-plane: \"true\""
+require_line "$TMP_DIR/tenant-tcp-ha.yaml" "      affinity:"
+require_line "$TMP_DIR/tenant-tcp-ha.yaml" "        podAntiAffinity:"
+require_line "$TMP_DIR/tenant-tcp-ha.yaml" "              topologyKey: kubernetes.io/hostname"
 
 require_line "$TMP_DIR/vars" "KUBE_OVN_HCP_OVN_NB_ADDR=tcp:10.0.0.10:30641"
 require_line "$TMP_DIR/vars" "KUBE_OVN_HCP_OVN_SB_ADDR=tcp:10.0.0.10:30642"
@@ -168,5 +209,13 @@ done
 
 require_text "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" "name: Kube-OVN Hosted OVN Central E2E"
 require_text "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" "name: Kube-OVN Hosted OVN Central E2E"
-require_text "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" "tenant-control-plane: ha"
-require_text "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" "tenant-control-plane: ha"
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" ipv4 single 1
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" ipv6 single 1
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" dual single 1
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" ipv6 ha 3
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" dual ha 3
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv4 single 1
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv6 single 1
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" dual single 1
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv6 ha 3
+require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" dual ha 3

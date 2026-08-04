@@ -90,6 +90,36 @@ tenant_control_plane_replicas() {
   echo "$TENANT_CONTROL_PLANE_REPLICAS"
 }
 
+tenant_control_plane_worker_nodes() {
+  local replicas
+  replicas=$(tenant_control_plane_replicas)
+  if [ "$replicas" -gt 1 ]; then
+    echo "$replicas"
+  else
+    echo 0
+  fi
+}
+
+tenant_control_plane_scheduling_yaml() {
+  local replicas
+  replicas=$(tenant_control_plane_replicas)
+  if [ "$replicas" -le 1 ]; then
+    return 0
+  fi
+
+  cat <<EOF
+      nodeSelector:
+        kube-ovn/tenant-control-plane: "true"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  kamaji.clastix.io/name: tenant
+              topologyKey: kubernetes.io/hostname
+EOF
+}
+
 chart_net_stack() {
   require_e2e_ip_family || return 1
 
@@ -261,12 +291,13 @@ EOF
 }
 
 cmd_render_tenant_control_plane() {
-  local addons dns_service_ips pod_cidr replicas service_cidr
+  local addons dns_service_ips pod_cidr replicas scheduling service_cidr
   pod_cidr=$(tenant_pod_cidr)
   service_cidr=$(tenant_service_cidr)
   dns_service_ips=$(tenant_dns_service_ips_yaml)
   addons=$(tenant_addons_yaml)
   replicas=$(tenant_control_plane_replicas)
+  scheduling=$(tenant_control_plane_scheduling_yaml)
   cat <<EOF
 apiVersion: kamaji.clastix.io/v1alpha1
 kind: TenantControlPlane
@@ -288,6 +319,7 @@ spec:
         scheduler:
           requests: {cpu: 100m, memory: 128Mi}
           limits:   {cpu: 500m, memory: 512Mi}
+$scheduling
     service:
       serviceType: LoadBalancer
   kubernetes:
@@ -554,9 +586,10 @@ cmd_render_tenant_worker_docker_args() {
     --init=false
 }
 
-setup_mgmt_cluster() {
-  echo ">>> Creating mgmt kind cluster ($MGMT_KIND_NAME)..."
-  cat > "$JOB_DIR/mgmt-kind.yaml" <<EOF
+cmd_render_mgmt_kind_config() {
+  local worker_nodes
+  worker_nodes=$(tenant_control_plane_worker_nodes)
+  cat <<EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: $MGMT_KIND_NAME
@@ -566,6 +599,19 @@ nodes:
   - role: control-plane
     image: $MGMT_KIND_NODE_IMAGE
 EOF
+  for _ in $(seq 1 "$worker_nodes"); do
+    cat <<EOF
+  - role: worker
+    image: $MGMT_KIND_NODE_IMAGE
+    labels:
+      kube-ovn/tenant-control-plane: "true"
+EOF
+  done
+}
+
+setup_mgmt_cluster() {
+  echo ">>> Creating mgmt kind cluster ($MGMT_KIND_NAME)..."
+  cmd_render_mgmt_kind_config > "$JOB_DIR/mgmt-kind.yaml"
   kind create cluster --config "$JOB_DIR/mgmt-kind.yaml"
   kubectl --context="kind-$MGMT_KIND_NAME" label node "$MGMT_KIND_NAME-control-plane" \
     kube-ovn/role=master --overwrite
@@ -631,21 +677,22 @@ install_control_plane() {
 }
 
 wait_tenant_control_plane_replicas() {
-  local ready_replicas
+  local ready_nodes ready_replicas
 
   echo ">>> Waiting for $TENANT_CONTROL_PLANE_REPLICAS tenant control-plane pod(s) Ready..."
   for _ in $(seq 1 60); do
-    ready_replicas=$(kubectl --context="kind-$MGMT_KIND_NAME" -n default get pods \
+    read -r ready_replicas ready_nodes < <(kubectl --context="kind-$MGMT_KIND_NAME" -n default get pods \
       -l kamaji.clastix.io/name=tenant \
-      -o jsonpath='{range .items[?(@.status.phase=="Running")]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' 2>/dev/null |
-      awk '$1 == "True" {count++} END {print count+0}')
-    if [ "$ready_replicas" = "$TENANT_CONTROL_PLANE_REPLICAS" ]; then
+      -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name}{"\t"}{.spec.nodeName}{"\t"}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}' 2>/dev/null |
+      awk '$3 == "True" {pods++; nodes[$2]=1} END {print pods+0, length(nodes)}')
+    if [ "$ready_replicas" = "$TENANT_CONTROL_PLANE_REPLICAS" ] &&
+      [ "$ready_nodes" = "$TENANT_CONTROL_PLANE_REPLICAS" ]; then
       return 0
     fi
     sleep 5
   done
 
-  echo "ERROR: expected $TENANT_CONTROL_PLANE_REPLICAS tenant control-plane Ready pod(s), got $ready_replicas" >&2
+  echo "ERROR: expected $TENANT_CONTROL_PLANE_REPLICAS tenant control-plane Ready pod(s) on $TENANT_CONTROL_PLANE_REPLICAS node(s), got $ready_replicas pod(s) on $ready_nodes node(s)" >&2
   return 1
 }
 
@@ -986,13 +1033,14 @@ case "${1:-}" in
   render-mgmt-values)   cmd_render_mgmt_values ;;
   render-tenant-values) cmd_render_tenant_values ;;
   render-tenant-control-plane) cmd_render_tenant_control_plane ;;
+  render-mgmt-kind-config) cmd_render_mgmt_kind_config ;;
   render-tenant-kube-proxy-manifest) cmd_render_tenant_kube_proxy_manifest "${2:-}" ;;
   render-tenant-worker-docker-args) cmd_render_tenant_worker_docker_args ;;
   render-tenant-worker-kubelet-env) cmd_render_tenant_worker_kubelet_env ;;
   render-tenant-kubeovn-image) cmd_render_tenant_kubeovn_image ;;
   *)
     cat >&2 <<USAGE
-Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-tenant-kube-proxy-manifest|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image>
+Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-mgmt-kind-config|render-tenant-kube-proxy-manifest|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image>
 
   setup       Bring up the mgmt kind cluster + Kamaji + tenant worker and
               install both halves of kube-ovn.
@@ -1005,6 +1053,8 @@ Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-value
               Print the tenant Helm values used by setup.
   render-tenant-control-plane
               Print the TenantControlPlane manifest used by setup.
+  render-mgmt-kind-config
+              Print the management kind cluster config used by setup.
   render-tenant-kube-proxy-manifest
               Print the tenant kube-proxy manifest applied by setup.
   render-tenant-worker-docker-args
