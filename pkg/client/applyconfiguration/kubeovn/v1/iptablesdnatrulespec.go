@@ -31,6 +31,17 @@ type IptablesDnatRuleSpecApplyConfiguration struct {
 	InternalIP *string `json:"internalIp,omitempty"`
 	// Internal port number to forward traffic to
 	InternalPort *string `json:"internalPort,omitempty"`
+	// Type of the DNAT rule, controls whether the EIP:Port identity can be shared
+	// by multiple internal backends:
+	// - "exclusive" (default): The EIP:Port is exclusively owned by this single DNAT rule.
+	// Uses iptables DNAT for 1:1 port forwarding. This was the only mode before the
+	// nft LB feature was introduced; any duplicate identity is rejected.
+	// - "share": Multiple DNAT rules may share the same EIP:Port identity, each
+	// contributing a different internal IP:Port as a backend. Traffic is distributed
+	// across backends using nftables numgen random map-based DNAT: each new connection
+	// picks a backend at random and is then pinned by conntrack (connection-level
+	// balancing, no client-IP affinity).
+	Type *string `json:"type,omitempty"`
 }
 
 // IptablesDnatRuleSpecApplyConfiguration constructs a declarative configuration of the IptablesDnatRuleSpec type for use with
@@ -76,5 +87,13 @@ func (b *IptablesDnatRuleSpecApplyConfiguration) WithInternalIP(value string) *I
 // If called multiple times, the InternalPort field is set to the value of the last call.
 func (b *IptablesDnatRuleSpecApplyConfiguration) WithInternalPort(value string) *IptablesDnatRuleSpecApplyConfiguration {
 	b.InternalPort = &value
+	return b
+}
+
+// WithType sets the Type field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Type field is set to the value of the last call.
+func (b *IptablesDnatRuleSpecApplyConfiguration) WithType(value string) *IptablesDnatRuleSpecApplyConfiguration {
+	b.Type = &value
 	return b
 }
