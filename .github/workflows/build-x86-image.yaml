@@ -1719,6 +1719,185 @@ jobs:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
+  kube-ovn-hosted-ovn-central-e2e:
+    name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)
+    needs:
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ip-family: ipv4
+            tenant-control-plane: single
+            tenant-control-plane-replicas: 1
+          - ip-family: ipv6
+            tenant-control-plane: single
+            tenant-control-plane-replicas: 1
+          - ip-family: dual
+            tenant-control-plane: single
+            tenant-control-plane-replicas: 1
+          - ip-family: ipv4
+            tenant-control-plane: ha
+            tenant-control-plane-replicas: 3
+          - ip-family: ipv6
+            tenant-control-plane: ha
+            tenant-control-plane-replicas: 3
+          - ip-family: dual
+            tenant-control-plane: ha
+            tenant-control-plane-replicas: 3
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - name: Remove DNS search domain
+        run: |
+          sudo sed -i '/^search/d' /etc/resolv.conf
+          sudo systemctl restart docker
+
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
+            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: |
+          docker load --input kube-ovn.tar
+          docker tag "kubeovn/kube-ovn:$(cat VERSION)" kubeovn/kube-ovn:dev
+
+      - name: Verify hosted OVN central values
+        run: E2E_SOURCE_DIR="$GITHUB_WORKSPACE/$E2E_DIR" bash hack/kamaji-e2e-test.sh
+
+      - name: Create hosted OVN central environment
+        id: install
+        env:
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          TENANT_CONTROL_PLANE_REPLICAS: ${{ matrix.tenant-control-plane-replicas }}
+        run: make kind-install-kamaji
+
+      - name: Run hosted OVN central E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          # HCP was explicitly backported, so run the default-branch suite
+          # instead of triggering its pre-1.18 availability skip.
+          E2E_BRANCH: master
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-kamaji-e2e
+
+      - name: Collect k8s events
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          kubectl --context kind-mgmt get events -A -o yaml > hcp-e2e-mgmt-events.yaml || true
+          tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
+          if [ -s "$tenant_kubeconfig" ]; then
+            KUBECONFIG="$tenant_kubeconfig" kubectl get events -A -o yaml > hcp-e2e-tenant-events.yaml || true
+          fi
+          tar zcf hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-events.tar.gz hcp-e2e-*-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-events
+          path: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-events.tar.gz
+
+      - name: Collect hosted OVN central diagnostics
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          job_dir="${JOB_DIR:-/tmp/kamaji-e2e}"
+          if [ -d "$job_dir/diagnostics" ]; then
+            tar -C "$job_dir" -zcf hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics.tar.gz diagnostics
+          fi
+
+      - name: Upload hosted OVN central diagnostics
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics
+          path: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics.tar.gz
+          if-no-files-found: ignore
+
+      - name: kubectl ko log
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
+          if [ -s "$tenant_kubeconfig" ]; then
+            KUBECONFIG="$tenant_kubeconfig" make kubectl-ko-log
+            mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
+          fi
+
+      - name: upload kubectl ko log
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log
+          path: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
+          if-no-files-found: ignore
+
+      - name: Clean hosted OVN central environment
+        if: always()
+        run: make kind-clean-kamaji
+
   chart-test:
     name: Chart Installation/Uninstallation Test
     needs: build-kube-ovn
@@ -4125,6 +4304,7 @@ jobs:
       - kube-ovn-underlay-metallb-e2e
       - multus-conformance-e2e
       - non-primary-cni-e2e
+      - kube-ovn-hosted-ovn-central-e2e
       - vpc-egress-gateway-e2e
       - ovn-vpc-nat-gw-conformance-e2e
       - iptables-vpc-nat-gw-conformance-e2e
