@@ -11,6 +11,8 @@ export HCP_OVN_ENDPOINT=10.0.0.10
 
 "$SCRIPT" render-mgmt-values > "$TMP_DIR/mgmt-values.yaml"
 "$SCRIPT" render-tenant-values > "$TMP_DIR/tenant-values.yaml"
+"$SCRIPT" render-tenant-control-plane > "$TMP_DIR/tenant-tcp.yaml"
+TENANT_CONTROL_PLANE_REPLICAS=3 "$SCRIPT" render-tenant-control-plane > "$TMP_DIR/tenant-tcp-ha.yaml"
 "$SCRIPT" vars > "$TMP_DIR/vars"
 
 require_line() {
@@ -55,9 +57,12 @@ require_line "$TMP_DIR/tenant-values.yaml" "    enabled: true"
 require_line "$TMP_DIR/tenant-values.yaml" "    nbAddress: tcp:10.0.0.10:30641"
 require_line "$TMP_DIR/tenant-values.yaml" "    sbAddress: tcp:10.0.0.10:30642"
 reject_text "$TMP_DIR/tenant-values.yaml" "externalOvnCentral"
+require_line "$TMP_DIR/tenant-tcp.yaml" "      replicas: 1"
+require_line "$TMP_DIR/tenant-tcp-ha.yaml" "      replicas: 3"
 
 require_line "$TMP_DIR/vars" "KUBE_OVN_HCP_OVN_NB_ADDR=tcp:10.0.0.10:30641"
 require_line "$TMP_DIR/vars" "KUBE_OVN_HCP_OVN_SB_ADDR=tcp:10.0.0.10:30642"
+require_line "$TMP_DIR/vars" "KUBE_OVN_KAMAJI_TENANT_CONTROL_PLANE_REPLICAS=1"
 reject_text "$TMP_DIR/vars" "KUBE_OVN_KAMAJI_MGMT_VIP"
 
 for family in ipv4 ipv6 dual; do
@@ -118,6 +123,12 @@ if E2E_IP_FAMILY=bad "$SCRIPT" render-mgmt-values > "$TMP_DIR/bad-values.yaml" 2
 fi
 require_text "$TMP_DIR/bad-values.err" "unsupported E2E_IP_FAMILY: bad"
 
+if TENANT_CONTROL_PLANE_REPLICAS=bad "$SCRIPT" render-tenant-control-plane > "$TMP_DIR/bad-replicas.yaml" 2> "$TMP_DIR/bad-replicas.err"; then
+  echo "invalid TENANT_CONTROL_PLANE_REPLICAS should fail" >&2
+  exit 1
+fi
+require_text "$TMP_DIR/bad-replicas.err" "unsupported TENANT_CONTROL_PLANE_REPLICAS: bad"
+
 require_line "$TMP_DIR/tenant-worker-docker-args" "--tmpfs"
 require_line "$TMP_DIR/tenant-worker-docker-args" "/run"
 require_line "$TMP_DIR/tenant-worker-docker-args" "--volume"
@@ -157,3 +168,5 @@ done
 
 require_text "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" "name: Kube-OVN Hosted OVN Central E2E"
 require_text "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" "name: Kube-OVN Hosted OVN Central E2E"
+require_text "$SCRIPT_DIR/../.github/workflows/build-x86-image.yaml" "tenant-control-plane: ha"
+require_text "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" "tenant-control-plane: ha"

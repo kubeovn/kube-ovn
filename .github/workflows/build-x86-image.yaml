@@ -1720,7 +1720,7 @@ jobs:
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
   kube-ovn-hosted-ovn-central-e2e:
-    name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }})
+    name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)
     needs:
       - build-kube-ovn
       - build-e2e-binaries
@@ -1729,10 +1729,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ip-family:
-          - ipv4
-          - ipv6
-          - dual
+        include:
+          - ip-family: ipv4
+            tenant-control-plane: single
+            tenant-control-plane-replicas: 1
+          - ip-family: ipv6
+            tenant-control-plane: single
+            tenant-control-plane-replicas: 1
+          - ip-family: dual
+            tenant-control-plane: single
+            tenant-control-plane-replicas: 1
+          - ip-family: dual
+            tenant-control-plane: ha
+            tenant-control-plane-replicas: 3
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -1795,6 +1804,7 @@ jobs:
         id: install
         env:
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          TENANT_CONTROL_PLANE_REPLICAS: ${{ matrix.tenant-control-plane-replicas }}
         run: make kind-install-kamaji
 
       - name: Run hosted OVN central E2E
@@ -1813,29 +1823,29 @@ jobs:
           if [ -s "$tenant_kubeconfig" ]; then
             KUBECONFIG="$tenant_kubeconfig" kubectl get events -A -o yaml > hcp-e2e-tenant-events.yaml || true
           fi
-          tar zcf hcp-e2e-${{ matrix.ip-family }}-events.tar.gz hcp-e2e-*-events.yaml
+          tar zcf hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-events.tar.gz hcp-e2e-*-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: hcp-e2e-${{ matrix.ip-family }}-events
-          path: hcp-e2e-${{ matrix.ip-family }}-events.tar.gz
+          name: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-events
+          path: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-events.tar.gz
 
       - name: Collect hosted OVN central diagnostics
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           job_dir="${JOB_DIR:-/tmp/kamaji-e2e}"
           if [ -d "$job_dir/diagnostics" ]; then
-            tar -C "$job_dir" -zcf hcp-e2e-${{ matrix.ip-family }}-diagnostics.tar.gz diagnostics
+            tar -C "$job_dir" -zcf hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics.tar.gz diagnostics
           fi
 
       - name: Upload hosted OVN central diagnostics
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: hcp-e2e-${{ matrix.ip-family }}-diagnostics
-          path: hcp-e2e-${{ matrix.ip-family }}-diagnostics.tar.gz
+          name: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics
+          path: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics.tar.gz
           if-no-files-found: ignore
 
       - name: kubectl ko log
@@ -1844,15 +1854,15 @@ jobs:
           tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
           if [ -s "$tenant_kubeconfig" ]; then
             KUBECONFIG="$tenant_kubeconfig" make kubectl-ko-log
-            mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+            mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
           fi
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
-          name: hcp-e2e-${{ matrix.ip-family }}-ko-log
-          path: hcp-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
+          name: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log
+          path: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
           if-no-files-found: ignore
 
       - name: Clean hosted OVN central environment

@@ -15,8 +15,10 @@
 #           ovn-nb/ovn-sb NodePort Services in the kube-ovn HCP namespace.
 #   docker container `tenant-worker-0`
 #       └── kubeadm-joined to the Kamaji-hosted tenant apiserver (also on a
-#           MetalLB VIP), running ovs-ovn / kube-ovn-cni / kube-ovn-controller
-#           via the dataPlaneOnly install pointed at the HCP OVN DB addresses.
+#           MetalLB VIP; single-replica or three-replica HA depending on
+#           TENANT_CONTROL_PLANE_REPLICAS), running ovs-ovn / kube-ovn-cni /
+#           kube-ovn-controller via the dataPlaneOnly install pointed at the
+#           HCP OVN DB addresses.
 #
 # The accompanying Ginkgo suite under test/e2e/kamaji verifies the resulting
 # cross-cluster connection and a basic Pod-gets-OVN-IP smoke test.
@@ -49,6 +51,7 @@ HCP_OVN_ENDPOINT=${HCP_OVN_ENDPOINT:-}
 HCP_OVN_REPLICAS=${HCP_OVN_REPLICAS:-1}
 HCP_OVN_NB_NODE_PORT=${HCP_OVN_NB_NODE_PORT:-30641}
 HCP_OVN_SB_NODE_PORT=${HCP_OVN_SB_NODE_PORT:-30642}
+TENANT_CONTROL_PLANE_REPLICAS=${TENANT_CONTROL_PLANE_REPLICAS:-1}
 E2E_IP_FAMILY=${E2E_IP_FAMILY:-ipv4}
 TENANT_KUBE_PROXY_NAME=${TENANT_KUBE_PROXY_NAME:-kube-proxy-hcp-e2e}
 
@@ -69,6 +72,22 @@ require_e2e_ip_family() {
       return 1
       ;;
   esac
+}
+
+require_positive_integer() {
+  local name=$1
+  local value=$2
+  case "$value" in
+    "" | *[!0-9]* | 0)
+      echo "unsupported $name: $value" >&2
+      return 1
+      ;;
+  esac
+}
+
+tenant_control_plane_replicas() {
+  require_positive_integer TENANT_CONTROL_PLANE_REPLICAS "$TENANT_CONTROL_PLANE_REPLICAS" || return 1
+  echo "$TENANT_CONTROL_PLANE_REPLICAS"
 }
 
 chart_net_stack() {
@@ -128,6 +147,7 @@ JOB_DIR=$JOB_DIR
 KUBECONFIG=$JOB_DIR/tenant.kubeconfig
 KUBE_OVN_HCP_OVN_NB_ADDR=tcp:$endpoint:$HCP_OVN_NB_NODE_PORT
 KUBE_OVN_HCP_OVN_SB_ADDR=tcp:$endpoint:$HCP_OVN_SB_NODE_PORT
+KUBE_OVN_KAMAJI_TENANT_CONTROL_PLANE_REPLICAS=$TENANT_CONTROL_PLANE_REPLICAS
 KUBE_OVN_KAMAJI_TENANT_WORKER=tenant-worker-0
 EOF
 }
@@ -241,11 +261,12 @@ EOF
 }
 
 cmd_render_tenant_control_plane() {
-  local addons dns_service_ips pod_cidr service_cidr
+  local addons dns_service_ips pod_cidr replicas service_cidr
   pod_cidr=$(tenant_pod_cidr)
   service_cidr=$(tenant_service_cidr)
   dns_service_ips=$(tenant_dns_service_ips_yaml)
   addons=$(tenant_addons_yaml)
+  replicas=$(tenant_control_plane_replicas)
   cat <<EOF
 apiVersion: kamaji.clastix.io/v1alpha1
 kind: TenantControlPlane
@@ -256,7 +277,7 @@ spec:
   dataStore: default
   controlPlane:
     deployment:
-      replicas: 1
+      replicas: $replicas
       resources:
         apiServer:
           requests: {cpu: 100m, memory: 256Mi}
@@ -609,19 +630,48 @@ install_control_plane() {
   fi
 }
 
+wait_tenant_control_plane_replicas() {
+  local ready_replicas
+
+  echo ">>> Waiting for $TENANT_CONTROL_PLANE_REPLICAS tenant control-plane pod(s) Ready..."
+  for _ in $(seq 1 60); do
+    ready_replicas=$(kubectl --context="kind-$MGMT_KIND_NAME" -n default get pods \
+      -l kamaji.clastix.io/name=tenant \
+      -o jsonpath='{range .items[?(@.status.phase=="Running")]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' 2>/dev/null |
+      awk '$1 == "True" {count++} END {print count+0}')
+    if [ "$ready_replicas" = "$TENANT_CONTROL_PLANE_REPLICAS" ]; then
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "ERROR: expected $TENANT_CONTROL_PLANE_REPLICAS tenant control-plane Ready pod(s), got $ready_replicas" >&2
+  return 1
+}
+
+wait_tenant_control_plane_ready() {
+  for _ in $(seq 1 60); do
+    if [ "$(kubectl --context="kind-$MGMT_KIND_NAME" get tcp tenant -n default \
+        -o jsonpath='{.status.kubernetesResources.version.status}' 2>/dev/null)" = "Ready" ]; then
+      return 0
+    fi
+    sleep 5
+  done
+
+  echo "ERROR: TenantControlPlane did not become Ready" >&2
+  return 1
+}
+
 create_tenant_control_plane() {
   echo ">>> Creating TenantControlPlane via Kamaji..."
   cmd_render_tenant_control_plane > "$JOB_DIR/tenant-tcp.yaml"
   kubectl --context="kind-$MGMT_KIND_NAME" apply -f "$JOB_DIR/tenant-tcp.yaml"
 
   echo ">>> Waiting for TenantControlPlane Ready..."
-  for i in $(seq 1 60); do
-    if [ "$(kubectl --context="kind-$MGMT_KIND_NAME" get tcp tenant -n default \
-        -o jsonpath='{.status.kubernetesResources.version.status}' 2>/dev/null)" = "Ready" ]; then
-      break
-    fi
-    sleep 5
-  done
+  if ! wait_tenant_control_plane_ready || ! wait_tenant_control_plane_replicas; then
+    diagnose_mgmt_cluster
+    return 1
+  fi
 
   kubectl --context="kind-$MGMT_KIND_NAME" -n default get secret tenant-admin-kubeconfig \
     -o jsonpath='{.data.admin\.conf}' | base64 -d > "$JOB_DIR/tenant.kubeconfig"

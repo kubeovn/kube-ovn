@@ -1,6 +1,7 @@
 # Makefile for managing kind environments
 
 UNTAINT_CONTROL_PLANE ?= true
+TENANT_CONTROL_PLANE_REPLICAS ?= 1
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
@@ -297,7 +298,7 @@ kind-install-single-replica:
 # `make build-dev` first).
 .PHONY: kind-install-kamaji
 kind-install-kamaji:
-	@E2E_IP_FAMILY=$(E2E_IP_FAMILY) KUBEOVN_IMAGE=$(REGISTRY)/kube-ovn:$(DEV_TAG) ./hack/kamaji-e2e.sh setup
+	@E2E_IP_FAMILY=$(E2E_IP_FAMILY) TENANT_CONTROL_PLANE_REPLICAS=$(TENANT_CONTROL_PLANE_REPLICAS) KUBEOVN_IMAGE=$(REGISTRY)/kube-ovn:$(DEV_TAG) ./hack/kamaji-e2e.sh setup
 
 .PHONY: kind-clean-kamaji
 kind-clean-kamaji:
