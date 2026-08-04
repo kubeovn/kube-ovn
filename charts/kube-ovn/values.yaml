@@ -30,8 +30,8 @@ OVN_CENTRAL_MODE: "cluster"
 # installMode controls which slice of the chart this Helm release renders.
 #   full:             all components in one cluster (default, classic install).
 #   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
-#                     their RBAC. Use on the management cluster of a Kamaji-
-#                     style split deployment.
+#                     their RBAC. Use on the management cluster of a
+#                     split-cluster deployment that hosts ovn-central.
 #   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +
 #                     pinger and their RBAC. Use on tenant data-plane
 #                     clusters that connect back to an external ovn-central via
@@ -233,7 +233,7 @@ ovn-central:
   # Service exposure for ovn-nb / ovn-sb / ovn-northd. Default ClusterIP is
   # only reachable from inside the cluster. Switch to LoadBalancer (or
   # NodePort) to expose the OVN DB to data-plane components running outside
-  # the management cluster — for example a Kamaji-style topology where
+  # the management cluster — for example a split-cluster topology where
   # ovn-controller / kube-ovn-cni / kube-ovn-controller run in a separate
   # tenant cluster and connect back over a stable VIP.
   service:
