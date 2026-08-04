@@ -464,18 +464,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		// set external IPs
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
 	}
-	if gw.Spec.Bandwidth != nil {
-		// set ingress/egress bandwidth limit in Mbps
-		if gw.Spec.Bandwidth.Ingress > 0 {
-			// The 'ingress' on the VpcEgressGateway CRD refers to traffic entering the VPC from external.
-			// From the gateway pod's perspective, this is egress traffic of the primary network interface.
-			annotations[util.EgressRateAnnotation] = strconv.FormatInt(gw.Spec.Bandwidth.Ingress, 10)
-		}
-		if gw.Spec.Bandwidth.Egress > 0 {
-			// The 'egress' on the VpcEgressGateway CRD refers to traffic leaving the VPC.
-			// From the gateway pod's perspective, this is ingress traffic of the primary network interface.
-			annotations[util.IngressRateAnnotation] = strconv.FormatInt(gw.Spec.Bandwidth.Egress, 10)
-		}
+	if err := setVpcEgressGatewayBandwidthAnnotations(annotations, gw.Spec.Bandwidth); err != nil {
+		return attachmentNetworkName, nil, nil, nil, err
 	}
 
 	// generate init container environment variables
@@ -652,6 +642,24 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	// return the source CIDR blocks for later OVN resources reconciliation
 	deploy.APIVersion, deploy.Kind = appsv1.SchemeGroupVersion.String(), util.KindDeployment
 	return attachmentNetworkName, ipv4Src, ipv6Src, deploy, nil
+}
+
+func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, bandwidth *kubeovnv1.BandwidthLimit) error {
+	ingressMbps, egressMbps, err := bandwidth.Mbps()
+	if err != nil {
+		return err
+	}
+	if ingressMbps > 0 {
+		// The 'ingress' on the VpcEgressGateway CRD refers to traffic entering the VPC from external.
+		// From the gateway pod's perspective, this is egress traffic of the primary network interface.
+		annotations[util.EgressRateAnnotation] = strconv.FormatInt(ingressMbps, 10)
+	}
+	if egressMbps > 0 {
+		// The 'egress' on the VpcEgressGateway CRD refers to traffic leaving the VPC.
+		// From the gateway pod's perspective, this is ingress traffic of the primary network interface.
+		annotations[util.IngressRateAnnotation] = strconv.FormatInt(egressMbps, 10)
+	}
+	return nil
 }
 
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nextHops map[string]string, sources set.Set[string]) error {

@@ -2,19 +2,45 @@ package ovs
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
+	if rate == "" {
+		return 0, nil
+	}
+
+	value, err := strconv.ParseInt(rate, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid bandwidth rate %q: %w", rate, err)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("bandwidth rate %q must not be negative", rate)
+	}
+	if value > kubeovnv1.MaxBandwidthMbps || value > math.MaxInt64/scale {
+		return 0, fmt.Errorf("bandwidth rate %q overflows when scaled by %d", rate, scale)
+	}
+	return value * scale, nil
+}
 
 // SetInterfaceBandwidth set ingress/egress qos for given pod, annotation values are for node/pod
 // but ingress/egress parameters here are from the point of ovs port/interface view, so reverse input parameters when call func SetInterfaceBandwidth
 func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string) error {
-	ingressMPS, _ := strconv.Atoi(ingress)
-	ingressKPS := ingressMPS * 1000
+	ingressKPS, err := parseAndScaleBandwidthRate(ingress, 1000)
+	if err != nil {
+		return fmt.Errorf("invalid ingress bandwidth: %w", err)
+	}
+	egressBPS, err := parseAndScaleBandwidthRate(egress, 1000*1000)
+	if err != nil {
+		return fmt.Errorf("invalid egress bandwidth: %w", err)
+	}
 	interfaceList, err := ovsFind("interface", "name", "external-ids:iface-id="+iface)
 	if err != nil {
 		klog.Error(err)
@@ -40,10 +66,6 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress string)
 			klog.Error(err)
 			return err
 		}
-
-		egressMPS, _ := strconv.Atoi(egress)
-		egressBPS := egressMPS * 1000 * 1000
-
 		if egressBPS > 0 {
 			queueUID, err := SetHtbQosQueueRecord(podName, podNamespace, iface, egressBPS, queueIfaceUIDMap)
 			if err != nil {
@@ -144,7 +166,7 @@ func IsHtbQos(iface string) (bool, error) {
 	return false, nil
 }
 
-func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int, queueIfaceUIDMap map[string]string) (string, error) {
+func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS int64, queueIfaceUIDMap map[string]string) (string, error) {
 	var queueCommandValues []string
 	var err error
 	if maxRateBPS > 0 {

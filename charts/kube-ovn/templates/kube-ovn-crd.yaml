@@ -1415,16 +1415,24 @@ spec:
                   type: object
                 bandwidth:
                   type: object
-                  description: Optional bandwidth limit for each egress gateway instance in both ingress and egress directions.
+                  description: |-
+                    Optional bandwidth limit for each egress gateway instance in both ingress and egress directions.
+                    If not specified, there will be no bandwidth limit.
                   properties:
                     ingress:
-                      type: integer
-                      format: int64
-                      description: ingress bandwidth limit in Mbps
+                      description: ingress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+                      pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$
+                      x-kubernetes-int-or-string: true
+                      x-kubernetes-validations:
+                        - message: integer bandwidth must be between 0 and 9223372036854 Mbps
+                          rule: 'type(self) == int ? self >= 0 && self <= 9223372036854 : true'
                     egress:
-                      type: integer
-                      format: int64
-                      description: egress bandwidth limit in Mbps
+                      description: egress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+                      pattern: ^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$
+                      x-kubernetes-int-or-string: true
+                      x-kubernetes-validations:
+                        - message: integer bandwidth must be between 0 and 9223372036854 Mbps
+                          rule: 'type(self) == int ? self >= 0 && self <= 9223372036854 : true'
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
