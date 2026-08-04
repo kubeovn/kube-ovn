@@ -439,6 +439,19 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.21 (2026-08-04)
+
+ * [49e74eff7](https://github.com/kubeovn/kube-ovn/commit/49e74eff7e93bf3f87d6c767a5d943faeaeeda34) release v1.15.21
+ * [a55f5959e](https://github.com/kubeovn/kube-ovn/commit/a55f5959ef3ba04708c2112669e8c6e83711a1ad) [release-1.15] feat(vpc-egress-gateway): accept bandwidth quantities (#7124)
+ * [add6eef33](https://github.com/kubeovn/kube-ovn/commit/add6eef336ec0900f3eae3fbbb5522c6e247c1a7) [release-1.15] fix(ovn-central): recover from invalid raft headers (#7122)
+ * [a9cd30f68](https://github.com/kubeovn/kube-ovn/commit/a9cd30f68331c479160665c32a76eff08f68e49d) [release-1.15] fix(ipam): preserve IP pool allocation state (#7114)
+ * [e61ad3298](https://github.com/kubeovn/kube-ovn/commit/e61ad3298d15612cd57e0d6a3c94baede48dfec0) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
 ## v1.15.20 (2026-07-28)
 
  * [81e594023](https://github.com/kubeovn/kube-ovn/commit/81e5940236e11f3527620c9cb3d1f426c216ab80) release v1.15.20
