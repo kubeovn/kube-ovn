@@ -1,8 +1,19 @@
 package v1
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"regexp"
+	"strconv"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 const (
@@ -75,12 +86,155 @@ func (g *VpcEgressGateway) Ready() bool {
 }
 
 // BandwidthLimit represents the bandwidth limit for the egress gateway in both ingress and egress directions.
-// The bandwidth is specified in Mbps. If not specified, there will be no bandwidth limit.
+// Integer values and numeric strings are specified in Mbps. Kubernetes quantity strings such as 100M or 1Gi are specified in bits per second.
+// If not specified, there will be no bandwidth limit.
 type BandwidthLimit struct {
-	// ingress bandwidth limit in Mbps
-	Ingress int64 `json:"ingress,omitempty"`
-	// egress bandwidth limit in Mbps
-	Egress int64 `json:"egress,omitempty"`
+	// ingress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:XIntOrString
+	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
+	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 0 && self <= 9223372036854 : true",message="integer bandwidth must be between 0 and 9223372036854 Mbps"
+	Ingress *BandwidthRate `json:"ingress,omitempty"`
+	// egress bandwidth limit, specified as an integer in Mbps or a Kubernetes quantity such as 100M or 1Gi in bits per second
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:XIntOrString
+	// +kubebuilder:validation:Pattern=`^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
+	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 0 && self <= 9223372036854 : true",message="integer bandwidth must be between 0 and 9223372036854 Mbps"
+	Egress *BandwidthRate `json:"egress,omitempty"`
+}
+
+const (
+	bandwidthRatePattern = `^([0-9]+|([0-9]+(\.[0-9]+)?|\.[0-9]+)(M|Mi|G|Gi))$`
+	// MaxBandwidthMbps is the largest whole Mbps value that can be converted to
+	// the signed int64 bits-per-second value used by OVS without overflowing.
+	MaxBandwidthMbps int64 = math.MaxInt64 / 1_000_000
+)
+
+var bandwidthRateRegexp = regexp.MustCompile(bandwidthRatePattern)
+
+// BandwidthRate holds either an int64 Mbps value or a Kubernetes quantity string.
+type BandwidthRate struct {
+	Type   intstr.Type `json:"-"`
+	IntVal int64       `json:"-"`
+	StrVal string      `json:"-"`
+}
+
+// BandwidthRateFromInt64 returns a BandwidthRate containing an integer Mbps value.
+func BandwidthRateFromInt64(value int64) *BandwidthRate {
+	return &BandwidthRate{Type: intstr.Int, IntVal: value}
+}
+
+// BandwidthRateFromString returns a BandwidthRate containing a quantity string.
+func BandwidthRateFromString(value string) *BandwidthRate {
+	return &BandwidthRate{Type: intstr.String, StrVal: value}
+}
+
+// UnmarshalJSON implements json.Unmarshaller.
+func (rate *BandwidthRate) UnmarshalJSON(value []byte) error {
+	value = bytes.TrimSpace(value)
+	if len(value) == 0 {
+		return errors.New("cannot unmarshal empty JSON as bandwidth rate")
+	}
+	if value[0] == '"' {
+		var stringValue string
+		if err := json.Unmarshal(value, &stringValue); err != nil {
+			return err
+		}
+		*rate = *BandwidthRateFromString(stringValue)
+		return nil
+	}
+
+	if (value[0] < '0' || value[0] > '9') && value[0] != '-' {
+		return errors.New("bandwidth rate must be a JSON integer or string")
+	}
+	var integerValue int64
+	if err := json.Unmarshal(value, &integerValue); err != nil {
+		return fmt.Errorf("bandwidth rate must be a JSON integer or string: %w", err)
+	}
+	*rate = *BandwidthRateFromInt64(integerValue)
+	return nil
+}
+
+// MarshalJSON implements json.Marshaller.
+func (rate BandwidthRate) MarshalJSON() ([]byte, error) {
+	switch rate.Type {
+	case intstr.Int:
+		return json.Marshal(rate.IntVal)
+	case intstr.String:
+		return json.Marshal(rate.StrVal)
+	default:
+		return nil, fmt.Errorf("unsupported bandwidth rate type %d", rate.Type)
+	}
+}
+
+// Mbps returns the rate normalized to whole Mbps.
+func (rate *BandwidthRate) Mbps() (int64, error) {
+	if rate == nil {
+		return 0, nil
+	}
+	if rate.Type == intstr.Int {
+		if rate.IntVal < 0 {
+			return 0, errors.New("bandwidth must not be negative")
+		}
+		if rate.IntVal > MaxBandwidthMbps {
+			return 0, fmt.Errorf("bandwidth %d exceeds the supported maximum of %d Mbps", rate.IntVal, MaxBandwidthMbps)
+		}
+		return rate.IntVal, nil
+	}
+	if rate.Type != intstr.String {
+		return 0, fmt.Errorf("unsupported bandwidth rate type %d", rate.Type)
+	}
+
+	value := rate.StrVal
+	if value == "" {
+		return 0, errors.New("bandwidth must not be empty")
+	}
+	if strings.HasPrefix(value, "-") {
+		return 0, errors.New("bandwidth must not be negative")
+	}
+	if !bandwidthRateRegexp.MatchString(value) {
+		return 0, fmt.Errorf("bandwidth %q must be an integer in Mbps or a quantity with unit M, Mi, G, or Gi", value)
+	}
+	if value[0] >= '0' && value[0] <= '9' && !strings.ContainsAny(value, ".MGi") {
+		mbps, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, MaxBandwidthMbps)
+		}
+		if mbps > MaxBandwidthMbps {
+			return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, MaxBandwidthMbps)
+		}
+		return mbps, nil
+	}
+
+	quantity, err := resource.ParseQuantity(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid Kubernetes quantity %q: %w", value, err)
+	}
+	if quantity.Sign() < 0 {
+		return 0, errors.New("bandwidth must not be negative")
+	}
+	maxQuantity := resource.NewScaledQuantity(MaxBandwidthMbps, resource.Mega)
+	if quantity.Cmp(*maxQuantity) > 0 {
+		return 0, fmt.Errorf("bandwidth %q exceeds the supported maximum of %d Mbps", value, MaxBandwidthMbps)
+	}
+	return quantity.ScaledValue(resource.Mega), nil
+}
+
+// Mbps returns the ingress and egress limits normalized to whole Mbps.
+// Positive quantities below a whole Mbps are rounded up so they do not silently disable the limit.
+func (b *BandwidthLimit) Mbps() (int64, int64, error) {
+	if b == nil {
+		return 0, 0, nil
+	}
+	ingress, err := b.Ingress.Mbps()
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid ingress bandwidth: %w", err)
+	}
+	egress, err := b.Egress.Mbps()
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid egress bandwidth: %w", err)
+	}
+	return ingress, egress, nil
 }
 
 // +kubebuilder:validation:XValidation:rule="!has(self.internalIPs) || size(self.internalIPs) == 0 || size(self.internalIPs) >= self.replicas",message="Size of Internal IPs MUST be equal to or greater than Replicas",fieldPath=".internalIPs"
