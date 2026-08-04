@@ -274,7 +274,7 @@ kube-ovn-kamaji-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	$(GINKGO_E2E_RUN_PARALLEL) --focus=CNI:Kube-OVN ./test/e2e/kamaji/kamaji.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN) --focus=CNI:Kube-OVN ./test/e2e/kamaji/kamaji.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-security-e2e
 kube-ovn-security-e2e:

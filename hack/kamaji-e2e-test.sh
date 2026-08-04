@@ -115,6 +115,7 @@ done
 "$SCRIPT" render-tenant-worker-docker-args > "$TMP_DIR/tenant-worker-docker-args"
 "$SCRIPT" render-tenant-worker-kubelet-env > "$TMP_DIR/tenant-worker-kubelet-env"
 "$SCRIPT" render-tenant-kubeovn-image > "$TMP_DIR/tenant-kubeovn-image"
+"$SCRIPT" render-tenant-e2e-images > "$TMP_DIR/tenant-e2e-images"
 
 require_line "$TMP_DIR/mgmt-values-ipv4.yaml" "  NET_STACK: ipv4"
 require_line "$TMP_DIR/tenant-values-ipv4.yaml" "  NET_STACK: ipv4"
@@ -178,6 +179,8 @@ require_line "$TMP_DIR/tenant-worker-docker-args" "--cgroupns=private"
 reject_text "$TMP_DIR/tenant-worker-docker-args" "--cgroupns=host"
 require_line "$TMP_DIR/tenant-worker-kubelet-env" "KUBELET_EXTRA_ARGS=--fail-swap-on=false"
 require_line "$TMP_DIR/tenant-kubeovn-image" "docker.io/kubeovn/kube-ovn:dev"
+require_line "$TMP_DIR/tenant-e2e-images" "ghcr.io/kubeovn/pause:3.9"
+require_line "$TMP_DIR/tenant-e2e-images" "ghcr.io/kubeovn/agnhost:2.47"
 require_text "$SCRIPT" "install_tenant_kube_proxy"
 require_text "$SCRIPT" "Patching kube-ovn-pinger for IPv6-only tenant bootstrap"
 require_text "$SCRIPT" '"hostNetwork":true'
@@ -188,6 +191,7 @@ require_text "$SCRIPT" "min: 0"
 
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_NB_ADDR"
 require_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_HCP_OVN_SB_ADDR"
+require_text "$SCRIPT_DIR/../makefiles/e2e.mk" '$(GINKGO_E2E_RUN) --focus=CNI:Kube-OVN ./test/e2e/kamaji/kamaji.test'
 reject_text "$SCRIPT_DIR/../makefiles/e2e.mk" "KUBE_OVN_KAMAJI_MGMT_VIP"
 
 for source_file in \

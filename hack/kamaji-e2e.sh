@@ -54,6 +54,7 @@ HCP_OVN_SB_NODE_PORT=${HCP_OVN_SB_NODE_PORT:-30642}
 TENANT_CONTROL_PLANE_REPLICAS=${TENANT_CONTROL_PLANE_REPLICAS:-1}
 E2E_IP_FAMILY=${E2E_IP_FAMILY:-ipv4}
 TENANT_KUBE_PROXY_NAME=${TENANT_KUBE_PROXY_NAME:-kube-proxy-hcp-e2e}
+TENANT_E2E_IMAGES=${TENANT_E2E_IMAGES:-"ghcr.io/kubeovn/pause:3.9 ghcr.io/kubeovn/agnhost:2.47"}
 
 CERT_MANAGER_VERSION=${CERT_MANAGER_VERSION:-v1.15.3}
 METALLB_VERSION=${METALLB_VERSION:-v0.14.8}
@@ -559,6 +560,10 @@ cmd_render_tenant_kubeovn_image() {
   echo "docker.io/kubeovn/kube-ovn:dev"
 }
 
+cmd_render_tenant_e2e_images() {
+  printf '%s\n' $TENANT_E2E_IMAGES
+}
+
 local_registry_kubeovn_image() {
   echo "localhost:5000/kubeovn/kube-ovn:dev"
 }
@@ -928,6 +933,12 @@ CFG
   docker exec tenant-worker-0 crictl pull "$(tenant_registry_kubeovn_image "$reg_ip")"
   docker exec tenant-worker-0 ctr -n k8s.io images tag --force \
     "$(tenant_registry_kubeovn_image "$reg_ip")" "$(cmd_render_tenant_kubeovn_image)"
+
+  echo ">>> Pre-pulling tenant E2E images..."
+  while IFS= read -r image; do
+    [ -n "$image" ] || continue
+    docker exec tenant-worker-0 crictl pull "$image"
+  done < <(cmd_render_tenant_e2e_images)
 }
 
 join_tenant_worker() {
@@ -1038,9 +1049,10 @@ case "${1:-}" in
   render-tenant-worker-docker-args) cmd_render_tenant_worker_docker_args ;;
   render-tenant-worker-kubelet-env) cmd_render_tenant_worker_kubelet_env ;;
   render-tenant-kubeovn-image) cmd_render_tenant_kubeovn_image ;;
+  render-tenant-e2e-images) cmd_render_tenant_e2e_images ;;
   *)
     cat >&2 <<USAGE
-Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-mgmt-kind-config|render-tenant-kube-proxy-manifest|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image>
+Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-values|render-tenant-control-plane|render-mgmt-kind-config|render-tenant-kube-proxy-manifest|render-tenant-worker-docker-args|render-tenant-worker-kubelet-env|render-tenant-kubeovn-image|render-tenant-e2e-images>
 
   setup       Bring up the mgmt kind cluster + Kamaji + tenant worker and
               install both halves of kube-ovn.
@@ -1063,6 +1075,8 @@ Usage: $0 <setup|teardown|kubeconfig|vars|render-mgmt-values|render-tenant-value
               Print the kubelet env file used by the tenant worker.
   render-tenant-kubeovn-image
               Print the kube-ovn image reference rendered by tenant Helm values.
+  render-tenant-e2e-images
+              Print the tenant worker E2E images pre-pulled by setup.
 USAGE
     exit 1 ;;
 esac
