@@ -1173,6 +1173,7 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 			framework.ExpectNotNil(container.SecurityContext)
 			framework.ExpectTrue(*container.SecurityContext.RunAsNonRoot)
 			framework.ExpectEqual(*container.SecurityContext.RunAsUser, int64(65534))
+			framework.ExpectTrue(*container.SecurityContext.AllowPrivilegeEscalation)
 			framework.ExpectConsistOf(container.SecurityContext.Capabilities.Add, corev1.Capability("NET_ADMIN"))
 		}
 		framework.ExpectTrue(found, "gateway pod %s/%s should have the observability restartable init container", pod.Namespace, pod.Name)
