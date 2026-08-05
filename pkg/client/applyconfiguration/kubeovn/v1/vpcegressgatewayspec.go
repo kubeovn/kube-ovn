@@ -80,6 +80,8 @@ type VpcEgressGatewaySpecApplyConfiguration struct {
 	// Optional bandwidth limit for each egress gateway instance in both ingress and egress directions.
 	// If not specified, there will be no bandwidth limit.
 	Bandwidth *BandwidthLimitApplyConfiguration `json:"bandwidth,omitempty"`
+	// Optional observability configuration for the gateway workload.
+	Observability *VpcEgressGatewayObservabilityApplyConfiguration `json:"observability,omitempty"`
 }
 
 // VpcEgressGatewaySpecApplyConfiguration constructs a declarative configuration of the VpcEgressGatewaySpec type for use with
@@ -258,5 +260,13 @@ func (b *VpcEgressGatewaySpecApplyConfiguration) WithResources(value corev1.Reso
 // If called multiple times, the Bandwidth field is set to the value of the last call.
 func (b *VpcEgressGatewaySpecApplyConfiguration) WithBandwidth(value *BandwidthLimitApplyConfiguration) *VpcEgressGatewaySpecApplyConfiguration {
 	b.Bandwidth = value
+	return b
+}
+
+// WithObservability sets the Observability field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Observability field is set to the value of the last call.
+func (b *VpcEgressGatewaySpecApplyConfiguration) WithObservability(value *VpcEgressGatewayObservabilityApplyConfiguration) *VpcEgressGatewaySpecApplyConfiguration {
+	b.Observability = value
 	return b
 }

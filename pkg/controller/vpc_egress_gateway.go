@@ -652,6 +652,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	// generate workload
 	labels := vegWorkloadLabels(gw.Name)
+	observerState := c.reconcileVpcEgressGatewayObservability(gw, attachmentNetworkName, labels)
 	deploy := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      gw.Spec.Prefix + gw.Name,
@@ -761,6 +762,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		}
 		deploy.Spec.Template.Spec.Volumes = append(deploy.Spec.Template.Spec.Volumes, frrVolume)
 	}
+	addVpcEgressGatewayObserver(&deploy.Spec.Template.Spec, image, gw.Spec.Observability, observerState)
 
 	// generate hash for the workload to determine whether to update the existing workload or not
 	hash, err := util.Sha256HashObject(deploy)
