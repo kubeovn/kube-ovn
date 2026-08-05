@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	DefaultListenAddress = ":10666"
-	DefaultCacheCapacity = 65536
-	DefaultEventBuffer   = 4096
-	DefaultLogQueue      = 4096
+	DefaultListenAddress  = ":10666"
+	DefaultHealthCheckURL = "http://127.0.0.1:10666/healthz"
+	DefaultCacheCapacity  = 65536
+	DefaultEventBuffer    = 4096
+	DefaultLogQueue       = 4096
 )
 
 // Config is the complete, hot-reloadable observer configuration written by the controller.
