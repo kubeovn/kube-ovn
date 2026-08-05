@@ -1274,11 +1274,26 @@ func waitVpcEgressObserverConntrackMetrics(f *framework.Framework, pods []corev1
 		return false, nil
 	})
 	if err != nil {
-		for pod, metrics := range lastMetrics {
-			framework.Logf("last observer metrics from pod %s:\n%s", pod, metrics)
+		for _, pod := range pods {
+			framework.Logf("last observer metrics from pod %s:\n%s", pod.Name, lastMetrics[pod.Name])
+			logVpcEgressObserverDiagnostics(f, pod)
 		}
 	}
 	framework.ExpectNoError(err, "at least one gateway replica to observe the generated SNAT flow")
+}
+
+func logVpcEgressObserverDiagnostics(f *framework.Framework, pod corev1.Pod) {
+	ginkgo.GinkgoHelper()
+	const observerContainer = "observability"
+	tailLines := int64(100)
+	logs, err := f.ClientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{Container: observerContainer, TailLines: &tailLines}).DoRaw(context.Background())
+	if err != nil {
+		framework.Logf("failed to read observer logs from pod %s: %v", pod.Name, err)
+	} else {
+		framework.Logf("observer logs from pod %s:\n%s", pod.Name, logs)
+	}
+	stdout, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, observerContainer, "/bin/sh", "-c", "id; grep -E '^(Cap|NoNewPrivs)' /proc/1/status")
+	framework.Logf("observer process status from pod %s (error=%v, stderr=%q):\n%s", pod.Name, err, stderr, stdout)
 }
 
 func scrapeVpcEgressObserverMetrics(f *framework.Framework, namespace, pod string) (string, error) {
