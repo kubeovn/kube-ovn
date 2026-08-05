@@ -1537,72 +1537,129 @@ func scrapeVpcEgressObserverMetrics(f *framework.Framework, namespace, pod strin
 	return stdout, err
 }
 
+type vpcEgressObserverFlowKey struct {
+	pod  string
+	zone uint16
+	id   uint32
+}
+
+type vpcEgressObserverFlowTuple struct {
+	SourceIP        string  `json:"sourceIP"`
+	SourcePort      *uint16 `json:"sourcePort"`
+	DestinationIP   string  `json:"destinationIP"`
+	DestinationPort *uint16 `json:"destinationPort"`
+}
+
+type vpcEgressObserverFlowRecord struct {
+	SchemaVersion string                      `json:"schemaVersion"`
+	Timestamp     *time.Time                  `json:"timestamp"`
+	Event         string                      `json:"event"`
+	ConntrackID   *uint32                     `json:"conntrackID"`
+	Zone          *uint16                     `json:"zone"`
+	Namespace     string                      `json:"namespace"`
+	Name          string                      `json:"name"`
+	Pod           string                      `json:"pod"`
+	Node          string                      `json:"node"`
+	AddressFamily string                      `json:"addressFamily"`
+	Protocol      string                      `json:"protocol"`
+	ProtocolNum   *uint8                      `json:"protocolNumber"`
+	NatType       []string                    `json:"natType"`
+	Original      *vpcEgressObserverFlowTuple `json:"original"`
+	Translated    *vpcEgressObserverFlowTuple `json:"translated"`
+}
+
+type vpcEgressObserverFlowObservation struct {
+	events set.Set[string]
+	start  *vpcEgressObserverFlowRecord
+}
+
 func waitVpcEgressObserverFlowLog(f *framework.Framework, veg *apiv1.VpcEgressGateway, pods []corev1.Pod) {
 	ginkgo.GinkgoHelper()
-	type flowKey struct {
-		pod  string
-		zone uint16
-		id   uint32
-	}
-	type flowTuple struct {
-		SourceIP        string  `json:"sourceIP"`
-		SourcePort      *uint16 `json:"sourcePort"`
-		DestinationIP   string  `json:"destinationIP"`
-		DestinationPort *uint16 `json:"destinationPort"`
-	}
-	type flowRecord struct {
-		SchemaVersion string     `json:"schemaVersion"`
-		Timestamp     *time.Time `json:"timestamp"`
-		Event         string     `json:"event"`
-		ConntrackID   *uint32    `json:"conntrackID"`
-		Zone          *uint16    `json:"zone"`
-		Namespace     string     `json:"namespace"`
-		Name          string     `json:"name"`
-		Pod           string     `json:"pod"`
-		Node          string     `json:"node"`
-		AddressFamily string     `json:"addressFamily"`
-		Protocol      string     `json:"protocol"`
-		ProtocolNum   *uint8     `json:"protocolNumber"`
-		NatType       []string   `json:"natType"`
-		Original      *flowTuple `json:"original"`
-		Translated    *flowTuple `json:"translated"`
-	}
-	err := wait.PollUntilContextTimeout(context.Background(), time.Second, 3*time.Minute, false, func(ctx context.Context) (bool, error) {
-		lifecycle := map[flowKey]set.Set[string]{}
-		for _, pod := range pods {
-			tailLines := int64(500)
-			data, err := f.ClientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{Container: "observability", TailLines: &tailLines}).DoRaw(ctx)
-			if err != nil {
-				continue
-			}
-			for line := range strings.SplitSeq(string(data), "\n") {
-				var record flowRecord
-				if json.Unmarshal([]byte(line), &record) != nil {
-					continue
-				}
-				if record.SchemaVersion != "v1" || record.Timestamp == nil || record.Timestamp.IsZero() || record.ConntrackID == nil || *record.ConntrackID == 0 || record.Zone == nil ||
-					record.Namespace != veg.Namespace || record.Name != veg.Name || record.Pod != pod.Name || record.Node == "" || record.AddressFamily == "" || record.Protocol == "" || record.ProtocolNum == nil || *record.ProtocolNum == 0 ||
-					record.Original == nil || record.Translated == nil || net.ParseIP(record.Original.SourceIP) == nil || net.ParseIP(record.Original.DestinationIP) == nil ||
-					record.Original.SourcePort == nil || *record.Original.SourcePort == 0 || record.Original.DestinationPort == nil || *record.Original.DestinationPort == 0 ||
-					net.ParseIP(record.Translated.SourceIP) == nil || net.ParseIP(record.Translated.DestinationIP) == nil || record.Translated.SourcePort == nil || *record.Translated.SourcePort == 0 ||
-					record.Translated.DestinationPort == nil || *record.Translated.DestinationPort == 0 || !slices.Contains(record.NatType, apiv1.ObservabilityNatTypeSNAT) {
-					continue
-				}
-				key := flowKey{pod: pod.Name, zone: *record.Zone, id: *record.ConntrackID}
-				if lifecycle[key] == nil {
-					lifecycle[key] = set.New[string]()
-				}
-				lifecycle[key].Insert(record.Event)
-			}
-		}
-		for _, events := range lifecycle {
-			if events.HasAll(apiv1.ObservabilityEventStart, apiv1.ObservabilityEventEnd) {
+
+	var selectedKey vpcEgressObserverFlowKey
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(ctx context.Context) (bool, error) {
+		observations := vpcEgressObserverFlowObservations(ctx, f, veg, pods)
+		for key, observation := range observations {
+			if observation.events.HasAll(apiv1.ObservabilityEventStart, apiv1.ObservabilityEventEnd) {
+				selectedKey = key
 				return true, nil
 			}
 		}
+		for key, observation := range observations {
+			if observation.start == nil || observation.events.Has(apiv1.ObservabilityEventEnd) {
+				continue
+			}
+			stdout, stderr, err := deleteVpcEgressObserverConntrackFlow(f, veg.Namespace, key.pod, *observation.start)
+			if err != nil {
+				framework.Logf("failed to delete conntrack flow %d in zone %d from pod %s: %v, stdout: %s, stderr: %s", key.id, key.zone, key.pod, err, stdout, stderr)
+				continue
+			}
+			selectedKey = key
+			return true, nil
+		}
 		return false, nil
 	})
-	framework.ExpectNoError(err, "observer to emit schema-valid start and end records for the same SNAT flow")
+	framework.ExpectNoError(err, "observer to emit a schema-valid start record for an active SNAT flow")
+
+	err = wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(ctx context.Context) (bool, error) {
+		observations := vpcEgressObserverFlowObservations(ctx, f, veg, pods)
+		observation := observations[selectedKey]
+		return observation != nil && observation.events.HasAll(apiv1.ObservabilityEventStart, apiv1.ObservabilityEventEnd), nil
+	})
+	if err != nil {
+		for _, pod := range pods {
+			logVpcEgressObserverDiagnostics(f, pod)
+		}
+	}
+	framework.ExpectNoError(err, "observer to emit schema-valid start and end records for the selected SNAT flow")
+}
+
+func vpcEgressObserverFlowObservations(ctx context.Context, f *framework.Framework, veg *apiv1.VpcEgressGateway, pods []corev1.Pod) map[vpcEgressObserverFlowKey]*vpcEgressObserverFlowObservation {
+	observations := map[vpcEgressObserverFlowKey]*vpcEgressObserverFlowObservation{}
+	for _, pod := range pods {
+		tailLines := int64(500)
+		data, err := f.ClientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{Container: "observability", TailLines: &tailLines}).DoRaw(ctx)
+		if err != nil {
+			framework.Logf("failed to read observer flow logs from pod %s/%s: %v", pod.Namespace, pod.Name, err)
+			continue
+		}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			var record vpcEgressObserverFlowRecord
+			if json.Unmarshal([]byte(line), &record) != nil || !validVpcEgressObserverFlowRecord(record, veg, pod.Name) {
+				continue
+			}
+			key := vpcEgressObserverFlowKey{pod: pod.Name, zone: *record.Zone, id: *record.ConntrackID}
+			if observations[key] == nil {
+				observations[key] = &vpcEgressObserverFlowObservation{events: set.New[string]()}
+			}
+			observations[key].events.Insert(record.Event)
+			if record.Event == apiv1.ObservabilityEventStart {
+				observations[key].start = &record
+			}
+		}
+	}
+	return observations
+}
+
+func validVpcEgressObserverFlowRecord(record vpcEgressObserverFlowRecord, veg *apiv1.VpcEgressGateway, podName string) bool {
+	return record.SchemaVersion == "v1" && record.Timestamp != nil && !record.Timestamp.IsZero() && record.ConntrackID != nil && *record.ConntrackID != 0 && record.Zone != nil &&
+		record.Namespace == veg.Namespace && record.Name == veg.Name && record.Pod == podName && record.Node != "" && record.AddressFamily != "" && record.Protocol != "" && record.ProtocolNum != nil && *record.ProtocolNum != 0 &&
+		record.Original != nil && record.Translated != nil && net.ParseIP(record.Original.SourceIP) != nil && net.ParseIP(record.Original.DestinationIP) != nil &&
+		record.Original.SourcePort != nil && *record.Original.SourcePort != 0 && record.Original.DestinationPort != nil && *record.Original.DestinationPort != 0 &&
+		net.ParseIP(record.Translated.SourceIP) != nil && net.ParseIP(record.Translated.DestinationIP) != nil && record.Translated.SourcePort != nil && *record.Translated.SourcePort != 0 &&
+		record.Translated.DestinationPort != nil && *record.Translated.DestinationPort != 0 && slices.Contains(record.NatType, apiv1.ObservabilityNatTypeSNAT)
+}
+
+func deleteVpcEgressObserverConntrackFlow(f *framework.Framework, namespace, pod string, record vpcEgressObserverFlowRecord) (string, string, error) {
+	return framework.ExecCommandInContainer(
+		f, namespace, pod, "observability", "conntrack", "-D",
+		"-w", strconv.FormatUint(uint64(*record.Zone), 10),
+		"-p", record.Protocol,
+		"-s", record.Original.SourceIP,
+		"-d", record.Original.DestinationIP,
+		"--sport", strconv.FormatUint(uint64(*record.Original.SourcePort), 10),
+		"--dport", strconv.FormatUint(uint64(*record.Original.DestinationPort), 10),
+	)
 }
 
 func observerRestartCount(pod corev1.Pod) int32 {
