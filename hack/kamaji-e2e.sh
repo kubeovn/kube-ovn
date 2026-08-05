@@ -55,6 +55,10 @@ TENANT_E2E_IMAGES=${TENANT_E2E_IMAGES:-"ghcr.io/kubeovn/pause:3.9 ghcr.io/kubeov
 
 CERT_MANAGER_VERSION=${CERT_MANAGER_VERSION:-v1.15.3}
 METALLB_VERSION=${METALLB_VERSION:-v0.14.8}
+KAMAJI_CHART_VERSION=${KAMAJI_CHART_VERSION:-1.0.0}
+KAMAJI_CHART_SOURCE_COMMIT=${KAMAJI_CHART_SOURCE_COMMIT:-5ce3f6c337edc63347a32b2b3e6927429181e44c}
+KAMAJI_CHART_SHA256=${KAMAJI_CHART_SHA256:-2e642a485eae8bd964c0a363b4ce01bd8379d05b42960b7919676f96f7c63b36}
+KAMAJI_CHART_URL=${KAMAJI_CHART_URL:-https://raw.githubusercontent.com/clastix/charts/$KAMAJI_CHART_SOURCE_COMMIT/kamaji-$KAMAJI_CHART_VERSION.tgz}
 
 KUBEOVN_IMAGE=${KUBEOVN_IMAGE:-kubeovn/kube-ovn:dev}
 JOB_DIR=${JOB_DIR:-/tmp/kamaji-e2e}
@@ -186,7 +190,7 @@ cmd_kubeconfig() {
 
 require_tools() {
   local missing=()
-  for t in docker kind kubectl helm; do
+  for t in curl docker helm kind kubectl sha256sum; do
     command -v "$t" >/dev/null 2>&1 || missing+=("$t")
   done
   if [ ${#missing[@]} -gt 0 ]; then
@@ -620,6 +624,16 @@ setup_mgmt_cluster() {
   kind load docker-image "$KUBEOVN_IMAGE" --name "$MGMT_KIND_NAME"
 }
 
+download_kamaji_chart() {
+  local chart_path="$JOB_DIR/kamaji-$KAMAJI_CHART_VERSION.tgz"
+
+  echo ">>> Downloading Kamaji chart $KAMAJI_CHART_VERSION..."
+  curl --fail --location --silent --show-error \
+    --retry 5 --retry-all-errors --retry-delay 2 \
+    --output "$chart_path" "$KAMAJI_CHART_URL"
+  printf '%s  %s\n' "$KAMAJI_CHART_SHA256" "$chart_path" | sha256sum --check
+}
+
 setup_prereqs() {
   echo ">>> Installing cert-manager $CERT_MANAGER_VERSION..."
   kubectl --context="kind-$MGMT_KIND_NAME" apply \
@@ -649,10 +663,9 @@ metadata: {name: empty, namespace: metallb-system}
 EOF
 
   echo ">>> Installing Kamaji operator..."
-  helm repo add clastix https://clastix.github.io/charts --force-update >/dev/null
-  helm repo update clastix >/dev/null
+  download_kamaji_chart
   helm upgrade --install --kube-context="kind-$MGMT_KIND_NAME" \
-    kamaji clastix/kamaji \
+    kamaji "$JOB_DIR/kamaji-$KAMAJI_CHART_VERSION.tgz" \
     --namespace kamaji-system --create-namespace \
     --set 'resources=null'
   kubectl --context="kind-$MGMT_KIND_NAME" -n kamaji-system wait \
