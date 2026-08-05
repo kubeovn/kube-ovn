@@ -51,9 +51,10 @@ type conntrackConnection interface {
 
 func newConntrackCollector(settings func() *runtimeSettings, identity observerIdentity, metrics *observerMetrics, logQueue chan flowRecord) *conntrackCollector {
 	metrics.cacheCapacity.WithLabelValues(identity.labels()...).Set(DefaultCacheCapacity)
+	// Allocate cache buckets on demand so interface-only observers do not pay for the conntrack capacity.
 	return &conntrackCollector{
 		settings: settings, identity: identity, metrics: metrics, logQueue: logQueue,
-		cache: make(map[flowKey]*cacheEntry, DefaultCacheCapacity), order: list.New(),
+		cache: make(map[flowKey]*cacheEntry), order: list.New(),
 		dial: func() (conntrackConnection, error) { return conntrack.Dial(nil) },
 	}
 }
@@ -307,7 +308,7 @@ func (c *conntrackCollector) clear() {
 }
 
 func (c *conntrackCollector) resetLocked() {
-	c.cache = make(map[flowKey]*cacheEntry, DefaultCacheCapacity)
+	c.cache = make(map[flowKey]*cacheEntry)
 	c.order.Init()
 	c.metrics.cacheEntries.WithLabelValues(c.identity.labels()...).Set(0)
 	c.metrics.accounting.WithLabelValues(c.identity.labels()...).Set(0)
