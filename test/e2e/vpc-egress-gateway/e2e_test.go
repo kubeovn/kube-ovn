@@ -1241,8 +1241,9 @@ func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.
 	}
 	framework.ExpectConsistOf(currentUIDs, originalUIDs)
 	framework.ExpectNoError(triggerVpcEgressObserverConfigRefresh(f, currentPods.Items, configResourceVersion))
+	framework.ExpectNoError(waitVpcEgressObserverConfigProjection(f, currentPods.Items), "updated observer config to be projected into all original pods")
 	lastReloads := make(map[string]float64, len(currentPods.Items))
-	err = wait.PollUntilContextTimeout(context.Background(), time.Second, 3*time.Minute, false, func(context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
 		for _, currentPod := range currentPods.Items {
 			initial, ok := initialReloads[currentPod.Name]
 			if !ok {
@@ -1307,6 +1308,27 @@ func triggerVpcEgressObserverConfigRefresh(f *framework.Framework, pods []corev1
 		}
 	}
 	return nil
+}
+
+func waitVpcEgressObserverConfigProjection(f *framework.Framework, pods []corev1.Pod) error {
+	lastConfigs := make(map[string]string, len(pods))
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, 3*time.Minute, false, func(context.Context) (bool, error) {
+		for _, pod := range pods {
+			stdout, _, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "cat", "/etc/kube-ovn-observer/config.json")
+			if err != nil {
+				return false, nil
+			}
+			lastConfigs[pod.Name] = stdout
+			if !strings.Contains(stdout, `"recordsPerSecond":50`) {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		framework.Logf("last projected observer configs: %v", lastConfigs)
+	}
+	return err
 }
 
 func waitVpcEgressObserverReloadCounts(f *framework.Framework, pods []corev1.Pod) map[string]float64 {
