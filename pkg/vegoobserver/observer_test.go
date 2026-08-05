@@ -1,12 +1,16 @@
 package vegoobserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"golang.org/x/time/rate"
 
@@ -53,7 +57,7 @@ func TestConntrackCollectorUsesSeparateEventAndDumpConnections(t *testing.T) {
 	dialIndex := 0
 
 	settings := &runtimeSettings{config: Config{Observability: apiv1.VpcEgressGatewayObservability{Conntrack: apiv1.VpcEgressGatewayConntrackObservability{Metrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true}}}}}
-	collector := newConntrackCollector(func() *runtimeSettings { return settings }, []string{"ns", "gateway", "pod", "node"}, newObserverMetrics(), make(chan flowRecord, 1))
+	collector := newConntrackCollector(func() *runtimeSettings { return settings }, observerIdentity{namespace: "ns", name: "gateway", pod: "pod", node: "node"}, newObserverMetrics(), make(chan flowRecord, 1))
 	collector.dial = func() (conntrackConnection, error) {
 		if dialIndex >= len(connections) {
 			return nil, errors.New("unexpected conntrack dial")
@@ -62,7 +66,7 @@ func TestConntrackCollectorUsesSeparateEventAndDumpConnections(t *testing.T) {
 		dialIndex++
 		return connection, nil
 	}
-	require.NoError(t, collector.runSession(ctx))
+	require.NoError(t, collector.runSession(ctx, &bytes.Buffer{}))
 	require.Equal(t, 2, dialIndex)
 	require.True(t, eventConnection.listened)
 	require.False(t, eventConnection.dumped)
@@ -74,7 +78,7 @@ func TestRecordFromFlowPreservesNATIdentityAndAccountingAvailability(t *testing.
 	flow := conntrack.NewFlow(unix.IPPROTO_TCP, 0, netip.MustParseAddr("10.0.0.2"), netip.MustParseAddr("192.0.2.10"), 12345, 443, 30, 0)
 	flow.ID, flow.Zone = 42, 7
 	flow.TupleReply.IP.DestinationAddress = netip.MustParseAddr("198.51.100.5")
-	record, ok := recordFromFlow(&flow, []string{"ns", "gateway", "pod", "node"})
+	record, ok := recordFromFlow(&flow, observerIdentity{namespace: "ns", name: "gateway", pod: "pod", node: "node"})
 	require.True(t, ok)
 	require.Equal(t, uint32(42), record.ConntrackID)
 	require.Equal(t, uint16(7), record.Zone)
@@ -83,7 +87,7 @@ func TestRecordFromFlowPreservesNATIdentityAndAccountingAvailability(t *testing.
 	require.Nil(t, record.Counters)
 
 	flow.CountersOrig.Packets, flow.CountersOrig.Bytes = 1, 64
-	record, ok = recordFromFlow(&flow, []string{"ns", "gateway", "pod", "node"})
+	record, ok = recordFromFlow(&flow, observerIdentity{namespace: "ns", name: "gateway", pod: "pod", node: "node"})
 	require.True(t, ok)
 	require.Equal(t, uint64(1), *record.Counters.OriginalPackets)
 	require.Equal(t, uint64(64), *record.Counters.OriginalBytes)
@@ -117,7 +121,7 @@ func TestInterfaceCollectorCachesResolvedInterfacesAndUsesDeltas(t *testing.T) {
 	collector := newInterfaceCollector(networkStatusPath)
 	collector.procNetDevPath = procNetDevPath
 	metrics := newObserverMetrics()
-	identity := []string{"ns", "gateway", "pod", "node"}
+	identity := observerIdentity{namespace: "ns", name: "gateway", pod: "pod", node: "node"}
 	require.NoError(t, collector.update(Config{ExternalNetwork: "ns/external"}, identity, metrics))
 	require.Equal(t, float64(30), testutil.ToFloat64(metrics.interfaceCounters["rx_bytes"].WithLabelValues("ns", "gateway", "pod", "node", "net1", "external")))
 
@@ -142,7 +146,7 @@ func TestNewEventQueuedDuringInitialDumpStillProducesStart(t *testing.T) {
 	flow := conntrack.NewFlow(unix.IPPROTO_TCP, 0, netip.MustParseAddr("10.0.0.2"), netip.MustParseAddr("192.0.2.10"), 12345, 443, 30, 0)
 	flow.ID = 99
 	flow.TupleReply.IP.DestinationAddress = netip.MustParseAddr("198.51.100.5")
-	identity := []string{"ns", "gateway", "pod", "node"}
+	identity := observerIdentity{namespace: "ns", name: "gateway", pod: "pod", node: "node"}
 	metrics := newObserverMetrics()
 	settings := &runtimeSettings{
 		config: Config{Observability: apiv1.VpcEgressGatewayObservability{Conntrack: apiv1.VpcEgressGatewayConntrackObservability{
@@ -158,4 +162,46 @@ func TestNewEventQueuedDuringInitialDumpStillProducesStart(t *testing.T) {
 	collector.processEvent(conntrack.Event{Type: conntrack.EventNew, Flow: &flow})
 	require.Equal(t, apiv1.ObservabilityEventStart, (<-queue).Event)
 	require.Equal(t, float64(1), testutil.ToFloat64(metrics.startedFlows.WithLabelValues("ns", "gateway", "pod", "node", "ipv4", "tcp", "snat")))
+}
+
+func TestReloadConfigAppliesRuntimeSettings(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "config.json")
+	initial := Config{
+		Namespace: "ns", Name: "gateway", ExternalNetwork: "ns/external",
+		Observability: apiv1.VpcEgressGatewayObservability{Conntrack: apiv1.VpcEgressGatewayConntrackObservability{
+			Log: apiv1.VpcEgressGatewayConntrackLog{Enabled: true},
+		}},
+	}
+	writeConfig := func(config Config) {
+		t.Helper()
+		data, err := json.Marshal(config)
+		require.NoError(t, err)
+		temporaryPath := path + ".next"
+		require.NoError(t, os.WriteFile(temporaryPath, data, 0o600))
+		require.NoError(t, os.Rename(temporaryPath, path))
+	}
+	writeConfig(initial)
+	filters, err := compileFilters(initial.Observability.Conntrack.Log.Filters)
+	require.NoError(t, err)
+	settings := &atomic.Pointer[runtimeSettings]{}
+	settings.Store(&runtimeSettings{config: initial, filters: filters, limiter: newLimiter(initial.Observability.Conntrack.Log.RateLimit)})
+	identity := observerIdentity{namespace: "ns", name: "gateway", pod: "pod", node: "node"}
+	metrics := newObserverMetrics()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go reloadConfig(ctx, path, identity, metrics, settings, &bytes.Buffer{})
+
+	updated := initial
+	updated.Observability.Conntrack.Log.Events = []string{apiv1.ObservabilityEventEnd}
+	updated.Observability.Conntrack.Log.RateLimit = apiv1.VpcEgressGatewayConntrackLogRateLimit{RecordsPerSecond: 5, Burst: 7}
+	writeConfig(updated)
+	require.Eventually(t, func() bool {
+		current := settings.Load()
+		return current != nil &&
+			len(current.config.Observability.Conntrack.Log.Events) == 1 &&
+			current.config.Observability.Conntrack.Log.Events[0] == apiv1.ObservabilityEventEnd &&
+			current.limiter.Limit() == 5 && current.limiter.Burst() == 7
+	}, 5*time.Second, 100*time.Millisecond)
+	require.Equal(t, float64(1), testutil.ToFloat64(metrics.configReloads.WithLabelValues("ns", "gateway", "pod", "node", "success")))
 }

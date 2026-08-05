@@ -109,9 +109,19 @@ func (rule compiledRule) match(record flowRecord) bool {
 }
 
 func (tuple compiledTuple) match(value flowTuple) bool {
-	source, destination := tupleAddresses(value)
-	return matchCIDRs(tuple.sourceCIDRs, source) && matchCIDRs(tuple.destinationCIDRs, destination) &&
-		matchPorts(tuple.sourcePorts, value.SourcePort) && matchPorts(tuple.destinationPorts, value.DestinationPort)
+	if len(tuple.sourceCIDRs) != 0 {
+		source, err := netip.ParseAddr(value.SourceIP)
+		if err != nil || !matchCIDRs(tuple.sourceCIDRs, source) {
+			return false
+		}
+	}
+	if len(tuple.destinationCIDRs) != 0 {
+		destination, err := netip.ParseAddr(value.DestinationIP)
+		if err != nil || !matchCIDRs(tuple.destinationCIDRs, destination) {
+			return false
+		}
+	}
+	return matchPorts(tuple.sourcePorts, value.SourcePort) && matchPorts(tuple.destinationPorts, value.DestinationPort)
 }
 
 func matchCIDRs(prefixes []netip.Prefix, address netip.Addr) bool {
