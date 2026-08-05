@@ -152,10 +152,25 @@ func vpcEgressObserverResourceName(gw *kubeovnv1.VpcEgressGateway) string {
 	return util.NormalizeLabelValue("vpc-egress-" + strings.ReplaceAll(gw.Spec.Prefix+gw.Name+"-observability", ".", "-"))
 }
 
+func setVpcEgressGatewayControllerReference(gw *kubeovnv1.VpcEgressGateway, object metav1.Object) error {
+	if err := util.SetControllerReference(gw, object); err != nil {
+		return err
+	}
+	ownerReferences := object.GetOwnerReferences()
+	for i := range ownerReferences {
+		if ownerReferences[i].UID == gw.UID && ownerReferences[i].Controller != nil && *ownerReferences[i].Controller {
+			ownerReferences[i].BlockOwnerDeletion = nil
+			object.SetOwnerReferences(ownerReferences)
+			return nil
+		}
+	}
+	return errors.New("vpc egress gateway controller reference was not set")
+}
+
 func (c *Controller) reconcileVpcEgressObserverConfigMap(gw *kubeovnv1.VpcEgressGateway, name string, labels map[string]string, data []byte) error {
 	configMaps := c.config.KubeClient.CoreV1().ConfigMaps(gw.Namespace)
 	desired := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gw.Namespace, Labels: maps.Clone(labels)}, Data: map[string]string{"config.json": string(data)}}
-	if err := util.SetControllerReference(gw, desired); err != nil {
+	if err := setVpcEgressGatewayControllerReference(gw, desired); err != nil {
 		return err
 	}
 	current, err := configMaps.Get(context.Background(), name, metav1.GetOptions{})
@@ -180,7 +195,7 @@ func (c *Controller) reconcileVpcEgressObserverService(gw *kubeovnv1.VpcEgressGa
 		ClusterIP: corev1.ClusterIPNone, PublishNotReadyAddresses: true, Selector: maps.Clone(labels),
 		Ports: []corev1.ServicePort{{Name: "metrics", Port: vpcEgressObserverPort, TargetPort: intstrFromInt32(vpcEgressObserverPort)}},
 	}}
-	if err := util.SetControllerReference(gw, desired); err != nil {
+	if err := setVpcEgressGatewayControllerReference(gw, desired); err != nil {
 		return err
 	}
 	current, err := services.Get(context.Background(), name, metav1.GetOptions{})
@@ -216,7 +231,7 @@ func (c *Controller) reconcileVpcEgressObserverServiceMonitor(gw *kubeovnv1.VpcE
 		"metadata": map[string]any{"name": name, "namespace": gw.Namespace, "labels": stringMapAny(labels), "annotations": stringMapAny(gw.Spec.Observability.ServiceMonitor.Annotations)},
 		"spec":     map[string]any{"selector": map[string]any{"matchLabels": stringMapAny(selector)}, "endpoints": []any{map[string]any{"port": "metrics", "path": "/metrics"}}},
 	}}
-	if err := util.SetControllerReference(gw, object); err != nil {
+	if err := setVpcEgressGatewayControllerReference(gw, object); err != nil {
 		return err
 	}
 	client := c.config.DynamicClient.Resource(serviceMonitorGVR).Namespace(gw.Namespace)
