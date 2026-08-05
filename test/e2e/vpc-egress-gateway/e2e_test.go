@@ -411,8 +411,9 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 			},
 		)
 		workloadPods, intIPs := validateVegTestWorkload(f, veg, nil)
+		interfaceBytes := waitVpcEgressObserverInterfaceBytes(f, workloadPods)
 		validateVegTestSNATAccess(f, veg, nadName, snatSubnetName, snatLabelValue, workloadPods, intIPs)
-		validateVpcEgressObservability(f, veg, workloadPods)
+		validateVpcEgressObservability(f, veg, workloadPods, interfaceBytes)
 
 		original := veg.DeepCopy()
 		modified := veg.DeepCopy()
@@ -1149,7 +1150,7 @@ func validateVegTestSNATAccess(f *framework.Framework, veg *apiv1.VpcEgressGatew
 	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, "", snatLabelValue, true)
 }
 
-func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgressGateway, workloadPods []corev1.Pod) {
+func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgressGateway, workloadPods []corev1.Pod, interfaceBytes float64) {
 	ginkgo.GinkgoHelper()
 	const observerContainer = "observability"
 	resourceName := util.NormalizeLabelValue("vpc-egress-" + strings.ReplaceAll(veg.Spec.Prefix+veg.Name+"-observability", ".", "-"))
@@ -1174,7 +1175,10 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 			framework.ExpectNotNil(container.SecurityContext)
 			framework.ExpectTrue(*container.SecurityContext.RunAsNonRoot)
 			framework.ExpectEqual(*container.SecurityContext.RunAsUser, int64(65534))
+			framework.ExpectEqual(*container.SecurityContext.RunAsGroup, int64(65534))
 			framework.ExpectTrue(*container.SecurityContext.AllowPrivilegeEscalation)
+			framework.ExpectTrue(*container.SecurityContext.ReadOnlyRootFilesystem)
+			framework.ExpectConsistOf(container.SecurityContext.Capabilities.Drop, corev1.Capability("ALL"))
 			framework.ExpectConsistOf(container.SecurityContext.Capabilities.Add, corev1.Capability("NET_ADMIN"))
 		}
 		framework.ExpectTrue(found, "gateway pod %s/%s should have the observability restartable init container", pod.Namespace, pod.Name)
@@ -1184,6 +1188,7 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 		framework.ExpectContainSubstring(metrics, `namespace="`+veg.Namespace+`"`)
 		framework.ExpectContainSubstring(metrics, `name="`+veg.Name+`"`)
 	}
+	waitVpcEgressObserverInterfaceCounterGrowth(f, workloadPods, interfaceBytes)
 	validateVpcEgressObserverInterfaceOnlyRSS(f, workloadPods[0], configMap.Data["config.json"])
 	validateVpcEgressObserverCollectorFailureIsolation(f, workloadPods[0])
 	waitVpcEgressObserverConntrackMetrics(f, workloadPods)
@@ -1235,7 +1240,10 @@ func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.
 			if err != nil {
 				return false, nil
 			}
-			value, found := observerMetricValue(metrics, "kube_ovn_vpc_egress_gateway_observability_config_reload_total", `result="success"`)
+			value, found, err := observerMetricValue(metrics, "kube_ovn_vpc_egress_gateway_observability_config_reload_total", `result="success"`)
+			if err != nil {
+				return false, err
+			}
 			if !found || value < 2 {
 				return false, nil
 			}
@@ -1327,15 +1335,41 @@ exit 1
 `
 	stdout, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "/bin/sh", "-ec", script)
 	framework.ExpectNoError(err, "validating observer collector failure isolation; stderr: "+stderr)
-	interfaceUp, found := observerMetricValue(stdout, "kube_ovn_vpc_egress_gateway_observability_collector_up", `collector="interface"`)
+	interfaceUp, found, err := observerMetricValue(stdout, "kube_ovn_vpc_egress_gateway_observability_collector_up", `collector="interface"`)
+	framework.ExpectNoError(err)
 	framework.ExpectTrue(found)
 	framework.ExpectEqual(interfaceUp, float64(0))
-	conntrackUp, found := observerMetricValue(stdout, "kube_ovn_vpc_egress_gateway_observability_collector_up", `collector="conntrack"`)
+	conntrackUp, found, err := observerMetricValue(stdout, "kube_ovn_vpc_egress_gateway_observability_collector_up", `collector="conntrack"`)
+	framework.ExpectNoError(err)
 	framework.ExpectTrue(found)
 	framework.ExpectEqual(conntrackUp, float64(1))
 }
 
-func observerMetricValue(metrics, name string, requiredLabels ...string) (float64, bool) {
+func observerMetricValue(metrics, name string, requiredLabels ...string) (float64, bool, error) {
+	values, err := observerMetricValues(metrics, name, requiredLabels...)
+	if err != nil {
+		return 0, false, err
+	}
+	if len(values) == 0 {
+		return 0, false, nil
+	}
+	return values[0], true, nil
+}
+
+func observerMetricSum(metrics, name string, requiredLabels ...string) (float64, bool, error) {
+	values, err := observerMetricValues(metrics, name, requiredLabels...)
+	if err != nil {
+		return 0, false, err
+	}
+	var total float64
+	for _, value := range values {
+		total += value
+	}
+	return total, len(values) != 0, nil
+}
+
+func observerMetricValues(metrics, name string, requiredLabels ...string) ([]float64, error) {
+	var values []float64
 	for line := range strings.SplitSeq(metrics, "\n") {
 		if !strings.HasPrefix(line, name+"{") {
 			continue
@@ -1352,14 +1386,61 @@ func observerMetricValue(metrics, name string, requiredLabels ...string) (float6
 		}
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
-			continue
+			return nil, fmt.Errorf("parse Prometheus sample %q: expected metric and value", line)
 		}
 		value, err := strconv.ParseFloat(fields[1], 64)
-		if err == nil {
-			return value, true
+		if err != nil {
+			return nil, fmt.Errorf("parse Prometheus sample %q: %w", line, err)
+		}
+		values = append(values, value)
+	}
+	return values, nil
+}
+
+func waitVpcEgressObserverInterfaceBytes(f *framework.Framework, pods []corev1.Pod) float64 {
+	ginkgo.GinkgoHelper()
+	var total float64
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		var ok bool
+		var err error
+		total, ok, err = vpcEgressObserverInterfaceBytes(f, pods)
+		return ok, err
+	})
+	framework.ExpectNoError(err, "external interface metrics to become ready on all gateway replicas")
+	return total
+}
+
+func waitVpcEgressObserverInterfaceCounterGrowth(f *framework.Framework, pods []corev1.Pod, baseline float64) {
+	ginkgo.GinkgoHelper()
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		current, ok, err := vpcEgressObserverInterfaceBytes(f, pods)
+		return ok && current > baseline, err
+	})
+	framework.ExpectNoError(err, "aggregate external interface byte counters to grow after SNAT traffic")
+}
+
+func vpcEgressObserverInterfaceBytes(f *framework.Framework, pods []corev1.Pod) (float64, bool, error) {
+	var total float64
+	for _, pod := range pods {
+		metrics, err := scrapeVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
+		if err != nil {
+			return 0, false, nil
+		}
+		for _, name := range []string{
+			"kube_ovn_vpc_egress_gateway_interface_rx_bytes_total",
+			"kube_ovn_vpc_egress_gateway_interface_tx_bytes_total",
+		} {
+			value, found, err := observerMetricSum(metrics, name, `type="external"`)
+			if err != nil {
+				return 0, false, err
+			}
+			if !found {
+				return 0, false, nil
+			}
+			total += value
 		}
 	}
-	return 0, false
+	return total, true, nil
 }
 
 func waitVpcEgressObserverMetrics(f *framework.Framework, namespace, pod string) string {
@@ -1423,7 +1504,36 @@ func scrapeVpcEgressObserverMetrics(f *framework.Framework, namespace, pod strin
 
 func waitVpcEgressObserverFlowLog(f *framework.Framework, veg *apiv1.VpcEgressGateway, pods []corev1.Pod) {
 	ginkgo.GinkgoHelper()
-	err := wait.PollUntilContextTimeout(context.Background(), time.Second, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
+	type flowKey struct {
+		pod  string
+		zone uint16
+		id   uint32
+	}
+	type flowTuple struct {
+		SourceIP        string  `json:"sourceIP"`
+		SourcePort      *uint16 `json:"sourcePort"`
+		DestinationIP   string  `json:"destinationIP"`
+		DestinationPort *uint16 `json:"destinationPort"`
+	}
+	type flowRecord struct {
+		SchemaVersion string     `json:"schemaVersion"`
+		Timestamp     *time.Time `json:"timestamp"`
+		Event         string     `json:"event"`
+		ConntrackID   *uint32    `json:"conntrackID"`
+		Zone          *uint16    `json:"zone"`
+		Namespace     string     `json:"namespace"`
+		Name          string     `json:"name"`
+		Pod           string     `json:"pod"`
+		Node          string     `json:"node"`
+		AddressFamily string     `json:"addressFamily"`
+		Protocol      string     `json:"protocol"`
+		ProtocolNum   *uint8     `json:"protocolNumber"`
+		NatType       []string   `json:"natType"`
+		Original      *flowTuple `json:"original"`
+		Translated    *flowTuple `json:"translated"`
+	}
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, 3*time.Minute, false, func(ctx context.Context) (bool, error) {
+		lifecycle := map[flowKey]set.Set[string]{}
 		for _, pod := range pods {
 			tailLines := int64(500)
 			data, err := f.ClientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{Container: "observability", TailLines: &tailLines}).DoRaw(ctx)
@@ -1431,24 +1541,33 @@ func waitVpcEgressObserverFlowLog(f *framework.Framework, veg *apiv1.VpcEgressGa
 				continue
 			}
 			for line := range strings.SplitSeq(string(data), "\n") {
-				var record struct {
-					SchemaVersion string   `json:"schemaVersion"`
-					Event         string   `json:"event"`
-					Name          string   `json:"name"`
-					ConntrackID   uint32   `json:"conntrackID"`
-					NatType       []string `json:"natType"`
-				}
+				var record flowRecord
 				if json.Unmarshal([]byte(line), &record) != nil {
 					continue
 				}
-				if record.SchemaVersion == "v1" && record.Event == apiv1.ObservabilityEventStart && record.Name == veg.Name && record.ConntrackID != 0 && slices.Contains(record.NatType, apiv1.ObservabilityNatTypeSNAT) {
-					return true, nil
+				if record.SchemaVersion != "v1" || record.Timestamp == nil || record.Timestamp.IsZero() || record.ConntrackID == nil || *record.ConntrackID == 0 || record.Zone == nil ||
+					record.Namespace != veg.Namespace || record.Name != veg.Name || record.Pod != pod.Name || record.Node == "" || record.AddressFamily == "" || record.Protocol == "" || record.ProtocolNum == nil || *record.ProtocolNum == 0 ||
+					record.Original == nil || record.Translated == nil || net.ParseIP(record.Original.SourceIP) == nil || net.ParseIP(record.Original.DestinationIP) == nil ||
+					record.Original.SourcePort == nil || *record.Original.SourcePort == 0 || record.Original.DestinationPort == nil || *record.Original.DestinationPort == 0 ||
+					net.ParseIP(record.Translated.SourceIP) == nil || net.ParseIP(record.Translated.DestinationIP) == nil || record.Translated.SourcePort == nil || *record.Translated.SourcePort == 0 ||
+					record.Translated.DestinationPort == nil || *record.Translated.DestinationPort == 0 || !slices.Contains(record.NatType, apiv1.ObservabilityNatTypeSNAT) {
+					continue
 				}
+				key := flowKey{pod: pod.Name, zone: *record.Zone, id: *record.ConntrackID}
+				if lifecycle[key] == nil {
+					lifecycle[key] = set.New[string]()
+				}
+				lifecycle[key].Insert(record.Event)
+			}
+		}
+		for _, events := range lifecycle {
+			if events.HasAll(apiv1.ObservabilityEventStart, apiv1.ObservabilityEventEnd) {
+				return true, nil
 			}
 		}
 		return false, nil
 	})
-	framework.ExpectNoError(err, "observer to emit a v1 SNAT flow record")
+	framework.ExpectNoError(err, "observer to emit schema-valid start and end records for the same SNAT flow")
 }
 
 func observerRestartCount(pod corev1.Pod) int32 {
