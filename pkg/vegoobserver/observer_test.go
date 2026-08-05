@@ -164,6 +164,53 @@ func TestNewEventQueuedDuringInitialDumpStillProducesStart(t *testing.T) {
 	require.Equal(t, float64(1), testutil.ToFloat64(metrics.startedFlows.WithLabelValues("ns", "gateway", "pod", "node", "ipv4", "tcp", "snat")))
 }
 
+func TestFlowLogJSONPreservesStartAndEndLifecycle(t *testing.T) {
+	flow := conntrack.NewFlow(unix.IPPROTO_TCP, 0, netip.MustParseAddr("10.0.0.2"), netip.MustParseAddr("192.0.2.10"), 12345, 443, 30, 0)
+	flow.ID, flow.Zone = 99, 7
+	flow.TupleReply.IP.DestinationAddress = netip.MustParseAddr("198.51.100.5")
+	identity := observerIdentity{namespace: "ns", name: "gateway", pod: "pod", node: "node"}
+	settings := &runtimeSettings{
+		config: Config{Observability: apiv1.VpcEgressGatewayObservability{Conntrack: apiv1.VpcEgressGatewayConntrackObservability{
+			Log: apiv1.VpcEgressGatewayConntrackLog{Enabled: true},
+		}}},
+		limiter: rate.NewLimiter(100, 1000),
+	}
+	queue := make(chan flowRecord, 2)
+	collector := newConntrackCollector(func() *runtimeSettings { return settings }, identity, newObserverMetrics(), queue)
+	collector.processEvent(conntrack.Event{Type: conntrack.EventNew, Flow: &flow})
+	flow.CountersOrig.Packets, flow.CountersOrig.Bytes = 1, 64
+	collector.processEvent(conntrack.Event{Type: conntrack.EventDestroy, Flow: &flow})
+
+	start, end := <-queue, <-queue
+	require.Equal(t, apiv1.ObservabilityEventStart, start.Event)
+	require.Equal(t, apiv1.ObservabilityEventEnd, end.Event)
+	require.Equal(t, start.ConntrackID, end.ConntrackID)
+	require.Equal(t, start.Zone, end.Zone)
+	require.Equal(t, start.Original, end.Original)
+	require.Equal(t, start.Translated, end.Translated)
+	require.NotNil(t, end.Counters)
+
+	for _, record := range []flowRecord{start, end} {
+		data, err := json.Marshal(record)
+		require.NoError(t, err)
+		var fields map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(data, &fields))
+		for _, field := range []string{
+			"schemaVersion", "timestamp", "event", "conntrackID", "zone", "namespace", "name", "pod", "node",
+			"addressFamily", "protocol", "protocolNumber", "natType", "original", "translated",
+		} {
+			require.Contains(t, fields, field)
+		}
+		for _, field := range []string{"original", "translated"} {
+			var tuple map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(fields[field], &tuple))
+			for _, tupleField := range []string{"sourceIP", "sourcePort", "destinationIP", "destinationPort"} {
+				require.Contains(t, tuple, tupleField)
+			}
+		}
+	}
+}
+
 func TestReloadConfigAppliesRuntimeSettings(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "config.json")
