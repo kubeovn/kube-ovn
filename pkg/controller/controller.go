@@ -118,9 +118,11 @@ type Controller struct {
 	addOrUpdateVpcEgressGatewayQueue workqueue.TypedRateLimitingInterface[string]
 	delVpcEgressGatewayQueue         workqueue.TypedRateLimitingInterface[string]
 	vpcEgressGatewayKeyMutex         keymutex.KeyMutex
-	restartableInitContainersOnce    sync.Once
+	restartableInitContainersMu      sync.Mutex
+	restartableInitContainersChecked bool
 	restartableInitContainers        bool
-	restartableInitContainersErr     error
+	restartableInitContainersReason  string
+	restartableInitContainersMessage string
 
 	// bgpConfLister/evpnConfLister are published asynchronously by the
 	// optional-CRD background poller (StartBgpEvpnConfInformerFactory), but

@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	klog.InitFlags(nil)
 	configPath := flag.String("config", "/etc/kube-ovn-observer/config.json", "Path to observer configuration")
 	networkStatusPath := flag.String("network-status", "/etc/podinfo/network-status", "Path to the Multus network-status annotation")
 	listenAddress := flag.String("listen-address", vegoobserver.DefaultListenAddress, "HTTP listen address")
