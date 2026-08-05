@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -140,6 +142,19 @@ func TestPrivateRegistryDoesNotExposeProcessCollectors(t *testing.T) {
 		require.NotContains(t, family.GetName(), "process_")
 		require.NotContains(t, family.GetName(), "promhttp_")
 	}
+}
+
+func TestCheckHealthUsesHTTPStatus(t *testing.T) {
+	statusCode := http.StatusOK
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(statusCode)
+	}))
+	require.NoError(t, CheckHealth(context.Background(), server.URL))
+	statusCode = http.StatusServiceUnavailable
+	require.ErrorContains(t, CheckHealth(context.Background(), server.URL), "503 Service Unavailable")
+
+	server.Close()
+	require.ErrorContains(t, CheckHealth(context.Background(), server.URL), "request observer health endpoint")
 }
 
 func TestNewEventQueuedDuringInitialDumpStillProducesStart(t *testing.T) {

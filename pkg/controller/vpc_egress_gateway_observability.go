@@ -356,7 +356,7 @@ func (c *Controller) deleteOwnedServiceMonitor(gw *kubeovnv1.VpcEgressGateway, n
 	}
 }
 
-func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *kubeovnv1.VpcEgressGatewayObservability, state vpcEgressObserverState) {
+func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *kubeovnv1.VpcEgressGatewayObservability, state vpcEgressObserverState, useHTTPProbe bool) {
 	if !state.enabled {
 		return
 	}
@@ -368,6 +368,11 @@ func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *
 		}
 	}
 	launcher := fmt.Sprintf("if [ -x /kube-ovn/vpc-egress-gateway-observer ]; then exec /kube-ovn/vpc-egress-gateway-observer --config %s --network-status %s; fi; exec sleep infinity", vpcEgressObserverConfigPath, vpcEgressObserverNetworkStatusPath)
+	healthCheck := "if [ ! -x /kube-ovn/vpc-egress-gateway-observer ]; then exit 0; fi; exec /kube-ovn/vpc-egress-gateway-observer --health-check"
+	livenessProbe := &corev1.Probe{ProbeHandler: corev1.ProbeHandler{Exec: &corev1.ExecAction{Command: []string{"/bin/sh", "-ec", healthCheck}}}, PeriodSeconds: 10, FailureThreshold: 3}
+	if useHTTPProbe {
+		livenessProbe.ProbeHandler = corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt32(vpcEgressObserverPort)}}
+	}
 	podSpec.InitContainers = append(podSpec.InitContainers, corev1.Container{
 		Name: vpcEgressObserverContainerName, Image: image, ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: []string{"/bin/sh", "-ec", launcher}, RestartPolicy: ptr.To(corev1.ContainerRestartPolicyAlways), Resources: resources,
@@ -376,7 +381,7 @@ func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *
 			{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 		},
 		Ports:         []corev1.ContainerPort{{Name: "metrics", ContainerPort: vpcEgressObserverPort}},
-		LivenessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromInt32(vpcEgressObserverPort)}}, PeriodSeconds: 10, FailureThreshold: 3},
+		LivenessProbe: livenessProbe,
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot: new(true), RunAsUser: ptr.To[int64](65534), RunAsGroup: ptr.To[int64](65534),
 			AllowPrivilegeEscalation: new(true), ReadOnlyRootFilesystem: new(true),

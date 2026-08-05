@@ -28,7 +28,7 @@ import (
 func TestAddVpcEgressGatewayObserverUsesRestartableNonRootSidecar(t *testing.T) {
 	podSpec := &corev1.PodSpec{}
 	config := &kubeovnv1.VpcEgressGatewayObservability{InterfaceMetrics: kubeovnv1.VpcEgressGatewayObservabilityFeature{Enabled: true}}
-	addVpcEgressGatewayObserver(podSpec, "kubeovn/kube-ovn:test", config, vpcEgressObserverState{enabled: true, configName: "gateway-observability"})
+	addVpcEgressGatewayObserver(podSpec, "kubeovn/kube-ovn:test", config, vpcEgressObserverState{enabled: true, configName: "gateway-observability"}, false)
 	require.Len(t, podSpec.InitContainers, 1)
 	container := podSpec.InitContainers[0]
 	require.Equal(t, vpcEgressObserverContainerName, container.Name)
@@ -45,9 +45,24 @@ func TestAddVpcEgressGatewayObserverUsesRestartableNonRootSidecar(t *testing.T) 
 	require.Equal(t, new(true), container.SecurityContext.ReadOnlyRootFilesystem)
 	require.Equal(t, []corev1.Capability{"ALL"}, container.SecurityContext.Capabilities.Drop)
 	require.Equal(t, []corev1.Capability{"NET_ADMIN"}, container.SecurityContext.Capabilities.Add)
-	require.NotNil(t, container.LivenessProbe.HTTPGet)
+	require.Nil(t, container.LivenessProbe.HTTPGet)
+	require.Equal(t, []string{
+		"/bin/sh", "-ec",
+		"if [ ! -x /kube-ovn/vpc-egress-gateway-observer ]; then exit 0; fi; exec /kube-ovn/vpc-egress-gateway-observer --health-check",
+	}, container.LivenessProbe.Exec.Command)
 	require.Nil(t, container.ReadinessProbe)
 	require.Nil(t, container.StartupProbe)
+}
+
+func TestAddVpcEgressGatewayObserverUsesHTTPProbeForDefaultVpc(t *testing.T) {
+	podSpec := &corev1.PodSpec{}
+	config := &kubeovnv1.VpcEgressGatewayObservability{InterfaceMetrics: kubeovnv1.VpcEgressGatewayObservabilityFeature{Enabled: true}}
+	addVpcEgressGatewayObserver(podSpec, "kubeovn/kube-ovn:test", config, vpcEgressObserverState{enabled: true, configName: "gateway-observability"}, true)
+	require.Len(t, podSpec.InitContainers, 1)
+	probe := podSpec.InitContainers[0].LivenessProbe
+	require.Nil(t, probe.Exec)
+	require.Equal(t, "/healthz", probe.HTTPGet.Path)
+	require.Equal(t, int32(10666), probe.HTTPGet.Port.IntVal)
 }
 
 func TestCollectorSwitchesDoNotChangeObserverPodSpec(t *testing.T) {
@@ -55,8 +70,8 @@ func TestCollectorSwitchesDoNotChangeObserverPodSpec(t *testing.T) {
 	conntrackLog := &kubeovnv1.VpcEgressGatewayObservability{Conntrack: kubeovnv1.VpcEgressGatewayConntrackObservability{Log: kubeovnv1.VpcEgressGatewayConntrackLog{Enabled: true}}}
 	first, second := &corev1.PodSpec{}, &corev1.PodSpec{}
 	state := vpcEgressObserverState{enabled: true, configName: "gateway-observability"}
-	addVpcEgressGatewayObserver(first, "kubeovn/kube-ovn:test", interfaceMetrics, state)
-	addVpcEgressGatewayObserver(second, "kubeovn/kube-ovn:test", conntrackLog, state)
+	addVpcEgressGatewayObserver(first, "kubeovn/kube-ovn:test", interfaceMetrics, state, false)
+	addVpcEgressGatewayObserver(second, "kubeovn/kube-ovn:test", conntrackLog, state, false)
 	require.Equal(t, first, second)
 }
 

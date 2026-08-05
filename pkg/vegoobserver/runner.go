@@ -105,6 +105,24 @@ func Run(ctx context.Context, options Options) error {
 	}
 }
 
+// CheckHealth verifies the observer HTTP server through its loopback endpoint.
+func CheckHealth(ctx context.Context, address string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return fmt.Errorf("create health check request: %w", err)
+	}
+	client := &http.Client{Timeout: time.Second, Transport: &http.Transport{Proxy: nil}}
+	response, err := client.Do(request)
+	if err != nil {
+		return fmt.Errorf("request observer health endpoint: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("observer health endpoint returned %s", response.Status)
+	}
+	return nil
+}
+
 func reloadConfig(ctx context.Context, path string, identity observerIdentity, metrics *observerMetrics, settings *atomic.Pointer[runtimeSettings], diagnostics io.Writer) {
 	labels := identity.labels()
 	currentHash, err := configHash(settings.Load().config)

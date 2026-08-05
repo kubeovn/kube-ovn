@@ -1181,6 +1181,11 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 			framework.ExpectTrue(*container.SecurityContext.ReadOnlyRootFilesystem)
 			framework.ExpectConsistOf(container.SecurityContext.Capabilities.Drop, corev1.Capability("ALL"))
 			framework.ExpectConsistOf(container.SecurityContext.Capabilities.Add, corev1.Capability("NET_ADMIN"))
+			framework.ExpectNil(container.LivenessProbe.HTTPGet)
+			framework.ExpectEqual(container.LivenessProbe.Exec.Command, []string{
+				"/bin/sh", "-ec",
+				"if [ ! -x /kube-ovn/vpc-egress-gateway-observer ]; then exit 0; fi; exec /kube-ovn/vpc-egress-gateway-observer --health-check",
+			})
 		}
 		framework.ExpectTrue(found, "gateway pod %s/%s should have the observability restartable init container", pod.Namespace, pod.Name)
 		metrics := waitVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
