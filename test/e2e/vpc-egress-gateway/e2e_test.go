@@ -1161,7 +1161,6 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 	framework.ExpectTrue(service.Spec.PublishNotReadyAddresses)
 	framework.ExpectEqual(service.Spec.Ports[0].TargetPort.IntVal, int32(10666))
 
-	conntrackMetricsFound := false
 	for _, pod := range workloadPods {
 		found := false
 		for _, container := range pod.Spec.InitContainers {
@@ -1180,11 +1179,10 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 		metrics := waitVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
 		framework.ExpectContainSubstring(metrics, "kube_ovn_vpc_egress_gateway_interface_rx_bytes_total")
 		framework.ExpectContainSubstring(metrics, "kube_ovn_vpc_egress_gateway_interface_tx_packets_total")
-		conntrackMetricsFound = conntrackMetricsFound || strings.Contains(metrics, "kube_ovn_vpc_egress_gateway_conntrack_nat_flows_active")
 		framework.ExpectContainSubstring(metrics, `namespace="`+veg.Namespace+`"`)
 		framework.ExpectContainSubstring(metrics, `name="`+veg.Name+`"`)
 	}
-	framework.ExpectTrue(conntrackMetricsFound, "at least one gateway replica should observe the generated SNAT flow")
+	waitVpcEgressObserverConntrackMetrics(f, workloadPods)
 	waitVpcEgressObserverFlowLog(f, veg, workloadPods)
 
 	condition := veg.Status.Conditions.GetCondition(apiv1.ObservabilityConfigured)
@@ -1248,7 +1246,7 @@ func waitVpcEgressObserverMetrics(f *framework.Framework, namespace, pod string)
 	ginkgo.GinkgoHelper()
 	var metrics string
 	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
-		stdout, _, err := framework.ExecCommandInContainer(f, namespace, pod, "observability", "/bin/sh", "-c", "curl -fsS http://127.0.0.1:10666/metrics")
+		stdout, err := scrapeVpcEgressObserverMetrics(f, namespace, pod)
 		if err != nil {
 			return false, nil
 		}
@@ -1257,6 +1255,35 @@ func waitVpcEgressObserverMetrics(f *framework.Framework, namespace, pod string)
 	})
 	framework.ExpectNoError(err, "observer metrics endpoint to become ready")
 	return metrics
+}
+
+func waitVpcEgressObserverConntrackMetrics(f *framework.Framework, pods []corev1.Pod) {
+	ginkgo.GinkgoHelper()
+	lastMetrics := make(map[string]string, len(pods))
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		for _, pod := range pods {
+			metrics, err := scrapeVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
+			if err != nil {
+				continue
+			}
+			lastMetrics[pod.Name] = metrics
+			if strings.Contains(metrics, "kube_ovn_vpc_egress_gateway_conntrack_nat_flows_active") {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		for pod, metrics := range lastMetrics {
+			framework.Logf("last observer metrics from pod %s:\n%s", pod, metrics)
+		}
+	}
+	framework.ExpectNoError(err, "at least one gateway replica to observe the generated SNAT flow")
+}
+
+func scrapeVpcEgressObserverMetrics(f *framework.Framework, namespace, pod string) (string, error) {
+	stdout, _, err := framework.ExecCommandInContainer(f, namespace, pod, "observability", "/bin/sh", "-c", "curl -fsS http://127.0.0.1:10666/metrics")
+	return stdout, err
 }
 
 func waitVpcEgressObserverFlowLog(f *framework.Framework, veg *apiv1.VpcEgressGateway, pods []corev1.Pod) {
