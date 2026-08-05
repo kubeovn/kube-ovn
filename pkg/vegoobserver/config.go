@@ -24,6 +24,21 @@ type Config struct {
 	Observability   apiv1.VpcEgressGatewayObservability `json:"observability"`
 }
 
+type observerIdentity struct {
+	namespace string
+	name      string
+	pod       string
+	node      string
+}
+
+func (i observerIdentity) labels() []string {
+	return []string{i.namespace, i.name, i.pod, i.node}
+}
+
+func (i observerIdentity) matches(config Config) bool {
+	return config.Namespace == i.namespace && config.Name == i.name
+}
+
 func loadConfig(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

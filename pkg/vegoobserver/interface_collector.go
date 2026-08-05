@@ -34,7 +34,7 @@ func newInterfaceCollector(networkStatusPath string) *interfaceCollector {
 	return &interfaceCollector{networkStatusPath: networkStatusPath, procNetDevPath: "/proc/net/dev", previous: map[string]interfaceValues{}}
 }
 
-func (c *interfaceCollector) update(config Config, identity []string, metrics *observerMetrics) error {
+func (c *interfaceCollector) update(config Config, identity observerIdentity, metrics *observerMetrics) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.internal == "" || c.external == "" {
@@ -52,7 +52,7 @@ func (c *interfaceCollector) update(config Config, identity []string, metrics *o
 			return fmt.Errorf("interface %q (%s) is missing from /proc/net/dev", interfaceName, interfaceType)
 		}
 		previous := c.previous[interfaceName]
-		labels := append(append([]string{}, identity...), interfaceName, interfaceType)
+		labels := append(identity.labels(), interfaceName, interfaceType)
 		metrics.interfaceCounters["rx_bytes"].WithLabelValues(labels...).Add(counterDelta(previous.rxBytes, current.rxBytes))
 		metrics.interfaceCounters["tx_bytes"].WithLabelValues(labels...).Add(counterDelta(previous.txBytes, current.txBytes))
 		metrics.interfaceCounters["rx_packets"].WithLabelValues(labels...).Add(counterDelta(previous.rxPackets, current.rxPackets))

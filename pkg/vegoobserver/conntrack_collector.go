@@ -34,7 +34,7 @@ type cacheEntry struct {
 type conntrackCollector struct {
 	mu       sync.Mutex
 	settings func() *runtimeSettings
-	identity []string
+	identity observerIdentity
 	metrics  *observerMetrics
 	logQueue chan flowRecord
 	cache    map[flowKey]*cacheEntry
@@ -49,8 +49,8 @@ type conntrackConnection interface {
 	Dump(*conntrack.DumpOptions) ([]conntrack.Flow, error)
 }
 
-func newConntrackCollector(settings func() *runtimeSettings, identity []string, metrics *observerMetrics, logQueue chan flowRecord) *conntrackCollector {
-	metrics.cacheCapacity.WithLabelValues(identity...).Set(DefaultCacheCapacity)
+func newConntrackCollector(settings func() *runtimeSettings, identity observerIdentity, metrics *observerMetrics, logQueue chan flowRecord) *conntrackCollector {
+	metrics.cacheCapacity.WithLabelValues(identity.labels()...).Set(DefaultCacheCapacity)
 	return &conntrackCollector{
 		settings: settings, identity: identity, metrics: metrics, logQueue: logQueue,
 		cache: make(map[flowKey]*cacheEntry, DefaultCacheCapacity), order: list.New(),
@@ -62,16 +62,16 @@ func (c *conntrackCollector) run(ctx context.Context, diagnostics io.Writer) {
 	for ctx.Err() == nil {
 		settings := c.settings()
 		if settings == nil || !conntrackEnabled(settings.config) {
-			c.metrics.collectorUp.WithLabelValues(append(c.identity, "conntrack")...).Set(0)
+			c.metrics.collectorUp.WithLabelValues(append(c.identity.labels(), "conntrack")...).Set(0)
 			if !waitContext(ctx, 2*time.Second) {
 				return
 			}
 			continue
 		}
-		if err := c.runSession(ctx); err != nil && ctx.Err() == nil {
-			_, _ = fmt.Fprintf(diagnostics, "conntrack collector: %v\n", err)
-			c.metrics.errors.WithLabelValues(append(c.identity, "conntrack", "session")...).Inc()
-			c.metrics.collectorUp.WithLabelValues(append(c.identity, "conntrack")...).Set(0)
+		if err := c.runSession(ctx, diagnostics); err != nil && ctx.Err() == nil {
+			writeDiagnostic(c.metrics, c.identity, diagnostics, "conntrack", "conntrack collector: %v\n", err)
+			c.metrics.errors.WithLabelValues(append(c.identity.labels(), "conntrack", "session")...).Inc()
+			c.metrics.collectorUp.WithLabelValues(append(c.identity.labels(), "conntrack")...).Set(0)
 			if !waitContext(ctx, 2*time.Second) {
 				return
 			}
@@ -79,13 +79,20 @@ func (c *conntrackCollector) run(ctx context.Context, diagnostics io.Writer) {
 	}
 }
 
-func (c *conntrackCollector) runSession(ctx context.Context) error {
+func (c *conntrackCollector) runSession(ctx context.Context, diagnostics io.Writer) (returnErr error) {
 	eventConnection, err := c.dial()
 	if err != nil {
 		return fmt.Errorf("dial conntrack event netlink: %w", err)
 	}
-	defer eventConnection.Close()
-	_ = eventConnection.SetReadBuffer(4 << 20)
+	defer func() {
+		if err := eventConnection.Close(); err != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("close conntrack event netlink: %w", err))
+		}
+	}()
+	if err := eventConnection.SetReadBuffer(4 << 20); err != nil {
+		c.metrics.errors.WithLabelValues(append(c.identity.labels(), "conntrack", "set_read_buffer")...).Inc()
+		writeDiagnostic(c.metrics, c.identity, diagnostics, "conntrack", "set conntrack read buffer: %v\n", err)
+	}
 	events := make(chan conntrack.Event, DefaultEventBuffer)
 	errorsChannel, err := eventConnection.Listen(events, 2, netfilter.GroupsCT)
 	if err != nil {
@@ -105,7 +112,7 @@ func (c *conntrackCollector) runSession(ctx context.Context) error {
 	}
 	c.initialize(flows)
 	initialMetricsEnabled := c.settings().config.Observability.Conntrack.Metrics.Enabled
-	c.metrics.collectorUp.WithLabelValues(append(c.identity, "conntrack")...).Set(1)
+	c.metrics.collectorUp.WithLabelValues(append(c.identity.labels(), "conntrack")...).Set(1)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -160,7 +167,7 @@ func (c *conntrackCollector) initialize(flows []conntrack.Flow) {
 			c.addCountersLocked(conntrack.Flow{}, flows[i], record)
 		}
 	}
-	c.metrics.cacheEntries.WithLabelValues(c.identity...).Set(float64(len(c.cache)))
+	c.metrics.cacheEntries.WithLabelValues(c.identity.labels()...).Set(float64(len(c.cache)))
 }
 
 func (c *conntrackCollector) processEvent(event conntrack.Event) {
@@ -200,7 +207,7 @@ func (c *conntrackCollector) processEvent(event conntrack.Event) {
 		if event.Type == conntrack.EventNew {
 			eventName = "new"
 		}
-		c.metrics.conntrackEvents.WithLabelValues(append(c.identity, eventName)...).Inc()
+		c.metrics.conntrackEvents.WithLabelValues(append(c.identity.labels(), eventName)...).Inc()
 		observedStart := event.Type == conntrack.EventNew && (isNew || !entry.observedStart)
 		if observedStart {
 			if !isNew {
@@ -212,7 +219,7 @@ func (c *conntrackCollector) processEvent(event conntrack.Event) {
 			c.enqueueLogLocked(record, apiv1.ObservabilityEventStart, settings)
 		}
 	case conntrack.EventDestroy:
-		c.metrics.conntrackEvents.WithLabelValues(append(c.identity, "end")...).Inc()
+		c.metrics.conntrackEvents.WithLabelValues(append(c.identity.labels(), "end")...).Inc()
 		if entry != nil {
 			if metricsOn {
 				c.addCountersLocked(entry.flow, *event.Flow, record)
@@ -226,7 +233,7 @@ func (c *conntrackCollector) processEvent(event conntrack.Event) {
 		}
 		c.enqueueLogLocked(record, apiv1.ObservabilityEventEnd, settings)
 	}
-	c.metrics.cacheEntries.WithLabelValues(c.identity...).Set(float64(len(c.cache)))
+	c.metrics.cacheEntries.WithLabelValues(c.identity.labels()...).Set(float64(len(c.cache)))
 }
 
 func (c *conntrackCollector) insertLocked(flow conntrack.Flow, record flowRecord, observedStart bool) {
@@ -246,7 +253,7 @@ func (c *conntrackCollector) insertLocked(flow conntrack.Flow, record flowRecord
 		}
 		delete(c.cache, oldKey)
 		c.order.Remove(oldest)
-		c.metrics.cacheEvictions.WithLabelValues(c.identity...).Inc()
+		c.metrics.cacheEvictions.WithLabelValues(c.identity.labels()...).Inc()
 	}
 	element := c.order.PushBack(key)
 	c.cache[key] = &cacheEntry{record: record, flow: flow, element: element, observedStart: observedStart}
@@ -262,13 +269,13 @@ func (c *conntrackCollector) enqueueLogLocked(record flowRecord, event string, s
 		return
 	}
 	if !settings.limiter.Allow() {
-		c.metrics.logDrops.WithLabelValues(append(c.identity, "rate_limit")...).Inc()
+		c.metrics.logDrops.WithLabelValues(append(c.identity.labels(), "rate_limit")...).Inc()
 		return
 	}
 	select {
 	case c.logQueue <- record:
 	default:
-		c.metrics.logDrops.WithLabelValues(append(c.identity, "queue_full")...).Inc()
+		c.metrics.logDrops.WithLabelValues(append(c.identity.labels(), "queue_full")...).Inc()
 	}
 }
 
@@ -276,7 +283,7 @@ func (c *conntrackCollector) addCountersLocked(previous, current conntrack.Flow,
 	if !accountingAvailable(&current) {
 		return
 	}
-	c.metrics.accounting.WithLabelValues(c.identity...).Set(1)
+	c.metrics.accounting.WithLabelValues(c.identity.labels()...).Set(1)
 	labels := c.flowLabels(record)
 	for _, direction := range []struct {
 		name string
@@ -290,7 +297,7 @@ func (c *conntrackCollector) addCountersLocked(previous, current conntrack.Flow,
 }
 
 func (c *conntrackCollector) flowLabels(record flowRecord) []string {
-	return append(append([]string{}, c.identity...), record.AddressFamily, record.Protocol, metricNatType(record.NatType))
+	return append(c.identity.labels(), record.AddressFamily, record.Protocol, metricNatType(record.NatType))
 }
 
 func (c *conntrackCollector) clear() {
@@ -302,8 +309,8 @@ func (c *conntrackCollector) clear() {
 func (c *conntrackCollector) resetLocked() {
 	c.cache = make(map[flowKey]*cacheEntry, DefaultCacheCapacity)
 	c.order.Init()
-	c.metrics.cacheEntries.WithLabelValues(c.identity...).Set(0)
-	c.metrics.accounting.WithLabelValues(c.identity...).Set(0)
+	c.metrics.cacheEntries.WithLabelValues(c.identity.labels()...).Set(0)
+	c.metrics.accounting.WithLabelValues(c.identity.labels()...).Set(0)
 	c.metrics.activeFlows.Reset()
 }
 
@@ -313,10 +320,10 @@ func (c *conntrackCollector) resetDomainMetrics() {
 	c.metrics.endedFlows.Reset()
 	c.metrics.packets.Reset()
 	c.metrics.bytes.Reset()
-	c.metrics.accounting.WithLabelValues(c.identity...).Set(0)
+	c.metrics.accounting.WithLabelValues(c.identity.labels()...).Set(0)
 }
 
-func writeFlowLogs(ctx context.Context, writer io.Writer, identity []string, metrics *observerMetrics, queue <-chan flowRecord) {
+func writeFlowLogs(ctx context.Context, writer io.Writer, identity observerIdentity, metrics *observerMetrics, queue <-chan flowRecord) {
 	encoder := json.NewEncoder(writer)
 	for {
 		select {
@@ -324,10 +331,10 @@ func writeFlowLogs(ctx context.Context, writer io.Writer, identity []string, met
 			return
 		case record := <-queue:
 			if err := encoder.Encode(record); err != nil {
-				metrics.logDrops.WithLabelValues(append(identity, "write_error")...).Inc()
+				metrics.logDrops.WithLabelValues(append(identity.labels(), "write_error")...).Inc()
 				continue
 			}
-			metrics.logRecords.WithLabelValues(append(identity, record.Event)...).Inc()
+			metrics.logRecords.WithLabelValues(append(identity.labels(), record.Event)...).Inc()
 		}
 	}
 }

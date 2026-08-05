@@ -2,14 +2,18 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/version"
+	fakediscovery "k8s.io/client-go/discovery/fake"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -61,7 +65,7 @@ func TestReconcileVpcEgressGatewayObservabilityCreatesPerGatewayResources(t *tes
 		config:                           &Configuration{KubeClient: kubeClient, DynamicClient: dynamicClient},
 		addOrUpdateVpcEgressGatewayQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
 	}
-	controller.restartableInitContainersOnce.Do(func() {})
+	controller.restartableInitContainersChecked = true
 	controller.restartableInitContainers = true
 	gw := &kubeovnv1.VpcEgressGateway{
 		TypeMeta:   metav1.TypeMeta{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway"},
@@ -100,7 +104,9 @@ func TestReconcileVpcEgressGatewayObservabilityCreatesPerGatewayResources(t *tes
 
 func TestReconcileVpcEgressGatewayObservabilityDoesNotInjectWhenSidecarsUnsupported(t *testing.T) {
 	controller := &Controller{config: &Configuration{KubeClient: k8sfake.NewSimpleClientset()}}
-	controller.restartableInitContainersOnce.Do(func() {})
+	controller.restartableInitContainersChecked = true
+	controller.restartableInitContainersReason = "UnsupportedKubernetesVersion"
+	controller.restartableInitContainersMessage = "restartable init containers require Kubernetes 1.29 or later"
 	gw := &kubeovnv1.VpcEgressGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "ns", Generation: 1}, Spec: kubeovnv1.VpcEgressGatewaySpec{
 		Observability: &kubeovnv1.VpcEgressGatewayObservability{Conntrack: kubeovnv1.VpcEgressGatewayConntrackObservability{Log: kubeovnv1.VpcEgressGatewayConntrackLog{Enabled: true}}},
 	}}
@@ -122,7 +128,7 @@ func TestReconcileVpcEgressGatewayObservabilitySoftFailsWithoutServiceMonitorCRD
 		config:                           &Configuration{KubeClient: kubeClient, DynamicClient: dynamicClient},
 		addOrUpdateVpcEgressGatewayQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
 	}
-	controller.restartableInitContainersOnce.Do(func() {})
+	controller.restartableInitContainersChecked = true
 	controller.restartableInitContainers = true
 	gw := &kubeovnv1.VpcEgressGateway{
 		TypeMeta:   metav1.TypeMeta{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway"},
@@ -137,4 +143,63 @@ func TestReconcileVpcEgressGatewayObservabilitySoftFailsWithoutServiceMonitorCRD
 	condition := gw.Status.Conditions.GetCondition(kubeovnv1.ServiceMonitorReady)
 	require.Equal(t, corev1.ConditionFalse, condition.Status)
 	require.Equal(t, "ServiceMonitorCRDNotInstalled", condition.Reason)
+}
+
+func TestSupportsRestartableInitContainersProbesFeatureGate(t *testing.T) {
+	kubeClient := k8sfake.NewSimpleClientset()
+	kubeClient.Discovery().(*fakediscovery.FakeDiscovery).FakedServerVersion = &version.Info{GitVersion: "v1.29.0"}
+	controller := &Controller{config: &Configuration{KubeClient: kubeClient, PodNamespace: "kube-system"}}
+
+	supported, definitive, reason, message := controller.supportsRestartableInitContainers()
+	require.True(t, supported)
+	require.True(t, definitive)
+	require.Empty(t, reason)
+	require.Empty(t, message)
+	require.True(t, controller.restartableInitContainersChecked)
+	require.Len(t, kubeClient.Actions(), 2)
+}
+
+func TestSupportsRestartableInitContainersDetectsDroppedPolicy(t *testing.T) {
+	kubeClient := k8sfake.NewSimpleClientset()
+	kubeClient.Discovery().(*fakediscovery.FakeDiscovery).FakedServerVersion = &version.Info{GitVersion: "v1.29.0"}
+	kubeClient.PrependReactor("create", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		deployment := action.(k8stesting.CreateAction).GetObject().(*appsv1.Deployment).DeepCopy()
+		deployment.Spec.Template.Spec.InitContainers[0].RestartPolicy = nil
+		return true, deployment, nil
+	})
+	controller := &Controller{config: &Configuration{KubeClient: kubeClient, PodNamespace: "kube-system"}}
+
+	supported, definitive, reason, message := controller.supportsRestartableInitContainers()
+	require.False(t, supported)
+	require.True(t, definitive)
+	require.Equal(t, "SidecarContainersDisabled", reason)
+	require.Contains(t, message, "SidecarContainers")
+}
+
+func TestSupportsRestartableInitContainersRetriesUnknownCapability(t *testing.T) {
+	kubeClient := k8sfake.NewSimpleClientset()
+	kubeClient.Discovery().(*fakediscovery.FakeDiscovery).FakedServerVersion = &version.Info{GitVersion: "v1.29.0"}
+	createAttempts := 0
+	kubeClient.PrependReactor("create", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		createAttempts++
+		if createAttempts == 1 {
+			return true, nil, errors.New("transient admission failure")
+		}
+		return true, action.(k8stesting.CreateAction).GetObject(), nil
+	})
+	controller := &Controller{config: &Configuration{KubeClient: kubeClient, PodNamespace: "kube-system"}}
+
+	supported, definitive, reason, message := controller.supportsRestartableInitContainers()
+	require.False(t, supported)
+	require.False(t, definitive)
+	require.Equal(t, "SidecarContainersCapabilityUnknown", reason)
+	require.Contains(t, message, "transient admission failure")
+	require.False(t, controller.restartableInitContainersChecked)
+
+	supported, definitive, reason, message = controller.supportsRestartableInitContainers()
+	require.True(t, supported)
+	require.True(t, definitive)
+	require.Empty(t, reason)
+	require.Empty(t, message)
+	require.Equal(t, 2, createAttempts)
 }

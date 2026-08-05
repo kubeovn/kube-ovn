@@ -1,7 +1,6 @@
 package vegoobserver
 
 import (
-	"net/netip"
 	"sort"
 	"time"
 
@@ -49,8 +48,8 @@ type flowRecord struct {
 	Counters       *flowCounters `json:"counters,omitempty"`
 }
 
-func recordFromFlow(flow *conntrack.Flow, identity []string) (flowRecord, bool) {
-	if flow == nil || len(identity) != 4 {
+func recordFromFlow(flow *conntrack.Flow, identity observerIdentity) (flowRecord, bool) {
+	if flow == nil {
 		return flowRecord{}, false
 	}
 	original := flowTuple{
@@ -78,7 +77,7 @@ func recordFromFlow(flow *conntrack.Flow, identity []string) (flowRecord, bool) 
 	}
 	return flowRecord{
 		SchemaVersion: "v1", Timestamp: time.Now().UTC(), ConntrackID: flow.ID, Zone: flow.Zone,
-		Namespace: identity[0], Name: identity[1], Pod: identity[2], Node: identity[3],
+		Namespace: identity.namespace, Name: identity.name, Pod: identity.pod, Node: identity.node,
 		AddressFamily: addressFamily, Protocol: protocolName(flow.TupleOrig.Proto.Protocol), ProtocolNumber: flow.TupleOrig.Proto.Protocol,
 		NatType: natTypes, Original: original, Translated: translated, Counters: countersFromFlow(flow),
 	}, true
@@ -120,10 +119,4 @@ func metricNatType(natTypes []string) string {
 		return apiv1.ObservabilityNatTypeSNATDNAT
 	}
 	return natTypes[0]
-}
-
-func tupleAddresses(tuple flowTuple) (netip.Addr, netip.Addr) {
-	source, _ := netip.ParseAddr(tuple.SourceIP)
-	destination, _ := netip.ParseAddr(tuple.DestinationIP)
-	return source, destination
 }
