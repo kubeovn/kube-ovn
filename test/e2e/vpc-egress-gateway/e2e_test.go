@@ -1216,9 +1216,14 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.VpcEgressGateway, originalPods []corev1.Pod, initialReloads map[string]float64) {
 	ginkgo.GinkgoHelper()
 	resourceName := util.NormalizeLabelValue("vpc-egress-" + strings.ReplaceAll(veg.Spec.Prefix+veg.Name+"-observability", ".", "-"))
+	var configResourceVersion string
 	err := wait.PollUntilContextTimeout(context.Background(), time.Second, 30*time.Second, false, func(ctx context.Context) (bool, error) {
 		configMap, err := f.ClientSet.CoreV1().ConfigMaps(veg.Namespace).Get(ctx, resourceName, metav1.GetOptions{})
-		return err == nil && strings.Contains(configMap.Data["config.json"], `"recordsPerSecond":50`), nil
+		if err != nil || !strings.Contains(configMap.Data["config.json"], `"recordsPerSecond":50`) {
+			return false, nil
+		}
+		configResourceVersion = configMap.ResourceVersion
+		return true, nil
 	})
 	framework.ExpectNoError(err)
 
@@ -1235,6 +1240,7 @@ func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.
 		currentUIDs = append(currentUIDs, string(pod.UID))
 	}
 	framework.ExpectConsistOf(currentUIDs, originalUIDs)
+	framework.ExpectNoError(triggerVpcEgressObserverConfigRefresh(f, currentPods.Items, configResourceVersion))
 	lastReloads := make(map[string]float64, len(currentPods.Items))
 	err = wait.PollUntilContextTimeout(context.Background(), time.Second, 3*time.Minute, false, func(context.Context) (bool, error) {
 		for _, currentPod := range currentPods.Items {
@@ -1259,6 +1265,11 @@ func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.
 	})
 	if err != nil {
 		framework.Logf("observer config reload counts before patch: %v; last observed: %v", initialReloads, lastReloads)
+		for _, pod := range currentPods.Items {
+			stdout, stderr, execErr := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "cat", "/etc/kube-ovn-observer/config.json")
+			framework.Logf("mounted observer config from pod %s (error=%v, stderr=%q):\n%s", pod.Name, execErr, stderr, stdout)
+			logVpcEgressObserverDiagnostics(f, pod)
+		}
 	}
 	framework.ExpectNoError(err, "all observability sidecars to apply the hot-reloaded configuration")
 
@@ -1274,6 +1285,28 @@ func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.
 	_ = waitVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
 	updatedVeg := f.VpcEgressGatewayClient().Get(veg.Name)
 	framework.ExpectTrue(updatedVeg.Ready())
+}
+
+func triggerVpcEgressObserverConfigRefresh(f *framework.Framework, pods []corev1.Pod, resourceVersion string) error {
+	const annotation = "e2e.kube-ovn.io/observability-config-version"
+	for _, pod := range pods {
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			current, err := f.ClientSet.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if current.Annotations == nil {
+				current.Annotations = make(map[string]string, 1)
+			}
+			// Updating Pod metadata asks kubelet to refresh projected ConfigMaps immediately without replacing the Pod.
+			current.Annotations[annotation] = resourceVersion
+			_, err = f.ClientSet.CoreV1().Pods(pod.Namespace).Update(context.Background(), current, metav1.UpdateOptions{})
+			return err
+		}); err != nil {
+			return fmt.Errorf("trigger observer config refresh for pod %s/%s: %w", pod.Namespace, pod.Name, err)
+		}
+	}
+	return nil
 }
 
 func waitVpcEgressObserverReloadCounts(f *framework.Framework, pods []corev1.Pod) map[string]float64 {
