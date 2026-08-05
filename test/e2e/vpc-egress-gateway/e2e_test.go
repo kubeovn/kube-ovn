@@ -415,12 +415,13 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		validateVegTestSNATAccess(f, veg, nadName, snatSubnetName, snatLabelValue, workloadPods, intIPs)
 		validateVpcEgressObservability(f, veg, workloadPods, interfaceBytes)
 
+		reloadCounts := waitVpcEgressObserverReloadCounts(f, workloadPods)
 		original := veg.DeepCopy()
 		modified := veg.DeepCopy()
 		modified.Spec.Observability.Conntrack.Log.Events = []string{apiv1.ObservabilityEventEnd}
 		modified.Spec.Observability.Conntrack.Log.RateLimit.RecordsPerSecond = 50
 		veg = f.VpcEgressGatewayClient().PatchSync(original, modified)
-		validateVpcEgressObservabilityHotReload(f, veg, workloadPods)
+		validateVpcEgressObservabilityHotReload(f, veg, workloadPods, reloadCounts)
 	})
 
 	framework.ConformanceIt("should allow preferred pod anti-affinity", func() {
@@ -1212,7 +1213,7 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 	}
 }
 
-func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.VpcEgressGateway, originalPods []corev1.Pod) {
+func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.VpcEgressGateway, originalPods []corev1.Pod, initialReloads map[string]float64) {
 	ginkgo.GinkgoHelper()
 	resourceName := util.NormalizeLabelValue("vpc-egress-" + strings.ReplaceAll(veg.Spec.Prefix+veg.Name+"-observability", ".", "-"))
 	err := wait.PollUntilContextTimeout(context.Background(), time.Second, 30*time.Second, false, func(ctx context.Context) (bool, error) {
@@ -1234,8 +1235,13 @@ func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.
 		currentUIDs = append(currentUIDs, string(pod.UID))
 	}
 	framework.ExpectConsistOf(currentUIDs, originalUIDs)
-	err = wait.PollUntilContextTimeout(context.Background(), time.Second, 2*time.Minute, false, func(context.Context) (bool, error) {
+	lastReloads := make(map[string]float64, len(currentPods.Items))
+	err = wait.PollUntilContextTimeout(context.Background(), time.Second, 3*time.Minute, false, func(context.Context) (bool, error) {
 		for _, currentPod := range currentPods.Items {
+			initial, ok := initialReloads[currentPod.Name]
+			if !ok {
+				return false, fmt.Errorf("missing initial config reload count for pod %s", currentPod.Name)
+			}
 			metrics, err := scrapeVpcEgressObserverMetrics(f, currentPod.Namespace, currentPod.Name)
 			if err != nil {
 				return false, nil
@@ -1244,12 +1250,16 @@ func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.
 			if err != nil {
 				return false, err
 			}
-			if !found || value < 2 {
+			lastReloads[currentPod.Name] = value
+			if !found || value <= initial {
 				return false, nil
 			}
 		}
 		return true, nil
 	})
+	if err != nil {
+		framework.Logf("observer config reload counts before patch: %v; last observed: %v", initialReloads, lastReloads)
+	}
 	framework.ExpectNoError(err, "all observability sidecars to apply the hot-reloaded configuration")
 
 	pod := currentPods.Items[0]
@@ -1264,6 +1274,31 @@ func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.
 	_ = waitVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
 	updatedVeg := f.VpcEgressGatewayClient().Get(veg.Name)
 	framework.ExpectTrue(updatedVeg.Ready())
+}
+
+func waitVpcEgressObserverReloadCounts(f *framework.Framework, pods []corev1.Pod) map[string]float64 {
+	ginkgo.GinkgoHelper()
+	counts := make(map[string]float64, len(pods))
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		clear(counts)
+		for _, pod := range pods {
+			metrics, err := scrapeVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
+			if err != nil {
+				return false, nil
+			}
+			value, found, err := observerMetricValue(metrics, "kube_ovn_vpc_egress_gateway_observability_config_reload_total", `result="success"`)
+			if err != nil {
+				return false, err
+			}
+			if !found {
+				return false, nil
+			}
+			counts[pod.Name] = value
+		}
+		return true, nil
+	})
+	framework.ExpectNoError(err, "config reload metrics to become ready on all observability sidecars")
+	return counts
 }
 
 func validateVpcEgressObserverInterfaceOnlyRSS(f *framework.Framework, pod corev1.Pod, rawConfig string) {
