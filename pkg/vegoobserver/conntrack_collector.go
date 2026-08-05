@@ -39,11 +39,23 @@ type conntrackCollector struct {
 	logQueue chan flowRecord
 	cache    map[flowKey]*cacheEntry
 	order    *list.List
+	dial     func() (conntrackConnection, error)
+}
+
+type conntrackConnection interface {
+	Close() error
+	SetReadBuffer(int) error
+	Listen(chan<- conntrack.Event, uint8, []netfilter.NetlinkGroup) (chan error, error)
+	Dump(*conntrack.DumpOptions) ([]conntrack.Flow, error)
 }
 
 func newConntrackCollector(settings func() *runtimeSettings, identity []string, metrics *observerMetrics, logQueue chan flowRecord) *conntrackCollector {
 	metrics.cacheCapacity.WithLabelValues(identity...).Set(DefaultCacheCapacity)
-	return &conntrackCollector{settings: settings, identity: identity, metrics: metrics, logQueue: logQueue, cache: make(map[flowKey]*cacheEntry, DefaultCacheCapacity), order: list.New()}
+	return &conntrackCollector{
+		settings: settings, identity: identity, metrics: metrics, logQueue: logQueue,
+		cache: make(map[flowKey]*cacheEntry, DefaultCacheCapacity), order: list.New(),
+		dial: func() (conntrackConnection, error) { return conntrack.Dial(nil) },
+	}
 }
 
 func (c *conntrackCollector) run(ctx context.Context, diagnostics io.Writer) {
@@ -68,20 +80,28 @@ func (c *conntrackCollector) run(ctx context.Context, diagnostics io.Writer) {
 }
 
 func (c *conntrackCollector) runSession(ctx context.Context) error {
-	connection, err := conntrack.Dial(nil)
+	eventConnection, err := c.dial()
 	if err != nil {
-		return fmt.Errorf("dial conntrack netlink: %w", err)
+		return fmt.Errorf("dial conntrack event netlink: %w", err)
 	}
-	defer connection.Close()
-	_ = connection.SetReadBuffer(4 << 20)
+	defer eventConnection.Close()
+	_ = eventConnection.SetReadBuffer(4 << 20)
 	events := make(chan conntrack.Event, DefaultEventBuffer)
-	errorsChannel, err := connection.Listen(events, 2, netfilter.GroupsCT)
+	errorsChannel, err := eventConnection.Listen(events, 2, netfilter.GroupsCT)
 	if err != nil {
 		return fmt.Errorf("subscribe to conntrack events: %w", err)
 	}
-	flows, err := connection.Dump(nil)
+	dumpConnection, err := c.dial()
 	if err != nil {
-		return fmt.Errorf("dump conntrack table: %w", err)
+		return fmt.Errorf("dial conntrack dump netlink: %w", err)
+	}
+	flows, dumpErr := dumpConnection.Dump(nil)
+	closeErr := dumpConnection.Close()
+	if dumpErr != nil {
+		return fmt.Errorf("dump conntrack table: %w", dumpErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close conntrack dump netlink: %w", closeErr)
 	}
 	c.initialize(flows)
 	initialMetricsEnabled := c.settings().config.Observability.Conntrack.Metrics.Enabled
