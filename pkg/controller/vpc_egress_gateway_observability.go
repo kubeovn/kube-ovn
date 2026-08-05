@@ -291,8 +291,8 @@ func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *
 		Ports:         []corev1.ContainerPort{{Name: "metrics", ContainerPort: vpcEgressObserverPort}},
 		LivenessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstrFromInt32(vpcEgressObserverPort)}}, PeriodSeconds: 10, FailureThreshold: 3},
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot: ptr.To(true), RunAsUser: ptr.To[int64](65534), RunAsGroup: ptr.To[int64](65534),
-			AllowPrivilegeEscalation: ptr.To(false), ReadOnlyRootFilesystem: ptr.To(true),
+			RunAsNonRoot: new(true), RunAsUser: ptr.To[int64](65534), RunAsGroup: ptr.To[int64](65534),
+			AllowPrivilegeEscalation: new(false), ReadOnlyRootFilesystem: new(true),
 			Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"NET_ADMIN"}},
 		},
 		VolumeMounts: []corev1.VolumeMount{
