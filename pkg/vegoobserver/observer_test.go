@@ -1,6 +1,8 @@
 package vegoobserver
 
 import (
+	"context"
+	"errors"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -11,10 +13,62 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/ti-mo/conntrack"
+	"github.com/ti-mo/netfilter"
 	"golang.org/x/sys/unix"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
+
+type fakeConntrackConnection struct {
+	listened        bool
+	dumped          bool
+	cancelAfterDump context.CancelFunc
+}
+
+func (c *fakeConntrackConnection) Close() error { return nil }
+
+func (c *fakeConntrackConnection) SetReadBuffer(int) error { return nil }
+
+func (c *fakeConntrackConnection) Listen(_ chan<- conntrack.Event, _ uint8, _ []netfilter.NetlinkGroup) (chan error, error) {
+	c.listened = true
+	return make(chan error), nil
+}
+
+func (c *fakeConntrackConnection) Dump(*conntrack.DumpOptions) ([]conntrack.Flow, error) {
+	c.dumped = true
+	if c.listened {
+		return nil, errors.New("cannot dump using the event connection")
+	}
+	if c.cancelAfterDump != nil {
+		c.cancelAfterDump()
+	}
+	return nil, nil
+}
+
+func TestConntrackCollectorUsesSeparateEventAndDumpConnections(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	eventConnection := &fakeConntrackConnection{}
+	dumpConnection := &fakeConntrackConnection{cancelAfterDump: cancel}
+	connections := []conntrackConnection{eventConnection, dumpConnection}
+	dialIndex := 0
+
+	settings := &runtimeSettings{config: Config{Observability: apiv1.VpcEgressGatewayObservability{Conntrack: apiv1.VpcEgressGatewayConntrackObservability{Metrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true}}}}}
+	collector := newConntrackCollector(func() *runtimeSettings { return settings }, []string{"ns", "gateway", "pod", "node"}, newObserverMetrics(), make(chan flowRecord, 1))
+	collector.dial = func() (conntrackConnection, error) {
+		if dialIndex >= len(connections) {
+			return nil, errors.New("unexpected conntrack dial")
+		}
+		connection := connections[dialIndex]
+		dialIndex++
+		return connection, nil
+	}
+	require.NoError(t, collector.runSession(ctx))
+	require.Equal(t, 2, dialIndex)
+	require.True(t, eventConnection.listened)
+	require.False(t, eventConnection.dumped)
+	require.False(t, dumpConnection.listened)
+	require.True(t, dumpConnection.dumped)
+}
 
 func TestRecordFromFlowPreservesNATIdentityAndAccountingAvailability(t *testing.T) {
 	flow := conntrack.NewFlow(unix.IPPROTO_TCP, 0, netip.MustParseAddr("10.0.0.2"), netip.MustParseAddr("192.0.2.10"), 12345, 443, 30, 0)
