@@ -76,18 +76,23 @@ func TestReconcileVpcEgressGatewayObservabilityCreatesPerGatewayResources(t *tes
 	require.True(t, state.enabled)
 	configMap, err := kubeClient.CoreV1().ConfigMaps("ns").Get(context.Background(), state.configName, metav1.GetOptions{})
 	require.NoError(t, err)
+	require.True(t, metav1.IsControlledBy(configMap, gw))
 	require.Contains(t, configMap.Data["config.json"], `"externalNetwork":"ns/external"`)
 	service, err := kubeClient.CoreV1().Services("ns").Get(context.Background(), state.configName, metav1.GetOptions{})
 	require.NoError(t, err)
+	require.True(t, metav1.IsControlledBy(service, gw))
 	require.Equal(t, corev1.ClusterIPNone, service.Spec.ClusterIP)
 	require.True(t, service.Spec.PublishNotReadyAddresses)
 	require.Equal(t, int32(10666), service.Spec.Ports[0].TargetPort.IntVal)
 	serviceMonitor, err := dynamicClient.Resource(serviceMonitorGVR).Namespace("ns").Get(context.Background(), state.configName, metav1.GetOptions{})
 	require.NoError(t, err)
+	require.True(t, metav1.IsControlledBy(serviceMonitor, gw))
 	require.Equal(t, "network", serviceMonitor.GetLabels()["team"])
 	require.Equal(t, labels["app"], serviceMonitor.GetLabels()["app"])
 	require.Equal(t, corev1.ConditionTrue, gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured).Status)
 	require.Equal(t, corev1.ConditionTrue, gw.Status.Conditions.GetCondition(kubeovnv1.ServiceMonitorReady).Status)
+	state = controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
+	require.True(t, state.enabled)
 }
 
 func TestReconcileVpcEgressGatewayObservabilityDoesNotInjectWhenSidecarsUnsupported(t *testing.T) {
