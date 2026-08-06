@@ -61,6 +61,7 @@ func TestGenGatewayBFDDContainer(t *testing.T) {
 	assert.Equal(t, []string{"bfdd-control", "status"}, container.ReadinessProbe.Exec.Command)
 	assert.Equal(t, int32(3), container.ReadinessProbe.InitialDelaySeconds)
 	assert.Equal(t, int32(3), container.ReadinessProbe.PeriodSeconds)
+	assert.Equal(t, int32(10), container.ReadinessProbe.TimeoutSeconds, "readiness probe must allow bfdd-control enough time to respond")
 	assert.Equal(t, int32(1), container.ReadinessProbe.FailureThreshold)
 
 	assert.Equal(t, gwBFDDResourceCPU, container.Resources.Requests[corev1.ResourceCPU])
@@ -69,6 +70,35 @@ func TestGenGatewayBFDDContainer(t *testing.T) {
 
 	assert.False(t, *container.SecurityContext.Privileged)
 	assert.Equal(t, int64(65534), *container.SecurityContext.RunAsUser)
+}
+
+func TestOpenBFDDControlReplyPatch(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current filename")
+	}
+	imagesDir := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images")
+
+	startScript, err := os.ReadFile(filepath.Join(imagesDir, "start-bfdd.sh"))
+	if assert.NoError(t, err) {
+		assert.NotContains(t, string(startScript), "trap '' PIPE", "SIGPIPE handling must be limited to OpenBFDD control replies")
+	}
+
+	patchName := "OpenBFDD-control-no-sigpipe.patch"
+	patchContent, err := os.ReadFile(filepath.Join(imagesDir, patchName))
+	if assert.NoError(t, err) {
+		assert.Contains(t, string(patchContent), "m_replySocket.Send(reply, length, MSG_NOSIGNAL)")
+		assert.Contains(t, string(patchContent), "m_replyFailed")
+	}
+
+	dockerfile, err := os.ReadFile(filepath.Join(imagesDir, "Dockerfile.base"))
+	if assert.NoError(t, err) {
+		assert.Contains(t, string(dockerfile), "git apply /usr/src/OpenBFDD-compile.patch")
+		assert.NotContains(t, string(dockerfile), "git apply --no-apply /usr/src/OpenBFDD-compile.patch")
+		assert.Contains(t, string(dockerfile), "ADD "+patchName+" /usr/src/")
+		assert.Contains(t, string(dockerfile), "git apply /usr/src/"+patchName)
+		assert.NotContains(t, string(dockerfile), "git apply --no-apply /usr/src/"+patchName)
+	}
 }
 
 func TestBFDDHealthcheck(t *testing.T) {
