@@ -24,7 +24,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/kubeovn/kube-ovn/pkg/vegoobserver"
+	"github.com/kubeovn/kube-ovn/pkg/vegobserver"
 )
 
 const (
@@ -166,7 +166,7 @@ func (c *Controller) reconcileVpcEgressGatewayObservability(gw *kubeovnv1.VpcEgr
 		gw.Status.Conditions.RemoveCondition(kubeovnv1.ServiceMonitorReady)
 	}
 
-	observerConfig := vegoobserver.Config{Namespace: gw.Namespace, Name: gw.Name, ExternalNetwork: externalNetwork, Observability: *gw.Spec.Observability.DeepCopy()}
+	observerConfig := vegobserver.Config{Namespace: gw.Namespace, Name: gw.Name, ExternalNetwork: externalNetwork, Observability: *gw.Spec.Observability.DeepCopy()}
 	data, err := json.Marshal(observerConfig)
 	if err != nil {
 		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, "InvalidConfiguration", err.Error())
