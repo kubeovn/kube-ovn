@@ -72,7 +72,7 @@ func TestGenGatewayBFDDContainer(t *testing.T) {
 	assert.Equal(t, int64(65534), *container.SecurityContext.RunAsUser)
 }
 
-func TestOpenBFDDControlReplyPatch(t *testing.T) {
+func TestOpenBFDDControlHardeningPatch(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("failed to get current filename")
@@ -84,11 +84,20 @@ func TestOpenBFDDControlReplyPatch(t *testing.T) {
 		assert.NotContains(t, string(startScript), "trap '' PIPE", "SIGPIPE handling must be limited to OpenBFDD control replies")
 	}
 
-	patchName := "OpenBFDD-control-no-sigpipe.patch"
+	patchName := "OpenBFDD-control-hardening.patch"
 	patchContent, err := os.ReadFile(filepath.Join(imagesDir, patchName))
 	if assert.NoError(t, err) {
-		assert.Contains(t, string(patchContent), "m_replySocket.Send(reply, length, MSG_NOSIGNAL)")
+		assert.Contains(t, string(patchContent), "ControlCommandTimeoutMs = 500")
+		assert.Contains(t, string(patchContent), "ControlRequestTimeoutMs = 5000")
+		assert.Contains(t, string(patchContent), "connectedSocket.SetBlocking(false)")
+		assert.Contains(t, string(patchContent), "m_replySocket.SendStream")
+		assert.Contains(t, string(patchContent), "MSG_DONTWAIT | MSG_NOSIGNAL")
 		assert.Contains(t, string(patchContent), "m_replyFailed")
+		assert.Contains(t, string(patchContent), "m_operations.pop_back()")
+		assert.Contains(t, string(patchContent), "waitCondition(NULL)")
+		assert.Contains(t, string(patchContent), "TimeSpec::MonoNow() >= m_requestDeadline")
+		assert.Contains(t, string(patchContent), "TimeSpec::MonoNow() >= deadline")
+		assert.Contains(t, string(patchContent), "Slow or failed control request")
 	}
 
 	dockerfile, err := os.ReadFile(filepath.Join(imagesDir, "Dockerfile.base"))
@@ -96,7 +105,7 @@ func TestOpenBFDDControlReplyPatch(t *testing.T) {
 		assert.Contains(t, string(dockerfile), "git apply /usr/src/OpenBFDD-compile.patch")
 		assert.NotContains(t, string(dockerfile), "git apply --no-apply /usr/src/OpenBFDD-compile.patch")
 		assert.Contains(t, string(dockerfile), "ADD "+patchName+" /usr/src/")
-		assert.Contains(t, string(dockerfile), "git apply /usr/src/"+patchName)
+		assert.Contains(t, string(dockerfile), "git apply --unidiff-zero /usr/src/"+patchName)
 		assert.NotContains(t, string(dockerfile), "git apply --no-apply /usr/src/"+patchName)
 	}
 }
