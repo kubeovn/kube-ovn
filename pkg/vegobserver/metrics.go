@@ -1,4 +1,4 @@
-package vegoobserver
+package vegobserver
 
 import "github.com/prometheus/client_golang/prometheus"
 

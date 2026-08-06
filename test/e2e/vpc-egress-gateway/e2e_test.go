@@ -43,7 +43,7 @@ import (
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/kubeovn/kube-ovn/pkg/vegoobserver"
+	"github.com/kubeovn/kube-ovn/pkg/vegobserver"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
@@ -1372,7 +1372,7 @@ func waitVpcEgressObserverReloadCounts(f *framework.Framework, pods []corev1.Pod
 
 func validateVpcEgressObserverInterfaceOnlyRSS(f *framework.Framework, pod corev1.Pod, rawConfig string) {
 	ginkgo.GinkgoHelper()
-	var config vegoobserver.Config
+	var config vegobserver.Config
 	framework.ExpectNoError(json.Unmarshal([]byte(rawConfig), &config))
 	config.Observability.Conntrack = apiv1.VpcEgressGatewayConntrackObservability{}
 	config.Observability.InterfaceMetrics.Enabled = true
