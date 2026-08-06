@@ -1,12 +1,16 @@
 package ovn_leader_checker
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
 
 const (
@@ -15,6 +19,121 @@ const (
 	zeroClusterID  = "00000000-0000-0000-0000-000000000000"
 	otherClusterID = "d401ddf6-deac-4e26-aeb5-cc4ce07f6515"
 )
+
+func TestObserveDuplicateLeaderRequiresConsecutiveObservations(t *testing.T) {
+	cfg := &Configuration{}
+
+	for i := 1; i < maxDuplicateLeaderObservations; i++ {
+		count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, true)
+		if confirmed {
+			t.Fatalf("duplicate leader confirmed after only %d observations", i)
+		}
+		if count != i {
+			t.Fatalf("unexpected duplicate leader observation count: got %d, want %d", count, i)
+		}
+	}
+
+	count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, false)
+	if confirmed || count != 0 {
+		t.Fatalf("normal leader observation did not reset state: count = %d, confirmed = %t", count, confirmed)
+	}
+
+	for i := 1; i <= maxDuplicateLeaderObservations; i++ {
+		count, confirmed = cfg.observeDuplicateLeader(ovnnb.DatabaseName, true)
+		if count != i {
+			t.Fatalf("unexpected duplicate leader observation count after reset: got %d, want %d", count, i)
+		}
+		if confirmed != (i == maxDuplicateLeaderObservations) {
+			t.Fatalf("confirmation after observation %d: got %t, want %t", i, confirmed, i == maxDuplicateLeaderObservations)
+		}
+	}
+}
+
+func TestCheckDuplicateDBLeaderPreservesObservationsOnUnknownResult(t *testing.T) {
+	queryErr := errors.New("leader query failed")
+	tests := []struct {
+		name            string
+		localLeader     bool
+		localQueryErr   error
+		remoteAddresses []string
+		queryLeader     dbLeaderQueryFunc
+	}{
+		{
+			name:          "local query failure",
+			localQueryErr: queryErr,
+		},
+		{
+			name:            "remote query failure",
+			localLeader:     true,
+			remoteAddresses: []string{"10.0.0.2"},
+			queryLeader: func(_, _ string) (bool, error) {
+				return false, queryErr
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Configuration{
+				remoteAddresses: tt.remoteAddresses,
+				duplicateLeaderObservations: map[string]int{
+					ovnnb.DatabaseName: 2,
+				},
+			}
+
+			checkDuplicateDBLeader(cfg, tt.localLeader, tt.localQueryErr, "ovn-nb", ovnnb.DatabaseName, tt.queryLeader)
+
+			if got := cfg.duplicateLeaderObservations[ovnnb.DatabaseName]; got != 2 {
+				t.Fatalf("unknown leader result changed observation count: got %d, want 2", got)
+			}
+			if count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, true); count != 3 || !confirmed {
+				t.Fatalf("duplicate observation after unknown result was not confirmed: count = %d, confirmed = %t", count, confirmed)
+			}
+		})
+	}
+}
+
+func TestCheckDuplicateDBLeaderResetsOnlyConfirmedNormalObservation(t *testing.T) {
+	tests := []struct {
+		name            string
+		localLeader     bool
+		remoteAddresses []string
+		queryLeader     dbLeaderQueryFunc
+	}{
+		{
+			name: "local server is not leader",
+		},
+		{
+			name:            "all remote servers are not leaders",
+			localLeader:     true,
+			remoteAddresses: []string{"10.0.0.2", "10.0.0.3"},
+			queryLeader: func(_, _ string) (bool, error) {
+				return false, nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Configuration{
+				remoteAddresses: tt.remoteAddresses,
+				duplicateLeaderObservations: map[string]int{
+					ovnnb.DatabaseName: 2,
+					ovnsb.DatabaseName: 1,
+				},
+			}
+
+			checkDuplicateDBLeader(cfg, tt.localLeader, nil, "ovn-nb", ovnnb.DatabaseName, tt.queryLeader)
+
+			if _, ok := cfg.duplicateLeaderObservations[ovnnb.DatabaseName]; ok {
+				t.Fatal("confirmed normal observation did not reset the database count")
+			}
+			if got := cfg.duplicateLeaderObservations[ovnsb.DatabaseName]; got != 1 {
+				t.Fatalf("reset changed another database count: got %d, want 1", got)
+			}
+		})
+	}
+}
 
 func TestBackupRaftHeaderDoesNotReplaceValidHeaderWithZeroClusterID(t *testing.T) {
 	dbDir := t.TempDir()
