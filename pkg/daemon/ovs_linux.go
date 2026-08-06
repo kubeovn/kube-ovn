@@ -1294,6 +1294,11 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 			klog.Error(err)
 			return fmt.Errorf("can not add address %s to nic %s: %w", addr, link, err)
 		}
+		if addr.IP.To4() == nil && !addr.IP.IsLinkLocalUnicast() {
+			if err := util.AnnounceNDPAddress(link, addr.IP.String(), macAddr, 1, time.Second); err != nil {
+				klog.Warningf("failed to send unsolicited neighbor advertisement: %v", err)
+			}
+		}
 	}
 
 	if setUfoOff {
