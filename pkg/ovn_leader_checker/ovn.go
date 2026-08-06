@@ -62,7 +62,7 @@ type Configuration struct {
 	duplicateLeaderObservations map[string]int
 }
 
-func (c *Configuration) observeDuplicateLeader(database string, duplicate bool, requiredObservations int) (int, bool) {
+func (c *Configuration) observeDuplicateLeader(database string, duplicate bool) (int, bool) {
 	if !duplicate {
 		delete(c.duplicateLeaderObservations, database)
 		return 0, false
@@ -73,7 +73,7 @@ func (c *Configuration) observeDuplicateLeader(database string, duplicate bool, 
 
 	c.duplicateLeaderObservations[database]++
 	count := c.duplicateLeaderObservations[database]
-	return count, count >= requiredObservations
+	return count, count >= maxDuplicateLeaderObservations
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -467,7 +467,6 @@ func checkDuplicateDBLeader(
 	localLeader bool,
 	localQueryErr error,
 	component, database string,
-	requiredObservations int,
 	queryLeader dbLeaderQueryFunc,
 ) {
 	if localQueryErr != nil {
@@ -475,7 +474,7 @@ func checkDuplicateDBLeader(
 		return
 	}
 	if !localLeader {
-		cfg.observeDuplicateLeader(database, false, requiredObservations)
+		cfg.observeDuplicateLeader(database, false)
 		return
 	}
 
@@ -496,20 +495,66 @@ func checkDuplicateDBLeader(
 
 	if remoteLeader == "" {
 		if !remoteQueryFailed {
-			cfg.observeDuplicateLeader(database, false, requiredObservations)
+			cfg.observeDuplicateLeader(database, false)
 		}
 		return
 	}
 
-	count, confirmed := cfg.observeDuplicateLeader(database, true, requiredObservations)
+	count, confirmed := cfg.observeDuplicateLeader(database, true)
 	if !confirmed {
 		klog.Warningf("found another %s leader at %s (%d/%d consecutive observations), waiting for raft convergence",
-			component, remoteLeader, count, requiredObservations)
+			component, remoteLeader, count, maxDuplicateLeaderObservations)
 		return
 	}
 
 	klog.Fatalf("found another %s leader at %s for %d consecutive observations, exiting process to restart",
 		component, remoteLeader, count)
+}
+
+func doICDBLeaderCheck(cfg *Configuration, podName, podNamespace string) {
+	icNbLeader, icNbLeaderErr := isDBLeader(cfg.localAddress, util.DatabaseICNB)
+	icSbLeader, icSbLeaderErr := isDBLeader(cfg.localAddress, util.DatabaseICSB)
+	if icNbLeaderErr != nil {
+		klog.Error(icNbLeaderErr)
+	}
+	if icSbLeaderErr != nil {
+		klog.Error(icSbLeaderErr)
+	}
+
+	patch := util.KVPatch{
+		"ovn-ic-nb-leader": strconv.FormatBool(icNbLeader),
+		"ovn-ic-sb-leader": strconv.FormatBool(icSbLeader),
+	}
+	if err := util.PatchLabels(cfg.KubeClient.CoreV1().Pods(podNamespace), podName, patch); err != nil {
+		klog.Errorf("failed to patch labels for pod %s/%s: %v", podNamespace, podName, err)
+		return
+	}
+
+	if icNbLeader {
+		if err := updateTS(); err != nil {
+			klog.Errorf("update ts num failed err: %v", err)
+			return
+		}
+	}
+
+	for addr := range slices.Values(cfg.remoteAddresses) {
+		if icNbLeader {
+			remoteLeader, err := isDBLeader(addr, util.DatabaseICNB)
+			if err != nil {
+				klog.Error(err)
+			} else if remoteLeader {
+				klog.Fatalf("found another ovn-ic-nb leader at %s, exiting process to restart", addr)
+			}
+		}
+		if icSbLeader {
+			remoteLeader, err := isDBLeader(addr, util.DatabaseICSB)
+			if err != nil {
+				klog.Error(err)
+			} else if remoteLeader {
+				klog.Fatalf("found another ovn-ic-sb leader at %s, exiting process to restart", addr)
+			}
+		}
+	}
 }
 
 func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
@@ -558,8 +603,8 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 
 		nbLeader, nbLeaderErr := isDBLeader(cfg.localAddress, ovnnb.DatabaseName)
 		sbLeader, sbLeaderErr := isDBLeader(cfg.localAddress, ovnsb.DatabaseName)
-		checkDuplicateDBLeader(cfg, nbLeader, nbLeaderErr, "ovn-nb", ovnnb.DatabaseName, maxDuplicateLeaderObservations, isDBLeader)
-		checkDuplicateDBLeader(cfg, sbLeader, sbLeaderErr, "ovn-sb", ovnsb.DatabaseName, maxDuplicateLeaderObservations, isDBLeader)
+		checkDuplicateDBLeader(cfg, nbLeader, nbLeaderErr, "ovn-nb", ovnnb.DatabaseName, isDBLeader)
+		checkDuplicateDBLeader(cfg, sbLeader, sbLeaderErr, "ovn-sb", ovnsb.DatabaseName, isDBLeader)
 
 		northdActive := checkNorthdActive()
 		patch := util.KVPatch{
@@ -586,37 +631,7 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 		backupRaftHeader("nb")
 		backupRaftHeader("sb")
 	} else {
-		icNbLeader, icNbLeaderErr := isDBLeader(cfg.localAddress, util.DatabaseICNB)
-		icSbLeader, icSbLeaderErr := isDBLeader(cfg.localAddress, util.DatabaseICSB)
-		if icNbLeaderErr != nil {
-			klog.Error(icNbLeaderErr)
-		}
-		if icSbLeaderErr != nil {
-			klog.Error(icSbLeaderErr)
-		}
-
-		patch := util.KVPatch{
-			"ovn-ic-nb-leader": strconv.FormatBool(icNbLeader),
-			"ovn-ic-sb-leader": strconv.FormatBool(icSbLeader),
-		}
-		if err := util.PatchLabels(cfg.KubeClient.CoreV1().Pods(podNamespace), podName, patch); err != nil {
-			klog.Errorf("failed to patch labels for pod %s/%s: %v", podNamespace, podName, err)
-			return
-		}
-
-		if icNbLeader {
-			if err := updateTS(); err != nil {
-				klog.Errorf("update ts num failed err: %v", err)
-				return
-			}
-		}
-
-		if icNbLeaderErr == nil {
-			checkDuplicateDBLeader(cfg, icNbLeader, nil, "ovn-ic-nb", util.DatabaseICNB, 1, isDBLeader)
-		}
-		if icSbLeaderErr == nil {
-			checkDuplicateDBLeader(cfg, icSbLeader, nil, "ovn-ic-sb", util.DatabaseICSB, 1, isDBLeader)
-		}
+		doICDBLeaderCheck(cfg, podName, podNamespace)
 	}
 }
 
