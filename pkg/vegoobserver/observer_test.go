@@ -28,6 +28,7 @@ import (
 type fakeConntrackConnection struct {
 	listened        bool
 	dumped          bool
+	listenWorkers   uint8
 	cancelAfterDump context.CancelFunc
 }
 
@@ -35,8 +36,9 @@ func (c *fakeConntrackConnection) Close() error { return nil }
 
 func (c *fakeConntrackConnection) SetReadBuffer(int) error { return nil }
 
-func (c *fakeConntrackConnection) Listen(_ chan<- conntrack.Event, _ uint8, _ []netfilter.NetlinkGroup) (chan error, error) {
+func (c *fakeConntrackConnection) Listen(_ chan<- conntrack.Event, workers uint8, _ []netfilter.NetlinkGroup) (chan error, error) {
 	c.listened = true
+	c.listenWorkers = workers
 	return make(chan error), nil
 }
 
@@ -71,6 +73,7 @@ func TestConntrackCollectorUsesSeparateEventAndDumpConnections(t *testing.T) {
 	require.NoError(t, collector.runSession(ctx, &bytes.Buffer{}))
 	require.Equal(t, 2, dialIndex)
 	require.True(t, eventConnection.listened)
+	require.Equal(t, uint8(1), eventConnection.listenWorkers, "multiple decoder workers can reorder conntrack lifecycle events")
 	require.False(t, eventConnection.dumped)
 	require.False(t, dumpConnection.listened)
 	require.True(t, dumpConnection.dumped)
