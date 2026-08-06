@@ -24,7 +24,7 @@ func TestObserveDuplicateLeaderRequiresConsecutiveObservations(t *testing.T) {
 	cfg := &Configuration{}
 
 	for i := 1; i < maxDuplicateLeaderObservations; i++ {
-		count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, true)
+		count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, true, maxDuplicateLeaderObservations)
 		if confirmed {
 			t.Fatalf("duplicate leader confirmed after only %d observations", i)
 		}
@@ -33,19 +33,24 @@ func TestObserveDuplicateLeaderRequiresConsecutiveObservations(t *testing.T) {
 		}
 	}
 
-	count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, false)
+	count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, false, maxDuplicateLeaderObservations)
 	if confirmed || count != 0 {
 		t.Fatalf("normal leader observation did not reset state: count = %d, confirmed = %t", count, confirmed)
 	}
 
 	for i := 1; i <= maxDuplicateLeaderObservations; i++ {
-		count, confirmed = cfg.observeDuplicateLeader(ovnnb.DatabaseName, true)
+		count, confirmed = cfg.observeDuplicateLeader(ovnnb.DatabaseName, true, maxDuplicateLeaderObservations)
 		if count != i {
 			t.Fatalf("unexpected duplicate leader observation count after reset: got %d, want %d", count, i)
 		}
 		if confirmed != (i == maxDuplicateLeaderObservations) {
 			t.Fatalf("confirmation after observation %d: got %t, want %t", i, confirmed, i == maxDuplicateLeaderObservations)
 		}
+	}
+
+	count, confirmed = cfg.observeDuplicateLeader(ovnsb.DatabaseName, true, 1)
+	if count != 1 || !confirmed {
+		t.Fatalf("single required observation was not confirmed: count = %d, confirmed = %t", count, confirmed)
 	}
 }
 
@@ -81,12 +86,12 @@ func TestCheckDuplicateDBLeaderPreservesObservationsOnUnknownResult(t *testing.T
 				},
 			}
 
-			checkDuplicateDBLeader(cfg, tt.localLeader, tt.localQueryErr, "ovn-nb", ovnnb.DatabaseName, tt.queryLeader)
+			checkDuplicateDBLeader(cfg, tt.localLeader, tt.localQueryErr, "ovn-nb", ovnnb.DatabaseName, maxDuplicateLeaderObservations, tt.queryLeader)
 
 			if got := cfg.duplicateLeaderObservations[ovnnb.DatabaseName]; got != 2 {
 				t.Fatalf("unknown leader result changed observation count: got %d, want 2", got)
 			}
-			if count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, true); count != 3 || !confirmed {
+			if count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, true, maxDuplicateLeaderObservations); count != 3 || !confirmed {
 				t.Fatalf("duplicate observation after unknown result was not confirmed: count = %d, confirmed = %t", count, confirmed)
 			}
 		})
@@ -123,7 +128,7 @@ func TestCheckDuplicateDBLeaderResetsOnlyConfirmedNormalObservation(t *testing.T
 				},
 			}
 
-			checkDuplicateDBLeader(cfg, tt.localLeader, nil, "ovn-nb", ovnnb.DatabaseName, tt.queryLeader)
+			checkDuplicateDBLeader(cfg, tt.localLeader, nil, "ovn-nb", ovnnb.DatabaseName, maxDuplicateLeaderObservations, tt.queryLeader)
 
 			if _, ok := cfg.duplicateLeaderObservations[ovnnb.DatabaseName]; ok {
 				t.Fatal("confirmed normal observation did not reset the database count")
