@@ -87,8 +87,7 @@ func TestReconcileVpcEgressGatewayObservabilityCreatesPerGatewayResources(t *tes
 		config:                           &Configuration{KubeClient: kubeClient, DynamicClient: dynamicClient},
 		addOrUpdateVpcEgressGatewayQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
 	}
-	controller.restartableInitContainersChecked = true
-	controller.restartableInitContainers = true
+	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
 	gw := &kubeovnv1.VpcEgressGateway{
 		TypeMeta:   metav1.TypeMeta{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway"},
 		ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1},
@@ -126,9 +125,11 @@ func TestReconcileVpcEgressGatewayObservabilityCreatesPerGatewayResources(t *tes
 
 func TestReconcileVpcEgressGatewayObservabilityDoesNotInjectWhenSidecarsUnsupported(t *testing.T) {
 	controller := &Controller{config: &Configuration{KubeClient: k8sfake.NewSimpleClientset()}}
-	controller.restartableInitContainersChecked = true
-	controller.restartableInitContainersReason = "UnsupportedKubernetesVersion"
-	controller.restartableInitContainersMessage = "restartable init containers require Kubernetes 1.29 or later"
+	controller.restartableInitContainerSupport = restartableInitContainerSupport{
+		capability: restartableInitContainerCapabilityUnsupported,
+		reason:     "UnsupportedKubernetesVersion",
+		message:    "restartable init containers require Kubernetes 1.29 or later",
+	}
 	gw := &kubeovnv1.VpcEgressGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "ns", Generation: 1}, Spec: kubeovnv1.VpcEgressGatewaySpec{
 		Observability: &kubeovnv1.VpcEgressGatewayObservability{Conntrack: kubeovnv1.VpcEgressGatewayConntrackObservability{Log: kubeovnv1.VpcEgressGatewayConntrackLog{Enabled: true}}},
 	}}
@@ -150,8 +151,7 @@ func TestReconcileVpcEgressGatewayObservabilitySoftFailsWithoutServiceMonitorCRD
 		config:                           &Configuration{KubeClient: kubeClient, DynamicClient: dynamicClient},
 		addOrUpdateVpcEgressGatewayQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
 	}
-	controller.restartableInitContainersChecked = true
-	controller.restartableInitContainers = true
+	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
 	gw := &kubeovnv1.VpcEgressGateway{
 		TypeMeta:   metav1.TypeMeta{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway"},
 		ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1},
@@ -192,7 +192,7 @@ func TestReconcileVpcEgressGatewayObservabilityPreservesExistingObserverOnCapabi
 		return true, nil, errors.New("transient capability probe failure")
 	})
 	controller := observabilityTestController(t, kubeClient, gw)
-	controller.restartableInitContainersChecked = false
+	controller.restartableInitContainerSupport = restartableInitContainerSupport{}
 
 	state := controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", vegWorkloadLabels(gw.Name))
 
@@ -271,8 +271,7 @@ func observabilityTestController(t *testing.T, kubeClient *k8sfake.Clientset, gw
 		deploymentsLister:                appslisters.NewDeploymentLister(indexer),
 		addOrUpdateVpcEgressGatewayQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
 	}
-	controller.restartableInitContainersChecked = true
-	controller.restartableInitContainers = true
+	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
 	return controller
 }
 
@@ -281,12 +280,12 @@ func TestSupportsRestartableInitContainersProbesFeatureGate(t *testing.T) {
 	kubeClient.Discovery().(*fakediscovery.FakeDiscovery).FakedServerVersion = &version.Info{GitVersion: "v1.29.0"}
 	controller := &Controller{config: &Configuration{KubeClient: kubeClient, PodNamespace: "kube-system"}}
 
-	supported, definitive, reason, message := controller.supportsRestartableInitContainers()
-	require.True(t, supported)
-	require.True(t, definitive)
-	require.Empty(t, reason)
-	require.Empty(t, message)
-	require.True(t, controller.restartableInitContainersChecked)
+	support := controller.supportsRestartableInitContainers()
+	require.True(t, support.supported())
+	require.True(t, support.definitive())
+	require.Empty(t, support.reason)
+	require.Empty(t, support.message)
+	require.Equal(t, restartableInitContainerCapabilitySupported, controller.restartableInitContainerSupport.capability)
 	require.Len(t, kubeClient.Actions(), 2)
 }
 
@@ -300,11 +299,11 @@ func TestSupportsRestartableInitContainersDetectsDroppedPolicy(t *testing.T) {
 	})
 	controller := &Controller{config: &Configuration{KubeClient: kubeClient, PodNamespace: "kube-system"}}
 
-	supported, definitive, reason, message := controller.supportsRestartableInitContainers()
-	require.False(t, supported)
-	require.True(t, definitive)
-	require.Equal(t, "SidecarContainersDisabled", reason)
-	require.Contains(t, message, "SidecarContainers")
+	support := controller.supportsRestartableInitContainers()
+	require.False(t, support.supported())
+	require.True(t, support.definitive())
+	require.Equal(t, "SidecarContainersDisabled", support.reason)
+	require.Contains(t, support.message, "SidecarContainers")
 }
 
 func TestSupportsRestartableInitContainersRetriesUnknownCapability(t *testing.T) {
@@ -320,17 +319,17 @@ func TestSupportsRestartableInitContainersRetriesUnknownCapability(t *testing.T)
 	})
 	controller := &Controller{config: &Configuration{KubeClient: kubeClient, PodNamespace: "kube-system"}}
 
-	supported, definitive, reason, message := controller.supportsRestartableInitContainers()
-	require.False(t, supported)
-	require.False(t, definitive)
-	require.Equal(t, "SidecarContainersCapabilityUnknown", reason)
-	require.Contains(t, message, "transient admission failure")
-	require.False(t, controller.restartableInitContainersChecked)
+	support := controller.supportsRestartableInitContainers()
+	require.False(t, support.supported())
+	require.False(t, support.definitive())
+	require.Equal(t, "SidecarContainersCapabilityUnknown", support.reason)
+	require.Contains(t, support.message, "transient admission failure")
+	require.Equal(t, restartableInitContainerCapabilityUnknown, controller.restartableInitContainerSupport.capability)
 
-	supported, definitive, reason, message = controller.supportsRestartableInitContainers()
-	require.True(t, supported)
-	require.True(t, definitive)
-	require.Empty(t, reason)
-	require.Empty(t, message)
+	support = controller.supportsRestartableInitContainers()
+	require.True(t, support.supported())
+	require.True(t, support.definitive())
+	require.Empty(t, support.reason)
+	require.Empty(t, support.message)
 	require.Equal(t, 2, createAttempts)
 }

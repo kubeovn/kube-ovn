@@ -38,6 +38,28 @@ const (
 
 var serviceMonitorGVR = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors"}
 
+type restartableInitContainerCapability uint8
+
+const (
+	restartableInitContainerCapabilityUnknown restartableInitContainerCapability = iota
+	restartableInitContainerCapabilityUnsupported
+	restartableInitContainerCapabilitySupported
+)
+
+type restartableInitContainerSupport struct {
+	capability restartableInitContainerCapability
+	reason     string
+	message    string
+}
+
+func (s restartableInitContainerSupport) supported() bool {
+	return s.capability == restartableInitContainerCapabilitySupported
+}
+
+func (s restartableInitContainerSupport) definitive() bool {
+	return s.capability != restartableInitContainerCapabilityUnknown
+}
+
 type vpcEgressObserverState struct {
 	enabled            bool
 	configName         string
@@ -53,24 +75,28 @@ func observabilityMetricsEnabled(config *kubeovnv1.VpcEgressGatewayObservability
 	return config != nil && (config.InterfaceMetrics.Enabled || config.Conntrack.Metrics.Enabled)
 }
 
-func (c *Controller) supportsRestartableInitContainers() (supported, definitive bool, reason, message string) {
+func (c *Controller) supportsRestartableInitContainers() restartableInitContainerSupport {
 	c.restartableInitContainersMu.Lock()
 	defer c.restartableInitContainersMu.Unlock()
-	if c.restartableInitContainersChecked {
-		return c.restartableInitContainers, true, c.restartableInitContainersReason, c.restartableInitContainersMessage
+	if c.restartableInitContainerSupport.definitive() {
+		return c.restartableInitContainerSupport
 	}
 
 	serverVersion, err := c.config.KubeClient.Discovery().ServerVersion()
 	if err != nil {
-		return false, false, "KubernetesVersionUnknown", fmt.Errorf("discover Kubernetes version: %w", err).Error()
+		return restartableInitContainerSupport{reason: "KubernetesVersionUnknown", message: fmt.Errorf("discover Kubernetes version: %w", err).Error()}
 	}
 	version, err := utilversion.ParseSemantic(serverVersion.GitVersion)
 	if err != nil {
-		return false, false, "KubernetesVersionUnknown", fmt.Errorf("parse Kubernetes version %q: %w", serverVersion.GitVersion, err).Error()
+		return restartableInitContainerSupport{reason: "KubernetesVersionUnknown", message: fmt.Errorf("parse Kubernetes version %q: %w", serverVersion.GitVersion, err).Error()}
 	}
 	if !version.AtLeast(utilversion.MustParseSemantic("1.29.0")) {
-		c.cacheRestartableInitContainerSupport(false, "UnsupportedKubernetesVersion", "restartable init containers require Kubernetes 1.29 or later")
-		return false, true, c.restartableInitContainersReason, c.restartableInitContainersMessage
+		c.restartableInitContainerSupport = restartableInitContainerSupport{
+			capability: restartableInitContainerCapabilityUnsupported,
+			reason:     "UnsupportedKubernetesVersion",
+			message:    "restartable init containers require Kubernetes 1.29 or later",
+		}
+		return c.restartableInitContainerSupport
 	}
 
 	namespace := c.config.PodNamespace
@@ -97,21 +123,18 @@ func (c *Controller) supportsRestartableInitContainers() (supported, definitive 
 	}
 	created, err := c.config.KubeClient.AppsV1().Deployments(namespace).Create(context.Background(), probe, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
 	if err != nil {
-		return false, false, "SidecarContainersCapabilityUnknown", fmt.Errorf("probe restartable init container support: %w", err).Error()
+		return restartableInitContainerSupport{reason: "SidecarContainersCapabilityUnknown", message: fmt.Errorf("probe restartable init container support: %w", err).Error()}
 	}
 	if len(created.Spec.Template.Spec.InitContainers) != 1 || created.Spec.Template.Spec.InitContainers[0].RestartPolicy == nil || *created.Spec.Template.Spec.InitContainers[0].RestartPolicy != corev1.ContainerRestartPolicyAlways {
-		c.cacheRestartableInitContainerSupport(false, "SidecarContainersDisabled", "the Kubernetes API server dropped the restartable init container policy; enable the SidecarContainers feature gate")
-		return false, true, c.restartableInitContainersReason, c.restartableInitContainersMessage
+		c.restartableInitContainerSupport = restartableInitContainerSupport{
+			capability: restartableInitContainerCapabilityUnsupported,
+			reason:     "SidecarContainersDisabled",
+			message:    "the Kubernetes API server dropped the restartable init container policy; enable the SidecarContainers feature gate",
+		}
+		return c.restartableInitContainerSupport
 	}
-	c.cacheRestartableInitContainerSupport(true, "", "")
-	return true, true, "", ""
-}
-
-func (c *Controller) cacheRestartableInitContainerSupport(supported bool, reason, message string) {
-	c.restartableInitContainersChecked = true
-	c.restartableInitContainers = supported
-	c.restartableInitContainersReason = reason
-	c.restartableInitContainersMessage = message
+	c.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
+	return c.restartableInitContainerSupport
 }
 
 func (c *Controller) reconcileVpcEgressGatewayObservability(gw *kubeovnv1.VpcEgressGateway, externalNetwork string, labels map[string]string) vpcEgressObserverState {
@@ -124,15 +147,15 @@ func (c *Controller) reconcileVpcEgressGatewayObservability(gw *kubeovnv1.VpcEgr
 	}
 	preservedState := c.currentVpcEgressObserverState(gw, resourceName)
 
-	supported, definitive, reason, message := c.supportsRestartableInitContainers()
-	if !supported {
-		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, reason, message)
+	support := c.supportsRestartableInitContainers()
+	if !support.supported() {
+		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, support.reason, support.message)
 		if observabilityMetricsEnabled(gw.Spec.Observability) {
-			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ServiceMonitorReady, corev1.ConditionFalse, reason, message)
+			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ServiceMonitorReady, corev1.ConditionFalse, support.reason, support.message)
 		} else {
 			gw.Status.Conditions.RemoveCondition(kubeovnv1.ServiceMonitorReady)
 		}
-		if !definitive {
+		if !support.definitive() {
 			c.addOrUpdateVpcEgressGatewayQueue.AddAfter(fmt.Sprintf("%s/%s", gw.Namespace, gw.Name), 30*time.Second)
 			return preservedState
 		}
