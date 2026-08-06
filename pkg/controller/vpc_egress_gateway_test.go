@@ -34,6 +34,33 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	require.Equal(t, []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"}, container.LivenessProbe.Exec.Command)
 	require.EqualValues(t, 10, container.LivenessProbe.TimeoutSeconds)
 	require.Equal(t, []string{"bfdd-control", "status"}, container.ReadinessProbe.Exec.Command)
+	require.EqualValues(t, 10, container.ReadinessProbe.TimeoutSeconds, "readiness probe must allow bfdd-control enough time to respond")
+}
+
+func TestOpenBFDDControlReplyPatch(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current filename")
+	}
+	imagesDir := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images")
+
+	startScript, err := os.ReadFile(filepath.Join(imagesDir, "start-bfdd.sh"))
+	require.NoError(t, err)
+	require.NotContains(t, string(startScript), "trap '' PIPE", "SIGPIPE handling must be limited to OpenBFDD control replies")
+
+	patchName := "OpenBFDD-control-no-sigpipe.patch"
+	patchContent, err := os.ReadFile(filepath.Join(imagesDir, patchName))
+	require.NoError(t, err)
+	require.Contains(t, string(patchContent), "m_replySocket.Send(reply, length, MSG_NOSIGNAL)")
+	require.Contains(t, string(patchContent), "m_replyFailed")
+
+	dockerfile, err := os.ReadFile(filepath.Join(imagesDir, "Dockerfile.base"))
+	require.NoError(t, err)
+	require.Contains(t, string(dockerfile), "git apply /usr/src/OpenBFDD-compile.patch")
+	require.NotContains(t, string(dockerfile), "git apply --no-apply /usr/src/OpenBFDD-compile.patch")
+	require.Contains(t, string(dockerfile), "ADD "+patchName+" /usr/src/")
+	require.Contains(t, string(dockerfile), "git apply /usr/src/"+patchName)
+	require.NotContains(t, string(dockerfile), "git apply --no-apply /usr/src/"+patchName)
 }
 
 func TestBFDDHealthcheck(t *testing.T) {

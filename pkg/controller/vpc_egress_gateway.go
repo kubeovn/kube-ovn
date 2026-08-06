@@ -1102,6 +1102,7 @@ func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier
 			},
 			InitialDelaySeconds: 3,
 			PeriodSeconds:       3,
+			TimeoutSeconds:      10,
 			FailureThreshold:    1,
 		},
 		Resources: corev1.ResourceRequirements{
