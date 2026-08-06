@@ -37,11 +37,12 @@ import (
 )
 
 const (
-	OvnNorthdServiceName = "ovn-northd"
-	OvnNorthdPid         = "/var/run/ovn/ovn-northd.pid"
-	DefaultProbeInterval = 5
-	MaxFailCount         = 3
-	northdDialTimeout    = 3 * time.Second
+	OvnNorthdServiceName           = "ovn-northd"
+	OvnNorthdPid                   = "/var/run/ovn/ovn-northd.pid"
+	DefaultProbeInterval           = 5
+	MaxFailCount                   = 3
+	maxDuplicateLeaderObservations = 3
+	northdDialTimeout              = 3 * time.Second
 )
 
 var failCount int
@@ -50,14 +51,29 @@ var labelSelector = labels.Set{discoveryv1.LabelServiceName: OvnNorthdServiceNam
 
 // Configuration is the controller config
 type Configuration struct {
-	KubeConfigFile  string
-	KubeClient      kubernetes.Interface
-	ProbeInterval   int
-	EnableCompact   bool
-	IsICDBServer    bool
-	localAddress    string
-	remoteAddresses []string
-	singleReplica   bool
+	KubeConfigFile              string
+	KubeClient                  kubernetes.Interface
+	ProbeInterval               int
+	EnableCompact               bool
+	IsICDBServer                bool
+	localAddress                string
+	remoteAddresses             []string
+	singleReplica               bool
+	duplicateLeaderObservations map[string]int
+}
+
+func (c *Configuration) observeDuplicateLeader(database string, duplicate bool) (int, bool) {
+	if !duplicate {
+		delete(c.duplicateLeaderObservations, database)
+		return 0, false
+	}
+	if c.duplicateLeaderObservations == nil {
+		c.duplicateLeaderObservations = make(map[string]int)
+	}
+
+	c.duplicateLeaderObservations[database]++
+	count := c.duplicateLeaderObservations[database]
+	return count, count >= maxDuplicateLeaderObservations
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -450,6 +466,31 @@ func validateRaftHeader(data map[string]any, dbCID string) error {
 	return nil
 }
 
+func checkDuplicateDBLeader(cfg *Configuration, localLeader bool, component, database string) {
+	var remoteLeader string
+	if localLeader {
+		for addr := range slices.Values(cfg.remoteAddresses) {
+			if isDBLeader(addr, database) {
+				remoteLeader = addr
+				break
+			}
+		}
+	}
+
+	count, confirmed := cfg.observeDuplicateLeader(database, remoteLeader != "")
+	if remoteLeader == "" {
+		return
+	}
+	if !confirmed {
+		klog.Warningf("found another %s leader at %s (%d/%d consecutive observations), waiting for raft convergence",
+			component, remoteLeader, count, maxDuplicateLeaderObservations)
+		return
+	}
+
+	klog.Fatalf("found another %s leader at %s for %d consecutive observations, exiting process to restart",
+		component, remoteLeader, count)
+}
+
 func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 	if podName == "" || podNamespace == "" {
 		util.LogFatalAndExit(nil, "env variables POD_NAME and POD_NAMESPACE must be set")
@@ -513,14 +554,8 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			}
 		}
 
-		for addr := range slices.Values(cfg.remoteAddresses) {
-			if nbLeader && isDBLeader(addr, ovnnb.DatabaseName) {
-				klog.Fatalf("found another ovn-nb leader at %s, exiting process to restart", addr)
-			}
-			if sbLeader && isDBLeader(addr, ovnsb.DatabaseName) {
-				klog.Fatalf("found another ovn-sb leader at %s, exiting process to restart", addr)
-			}
-		}
+		checkDuplicateDBLeader(cfg, nbLeader, "ovn-nb", ovnnb.DatabaseName)
+		checkDuplicateDBLeader(cfg, sbLeader, "ovn-sb", ovnsb.DatabaseName)
 
 		if cfg.EnableCompact {
 			compactOvnDatabase("nb")
@@ -548,14 +583,8 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			}
 		}
 
-		for addr := range slices.Values(cfg.remoteAddresses) {
-			if icNbLeader && isDBLeader(addr, util.DatabaseICNB) {
-				klog.Fatalf("found another ovn-ic-nb leader at %s, exiting process to restart", addr)
-			}
-			if icSbLeader && isDBLeader(addr, util.DatabaseICSB) {
-				klog.Fatalf("found another ovn-ic-sb leader at %s, exiting process to restart", addr)
-			}
-		}
+		checkDuplicateDBLeader(cfg, icNbLeader, "ovn-ic-nb", util.DatabaseICNB)
+		checkDuplicateDBLeader(cfg, icSbLeader, "ovn-ic-sb", util.DatabaseICSB)
 	}
 }
 
