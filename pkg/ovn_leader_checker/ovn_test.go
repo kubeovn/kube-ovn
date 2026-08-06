@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 const (
@@ -15,6 +17,35 @@ const (
 	zeroClusterID  = "00000000-0000-0000-0000-000000000000"
 	otherClusterID = "d401ddf6-deac-4e26-aeb5-cc4ce07f6515"
 )
+
+func TestObserveDuplicateLeaderRequiresConsecutiveObservations(t *testing.T) {
+	cfg := &Configuration{}
+
+	for i := 1; i < maxDuplicateLeaderObservations; i++ {
+		count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, true)
+		if confirmed {
+			t.Fatalf("duplicate leader confirmed after only %d observations", i)
+		}
+		if count != i {
+			t.Fatalf("unexpected duplicate leader observation count: got %d, want %d", count, i)
+		}
+	}
+
+	count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, false)
+	if confirmed || count != 0 {
+		t.Fatalf("normal leader observation did not reset state: count = %d, confirmed = %t", count, confirmed)
+	}
+
+	for i := 1; i <= maxDuplicateLeaderObservations; i++ {
+		count, confirmed = cfg.observeDuplicateLeader(ovnnb.DatabaseName, true)
+		if count != i {
+			t.Fatalf("unexpected duplicate leader observation count after reset: got %d, want %d", count, i)
+		}
+		if confirmed != (i == maxDuplicateLeaderObservations) {
+			t.Fatalf("confirmation after observation %d: got %t, want %t", i, confirmed, i == maxDuplicateLeaderObservations)
+		}
+	}
+}
 
 func TestBackupRaftHeaderDoesNotReplaceValidHeaderWithZeroClusterID(t *testing.T) {
 	dbDir := t.TempDir()
