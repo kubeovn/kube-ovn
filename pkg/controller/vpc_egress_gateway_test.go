@@ -34,6 +34,51 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	require.Equal(t, []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"}, container.LivenessProbe.Exec.Command)
 	require.EqualValues(t, 10, container.LivenessProbe.TimeoutSeconds)
 	require.Equal(t, []string{"bfdd-control", "status"}, container.ReadinessProbe.Exec.Command)
+	require.EqualValues(t, 10, container.ReadinessProbe.TimeoutSeconds, "readiness probe must allow bfdd-control enough time to respond")
+}
+
+func TestOpenBFDDControlHardeningPatch(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current filename")
+	}
+	imagesDir := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images")
+
+	startScript, err := os.ReadFile(filepath.Join(imagesDir, "start-bfdd.sh"))
+	require.NoError(t, err)
+	require.NotContains(t, string(startScript), "trap '' PIPE", "SIGPIPE handling must be limited to OpenBFDD control replies")
+
+	patchName := "OpenBFDD-control-hardening.patch"
+	patchContent, err := os.ReadFile(filepath.Join(imagesDir, patchName))
+	require.NoError(t, err)
+	require.Contains(t, string(patchContent), "ControlCommandTimeoutMs = 500")
+	require.Contains(t, string(patchContent), "ControlRequestTimeoutMs = 5000")
+	require.Contains(t, string(patchContent), "ControlOperationTimeoutMs = 4000")
+	require.Contains(t, string(patchContent), "connectedSocket.SetBlocking(false)")
+	require.Contains(t, string(patchContent), "m_replySocket.SendStream")
+	require.Contains(t, string(patchContent), "MSG_DONTWAIT | MSG_NOSIGNAL")
+	require.Contains(t, string(patchContent), "m_replyFailed")
+	require.Contains(t, string(patchContent), "m_operations.pop_back()")
+	require.Contains(t, string(patchContent), "waitCondition(NULL)")
+	require.Contains(t, string(patchContent), "TimeSpec::MonoNow() >= m_requestDeadline")
+	require.Contains(t, string(patchContent), "TimeSpec::MonoNow() >= deadline")
+	require.Contains(t, string(patchContent), "struct StatusOperation")
+	require.Contains(t, string(patchContent), "references(2)")
+	require.Contains(t, string(patchContent), "condition(true, true)")
+	require.Contains(t, string(patchContent), "pthread_condattr_setclock(&attributes, CLOCK_MONOTONIC)")
+	require.Contains(t, string(patchContent), "runStatusOperation")
+	require.Contains(t, string(patchContent), `failurePrefix = "Unable to complete "`)
+	require.Contains(t, string(patchContent), "operation_timeout")
+	require.Contains(t, string(patchContent), "without a reply")
+	require.Contains(t, string(patchContent), "Slow or failed control request")
+
+	dockerfile, err := os.ReadFile(filepath.Join(imagesDir, "Dockerfile.base"))
+	require.NoError(t, err)
+	require.Contains(t, string(dockerfile), "git apply /usr/src/OpenBFDD-compile.patch")
+	require.NotContains(t, string(dockerfile), "git apply --no-apply /usr/src/OpenBFDD-compile.patch")
+	require.Contains(t, string(dockerfile), "ADD "+patchName+" /usr/src/")
+	require.Contains(t, string(dockerfile), "git apply --unidiff-zero /usr/src/"+patchName)
+	require.NotContains(t, string(dockerfile), "git apply --no-apply /usr/src/"+patchName)
 }
 
 func TestBFDDHealthcheck(t *testing.T) {

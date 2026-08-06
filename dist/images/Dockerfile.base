@@ -176,11 +176,13 @@ RUN mkdir -p /usr/src/openbfdd && \
 
 ADD OpenBFDD-compile.patch /usr/src/
 ADD OpenBFDD-allow-ttl-254.patch /usr/src/
+ADD OpenBFDD-control-hardening.patch /usr/src/
 
 RUN cd /usr/src/openbfdd && \
     rm -vf missing && \
-    git apply --no-apply /usr/src/OpenBFDD-compile.patch && \
+    git apply /usr/src/OpenBFDD-compile.patch && \
     git apply --no-apply /usr/src/OpenBFDD-allow-ttl-254.patch && \
+    git apply --unidiff-zero /usr/src/OpenBFDD-control-hardening.patch && \
     autoupdate && \
     ./autogen.sh && \
     ./configure --enable-silent-rules && \
