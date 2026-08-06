@@ -13,7 +13,6 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 
-	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -46,7 +45,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 	})
 
 	framework.ConformanceIt("should immediately reach a recreated static IPv6 pod after its MAC changes", func() {
-		f.SkipVersionPriorTo(1, 17, "Unsolicited IPv6 neighbor advertisements were introduced in v1.17")
+		f.SkipVersionPriorTo(1, 15, "Unsolicited IPv6 neighbor advertisements were introduced in v1.15")
 		if !f.HasIPv6() {
 			ginkgo.Skip("This case requires IPv6")
 		}
@@ -57,7 +56,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 			ginkgo.Skip("This case requires at least two ready schedulable nodes")
 		}
 
-		cidr := framework.RandomCIDR(apiv1.ProtocolIPv6)
+		cidr := framework.RandomCIDR(framework.IPv6)
 		firstIP, err := util.FirstIP(cidr)
 		framework.ExpectNoError(err)
 		fixedIP := util.BigInt2Ip(new(big.Int).Add(util.IP2BigInt(firstIP), big.NewInt(10)))
