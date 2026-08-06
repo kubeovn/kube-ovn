@@ -1,0 +1,809 @@
+From 2c0be5a6f979968736525e52f114ca9a962ef7ef Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 6 Aug 2026 16:00:00 +0800
+Subject: [PATCH] Bound control I/O and status operations
+
+Bound control client I/O with a monotonic deadline, prevent idle clients from
+occupying a serial command thread for ten seconds, receive fragmented commands,
+and send complete replies without blocking or raising SIGPIPE.
+
+Run status requests through a heap-owned operation with explicit shared
+lifetime. The control thread may stop waiting after four seconds while a late
+scheduler callback safely completes and discards its result. Use a monotonic
+condition variable so wall-clock changes cannot extend that deadline.
+
+Also reject operations when scheduler signaling fails, initialize every queued
+operation field, propagate server-side request failures through the client exit
+status, and emit rate-limited stage timings for slow, timed out, or failed
+control requests, including clients that never finish a command.
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+
+diff --git a/Beacon.cpp b/Beacon.cpp
+index d1b0658..757c29f 100755
+--- a/Beacon.cpp
++++ b/Beacon.cpp
+@@ -322 +322,2 @@ void Beacon::KillSession(Session *session)
+-bool Beacon::QueueOperation(OperationCallback callback, void *userdata, bool waitForCompletion)
++bool Beacon::QueueOperation(OperationCallback callback, void *userdata, bool waitForCompletion,
++                            size_t *queueDepth)
+@@ -363,0 +365,2 @@ bool Beacon::QueueOperation(OperationCallback callback, void *userdata, bool wai
++      if (queueDepth)
++        *queueDepth = m_operations.size();
+@@ -371 +374,8 @@ bool Beacon::QueueOperation(OperationCallback callback, void *userdata, bool wai
+-    // Once it is in m_operations, then the operation is no longer ours to delete.
++    if (!triggerSelfMessage())
++    {
++      LogAssert(m_operations.back() == useOperation);
++      m_operations.pop_back();
++      return false;
++    }
++
++    // Once it is signaled, the operation is owned by m_operations.
+@@ -376 +385,0 @@ bool Beacon::QueueOperation(OperationCallback callback, void *userdata, bool wai
+-      triggerSelfMessage();
+@@ -382,3 +390,0 @@ bool Beacon::QueueOperation(OperationCallback callback, void *userdata, bool wai
+-  if (!waitForCompletion)
+-    triggerSelfMessage();
+-
+diff --git a/Beacon.h b/Beacon.h
+index b848609..a8b366a 100755
+--- a/Beacon.h
++++ b/Beacon.h
+@@ -78,2 +78,6 @@ public:
+-   * @return bool - false if the operation was not queued because a shutdown had
+-   *         already been requested or memory failure.
++   * @param queueDepth [out] - If non-null, receives the queue depth after this
++   *                   operation is added.
++   *
++   * @return bool - false if the operation was not queued because shutdown had
++   *         already been requested, memory allocation failed, or signaling the
++   *         scheduler failed.
+@@ -81 +85,2 @@ public:
+-  bool QueueOperation(OperationCallback callback, void *userdata, bool waitForCompletion);
++  bool QueueOperation(OperationCallback callback, void *userdata, bool waitForCompletion,
++                      size_t *queueDepth = NULL);
+@@ -246 +251 @@ private:
+-    inline PendingOperation() : callback(NULL) { }
++    inline PendingOperation() : callback(NULL), userdata(NULL), completed(false), waitCondition(NULL) { }
+diff --git a/CommandProcessor.cpp b/CommandProcessor.cpp
+index 7bb3318..1dc02b6 100755
+--- a/CommandProcessor.cpp
++++ b/CommandProcessor.cpp
+@@ -16,0 +17,9 @@ using namespace std;
++namespace
++{
++const uint32_t ControlCommandTimeoutMs = 500;
++const uint32_t ControlRequestTimeoutMs = 5000;
++const uint32_t ControlOperationTimeoutMs = 4000;
++const uint32_t SlowControlRequestMs = 100;
++const uint32_t SlowControlLogIntervalMs = 5000;
++}
++
+@@ -29 +38,3 @@ protected:
+-  RecvMsg m_inCommand;
++  bool m_replyFailed;
++  int m_replyError;
++  vector<char> m_inCommandBuffer;
+@@ -31,0 +43,11 @@ protected:
++  string m_inCommandName;
++  TimeSpec m_requestStarted;
++  TimeSpec m_requestDeadline;
++  TimeSpec m_commandReceived;
++  TimeSpec m_operationQueued;
++  TimeSpec m_callbackStarted;
++  TimeSpec m_callbackCompleted;
++  TimeSpec m_firstReply;
++  TimeSpec m_lastSlowLog;
++  size_t m_operationQueueDepth;
++  bool m_operationTimedOut;
+@@ -52 +74,3 @@ public:
+-     m_inCommand(MaxCommandSize, 0),
++     m_replyFailed(false),
++     m_replyError(0),
++     m_inCommandBuffer(MaxCommandSize),
+@@ -53,0 +78,2 @@ public:
++     m_operationQueueDepth(0),
++     m_operationTimedOut(false),
+@@ -221,0 +248,55 @@ protected:
++  static int64_t elapsedMilliseconds(const TimeSpec &start, const TimeSpec &end)
++  {
++    if ((start.tv_sec == 0 && start.tv_nsec == 0) ||
++        (end.tv_sec == 0 && end.tv_nsec == 0))
++      return -1;
++    return (end - start).ToNanoseconds() / TimeSpec::NSecPerMs;
++  }
++
++  void resetRequestTrace()
++  {
++    m_requestStarted = TimeSpec::MonoNow();
++    m_requestDeadline = m_requestStarted + TimeSpec(TimeSpec::Millisec, ControlRequestTimeoutMs);
++    m_commandReceived.clear();
++    m_operationQueued.clear();
++    m_callbackStarted.clear();
++    m_callbackCompleted.clear();
++    m_firstReply.clear();
++    m_inCommandLogStr.clear();
++    m_inCommandName.clear();
++    m_operationQueueDepth = 0;
++    m_operationTimedOut = false;
++    m_replyFailed = false;
++    m_replyError = 0;
++  }
++
++  void logRequestIssue()
++  {
++    if (m_requestStarted.empty())
++      return;
++
++    TimeSpec now = TimeSpec::MonoNow();
++    int64_t totalMs = elapsedMilliseconds(m_requestStarted, now);
++    if (totalMs < SlowControlRequestMs && !m_replyFailed && !m_operationTimedOut)
++      return;
++    if (!m_lastSlowLog.empty() &&
++        elapsedMilliseconds(m_lastSlowLog, now) < SlowControlLogIntervalMs)
++      return;
++
++    m_lastSlowLog = now;
++    gLog.Message(Log::Warn,
++                 "Slow or failed control request reason=%s command=<%s> total=%" PRIi64
++                 "ms accept=0ms command=%" PRIi64 "ms queued=%" PRIi64
++                 "ms callback_start=%" PRIi64 "ms callback_end=%" PRIi64
++                 "ms first_reply=%" PRIi64 "ms queue_depth=%zu reply_error=%d",
++                 m_operationTimedOut ? "operation_timeout" :
++                 (m_replyFailed ? "reply_failed" : "slow"),
++                 m_inCommandName.empty() ? "unknown" : m_inCommandName.c_str(), totalMs,
++                 elapsedMilliseconds(m_requestStarted, m_commandReceived),
++                 elapsedMilliseconds(m_requestStarted, m_operationQueued),
++                 elapsedMilliseconds(m_requestStarted, m_callbackStarted),
++                 elapsedMilliseconds(m_requestStarted, m_callbackCompleted),
++                 elapsedMilliseconds(m_requestStarted, m_firstReply),
++                 m_operationQueueDepth, m_replyError);
++  }
++
+@@ -232 +313,2 @@ protected:
+-  Result::Type waitForSocketRead(int fd, uint32_t pollTimeInMs, uint32_t maxWaitInMs = 0)
++  Result::Type waitForSocket(int fd, bool waitForWrite, uint32_t pollTimeInMs,
++                             const TimeSpec &deadline = TimeSpec())
+@@ -236,5 +318,2 @@ protected:
+-    fd_set waitOn;
+-    TimeSpec maxTime;
+-
+-    if (maxWaitInMs)
+-      maxTime = TimeSpec::MonoNow() + TimeSpec(TimeSpec::Millisec, maxWaitInMs);
++    fd_set readSet;
++    fd_set writeSet;
+@@ -244 +323,2 @@ protected:
+-      if (maxWaitInMs)
++      TimeSpec now = TimeSpec::MonoNow();
++      if ((deadline.tv_sec != 0 || deadline.tv_nsec != 0) && now >= deadline)
+@@ -246,5 +326,2 @@ protected:
+-        if (TimeSpec::MonoNow() > maxTime)
+-        {
+-          gLog.Optional(Log::Command, "Waiting timed out after %d polls.", waits);
+-          return Result::Timeout;
+-        }
++        gLog.Optional(Log::Command, "Waiting timed out after %d polls.", waits);
++        return Result::Timeout;
+@@ -253,0 +331,3 @@ protected:
++      TimeSpec waitSpan(TimeSpec::Millisec, pollTimeInMs);
++      if ((deadline.tv_sec != 0 || deadline.tv_nsec != 0) && now + waitSpan > deadline)
++        waitSpan = deadline - now;
+@@ -256,2 +336,2 @@ protected:
+-      waitTime.tv_sec = pollTimeInMs / 1000;
+-      waitTime.tv_usec = (pollTimeInMs % 1000) * 1000;
++      waitTime.tv_sec = waitSpan.tv_sec;
++      waitTime.tv_usec = waitSpan.tv_nsec / TimeSpec::NSecPerUs;
+@@ -259,3 +339,4 @@ protected:
+-      FD_ZERO(&waitOn);
+-      FD_SET(fd, &waitOn);
+-      result = select(fd + 1, &waitOn, NULL, NULL, &waitTime);
++      FD_ZERO(&readSet);
++      FD_ZERO(&writeSet);
++      FD_SET(fd, waitForWrite ? &writeSet : &readSet);
++      result = select(fd + 1, &readSet, &writeSet, NULL, &waitTime);
+@@ -282,0 +364,11 @@ protected:
++  Result::Type waitForSocketRead(int fd, uint32_t pollTimeInMs,
++                                 const TimeSpec &deadline = TimeSpec())
++  {
++    return waitForSocket(fd, false, pollTimeInMs, deadline);
++  }
++
++  Result::Type waitForSocketWrite(int fd, uint32_t pollTimeInMs, const TimeSpec &deadline)
++  {
++    return waitForSocket(fd, true, pollTimeInMs, deadline);
++  }
++
+@@ -290,0 +383,2 @@ protected:
++    {
++      me->logRequestIssue();
+@@ -291,0 +386 @@ protected:
++    }
+@@ -326,0 +422,2 @@ protected:
++    if (!connectedSocket.SetBlocking(false))
++      return true;
+@@ -328,0 +426,2 @@ protected:
++    m_replySocket.SetQuiet(true);
++    resetRequestTrace();
+@@ -330,7 +429,3 @@ protected:
+-    // Got a connection for the command. Now wait for a command. Since we are
+-    // non-blocking, we use select again.
+-    waitResult = waitForSocketRead(connectedSocket, 200, 10000);
+-    if (waitResult != Result::Success)
+-      return true;  // failure here does not cause full shutdown.
+-
+-    // Should be ready with a command
++    TimeSpec commandDeadline =
++        m_requestStarted + TimeSpec(TimeSpec::Millisec, ControlCommandTimeoutMs);
++    size_t commandLength = 0;
+@@ -342 +437,7 @@ protected:
+-      if (!m_inCommand.DoRecv(connectedSocket, MSG_DONTWAIT))
++      waitResult = waitForSocketRead(connectedSocket, 200, commandDeadline);
++      if (waitResult != Result::Success)
++        return true;
++
++      ssize_t received = recv(connectedSocket, &m_inCommandBuffer[commandLength],
++                              m_inCommandBuffer.size() - commandLength, MSG_DONTWAIT);
++      if (received < 0)
+@@ -344,10 +445,7 @@ protected:
+-        // Errors
+-        if (m_inCommand.GetLastError() == EAGAIN)
+-          gLog.Optional(Log::Command, "Incomplete message ... waiting."); // Must not have the full message. Wait for it?
+-        else if (m_inCommand.GetLastError() == EINTR)
+-          gLog.Optional(Log::Command, "Interrupted message ... trying again.");
+-        else if (m_inCommand.GetLastError() == ECONNRESET)
+-        {
+-          gLog.Message(Log::Command, "Communication connection reset.");
+-          return true;
+-        }
++        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
++          continue;
++        if (errno == ECONNRESET)
++          gLog.Optional(Log::Command, "Communication connection reset.");
++        else
++          gLog.ErrnoError(errno, "Error receiving control command: ");
++        return true;
+@@ -355 +453 @@ protected:
+-      else if (m_inCommand.GetDataSize() == 0)
++      if (received == 0)
+@@ -357 +455 @@ protected:
+-        gLog.LogError("Empty communication message.");
++        gLog.Optional(Log::Command, "Control connection closed before a complete command was received.");
+@@ -360 +458,5 @@ protected:
+-      else
++
++      commandLength += size_t(received);
++      if (commandLength >= sizeof(uint32_t) + 2 &&
++          m_inCommandBuffer[commandLength - 1] == '\0' &&
++          m_inCommandBuffer[commandLength - 2] == '\0')
+@@ -362,2 +464,2 @@ protected:
+-        // Got a message
+-        gLog.Optional(Log::Command, "Message size %zu.", m_inCommand.GetDataSize());
++        m_commandReceived = TimeSpec::MonoNow();
++        gLog.Optional(Log::Command, "Message size %zu.", commandLength);
+@@ -366 +468 @@ protected:
+-          dispatchMessage((char *)m_inCommand.GetData(),  m_inCommand.GetDataSize());
++          dispatchMessage(&m_inCommandBuffer.front(), commandLength);
+@@ -373,0 +476,6 @@ protected:
++
++      if (commandLength == m_inCommandBuffer.size())
++      {
++        gLog.Optional(Log::Command, "Control command exceeded the maximum size or had no terminator.");
++        return true;
++      }
+@@ -445,0 +554,2 @@ protected:
++    m_inCommandName.assign(message + sizeof(uint32_t));
++
+@@ -521,0 +632,2 @@ protected:
++    TimeSpec callbackStarted;
++    TimeSpec callbackCompleted;
+@@ -526,0 +639 @@ protected:
++    data->callbackStarted = TimeSpec::MonoNow();
+@@ -530,0 +644 @@ protected:
++      data->callbackCompleted = TimeSpec::MonoNow();
+@@ -542,0 +657 @@ protected:
++    data->callbackCompleted = TimeSpec::MonoNow();
+@@ -562,0 +678 @@ protected:
++    m_operationQueued = TimeSpec::MonoNow();
+@@ -564 +680,2 @@ protected:
+-    if (!m_beacon->QueueOperation(handleBeaconCallback, &data, true /* waitForCompletion*/))
++    if (!m_beacon->QueueOperation(handleBeaconCallback, &data, true /* waitForCompletion*/,
++                                  &m_operationQueueDepth))
+@@ -566 +683 @@ protected:
+-      messageReply("Unable to complete request (beacon is shutting down or low memory).\n");
++      messageReply("Unable to complete request (beacon is shutting down, low memory, or signaling failed).\n");
+@@ -569,0 +687,3 @@ protected:
++    m_callbackStarted = data.callbackStarted;
++    m_callbackCompleted = data.callbackCompleted;
++
+@@ -1338,0 +1459,154 @@ protected:
++  struct StatusOperation
++  {
++    StatusOperation(CommandProcessorImp *commandProcessor, bool allSessions,
++                    int level, const SessionID &sessionId) :
++      processor(commandProcessor),
++      allSessions(allSessions),
++      result(0),
++      wasShuttingDown(false),
++      exceptionThrown(false),
++      completed(false),
++      lock(true),
++      condition(true, true),
++      references(2)
++    {
++      multiInfo.level = level;
++      singleInfo.level = level;
++      singleInfo.sessionId = sessionId;
++    }
++
++    CommandProcessorImp *processor;
++    bool allSessions;
++    MultiStatusCallbackInfo multiInfo;
++    SingleStatusCallbackInfo singleInfo;
++    intptr_t result;
++    bool wasShuttingDown;
++    bool exceptionThrown;
++    bool completed;
++    TimeSpec callbackStarted;
++    TimeSpec callbackCompleted;
++    QuickLock lock;
++    WaitCondition condition;
++    size_t references;
++  };
++
++  static void releaseStatusOperation(StatusOperation *operation)
++  {
++    bool destroy;
++    {
++      AutoQuickLock lock(operation->lock, true);
++      LogAssert(operation->references > 0);
++      operation->references--;
++      destroy = operation->references == 0;
++    }
++    if (destroy)
++      delete operation;
++  }
++
++  static void handleStatusOperation(Beacon *beacon, void *userdata)
++  {
++    StatusOperation *operation = reinterpret_cast<StatusOperation *>(userdata);
++    operation->callbackStarted = TimeSpec::MonoNow();
++
++    if (beacon->IsShutdownRequested())
++      operation->wasShuttingDown = true;
++    else
++    {
++      try
++      {
++        if (operation->allSessions)
++          operation->processor->doHandleMultiStatus(beacon, &operation->multiInfo);
++        else
++          operation->result = operation->processor->doHandleSingleStatus(beacon, &operation->singleInfo);
++      }
++      catch (std::exception &e)
++      {
++        operation->exceptionThrown = true;
++        gLog.Message(Log::Error, "Status operation failed due to exception: %s", e.what());
++      }
++      catch (...)
++      {
++        operation->exceptionThrown = true;
++        gLog.Message(Log::Error, "Status operation failed due to an unknown exception.");
++      }
++    }
++
++    operation->callbackCompleted = TimeSpec::MonoNow();
++    {
++      AutoQuickLock lock(operation->lock, true);
++      operation->completed = true;
++      lock.SignalAndUnlock(operation->condition);
++    }
++    releaseStatusOperation(operation);
++  }
++
++  bool waitForStatusOperation(StatusOperation *operation)
++  {
++    TimeSpec deadline = TimeSpec::MonoNow() +
++                        TimeSpec(TimeSpec::Millisec, ControlOperationTimeoutMs);
++    AutoQuickLock lock(operation->lock, true);
++
++    while (!operation->completed)
++    {
++      TimeSpec remaining = deadline - TimeSpec::MonoNow();
++      int64_t remainingNs = remaining.ToNanoseconds();
++      if (remainingNs <= 0)
++      {
++        m_operationTimedOut = true;
++        return false;
++      }
++
++      uint32_t waitMs = uint32_t((remainingNs + TimeSpec::NSecPerMs - 1) /
++                                 TimeSpec::NSecPerMs);
++      waitMs = min(waitMs, uint32_t(100));
++      if (lock.LockWait(operation->condition, waitMs) < 0)
++      {
++        messageReply("Unable to complete status request because waiting failed.\n");
++        return false;
++      }
++    }
++
++    m_callbackStarted = operation->callbackStarted;
++    m_callbackCompleted = operation->callbackCompleted;
++    if (operation->exceptionThrown)
++    {
++      messageReply("Unable to complete status request because an exception was thrown.\n");
++      return false;
++    }
++    if (operation->wasShuttingDown)
++    {
++      messageReply("Unable to complete status request because the beacon is shutting down.\n");
++      return false;
++    }
++    return true;
++  }
++
++  StatusOperation *runStatusOperation(bool allSessions, int level,
++                                      const SessionID &sessionId)
++  {
++    StatusOperation *operation =
++        new(std::nothrow) StatusOperation(this, allSessions, level, sessionId);
++    if (!operation)
++    {
++      messageReply("Unable to complete status request because memory allocation failed.\n");
++      return NULL;
++    }
++
++    m_operationQueued = TimeSpec::MonoNow();
++    if (!m_beacon->QueueOperation(handleStatusOperation, operation,
++                                  false, &m_operationQueueDepth))
++    {
++      releaseStatusOperation(operation);
++      releaseStatusOperation(operation);
++      messageReply("Unable to complete status request because it could not be queued or signaled.\n");
++      return NULL;
++    }
++
++    if (!waitForStatusOperation(operation))
++    {
++      releaseStatusOperation(operation);
++      return NULL;
++    }
++    return operation;
++  }
++
+@@ -1397,0 +1672,6 @@ protected:
++    StatusOperation *statusOperation =
++        runStatusOperation(sessionId.allSessions, level, sessionId);
++    if (!statusOperation)
++      return;
++    RaiiNullBase<StatusOperation, releaseStatusOperation> releaseOperation(statusOperation);
++
+@@ -1400,4 +1680,4 @@ protected:
+-      MultiStatusCallbackInfo info;
+-      info.level = level;
+-
+-      if (doBeaconOperation(&CommandProcessorImp::doHandleMultiStatus, &info))
++      vector<StatusInfo>::iterator it;
++      messageReplyF("There are %zu sessions:\n", statusOperation->multiInfo.infoList.size());
++      for (it = statusOperation->multiInfo.infoList.begin();
++           it != statusOperation->multiInfo.infoList.end(); it++)
+@@ -1405,3 +1685 @@ protected:
+-        vector<StatusInfo>::iterator it;
+-        messageReplyF("There are %zu sessions:\n", info.infoList.size());
+-        for (it = info.infoList.begin(); it != info.infoList.end(); it++)
++        if (!compact && it != statusOperation->multiInfo.infoList.begin())
+@@ -1409,7 +1687 @@ protected:
+-          if (!compact && it != info.infoList.begin())
+-          {
+-            messageReplyF("\nSession %u\n", it->id);
+-          }
+-          else
+-            messageReplyF("Session %u\n", it->id);
+-          printStatusInfo(*it, level, brief, compact);
++          messageReplyF("\nSession %u\n", it->id);
+@@ -1416,0 +1689,3 @@ protected:
++        else
++          messageReplyF("Session %u\n", it->id);
++        printStatusInfo(*it, level, brief, compact);
+@@ -1421,6 +1696 @@ protected:
+-      intptr_t result;
+-      SingleStatusCallbackInfo info;
+-      info.level = level;
+-      info.sessionId = sessionId;
+-
+-      if (doBeaconOperation(&CommandProcessorImp::doHandleSingleStatus, &info, &result))
++      if (statusOperation->result)
+@@ -1428,9 +1698,6 @@ protected:
+-        if (result)
+-        {
+-          printStatusInfo(info.info, level, brief, compact);
+-        }
+-        else
+-        {
+-          reportNoSuchSession(info.sessionId);
+-          return;
+-        }
++        printStatusInfo(statusOperation->singleInfo.info, level, brief, compact);
++      }
++      else
++      {
++        reportNoSuchSession(statusOperation->singleInfo.sessionId);
++        return;
+@@ -2055,2 +2322,41 @@ protected:
+-    // TODO timeout? Check for shutdown?
+-    m_replySocket.Send(reply, length);
++    if (m_replyFailed)
++      return;
++
++    if (m_firstReply.empty())
++      m_firstReply = TimeSpec::MonoNow();
++
++    const void *remainingReply = reply;
++    size_t remainingLength = length;
++    while (remainingLength)
++    {
++      if (TimeSpec::MonoNow() >= m_requestDeadline)
++      {
++        m_replyError = ETIMEDOUT;
++        break;
++      }
++
++      size_t previousLength = remainingLength;
++      if (m_replySocket.SendStream(&remainingReply, &remainingLength,
++                                   MSG_DONTWAIT | MSG_NOSIGNAL))
++      {
++        if (remainingLength < previousLength)
++          continue;
++        m_replyError = EAGAIN;
++      }
++      else
++        m_replyError = m_replySocket.GetLastError();
++
++      if (m_replyError != EAGAIN && m_replyError != EWOULDBLOCK && m_replyError != EINTR)
++        break;
++      if (m_replyError != EINTR &&
++          waitForSocketWrite(m_replySocket, 200, m_requestDeadline) != Result::Success)
++      {
++        m_replyError = ETIMEDOUT;
++        break;
++      }
++    }
++
++    if (remainingLength)
++      m_replyFailed = true;
++    else
++      m_replyError = 0;
+diff --git a/bfdd-control.cpp b/bfdd-control.cpp
+index 753b82b..2edc780 100755
+--- a/bfdd-control.cpp
++++ b/bfdd-control.cpp
+@@ -8,0 +9 @@
++#include "TimeSpec.h"
+@@ -12,0 +14 @@
++#include <sys/select.h>
+@@ -15 +16,0 @@
+-#include <unistd.h>
+@@ -18,0 +20,129 @@ using namespace std;
++namespace
++{
++const uint32_t ControlRequestTimeoutMs = 5000;
++
++bool WaitForSocket(int fd, bool waitForWrite, const TimeSpec &deadline, const char *operation)
++{
++  while (true)
++  {
++    TimeSpec now = TimeSpec::MonoNow();
++    if (now >= deadline)
++    {
++      fprintf(stderr, "Timed out while %s.\n", operation);
++      errno = ETIMEDOUT;
++      return false;
++    }
++
++    TimeSpec waitSpan = deadline - now;
++    struct timeval waitTime;
++    waitTime.tv_sec = waitSpan.tv_sec;
++    waitTime.tv_usec = waitSpan.tv_nsec / TimeSpec::NSecPerUs;
++
++    fd_set readSet;
++    fd_set writeSet;
++    FD_ZERO(&readSet);
++    FD_ZERO(&writeSet);
++    FD_SET(fd, waitForWrite ? &writeSet : &readSet);
++
++    int result = select(fd + 1, &readSet, &writeSet, NULL, &waitTime);
++    if (result > 0)
++      return true;
++    if (result == 0)
++      continue;
++    if (errno != EINTR)
++    {
++      fprintf(stderr, "Error while %s: %s\n", operation, ErrnoToString());
++      return false;
++    }
++  }
++}
++
++bool SendAll(Socket &socket, const void *message, size_t messageSize, const TimeSpec &deadline)
++{
++  const void *remainingMessage = message;
++  size_t remainingLength = messageSize;
++
++  while (remainingLength)
++  {
++    if (TimeSpec::MonoNow() >= deadline)
++    {
++      errno = ETIMEDOUT;
++      return false;
++    }
++
++    size_t previousLength = remainingLength;
++    if (socket.SendStream(&remainingMessage, &remainingLength, MSG_DONTWAIT | MSG_NOSIGNAL))
++    {
++      if (remainingLength < previousLength)
++        continue;
++    }
++    else
++    {
++      int error = socket.GetLastError();
++      if (error != EAGAIN && error != EWOULDBLOCK && error != EINTR)
++        return false;
++      if (error == EINTR)
++        continue;
++    }
++
++    if (!WaitForSocket(socket, true, deadline, "sending command to beacon"))
++      return false;
++  }
++  return true;
++}
++
++bool ReadReply(Socket &socket, vector<char> &buffer, const char *outPrefix,
++               const TimeSpec &deadline)
++{
++  const char *failurePrefix = "Unable to complete ";
++  size_t failurePrefixMatched = 0;
++  bool failurePrefixPossible = true;
++  bool atLineStart = true;
++  bool receivedAny = false;
++  bool requestFailed = false;
++
++  while (true)
++  {
++    if (!WaitForSocket(socket, false, deadline, "waiting for beacon reply"))
++      return false;
++
++    ssize_t received = recv(socket, &buffer.front(), buffer.size(), MSG_DONTWAIT);
++    if (received == 0)
++    {
++      if (!receivedAny)
++        fprintf(stderr, "Beacon closed the control connection without a reply.\n");
++      return receivedAny && !requestFailed;
++    }
++    if (received < 0)
++    {
++      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
++        continue;
++      fprintf(stderr, "Connection failed. Partial completion may have occurred: %s\n",
++              ErrnoToString());
++      return false;
++    }
++
++    for (ssize_t i = 0; i < received; i++)
++    {
++      receivedAny = true;
++      if (atLineStart && outPrefix)
++        fputs(outPrefix, stdout);
++      char value = buffer[size_t(i)];
++      if (failurePrefixPossible && !requestFailed)
++      {
++        if (value == failurePrefix[failurePrefixMatched])
++        {
++          failurePrefixMatched++;
++          if (failurePrefix[failurePrefixMatched] == '\0')
++            requestFailed = true;
++        }
++        else
++          failurePrefixPossible = false;
++      }
++      fputc(value, stdout);
++      atLineStart = value == '\n';
++    }
++  }
++}
++}
++
+@@ -36 +165,0 @@ static bool SendData(const char *message, size_t message_size, const SockAddr &c
+-  FileHandle fileHandle;
+@@ -37,0 +167 @@ static bool SendData(const char *message, size_t message_size, const SockAddr &c
++  TimeSpec deadline = TimeSpec::MonoNow() + TimeSpec(TimeSpec::Millisec, ControlRequestTimeoutMs);
+@@ -47,0 +178,7 @@ static bool SendData(const char *message, size_t message_size, const SockAddr &c
++  if (!sendSocket.SetBlocking(false))
++  {
++    fprintf(stderr, "Error configuring control socket: %s\n",
++            SystemErrorToString(sendSocket.GetLastError()));
++    return false;
++  }
++
+@@ -55,0 +193,13 @@ static bool SendData(const char *message, size_t message_size, const SockAddr &c
++  if (sendSocket.GetLastError() == EINPROGRESS)
++  {
++    if (!WaitForSocket(sendSocket, true, deadline, "connecting to beacon"))
++      return false;
++    int connectError = 0;
++    if (!sendSocket.GetPendingError(connectError) || connectError)
++    {
++      fprintf(stderr, "Error connecting to beacon on %s: %s\n",
++              connectAddr.ToString(), SystemErrorToString(connectError));
++      return false;
++    }
++  }
++
+@@ -69 +219 @@ static bool SendData(const char *message, size_t message_size, const SockAddr &c
+-  if (!sendSocket.Send(&buffer.front(), totalLength))
++  if (!SendAll(sendSocket, &buffer.front(), totalLength, deadline))
+@@ -75,24 +225 @@ static bool SendData(const char *message, size_t message_size, const SockAddr &c
+-  // Use stdio for simpler reading of the socket.
+-  fileHandle = fdopen(sendSocket, "r");
+-  if (!fileHandle.IsValid())
+-  {
+-    perror("Error opening socket file: ");
+-    return false;
+-  }
+-
+-  // Read until done
+-  while (fgets(&buffer.front(), buffer.size(), fileHandle))
+-  {
+-    if (outPrefix)
+-      fputs(outPrefix, stdout);
+-
+-    fputs(&buffer.front(), stdout);
+-  }
+-
+-  if (ferror(fileHandle))
+-  {
+-    perror("\nConnection failed. Partial completion may have occurred: \n");
+-    return true;
+-  }
+-
+-  return true;
++  return ReadReply(sendSocket, buffer, outPrefix, deadline);
+diff --git a/threads.cpp b/threads.cpp
+index 988f622..53d5951 100755
+--- a/threads.cpp
++++ b/threads.cpp
+@@ -155,2 +155,3 @@ int AutoQuickLock::LockWait(WaitCondition &condition, uint32_t msTimeout)
+-WaitCondition::WaitCondition(bool init) :
+-   m_initDone(false)
++WaitCondition::WaitCondition(bool init, bool monotonic) :
++   m_initDone(false),
++   m_monotonic(monotonic)
+@@ -176 +177,15 @@ bool WaitCondition::Init()
+-  if (LogVerify(!pthread_cond_init(&m_condition, NULL)))
++  if (m_monotonic)
++  {
++    pthread_condattr_t attributes;
++    int ret = pthread_condattr_init(&attributes);
++    if (!ret)
++    {
++      ret = pthread_condattr_setclock(&attributes, CLOCK_MONOTONIC);
++      if (!ret)
++        ret = pthread_cond_init(&m_condition, &attributes);
++      LogVerify(!pthread_condattr_destroy(&attributes));
++    }
++    if (LogVerify(!ret))
++      m_initDone = true;
++  }
++  else if (LogVerify(!pthread_cond_init(&m_condition, NULL)))
+@@ -206 +221 @@ int WaitCondition::Wait(pthread_mutex_t *lock, uint32_t msTimeout)
+-    clock_gettime(CLOCK_REALTIME, &waitTime);
++    clock_gettime(m_monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME, &waitTime);
+diff --git a/threads.h b/threads.h
+index 9a61a32..69b3ed0 100755
+--- a/threads.h
++++ b/threads.h
+@@ -18 +18 @@ public:
+-  WaitCondition(bool init = true);
++  WaitCondition(bool init = true, bool monotonic = false);
+@@ -48,0 +49 @@ private:
++  bool m_monotonic;
