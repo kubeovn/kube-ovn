@@ -95,7 +95,7 @@ func (c *conntrackCollector) runSession(ctx context.Context, diagnostics io.Writ
 		writeDiagnostic(c.metrics, c.identity, diagnostics, "conntrack", "set conntrack read buffer: %v\n", err)
 	}
 	events := make(chan conntrack.Event, DefaultEventBuffer)
-	errorsChannel, err := eventConnection.Listen(events, 2, netfilter.GroupsCT)
+	errorsChannel, err := eventConnection.Listen(events, 1, netfilter.GroupsCT)
 	if err != nil {
 		return fmt.Errorf("subscribe to conntrack events: %w", err)
 	}
