@@ -1,6 +1,7 @@
 package ovn_leader_checker
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
 
 const (
@@ -44,6 +46,92 @@ func TestObserveDuplicateLeaderRequiresConsecutiveObservations(t *testing.T) {
 		if confirmed != (i == maxDuplicateLeaderObservations) {
 			t.Fatalf("confirmation after observation %d: got %t, want %t", i, confirmed, i == maxDuplicateLeaderObservations)
 		}
+	}
+}
+
+func TestCheckDuplicateDBLeaderPreservesObservationsOnUnknownResult(t *testing.T) {
+	queryErr := errors.New("leader query failed")
+	tests := []struct {
+		name            string
+		localLeader     bool
+		localQueryErr   error
+		remoteAddresses []string
+		queryLeader     dbLeaderQueryFunc
+	}{
+		{
+			name:          "local query failure",
+			localQueryErr: queryErr,
+		},
+		{
+			name:            "remote query failure",
+			localLeader:     true,
+			remoteAddresses: []string{"10.0.0.2"},
+			queryLeader: func(_, _ string) (bool, error) {
+				return false, queryErr
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Configuration{
+				remoteAddresses: tt.remoteAddresses,
+				duplicateLeaderObservations: map[string]int{
+					ovnnb.DatabaseName: 2,
+				},
+			}
+
+			checkDuplicateDBLeader(cfg, tt.localLeader, tt.localQueryErr, "ovn-nb", ovnnb.DatabaseName, tt.queryLeader)
+
+			if got := cfg.duplicateLeaderObservations[ovnnb.DatabaseName]; got != 2 {
+				t.Fatalf("unknown leader result changed observation count: got %d, want 2", got)
+			}
+			if count, confirmed := cfg.observeDuplicateLeader(ovnnb.DatabaseName, true); count != 3 || !confirmed {
+				t.Fatalf("duplicate observation after unknown result was not confirmed: count = %d, confirmed = %t", count, confirmed)
+			}
+		})
+	}
+}
+
+func TestCheckDuplicateDBLeaderResetsOnlyConfirmedNormalObservation(t *testing.T) {
+	tests := []struct {
+		name            string
+		localLeader     bool
+		remoteAddresses []string
+		queryLeader     dbLeaderQueryFunc
+	}{
+		{
+			name: "local server is not leader",
+		},
+		{
+			name:            "all remote servers are not leaders",
+			localLeader:     true,
+			remoteAddresses: []string{"10.0.0.2", "10.0.0.3"},
+			queryLeader: func(_, _ string) (bool, error) {
+				return false, nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Configuration{
+				remoteAddresses: tt.remoteAddresses,
+				duplicateLeaderObservations: map[string]int{
+					ovnnb.DatabaseName: 2,
+					ovnsb.DatabaseName: 1,
+				},
+			}
+
+			checkDuplicateDBLeader(cfg, tt.localLeader, nil, "ovn-nb", ovnnb.DatabaseName, tt.queryLeader)
+
+			if _, ok := cfg.duplicateLeaderObservations[ovnnb.DatabaseName]; ok {
+				t.Fatal("confirmed normal observation did not reset the database count")
+			}
+			if got := cfg.duplicateLeaderObservations[ovnsb.DatabaseName]; got != 1 {
+				t.Fatalf("reset changed another database count: got %d, want 1", got)
+			}
+		})
 	}
 }
 
