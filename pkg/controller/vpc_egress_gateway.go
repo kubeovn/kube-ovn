@@ -762,7 +762,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		}
 		deploy.Spec.Template.Spec.Volumes = append(deploy.Spec.Template.Spec.Volumes, frrVolume)
 	}
-	addVpcEgressGatewayObserver(&deploy.Spec.Template.Spec, image, gw.Spec.Observability, observerState, vpc.Name == c.config.ClusterRouter)
+	addVpcEgressGatewayObserver(&deploy.Spec.Template.Spec, image, gw.Spec.Observability, observerState)
 
 	// generate hash for the workload to determine whether to update the existing workload or not
 	hash, err := util.Sha256HashObject(deploy)

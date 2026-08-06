@@ -383,46 +383,7 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		vegTest(f, false, provider, nadName, vpc.Name, internalSubnetName, externalSubnetName, replicas, "", nil)
 	})
 
-	framework.ConformanceIt("should expose native observability metrics and JSON flow logs", func() {
-		f.SkipVersionPriorTo(1, 17, "VpcEgressGateway observability requires v1.17+")
-		serverVersion, err := f.ClientSet.Discovery().ServerVersion()
-		framework.ExpectNoError(err)
-		version, err := utilversion.ParseSemantic(serverVersion.GitVersion)
-		framework.ExpectNoError(err)
-		if version.LessThan(utilversion.MustParseSemantic("1.29.0")) {
-			ginkgo.Skip("restartable init containers require Kubernetes 1.29 or later")
-		}
-		if len(schedulableNodes) < 2 {
-			ginkgo.Skip("at least two schedulable nodes are required")
-		}
-
-		provider, vpc, internalSubnetName := createMacvlanVpc()
-		veg, _, snatSubnetName, snatLabelValue := createVegTestGateway(
-			f, false, provider, vpc.Name, internalSubnetName, externalSubnetName, 2, "", nil,
-			func(veg *apiv1.VpcEgressGateway) {
-				veg.Spec.Observability = &apiv1.VpcEgressGatewayObservability{
-					InterfaceMetrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
-					Conntrack: apiv1.VpcEgressGatewayConntrackObservability{
-						Metrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
-						Log:     apiv1.VpcEgressGatewayConntrackLog{Enabled: true},
-					},
-					ServiceMonitor: apiv1.VpcEgressGatewayServiceMonitor{Labels: map[string]string{"e2e": "vpc-egress-observability"}},
-				}
-			},
-		)
-		workloadPods, intIPs := validateVegTestWorkload(f, veg, nil)
-		interfaceBytes := waitVpcEgressObserverInterfaceBytes(f, workloadPods)
-		validateVegTestSNATAccess(f, veg, nadName, snatSubnetName, snatLabelValue, workloadPods, intIPs)
-		validateVpcEgressObservability(f, veg, workloadPods, interfaceBytes)
-
-		reloadCounts := waitVpcEgressObserverReloadCounts(f, workloadPods)
-		original := veg.DeepCopy()
-		modified := veg.DeepCopy()
-		modified.Spec.Observability.Conntrack.Log.Events = []string{apiv1.ObservabilityEventEnd}
-		modified.Spec.Observability.Conntrack.Log.RateLimit.RecordsPerSecond = 50
-		veg = f.VpcEgressGatewayClient().PatchSync(original, modified)
-		validateVpcEgressObservabilityHotReload(f, veg, workloadPods, reloadCounts)
-	})
+	registerVpcEgressGatewayObservabilityTest(f, &schedulableNodes, createMacvlanVpc, &nadName, &externalSubnetName)
 
 	framework.ConformanceIt("should allow preferred pod anti-affinity", func() {
 		f.SkipVersionPriorTo(1, 17, "VpcEgressGateway preferred pod anti-affinity requires v1.17+")
@@ -717,6 +678,54 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		waitPortGroupExists(pgName)
 	})
 })
+
+func registerVpcEgressGatewayObservabilityTest(
+	f *framework.Framework,
+	schedulableNodes *[]corev1.Node,
+	createMacvlanVpc func() (string, *apiv1.Vpc, string),
+	nadName, externalSubnetName *string,
+) {
+	framework.ConformanceIt("should expose native observability metrics and JSON flow logs", func() {
+		f.SkipVersionPriorTo(1, 17, "VpcEgressGateway observability requires v1.17+")
+		serverVersion, err := f.ClientSet.Discovery().ServerVersion()
+		framework.ExpectNoError(err)
+		version, err := utilversion.ParseSemantic(serverVersion.GitVersion)
+		framework.ExpectNoError(err)
+		if version.LessThan(utilversion.MustParseSemantic("1.29.0")) {
+			ginkgo.Skip("restartable init containers require Kubernetes 1.29 or later")
+		}
+		if len(*schedulableNodes) < 2 {
+			ginkgo.Skip("at least two schedulable nodes are required")
+		}
+
+		provider, vpc, internalSubnetName := createMacvlanVpc()
+		veg, _, snatSubnetName, snatLabelValue := createVegTestGateway(
+			f, false, provider, vpc.Name, internalSubnetName, *externalSubnetName, 2, "", nil,
+			func(veg *apiv1.VpcEgressGateway) {
+				veg.Spec.Observability = &apiv1.VpcEgressGatewayObservability{
+					InterfaceMetrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
+					Conntrack: apiv1.VpcEgressGatewayConntrackObservability{
+						Metrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
+						Log:     apiv1.VpcEgressGatewayConntrackLog{Enabled: true},
+					},
+					ServiceMonitor: apiv1.VpcEgressGatewayServiceMonitor{Labels: map[string]string{"e2e": "vpc-egress-observability"}},
+				}
+			},
+		)
+		workloadPods, intIPs := validateVegTestWorkload(f, veg, nil)
+		interfaceBytes := waitVpcEgressObserverInterfaceBytes(f, workloadPods)
+		validateVegTestSNATAccess(f, veg, *nadName, snatSubnetName, snatLabelValue, workloadPods, intIPs)
+		validateVpcEgressObservability(f, veg, workloadPods, interfaceBytes)
+
+		reloadCounts := waitVpcEgressObserverReloadCounts(f, workloadPods)
+		original := veg.DeepCopy()
+		modified := veg.DeepCopy()
+		modified.Spec.Observability.Conntrack.Log.Events = []string{apiv1.ObservabilityEventEnd}
+		modified.Spec.Observability.Conntrack.Log.RateLimit.RecordsPerSecond = 50
+		veg = f.VpcEgressGatewayClient().PatchSync(original, modified)
+		validateVpcEgressObservabilityHotReload(f, veg, workloadPods, reloadCounts)
+	})
+}
 
 func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.Inspect, ipv4, ipv6 bool) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
