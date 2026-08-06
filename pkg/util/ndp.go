@@ -29,6 +29,16 @@ var ipv6LLAPrefix = netip.MustParseAddr("fe80::").AsSlice()
 
 var icmpv6NAFilter []bpf.RawInstruction
 
+type ndpPacketWriter interface {
+	Close() error
+	SetWriteDeadline(time.Time) error
+	WriteTo([]byte, net.Addr) (int, error)
+}
+
+var listenNDPPacket = func(ifi *net.Interface) (ndpPacketWriter, error) {
+	return packet.Listen(ifi, packet.Raw, unix.ETH_P_IPV6, &packet.Config{})
+}
+
 func init() {
 	instructions := []bpf.Instruction{
 		// length must be at least 86 bytes
@@ -256,4 +266,80 @@ LOOP:
 	default:
 		return true, nil, nil
 	}
+}
+
+// AnnounceNDPAddress sends unsolicited Neighbor Advertisements for an IPv6 address.
+func AnnounceNDPAddress(iface, ip string, mac net.HardwareAddr, announceNum int, announceInterval time.Duration) error {
+	target, err := netip.ParseAddr(ip)
+	if err != nil {
+		return fmt.Errorf("failed to parse IP address %q: %w", ip, err)
+	}
+	if !target.Is6() {
+		return fmt.Errorf("IP address %q is not IPv6", ip)
+	}
+	if len(mac) != 6 {
+		return fmt.Errorf("invalid MAC address %q", mac)
+	}
+
+	ifi, err := net.InterfaceByName(iface)
+	if err != nil {
+		return fmt.Errorf("failed to get interface %q: %w", iface, err)
+	}
+
+	dstIP := netip.MustParseAddr("ff02::1")
+	dstMAC := net.HardwareAddr{0x33, 0x33, 0, 0, 0, 1}
+	na := &ndp.NeighborAdvertisement{
+		Override:      true,
+		TargetAddress: target,
+		Options: []ndp.Option{
+			&ndp.LinkLayerAddress{
+				Direction: ndp.Target,
+				Addr:      mac,
+			},
+		},
+	}
+	msg, err := ndp.MarshalMessageChecksum(na, target, dstIP)
+	if err != nil {
+		return fmt.Errorf("failed to marshal neighbor advertisement message: %w", err)
+	}
+
+	sb := gopacket.NewSerializeBuffer()
+	opts := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
+	if err = gopacket.SerializeLayers(sb, opts,
+		&layers.Ethernet{
+			SrcMAC:       mac,
+			DstMAC:       dstMAC,
+			EthernetType: layers.EthernetTypeIPv6,
+		},
+		&layers.IPv6{
+			Version:    6,
+			SrcIP:      target.AsSlice(),
+			DstIP:      dstIP.AsSlice(),
+			HopLimit:   0xff,
+			NextHeader: layers.IPProtocolICMPv6,
+		},
+		gopacket.Payload(msg),
+	); err != nil {
+		return fmt.Errorf("failed to serialize neighbor advertisement packet: %w", err)
+	}
+
+	conn, err := listenNDPPacket(ifi)
+	if err != nil {
+		return fmt.Errorf("failed to listen on interface %s: %w", ifi.Name, err)
+	}
+	defer conn.Close()
+
+	for i := range announceNum {
+		if err = conn.SetWriteDeadline(time.Now().Add(announceInterval)); err != nil {
+			return fmt.Errorf("failed to set write deadline: %w", err)
+		}
+		if _, err = conn.WriteTo(sb.Bytes(), &packet.Addr{HardwareAddr: dstMAC}); err != nil {
+			return fmt.Errorf("failed to send neighbor advertisement message: %w", err)
+		}
+		if i != announceNum-1 {
+			time.Sleep(announceInterval)
+		}
+	}
+
+	return nil
 }
