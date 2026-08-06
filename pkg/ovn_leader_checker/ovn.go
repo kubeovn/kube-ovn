@@ -604,8 +604,12 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 	} else {
 		icNbLeader, icNbLeaderErr := isDBLeader(cfg.localAddress, util.DatabaseICNB)
 		icSbLeader, icSbLeaderErr := isDBLeader(cfg.localAddress, util.DatabaseICSB)
-		checkDuplicateDBLeader(cfg, icNbLeader, icNbLeaderErr, "ovn-ic-nb", util.DatabaseICNB, 1, isDBLeader)
-		checkDuplicateDBLeader(cfg, icSbLeader, icSbLeaderErr, "ovn-ic-sb", util.DatabaseICSB, 1, isDBLeader)
+		if icNbLeaderErr != nil {
+			klog.Error(icNbLeaderErr)
+		}
+		if icSbLeaderErr != nil {
+			klog.Error(icSbLeaderErr)
+		}
 
 		patch := util.KVPatch{
 			"ovn-ic-nb-leader": strconv.FormatBool(icNbLeader),
@@ -621,6 +625,13 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 				klog.Errorf("update ts num failed err: %v", err)
 				return
 			}
+		}
+
+		if icNbLeaderErr == nil {
+			checkDuplicateDBLeader(cfg, icNbLeader, nil, "ovn-ic-nb", util.DatabaseICNB, 1, isDBLeader)
+		}
+		if icSbLeaderErr == nil {
+			checkDuplicateDBLeader(cfg, icSbLeader, nil, "ovn-ic-sb", util.DatabaseICSB, 1, isDBLeader)
 		}
 	}
 }
