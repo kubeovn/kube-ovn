@@ -89,6 +89,7 @@ func TestOpenBFDDControlHardeningPatch(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Contains(t, string(patchContent), "ControlCommandTimeoutMs = 500")
 		assert.Contains(t, string(patchContent), "ControlRequestTimeoutMs = 5000")
+		assert.Contains(t, string(patchContent), "ControlOperationTimeoutMs = 4000")
 		assert.Contains(t, string(patchContent), "connectedSocket.SetBlocking(false)")
 		assert.Contains(t, string(patchContent), "m_replySocket.SendStream")
 		assert.Contains(t, string(patchContent), "MSG_DONTWAIT | MSG_NOSIGNAL")
@@ -97,6 +98,14 @@ func TestOpenBFDDControlHardeningPatch(t *testing.T) {
 		assert.Contains(t, string(patchContent), "waitCondition(NULL)")
 		assert.Contains(t, string(patchContent), "TimeSpec::MonoNow() >= m_requestDeadline")
 		assert.Contains(t, string(patchContent), "TimeSpec::MonoNow() >= deadline")
+		assert.Contains(t, string(patchContent), "struct StatusOperation")
+		assert.Contains(t, string(patchContent), "references(2)")
+		assert.Contains(t, string(patchContent), "condition(true, true)")
+		assert.Contains(t, string(patchContent), "pthread_condattr_setclock(&attributes, CLOCK_MONOTONIC)")
+		assert.Contains(t, string(patchContent), "runStatusOperation")
+		assert.Contains(t, string(patchContent), `failurePrefix = "Unable to complete "`)
+		assert.Contains(t, string(patchContent), "operation_timeout")
+		assert.Contains(t, string(patchContent), "without a reply")
 		assert.Contains(t, string(patchContent), "Slow or failed control request")
 	}
 
