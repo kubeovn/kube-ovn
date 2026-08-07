@@ -102,6 +102,10 @@ func ParseSampleReference(value string) (SampleReference, error) {
 	if err != nil {
 		return SampleReference{}, fmt.Errorf("invalid ACL sample cookie or metadata %q: %w", value, err)
 	}
+	return sampleReferenceFromUint64(raw)
+}
+
+func sampleReferenceFromUint64(raw uint64) (SampleReference, error) {
 	if raw == 0 {
 		return SampleReference{}, errors.New("ACL sample metadata must be greater than zero")
 	}
