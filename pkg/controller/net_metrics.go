@@ -71,6 +71,20 @@ var (
 			"pod_name",
 		},
 	)
+
+	metricACLSamplingControllerAvailable = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "acl_sampling_controller_available",
+			Help: "Whether the controller ACL sampling path is enabled and its latest operation succeeded.",
+		})
+
+	metricACLSamplingControllerFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "acl_sampling_controller_failures_total",
+			Help: "The number of best-effort controller ACL sampling failures by operation.",
+		},
+		[]string{"operation"},
+		)
 )
 
 func registerMetrics() {
@@ -79,4 +93,6 @@ func registerMetrics() {
 	metrics.Registry.MustRegister(metricCentralSubnetInfo)
 	metrics.Registry.MustRegister(metricSubnetIPAMInfo)
 	metrics.Registry.MustRegister(metricSubnetIPAssignedInfo)
+	metrics.Registry.MustRegister(metricACLSamplingControllerAvailable)
+	metrics.Registry.MustRegister(metricACLSamplingControllerFailures)
 }
