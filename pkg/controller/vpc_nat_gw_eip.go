@@ -38,6 +38,12 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
+
+	// On unbind/switch, re-enqueue the previous QoS policy so it can drop its finalizer
+	// once no EIP references it. UpdateFunc fires after the cache reflects the label removal.
+	if oldEip.Status.QoSPolicy != "" && oldEip.Status.QoSPolicy != newEip.Status.QoSPolicy {
+		c.updateQoSPolicyQueue.Add(oldEip.Status.QoSPolicy)
+	}
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -60,6 +66,12 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
 	c.delIptablesEipQueue.Add(eip)
+
+	// Re-trigger QoS reconcile so it can drop its finalizer once unused. DeleteFunc runs
+	// after the informer cache dropped this EIP, so the reconcile won't see it as in-use.
+	if eip.Status.QoSPolicy != "" {
+		c.updateQoSPolicyQueue.Add(eip.Status.QoSPolicy)
+	}
 }
 
 // natEipNamespace returns the namespace where the NAT gateway pod for the given EIP resides.
@@ -239,9 +251,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
-		// Save qosPolicy before deleting, we need to trigger QoS Policy reconcile after EIP is deleted
-		qosPolicyName := cachedEip.Status.QoSPolicy
-		if qosPolicyName != "" {
+		if cachedEip.Status.QoSPolicy != "" {
 			if err = c.delEipQoS(cachedEip, cachedEip.Status.IP); err != nil {
 				klog.Errorf("failed to del qos '%s' in pod, %v", key, err)
 				return err
@@ -250,16 +260,11 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		// Release IP from IPAM before removing finalizer
 		c.ipam.ReleaseAddressByPod(key, cachedEip.Spec.ExternalSubnet)
 
-		// Now remove finalizer, which will trigger subnet status update
+		// Now remove finalizer, which will trigger subnet status update.
+		// QoS reconcile is re-triggered from the EIP DeleteFunc after the cache drops this EIP.
 		if err = c.handleDelIptablesEipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
 			return err
-		}
-
-		// Trigger QoS Policy reconcile after EIP is deleted
-		// This allows the QoS Policy to remove its finalizer if no other EIPs are using it
-		if qosPolicyName != "" {
-			c.updateQoSPolicyQueue.Add(qosPolicyName)
 		}
 
 		return nil
