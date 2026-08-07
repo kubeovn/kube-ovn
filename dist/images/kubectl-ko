@@ -43,6 +43,8 @@ showHelp(){
   echo "  perf [image] performance test default image is docker.io/kubeovn/test:v1.13.0"
   echo "  icnbctl [ovn-nbctl options ...]    invoke ovn-ic-nbctl"
   echo "  icsbctl [ovn-sbctl options ...]    invoke ovn-ic-sbctl"
+  echo "  acl-sample decode {cookie-or-metadata}    decode a NetworkPolicy ACL sample through OVN NBDB"
+  echo "  acl-sample listen --node {nodeName}       listen for decoded NetworkPolicy ACL samples on a node"
 }
 
 # usage: ipv4_to_hex 192.168.0.1
@@ -843,6 +845,113 @@ getOvnCentralPod(){
     fi
     REGISTRY=$(dirname $image)
     KUBE_OVN_VERSION=$(basename $image | awk -F ':' '{print $2}')
+}
+
+aclSampleDecode(){
+  if [ "$#" -ne 1 ]; then
+    echo "kubectl ko acl-sample decode {cookie-or-metadata}" >&2
+    return 1
+  fi
+
+  OVN_NB_POD=$(getLeaderPod "ovn-nb-leader" "nb")
+  kubectl exec "$OVN_NB_POD" -n "$KUBE_OVN_NS" -c ovn-central -- \
+    /kube-ovn/kube-ovn-acl-sample decode \
+    --ovn-nb-addr=unix:/var/run/ovn/ovnnb_db.sock "$1"
+}
+
+aclSampleListen(){
+  local nodeName=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --node)
+        if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+          echo "--node requires a node name" >&2
+          return 1
+        fi
+        nodeName="$2"
+        shift 2
+        ;;
+      --node=*)
+        nodeName=${1#--node=}
+        shift
+        ;;
+      *)
+        echo "unknown acl-sample listen argument: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+  if [ -z "$nodeName" ]; then
+    echo "kubectl ko acl-sample listen --node {nodeName}" >&2
+    return 1
+  fi
+
+  local daemonArgs enabled groupID
+  daemonArgs=$(kubectl get daemonset kube-ovn-cni -n "$KUBE_OVN_NS" \
+    -o 'go-template={{range .spec.template.spec.containers}}{{if eq .name "cni-server"}}{{range .args}}{{printf "%s\n" .}}{{end}}{{end}}{{end}}')
+  enabled=false
+  groupID=""
+  while IFS= read -r arg; do
+    case "$arg" in
+      --enable-acl-sampling=*) enabled=${arg#*=} ;;
+      --acl-sampling-local-group-id=*) groupID=${arg#*=} ;;
+    esac
+  done <<< "$daemonArgs"
+  if [ "$enabled" != "true" ]; then
+    echo "ACL sampling is not enabled on the kube-ovn-cni DaemonSet" >&2
+    return 1
+  fi
+  case "$groupID" in
+    ''|*[!0-9]*)
+      echo "cannot determine a valid ACL sampling local group ID from the kube-ovn-cni DaemonSet" >&2
+      return 1
+      ;;
+  esac
+
+  local cniPods cniPod
+  cniPods=$(kubectl get pods -n "$KUBE_OVN_NS" -l app=kube-ovn-cni \
+    --field-selector "spec.nodeName=$nodeName" \
+    -o 'jsonpath={range .items[?(@.status.phase=="Running")]}{.metadata.name}{"\n"}{end}')
+  cniPod=${cniPods%%$'\n'*}
+  if [ -z "$cniPod" ]; then
+    echo "cannot find a running kube-ovn-cni Pod on node $nodeName" >&2
+    return 1
+  fi
+
+  OVN_NB_POD=$(getLeaderPod "ovn-nb-leader" "nb")
+  kubectl exec -i "$cniPod" -n "$KUBE_OVN_NS" -c cni-server -- \
+    /kube-ovn/kube-ovn-acl-sample listen --group-id="$groupID" |
+    while IFS= read -r cookie; do
+      if [ -z "$cookie" ]; then
+        continue
+      fi
+      local decoded
+      if decoded=$(kubectl exec "$OVN_NB_POD" -n "$KUBE_OVN_NS" -c ovn-central -- \
+        /kube-ovn/kube-ovn-acl-sample decode \
+        --ovn-nb-addr=unix:/var/run/ovn/ovnnb_db.sock "$cookie"); then
+        printf '%s\n%s\n' '---' "$decoded"
+      else
+        echo "failed to decode ACL sample cookie $cookie; continuing" >&2
+      fi
+    done
+}
+
+aclSample(){
+  if [ "$#" -lt 1 ]; then
+    echo "kubectl ko acl-sample {decode|listen} ..." >&2
+    return 1
+  fi
+
+  local action="$1"
+  shift
+  case "$action" in
+    decode) aclSampleDecode "$@" ;;
+    listen) aclSampleListen "$@" ;;
+    *)
+      echo "unknown acl-sample action: $action" >&2
+      return 1
+      ;;
+  esac
 }
 
 getOVNICNBPod(){
@@ -1712,6 +1821,9 @@ case $subcommand in
   perf)
     getOvnCentralPod
     perf "$@"
+    ;;
+  acl-sample)
+    aclSample "$@"
     ;;
   *)
     showHelp
