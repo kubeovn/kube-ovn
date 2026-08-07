@@ -218,6 +218,9 @@ features:
   # -- Enable Kube-OVN loadbalancer services
   # @section -- Opt-in/out Features
   enableLoadbalancerService: false
+  # -- Enable Kube-OVN nftable share DNAT based loadbalancer services on vpc nat gateway
+  # @section -- Opt-in/out Features
+  enableNftableLoadbalancerService: false
   # -- Enable persistent VM IPs
   # @section -- Opt-in/out Features
   enableKeepVmIps: true

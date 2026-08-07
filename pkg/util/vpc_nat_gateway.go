@@ -27,6 +27,19 @@ const (
 	NatGwStatefulSetNameMaxLength = validation.LabelValueMaxLength - statefulSetRevisionHashSuffixLength
 )
 
+// NftableLbSvcOwnerKey returns the owning Service key (namespace/name) encoded in an nftable
+// LB service share DNAT rule's labels, or "" when the rule is not managed by the feature
+// (e.g. a manually-created share rule). It is the single decoder of the ownership labels
+// shared by the controller and the validating webhook.
+func NftableLbSvcOwnerKey(labels map[string]string) string {
+	ns := labels[NftableLbSvcNsLabel]
+	name := labels[NftableLbSvcNameLabel]
+	if ns == "" && name == "" {
+		return ""
+	}
+	return ns + "/" + name
+}
+
 // GenNatGwName returns the full name of a NAT gateway StatefulSet/Deployment
 func GenNatGwName(name string) string {
 	return GenNatGwNameWithPrefix(VpcNatGwNamePrefix, name)
