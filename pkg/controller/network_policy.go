@@ -177,6 +177,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		samplingRequest, err = c.OVNNbClient.PrepareNetworkPolicyACLSampling(pgName, np.Namespace, np.Name, string(np.UID))
 		if err != nil {
 			// Sampling is best-effort and must never block NetworkPolicy enforcement.
+			recordACLSamplingFailure(aclSamplingOperationPrepare)
 			klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
 		}
 	}
@@ -528,8 +529,10 @@ func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
 		return nil
 	}
 	if err := c.OVNNbClient.ApplyNetworkPolicyACLSampling(c.config.ACLSampling, request); err != nil {
+		recordACLSamplingFailure(aclSamplingOperationAttach)
 		return err
 	}
+	recordACLSamplingSuccess()
 	c.npSamplingRequests.Compute(key, func(current *ovs.NetworkPolicySamplingRequest, loaded bool) (*ovs.NetworkPolicySamplingRequest, xsync.ComputeOp) {
 		if loaded && current == request {
 			return nil, xsync.DeleteOp
