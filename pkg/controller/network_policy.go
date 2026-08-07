@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/scylladb/go-set/strset"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -169,6 +170,15 @@ func (c *Controller) handleUpdateNp(key string) error {
 	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports of port group %s to %v: %v", pgName, ports, err)
 		return err
+	}
+
+	var samplingRequest *ovs.NetworkPolicySamplingRequest
+	if c.config.ACLSampling.Enabled {
+		samplingRequest, err = c.OVNNbClient.PrepareNetworkPolicyACLSampling(pgName, np.Namespace, np.Name, string(np.UID))
+		if err != nil {
+			// Sampling is best-effort and must never block NetworkPolicy enforcement.
+			klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
+		}
 	}
 
 	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
@@ -505,6 +515,27 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 	}
+	if samplingRequest != nil {
+		c.npSamplingRequests.Store(key, samplingRequest)
+		c.npSamplingQueue.Add(key)
+	}
+	return nil
+}
+
+func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
+	request, ok := c.npSamplingRequests.Load(key)
+	if !ok {
+		return nil
+	}
+	if err := c.OVNNbClient.ApplyNetworkPolicyACLSampling(c.config.ACLSampling, request); err != nil {
+		return err
+	}
+	c.npSamplingRequests.Compute(key, func(current *ovs.NetworkPolicySamplingRequest, loaded bool) (*ovs.NetworkPolicySamplingRequest, xsync.ComputeOp) {
+		if loaded && current == request {
+			return nil, xsync.DeleteOp
+		}
+		return current, xsync.CancelOp
+	})
 	return nil
 }
 
