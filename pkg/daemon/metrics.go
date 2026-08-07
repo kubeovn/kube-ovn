@@ -136,6 +136,22 @@ var (
 	}, []string{
 		"hostname",
 	})
+
+	metricACLSamplingNodeAvailable = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "acl_sampling_node_available",
+			Help: "Whether local ACL sampling delivery is available on the node.",
+		},
+		[]string{"node_name"},
+	)
+
+	metricACLSamplingNodeFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "acl_sampling_node_failures_total",
+			Help: "Total number of local ACL sampling reconciliation failures.",
+		},
+		[]string{"node_name"},
+	)
 )
 
 func InitMetrics() {
@@ -145,6 +161,8 @@ func InitMetrics() {
 	metrics.Registry.MustRegister(cniWaitAddressResult)
 	metrics.Registry.MustRegister(cniWaitRouteResult)
 	metrics.Registry.MustRegister(cniConnectivityResult)
+	metrics.Registry.MustRegister(metricACLSamplingNodeAvailable)
+	metrics.Registry.MustRegister(metricACLSamplingNodeFailures)
 }
 
 func registerOvnSubnetGatewayMetrics() {
