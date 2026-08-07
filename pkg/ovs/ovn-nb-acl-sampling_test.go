@@ -12,6 +12,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func newACLSamplingTestClient(t *testing.T, schemaName string) *OVNNbClient {
@@ -201,6 +202,121 @@ func TestValidateACLSamplingSchema(t *testing.T) {
 	err := validateACLSamplingSchema(schema)
 	require.ErrorIs(t, err, ErrACLSamplingUnsupported)
 	require.ErrorContains(t, err, "table Sample is missing")
+}
+
+func TestReconcileACLSamplingDisabledCleansOwnedState(t *testing.T) {
+	client := newACLSamplingTestClient(t, "cleanup-owned-state")
+	config := validACLSamplingConfig()
+	externalIDs := map[string]string{"owner": "external-observer"}
+	externalApp := &ovnnb.SamplingApp{
+		UUID:        ovsclient.NamedUUID(),
+		ExternalIDs: externalIDs,
+		ID:          int(config.AppIDNew),
+		Type:        ovnnb.SamplingAppTypeACLNew,
+	}
+	externalCollector := &ovnnb.SampleCollector{
+		UUID:        ovsclient.NamedUUID(),
+		ExternalIDs: externalIDs,
+		ID:          200,
+		Name:        "external-collector",
+		Probability: 100,
+		SetID:       200,
+	}
+	operations, err := client.Create(externalApp)
+	require.NoError(t, err)
+	collectorOps, err := client.Create(externalCollector)
+	require.NoError(t, err)
+	operations = append(operations, collectorOps...)
+	require.NoError(t, client.Transact("seed-unowned-sampling-objects", operations))
+
+	require.NoError(t, client.ReconcileACLSampling(config))
+	require.Eventually(t, func() bool {
+		apps, appErr := client.listSamplingApps()
+		collectors, collectorErr := client.listSampleCollectors()
+		return appErr == nil && collectorErr == nil && len(apps) == 2 && len(collectors) == 3
+	}, time.Second, 10*time.Millisecond)
+
+	const pgName = "cleanup-policy.default"
+	require.NoError(t, client.CreatePortGroup(pgName, nil))
+	waitForPortGroup(t, client, pgName)
+	acl := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, "np/cleanup-policy.default/ingress/IPv4/0")
+	require.NoError(t, client.CreateAcls(pgName, portGroupKey, acl))
+	waitForACLCount(t, client, pgName, 1)
+	request, err := client.PrepareNetworkPolicyACLSampling(pgName, "default", "cleanup-policy", "11111111-aaaa-bbbb-cccc-222222222222")
+	require.NoError(t, err)
+	require.NoError(t, client.ApplyNetworkPolicyACLSampling(config, request))
+	require.Eventually(t, func() bool {
+		acls, listErr := client.ListAcls("", map[string]string{aclParentKey: pgName})
+		return listErr == nil && len(acls) == 1 && acls[0].SampleNew != nil && acls[0].SampleEst != nil
+	}, time.Second, 10*time.Millisecond)
+
+	config.Enabled = false
+	require.NoError(t, client.ReconcileACLSampling(config))
+	require.Eventually(t, func() bool {
+		acls, aclErr := client.ListAcls("", map[string]string{aclParentKey: pgName})
+		apps, appErr := client.listSamplingApps()
+		collectors, collectorErr := client.listSampleCollectors()
+		samples, sampleErr := client.listSamples()
+		return aclErr == nil && appErr == nil && collectorErr == nil && sampleErr == nil &&
+			len(acls) == 1 && acls[0].SampleNew == nil && acls[0].SampleEst == nil &&
+			acls[0].ExternalIDs[sampleFeatureExternalID] == "" &&
+			len(apps) == 1 && maps.Equal(apps[0].ExternalIDs, externalIDs) &&
+			len(collectors) == 1 && maps.Equal(collectors[0].ExternalIDs, externalIDs) && len(samples) == 0
+	}, 3*time.Second, 10*time.Millisecond)
+}
+
+func TestReconcileACLSamplingDisabledRetainsReferencedOwnedCollector(t *testing.T) {
+	client := newACLSamplingTestClient(t, "cleanup-retained-collector")
+	config := validACLSamplingConfig()
+	require.NoError(t, client.ReconcileACLSampling(config))
+	waitForACLSamplingObjects(t, client)
+
+	const pgName = "retained-policy.default"
+	require.NoError(t, client.CreatePortGroup(pgName, nil))
+	waitForPortGroup(t, client, pgName)
+	eligible := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, "np/retained-policy.default/ingress/IPv4/0")
+	external := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, ovnnb.ACLActionAllowRelated, "external-reference")
+	require.NoError(t, client.CreateAcls(pgName, portGroupKey, eligible, external))
+	waitForACLCount(t, client, pgName, 2)
+	request, err := client.PrepareNetworkPolicyACLSampling(pgName, "default", "retained-policy", "33333333-aaaa-bbbb-cccc-444444444444")
+	require.NoError(t, err)
+	require.NoError(t, client.ApplyNetworkPolicyACLSampling(config, request))
+
+	var sampled ovnnb.ACL
+	require.Eventually(t, func() bool {
+		acls, listErr := client.ListAcls("", map[string]string{aclParentKey: pgName})
+		if listErr != nil {
+			return false
+		}
+		sampled = aclByName(t, acls, "np/retained-policy.default/ingress/IPv4/0")
+		return sampled.SampleNew != nil
+	}, time.Second, 10*time.Millisecond)
+	acls, err := client.ListAcls("", map[string]string{aclParentKey: pgName})
+	require.NoError(t, err)
+	externalACL := aclByName(t, acls, "external-reference")
+	externalACL.SampleNew = sampled.SampleNew
+	updateOps, err := client.Where(&externalACL).Update(&externalACL, &externalACL.SampleNew)
+	require.NoError(t, err)
+	require.NoError(t, client.Transact("seed-external-sample-reference", updateOps))
+	require.Eventually(t, func() bool {
+		current, listErr := client.ListAcls("", map[string]string{aclParentKey: pgName})
+		return listErr == nil && aclByName(t, current, "external-reference").SampleNew != nil
+	}, time.Second, 10*time.Millisecond)
+
+	config.Enabled = false
+	require.NoError(t, client.ReconcileACLSampling(config))
+	require.Eventually(t, func() bool {
+		collectors, collectorErr := client.listSampleCollectors()
+		apps, appErr := client.listSamplingApps()
+		current, aclErr := client.ListAcls("", map[string]string{aclParentKey: pgName})
+		if collectorErr != nil || appErr != nil || aclErr != nil {
+			return false
+		}
+		externalACL = aclByName(t, current, "external-reference")
+		return len(collectors) == 1 && collectors[0].ExternalIDs[aclSamplingRoleExternalID] == aclSamplingRoleAllow &&
+			len(apps) == 0 && externalACL.SampleNew != nil &&
+			aclByName(t, current, "np/retained-policy.default/ingress/IPv4/0").SampleNew == nil
+	}, 3*time.Second, 10*time.Millisecond)
 }
 
 func waitForACLSamplingObjects(t *testing.T, client *OVNNbClient) ([]ovnnb.SamplingApp, []ovnnb.SampleCollector) {
