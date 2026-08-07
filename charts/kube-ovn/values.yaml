@@ -260,6 +260,13 @@ ovs-ovn:
     memory: "1000Mi"
     ephemeral-storage: 1Gi
 kube-ovn-controller:
+  leaderElection:
+    # Duration non-leader candidates wait after observing a renewal before attempting to acquire leadership. Empty uses the controller default of 30s.
+    leaseDuration: ""
+    # Duration the acting leader retries refreshing leadership before giving up. Empty uses the controller default of 20s.
+    renewDeadline: ""
+    # Duration leader election clients wait between attempts. Empty uses the controller default of 6s.
+    retryPeriod: ""
   requests:
     cpu: "200m"
     memory: "200Mi"

@@ -975,6 +975,46 @@ false
 			<td>Labels to be added to all top-level kube-ovn-controller objects (resources under templates/controller)</td>
 		</tr>
 		<tr>
+			<td>controller.leaderElection</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "leaseDuration": "",
+  "renewDeadline": "",
+  "retryPeriod": ""
+}
+</pre>
+</td>
+			<td>Leader election timing configuration.</td>
+		</tr>
+		<tr>
+			<td>controller.leaderElection.leaseDuration</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Duration non-leader candidates wait after observing a renewal before attempting to acquire leadership. Empty uses the controller default of 30s.</td>
+		</tr>
+		<tr>
+			<td>controller.leaderElection.renewDeadline</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Duration the acting leader retries refreshing leadership before giving up. Empty uses the controller default of 20s.</td>
+		</tr>
+		<tr>
+			<td>controller.leaderElection.retryPeriod</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Duration leader election clients wait between attempts. Empty uses the controller default of 6s.</td>
+		</tr>
+		<tr>
 			<td>controller.metrics</td>
 			<td>object</td>
 			<td><pre lang="">
@@ -2750,4 +2790,3 @@ true
 	</tr>
 	</tbody>
 </table>
-

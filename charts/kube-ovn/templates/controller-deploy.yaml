@@ -76,6 +76,15 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
           - /kube-ovn/start-controller.sh
+          {{- if (index .Values "kube-ovn-controller" "leaderElection" "leaseDuration") }}
+          - --leader-elect-lease-duration={{ index .Values "kube-ovn-controller" "leaderElection" "leaseDuration" }}
+          {{- end }}
+          {{- if (index .Values "kube-ovn-controller" "leaderElection" "renewDeadline") }}
+          - --leader-elect-renew-deadline={{ index .Values "kube-ovn-controller" "leaderElection" "renewDeadline" }}
+          {{- end }}
+          {{- if (index .Values "kube-ovn-controller" "leaderElection" "retryPeriod") }}
+          - --leader-elect-retry-period={{ index .Values "kube-ovn-controller" "leaderElection" "retryPeriod" }}
+          {{- end }}
           - --default-ls={{ .Values.networking.DEFAULT_SUBNET }}
           - --default-cidr=
           {{- if eq .Values.networking.NET_STACK "dual_stack" -}}
