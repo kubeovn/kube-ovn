@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+NAMESPACE="acl-sampling-e2e-${RANDOM}"
+SAMPLE_OUTPUT=$(mktemp)
+LISTENER_LOG=$(mktemp)
+LISTENER_PID=""
+POLICY_NAME=acl-sampling
+
+cleanup() {
+  local status=$?
+  trap - EXIT
+  if [ -n "$LISTENER_PID" ]; then
+    kill "$LISTENER_PID" 2>/dev/null || true
+    wait "$LISTENER_PID" 2>/dev/null || true
+  fi
+  if [ "$status" -ne 0 ]; then
+    echo 'ACL sample listener standard output:' >&2
+    sed -n '1,240p' "$SAMPLE_OUTPUT" >&2
+    echo 'ACL sample listener standard error:' >&2
+    sed -n '1,240p' "$LISTENER_LOG" >&2
+  fi
+  kubectl delete namespace "$NAMESPACE" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  rm -f "$SAMPLE_OUTPUT" "$LISTENER_LOG"
+  exit "$status"
+}
+trap cleanup EXIT
+
+wait_for() {
+  local description=$1
+  local timeout_seconds=$2
+  shift 2
+  local deadline=$((SECONDS + timeout_seconds))
+  until "$@"; do
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "timed out waiting for $description" >&2
+      return 1
+    fi
+    sleep 2
+  done
+}
+
+sampling_references_ready() {
+  local rows
+  rows=$(kubectl ko nbctl --format=csv --data=bare --no-heading \
+    --columns=action,sample_new,sample_est find ACL \
+    "external_ids:kube-ovn.io/policy-uid=$POLICY_UID")
+  grep -Eq 'allow-related.*[[:xdigit:]]{8}-.*[[:xdigit:]]{8}-' <<< "$rows" &&
+    grep -Eq 'drop.*[[:xdigit:]]{8}-' <<< "$rows"
+}
+
+has_sample_document() {
+  local verdict=$1
+  local application=$2
+  local extra=$3
+  awk -v verdict="verdict: $verdict" -v application="app: $application" \
+    -v uid="uid: $POLICY_UID" -v extra="$extra" '
+      BEGIN { RS = "---" }
+      index($0, verdict) && index($0, application) && index($0, uid) && index($0, extra) { found = 1 }
+      END { exit !found }
+    ' "$SAMPLE_OUTPUT"
+}
+
+expected_samples_ready() {
+  has_sample_document allow acl-new 'ruleIndex: 0' &&
+    has_sample_document allow acl-est 'ruleIndex: 0' &&
+    has_sample_document default-deny acl-new 'attribution: non-exclusive'
+}
+
+disable_acl_sampling() {
+  local resource=$1
+  local name=$2
+  local container_name=$3
+  local container_index argument_index
+  container_index=$(kubectl get "$resource" -n kube-system "$name" -o json |
+    jq --arg name "$container_name" '.spec.template.spec.containers | map(.name) | index($name)')
+  if [ "$container_index" = "null" ]; then
+    echo "cannot locate container $container_name in $resource/$name" >&2
+    return 1
+  fi
+  argument_index=$(kubectl get "$resource" -n kube-system "$name" -o json |
+    jq --argjson index "$container_index" \
+      '.spec.template.spec.containers[$index].args | index("--enable-acl-sampling=true")')
+  if [ "$argument_index" = "null" ]; then
+    echo "cannot locate the enabled ACL sampling argument in $resource/$name" >&2
+    return 1
+  fi
+
+  kubectl patch "$resource" -n kube-system "$name" --type=json -p="[{
+    \"op\": \"replace\",
+    \"path\": \"/spec/template/spec/containers/$container_index/args/$argument_index\",
+    \"value\": \"--enable-acl-sampling=false\"
+  }]"
+}
+
+sampling_cleanup_complete() {
+  local sampled_acls applications collectors node_sets
+  sampled_acls=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
+    find ACL 'external_ids:kube-ovn.io/sample-feature=network-policy')
+  applications=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
+    find Sampling_App 'external_ids:kube-ovn.io/feature=acl-sampling')
+  collectors=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
+    find Sample_Collector 'external_ids:kube-ovn.io/feature=acl-sampling')
+  node_sets=$(kubectl ko vsctl "$NODE_NAME" --data=bare --no-heading --columns=_uuid \
+    find Flow_Sample_Collector_Set 'external_ids:kube-ovn.io/feature=acl-sampling')
+  [ -z "$sampled_acls" ] && [ -z "$applications" ] &&
+    [ -z "$collectors" ] && [ -z "$node_sets" ]
+}
+
+NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+if [ -z "$NODE_NAME" ]; then
+  echo 'no Kubernetes node is available for ACL sampling E2E' >&2
+  exit 1
+fi
+
+kubectl create namespace "$NAMESPACE"
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: $NAMESPACE
+  name: target
+  labels:
+    app: target
+spec:
+  nodeName: $NODE_NAME
+  containers:
+    - name: agnhost
+      image: ghcr.io/kubeovn/agnhost:2.47
+      args: ["netexec", "--http-port=8080"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: $NAMESPACE
+  name: allowed
+  labels:
+    access: allowed
+spec:
+  nodeName: $NODE_NAME
+  containers:
+    - name: agnhost
+      image: ghcr.io/kubeovn/agnhost:2.47
+      args: ["pause"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: $NAMESPACE
+  name: denied
+  labels:
+    access: denied
+spec:
+  nodeName: $NODE_NAME
+  containers:
+    - name: agnhost
+      image: ghcr.io/kubeovn/agnhost:2.47
+      args: ["pause"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  namespace: $NAMESPACE
+  name: $POLICY_NAME
+spec:
+  podSelector:
+    matchLabels:
+      app: target
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              access: allowed
+      ports:
+        - protocol: TCP
+          port: 8080
+EOF
+
+kubectl wait -n "$NAMESPACE" --for=condition=Ready pod/target pod/allowed pod/denied --timeout=2m
+POLICY_UID=$(kubectl get networkpolicy -n "$NAMESPACE" "$POLICY_NAME" -o jsonpath='{.metadata.uid}')
+TARGET_IP=$(kubectl get pod -n "$NAMESPACE" target -o jsonpath='{.status.podIP}')
+if [[ "$TARGET_IP" == *:* ]]; then
+  TARGET_ENDPOINT="[$TARGET_IP]:8080"
+else
+  TARGET_ENDPOINT="$TARGET_IP:8080"
+fi
+
+wait_for 'NetworkPolicy ACL sampling references' 90 sampling_references_ready
+
+timeout 90s kubectl ko acl-sample listen --node "$NODE_NAME" >"$SAMPLE_OUTPUT" 2>"$LISTENER_LOG" &
+LISTENER_PID=$!
+sleep 3
+if ! kill -0 "$LISTENER_PID" 2>/dev/null; then
+  echo 'ACL sample listener exited before traffic generation' >&2
+  exit 1
+fi
+
+for _ in $(seq 1 10); do
+  kubectl exec -n "$NAMESPACE" allowed -- \
+    /agnhost connect --timeout=3s "$TARGET_ENDPOINT"
+done
+
+for _ in $(seq 1 3); do
+  if kubectl exec -n "$NAMESPACE" denied -- \
+    /agnhost connect --timeout=2s "$TARGET_ENDPOINT"; then
+    echo 'default-denied client unexpectedly reached the target Pod' >&2
+    exit 1
+  fi
+done
+
+wait_for 'decoded acl-new, acl-est, and default-deny samples' 45 expected_samples_ready
+
+kill "$LISTENER_PID" 2>/dev/null || true
+wait "$LISTENER_PID" 2>/dev/null || true
+LISTENER_PID=""
+
+disable_acl_sampling deployment kube-ovn-controller kube-ovn-controller
+disable_acl_sampling daemonset kube-ovn-cni cni-server
+kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout=2m
+kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout=2m
+wait_for 'owned controller and node ACL sampling state cleanup' 90 sampling_cleanup_complete
+
+echo 'ACL sampling E2E passed'
