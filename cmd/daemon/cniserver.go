@@ -17,6 +17,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
+	"github.com/kubeovn/kube-ovn/cmd/acl_sample"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
@@ -28,6 +29,11 @@ import (
 const cniLivezDialTimeout = 2 * time.Second
 
 func main() {
+	if filepath.Base(os.Args[0]) == acl_sample.CommandName {
+		acl_sample.CmdMain()
+		return
+	}
+
 	defer klog.Flush()
 	config := daemon.ParseFlags()
 	klog.Info(versions.String())
