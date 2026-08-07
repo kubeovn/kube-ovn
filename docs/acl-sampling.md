@@ -66,6 +66,19 @@ Use `./charts/kube-ovn` instead to configure the classic chart. Keep the
 controller and CNI agent values identical across split or independently
 managed deployments.
 
+For the manifest-based installer, use the equivalent environment variables:
+
+```bash
+ENABLE_ACL_SAMPLING=true \
+ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT=1 \
+ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT=100 \
+bash dist/images/install.sh
+```
+
+The remaining variable names are the upper snake-case forms of the Helm
+fields, prefixed with `ACL_SAMPLING_`, for example
+`ACL_SAMPLING_LOCAL_GROUP_ID` and `ACL_SAMPLING_APP_ID_ESTABLISHED`.
+
 The configuration fields have the following semantics:
 
 | Field | Constraint | Purpose |
