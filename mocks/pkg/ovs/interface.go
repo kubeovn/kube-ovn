@@ -2499,6 +2499,35 @@ func (m *MockACLSampling) EXPECT() *MockACLSamplingMockRecorder {
 	return m.recorder
 }
 
+// ApplyNetworkPolicyACLSampling mocks base method.
+func (m *MockACLSampling) ApplyNetworkPolicyACLSampling(config aclsampling.ControllerConfig, request *ovs.NetworkPolicySamplingRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyNetworkPolicyACLSampling", config, request)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyNetworkPolicyACLSampling indicates an expected call of ApplyNetworkPolicyACLSampling.
+func (mr *MockACLSamplingMockRecorder) ApplyNetworkPolicyACLSampling(config, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyNetworkPolicyACLSampling", reflect.TypeOf((*MockACLSampling)(nil).ApplyNetworkPolicyACLSampling), config, request)
+}
+
+// PrepareNetworkPolicyACLSampling mocks base method.
+func (m *MockACLSampling) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*ovs.NetworkPolicySamplingRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrepareNetworkPolicyACLSampling", pgName, namespace, name, uid)
+	ret0, _ := ret[0].(*ovs.NetworkPolicySamplingRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrepareNetworkPolicyACLSampling indicates an expected call of PrepareNetworkPolicyACLSampling.
+func (mr *MockACLSamplingMockRecorder) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareNetworkPolicyACLSampling", reflect.TypeOf((*MockACLSampling)(nil).PrepareNetworkPolicyACLSampling), pgName, namespace, name, uid)
+}
+
 // ReconcileACLSampling mocks base method.
 func (m *MockACLSampling) ReconcileACLSampling(config aclsampling.ControllerConfig) error {
 	m.ctrl.T.Helper()
@@ -3470,6 +3499,20 @@ func (mr *MockNbClientMockRecorder) AddressSetUpdateAddress(asName any, addresse
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{asName}, addresses...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddressSetUpdateAddress", reflect.TypeOf((*MockNbClient)(nil).AddressSetUpdateAddress), varargs...)
+}
+
+// ApplyNetworkPolicyACLSampling mocks base method.
+func (m *MockNbClient) ApplyNetworkPolicyACLSampling(config aclsampling.ControllerConfig, request *ovs.NetworkPolicySamplingRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyNetworkPolicyACLSampling", config, request)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyNetworkPolicyACLSampling indicates an expected call of ApplyNetworkPolicyACLSampling.
+func (mr *MockNbClientMockRecorder) ApplyNetworkPolicyACLSampling(config, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyNetworkPolicyACLSampling", reflect.TypeOf((*MockNbClient)(nil).ApplyNetworkPolicyACLSampling), config, request)
 }
 
 // BatchAddLogicalRouterPolicy mocks base method.
@@ -5471,6 +5514,21 @@ func (m *MockNbClient) ReconcileGatewayChassises(lrpName string, chassises []str
 	ret := m.ctrl.Call(m, "ReconcileGatewayChassises", lrpName, chassises)
 	ret0, _ := ret[0].(error)
 	return ret0
+}
+
+// PrepareNetworkPolicyACLSampling mocks base method.
+func (m *MockNbClient) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*ovs.NetworkPolicySamplingRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrepareNetworkPolicyACLSampling", pgName, namespace, name, uid)
+	ret0, _ := ret[0].(*ovs.NetworkPolicySamplingRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrepareNetworkPolicyACLSampling indicates an expected call of PrepareNetworkPolicyACLSampling.
+func (mr *MockNbClientMockRecorder) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareNetworkPolicyACLSampling", reflect.TypeOf((*MockNbClient)(nil).PrepareNetworkPolicyACLSampling), pgName, namespace, name, uid)
 }
 
 // ReconcileACLSampling mocks base method.
