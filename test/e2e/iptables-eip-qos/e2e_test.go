@@ -723,6 +723,13 @@ func setupEIPBoundQoSMarkedForDeletion(f *framework.Framework, vpcQosParams *qos
 	ginkgo.By("Marking qos policy " + qosName + " for deletion while still bound")
 	qosPolicyClient.Delete(qosName)
 
+	ginkgo.By("Waiting for qos policy " + qosName + " to enter Terminating")
+	gomega.Eventually(func(g gomega.Gomega) {
+		p, err := qosPolicyClient.QoSPolicyInterface.Get(context.TODO(), qosName, metav1.GetOptions{})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(p.DeletionTimestamp.IsZero()).To(gomega.BeFalse())
+	}, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
+
 	ginkgo.By("Verifying qos policy " + qosName + " stays in Terminating while the eip references it")
 	gomega.Consistently(func(g gomega.Gomega) {
 		p, err := qosPolicyClient.QoSPolicyInterface.Get(context.TODO(), qosName, metav1.GetOptions{})
