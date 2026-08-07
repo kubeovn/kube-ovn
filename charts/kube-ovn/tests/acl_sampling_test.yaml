@@ -1,0 +1,71 @@
+suite: ACL sampling configuration
+templates:
+  - controller-deploy.yaml
+  - ovncni-ds.yaml
+tests:
+  - it: keeps ACL sampling disabled by default
+    template: controller-deploy.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-acl-sampling=false
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-allow-probability-percent=1
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-default-deny-probability-percent=100
+
+  - it: renders controller ACL sampling overrides
+    template: controller-deploy.yaml
+    set:
+      aclSampling.enabled: true
+      aclSampling.setID: 240
+      aclSampling.appIDNew: 104
+      aclSampling.appIDEstablished: 105
+      aclSampling.collectorIDAllow: 3
+      aclSampling.collectorIDDefaultDeny: 4
+      aclSampling.allowProbabilityPercent: 0.5
+      aclSampling.defaultDenyProbabilityPercent: 75
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-acl-sampling=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-set-id=240
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-app-id-new=104
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-app-id-established=105
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-collector-id-allow=3
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-collector-id-default-deny=4
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-allow-probability-percent=0.5
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-default-deny-probability-percent=75
+
+  - it: renders daemon local ACL sampling overrides
+    template: ovncni-ds.yaml
+    set:
+      aclSampling.enabled: true
+      aclSampling.setID: 240
+      aclSampling.localGroupID: 241
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-acl-sampling=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-set-id=240
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-local-group-id=241
