@@ -81,6 +81,62 @@ type VpcSpec struct {
 	// optional BFD LRP configuration
 	// currently the LRP is used for vpc external gateway only
 	BFDPort *BFDPort `json:"bfdPort"`
+
+	// optional OVN dynamic routing configuration
+	DynamicRouting *VpcDynamicRouting `json:"dynamicRouting,omitempty"`
+}
+
+// +kubebuilder:validation:Enum=connected;connected-as-host;static;nat;lb
+type RedistributeType string
+
+const (
+	RedistributeConnected       RedistributeType = "connected"
+	RedistributeConnectedAsHost RedistributeType = "connected-as-host"
+	RedistributeStatic          RedistributeType = "static"
+	RedistributeNAT             RedistributeType = "nat"
+	RedistributeLB              RedistributeType = "lb"
+)
+
+// VpcDynamicRouting configures OVN dynamic routing for the VPC's logical router.
+// When enabled, routes of the selected types are synchronized to the OVN
+// southbound Advertised_Route table and ovn-controller mirrors them into a
+// Linux VRF on the gateway chassis, where an external routing daemon
+// (e.g. FRR) can redistribute them via BGP.
+// +kubebuilder:validation:XValidation:rule="!self.enabled || (has(self.redistribute) && self.redistribute.size() > 0)",message="redistribute must be set explicitly when dynamic routing is enabled"
+type VpcDynamicRouting struct {
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// Route types to advertise. Must be set explicitly when enabled:
+	// OVN would otherwise default to advertising connected and static
+	// routes, silently exposing internal subnets to the fabric.
+	// +listType=set
+	Redistribute []RedistributeType `json:"redistribute,omitempty"`
+
+	// Advertise chassis-specific routes (NAT/LB IPs) only from the chassis
+	// where the backing port is bound.
+	LocalOnly bool `json:"localOnly,omitempty"`
+
+	// Let ovn-controller create and maintain the VRF on the gateway chassis.
+	// When false, the VRF must already exist on the chassis with a table id
+	// equal to the logical router's datapath tunnel key.
+	MaintainVrf bool `json:"maintainVrf,omitempty"`
+
+	// Name of the VRF used to advertise and learn routes.
+	// Must be a valid Linux interface name.
+	// Defaults to "ovnvrf" plus the vrf table id.
+	// +kubebuilder:validation:MaxLength=15
+	// +kubebuilder:validation:Pattern=`^[^/\s]+$`
+	VrfName string `json:"vrfName,omitempty"`
+
+	// Linux routing table id used by the VRF.
+	// Defaults to the logical router's datapath id.
+	// +kubebuilder:validation:Minimum=1
+	VrfID uint32 `json:"vrfId,omitempty"`
+}
+
+func (r *VpcDynamicRouting) IsEnabled() bool {
+	return r != nil && r.Enabled
 }
 
 type BFDPort struct {

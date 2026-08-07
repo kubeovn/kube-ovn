@@ -202,6 +202,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.VpcDNSSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcDNSStatus"):
 		return &kubeovnv1.VpcDNSStatusApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcDynamicRouting"):
+		return &kubeovnv1.VpcDynamicRoutingApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGateway"):
 		return &kubeovnv1.VpcEgressGatewayApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayBFDConfig"):
