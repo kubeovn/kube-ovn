@@ -439,6 +439,23 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.22 (2026-08-07)
+
+ * [05dfb2558](https://github.com/kubeovn/kube-ovn/commit/05dfb2558bc5493b09ff0bcd2c82b1eb3becafe2) release v1.15.22
+ * [59f26cdf3](https://github.com/kubeovn/kube-ovn/commit/59f26cdf3e1208ba3db493f0c675a55984e7be60) fix(cni): refresh IPv6 neighbor caches (#7140)
+ * [d467e6d69](https://github.com/kubeovn/kube-ovn/commit/d467e6d69c27c8c1ed32e232bbc91ac8a6e54222) [release-1.15] fix(ovn-central): tolerate transient duplicate leaders (#7145)
+ * [8c0107b44](https://github.com/kubeovn/kube-ovn/commit/8c0107b444fa71204a8d0b81f2fa239300761b43) [release-1.15] fix(gateway): harden bfdd control operations (#7143)
+ * [c21e65cb7](https://github.com/kubeovn/kube-ovn/commit/c21e65cb70163fec6671420399900d68ba3b18d6) fix: use fully qualified CRD names in cleanup.sh
+ * [592581b3b](https://github.com/kubeovn/kube-ovn/commit/592581b3b55ad18063192dd5b446782f2d339702) ci: pin Kamaji chart download (#7133)
+ * [d31219ed4](https://github.com/kubeovn/kube-ovn/commit/d31219ed42abbf7f4c903524b81809953f158538) [release-1.15] ci: add hosted OVN central e2e coverage (#7126)
+ * [bc32c3bf4](https://github.com/kubeovn/kube-ovn/commit/bc32c3bf45637bb982915935379f1eec2410c10a) prepare for next release
+
+### Contributors
+
+ * Hadi
+ * zhangzujian
+ * 张祖建
+
 ## v1.15.21 (2026-08-04)
 
  * [49e74eff7](https://github.com/kubeovn/kube-ovn/commit/49e74eff7e93bf3f87d6c767a5d943faeaeeda34) release v1.15.21
