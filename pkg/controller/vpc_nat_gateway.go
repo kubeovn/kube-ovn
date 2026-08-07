@@ -140,10 +140,18 @@ func (c *Controller) enqueueAddOrUpdateVpcNatGwByName(gwName, reason string) {
 	c.addOrUpdateVpcNatGatewayQueue.Add(gwName)
 }
 
-func (c *Controller) enqueueUpdateVpcNatGw(_, newObj any) {
-	key := cache.MetaObjectToName(newObj.(*kubeovnv1.VpcNatGateway)).String()
+func (c *Controller) enqueueUpdateVpcNatGw(oldObj, newObj any) {
+	oldGw := oldObj.(*kubeovnv1.VpcNatGateway)
+	newGw := newObj.(*kubeovnv1.VpcNatGateway)
+	key := cache.MetaObjectToName(newGw).String()
 	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
+
+	// On unbind/switch, re-enqueue the previous QoS policy so it can drop its finalizer
+	// once no NatGw references it. UpdateFunc fires after the cache reflects the label removal.
+	if oldGw.Status.QoSPolicy != "" && oldGw.Status.QoSPolicy != newGw.Status.QoSPolicy {
+		c.updateQoSPolicyQueue.Add(oldGw.Status.QoSPolicy)
+	}
 }
 
 func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
