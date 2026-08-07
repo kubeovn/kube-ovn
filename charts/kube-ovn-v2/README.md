@@ -232,6 +232,107 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 
 ## Values
 
+<h3>ACL sampling configuration</h3>
+<table>
+	<thead>
+		<th>Key</th>
+		<th>Type</th>
+		<th>Default</th>
+		<th>Description</th>
+	</thead>
+	<tbody>
+		<tr>
+			<td>aclSampling</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>Experimental OVN ACL sampling for NetworkPolicy events.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.allowProbabilityPercent</td>
+			<td>int</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+			<td>Sampling probability percentage for allowed decisions.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.appIDEstablished</td>
+			<td>int</td>
+			<td><pre lang="json">
+103
+</pre>
+</td>
+			<td>OVN sampling application ID for established ACL sessions.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.appIDNew</td>
+			<td>int</td>
+			<td><pre lang="json">
+102
+</pre>
+</td>
+			<td>OVN sampling application ID for new ACL sessions.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.collectorIDAllow</td>
+			<td>int</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+			<td>OVN sample collector ID for allowed decisions.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.collectorIDDefaultDeny</td>
+			<td>int</td>
+			<td><pre lang="json">
+2
+</pre>
+</td>
+			<td>OVN sample collector ID for default-deny decisions.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.defaultDenyProbabilityPercent</td>
+			<td>int</td>
+			<td><pre lang="json">
+100
+</pre>
+</td>
+			<td>Sampling probability percentage for default-deny decisions.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable controller-side ACL sampling and node-local psample delivery.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.localGroupID</td>
+			<td>int</td>
+			<td><pre lang="json">
+142
+</pre>
+</td>
+			<td>Linux psample multicast group ID used for local delivery.</td>
+		</tr>
+		<tr>
+			<td>aclSampling.setID</td>
+			<td>int</td>
+			<td><pre lang="json">
+142
+</pre>
+</td>
+			<td>OVN sample collector set ID shared by controller and agents.</td>
+		</tr>
+	</tbody>
+</table>
 <h3>CNI agent configuration</h3>
 <table>
 	<thead>
