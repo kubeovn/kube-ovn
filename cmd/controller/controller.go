@@ -6,7 +6,6 @@ import (
 	"os"
 	"slices"
 	"strconv"
-	"time"
 
 	v1 "k8s.io/api/authorization/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -29,12 +28,7 @@ import (
 	"github.com/kubeovn/kube-ovn/versions"
 )
 
-const (
-	ovnLeaderResource   = "kube-ovn-controller"
-	leaderLeaseDuration = 30 * time.Second
-	leaderRenewDeadline = 20 * time.Second
-	leaderRetryPeriod   = 6 * time.Second
-)
+const ovnLeaderResource = "kube-ovn-controller"
 
 func CmdMain() {
 	defer klog.Flush()
@@ -83,16 +77,16 @@ func CmdMain() {
 			EventRecorder: recorder,
 		},
 		config.KubeRestConfig,
-		leaderRenewDeadline)
+		config.LeaderElection.RenewDeadline)
 	if err != nil {
 		klog.Fatalf("error creating lock: %v", err)
 	}
 
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock:          rl,
-		LeaseDuration: leaderLeaseDuration,
-		RenewDeadline: leaderRenewDeadline,
-		RetryPeriod:   leaderRetryPeriod,
+		LeaseDuration: config.LeaderElection.LeaseDuration,
+		RenewDeadline: config.LeaderElection.RenewDeadline,
+		RetryPeriod:   config.LeaderElection.RetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				controller.Run(ctx, config)
