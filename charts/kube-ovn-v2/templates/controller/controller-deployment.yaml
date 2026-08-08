@@ -135,6 +135,16 @@ spec:
           - --pod-nic-type={{- .Values.networking.podNicType }}
           - --enable-lb={{- .Values.features.enableLoadbalancer }}
           - --enable-np={{- .Values.features.enableNetworkPolicies }}
+          {{- if .Values.aclSampling.enabled }}
+          - --enable-acl-sampling=true
+          - --acl-sampling-set-id={{- .Values.aclSampling.setID }}
+          - --acl-sampling-app-id-new={{- .Values.aclSampling.appIDNew }}
+          - --acl-sampling-app-id-established={{- .Values.aclSampling.appIDEstablished }}
+          - --acl-sampling-collector-id-allow={{- .Values.aclSampling.collectorIDAllow }}
+          - --acl-sampling-collector-id-default-deny={{- .Values.aclSampling.collectorIDDefaultDeny }}
+          - --acl-sampling-allow-probability-percent={{- .Values.aclSampling.allowProbabilityPercent }}
+          - --acl-sampling-default-deny-probability-percent={{- .Values.aclSampling.defaultDenyProbabilityPercent }}
+          {{- end }}
           - --enable-eip-snat={{- .Values.networking.enableEipSnat }}
           {{- if .Values.networking.externalGatewayConfigNs }}
           - --external-gateway-config-ns={{- .Values.networking.externalGatewayConfigNs }}

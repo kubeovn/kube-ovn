@@ -462,6 +462,38 @@ networkPolicies:
   # @section -- Network Policies
   enforcement: "standard"
 
+# -- Experimental OVN ACL sampling for NetworkPolicy events.
+# @section -- ACL sampling configuration
+# @default -- "{}"
+aclSampling:
+  # -- Enable controller-side ACL sampling and node-local psample delivery.
+  # @section -- ACL sampling configuration
+  enabled: false
+  # -- OVN sample collector set ID shared by controller and agents.
+  # @section -- ACL sampling configuration
+  setID: 142
+  # -- Linux psample multicast group ID used for local delivery.
+  # @section -- ACL sampling configuration
+  localGroupID: 142
+  # -- OVN sampling application ID for new ACL sessions.
+  # @section -- ACL sampling configuration
+  appIDNew: 102
+  # -- OVN sampling application ID for established ACL sessions.
+  # @section -- ACL sampling configuration
+  appIDEstablished: 103
+  # -- OVN sample collector ID for allowed decisions.
+  # @section -- ACL sampling configuration
+  collectorIDAllow: 1
+  # -- OVN sample collector ID for default-deny decisions.
+  # @section -- ACL sampling configuration
+  collectorIDDefaultDeny: 2
+  # -- Sampling probability percentage for allowed decisions. Fractional percentages are supported.
+  # @section -- ACL sampling configuration
+  allowProbabilityPercent: 1.0
+  # -- Sampling probability percentage for default-deny decisions. Fractional percentages are supported.
+  # @section -- ACL sampling configuration
+  defaultDenyProbabilityPercent: 100.0
+
 # -- API NetworkAttachmentDefinition to give some pods (CoreDNS, NAT GW) in custom VPCs access to the K8S API.
 # This requires Multus to be installed.
 # @section -- API Network Attachment Definition configuration
