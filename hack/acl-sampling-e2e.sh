@@ -36,7 +36,9 @@ cleanup() {
     wait "$LISTENER_PID" 2>/dev/null || true
   fi
   if [ "$DATAPATH_CAPABILITY_OVERRIDDEN" = true ] && [ -n "$NODE_NAME" ] && [ -n "$DATAPATH_UUID" ]; then
-    kubectl ko vsctl "$NODE_NAME" set Datapath "$DATAPATH_UUID" capabilities:psample=true >/dev/null 2>&1 || true
+    if ! kubectl ko vsctl "$NODE_NAME" set Datapath "$DATAPATH_UUID" capabilities:psample=true >/dev/null; then
+      echo "failed to restore psample capability on node $NODE_NAME" >&2
+    fi
   fi
   if [ -n "$CONFLICT_COLLECTOR_UUID" ]; then
     if ! restore_controller_collector_ownership >/dev/null 2>&1; then
