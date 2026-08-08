@@ -124,7 +124,11 @@ func (c *OVNNbClient) ApplyNetworkPolicyACLSampling(config aclsampling.Controlle
 	}
 	eligible := make([]eligibleNetworkPolicyACL, 0, len(acls))
 	for _, acl := range acls {
-		if candidate, ok := classifyNetworkPolicySamplingACL(acl); ok {
+		candidate, ok, err := classifyNetworkPolicySamplingACL(acl)
+		if err != nil {
+			return fmt.Errorf("classify NetworkPolicy ACL %s for sampling: %w", acl.UUID, err)
+		}
+		if ok {
 			eligible = append(eligible, candidate)
 		}
 	}
@@ -271,19 +275,31 @@ func (c *OVNNbClient) networkPolicySampleCollectors() (map[string]*ovnnb.SampleC
 	return result, nil
 }
 
-func classifyNetworkPolicySamplingACL(acl ovnnb.ACL) (eligibleNetworkPolicyACL, bool) {
+func classifyNetworkPolicySamplingACL(acl ovnnb.ACL) (eligibleNetworkPolicyACL, bool, error) {
 	if acl.Tier != util.NetpolACLTier {
-		return eligibleNetworkPolicyACL{}, false
+		return eligibleNetworkPolicyACL{}, false, nil
 	}
 	direction, ok := networkPolicyDirection(acl.Direction)
 	if !ok {
-		return eligibleNetworkPolicyACL{}, false
+		return eligibleNetworkPolicyACL{}, false, nil
 	}
-	allowPriority := mustPriority(util.IngressAllowPriority)
-	defaultDropPriority := mustPriority(util.IngressDefaultDrop)
+	allowPriority, err := strconv.Atoi(util.IngressAllowPriority)
+	if err != nil {
+		return eligibleNetworkPolicyACL{}, false, fmt.Errorf("parse ingress allow priority: %w", err)
+	}
+	defaultDropPriority, err := strconv.Atoi(util.IngressDefaultDrop)
+	if err != nil {
+		return eligibleNetworkPolicyACL{}, false, fmt.Errorf("parse ingress default-drop priority: %w", err)
+	}
 	if direction == aclsampling.DirectionEgress {
-		allowPriority = mustPriority(util.EgressAllowPriority)
-		defaultDropPriority = mustPriority(util.EgressDefaultDrop)
+		allowPriority, err = strconv.Atoi(util.EgressAllowPriority)
+		if err != nil {
+			return eligibleNetworkPolicyACL{}, false, fmt.Errorf("parse egress allow priority: %w", err)
+		}
+		defaultDropPriority, err = strconv.Atoi(util.EgressDefaultDrop)
+		if err != nil {
+			return eligibleNetworkPolicyACL{}, false, fmt.Errorf("parse egress default-drop priority: %w", err)
+		}
 	}
 
 	if acl.Action == ovnnb.ACLActionDrop && acl.Priority == defaultDropPriority {
@@ -293,10 +309,10 @@ func classifyNetworkPolicySamplingACL(acl ovnnb.ACL) (eligibleNetworkPolicyACL, 
 			role:      aclsampling.RoleDefaultDeny,
 			protocol:  defaultDenyProtocol,
 			verdict:   aclsampling.RoleDefaultDeny,
-		}, true
+		}, true, nil
 	}
 	if acl.Action != ovnnb.ACLActionAllowRelated || acl.Priority != allowPriority {
-		return eligibleNetworkPolicyACL{}, false
+		return eligibleNetworkPolicyACL{}, false, nil
 	}
 
 	aclName := acl.ExternalIDs[networkPolicyACLNameExternalID]
@@ -305,17 +321,17 @@ func classifyNetworkPolicySamplingACL(acl ovnnb.ACL) (eligibleNetworkPolicyACL, 
 	}
 	parts := strings.Split(aclName, "/")
 	if len(parts) != 5 && (len(parts) != 6 || parts[5] != "ipBlock") {
-		return eligibleNetworkPolicyACL{}, false
+		return eligibleNetworkPolicyACL{}, false, nil
 	}
 	if parts[0] != "np" || (parts[2] != "ingress" && parts[2] != "egress") || parts[3] == "" {
-		return eligibleNetworkPolicyACL{}, false
+		return eligibleNetworkPolicyACL{}, false, nil
 	}
 	if (parts[2] == "ingress") != (direction == aclsampling.DirectionIngress) {
-		return eligibleNetworkPolicyACL{}, false
+		return eligibleNetworkPolicyACL{}, false, nil
 	}
 	ruleIndex, err := strconv.Atoi(parts[4])
 	if err != nil || ruleIndex < 0 {
-		return eligibleNetworkPolicyACL{}, false
+		return eligibleNetworkPolicyACL{}, false, nil
 	}
 	return eligibleNetworkPolicyACL{
 		acl:       acl,
@@ -324,7 +340,7 @@ func classifyNetworkPolicySamplingACL(acl ovnnb.ACL) (eligibleNetworkPolicyACL, 
 		role:      aclsampling.RoleRuleAllow,
 		protocol:  parts[3],
 		verdict:   "allow",
-	}, true
+	}, true, nil
 }
 
 func setNetworkPolicyACLName(acl *ovnnb.ACL, name string) {
@@ -341,11 +357,6 @@ func networkPolicyDirection(direction string) (string, bool) {
 	default:
 		return "", false
 	}
-}
-
-func mustPriority(value string) int {
-	priority, _ := strconv.Atoi(value)
-	return priority
 }
 
 func storedNetworkPolicySampleMappings(acls []ovnnb.ACL) ([]aclsampling.OccupiedMetadata, error) {

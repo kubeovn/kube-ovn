@@ -184,10 +184,12 @@ func TestNetworkPolicyACLSamplingPreservesUnownedReferences(t *testing.T) {
 
 func TestClassifyNetworkPolicySamplingACLUsesUntruncatedName(t *testing.T) {
 	fullName := "np/" + strings.Repeat("long-policy-name.", 5) + "default/ingress/IPv4/12/ipBlock"
+	priority, err := strconv.Atoi(util.IngressAllowPriority)
+	require.NoError(t, err)
 	acl := ovnnb.ACL{
 		Action:    ovnnb.ACLActionAllowRelated,
 		Direction: ovnnb.ACLDirectionToLport,
-		Priority:  mustPriority(util.IngressAllowPriority),
+		Priority:  priority,
 		Tier:      util.NetpolACLTier,
 		ExternalIDs: map[string]string{
 			networkPolicyACLNameExternalID: fullName,
@@ -196,7 +198,8 @@ func TestClassifyNetworkPolicySamplingACLUsesUntruncatedName(t *testing.T) {
 	setACLName(&acl, fullName)
 	require.LessOrEqual(t, len(*acl.Name), 63)
 
-	candidate, ok := classifyNetworkPolicySamplingACL(acl)
+	candidate, ok, err := classifyNetworkPolicySamplingACL(acl)
+	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, 12, *candidate.ruleIndex)
 	require.Equal(t, "IPv4", candidate.protocol)
