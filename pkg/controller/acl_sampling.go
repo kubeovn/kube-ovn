@@ -1,12 +1,19 @@
 package controller
 
-import "k8s.io/klog/v2"
+import (
+	"time"
+
+	"golang.org/x/time/rate"
+	"k8s.io/klog/v2"
+)
 
 const (
 	aclSamplingOperationReconcile = "reconcile"
 	aclSamplingOperationPrepare   = "prepare"
 	aclSamplingOperationAttach    = "attach"
 )
+
+var aclSamplingPrepareWarningLimiter = rate.NewLimiter(rate.Every(time.Minute), 1)
 
 func (c *Controller) reconcileACLSampling() {
 	if err := c.OVNNbClient.ReconcileACLSampling(c.config.ACLSampling); err != nil {
@@ -28,4 +35,10 @@ func recordACLSamplingFailure(operation string) {
 
 func recordACLSamplingSuccess() {
 	metricACLSamplingControllerAvailable.Set(1)
+}
+
+func warnACLSamplingPrepareFailure(key string, err error) {
+	if aclSamplingPrepareWarningLimiter.Allow() {
+		klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
+	}
 }
