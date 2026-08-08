@@ -127,6 +127,14 @@ spec:
           - --enable-lb={{- .Values.func.ENABLE_LB }}
           - --enable-np={{- .Values.func.ENABLE_NP }}
           - --np-enforcement={{- .Values.func.NP_ENFORCEMENT }}
+          - --enable-acl-sampling={{- .Values.aclSampling.enabled }}
+          - --acl-sampling-set-id={{- .Values.aclSampling.setID }}
+          - --acl-sampling-app-id-new={{- .Values.aclSampling.appIDNew }}
+          - --acl-sampling-app-id-established={{- .Values.aclSampling.appIDEstablished }}
+          - --acl-sampling-collector-id-allow={{- .Values.aclSampling.collectorIDAllow }}
+          - --acl-sampling-collector-id-default-deny={{- .Values.aclSampling.collectorIDDefaultDeny }}
+          - --acl-sampling-allow-probability-percent={{- .Values.aclSampling.allowProbabilityPercent }}
+          - --acl-sampling-default-deny-probability-percent={{- .Values.aclSampling.defaultDenyProbabilityPercent }}
           - --enable-eip-snat={{- .Values.networking.ENABLE_EIP_SNAT }}
           {{- if .Values.networking.EXTERNAL_GATEWAY_CONFIG_NS }}
           - --external-gateway-config-ns={{- .Values.networking.EXTERNAL_GATEWAY_CONFIG_NS }}
