@@ -1531,119 +1531,117 @@ func TestSyncKubeOvnNetReportsNoChange(t *testing.T) {
 	assertNoPodEvent(t, fc.fakeController)
 }
 
-func TestSyncKubeOvnNetParsesStalePortProviders(t *testing.T) {
-	const (
-		provider = "net1.default.ovn"
-		keepKey  = "example.com/keep"
-	)
+const (
+	stalePortTestProvider = "net1.default.ovn"
+	stalePortTestKeepKey  = "example.com/keep"
+)
 
-	t.Run("default OVN port", func(t *testing.T) {
-		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
-			Name: "test-pod", Namespace: metav1.NamespaceDefault,
-			Annotations: map[string]string{util.AllocatedAnnotation: "true", keepKey: "true"},
-		}}
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
-		require.NoError(t, err)
-		portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
-		fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
-		fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
+func TestSyncKubeOvnNetKeepsDefaultOVNAnnotations(t *testing.T) {
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name: "test-pod", Namespace: metav1.NamespaceDefault,
+		Annotations: map[string]string{util.AllocatedAnnotation: "true", stalePortTestKeepKey: "true"},
+	}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
+	require.NoError(t, err)
+	portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
 
-		updatedPod, details, err := fc.fakeController.syncKubeOvnNet(pod, nil)
+	updatedPod, details, err := fc.fakeController.syncKubeOvnNet(pod, nil)
 
-		require.NoError(t, err)
-		assert.Equal(t, "true", updatedPod.Annotations[util.AllocatedAnnotation])
-		assert.Equal(t, "true", updatedPod.Annotations[keepKey])
-		assert.Contains(t, details, "provider="+util.OvnProvider)
-		assert.Contains(t, details, "logicalSwitchPort="+portName)
+	require.NoError(t, err)
+	assert.Equal(t, "true", updatedPod.Annotations[util.AllocatedAnnotation])
+	assert.Equal(t, "true", updatedPod.Annotations[stalePortTestKeepKey])
+	assert.Contains(t, details, "provider="+util.OvnProvider)
+	assert.Contains(t, details, "logicalSwitchPort="+portName)
+}
+
+func TestSyncKubeOvnNetParsesAttachmentProviderWithDots(t *testing.T) {
+	providerKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, stalePortTestProvider)
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name: "test-pod", Namespace: metav1.NamespaceDefault,
+		Annotations: map[string]string{providerKey: "true", stalePortTestKeepKey: "true"},
+	}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
+	require.NoError(t, err)
+	portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, stalePortTestProvider)
+	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
+
+	updatedPod, details, err := fc.fakeController.syncKubeOvnNet(pod, nil)
+
+	require.NoError(t, err)
+	assert.NotContains(t, updatedPod.Annotations, providerKey)
+	assert.Equal(t, "true", updatedPod.Annotations[stalePortTestKeepKey])
+	assert.Contains(t, details, "provider="+stalePortTestProvider)
+	assert.Contains(t, details, "logicalSwitchPort="+portName)
+}
+
+func TestSyncKubeOvnNetHandlesVMNameWithDots(t *testing.T) {
+	providerKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, stalePortTestProvider)
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name: "virt-launcher-test", Namespace: metav1.NamespaceDefault,
+		Annotations: map[string]string{providerKey: "true", stalePortTestKeepKey: "true"},
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: kubevirtv1.SchemeGroupVersion.String(), Kind: util.KindVirtualMachineInstance, Name: "test.vm",
+		}},
+	}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableKeepVMIP = true
+	portName := ovs.PodNameToPortName("test.vm", pod.Namespace, stalePortTestProvider)
+	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
+
+	updatedPod, details, err := fc.fakeController.syncKubeOvnNet(pod, nil)
+
+	require.NoError(t, err)
+	assert.NotContains(t, updatedPod.Annotations, providerKey)
+	assert.Equal(t, "true", updatedPod.Annotations[stalePortTestKeepKey])
+	assert.Contains(t, details, "provider="+stalePortTestProvider)
+	assert.Contains(t, details, "logicalSwitchPort="+portName)
+}
+
+func TestSyncKubeOvnNetReportsUnmatchedPodPrefix(t *testing.T) {
+	providerKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, stalePortTestProvider)
+	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name: "test-pod", Namespace: metav1.NamespaceDefault,
+		Annotations: map[string]string{providerKey: "true", stalePortTestKeepKey: "true"},
+	}}
+	_, subnet := podEventFixture()
+	portName := "legacy-port-name"
+	ipCR := &kubeovnv1.IP{ObjectMeta: metav1.ObjectMeta{Name: portName}, Spec: kubeovnv1.IPSpec{Subnet: subnet.Name}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}, IPs: []*kubeovnv1.IP{ipCR},
 	})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableNonPrimaryCNI = true
+	require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+	_, _, _, err = fc.fakeController.ipam.GetStaticAddress("default/test-pod", portName, "10.0.0.2", nil, subnet.Name, false)
+	require.NoError(t, err)
+	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{
+		Name: portName,
+		ExternalIDs: map[string]string{
+			"pod": "default/test-pod",
+			"ls":  subnet.Name,
+		},
+	}}, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
 
-	t.Run("attachment provider containing dots", func(t *testing.T) {
-		providerKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)
-		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
-			Name: "test-pod", Namespace: metav1.NamespaceDefault,
-			Annotations: map[string]string{providerKey: "true", keepKey: "true"},
-		}}
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
-		require.NoError(t, err)
-		portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
-		fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
-		fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
+	err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
 
-		updatedPod, details, err := fc.fakeController.syncKubeOvnNet(pod, nil)
-
-		require.NoError(t, err)
-		assert.NotContains(t, updatedPod.Annotations, providerKey)
-		assert.Equal(t, "true", updatedPod.Annotations[keepKey])
-		assert.Contains(t, details, "provider="+provider)
-		assert.Contains(t, details, "logicalSwitchPort="+portName)
-	})
-
-	t.Run("VM name containing dots", func(t *testing.T) {
-		providerKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)
-		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
-			Name: "virt-launcher-test", Namespace: metav1.NamespaceDefault,
-			Annotations: map[string]string{providerKey: "true", keepKey: "true"},
-			OwnerReferences: []metav1.OwnerReference{{
-				APIVersion: kubevirtv1.SchemeGroupVersion.String(), Kind: util.KindVirtualMachineInstance, Name: "test.vm",
-			}},
-		}}
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
-		require.NoError(t, err)
-		fc.fakeController.config.EnableKeepVMIP = true
-		portName := ovs.PodNameToPortName("test.vm", pod.Namespace, provider)
-		fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
-		fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
-
-		updatedPod, details, err := fc.fakeController.syncKubeOvnNet(pod, nil)
-
-		require.NoError(t, err)
-		assert.NotContains(t, updatedPod.Annotations, providerKey)
-		assert.Equal(t, "true", updatedPod.Annotations[keepKey])
-		assert.Contains(t, details, "provider="+provider)
-		assert.Contains(t, details, "logicalSwitchPort="+portName)
-	})
-
-	t.Run("unmatched pod prefix", func(t *testing.T) {
-		providerKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)
-		pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
-			Name: "test-pod", Namespace: metav1.NamespaceDefault,
-			Annotations: map[string]string{providerKey: "true", keepKey: "true"},
-		}}
-		_, subnet := podEventFixture()
-		portName := "legacy-port-name"
-		ipCR := &kubeovnv1.IP{ObjectMeta: metav1.ObjectMeta{Name: portName}, Spec: kubeovnv1.IPSpec{Subnet: subnet.Name}}
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}, IPs: []*kubeovnv1.IP{ipCR},
-		})
-		require.NoError(t, err)
-		fc.fakeController.config.EnableNonPrimaryCNI = true
-		require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
-		_, _, _, err = fc.fakeController.ipam.GetStaticAddress("default/test-pod", portName, "10.0.0.2", nil, subnet.Name, false)
-		require.NoError(t, err)
-		fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{
-			Name: portName,
-			ExternalIDs: map[string]string{
-				"pod": "default/test-pod",
-				"ls":  subnet.Name,
-			},
-		}}, nil)
-		fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
-
-		err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
-
-		require.NoError(t, err)
-		updatedPod, err := fc.fakeController.config.KubeClient.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
-		require.NoError(t, err)
-		assert.Equal(t, "true", updatedPod.Annotations[providerKey])
-		assert.Equal(t, "true", updatedPod.Annotations[keepKey])
-		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), portName, metav1.GetOptions{})
-		assert.True(t, k8serrors.IsNotFound(err))
-		assert.Empty(t, fc.fakeController.ipam.GetPodAddress("default/test-pod"))
-		event := assertPodEvent(t, fc.fakeController, "Normal PodNetworkUpdated", "provider=unknown", "subnet="+subnet.Name, "logicalSwitchPort="+portName)
-		assert.NotContains(t, event, "provider="+provider)
-		assert.NotContains(t, event, "provider= ")
-		assertNoPodEvent(t, fc.fakeController)
-	})
+	require.NoError(t, err)
+	updatedPod, err := fc.fakeController.config.KubeClient.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "true", updatedPod.Annotations[providerKey])
+	assert.Equal(t, "true", updatedPod.Annotations[stalePortTestKeepKey])
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), portName, metav1.GetOptions{})
+	assert.True(t, k8serrors.IsNotFound(err))
+	assert.Empty(t, fc.fakeController.ipam.GetPodAddress("default/test-pod"))
+	event := assertPodEvent(t, fc.fakeController, "Normal PodNetworkUpdated", "provider=unknown", "subnet="+subnet.Name, "logicalSwitchPort="+portName)
+	assert.NotContains(t, event, "provider="+stalePortTestProvider)
+	assert.NotContains(t, event, "provider= ")
+	assertNoPodEvent(t, fc.fakeController)
 }
 
 func TestHandleUpdatePodSecurityRecordsSuccess(t *testing.T) {
