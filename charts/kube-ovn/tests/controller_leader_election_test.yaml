@@ -1,0 +1,43 @@
+suite: Kube-OVN controller leader election
+templates:
+  - controller-deploy.yaml
+tests:
+  - it: relies on controller defaults when leader election timings are empty
+    set:
+      MASTER_NODES: "10.0.0.1"
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-lease-duration=30s
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-lease-duration=
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-renew-deadline=20s
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-renew-deadline=
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-retry-period=6s
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-retry-period=
+
+  - it: renders custom leader election timings
+    set:
+      MASTER_NODES: "10.0.0.1"
+      kube-ovn-controller.leaderElection.leaseDuration: 1m
+      kube-ovn-controller.leaderElection.renewDeadline: 40s
+      kube-ovn-controller.leaderElection.retryPeriod: 10s
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-lease-duration=1m
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-renew-deadline=40s
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --leader-elect-retry-period=10s

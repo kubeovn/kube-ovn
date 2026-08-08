@@ -62,6 +62,9 @@ OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
 ENABLE_OVN_LB_PREFER_LOCAL=${ENABLE_OVN_LB_PREFER_LOCAL:-false}
+LEADER_ELECT_LEASE_DURATION=${LEADER_ELECT_LEASE_DURATION:-30s}
+LEADER_ELECT_RENEW_DEADLINE=${LEADER_ELECT_RENEW_DEADLINE:-20s}
+LEADER_ELECT_RETRY_PERIOD=${LEADER_ELECT_RETRY_PERIOD:-6s}
 
 function ovn_central_tls_env {
   cat <<EOF
@@ -5509,6 +5512,9 @@ spec:
           imagePullPolicy: $IMAGE_PULL_POLICY
           args:
           - /kube-ovn/start-controller.sh
+          - --leader-elect-lease-duration=$LEADER_ELECT_LEASE_DURATION
+          - --leader-elect-renew-deadline=$LEADER_ELECT_RENEW_DEADLINE
+          - --leader-elect-retry-period=$LEADER_ELECT_RETRY_PERIOD
           - --default-cidr=$POD_CIDR
           - --default-gateway=$POD_GATEWAY
           - --default-gateway-check=$CHECK_GATEWAY
