@@ -252,12 +252,12 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 		</tr>
 		<tr>
 			<td>aclSampling.allowProbabilityPercent</td>
-			<td>int</td>
+			<td>float</td>
 			<td><pre lang="json">
 1
 </pre>
 </td>
-			<td>Sampling probability percentage for allowed decisions.</td>
+			<td>Sampling probability percentage for allowed decisions. Fractional percentages are supported.</td>
 		</tr>
 		<tr>
 			<td>aclSampling.appIDEstablished</td>
@@ -297,12 +297,12 @@ This README is generated using [helm-docs](https://github.com/norwoodj/helm-docs
 		</tr>
 		<tr>
 			<td>aclSampling.defaultDenyProbabilityPercent</td>
-			<td>int</td>
+			<td>float</td>
 			<td><pre lang="json">
 100
 </pre>
 </td>
-			<td>Sampling probability percentage for default-deny decisions.</td>
+			<td>Sampling probability percentage for default-deny decisions. Fractional percentages are supported.</td>
 		</tr>
 		<tr>
 			<td>aclSampling.enabled</td>

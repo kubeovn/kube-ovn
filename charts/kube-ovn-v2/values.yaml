@@ -487,12 +487,12 @@ aclSampling:
   # -- OVN sample collector ID for default-deny decisions.
   # @section -- ACL sampling configuration
   collectorIDDefaultDeny: 2
-  # -- Sampling probability percentage for allowed decisions.
+  # -- Sampling probability percentage for allowed decisions. Fractional percentages are supported.
   # @section -- ACL sampling configuration
-  allowProbabilityPercent: 1
-  # -- Sampling probability percentage for default-deny decisions.
+  allowProbabilityPercent: 1.0
+  # -- Sampling probability percentage for default-deny decisions. Fractional percentages are supported.
   # @section -- ACL sampling configuration
-  defaultDenyProbabilityPercent: 100
+  defaultDenyProbabilityPercent: 100.0
 
 # -- API NetworkAttachmentDefinition to give some pods (CoreDNS, NAT GW) in custom VPCs access to the K8S API.
 # This requires Multus to be installed.
