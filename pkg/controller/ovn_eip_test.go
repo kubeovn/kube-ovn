@@ -10,6 +10,82 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func Test_enqueueUpdateOvnEip(t *testing.T) {
+	newTestController := func(t *testing.T) *Controller {
+		ctrl := &Controller{
+			updateOvnEipQueue: newTypedRateLimitingQueue[string]("UpdateOvnEip", nil),
+			resetOvnEipQueue:  newTypedRateLimitingQueue[string]("ResetOvnEip", nil),
+		}
+		t.Cleanup(func() {
+			ctrl.updateOvnEipQueue.ShutDown()
+			ctrl.resetOvnEipQueue.ShutDown()
+		})
+		return ctrl
+	}
+
+	t.Run("v6 ip change is rejected via resetOvnEipQueue, not updateOvnEipQueue", func(t *testing.T) {
+		ctrl := newTestController(t)
+		oldEip := &kubeovnv1.OvnEip{
+			ObjectMeta: metav1.ObjectMeta{Name: "eip-v6"},
+			Spec:       kubeovnv1.OvnEipSpec{V6Ip: "fc00:1::a"},
+		}
+		newEip := oldEip.DeepCopy()
+		newEip.Spec.V6Ip = "fc00:1::b"
+
+		ctrl.enqueueUpdateOvnEip(oldEip, newEip)
+
+		require.Equal(t, 1, ctrl.resetOvnEipQueue.Len())
+		require.Equal(t, 0, ctrl.updateOvnEipQueue.Len())
+		key, _ := ctrl.resetOvnEipQueue.Get()
+		require.Equal(t, "eip-v6", key)
+	})
+
+	t.Run("v4 ip change is rejected via resetOvnEipQueue", func(t *testing.T) {
+		ctrl := newTestController(t)
+		oldEip := &kubeovnv1.OvnEip{
+			ObjectMeta: metav1.ObjectMeta{Name: "eip-v4"},
+			Spec:       kubeovnv1.OvnEipSpec{V4Ip: "192.168.0.5"},
+		}
+		newEip := oldEip.DeepCopy()
+		newEip.Spec.V4Ip = "192.168.0.6"
+
+		ctrl.enqueueUpdateOvnEip(oldEip, newEip)
+
+		require.Equal(t, 1, ctrl.resetOvnEipQueue.Len())
+		require.Equal(t, 0, ctrl.updateOvnEipQueue.Len())
+	})
+
+	t.Run("v4 ip assigned from empty is queued via updateOvnEipQueue", func(t *testing.T) {
+		ctrl := newTestController(t)
+		oldEip := &kubeovnv1.OvnEip{
+			ObjectMeta: metav1.ObjectMeta{Name: "eip-assign"},
+			Spec:       kubeovnv1.OvnEipSpec{V4Ip: "", V6Ip: "fc00:1::a"},
+		}
+		newEip := oldEip.DeepCopy()
+		newEip.Spec.V4Ip = "192.168.0.5"
+
+		ctrl.enqueueUpdateOvnEip(oldEip, newEip)
+
+		require.Equal(t, 0, ctrl.resetOvnEipQueue.Len())
+		require.Equal(t, 1, ctrl.updateOvnEipQueue.Len())
+	})
+
+	t.Run("v6 ip assigned from empty is queued via updateOvnEipQueue", func(t *testing.T) {
+		ctrl := newTestController(t)
+		oldEip := &kubeovnv1.OvnEip{
+			ObjectMeta: metav1.ObjectMeta{Name: "eip-assign-v6"},
+			Spec:       kubeovnv1.OvnEipSpec{V4Ip: "192.168.0.5", V6Ip: ""},
+		}
+		newEip := oldEip.DeepCopy()
+		newEip.Spec.V6Ip = "fc00:1::a"
+
+		ctrl.enqueueUpdateOvnEip(oldEip, newEip)
+
+		require.Equal(t, 0, ctrl.resetOvnEipQueue.Len())
+		require.Equal(t, 1, ctrl.updateOvnEipQueue.Len())
+	})
+}
+
 func Test_getOvnEipNat(t *testing.T) {
 	// NAT rules always carry an eip_v4_ip label, so a pure-IPv6 rule still has
 	// eip_v4_ip="" together with its own eip_v6_ip label.
