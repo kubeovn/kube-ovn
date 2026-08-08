@@ -22,6 +22,15 @@ HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_LB=${ENABLE_LB:-true}
 ENABLE_NP=${ENABLE_NP:-true}
 NP_ENFORCEMENT=${NP_ENFORCEMENT:-standard}
+ENABLE_ACL_SAMPLING=${ENABLE_ACL_SAMPLING:-false}
+ACL_SAMPLING_SET_ID=${ACL_SAMPLING_SET_ID:-142}
+ACL_SAMPLING_LOCAL_GROUP_ID=${ACL_SAMPLING_LOCAL_GROUP_ID:-142}
+ACL_SAMPLING_APP_ID_NEW=${ACL_SAMPLING_APP_ID_NEW:-102}
+ACL_SAMPLING_APP_ID_ESTABLISHED=${ACL_SAMPLING_APP_ID_ESTABLISHED:-103}
+ACL_SAMPLING_COLLECTOR_ID_ALLOW=${ACL_SAMPLING_COLLECTOR_ID_ALLOW:-1}
+ACL_SAMPLING_COLLECTOR_ID_DEFAULT_DENY=${ACL_SAMPLING_COLLECTOR_ID_DEFAULT_DENY:-2}
+ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT=${ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT:-1}
+ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT=${ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT:-100}
 ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-true}
 LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
@@ -238,6 +247,7 @@ echo "Default Subnet CIDR:  $POD_CIDR"
 echo "Join Subnet CIDR:     $JOIN_CIDR"
 echo "Enable SVC LB:        $ENABLE_LB"
 echo "Enable Networkpolicy: $ENABLE_NP"
+echo "Enable ACL Sampling:  $ENABLE_ACL_SAMPLING"
 echo "Enable EIP and SNAT:  $ENABLE_EIP_SNAT"
 echo "Enable Mirror:        $ENABLE_MIRROR"
 echo "-------------------------------"
@@ -8370,6 +8380,14 @@ spec:
           - --enable-lb=$ENABLE_LB
           - --enable-np=$ENABLE_NP
           - --np-enforcement=$NP_ENFORCEMENT
+          - --enable-acl-sampling=$ENABLE_ACL_SAMPLING
+          - --acl-sampling-set-id=$ACL_SAMPLING_SET_ID
+          - --acl-sampling-app-id-new=$ACL_SAMPLING_APP_ID_NEW
+          - --acl-sampling-app-id-established=$ACL_SAMPLING_APP_ID_ESTABLISHED
+          - --acl-sampling-collector-id-allow=$ACL_SAMPLING_COLLECTOR_ID_ALLOW
+          - --acl-sampling-collector-id-default-deny=$ACL_SAMPLING_COLLECTOR_ID_DEFAULT_DENY
+          - --acl-sampling-allow-probability-percent=$ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT
+          - --acl-sampling-default-deny-probability-percent=$ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT
           - --enable-eip-snat=$ENABLE_EIP_SNAT
           - --enable-external-vpc=$ENABLE_EXTERNAL_VPC
           - --logtostderr=false
@@ -8596,6 +8614,9 @@ spec:
           - --cert-manager-issuer-name=$CERT_MANAGER_ISSUER_NAME
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
           - --host-tunnel-src=$HOST_TUNNEL_SRC
+          - --enable-acl-sampling=$ENABLE_ACL_SAMPLING
+          - --acl-sampling-set-id=$ACL_SAMPLING_SET_ID
+          - --acl-sampling-local-group-id=$ACL_SAMPLING_LOCAL_GROUP_ID
         securityContext:
           runAsUser: 0
           privileged: false
