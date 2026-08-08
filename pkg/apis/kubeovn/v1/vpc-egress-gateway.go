@@ -22,6 +22,26 @@ const (
 
 	PodAntiAffinityRequired  = "Required"
 	PodAntiAffinityPreferred = "Preferred"
+
+	ObservabilityConfigured ConditionType = "ObservabilityConfigured"
+	ServiceMonitorReady     ConditionType = "ServiceMonitorReady"
+
+	ObservabilityEventStart = "start"
+	ObservabilityEventEnd   = "end"
+
+	ObservabilityProtocolTCP    = "tcp"
+	ObservabilityProtocolUDP    = "udp"
+	ObservabilityProtocolSCTP   = "sctp"
+	ObservabilityProtocolICMP   = "icmp"
+	ObservabilityProtocolICMPv6 = "icmpv6"
+	ObservabilityProtocolOther  = "other"
+
+	ObservabilityAddressFamilyIPv4 = "ipv4"
+	ObservabilityAddressFamilyIPv6 = "ipv6"
+
+	ObservabilityNatTypeSNAT     = "snat"
+	ObservabilityNatTypeDNAT     = "dnat"
+	ObservabilityNatTypeSNATDNAT = "snat_dnat"
 )
 
 // Phase represents resource phase
@@ -311,6 +331,108 @@ type VpcEgressGatewaySpec struct {
 	// Optional bandwidth limit for each egress gateway instance in both ingress and egress directions.
 	// If not specified, there will be no bandwidth limit.
 	Bandwidth *BandwidthLimit `json:"bandwidth,omitempty"`
+
+	// Optional observability configuration for the gateway workload.
+	Observability *VpcEgressGatewayObservability `json:"observability,omitempty"`
+}
+
+// VpcEgressGatewayObservability configures the native observability sidecar.
+type VpcEgressGatewayObservability struct {
+	// Compute resources required by the observability sidecar.
+	Resources        corev1.ResourceRequirements            `json:"resources,omitempty"`
+	InterfaceMetrics VpcEgressGatewayObservabilityFeature   `json:"interfaceMetrics,omitempty"`
+	Conntrack        VpcEgressGatewayConntrackObservability `json:"conntrack,omitempty"`
+	ServiceMonitor   VpcEgressGatewayServiceMonitor         `json:"serviceMonitor,omitempty"`
+}
+
+// VpcEgressGatewayObservabilityFeature enables an observability collector.
+type VpcEgressGatewayObservabilityFeature struct {
+	Enabled bool `json:"enabled,omitempty"`
+}
+
+// VpcEgressGatewayConntrackObservability configures conntrack metrics and flow logs.
+type VpcEgressGatewayConntrackObservability struct {
+	Metrics VpcEgressGatewayObservabilityFeature `json:"metrics,omitempty"`
+	Log     VpcEgressGatewayConntrackLog         `json:"log,omitempty"`
+}
+
+// VpcEgressGatewayConntrackLog configures JSON Lines flow logging to stdout.
+type VpcEgressGatewayConntrackLog struct {
+	Enabled bool `json:"enabled,omitempty"`
+	// flow lifecycle events to log; start and end are used when omitted
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:items:Enum=start;end
+	Events    []string                              `json:"events,omitempty"`
+	RateLimit VpcEgressGatewayConntrackLogRateLimit `json:"rateLimit,omitempty"`
+	Filters   VpcEgressGatewayConntrackLogFilters   `json:"filters,omitempty"`
+}
+
+// VpcEgressGatewayConntrackLogFilters selects flow records. Exclude rules take precedence.
+type VpcEgressGatewayConntrackLogFilters struct {
+	// +kubebuilder:validation:MaxItems=64
+	Include []VpcEgressGatewayConntrackLogFilter `json:"include,omitempty"`
+	// +kubebuilder:validation:MaxItems=64
+	Exclude []VpcEgressGatewayConntrackLogFilter `json:"exclude,omitempty"`
+}
+
+// VpcEgressGatewayConntrackLogFilter matches all configured fields in a rule.
+type VpcEgressGatewayConntrackLogFilter struct {
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:items:Enum=ipv4;ipv6
+	AddressFamilies []string `json:"addressFamilies,omitempty"`
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=6
+	// +kubebuilder:validation:items:Enum=tcp;udp;sctp;icmp;icmpv6;other
+	Protocols []string `json:"protocols,omitempty"`
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=3
+	// +kubebuilder:validation:items:Enum=snat;dnat;snat_dnat
+	NatTypes   []string                             `json:"natTypes,omitempty"`
+	Original   VpcEgressGatewayConntrackTupleFilter `json:"original,omitempty"`
+	Translated VpcEgressGatewayConntrackTupleFilter `json:"translated,omitempty"`
+}
+
+// VpcEgressGatewayConntrackTupleFilter matches tuple addresses and ports.
+type VpcEgressGatewayConntrackTupleFilter struct {
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=64
+	SourceCIDRs []string `json:"sourceCIDRs,omitempty"`
+	// +listType=set
+	// +kubebuilder:validation:MaxItems=64
+	DestinationCIDRs []string `json:"destinationCIDRs,omitempty"`
+	// +kubebuilder:validation:MaxItems=64
+	SourcePorts []VpcEgressGatewayPortRange `json:"sourcePorts,omitempty"`
+	// +kubebuilder:validation:MaxItems=64
+	DestinationPorts []VpcEgressGatewayPortRange `json:"destinationPorts,omitempty"`
+}
+
+// VpcEgressGatewayPortRange is an inclusive transport port range.
+// +kubebuilder:validation:XValidation:rule="self.start <= self.end",message="start must not be greater than end"
+type VpcEgressGatewayPortRange struct {
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=65535
+	Start int32 `json:"start"`
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=65535
+	End int32 `json:"end"`
+}
+
+// VpcEgressGatewayConntrackLogRateLimit limits flow log records per gateway pod.
+type VpcEgressGatewayConntrackLogRateLimit struct {
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100000
+	RecordsPerSecond int32 `json:"recordsPerSecond,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=1000000
+	Burst int32 `json:"burst,omitempty"`
+}
+
+// VpcEgressGatewayServiceMonitor configures metadata for the per-gateway ServiceMonitor.
+type VpcEgressGatewayServiceMonitor struct {
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 type VpcEgressGatewaySelector struct {
