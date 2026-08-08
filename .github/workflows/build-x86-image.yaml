@@ -694,7 +694,7 @@ jobs:
       - build-kube-ovn
       - netpol-path-filter
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -756,6 +756,8 @@ jobs:
           path: |
             acl-sampling-e2e-events.yaml
             acl-sampling-e2e-pods.txt
+            acl-sampling-e2e-listener.out
+            acl-sampling-e2e-listener.err
             kubectl-ko-log/
 
   k8s-netpol-e2e:
