@@ -99,3 +99,17 @@ func TestRunValidatesArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintUsageReturnsWriteError(t *testing.T) {
+	wantErr := errors.New("write failed")
+	err := printUsage(errorWriter{err: wantErr})
+	require.ErrorIs(t, err, wantErr)
+}
+
+type errorWriter struct {
+	err error
+}
+
+func (w errorWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
