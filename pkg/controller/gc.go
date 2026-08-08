@@ -294,7 +294,7 @@ func (c *Controller) gcVip() error {
 			_, err := c.podsLister.Pods(namespace).Get(podName)
 			if err != nil {
 				if k8serrors.IsNotFound(err) {
-					if err = c.releaseVip(vip.Name); err != nil {
+					if _, err = c.releaseVip(vip.Name); err != nil {
 						klog.Errorf("failed to clean label from vip %s, %v", vip.Name, err)
 						return err
 					}
