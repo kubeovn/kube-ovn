@@ -568,7 +568,7 @@ func (c *Controller) prepareNetworkPolicyACLSampling(key, pgName string, np *net
 	if err != nil {
 		// Sampling is best-effort and must never block NetworkPolicy enforcement.
 		recordACLSamplingFailure(aclSamplingOperationPrepare)
-		klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
+		warnACLSamplingPrepareFailure(key, err)
 		return nil
 	}
 	state := &networkPolicySamplingState{request: request, policyUID: np.UID, portGroupName: pgName}
