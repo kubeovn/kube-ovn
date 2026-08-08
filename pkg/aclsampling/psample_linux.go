@@ -48,8 +48,8 @@ var errNotACLPSample = errors.New("psample message is not an ACL sample")
 
 // ListenPSamples subscribes to the Linux psample packets multicast group and
 // invokes handle for each ACL sample emitted to groupID. Context cancellation
-// stops the blocking receive and returns nil.
-func ListenPSamples(ctx context.Context, groupID uint32, handle func(PacketSample) error) error {
+// stops the blocking receive.
+func ListenPSamples(ctx context.Context, groupID uint32, handle func(PacketSample) error) (retErr error) {
 	if ctx == nil {
 		return errors.New("psample context must not be nil")
 	}
@@ -74,17 +74,26 @@ func ListenPSamples(ctx context.Context, groupID uint32, handle func(PacketSampl
 		return fmt.Errorf("open psample generic netlink socket: %w", err)
 	}
 	if err := unix.SetsockoptInt(socket.GetFd(), unix.SOL_NETLINK, unix.NETLINK_ADD_MEMBERSHIP, int(multicastGroupID)); err != nil {
-		_ = socket.Close()
-		return fmt.Errorf("subscribe to psample packets multicast group: %w", err)
+		subscribeErr := fmt.Errorf("subscribe to psample packets multicast group: %w", err)
+		if closeErr := socket.Close(); closeErr != nil {
+			return errors.Join(subscribeErr, fmt.Errorf("close psample generic netlink socket: %w", closeErr))
+		}
+		return subscribeErr
 	}
 
 	var closeOnce sync.Once
+	var closeErr error
 	closeSocket := func() {
-		closeOnce.Do(func() { _ = socket.Close() })
+		closeOnce.Do(func() { closeErr = socket.Close() })
 	}
 	done := make(chan struct{})
 	defer close(done)
-	defer closeSocket()
+	defer func() {
+		closeSocket()
+		if closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close psample generic netlink socket: %w", closeErr))
+		}
+	}()
 	go func() {
 		select {
 		case <-ctx.Done():
