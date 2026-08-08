@@ -56,8 +56,14 @@ func (c *OVNNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) 
 		return err
 	}
 
-	allowProbability, _ := aclsampling.ProbabilityFromPercent(config.AllowProbabilityPercent)
-	defaultDenyProbability, _ := aclsampling.ProbabilityFromPercent(config.DefaultDenyProbabilityPercent)
+	allowProbability, err := aclsampling.ProbabilityFromPercent(config.AllowProbabilityPercent)
+	if err != nil {
+		return fmt.Errorf("convert allow sampling probability: %w", err)
+	}
+	defaultDenyProbability, err := aclsampling.ProbabilityFromPercent(config.DefaultDenyProbabilityPercent)
+	if err != nil {
+		return fmt.Errorf("convert default-deny sampling probability: %w", err)
+	}
 
 	apps, err := c.listSamplingApps()
 	if err != nil {
