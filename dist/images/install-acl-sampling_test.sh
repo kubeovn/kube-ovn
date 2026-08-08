@@ -57,15 +57,15 @@ assert_equal 100 "$ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT"
 assert_equal 25 "$ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT"
 
 for argument in \
-  '--enable-acl-sampling=$ENABLE_ACL_SAMPLING' \
-  '--acl-sampling-set-id=$ACL_SAMPLING_SET_ID' \
-  '--acl-sampling-local-group-id=$ACL_SAMPLING_LOCAL_GROUP_ID' \
-  '--acl-sampling-app-id-new=$ACL_SAMPLING_APP_ID_NEW' \
-  '--acl-sampling-app-id-established=$ACL_SAMPLING_APP_ID_ESTABLISHED' \
-  '--acl-sampling-collector-id-allow=$ACL_SAMPLING_COLLECTOR_ID_ALLOW' \
-  '--acl-sampling-collector-id-default-deny=$ACL_SAMPLING_COLLECTOR_ID_DEFAULT_DENY' \
-  '--acl-sampling-allow-probability-percent=$ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT' \
-  '--acl-sampling-default-deny-probability-percent=$ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT'
+  "--enable-acl-sampling=\$ENABLE_ACL_SAMPLING" \
+  "--acl-sampling-set-id=\$ACL_SAMPLING_SET_ID" \
+  "--acl-sampling-local-group-id=\$ACL_SAMPLING_LOCAL_GROUP_ID" \
+  "--acl-sampling-app-id-new=\$ACL_SAMPLING_APP_ID_NEW" \
+  "--acl-sampling-app-id-established=\$ACL_SAMPLING_APP_ID_ESTABLISHED" \
+  "--acl-sampling-collector-id-allow=\$ACL_SAMPLING_COLLECTOR_ID_ALLOW" \
+  "--acl-sampling-collector-id-default-deny=\$ACL_SAMPLING_COLLECTOR_ID_DEFAULT_DENY" \
+  "--acl-sampling-allow-probability-percent=\$ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT" \
+  "--acl-sampling-default-deny-probability-percent=\$ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT"
 do
   assert_script_contains "$argument"
 done
