@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -135,18 +136,21 @@ func (key SampleKey) canonical() (string, error) {
 		return "", err
 	}
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "schema-version=%s\n", key.SchemaVersion)
-	fmt.Fprintf(&b, "policy-uid=%s\n", key.PolicyUID)
-	fmt.Fprintf(&b, "direction=%s\n", key.Direction)
-	if key.RuleIndex != nil {
-		fmt.Fprintf(&b, "rule-index=%d\n", *key.RuleIndex)
+	fields := []string{
+		"schema-version=" + key.SchemaVersion,
+		"policy-uid=" + key.PolicyUID,
+		"direction=" + key.Direction,
 	}
-	fmt.Fprintf(&b, "acl-role=%s\n", key.Role)
-	fmt.Fprintf(&b, "protocol=%s\n", key.Protocol)
-	fmt.Fprintf(&b, "acl-match-hash=%s\n", key.ACLMatchHash)
-	fmt.Fprintf(&b, "ovn-action=%s\n", key.OVNAction)
-	return b.String(), nil
+	if key.RuleIndex != nil {
+		fields = append(fields, "rule-index="+strconv.Itoa(*key.RuleIndex))
+	}
+	fields = append(fields,
+		"acl-role="+key.Role,
+		"protocol="+key.Protocol,
+		"acl-match-hash="+key.ACLMatchHash,
+		"ovn-action="+key.OVNAction,
+	)
+	return strings.Join(fields, "\n") + "\n", nil
 }
 
 func (key SampleKey) validate() error {
