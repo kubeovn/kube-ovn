@@ -1,9 +1,12 @@
 package daemon
 
 import (
+	"errors"
 	"net"
 	"testing"
+	"time"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -11,10 +14,269 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func newPodQoSTestController(t *testing.T, pod *v1.Pod) (*Controller, *record.FakeRecorder) {
+	t.Helper()
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(pod))
+	recorder := record.NewFakeRecorder(10)
+	return &Controller{
+		config:     &Configuration{NodeName: "node-a"},
+		podsLister: listerv1.NewPodLister(indexer),
+		recorder:   recorder,
+	}, recorder
+}
+
+func requirePodEvent(t *testing.T, recorder *record.FakeRecorder, parts ...string) {
+	t.Helper()
+
+	select {
+	case event := <-recorder.Events:
+		for _, part := range parts {
+			require.Contains(t, event, part)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected pod event")
+	}
+}
+
+func requireNoPodEvent(t *testing.T, recorder *record.FakeRecorder) {
+	t.Helper()
+
+	select {
+	case event := <-recorder.Events:
+		t.Fatalf("unexpected pod event: %s", event)
+	default:
+	}
+}
+
+func TestHandleUpdatePodValidationFailureEmitsOnlyValidationEvent(t *testing.T) {
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name:      "pod",
+		Namespace: metav1.NamespaceDefault,
+		Annotations: map[string]string{
+			util.IPAddressAnnotation: "invalid",
+		},
+	}}
+	controller, recorder := newPodQoSTestController(t, pod)
+
+	require.Error(t, controller.handleUpdatePod("default/pod"))
+	requirePodEvent(t, recorder, "Warning", "ValidatePodNetworkFailed", "invalid")
+	requireNoPodEvent(t, recorder)
+}
+
+func TestHandleUpdatePodBandwidthFailureEmitsQoSFailureEvent(t *testing.T) {
+	failErr := errors.New("default bandwidth failure")
+	stubPodQoSFunctions(t, "bandwidth", "pod.default", failErr)
+	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name:        "pod",
+		Namespace:   metav1.NamespaceDefault,
+		Annotations: map[string]string{},
+	}}
+	controller, recorder := newPodQoSTestController(t, pod)
+
+	require.ErrorIs(t, controller.handleUpdatePod("default/pod"), failErr)
+	requirePodEvent(t, recorder,
+		"Warning", "PodQoSUpdateFailed", "stage=bandwidth", "provider=ovn",
+		"interface=pod.default", "node=node-a", failErr.Error())
+	requireNoPodEvent(t, recorder)
+}
+
+func stubPodQoSFunctions(t *testing.T, failStage, failInterface string, failErr error) map[string][]string {
+	t.Helper()
+
+	originalBandwidth := setInterfaceBandwidth
+	originalMirror := configInterfaceMirror
+	originalNetem := setNetemQos
+	t.Cleanup(func() {
+		setInterfaceBandwidth = originalBandwidth
+		configInterfaceMirror = originalMirror
+		setNetemQos = originalNetem
+	})
+
+	calls := map[string][]string{}
+	setInterfaceBandwidth = func(_, _, iface, _, _ string) error {
+		calls["bandwidth"] = append(calls["bandwidth"], iface)
+		if failStage == "bandwidth" && iface == failInterface {
+			return failErr
+		}
+		return nil
+	}
+	configInterfaceMirror = func(_ bool, _, iface string) error {
+		calls["mirror"] = append(calls["mirror"], iface)
+		if failStage == "mirror" && iface == failInterface {
+			return failErr
+		}
+		return nil
+	}
+	setNetemQos = func(_, _, iface, _, _, _, _ string) error {
+		calls["netem"] = append(calls["netem"], iface)
+		if failStage == "netem" && iface == failInterface {
+			return failErr
+		}
+		return nil
+	}
+	return calls
+}
+
+func newPodQoSTestPod(networkAnnotation string) *v1.Pod {
+	annotations := map[string]string{}
+	if networkAnnotation != "" {
+		annotations[nadv1.NetworkAttachmentAnnot] = networkAnnotation
+		annotations["net1.default.ovn.kubernetes.io/allocated"] = "true"
+	}
+	return &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name:        "pod",
+		Namespace:   metav1.NamespaceDefault,
+		Annotations: annotations,
+	}}
+}
+
+func TestHandleUpdatePodQoSCallFailuresEmitOneEvent(t *testing.T) {
+	const multusInterface = "pod.default.net1.default.ovn"
+	failErr := errors.New("injected QoS failure")
+
+	for _, stage := range []string{"bandwidth", "mirror", "netem"} {
+		t.Run(stage, func(t *testing.T) {
+			calls := stubPodQoSFunctions(t, stage, multusInterface, failErr)
+			controller, recorder := newPodQoSTestController(t, newPodQoSTestPod("default/net1"))
+
+			require.ErrorIs(t, controller.handleUpdatePod("default/pod"), failErr)
+			require.Contains(t, calls[stage], multusInterface)
+			requirePodEvent(t, recorder,
+				"Warning", "PodQoSUpdateFailed", "stage="+stage,
+				"provider=net1.default.ovn", "interface="+multusInterface,
+				"node=node-a", failErr.Error())
+			requireNoPodEvent(t, recorder)
+		})
+	}
+}
+
+func TestHandleUpdatePodSuccessEmitsOneEventWithProcessedInterfaces(t *testing.T) {
+	calls := stubPodQoSFunctions(t, "", "", nil)
+	controller, recorder := newPodQoSTestController(t, newPodQoSTestPod("default/net1"))
+
+	require.NoError(t, controller.handleUpdatePod("default/pod"))
+	require.Equal(t, []string{"pod.default", "pod.default.net1.default.ovn"}, calls["netem"])
+	requirePodEvent(t, recorder,
+		"Normal", "PodQoSUpdated", "node=node-a",
+		"provider=ovn interface=pod.default",
+		"provider=net1.default.ovn interface=pod.default.net1.default.ovn")
+	requireNoPodEvent(t, recorder)
+}
+
+func TestHandleUpdatePodKeepsMultusPodNamesIndependent(t *testing.T) {
+	pod := newPodQoSTestPod("default/net1,default/net2")
+	pod.Annotations["net1.default.ovn.kubernetes.io/virtualmachine"] = "vm-one"
+	pod.Annotations["net2.default.ovn.kubernetes.io/allocated"] = "true"
+	calls := stubPodQoSFunctions(t, "", "", nil)
+	controller, recorder := newPodQoSTestController(t, pod)
+
+	require.NoError(t, controller.handleUpdatePod("default/pod"))
+	expectedInterfaces := []string{
+		"pod.default",
+		"vm-one.default.net1.default.ovn",
+		"pod.default.net2.default.ovn",
+	}
+	for _, stage := range []string{"bandwidth", "mirror", "netem"} {
+		require.Equal(t, expectedInterfaces, calls[stage])
+	}
+	requirePodEvent(t, recorder,
+		"Normal", "PodQoSUpdated",
+		"provider=net1.default.ovn interface=vm-one.default.net1.default.ovn",
+		"provider=net2.default.ovn interface=pod.default.net2.default.ovn")
+	requireNoPodEvent(t, recorder)
+}
+
+func TestHandleUpdatePodNetworkAttachmentParseFailureEmitsOneEvent(t *testing.T) {
+	stubPodQoSFunctions(t, "", "", nil)
+	pod := newPodQoSTestPod("[")
+	controller, recorder := newPodQoSTestController(t, pod)
+
+	err := controller.handleUpdatePod("default/pod")
+	require.Error(t, err)
+	requirePodEvent(t, recorder,
+		"Warning", "PodQoSUpdateFailed", "stage=parseNetworkAttachment",
+		"provider=unknown", "interface=unknown", "node=node-a", err.Error())
+	requireNoPodEvent(t, recorder)
+}
+
+func TestHandleUpdatePodWithoutMultusEmitsDefaultInterfaceSuccess(t *testing.T) {
+	stubPodQoSFunctions(t, "", "", nil)
+	controller, recorder := newPodQoSTestController(t, newPodQoSTestPod(""))
+
+	require.NoError(t, controller.handleUpdatePod("default/pod"))
+	requirePodEvent(t, recorder,
+		"Normal", "PodQoSUpdated", "node=node-a", "provider=ovn interface=pod.default")
+	requireNoPodEvent(t, recorder)
+}
+
+func TestHandleUpdatePodNotFoundEmitsNoEvent(t *testing.T) {
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	recorder := record.NewFakeRecorder(1)
+	controller := &Controller{
+		config:     &Configuration{NodeName: "node-a"},
+		podsLister: listerv1.NewPodLister(indexer),
+		recorder:   recorder,
+	}
+
+	require.NoError(t, controller.handleUpdatePod("default/missing"))
+	requireNoPodEvent(t, recorder)
+}
+
+func TestEnqueueUpdatePodOnlyQueuesRelevantAnnotationChanges(t *testing.T) {
+	basePod := newPodQoSTestPod("default/net1")
+	basePod.Annotations[util.IngressRateAnnotation] = "10"
+	basePod.Annotations[util.MirrorControlAnnotation] = "true"
+	basePod.Annotations[util.NetemQosLatencyAnnotation] = "5"
+	basePod.Annotations[util.IPAddressAnnotation] = "10.0.0.2"
+	basePod.Annotations["net1.default.ovn.kubernetes.io/ingress_rate"] = "20"
+
+	tests := []struct {
+		name       string
+		annotation string
+		value      string
+		wantQueue  bool
+	}{
+		{name: "unchanged", wantQueue: false},
+		{name: "unrelated annotation", annotation: "example.com/unrelated", value: "changed", wantQueue: false},
+		{name: "default bandwidth", annotation: util.IngressRateAnnotation, value: "11", wantQueue: true},
+		{name: "default mirror", annotation: util.MirrorControlAnnotation, value: "false", wantQueue: true},
+		{name: "default netem", annotation: util.NetemQosLatencyAnnotation, value: "6", wantQueue: true},
+		{name: "default IP", annotation: util.IPAddressAnnotation, value: "10.0.0.3", wantQueue: true},
+		{name: "multus bandwidth", annotation: "net1.default.ovn.kubernetes.io/ingress_rate", value: "21", wantQueue: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldPod := basePod.DeepCopy()
+			newPod := basePod.DeepCopy()
+			if tt.annotation != "" {
+				newPod.Annotations[tt.annotation] = tt.value
+			}
+			recorder := record.NewFakeRecorder(1)
+			controller := &Controller{
+				updatePodQueue: newTypedRateLimitingQueue[string]("test-update-pod", nil),
+				recorder:       recorder,
+			}
+			t.Cleanup(controller.updatePodQueue.ShutDown)
+
+			controller.enqueueUpdatePod(oldPod, newPod)
+			if tt.wantQueue {
+				require.Equal(t, 1, controller.updatePodQueue.Len())
+			} else {
+				require.Zero(t, controller.updatePodQueue.Len())
+			}
+			requireNoPodEvent(t, recorder)
+		})
+	}
+}
 
 func newPodForPolicyRouting(name, namespace, subnetName, podIP string, podIPs []v1.PodIP) *v1.Pod {
 	return &v1.Pod{

@@ -176,6 +176,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}),
 	)
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
+	endpointSliceInformer := kubeInformerFactory.Discovery().V1().EndpointSlices()
 	namespaceInformer := kubeInformerFactory.Core().V1().Namespaces()
 	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
@@ -223,6 +224,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	// Create controller with all informers
 	ctrl := &Controller{
 		servicesLister:          serviceInformer.Lister(),
+		endpointSlicesLister:    endpointSliceInformer.Lister(),
 		namespacesLister:        namespaceInformer.Lister(),
 		nodesLister:             nodeInformer.Lister(),
 		podsLister:              podInformer.Lister(),
@@ -242,6 +244,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		OVNSbClient:             mockOvnSbClient,
 		ipam:                    ovnipam.NewIPAM(),
 		recorder:                record.NewFakeRecorder(100),
+		podKeyMutex:             keymutex.NewHashed(0),
 		subnetKeyMutex:          keymutex.NewHashed(0),
 		nsKeyMutex:              keymutex.NewHashed(0),
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),

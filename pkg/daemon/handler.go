@@ -46,6 +46,61 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 	return csh
 }
 
+func podForCNIEvent(pod *v1.Pod, podRequest *request.CniRequest) *v1.Pod {
+	if pod != nil {
+		return pod
+	}
+	return &v1.Pod{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: podRequest.PodNamespace,
+			Name:      podRequest.PodName,
+		},
+	}
+}
+
+func cniEventInterfaceNames(containerID, ifName string) []string {
+	ifNames := []string{ifName}
+	if ifName == "" {
+		ifNames = append(ifNames, "eth0")
+	}
+
+	var names []string
+	for _, name := range ifNames {
+		if name == "eth0" {
+			if len(containerID) >= 12 {
+				names = append(names, containerID[:12]+"_h", containerID[:12]+"_c")
+			}
+			continue
+		}
+		if strings.HasPrefix(name, "pod") && len(name) == 14 {
+			name = name[3 : len(name)-4]
+		}
+		prefixLen := 12 - len(name)
+		if prefixLen < 0 || len(containerID) < prefixLen {
+			continue
+		}
+		prefix := containerID[:prefixLen] + "_" + name
+		names = append(names, prefix+"_h", prefix+"_c")
+	}
+	return names
+}
+
+func (csh cniServerHandler) recordCNIPodEvent(pod *v1.Pod, podRequest *request.CniRequest, eventType, reason, message string) {
+	ifName := podRequest.IfName
+	if ifName == "" {
+		ifName = "eth0"
+	}
+	details := []string{podRequest.ContainerID, podRequest.NetNs, podRequest.DeviceID}
+	details = append(details, cniEventInterfaceNames(podRequest.ContainerID, podRequest.IfName)...)
+	for _, detail := range details {
+		if detail != "" {
+			message = strings.ReplaceAll(message, detail, "<redacted>")
+		}
+	}
+	csh.Controller.recorder.Eventf(pod, eventType, reason, "%s provider=%s interface=%s node=%s", message, podRequest.Provider, ifName, csh.Config.NodeName)
+}
+
 func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.Subnet, bool) {
 	if provider == "" || provider == util.OvnProvider {
 		return nil, true
@@ -77,11 +132,16 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
+	eventPod := podForCNIEvent(nil, &podRequest)
+	recordFailure := func(stage string, err error) {
+		csh.recordCNIPodEvent(eventPod, &podRequest, v1.EventTypeWarning, "PodNetworkConfigureFailed", fmt.Sprintf("stage=%s error=%v", stage, err))
+	}
 	klog.V(5).Infof("request body is %v", podRequest)
 	podSubnet, exist := csh.providerExists(podRequest.Provider, podRequest.IfName)
 	if !exist {
 		errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
 		klog.Error(errMsg)
+		recordFailure("provider", errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
@@ -91,6 +151,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	klog.Infof("add port request: %v", podRequest)
 	if err := csh.validatePodRequest(&podRequest); err != nil {
 		klog.Error(err)
+		recordFailure("validate-request", err)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: err.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
@@ -111,11 +172,13 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if pod, err = csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName); err != nil {
 			errMsg := fmt.Errorf("get pod %s/%s failed %w", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
+			recordFailure("get-pod", errMsg)
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
 			}
 			return
 		}
+		eventPod = pod
 
 		// in case of multiple nics from same subnet
 		_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
@@ -155,6 +218,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get ip address with mask, %w", err)
 			klog.Error(errMsg)
+			recordFailure("parse-address", errMsg)
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
 			}
@@ -166,6 +230,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			if err = json.Unmarshal([]byte(s), &routes); err != nil {
 				errMsg := fmt.Errorf("invalid routes for pod %s/%s: %w", pod.Namespace, pod.Name, err)
 				klog.Error(errMsg)
+				recordFailure("parse-routes", errMsg)
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
 				}
@@ -188,6 +253,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			nicType = util.DpdkType
 			if err = createShortSharedDir(pod, podRequest.VhostUserSocketVolumeName, podRequest.VhostUserSocketConsumption, csh.Config.KubeletDir); err != nil {
 				klog.Error(err.Error())
+				recordFailure("prepare-dpdk", err)
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
 				}
@@ -223,6 +289,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	if util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.IPAddressAnnotationTemplate, appendIfName) == "" {
 		err := fmt.Errorf("no address allocated to pod %s/%s provider %s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name, podRequest.Provider)
 		klog.Error(err)
+		recordFailure("wait-address", err)
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
@@ -234,6 +301,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	}
 	if !noIPAM {
 		if err := csh.UpdateIPCR(podRequest, subnet, ip, appendIfName); err != nil {
+			recordFailure("update-ip-cr", err)
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
 			}
@@ -244,6 +312,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	if isDefaultRoute && pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podRequest.Provider)] != "true" && util.IsOvnProvider(podRequest.Provider) {
 		err := fmt.Errorf("route is not ready for pod %s/%s provider %s, please see kube-ovn-controller logs to find errors", pod.Namespace, pod.Name, podRequest.Provider)
 		klog.Error(err)
+		recordFailure("wait-route", err)
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
@@ -257,6 +326,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get subnet %s: %w", subnet, err)
 			klog.Error(errMsg)
+			recordFailure("get-subnet", errMsg)
 			if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response: %v", err)
 			}
@@ -266,6 +336,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if podSubnet.Status.U2OInterconnectionIP == "" && podSubnet.Spec.U2OInterconnection {
 			errMsg := fmt.Errorf("failed to generate u2o ip on subnet %s", podSubnet.Name)
 			klog.Error(errMsg)
+			recordFailure("u2o-address", errMsg)
 			return
 		}
 
@@ -305,6 +376,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 				if err != nil {
 					errMsg := fmt.Errorf("failed to get node %s: %w", csh.Config.NodeName, err)
 					klog.Error(errMsg)
+					recordFailure("get-node", errMsg)
 					if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 						klog.Errorf("failed to write response: %v", err)
 					}
@@ -315,6 +387,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 					if mtu, err = strconv.Atoi(mtuStr); err != nil || mtu <= 0 {
 						errMsg := fmt.Errorf("failed to parse provider network MTU %s: %w", mtuStr, err)
 						klog.Error(errMsg)
+						recordFailure("mtu", errMsg)
 						if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 							klog.Errorf("failed to write response: %v", err)
 						}
@@ -336,6 +409,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			if err != nil {
 				errMsg := fmt.Errorf("failed to get encap IP for node network %s: %w", podSubnet.Spec.NodeNetwork, err)
 				klog.Error(errMsg)
+				recordFailure("encap-ip", errMsg)
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
 				}
@@ -353,6 +427,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic %s for pod %s/%s failed: %w", ifName, podRequest.PodName, podRequest.PodNamespace, err)
 			klog.Error(errMsg)
+			recordFailure("configure-nic", errMsg)
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
 			}
@@ -362,12 +437,14 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		ifaceID := ovs.PodNameToPortName(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider)
 		if err = ovs.ConfigInterfaceMirror(csh.Config.EnableMirror, pod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, podRequest.Provider)], ifaceID); err != nil {
 			klog.Errorf("failed mirror to mirror0, %v", err)
+			recordFailure("mirror", err)
 			return
 		}
 
 		if err = csh.Controller.addEgressConfig(podSubnet, ip); err != nil {
 			errMsg := fmt.Errorf("failed to add egress configuration: %w", err)
 			klog.Error(errMsg)
+			recordFailure("egress", errMsg)
 			if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
 			}
@@ -391,6 +468,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			if err = csh.removeDefaultRoute(podRequest.NetNs, hasDefaultRoute[kubeovnv1.ProtocolIPv4], hasDefaultRoute[kubeovnv1.ProtocolIPv6]); err != nil {
 				errMsg := fmt.Errorf("failed to remove existing default route for interface %s of pod %s/%s: %w", podRequest.IfName, podRequest.PodNamespace, podRequest.PodName, err)
 				klog.Error(errMsg)
+				recordFailure("remove-default-route", errMsg)
 				if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 					klog.Errorf("failed to write response: %v", err)
 				}
@@ -426,6 +504,11 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		Routes:     routes,
 		Mtu:        mtu,
 	}
+	eventMAC := macAddr
+	if eventMAC == "" {
+		eventMAC = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.MacAddressAnnotationTemplate, appendIfName)
+	}
+	csh.recordCNIPodEvent(eventPod, &podRequest, v1.EventTypeNormal, "PodNetworkConfigured", fmt.Sprintf("subnet=%s ip=%s mac=%s", subnet, ip, eventMAC))
 	if err := resp.WriteHeaderAndEntity(http.StatusOK, response); err != nil {
 		klog.Errorf("failed to write response, %v", err)
 	}
@@ -486,16 +569,24 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 		}
 		return
 	}
+	eventPod := podForCNIEvent(nil, &podRequest)
+	recordFailure := func(stage string, err error) {
+		csh.recordCNIPodEvent(eventPod, &podRequest, v1.EventTypeWarning, "PodNetworkRemoveFailed", fmt.Sprintf("stage=%s error=%v", stage, err))
+	}
 
 	// Try to get the Pod, but if it fails due to not being found, log a warning and continue.
 	pod, err := csh.Controller.podsLister.Pods(podRequest.PodNamespace).Get(podRequest.PodName)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		errMsg := fmt.Errorf("failed to retrieve Pod %s/%s: %w", podRequest.PodNamespace, podRequest.PodName, err)
 		klog.Error(errMsg)
+		recordFailure("get-pod", errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
 		return
+	}
+	if pod != nil {
+		eventPod = pod
 	}
 
 	providerWithIfName := fmt.Sprintf("%s.%s", podRequest.Provider, podRequest.IfName)
@@ -508,6 +599,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	klog.Infof("del port request: %v", podRequest)
 	if err := csh.validatePodRequest(&podRequest); err != nil {
 		klog.Error(err)
+		recordFailure("validate-request", err)
 		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: err.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
@@ -530,6 +622,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 				if err = csh.Controller.removeEgressConfig(subnet, ip); err != nil {
 					errMsg := fmt.Errorf("failed to remove egress configuration: %w", err)
 					klog.Error(errMsg)
+					recordFailure("remove-egress", errMsg)
 					if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 						klog.Errorf("failed to write response, %v", err)
 					}
@@ -544,6 +637,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 				nicType = util.DpdkType
 				if err = removeShortSharedDir(pod, podRequest.VhostUserSocketVolumeName, podRequest.VhostUserSocketConsumption); err != nil {
 					klog.Error(err.Error())
+					recordFailure("remove-dpdk-dir", err)
 					if err = resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: err.Error()}); err != nil {
 						klog.Errorf("failed to write response: %v", err)
 					}
@@ -581,10 +675,12 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 	if err != nil {
 		errMsg := fmt.Errorf("del nic failed %w", err)
 		klog.Error(errMsg)
+		recordFailure("delete-nic", errMsg)
 		if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
 			klog.Errorf("failed to write response, %v", err)
 		}
 		return
 	}
+	csh.recordCNIPodEvent(eventPod, &podRequest, v1.EventTypeNormal, "PodNetworkRemoved", "removed pod network")
 	resp.WriteHeader(http.StatusNoContent)
 }
