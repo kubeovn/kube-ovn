@@ -151,7 +151,8 @@ controller_sampling_failure_observed() {
   kubectl logs -n kube-system -l app=kube-ovn-controller -c kube-ovn-controller \
     --since=5m --tail=1000 2>/dev/null |
     awk -v key="$NAMESPACE/sampling-failure" '
-      index($0, "error syncing sample network policy ACL \"" key "\"") &&
+      index($0, "error syncing sample network policy ACL") &&
+        index($0, key) &&
         index($0, "sample collector ID 1 is owned by another application") { found = 1 }
       END { exit !found }
     '
