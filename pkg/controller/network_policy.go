@@ -523,6 +523,13 @@ func (c *Controller) handleUpdateNp(key string) error {
 }
 
 func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
+	c.npKeyMutex.LockKey(key)
+	defer func() {
+		if err := c.npKeyMutex.UnlockKey(key); err != nil {
+			klog.Errorf("failed to unlock network policy %s after ACL sampling: %v", key, err)
+		}
+	}()
+
 	request, ok := c.npSamplingRequests.Load(key)
 	if !ok {
 		return nil
