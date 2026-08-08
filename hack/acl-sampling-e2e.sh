@@ -18,11 +18,13 @@ restore_controller_collector_ownership() {
   if [ -z "$CONFLICT_COLLECTOR_UUID" ]; then
     return
   fi
-  kubectl ko nbctl set Sample_Collector "$CONFLICT_COLLECTOR_UUID" \
+  if ! kubectl ko nbctl set Sample_Collector "$CONFLICT_COLLECTOR_UUID" \
     external_ids:vendor=kube-ovn \
     'external_ids:kube-ovn.io/feature=acl-sampling' \
     'external_ids:kube-ovn.io/acl-sampling-kind=collector' \
-    'external_ids:kube-ovn.io/acl-sampling-role=allow'
+    'external_ids:kube-ovn.io/acl-sampling-role=allow'; then
+    return 1
+  fi
   CONFLICT_COLLECTOR_UUID=""
 }
 
@@ -37,7 +39,9 @@ cleanup() {
     kubectl ko vsctl "$NODE_NAME" set Datapath "$DATAPATH_UUID" capabilities:psample=true >/dev/null 2>&1 || true
   fi
   if [ -n "$CONFLICT_COLLECTOR_UUID" ]; then
-    restore_controller_collector_ownership >/dev/null 2>&1 || true
+    if ! restore_controller_collector_ownership >/dev/null 2>&1; then
+      echo 'failed to restore ACL sampling collector ownership' >&2
+    fi
   fi
   if [ "$status" -ne 0 ]; then
     echo 'ACL sample listener standard output:' >&2
