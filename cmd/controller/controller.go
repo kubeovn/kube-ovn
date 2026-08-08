@@ -146,16 +146,16 @@ func CmdMain() {
 			EventRecorder: recorder,
 		},
 		config.KubeRestConfig,
-		20*time.Second)
+		config.LeaderElection.RenewDeadline)
 	if err != nil {
 		klog.Fatalf("error creating lock: %v", err)
 	}
 
 	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 		Lock:          rl,
-		LeaseDuration: 30 * time.Second,
-		RenewDeadline: 20 * time.Second,
-		RetryPeriod:   6 * time.Second,
+		LeaseDuration: config.LeaderElection.LeaseDuration,
+		RenewDeadline: config.LeaderElection.RenewDeadline,
+		RetryPeriod:   config.LeaderElection.RetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				controller.Run(ctx, config)
