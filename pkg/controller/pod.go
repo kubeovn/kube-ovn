@@ -1596,16 +1596,41 @@ func stalePortNetworkDetails(pod *v1.Pod, podName string, port ovnnb.LogicalSwit
 	return providerName, details, nil
 }
 
+type stalePodNetworkState struct {
+	ports               []string
+	annotationProviders []string
+	subnetsByPort       map[string]string
+	details             []string
+}
+
+func collectStalePodNetworkState(pod *v1.Pod, podName string, targetPorts *strset.Set, ports []ovnnb.LogicalSwitchPort) stalePodNetworkState {
+	state := stalePodNetworkState{subnetsByPort: make(map[string]string)}
+	for _, port := range ports {
+		if targetPorts.Has(port.Name) {
+			continue
+		}
+		state.ports = append(state.ports, port.Name)
+		state.subnetsByPort[port.Name] = port.ExternalIDs["ls"]
+		providerName, details, err := stalePortNetworkDetails(pod, podName, port)
+		if err != nil {
+			klog.Warning(err)
+			state.details = append(state.details, fmt.Sprintf("provider=unknown subnet=%s ip= mac= logicalSwitchPort=%s", port.ExternalIDs["ls"], port.Name))
+			continue
+		}
+		state.details = append(state.details, details)
+		if providerName != util.OvnProvider {
+			state.annotationProviders = append(state.annotationProviders, providerName)
+		}
+	}
+	return state
+}
+
 func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, string, error) {
 	podName := c.getNameByPod(pod)
 	key := cache.NewObjectName(pod.Namespace, podName).String()
 	targetPortNameList := strset.NewWithSize(len(podNets))
-	portsNeedToDel := []string{}
-	annotationsNeedToDel := []string{}
 	annotationsNeedToAdd := make(map[string]string)
-	subnetUsedByPort := make(map[string]string)
 	changedPodNets := []*kubeovnNet{}
-	hotplugDetails := []string{}
 
 	for _, podNet := range podNets {
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
@@ -1633,31 +1658,14 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 		return nil, "", err
 	}
 
-	for _, port := range ports {
-		if !targetPortNameList.Has(port.Name) {
-			portsNeedToDel = append(portsNeedToDel, port.Name)
-			subnetUsedByPort[port.Name] = port.ExternalIDs["ls"]
-			providerName, details, parseErr := stalePortNetworkDetails(pod, podName, port)
-			if parseErr != nil {
-				klog.Warning(parseErr)
-				hotplugDetails = append(hotplugDetails, fmt.Sprintf("provider=unknown subnet=%s ip= mac= logicalSwitchPort=%s", port.ExternalIDs["ls"], port.Name))
-				continue
-			}
-			hotplugDetails = append(hotplugDetails, details)
-			if providerName == util.OvnProvider {
-				continue
-			}
-			annotationsNeedToDel = append(annotationsNeedToDel, providerName)
-		}
-	}
-
-	if len(portsNeedToDel) == 0 && len(annotationsNeedToAdd) == 0 {
+	staleState := collectStalePodNetworkState(pod, podName, targetPortNameList, ports)
+	if len(staleState.ports) == 0 && len(annotationsNeedToAdd) == 0 {
 		return pod, "", nil
 	}
 
-	for _, portNeedDel := range portsNeedToDel {
+	for _, portNeedDel := range staleState.ports {
 		klog.Infof("release port %s for pod %s", portNeedDel, podName)
-		c.ipam.ReleaseAddressByNic(key, portNeedDel, subnetUsedByPort[portNeedDel])
+		c.ipam.ReleaseAddressByNic(key, portNeedDel, staleState.subnetsByPort[portNeedDel])
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
 			return nil, "", err
@@ -1671,7 +1679,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	}
 
 	patch := util.KVPatch{}
-	for _, providerName := range annotationsNeedToDel {
+	for _, providerName := range staleState.annotationProviders {
 		for key := range pod.Annotations {
 			if strings.HasPrefix(key, providerName) {
 				patch[key] = nil
@@ -1684,7 +1692,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	}
 
 	if len(patch) == 0 {
-		return pod, strings.Join(hotplugDetails, "; "), nil
+		return pod, strings.Join(staleState.details, "; "), nil
 	}
 
 	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
@@ -1704,9 +1712,9 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	}
 
 	if details := c.podNetworkEventDetails(pod, changedPodNets); details != "" {
-		hotplugDetails = append(hotplugDetails, details)
+		staleState.details = append(staleState.details, details)
 	}
-	return pod, strings.Join(hotplugDetails, "; "), nil
+	return pod, strings.Join(staleState.details, "; "), nil
 }
 
 func (c *Controller) podNetworkEventDetails(pod *v1.Pod, podNets []*kubeovnNet) string {
