@@ -55,15 +55,16 @@ func CmdMain() {
 	err := run(ctx, os.Args[1:], os.Stdout, os.Stderr, defaultDependencies())
 	stop()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		if _, writeErr := fmt.Fprintln(os.Stderr, err); writeErr != nil {
+			os.Exit(1)
+		}
 		os.Exit(1)
 	}
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps dependencies) error {
 	if len(args) == 0 {
-		printUsage(stderr)
-		return errors.New("an ACL sample subcommand is required")
+		return errors.Join(errors.New("an ACL sample subcommand is required"), printUsage(stderr))
 	}
 
 	switch args[0] {
@@ -72,11 +73,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, deps depe
 	case "listen":
 		return runListen(ctx, args[1:], stdout, stderr, deps.listen)
 	case "help", "-h", "--help":
-		printUsage(stdout)
-		return nil
+		return printUsage(stdout)
 	default:
-		printUsage(stderr)
-		return fmt.Errorf("unknown ACL sample subcommand %q", args[0])
+		return errors.Join(fmt.Errorf("unknown ACL sample subcommand %q", args[0]), printUsage(stderr))
 	}
 }
 
@@ -149,8 +148,16 @@ func runListen(
 	return nil
 }
 
-func printUsage(output io.Writer) {
-	fmt.Fprintln(output, "Usage:")
-	fmt.Fprintf(output, "  %s decode --ovn-nb-addr <address> <cookie-or-metadata>\n", CommandName)
-	fmt.Fprintf(output, "  %s listen [--group-id <id>]\n", CommandName)
+func printUsage(output io.Writer) error {
+	var err error
+	if _, writeErr := fmt.Fprintln(output, "Usage:"); writeErr != nil {
+		err = errors.Join(err, writeErr)
+	}
+	if _, writeErr := fmt.Fprintf(output, "  %s decode --ovn-nb-addr <address> <cookie-or-metadata>\n", CommandName); writeErr != nil {
+		err = errors.Join(err, writeErr)
+	}
+	if _, writeErr := fmt.Fprintf(output, "  %s listen [--group-id <id>]\n", CommandName); writeErr != nil {
+		err = errors.Join(err, writeErr)
+	}
+	return err
 }
