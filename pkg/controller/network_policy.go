@@ -178,7 +178,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		if err != nil {
 			// Sampling is best-effort and must never block NetworkPolicy enforcement.
 			recordACLSamplingFailure(aclSamplingOperationPrepare)
-			klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
+			warnACLSamplingPrepareFailure(key, err)
 		}
 	}
 
