@@ -308,12 +308,13 @@ kill "$LISTENER_PID" 2>/dev/null || true
 wait "$LISTENER_PID" 2>/dev/null || true
 LISTENER_PID=""
 
-CONFLICT_COLLECTOR_UUID=$(kubectl ko nbctl create Sample_Collector \
-  id=1 set_id=142 probability=65535 name=acl-sampling-e2e-conflict)
+CONFLICT_COLLECTOR_UUID=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
+  find Sample_Collector id=1 'external_ids:kube-ovn.io/feature=acl-sampling')
 if [ -z "$CONFLICT_COLLECTOR_UUID" ]; then
-  echo 'failed to create the unowned controller sampling conflict' >&2
+  echo 'cannot locate the owned controller sampling collector to inject a conflict' >&2
   exit 1
 fi
+kubectl ko nbctl clear Sample_Collector "$CONFLICT_COLLECTOR_UUID" external_ids
 kubectl rollout restart deployment/kube-ovn-controller -n kube-system
 kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout=2m
 
