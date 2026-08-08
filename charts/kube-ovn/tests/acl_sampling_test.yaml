@@ -16,6 +16,13 @@ tests:
           path: spec.template.spec.containers[0].args
           content: --acl-sampling-default-deny-probability-percent=100
 
+  - it: keeps local ACL sampling disabled by default
+    template: ovncni-ds.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-acl-sampling=false
+
   - it: renders controller ACL sampling overrides
     template: controller-deploy.yaml
     set:
