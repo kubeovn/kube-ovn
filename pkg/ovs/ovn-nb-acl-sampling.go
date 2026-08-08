@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -47,7 +48,7 @@ type desiredSampleCollector struct {
 // never adopted.
 func (c *OVNNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) error {
 	if !config.Enabled {
-		return nil
+		return c.cleanupACLSampling()
 	}
 	if err := config.Validate(); err != nil {
 		return fmt.Errorf("invalid ACL sampling configuration: %w", err)
@@ -316,4 +317,163 @@ func ownedACLSamplingExternalIDs(kind, role string) map[string]string {
 func isOwnedACLSamplingObject(externalIDs map[string]string) bool {
 	return externalIDs[ExternalIDVendor] == util.CniTypeName &&
 		externalIDs[aclSamplingFeatureExternalID] == aclSamplingFeature
+}
+
+func (c *OVNNbClient) cleanupACLSampling() error {
+	if err := validateACLSamplingSchema(c.Schema()); err != nil {
+		if errors.Is(err, ErrACLSamplingUnsupported) {
+			return nil
+		}
+		return err
+	}
+	if err := c.ensureACLSamplingMonitor(); err != nil {
+		return err
+	}
+
+	acls, err := c.ListAcls("", map[string]string{sampleFeatureExternalID: networkPolicySampleFeature})
+	if err != nil {
+		return fmt.Errorf("list owned ACL sampling references: %w", err)
+	}
+	clearOps := make([]ovsdb.Operation, 0, len(acls))
+	for i := range acls {
+		ops, err := c.clearNetworkPolicySamplingOps(&acls[i])
+		if err != nil {
+			return err
+		}
+		clearOps = append(clearOps, ops...)
+	}
+	if len(clearOps) != 0 {
+		if err := c.Transact("acl-sampling-cleanup-references", clearOps); err != nil {
+			return fmt.Errorf("clear owned ACL sampling references: %w", err)
+		}
+	}
+
+	collectors, err := c.listSampleCollectors()
+	if err != nil {
+		return err
+	}
+	ownedCollectors := make(map[string]struct{}, len(collectors))
+	for i := range collectors {
+		if isOwnedACLSamplingObject(collectors[i].ExternalIDs) {
+			ownedCollectors[collectors[i].UUID] = struct{}{}
+		}
+	}
+	retainedCollectors, err := c.waitForACLSamplingSampleGC(ownedCollectors)
+	if err != nil {
+		return err
+	}
+	if err := c.deleteUnreferencedACLSamplingCollectors(collectors, retainedCollectors); err != nil {
+		return err
+	}
+	return c.deleteOwnedACLSamplingApps()
+}
+
+func (c *OVNNbClient) waitForACLSamplingSampleGC(ownedCollectors map[string]struct{}) (map[string]struct{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		retained, pending, err := c.aclSamplingCollectorReferences(ownedCollectors)
+		if err != nil {
+			return nil, err
+		}
+		if !pending {
+			return retained, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("wait for owned ACL samples to be garbage collected: %w", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
+func (c *OVNNbClient) aclSamplingCollectorReferences(ownedCollectors map[string]struct{}) (map[string]struct{}, bool, error) {
+	acls, err := c.ListAcls("", nil)
+	if err != nil {
+		return nil, false, fmt.Errorf("list ACL references during sampling cleanup: %w", err)
+	}
+	referencedSamples := make(map[string]struct{})
+	for _, acl := range acls {
+		if acl.ExternalIDs[sampleFeatureExternalID] == networkPolicySampleFeature {
+			return nil, true, nil
+		}
+		for _, sampleUUID := range compactSampleReferences(acl) {
+			referencedSamples[sampleUUID] = struct{}{}
+		}
+	}
+
+	samples, err := c.listSamples()
+	if err != nil {
+		return nil, false, err
+	}
+	retained := make(map[string]struct{})
+	pending := false
+	for _, sample := range samples {
+		_, referenced := referencedSamples[sample.UUID]
+		for _, collectorUUID := range sample.Collectors {
+			if _, owned := ownedCollectors[collectorUUID]; !owned {
+				continue
+			}
+			if referenced {
+				retained[collectorUUID] = struct{}{}
+			} else {
+				pending = true
+			}
+		}
+	}
+	return retained, pending, nil
+}
+
+func (c *OVNNbClient) deleteUnreferencedACLSamplingCollectors(collectors []ovnnb.SampleCollector, retained map[string]struct{}) error {
+	operations := make([]ovsdb.Operation, 0, len(collectors))
+	for i := range collectors {
+		collector := &collectors[i]
+		if !isOwnedACLSamplingObject(collector.ExternalIDs) {
+			continue
+		}
+		if _, ok := retained[collector.UUID]; ok {
+			continue
+		}
+		ops, err := c.Where(collector).Delete()
+		if err != nil {
+			return fmt.Errorf("build delete operation for owned sample collector %s: %w", collector.UUID, err)
+		}
+		operations = append(operations, ops...)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	if err := c.Transact("acl-sampling-cleanup-collectors", operations); err != nil {
+		return fmt.Errorf("delete unreferenced owned sample collectors: %w", err)
+	}
+	return nil
+}
+
+func (c *OVNNbClient) deleteOwnedACLSamplingApps() error {
+	apps, err := c.listSamplingApps()
+	if err != nil {
+		return err
+	}
+	operations := make([]ovsdb.Operation, 0, len(apps))
+	for i := range apps {
+		app := &apps[i]
+		if !isOwnedACLSamplingObject(app.ExternalIDs) {
+			continue
+		}
+		ops, err := c.Where(app).Delete()
+		if err != nil {
+			return fmt.Errorf("build delete operation for owned sampling application %s: %w", app.UUID, err)
+		}
+		operations = append(operations, ops...)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	if err := c.Transact("acl-sampling-cleanup-applications", operations); err != nil {
+		return fmt.Errorf("delete owned sampling applications: %w", err)
+	}
+	return nil
 }
