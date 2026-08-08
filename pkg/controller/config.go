@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/klog/v2"
 	"kubevirt.io/client-go/kubecli"
 	anpclientset "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
@@ -21,6 +22,52 @@ import (
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+const (
+	defaultLeaderLeaseDuration = 30 * time.Second
+	defaultLeaderRenewDeadline = 20 * time.Second
+	defaultLeaderRetryPeriod   = 6 * time.Second
+)
+
+// LeaderElectionConfiguration contains the timing configuration for controller leader election.
+type LeaderElectionConfiguration struct {
+	LeaseDuration time.Duration
+	RenewDeadline time.Duration
+	RetryPeriod   time.Duration
+}
+
+func defaultLeaderElectionConfiguration() LeaderElectionConfiguration {
+	return LeaderElectionConfiguration{
+		LeaseDuration: defaultLeaderLeaseDuration,
+		RenewDeadline: defaultLeaderRenewDeadline,
+		RetryPeriod:   defaultLeaderRetryPeriod,
+	}
+}
+
+func (config *LeaderElectionConfiguration) addFlags(flagSet *pflag.FlagSet) {
+	flagSet.DurationVar(&config.LeaseDuration, "leader-elect-lease-duration", config.LeaseDuration, "The duration that non-leader candidates will wait after observing a leadership renewal before attempting to acquire leadership")
+	flagSet.DurationVar(&config.RenewDeadline, "leader-elect-renew-deadline", config.RenewDeadline, "The duration that the acting leader will retry refreshing leadership before giving up")
+	flagSet.DurationVar(&config.RetryPeriod, "leader-elect-retry-period", config.RetryPeriod, "The duration leader election clients should wait between attempts")
+}
+
+func (config LeaderElectionConfiguration) validate() error {
+	if config.LeaseDuration <= 0 {
+		return errors.New("--leader-elect-lease-duration must be greater than zero")
+	}
+	if config.RenewDeadline <= 0 {
+		return errors.New("--leader-elect-renew-deadline must be greater than zero")
+	}
+	if config.RetryPeriod <= 0 {
+		return errors.New("--leader-elect-retry-period must be greater than zero")
+	}
+	if config.LeaseDuration <= config.RenewDeadline {
+		return errors.New("--leader-elect-lease-duration must be greater than --leader-elect-renew-deadline")
+	}
+	if config.RenewDeadline <= time.Duration(leaderelection.JitterFactor*float64(config.RetryPeriod)) {
+		return fmt.Errorf("--leader-elect-renew-deadline must be greater than --leader-elect-retry-period multiplied by %.1f", leaderelection.JitterFactor)
+	}
+	return nil
+}
 
 // Configuration is the controller config
 type Configuration struct {
@@ -67,9 +114,10 @@ type Configuration struct {
 	ClusterUDPSessionLoadBalancer  string
 	ClusterSctpSessionLoadBalancer string
 
-	PodName      string
-	PodNamespace string
-	PodNicType   string
+	PodName        string
+	PodNamespace   string
+	PodNicType     string
+	LeaderElection LeaderElectionConfiguration
 
 	WorkerNum       int
 	PprofPort       int32
@@ -142,6 +190,9 @@ type Configuration struct {
 // ParseFlags parses cmd args then init kubeclient and conf
 // TODO: validate configuration
 func ParseFlags() (*Configuration, error) {
+	leaderElectionConfig := defaultLeaderElectionConfiguration()
+	leaderElectionConfig.addFlags(pflag.CommandLine)
+
 	var (
 		argOvnNbAddr              = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr              = pflag.String("ovn-sb-addr", "", "ovn-sb address")
@@ -296,6 +347,7 @@ func ParseFlags() (*Configuration, error) {
 		PodName:                        os.Getenv(util.EnvPodName),
 		PodNamespace:                   os.Getenv(util.EnvPodNamespace),
 		PodNicType:                     *argPodNicType,
+		LeaderElection:                 leaderElectionConfig,
 		EnableLb:                       *argEnableLb,
 		EnableNP:                       *argEnableNP,
 		EnableEipSnat:                  *argEnableEipSnat,
@@ -329,6 +381,9 @@ func ParseFlags() (*Configuration, error) {
 		EnableNonPrimaryCNI:            *argNonPrimaryCNI,
 		NetworkPolicyEnforcement:       *argNPEnforcement,
 		SkipConntrackDstCidrs:          *argSkipConntrackDstCidrs,
+	}
+	if err := config.LeaderElection.validate(); err != nil {
+		return nil, err
 	}
 	if config.OvsDbInactivityTimeout > 0 && config.OvsDbConnectTimeout >= config.OvsDbInactivityTimeout {
 		return nil, errors.New("OVS DB inactivity timeout value should be greater than reconnect timeout value")
