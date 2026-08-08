@@ -14,6 +14,18 @@ NODE_NAME=""
 : >"$SAMPLE_OUTPUT"
 : >"$LISTENER_LOG"
 
+restore_controller_collector_ownership() {
+  if [ -z "$CONFLICT_COLLECTOR_UUID" ]; then
+    return
+  fi
+  kubectl ko nbctl set Sample_Collector "$CONFLICT_COLLECTOR_UUID" \
+    external_ids:vendor=kube-ovn \
+    'external_ids:kube-ovn.io/feature=acl-sampling' \
+    'external_ids:kube-ovn.io/acl-sampling-kind=collector' \
+    'external_ids:kube-ovn.io/acl-sampling-role=allow'
+  CONFLICT_COLLECTOR_UUID=""
+}
+
 cleanup() {
   local status=$?
   trap - EXIT
@@ -25,7 +37,7 @@ cleanup() {
     kubectl ko vsctl "$NODE_NAME" set Datapath "$DATAPATH_UUID" capabilities:psample=true >/dev/null 2>&1 || true
   fi
   if [ -n "$CONFLICT_COLLECTOR_UUID" ]; then
-    kubectl ko nbctl destroy Sample_Collector "$CONFLICT_COLLECTOR_UUID" >/dev/null 2>&1 || true
+    restore_controller_collector_ownership >/dev/null 2>&1 || true
   fi
   if [ "$status" -ne 0 ]; then
     echo 'ACL sample listener standard output:' >&2
@@ -370,8 +382,7 @@ wait_for 'sampling references to remain absent after the injected failure' 30 \
   policy_sampling_references_absent "$FAILURE_PORT_GROUP"
 verify_policy_connectivity "$FAILURE_TARGET_ENDPOINT"
 
-kubectl ko nbctl destroy Sample_Collector "$CONFLICT_COLLECTOR_UUID"
-CONFLICT_COLLECTOR_UUID=""
+restore_controller_collector_ownership
 wait_for 'sampling-only retry after controller failure' 90 sampling_references_ready "$FAILURE_POLICY_UID"
 
 NODE_COLLECTOR_UUID=$(node_collector_set_uuids | sed -n '1p')
