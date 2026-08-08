@@ -39,11 +39,25 @@ const (
 	kernelModuleIP6Tables = "ip6_tables"
 )
 
-var (
-	setInterfaceBandwidth = ovs.SetInterfaceBandwidth
-	configInterfaceMirror = ovs.ConfigInterfaceMirror
-	setNetemQos           = ovs.SetNetemQos
-)
+type podQoSOperations interface {
+	setInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error
+	configInterfaceMirror(enableMirror bool, mirrorControl, iface string) error
+	setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error
+}
+
+type ovsPodQoSOperations struct{}
+
+func (ovsPodQoSOperations) setInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
+	return ovs.SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
+}
+
+func (ovsPodQoSOperations) configInterfaceMirror(enableMirror bool, mirrorControl, iface string) error {
+	return ovs.ConfigInterfaceMirror(enableMirror, mirrorControl, iface)
+}
+
+func (ovsPodQoSOperations) setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
+	return ovs.SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter)
+}
 
 // ControllerRuntime represents runtime specific controller members
 type ControllerRuntime struct {
@@ -60,6 +74,7 @@ type ControllerRuntime struct {
 	flowCache      map[string]map[string][]string // key: bridgeName -> flowKey -> flow rules
 	flowCacheMutex sync.RWMutex
 	flowChan       chan struct{} // channel to trigger immediate flow sync
+	podQoSOps      podQoSOperations
 }
 
 type LbServiceRules struct {
@@ -98,6 +113,9 @@ func isLegacyIptablesMode() (bool, error) {
 }
 
 func (c *Controller) initRuntime() error {
+	if c.podQoSOps == nil {
+		c.podQoSOps = ovsPodQoSOperations{}
+	}
 	ok, err := isLegacyIptablesMode()
 	if err != nil {
 		klog.Errorf("failed to check iptables mode: %v", err)
@@ -858,6 +876,42 @@ func (c *Controller) getPolicyRouting(subnet *kubeovnv1.Subnet) ([]netlink.Rule,
 	return rules, routes, nil
 }
 
+func (c *Controller) applyPodQoS(pod *v1.Pod, podName, provider string) (string, error) {
+	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, provider)
+	annotations := pod.Annotations
+	annotation := func(template string) string {
+		return annotations[fmt.Sprintf(template, provider)]
+	}
+	ops := c.podQoSOps
+	if ops == nil {
+		ops = ovsPodQoSOperations{}
+	}
+	recordFailure := func(stage string, err error) {
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=%s provider=%s interface=%s node=%s: %v", stage, provider, ifaceID, c.config.NodeName, err)
+	}
+
+	if err := ops.setInterfaceBandwidth(podName, pod.Namespace, ifaceID,
+		annotation(util.EgressRateAnnotationTemplate), annotation(util.IngressRateAnnotationTemplate),
+		annotation(util.EgressBurstAnnotationTemplate), annotation(util.IngressBurstAnnotationTemplate)); err != nil {
+		klog.Error(err)
+		recordFailure("bandwidth", err)
+		return ifaceID, err
+	}
+	if err := ops.configInterfaceMirror(c.config.EnableMirror, annotation(util.MirrorControlAnnotationTemplate), ifaceID); err != nil {
+		klog.Error(err)
+		recordFailure("mirror", err)
+		return ifaceID, err
+	}
+	if err := ops.setNetemQoS(podName, pod.Namespace, ifaceID,
+		annotation(util.NetemQosLatencyAnnotationTemplate), annotation(util.NetemQosLimitAnnotationTemplate),
+		annotation(util.NetemQosLossAnnotationTemplate), annotation(util.NetemQosJitterAnnotationTemplate)); err != nil {
+		klog.Error(err)
+		recordFailure("netem", err)
+		return ifaceID, err
+	}
+	return ifaceID, nil
+}
+
 func (c *Controller) handleUpdatePod(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -886,30 +940,8 @@ func (c *Controller) handleUpdatePod(key string) error {
 		podName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, util.OvnProvider)]
 	}
 
-	// set default nic bandwidth
-	//  ovsIngress and ovsEgress are derived from the pod's egress and ingress rate annotations respectively, their roles are reversed from the OVS interface perspective.
-	ifaceID := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
-	ovsIngress := pod.Annotations[util.EgressRateAnnotation]
-	ovsEgress := pod.Annotations[util.IngressRateAnnotation]
-	ovsIngressBurst := pod.Annotations[util.EgressBurstAnnotation]
-	ovsEgressBurst := pod.Annotations[util.IngressBurstAnnotation]
-	err = setInterfaceBandwidth(podName, pod.Namespace, ifaceID, ovsIngress, ovsEgress, ovsIngressBurst, ovsEgressBurst)
+	ifaceID, err := c.applyPodQoS(pod, podName, util.OvnProvider)
 	if err != nil {
-		klog.Error(err)
-		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=bandwidth provider=%s interface=%s node=%s: %v", util.OvnProvider, ifaceID, c.config.NodeName, err)
-		return err
-	}
-	err = configInterfaceMirror(c.config.EnableMirror, pod.Annotations[util.MirrorControlAnnotation], ifaceID)
-	if err != nil {
-		klog.Error(err)
-		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=mirror provider=%s interface=%s node=%s: %v", util.OvnProvider, ifaceID, c.config.NodeName, err)
-		return err
-	}
-	// set linux-netem qos
-	err = setNetemQos(podName, pod.Namespace, ifaceID, pod.Annotations[util.NetemQosLatencyAnnotation], pod.Annotations[util.NetemQosLimitAnnotation], pod.Annotations[util.NetemQosLossAnnotation], pod.Annotations[util.NetemQosJitterAnnotation])
-	if err != nil {
-		klog.Error(err)
-		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=netem provider=%s interface=%s node=%s: %v", util.OvnProvider, ifaceID, c.config.NodeName, err)
 		return err
 	}
 	processed := []string{fmt.Sprintf("provider=%s interface=%s", util.OvnProvider, ifaceID)}
@@ -930,27 +962,8 @@ func (c *Controller) handleUpdatePod(key string) error {
 			multiNetPodName = pod.Annotations[fmt.Sprintf(util.VMAnnotationTemplate, provider)]
 		}
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, provider)] == "true" {
-			ifaceID = ovs.PodNameToPortName(multiNetPodName, pod.Namespace, provider)
-			err = setInterfaceBandwidth(multiNetPodName, pod.Namespace, ifaceID,
-				pod.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)],
-				pod.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)],
-				pod.Annotations[fmt.Sprintf(util.EgressBurstAnnotationTemplate, provider)],
-				pod.Annotations[fmt.Sprintf(util.IngressBurstAnnotationTemplate, provider)])
+			ifaceID, err = c.applyPodQoS(pod, multiNetPodName, provider)
 			if err != nil {
-				klog.Error(err)
-				c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=bandwidth provider=%s interface=%s node=%s: %v", provider, ifaceID, c.config.NodeName, err)
-				return err
-			}
-			err = configInterfaceMirror(c.config.EnableMirror, pod.Annotations[fmt.Sprintf(util.MirrorControlAnnotationTemplate, provider)], ifaceID)
-			if err != nil {
-				klog.Error(err)
-				c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=mirror provider=%s interface=%s node=%s: %v", provider, ifaceID, c.config.NodeName, err)
-				return err
-			}
-			err = setNetemQos(multiNetPodName, pod.Namespace, ifaceID, pod.Annotations[fmt.Sprintf(util.NetemQosLatencyAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLimitAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosLossAnnotationTemplate, provider)], pod.Annotations[fmt.Sprintf(util.NetemQosJitterAnnotationTemplate, provider)])
-			if err != nil {
-				klog.Error(err)
-				c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=netem provider=%s interface=%s node=%s: %v", provider, ifaceID, c.config.NodeName, err)
 				return err
 			}
 			processed = append(processed, fmt.Sprintf("provider=%s interface=%s", provider, ifaceID))
