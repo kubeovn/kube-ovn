@@ -315,7 +315,9 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 		if !slices.Contains(skippedAddrs, s.V4NicToIP[nicName].String()) {
 			return s.V4NicToIP[nicName], nil, s.NicToMac[nicName], nil
 		}
-		s.releaseAddr(podName, nicName)
+		// only the skipped IPv4 half may be released; the IPv6 half (if any) on
+		// the same nic must stay untouched, as in the mac-conflict path below.
+		s.releaseV4Addr(podName, nicName)
 	}
 
 	pool := s.IPPools[ippoolName]
@@ -377,7 +379,9 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 		if !slices.Contains(skippedAddrs, s.V6NicToIP[nicName].String()) {
 			return nil, s.V6NicToIP[nicName], s.NicToMac[nicName], nil
 		}
-		s.releaseAddr(podName, nicName)
+		// only the skipped IPv6 half may be released; the IPv4 half (if any) on
+		// the same nic must stay untouched, as in the mac-conflict path below.
+		s.releaseV6Addr(podName, nicName)
 	}
 
 	pool := s.IPPools[ippoolName]
@@ -498,6 +502,17 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 				s.NicToMac[nicName] = preservedMac
 				s.MacToPod[preservedMac] = podName
 			}
+			// Restore preserved address to counter views so it is not re-allocated.
+			s.V6Using.Add(preservedV6IP)
+			s.V6Available.Remove(preservedV6IP)
+			for _, p := range s.IPPools {
+				if p.V6IPs.Contains(preservedV6IP) {
+					p.V6Using.Add(preservedV6IP)
+					p.V6Available.Remove(preservedV6IP)
+					p.V6Released.Remove(preservedV6IP)
+					break
+				}
+			}
 		}
 	} else if v6 && s.V6NicToIP[nicName] != nil && !s.V6NicToIP[nicName].Equal(ip) {
 		// Preserve IPv4 address if it exists
@@ -517,6 +532,17 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 			if preservedMac != "" {
 				s.NicToMac[nicName] = preservedMac
 				s.MacToPod[preservedMac] = podName
+			}
+			// Restore preserved address to counter views so it is not re-allocated.
+			s.V4Using.Add(preservedV4IP)
+			s.V4Available.Remove(preservedV4IP)
+			for _, p := range s.IPPools {
+				if p.V4IPs.Contains(preservedV4IP) {
+					p.V4Using.Add(preservedV4IP)
+					p.V4Available.Remove(preservedV4IP)
+					p.V4Released.Remove(preservedV4IP)
+					break
+				}
 			}
 		}
 	}

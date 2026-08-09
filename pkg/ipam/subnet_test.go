@@ -1387,6 +1387,61 @@ func TestGetStaticAddressReleaseExisting(t *testing.T) {
 		require.False(t, v4exists, "Original IPv4 should be released")
 		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.10"])
 		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::5"])
+
+		pool := subnet.IPPools[""]
+		require.NotNil(t, pool)
+		require.True(t, subnet.V6Using.Contains(firstV6IP))
+		require.False(t, subnet.V6Available.Contains(firstV6IP))
+		require.True(t, pool.V6Using.Contains(firstV6IP))
+		require.False(t, pool.V6Available.Contains(firstV6IP))
+		require.False(t, pool.V6Released.Contains(firstV6IP))
+	})
+
+	t.Run("DualStack_CrossProtocolPreserve", func(t *testing.T) {
+		subnet, err := NewSubnet("dualSubnet", "10.0.0.0/30,2001:db8::/125", nil)
+		require.NoError(t, err)
+		require.NotNil(t, subnet)
+
+		podName := "pod1.default"
+		nicName := "nic1"
+
+		firstV4IP, err := NewIP("10.0.0.1")
+		require.NoError(t, err)
+		ip1, _, err := subnet.GetStaticAddress(podName, nicName, firstV4IP, nil, false, true)
+		require.NoError(t, err)
+		require.Equal(t, "10.0.0.1", ip1.String())
+
+		firstV6IP, err := NewIP("2001:db8::1")
+		require.NoError(t, err)
+		ip2, _, err := subnet.GetStaticAddress(podName, nicName, firstV6IP, nil, false, true)
+		require.NoError(t, err)
+		require.Equal(t, "2001:db8::1", ip2.String())
+
+		require.Equal(t, firstV4IP, subnet.V4NicToIP[nicName])
+		require.Equal(t, firstV6IP, subnet.V6NicToIP[nicName])
+		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.1"])
+		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::1"])
+
+		secondV6IP, err := NewIP("2001:db8::2")
+		require.NoError(t, err)
+		ip3, _, err := subnet.GetStaticAddress(podName, nicName, secondV6IP, nil, false, true)
+		require.NoError(t, err)
+		require.Equal(t, "2001:db8::2", ip3.String())
+
+		require.Equal(t, firstV4IP, subnet.V4NicToIP[nicName])
+		require.Equal(t, secondV6IP, subnet.V6NicToIP[nicName])
+		_, v6exists := subnet.V6IPToPod["2001:db8::1"]
+		require.False(t, v6exists)
+		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.1"])
+		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::2"])
+
+		pool := subnet.IPPools[""]
+		require.NotNil(t, pool)
+		require.True(t, subnet.V4Using.Contains(firstV4IP))
+		require.False(t, subnet.V4Available.Contains(firstV4IP))
+		require.True(t, pool.V4Using.Contains(firstV4IP))
+		require.False(t, pool.V4Available.Contains(firstV4IP))
+		require.False(t, pool.V4Released.Contains(firstV4IP))
 	})
 }
 
