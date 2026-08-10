@@ -89,33 +89,44 @@ func (c *Controller) enqueueDeleteVPCDNS(obj any) {
 	c.delVpcDNSQueue.Add(key)
 }
 
-func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
+func (c *Controller) handleAddOrUpdateVPCDNS(key string) (retErr error) {
 	klog.Infof("handle add or update vpc dns %s", key)
-	if !enableCoreDNS {
-		return errors.New("failed to add or update vpc-dns, not enabled")
-	}
-
 	vpcDNS, err := c.vpcDNSLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
+		c.recordVpcResourceError(&kubeovnv1.VpcDns{ObjectMeta: metav1.ObjectMeta{Name: key}},
+			"GetVpcDNSFailed", err)
 		return err
 	}
 
 	defer func() {
+		reconcileErr := retErr
 		newVPCDNS := vpcDNS.DeepCopy()
-		newVPCDNS.Status.Active = true
-		if err != nil {
-			newVPCDNS.Status.Active = false
-		}
+		newVPCDNS.Status.Active = retErr == nil
 
-		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
-			newVPCDNS, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update vpc dns status, %w", err)
-			klog.Error(err)
+		if _, statusErr := c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
+			newVPCDNS, metav1.UpdateOptions{}); statusErr != nil {
+			statusErr = fmt.Errorf("failed to update vpc dns status: %w", statusErr)
+			klog.Error(statusErr)
+			c.recordVpcResourceError(vpcDNS, "UpdateStatusFailed", statusErr)
+			if retErr == nil {
+				retErr = statusErr
+			} else {
+				retErr = errors.Join(retErr, statusErr)
+			}
+		}
+		if reconcileErr != nil {
+			c.recordVpcResourceError(vpcDNS, "ReconcileFailed", reconcileErr)
+		} else if retErr == nil {
+			c.recordVpcResourceEvent(newVPCDNS, corev1.EventTypeNormal, "ReconcileSuccess",
+				fmt.Sprintf("VpcDns %s reconciled successfully", vpcDNS.Name))
 		}
 	}()
+	if !enableCoreDNS {
+		return errors.New("failed to add or update vpc-dns, not enabled")
+	}
 
 	if len(corednsImage) == 0 {
 		err := errors.New("vpc-dns coredns image should be set")
@@ -165,11 +176,20 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) error {
 		return err
 	}
 
-	return err
+	return nil
 }
 
-func (c *Controller) handleDelVpcDNS(key string) error {
+func (c *Controller) handleDelVpcDNS(key string) (retErr error) {
 	klog.V(3).Infof("handleDelVpcDNS,%s", key)
+	vpcDNS := &kubeovnv1.VpcDns{ObjectMeta: metav1.ObjectMeta{Name: key}}
+	defer func() {
+		if retErr != nil {
+			c.recordVpcResourceError(vpcDNS, "DeleteFailed", retErr)
+			return
+		}
+		c.recordVpcResourceEvent(vpcDNS, corev1.EventTypeNormal, "DeleteSuccess",
+			fmt.Sprintf("VpcDns %s deleted successfully", key))
+	}()
 	name := genVpcDNSDpName(key)
 	err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {

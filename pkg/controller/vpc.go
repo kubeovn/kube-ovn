@@ -101,9 +101,17 @@ func (c *Controller) enqueueDelVpc(obj any) {
 	}
 }
 
-func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
+func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) (retErr error) {
 	c.vpcKeyMutex.LockKey(vpc.Name)
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpc.Name) }()
+	defer func() {
+		if retErr != nil {
+			c.recordVpcResourceError(vpc, "DeleteFailed", retErr)
+			return
+		}
+		c.recordVpcResourceEvent(vpc, v1.EventTypeNormal, "DeleteSuccess",
+			fmt.Sprintf("Vpc %s deleted successfully", vpc.Name))
+	}()
 	klog.Infof("handle delete vpc %s", vpc.Name)
 
 	// should delete vpc subnets first
@@ -150,7 +158,7 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateVpcStatus(key string) error {
+func (c *Controller) handleUpdateVpcStatus(key string) (retErr error) {
 	c.vpcKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle status update for vpc %s", key)
@@ -161,9 +169,15 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 			return nil
 		}
 		klog.Error(err)
+		c.recordVpcResourceError(&kubeovnv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: key}}, "GetVpcFailed", err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
+	defer func() {
+		if retErr != nil {
+			c.recordVpcResourceError(vpc, "UpdateStatusFailed", retErr)
+		}
+	}()
 
 	subnets, defaultSubnet, err := c.getVpcSubnets(vpc)
 	if err != nil {
@@ -269,7 +283,7 @@ func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
 	return vpcLbConfig, nil
 }
 
-func (c *Controller) handleAddOrUpdateVpc(key string) error {
+func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	c.vpcKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add/update vpc %s", key)
@@ -280,8 +294,14 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			return nil
 		}
 		klog.Error(err)
+		c.recordVpcResourceError(&kubeovnv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: key}}, "GetVpcFailed", err)
 		return err
 	}
+	defer func() {
+		if retErr != nil {
+			c.recordVpcResourceError(cachedVpc, "ReconcileFailed", retErr)
+		}
+	}()
 
 	vpc, err := c.formatVpc(cachedVpc.DeepCopy())
 	if err != nil {
@@ -658,6 +678,8 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		klog.Error(err)
 		return err
 	}
+	c.recordVpcResourceEvent(vpc, v1.EventTypeNormal, "ReconcileSuccess",
+		fmt.Sprintf("Vpc %s reconciled successfully", vpc.Name))
 
 	return nil
 }
