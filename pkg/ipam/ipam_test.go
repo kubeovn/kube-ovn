@@ -345,178 +345,95 @@ func TestGetStaticAddressWithFamily(t *testing.T) {
 	require.True(t, subnet.V6Using.Contains(ip))
 }
 
-// TestGetStaticAddressDualStackPreserveCounters verifies that dual-stack
-// GetStaticAddress keeps the unchanged family's address in every IPAM view
-// when it replaces the other family's static address, not just in lookup maps.
-// It asserts the preserved address stays in V{N}Using and out of
-// V{N}Available/Released at both the subnet and pool levels. The exhaustion
-// kill-shot subtests prove that the preserved address is never re-issued to another pod.
 func TestGetStaticAddressDualStackPreserveCounters(t *testing.T) {
 	t.Run("ReplaceV4PreserveV6", func(t *testing.T) {
-		ipam := NewIPAM()
-		subnetName := "dualPreserveSubnet"
-		subnet, err := NewSubnet(subnetName, "10.0.0.0/30,2001:db8::/125", nil)
-		require.NoError(t, err)
-		ipam.Subnets[subnetName] = subnet
-		pool := subnet.IPPools[""]
-		require.NotNil(t, pool)
-
-		v4, v6, macStr, err := ipam.GetStaticAddress("pod1.default", "pod1.default", "10.0.0.1,2001:db8::1", nil, subnetName, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.1", v4)
-		require.Equal(t, "2001:db8::1", v6)
-		require.NotEmpty(t, macStr)
-
-		v4, v6, macStr, err = ipam.GetStaticAddress("pod1.default", "pod1.default", "10.0.0.2,2001:db8::1", nil, subnetName, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.2", v4)
-		require.Equal(t, "2001:db8::1", v6)
-		require.NotEmpty(t, macStr)
-
-		newV4IP, err := NewIP("10.0.0.2")
-		require.NoError(t, err)
-		oldV4IP, err := NewIP("10.0.0.1")
-		require.NoError(t, err)
-		v6IP, err := NewIP("2001:db8::1")
-		require.NoError(t, err)
-
-		require.True(t, subnet.V4NicToIP["pod1.default"].Equal(newV4IP))
-		require.Equal(t, "pod1.default", subnet.V4IPToPod["10.0.0.2"])
-
-		_, exists := subnet.V4IPToPod["10.0.0.1"]
-		require.False(t, exists)
-		require.False(t, subnet.V4Using.Contains(oldV4IP))
-		require.True(t, subnet.V4Available.Contains(oldV4IP))
-
-		require.True(t, subnet.V6NicToIP["pod1.default"].Equal(v6IP))
-		require.Equal(t, "pod1.default", subnet.V6IPToPod["2001:db8::1"])
-
-		require.True(t, subnet.V6Using.Contains(v6IP), "subnet.V6Using must contain preserved v6")
-		require.False(t, subnet.V6Available.Contains(v6IP), "subnet.V6Available must not contain preserved v6")
-
-		require.True(t, pool.V6Using.Contains(v6IP), "pool.V6Using must contain preserved v6")
-		require.False(t, pool.V6Available.Contains(v6IP), "pool.V6Available must not contain preserved v6")
-		require.False(t, pool.V6Released.Contains(v6IP), "pool.V6Released must not contain preserved v6")
+		testIPAMStaticAddressPreservesOtherFamily(t, kubeovnv1.ProtocolIPv4)
 	})
-
 	t.Run("ReplaceV6PreserveV4", func(t *testing.T) {
-		ipam := NewIPAM()
-		subnetName := "dualPreserveSubnet"
-		subnet, err := NewSubnet(subnetName, "10.0.0.0/30,2001:db8::/125", nil)
-		require.NoError(t, err)
-		ipam.Subnets[subnetName] = subnet
-		pool := subnet.IPPools[""]
-		require.NotNil(t, pool)
-
-		v4, v6, macStr, err := ipam.GetStaticAddress("pod1.default", "pod1.default", "10.0.0.1,2001:db8::1", nil, subnetName, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.1", v4)
-		require.Equal(t, "2001:db8::1", v6)
-		require.NotEmpty(t, macStr)
-
-		v4, v6, macStr, err = ipam.GetStaticAddress("pod1.default", "pod1.default", "10.0.0.1,2001:db8::2", nil, subnetName, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.1", v4)
-		require.Equal(t, "2001:db8::2", v6)
-		require.NotEmpty(t, macStr)
-
-		v4IP, err := NewIP("10.0.0.1")
-		require.NoError(t, err)
-		newV6IP, err := NewIP("2001:db8::2")
-		require.NoError(t, err)
-		oldV6IP, err := NewIP("2001:db8::1")
-		require.NoError(t, err)
-
-		require.True(t, subnet.V4NicToIP["pod1.default"].Equal(v4IP))
-		require.Equal(t, "pod1.default", subnet.V4IPToPod["10.0.0.1"])
-
-		require.True(t, subnet.V6NicToIP["pod1.default"].Equal(newV6IP))
-		require.Equal(t, "pod1.default", subnet.V6IPToPod["2001:db8::2"])
-
-		_, exists := subnet.V6IPToPod["2001:db8::1"]
-		require.False(t, exists)
-		require.False(t, subnet.V6Using.Contains(oldV6IP))
-		require.True(t, subnet.V6Available.Contains(oldV6IP))
-
-		require.True(t, subnet.V4Using.Contains(v4IP), "subnet.V4Using must contain preserved v4")
-		require.False(t, subnet.V4Available.Contains(v4IP), "subnet.V4Available must not contain preserved v4")
-
-		require.True(t, pool.V4Using.Contains(v4IP), "pool.V4Using must contain preserved v4")
-		require.False(t, pool.V4Available.Contains(v4IP), "pool.V4Available must not contain preserved v4")
-		require.False(t, pool.V4Released.Contains(v4IP), "pool.V4Released must not contain preserved v4")
+		testIPAMStaticAddressPreservesOtherFamily(t, kubeovnv1.ProtocolIPv6)
 	})
-
 	t.Run("ReplaceV4PreserveV6RandomExhaustion", func(t *testing.T) {
-		ipam := NewIPAM()
-		subnetName := "dualPreserveSubnetExhaustV6"
-		subnet, err := NewSubnet(subnetName, "10.0.0.0/29,2001:db8::/125", nil)
-		require.NoError(t, err)
-		ipam.Subnets[subnetName] = subnet
-
-		v4, v6, macStr, err := ipam.GetStaticAddress("pod1.default", "pod1.default", "10.0.0.1,2001:db8::1", nil, subnetName, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.1", v4)
-		require.Equal(t, "2001:db8::1", v6)
-		require.NotEmpty(t, macStr)
-
-		v4, v6, macStr, err = ipam.GetStaticAddress("pod1.default", "pod1.default", "10.0.0.2,2001:db8::1", nil, subnetName, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.2", v4)
-		require.Equal(t, "2001:db8::1", v6)
-		require.NotEmpty(t, macStr)
-
-		// The /125 IPv6 range exposes six usable addresses (::1 through ::6). pod1
-		// already owns ::1, so pods 2-6 consume the other five; pod7 must therefore
-		// fail with ErrNoAvailable rather than recycle ::1 from Released. Changing
-		// the CIDR requires re-deriving both the loop bound and the exhaustion pod count.
-		preservedV6 := "2001:db8::1"
-		for i := 2; i <= 6; i++ {
-			pod := fmt.Sprintf("pod%d.default", i)
-			_, v6, _, err := ipam.GetRandomAddressWithFamily(pod, pod, nil, subnetName, "", kubeovnv1.ProtocolIPv6, nil, true)
-			require.NoError(t, err, "pod %s should get a v6 address before exhaustion", pod)
-			require.NotEqual(t, preservedV6, v6, "pod %s received the preserved v6 address", pod)
-		}
-
-		pod7 := "pod7.default"
-		_, v6, _, err = ipam.GetRandomAddressWithFamily(pod7, pod7, nil, subnetName, "", kubeovnv1.ProtocolIPv6, nil, true)
-		require.ErrorIs(t, err, ErrNoAvailable, "pool exhausted: v6 allocation must fail, not recycle the preserved address (got %s)", v6)
+		testIPAMPreservedAddressIsNotReissued(t, kubeovnv1.ProtocolIPv6)
 	})
-
 	t.Run("ReplaceV6PreserveV4RandomExhaustion", func(t *testing.T) {
-		ipam := NewIPAM()
-		subnetName := "dualPreserveSubnetExhaustV4"
-		subnet, err := NewSubnet(subnetName, "10.0.0.0/29,2001:db8::/125", nil)
-		require.NoError(t, err)
-		ipam.Subnets[subnetName] = subnet
-
-		v4, v6, macStr, err := ipam.GetStaticAddress("pod1.default", "pod1.default", "10.0.0.1,2001:db8::1", nil, subnetName, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.1", v4)
-		require.Equal(t, "2001:db8::1", v6)
-		require.NotEmpty(t, macStr)
-
-		v4, v6, macStr, err = ipam.GetStaticAddress("pod1.default", "pod1.default", "10.0.0.1,2001:db8::2", nil, subnetName, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.1", v4)
-		require.Equal(t, "2001:db8::2", v6)
-		require.NotEmpty(t, macStr)
-
-		// The /29 IPv4 range exposes six usable addresses (.1 through .6). pod1
-		// already owns .1, so pods 2-6 consume the other five; pod7 must therefore
-		// fail with ErrNoAvailable rather than recycle .1 from Released. Changing
-		// the CIDR requires re-deriving both the loop bound and the exhaustion pod count.
-		preservedV4 := "10.0.0.1"
-		for i := 2; i <= 6; i++ {
-			pod := fmt.Sprintf("pod%d.default", i)
-			v4, _, _, err := ipam.GetRandomAddressWithFamily(pod, pod, nil, subnetName, "", kubeovnv1.ProtocolIPv4, nil, true)
-			require.NoError(t, err, "pod %s should get a v4 address before exhaustion", pod)
-			require.NotEqual(t, preservedV4, v4, "pod %s received the preserved v4 address", pod)
-		}
-
-		pod7 := "pod7.default"
-		v4, _, _, err = ipam.GetRandomAddressWithFamily(pod7, pod7, nil, subnetName, "", kubeovnv1.ProtocolIPv4, nil, true)
-		require.ErrorIs(t, err, ErrNoAvailable, "pool exhausted: v4 allocation must fail, not recycle the preserved address (got %s)", v4)
+		testIPAMPreservedAddressIsNotReissued(t, kubeovnv1.ProtocolIPv4)
 	})
+}
+
+func testIPAMStaticAddressPreservesOtherFamily(t *testing.T, replacedFamily string) {
+	ipam := NewIPAM()
+	subnetName := "dualPreserveSubnet"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/30,2001:db8::/125", nil)
+	require.NoError(t, err)
+	ipam.Subnets[subnetName] = subnet
+	podName := "pod1.default"
+	oldV4, oldV6 := "10.0.0.1", "2001:db8::1"
+	newV4, newV6 := oldV4, "2001:db8::2"
+	if replacedFamily == kubeovnv1.ProtocolIPv4 {
+		newV4, newV6 = "10.0.0.2", oldV6
+	}
+
+	_, _, oldMAC, err := ipam.GetStaticAddress(podName, podName, oldV4+","+oldV6, nil, subnetName, true)
+	require.NoError(t, err)
+	v4, v6, newMAC, err := ipam.GetStaticAddress(podName, podName, newV4+","+newV6, nil, subnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, newV4, v4)
+	require.Equal(t, newV6, v6)
+	require.Equal(t, oldMAC, newMAC)
+
+	preserved, err := NewIP(oldV4)
+	require.NoError(t, err)
+	replaced, err := NewIP(oldV6)
+	require.NoError(t, err)
+	preservedFamily := kubeovnv1.ProtocolIPv4
+	if replacedFamily == kubeovnv1.ProtocolIPv4 {
+		preserved, err = NewIP(oldV6)
+		require.NoError(t, err)
+		replaced, err = NewIP(oldV4)
+		require.NoError(t, err)
+		preservedFamily = kubeovnv1.ProtocolIPv6
+	}
+	assertPreservedAddressViews(t, subnet, podName, podName, preserved, preservedFamily)
+	if replacedFamily == kubeovnv1.ProtocolIPv4 {
+		require.Empty(t, subnet.V4IPToPod[replaced.String()])
+		require.False(t, subnet.V4Using.Contains(replaced))
+		require.True(t, subnet.V4Available.Contains(replaced))
+	} else {
+		require.Empty(t, subnet.V6IPToPod[replaced.String()])
+		require.False(t, subnet.V6Using.Contains(replaced))
+		require.True(t, subnet.V6Available.Contains(replaced))
+	}
+}
+
+func testIPAMPreservedAddressIsNotReissued(t *testing.T, preservedFamily string) {
+	ipam := NewIPAM()
+	subnetName := "dualPreserveSubnetExhaustion"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/29,2001:db8::/125", nil)
+	require.NoError(t, err)
+	ipam.Subnets[subnetName] = subnet
+	podName := "pod1.default"
+	initial := "10.0.0.1,2001:db8::1"
+	replacement := "10.0.0.2,2001:db8::1"
+	family := kubeovnv1.ProtocolIPv6
+	preserved := "2001:db8::1"
+	if preservedFamily == kubeovnv1.ProtocolIPv4 {
+		replacement = "10.0.0.1,2001:db8::2"
+		family = kubeovnv1.ProtocolIPv4
+		preserved = "10.0.0.1"
+	}
+	_, _, _, err = ipam.GetStaticAddress(podName, podName, initial, nil, subnetName, true)
+	require.NoError(t, err)
+	_, _, _, err = ipam.GetStaticAddress(podName, podName, replacement, nil, subnetName, true)
+	require.NoError(t, err)
+
+	for i := 2; i <= 6; i++ {
+		pod := fmt.Sprintf("pod%d.default", i)
+		v4, v6, _, err := ipam.GetRandomAddressWithFamily(pod, pod, nil, subnetName, "", family, nil, true)
+		require.NoError(t, err, "pod %s should get an address before exhaustion", pod)
+		require.NotEqual(t, preserved, v4+v6, "pod %s received the preserved address", pod)
+	}
+	v4, v6, _, err := ipam.GetRandomAddressWithFamily("pod7.default", "pod7.default", nil, subnetName, "", family, nil, true)
+	require.ErrorIs(t, err, ErrNoAvailable, "pool exhausted: allocation must not recycle %s (got %s%s)", preserved, v4, v6)
 }
 
 func TestCheckAndAppendIpsForDual(t *testing.T) {
