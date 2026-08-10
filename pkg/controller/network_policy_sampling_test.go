@@ -174,6 +174,7 @@ func TestRunDisabledACLSamplingCleanupRetries(t *testing.T) {
 	controller, nbClient, config := newNetworkPolicySamplingTestController(t)
 	config.Enabled = false
 	controller.config.ACLSampling = config
+	failuresBefore := testutil.ToFloat64(metricACLSamplingControllerFailures.WithLabelValues(aclSamplingOperationReconcile))
 	nbClient.EXPECT().ReconcileACLSampling(config).Return(errors.New("injected cleanup failure"))
 	nbClient.EXPECT().ReconcileACLSampling(config).Return(nil)
 
@@ -190,6 +191,7 @@ func TestRunDisabledACLSamplingCleanupRetries(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for disabled ACL sampling cleanup retry")
 	}
+	require.Equal(t, failuresBefore+1, testutil.ToFloat64(metricACLSamplingControllerFailures.WithLabelValues(aclSamplingOperationReconcile)))
 }
 
 func newNetworkPolicySamplingTestController(t *testing.T) (*Controller, *mockovs.MockNbClient, aclsampling.ControllerConfig) {
@@ -226,17 +228,17 @@ func TestReconcileACLSamplingRecordsAvailability(t *testing.T) {
 
 	failuresBefore := testutil.ToFloat64(metricACLSamplingControllerFailures.WithLabelValues(aclSamplingOperationReconcile))
 	nbClient.EXPECT().ReconcileACLSampling(config).Return(errors.New("injected schema conflict"))
-	controller.reconcileACLSampling()
+	require.False(t, controller.reconcileACLSampling())
 	require.Equal(t, failuresBefore+1, testutil.ToFloat64(metricACLSamplingControllerFailures.WithLabelValues(aclSamplingOperationReconcile)))
 	require.Equal(t, float64(0), testutil.ToFloat64(metricACLSamplingControllerAvailable))
 
 	nbClient.EXPECT().ReconcileACLSampling(config).Return(nil)
-	controller.reconcileACLSampling()
+	require.True(t, controller.reconcileACLSampling())
 	require.Equal(t, float64(1), testutil.ToFloat64(metricACLSamplingControllerAvailable))
 
 	config.Enabled = false
 	controller.config.ACLSampling = config
 	nbClient.EXPECT().ReconcileACLSampling(config).Return(nil)
-	controller.reconcileACLSampling()
+	require.True(t, controller.reconcileACLSampling())
 	require.Equal(t, float64(0), testutil.ToFloat64(metricACLSamplingControllerAvailable))
 }
