@@ -56,7 +56,7 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 			subnet.Status.Validated(reason, "")
 		}
 		subnet.Status.NotReady(reason, errStr)
-		c.recordSubnetEvent(subnet, v1.EventTypeWarning, reason, errStr)
+		c.recordResourceEvent(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
 		subnet.Status.Validated(reason, "")
 		if reason == "SetPrivateLogicalSwitchSuccess" ||
@@ -77,7 +77,7 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 		return err
 	}
 	if errStr == "" {
-		c.recordSubnetEvent(subnet, v1.EventTypeNormal, reason, fmt.Sprintf("Subnet %s status updated successfully", subnet.Name))
+		c.recordResourceEvent(subnet, v1.EventTypeNormal, reason, fmt.Sprintf("Subnet %s status updated successfully", subnet.Name))
 	}
 	return nil
 }
@@ -99,7 +99,7 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	ippools, err := c.ippoolLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ippool: %v", err)
-		return c.recordSubnetError(subnet, "ListIPPoolsFailed", err)
+		return c.recordResourceError(subnet, "ListIPPoolsFailed", err)
 	}
 	for _, p := range ippools {
 		if p.Spec.Subnet == subnet.Name {
@@ -110,12 +110,12 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	if subnet.Spec.CIDRBlock != "" {
 		if _, err = c.calcSubnetStatusIP(subnet); err != nil {
 			klog.Error(err)
-			return c.recordSubnetError(subnet, "CalculateStatusFailed", err)
+			return c.recordResourceError(subnet, "CalculateStatusFailed", err)
 		}
 
 		if err := c.checkSubnetUsingIPs(subnet); err != nil {
 			klog.Errorf("inconsistency detected in status of subnet %s : %v", subnet.Name, err)
-			return c.recordSubnetError(subnet, "CheckStatusConsistencyFailed", err)
+			return c.recordResourceError(subnet, "CheckStatusConsistencyFailed", err)
 		}
 	}
 	return nil
