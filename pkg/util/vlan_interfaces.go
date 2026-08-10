@@ -1,6 +1,8 @@
 package util
 
 import (
+	"crypto/sha256"
+	"encoding/base32"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,6 +10,24 @@ import (
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog/v2"
 )
+
+const linuxInterfaceNameMaxLength = 15
+
+var vlanInternalPortHashEncoding = base32.NewEncoding("abcdefghijklmnopqrstuvwxyz234567").WithPadding(base32.NoPadding)
+
+// VlanInternalPortName returns a deterministic OVS internal interface name that
+// fits Linux's IFNAMSIZ limit while preserving existing compatible names.
+func VlanInternalPortName(bridgeName string, vlanID int) string {
+	name := fmt.Sprintf("%s-vlan%d", bridgeName, vlanID)
+	if len(name) <= linuxInterfaceNameMaxLength {
+		return name
+	}
+
+	prefix := fmt.Sprintf("kv%d-", vlanID)
+	digest := sha256.Sum256([]byte(bridgeName))
+	hash := vlanInternalPortHashEncoding.EncodeToString(digest[:])
+	return prefix + hash[:linuxInterfaceNameMaxLength-len(prefix)]
+}
 
 func DetectVlanInterfaces(parentInterface string) []int {
 	vlanIDs := make([]int, 0)
@@ -82,23 +102,61 @@ func FindKubeOVNAutoCreatedInterfaces(providerName string) ([]string, error) {
 }
 
 func IsVlanInternalPort(portName string) (bool, int) {
-	if !strings.Contains(portName, "-vlan") {
+	if matched, vlanID := isCompactVlanInternalPort(portName); matched {
+		return true, vlanID
+	}
+
+	separatorIndex := strings.LastIndex(portName, "-vlan")
+	if separatorIndex == -1 || !strings.HasPrefix(portName[:separatorIndex], "br-") {
+		return false, 0
+	}
+	return parseVlanID(portName[separatorIndex+len("-vlan"):])
+}
+
+// IsVlanInternalPortForBridge reports whether portName is a compact or legacy
+// VLAN internal port created for bridgeName.
+func IsVlanInternalPortForBridge(portName, bridgeName string) (bool, int) {
+	if matched, vlanID := isCompactVlanInternalPort(portName); matched {
+		if portName == VlanInternalPortName(bridgeName, vlanID) {
+			return true, vlanID
+		}
 		return false, 0
 	}
 
-	parts := strings.Split(portName, "-vlan")
-	if len(parts) != 2 {
+	vlanIDText, found := strings.CutPrefix(portName, bridgeName+"-vlan")
+	if !found {
 		return false, 0
 	}
+	return parseVlanID(vlanIDText)
+}
 
-	if !strings.HasPrefix(parts[0], "br-") {
+func isCompactVlanInternalPort(portName string) (bool, int) {
+	if len(portName) == linuxInterfaceNameMaxLength && strings.HasPrefix(portName, "kv") {
+		vlanIDText, hash, found := strings.Cut(portName[2:], "-")
+		if !found || !isLowerBase32(hash) {
+			return false, 0
+		}
+		return parseVlanID(vlanIDText)
+	}
+	return false, 0
+}
+
+func parseVlanID(value string) (bool, int) {
+	vlanID, err := strconv.Atoi(value)
+	if err != nil || vlanID < 0 || vlanID > 4095 {
 		return false, 0
 	}
-
-	vlanID, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return false, 0
-	}
-
 	return true, vlanID
+}
+
+func isLowerBase32(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < '2' || char > '7') {
+			return false
+		}
+	}
+	return true
 }
