@@ -7,10 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -59,6 +63,128 @@ func TestHandleAddOrUpdateSubnetRecordsFormatFailure(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, "Warning FormatSubnetFailed failed to format subnet invalid-subnet, subnet invalid-subnet cidr invalid is invalid", requireRecorderEvent(t, fc.fakeController.recorder.(*record.FakeRecorder)))
+}
+
+func TestHandleAddOrUpdateSubnetRecordsStatusCalculationFailure(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:       util.DefaultVpc,
+			CIDRBlock: "10.16.0.0/24",
+			Gateway:   "10.16.0.1",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	controller.ipIndexer = cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	recorder := controller.recorder.(*record.FakeRecorder)
+
+	err = controller.handleAddOrUpdateSubnet(subnet.Name)
+
+	require.ErrorContains(t, err, "Index with name bySubnet does not exist")
+	require.Equal(t, "Normal ValidateLogicalSwitchSuccess Subnet subnet-a status updated successfully", requireRecorderEvent(t, recorder))
+	require.Equal(t, "Warning CalculateStatusFailed Index with name bySubnet does not exist", requireRecorderEvent(t, recorder))
+}
+
+func TestHandleAddOrUpdateIPPoolRecordsStatusPatchFailure(t *testing.T) {
+	ippool := &kubeovnv1.IPPool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "pool-a",
+			Finalizers: []string{util.KubeOVNControllerFinalizer},
+		},
+		Spec: kubeovnv1.IPPoolSpec{Subnet: "subnet-a"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPPools: []*kubeovnv1.IPPool{ippool}})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	controller.ippoolKeyMutex = keymutex.NewHashed(0)
+	reconcileErr := errors.New("delete address set failed")
+	statusErr := errors.New("status patch failed")
+	fc.mockOvnClient.EXPECT().DeleteAddressSet("pool.a").Return(reconcileErr)
+	controller.config.KubeOvnClient.(*kubeovnfake.Clientset).PrependReactor("patch", "ippools", func(action ktesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" {
+			return false, nil, nil
+		}
+		return true, nil, statusErr
+	})
+	recorder := controller.recorder.(*record.FakeRecorder)
+
+	err = controller.handleAddOrUpdateIPPool(ippool.Name)
+
+	require.ErrorIs(t, err, reconcileErr)
+	require.ErrorIs(t, err, statusErr)
+	require.Equal(t, "Warning ReconcileAddressSetFailed failed to delete address set pool.a: delete address set failed", requireRecorderEvent(t, recorder))
+	require.Equal(t, "Warning UpdateStatusFailed status patch failed", requireRecorderEvent(t, recorder))
+}
+
+func TestHandleAddOrUpdateSubnetDoesNotRecordSuccessWhenStatusPatchFails(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:       util.DefaultVpc,
+			CIDRBlock: "10.16.0.0/24",
+			Gateway:   "10.16.0.1",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	statusErr := errors.New("status patch failed")
+	controller.config.KubeOvnClient.(*kubeovnfake.Clientset).PrependReactor("patch", "subnets", func(action ktesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" {
+			return false, nil, nil
+		}
+		return true, nil, statusErr
+	})
+	recorder := controller.recorder.(*record.FakeRecorder)
+
+	err = controller.handleAddOrUpdateSubnet(subnet.Name)
+
+	require.ErrorIs(t, err, statusErr)
+	require.Equal(t, "Warning UpdateStatusFailed status patch failed", requireRecorderEvent(t, recorder))
+	select {
+	case event := <-recorder.Events:
+		t.Fatalf("unexpected event %q", event)
+	default:
+	}
+}
+
+func TestHandleAddOrUpdateIPPoolDoesNotRecordSuccessWhenStatusPatchFails(t *testing.T) {
+	ippool := &kubeovnv1.IPPool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "pool-a",
+			Finalizers: []string{util.KubeOVNControllerFinalizer},
+		},
+		Spec: kubeovnv1.IPPoolSpec{
+			Subnet: "subnet-a",
+			IPs:    []string{"10.16.0.10"},
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPPools: []*kubeovnv1.IPPool{ippool}})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	controller.ippoolKeyMutex = keymutex.NewHashed(0)
+	require.NoError(t, controller.ipam.AddOrUpdateSubnet("subnet-a", "10.16.0.0/24", "10.16.0.1", nil))
+	fc.mockOvnClient.EXPECT().DeleteAddressSet("pool.a").Return(nil)
+	statusErr := errors.New("status patch failed")
+	controller.config.KubeOvnClient.(*kubeovnfake.Clientset).PrependReactor("patch", "ippools", func(action ktesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" {
+			return false, nil, nil
+		}
+		return true, nil, statusErr
+	})
+	recorder := controller.recorder.(*record.FakeRecorder)
+
+	err = controller.handleAddOrUpdateIPPool(ippool.Name)
+
+	require.ErrorIs(t, err, statusErr)
+	require.Equal(t, "Warning UpdateStatusFailed status patch failed", requireRecorderEvent(t, recorder))
+	select {
+	case event := <-recorder.Events:
+		t.Fatalf("unexpected event %q", event)
+	default:
+	}
 }
 
 func TestRecordResourceSuccessEvents(t *testing.T) {

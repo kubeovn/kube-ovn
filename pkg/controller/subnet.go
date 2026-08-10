@@ -586,11 +586,12 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 
 		// availableIPStr valued from ipam, so leave update subnet.status after ipam process
-		subnet, err = c.calcSubnetStatusIP(subnet)
+		updatedSubnet, err := c.calcSubnetStatusIP(subnet)
 		if err != nil {
 			klog.Errorf("calculate subnet %s used ip failed, %v", cachedSubnet.Name, err)
 			return c.recordSubnetError(subnet, "CalculateStatusFailed", err)
 		}
+		subnet = updatedSubnet
 	} else {
 		// Mac-only subnet (underlay without CIDR, BYO-DHCP / external DHCP). Register a
 		// lightweight IPAM entry so MAC allocations are tracked and the GC does not

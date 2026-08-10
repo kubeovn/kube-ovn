@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -92,6 +93,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "ReconcileAddressSetFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
+			return errors.Join(err, c.recordIPPoolError(ippool, "UpdateStatusFailed", patchErr))
 		}
 		return err
 	}
@@ -99,6 +101,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		klog.Errorf("failed to add/update ippool %s with IPs %v in subnet %s: %v", ippool.Name, ippool.Spec.IPs, ippool.Spec.Subnet, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "UpdateIPAMFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
+			return errors.Join(err, c.recordIPPoolError(ippool, "UpdateStatusFailed", patchErr))
 		}
 		return err
 	}
@@ -189,13 +192,16 @@ func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason
 		ippool.Status.SetError(reason, errMsg)
 		ippool.Status.NotReady(reason, errMsg)
 		c.recordIPPoolEvent(ippool, corev1.EventTypeWarning, reason, errMsg)
-	} else {
-		ippool.Status.Ready(reason, "")
-		// to observe ippool status change to normal
-		c.recordIPPoolEvent(ippool, corev1.EventTypeNormal, reason, fmt.Sprintf("IPPool %s reconciled successfully", ippool.Name))
+		return c.patchIPPoolStatus(ippool)
 	}
 
-	return c.patchIPPoolStatus(ippool)
+	ippool.Status.Ready(reason, "")
+	if err := c.patchIPPoolStatus(ippool); err != nil {
+		return err
+	}
+	// to observe ippool status change to normal
+	c.recordIPPoolEvent(ippool, corev1.EventTypeNormal, reason, fmt.Sprintf("IPPool %s reconciled successfully", ippool.Name))
+	return nil
 }
 
 func (c *Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {

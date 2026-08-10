@@ -59,7 +59,6 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 		c.recordSubnetEvent(subnet, v1.EventTypeWarning, reason, errStr)
 	} else {
 		subnet.Status.Validated(reason, "")
-		c.recordSubnetEvent(subnet, v1.EventTypeNormal, reason, fmt.Sprintf("Subnet %s status updated successfully", subnet.Name))
 		if reason == "SetPrivateLogicalSwitchSuccess" ||
 			reason == "ResetLogicalSwitchAclSuccess" ||
 			reason == "ReconcileCentralizedGatewaySuccess" ||
@@ -76,6 +75,9 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 		klog.Errorf("failed to patch status for subnet %s, %v", subnet.Name, err)
 		return err
+	}
+	if errStr == "" {
+		c.recordSubnetEvent(subnet, v1.EventTypeNormal, reason, fmt.Sprintf("Subnet %s status updated successfully", subnet.Name))
 	}
 	return nil
 }
