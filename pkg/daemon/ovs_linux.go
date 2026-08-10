@@ -2205,16 +2205,20 @@ func (c *Controller) cleanupAutoCreatedVlanInterfaces(providerName, nic string, 
 
 func (c *Controller) configProviderVlanInterfaces(vlanInterfaceMap map[string]int, brName string) error {
 	for vlanIfName, vlanID := range vlanInterfaceMap {
+		internalPortName := util.VlanInternalPortName(brName, vlanID)
+		recordedVlanInterface, err := ovs.Get("Port", internalPortName, "external_ids", providerVlanInterfaceExternalID, true)
+		if err != nil {
+			return fmt.Errorf("failed to get source VLAN interface for OVS port %s: %w", internalPortName, err)
+		}
+		if err := validateProviderVlanPortSource(internalPortName, recordedVlanInterface, vlanIfName); err != nil {
+			return err
+		}
+	}
+
+	for vlanIfName, vlanID := range vlanInterfaceMap {
 		klog.V(3).Infof("configuring VLAN interface %s (VLAN %d) on bridge %s", vlanIfName, vlanID, brName)
 
-		internalPortName := fmt.Sprintf("%s-vlan%d", brName, vlanID)
-
-		args := []string{
-			ovs.MayExist, "add-port", brName, internalPortName,
-			"--", "set", "interface", internalPortName, "type=internal",
-			"--", "set", "port", internalPortName, fmt.Sprintf("tag=%d", vlanID),
-			"external_ids:vendor=" + util.CniTypeName,
-		}
+		internalPortName, args := providerVlanPortArgs(brName, vlanIfName, vlanID)
 
 		if _, err := ovs.Exec(args...); err != nil {
 			klog.Errorf("failed to create OVS internal port %s: %v", internalPortName, err)
@@ -2235,6 +2239,42 @@ func (c *Controller) configProviderVlanInterfaces(vlanInterfaceMap map[string]in
 	}
 
 	return nil
+}
+
+func validateProviderVlanPortSource(portName, recordedVlanInterface, requestedVlanInterface string) error {
+	if !hasRecordedProviderVlanInterface(recordedVlanInterface) || recordedVlanInterface == requestedVlanInterface {
+		return nil
+	}
+	return fmt.Errorf("OVS port %s records source VLAN interface %s, refusing to replace it with %s", portName, recordedVlanInterface, requestedVlanInterface)
+}
+
+func hasRecordedProviderVlanInterface(value string) bool {
+	return value != "" && value != "[]"
+}
+
+func validateProviderVlanInterfaceMap(vlanInterfaceMap map[string]int) error {
+	interfacesByVlanID := make(map[int]string, len(vlanInterfaceMap))
+	for vlanIfName, vlanID := range vlanInterfaceMap {
+		if existing, ok := interfacesByVlanID[vlanID]; ok && existing != vlanIfName {
+			return fmt.Errorf("vlan interfaces %s and %s use the same VLAN ID %d", existing, vlanIfName, vlanID)
+		}
+		interfacesByVlanID[vlanID] = vlanIfName
+	}
+	return nil
+}
+
+const providerVlanInterfaceExternalID = "provider-vlan-interface"
+
+func providerVlanPortArgs(brName, vlanIfName string, vlanID int) (string, []string) {
+	internalPortName := util.VlanInternalPortName(brName, vlanID)
+	args := []string{
+		ovs.MayExist, "add-port", brName, internalPortName,
+		"--", "set", "interface", internalPortName, "type=internal",
+		"--", "set", "port", internalPortName, fmt.Sprintf("tag=%d", vlanID),
+		"external_ids:vendor=" + util.CniTypeName,
+		"external_ids:" + providerVlanInterfaceExternalID + "=" + vlanIfName,
+	}
+	return internalPortName, args
 }
 
 func (c *Controller) transferVlanAddrsToInternalPort(srcName, dstName string) error {
@@ -2297,19 +2337,168 @@ func (c *Controller) transferVlanAddrsToInternalPort(srcName, dstName string) er
 	return nil
 }
 
-func (c *Controller) removeProviderVlanInterface(internalPortName, brName string, vlanID int) error {
-	klog.Infof("Cleaning up VLAN internal port %s (VLAN %d) from bridge %s", internalPortName, vlanID, brName)
-
-	parts := strings.Split(internalPortName, "-vlan")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid VLAN internal port name format: %s", internalPortName)
+func selectProviderVlanSourceInterface(recordedVlanInterface string, vlanInterfaces []string, vlanID int, interfaceExists func(string) bool) (string, error) {
+	if hasRecordedProviderVlanInterface(recordedVlanInterface) {
+		return recordedVlanInterface, nil
 	}
-	baseInterfaceName := strings.TrimPrefix(parts[0], "br-")
+
+	candidates := make([]string, 0, 1)
+	seen := make(map[string]struct{}, len(vlanInterfaces))
+	for _, candidate := range vlanInterfaces {
+		if _, ok := seen[candidate]; ok || !interfaceExists(candidate) {
+			continue
+		}
+		seen[candidate] = struct{}{}
+
+		candidateVlanID, err := util.ExtractVlanIDFromInterface(candidate)
+		if err != nil {
+			return "", fmt.Errorf("failed to extract VLAN ID from interface %s: %w", candidate, err)
+		}
+		if candidateVlanID == vlanID {
+			candidates = append(candidates, candidate)
+		}
+	}
+
+	switch len(candidates) {
+	case 0:
+		return "", nil
+	case 1:
+		return candidates[0], nil
+	default:
+		return "", fmt.Errorf("multiple interfaces match VLAN %d: %s", vlanID, strings.Join(candidates, ", "))
+	}
+}
+
+func providerVlanRestoreNames(provider, brName, nic, vlanInterface string, vlanID int) (string, string, error) {
+	vlanName := fmt.Sprintf("%s.%d", nic, vlanID)
+	if vlanInterface != "" {
+		candidateVlanID, err := util.ExtractVlanIDFromInterface(vlanInterface)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to extract VLAN ID from interface %s: %w", vlanInterface, err)
+		}
+		if candidateVlanID != vlanID {
+			return "", "", fmt.Errorf("vlan interface %s has VLAN ID %d, expected %d", vlanInterface, candidateVlanID, vlanID)
+		}
+		vlanName = vlanInterface
+	}
+
+	parentName, _, _ := strings.Cut(vlanName, ".")
+	if parentName == nic && brName != util.ExternalBridgeName(provider) {
+		parentName = util.ExternalBridgeName(provider)
+	}
+	return vlanName, parentName, nil
+}
+
+func ensureProviderVlanInterface(parentName, vlanName string, vlanID int) (netlink.Link, error) {
+	vlanLink, vlanErr := netlink.LinkByName(vlanName)
+	if vlanErr != nil {
+		if _, ok := vlanErr.(netlink.LinkNotFoundError); !ok {
+			return nil, fmt.Errorf("failed to get kernel VLAN interface %s: %w", vlanName, vlanErr)
+		}
+	}
+
+	parentLink, err := netlink.LinkByName(parentName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get parent interface %s for kernel VLAN %s: %w", parentName, vlanName, err)
+	}
+	if vlanErr == nil {
+		if err := prepareProviderVlanLink(vlanLink, parentLink, vlanID); err != nil {
+			return nil, err
+		}
+		klog.Infof("Kernel VLAN interface %s already exists, using existing interface", vlanName)
+		return vlanLink, nil
+	}
+
+	vlan := &netlink.Vlan{
+		LinkAttrs: netlink.LinkAttrs{
+			Name:        vlanName,
+			ParentIndex: parentLink.Attrs().Index,
+		},
+		VlanId: vlanID,
+	}
+	if err := netlink.LinkAdd(vlan); err != nil {
+		return nil, fmt.Errorf("failed to create kernel VLAN interface %s: %w", vlanName, err)
+	}
+	klog.Infof("Created kernel VLAN interface %s", vlanName)
+
+	vlanLink, err = netlink.LinkByName(vlanName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kernel VLAN interface %s: %w", vlanName, err)
+	}
+	if err := prepareProviderVlanLink(vlanLink, parentLink, vlanID); err != nil {
+		return nil, err
+	}
+	return vlanLink, nil
+}
+
+func prepareProviderVlanLink(vlanLink, parentLink netlink.Link, vlanID int) error {
+	if err := validateProviderVlanLink(vlanLink, parentLink, vlanID); err != nil {
+		return err
+	}
+	if err := netlink.LinkSetUp(vlanLink); err != nil {
+		return fmt.Errorf("failed to set kernel VLAN interface %s up: %w", vlanLink.Attrs().Name, err)
+	}
+	return nil
+}
+
+func validateProviderVlanLink(vlanLink, parentLink netlink.Link, vlanID int) error {
+	vlan, ok := vlanLink.(*netlink.Vlan)
+	if !ok {
+		return fmt.Errorf("restore target %s is a %s link, expected VLAN", vlanLink.Attrs().Name, vlanLink.Type())
+	}
+	if vlan.VlanId != vlanID {
+		return fmt.Errorf("restore target %s has VLAN ID %d, expected %d", vlan.Attrs().Name, vlan.VlanId, vlanID)
+	}
+	if vlan.ParentIndex != parentLink.Attrs().Index {
+		return fmt.Errorf("restore target %s has parent index %d, expected %d for %s", vlan.Attrs().Name, vlan.ParentIndex, parentLink.Attrs().Index, parentLink.Attrs().Name)
+	}
+	return nil
+}
+
+func restoreProviderVlanNetworkState(vlanLink netlink.Link, addrs []netlink.Addr, routes []netlink.Route, addrReplace func(netlink.Link, *netlink.Addr) error, routeReplace func(*netlink.Route) error) error {
+	for _, current := range addrs {
+		if current.IP.IsLinkLocalUnicast() {
+			continue
+		}
+
+		addr := current
+		addr.Label = ""
+		if err := addrReplace(vlanLink, &addr); err != nil {
+			return fmt.Errorf("failed to restore address %s to kernel VLAN %s: %w", addr.String(), vlanLink.Attrs().Name, err)
+		}
+		klog.Infof("Restored address %s to kernel VLAN interface %s", addr.String(), vlanLink.Attrs().Name)
+	}
+
+	for _, scope := range routeScopeOrders {
+		for _, current := range routes {
+			if current.Gw == nil && current.Dst != nil && current.Dst.IP.IsLinkLocalUnicast() {
+				continue
+			}
+			if current.Scope != scope {
+				continue
+			}
+
+			route := current
+			route.LinkIndex = vlanLink.Attrs().Index
+			if err := routeReplace(&route); err != nil {
+				return fmt.Errorf("failed to restore route %s to kernel VLAN %s: %w", route.String(), vlanLink.Attrs().Name, err)
+			}
+			klog.Infof("Restored route %s to kernel VLAN interface %s", route.String(), vlanLink.Attrs().Name)
+		}
+	}
+	return nil
+}
+
+func (c *Controller) removeProviderVlanInterface(internalPortName, provider, brName, nic string, vlanInterfaces []string, vlanID int) error {
+	klog.Infof("Cleaning up VLAN internal port %s (VLAN %d) from bridge %s", internalPortName, vlanID, brName)
 
 	internalPort, err := netlink.LinkByName(internalPortName)
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
-			klog.Warningf("VLAN internal port %s not found, may already be cleaned up", internalPortName)
+			klog.Warningf("VLAN internal port %s not found, removing any stale OVS row", internalPortName)
+			if _, err = ovs.Exec(ovs.IfExists, "del-port", brName, internalPortName); err != nil {
+				return fmt.Errorf("failed to remove stale VLAN internal port %s from OVS bridge %s: %w", internalPortName, brName, err)
+			}
 			return nil
 		}
 		return fmt.Errorf("failed to get VLAN internal port %s: %w", internalPortName, err)
@@ -2325,82 +2514,32 @@ func (c *Controller) removeProviderVlanInterface(internalPortName, brName string
 		return fmt.Errorf("failed to get routes on VLAN internal port %s: %w", internalPortName, err)
 	}
 
+	if len(addrs) > 0 || len(routes) > 0 {
+		recordedVlanInterface, err := ovs.Get("Port", internalPortName, "external_ids", providerVlanInterfaceExternalID, true)
+		if err != nil {
+			return fmt.Errorf("failed to get source VLAN interface for OVS port %s: %w", internalPortName, err)
+		}
+		vlanInterface, err := selectProviderVlanSourceInterface(recordedVlanInterface, vlanInterfaces, vlanID, util.CheckInterfaceExists)
+		if err != nil {
+			return fmt.Errorf("failed to select source interface for VLAN internal port %s: %w", internalPortName, err)
+		}
+		kernelVlanName, baseInterfaceName, err := providerVlanRestoreNames(provider, brName, nic, vlanInterface, vlanID)
+		if err != nil {
+			return fmt.Errorf("failed to determine restore target for VLAN internal port %s: %w", internalPortName, err)
+		}
+		vlanLink, err := ensureProviderVlanInterface(baseInterfaceName, kernelVlanName, vlanID)
+		if err != nil {
+			return err
+		}
+		if err := restoreProviderVlanNetworkState(vlanLink, addrs, routes, netlink.AddrReplace, netlink.RouteReplace); err != nil {
+			return err
+		}
+	}
+
 	if _, err = ovs.Exec(ovs.IfExists, "del-port", brName, internalPortName); err != nil {
 		return fmt.Errorf("failed to remove VLAN internal port %s from OVS bridge %s: %w", internalPortName, brName, err)
 	}
 	klog.Infof("VLAN internal port %s has been removed from bridge %s", internalPortName, brName)
-
-	if len(addrs) > 0 || len(routes) > 0 {
-		kernelVlanName := fmt.Sprintf("%s.%d", baseInterfaceName, vlanID)
-
-		baseLink, err := netlink.LinkByName(baseInterfaceName)
-		if err != nil {
-			klog.Warningf("Base interface %s not found, cannot recreate kernel VLAN %s", baseInterfaceName, kernelVlanName)
-			return nil
-		}
-
-		if _, err := netlink.LinkByName(kernelVlanName); err == nil {
-			klog.Infof("Kernel VLAN interface %s already exists, using existing interface", kernelVlanName)
-		} else {
-			vlan := &netlink.Vlan{
-				LinkAttrs: netlink.LinkAttrs{
-					Name:        kernelVlanName,
-					ParentIndex: baseLink.Attrs().Index,
-				},
-				VlanId: vlanID,
-			}
-
-			if err := netlink.LinkAdd(vlan); err != nil {
-				return fmt.Errorf("failed to create kernel VLAN interface %s: %w", kernelVlanName, err)
-			}
-			klog.Infof("Created kernel VLAN interface %s", kernelVlanName)
-		}
-
-		vlanLink, err := netlink.LinkByName(kernelVlanName)
-		if err != nil {
-			return fmt.Errorf("failed to get kernel VLAN interface %s: %w", kernelVlanName, err)
-		}
-
-		for _, addr := range addrs {
-			if addr.IP.IsLinkLocalUnicast() {
-				continue
-			}
-
-			addr.Label = ""
-			if err := netlink.AddrReplace(vlanLink, &addr); err != nil {
-				klog.Errorf("failed to restore address %s to kernel VLAN %s: %v", addr.String(), kernelVlanName, err)
-			} else {
-				klog.Infof("Restored address %s to kernel VLAN interface %s", addr.String(), kernelVlanName)
-			}
-		}
-
-		if err := netlink.LinkSetUp(vlanLink); err != nil {
-			klog.Errorf("failed to set kernel VLAN interface %s up: %v", kernelVlanName, err)
-		}
-
-		scopeOrders := [...]netlink.Scope{
-			netlink.SCOPE_HOST,
-			netlink.SCOPE_LINK,
-			netlink.SCOPE_SITE,
-			netlink.SCOPE_UNIVERSE,
-		}
-
-		for _, scope := range scopeOrders {
-			for _, route := range routes {
-				if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
-					continue
-				}
-				if route.Scope == scope {
-					route.LinkIndex = vlanLink.Attrs().Index
-					if err := netlink.RouteReplace(&route); err != nil {
-						klog.Errorf("failed to restore route %s to kernel VLAN %s: %v", route.String(), kernelVlanName, err)
-					} else {
-						klog.Infof("Restored route %s to kernel VLAN interface %s", route.String(), kernelVlanName)
-					}
-				}
-			}
-		}
-	}
 
 	return nil
 }

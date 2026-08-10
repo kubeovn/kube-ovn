@@ -98,6 +98,10 @@ func InitMirror(config *Configuration) error {
 }
 
 func (c *Controller) ovsInitProviderNetwork(provider, nic string, trunks []string, exchangeLinkName, macLearningFallback bool, vlanInterfaceMap map[string]int) (int, error) { // create and configure external bridge
+	if err := validateProviderVlanInterfaceMap(vlanInterfaceMap); err != nil {
+		return 0, err
+	}
+
 	brName := util.ExternalBridgeName(provider)
 	if exchangeLinkName {
 		exchanged, err := c.changeProviderNicName(nic, brName)
@@ -145,7 +149,7 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, trunks []strin
 	return mtu, nil
 }
 
-func (c *Controller) ovsCleanProviderNetwork(provider, nic string) error {
+func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterfaces []string) error {
 	mappings, err := getOvnMappings("ovn-bridge-mappings")
 	if err != nil {
 		klog.Error(err)
@@ -212,10 +216,10 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string) error {
 				if output != "" {
 					continue
 				}
-				// Check if this is a VLAN internal port (e.g., br-eth0-vlan10)
-				if matched, vlanID := util.IsVlanInternalPort(port); matched {
+				// Check if this is a VLAN internal port.
+				if matched, vlanID := util.IsVlanInternalPortForBridge(port, brName); matched {
 					klog.Infof("removing VLAN internal port %s (VLAN %d) from bridge %s", port, vlanID, brName)
-					if err = c.removeProviderVlanInterface(port, brName, vlanID); err != nil {
+					if err = c.removeProviderVlanInterface(port, provider, brName, nic, vlanInterfaces, vlanID); err != nil {
 						klog.Errorf("failed to remove VLAN internal port %s from external bridge %s: %v", port, brName, err)
 						return err
 					}

@@ -15,6 +15,41 @@ import (
 
 const gatewayCheckMaxRetry = 200
 
+type providerVlanPortKind uint8
+
+const (
+	providerVlanPortUnrelated providerVlanPortKind = iota
+	providerVlanPortCurrent
+	providerVlanPortLegacy
+	providerVlanPortStale
+)
+
+func classifyProviderVlanPort(portName, bridge string, vlanID int) providerVlanPortKind {
+	currentName := util.VlanInternalPortName(bridge, vlanID)
+	if portName == currentName {
+		return providerVlanPortCurrent
+	}
+	legacyName := fmt.Sprintf("%s-vlan%d", bridge, vlanID)
+	if legacyName != currentName && portName == legacyName {
+		return providerVlanPortLegacy
+	}
+	return providerVlanPortUnrelated
+}
+
+func classifyProviderVlanPortForBridge(portName, bridge string, vlanInterfaceMap map[string]int) (providerVlanPortKind, int, string) {
+	matched, vlanID := util.IsVlanInternalPortForBridge(portName, bridge)
+	if !matched {
+		return providerVlanPortUnrelated, 0, ""
+	}
+
+	for vlanInterface, desiredVlanID := range vlanInterfaceMap {
+		if desiredVlanID == vlanID {
+			return classifyProviderVlanPort(portName, bridge, vlanID), vlanID, vlanInterface
+		}
+	}
+	return providerVlanPortStale, vlanID, ""
+}
+
 func pingGateway(gw, src string, verbose bool, maxRetry int, done chan struct{}) (count int, err error) {
 	pinger, err := goping.NewPinger(gw)
 	if err != nil {
@@ -276,23 +311,31 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		return fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", bridge, err, output)
 	}
 	if output != "" {
+		providerNic := nic
+		if exchangeLinkName {
+			providerNic = bridge
+		}
+		vlanInterfaces := make([]string, 0, len(vlanInterfaceMap))
+		for vlanInterface := range vlanInterfaceMap {
+			vlanInterfaces = append(vlanInterfaces, vlanInterface)
+		}
+
 		for port := range strings.SplitSeq(output, "\n") {
 			// Skip the main NIC or VLAN subinterfaces belonging to it
 			if port == nic {
 				klog.Infof("Skipping main NIC port %s on bridge %s", port, bridge)
 				continue
 			}
-			// Check if this port is a VLAN internal port we created (e.g., br-eth0-vlan10)
-			isVlanInternalPort := false
-			for vlanIf, vlanID := range vlanInterfaceMap {
-				expectedInternalPort := fmt.Sprintf("%s-vlan%d", bridge, vlanID)
-				if port == expectedInternalPort {
-					klog.Infof("Preserving VLAN internal port %s for VLAN interface %s on bridge %s", port, vlanIf, bridge)
-					isVlanInternalPort = true
-					break
-				}
+			vlanPortKind, vlanID, vlanInterface := classifyProviderVlanPortForBridge(port, bridge, vlanInterfaceMap)
+			if vlanPortKind == providerVlanPortCurrent {
+				klog.Infof("Preserving VLAN internal port %s for VLAN interface %s on bridge %s", port, vlanInterface, bridge)
+				continue
 			}
-			if isVlanInternalPort {
+			if vlanPortKind == providerVlanPortLegacy || vlanPortKind == providerVlanPortStale {
+				klog.Infof("Removing obsolete VLAN internal port %s from bridge %s", port, bridge)
+				if err = c.removeProviderVlanInterface(port, provider, bridge, providerNic, vlanInterfaces, vlanID); err != nil {
+					return fmt.Errorf("failed to remove obsolete VLAN internal port %s from OVS bridge %s: %w", port, bridge, err)
+				}
 				continue
 			}
 
