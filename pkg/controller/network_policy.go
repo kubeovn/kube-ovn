@@ -15,6 +15,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -56,7 +57,7 @@ func (c *Controller) enqueueDeleteNp(obj any) {
 
 	key := cache.MetaObjectToName(np).String()
 	klog.V(3).Infof("enqueue delete network policy %s", key)
-	c.deleteNpQueue.Add(key)
+	c.deleteNpQueue.Add(networkPolicyDeleteRequest{key: key, policyUID: np.UID})
 }
 
 func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
@@ -512,8 +513,14 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 type networkPolicySamplingState struct {
 	// Access is serialized with the policy's npKeyMutex lock.
-	request *ovs.NetworkPolicySamplingRequest
-	ready   bool
+	request   *ovs.NetworkPolicySamplingRequest
+	policyUID types.UID
+	ready     bool
+}
+
+type networkPolicyDeleteRequest struct {
+	key       string
+	policyUID types.UID
 }
 
 func (c *Controller) prepareNetworkPolicyACLSampling(key, pgName string, np *netv1.NetworkPolicy) *networkPolicySamplingState {
@@ -521,8 +528,11 @@ func (c *Controller) prepareNetworkPolicyACLSampling(key, pgName string, np *net
 		return nil
 	}
 	if state, ok := c.npSamplingStates.Load(key); ok {
-		state.ready = false
-		return state
+		if state.policyUID == np.UID {
+			state.ready = false
+			return state
+		}
+		c.npSamplingStates.Delete(key)
 	}
 
 	request, err := c.OVNNbClient.PrepareNetworkPolicyACLSampling(pgName, np.Namespace, np.Name, string(np.UID))
@@ -531,7 +541,7 @@ func (c *Controller) prepareNetworkPolicyACLSampling(key, pgName string, np *net
 		klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
 		return nil
 	}
-	state := &networkPolicySamplingState{request: request}
+	state := &networkPolicySamplingState{request: request, policyUID: np.UID}
 	c.npSamplingStates.Store(key, state)
 	return state
 }
@@ -552,6 +562,18 @@ func (c *Controller) setNetworkPolicyACLLog(pgName, key string, logEnable, isIng
 		return false
 	}
 	return true
+}
+
+func (c *Controller) deleteNetworkPolicySamplingState(key string, policyUID types.UID) {
+	if c.npSamplingStates == nil {
+		return
+	}
+	c.npSamplingStates.Compute(key, func(state *networkPolicySamplingState, loaded bool) (*networkPolicySamplingState, xsync.ComputeOp) {
+		if loaded && (policyUID == "" || state.policyUID == policyUID) {
+			return nil, xsync.DeleteOp
+		}
+		return state, xsync.CancelOp
+	})
 }
 
 func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
@@ -578,7 +600,8 @@ func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDeleteNp(key string) error {
+func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
+	key := request.key
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -588,9 +611,13 @@ func (c *Controller) handleDeleteNp(key string) error {
 	c.npKeyMutex.LockKey(key)
 	defer func() { _ = c.npKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete network policy %s", key)
-	if c.npSamplingStates != nil {
-		c.npSamplingStates.Delete(key)
+	if _, err := c.npsLister.NetworkPolicies(namespace).Get(name); err == nil {
+		klog.V(3).Infof("ignore stale delete for network policy %s", key)
+		return nil
+	} else if !k8serrors.IsNotFound(err) {
+		return err
 	}
+	c.deleteNetworkPolicySamplingState(key, request.policyUID)
 
 	npName := name
 	nameArray := []rune(name)

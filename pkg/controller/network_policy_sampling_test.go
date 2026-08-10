@@ -69,12 +69,42 @@ func TestPrepareNetworkPolicyACLSamplingRejectsIncompleteSnapshot(t *testing.T) 
 func TestPrepareNetworkPolicyACLSamplingRetainsSnapshotAcrossEnforcementRetries(t *testing.T) {
 	controller, _, _ := newNetworkPolicySamplingTestController(t)
 	const key = "default/test"
-	state := &networkPolicySamplingState{request: new(ovs.NetworkPolicySamplingRequest), ready: true}
+	state := &networkPolicySamplingState{request: new(ovs.NetworkPolicySamplingRequest), policyUID: types.UID("uid"), ready: true}
 	controller.npSamplingStates.Store(key, state)
 
 	actual := controller.prepareNetworkPolicyACLSampling(key, "pg", networkPolicySamplingTestPolicy())
 	require.Same(t, state, actual)
 	require.False(t, actual.ready)
+}
+
+func TestPrepareNetworkPolicyACLSamplingReplacesSnapshotForNewPolicyUID(t *testing.T) {
+	controller, nbClient, _ := newNetworkPolicySamplingTestController(t)
+	const key = "default/test"
+	oldState := &networkPolicySamplingState{request: new(ovs.NetworkPolicySamplingRequest), policyUID: types.UID("old-uid"), ready: true}
+	controller.npSamplingStates.Store(key, oldState)
+	newRequest := new(ovs.NetworkPolicySamplingRequest)
+	nbClient.EXPECT().PrepareNetworkPolicyACLSampling("pg", "default", "test", "uid").Return(newRequest, nil)
+
+	actual := controller.prepareNetworkPolicyACLSampling(key, "pg", networkPolicySamplingTestPolicy())
+	require.NotSame(t, oldState, actual)
+	require.Same(t, newRequest, actual.request)
+	require.Equal(t, types.UID("uid"), actual.policyUID)
+}
+
+func TestDeleteNetworkPolicySamplingStateMatchesPolicyUID(t *testing.T) {
+	controller, _, _ := newNetworkPolicySamplingTestController(t)
+	const key = "default/test"
+	state := &networkPolicySamplingState{request: new(ovs.NetworkPolicySamplingRequest), policyUID: types.UID("new-uid")}
+	controller.npSamplingStates.Store(key, state)
+
+	controller.deleteNetworkPolicySamplingState(key, types.UID("old-uid"))
+	actual, ok := controller.npSamplingStates.Load(key)
+	require.True(t, ok)
+	require.Same(t, state, actual)
+
+	controller.deleteNetworkPolicySamplingState(key, types.UID("new-uid"))
+	_, ok = controller.npSamplingStates.Load(key)
+	require.False(t, ok)
 }
 
 func TestHandleNetworkPolicyACLSamplingWaitsForSuccessfulEnforcement(t *testing.T) {
