@@ -1,12 +1,34 @@
 package aclsampling
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestSampleDetailsJSONFlattensObservation(t *testing.T) {
+	details := SampleDetails{
+		App: ApplicationACLNew,
+		SampleObservation: SampleObservation{
+			ObservationDomain: new(uint32(0x640abcde)),
+			ApplicationID:     new(uint32(100)),
+			DatapathKey:       new(uint32(0x0abcde)),
+			Metadata:          200,
+		},
+	}
+	data, err := json.Marshal(details)
+	require.NoError(t, err)
+	require.JSONEq(t, `{
+		"app":"acl-new",
+		"observationDomain":1678425310,
+		"applicationID":100,
+		"datapathKey":703710,
+		"metadata":200
+	}`, string(data))
+}
 
 func TestParseSampleReference(t *testing.T) {
 	tests := []struct {

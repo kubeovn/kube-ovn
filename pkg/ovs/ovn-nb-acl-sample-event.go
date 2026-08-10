@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 var (
@@ -39,11 +39,24 @@ func (c *OVNNbClient) ResolveNetworkPolicyACLSample(reference aclsampling.Sample
 	if err != nil {
 		return nil, fmt.Errorf("list NetworkPolicy ACL sample owners: %w", err)
 	}
-	matches := make([]ovnnb.ACL, 0, 1)
+	matches := make([]*aclsampling.Event, 0, 1)
 	for i := range acls {
-		if aclReferencesSample(acls[i], sample.UUID, application) {
-			matches = append(matches, acls[i])
+		acl := acls[i]
+		if !isOwnedNetworkPolicySamplingACL(acl.ExternalIDs) {
+			continue
 		}
+		candidate, eligible, err := classifyNetworkPolicySamplingACL(acl)
+		if err != nil {
+			return nil, fmt.Errorf("classify NetworkPolicy ACL %s: %w", acl.UUID, err)
+		}
+		if !eligible || !aclReferencesSample(acl, sample.UUID, application) {
+			continue
+		}
+		event, err := networkPolicyACLSampleEvent(candidate, sample.UUID, reference, application)
+		if err != nil {
+			return nil, fmt.Errorf("decode NetworkPolicy ACL %s: %w", acl.UUID, err)
+		}
+		matches = append(matches, event)
 	}
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("%w: no Kube-OVN NetworkPolicy ACL references metadata %d", ErrACLSampleNotFound, reference.Metadata)
@@ -52,14 +65,10 @@ func (c *OVNNbClient) ResolveNetworkPolicyACLSample(reference aclsampling.Sample
 		return nil, fmt.Errorf("%w: metadata %d is referenced by %d Kube-OVN NetworkPolicy ACLs", ErrACLSampleAmbiguous, reference.Metadata, len(matches))
 	}
 
-	event, err := networkPolicyACLSampleEvent(matches[0], reference, application)
-	if err != nil {
-		return nil, fmt.Errorf("decode NetworkPolicy ACL %s: %w", matches[0].UUID, err)
-	}
-	return event, nil
+	return matches[0], nil
 }
 
-func (c *OVNNbClient) resolveACLSampleApplication(applicationID *uint32) (string, error) {
+func (c *OVNNbClient) resolveACLSampleApplication(applicationID *uint32) (aclsampling.Application, error) {
 	if applicationID == nil {
 		return "", nil
 	}
@@ -109,7 +118,7 @@ func (c *OVNNbClient) resolveSampleMetadata(metadata uint32) (*ovnnb.Sample, err
 	return &matches[0], nil
 }
 
-func aclReferencesSample(acl ovnnb.ACL, sampleUUID, application string) bool {
+func aclReferencesSample(acl ovnnb.ACL, sampleUUID string, application aclsampling.Application) bool {
 	switch application {
 	case aclsampling.ApplicationACLNew:
 		return acl.SampleNew != nil && *acl.SampleNew == sampleUUID
@@ -121,44 +130,12 @@ func aclReferencesSample(acl ovnnb.ACL, sampleUUID, application string) bool {
 	}
 }
 
-func networkPolicyACLSampleEvent(acl ovnnb.ACL, reference aclsampling.SampleReference, application string) (*aclsampling.Event, error) {
-	externalIDs := acl.ExternalIDs
-	if externalIDs[sampleSchemaVersionExternalID] != aclsampling.SchemaVersionV1 {
-		return nil, fmt.Errorf("unsupported sample schema version %q", externalIDs[sampleSchemaVersionExternalID])
-	}
-	if externalIDs[sampleFeatureExternalID] != networkPolicySampleFeature {
-		return nil, fmt.Errorf("unsupported sample feature %q", externalIDs[sampleFeatureExternalID])
-	}
-	if externalIDs[policyAPIVersionExternalID] != networkPolicyAPIVersion || externalIDs[policyKindExternalID] != networkPolicyKind {
-		return nil, fmt.Errorf("unsupported policy identity %s %s", externalIDs[policyAPIVersionExternalID], externalIDs[policyKindExternalID])
-	}
-	if acl.Tier != util.NetpolACLTier {
-		return nil, fmt.Errorf("ACL tier %d is not the NetworkPolicy tier", acl.Tier)
-	}
-
-	for _, key := range []string{policyNamespaceExternalID, policyNameExternalID, policyUIDExternalID, policyDirectionExternalID} {
-		if externalIDs[key] == "" {
-			return nil, fmt.Errorf("required external ID %s is missing", key)
-		}
-	}
-	direction, ok := networkPolicyDirection(acl.Direction)
-	if !ok || externalIDs[policyDirectionExternalID] != direction {
-		return nil, fmt.Errorf("policy direction %q does not match ACL direction %q", externalIDs[policyDirectionExternalID], acl.Direction)
-	}
-	if externalIDs[ovnActionExternalID] != acl.Action {
-		return nil, fmt.Errorf("OVN action external ID %q does not match ACL action %q", externalIDs[ovnActionExternalID], acl.Action)
-	}
-	matchHash := aclsampling.HashACLMatch(acl.Match)
-	if externalIDs[aclMatchHashExternalID] != matchHash {
-		return nil, errors.New("ACL match hash does not match the current ACL match")
-	}
-	mapping, err := storedNetworkPolicySampleMapping(externalIDs)
-	if err != nil {
+func networkPolicyACLSampleEvent(candidate eligibleNetworkPolicyACL, sampleUUID string, reference aclsampling.SampleReference, application aclsampling.Application) (*aclsampling.Event, error) {
+	acl := candidate.acl
+	if err := validateNetworkPolicyACLSample(candidate, sampleUUID, reference, application); err != nil {
 		return nil, err
 	}
-	if mapping.Metadata != reference.Metadata {
-		return nil, fmt.Errorf("sample metadata external ID %d does not match observed metadata %d", mapping.Metadata, reference.Metadata)
-	}
+	externalIDs := acl.ExternalIDs
 
 	policy := &aclsampling.PolicyReference{
 		APIVersion: networkPolicyAPIVersion,
@@ -166,50 +143,35 @@ func networkPolicyACLSampleEvent(acl ovnnb.ACL, reference aclsampling.SampleRefe
 		Namespace:  externalIDs[policyNamespaceExternalID],
 		Name:       externalIDs[policyNameExternalID],
 		UID:        externalIDs[policyUIDExternalID],
-		Direction:  direction,
+		Direction:  candidate.direction,
 	}
+	matchHash := aclsampling.HashACLMatch(acl.Match)
 	event := &aclsampling.Event{
 		SchemaVersion: aclsampling.SchemaVersionV1,
 		Feature:       networkPolicySampleFeature,
 		OVN: aclsampling.OVNACLReference{
 			UUID:      acl.UUID,
-			Action:    acl.Action,
+			Action:    aclsampling.OVNAction(acl.Action),
 			Priority:  acl.Priority,
 			Tier:      acl.Tier,
-			Direction: acl.Direction,
+			Direction: aclsampling.OVNACLDirection(acl.Direction),
 			MatchHash: matchHash,
 		},
 		Sample: aclsampling.SampleDetails{
 			App:               application,
-			ObservationDomain: reference.ObservationDomain,
-			ApplicationID:     reference.ApplicationID,
-			DatapathKey:       reference.DatapathKey,
-			Metadata:          reference.Metadata,
+			SampleObservation: reference.SampleObservation,
 		},
 	}
 	if acl.Name != nil {
 		event.OVN.Name = *acl.Name
 	}
 
-	switch externalIDs[sampleRoleExternalID] {
+	switch candidate.role {
 	case aclsampling.RoleRuleAllow:
-		if externalIDs[policyVerdictExternalID] != aclsampling.VerdictAllow || acl.Action != ovnnb.ACLActionAllowRelated {
-			return nil, errors.New("rule-allow sample metadata does not describe an allow-related ACL")
-		}
-		ruleIndex, err := strconv.Atoi(externalIDs[policyRuleIndexExternalID])
-		if err != nil || ruleIndex < 0 {
-			return nil, fmt.Errorf("invalid NetworkPolicy rule index %q", externalIDs[policyRuleIndexExternalID])
-		}
-		policy.RuleIndex = &ruleIndex
+		policy.RuleIndex = candidate.ruleIndex
 		event.Verdict = aclsampling.VerdictAllow
 		event.Policy = policy
 	case aclsampling.RoleDefaultDeny:
-		if externalIDs[policyVerdictExternalID] != aclsampling.VerdictDefaultDeny || acl.Action != ovnnb.ACLActionDrop {
-			return nil, errors.New("default-deny sample metadata does not describe a drop ACL")
-		}
-		if _, exists := externalIDs[policyRuleIndexExternalID]; exists {
-			return nil, errors.New("default-deny sample metadata must not include a rule index")
-		}
 		event.Verdict = aclsampling.VerdictDefaultDeny
 		event.Reason = aclsampling.ReasonNetworkPolicyDefaultDeny
 		event.Attribution = aclsampling.AttributionNonExclusive
@@ -218,4 +180,113 @@ func networkPolicyACLSampleEvent(acl ovnnb.ACL, reference aclsampling.SampleRefe
 		return nil, fmt.Errorf("unsupported NetworkPolicy ACL sample role %q", externalIDs[sampleRoleExternalID])
 	}
 	return event, nil
+}
+
+func validateNetworkPolicyACLSample(candidate eligibleNetworkPolicyACL, sampleUUID string, reference aclsampling.SampleReference, application aclsampling.Application) error {
+	acl := candidate.acl
+	externalIDs := acl.ExternalIDs
+	if !isOwnedNetworkPolicySamplingACL(externalIDs) {
+		return errors.New("ACL is not owned by Kube-OVN NetworkPolicy sampling")
+	}
+	if externalIDs[policyAPIVersionExternalID] != networkPolicyAPIVersion || externalIDs[policyKindExternalID] != networkPolicyKind {
+		return fmt.Errorf("unsupported policy identity %s %s", externalIDs[policyAPIVersionExternalID], externalIDs[policyKindExternalID])
+	}
+	for _, key := range []string{policyNamespaceExternalID, policyNameExternalID, policyUIDExternalID, policyDirectionExternalID} {
+		if externalIDs[key] == "" {
+			return fmt.Errorf("required external ID %s is missing", key)
+		}
+	}
+	if externalIDs[policyDirectionExternalID] != string(candidate.direction) {
+		return fmt.Errorf("policy direction %q does not match ACL direction %q", externalIDs[policyDirectionExternalID], acl.Direction)
+	}
+	if externalIDs[sampleRoleExternalID] != string(candidate.role) || externalIDs[policyVerdictExternalID] != string(candidate.verdict) {
+		return errors.New("ACL sample role or verdict does not match the canonical NetworkPolicy ACL")
+	}
+	switch candidate.role {
+	case aclsampling.RoleRuleAllow:
+		ruleIndex, err := strconv.Atoi(externalIDs[policyRuleIndexExternalID])
+		if err != nil || candidate.ruleIndex == nil || ruleIndex != *candidate.ruleIndex {
+			return fmt.Errorf("NetworkPolicy rule index %q does not match the canonical ACL", externalIDs[policyRuleIndexExternalID])
+		}
+	case aclsampling.RoleDefaultDeny:
+		if _, exists := externalIDs[policyRuleIndexExternalID]; exists {
+			return errors.New("default-deny sample metadata must not include a rule index")
+		}
+	}
+	if externalIDs[ovnActionExternalID] != acl.Action {
+		return fmt.Errorf("OVN action external ID %q does not match ACL action %q", externalIDs[ovnActionExternalID], acl.Action)
+	}
+	matchHash := aclsampling.HashACLMatch(acl.Match)
+	if externalIDs[aclMatchHashExternalID] != matchHash {
+		return errors.New("ACL match hash does not match the current ACL match")
+	}
+	mapping, err := storedNetworkPolicySampleMapping(externalIDs)
+	if err != nil {
+		return err
+	}
+	if mapping.Metadata != reference.Metadata {
+		return fmt.Errorf("sample metadata external ID %d does not match observed metadata %d", mapping.Metadata, reference.Metadata)
+	}
+	expectedKeyHash, err := (aclsampling.SampleKey{
+		SchemaVersion: aclsampling.SchemaVersionV1,
+		PolicyUID:     externalIDs[policyUIDExternalID],
+		Direction:     candidate.direction,
+		RuleIndex:     candidate.ruleIndex,
+		Role:          candidate.role,
+		Protocol:      candidate.protocol,
+		ACLMatchHash:  matchHash,
+		OVNAction:     aclsampling.OVNAction(acl.Action),
+	}).KeyHash()
+	if err != nil {
+		return fmt.Errorf("build canonical sample key: %w", err)
+	}
+	if mapping.KeyHash != expectedKeyHash {
+		return errors.New("sample key hash does not match the canonical NetworkPolicy ACL")
+	}
+	if err := validateNetworkPolicyACLIdentity(candidate); err != nil {
+		return err
+	}
+	return validateNetworkPolicyACLSampleReferences(candidate, sampleUUID, application)
+}
+
+func validateNetworkPolicyACLIdentity(candidate eligibleNetworkPolicyACL) error {
+	externalIDs := candidate.acl.ExternalIDs
+	aclName := externalIDs[networkPolicyACLNameExternalID]
+	policyNamespace := externalIDs[policyNamespaceExternalID]
+	policyName := externalIDs[policyNameExternalID]
+	if candidate.acl.Name == nil || *candidate.acl.Name != aclName {
+		return errors.New("OVN ACL name does not match the canonical NetworkPolicy ACL name")
+	}
+	switch candidate.role {
+	case aclsampling.RoleRuleAllow:
+		if !strings.HasPrefix(aclName, "np/"+policyName+"."+policyNamespace+"/") {
+			return errors.New("rule-allow ACL name does not match the NetworkPolicy identity")
+		}
+	case aclsampling.RoleDefaultDeny:
+		if aclName != policyNamespace+"/"+policyName {
+			return errors.New("default-deny ACL name does not match the NetworkPolicy identity")
+		}
+	default:
+		return fmt.Errorf("unsupported NetworkPolicy ACL sample role %q", candidate.role)
+	}
+	return nil
+}
+
+func validateNetworkPolicyACLSampleReferences(candidate eligibleNetworkPolicyACL, sampleUUID string, application aclsampling.Application) error {
+	acl := candidate.acl
+	sampleNewMatches := acl.SampleNew != nil && *acl.SampleNew == sampleUUID
+	sampleEstMatches := acl.SampleEst != nil && *acl.SampleEst == sampleUUID
+	switch candidate.role {
+	case aclsampling.RoleRuleAllow:
+		if !sampleNewMatches || !sampleEstMatches {
+			return errors.New("rule-allow ACL must reference the same Sample from sample_new and sample_est")
+		}
+	case aclsampling.RoleDefaultDeny:
+		if !sampleNewMatches || acl.SampleEst != nil || application == aclsampling.ApplicationACLEst {
+			return errors.New("default-deny ACL must reference its Sample only from sample_new")
+		}
+	default:
+		return fmt.Errorf("unsupported NetworkPolicy ACL sample role %q", candidate.role)
+	}
+	return nil
 }

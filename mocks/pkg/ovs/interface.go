@@ -136,6 +136,20 @@ func (mr *MockVswitchMockRecorder) ListPort(filter any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPort", reflect.TypeOf((*MockVswitch)(nil).ListPort), filter)
 }
 
+// ReconcileACLSamplingCollectorSet mocks base method.
+func (m *MockVswitch) ReconcileACLSamplingCollectorSet(config aclsampling.NodeConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileACLSamplingCollectorSet", config)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileACLSamplingCollectorSet indicates an expected call of ReconcileACLSamplingCollectorSet.
+func (mr *MockVswitchMockRecorder) ReconcileACLSamplingCollectorSet(config any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSamplingCollectorSet", reflect.TypeOf((*MockVswitch)(nil).ReconcileACLSamplingCollectorSet), config)
+}
+
 // Transact mocks base method.
 func (m *MockVswitch) Transact(method string, operations []ovsdb.Operation) error {
 	m.ctrl.T.Helper()
@@ -2480,6 +2494,21 @@ func (mr *MockACLSamplingMockRecorder) ReconcileACLSampling(config any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSampling", reflect.TypeOf((*MockACLSampling)(nil).ReconcileACLSampling), config)
 }
 
+// ResolveNetworkPolicyACLSample mocks base method.
+func (m *MockACLSampling) ResolveNetworkPolicyACLSample(reference aclsampling.SampleReference) (*aclsampling.Event, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveNetworkPolicyACLSample", reference)
+	ret0, _ := ret[0].(*aclsampling.Event)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveNetworkPolicyACLSample indicates an expected call of ResolveNetworkPolicyACLSample.
+func (mr *MockACLSamplingMockRecorder) ResolveNetworkPolicyACLSample(reference any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNetworkPolicyACLSample", reflect.TypeOf((*MockACLSampling)(nil).ResolveNetworkPolicyACLSample), reference)
+}
+
 // MockAddressSet is a mock of AddressSet interface.
 type MockAddressSet struct {
 	ctrl     *gomock.Controller
@@ -3065,6 +3094,20 @@ func (mr *MockNATMockRecorder) DeleteNats(lrName, natType, logicalIP any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNats", reflect.TypeOf((*MockNAT)(nil).DeleteNats), lrName, natType, logicalIP)
 }
 
+// EnsureSnat mocks base method.
+func (m *MockNAT) EnsureSnat(lrName, externalIP, logicalIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureSnat indicates an expected call of EnsureSnat.
+func (mr *MockNATMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNAT)(nil).EnsureSnat), lrName, externalIP, logicalIP)
+}
+
 // GetNATByUUID mocks base method.
 func (m *MockNAT) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
 	m.ctrl.T.Helper()
@@ -3122,20 +3165,6 @@ func (m *MockNAT) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, exte
 func (mr *MockNATMockRecorder) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDnatAndSnat", reflect.TypeOf((*MockNAT)(nil).UpdateDnatAndSnat), lrName, externalIP, logicalIP, lspName, externalMac, gatewayType)
-}
-
-// EnsureSnat mocks base method.
-func (m *MockNAT) EnsureSnat(lrName, externalIP, logicalIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// EnsureSnat indicates an expected call of EnsureSnat.
-func (mr *MockNATMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNAT)(nil).EnsureSnat), lrName, externalIP, logicalIP)
 }
 
 // MockDHCPOptions is a mock of DHCPOptions interface.
@@ -4447,6 +4476,20 @@ func (mr *MockNbClientMockRecorder) EnablePortLayer2forward(lspName any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnablePortLayer2forward", reflect.TypeOf((*MockNbClient)(nil).EnablePortLayer2forward), lspName)
 }
 
+// EnsureSnat mocks base method.
+func (m *MockNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureSnat indicates an expected call of EnsureSnat.
+func (mr *MockNbClientMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNbClient)(nil).EnsureSnat), lrName, externalIP, logicalIP)
+}
+
 // FindBFD mocks base method.
 func (m *MockNbClient) FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
@@ -5476,6 +5519,21 @@ func (mr *MockNbClientMockRecorder) ResetLogicalSwitchPortMigrateOptions(lspName
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).ResetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName, migratedFail)
 }
 
+// ResolveNetworkPolicyACLSample mocks base method.
+func (m *MockNbClient) ResolveNetworkPolicyACLSample(reference aclsampling.SampleReference) (*aclsampling.Event, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveNetworkPolicyACLSample", reference)
+	ret0, _ := ret[0].(*aclsampling.Event)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveNetworkPolicyACLSample indicates an expected call of ResolveNetworkPolicyACLSample.
+func (mr *MockNbClientMockRecorder) ResolveNetworkPolicyACLSample(reference any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNetworkPolicyACLSample", reflect.TypeOf((*MockNbClient)(nil).ResolveNetworkPolicyACLSample), reference)
+}
+
 // SGLostACL mocks base method.
 func (m *MockNbClient) SGLostACL(sg *v1.SecurityGroup) (bool, error) {
 	m.ctrl.T.Helper()
@@ -6206,20 +6264,6 @@ func (m *MockNbClient) UpdateSgACL(sg *v1.SecurityGroup, direction string) error
 func (mr *MockNbClientMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSgACL", reflect.TypeOf((*MockNbClient)(nil).UpdateSgACL), sg, direction)
-}
-
-// EnsureSnat mocks base method.
-func (m *MockNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// EnsureSnat indicates an expected call of EnsureSnat.
-func (mr *MockNbClientMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNbClient)(nil).EnsureSnat), lrName, externalIP, logicalIP)
 }
 
 // MockSbClient is a mock of SbClient interface.

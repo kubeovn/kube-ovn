@@ -9,55 +9,75 @@ import (
 )
 
 const (
-	ApplicationACLNew = "acl-new"
-	ApplicationACLEst = "acl-est"
+	ApplicationACLNew Application = "acl-new"
+	ApplicationACLEst Application = "acl-est"
 
-	VerdictAllow       = "allow"
-	VerdictDefaultDeny = "default-deny"
+	VerdictAllow       Verdict = "allow"
+	VerdictDefaultDeny Verdict = "default-deny"
 
-	ReasonNetworkPolicyDefaultDeny = "network-policy-default-deny"
-	AttributionNonExclusive        = "non-exclusive"
+	ReasonNetworkPolicyDefaultDeny Reason      = "network-policy-default-deny"
+	AttributionNonExclusive        Attribution = "non-exclusive"
 )
 
-// SampleReference identifies the OVN observation attached to a local psample
-// event. ApplicationID is nil when the input contains metadata only.
-type SampleReference struct {
+// Application identifies the OVN sampling application that produced an
+// observation.
+type Application string
+
+// Verdict identifies the NetworkPolicy decision represented by an event.
+type Verdict string
+
+// Reason identifies why a sampled decision was produced.
+type Reason string
+
+// Attribution describes whether a policy reference uniquely caused a
+// sampled decision.
+type Attribution string
+
+// OVNACLDirection identifies where an OVN ACL is evaluated.
+type OVNACLDirection string
+
+// SampleObservation contains the values encoded in ACL sample metadata or a
+// local-sampling cookie.
+type SampleObservation struct {
 	ObservationDomain *uint32 `json:"observationDomain,omitempty" yaml:"observationDomain,omitempty"`
 	ApplicationID     *uint32 `json:"applicationID,omitempty" yaml:"applicationID,omitempty"`
 	DatapathKey       *uint32 `json:"datapathKey,omitempty" yaml:"datapathKey,omitempty"`
 	Metadata          uint32  `json:"metadata" yaml:"metadata"`
+}
+
+// SampleReference identifies the OVN observation attached to a local psample
+// event. ApplicationID is nil when the input contains metadata only.
+type SampleReference struct {
+	SampleObservation `yaml:",inline"`
 }
 
 // PolicyReference identifies the Kubernetes NetworkPolicy data stored on an
 // eligible ACL.
 type PolicyReference struct {
-	APIVersion string `json:"apiVersion" yaml:"apiVersion"`
-	Kind       string `json:"kind" yaml:"kind"`
-	Namespace  string `json:"namespace" yaml:"namespace"`
-	Name       string `json:"name" yaml:"name"`
-	UID        string `json:"uid" yaml:"uid"`
-	Direction  string `json:"direction" yaml:"direction"`
-	RuleIndex  *int   `json:"ruleIndex,omitempty" yaml:"ruleIndex,omitempty"`
+	APIVersion string          `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string          `json:"kind" yaml:"kind"`
+	Namespace  string          `json:"namespace" yaml:"namespace"`
+	Name       string          `json:"name" yaml:"name"`
+	UID        string          `json:"uid" yaml:"uid"`
+	Direction  PolicyDirection `json:"direction" yaml:"direction"`
+	RuleIndex  *int            `json:"ruleIndex,omitempty" yaml:"ruleIndex,omitempty"`
 }
 
 // OVNACLReference describes the OVN ACL that owns a sample reference.
 type OVNACLReference struct {
-	UUID      string `json:"aclUUID" yaml:"aclUUID"`
-	Name      string `json:"aclName,omitempty" yaml:"aclName,omitempty"`
-	Action    string `json:"action" yaml:"action"`
-	Priority  int    `json:"priority" yaml:"priority"`
-	Tier      int    `json:"tier" yaml:"tier"`
-	Direction string `json:"direction" yaml:"direction"`
-	MatchHash string `json:"matchHash" yaml:"matchHash"`
+	UUID      string          `json:"aclUUID" yaml:"aclUUID"`
+	Name      string          `json:"aclName,omitempty" yaml:"aclName,omitempty"`
+	Action    OVNAction       `json:"action" yaml:"action"`
+	Priority  int             `json:"priority" yaml:"priority"`
+	Tier      int             `json:"tier" yaml:"tier"`
+	Direction OVNACLDirection `json:"direction" yaml:"direction"`
+	MatchHash string          `json:"matchHash" yaml:"matchHash"`
 }
 
 // SampleDetails describes how OVN encoded a resolved sample.
 type SampleDetails struct {
-	App               string  `json:"app,omitempty" yaml:"app,omitempty"`
-	ObservationDomain *uint32 `json:"observationDomain,omitempty" yaml:"observationDomain,omitempty"`
-	ApplicationID     *uint32 `json:"applicationID,omitempty" yaml:"applicationID,omitempty"`
-	DatapathKey       *uint32 `json:"datapathKey,omitempty" yaml:"datapathKey,omitempty"`
-	Metadata          uint32  `json:"metadata" yaml:"metadata"`
+	App               Application `json:"app,omitempty" yaml:"app,omitempty"`
+	SampleObservation `yaml:",inline"`
 }
 
 // Event is the stable debug representation of a sampled NetworkPolicy ACL
@@ -66,9 +86,9 @@ type SampleDetails struct {
 type Event struct {
 	SchemaVersion string           `json:"schemaVersion" yaml:"schemaVersion"`
 	Feature       string           `json:"feature" yaml:"feature"`
-	Verdict       string           `json:"verdict" yaml:"verdict"`
-	Reason        string           `json:"reason,omitempty" yaml:"reason,omitempty"`
-	Attribution   string           `json:"attribution,omitempty" yaml:"attribution,omitempty"`
+	Verdict       Verdict          `json:"verdict" yaml:"verdict"`
+	Reason        Reason           `json:"reason,omitempty" yaml:"reason,omitempty"`
+	Attribution   Attribution      `json:"attribution,omitempty" yaml:"attribution,omitempty"`
 	Policy        *PolicyReference `json:"policy,omitempty" yaml:"policy,omitempty"`
 	PolicyOwner   *PolicyReference `json:"policyOwner,omitempty" yaml:"policyOwner,omitempty"`
 	OVN           OVNACLReference  `json:"ovn" yaml:"ovn"`
@@ -106,7 +126,7 @@ func ParseSampleReference(value string) (SampleReference, error) {
 		return SampleReference{}, errors.New("ACL sample metadata must be greater than zero")
 	}
 	if raw <= math.MaxUint32 {
-		return SampleReference{Metadata: uint32(raw)}, nil
+		return SampleReference{SampleObservation: SampleObservation{Metadata: uint32(raw)}}, nil
 	}
 
 	observationDomain := uint32(raw >> 32)
@@ -120,10 +140,12 @@ func ParseSampleReference(value string) (SampleReference, error) {
 		return SampleReference{}, errors.New("ACL sample cookie metadata must be greater than zero")
 	}
 	return SampleReference{
-		ObservationDomain: &observationDomain,
-		ApplicationID:     &applicationID,
-		DatapathKey:       &datapathKey,
-		Metadata:          metadata,
+		SampleObservation: SampleObservation{
+			ObservationDomain: &observationDomain,
+			ApplicationID:     &applicationID,
+			DatapathKey:       &datapathKey,
+			Metadata:          metadata,
+		},
 	}, nil
 }
 

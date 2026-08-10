@@ -107,12 +107,10 @@ func (a *Allocator) Allocate(key SampleKey) (Allocation, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	canonical, err := key.canonical()
+	sum, err := key.hash()
 	if err != nil {
 		return Allocation{}, err
 	}
-
-	sum := sha256.Sum256([]byte(canonical))
 	keyHash := hex.EncodeToString(sum[:])
 	if metadata, ok := a.keyHashToMetadata[keyHash]; ok {
 		return Allocation{Metadata: metadata, KeyHash: keyHash}, nil
@@ -131,6 +129,15 @@ func (a *Allocator) Allocate(key SampleKey) (Allocation, error) {
 			return Allocation{}, errors.New("no non-zero ACL sample metadata is available")
 		}
 	}
+}
+
+// KeyHash returns the lowercase SHA-256 digest of the canonical sample key.
+func (key SampleKey) KeyHash() (string, error) {
+	sum, err := key.hash()
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // HashACLMatch returns the lowercase SHA-256 digest stored instead of the full
@@ -160,6 +167,14 @@ func (key SampleKey) canonical() (string, error) {
 		"ovn-action="+string(key.OVNAction),
 	)
 	return strings.Join(fields, "\n") + "\n", nil
+}
+
+func (key SampleKey) hash() ([sha256.Size]byte, error) {
+	canonical, err := key.canonical()
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	return sha256.Sum256([]byte(canonical)), nil
 }
 
 func (key SampleKey) validate() error {
