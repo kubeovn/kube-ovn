@@ -60,7 +60,8 @@ var (
 func InitNodeGateway(config *Configuration) (err error) {
 	var portName, ip, joinCIDR, macAddr, gw, ipAddr string
 	var node *corev1.Node
-	var lastAnnotationFailure string
+	var lastAnnotationFailure nodeFailureKey
+	var lastAnnotationFailureMessage string
 	defer func() {
 		if err != nil {
 			if eventErr := recordNodeFailureEventSync(config.KubeClient, node, config.NodeName, addNodeFailedReason, "initializeOvn0", err); eventErr != nil {
@@ -83,11 +84,14 @@ func InitNodeGateway(config *Configuration) (err error) {
 		}
 		if annotationErr != nil {
 			klog.Errorf("validate node %s address annotation failed, %v", nodeName, annotationErr)
-			if annotationErr.Error() != lastAnnotationFailure {
+			failureKey := nodeFailureKey{nodeName: node.Name, nodeUID: node.UID, reason: addNodeFailedReason, stage: "validateOvn0Annotations"}
+			if failureKey != lastAnnotationFailure || annotationErr.Error() != lastAnnotationFailureMessage {
 				if eventErr := recordNodeFailureEventSync(config.KubeClient, node, config.NodeName, addNodeFailedReason, "validateOvn0Annotations", annotationErr); eventErr != nil {
 					klog.Errorf("failed to record node %s annotation validation event: %v", config.NodeName, eventErr)
+				} else {
+					lastAnnotationFailure = failureKey
+					lastAnnotationFailureMessage = annotationErr.Error()
 				}
-				lastAnnotationFailure = annotationErr.Error()
 			}
 			time.Sleep(nodeGatewayInitRetryInterval)
 			continue

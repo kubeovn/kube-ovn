@@ -40,7 +40,11 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var pciAddrRegexp = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
+var (
+	pciAddrRegexp         = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
+	replaceNodeRoute      = netlink.RouteReplace
+	checkNodeGatewayReady = waitNetworkReady
+)
 
 func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, _ string, _ int, ip, _, ingress, egress, ingressBurst, egressBurst, shortSharedDir, socketName, socketConsumption string) error {
 	sharedDir := filepath.Join("/var", shortSharedDir)
@@ -804,28 +808,37 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 		klog.Infof("routes to be added on nic %s: %v", util.NodeNic, toAdd)
 	}
 
-	for _, r := range toAdd {
-		r.LinkIndex = hostLink.Attrs().Index
-		klog.Infof("adding route %q on %s", r.String(), hostLink.Attrs().Name)
-		if err = netlink.RouteReplace(&r); err != nil && !errors.Is(err, syscall.EEXIST) {
-			klog.Errorf("failed to replace route %v: %v", r, err)
+	return finishNodeGatewaySetup(cs, nodeName, ip, gw, hostLink, toAdd, enableNonPrimaryCNI)
+}
+
+func finishNodeGatewaySetup(cs kubernetes.Interface, nodeName, ip, gateway string, hostLink netlink.Link, routes []netlink.Route, enableNonPrimaryCNI bool) error {
+	routeErr := addNodeNicRoutes(hostLink, routes)
+
+	klog.Infof("wait %s gw ready", util.NodeNic)
+	gatewayErr := checkNodeGatewayReady(util.NodeNic, ip, gateway, false, true, gatewayCheckMaxRetry, nil)
+	if gatewayErr != nil {
+		klog.Errorf("failed to init %s check: %v", util.NodeNic, gatewayErr)
+	}
+	err := errors.Join(routeErr, gatewayErr)
+	if !enableNonPrimaryCNI {
+		return updateNodeNetworkUnavailableCondition(cs, nodeName, gateway, err)
+	}
+	klog.Infof("running in non-primary CNI mode, skipping NetworkUnavailable condition update")
+	return err
+}
+
+func addNodeNicRoutes(hostLink netlink.Link, routes []netlink.Route) error {
+	var result error
+	for _, route := range routes {
+		route.LinkIndex = hostLink.Attrs().Index
+		klog.Infof("adding route %q on %s", route.String(), hostLink.Attrs().Name)
+		if err := replaceNodeRoute(&route); err != nil && !errors.Is(err, syscall.EEXIST) {
+			wrappedErr := fmt.Errorf("failed to replace route %v: %w", route, err)
+			klog.Error(wrappedErr)
+			result = errors.Join(result, wrappedErr)
 		}
 	}
-
-	// ping ovn0 gw to activate the flow
-	klog.Infof("wait %s gw ready", util.NodeNic)
-	if err = waitNetworkReady(util.NodeNic, ip, gw, false, true, gatewayCheckMaxRetry, nil); err != nil {
-		klog.Errorf("failed to init %s check: %v", util.NodeNic, err)
-	}
-
-	// Only set NetworkUnavailable condition when running as primary CNI
-	if !enableNonPrimaryCNI {
-		err = updateNodeNetworkUnavailableCondition(cs, nodeName, gw, err)
-	} else {
-		klog.Infof("running in non-primary CNI mode, skipping NetworkUnavailable condition update")
-	}
-
-	return err
+	return result
 }
 
 func updateNodeNetworkUnavailableCondition(cs kubernetes.Interface, nodeName, gateway string, gatewayErr error) error {
