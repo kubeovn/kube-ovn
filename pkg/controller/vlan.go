@@ -32,7 +32,7 @@ func (c *Controller) recordVlanError(vlan *kubeovnv1.Vlan, reason string, err er
 }
 
 func (c *Controller) recordVlanKeyError(name, reason string, err error) error {
-	vlan := &kubeovnv1.Vlan{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	vlan := &kubeovnv1.Vlan{Name: name}
 	return c.recordVlanError(vlan, reason, err)
 }
 
