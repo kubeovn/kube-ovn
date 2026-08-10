@@ -176,6 +176,12 @@ func nodeUnderlayAddressSetName(node string, af int) string {
 	return fmt.Sprintf("node_%s_underlay_v%d", strings.ReplaceAll(node, "-", "_"), af)
 }
 
+func (c *Controller) recordNodeReconcileFailure(node *v1.Node, reason string, err error) {
+	if err != nil {
+		c.recorder.Eventf(node, v1.EventTypeWarning, reason, "%s", err.Error())
+	}
+}
+
 func (c *Controller) handleAddNode(key string) (err error) {
 	c.nodeKeyMutex.LockKey(key)
 	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
@@ -189,11 +195,7 @@ func (c *Controller) handleAddNode(key string) (err error) {
 		return err
 	}
 	node := cachedNode.DeepCopy()
-	defer func() {
-		if err != nil {
-			c.recorder.Eventf(node, v1.EventTypeWarning, "AddNodeFailed", "%s", err.Error())
-		}
-	}()
+	defer func() { c.recordNodeReconcileFailure(node, "AddNodeFailed", err) }()
 	klog.Infof("handle add node %s", node.Name)
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
@@ -465,11 +467,7 @@ func (c *Controller) handleDeleteNode(key string) (err error) {
 	if !ok {
 		return nil
 	}
-	defer func() {
-		if err != nil {
-			c.recorder.Eventf(node, v1.EventTypeWarning, "DeleteNodeFailed", "%s", err.Error())
-		}
-	}()
+	defer func() { c.recordNodeReconcileFailure(node, "DeleteNodeFailed", err) }()
 	n, _ := c.nodesLister.Get(key)
 	if n != nil && n.UID != node.UID {
 		klog.Warningf("Node %s is adding, skip the node delete handler, but it may leave some gc resources behind", key)
@@ -606,11 +604,7 @@ func (c *Controller) handleUpdateNode(key string) (err error) {
 		klog.Errorf("failed to get node %s: %v", key, err)
 		return err
 	}
-	defer func() {
-		if err != nil {
-			c.recorder.Eventf(node, v1.EventTypeWarning, "UpdateNodeFailed", "%s", err.Error())
-		}
-	}()
+	defer func() { c.recordNodeReconcileFailure(node, "UpdateNodeFailed", err) }()
 
 	if err = c.handleNodeAnnotationsForProviderNetworks(node); err != nil {
 		klog.Errorf("failed to handle annotations of node %s for provider networks: %v", node.Name, err)

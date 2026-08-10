@@ -848,11 +848,16 @@ func (c *Controller) loopOvn0Check() {
 
 	link, err := netlink.LinkByName(util.NodeNic)
 	if err != nil {
+		c.recordLocalNodeFailureSync("checkOvn0Link", err)
 		util.LogFatalAndExit(err, "failed to get node nic %s", util.NodeNic)
+		return
 	}
 
 	if link.Attrs().OperState == netlink.OperDown {
+		err = fmt.Errorf("node nic %s is down", util.NodeNic)
+		c.recordLocalNodeFailureSync("checkOvn0Link", err)
 		util.LogFatalAndExit(err, "node nic %s is down", util.NodeNic)
+		return
 	}
 
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -881,14 +886,24 @@ func (c *Controller) loopOvn0Check() {
 		}
 	}
 	if !alreadySet {
-		if err := util.SetNodeNetworkUnavailableCondition(c.config.KubeClient, c.config.NodeName, status, reason, message); err != nil {
-			klog.Errorf("failed to set node network unavailable condition: %v", err)
+		if setErr := util.SetNodeNetworkUnavailableCondition(c.config.KubeClient, c.config.NodeName, status, reason, message); setErr != nil {
+			klog.Errorf("failed to set node network unavailable condition: %v", setErr)
+			c.recordNodeFailure(node, updateNodeFailedReason, "updateNetworkUnavailableCondition", setErr)
+		} else {
+			c.clearNodeFailure(node, updateNodeFailedReason, "updateNetworkUnavailableCondition")
 		}
+	} else {
+		c.clearNodeFailure(node, updateNodeFailedReason, "updateNetworkUnavailableCondition")
 	}
 
 	if err != nil {
+		if eventErr := recordNodeFailureEventSync(c.config.KubeClient, node, c.config.NodeName, updateNodeFailedReason, "checkOvn0Gateway", err); eventErr != nil {
+			klog.Errorf("failed to record node %s ovn0 gateway check failure: %v", c.config.NodeName, eventErr)
+		}
 		util.LogFatalAndExit(err, "failed to ping %s gateway %s", util.NodeNic, gw)
+		return
 	}
+	c.clearNodeFailure(node, updateNodeFailedReason, "checkOvn0Gateway")
 }
 
 // This method checks the status of the tunnel interface,

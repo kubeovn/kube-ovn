@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
@@ -50,12 +51,22 @@ func InitOVSBridges() (map[string]string, error) {
 	return mappings, nil
 }
 
+var configureNodeGateway = configureNodeNic
+
 // InitNodeGateway init ovn0
-func InitNodeGateway(config *Configuration) error {
+func InitNodeGateway(config *Configuration) (err error) {
 	var portName, ip, joinCIDR, macAddr, gw, ipAddr string
+	var node *corev1.Node
+	defer func() {
+		if err != nil {
+			if eventErr := recordNodeFailureEventSync(config.KubeClient, node, config.NodeName, addNodeFailedReason, "initializeOvn0", err); eventErr != nil {
+				klog.Errorf("failed to record node %s initialization event: %v", config.NodeName, eventErr)
+			}
+		}
+	}()
 	for {
 		nodeName := config.NodeName
-		node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		node, err = config.KubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
@@ -65,8 +76,8 @@ func InitNodeGateway(config *Configuration) error {
 			time.Sleep(3 * time.Second)
 			continue
 		}
-		if err := util.ValidatePodNetwork(node.Annotations); err != nil {
-			klog.Errorf("validate node %s address annotation failed, %v", nodeName, err)
+		if validateErr := util.ValidatePodNetwork(node.Annotations); validateErr != nil {
+			klog.Errorf("validate node %s address annotation failed, %v", nodeName, validateErr)
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -79,7 +90,7 @@ func InitNodeGateway(config *Configuration) error {
 	}
 	mac, err := net.ParseMAC(macAddr)
 	if err != nil {
-		return fmt.Errorf("failed to parse mac %s %w", mac, err)
+		return fmt.Errorf("failed to parse mac %s: %w", macAddr, err)
 	}
 
 	ipAddr, err = util.GetIPAddrWithMask(ip, joinCIDR)
@@ -87,7 +98,7 @@ func InitNodeGateway(config *Configuration) error {
 		klog.Errorf("failed to get ip %s with mask %s, %v", ip, joinCIDR, err)
 		return err
 	}
-	return configureNodeNic(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI)
+	return configureNodeGateway(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI)
 }
 
 func InitMirror(config *Configuration) error {
