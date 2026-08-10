@@ -6,8 +6,11 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
@@ -78,7 +81,10 @@ func TestParsePSampleMessageRejectsInvalidInput(t *testing.T) {
 		{name: "non OVN cookie", message: psampleMessageForTest(group, psampleAttributeForTest(psampleAttrUserCookie, []byte{0, 0, 0, 100, 0, 0, 0, 200})), notACLSample: true},
 		{name: "duplicate group", message: psampleMessageForTest(group, group, cookie)},
 		{name: "invalid group length", message: psampleMessageForTest(psampleAttributeForTest(psampleAttrSampleGroup, []byte{1}), cookie)},
-		{name: "malformed attribute", message: append([]byte{0, 1, 0, 0}, []byte{3, 0, 1, 0}...)},
+		{name: "malformed attribute", message: append([]byte{0, 1, 0, 0}, rawPSampleAttributeForTest(3, 1, nil)...)},
+		{name: "missing attribute padding", message: append([]byte{0, 1, 0, 0}, rawPSampleAttributeForTest(5, psampleAttrData, []byte{1})...)},
+		{name: "trailing attribute bytes", message: append(psampleMessageForTest(group, cookie), 0)},
+		{name: "probability flag with value", message: psampleMessageForTest(group, cookie, psampleAttributeForTest(psampleAttrSampleProbability, []byte{1}))},
 	}
 
 	for _, test := range tests {
@@ -129,6 +135,12 @@ func TestPacketSampleFromNetlinkMessageFiltersFamilyAndGroup(t *testing.T) {
 	}, familyID, 142)
 	require.ErrorIs(t, err, unix.EPERM)
 	require.False(t, ok)
+
+	_, ok, err = packetSampleFromNetlinkMessage(syscall.NetlinkMessage{
+		Header: syscall.NlMsghdr{Type: unix.NLMSG_OVERRUN},
+	}, familyID, 142)
+	require.ErrorContains(t, err, "samples were lost")
+	require.False(t, ok)
 }
 
 func TestPSamplePacketsMulticastGroup(t *testing.T) {
@@ -152,6 +164,116 @@ func TestListenPSamplesValidatesArguments(t *testing.T) {
 	require.Error(t, ListenPSamples(context.Background(), 0, nil))
 }
 
+func TestListenPSamplesReturnsSetupErrors(t *testing.T) {
+	t.Run("family discovery", func(t *testing.T) {
+		familyErr := errors.New("family failed")
+		netlinkAPI := newFakePSampleNetlink(nil)
+		netlinkAPI.familyErr = familyErr
+		err := listenPSamples(context.Background(), 142, func(PacketSample) error { return nil }, netlinkAPI)
+		require.ErrorIs(t, err, familyErr)
+	})
+
+	t.Run("socket subscribe", func(t *testing.T) {
+		subscribeErr := errors.New("subscribe failed")
+		netlinkAPI := newFakePSampleNetlink(nil)
+		netlinkAPI.subscribeErr = subscribeErr
+		err := listenPSamples(context.Background(), 142, func(PacketSample) error { return nil }, netlinkAPI)
+		require.ErrorIs(t, err, subscribeErr)
+	})
+}
+
+func TestListenPSamplesJoinsMembershipAndCloseErrors(t *testing.T) {
+	membershipErr := errors.New("membership failed")
+	closeErr := errors.New("close failed")
+	var closeCount atomic.Int32
+	socket := &fakePSampleSocket{closeFunc: func() error {
+		closeCount.Add(1)
+		return closeErr
+	}}
+	netlinkAPI := newFakePSampleNetlink(socket)
+	netlinkAPI.membershipErr = membershipErr
+
+	err := listenPSamples(context.Background(), 142, func(PacketSample) error { return nil }, netlinkAPI)
+	require.ErrorIs(t, err, membershipErr)
+	require.ErrorIs(t, err, closeErr)
+	require.Equal(t, int32(1), closeCount.Load())
+	require.Equal(t, uint32(42), netlinkAPI.membershipGroup)
+}
+
+func TestListenPSamplesJoinsReceiveAndCloseErrors(t *testing.T) {
+	closeErr := errors.New("close failed")
+	var closeCount atomic.Int32
+	socket := &fakePSampleSocket{
+		receiveFunc: func() ([]syscall.NetlinkMessage, *unix.SockaddrNetlink, error) {
+			return nil, nil, unix.EPERM
+		},
+		closeFunc: func() error {
+			closeCount.Add(1)
+			return closeErr
+		},
+	}
+
+	err := listenPSamples(context.Background(), 142, func(PacketSample) error { return nil }, newFakePSampleNetlink(socket))
+	require.ErrorIs(t, err, unix.EPERM)
+	require.ErrorIs(t, err, closeErr)
+	require.Equal(t, int32(1), closeCount.Load())
+}
+
+func TestListenPSamplesJoinsHandlerAndCloseErrors(t *testing.T) {
+	handleErr := errors.New("handler failed")
+	closeErr := errors.New("close failed")
+	var closeCount atomic.Int32
+	socket := &fakePSampleSocket{
+		receiveFunc: func() ([]syscall.NetlinkMessage, *unix.SockaddrNetlink, error) {
+			return []syscall.NetlinkMessage{validPSampleNetlinkMessageForTest(30, 142)}, &unix.SockaddrNetlink{}, nil
+		},
+		closeFunc: func() error {
+			closeCount.Add(1)
+			return closeErr
+		},
+	}
+
+	err := listenPSamples(context.Background(), 142, func(PacketSample) error { return handleErr }, newFakePSampleNetlink(socket))
+	require.ErrorIs(t, err, handleErr)
+	require.ErrorIs(t, err, closeErr)
+	require.Equal(t, int32(1), closeCount.Load())
+}
+
+func TestListenPSamplesCancellationClosesSocketOnce(t *testing.T) {
+	closeErr := errors.New("close failed")
+	receiveStarted := make(chan struct{})
+	socketClosed := make(chan struct{})
+	var receiveOnce sync.Once
+	var closeCount atomic.Int32
+	socket := &fakePSampleSocket{
+		receiveFunc: func() ([]syscall.NetlinkMessage, *unix.SockaddrNetlink, error) {
+			receiveOnce.Do(func() { close(receiveStarted) })
+			<-socketClosed
+			return nil, nil, unix.EBADF
+		},
+		closeFunc: func() error {
+			closeCount.Add(1)
+			close(socketClosed)
+			return closeErr
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		result <- listenPSamples(ctx, 142, func(PacketSample) error { return nil }, newFakePSampleNetlink(socket))
+	}()
+	<-receiveStarted
+	cancel()
+
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, closeErr)
+	case <-time.After(3 * time.Second):
+		t.Fatal("ListenPSamples did not stop after context cancellation")
+	}
+	require.Equal(t, int32(1), closeCount.Load())
+}
+
 func psampleMessageForTest(attrs ...[]byte) []byte {
 	message := []byte{psampleCommandSample, psampleVersion, 0, 0}
 	for _, attr := range attrs {
@@ -165,6 +287,14 @@ func psampleAttributeForTest(attrType uint16, value []byte) []byte {
 	alignedLength := (length + 3) &^ 3
 	attr := make([]byte, alignedLength)
 	nl.NativeEndian().PutUint16(attr[0:2], uint16(length))
+	nl.NativeEndian().PutUint16(attr[2:4], attrType)
+	copy(attr[unix.SizeofRtAttr:], value)
+	return attr
+}
+
+func rawPSampleAttributeForTest(length, attrType uint16, value []byte) []byte {
+	attr := make([]byte, unix.SizeofRtAttr+len(value))
+	nl.NativeEndian().PutUint16(attr[0:2], length)
 	nl.NativeEndian().PutUint16(attr[2:4], attrType)
 	copy(attr[unix.SizeofRtAttr:], value)
 	return attr
@@ -186,4 +316,66 @@ func nativeUint64ForTest(value uint64) []byte {
 	data := make([]byte, 8)
 	nl.NativeEndian().PutUint64(data, value)
 	return data
+}
+
+type fakePSampleSocket struct {
+	receiveFunc func() ([]syscall.NetlinkMessage, *unix.SockaddrNetlink, error)
+	closeFunc   func() error
+}
+
+func (*fakePSampleSocket) GetFd() int { return 10 }
+
+func (s *fakePSampleSocket) Receive() ([]syscall.NetlinkMessage, *unix.SockaddrNetlink, error) {
+	return s.receiveFunc()
+}
+
+func (s *fakePSampleSocket) Close() error {
+	return s.closeFunc()
+}
+
+type fakePSampleNetlink struct {
+	socket          psampleNetlinkSocket
+	familyErr       error
+	subscribeErr    error
+	membershipErr   error
+	membershipGroup uint32
+}
+
+func newFakePSampleNetlink(socket psampleNetlinkSocket) *fakePSampleNetlink {
+	return &fakePSampleNetlink{socket: socket}
+}
+
+func (f *fakePSampleNetlink) family(string) (*netlink.GenlFamily, error) {
+	if f.familyErr != nil {
+		return nil, f.familyErr
+	}
+	return &netlink.GenlFamily{
+		ID:      30,
+		Version: psampleVersion,
+		Groups:  []netlink.GenlMulticastGroup{{ID: 42, Name: psamplePacketsGroupName}},
+	}, nil
+}
+
+func (f *fakePSampleNetlink) subscribe(int) (psampleNetlinkSocket, error) {
+	if f.subscribeErr != nil {
+		return nil, f.subscribeErr
+	}
+	return f.socket, nil
+}
+
+func (f *fakePSampleNetlink) addMembership(_ int, groupID uint32) error {
+	f.membershipGroup = groupID
+	return f.membershipErr
+}
+
+func validPSampleNetlinkMessageForTest(familyID uint16, groupID uint32) syscall.NetlinkMessage {
+	cookie := make([]byte, 8)
+	binary.BigEndian.PutUint64(cookie, uint64(0x66000001)<<32|1)
+	return syscall.NetlinkMessage{
+		Header: syscall.NlMsghdr{Type: familyID},
+		Data: psampleMessageForTest(
+			psampleAttributeForTest(psampleAttrSampleGroup, nativeUint32ForTest(groupID)),
+			psampleAttributeForTest(psampleAttrUserCookie, cookie),
+		),
+	}
 }
