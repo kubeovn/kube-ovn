@@ -81,7 +81,7 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 	}
 
 	options := func(acl *ovnnb.ACL) {
-		setACLName(acl, npName)
+		setNetworkPolicyACLName(acl, npName)
 		if loggingEnabled {
 			acl.Log = true
 			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
