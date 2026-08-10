@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -146,6 +147,216 @@ func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods 
 	return nodeNexthopIPv4, nodeNexthopIPv6, notReadyMessages
 }
 
+func (c *Controller) recordVpcEgressGatewayEvent(gw *kubeovnv1.VpcEgressGateway, eventType, reason, message string) {
+	if c.recorder == nil {
+		return
+	}
+	c.recorder.Eventf(gw, eventType, reason, "%s", message)
+}
+
+func (c *Controller) recordVpcEgressGatewayError(gw *kubeovnv1.VpcEgressGateway, reason string, err error) error {
+	c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, reason, err.Error())
+	return err
+}
+
+func (c *Controller) recordVpcEgressGatewayKeyError(namespace, name, reason string, err error) error {
+	gw := &kubeovnv1.VpcEgressGateway{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name}}
+	return c.recordVpcEgressGatewayError(gw, reason, err)
+}
+
+func vpcEgressGatewayReadyConditionChanged(gw *kubeovnv1.VpcEgressGateway, status corev1.ConditionStatus, reason, message string) bool {
+	condition := gw.Status.Conditions.GetCondition(kubeovnv1.Ready)
+	return condition == nil ||
+		condition.Status != status ||
+		condition.Reason != reason ||
+		condition.Message != message ||
+		condition.ObservedGeneration != gw.Generation
+}
+
+func setVpcEgressGatewayNotReady(gw *kubeovnv1.VpcEgressGateway, reason, message string) bool {
+	conditionChanged := vpcEgressGatewayReadyConditionChanged(gw, corev1.ConditionFalse, reason, message)
+	gw.Status.Ready = false
+	gw.Status.Phase = kubeovnv1.PhaseProcessing
+	gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, reason, message, gw.Generation)
+	return conditionChanged
+}
+
+func (c *Controller) failVpcEgressGatewayReconcile(gw *kubeovnv1.VpcEgressGateway, reason string, reconcileErr error) error {
+	setVpcEgressGatewayNotReady(gw, reason, reconcileErr.Error())
+	c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, reason, reconcileErr.Error())
+	if _, statusErr := c.updateVpcEgressGatewayStatus(gw); statusErr != nil {
+		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "UpdateStatusFailed", statusErr.Error())
+		return errors.Join(reconcileErr, statusErr)
+	}
+	return reconcileErr
+}
+
+type vpcEgressGatewayReconcileContext struct {
+	gateway *kubeovnv1.VpcEgressGateway
+	vpc     *kubeovnv1.Vpc
+	bfdIP   string
+	bfdIPv4 string
+	bfdIPv6 string
+}
+
+type vpcEgressGatewayWorkloadState struct {
+	ready           bool
+	ipv4Src         set.Set[string]
+	ipv6Src         set.Set[string]
+	nodeNexthopIPv4 map[string]string
+	nodeNexthopIPv6 map[string]string
+}
+
+func (c *Controller) prepareVpcEgressGateway(gw *kubeovnv1.VpcEgressGateway) (*vpcEgressGatewayReconcileContext, error) {
+	var err error
+	if gw, err = c.initVpcEgressGatewayStatus(gw); err != nil {
+		return nil, err
+	}
+
+	vpcName := gw.Spec.VPC
+	if vpcName == "" {
+		vpcName = c.config.ClusterRouter
+	}
+	vpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		klog.Error(err)
+		return nil, c.recordVpcEgressGatewayError(gw, "GetVpcFailed", err)
+	}
+	if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP == "" {
+		err = fmt.Errorf("vpc %s bfd port is not enabled or not ready", vpc.Name)
+		klog.Error(err)
+		gw.Status.Conditions.SetCondition(kubeovnv1.Validated, corev1.ConditionFalse, "VpcBfdPortNotEnabled", err.Error(), gw.Generation)
+		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "VpcBfdPortNotEnabled", err.Error())
+		if _, statusErr := c.updateVpcEgressGatewayStatus(gw); statusErr != nil {
+			return nil, errors.Join(err, c.recordVpcEgressGatewayError(gw, "UpdateStatusFailed", statusErr))
+		}
+		return nil, err
+	}
+
+	if controllerutil.AddFinalizer(gw, util.KubeOVNControllerFinalizer) {
+		updatedGateway, err := c.config.KubeOvnClient.KubeovnV1().VpcEgressGateways(gw.Namespace).
+			Update(context.Background(), gw, metav1.UpdateOptions{})
+		if err != nil {
+			err = fmt.Errorf("failed to add finalizer for vpc-egress-gateway %s/%s: %w", gw.Namespace, gw.Name, err)
+			klog.Error(err)
+			return nil, c.recordVpcEgressGatewayError(gw, "AddFinalizerFailed", err)
+		}
+		gw = updatedGateway
+	}
+
+	ctx := &vpcEgressGatewayReconcileContext{gateway: gw, vpc: vpc}
+	if gw.Spec.BFD.Enabled {
+		ctx.bfdIP = vpc.Status.BFDPort.IP
+		ctx.bfdIPv4, ctx.bfdIPv6 = util.SplitStringIP(ctx.bfdIP)
+	}
+	return ctx, nil
+}
+
+func (c *Controller) reconcileVpcEgressGatewayWorkloadState(ctx *vpcEgressGatewayReconcileContext) (*vpcEgressGatewayWorkloadState, error) {
+	gw := ctx.gateway
+	attachmentNetworkName, ipv4Src, ipv6Src, deploy, err := c.reconcileVpcEgressGatewayWorkload(
+		gw, ctx.vpc, ctx.bfdIP, ctx.bfdIPv4, ctx.bfdIPv6,
+	)
+	gw.Status.Replicas = gw.Spec.Replicas
+	gw.Status.LabelSelector = labels.FormatLabels(vegWorkloadLabels(gw.Name))
+	if err != nil {
+		klog.Error(err)
+		gw.Status.Replicas = 0
+		return nil, c.failVpcEgressGatewayReconcile(gw, "ReconcileWorkloadFailed", err)
+	}
+
+	gw.Status.InternalIPs = nil
+	gw.Status.ExternalIPs = nil
+	gw.Status.Workload.APIVersion = deploy.APIVersion
+	gw.Status.Workload.Kind = deploy.Kind
+	gw.Status.Workload.Name = deploy.Name
+	gw.Status.Workload.Nodes = nil
+	deploymentReady := util.DeploymentIsReady(deploy)
+	if !deploymentReady {
+		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
+		if setVpcEgressGatewayNotReady(gw, "Processing", msg) {
+			c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeNormal, "Processing", msg)
+		}
+	}
+
+	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
+	if err != nil {
+		err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
+		klog.Error(err)
+		return nil, c.failVpcEgressGatewayReconcile(gw, "GetPodSelectorFailed", err)
+	}
+	pods, err := c.podsLister.Pods(deploy.Namespace).List(podSelector)
+	if err != nil {
+		err = fmt.Errorf("failed to list pods of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
+		klog.Error(err)
+		return nil, c.failVpcEgressGatewayReconcile(gw, "ListWorkloadPodsFailed", err)
+	}
+
+	nodeNexthopIPv4, nodeNexthopIPv6, notReadyMessages := collectVpcEgressGatewayWorkloadStatus(gw, pods, attachmentNetworkName)
+	workloadReady := len(notReadyMessages) == 0
+	if !workloadReady {
+		if deploymentReady {
+			msg := strings.Join(notReadyMessages, "; ")
+			if setVpcEgressGatewayNotReady(gw, "WorkloadNetworkNotReady", msg) {
+				c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "WorkloadNetworkNotReady", msg)
+			}
+		} else {
+			gw.Status.Ready = false
+			gw.Status.Phase = kubeovnv1.PhaseProcessing
+		}
+	}
+	updatedGateway, err := c.updateVpcEgressGatewayStatus(gw)
+	if err != nil {
+		return nil, c.recordVpcEgressGatewayError(gw, "UpdateStatusFailed", err)
+	}
+	ctx.gateway = updatedGateway
+
+	return &vpcEgressGatewayWorkloadState{
+		ready:           deploymentReady && workloadReady,
+		ipv4Src:         ipv4Src,
+		ipv6Src:         ipv6Src,
+		nodeNexthopIPv4: nodeNexthopIPv4,
+		nodeNexthopIPv6: nodeNexthopIPv6,
+	}, nil
+}
+
+func (c *Controller) reconcileVpcEgressGatewayRoutes(ctx *vpcEgressGatewayReconcileContext, state *vpcEgressGatewayWorkloadState) error {
+	routes := [...]struct {
+		addressFamily int
+		protocol      string
+		bfdIP         string
+		nexthops      map[string]string
+		sources       set.Set[string]
+	}{
+		{addressFamily: 4, protocol: "IPv4", bfdIP: ctx.bfdIPv4, nexthops: state.nodeNexthopIPv4, sources: state.ipv4Src},
+		{addressFamily: 6, protocol: "IPv6", bfdIP: ctx.bfdIPv6, nexthops: state.nodeNexthopIPv6, sources: state.ipv6Src},
+	}
+	for _, route := range routes {
+		if err := c.reconcileVpcEgressGatewayOVNRoutes(ctx.gateway, route.addressFamily, ctx.vpc.Status.Router,
+			ctx.vpc.Status.BFDPort.Name, route.bfdIP, route.nexthops, route.sources); err != nil {
+			klog.Error(err)
+			err = fmt.Errorf("failed to reconcile %s OVN routes: %w", route.protocol, err)
+			return c.failVpcEgressGatewayReconcile(ctx.gateway, "ReconcileOVNRoutesFailed", err)
+		}
+	}
+	return nil
+}
+
+func (c *Controller) completeVpcEgressGatewayReconcile(gw *kubeovnv1.VpcEgressGateway) error {
+	gw.Status.Ready = true
+	gw.Status.Phase = kubeovnv1.PhaseCompleted
+	conditionChanged := vpcEgressGatewayReadyConditionChanged(gw, corev1.ConditionTrue, "ReconcileSuccess", "")
+	gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
+	updatedGateway, err := c.updateVpcEgressGatewayStatus(gw)
+	if err != nil {
+		return c.recordVpcEgressGatewayError(gw, "UpdateStatusFailed", err)
+	}
+	if conditionChanged {
+		c.recordVpcEgressGatewayEvent(updatedGateway, corev1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("VpcEgressGateway %s/%s reconciled successfully", gw.Namespace, gw.Name))
+	}
+	return nil
+}
+
 func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -160,7 +371,7 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Error(err)
-			return err
+			return c.recordVpcEgressGatewayKeyError(ns, name, "GetVpcEgressGatewayFailed", err)
 		}
 		return nil
 	}
@@ -171,115 +382,20 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 	}
 
 	klog.Infof("reconciling vpc-egress-gateway %s", key)
-	gw := cachedGateway.DeepCopy()
-	if gw, err = c.initVpcEgressGatewayStatus(gw); err != nil {
-		return err
-	}
-
-	vpcName := gw.Spec.VPC
-	if vpcName == "" {
-		vpcName = c.config.ClusterRouter
-	}
-	vpc, err := c.vpcsLister.Get(vpcName)
+	ctx, err := c.prepareVpcEgressGateway(cachedGateway.DeepCopy())
 	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if gw.Spec.BFD.Enabled && vpc.Status.BFDPort.IP == "" {
-		err = fmt.Errorf("vpc %s bfd port is not enabled or not ready", vpc.Name)
-		klog.Error(err)
-		gw.Status.Conditions.SetCondition(kubeovnv1.Validated, corev1.ConditionFalse, "VpcBfdPortNotEnabled", err.Error(), gw.Generation)
-		_, _ = c.updateVpcEgressGatewayStatus(gw)
 		return err
 	}
 
-	if controllerutil.AddFinalizer(gw, util.KubeOVNControllerFinalizer) {
-		updatedGateway, err := c.config.KubeOvnClient.KubeovnV1().VpcEgressGateways(gw.Namespace).
-			Update(context.Background(), gw, metav1.UpdateOptions{})
-		if err != nil {
-			err = fmt.Errorf("failed to add finalizer for vpc-egress-gateway %s/%s: %w", gw.Namespace, gw.Name, err)
-			klog.Error(err)
-			return err
-		}
-		gw = updatedGateway
-	}
-
-	var bfdIP, bfdIPv4, bfdIPv6 string
-	if gw.Spec.BFD.Enabled {
-		bfdIP = vpc.Status.BFDPort.IP
-		bfdIPv4, bfdIPv6 = util.SplitStringIP(bfdIP)
-	}
-
-	// reconcile the vpc egress gateway workload and get the route sources for later OVN resources reconciliation
-	attachmentNetworkName, ipv4Src, ipv6Src, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, vpc, bfdIP, bfdIPv4, bfdIPv6)
-	gw.Status.Replicas = gw.Spec.Replicas
-	gw.Status.LabelSelector = labels.FormatLabels(vegWorkloadLabels(gw.Name))
+	state, err := c.reconcileVpcEgressGatewayWorkloadState(ctx)
 	if err != nil {
-		klog.Error(err)
-		gw.Status.Replicas = 0
-		gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "ReconcileWorkloadFailed", err.Error(), gw.Generation)
-		_, _ = c.updateVpcEgressGatewayStatus(gw)
 		return err
 	}
-
-	gw.Status.InternalIPs = nil
-	gw.Status.ExternalIPs = nil
-	gw.Status.Workload.APIVersion = deploy.APIVersion
-	gw.Status.Workload.Kind = deploy.Kind
-	gw.Status.Workload.Name = deploy.Name
-	gw.Status.Workload.Nodes = nil
-	ready := util.DeploymentIsReady(deploy)
-	if !ready {
-		gw.Status.Ready = false
-		gw.Status.Phase = kubeovnv1.PhaseProcessing
-		msg := fmt.Sprintf("Waiting for %s %s to be ready", deploy.Kind, deploy.Name)
-		gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "Processing", msg, gw.Generation)
-	}
-	// get the pods of the deployment to collect the pod IPs
-	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
-	if err != nil {
-		err = fmt.Errorf("failed to get pod selector of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
-		klog.Error(err)
+	if err = c.reconcileVpcEgressGatewayRoutes(ctx, state); err != nil {
 		return err
 	}
-
-	pods, err := c.podsLister.Pods(deploy.Namespace).List(podSelector)
-	if err != nil {
-		err = fmt.Errorf("failed to list pods of deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	nodeNexthopIPv4, nodeNexthopIPv6, notReadyMessages := collectVpcEgressGatewayWorkloadStatus(gw, pods, attachmentNetworkName)
-	workloadReady := len(notReadyMessages) == 0
-	if !workloadReady {
-		gw.Status.Ready = false
-		gw.Status.Phase = kubeovnv1.PhaseProcessing
-		if ready {
-			msg := strings.Join(notReadyMessages, "; ")
-			gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "WorkloadNetworkNotReady", msg, gw.Generation)
-		}
-	}
-	if gw, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	// reconcile OVN routes
-	if err = c.reconcileVpcEgressGatewayOVNRoutes(gw, 4, vpc.Status.Router, vpc.Status.BFDPort.Name, bfdIPv4, nodeNexthopIPv4, ipv4Src); err != nil {
-		klog.Error(err)
-		return err
-	}
-	if err = c.reconcileVpcEgressGatewayOVNRoutes(gw, 6, vpc.Status.Router, vpc.Status.BFDPort.Name, bfdIPv6, nodeNexthopIPv6, ipv6Src); err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	if ready && workloadReady {
-		gw.Status.Ready = true
-		gw.Status.Phase = kubeovnv1.PhaseCompleted
-		gw.Status.Conditions.SetReady("ReconcileSuccess", gw.Generation)
-		if _, err = c.updateVpcEgressGatewayStatus(gw); err != nil {
+	if state.ready {
+		if err = c.completeVpcEgressGatewayReconcile(ctx.gateway); err != nil {
 			return err
 		}
 	}
@@ -290,12 +406,16 @@ func (c *Controller) handleAddOrUpdateVpcEgressGateway(key string) error {
 }
 
 func (c *Controller) initVpcEgressGatewayStatus(gw *kubeovnv1.VpcEgressGateway) (*kubeovnv1.VpcEgressGateway, error) {
-	var err error
 	if gw.Status.Phase == "" || gw.Status.Phase == kubeovnv1.PhasePending {
 		gw.Status.Phase = kubeovnv1.PhaseProcessing
-		gw, err = c.updateVpcEgressGatewayStatus(gw)
+		updatedGateway, err := c.updateVpcEgressGatewayStatus(gw)
+		if err != nil {
+			return gw, c.recordVpcEgressGatewayError(gw, "UpdateStatusFailed", err)
+		}
+		gw = updatedGateway
+		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeNormal, "Processing", fmt.Sprintf("Started reconciling VpcEgressGateway %s/%s", gw.Namespace, gw.Name))
 	}
-	return gw, err
+	return gw, nil
 }
 
 func (c *Controller) updateVpcEgressGatewayStatus(gw *kubeovnv1.VpcEgressGateway) (*kubeovnv1.VpcEgressGateway, error) {
@@ -1261,7 +1381,7 @@ func (c *Controller) handleDelVpcEgressGateway(key string) error {
 		if !k8serrors.IsNotFound(err) {
 			err = fmt.Errorf("failed to get vpc-egress-gateway %s: %w", key, err)
 			klog.Error(err)
-			return err
+			return c.recordVpcEgressGatewayKeyError(ns, name, "GetVpcEgressGatewayFailed", err)
 		}
 		return nil
 	}
@@ -1269,7 +1389,7 @@ func (c *Controller) handleDelVpcEgressGateway(key string) error {
 	klog.Infof("handle deleting vpc-egress-gateway %s", key)
 	if err = c.cleanOVNForVpcEgressGateway(key, cachedGateway.Spec.VPC); err != nil {
 		klog.Error(err)
-		return err
+		return c.recordVpcEgressGatewayError(cachedGateway, "DeleteFailed", err)
 	}
 
 	gw := cachedGateway.DeepCopy()
@@ -1278,7 +1398,9 @@ func (c *Controller) handleDelVpcEgressGateway(key string) error {
 			Update(context.Background(), gw, metav1.UpdateOptions{}); err != nil {
 			err = fmt.Errorf("failed to remove finalizer from vpc-egress-gateway %s: %w", key, err)
 			klog.Error(err)
+			return c.recordVpcEgressGatewayError(gw, "DeleteFailed", err)
 		}
+		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeNormal, "DeleteSuccess", fmt.Sprintf("VpcEgressGateway %s/%s deleted successfully", gw.Namespace, gw.Name))
 	}
 
 	return nil
