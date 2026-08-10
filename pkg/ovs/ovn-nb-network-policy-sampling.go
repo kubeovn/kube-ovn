@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -174,7 +175,7 @@ func (c *OVNNbClient) ApplyNetworkPolicyACLSampling(config aclsampling.Controlle
 	applyErrors := make([]error, 0)
 	for i := range eligible {
 		candidate := &eligible[i]
-		operations, err := c.networkPolicySamplingOps(config, request, candidate, allocator, collectors, samplesByMetadata)
+		operations, createdMetadata, err := c.networkPolicySamplingOps(config, request, candidate, allocator, collectors, samplesByMetadata)
 		if err != nil {
 			applyErrors = append(applyErrors, fmt.Errorf("ACL %s: %w", candidate.acl.UUID, err))
 			continue
@@ -184,12 +185,21 @@ func (c *OVNNbClient) ApplyNetworkPolicyACLSampling(config aclsampling.Controlle
 		}
 		if err := c.Transact("network-policy-acl-sampling-attach", operations); err != nil {
 			applyErrors = append(applyErrors, fmt.Errorf("attach sampling to ACL %s: %w", candidate.acl.UUID, err))
+			continue
+		}
+		if createdMetadata != 0 {
+			sample, err := c.waitForNetworkPolicySample(createdMetadata)
+			if err != nil {
+				applyErrors = append(applyErrors, fmt.Errorf("ACL %s: %w", candidate.acl.UUID, err))
+				continue
+			}
+			samplesByMetadata[createdMetadata] = sample
 		}
 	}
 	return errors.Join(applyErrors...)
 }
 
-func (c *OVNNbClient) networkPolicySamplingOps(config aclsampling.ControllerConfig, request *NetworkPolicySamplingRequest, candidate *eligibleNetworkPolicyACL, allocator *aclsampling.Allocator, collectors map[string]*ovnnb.SampleCollector, samplesByMetadata map[uint32]*ovnnb.Sample) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) networkPolicySamplingOps(config aclsampling.ControllerConfig, request *NetworkPolicySamplingRequest, candidate *eligibleNetworkPolicyACL, allocator *aclsampling.Allocator, collectors map[string]*ovnnb.SampleCollector, samplesByMetadata map[uint32]*ovnnb.Sample) ([]ovsdb.Operation, uint32, error) {
 	owned := isOwnedNetworkPolicySamplingACL(candidate.acl.ExternalIDs)
 	enabled := config.AllowProbabilityPercent != 0
 	collector := collectors[aclSamplingRoleAllow]
@@ -199,16 +209,16 @@ func (c *OVNNbClient) networkPolicySamplingOps(config aclsampling.ControllerConf
 	}
 	if !enabled {
 		if !owned {
-			return nil, nil
+			return nil, 0, nil
 		}
 		ops, err := c.clearNetworkPolicySamplingOps(&candidate.acl)
-		return ops, err
+		return ops, 0, err
 	}
 	if feature := candidate.acl.ExternalIDs[sampleFeatureExternalID]; feature != "" && !owned {
-		return nil, fmt.Errorf("sampling metadata is owned by feature %s", feature)
+		return nil, 0, fmt.Errorf("sampling metadata is owned by feature %s", feature)
 	}
 	if !owned && (candidate.acl.SampleNew != nil || candidate.acl.SampleEst != nil) {
-		return nil, errors.New("has unowned sample references")
+		return nil, 0, errors.New("has unowned sample references")
 	}
 
 	allocation, err := allocator.Allocate(aclsampling.SampleKey{
@@ -222,18 +232,51 @@ func (c *OVNNbClient) networkPolicySamplingOps(config aclsampling.ControllerConf
 		OVNAction:     aclsampling.OVNAction(candidate.acl.Action),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("allocate sample metadata: %w", err)
+		return nil, 0, fmt.Errorf("allocate sample metadata: %w", err)
 	}
 
 	sampleUUID, sampleOps, err := c.ensureNetworkPolicySample(allocation.Metadata, collector, samplesByMetadata)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	aclOps, err := c.setNetworkPolicySamplingOps(&candidate.acl, request, *candidate, allocation, sampleUUID)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return append(sampleOps, aclOps...), nil
+	createdMetadata := uint32(0)
+	if len(sampleOps) != 0 {
+		createdMetadata = allocation.Metadata
+	}
+	return append(sampleOps, aclOps...), createdMetadata, nil
+}
+
+func (c *OVNNbClient) waitForNetworkPolicySample(metadata uint32) (*ovnnb.Sample, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		samples, err := c.listSamples()
+		if err != nil {
+			return nil, err
+		}
+		for i := range samples {
+			sampleMetadata, err := networkPolicySampleMetadata(samples[i].Metadata)
+			if err != nil {
+				return nil, fmt.Errorf("sample %s: %w", samples[i].UUID, err)
+			}
+			if sampleMetadata == metadata {
+				return &samples[i], nil
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("wait for sample metadata %d: %w", metadata, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 func (c *OVNNbClient) listSamples() ([]ovnnb.Sample, error) {
