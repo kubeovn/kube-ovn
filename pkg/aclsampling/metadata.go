@@ -14,26 +14,35 @@ import (
 const (
 	SchemaVersionV1 = "v1"
 
-	DirectionIngress = "Ingress"
-	DirectionEgress  = "Egress"
+	DirectionIngress PolicyDirection = "Ingress"
+	DirectionEgress  PolicyDirection = "Egress"
 
-	RoleRuleAllow   = "rule-allow"
-	RoleDefaultDeny = "default-deny"
+	RoleRuleAllow   ACLRole = "rule-allow"
+	RoleDefaultDeny ACLRole = "default-deny"
 
-	ActionAllowRelated = "allow-related"
-	ActionDrop         = "drop"
+	ActionAllowRelated OVNAction = "allow-related"
+	ActionDrop         OVNAction = "drop"
 )
+
+// PolicyDirection identifies NetworkPolicy traffic direction.
+type PolicyDirection string
+
+// ACLRole identifies why an eligible NetworkPolicy ACL exists.
+type ACLRole string
+
+// OVNAction identifies action enforced by an eligible NetworkPolicy ACL.
+type OVNAction string
 
 // SampleKey contains the stable identity of an eligible NetworkPolicy ACL.
 type SampleKey struct {
 	SchemaVersion string
 	PolicyUID     string
-	Direction     string
+	Direction     PolicyDirection
 	RuleIndex     *int
-	Role          string
+	Role          ACLRole
 	Protocol      string
 	ACLMatchHash  string
-	OVNAction     string
+	OVNAction     OVNAction
 }
 
 // OccupiedMetadata describes a metadata value already present in OVN. KeyHash
@@ -139,16 +148,16 @@ func (key SampleKey) canonical() (string, error) {
 	fields := []string{
 		"schema-version=" + key.SchemaVersion,
 		"policy-uid=" + key.PolicyUID,
-		"direction=" + key.Direction,
+		"direction=" + string(key.Direction),
 	}
 	if key.RuleIndex != nil {
 		fields = append(fields, "rule-index="+strconv.Itoa(*key.RuleIndex))
 	}
 	fields = append(fields,
-		"acl-role="+key.Role,
+		"acl-role="+string(key.Role),
 		"protocol="+key.Protocol,
 		"acl-match-hash="+key.ACLMatchHash,
-		"ovn-action="+key.OVNAction,
+		"ovn-action="+string(key.OVNAction),
 	)
 	return strings.Join(fields, "\n") + "\n", nil
 }
