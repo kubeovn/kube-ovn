@@ -268,14 +268,14 @@ type Controller struct {
 	deploymentsLister appsv1.DeploymentLister
 	deploymentsSynced cache.InformerSynced
 
-	npsLister          netv1.NetworkPolicyLister
-	npsSynced          cache.InformerSynced
-	npIndexer          cache.Indexer
-	updateNpQueue      workqueue.TypedRateLimitingInterface[string]
-	deleteNpQueue      workqueue.TypedRateLimitingInterface[string]
-	npSamplingQueue    workqueue.TypedRateLimitingInterface[string]
-	npSamplingRequests *xsync.Map[string, *ovs.NetworkPolicySamplingRequest]
-	npKeyMutex         keymutex.KeyMutex
+	npsLister        netv1.NetworkPolicyLister
+	npsSynced        cache.InformerSynced
+	npIndexer        cache.Indexer
+	updateNpQueue    workqueue.TypedRateLimitingInterface[string]
+	deleteNpQueue    workqueue.TypedRateLimitingInterface[string]
+	npSamplingQueue  workqueue.TypedRateLimitingInterface[string]
+	npSamplingStates *xsync.Map[string, *networkPolicySamplingState]
+	npKeyMutex       keymutex.KeyMutex
 
 	sgsLister          kubeovnlister.SecurityGroupLister
 	sgSynced           cache.InformerSynced
@@ -765,7 +765,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.deleteNpQueue = newTypedRateLimitingQueue[string]("DeleteNetworkPolicy", nil)
 		if config.ACLSampling.Enabled {
 			controller.npSamplingQueue = newTypedRateLimitingQueue[string]("SampleNetworkPolicyACL", nil)
-			controller.npSamplingRequests = xsync.NewMap[string, *ovs.NetworkPolicySamplingRequest]()
+			controller.npSamplingStates = xsync.NewMap[string, *networkPolicySamplingState]()
 		}
 		controller.npKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
