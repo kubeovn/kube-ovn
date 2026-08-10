@@ -530,12 +530,13 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	}
 
 	// check and do hotnoplug nic
-	var hotplugDetails string
-	if pod, hotplugDetails, err = c.syncKubeOvnNet(pod, podNets); err != nil {
+	updatedPod, hotplugDetails, err := c.syncKubeOvnNet(pod, podNets)
+	if err != nil {
 		klog.Errorf("failed to sync pod nets %v", err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkUpdateFailed", "stage=syncKubeOvnNet error=%v", err)
 		return err
 	}
+	pod = updatedPod
 	if pod == nil {
 		// pod has been deleted
 		return nil
@@ -675,9 +676,10 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	podName := c.getNameByPod(pod)
 	// todo: isVmPod, getPodType, getNameByPod has duplicated logic
 
+	eventPod := pod
 	var err error
 	recordFailure := func(stage string, err error) {
-		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkAllocationFailed", "stage=%s error=%v", stage, err)
+		c.recorder.Eventf(eventPod, v1.EventTypeWarning, "PodNetworkAllocationFailed", "stage=%s error=%v", stage, err)
 	}
 	var vmKey string
 	if isVMPod && c.config.EnableKeepVMIP {
@@ -851,11 +853,11 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		return nil, err
 	}
 
-	oldPod := pod
-	if pod, err = c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
+	updatedPod, err := c.config.KubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			key := strings.Join([]string{namespace, name}, "/")
-			c.deletingPodObjMap.Store(key, oldPod)
+			c.deletingPodObjMap.Store(key, pod)
 			c.deletePodQueue.AddRateLimited(key)
 			return nil, nil
 		}
@@ -863,6 +865,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		recordFailure("getPatchedPod", err)
 		return nil, err
 	}
+	pod = updatedPod
 
 	// Clean stale attachment IPs/LSPs from previous NAD references when a new
 	// VM pod starts. This handles the stop→patch NAD→start workflow where the
