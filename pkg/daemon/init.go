@@ -51,12 +51,16 @@ func InitOVSBridges() (map[string]string, error) {
 	return mappings, nil
 }
 
-var configureNodeGateway = configureNodeNic
+var (
+	configureNodeGateway         = configureNodeNic
+	nodeGatewayInitRetryInterval = 3 * time.Second
+)
 
 // InitNodeGateway init ovn0
 func InitNodeGateway(config *Configuration) (err error) {
 	var portName, ip, joinCIDR, macAddr, gw, ipAddr string
 	var node *corev1.Node
+	var lastAnnotationFailure string
 	defer func() {
 		if err != nil {
 			if eventErr := recordNodeFailureEventSync(config.KubeClient, node, config.NodeName, addNodeFailedReason, "initializeOvn0", err); eventErr != nil {
@@ -71,14 +75,21 @@ func InitNodeGateway(config *Configuration) (err error) {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
 		}
+		var annotationErr error
 		if node.Annotations[util.IPAddressAnnotation] == "" {
-			klog.Warningf("no %s address for node %s, please check kube-ovn-controller logs", util.NodeNic, nodeName)
-			time.Sleep(3 * time.Second)
-			continue
+			annotationErr = fmt.Errorf("no %s address for node %s, please check kube-ovn-controller logs", util.NodeNic, nodeName)
+		} else {
+			annotationErr = util.ValidatePodNetwork(node.Annotations)
 		}
-		if validateErr := util.ValidatePodNetwork(node.Annotations); validateErr != nil {
-			klog.Errorf("validate node %s address annotation failed, %v", nodeName, validateErr)
-			time.Sleep(3 * time.Second)
+		if annotationErr != nil {
+			klog.Errorf("validate node %s address annotation failed, %v", nodeName, annotationErr)
+			if annotationErr.Error() != lastAnnotationFailure {
+				if eventErr := recordNodeFailureEventSync(config.KubeClient, node, config.NodeName, addNodeFailedReason, "validateOvn0Annotations", annotationErr); eventErr != nil {
+					klog.Errorf("failed to record node %s annotation validation event: %v", config.NodeName, eventErr)
+				}
+				lastAnnotationFailure = annotationErr.Error()
+			}
+			time.Sleep(nodeGatewayInitRetryInterval)
 			continue
 		}
 		macAddr = node.Annotations[util.MacAddressAnnotation]
