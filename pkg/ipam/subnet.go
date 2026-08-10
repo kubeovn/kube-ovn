@@ -343,134 +343,15 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 }
 
 func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, force, checkConflict bool) (IP, string, error) {
-	var v4, v6 bool
-	isAllocated := false
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
-	if ip.To4() != nil {
-		v4 = s.V4CIDR != nil
-	} else {
-		v6 = s.V6CIDR != nil
+	family, err := s.staticAddressFamilyForIP(ip, checkConflict)
+	if err != nil {
+		return nil, "", err
 	}
-
-	if v4 && !s.V4CIDR.Contains(net.IP(ip)) {
-		klog.Errorf("ip %s is out of range", ip)
-		return nil, "", ErrOutOfRange
-	}
-	if v6 && !s.V6CIDR.Contains(net.IP(ip)) {
-		klog.Errorf("ip %s is out of range", ip)
-		return nil, "", ErrOutOfRange
-	}
-
-	var pool *IPPool
-	for _, p := range s.IPPools {
-		if v4 && p.V4IPs.Contains(ip) {
-			pool = p
-			break
-		}
-		if v6 && p.V6IPs.Contains(ip) {
-			pool = p
-			break
-		}
-	}
-
-	if pool == nil {
-		klog.Errorf("ip %s is out of range", ip)
-		return nil, "", ErrOutOfRange
-	}
-	gateway := s.V4Gw
-	if v6 {
-		gateway = s.V6Gw
-	}
-	if checkConflict && net.IP(ip).Equal(net.ParseIP(gateway)) {
-		klog.Errorf("ip %s conflicts with subnet gateway", ip)
-		return nil, "", ErrConflict
-	}
-
-	// Release existing address for this nicName if it exists and is different from requested IP
-	// For dual-stack scenarios, preserve the other protocol's address
-	if v4 && s.V4NicToIP[nicName] != nil && !s.V4NicToIP[nicName].Equal(ip) {
-		// Preserve IPv6 address if it exists
-		var preservedV6IP IP
-		var preservedMac string
-		if s.V6NicToIP[nicName] != nil {
-			preservedV6IP = s.V6NicToIP[nicName]
-			preservedMac = s.NicToMac[nicName]
-		}
-
-		s.releaseAddr(podName, nicName)
-
-		// Restore IPv6 address if it was preserved
-		if preservedV6IP != nil {
-			s.V6NicToIP[nicName] = preservedV6IP
-			s.V6IPToPod[preservedV6IP.String()] = podName
-			if preservedMac != "" {
-				s.NicToMac[nicName] = preservedMac
-				s.MacToPod[preservedMac] = podName
-			}
-			// Restore preserved address to counter views so it is not re-allocated.
-			s.V6Using.Add(preservedV6IP)
-			s.V6Available.Remove(preservedV6IP)
-			for _, p := range s.IPPools {
-				if p.V6IPs.Contains(preservedV6IP) {
-					p.V6Using.Add(preservedV6IP)
-					p.V6Available.Remove(preservedV6IP)
-					p.V6Released.Remove(preservedV6IP)
-					break
-				}
-			}
-		}
-	} else if v6 && s.V6NicToIP[nicName] != nil && !s.V6NicToIP[nicName].Equal(ip) {
-		// Preserve IPv4 address if it exists
-		var preservedV4IP IP
-		var preservedMac string
-		if s.V4NicToIP[nicName] != nil {
-			preservedV4IP = s.V4NicToIP[nicName]
-			preservedMac = s.NicToMac[nicName]
-		}
-
-		s.releaseAddr(podName, nicName)
-
-		// Restore IPv4 address if it was preserved
-		if preservedV4IP != nil {
-			s.V4NicToIP[nicName] = preservedV4IP
-			s.V4IPToPod[preservedV4IP.String()] = podName
-			if preservedMac != "" {
-				s.NicToMac[nicName] = preservedMac
-				s.MacToPod[preservedMac] = podName
-			}
-			// Restore preserved address to counter views so it is not re-allocated.
-			s.V4Using.Add(preservedV4IP)
-			s.V4Available.Remove(preservedV4IP)
-			for _, p := range s.IPPools {
-				if p.V4IPs.Contains(preservedV4IP) {
-					p.V4Using.Add(preservedV4IP)
-					p.V4Available.Remove(preservedV4IP)
-					p.V4Released.Remove(preservedV4IP)
-					break
-				}
-			}
-		}
-	}
-
-	defer func() {
-		s.pushPodNic(podName, nicName)
-		if isAllocated {
-			if v4 {
-				s.V4Available.Remove(ip)
-				s.V4Using.Add(ip)
-				pool.V4Available.Remove(ip)
-				pool.V4Using.Add(ip)
-			}
-			if v6 {
-				s.V6Available.Remove(ip)
-				s.V6Using.Add(ip)
-				pool.V6Available.Remove(ip)
-				pool.V6Using.Add(ip)
-			}
-		}
-	}()
+	releaseCurrentStaticAddress(family, podName, nicName, ip)
+	defer s.pushPodNic(podName, nicName)
 
 	var macStr string
 	if mac == nil {
@@ -487,82 +368,125 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 		macStr = *mac
 	}
 
+	allocated, err := allocateStaticAddress(family, podName, nicName, ip, force, checkConflict)
+	if err != nil {
+		return nil, "", err
+	}
+	if allocated {
+		markStaticAddressAllocated(family, ip)
+	}
+	return ip, macStr, nil
+}
+
+func (s *Subnet) staticAddressFamilyForIP(ip IP, checkConflict bool) (staticAddressFamily, error) {
+	v4 := ip.To4() != nil
+	cidr := s.V6CIDR
+	gateway := s.V6Gw
 	if v4 {
-		if existPod, ok := s.V4IPToPod[ip.String()]; ok {
-			pods := strings.Split(existPod, ",")
-			if !slices.Contains(pods, podName) {
-				if !checkConflict {
-					s.V4NicToIP[nicName] = ip
-					s.V4IPToPod[ip.String()] = fmt.Sprintf("%s,%s", s.V4IPToPod[ip.String()], podName)
-					return ip, macStr, nil
-				}
-				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
-				return nil, "", ErrConflict
-			}
-			if !force {
-				return ip, macStr, nil
-			}
-		}
+		cidr = s.V4CIDR
+		gateway = s.V4Gw
+	}
+	if cidr == nil || !cidr.Contains(net.IP(ip)) {
+		klog.Errorf("ip %s is out of range", ip)
+		return staticAddressFamily{}, ErrOutOfRange
+	}
 
-		if pool.V4Reserved.Contains(ip) {
-			s.V4NicToIP[nicName] = ip
-			s.V4IPToPod[ip.String()] = podName
-			// ip allocated from excludeIPs should be recorded in usingIPs since when the ip is removed from excludeIPs, there's no way to update usingIPs
-			isAllocated = true
-			return ip, macStr, nil
+	for _, pool := range s.IPPools {
+		inPool := pool.V6IPs.Contains(ip)
+		if v4 {
+			inPool = pool.V4IPs.Contains(ip)
 		}
+		if !inPool {
+			continue
+		}
+		if checkConflict && net.IP(ip).Equal(net.ParseIP(gateway)) {
+			klog.Errorf("ip %s conflicts with subnet gateway", ip)
+			return staticAddressFamily{}, ErrConflict
+		}
+		if v4 {
+			return s.v4StaticAddressFamily(pool), nil
+		}
+		return s.v6StaticAddressFamily(pool), nil
+	}
 
-		if pool.V4Free.Remove(ip) {
-			s.V4Free.Remove(ip)
-			s.V4NicToIP[nicName] = ip
-			s.V4IPToPod[ip.String()] = podName
-			isAllocated = true
-			return ip, macStr, nil
-		} else if pool.V4Released.Remove(ip) {
-			s.V4NicToIP[nicName] = ip
-			s.V4IPToPod[ip.String()] = podName
-			isAllocated = true
-			return ip, macStr, nil
-		}
-	} else if v6 {
-		if existPod, ok := s.V6IPToPod[ip.String()]; ok {
-			pods := strings.Split(existPod, ",")
-			if !slices.Contains(pods, podName) {
-				if !checkConflict {
-					s.V6NicToIP[nicName] = ip
-					s.V6IPToPod[ip.String()] = fmt.Sprintf("%s,%s", s.V6IPToPod[ip.String()], podName)
-					return ip, macStr, nil
-				}
-				klog.Errorf("ip %s has been allocated to %v", ip.String(), pods)
-				return nil, "", ErrConflict
+	klog.Errorf("ip %s is out of range", ip)
+	return staticAddressFamily{}, ErrOutOfRange
+}
+
+type staticAddressFamily struct {
+	nicToIP         map[string]IP
+	ipToPod         map[string]string
+	subnetFree      *IPRangeList
+	subnetAvailable *IPRangeList
+	subnetUsing     *IPRangeList
+	poolFree        *IPRangeList
+	poolAvailable   *IPRangeList
+	poolReserved    *IPRangeList
+	poolReleased    *IPRangeList
+	poolUsing       *IPRangeList
+	release         func(string, string)
+}
+
+func (s *Subnet) v4StaticAddressFamily(pool *IPPool) staticAddressFamily {
+	return staticAddressFamily{
+		nicToIP: s.V4NicToIP, ipToPod: s.V4IPToPod,
+		subnetFree: s.V4Free, subnetAvailable: s.V4Available, subnetUsing: s.V4Using,
+		poolFree: pool.V4Free, poolAvailable: pool.V4Available, poolReserved: pool.V4Reserved,
+		poolReleased: pool.V4Released, poolUsing: pool.V4Using, release: s.releaseV4Addr,
+	}
+}
+
+func (s *Subnet) v6StaticAddressFamily(pool *IPPool) staticAddressFamily {
+	return staticAddressFamily{
+		nicToIP: s.V6NicToIP, ipToPod: s.V6IPToPod,
+		subnetFree: s.V6Free, subnetAvailable: s.V6Available, subnetUsing: s.V6Using,
+		poolFree: pool.V6Free, poolAvailable: pool.V6Available, poolReserved: pool.V6Reserved,
+		poolReleased: pool.V6Released, poolUsing: pool.V6Using, release: s.releaseV6Addr,
+	}
+}
+
+func releaseCurrentStaticAddress(family staticAddressFamily, podName, nicName string, ip IP) {
+	if current := family.nicToIP[nicName]; current != nil && !current.Equal(ip) {
+		family.release(podName, nicName)
+	}
+}
+
+func allocateStaticAddress(family staticAddressFamily, podName, nicName string, ip IP, force, checkConflict bool) (bool, error) {
+	if existPod, ok := family.ipToPod[ip.String()]; ok {
+		pods := strings.Split(existPod, ",")
+		if !slices.Contains(pods, podName) {
+			if !checkConflict {
+				family.nicToIP[nicName] = ip
+				family.ipToPod[ip.String()] = fmt.Sprintf("%s,%s", existPod, podName)
+				return false, nil
 			}
-			if !force {
-				return ip, macStr, nil
-			}
+			klog.Errorf("ip %s has been allocated to %v", ip, pods)
+			return false, ErrConflict
 		}
-
-		if pool.V6Reserved.Contains(ip) {
-			s.V6NicToIP[nicName] = ip
-			s.V6IPToPod[ip.String()] = podName
-			isAllocated = true
-			return ip, macStr, nil
-		}
-
-		if pool.V6Free.Remove(ip) {
-			s.V6Free.Remove(ip)
-			s.V6NicToIP[nicName] = ip
-			s.V6IPToPod[ip.String()] = podName
-			isAllocated = true
-			return ip, macStr, nil
-		} else if pool.V6Released.Remove(ip) {
-			s.V6NicToIP[nicName] = ip
-			s.V6IPToPod[ip.String()] = podName
-			isAllocated = true
-			return ip, macStr, nil
+		if !force {
+			return false, nil
 		}
 	}
-	klog.Errorf("no available ip")
-	return nil, "", ErrNoAvailable
+
+	switch {
+	case family.poolReserved.Contains(ip):
+	case family.poolFree.Remove(ip):
+		family.subnetFree.Remove(ip)
+	case family.poolReleased.Remove(ip):
+	default:
+		klog.Errorf("no available ip")
+		return false, ErrNoAvailable
+	}
+	family.nicToIP[nicName] = ip
+	family.ipToPod[ip.String()] = podName
+	return true, nil
+}
+
+func markStaticAddressAllocated(family staticAddressFamily, ip IP) {
+	family.subnetAvailable.Remove(ip)
+	family.subnetUsing.Add(ip)
+	family.poolAvailable.Remove(ip)
+	family.poolUsing.Add(ip)
 }
 
 // releaseV4Addr drops a pod's IPv4 lease from this subnet without touching
