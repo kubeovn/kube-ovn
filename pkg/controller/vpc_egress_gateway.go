@@ -1255,8 +1255,7 @@ func (c *Controller) handleDelVpcEgressGateway(key string) error {
 	klog.Infof("handle deleting vpc-egress-gateway %s", key)
 	if err = c.cleanOVNForVpcEgressGateway(key, cachedGateway.Spec.VPC); err != nil {
 		klog.Error(err)
-		c.recordVpcEgressGatewayEvent(cachedGateway, corev1.EventTypeWarning, "DeleteFailed", err.Error())
-		return err
+		return c.recordVpcEgressGatewayError(cachedGateway, "DeleteFailed", err)
 	}
 
 	gw := cachedGateway.DeepCopy()
@@ -1265,8 +1264,7 @@ func (c *Controller) handleDelVpcEgressGateway(key string) error {
 			Update(context.Background(), gw, metav1.UpdateOptions{}); err != nil {
 			err = fmt.Errorf("failed to remove finalizer from vpc-egress-gateway %s: %w", key, err)
 			klog.Error(err)
-			c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "DeleteFailed", err.Error())
-			return err
+			return c.recordVpcEgressGatewayError(gw, "DeleteFailed", err)
 		}
 		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeNormal, "DeleteSuccess", fmt.Sprintf("VpcEgressGateway %s/%s deleted successfully", gw.Namespace, gw.Name))
 	}
