@@ -172,14 +172,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return err
 	}
 
-	var samplingRequest *ovs.NetworkPolicySamplingRequest
-	if c.config.ACLSampling.Enabled {
-		samplingRequest, err = c.OVNNbClient.PrepareNetworkPolicyACLSampling(pgName, np.Namespace, np.Name, string(np.UID))
-		if err != nil {
-			// Sampling is best-effort and must never block NetworkPolicy enforcement.
-			klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
-		}
-	}
+	samplingState := c.prepareNetworkPolicyACLSampling(key, pgName, np)
 
 	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
 	if err != nil {
@@ -300,9 +293,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return fmt.Errorf("add ingress acls to %s: %w", pgName, err)
 		}
 
-		if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, true); err != nil {
-			// just log and do not return err here
-			klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
+		if !c.setNetworkPolicyACLLog(pgName, key, logEnable, true) {
+			samplingState = nil
 		}
 
 		ass, err := c.OVNNbClient.ListAddressSets(map[string]string{
@@ -463,9 +455,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return fmt.Errorf("add egress acls to %s: %w", pgName, err)
 		}
 
-		if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, false); err != nil {
-			// just log and do not return err here
-			klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
+		if !c.setNetworkPolicyACLLog(pgName, key, logEnable, false) {
+			samplingState = nil
 		}
 
 		ass, err := c.OVNNbClient.ListAddressSets(map[string]string{
@@ -515,11 +506,52 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 	}
-	if samplingRequest != nil {
-		c.npSamplingRequests.Store(key, samplingRequest)
-		c.npSamplingQueue.Add(key)
-	}
+	c.queueNetworkPolicyACLSampling(key, samplingState)
 	return nil
+}
+
+type networkPolicySamplingState struct {
+	// Access is serialized with the policy's npKeyMutex lock.
+	request *ovs.NetworkPolicySamplingRequest
+	ready   bool
+}
+
+func (c *Controller) prepareNetworkPolicyACLSampling(key, pgName string, np *netv1.NetworkPolicy) *networkPolicySamplingState {
+	if !c.config.ACLSampling.Enabled {
+		return nil
+	}
+	if state, ok := c.npSamplingStates.Load(key); ok {
+		state.ready = false
+		return state
+	}
+
+	request, err := c.OVNNbClient.PrepareNetworkPolicyACLSampling(pgName, np.Namespace, np.Name, string(np.UID))
+	if err != nil {
+		// Sampling is best-effort and must never block NetworkPolicy enforcement.
+		klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
+		return nil
+	}
+	state := &networkPolicySamplingState{request: request}
+	c.npSamplingStates.Store(key, state)
+	return state
+}
+
+func (c *Controller) queueNetworkPolicyACLSampling(key string, state *networkPolicySamplingState) {
+	if state == nil {
+		return
+	}
+	state.ready = true
+	c.npSamplingQueue.Add(key)
+}
+
+func (c *Controller) setNetworkPolicyACLLog(pgName, key string, logEnable, isIngress bool) bool {
+	if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, isIngress); err != nil {
+		// Logging is best-effort for enforcement, but sampling waits for the
+		// complete enforcement path to succeed.
+		klog.Errorf("failed to set network policy %s ACL log: %v", key, err)
+		return false
+	}
+	return true
 }
 
 func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
@@ -530,15 +562,15 @@ func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
 		}
 	}()
 
-	request, ok := c.npSamplingRequests.Load(key)
-	if !ok {
+	state, ok := c.npSamplingStates.Load(key)
+	if !ok || !state.ready {
 		return nil
 	}
-	if err := c.OVNNbClient.ApplyNetworkPolicyACLSampling(c.config.ACLSampling, request); err != nil {
+	if err := c.OVNNbClient.ApplyNetworkPolicyACLSampling(c.config.ACLSampling, state.request); err != nil {
 		return err
 	}
-	c.npSamplingRequests.Compute(key, func(current *ovs.NetworkPolicySamplingRequest, loaded bool) (*ovs.NetworkPolicySamplingRequest, xsync.ComputeOp) {
-		if loaded && current == request {
+	c.npSamplingStates.Compute(key, func(current *networkPolicySamplingState, loaded bool) (*networkPolicySamplingState, xsync.ComputeOp) {
+		if loaded && current == state {
 			return nil, xsync.DeleteOp
 		}
 		return current, xsync.CancelOp
@@ -556,6 +588,9 @@ func (c *Controller) handleDeleteNp(key string) error {
 	c.npKeyMutex.LockKey(key)
 	defer func() { _ = c.npKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete network policy %s", key)
+	if c.npSamplingStates != nil {
+		c.npSamplingStates.Delete(key)
+	}
 
 	npName := name
 	nameArray := []rune(name)
