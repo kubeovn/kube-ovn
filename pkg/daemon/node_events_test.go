@@ -338,6 +338,11 @@ func TestInitNodeGatewayRecordsRouteFailureWhenGatewayIsReady(t *testing.T) {
 	require.Len(t, events.Items, 1)
 	require.Equal(t, addNodeFailedReason, events.Items[0].Reason)
 	require.Contains(t, events.Items[0].Message, routeFailure.Error())
+	updatedNode, getErr := client.CoreV1().Nodes().Get(t.Context(), node.Name, metav1.GetOptions{})
+	require.NoError(t, getErr)
+	require.Len(t, updatedNode.Status.Conditions, 1)
+	require.Equal(t, corev1.ConditionFalse, updatedNode.Status.Conditions[0].Status)
+	require.Equal(t, "JoinSubnetGatewayReachable", updatedNode.Status.Conditions[0].Reason)
 }
 
 func TestUpdateNodeNetworkUnavailableConditionReturnsPatchFailure(t *testing.T) {

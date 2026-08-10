@@ -819,12 +819,12 @@ func finishNodeGatewaySetup(cs kubernetes.Interface, nodeName, ip, gateway strin
 	if gatewayErr != nil {
 		klog.Errorf("failed to init %s check: %v", util.NodeNic, gatewayErr)
 	}
-	err := errors.Join(routeErr, gatewayErr)
 	if !enableNonPrimaryCNI {
-		return updateNodeNetworkUnavailableCondition(cs, nodeName, gateway, err)
+		conditionErr := updateNodeNetworkUnavailableCondition(cs, nodeName, gateway, gatewayErr)
+		return errors.Join(routeErr, conditionErr)
 	}
 	klog.Infof("running in non-primary CNI mode, skipping NetworkUnavailable condition update")
-	return err
+	return errors.Join(routeErr, gatewayErr)
 }
 
 func addNodeNicRoutes(hostLink netlink.Link, routes []netlink.Route) error {
