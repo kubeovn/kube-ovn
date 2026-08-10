@@ -25,11 +25,14 @@ func TestApplyNetworkPolicyACLSamplingSelectsEligibleACLs(t *testing.T) {
 	eligibleAllow := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, "np/sample-policy.default/ingress/IPv4/0")
 	eligibleIPBlock := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, ovnnb.ACLActionAllowRelated, "np/sample-policy.default/egress/IPv6/1/ipBlock")
 	eligibleDefaultDeny := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressDefaultDrop, ovnnb.ACLActionDrop, "default/sample-policy")
+	unmarkedAllow := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, "np/sample-policy.default/ingress/IPv4/2")
+	delete(unmarkedAllow.ExternalIDs, networkPolicyACLNameExternalID)
+	unmarkedAllow.ExternalIDs[ExternalIDVendor] = "external-observer"
 	syntheticAll := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, "np/sample-policy.default/ingress/IPv4/all")
 	dhcpException := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, "default/sample-policy")
 	gateway := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowStateless, "np/sample-policy.default/ingress/IPv6/0")
-	require.NoError(t, client.CreateAcls(pgName, portGroupKey, eligibleAllow, eligibleIPBlock, eligibleDefaultDeny, syntheticAll, dhcpException, gateway))
-	waitForACLCount(t, client, pgName, 6)
+	require.NoError(t, client.CreateAcls(pgName, portGroupKey, eligibleAllow, eligibleIPBlock, eligibleDefaultDeny, unmarkedAllow, syntheticAll, dhcpException, gateway))
+	waitForACLCount(t, client, pgName, 7)
 
 	request, err := client.PrepareNetworkPolicyACLSampling(pgName, "default", "sample-policy", "11111111-2222-3333-4444-555555555555")
 	require.NoError(t, err)
@@ -54,8 +57,8 @@ func TestApplyNetworkPolicyACLSamplingSelectsEligibleACLs(t *testing.T) {
 	require.Equal(t, *allow.SampleNew, *allow.SampleEst)
 	require.Equal(t, "0", allow.ExternalIDs[policyRuleIndexExternalID])
 	require.Equal(t, "allow", allow.ExternalIDs[policyVerdictExternalID])
-	require.Equal(t, aclsampling.RoleRuleAllow, allow.ExternalIDs[sampleRoleExternalID])
-	require.Equal(t, aclsampling.DirectionIngress, allow.ExternalIDs[policyDirectionExternalID])
+	require.Equal(t, string(aclsampling.RoleRuleAllow), allow.ExternalIDs[sampleRoleExternalID])
+	require.Equal(t, string(aclsampling.DirectionIngress), allow.ExternalIDs[policyDirectionExternalID])
 	require.Equal(t, "sample-policy", allow.ExternalIDs[policyNameExternalID])
 	require.Len(t, allow.ExternalIDs[aclMatchHashExternalID], 64)
 
@@ -63,7 +66,12 @@ func TestApplyNetworkPolicyACLSamplingSelectsEligibleACLs(t *testing.T) {
 	require.NotNil(t, deny.SampleNew)
 	require.Nil(t, deny.SampleEst)
 	require.NotContains(t, deny.ExternalIDs, policyRuleIndexExternalID)
-	require.Equal(t, aclsampling.RoleDefaultDeny, deny.ExternalIDs[policyVerdictExternalID])
+	require.Equal(t, string(aclsampling.RoleDefaultDeny), deny.ExternalIDs[policyVerdictExternalID])
+
+	unmarked := aclByName(t, actual, "np/sample-policy.default/ingress/IPv4/2")
+	require.Nil(t, unmarked.SampleNew)
+	require.Nil(t, unmarked.SampleEst)
+	require.NotContains(t, unmarked.ExternalIDs, sampleFeatureExternalID)
 
 	for _, name := range []string{
 		"np/sample-policy.default/ingress/IPv4/all",
@@ -119,6 +127,7 @@ func TestNetworkPolicyACLSamplingReusesSnapshotMetadata(t *testing.T) {
 	})
 	require.NoError(t, err)
 	oldACL.ExternalIDs[sampleFeatureExternalID] = networkPolicySampleFeature
+	oldACL.ExternalIDs[sampleSchemaVersionExternalID] = aclsampling.SchemaVersionV1
 	oldACL.ExternalIDs[sampleKeyHashExternalID] = expected.KeyHash
 	oldACL.ExternalIDs[sampleMetadataExternalID] = "42"
 	require.NoError(t, client.CreateAcls(pgName, portGroupKey, oldACL))
@@ -148,11 +157,13 @@ func TestNetworkPolicyACLSamplingPreservesUnownedReferences(t *testing.T) {
 	waitForPortGroup(t, client, pgName)
 
 	acl := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, "np/external-sample.default/ingress/IPv4/0")
-	require.NoError(t, client.CreateAcls(pgName, portGroupKey, acl))
-	waitForACLCount(t, client, pgName, 1)
+	independent := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, "np/external-sample.default/ingress/IPv4/1")
+	require.NoError(t, client.CreateAcls(pgName, portGroupKey, acl, independent))
+	waitForACLCount(t, client, pgName, 2)
 	actual, err := client.ListAcls("", map[string]string{aclParentKey: pgName})
 	require.NoError(t, err)
-	acl = &actual[0]
+	actualACL := aclByName(t, actual, "np/external-sample.default/ingress/IPv4/0")
+	acl = &actualACL
 	externalSample := &ovnnb.Sample{UUID: ovsclient.NamedUUID(), Metadata: 99}
 	createOps, err := client.Create(externalSample)
 	require.NoError(t, err)
@@ -162,7 +173,7 @@ func TestNetworkPolicyACLSamplingPreservesUnownedReferences(t *testing.T) {
 	require.NoError(t, client.Transact("seed-unowned-acl-sample-reference", append(createOps, updateOps...)))
 	require.Eventually(t, func() bool {
 		acls, listErr := client.ListAcls("", map[string]string{aclParentKey: pgName})
-		return listErr == nil && len(acls) == 1 && acls[0].SampleNew != nil
+		return listErr == nil && len(acls) == 2 && aclByName(t, acls, "np/external-sample.default/ingress/IPv4/0").SampleNew != nil
 	}, time.Second, 10*time.Millisecond)
 
 	request, err := client.PrepareNetworkPolicyACLSampling(pgName, "default", "external-sample", "ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb")
@@ -172,14 +183,23 @@ func TestNetworkPolicyACLSamplingPreservesUnownedReferences(t *testing.T) {
 	waitForACLSamplingObjects(t, client)
 	err = client.ApplyNetworkPolicyACLSampling(config, request)
 	require.ErrorContains(t, err, "has unowned sample references")
+	require.Eventually(t, func() bool {
+		acls, listErr := client.ListAcls("", map[string]string{aclParentKey: pgName})
+		if listErr != nil {
+			return false
+		}
+		attached := aclByName(t, acls, "np/external-sample.default/ingress/IPv4/1")
+		return attached.SampleNew != nil && attached.SampleEst != nil
+	}, time.Second, 10*time.Millisecond)
 
 	config.AllowProbabilityPercent = 0
 	require.NoError(t, client.ApplyNetworkPolicyACLSampling(config, request))
 	actual, err = client.ListAcls("", map[string]string{aclParentKey: pgName})
 	require.NoError(t, err)
-	require.Len(t, actual, 1)
-	require.NotNil(t, actual[0].SampleNew)
-	require.NotContains(t, actual[0].ExternalIDs, sampleFeatureExternalID)
+	require.Len(t, actual, 2)
+	preserved := aclByName(t, actual, "np/external-sample.default/ingress/IPv4/0")
+	require.NotNil(t, preserved.SampleNew)
+	require.NotContains(t, preserved.ExternalIDs, sampleFeatureExternalID)
 }
 
 func TestClassifyNetworkPolicySamplingACLUsesUntruncatedName(t *testing.T) {
@@ -193,6 +213,7 @@ func TestClassifyNetworkPolicySamplingACLUsesUntruncatedName(t *testing.T) {
 		Tier:      util.NetpolACLTier,
 		ExternalIDs: map[string]string{
 			networkPolicyACLNameExternalID: fullName,
+			ExternalIDVendor:               util.CniTypeName,
 		},
 	}
 	setACLName(&acl, fullName)
@@ -241,7 +262,7 @@ func TestNetworkPolicySampleMetadata(t *testing.T) {
 func newNetworkPolicySamplingTestACL(t *testing.T, client *OVNNbClient, pgName, direction, priority, action, name string) *ovnnb.ACL {
 	t.Helper()
 	acl, err := client.newACLWithoutCheck(pgName, direction, priority, "ip && test == "+strconv.Quote(name), action, util.NetpolACLTier, func(acl *ovnnb.ACL) {
-		setACLName(acl, name)
+		setNetworkPolicyACLName(acl, name)
 	})
 	require.NoError(t, err)
 	return acl

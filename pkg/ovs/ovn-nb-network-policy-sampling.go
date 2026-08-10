@@ -41,7 +41,12 @@ const (
 	networkPolicyAPIVersion    = "networking.k8s.io/v1"
 	networkPolicyKind          = "NetworkPolicy"
 	defaultDenyProtocol        = "IP"
+
+	networkPolicyVerdictAllow       networkPolicyVerdict = "allow"
+	networkPolicyVerdictDefaultDeny networkPolicyVerdict = "default-deny"
 )
+
+type networkPolicyVerdict string
 
 var networkPolicySamplingExternalIDs = []string{
 	sampleSchemaVersionExternalID,
@@ -74,11 +79,11 @@ type NetworkPolicySamplingRequest struct {
 
 type eligibleNetworkPolicyACL struct {
 	acl       ovnnb.ACL
-	direction string
+	direction aclsampling.PolicyDirection
 	ruleIndex *int
-	role      string
+	role      aclsampling.ACLRole
 	protocol  string
-	verdict   string
+	verdict   networkPolicyVerdict
 }
 
 // PrepareNetworkPolicyACLSampling snapshots the stable metadata mappings from
@@ -166,74 +171,69 @@ func (c *OVNNbClient) ApplyNetworkPolicyACLSampling(config aclsampling.Controlle
 		}
 		samplesByMetadata[metadata] = sample
 	}
-	operations, err := c.networkPolicySamplingOps(config, request, eligible, allocator, collectors, samplesByMetadata)
-	if err != nil {
-		return err
-	}
-	if len(operations) == 0 {
-		return nil
-	}
-	if err := c.Transact("network-policy-acl-sampling-attach", operations); err != nil {
-		return fmt.Errorf("attach NetworkPolicy ACL sampling: %w", err)
-	}
-	return nil
-}
-
-func (c *OVNNbClient) networkPolicySamplingOps(config aclsampling.ControllerConfig, request *NetworkPolicySamplingRequest, eligible []eligibleNetworkPolicyACL, allocator *aclsampling.Allocator, collectors map[string]*ovnnb.SampleCollector, samplesByMetadata map[uint32]*ovnnb.Sample) ([]ovsdb.Operation, error) {
-	operations := make([]ovsdb.Operation, 0, len(eligible)*2)
+	applyErrors := make([]error, 0)
 	for i := range eligible {
 		candidate := &eligible[i]
-		owned := candidate.acl.ExternalIDs[sampleFeatureExternalID] == networkPolicySampleFeature
-		enabled := config.AllowProbabilityPercent != 0
-		collector := collectors[aclSamplingRoleAllow]
-		if candidate.role == aclsampling.RoleDefaultDeny {
-			enabled = config.DefaultDenyProbabilityPercent != 0
-			collector = collectors[aclSamplingRoleDefaultDeny]
-		}
-		if !enabled {
-			if !owned {
-				continue
-			}
-			ops, err := c.clearNetworkPolicySamplingOps(&candidate.acl)
-			if err != nil {
-				return nil, err
-			}
-			operations = append(operations, ops...)
+		operations, err := c.networkPolicySamplingOps(config, request, candidate, allocator, collectors, samplesByMetadata)
+		if err != nil {
+			applyErrors = append(applyErrors, fmt.Errorf("ACL %s: %w", candidate.acl.UUID, err))
 			continue
 		}
-		if feature := candidate.acl.ExternalIDs[sampleFeatureExternalID]; feature != "" && !owned {
-			return nil, fmt.Errorf("ACL %s has sampling metadata owned by feature %s", candidate.acl.UUID, feature)
+		if len(operations) == 0 {
+			continue
 		}
-		if !owned && (candidate.acl.SampleNew != nil || candidate.acl.SampleEst != nil) {
-			return nil, fmt.Errorf("ACL %s has unowned sample references", candidate.acl.UUID)
+		if err := c.Transact("network-policy-acl-sampling-attach", operations); err != nil {
+			applyErrors = append(applyErrors, fmt.Errorf("attach sampling to ACL %s: %w", candidate.acl.UUID, err))
 		}
-
-		allocation, err := allocator.Allocate(aclsampling.SampleKey{
-			SchemaVersion: aclsampling.SchemaVersionV1,
-			PolicyUID:     request.policyUID,
-			Direction:     candidate.direction,
-			RuleIndex:     candidate.ruleIndex,
-			Role:          candidate.role,
-			Protocol:      candidate.protocol,
-			ACLMatchHash:  aclsampling.HashACLMatch(candidate.acl.Match),
-			OVNAction:     candidate.acl.Action,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("allocate sample metadata for ACL %s: %w", candidate.acl.UUID, err)
-		}
-
-		sampleUUID, sampleOps, err := c.ensureNetworkPolicySample(allocation.Metadata, collector, samplesByMetadata)
-		if err != nil {
-			return nil, err
-		}
-		operations = append(operations, sampleOps...)
-		aclOps, err := c.setNetworkPolicySamplingOps(&candidate.acl, request, *candidate, allocation, sampleUUID)
-		if err != nil {
-			return nil, err
-		}
-		operations = append(operations, aclOps...)
 	}
-	return operations, nil
+	return errors.Join(applyErrors...)
+}
+
+func (c *OVNNbClient) networkPolicySamplingOps(config aclsampling.ControllerConfig, request *NetworkPolicySamplingRequest, candidate *eligibleNetworkPolicyACL, allocator *aclsampling.Allocator, collectors map[string]*ovnnb.SampleCollector, samplesByMetadata map[uint32]*ovnnb.Sample) ([]ovsdb.Operation, error) {
+	owned := isOwnedNetworkPolicySamplingACL(candidate.acl.ExternalIDs)
+	enabled := config.AllowProbabilityPercent != 0
+	collector := collectors[aclSamplingRoleAllow]
+	if candidate.role == aclsampling.RoleDefaultDeny {
+		enabled = config.DefaultDenyProbabilityPercent != 0
+		collector = collectors[aclSamplingRoleDefaultDeny]
+	}
+	if !enabled {
+		if !owned {
+			return nil, nil
+		}
+		ops, err := c.clearNetworkPolicySamplingOps(&candidate.acl)
+		return ops, err
+	}
+	if feature := candidate.acl.ExternalIDs[sampleFeatureExternalID]; feature != "" && !owned {
+		return nil, fmt.Errorf("sampling metadata is owned by feature %s", feature)
+	}
+	if !owned && (candidate.acl.SampleNew != nil || candidate.acl.SampleEst != nil) {
+		return nil, errors.New("has unowned sample references")
+	}
+
+	allocation, err := allocator.Allocate(aclsampling.SampleKey{
+		SchemaVersion: aclsampling.SchemaVersionV1,
+		PolicyUID:     request.policyUID,
+		Direction:     candidate.direction,
+		RuleIndex:     candidate.ruleIndex,
+		Role:          candidate.role,
+		Protocol:      candidate.protocol,
+		ACLMatchHash:  aclsampling.HashACLMatch(candidate.acl.Match),
+		OVNAction:     aclsampling.OVNAction(candidate.acl.Action),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("allocate sample metadata: %w", err)
+	}
+
+	sampleUUID, sampleOps, err := c.ensureNetworkPolicySample(allocation.Metadata, collector, samplesByMetadata)
+	if err != nil {
+		return nil, err
+	}
+	aclOps, err := c.setNetworkPolicySamplingOps(&candidate.acl, request, *candidate, allocation, sampleUUID)
+	if err != nil {
+		return nil, err
+	}
+	return append(sampleOps, aclOps...), nil
 }
 
 func (c *OVNNbClient) listSamples() ([]ovnnb.Sample, error) {
@@ -276,6 +276,10 @@ func (c *OVNNbClient) networkPolicySampleCollectors() (map[string]*ovnnb.SampleC
 }
 
 func classifyNetworkPolicySamplingACL(acl ovnnb.ACL) (eligibleNetworkPolicyACL, bool, error) {
+	aclName := acl.ExternalIDs[networkPolicyACLNameExternalID]
+	if acl.ExternalIDs[ExternalIDVendor] != util.CniTypeName || aclName == "" {
+		return eligibleNetworkPolicyACL{}, false, nil
+	}
 	if acl.Tier != util.NetpolACLTier {
 		return eligibleNetworkPolicyACL{}, false, nil
 	}
@@ -308,17 +312,13 @@ func classifyNetworkPolicySamplingACL(acl ovnnb.ACL) (eligibleNetworkPolicyACL, 
 			direction: direction,
 			role:      aclsampling.RoleDefaultDeny,
 			protocol:  defaultDenyProtocol,
-			verdict:   aclsampling.RoleDefaultDeny,
+			verdict:   networkPolicyVerdictDefaultDeny,
 		}, true, nil
 	}
 	if acl.Action != ovnnb.ACLActionAllowRelated || acl.Priority != allowPriority {
 		return eligibleNetworkPolicyACL{}, false, nil
 	}
 
-	aclName := acl.ExternalIDs[networkPolicyACLNameExternalID]
-	if aclName == "" && acl.Name != nil {
-		aclName = *acl.Name
-	}
 	parts := strings.Split(aclName, "/")
 	if len(parts) != 5 && (len(parts) != 6 || parts[5] != "ipBlock") {
 		return eligibleNetworkPolicyACL{}, false, nil
@@ -339,7 +339,7 @@ func classifyNetworkPolicySamplingACL(acl ovnnb.ACL) (eligibleNetworkPolicyACL, 
 		ruleIndex: &ruleIndex,
 		role:      aclsampling.RoleRuleAllow,
 		protocol:  parts[3],
-		verdict:   "allow",
+		verdict:   networkPolicyVerdictAllow,
 	}, true, nil
 }
 
@@ -348,7 +348,7 @@ func setNetworkPolicyACLName(acl *ovnnb.ACL, name string) {
 	acl.ExternalIDs[networkPolicyACLNameExternalID] = name
 }
 
-func networkPolicyDirection(direction string) (string, bool) {
+func networkPolicyDirection(direction string) (aclsampling.PolicyDirection, bool) {
 	switch direction {
 	case ovnnb.ACLDirectionToLport:
 		return aclsampling.DirectionIngress, true
@@ -362,7 +362,7 @@ func networkPolicyDirection(direction string) (string, bool) {
 func storedNetworkPolicySampleMappings(acls []ovnnb.ACL) ([]aclsampling.OccupiedMetadata, error) {
 	mappings := make([]aclsampling.OccupiedMetadata, 0)
 	for _, acl := range acls {
-		if acl.ExternalIDs[sampleFeatureExternalID] != networkPolicySampleFeature {
+		if !isOwnedNetworkPolicySamplingACL(acl.ExternalIDs) {
 			continue
 		}
 		mapping, err := storedNetworkPolicySampleMapping(acl.ExternalIDs)
@@ -411,7 +411,7 @@ func currentSampleMetadata(samples []ovnnb.Sample, acls []ovnnb.ACL, previous []
 	}
 
 	for _, acl := range acls {
-		if acl.ExternalIDs[sampleFeatureExternalID] != networkPolicySampleFeature {
+		if !isOwnedNetworkPolicySamplingACL(acl.ExternalIDs) {
 			continue
 		}
 		mapping, err := storedNetworkPolicySampleMapping(acl.ExternalIDs)
@@ -477,7 +477,6 @@ func (c *OVNNbClient) ensureNetworkPolicySample(metadata uint32, collector *ovnn
 	if err != nil {
 		return "", nil, fmt.Errorf("build create operation for sample metadata %d: %w", metadata, err)
 	}
-	samplesByMetadata[metadata] = sample
 	return sample.UUID, ops, nil
 }
 
@@ -488,14 +487,14 @@ func (c *OVNNbClient) setNetworkPolicySamplingOps(acl *ovnnb.ACL, request *Netwo
 	}
 	externalIDs[sampleSchemaVersionExternalID] = aclsampling.SchemaVersionV1
 	externalIDs[sampleFeatureExternalID] = networkPolicySampleFeature
-	externalIDs[sampleRoleExternalID] = candidate.role
+	externalIDs[sampleRoleExternalID] = string(candidate.role)
 	externalIDs[policyAPIVersionExternalID] = networkPolicyAPIVersion
 	externalIDs[policyKindExternalID] = networkPolicyKind
 	externalIDs[policyNamespaceExternalID] = request.policyNamespace
 	externalIDs[policyNameExternalID] = request.policyName
 	externalIDs[policyUIDExternalID] = request.policyUID
-	externalIDs[policyDirectionExternalID] = candidate.direction
-	externalIDs[policyVerdictExternalID] = candidate.verdict
+	externalIDs[policyDirectionExternalID] = string(candidate.direction)
+	externalIDs[policyVerdictExternalID] = string(candidate.verdict)
 	externalIDs[ovnActionExternalID] = candidate.acl.Action
 	externalIDs[aclMatchHashExternalID] = aclsampling.HashACLMatch(candidate.acl.Match)
 	externalIDs[sampleKeyHashExternalID] = allocation.KeyHash
@@ -521,7 +520,7 @@ func (c *OVNNbClient) setNetworkPolicySamplingOps(acl *ovnnb.ACL, request *Netwo
 }
 
 func (c *OVNNbClient) clearNetworkPolicySamplingOps(acl *ovnnb.ACL) ([]ovsdb.Operation, error) {
-	if acl.SampleNew == nil && acl.SampleEst == nil && acl.ExternalIDs[sampleFeatureExternalID] != networkPolicySampleFeature {
+	if acl.SampleNew == nil && acl.SampleEst == nil && !isOwnedNetworkPolicySamplingACL(acl.ExternalIDs) {
 		return nil, nil
 	}
 	externalIDs := maps.Clone(acl.ExternalIDs)
@@ -536,4 +535,10 @@ func (c *OVNNbClient) clearNetworkPolicySamplingOps(acl *ovnnb.ACL) ([]ovsdb.Ope
 		return nil, fmt.Errorf("build sample cleanup operation for ACL %s: %w", acl.UUID, err)
 	}
 	return ops, nil
+}
+
+func isOwnedNetworkPolicySamplingACL(externalIDs map[string]string) bool {
+	return externalIDs[ExternalIDVendor] == util.CniTypeName &&
+		externalIDs[sampleFeatureExternalID] == networkPolicySampleFeature &&
+		externalIDs[sampleSchemaVersionExternalID] == aclsampling.SchemaVersionV1
 }
