@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -164,6 +165,31 @@ func TestResolveNetworkPolicyACLSampleRejectsUnknownValues(t *testing.T) {
 	_, err = client.ResolveNetworkPolicyACLSample(aclsampling.SampleReference{})
 	require.Error(t, err)
 	require.False(t, errors.Is(err, ErrACLSampleNotFound))
+}
+
+func TestValidateNetworkPolicyACLIdentityAcceptsTruncatedOVNName(t *testing.T) {
+	policyName := strings.Repeat("long-policy-name-", 5) + "tail"
+	aclName := "np/" + policyName + ".default/ingress/IPv4/3"
+	priority, err := strconv.Atoi(util.IngressAllowPriority)
+	require.NoError(t, err)
+	acl := ovnnb.ACL{
+		Action:    ovnnb.ACLActionAllowRelated,
+		Direction: ovnnb.ACLDirectionToLport,
+		Priority:  priority,
+		Tier:      util.NetpolACLTier,
+		ExternalIDs: map[string]string{
+			ExternalIDVendor:               util.CniTypeName,
+			networkPolicyACLNameExternalID: aclName,
+			policyNamespaceExternalID:      "default",
+			policyNameExternalID:           policyName,
+		},
+	}
+	setACLName(&acl, aclName)
+	candidate, eligible, err := classifyNetworkPolicySamplingACL(acl)
+	require.NoError(t, err)
+	require.True(t, eligible)
+	require.NoError(t, validateNetworkPolicyACLIdentity(candidate))
+	require.Equal(t, limitedACLName(aclName), *acl.Name)
 }
 
 func newNetworkPolicySampleResolverFixture(t *testing.T, testName string) (*OVNNbClient, aclsampling.ControllerConfig, ovnnb.ACL, ovnnb.ACL) {
