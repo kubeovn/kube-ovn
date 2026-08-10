@@ -561,6 +561,61 @@ func TestGetRandomDualStackAddress(t *testing.T) {
 	require.NotEqual(t, mac1, mac2)
 }
 
+func TestGetDualRandomAddressSkipsOnlyRequestedFamilies(t *testing.T) {
+	tests := []struct {
+		name           string
+		skipV4, skipV6 bool
+	}{
+		{name: "IPv4", skipV4: true},
+		{name: "IPv6", skipV6: true},
+		{name: "Both", skipV4: true, skipV6: true},
+	}
+
+	for _, poolName := range []string{"", "named"} {
+		poolLabel := "DefaultPool"
+		if poolName != "" {
+			poolLabel = "NamedPool"
+		}
+		for _, tt := range tests {
+			t.Run(poolLabel+"/Skip"+tt.name, func(t *testing.T) {
+				subnet, err := NewSubnet("dualSubnet", "10.0.0.0/28,2001:db8::/124", nil)
+				require.NoError(t, err)
+				if poolName != "" {
+					err = subnet.AddOrUpdateIPPool(poolName, []string{"10.0.0.2..10.0.0.10", "2001:db8::2..2001:db8::a"})
+					require.NoError(t, err)
+				}
+
+				podName := "pod.default"
+				nicName := "pod.default"
+				oldV4, oldV6, oldMAC, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, nil, true)
+				require.NoError(t, err)
+
+				skippedAddrs := make([]string, 0, 2)
+				if tt.skipV4 {
+					skippedAddrs = append(skippedAddrs, oldV4.String())
+				}
+				if tt.skipV6 {
+					skippedAddrs = append(skippedAddrs, oldV6.String())
+				}
+				newV4, newV6, newMAC, err := subnet.GetRandomAddress(poolName, podName, nicName, nil, skippedAddrs, true)
+				require.NoError(t, err)
+
+				if tt.skipV4 {
+					require.NotEqual(t, oldV4, newV4)
+				} else {
+					require.Equal(t, oldV4, newV4)
+				}
+				if tt.skipV6 {
+					require.NotEqual(t, oldV6, newV6)
+				} else {
+					require.Equal(t, oldV6, newV6)
+				}
+				require.Equal(t, oldMAC, newMAC)
+			})
+		}
+	}
+}
+
 func TestReleaseAddrForV4Subnet(t *testing.T) {
 	excludeIps := []string{
 		"10.0.0.2", "10.0.0.4", "10.0.0.100",
@@ -1177,272 +1232,183 @@ func TestPopPodNic(t *testing.T) {
 }
 
 func TestGetStaticAddressReleaseExisting(t *testing.T) {
-	// Test IPv4 scenario
-	t.Run("IPv4_ReleaseExistingAddress", func(t *testing.T) {
-		subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", nil)
-		require.NoError(t, err)
-		require.NotNil(t, subnet)
-
-		podName := "pod1.default"
-		nicName := "nic1"
-
-		// First allocation
-		firstIP, err := NewIP("10.0.0.5")
-		require.NoError(t, err)
-		ip1, mac1, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.5", ip1.String())
-		require.NotEmpty(t, mac1)
-
-		// Verify first allocation
-		require.Equal(t, firstIP, subnet.V4NicToIP[nicName])
-		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.5"])
-		require.True(t, subnet.V4Using.Contains(firstIP))
-		require.False(t, subnet.V4Available.Contains(firstIP))
-
-		// Second allocation with different IP for same nicName
-		secondIP, err := NewIP("10.0.0.10")
-		require.NoError(t, err)
-		ip2, mac2, err := subnet.GetStaticAddress(podName, nicName, secondIP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.10", ip2.String())
-		require.NotEmpty(t, mac2)
-
-		// Verify second allocation and first address is released
-		require.Equal(t, secondIP, subnet.V4NicToIP[nicName])
-		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.10"])
-		require.True(t, subnet.V4Using.Contains(secondIP))
-		require.False(t, subnet.V4Available.Contains(secondIP))
-
-		// Verify first address is released
-		_, exists := subnet.V4IPToPod["10.0.0.5"]
-		require.False(t, exists)
-		require.False(t, subnet.V4Using.Contains(firstIP))
-	})
-
+	t.Run("IPv4_ReleaseExistingAddress", testStaticAddressReleasesExistingIPv4)
 	t.Run("IPv4_KeepExistingAddressOnGatewayIPConflict", func(t *testing.T) {
-		subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", nil)
-		require.NoError(t, err)
-		subnet.V4Gw = "10.0.0.2"
+		testStaticAddressKeepsExistingOnGatewayConflict(t, "10.0.0.0/24", "10.0.0.5", "10.0.0.2", apiv1.ProtocolIPv4)
+	})
+	t.Run("IPv6_KeepExistingAddressOnGatewayIPConflict", func(t *testing.T) {
+		testStaticAddressKeepsExistingOnGatewayConflict(t, "2001:db8::/64", "2001:db8::5", "2001:db8::2", apiv1.ProtocolIPv6)
+	})
+	t.Run("IPv6_ReleaseExistingAddress", testStaticAddressReleasesExistingIPv6)
+	t.Run("SameIP_NoRelease", testStaticAddressKeepsSameAddress)
+	t.Run("DualStack_SameProtocolReplacement", testStaticAddressReplacesV4AndPreservesV6)
+	t.Run("DualStack_CrossProtocolPreserve", testStaticAddressReplacesV6AndPreservesV4)
+}
 
-		podName := "pod1.default"
-		nicName := "nic1"
-		firstIP, err := NewIP("10.0.0.5")
-		require.NoError(t, err)
-		gatewayIP, err := NewIP("10.0.0.2")
-		require.NoError(t, err)
+func testStaticAddressReleasesExistingIPv4(t *testing.T) {
+	subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", nil)
+	require.NoError(t, err)
+	podName, nicName := "pod1.default", "nic1"
+	firstIP, err := NewIP("10.0.0.5")
+	require.NoError(t, err)
+	_, firstMAC, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
+	require.NoError(t, err)
+	require.NotEmpty(t, firstMAC)
 
-		_, mac, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
-		require.NoError(t, err)
+	secondIP, err := NewIP("10.0.0.10")
+	require.NoError(t, err)
+	got, secondMAC, err := subnet.GetStaticAddress(podName, nicName, secondIP, nil, false, true)
+	require.NoError(t, err)
+	require.Equal(t, secondIP, got)
+	require.NotEmpty(t, secondMAC)
+	require.Equal(t, secondIP, subnet.V4NicToIP[nicName])
+	require.Equal(t, podName, subnet.V4IPToPod[secondIP.String()])
+	require.True(t, subnet.V4Using.Contains(secondIP))
+	require.False(t, subnet.V4Available.Contains(secondIP))
+	require.Empty(t, subnet.V4IPToPod[firstIP.String()])
+	require.False(t, subnet.V4Using.Contains(firstIP))
+}
 
-		_, _, err = subnet.GetStaticAddress(podName, nicName, gatewayIP, nil, false, true)
-		require.ErrorIs(t, err, ErrConflict)
+func testStaticAddressReleasesExistingIPv6(t *testing.T) {
+	subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", nil)
+	require.NoError(t, err)
+	podName, nicName := "pod1.default", "nic1"
+	firstIP, err := NewIP("2001:db8::5")
+	require.NoError(t, err)
+	_, firstMAC, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
+	require.NoError(t, err)
+	require.NotEmpty(t, firstMAC)
+
+	secondIP, err := NewIP("2001:db8::10")
+	require.NoError(t, err)
+	got, secondMAC, err := subnet.GetStaticAddress(podName, nicName, secondIP, nil, false, true)
+	require.NoError(t, err)
+	require.Equal(t, secondIP, got)
+	require.NotEmpty(t, secondMAC)
+	require.Equal(t, secondIP, subnet.V6NicToIP[nicName])
+	require.Equal(t, podName, subnet.V6IPToPod[secondIP.String()])
+	require.True(t, subnet.V6Using.Contains(secondIP))
+	require.False(t, subnet.V6Available.Contains(secondIP))
+	require.Empty(t, subnet.V6IPToPod[firstIP.String()])
+	require.False(t, subnet.V6Using.Contains(firstIP))
+}
+
+func testStaticAddressKeepsExistingOnGatewayConflict(t *testing.T, cidr, first, gateway, family string) {
+	subnet, err := NewSubnet("subnet", cidr, nil)
+	require.NoError(t, err)
+	if family == apiv1.ProtocolIPv4 {
+		subnet.V4Gw = gateway
+	} else {
+		subnet.V6Gw = gateway
+	}
+	podName, nicName := "pod1.default", "nic1"
+	firstIP, err := NewIP(first)
+	require.NoError(t, err)
+	gatewayIP, err := NewIP(gateway)
+	require.NoError(t, err)
+	_, mac, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
+	require.NoError(t, err)
+	_, _, err = subnet.GetStaticAddress(podName, nicName, gatewayIP, nil, false, true)
+	require.ErrorIs(t, err, ErrConflict)
+
+	if family == apiv1.ProtocolIPv4 {
 		require.Equal(t, firstIP, subnet.V4NicToIP[nicName])
-		require.Equal(t, podName, subnet.V4IPToPod[firstIP.String()])
+		require.Equal(t, podName, subnet.V4IPToPod[first])
 		require.True(t, subnet.V4Using.Contains(firstIP))
 		require.False(t, subnet.V4Available.Contains(firstIP))
-		require.Empty(t, subnet.V4IPToPod[gatewayIP.String()])
-		require.False(t, subnet.V4Using.Contains(gatewayIP))
-		require.Equal(t, mac, subnet.NicToMac[nicName])
-	})
-
-	t.Run("IPv6_KeepExistingAddressOnGatewayIPConflict", func(t *testing.T) {
-		subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", nil)
-		require.NoError(t, err)
-		subnet.V6Gw = "2001:db8::2"
-
-		podName := "pod1.default"
-		nicName := "nic1"
-		firstIP, err := NewIP("2001:db8::5")
-		require.NoError(t, err)
-		gatewayIP, err := NewIP("2001:db8::2")
-		require.NoError(t, err)
-
-		_, mac, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
-		require.NoError(t, err)
-
-		_, _, err = subnet.GetStaticAddress(podName, nicName, gatewayIP, nil, false, true)
-		require.ErrorIs(t, err, ErrConflict)
+		require.Empty(t, subnet.V4IPToPod[gateway])
+	} else {
 		require.Equal(t, firstIP, subnet.V6NicToIP[nicName])
-		require.Equal(t, podName, subnet.V6IPToPod[firstIP.String()])
+		require.Equal(t, podName, subnet.V6IPToPod[first])
 		require.True(t, subnet.V6Using.Contains(firstIP))
 		require.False(t, subnet.V6Available.Contains(firstIP))
-		require.Empty(t, subnet.V6IPToPod[gatewayIP.String()])
-		require.False(t, subnet.V6Using.Contains(gatewayIP))
-		require.Equal(t, mac, subnet.NicToMac[nicName])
-	})
+		require.Empty(t, subnet.V6IPToPod[gateway])
+	}
+	require.Equal(t, mac, subnet.NicToMac[nicName])
+}
 
-	// Test IPv6 scenario
-	t.Run("IPv6_ReleaseExistingAddress", func(t *testing.T) {
-		subnet, err := NewSubnet("v6Subnet", "2001:db8::/64", nil)
-		require.NoError(t, err)
-		require.NotNil(t, subnet)
+func testStaticAddressKeepsSameAddress(t *testing.T) {
+	subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", nil)
+	require.NoError(t, err)
+	podName, nicName := "pod1.default", "nic1"
+	targetIP, err := NewIP("10.0.0.5")
+	require.NoError(t, err)
+	_, firstMAC, err := subnet.GetStaticAddress(podName, nicName, targetIP, nil, false, true)
+	require.NoError(t, err)
+	got, secondMAC, err := subnet.GetStaticAddress(podName, nicName, targetIP, nil, false, true)
+	require.NoError(t, err)
+	require.Equal(t, targetIP, got)
+	require.Equal(t, firstMAC, secondMAC)
+	require.Equal(t, targetIP, subnet.V4NicToIP[nicName])
+	require.Equal(t, podName, subnet.V4IPToPod[targetIP.String()])
+	require.True(t, subnet.V4Using.Contains(targetIP))
+}
 
-		podName := "pod1.default"
-		nicName := "nic1"
+func testStaticAddressReplacesV4AndPreservesV6(t *testing.T) {
+	subnet, err := NewSubnet("dualSubnet", "10.0.0.0/24,2001:db8::/64", nil)
+	require.NoError(t, err)
+	podName, nicName := "pod1.default", "nic1"
+	firstV4, err := NewIP("10.0.0.5")
+	require.NoError(t, err)
+	firstV6, err := NewIP("2001:db8::5")
+	require.NoError(t, err)
+	secondV4, err := NewIP("10.0.0.10")
+	require.NoError(t, err)
+	_, _, err = subnet.GetStaticAddress(podName, nicName, firstV4, nil, false, true)
+	require.NoError(t, err)
+	_, _, err = subnet.GetStaticAddress(podName, nicName, firstV6, nil, false, true)
+	require.NoError(t, err)
+	got, _, err := subnet.GetStaticAddress(podName, nicName, secondV4, nil, false, true)
+	require.NoError(t, err)
+	require.Equal(t, secondV4, got)
+	require.Empty(t, subnet.V4IPToPod[firstV4.String()])
+	require.Equal(t, secondV4, subnet.V4NicToIP[nicName])
+	assertPreservedAddressViews(t, subnet, nicName, podName, firstV6, apiv1.ProtocolIPv6)
+}
 
-		// First allocation
-		firstIP, err := NewIP("2001:db8::5")
-		require.NoError(t, err)
-		ip1, mac1, err := subnet.GetStaticAddress(podName, nicName, firstIP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "2001:db8::5", ip1.String())
-		require.NotEmpty(t, mac1)
+func testStaticAddressReplacesV6AndPreservesV4(t *testing.T) {
+	subnet, err := NewSubnet("dualSubnet", "10.0.0.0/30,2001:db8::/125", nil)
+	require.NoError(t, err)
+	podName, nicName := "pod1.default", "nic1"
+	firstV4, err := NewIP("10.0.0.1")
+	require.NoError(t, err)
+	firstV6, err := NewIP("2001:db8::1")
+	require.NoError(t, err)
+	secondV6, err := NewIP("2001:db8::2")
+	require.NoError(t, err)
+	_, _, err = subnet.GetStaticAddress(podName, nicName, firstV4, nil, false, true)
+	require.NoError(t, err)
+	_, _, err = subnet.GetStaticAddress(podName, nicName, firstV6, nil, false, true)
+	require.NoError(t, err)
+	got, _, err := subnet.GetStaticAddress(podName, nicName, secondV6, nil, false, true)
+	require.NoError(t, err)
+	require.Equal(t, secondV6, got)
+	require.Empty(t, subnet.V6IPToPod[firstV6.String()])
+	require.Equal(t, secondV6, subnet.V6NicToIP[nicName])
+	assertPreservedAddressViews(t, subnet, nicName, podName, firstV4, apiv1.ProtocolIPv4)
+}
 
-		// Verify first allocation
-		require.Equal(t, firstIP, subnet.V6NicToIP[nicName])
-		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::5"])
-		require.True(t, subnet.V6Using.Contains(firstIP))
-		require.False(t, subnet.V6Available.Contains(firstIP))
-
-		// Second allocation with different IP for same nicName
-		secondIP, err := NewIP("2001:db8::10")
-		require.NoError(t, err)
-		ip2, mac2, err := subnet.GetStaticAddress(podName, nicName, secondIP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "2001:db8::10", ip2.String())
-		require.NotEmpty(t, mac2)
-
-		// Verify second allocation and first address is released
-		require.Equal(t, secondIP, subnet.V6NicToIP[nicName])
-		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::10"])
-		require.True(t, subnet.V6Using.Contains(secondIP))
-		require.False(t, subnet.V6Available.Contains(secondIP))
-
-		// Verify first address is released
-		_, exists := subnet.V6IPToPod["2001:db8::5"]
-		require.False(t, exists)
-		require.False(t, subnet.V6Using.Contains(firstIP))
-	})
-
-	// Test same IP allocation should not release
-	t.Run("SameIP_NoRelease", func(t *testing.T) {
-		subnet, err := NewSubnet("v4Subnet", "10.0.0.0/24", nil)
-		require.NoError(t, err)
-		require.NotNil(t, subnet)
-
-		podName := "pod1.default"
-		nicName := "nic1"
-
-		// First allocation
-		targetIP, err := NewIP("10.0.0.5")
-		require.NoError(t, err)
-		ip1, mac1, err := subnet.GetStaticAddress(podName, nicName, targetIP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.5", ip1.String())
-		require.NotEmpty(t, mac1)
-
-		// Second allocation with same IP for same nicName
-		ip2, mac2, err := subnet.GetStaticAddress(podName, nicName, targetIP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.5", ip2.String())
-		require.Equal(t, mac1, mac2) // MAC should remain same
-
-		// Verify address is still allocated
-		require.Equal(t, targetIP, subnet.V4NicToIP[nicName])
-		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.5"])
-		require.True(t, subnet.V4Using.Contains(targetIP))
-	})
-
-	// Test dual stack scenario - same protocol replacement
-	t.Run("DualStack_SameProtocolReplacement", func(t *testing.T) {
-		subnet, err := NewSubnet("dualSubnet", "10.0.0.0/24,2001:db8::/64", nil)
-		require.NoError(t, err)
-		require.NotNil(t, subnet)
-
-		podName := "pod1.default"
-		nicName := "nic1"
-
-		// First allocation - IPv4
-		firstV4IP, err := NewIP("10.0.0.5")
-		require.NoError(t, err)
-		ip1, _, err := subnet.GetStaticAddress(podName, nicName, firstV4IP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.5", ip1.String())
-
-		// Second allocation - IPv6 for same nicName (should coexist in dual stack)
-		firstV6IP, err := NewIP("2001:db8::5")
-		require.NoError(t, err)
-		ip2, _, err := subnet.GetStaticAddress(podName, nicName, firstV6IP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "2001:db8::5", ip2.String())
-
-		// Verify both IPv4 and IPv6 coexist in dual stack
-		require.Equal(t, firstV4IP, subnet.V4NicToIP[nicName], "IPv4 should coexist with IPv6")
-		require.Equal(t, firstV6IP, subnet.V6NicToIP[nicName])
-		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.5"])
-		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::5"])
-
-		// Third allocation - Different IPv4 for same nicName (should replace IPv4 only)
-		secondV4IP, err := NewIP("10.0.0.10")
-		require.NoError(t, err)
-		ip3, _, err := subnet.GetStaticAddress(podName, nicName, secondV4IP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.10", ip3.String())
-
-		// Verify IPv4 is replaced but IPv6 remains
-		require.Equal(t, secondV4IP, subnet.V4NicToIP[nicName], "New IPv4 should replace old one")
-		require.Equal(t, firstV6IP, subnet.V6NicToIP[nicName], "IPv6 should remain unchanged")
-		_, v4exists := subnet.V4IPToPod["10.0.0.5"]
-		require.False(t, v4exists, "Original IPv4 should be released")
-		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.10"])
-		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::5"])
-
-		pool := subnet.IPPools[""]
-		require.NotNil(t, pool)
-		require.True(t, subnet.V6Using.Contains(firstV6IP))
-		require.False(t, subnet.V6Available.Contains(firstV6IP))
-		require.True(t, pool.V6Using.Contains(firstV6IP))
-		require.False(t, pool.V6Available.Contains(firstV6IP))
-		require.False(t, pool.V6Released.Contains(firstV6IP))
-	})
-
-	t.Run("DualStack_CrossProtocolPreserve", func(t *testing.T) {
-		subnet, err := NewSubnet("dualSubnet", "10.0.0.0/30,2001:db8::/125", nil)
-		require.NoError(t, err)
-		require.NotNil(t, subnet)
-
-		podName := "pod1.default"
-		nicName := "nic1"
-
-		firstV4IP, err := NewIP("10.0.0.1")
-		require.NoError(t, err)
-		ip1, _, err := subnet.GetStaticAddress(podName, nicName, firstV4IP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "10.0.0.1", ip1.String())
-
-		firstV6IP, err := NewIP("2001:db8::1")
-		require.NoError(t, err)
-		ip2, _, err := subnet.GetStaticAddress(podName, nicName, firstV6IP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "2001:db8::1", ip2.String())
-
-		require.Equal(t, firstV4IP, subnet.V4NicToIP[nicName])
-		require.Equal(t, firstV6IP, subnet.V6NicToIP[nicName])
-		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.1"])
-		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::1"])
-
-		secondV6IP, err := NewIP("2001:db8::2")
-		require.NoError(t, err)
-		ip3, _, err := subnet.GetStaticAddress(podName, nicName, secondV6IP, nil, false, true)
-		require.NoError(t, err)
-		require.Equal(t, "2001:db8::2", ip3.String())
-
-		require.Equal(t, firstV4IP, subnet.V4NicToIP[nicName])
-		require.Equal(t, secondV6IP, subnet.V6NicToIP[nicName])
-		_, v6exists := subnet.V6IPToPod["2001:db8::1"]
-		require.False(t, v6exists)
-		require.Equal(t, podName, subnet.V4IPToPod["10.0.0.1"])
-		require.Equal(t, podName, subnet.V6IPToPod["2001:db8::2"])
-
-		pool := subnet.IPPools[""]
-		require.NotNil(t, pool)
-		require.True(t, subnet.V4Using.Contains(firstV4IP))
-		require.False(t, subnet.V4Available.Contains(firstV4IP))
-		require.True(t, pool.V4Using.Contains(firstV4IP))
-		require.False(t, pool.V4Available.Contains(firstV4IP))
-		require.False(t, pool.V4Released.Contains(firstV4IP))
-	})
+func assertPreservedAddressViews(t *testing.T, subnet *Subnet, nicName, podName string, ip IP, family string) {
+	t.Helper()
+	pool := subnet.IPPools[""]
+	require.NotNil(t, pool)
+	if family == apiv1.ProtocolIPv4 {
+		require.Equal(t, ip, subnet.V4NicToIP[nicName])
+		require.Equal(t, podName, subnet.V4IPToPod[ip.String()])
+		require.True(t, subnet.V4Using.Contains(ip))
+		require.False(t, subnet.V4Available.Contains(ip))
+		require.True(t, pool.V4Using.Contains(ip))
+		require.False(t, pool.V4Available.Contains(ip))
+		require.False(t, pool.V4Released.Contains(ip))
+		return
+	}
+	require.Equal(t, ip, subnet.V6NicToIP[nicName])
+	require.Equal(t, podName, subnet.V6IPToPod[ip.String()])
+	require.True(t, subnet.V6Using.Contains(ip))
+	require.False(t, subnet.V6Available.Contains(ip))
+	require.True(t, pool.V6Using.Contains(ip))
+	require.False(t, pool.V6Available.Contains(ip))
+	require.False(t, pool.V6Released.Contains(ip))
 }
 
 func TestGetStaticMac(t *testing.T) {
