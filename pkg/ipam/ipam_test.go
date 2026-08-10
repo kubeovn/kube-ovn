@@ -1,10 +1,13 @@
 package ipam
 
 import (
+	"fmt"
 	"net"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestNewIPAM(t *testing.T) {
@@ -232,6 +235,112 @@ func TestGetStaticAddress(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, ip)
 	require.False(t, dualSubnet.V4Using.Contains(ip))
+}
+
+func TestGetStaticAddressDualStackPreserveCounters(t *testing.T) {
+	t.Run("ReplaceV4PreserveV6", func(t *testing.T) {
+		testIPAMStaticAddressPreservesOtherFamily(t, kubeovnv1.ProtocolIPv4)
+	})
+	t.Run("ReplaceV6PreserveV4", func(t *testing.T) {
+		testIPAMStaticAddressPreservesOtherFamily(t, kubeovnv1.ProtocolIPv6)
+	})
+	t.Run("ReplaceV4PreserveV6RandomExhaustion", func(t *testing.T) {
+		testIPAMPreservedAddressIsNotReissued(t, kubeovnv1.ProtocolIPv6)
+	})
+	t.Run("ReplaceV6PreserveV4RandomExhaustion", func(t *testing.T) {
+		testIPAMPreservedAddressIsNotReissued(t, kubeovnv1.ProtocolIPv4)
+	})
+}
+
+func testIPAMStaticAddressPreservesOtherFamily(t *testing.T, replacedFamily string) {
+	ipam := NewIPAM()
+	subnetName := "dualPreserveSubnet"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/30,2001:db8::/125", nil)
+	require.NoError(t, err)
+	ipam.Subnets[subnetName] = subnet
+	podName := "pod1.default"
+	oldV4, oldV6 := "10.0.0.1", "2001:db8::1"
+	newV4, newV6 := oldV4, "2001:db8::2"
+	if replacedFamily == kubeovnv1.ProtocolIPv4 {
+		newV4, newV6 = "10.0.0.2", oldV6
+	}
+
+	_, _, oldMAC, err := ipam.GetStaticAddress(podName, podName, oldV4+","+oldV6, nil, subnetName, true)
+	require.NoError(t, err)
+	v4, v6, newMAC, err := ipam.GetStaticAddress(podName, podName, newV4+","+newV6, nil, subnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, newV4, v4)
+	require.Equal(t, newV6, v6)
+	require.Equal(t, oldMAC, newMAC)
+
+	preserved, err := NewIP(oldV4)
+	require.NoError(t, err)
+	replaced, err := NewIP(oldV6)
+	require.NoError(t, err)
+	preservedFamily := kubeovnv1.ProtocolIPv4
+	if replacedFamily == kubeovnv1.ProtocolIPv4 {
+		preserved, err = NewIP(oldV6)
+		require.NoError(t, err)
+		replaced, err = NewIP(oldV4)
+		require.NoError(t, err)
+		preservedFamily = kubeovnv1.ProtocolIPv6
+	}
+	assertPreservedAddressViews(t, subnet, podName, podName, preserved, preservedFamily)
+	if replacedFamily == kubeovnv1.ProtocolIPv4 {
+		require.Empty(t, subnet.V4IPToPod[replaced.String()])
+		require.False(t, subnet.V4Using.Contains(replaced))
+		require.True(t, subnet.V4Available.Contains(replaced))
+	} else {
+		require.Empty(t, subnet.V6IPToPod[replaced.String()])
+		require.False(t, subnet.V6Using.Contains(replaced))
+		require.True(t, subnet.V6Available.Contains(replaced))
+	}
+}
+
+func testIPAMPreservedAddressIsNotReissued(t *testing.T, preservedFamily string) {
+	ipam := NewIPAM()
+	subnetName := "dualPreserveSubnetExhaustion"
+	subnet, err := NewSubnet(subnetName, "10.0.0.0/29,2001:db8::/125", nil)
+	require.NoError(t, err)
+	ipam.Subnets[subnetName] = subnet
+	podName := "pod1.default"
+	initial := "10.0.0.1,2001:db8::1"
+	replacement := "10.0.0.2,2001:db8::1"
+	family := kubeovnv1.ProtocolIPv6
+	preserved := "2001:db8::1"
+	if preservedFamily == kubeovnv1.ProtocolIPv4 {
+		replacement = "10.0.0.1,2001:db8::2"
+		family = kubeovnv1.ProtocolIPv4
+		preserved = "10.0.0.1"
+	}
+	_, _, _, err = ipam.GetStaticAddress(podName, podName, initial, nil, subnetName, true)
+	require.NoError(t, err)
+	_, _, _, err = ipam.GetStaticAddress(podName, podName, replacement, nil, subnetName, true)
+	require.NoError(t, err)
+
+	for i := 2; i <= 6; i++ {
+		pod := fmt.Sprintf("pod%d.default", i)
+		got, err := allocateIPAMAddressForFamily(subnet, pod, family)
+		require.NoError(t, err, "pod %s should get an address before exhaustion", pod)
+		require.NotEqual(t, preserved, got, "pod %s received the preserved address", pod)
+	}
+	got, err := allocateIPAMAddressForFamily(subnet, "pod7.default", family)
+	require.ErrorIs(t, err, ErrNoAvailable, "pool exhausted: allocation must not recycle %s (got %s)", preserved, got)
+}
+
+func allocateIPAMAddressForFamily(subnet *Subnet, podName, family string) (string, error) {
+	if family == kubeovnv1.ProtocolIPv4 {
+		v4, _, _, err := subnet.getV4RandomAddress("", podName, podName, nil, nil, true)
+		if err != nil {
+			return "", err
+		}
+		return v4.String(), nil
+	}
+	_, v6, _, err := subnet.getV6RandomAddress("", podName, podName, nil, nil, true)
+	if err != nil {
+		return "", err
+	}
+	return v6.String(), nil
 }
 
 func TestCheckAndAppendIpsForDual(t *testing.T) {
