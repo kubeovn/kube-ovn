@@ -60,8 +60,6 @@ func (c *Controller) resyncProviderNetworkStatus() {
 			if node.Labels[pnReadyAnnotation] == "true" {
 				if pn.Status.SetNodeReady(node.Name, "InitOVSBridgeSucceeded", "") {
 					conditionsUpdated = true
-					c.recorder.Eventf(pn, corev1.EventTypeNormal, "InitOVSBridgeSucceeded",
-						"Initialized OVS bridge on node %s", node.Name)
 				}
 				readyNodes = append(readyNodes, node.Name)
 			} else {
@@ -80,8 +78,6 @@ func (c *Controller) resyncProviderNetworkStatus() {
 
 				if pn.Status.SetNodeNotReady(node.Name, "InitOVSBridgeFailed", errMsg) {
 					conditionsUpdated = true
-					c.recorder.Eventf(pn, corev1.EventTypeWarning, "InitOVSBridgeFailed",
-						"Failed to initialize OVS bridge on node %s: %s", node.Name, errMsg)
 				}
 				notReadyNodes = append(notReadyNodes, node.Name)
 			}

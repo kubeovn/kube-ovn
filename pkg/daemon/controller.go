@@ -89,6 +89,8 @@ type Controller struct {
 	vswitchClient ovs.Vswitch
 }
 
+var ovsInitProviderNetworkFn = (*Controller).ovsInitProviderNetwork
+
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
 	if rateLimiter == nil {
 		rateLimiter = workqueue.DefaultTypedControllerRateLimiter[T]()
@@ -102,6 +104,9 @@ func NewController(config *Configuration,
 	podInformerFactory, nodeInformerFactory, caSecretInformerFactory informers.SharedInformerFactory,
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory,
 ) (*Controller, error) {
+	if err := kubeovnv1.AddToScheme(scheme.Scheme); err != nil {
+		return nil, fmt.Errorf("failed to register Kube-OVN API types for event recording: %w", err)
+	}
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: config.KubeClient.CoreV1().Events(v1.NamespaceAll)})
@@ -371,17 +376,27 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return nil
 	}
 
+	nic := providerNetworkNic(pn, node.Name)
 	excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
 	if err != nil {
 		klog.Error(err)
-		return err
+		return c.recordProviderNetworkInitError(pn, nic, err)
 	}
 
 	if excluded {
 		c.recordProviderNetworkErr(pn.Name, "")
 		return c.cleanProviderNetwork(pn.DeepCopy(), node.DeepCopy())
 	}
-	return c.initProviderNetwork(pn.DeepCopy(), node.DeepCopy())
+	if err = c.initProviderNetwork(pn.DeepCopy(), node.DeepCopy()); err != nil {
+		return c.recordProviderNetworkInitError(pn, nic, err)
+	}
+	return nil
+}
+
+func (c *Controller) recordProviderNetworkInitError(pn *kubeovnv1.ProviderNetwork, nic string, err error) error {
+	c.recorder.Eventf(pn, v1.EventTypeWarning, "InitOVSBridgeFailed",
+		"Failed to initialize provider network: node=%s interface=%s error=%v", c.config.NodeName, nic, err)
+	return err
 }
 
 func providerNetworkNic(pn *kubeovnv1.ProviderNetwork, nodeName string) string {
@@ -485,7 +500,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
 	// Configure main interface with ALL VLANs (including detected ones) in trunk
-	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback, vlanInterfaceMap); err != nil {
+	if mtu, err = ovsInitProviderNetworkFn(c, pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback, vlanInterfaceMap); err != nil {
 		delete(patch, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
 		if err1 := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err1 != nil {
 			klog.Errorf("failed to patch annotations of node %s: %v", node.Name, err1)
@@ -505,6 +520,12 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		return err
 	}
 	c.recordProviderNetworkErr(pn.Name, "")
+	if node.Labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] != "true" ||
+		node.Labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] != nic ||
+		node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] != strconv.Itoa(mtu) {
+		c.recorder.Eventf(pn, v1.EventTypeNormal, "InitOVSBridgeSucceeded",
+			"Initialized provider network: node=%s interface=%s mtu=%d", c.config.NodeName, nic, mtu)
+	}
 	return nil
 }
 
