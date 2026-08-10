@@ -336,6 +336,9 @@ func (c *OVNNbClient) cleanupACLSampling() error {
 	}
 	clearOps := make([]ovsdb.Operation, 0, len(acls))
 	for i := range acls {
+		if !isOwnedNetworkPolicySamplingACL(acls[i].ExternalIDs) {
+			continue
+		}
 		ops, err := c.clearNetworkPolicySamplingOps(&acls[i])
 		if err != nil {
 			return err
@@ -397,7 +400,7 @@ func (c *OVNNbClient) aclSamplingCollectorReferences(ownedCollectors map[string]
 	}
 	referencedSamples := make(map[string]struct{})
 	for _, acl := range acls {
-		if acl.ExternalIDs[sampleFeatureExternalID] == networkPolicySampleFeature {
+		if isOwnedNetworkPolicySamplingACL(acl.ExternalIDs) {
 			return nil, true, nil
 		}
 		for _, sampleUUID := range compactSampleReferences(acl) {
