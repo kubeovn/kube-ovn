@@ -89,8 +89,6 @@ type Controller struct {
 	vswitchClient ovs.Vswitch
 }
 
-var ovsInitProviderNetworkFn = (*Controller).ovsInitProviderNetwork
-
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
 	if rateLimiter == nil {
 		rateLimiter = workqueue.DefaultTypedControllerRateLimiter[T]()
@@ -257,9 +255,38 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	if newNode.Name != c.config.NodeName {
 		return
 	}
+	c.recordProviderNetworkInitSuccessEvents(oldNode, newNode)
 	if oldNode.Annotations[util.NodeNetworksAnnotation] != newNode.Annotations[util.NodeNetworksAnnotation] {
 		klog.V(3).Infof("enqueue update node %s for node networks change", newNode.Name)
 		c.updateNodeQueue.Add(newNode.Name)
+	}
+}
+
+func (c *Controller) recordProviderNetworkInitSuccessEvents(oldNode, newNode *v1.Node) {
+	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list provider networks while recording node %s initialization events: %v", newNode.Name, err)
+		return
+	}
+
+	for _, pn := range providerNetworks {
+		if !pn.DeletionTimestamp.IsZero() {
+			continue
+		}
+
+		readyLabel := fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)
+		interfaceLabel := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)
+		mtuLabel := fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)
+		if newNode.Labels[readyLabel] != "true" {
+			continue
+		}
+		nic, mtu := newNode.Labels[interfaceLabel], newNode.Labels[mtuLabel]
+		if oldNode.Labels[readyLabel] == "true" && oldNode.Labels[interfaceLabel] == nic && oldNode.Labels[mtuLabel] == mtu {
+			continue
+		}
+
+		c.recorder.Eventf(pn, v1.EventTypeNormal, "InitOVSBridgeSucceeded",
+			"Initialized provider network: node=%s interface=%s mtu=%s", newNode.Name, nic, mtu)
 	}
 }
 
@@ -500,7 +527,7 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 	var err error
 	klog.V(3).Infof("ovs init provider network %s", pn.Name)
 	// Configure main interface with ALL VLANs (including detected ones) in trunk
-	if mtu, err = ovsInitProviderNetworkFn(c, pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback, vlanInterfaceMap); err != nil {
+	if mtu, err = c.ovsInitProviderNetwork(pn.Name, nic, vlans.List(), pn.Spec.ExchangeLinkName, c.config.MacLearningFallback, vlanInterfaceMap); err != nil {
 		delete(patch, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
 		if err1 := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err1 != nil {
 			klog.Errorf("failed to patch annotations of node %s: %v", node.Name, err1)
@@ -520,12 +547,6 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		return err
 	}
 	c.recordProviderNetworkErr(pn.Name, "")
-	if node.Labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] != "true" ||
-		node.Labels[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] != nic ||
-		node.Labels[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] != strconv.Itoa(mtu) {
-		c.recorder.Eventf(pn, v1.EventTypeNormal, "InitOVSBridgeSucceeded",
-			"Initialized provider network: node=%s interface=%s mtu=%d", c.config.NodeName, nic, mtu)
-	}
 	return nil
 }
 
