@@ -18,37 +18,42 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func TestRecordSubnetError(t *testing.T) {
+type objectCapturingRecorder struct {
+	record.EventRecorder
+	objects []runtime.Object
+}
+
+func (r *objectCapturingRecorder) Eventf(object runtime.Object, eventType, reason, messageFmt string, args ...any) {
+	r.objects = append(r.objects, object)
+	r.EventRecorder.Eventf(object, eventType, reason, messageFmt, args...)
+}
+
+func TestRecordResourceError(t *testing.T) {
 	recorder := record.NewFakeRecorder(1)
 	c := &Controller{recorder: recorder}
-	subnet := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}}
+	object := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}}
 	sourceErr := errors.New("boom")
 
-	err := c.recordSubnetError(subnet, "ReconcileSubnetFailed", sourceErr)
+	err := c.recordResourceError(object, "ReconcileSubnetFailed", sourceErr)
 
 	require.ErrorIs(t, err, sourceErr)
 	require.Equal(t, "Warning ReconcileSubnetFailed boom", requireRecorderEvent(t, recorder))
 }
 
-func TestRecordIPPoolError(t *testing.T) {
+func TestResourceEventHelpersAllowMissingRecorderAndObject(t *testing.T) {
 	recorder := record.NewFakeRecorder(1)
 	c := &Controller{recorder: recorder}
-	ippool := &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: "pool-a"}}
-	sourceErr := errors.New("boom")
-
-	err := c.recordIPPoolError(ippool, "UpdateIPAMFailed", sourceErr)
-
-	require.ErrorIs(t, err, sourceErr)
-	require.Equal(t, "Warning UpdateIPAMFailed boom", requireRecorderEvent(t, recorder))
-}
-
-func TestResourceEventHelpersAllowMissingRecorderAndObject(t *testing.T) {
-	c := &Controller{}
+	var subnet *kubeovnv1.Subnet
 
 	require.NotPanics(t, func() {
-		c.recordSubnetEvent(nil, corev1.EventTypeNormal, "ReconcileSuccess", "done")
-		c.recordIPPoolEvent(nil, corev1.EventTypeNormal, "ReconcileSuccess", "done")
+		c.recordResourceEvent(nil, corev1.EventTypeNormal, "ReconcileSuccess", "done")
+		c.recordResourceEvent(subnet, corev1.EventTypeNormal, "ReconcileSuccess", "done")
 	})
+	select {
+	case event := <-recorder.Events:
+		t.Fatalf("unexpected event %q", event)
+	default:
+	}
 }
 
 func TestHandleAddOrUpdateSubnetRecordsFormatFailure(t *testing.T) {
@@ -150,6 +155,50 @@ func TestHandleAddOrUpdateSubnetDoesNotRecordSuccessWhenStatusPatchFails(t *test
 	}
 }
 
+func TestHandleAddOrUpdateSubnetRecordsFinalizerPatchFailure(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:      util.DefaultVpc,
+			Provider: "external.provider",
+			Vlan:     "vlan-a",
+		},
+	}
+	vlan := &kubeovnv1.Vlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "vlan-a"},
+		Spec:       kubeovnv1.VlanSpec{Provider: "provider-a"},
+	}
+	providerNetwork := &kubeovnv1.ProviderNetwork{
+		ObjectMeta: metav1.ObjectMeta{Name: "provider-a"},
+		Status:     kubeovnv1.ProviderNetworkStatus{Vlans: []string{"vlan-a"}},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:          []*kubeovnv1.Subnet{subnet},
+		Vlans:            []*kubeovnv1.Vlan{vlan},
+		ProviderNetworks: []*kubeovnv1.ProviderNetwork{providerNetwork},
+	})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	finalizerErr := errors.New("finalizer patch failed")
+	controller.config.KubeOvnClient.(*kubeovnfake.Clientset).PrependReactor("patch", "subnets", func(action ktesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() == "status" {
+			return false, nil, nil
+		}
+		return true, nil, finalizerErr
+	})
+	fakeRecorder := controller.recorder.(*record.FakeRecorder)
+	recorder := &objectCapturingRecorder{EventRecorder: fakeRecorder}
+	controller.recorder = recorder
+
+	err = controller.handleAddOrUpdateSubnet(subnet.Name)
+
+	require.ErrorIs(t, err, finalizerErr)
+	require.Equal(t, "Normal ValidateLogicalSwitchSuccess Subnet subnet-a status updated successfully", requireRecorderEvent(t, fakeRecorder))
+	require.Equal(t, "Warning UpdateFinalizerFailed finalizer patch failed", requireRecorderEvent(t, fakeRecorder))
+	require.Len(t, recorder.objects, 2)
+	require.Equal(t, "subnet-a", recorder.objects[1].(metav1.Object).GetName())
+}
+
 func TestHandleAddOrUpdateIPPoolDoesNotRecordSuccessWhenStatusPatchFails(t *testing.T) {
 	ippool := &kubeovnv1.IPPool{
 		ObjectMeta: metav1.ObjectMeta{
@@ -193,8 +242,8 @@ func TestRecordResourceSuccessEvents(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}}
 	ippool := &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: "pool-a"}}
 
-	c.recordSubnetEvent(subnet, corev1.EventTypeNormal, "ReconcileSuccess", "Subnet subnet-a reconciled successfully")
-	c.recordIPPoolEvent(ippool, corev1.EventTypeNormal, "DeleteSuccess", "IPPool pool-a deleted successfully")
+	c.recordResourceEvent(subnet, corev1.EventTypeNormal, "ReconcileSuccess", "Subnet subnet-a reconciled successfully")
+	c.recordResourceEvent(ippool, corev1.EventTypeNormal, "DeleteSuccess", "IPPool pool-a deleted successfully")
 
 	require.Equal(t, "Normal ReconcileSuccess Subnet subnet-a reconciled successfully", requireRecorderEvent(t, recorder))
 	require.Equal(t, "Normal DeleteSuccess IPPool pool-a deleted successfully", requireRecorderEvent(t, recorder))

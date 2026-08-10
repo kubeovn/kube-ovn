@@ -82,7 +82,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	ippool := cachedIPPool.DeepCopy()
 	if err = c.handleAddIPPoolFinalizer(ippool); err != nil {
 		klog.Errorf("failed to add finalizer for ippool %s: %v", ippool.Name, err)
-		return c.recordIPPoolError(ippool, "UpdateFinalizerFailed", err)
+		return c.recordResourceError(ippool, "UpdateFinalizerFailed", err)
 	}
 	if !ippool.DeletionTimestamp.IsZero() {
 		klog.Infof("ippool %s is being deleted, skip add/update handling", ippool.Name)
@@ -93,7 +93,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "ReconcileAddressSetFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
-			return errors.Join(err, c.recordIPPoolError(ippool, "UpdateStatusFailed", patchErr))
+			return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
 		}
 		return err
 	}
@@ -101,7 +101,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		klog.Errorf("failed to add/update ippool %s with IPs %v in subnet %s: %v", ippool.Name, ippool.Spec.IPs, ippool.Spec.Subnet, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "UpdateIPAMFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
-			return errors.Join(err, c.recordIPPoolError(ippool, "UpdateStatusFailed", patchErr))
+			return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
 		}
 		return err
 	}
@@ -110,7 +110,7 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 
 	if err = c.patchIPPoolStatusCondition(ippool, "UpdateIPAMSucceeded", ""); err != nil {
 		klog.Error(err)
-		return c.recordIPPoolError(ippool, "UpdateStatusFailed", err)
+		return c.recordResourceError(ippool, "UpdateStatusFailed", err)
 	}
 
 	for _, ns := range ippool.Spec.Namespaces {
@@ -125,7 +125,7 @@ func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) (err error) {
 	defer func() { _ = c.ippoolKeyMutex.UnlockKey(ippool.Name) }()
 	defer func() {
 		if err != nil {
-			_ = c.recordIPPoolError(ippool, "DeleteFailed", fmt.Errorf("failed to delete ippool %s: %w", ippool.Name, err))
+			_ = c.recordResourceError(ippool, "DeleteFailed", fmt.Errorf("failed to delete ippool %s: %w", ippool.Name, err))
 		}
 	}()
 	hadFinalizer := controllerutil.ContainsFinalizer(ippool, util.DeprecatedFinalizerName) ||
@@ -156,7 +156,7 @@ func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) (err error) {
 	}
 
 	if hadFinalizer {
-		c.recordIPPoolEvent(ippool, corev1.EventTypeNormal, "DeleteSuccess", fmt.Sprintf("IPPool %s deleted successfully", ippool.Name))
+		c.recordResourceEvent(ippool, corev1.EventTypeNormal, "DeleteSuccess", fmt.Sprintf("IPPool %s deleted successfully", ippool.Name))
 	}
 
 	return nil
@@ -182,7 +182,7 @@ func (c *Controller) handleUpdateIPPoolStatus(key string) error {
 	}
 
 	if err := c.patchIPPoolStatus(ippool); err != nil {
-		return c.recordIPPoolError(ippool, "UpdateStatusFailed", err)
+		return c.recordResourceError(ippool, "UpdateStatusFailed", err)
 	}
 	return nil
 }
@@ -191,7 +191,7 @@ func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason
 	if errMsg != "" {
 		ippool.Status.SetError(reason, errMsg)
 		ippool.Status.NotReady(reason, errMsg)
-		c.recordIPPoolEvent(ippool, corev1.EventTypeWarning, reason, errMsg)
+		c.recordResourceEvent(ippool, corev1.EventTypeWarning, reason, errMsg)
 		return c.patchIPPoolStatus(ippool)
 	}
 
@@ -200,7 +200,7 @@ func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason
 		return err
 	}
 	// to observe ippool status change to normal
-	c.recordIPPoolEvent(ippool, corev1.EventTypeNormal, reason, fmt.Sprintf("IPPool %s reconciled successfully", ippool.Name))
+	c.recordResourceEvent(ippool, corev1.EventTypeNormal, reason, fmt.Sprintf("IPPool %s reconciled successfully", ippool.Name))
 	return nil
 }
 
