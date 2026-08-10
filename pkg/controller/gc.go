@@ -928,7 +928,7 @@ func (c *Controller) gcNetworkPolicy() error {
 			klog.Infof("gc port group '%s' network policy '%s'", pg.Name, pg.ExternalIDs[networkPolicyKey])
 			delPgNames.Add(pg.Name)
 			if c.config.EnableNP {
-				c.deleteNpQueue.Add(pg.ExternalIDs[networkPolicyKey])
+				c.deleteNpQueue.Add(networkPolicyDeleteRequest{key: pg.ExternalIDs[networkPolicyKey]})
 			}
 		}
 	}

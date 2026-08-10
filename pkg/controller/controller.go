@@ -272,7 +272,7 @@ type Controller struct {
 	npsSynced        cache.InformerSynced
 	npIndexer        cache.Indexer
 	updateNpQueue    workqueue.TypedRateLimitingInterface[string]
-	deleteNpQueue    workqueue.TypedRateLimitingInterface[string]
+	deleteNpQueue    workqueue.TypedRateLimitingInterface[networkPolicyDeleteRequest]
 	npSamplingQueue  workqueue.TypedRateLimitingInterface[string]
 	npSamplingStates *xsync.Map[string, *networkPolicySamplingState]
 	npKeyMutex       keymutex.KeyMutex
@@ -762,7 +762,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.npsSynced = npInformer.Informer().HasSynced
 		controller.npIndexer = npInformer.Informer().GetIndexer()
 		controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
-		controller.deleteNpQueue = newTypedRateLimitingQueue[string]("DeleteNetworkPolicy", nil)
+		controller.deleteNpQueue = newTypedRateLimitingQueue[networkPolicyDeleteRequest]("DeleteNetworkPolicy", nil)
 		if config.ACLSampling.Enabled {
 			controller.npSamplingQueue = newTypedRateLimitingQueue[string]("SampleNetworkPolicyACL", nil)
 			controller.npSamplingStates = xsync.NewMap[string, *networkPolicySamplingState]()
@@ -1738,6 +1738,8 @@ func getWorkItemKey(obj any) string {
 		return v.key
 	case *SwitchLBRuleInfo:
 		return v.Name
+	case networkPolicyDeleteRequest:
+		return v.key
 	default:
 		key, err := cache.MetaNamespaceKeyFunc(obj)
 		if err != nil {
