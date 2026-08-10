@@ -3994,7 +3994,6 @@ spec:
                         type: object
                     type: object
                 type: object
- 
               policies:
                 description: |-
                   egress policies

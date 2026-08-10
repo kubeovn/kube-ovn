@@ -249,8 +249,9 @@ func (c *Controller) currentVpcEgressObserverState(gw *kubeovnv1.VpcEgressGatewa
 func (c *Controller) setVpcEgressGatewayObservabilityCondition(gw *kubeovnv1.VpcEgressGateway, conditionType kubeovnv1.ConditionType, status corev1.ConditionStatus, reason, message string) {
 	previous := gw.Status.Conditions.GetCondition(conditionType)
 	gw.Status.Conditions.SetCondition(conditionType, status, reason, message, gw.Generation)
-	if status == corev1.ConditionFalse && (previous == nil || previous.Status != status || previous.Reason != reason || previous.Message != message) {
-		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, reason, message)
+	if status == corev1.ConditionFalse && c.recorder != nil &&
+		(previous == nil || previous.Status != status || previous.Reason != reason || previous.Message != message) {
+		c.recorder.Eventf(gw, corev1.EventTypeWarning, reason, "%s", message)
 	}
 }
 
