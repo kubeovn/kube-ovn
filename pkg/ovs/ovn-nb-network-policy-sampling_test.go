@@ -150,6 +150,30 @@ func TestNetworkPolicyACLSamplingReusesSnapshotMetadata(t *testing.T) {
 	}, 3*time.Second, 20*time.Millisecond)
 }
 
+func TestNetworkPolicyACLSamplingReusesSampleCreatedInSameRun(t *testing.T) {
+	client := newACLSamplingTestClient(t, "network-policy-created-sample-reuse")
+	const pgName = "duplicate-rule.default"
+	require.NoError(t, client.CreatePortGroup(pgName, nil))
+	waitForPortGroup(t, client, pgName)
+
+	const aclName = "np/duplicate-rule.default/ingress/IPv4/0"
+	first := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, aclName)
+	second := newNetworkPolicySamplingTestACL(t, client, pgName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, ovnnb.ACLActionAllowRelated, aclName)
+	require.NoError(t, client.CreateAcls(pgName, portGroupKey, first, second))
+	waitForACLCount(t, client, pgName, 2)
+
+	request, err := client.PrepareNetworkPolicyACLSampling(pgName, "default", "duplicate-rule", "bbbbbbbb-cccc-dddd-eeee-ffffffffffff")
+	require.NoError(t, err)
+	require.NoError(t, client.ApplyNetworkPolicyACLSampling(validACLSamplingConfig(), request))
+	require.Eventually(t, func() bool {
+		acls, listErr := client.ListAcls("", map[string]string{aclParentKey: pgName})
+		if listErr != nil || len(acls) != 2 || acls[0].SampleNew == nil || acls[1].SampleNew == nil {
+			return false
+		}
+		return *acls[0].SampleNew == *acls[1].SampleNew
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestNetworkPolicyACLSamplingPreservesUnownedReferences(t *testing.T) {
 	client := newACLSamplingTestClient(t, "network-policy-unowned-reference")
 	const pgName = "external-sample.default"
