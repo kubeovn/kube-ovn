@@ -12,9 +12,13 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	corelisters "k8s.io/client-go/listers/core/v1"
+	netlisters "k8s.io/client-go/listers/networking/v1"
+	"k8s.io/client-go/tools/cache"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
+	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -76,6 +80,33 @@ func TestGcSecurityGroupSkipsVpcEgressGatewayPortGroup(t *testing.T) {
 	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Times(0)
 
 	require.NoError(t, ctrl.gcSecurityGroup())
+}
+
+func TestGcNetworkPolicyQueuesNormalizedPortGroupDeletion(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	ctrl.config.EnableNP = true
+	ctrl.deleteNpQueue = newTypedRateLimitingQueue[networkPolicyDeleteRequest]("TestDeleteNetworkPolicy", nil)
+	ctrl.npsLister = netlisters.NewNetworkPolicyLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	ctrl.nodesLister = corelisters.NewNodeLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	ctrl.subnetsLister = kubeovnlisters.NewSubnetLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	t.Cleanup(ctrl.deleteNpQueue.ShutDown)
+
+	fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{networkPolicyKey: ""}).Return([]ovnnb.PortGroup{{
+		Name:        "np1test.default",
+		ExternalIDs: map[string]string{networkPolicyKey: "default/np1test"},
+	}}, nil)
+	// Enabled NetworkPolicy cleanup runs through the serialized delete worker;
+	// GC must not delete a port group after a replacement policy appears.
+	fakeController.mockOvnClient.EXPECT().DeletePortGroup().Return(nil)
+
+	require.NoError(t, ctrl.gcNetworkPolicy())
+	require.Equal(t, 1, ctrl.deleteNpQueue.Len())
+	request, shutdown := ctrl.deleteNpQueue.Get()
+	require.False(t, shutdown)
+	ctrl.deleteNpQueue.Done(request)
+	require.Equal(t, "default/np1test", request.key)
+	require.Equal(t, "np1test.default", request.portGroupName)
 }
 
 func vmTemplate(networks []kubevirtv1.Network, annotations map[string]string) *kubevirtv1.VirtualMachineInstanceTemplateSpec {

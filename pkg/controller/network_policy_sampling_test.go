@@ -10,6 +10,8 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	netlisters "k8s.io/client-go/listers/networking/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
 
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
@@ -41,14 +43,15 @@ func TestHandleNetworkPolicyACLSamplingUsesRequestStoredByConcurrentEnforcement(
 	newRequest := new(ovs.NetworkPolicySamplingRequest)
 	controller.npSamplingStates.Store(key, &networkPolicySamplingState{request: oldRequest, ready: true})
 
-	controller.npKeyMutex.LockKey(key)
+	lockKey := networkPolicyPortGroupName("default", "test")
+	controller.npKeyMutex.LockKey(lockKey)
 	done := make(chan error, 1)
 	go func() {
 		done <- controller.handleNetworkPolicyACLSampling(key)
 	}()
 	controller.npSamplingStates.Store(key, &networkPolicySamplingState{request: newRequest, ready: true})
 	nbClient.EXPECT().ApplyNetworkPolicyACLSampling(config, newRequest).Return(nil)
-	require.NoError(t, controller.npKeyMutex.UnlockKey(key))
+	require.NoError(t, controller.npKeyMutex.UnlockKey(lockKey))
 
 	require.NoError(t, <-done)
 	_, ok := controller.npSamplingStates.Load(key)
@@ -97,14 +100,39 @@ func TestDeleteNetworkPolicySamplingStateMatchesPolicyUID(t *testing.T) {
 	state := &networkPolicySamplingState{request: new(ovs.NetworkPolicySamplingRequest), policyUID: types.UID("new-uid")}
 	controller.npSamplingStates.Store(key, state)
 
-	controller.deleteNetworkPolicySamplingState(key, types.UID("old-uid"))
+	controller.deleteNetworkPolicySamplingState(key, "pg", types.UID("old-uid"))
 	actual, ok := controller.npSamplingStates.Load(key)
 	require.True(t, ok)
 	require.Same(t, state, actual)
 
-	controller.deleteNetworkPolicySamplingState(key, types.UID("new-uid"))
+	controller.deleteNetworkPolicySamplingState(key, "pg", types.UID("new-uid"))
 	_, ok = controller.npSamplingStates.Load(key)
 	require.False(t, ok)
+}
+
+func TestDeleteNetworkPolicySamplingStateMatchesLegacyPortGroupName(t *testing.T) {
+	controller, _, _ := newNetworkPolicySamplingTestController(t)
+	const key = "default/1test"
+	state := &networkPolicySamplingState{
+		request:       new(ovs.NetworkPolicySamplingRequest),
+		policyUID:     types.UID("uid"),
+		portGroupName: "np1test.default",
+	}
+	controller.npSamplingStates.Store(key, state)
+
+	controller.deleteNetworkPolicySamplingState("default/np1test", "np1test.default", "")
+	_, ok := controller.npSamplingStates.Load(key)
+	require.False(t, ok)
+}
+
+func TestNetworkPolicyPortGroupInUseMatchesNormalizedName(t *testing.T) {
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(&netv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "1test"}}))
+	controller := &Controller{npsLister: netlisters.NewNetworkPolicyLister(indexer)}
+
+	inUse, err := controller.networkPolicyPortGroupInUse("default", "np1test.default")
+	require.NoError(t, err)
+	require.True(t, inUse)
 }
 
 func TestHandleNetworkPolicyACLSamplingWaitsForSuccessfulEnforcement(t *testing.T) {
