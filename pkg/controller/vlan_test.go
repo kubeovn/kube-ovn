@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -17,6 +18,29 @@ import (
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 )
+
+type recordedVlanEvent struct {
+	object    runtime.Object
+	eventType string
+	reason    string
+	message   string
+}
+
+type vlanEventRecorder struct {
+	events []recordedVlanEvent
+}
+
+func (r *vlanEventRecorder) Event(object runtime.Object, eventType, reason, message string) {
+	r.events = append(r.events, recordedVlanEvent{object: object, eventType: eventType, reason: reason, message: message})
+}
+
+func (r *vlanEventRecorder) Eventf(object runtime.Object, eventType, reason, messageFmt string, args ...any) {
+	r.Event(object, eventType, reason, fmt.Sprintf(messageFmt, args...))
+}
+
+func (r *vlanEventRecorder) AnnotatedEventf(object runtime.Object, _ map[string]string, eventType, reason, messageFmt string, args ...any) {
+	r.Eventf(object, eventType, reason, messageFmt, args...)
+}
 
 func requireVlanEvent(t *testing.T, recorder *record.FakeRecorder, parts ...string) string {
 	t.Helper()
@@ -84,11 +108,13 @@ func TestHandleAddVlanRecordsMissingProviderNetwork(t *testing.T) {
 }
 
 func TestHandleAddVlanRecordsUpdateFailure(t *testing.T) {
-	vlan := &kubeovnv1.Vlan{ObjectMeta: metav1.ObjectMeta{Name: "vlan-a"}}
+	vlan := &kubeovnv1.Vlan{ObjectMeta: metav1.ObjectMeta{Name: "vlan-a", UID: "vlan-uid"}}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Vlans: []*kubeovnv1.Vlan{vlan}})
 	require.NoError(t, err)
 	fc.fakeController.vlanKeyMutex = keymutex.NewHashed(0)
 	fc.fakeController.config.DefaultProviderName = "provider-a"
+	recorder := &vlanEventRecorder{}
+	fc.fakeController.recorder = recorder
 	sourceErr := errors.New("update failed")
 	kubeovnClient := fc.fakeController.config.KubeOvnClient.(*kubeovnfake.Clientset)
 	kubeovnClient.PrependReactor("update", "vlans", func(k8stesting.Action) (bool, runtime.Object, error) {
@@ -98,7 +124,14 @@ func TestHandleAddVlanRecordsUpdateFailure(t *testing.T) {
 	err = fc.fakeController.handleAddVlan(vlan.Name)
 
 	require.ErrorIs(t, err, sourceErr)
-	require.Equal(t, "Warning UpdateSpecFailed update failed", requireVlanEvent(t, fc.fakeController.recorder.(*record.FakeRecorder)))
+	require.Len(t, recorder.events, 1)
+	event := recorder.events[0]
+	require.Equal(t, corev1.EventTypeWarning, event.eventType)
+	require.Equal(t, "UpdateSpecFailed", event.reason)
+	require.Equal(t, sourceErr.Error(), event.message)
+	target := event.object.(*kubeovnv1.Vlan)
+	require.Equal(t, vlan.Name, target.Name)
+	require.Equal(t, vlan.UID, target.UID)
 }
 
 func TestHandleAddVlanRecordsConflict(t *testing.T) {
@@ -163,6 +196,7 @@ func TestHandleDelVlanRecordsSuccess(t *testing.T) {
 		vlanName = "vlan-a"
 		pnName   = "provider-a"
 	)
+	vlan := &kubeovnv1.Vlan{ObjectMeta: metav1.ObjectMeta{Name: vlanName, UID: "vlan-uid"}}
 	pn := &kubeovnv1.ProviderNetwork{
 		ObjectMeta: metav1.ObjectMeta{Name: pnName},
 		Status:     kubeovnv1.ProviderNetworkStatus{Vlans: []string{vlanName}},
@@ -172,9 +206,16 @@ func TestHandleDelVlanRecordsSuccess(t *testing.T) {
 	})
 	require.NoError(t, err)
 	fc.fakeController.vlanKeyMutex = keymutex.NewHashed(0)
+	recorder := &vlanEventRecorder{}
+	fc.fakeController.recorder = recorder
 
-	err = fc.fakeController.handleDelVlan(vlanName)
+	err = fc.fakeController.handleDelVlan(vlan)
 
 	require.NoError(t, err)
-	require.Equal(t, "Normal DeleteSuccess Vlan vlan-a deleted successfully", requireVlanEvent(t, fc.fakeController.recorder.(*record.FakeRecorder)))
+	require.Len(t, recorder.events, 1)
+	event := recorder.events[0]
+	require.Equal(t, corev1.EventTypeNormal, event.eventType)
+	require.Equal(t, "DeleteSuccess", event.reason)
+	require.Equal(t, "Vlan vlan-a deleted successfully", event.message)
+	require.Equal(t, vlan.UID, event.object.(*kubeovnv1.Vlan).UID)
 }
