@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/kubernetes/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -106,69 +105,60 @@ func TestHandleAddOrUpdateProviderNetworkRecordsInitializationFailureEvent(t *te
 		"Warning", "InitOVSBridgeFailed", "node=node-1", "interface=eth1", "cache unavailable")
 }
 
-func TestHandleAddOrUpdateProviderNetworkRecordsInitializationSuccessEvent(t *testing.T) {
-	pn := &kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: "provider-network-1"},
-		Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth1"},
-	}
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
-	controller, recorder := newProviderNetworkEventController(t, pn, node)
-
-	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "kube-ovn-cni-node-1", Namespace: metav1.NamespaceSystem}}
-	podIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
-	require.NoError(t, podIndexer.Add(pod))
-	controller.podsLister = corelisters.NewPodLister(podIndexer)
-	controller.config.KubeClient = fake.NewSimpleClientset(node, pod)
-	controller.config.PodName = pod.Name
-	controller.config.PodNamespace = pod.Namespace
-
-	originalOVSInitProviderNetwork := ovsInitProviderNetworkFn
-	ovsInitProviderNetworkFn = func(_ *Controller, provider, nic string, trunks []string, exchangeLinkName, macLearningFallback bool, vlanInterfaceMap map[string]int) (int, error) {
-		require.Equal(t, pn.Name, provider)
-		require.Equal(t, pn.Spec.DefaultInterface, nic)
-		require.ElementsMatch(t, []string{"0"}, trunks)
-		require.False(t, exchangeLinkName)
-		require.False(t, macLearningFallback)
-		require.Empty(t, vlanInterfaceMap)
-		return 1500, nil
-	}
-	t.Cleanup(func() { ovsInitProviderNetworkFn = originalOVSInitProviderNetwork })
-
-	require.NoError(t, controller.handleAddOrUpdateProviderNetwork(pn.Name))
-	requireProviderNetworkEvent(t, recorder,
-		"Normal", "InitOVSBridgeSucceeded", "node=node-1", "interface=eth1", "mtu=1500")
+func providerNetworkReadyNode(nodeName, providerNetwork, nic, mtu string) *corev1.Node {
+	return &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: nodeName,
+		Labels: map[string]string{
+			fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetwork):     "true",
+			fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetwork): nic,
+			fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork):       mtu,
+		},
+	}}
 }
 
-func TestHandleAddOrUpdateProviderNetworkDoesNotRepeatSuccessEvent(t *testing.T) {
+func TestEnqueueUpdateNodeRecordsProviderNetworkInitializationSuccessEvent(t *testing.T) {
 	const providerNetworkName = "provider-network-1"
 	pn := &kubeovnv1.ProviderNetwork{
 		ObjectMeta: metav1.ObjectMeta{Name: providerNetworkName},
 		Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth1"},
 	}
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
-		Name: "node-1",
-		Labels: map[string]string{
-			fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetworkName):     "true",
-			fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetworkName): "eth1",
-			fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetworkName):       "1500",
+
+	tests := []struct {
+		name    string
+		oldNode *corev1.Node
+	}{
+		{
+			name:    "readiness changed",
+			oldNode: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}},
 		},
-	}}
+		{
+			name:    "interface changed",
+			oldNode: providerNetworkReadyNode("node-1", providerNetworkName, "eth0", "1500"),
+		},
+		{
+			name:    "MTU changed",
+			oldNode: providerNetworkReadyNode("node-1", providerNetworkName, "eth1", "1400"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			newNode := providerNetworkReadyNode("node-1", providerNetworkName, "eth1", "1500")
+			controller, recorder := newProviderNetworkEventController(t, pn, tt.oldNode)
+
+			controller.enqueueUpdateNode(tt.oldNode, newNode)
+			requireProviderNetworkEvent(t, recorder,
+				"Normal", "InitOVSBridgeSucceeded", "node=node-1", "interface=eth1", "mtu=1500")
+		})
+	}
+}
+
+func TestEnqueueUpdateNodeDoesNotRepeatProviderNetworkInitializationSuccessEvent(t *testing.T) {
+	const providerNetworkName = "provider-network-1"
+	pn := &kubeovnv1.ProviderNetwork{ObjectMeta: metav1.ObjectMeta{Name: providerNetworkName}}
+	node := providerNetworkReadyNode("node-1", providerNetworkName, "eth1", "1500")
 	controller, recorder := newProviderNetworkEventController(t, pn, node)
 
-	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "kube-ovn-cni-node-1", Namespace: metav1.NamespaceSystem}}
-	podIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
-	require.NoError(t, podIndexer.Add(pod))
-	controller.podsLister = corelisters.NewPodLister(podIndexer)
-	controller.config.KubeClient = fake.NewSimpleClientset(node, pod)
-	controller.config.PodName = pod.Name
-	controller.config.PodNamespace = pod.Namespace
-
-	originalOVSInitProviderNetwork := ovsInitProviderNetworkFn
-	ovsInitProviderNetworkFn = func(_ *Controller, _, _ string, _ []string, _, _ bool, _ map[string]int) (int, error) {
-		return 1500, nil
-	}
-	t.Cleanup(func() { ovsInitProviderNetworkFn = originalOVSInitProviderNetwork })
-
-	require.NoError(t, controller.handleAddOrUpdateProviderNetwork(pn.Name))
+	controller.enqueueUpdateNode(node, node.DeepCopy())
 	requireNoProviderNetworkEvent(t, recorder)
 }
