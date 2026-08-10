@@ -74,6 +74,28 @@ wait_for() {
   done
 }
 
+endpoint_for_ip() {
+  local ip=$1
+  if [[ "$ip" == *:* ]]; then
+    printf '[%s]:8080\n' "$ip"
+  else
+    printf '%s:8080\n' "$ip"
+  fi
+}
+
+start_sample_listener() {
+  : >"$SAMPLE_OUTPUT"
+  : >"$LISTENER_LOG"
+  kubectl ko acl-sample listen --node "$NODE_NAME" >"$SAMPLE_OUTPUT" 2>"$LISTENER_LOG" &
+  LISTENER_PID=$!
+}
+
+stop_sample_listener() {
+  kill "$LISTENER_PID" 2>/dev/null || true
+  wait "$LISTENER_PID" 2>/dev/null || true
+  LISTENER_PID=""
+}
+
 sampling_references_ready() {
   local policy_uid=$1
   local rows
@@ -142,11 +164,25 @@ policy_sampling_references_absent() {
   local policy_parent=$1
   local references
   references=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid find ACL \
-    "external_ids:parent=$policy_parent" 'sample_new!=[]')
+    "external_ids:parent=$policy_parent" 'sample_new!=[]') || return 1
   [ -z "$references" ] || return 1
   references=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid find ACL \
-    "external_ids:parent=$policy_parent" 'sample_est!=[]')
+    "external_ids:parent=$policy_parent" 'sample_est!=[]') || return 1
   [ -z "$references" ]
+}
+
+policy_sampling_disabled() {
+  local policy_parent=$1
+  local rows
+  rows=$(kubectl ko nbctl --format=csv --data=bare --no-heading \
+    --columns=action,sample_new,sample_est find ACL \
+    "external_ids:parent=$policy_parent") || return 1
+  awk -F, '
+    $1 == "allow-related" { allow = 1 }
+    $1 == "drop" { default_deny = 1 }
+    ($2 != "" && $2 != "[]") || ($3 != "" && $3 != "[]") { sampled = 1 }
+    END { exit !(allow && default_deny && !sampled) }
+  ' <<< "$rows"
 }
 
 controller_sampling_failure_observed() {
@@ -180,13 +216,13 @@ node_collector_set_uuids() {
 
 node_collector_set_ready() {
   local uuids
-  uuids=$(node_collector_set_uuids)
+  uuids=$(node_collector_set_uuids) || return 1
   [ -n "$uuids" ]
 }
 
 node_collector_set_absent() {
   local uuids
-  uuids=$(node_collector_set_uuids)
+  uuids=$(node_collector_set_uuids) || return 1
   [ -z "$uuids" ]
 }
 
@@ -223,17 +259,25 @@ disable_acl_sampling() {
 }
 
 sampling_cleanup_complete() {
-  local sampled_acls applications collectors node_sets
+  local sampled_acls applications collectors node_sets nodes node
+  policy_sampling_disabled "$POLICY_PARENT" || return 1
+  policy_sampling_disabled "$FAILURE_PORT_GROUP" || return 1
   sampled_acls=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
-    find ACL 'external_ids:kube-ovn.io/sample-feature=network-policy')
+    find ACL 'external_ids:kube-ovn.io/sample-feature=network-policy') || return 1
   applications=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
-    find Sampling_App 'external_ids:kube-ovn.io/feature=acl-sampling')
+    find Sampling_App 'external_ids:kube-ovn.io/feature=acl-sampling') || return 1
   collectors=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
-    find Sample_Collector 'external_ids:kube-ovn.io/feature=acl-sampling')
-  node_sets=$(kubectl ko vsctl "$NODE_NAME" --data=bare --no-heading --columns=_uuid \
-    find Flow_Sample_Collector_Set 'external_ids:kube-ovn.io/feature=acl-sampling')
+    find Sample_Collector 'external_ids:kube-ovn.io/feature=acl-sampling') || return 1
+  nodes=$(kubectl get nodes -o name) || return 1
+  [ -n "$nodes" ] || return 1
+  while IFS= read -r node; do
+    node=${node#node/}
+    node_sets=$(kubectl ko vsctl "$node" --data=bare --no-heading --columns=_uuid \
+      find Flow_Sample_Collector_Set 'external_ids:kube-ovn.io/feature=acl-sampling') || return 1
+    [ -z "$node_sets" ] || return 1
+  done <<< "$nodes"
   [ -z "$sampled_acls" ] && [ -z "$applications" ] &&
-    [ -z "$collectors" ] && [ -z "$node_sets" ]
+    [ -z "$collectors" ]
 }
 
 NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
@@ -310,22 +354,15 @@ EOF
 
 kubectl wait -n "$NAMESPACE" --for=condition=Ready pod/target pod/allowed pod/denied --timeout=2m
 POLICY_UID=$(kubectl get networkpolicy -n "$NAMESPACE" "$POLICY_NAME" -o jsonpath='{.metadata.uid}')
+POLICY_PARENT="${POLICY_NAME//-/.}.${NAMESPACE//-/.}"
 TARGET_IP=$(kubectl get pod -n "$NAMESPACE" target -o jsonpath='{.status.podIP}')
-if [[ "$TARGET_IP" == *:* ]]; then
-  TARGET_ENDPOINT="[$TARGET_IP]:8080"
-else
-  TARGET_ENDPOINT="$TARGET_IP:8080"
-fi
+TARGET_ENDPOINT=$(endpoint_for_ip "$TARGET_IP")
 
 wait_for 'NetworkPolicy ACL sampling references' 90 sampling_references_ready "$POLICY_UID"
 
-kubectl ko acl-sample listen --node "$NODE_NAME" >"$SAMPLE_OUTPUT" 2>"$LISTENER_LOG" &
-LISTENER_PID=$!
+start_sample_listener
 wait_for_expected_samples
-
-kill "$LISTENER_PID" 2>/dev/null || true
-wait "$LISTENER_PID" 2>/dev/null || true
-LISTENER_PID=""
+stop_sample_listener
 
 CONFLICT_COLLECTOR_UUID=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
   find Sample_Collector id=1 'external_ids:kube-ovn.io/feature=acl-sampling')
@@ -377,11 +414,7 @@ kubectl wait -n "$NAMESPACE" --for=condition=Ready pod/failure-target --timeout=
 FAILURE_POLICY_UID=$(kubectl get networkpolicy -n "$NAMESPACE" sampling-failure -o jsonpath='{.metadata.uid}')
 FAILURE_PORT_GROUP="sampling.failure.${NAMESPACE//-/.}"
 FAILURE_TARGET_IP=$(kubectl get pod -n "$NAMESPACE" failure-target -o jsonpath='{.status.podIP}')
-if [[ "$FAILURE_TARGET_IP" == *:* ]]; then
-  FAILURE_TARGET_ENDPOINT="[$FAILURE_TARGET_IP]:8080"
-else
-  FAILURE_TARGET_ENDPOINT="$FAILURE_TARGET_IP:8080"
-fi
+FAILURE_TARGET_ENDPOINT=$(endpoint_for_ip "$FAILURE_TARGET_IP")
 
 wait_for 'failure-injection NetworkPolicy enforcement ACLs' 90 policy_enforcement_acls_ready "$FAILURE_PORT_GROUP"
 wait_for 'controller ACL sampling conflict warning' 90 controller_sampling_failure_observed
@@ -418,11 +451,16 @@ DATAPATH_CAPABILITY_OVERRIDDEN=false
 kubectl rollout restart daemonset/kube-ovn-cni -n kube-system
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout=2m
 wait_for 'node ACL sampling recovery' 90 node_collector_set_ready
+start_sample_listener
+wait_for_expected_samples
+stop_sample_listener
 
 disable_acl_sampling deployment kube-ovn-controller kube-ovn-controller
 disable_acl_sampling daemonset kube-ovn-cni cni-server
 kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout=2m
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout=2m
 wait_for 'owned controller and node ACL sampling state cleanup' 90 sampling_cleanup_complete
+verify_policy_connectivity "$TARGET_ENDPOINT"
+verify_policy_connectivity "$FAILURE_TARGET_ENDPOINT"
 
 echo 'ACL sampling E2E passed'

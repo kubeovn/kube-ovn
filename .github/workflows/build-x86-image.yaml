@@ -456,6 +456,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
+      test-acl-sampling: ${{ steps.filter.outputs.acl-sampling }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -468,17 +469,26 @@ jobs:
       - name: Generate path filter
         run: |
           filter=".github/path-filters.yaml"
-          cat > $filter <<EOF
+          cat > "$filter" <<EOF
+          acl-sampling:
+          - .github/workflows/build-x86-image.yaml
+          - cmd/acl_sample/**
+          - cmd/cni/**
+          - dist/images/install.sh
+          - dist/images/kubectl-ko
+          - hack/acl-sampling-e2e.sh
+          - mocks/pkg/ovs/**
+          - pkg/aclsampling/**
+          - pkg/controller/**
+          - pkg/daemon/**
+          - pkg/ovs/**
           kube-ovn-controller:
           - go.mod
           - go.sum
-          - .github/workflows/build-x86-image.yaml
-          - dist/images/install.sh
-          - hack/acl-sampling-e2e.sh
           EOF
 
-          sh hack/go-list.sh pkg/controller | while read f; do
-            echo "- $f" | tee -a $filter
+          sh hack/go-list.sh pkg/controller | while IFS= read -r f; do
+            echo "- $f" | tee -a "$filter"
           done
 
       - uses: dorny/paths-filter@v4
@@ -689,7 +699,7 @@ jobs:
     name: ACL Sampling E2E
     if: |
       always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
+      (needs.netpol-path-filter.outputs.test-acl-sampling == 'true' || contains(github.event.pull_request.labels.*.name, 'network policy'))
     needs:
       - build-kube-ovn
       - netpol-path-filter
@@ -741,15 +751,23 @@ jobs:
         id: e2e
         run: bash hack/acl-sampling-e2e.sh
 
-      - name: Collect diagnostics
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
-        run: |
-          kubectl get events -A -o yaml > acl-sampling-e2e-events.yaml
-          kubectl get pods -A -o wide > acl-sampling-e2e-pods.txt
-          make kubectl-ko-log
+      - name: Collect events
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: kubectl get events -A -o yaml > acl-sampling-e2e-events.yaml
+
+      - name: Collect pod status
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: kubectl get pods -A -o wide > acl-sampling-e2e-pods.txt
+
+      - name: Collect kubectl ko log
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: make kubectl-ko-log
 
       - name: Upload diagnostics
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         uses: actions/upload-artifact@v7
         with:
           name: acl-sampling-e2e-diagnostics
