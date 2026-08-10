@@ -46,10 +46,40 @@ const (
 
 var errNotACLPSample = errors.New("psample message is not an ACL sample")
 
+type psampleNetlinkSocket interface {
+	GetFd() int
+	Receive() ([]syscall.NetlinkMessage, *unix.SockaddrNetlink, error)
+	Close() error
+}
+
+type psampleNetlinkAPI interface {
+	family(string) (*netlink.GenlFamily, error)
+	subscribe(int) (psampleNetlinkSocket, error)
+	addMembership(int, uint32) error
+}
+
+type linuxPSampleNetlink struct{}
+
+func (linuxPSampleNetlink) family(name string) (*netlink.GenlFamily, error) {
+	return netlink.GenlFamilyGet(name)
+}
+
+func (linuxPSampleNetlink) subscribe(protocol int) (psampleNetlinkSocket, error) {
+	return nl.Subscribe(protocol)
+}
+
+func (linuxPSampleNetlink) addMembership(fd int, groupID uint32) error {
+	return unix.SetsockoptInt(fd, unix.SOL_NETLINK, unix.NETLINK_ADD_MEMBERSHIP, int(groupID))
+}
+
 // ListenPSamples subscribes to the Linux psample packets multicast group and
 // invokes handle for each ACL sample emitted to groupID. Context cancellation
 // stops the blocking receive.
-func ListenPSamples(ctx context.Context, groupID uint32, handle func(PacketSample) error) (retErr error) {
+func ListenPSamples(ctx context.Context, groupID uint32, handle func(PacketSample) error) error {
+	return listenPSamples(ctx, groupID, handle, linuxPSampleNetlink{})
+}
+
+func listenPSamples(ctx context.Context, groupID uint32, handle func(PacketSample) error, netlinkAPI psampleNetlinkAPI) (retErr error) {
 	if ctx == nil {
 		return errors.New("psample context must not be nil")
 	}
@@ -57,7 +87,7 @@ func ListenPSamples(ctx context.Context, groupID uint32, handle func(PacketSampl
 		return errors.New("psample handler must not be nil")
 	}
 
-	family, err := netlink.GenlFamilyGet(psampleFamilyName)
+	family, err := netlinkAPI.family(psampleFamilyName)
 	if err != nil {
 		return fmt.Errorf("get psample generic netlink family: %w", err)
 	}
@@ -69,11 +99,11 @@ func ListenPSamples(ctx context.Context, groupID uint32, handle func(PacketSampl
 		return err
 	}
 
-	socket, err := nl.Subscribe(unix.NETLINK_GENERIC)
+	socket, err := netlinkAPI.subscribe(unix.NETLINK_GENERIC)
 	if err != nil {
 		return fmt.Errorf("open psample generic netlink socket: %w", err)
 	}
-	if err := unix.SetsockoptInt(socket.GetFd(), unix.SOL_NETLINK, unix.NETLINK_ADD_MEMBERSHIP, int(multicastGroupID)); err != nil {
+	if err := netlinkAPI.addMembership(socket.GetFd(), multicastGroupID); err != nil {
 		subscribeErr := fmt.Errorf("subscribe to psample packets multicast group: %w", err)
 		if closeErr := socket.Close(); closeErr != nil {
 			return errors.Join(subscribeErr, fmt.Errorf("close psample generic netlink socket: %w", closeErr))
@@ -146,6 +176,8 @@ func packetSampleFromNetlinkMessage(message syscall.NetlinkMessage, familyID uin
 	switch message.Header.Type {
 	case unix.NLMSG_NOOP, unix.NLMSG_DONE:
 		return nil, false, nil
+	case unix.NLMSG_OVERRUN:
+		return nil, false, errors.New("psample netlink receive overrun: samples were lost")
 	case unix.NLMSG_ERROR:
 		if err := netlinkMessageError(message.Data); err != nil {
 			return nil, false, fmt.Errorf("psample generic netlink error: %w", err)
@@ -178,7 +210,11 @@ func parsePSampleMessage(message []byte) (*PacketSample, error) {
 	if message[1] != psampleVersion {
 		return nil, fmt.Errorf("unsupported psample message version %d", message[1])
 	}
-	attrs, err := nl.ParseRouteAttr(message[psampleGenericHeaderSize:])
+	attrData := message[psampleGenericHeaderSize:]
+	if err := validatePSampleAttributeStream(attrData); err != nil {
+		return nil, fmt.Errorf("validate psample attributes: %w", err)
+	}
+	attrs, err := nl.ParseRouteAttr(attrData)
 	if err != nil {
 		return nil, fmt.Errorf("parse psample attributes: %w", err)
 	}
@@ -187,37 +223,16 @@ func parsePSampleMessage(message []byte) (*PacketSample, error) {
 	seen := make(map[uint16]struct{}, len(attrs))
 	for _, attr := range attrs {
 		attrType := attr.Attr.Type & psampleNetlinkTypeMask
-		if _, ok := seen[attrType]; ok && isUniquePSampleAttribute(attrType) {
+		known, attrErr := parsePSampleAttribute(sample, attrType, attr.Value)
+		if !known {
+			continue
+		}
+		if _, ok := seen[attrType]; ok {
 			return nil, fmt.Errorf("psample attribute %d is duplicated", attrType)
 		}
 		seen[attrType] = struct{}{}
-
-		switch attrType {
-		case psampleAttrIngressIfIndex:
-			sample.IngressIfIndex, err = psampleIfIndex(attr.Value)
-		case psampleAttrEgressIfIndex:
-			sample.EgressIfIndex, err = psampleIfIndex(attr.Value)
-		case psampleAttrOriginalSize:
-			sample.OriginalSize, err = psampleUint32(attr.Value)
-		case psampleAttrSampleGroup:
-			sample.GroupID, err = psampleUint32(attr.Value)
-		case psampleAttrGroupSequence:
-			sample.Sequence, err = psampleUint32(attr.Value)
-		case psampleAttrSampleRate:
-			sample.SampleRate, err = psampleUint32(attr.Value)
-		case psampleAttrData:
-			sample.Data = append([]byte(nil), attr.Value...)
-		case psampleAttrTimestamp:
-			sample.Timestamp, err = psampleUint64(attr.Value)
-		case psampleAttrProtocol:
-			sample.Protocol, err = psampleUint16(attr.Value)
-		case psampleAttrUserCookie:
-			err = parsePSampleCookie(sample, attr.Value)
-		case psampleAttrSampleProbability:
-			sample.RateIsProbability = true
-		}
-		if err != nil {
-			return nil, fmt.Errorf("parse psample attribute %d: %w", attrType, err)
+		if attrErr != nil {
+			return nil, fmt.Errorf("parse psample attribute %d: %w", attrType, attrErr)
 		}
 	}
 	if _, ok := seen[psampleAttrSampleGroup]; !ok {
@@ -227,6 +242,59 @@ func parsePSampleMessage(message []byte) (*PacketSample, error) {
 		return nil, errNotACLPSample
 	}
 	return sample, nil
+}
+
+func validatePSampleAttributeStream(data []byte) error {
+	for len(data) != 0 {
+		if len(data) < unix.SizeofRtAttr {
+			return fmt.Errorf("%d trailing bytes do not form an attribute header", len(data))
+		}
+		length := int(nl.NativeEndian().Uint16(data[:2]))
+		if length < unix.SizeofRtAttr {
+			return fmt.Errorf("attribute length %d is shorter than its header", length)
+		}
+		alignedLength := (length + unix.SizeofRtAttr - 1) &^ (unix.SizeofRtAttr - 1)
+		if alignedLength > len(data) {
+			return fmt.Errorf("aligned attribute length %d exceeds %d remaining bytes", alignedLength, len(data))
+		}
+		data = data[alignedLength:]
+	}
+	return nil
+}
+
+func parsePSampleAttribute(sample *PacketSample, attrType uint16, value []byte) (bool, error) {
+	var err error
+	switch attrType {
+	case psampleAttrIngressIfIndex:
+		sample.IngressIfIndex, err = psampleIfIndex(value)
+	case psampleAttrEgressIfIndex:
+		sample.EgressIfIndex, err = psampleIfIndex(value)
+	case psampleAttrOriginalSize:
+		sample.OriginalSize, err = psampleUint32(value)
+	case psampleAttrSampleGroup:
+		sample.GroupID, err = psampleUint32(value)
+	case psampleAttrGroupSequence:
+		sample.Sequence, err = psampleUint32(value)
+	case psampleAttrSampleRate:
+		sample.SampleRate, err = psampleUint32(value)
+	case psampleAttrData:
+		sample.Data = append([]byte(nil), value...)
+	case psampleAttrTimestamp:
+		sample.Timestamp, err = psampleUint64(value)
+	case psampleAttrProtocol:
+		sample.Protocol, err = psampleUint16(value)
+	case psampleAttrUserCookie:
+		err = parsePSampleCookie(sample, value)
+	case psampleAttrSampleProbability:
+		if len(value) != 0 {
+			err = fmt.Errorf("expected flag with no value, got %d bytes", len(value))
+		} else {
+			sample.RateIsProbability = true
+		}
+	default:
+		return false, nil
+	}
+	return true, err
 }
 
 func parsePSampleCookie(sample *PacketSample, value []byte) error {
@@ -239,18 +307,6 @@ func parsePSampleCookie(sample *PacketSample, value []byte) error {
 	}
 	sample.Reference = reference
 	return nil
-}
-
-func isUniquePSampleAttribute(attrType uint16) bool {
-	switch attrType {
-	case psampleAttrIngressIfIndex, psampleAttrEgressIfIndex, psampleAttrOriginalSize,
-		psampleAttrSampleGroup, psampleAttrGroupSequence, psampleAttrSampleRate,
-		psampleAttrData, psampleAttrTimestamp, psampleAttrProtocol,
-		psampleAttrUserCookie, psampleAttrSampleProbability:
-		return true
-	default:
-		return false
-	}
 }
 
 func psampleIfIndex(value []byte) (uint32, error) {
