@@ -32,7 +32,9 @@ func TestRunDecode(t *testing.T) {
 		Feature:       "network-policy",
 		Verdict:       aclsampling.VerdictAllow,
 		OVN:           aclsampling.OVNACLReference{UUID: "acl-uuid"},
-		Sample:        aclsampling.SampleDetails{Metadata: 200},
+		Sample: aclsampling.SampleDetails{
+			SampleObservation: aclsampling.SampleObservation{Metadata: 200},
+		},
 	}}
 	var stdout, stderr strings.Builder
 	deps := dependencies{
@@ -103,6 +105,36 @@ func TestRunValidatesArguments(t *testing.T) {
 func TestPrintUsageReturnsWriteError(t *testing.T) {
 	wantErr := errors.New("write failed")
 	err := printUsage(errorWriter{err: wantErr})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRunDecodeReturnsWriteError(t *testing.T) {
+	wantErr := errors.New("write failed")
+	resolver := &fakeResolver{event: &aclsampling.Event{
+		SchemaVersion: aclsampling.SchemaVersionV1,
+		Feature:       "network-policy",
+		Verdict:       aclsampling.VerdictAllow,
+	}}
+	err := run(context.Background(), []string{
+		"decode",
+		"--ovn-nb-addr=unix:/var/run/ovn/ovnnb_db.sock",
+		"200",
+	}, errorWriter{err: wantErr}, &strings.Builder{}, dependencies{
+		newResolver: func(string) (sampleResolver, error) { return resolver, nil },
+	})
+	require.ErrorIs(t, err, wantErr)
+	require.True(t, resolver.closed)
+}
+
+func TestRunListenReturnsWriteError(t *testing.T) {
+	wantErr := errors.New("write failed")
+	reference, err := aclsampling.ParseSampleReference("0x640abcde000000c8")
+	require.NoError(t, err)
+	err = run(context.Background(), []string{"listen"}, errorWriter{err: wantErr}, &strings.Builder{}, dependencies{
+		listen: func(_ context.Context, _ uint32, handle func(aclsampling.PacketSample) error) error {
+			return handle(aclsampling.PacketSample{Reference: reference})
+		},
+	})
 	require.ErrorIs(t, err, wantErr)
 }
 

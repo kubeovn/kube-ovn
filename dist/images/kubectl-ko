@@ -847,6 +847,12 @@ getOvnCentralPod(){
     KUBE_OVN_VERSION=$(basename $image | awk -F ':' '{print $2}')
 }
 
+aclSampleDecodeCookie(){
+  kubectl exec "$OVN_NB_POD" -n "$KUBE_OVN_NS" -c ovn-central -- \
+    /kube-ovn/kube-ovn-acl-sample decode \
+    --ovn-nb-addr=unix:/var/run/ovn/ovnnb_db.sock "$1"
+}
+
 aclSampleDecode(){
   if [ "$#" -ne 1 ]; then
     echo "kubectl ko acl-sample decode {cookie-or-metadata}" >&2
@@ -854,9 +860,7 @@ aclSampleDecode(){
   fi
 
   OVN_NB_POD=$(getLeaderPod "ovn-nb-leader" "nb")
-  kubectl exec "$OVN_NB_POD" -n "$KUBE_OVN_NS" -c ovn-central -- \
-    /kube-ovn/kube-ovn-acl-sample decode \
-    --ovn-nb-addr=unix:/var/run/ovn/ovnnb_db.sock "$1"
+  aclSampleDecodeCookie "$1"
 }
 
 aclSampleListen(){
@@ -926,9 +930,7 @@ aclSampleListen(){
         continue
       fi
       local decoded
-      if decoded=$(kubectl exec "$OVN_NB_POD" -n "$KUBE_OVN_NS" -c ovn-central -- \
-        /kube-ovn/kube-ovn-acl-sample decode \
-        --ovn-nb-addr=unix:/var/run/ovn/ovnnb_db.sock "$cookie"); then
+      if decoded=$(aclSampleDecodeCookie "$cookie"); then
         printf '%s\n%s\n' '---' "$decoded"
       else
         echo "failed to decode ACL sample cookie $cookie; continuing" >&2
