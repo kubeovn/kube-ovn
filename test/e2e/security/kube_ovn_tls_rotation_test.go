@@ -68,10 +68,6 @@ var _ = framework.Describe("[group:security] kube-ovn TLS rotation", func() {
 		originalData := copySecretData(originalSecret.Data)
 		originalHash := kubeOVNTLSDataHash(originalData)
 		originalSerial := kubeOVNTLSCertSerial(originalData)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Restoring kube-ovn-tls secret")
-			restoreSecretData(cs, originalData)
-		})
 
 		ginkgo.By("Recording kube-ovn-controller restart counts")
 		restartCounts := deploymentContainerRestartCounts(cs, deploy, kubeOVNControllerContainer)
@@ -104,14 +100,48 @@ var _ = framework.Describe("[group:security] kube-ovn TLS rotation", func() {
 		projectionPods.Items = append(projectionPods.Items, deploymentPods(cs, centralDeploy).Items...)
 		projectionPods.Items = append(projectionPods.Items, ovsPods...)
 
-		ginkgo.By("Installing updated kube-ovn-tls secret")
 		projectionTimeout := e2epod.GetPodSecretUpdateTimeout(context.Background(), cs)
+		secretUpdated := false
+		ginkgo.DeferCleanup(func() {
+			if !secretUpdated {
+				return
+			}
+
+			var projectionDeadline time.Time
+			restoreKubeOVNTLSState(
+				func() {
+					ginkgo.By("Restoring kube-ovn-tls secret")
+					updateKubeOVNTLSSecretData(cs, originalData)
+					projectionDeadline = time.Now().Add(projectionTimeout)
+				},
+				func() {
+					ginkgo.By("Waiting for restored kube-ovn-tls files to be projected")
+					waitPodListTLSFilesProjected(projectionPods, kubeOVNTLSFileHashes(originalData), projectionDeadline, "kube-ovn components")
+				},
+				func() {
+					ginkgo.By("Waiting for ovn-central to reload the restored TLS files")
+					waitDeploymentTLSHashFiles(cs, centralDeploy, ovnCentralTLSHashFile, "ovn-central")
+				},
+				func() {
+					ginkgo.By("Waiting for ovn-controller to reload the restored TLS files")
+					waitPodListTLSHashFiles(&corev1.PodList{Items: ovsPods}, ovsOVNTLSHashFile, "ovs-ovn")
+				},
+				func() {
+					ginkgo.By("Ensuring restored TLS files can connect to OVN databases")
+					assertDeploymentOVNDBSSLConnectivity(cs, deploy)
+					assertPodListOVNDBSSLConnectivity(&corev1.PodList{Items: ovsPods}, "ovs-ovn")
+				},
+			)
+		})
+
+		ginkgo.By("Installing updated kube-ovn-tls secret")
 		updatedData, err := generateUpdatedKubeOVNTLSSecretData()
 		framework.ExpectNoError(err)
 		updatedHash := kubeOVNTLSDataHash(updatedData)
 		framework.ExpectNotEqual(updatedHash, originalHash)
 		framework.ExpectNotEqual(kubeOVNTLSCertSerial(updatedData), originalSerial)
 		updateKubeOVNTLSSecretData(cs, updatedData)
+		secretUpdated = true
 		projectionDeadline := time.Now().Add(projectionTimeout)
 
 		ginkgo.By("Waiting for kube-ovn-tls files to be projected")
@@ -172,10 +202,12 @@ func copySecretData(data map[string][]byte) map[string][]byte {
 	return copied
 }
 
-func restoreSecretData(cs kubernetes.Interface, data map[string][]byte) {
-	ginkgo.GinkgoHelper()
-
-	updateKubeOVNTLSSecretData(cs, data)
+func restoreKubeOVNTLSState(restoreSecret, waitForProjection, waitForOVNCentral, waitForOVS, verifyConnectivity func()) {
+	restoreSecret()
+	waitForProjection()
+	waitForOVNCentral()
+	waitForOVS()
+	verifyConnectivity()
 }
 
 func updateKubeOVNTLSSecretData(cs kubernetes.Interface, data map[string][]byte) *corev1.Secret {
