@@ -87,7 +87,7 @@ func (c *Controller) enqueueDelVlan(obj any) {
 
 	key := cache.MetaObjectToName(vlan).String()
 	klog.V(3).Infof("enqueue delete vlan %s", key)
-	c.delVlanQueue.Add(key)
+	c.delVlanQueue.Add(vlan)
 }
 
 func (c *Controller) handleAddVlan(key string) error {
@@ -283,11 +283,11 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	return nil
 }
 
-func (c *Controller) handleDelVlan(key string) error {
+func (c *Controller) handleDelVlan(vlan *kubeovnv1.Vlan) error {
+	key := cache.MetaObjectToName(vlan).String()
 	c.vlanKeyMutex.LockKey(key)
 	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete vlan %s", key)
-	vlan := &kubeovnv1.Vlan{ObjectMeta: metav1.ObjectMeta{Name: key}}
 
 	subnet, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
