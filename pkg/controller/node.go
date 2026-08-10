@@ -182,6 +182,13 @@ func (c *Controller) recordNodeReconcileFailure(node *v1.Node, reason string, er
 	}
 }
 
+type nodeJoinNetwork struct {
+	subnet   *kubeovnv1.Subnet
+	portName string
+	ip       string
+	mac      string
+}
+
 func (c *Controller) handleAddNode(key string) (err error) {
 	c.nodeKeyMutex.LockKey(key)
 	defer func() { _ = c.nodeKeyMutex.UnlockKey(key) }()
@@ -203,153 +210,24 @@ func (c *Controller) handleAddNode(key string) (err error) {
 		klog.Errorf("failed to list subnets: %v", err)
 		return err
 	}
-
-	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
-	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != c.config.ClusterRouter {
-			continue
-		}
-
-		v4, v6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
-		if subnet.Spec.Vlan == "" && (util.CIDRContainIP(v4, nodeIPv4) || util.CIDRContainIP(v6, nodeIPv6)) {
-			msg := fmt.Sprintf("internal IP address of node %s is in CIDR of subnet %s, this may result in network issues", node.Name, subnet.Name)
-			klog.Warning(msg)
-			c.recorder.Eventf(&v1.Node{Name: node.Name, UID: types.UID(node.Name)}, v1.EventTypeWarning, "NodeAddressConflictWithSubnet", "%s", msg)
-			break
-		}
-	}
+	c.recordNodeAddressConflict(node, subnets)
 
 	if err = c.handleNodeAnnotationsForProviderNetworks(node); err != nil {
 		klog.Errorf("failed to handle annotations of node %s for provider networks: %v", node.Name, err)
 		return err
 	}
 
-	subnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
-	if err != nil {
-		klog.Errorf("failed to get node subnet: %v", err)
+	var joinNetwork *nodeJoinNetwork
+	if joinNetwork, err = c.ensureNodeJoinNetwork(node); err != nil {
 		return err
 	}
-
-	var v4IP, v6IP, mac string
-
-	portName := util.NodeLspName(key)
-	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IPAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
-		macStr := node.Annotations[util.MacAddressAnnotation]
-		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IPAddressAnnotation],
-			&macStr, node.Annotations[util.LogicalSwitchAnnotation], true)
-		if err != nil {
-			klog.Errorf("failed to alloc static ip addrs for node %v: %v", node.Name, err)
-			return err
-		}
-	} else {
-		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, nil, c.config.NodeSwitch, "", nil, true)
-		if err != nil {
-			klog.Errorf("failed to alloc random ip addrs for node %v: %v", node.Name, err)
-			return err
-		}
-
-		// Clean up potentially existing logical switch ports to avoid leftover issues from previous failed configurations
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-			klog.Errorf("failed to delete stale logical switch port %s: %v", portName, err)
-			return err
-		}
-		klog.Infof("deleted stale logical switch port %s", portName)
-	}
-
-	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err := c.OVNNbClient.CreateBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
-		klog.Errorf("failed to create logical switch port %s: %v", portName, err)
+	if err = c.addNodeJoinPolicyRoutes(node, joinNetwork); err != nil {
 		return err
 	}
-
-	for ip := range strings.SplitSeq(ipStr, ",") {
-		if ip == "" {
-			continue
-		}
-
-		nodeIP, af := nodeIPv4, 4
-		protocol := util.CheckProtocol(ip)
-		if protocol == kubeovnv1.ProtocolIPv6 {
-			nodeIP, af = nodeIPv6, 6
-		}
-		if nodeIP != "" {
-			var (
-				match       = fmt.Sprintf("ip%d.dst == %s", af, nodeIP)
-				action      = kubeovnv1.PolicyRouteActionReroute
-				externalIDs = map[string]string{
-					"vendor":         util.CniTypeName,
-					"node":           node.Name,
-					"address-family": strconv.Itoa(af),
-				}
-			)
-			klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, action, ip, externalIDs)
-			if err = c.addPolicyRouteToVpc(
-				c.config.ClusterRouter,
-				&kubeovnv1.PolicyRoute{
-					Priority:  util.NodeRouterPolicyPriority,
-					Match:     match,
-					Action:    action,
-					NextHopIP: ip,
-				},
-				externalIDs,
-			); err != nil {
-				klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
-				return err
-			}
-
-			dnsIPs := make([]string, 0, len(c.config.NodeLocalDNSIPs))
-			for _, ip := range c.config.NodeLocalDNSIPs {
-				if util.CheckProtocol(ip) == protocol {
-					dnsIPs = append(dnsIPs, ip)
-				}
-			}
-
-			if err = c.addPolicyRouteForLocalDNSCacheOnNode(dnsIPs, portName, ip, node.Name, af); err != nil {
-				klog.Errorf("failed to add policy route for node %s: %v", node.Name, err)
-				return err
-			}
-		}
-	}
-
-	patch := util.KVPatch{
-		util.IPAddressAnnotation:     ipStr,
-		util.MacAddressAnnotation:    mac,
-		util.CidrAnnotation:          subnet.Spec.CIDRBlock,
-		util.GatewayAnnotation:       subnet.Spec.Gateway,
-		util.LogicalSwitchAnnotation: c.config.NodeSwitch,
-		util.AllocatedAnnotation:     "true",
-		util.PortNameAnnotation:      portName,
-	}
-	if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
-		klog.Errorf("failed to update annotations of node %s: %v", node.Name, err)
+	if err = c.patchNodeJoinNetwork(node, joinNetwork); err != nil {
 		return err
 	}
-
-	if err := c.createOrUpdateIPCR("", "", ipStr, mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
-		klog.Errorf("failed to create or update IPs %s: %v", portName, err)
-		return err
-	}
-
-	for _, subnet := range subnets {
-		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
-			continue
-		}
-		if err = c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
-			klog.Errorf("failed to create port group for node %s and subnet %s: %v", node.Name, subnet.Name, err)
-			return err
-		}
-	}
-	c.distributedSubnetNeedSync.Store(true)
-
-	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
-	pgName := strings.ReplaceAll(portName, "-", ".")
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{"node": node.Name, networkPolicyKey: "node" + "/" + key}); err != nil {
-		klog.Errorf("create port group %s for node %s: %v", pgName, key, err)
-		return err
-	}
-
-	if err := c.addPolicyRouteForCentralizedSubnetOnNode(node, ipStr); err != nil {
-		klog.Errorf("failed to add policy route for node %s, %v", key, err)
+	if err = c.ensureNodePortGroups(node, subnets, joinNetwork); err != nil {
 		return err
 	}
 
@@ -360,6 +238,140 @@ func (c *Controller) handleAddNode(key string) (err error) {
 
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) recordNodeAddressConflict(node *v1.Node, subnets []*kubeovnv1.Subnet) {
+	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc != c.config.ClusterRouter {
+			continue
+		}
+		v4, v6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+		if subnet.Spec.Vlan != "" || (!util.CIDRContainIP(v4, nodeIPv4) && !util.CIDRContainIP(v6, nodeIPv6)) {
+			continue
+		}
+		msg := fmt.Sprintf("internal IP address of node %s is in CIDR of subnet %s, this may result in network issues", node.Name, subnet.Name)
+		klog.Warning(msg)
+		c.recorder.Eventf(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: node.Name, UID: types.UID(node.Name)}}, v1.EventTypeWarning, "NodeAddressConflictWithSubnet", "%s", msg)
+		return
+	}
+}
+
+func (c *Controller) ensureNodeJoinNetwork(node *v1.Node) (*nodeJoinNetwork, error) {
+	subnet, err := c.subnetsLister.Get(c.config.NodeSwitch)
+	if err != nil {
+		klog.Errorf("failed to get node subnet: %v", err)
+		return nil, err
+	}
+
+	portName := util.NodeLspName(node.Name)
+	var v4IP, v6IP, mac string
+	if node.Annotations[util.AllocatedAnnotation] == "true" && node.Annotations[util.IPAddressAnnotation] != "" && node.Annotations[util.MacAddressAnnotation] != "" {
+		macStr := node.Annotations[util.MacAddressAnnotation]
+		v4IP, v6IP, mac, err = c.ipam.GetStaticAddress(portName, portName, node.Annotations[util.IPAddressAnnotation], &macStr, node.Annotations[util.LogicalSwitchAnnotation], true)
+	} else {
+		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, nil, c.config.NodeSwitch, "", nil, true)
+		if err == nil {
+			err = c.OVNNbClient.DeleteLogicalSwitchPort(portName)
+			if err == nil {
+				klog.Infof("deleted stale logical switch port %s", portName)
+			}
+		}
+	}
+	if err != nil {
+		klog.Errorf("failed to allocate join network address for node %s: %v", node.Name, err)
+		return nil, err
+	}
+
+	ipStr := util.GetStringIP(v4IP, v6IP)
+	if err = c.OVNNbClient.CreateBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
+		klog.Errorf("failed to create logical switch port %s: %v", portName, err)
+		return nil, err
+	}
+	return &nodeJoinNetwork{subnet: subnet, portName: portName, ip: ipStr, mac: mac}, nil
+}
+
+func (c *Controller) addNodeJoinPolicyRoutes(node *v1.Node, joinNetwork *nodeJoinNetwork) error {
+	nodeIPv4, nodeIPv6 := util.GetNodeInternalIP(*node)
+	for ip := range strings.SplitSeq(joinNetwork.ip, ",") {
+		if ip == "" {
+			continue
+		}
+		nodeIP, af := nodeIPv4, 4
+		protocol := util.CheckProtocol(ip)
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			nodeIP, af = nodeIPv6, 6
+		}
+		if nodeIP == "" {
+			continue
+		}
+
+		match := fmt.Sprintf("ip%d.dst == %s", af, nodeIP)
+		externalIDs := map[string]string{"vendor": util.CniTypeName, "node": node.Name, "address-family": strconv.Itoa(af)}
+		policy := &kubeovnv1.PolicyRoute{Priority: util.NodeRouterPolicyPriority, Match: match, Action: kubeovnv1.PolicyRouteActionReroute, NextHopIP: ip}
+		klog.Infof("add policy route for router: %s, match %s, action %s, nexthop %s, externalID %v", c.config.ClusterRouter, match, policy.Action, ip, externalIDs)
+		if err := c.addPolicyRouteToVpc(c.config.ClusterRouter, policy, externalIDs); err != nil {
+			klog.Errorf("failed to add logical router policy for node %s: %v", node.Name, err)
+			return err
+		}
+
+		dnsIPs := make([]string, 0, len(c.config.NodeLocalDNSIPs))
+		for _, dnsIP := range c.config.NodeLocalDNSIPs {
+			if util.CheckProtocol(dnsIP) == protocol {
+				dnsIPs = append(dnsIPs, dnsIP)
+			}
+		}
+		if err := c.addPolicyRouteForLocalDNSCacheOnNode(dnsIPs, joinNetwork.portName, ip, node.Name, af); err != nil {
+			klog.Errorf("failed to add policy route for node %s: %v", node.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) patchNodeJoinNetwork(node *v1.Node, joinNetwork *nodeJoinNetwork) error {
+	patch := util.KVPatch{
+		util.IPAddressAnnotation:     joinNetwork.ip,
+		util.MacAddressAnnotation:    joinNetwork.mac,
+		util.CidrAnnotation:          joinNetwork.subnet.Spec.CIDRBlock,
+		util.GatewayAnnotation:       joinNetwork.subnet.Spec.Gateway,
+		util.LogicalSwitchAnnotation: c.config.NodeSwitch,
+		util.AllocatedAnnotation:     "true",
+		util.PortNameAnnotation:      joinNetwork.portName,
+	}
+	if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+		klog.Errorf("failed to update annotations of node %s: %v", node.Name, err)
+		return err
+	}
+	if err := c.createOrUpdateIPCR("", "", joinNetwork.ip, joinNetwork.mac, c.config.NodeSwitch, "", node.Name, ""); err != nil {
+		klog.Errorf("failed to create or update IPs %s: %v", joinNetwork.portName, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) ensureNodePortGroups(node *v1.Node, subnets []*kubeovnv1.Subnet, joinNetwork *nodeJoinNetwork) error {
+	for _, subnet := range subnets {
+		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch || subnet.Spec.GatewayType != kubeovnv1.GWDistributedType {
+			continue
+		}
+		if err := c.createPortGroupForDistributedSubnet(node, subnet); err != nil {
+			klog.Errorf("failed to create port group for node %s and subnet %s: %v", node.Name, subnet.Name, err)
+			return err
+		}
+	}
+	c.distributedSubnetNeedSync.Store(true)
+
+	pgName := strings.ReplaceAll(joinNetwork.portName, "-", ".")
+	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{"node": node.Name, networkPolicyKey: "node" + "/" + node.Name}); err != nil {
+		klog.Errorf("create port group %s for node %s: %v", pgName, node.Name, err)
+		return err
+	}
+	if err := c.addPolicyRouteForCentralizedSubnetOnNode(node, joinNetwork.ip); err != nil {
+		klog.Errorf("failed to add policy route for node %s, %v", node.Name, err)
 		return err
 	}
 	return nil

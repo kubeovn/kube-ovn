@@ -820,22 +820,28 @@ func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinC
 
 	// Only set NetworkUnavailable condition when running as primary CNI
 	if !enableNonPrimaryCNI {
-		status := corev1.ConditionFalse
-		reason := "JoinSubnetGatewayReachable"
-		message := fmt.Sprintf("ping check to gateway ip %s succeeded", gw)
-		if err != nil {
-			status = corev1.ConditionTrue
-			reason = "JoinSubnetGatewayUnreachable"
-			message = fmt.Sprintf("ping check to gateway ip %s failed", gw)
-		}
-		if setErr := util.SetNodeNetworkUnavailableCondition(cs, nodeName, status, reason, message); setErr != nil {
-			klog.Errorf("failed to set node network unavailable condition: %v", setErr)
-		}
+		err = updateNodeNetworkUnavailableCondition(cs, nodeName, gw, err)
 	} else {
 		klog.Infof("running in non-primary CNI mode, skipping NetworkUnavailable condition update")
 	}
 
 	return err
+}
+
+func updateNodeNetworkUnavailableCondition(cs kubernetes.Interface, nodeName, gateway string, gatewayErr error) error {
+	status := corev1.ConditionFalse
+	reason := "JoinSubnetGatewayReachable"
+	message := fmt.Sprintf("ping check to gateway ip %s succeeded", gateway)
+	if gatewayErr != nil {
+		status = corev1.ConditionTrue
+		reason = "JoinSubnetGatewayUnreachable"
+		message = fmt.Sprintf("ping check to gateway ip %s failed", gateway)
+	}
+	if err := util.SetNodeNetworkUnavailableCondition(cs, nodeName, status, reason, message); err != nil {
+		klog.Errorf("failed to set node network unavailable condition: %v", err)
+		return errors.Join(gatewayErr, err)
+	}
+	return gatewayErr
 }
 
 // If OVS restart, the ovn0 port will down and prevent host to pod network,

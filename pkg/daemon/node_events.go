@@ -64,13 +64,16 @@ func (c *Controller) recordNodeFailure(node *corev1.Node, reason, stage string, 
 
 func (c *Controller) clearNodeFailure(node *corev1.Node, reason, stage string) {
 	c.nodeFailuresMutex.Lock()
-	delete(c.nodeFailures, nodeFailureKey{nodeName: node.Name, nodeUID: node.UID, reason: reason, stage: stage})
+	for existingKey := range c.nodeFailures {
+		if existingKey.nodeName == node.Name && (existingKey.nodeUID != node.UID || existingKey.reason == reason && existingKey.stage == stage) {
+			delete(c.nodeFailures, existingKey)
+		}
+	}
 	c.nodeFailuresMutex.Unlock()
 }
 
 func (c *Controller) reconcileNodeNetworkStage(node *corev1.Node, stage string, reconcile func() error) error {
-	err := reconcile()
-	if err != nil {
+	if err := reconcile(); err != nil {
 		c.recordNodeFailure(node, updateNodeFailedReason, stage, err)
 		return err
 	}
@@ -114,8 +117,14 @@ func recordNodeFailureEventSync(client kubernetes.Interface, node *corev1.Node, 
 func (c *Controller) recordLocalNodeFailureSync(stage string, failure error) {
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
-		klog.Errorf("failed to get node %s while recording stage %s failure: %v", c.config.NodeName, stage, err)
-		return
+		klog.Warningf("failed to get node %s from cache while recording stage %s failure: %v", c.config.NodeName, stage, err)
+		ctx, cancel := context.WithTimeout(context.Background(), nodeEventWriteTimeout)
+		defer cancel()
+		node, err = c.config.KubeClient.CoreV1().Nodes().Get(ctx, c.config.NodeName, metav1.GetOptions{})
+		if err != nil {
+			klog.Errorf("failed to get node %s while recording stage %s failure: %v", c.config.NodeName, stage, err)
+			return
+		}
 	}
 	if err := recordNodeFailureEventSync(c.config.KubeClient, node, c.config.NodeName, updateNodeFailedReason, stage, failure); err != nil {
 		klog.Errorf("failed to record node %s stage %s failure: %v", c.config.NodeName, stage, err)
