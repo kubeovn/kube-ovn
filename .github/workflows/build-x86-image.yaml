@@ -1175,15 +1175,23 @@ jobs:
         id: e2e
         run: bash hack/acl-sampling-e2e.sh
 
-      - name: Collect diagnostics
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
-        run: |
-          kubectl get events -A -o yaml > acl-sampling-e2e-events.yaml
-          kubectl get pods -A -o wide > acl-sampling-e2e-pods.txt
-          make kubectl-ko-log
+      - name: Collect events
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: kubectl get events -A -o yaml > acl-sampling-e2e-events.yaml
+
+      - name: Collect pod status
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: kubectl get pods -A -o wide > acl-sampling-e2e-pods.txt
+
+      - name: Collect kubectl ko log
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: make kubectl-ko-log
 
       - name: Upload diagnostics
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         uses: actions/upload-artifact@v7
         with:
           name: acl-sampling-e2e-diagnostics
