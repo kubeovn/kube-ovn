@@ -254,7 +254,7 @@ func validateNetworkPolicyACLIdentity(candidate eligibleNetworkPolicyACL) error 
 	aclName := externalIDs[networkPolicyACLNameExternalID]
 	policyNamespace := externalIDs[policyNamespaceExternalID]
 	policyName := externalIDs[policyNameExternalID]
-	if candidate.acl.Name == nil || *candidate.acl.Name != aclName {
+	if candidate.acl.Name == nil || *candidate.acl.Name != limitedACLName(aclName) {
 		return errors.New("OVN ACL name does not match the canonical NetworkPolicy ACL name")
 	}
 	switch candidate.role {

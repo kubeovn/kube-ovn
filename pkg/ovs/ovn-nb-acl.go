@@ -46,11 +46,16 @@ func NewACLError(errType ACLErrorType, msg string) *ACLError {
 }
 
 func setACLName(acl *ovnnb.ACL, name string) {
+	name = limitedACLName(name)
+	acl.Name = new(name)
+}
+
+func limitedACLName(name string) string {
 	if len(name) > 63 {
 		// ACL name length limit is 63
-		name = name[:60] + "..."
+		return name[:60] + "..."
 	}
-	acl.Name = new(name)
+	return name
 }
 
 // UpdateDefaultBlockACLOps returns operations to update/create the default block ACL
