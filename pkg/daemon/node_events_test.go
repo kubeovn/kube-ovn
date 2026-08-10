@@ -8,6 +8,7 @@ import (
 
 	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
+	"github.com/vishvananda/netlink"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -201,9 +202,11 @@ func TestInitNodeGatewayDeduplicatesInvalidAnnotations(t *testing.T) {
 			util.GatewayAnnotation:    "10.0.0.1",
 		},
 	}}
-	validNode := invalidNode.DeepCopy()
+	replacementNode := invalidNode.DeepCopy()
+	replacementNode.UID = "replacement-uid"
+	validNode := replacementNode.DeepCopy()
 	validNode.Annotations[util.IPAddressAnnotation] = "10.0.0.2"
-	missingAddressNode := invalidNode.DeepCopy()
+	missingAddressNode := replacementNode.DeepCopy()
 	delete(missingAddressNode.Annotations, util.IPAddressAnnotation)
 	client := fake.NewSimpleClientset(validNode)
 	getCalls := 0
@@ -212,7 +215,9 @@ func TestInitNodeGatewayDeduplicatesInvalidAnnotations(t *testing.T) {
 		switch getCalls {
 		case 1, 2:
 			return true, invalidNode.DeepCopy(), nil
-		case 4, 5:
+		case 3, 4:
+			return true, replacementNode.DeepCopy(), nil
+		case 6, 7:
 			return true, missingAddressNode.DeepCopy(), nil
 		default:
 			return true, validNode.DeepCopy(), nil
@@ -236,12 +241,103 @@ func TestInitNodeGatewayDeduplicatesInvalidAnnotations(t *testing.T) {
 
 	events, err := client.CoreV1().Events(metav1.NamespaceDefault).List(t.Context(), metav1.ListOptions{})
 	require.NoError(t, err)
-	require.Len(t, events.Items, 2)
+	require.Len(t, events.Items, 3)
 	for _, event := range events.Items {
 		require.Equal(t, addNodeFailedReason, event.Reason)
 		require.Contains(t, event.Message, "stage=validateOvn0Annotations")
 	}
-	require.Contains(t, events.Items[0].Message+events.Items[1].Message, "no ovn0 address")
+	require.Contains(t, events.Items[0].Message+events.Items[1].Message+events.Items[2].Message, "no ovn0 address")
+}
+
+func TestInitNodeGatewayRetriesFailedAnnotationEventWrite(t *testing.T) {
+	invalidNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "node-1",
+		UID:  "node-uid",
+		Annotations: map[string]string{
+			util.IPAddressAnnotation:  "invalid",
+			util.CidrAnnotation:       "10.0.0.0/24",
+			util.MacAddressAnnotation: "00:00:00:00:00:01",
+			util.PortNameAnnotation:   "node-node-1",
+			util.GatewayAnnotation:    "10.0.0.1",
+		},
+	}}
+	validNode := invalidNode.DeepCopy()
+	validNode.Annotations[util.IPAddressAnnotation] = "10.0.0.2"
+	client := fake.NewSimpleClientset(validNode)
+	getCalls := 0
+	client.PrependReactor("get", "nodes", func(k8stesting.Action) (bool, runtime.Object, error) {
+		getCalls++
+		if getCalls <= 2 {
+			return true, invalidNode.DeepCopy(), nil
+		}
+		return true, validNode.DeepCopy(), nil
+	})
+	eventCreateCalls := 0
+	eventWriteFailure := errors.New("event API unavailable")
+	client.PrependReactor("create", "events", func(k8stesting.Action) (bool, runtime.Object, error) {
+		eventCreateCalls++
+		if eventCreateCalls == 1 {
+			return true, nil, eventWriteFailure
+		}
+		return false, nil, nil
+	})
+
+	originalConfigureNodeGateway := configureNodeGateway
+	originalRetryInterval := nodeGatewayInitRetryInterval
+	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool) error {
+		return nil
+	}
+	nodeGatewayInitRetryInterval = 0
+	t.Cleanup(func() {
+		configureNodeGateway = originalConfigureNodeGateway
+		nodeGatewayInitRetryInterval = originalRetryInterval
+	})
+
+	require.NoError(t, InitNodeGateway(&Configuration{KubeClient: client, NodeName: validNode.Name}))
+	require.Equal(t, 2, eventCreateCalls)
+	events, err := client.CoreV1().Events(metav1.NamespaceDefault).List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, events.Items, 1)
+	require.Contains(t, events.Items[0].Message, "stage=validateOvn0Annotations")
+}
+
+func TestInitNodeGatewayRecordsRouteFailureWhenGatewayIsReady(t *testing.T) {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "node-1",
+		UID:  "node-uid",
+		Annotations: map[string]string{
+			util.IPAddressAnnotation:  "10.0.0.2",
+			util.CidrAnnotation:       "10.0.0.0/24",
+			util.MacAddressAnnotation: "00:00:00:00:00:01",
+			util.PortNameAnnotation:   "node-node-1",
+			util.GatewayAnnotation:    "10.0.0.1",
+		},
+	}}
+	client := fake.NewSimpleClientset(node)
+	routeFailure := errors.New("route replace failed")
+	originalConfigureNodeGateway := configureNodeGateway
+	originalReplaceNodeRoute := replaceNodeRoute
+	originalCheckNodeGatewayReady := checkNodeGatewayReady
+	configureNodeGateway = func(client kubernetes.Interface, nodeName, _, ip, gateway, _ string, _ net.HardwareAddr, _ int, enableNonPrimaryCNI bool) error {
+		link := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: util.NodeNic, Index: 1}}
+		return finishNodeGatewaySetup(client, nodeName, ip, gateway, link, []netlink.Route{{}}, enableNonPrimaryCNI)
+	}
+	replaceNodeRoute = func(*netlink.Route) error { return routeFailure }
+	checkNodeGatewayReady = func(string, string, string, bool, bool, int, chan struct{}) error { return nil }
+	t.Cleanup(func() {
+		configureNodeGateway = originalConfigureNodeGateway
+		replaceNodeRoute = originalReplaceNodeRoute
+		checkNodeGatewayReady = originalCheckNodeGatewayReady
+	})
+
+	err := InitNodeGateway(&Configuration{KubeClient: client, NodeName: node.Name})
+
+	require.ErrorIs(t, err, routeFailure)
+	events, listErr := client.CoreV1().Events(metav1.NamespaceDefault).List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, listErr)
+	require.Len(t, events.Items, 1)
+	require.Equal(t, addNodeFailedReason, events.Items[0].Reason)
+	require.Contains(t, events.Items[0].Message, routeFailure.Error())
 }
 
 func TestUpdateNodeNetworkUnavailableConditionReturnsPatchFailure(t *testing.T) {
