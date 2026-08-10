@@ -2,6 +2,7 @@ package multus
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"maps"
@@ -20,6 +21,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/component-base/logs"
@@ -38,6 +43,7 @@ import (
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/vegobserver"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
@@ -377,6 +383,8 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		vegTest(f, false, provider, nadName, vpc.Name, internalSubnetName, externalSubnetName, replicas, "", nil)
 	})
 
+	registerVpcEgressGatewayObservabilityTest(f, &schedulableNodes, createMacvlanVpc, &nadName, &externalSubnetName)
+
 	framework.ConformanceIt("should allow preferred pod anti-affinity", func() {
 		f.SkipVersionPriorTo(1, 17, "VpcEgressGateway preferred pod anti-affinity requires v1.17+")
 
@@ -670,6 +678,54 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		waitPortGroupExists(pgName)
 	})
 })
+
+func registerVpcEgressGatewayObservabilityTest(
+	f *framework.Framework,
+	schedulableNodes *[]corev1.Node,
+	createMacvlanVpc func() (string, *apiv1.Vpc, string),
+	nadName, externalSubnetName *string,
+) {
+	framework.ConformanceIt("should expose native observability metrics and JSON flow logs", func() {
+		f.SkipVersionPriorTo(1, 17, "VpcEgressGateway observability requires v1.17+")
+		serverVersion, err := f.ClientSet.Discovery().ServerVersion()
+		framework.ExpectNoError(err)
+		version, err := utilversion.ParseSemantic(serverVersion.GitVersion)
+		framework.ExpectNoError(err)
+		if version.LessThan(utilversion.MustParseSemantic("1.29.0")) {
+			ginkgo.Skip("restartable init containers require Kubernetes 1.29 or later")
+		}
+		if len(*schedulableNodes) < 2 {
+			ginkgo.Skip("at least two schedulable nodes are required")
+		}
+
+		provider, vpc, internalSubnetName := createMacvlanVpc()
+		veg, _, snatSubnetName, snatLabelValue := createVegTestGateway(
+			f, false, provider, vpc.Name, internalSubnetName, *externalSubnetName, 2, "", nil,
+			func(veg *apiv1.VpcEgressGateway) {
+				veg.Spec.Observability = &apiv1.VpcEgressGatewayObservability{
+					InterfaceMetrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
+					Conntrack: apiv1.VpcEgressGatewayConntrackObservability{
+						Metrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
+						Log:     apiv1.VpcEgressGatewayConntrackLog{Enabled: true},
+					},
+					ServiceMonitor: apiv1.VpcEgressGatewayServiceMonitor{Labels: map[string]string{"e2e": "vpc-egress-observability"}},
+				}
+			},
+		)
+		workloadPods, intIPs := validateVegTestWorkload(f, veg, nil)
+		interfaceBytes := waitVpcEgressObserverInterfaceBytes(f, workloadPods)
+		validateVegTestSNATAccess(f, veg, *nadName, snatSubnetName, snatLabelValue, workloadPods, intIPs)
+		validateVpcEgressObservability(f, veg, workloadPods, interfaceBytes)
+
+		reloadCounts := waitVpcEgressObserverReloadCounts(f, workloadPods)
+		original := veg.DeepCopy()
+		modified := veg.DeepCopy()
+		modified.Spec.Observability.Conntrack.Log.Events = []string{apiv1.ObservabilityEventEnd}
+		modified.Spec.Observability.Conntrack.Log.RateLimit.RecordsPerSecond = 50
+		veg = f.VpcEgressGatewayClient().PatchSync(original, modified)
+		validateVpcEgressObservabilityHotReload(f, veg, workloadPods, reloadCounts)
+	})
+}
 
 func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.Inspect, ipv4, ipv6 bool) *apiv1.Subnet {
 	ginkgo.GinkgoHelper()
@@ -1077,7 +1133,614 @@ func containerRestartCount(pod corev1.Pod, containerName string) int32 {
 	return 0
 }
 
-func createVegTestGateway(f *framework.Framework, bfd bool, provider, vpcName, internalSubnetName, externalSubnetName string, replicas int32, antiAffinityMode string, expectedNodes []string) (*apiv1.VpcEgressGateway, *apiv1.Subnet, string, string) {
+func validateVegTestSNATAccess(f *framework.Framework, veg *apiv1.VpcEgressGateway, nadName, snatSubnetName, snatLabelValue string, workloadPods []corev1.Pod, intIPs map[string][]string) {
+	ginkgo.GinkgoHelper()
+
+	namespaceName := f.Namespace.Name
+	attachmentNetworkName := fmt.Sprintf("%s/%s", namespaceName, nadName)
+	annotations := map[string]string{nadv1.NetworkAttachmentAnnot: attachmentNetworkName}
+	port := strconv.Itoa(8000 + rand.IntN(1000))
+	svrPodName := "svr-" + framework.RandomSuffix()
+	args := []string{"netexec", "--http-port", port}
+	podClient := f.PodClient()
+	svrPod := framework.MakePrivilegedPod(namespaceName, svrPodName, nil, annotations, framework.AgnhostImage, nil, args)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Deleting pod " + svrPodName)
+		podClient.DeleteSync(svrPodName)
+	})
+	svrPod = podClient.CreateSync(svrPod)
+	svrIPs, err := util.PodAttachmentIPs(svrPod, attachmentNetworkName)
+	framework.ExpectNoError(err)
+
+	image := workloadPods[0].Spec.Containers[0].Image
+	extIPs := make([]string, 0, len(veg.Status.ExternalIPs)*2)
+	for _, ips := range veg.Status.ExternalIPs {
+		extIPs = append(extIPs, strings.Split(ips, ",")...)
+	}
+	checkEgressAccess(f, namespaceName, svrPodName, image, port, svrIPs, extIPs, intIPs, snatSubnetName, "", snatLabelValue, true)
+}
+
+func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgressGateway, workloadPods []corev1.Pod, interfaceBytes float64) {
+	ginkgo.GinkgoHelper()
+	const observerContainer = "observability"
+	resourceName := util.NormalizeLabelValue("vpc-egress-" + strings.ReplaceAll(veg.Spec.Prefix+veg.Name+"-observability", ".", "-"))
+	configMap, err := f.ClientSet.CoreV1().ConfigMaps(veg.Namespace).Get(context.Background(), resourceName, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+	framework.ExpectContainSubstring(configMap.Data["config.json"], `"interfaceMetrics":{"enabled":true}`)
+	service, err := f.ClientSet.CoreV1().Services(veg.Namespace).Get(context.Background(), resourceName, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+	framework.ExpectEqual(service.Spec.ClusterIP, corev1.ClusterIPNone)
+	framework.ExpectTrue(service.Spec.PublishNotReadyAddresses)
+	framework.ExpectEqual(service.Spec.Ports[0].TargetPort.IntVal, int32(10666))
+
+	for _, pod := range workloadPods {
+		found := false
+		for _, container := range pod.Spec.InitContainers {
+			if container.Name != observerContainer {
+				continue
+			}
+			found = true
+			framework.ExpectNotNil(container.RestartPolicy)
+			framework.ExpectEqual(*container.RestartPolicy, corev1.ContainerRestartPolicyAlways)
+			framework.ExpectNotNil(container.SecurityContext)
+			framework.ExpectTrue(*container.SecurityContext.RunAsNonRoot)
+			framework.ExpectEqual(*container.SecurityContext.RunAsUser, int64(65534))
+			framework.ExpectEqual(*container.SecurityContext.RunAsGroup, int64(65534))
+			framework.ExpectTrue(*container.SecurityContext.AllowPrivilegeEscalation)
+			framework.ExpectTrue(*container.SecurityContext.ReadOnlyRootFilesystem)
+			framework.ExpectConsistOf(container.SecurityContext.Capabilities.Drop, corev1.Capability("ALL"))
+			framework.ExpectConsistOf(container.SecurityContext.Capabilities.Add, corev1.Capability("NET_ADMIN"))
+			framework.ExpectNil(container.LivenessProbe.HTTPGet)
+			framework.ExpectEqual(container.LivenessProbe.Exec.Command, []string{
+				"/bin/sh", "-ec",
+				"if [ ! -x /kube-ovn/vpc-egress-gateway-observer ]; then exit 0; fi; exec /kube-ovn/vpc-egress-gateway-observer --health-check",
+			})
+		}
+		framework.ExpectTrue(found, "gateway pod %s/%s should have the observability restartable init container", pod.Namespace, pod.Name)
+		metrics := waitVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
+		framework.ExpectContainSubstring(metrics, "kube_ovn_vpc_egress_gateway_interface_rx_bytes_total")
+		framework.ExpectContainSubstring(metrics, "kube_ovn_vpc_egress_gateway_interface_tx_packets_total")
+		framework.ExpectContainSubstring(metrics, `namespace="`+veg.Namespace+`"`)
+		framework.ExpectContainSubstring(metrics, `name="`+veg.Name+`"`)
+	}
+	waitVpcEgressObserverInterfaceCounterGrowth(f, workloadPods, interfaceBytes)
+	validateVpcEgressObserverInterfaceOnlyRSS(f, workloadPods[0], configMap.Data["config.json"])
+	validateVpcEgressObserverCollectorFailureIsolation(f, workloadPods[0])
+	waitVpcEgressObserverConntrackMetrics(f, workloadPods)
+	waitVpcEgressObserverFlowLog(f, veg, workloadPods)
+
+	condition := veg.Status.Conditions.GetCondition(apiv1.ObservabilityConfigured)
+	framework.ExpectNotNil(condition)
+	framework.ExpectEqual(condition.Status, corev1.ConditionTrue)
+	serviceMonitorCondition := veg.Status.Conditions.GetCondition(apiv1.ServiceMonitorReady)
+	framework.ExpectNotNil(serviceMonitorCondition)
+	if serviceMonitorCondition.Status == corev1.ConditionTrue {
+		config, err := k8sframework.LoadConfig()
+		framework.ExpectNoError(err)
+		dynamicClient, err := dynamic.NewForConfig(config)
+		framework.ExpectNoError(err)
+		serviceMonitor, err := dynamicClient.Resource(schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors"}).Namespace(veg.Namespace).Get(context.Background(), resourceName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		framework.ExpectEqual(serviceMonitor.GetLabels()["e2e"], "vpc-egress-observability")
+	} else {
+		framework.ExpectEqual(serviceMonitorCondition.Reason, "ServiceMonitorCRDNotInstalled")
+	}
+}
+
+func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.VpcEgressGateway, originalPods []corev1.Pod, initialReloads map[string]float64) {
+	ginkgo.GinkgoHelper()
+	resourceName := util.NormalizeLabelValue("vpc-egress-" + strings.ReplaceAll(veg.Spec.Prefix+veg.Name+"-observability", ".", "-"))
+	var configResourceVersion string
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, 30*time.Second, false, func(ctx context.Context) (bool, error) {
+		configMap, err := f.ClientSet.CoreV1().ConfigMaps(veg.Namespace).Get(ctx, resourceName, metav1.GetOptions{})
+		if err != nil || !strings.Contains(configMap.Data["config.json"], `"recordsPerSecond":50`) {
+			return false, nil
+		}
+		configResourceVersion = configMap.ResourceVersion
+		return true, nil
+	})
+	framework.ExpectNoError(err)
+
+	deploy := f.DeploymentClient().Get(veg.Status.Workload.Name)
+	currentPods, err := f.DeploymentClient().GetPods(deploy)
+	framework.ExpectNoError(err)
+	framework.ExpectHaveLen(currentPods.Items, len(originalPods))
+	originalUIDs := make([]string, 0, len(originalPods))
+	currentUIDs := make([]string, 0, len(currentPods.Items))
+	for _, pod := range originalPods {
+		originalUIDs = append(originalUIDs, string(pod.UID))
+	}
+	for _, pod := range currentPods.Items {
+		currentUIDs = append(currentUIDs, string(pod.UID))
+	}
+	framework.ExpectConsistOf(currentUIDs, originalUIDs)
+	framework.ExpectNoError(triggerVpcEgressObserverConfigRefresh(f, currentPods.Items, configResourceVersion))
+	framework.ExpectNoError(waitVpcEgressObserverConfigProjection(f, currentPods.Items), "updated observer config to be projected into all original pods")
+	lastReloads := make(map[string]float64, len(currentPods.Items))
+	err = wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		for _, currentPod := range currentPods.Items {
+			initial, ok := initialReloads[currentPod.Name]
+			if !ok {
+				return false, fmt.Errorf("missing initial config reload count for pod %s", currentPod.Name)
+			}
+			metrics, err := scrapeVpcEgressObserverMetrics(f, currentPod.Namespace, currentPod.Name)
+			if err != nil {
+				return false, nil
+			}
+			value, found, err := observerMetricValue(metrics, "kube_ovn_vpc_egress_gateway_observability_config_reload_total", `result="success"`)
+			if err != nil {
+				return false, err
+			}
+			lastReloads[currentPod.Name] = value
+			if !found || value <= initial {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		framework.Logf("observer config reload counts before patch: %v; last observed: %v", initialReloads, lastReloads)
+		for _, pod := range currentPods.Items {
+			stdout, stderr, execErr := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "cat", "/etc/kube-ovn-observer/config.json")
+			framework.Logf("mounted observer config from pod %s (error=%v, stderr=%q):\n%s", pod.Name, execErr, stderr, stdout)
+			logVpcEgressObserverDiagnostics(f, pod)
+		}
+	}
+	framework.ExpectNoError(err, "all observability sidecars to apply the hot-reloaded configuration")
+
+	pod := currentPods.Items[0]
+	restarts := observerRestartCount(pod)
+	_, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "/bin/sh", "-c", "kill 1")
+	framework.ExpectNoError(err, "terminating observability sidecar; stderr: "+stderr)
+	err = wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(ctx context.Context) (bool, error) {
+		updated, err := f.ClientSet.CoreV1().Pods(pod.Namespace).Get(ctx, pod.Name, metav1.GetOptions{})
+		return err == nil && observerRestartCount(*updated) > restarts, nil
+	})
+	framework.ExpectNoError(err, "observability sidecar to restart")
+	_ = waitVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
+	updatedVeg := f.VpcEgressGatewayClient().Get(veg.Name)
+	framework.ExpectTrue(updatedVeg.Ready())
+}
+
+func triggerVpcEgressObserverConfigRefresh(f *framework.Framework, pods []corev1.Pod, resourceVersion string) error {
+	const annotation = "e2e.kube-ovn.io/observability-config-version"
+	for _, pod := range pods {
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			current, err := f.ClientSet.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if current.Annotations == nil {
+				current.Annotations = make(map[string]string, 1)
+			}
+			// Updating Pod metadata asks kubelet to refresh projected ConfigMaps immediately without replacing the Pod.
+			current.Annotations[annotation] = resourceVersion
+			_, err = f.ClientSet.CoreV1().Pods(pod.Namespace).Update(context.Background(), current, metav1.UpdateOptions{})
+			return err
+		}); err != nil {
+			return fmt.Errorf("trigger observer config refresh for pod %s/%s: %w", pod.Namespace, pod.Name, err)
+		}
+	}
+	return nil
+}
+
+func waitVpcEgressObserverConfigProjection(f *framework.Framework, pods []corev1.Pod) error {
+	lastConfigs := make(map[string]string, len(pods))
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, 3*time.Minute, false, func(context.Context) (bool, error) {
+		for _, pod := range pods {
+			stdout, _, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "cat", "/etc/kube-ovn-observer/config.json")
+			if err != nil {
+				return false, nil
+			}
+			lastConfigs[pod.Name] = stdout
+			if !strings.Contains(stdout, `"recordsPerSecond":50`) {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		framework.Logf("last projected observer configs: %v", lastConfigs)
+	}
+	return err
+}
+
+func waitVpcEgressObserverReloadCounts(f *framework.Framework, pods []corev1.Pod) map[string]float64 {
+	ginkgo.GinkgoHelper()
+	counts := make(map[string]float64, len(pods))
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		clear(counts)
+		for _, pod := range pods {
+			metrics, err := scrapeVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
+			if err != nil {
+				return false, nil
+			}
+			value, found, err := observerMetricValue(metrics, "kube_ovn_vpc_egress_gateway_observability_config_reload_total", `result="success"`)
+			if err != nil {
+				return false, err
+			}
+			if !found {
+				return false, nil
+			}
+			counts[pod.Name] = value
+		}
+		return true, nil
+	})
+	framework.ExpectNoError(err, "config reload metrics to become ready on all observability sidecars")
+	return counts
+}
+
+func validateVpcEgressObserverInterfaceOnlyRSS(f *framework.Framework, pod corev1.Pod, rawConfig string) {
+	ginkgo.GinkgoHelper()
+	var config vegobserver.Config
+	framework.ExpectNoError(json.Unmarshal([]byte(rawConfig), &config))
+	config.Observability.Conntrack = apiv1.VpcEgressGatewayConntrackObservability{}
+	config.Observability.InterfaceMetrics.Enabled = true
+	data, err := json.Marshal(config)
+	framework.ExpectNoError(err)
+
+	const script = `
+set -eu
+config_path=/dev/shm/kube-ovn-observer-interface-only.json
+observer_pid=
+cleanup() {
+  if [ -n "$observer_pid" ]; then
+    kill "$observer_pid" 2>/dev/null || true
+    wait "$observer_pid" 2>/dev/null || true
+  fi
+  rm -f "$config_path"
+}
+trap cleanup EXIT
+printf '%s' "$1" > "$config_path"
+/kube-ovn/vpc-egress-gateway-observer --config "$config_path" --network-status /etc/podinfo/network-status --listen-address 127.0.0.1:10667 >/dev/null 2>/dev/null &
+observer_pid=$!
+attempt=0
+until curl -fsS http://127.0.0.1:10667/metrics >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 30 ]
+  sleep 1
+done
+sleep 3
+awk '/^VmRSS:/ { print $2 }' "/proc/$observer_pid/status"
+`
+	stdout, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "/bin/sh", "-ec", script, "observer-rss", string(data))
+	framework.ExpectNoError(err, "measuring interface-only observer RSS; stderr: "+stderr)
+	rssKiB, err := strconv.ParseInt(strings.TrimSpace(stdout), 10, 64)
+	framework.ExpectNoError(err)
+	framework.ExpectTrue(rssKiB <= 20*1024, "interface-only observer RSS is %d KiB, expected at most 20480 KiB", rssKiB)
+}
+
+func validateVpcEgressObserverCollectorFailureIsolation(f *framework.Framework, pod corev1.Pod) {
+	ginkgo.GinkgoHelper()
+	const script = `
+set -eu
+observer_pid=
+cleanup() {
+  if [ -n "$observer_pid" ]; then
+    kill "$observer_pid" 2>/dev/null || true
+    wait "$observer_pid" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+/kube-ovn/vpc-egress-gateway-observer --config /etc/kube-ovn-observer/config.json --network-status /does-not-exist --listen-address 127.0.0.1:10667 >/dev/null 2>/dev/null &
+observer_pid=$!
+attempt=0
+while [ "$attempt" -lt 30 ]; do
+  metrics="$(curl -fsS http://127.0.0.1:10667/metrics 2>/dev/null || true)"
+  if printf '%s\n' "$metrics" | grep -q '^kube_ovn_vpc_egress_gateway_observability_collector_up{.*collector="interface".*} 0$' &&
+     printf '%s\n' "$metrics" | grep -q '^kube_ovn_vpc_egress_gateway_observability_collector_up{.*collector="conntrack".*} 1$'; then
+    printf '%s\n' "$metrics"
+    exit 0
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+exit 1
+`
+	stdout, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "/bin/sh", "-ec", script)
+	framework.ExpectNoError(err, "validating observer collector failure isolation; stderr: "+stderr)
+	interfaceUp, found, err := observerMetricValue(stdout, "kube_ovn_vpc_egress_gateway_observability_collector_up", `collector="interface"`)
+	framework.ExpectNoError(err)
+	framework.ExpectTrue(found)
+	framework.ExpectEqual(interfaceUp, float64(0))
+	conntrackUp, found, err := observerMetricValue(stdout, "kube_ovn_vpc_egress_gateway_observability_collector_up", `collector="conntrack"`)
+	framework.ExpectNoError(err)
+	framework.ExpectTrue(found)
+	framework.ExpectEqual(conntrackUp, float64(1))
+}
+
+func observerMetricValue(metrics, name string, requiredLabels ...string) (float64, bool, error) {
+	values, err := observerMetricValues(metrics, name, requiredLabels...)
+	if err != nil {
+		return 0, false, err
+	}
+	if len(values) == 0 {
+		return 0, false, nil
+	}
+	return values[0], true, nil
+}
+
+func observerMetricSum(metrics, name string, requiredLabels ...string) (float64, bool, error) {
+	values, err := observerMetricValues(metrics, name, requiredLabels...)
+	if err != nil {
+		return 0, false, err
+	}
+	var total float64
+	for _, value := range values {
+		total += value
+	}
+	return total, len(values) != 0, nil
+}
+
+func observerMetricValues(metrics, name string, requiredLabels ...string) ([]float64, error) {
+	var values []float64
+	for line := range strings.SplitSeq(metrics, "\n") {
+		if !strings.HasPrefix(line, name+"{") {
+			continue
+		}
+		matched := true
+		for _, label := range requiredLabels {
+			if !strings.Contains(line, label) {
+				matched = false
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("parse Prometheus sample %q: expected metric and value", line)
+		}
+		value, err := strconv.ParseFloat(fields[1], 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse Prometheus sample %q: %w", line, err)
+		}
+		values = append(values, value)
+	}
+	return values, nil
+}
+
+func waitVpcEgressObserverInterfaceBytes(f *framework.Framework, pods []corev1.Pod) float64 {
+	ginkgo.GinkgoHelper()
+	var total float64
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		var ok bool
+		var err error
+		total, ok, err = vpcEgressObserverInterfaceBytes(f, pods)
+		return ok, err
+	})
+	framework.ExpectNoError(err, "external interface metrics to become ready on all gateway replicas")
+	return total
+}
+
+func waitVpcEgressObserverInterfaceCounterGrowth(f *framework.Framework, pods []corev1.Pod, baseline float64) {
+	ginkgo.GinkgoHelper()
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		current, ok, err := vpcEgressObserverInterfaceBytes(f, pods)
+		return ok && current > baseline, err
+	})
+	framework.ExpectNoError(err, "aggregate external interface byte counters to grow after SNAT traffic")
+}
+
+func vpcEgressObserverInterfaceBytes(f *framework.Framework, pods []corev1.Pod) (float64, bool, error) {
+	var total float64
+	for _, pod := range pods {
+		metrics, err := scrapeVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
+		if err != nil {
+			return 0, false, nil
+		}
+		for _, name := range []string{
+			"kube_ovn_vpc_egress_gateway_interface_rx_bytes_total",
+			"kube_ovn_vpc_egress_gateway_interface_tx_bytes_total",
+		} {
+			value, found, err := observerMetricSum(metrics, name, `type="external"`)
+			if err != nil {
+				return 0, false, err
+			}
+			if !found {
+				return 0, false, nil
+			}
+			total += value
+		}
+	}
+	return total, true, nil
+}
+
+func waitVpcEgressObserverMetrics(f *framework.Framework, namespace, pod string) string {
+	ginkgo.GinkgoHelper()
+	var metrics string
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		stdout, err := scrapeVpcEgressObserverMetrics(f, namespace, pod)
+		if err != nil {
+			return false, nil
+		}
+		metrics = stdout
+		return strings.Contains(metrics, "kube_ovn_vpc_egress_gateway_observability_collector_up"), nil
+	})
+	framework.ExpectNoError(err, "observer metrics endpoint to become ready")
+	return metrics
+}
+
+func waitVpcEgressObserverConntrackMetrics(f *framework.Framework, pods []corev1.Pod) {
+	ginkgo.GinkgoHelper()
+	lastMetrics := make(map[string]string, len(pods))
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(context.Context) (bool, error) {
+		for _, pod := range pods {
+			metrics, err := scrapeVpcEgressObserverMetrics(f, pod.Namespace, pod.Name)
+			if err != nil {
+				continue
+			}
+			lastMetrics[pod.Name] = metrics
+			if strings.Contains(metrics, "kube_ovn_vpc_egress_gateway_conntrack_nat_flows_active") {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		for _, pod := range pods {
+			framework.Logf("last observer metrics from pod %s:\n%s", pod.Name, lastMetrics[pod.Name])
+			logVpcEgressObserverDiagnostics(f, pod)
+		}
+	}
+	framework.ExpectNoError(err, "at least one gateway replica to observe the generated SNAT flow")
+}
+
+func logVpcEgressObserverDiagnostics(f *framework.Framework, pod corev1.Pod) {
+	ginkgo.GinkgoHelper()
+	const observerContainer = "observability"
+	tailLines := int64(100)
+	logs, err := f.ClientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{Container: observerContainer, TailLines: &tailLines}).DoRaw(context.Background())
+	if err != nil {
+		framework.Logf("failed to read observer logs from pod %s: %v", pod.Name, err)
+	} else {
+		framework.Logf("observer logs from pod %s:\n%s", pod.Name, logs)
+	}
+	stdout, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, observerContainer, "/bin/sh", "-c", "id; grep -E '^(Cap|NoNewPrivs)' /proc/1/status")
+	framework.Logf("observer process status from pod %s (error=%v, stderr=%q):\n%s", pod.Name, err, stderr, stdout)
+}
+
+func scrapeVpcEgressObserverMetrics(f *framework.Framework, namespace, pod string) (string, error) {
+	stdout, _, err := framework.ExecCommandInContainer(f, namespace, pod, "observability", "/bin/sh", "-c", "curl -fsS http://127.0.0.1:10666/metrics")
+	return stdout, err
+}
+
+type vpcEgressObserverFlowKey struct {
+	pod  string
+	zone uint16
+	id   uint32
+}
+
+type vpcEgressObserverFlowTuple struct {
+	SourceIP        string  `json:"sourceIP"`
+	SourcePort      *uint16 `json:"sourcePort"`
+	DestinationIP   string  `json:"destinationIP"`
+	DestinationPort *uint16 `json:"destinationPort"`
+}
+
+type vpcEgressObserverFlowRecord struct {
+	SchemaVersion string                      `json:"schemaVersion"`
+	Timestamp     *time.Time                  `json:"timestamp"`
+	Event         string                      `json:"event"`
+	ConntrackID   *uint32                     `json:"conntrackID"`
+	Zone          *uint16                     `json:"zone"`
+	Namespace     string                      `json:"namespace"`
+	Name          string                      `json:"name"`
+	Pod           string                      `json:"pod"`
+	Node          string                      `json:"node"`
+	AddressFamily string                      `json:"addressFamily"`
+	Protocol      string                      `json:"protocol"`
+	ProtocolNum   *uint8                      `json:"protocolNumber"`
+	NatType       []string                    `json:"natType"`
+	Original      *vpcEgressObserverFlowTuple `json:"original"`
+	Translated    *vpcEgressObserverFlowTuple `json:"translated"`
+}
+
+type vpcEgressObserverFlowObservation struct {
+	events set.Set[string]
+	start  *vpcEgressObserverFlowRecord
+}
+
+func waitVpcEgressObserverFlowLog(f *framework.Framework, veg *apiv1.VpcEgressGateway, pods []corev1.Pod) {
+	ginkgo.GinkgoHelper()
+
+	var selectedKey vpcEgressObserverFlowKey
+	err := wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(ctx context.Context) (bool, error) {
+		observations := vpcEgressObserverFlowObservations(ctx, f, veg, pods)
+		for key, observation := range observations {
+			if observation.events.HasAll(apiv1.ObservabilityEventStart, apiv1.ObservabilityEventEnd) {
+				selectedKey = key
+				return true, nil
+			}
+		}
+		for key, observation := range observations {
+			if observation.start == nil || observation.events.Has(apiv1.ObservabilityEventEnd) {
+				continue
+			}
+			stdout, stderr, err := deleteVpcEgressObserverConntrackFlow(f, veg.Namespace, key.pod, *observation.start)
+			if err != nil {
+				framework.Logf("failed to delete conntrack flow %d in zone %d from pod %s: %v, stdout: %s, stderr: %s", key.id, key.zone, key.pod, err, stdout, stderr)
+				continue
+			}
+			selectedKey = key
+			return true, nil
+		}
+		return false, nil
+	})
+	framework.ExpectNoError(err, "observer to emit a schema-valid start record for an active SNAT flow")
+
+	err = wait.PollUntilContextTimeout(context.Background(), time.Second, time.Minute, false, func(ctx context.Context) (bool, error) {
+		observations := vpcEgressObserverFlowObservations(ctx, f, veg, pods)
+		observation := observations[selectedKey]
+		return observation != nil && observation.events.HasAll(apiv1.ObservabilityEventStart, apiv1.ObservabilityEventEnd), nil
+	})
+	if err != nil {
+		for _, pod := range pods {
+			logVpcEgressObserverDiagnostics(f, pod)
+		}
+	}
+	framework.ExpectNoError(err, "observer to emit schema-valid start and end records for the selected SNAT flow")
+}
+
+func vpcEgressObserverFlowObservations(ctx context.Context, f *framework.Framework, veg *apiv1.VpcEgressGateway, pods []corev1.Pod) map[vpcEgressObserverFlowKey]*vpcEgressObserverFlowObservation {
+	observations := map[vpcEgressObserverFlowKey]*vpcEgressObserverFlowObservation{}
+	for _, pod := range pods {
+		tailLines := int64(500)
+		data, err := f.ClientSet.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{Container: "observability", TailLines: &tailLines}).DoRaw(ctx)
+		if err != nil {
+			framework.Logf("failed to read observer flow logs from pod %s/%s: %v", pod.Namespace, pod.Name, err)
+			continue
+		}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			var record vpcEgressObserverFlowRecord
+			if json.Unmarshal([]byte(line), &record) != nil || !validVpcEgressObserverFlowRecord(record, veg, pod.Name) {
+				continue
+			}
+			key := vpcEgressObserverFlowKey{pod: pod.Name, zone: *record.Zone, id: *record.ConntrackID}
+			if observations[key] == nil {
+				observations[key] = &vpcEgressObserverFlowObservation{events: set.New[string]()}
+			}
+			observations[key].events.Insert(record.Event)
+			if record.Event == apiv1.ObservabilityEventStart {
+				observations[key].start = &record
+			}
+		}
+	}
+	return observations
+}
+
+func validVpcEgressObserverFlowRecord(record vpcEgressObserverFlowRecord, veg *apiv1.VpcEgressGateway, podName string) bool {
+	return record.SchemaVersion == "v1" && record.Timestamp != nil && !record.Timestamp.IsZero() && record.ConntrackID != nil && *record.ConntrackID != 0 && record.Zone != nil &&
+		record.Namespace == veg.Namespace && record.Name == veg.Name && record.Pod == podName && record.Node != "" && record.AddressFamily != "" && record.Protocol != "" && record.ProtocolNum != nil && *record.ProtocolNum != 0 &&
+		record.Original != nil && record.Translated != nil && net.ParseIP(record.Original.SourceIP) != nil && net.ParseIP(record.Original.DestinationIP) != nil &&
+		record.Original.SourcePort != nil && *record.Original.SourcePort != 0 && record.Original.DestinationPort != nil && *record.Original.DestinationPort != 0 &&
+		net.ParseIP(record.Translated.SourceIP) != nil && net.ParseIP(record.Translated.DestinationIP) != nil && record.Translated.SourcePort != nil && *record.Translated.SourcePort != 0 &&
+		record.Translated.DestinationPort != nil && *record.Translated.DestinationPort != 0 && slices.Contains(record.NatType, apiv1.ObservabilityNatTypeSNAT)
+}
+
+func deleteVpcEgressObserverConntrackFlow(f *framework.Framework, namespace, pod string, record vpcEgressObserverFlowRecord) (string, string, error) {
+	return framework.ExecCommandInContainer(
+		f, namespace, pod, "observability", "conntrack", "-D",
+		"-w", strconv.FormatUint(uint64(*record.Zone), 10),
+		"-p", record.Protocol,
+		"-s", record.Original.SourceIP,
+		"-d", record.Original.DestinationIP,
+		"--sport", strconv.FormatUint(uint64(*record.Original.SourcePort), 10),
+		"--dport", strconv.FormatUint(uint64(*record.Original.DestinationPort), 10),
+	)
+}
+
+func observerRestartCount(pod corev1.Pod) int32 {
+	for _, status := range pod.Status.InitContainerStatuses {
+		if status.Name == "observability" {
+			return status.RestartCount
+		}
+	}
+	return 0
+}
+
+func createVegTestGateway(f *framework.Framework, bfd bool, provider, vpcName, internalSubnetName, externalSubnetName string, replicas int32, antiAffinityMode string, expectedNodes []string, mutators ...func(*apiv1.VpcEgressGateway)) (*apiv1.VpcEgressGateway, *apiv1.Subnet, string, string) {
 	ginkgo.GinkgoHelper()
 
 	namespaceName := f.Namespace.Name
@@ -1153,6 +1816,9 @@ func createVegTestGateway(f *framework.Framework, bfd bool, provider, vpcName, i
 			SNAT:    true,
 			Subnets: []string{snatSubnetName},
 		})
+	}
+	for _, mutate := range mutators {
+		mutate(veg)
 	}
 
 	ginkgo.DeferCleanup(func() {
