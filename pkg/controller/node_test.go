@@ -198,15 +198,30 @@ func TestHandleAddNodeRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	joinSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "join"},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.1/32",
+			Gateway:   "10.0.0.1",
+		},
+	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		Nodes: []*corev1.Node{node},
+		Nodes:   []*corev1.Node{node},
+		Subnets: []*kubeovnv1.Subnet{joinSubnet},
 	})
 	require.NoError(t, err)
 	fc.fakeController.nodeKeyMutex = keymutex.NewHashed(0)
+	require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(
+		joinSubnet.Name,
+		joinSubnet.Spec.CIDRBlock,
+		joinSubnet.Spec.Gateway,
+		[]string{joinSubnet.Spec.Gateway},
+	))
 
 	err = fc.fakeController.handleAddNode(node.Name)
 
 	require.Error(t, err)
+	require.ErrorContains(t, err, "NoAvailableAddress")
 	require.Equal(t, "Warning AddNodeFailed "+err.Error(), requireRecorderEvent(t, fc.fakeController.recorder.(*record.FakeRecorder)))
 }
 
