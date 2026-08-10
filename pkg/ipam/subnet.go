@@ -232,7 +232,9 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 		if !slices.Contains(skippedAddrs, s.V4NicToIP[nicName].String()) {
 			return s.V4NicToIP[nicName], nil, s.NicToMac[nicName], nil
 		}
-		s.releaseAddr(podName, nicName)
+		// only the skipped IPv4 half may be released; the IPv6 half (if any) on
+		// the same nic must stay untouched, as in the mac-conflict path below.
+		s.releaseV4Addr(podName, nicName)
 	}
 
 	pool := s.IPPools[ippoolName]
@@ -289,7 +291,9 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 		if !slices.Contains(skippedAddrs, s.V6NicToIP[nicName].String()) {
 			return nil, s.V6NicToIP[nicName], s.NicToMac[nicName], nil
 		}
-		s.releaseAddr(podName, nicName)
+		// only the skipped IPv6 half may be released; the IPv4 half (if any) on
+		// the same nic must stay untouched, as in the mac-conflict path below.
+		s.releaseV6Addr(podName, nicName)
 	}
 
 	pool := s.IPPools[ippoolName]
@@ -405,6 +409,17 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 				s.NicToMac[nicName] = preservedMac
 				s.MacToPod[preservedMac] = podName
 			}
+			// Restore preserved address to counter views so it is not re-allocated.
+			s.V6Using.Add(preservedV6IP)
+			s.V6Available.Remove(preservedV6IP)
+			for _, p := range s.IPPools {
+				if p.V6IPs.Contains(preservedV6IP) {
+					p.V6Using.Add(preservedV6IP)
+					p.V6Available.Remove(preservedV6IP)
+					p.V6Released.Remove(preservedV6IP)
+					break
+				}
+			}
 		}
 	} else if v6 && s.V6NicToIP[nicName] != nil && !s.V6NicToIP[nicName].Equal(ip) {
 		// Preserve IPv4 address if it exists
@@ -424,6 +439,17 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 			if preservedMac != "" {
 				s.NicToMac[nicName] = preservedMac
 				s.MacToPod[preservedMac] = podName
+			}
+			// Restore preserved address to counter views so it is not re-allocated.
+			s.V4Using.Add(preservedV4IP)
+			s.V4Available.Remove(preservedV4IP)
+			for _, p := range s.IPPools {
+				if p.V4IPs.Contains(preservedV4IP) {
+					p.V4Using.Add(preservedV4IP)
+					p.V4Available.Remove(preservedV4IP)
+					p.V4Released.Remove(preservedV4IP)
+					break
+				}
 			}
 		}
 	}
@@ -537,6 +563,106 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	}
 	klog.Errorf("no available ip")
 	return nil, "", ErrNoAvailable
+}
+
+// releaseV4Addr drops a pod's IPv4 lease from this subnet without touching
+// the IPv6 half. The MAC mapping is only cleared when the nic no longer
+// holds an IPv6 lease, so dual-stack rollback paths can undo just the IPv4
+// half they allocated.
+func (s *Subnet) releaseV4Addr(podName, nicName string) {
+	ip, ok := s.V4NicToIP[nicName]
+	if !ok {
+		return
+	}
+	oldPods := strings.Split(s.V4IPToPod[ip.String()], ",")
+	if len(oldPods) > 1 {
+		newPods := util.RemoveString(oldPods, podName)
+		s.V4IPToPod[ip.String()] = strings.Join(newPods, ",")
+		return
+	}
+	delete(s.V4NicToIP, nicName)
+	delete(s.V4IPToPod, ip.String())
+	var mac string
+	if m, hasMac := s.NicToMac[nicName]; hasMac {
+		mac = m
+		if _, hasV6 := s.V6NicToIP[nicName]; !hasV6 {
+			delete(s.NicToMac, nicName)
+			delete(s.MacToPod, mac)
+		}
+	}
+	var changed bool
+	// When CIDR changed, do not relocate ip to CIDR list
+	if !s.V4CIDR.Contains(net.IP(ip)) {
+		klog.Infof("release v4 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
+		changed = true
+	}
+	if s.V4Reserved.Contains(ip) {
+		klog.Infof("release v4 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
+		changed = true
+	}
+	s.V4Using.Remove(ip)
+	if !changed {
+		s.V4Available.Add(ip)
+	}
+	for _, pool := range s.IPPools {
+		if pool.V4Using.Remove(ip) {
+			if !changed {
+				pool.V4Available.Add(ip)
+				if pool.V4Released.Add(ip) {
+					klog.Infof("release v4 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
+				}
+			}
+			break
+		}
+	}
+}
+
+// releaseV6Addr is the IPv6 counterpart of releaseV4Addr.
+func (s *Subnet) releaseV6Addr(podName, nicName string) {
+	ip, ok := s.V6NicToIP[nicName]
+	if !ok {
+		return
+	}
+	oldPods := strings.Split(s.V6IPToPod[ip.String()], ",")
+	if len(oldPods) > 1 {
+		newPods := util.RemoveString(oldPods, podName)
+		s.V6IPToPod[ip.String()] = strings.Join(newPods, ",")
+		return
+	}
+	delete(s.V6NicToIP, nicName)
+	delete(s.V6IPToPod, ip.String())
+	var mac string
+	if m, hasMac := s.NicToMac[nicName]; hasMac {
+		mac = m
+		if _, hasV4 := s.V4NicToIP[nicName]; !hasV4 {
+			delete(s.NicToMac, nicName)
+			delete(s.MacToPod, mac)
+		}
+	}
+	var changed bool
+	if !s.V6CIDR.Contains(net.IP(ip)) {
+		klog.Infof("release v6 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
+		changed = true
+	}
+	if s.V6Reserved.Contains(ip) {
+		klog.Infof("release v6 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
+		changed = true
+	}
+	s.V6Using.Remove(ip)
+	if !changed {
+		s.V6Available.Add(ip)
+	}
+	for _, pool := range s.IPPools {
+		if pool.V6Using.Remove(ip) {
+			if !changed {
+				pool.V6Available.Add(ip)
+				if pool.V6Released.Add(ip) {
+					klog.Infof("release v6 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
+				}
+			}
+			break
+		}
+	}
 }
 
 func (s *Subnet) releaseAddr(podName, nicName string) {
