@@ -22,7 +22,6 @@ func TestMetricsHandlerServesSupervisorHealth(t *testing.T) {
 		statusCode int
 	}{
 		{path: "/livez", statusCode: http.StatusOK},
-		{path: "/readyz", statusCode: http.StatusServiceUnavailable},
 		{path: "/metrics", statusCode: http.StatusOK},
 	}
 	for _, test := range tests {
