@@ -969,6 +969,9 @@ var _ = framework.Describe("[group:ipam]", func() {
 		modifiedSubnet.Spec.ExcludeIps = append(slices.Clone(subnet.Spec.ExcludeIps), poolIPs...)
 		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
 
+		ginkgo.By("Waiting for the IPPool to become exhausted")
+		_ = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, 0)
+
 		ginkgo.By("Creating pod " + podName + " from the exhausted IPPool")
 		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
 		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
