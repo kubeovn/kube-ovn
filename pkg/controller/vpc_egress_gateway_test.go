@@ -276,7 +276,7 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	require.Equal(t, []string{"/kube-ovn/kube-ovn-bfdd-supervisor", "live"}, container.ReadinessProbe.Exec.Command)
 	require.EqualValues(t, 10, container.ReadinessProbe.TimeoutSeconds)
 	require.Contains(t, container.VolumeMounts, corev1.VolumeMount{Name: "bfdd-supervisor-state", MountPath: "/var/run/kube-ovn/bfdd-supervisor"})
-	require.Contains(t, container.Ports, corev1.ContainerPort{Name: "metrics", ContainerPort: 10669, Protocol: corev1.ProtocolTCP})
+	require.Contains(t, container.Ports, corev1.ContainerPort{Name: "bfdd-metrics", ContainerPort: 10669, Protocol: corev1.ProtocolTCP})
 }
 
 func TestVpcEgressGatewayBFDDRuntimeProbeTransport(t *testing.T) {
@@ -287,7 +287,7 @@ func TestVpcEgressGatewayBFDDRuntimeProbeTransport(t *testing.T) {
 		for _, probe := range []*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
 			require.Nil(t, probe.Exec)
 			require.Equal(t, "/livez", probe.HTTPGet.Path)
-			require.Equal(t, "metrics", probe.HTTPGet.Port.StrVal)
+			require.Equal(t, "bfdd-metrics", probe.HTTPGet.Port.StrVal)
 		}
 	})
 

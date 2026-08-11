@@ -36,6 +36,7 @@ const (
 	vegBFDDStateDir      = "/var/run/kube-ovn/bfdd-supervisor"
 	vegBFDDStateVolume   = "bfdd-supervisor-state"
 	vegBFDDSupervisorBin = "/kube-ovn/kube-ovn-bfdd-supervisor"
+	vegBFDDMetricsPort   = "bfdd-metrics"
 )
 
 var (
@@ -1153,7 +1154,7 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 		runtimeProbeHandler = func() corev1.ProbeHandler {
 			return corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{
 				Path:   "/livez",
-				Port:   intstr.FromString("metrics"),
+				Port:   intstr.FromString(vegBFDDMetricsPort),
 				Scheme: corev1.URISchemeHTTP,
 			}}
 		}
@@ -1161,7 +1162,7 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 
 	container.Command = []string{vegBFDDSupervisorBin, "run"}
 	container.Ports = []corev1.ContainerPort{{
-		Name:          "metrics",
+		Name:          vegBFDDMetricsPort,
 		ContainerPort: 10669,
 		Protocol:      corev1.ProtocolTCP,
 	}}
