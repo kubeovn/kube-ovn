@@ -21,6 +21,7 @@ import (
 
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
+	"github.com/kubeovn/kube-ovn/pkg/fileutil"
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -220,7 +221,7 @@ func mvCNIConf(configDir, configFile, confName string) error {
 	}
 
 	klog.Infof("Installing cni config file %q to %q", configFile, cniConfPath)
-	return os.WriteFile(cniConfPath, data, 0o600) // #nosec G306
+	return fileutil.AtomicWriteFile(cniConfPath, data, 0o600)
 }
 
 func Retry(attempts, sleep int, f func(configuration *daemon.Configuration) error, ctrl *daemon.Configuration) (err error) {
