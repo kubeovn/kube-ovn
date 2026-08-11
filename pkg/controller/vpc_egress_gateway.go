@@ -752,8 +752,9 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 
 	if gw.Spec.Resources != nil {
-		// set resources if specified, otherwise the controller will set a default value
-		deploy.Spec.Template.Spec.Containers[0].Resources = *gw.Spec.Resources
+		if err = setVpcEgressGatewayWorkloadResources(deploy, *gw.Spec.Resources); err != nil {
+			return attachmentNetworkName, nil, nil, nil, err
+		}
 	}
 
 	// add FRR container if bgpConf is specified
@@ -1221,6 +1222,18 @@ func configureVpcEgressGatewayBFDWorkload(deploy *appsv1.Deployment, container c
 		},
 	})
 	deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To[int64](30)
+	return nil
+}
+
+func setVpcEgressGatewayWorkloadResources(deploy *appsv1.Deployment, resources corev1.ResourceRequirements) error {
+	containers := deploy.Spec.Template.Spec.Containers
+	containerIndex := slices.IndexFunc(containers, func(item corev1.Container) bool {
+		return item.Name == "gateway" || item.Name == "bfdd"
+	})
+	if containerIndex == -1 {
+		return errors.New("vpc egress gateway workload container not found")
+	}
+	containers[containerIndex].Resources = resources
 	return nil
 }
 
