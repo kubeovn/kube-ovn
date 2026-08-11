@@ -1,4 +1,4 @@
-package bfdd_supervisor
+package main
 
 import (
 	"context"
@@ -18,7 +18,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/bfddsupervisor"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -27,12 +26,19 @@ const (
 	defaultMetricsAddress = ":10669"
 )
 
-func CmdMain() {
+func main() {
+	os.Exit(runMain())
+}
+
+func runMain() int {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	defer klog.Flush()
 	if err := runCommand(ctx, os.Args[1:], os.Stdout); err != nil {
-		util.LogFatalAndExit(err, "BFD supervisor failed")
+		klog.Errorf("BFD supervisor failed: %v", err)
+		return 1
 	}
+	return 0
 }
 
 func runCommand(ctx context.Context, args []string, output io.Writer) error {

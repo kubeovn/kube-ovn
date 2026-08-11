@@ -79,6 +79,29 @@ func (c *fakeChild) Restart(context.Context) error {
 	return nil
 }
 
+func TestSupervisorStaysNotLiveUntilChildBootstrapCompletes(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(500, 0)}
+	child := &fakeChild{running: true}
+	supervisor, err := NewSupervisor(SupervisorConfig{
+		Daemon: DaemonConfig{
+			MinTXMilliseconds: 100,
+			MinRXMilliseconds: 100,
+			Multiplier:        3,
+			PeerIPs:           []string{"10.255.255.255"},
+		},
+		PodIPs:       []string{"10.16.0.2"},
+		GracePeriod:  time.Minute,
+		StablePeriod: time.Minute,
+		Backoffs:     []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute},
+		CircuitOpen:  time.Hour,
+	}, &fakeControl{}, child, clock)
+	require.NoError(t, err)
+	require.False(t, supervisor.Status().Live)
+
+	require.NoError(t, supervisor.StartChild(context.Background()))
+	require.True(t, supervisor.Status().Live)
+}
+
 func TestSupervisorWaitsForGraceBeforeReplayingConfiguration(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(1_000, 0)}
 	control := &fakeControl{}
@@ -424,7 +447,7 @@ func TestSupervisorRestartsChildAfterRepeatedControlFailures(t *testing.T) {
 	require.True(t, supervisor.Status().Live)
 }
 
-func TestSupervisorExhaustsBoundedChildRecoveryBeforeFailingLiveness(t *testing.T) {
+func TestSupervisorFailsLivenessAfterExhaustingCurrentGenerationRecovery(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(11_000, 0)}
 	control := &fakeControl{statusErr: errors.New("control unavailable")}
 	child := &boundedFailingChild{fakeChild: fakeChild{running: true}}
@@ -463,6 +486,55 @@ func TestSupervisorExhaustsBoundedChildRecoveryBeforeFailingLiveness(t *testing.
 	require.Error(t, supervisor.Reconcile(context.Background()))
 	require.Equal(t, 5, child.attempts, "half-open must allow one child restart")
 	require.False(t, supervisor.Status().Live)
+}
+
+func TestSupervisorKeepsRuntimeLiveWhenContainerInheritsOpenChildCircuit(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(11_500, 0)}
+	control := &fakeControl{statusErr: errors.New("control unavailable")}
+	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
+	config := SupervisorConfig{
+		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
+		PodIPs:        []string{"10.16.0.2"},
+		GracePeriod:   time.Minute,
+		StablePeriod:  time.Minute,
+		Backoffs:      []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute},
+		ChildBackoffs: []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute},
+		CircuitOpen:   time.Hour,
+		StatePath:     filepath.Join(t.TempDir(), "state.json"),
+	}
+
+	first, err := NewSupervisor(config, control, child, clock)
+	require.NoError(t, err)
+	require.Error(t, first.StartChild(context.Background()))
+	clock.now = clock.now.Add(time.Minute)
+	require.NoError(t, first.Reconcile(context.Background()))
+	require.NoError(t, first.Reconcile(context.Background()))
+	require.Error(t, first.Reconcile(context.Background()))
+	clock.now = clock.now.Add(5 * time.Minute)
+	require.Error(t, first.Reconcile(context.Background()))
+	clock.now = clock.now.Add(30 * time.Minute)
+	require.Error(t, first.Reconcile(context.Background()))
+	require.True(t, first.Status().ChildCircuitOpen)
+	require.False(t, first.Status().Live, "new circuit in the current container generation must request one kubelet recovery")
+
+	second, err := NewSupervisor(config, control, child, clock)
+	require.NoError(t, err)
+	require.Error(t, second.StartChild(context.Background()))
+	require.Equal(t, 5, child.attempts, "new container generation gets one bootstrap attempt")
+	require.True(t, second.Status().Live, "child circuit must not fail supervisor runtime liveness")
+	require.NoError(t, second.StartChild(context.Background()))
+	require.Equal(t, 5, child.attempts, "same container generation must not bootstrap twice")
+
+	require.NoError(t, second.Reconcile(context.Background()))
+	require.NoError(t, second.Reconcile(context.Background()))
+	require.NoError(t, second.Reconcile(context.Background()))
+	require.True(t, second.Status().Live)
+	require.Equal(t, 5, child.attempts, "inherited circuit must suppress same-interval retries")
+
+	clock.now = second.Status().ChildNextRetry
+	require.Error(t, second.Reconcile(context.Background()))
+	require.Equal(t, 6, child.attempts, "expired circuit must allow one half-open retry")
+	require.False(t, second.Status().Live, "failed half-open retry creates a new circuit for kubelet recovery")
 }
 
 func TestSupervisorSerializesChildRestartsAcrossFailedPeers(t *testing.T) {
@@ -515,7 +587,7 @@ func TestSupervisorKeepsChildRecoveryBudgetAcrossContainerRestart(t *testing.T) 
 	require.Equal(t, 1, child.restarts, "container restart must not reset the per-pod child recovery budget")
 }
 
-func TestSupervisorPersistsInitialChildStartBackoff(t *testing.T) {
+func TestSupervisorBootstrapsChildOncePerContainerGenerationWithoutResettingBudget(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(14_000, 0)}
 	control := &fakeControl{statusErr: errors.New("control unavailable")}
 	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
@@ -537,12 +609,37 @@ func TestSupervisorPersistsInitialChildStartBackoff(t *testing.T) {
 
 	second, err := NewSupervisor(config, control, child, clock)
 	require.NoError(t, err)
-	require.NoError(t, second.StartChild(context.Background()))
-	require.Equal(t, 1, child.attempts, "container restart must preserve initial child start backoff")
-
-	clock.now = clock.now.Add(time.Minute)
 	require.Error(t, second.StartChild(context.Background()))
-	require.Equal(t, 2, child.attempts)
+	require.Equal(t, 2, child.attempts, "each container generation must bootstrap its own child")
+	require.Equal(t, 1, second.Status().ChildRecoveryAttempts, "bootstrap must not reset the persisted recovery budget")
+	require.True(t, second.Status().Live, "persisted recovery state must not cause a kubelet restart loop")
+
+	require.NoError(t, second.StartChild(context.Background()))
+	require.Equal(t, 2, child.attempts, "one container generation must bootstrap the child only once")
+}
+
+func TestSupervisorCanRetryBootstrapAfterStatePersistenceFailure(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(14_500, 0)}
+	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
+	blockedPath := filepath.Join(t.TempDir(), "blocked")
+	require.NoError(t, os.Mkdir(blockedPath, 0o750))
+	config := SupervisorConfig{
+		Daemon:       DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
+		PodIPs:       []string{"10.16.0.2"},
+		GracePeriod:  time.Minute,
+		StablePeriod: time.Minute,
+		Backoffs:     []time.Duration{time.Minute},
+		CircuitOpen:  time.Hour,
+		StatePath:    filepath.Join(blockedPath, "state.json"),
+	}
+	supervisor, err := NewSupervisor(config, &fakeControl{}, child, clock)
+	require.NoError(t, err)
+	require.NoError(t, os.Remove(blockedPath))
+	require.NoError(t, os.WriteFile(blockedPath, []byte("not a directory"), 0o600))
+
+	require.Error(t, supervisor.StartChild(context.Background()))
+	require.Error(t, supervisor.StartChild(context.Background()))
+	require.Equal(t, 0, child.attempts, "child must not start before recovery state can be persisted")
 }
 
 func TestSupervisorClearsChildBudgetOnlyAfterAllSessionsAreStable(t *testing.T) {

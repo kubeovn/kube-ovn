@@ -283,7 +283,7 @@ kubectl-ko-log:
 
 .PHONY: clean
 clean:
-	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd
+	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd dist/images/kube-ovn-bfdd-supervisor
 	$(RM) yamls/kind.yaml
 	$(RM) yamls/clab-bgp.yaml yamls/clab-bgp-ha.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml
