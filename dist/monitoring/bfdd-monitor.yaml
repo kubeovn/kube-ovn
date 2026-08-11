@@ -9,7 +9,7 @@ spec:
   podMetricsEndpoints:
     - interval: 15s
       path: /metrics
-      port: metrics
+      port: bfdd-metrics
       scrapeTimeout: 10s
   selector:
     matchLabels:
