@@ -14,6 +14,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -34,6 +35,11 @@ const (
 	vegBFDDStateDir      = "/var/run/kube-ovn/bfdd-supervisor"
 	vegBFDDStateVolume   = "bfdd-supervisor-state"
 	vegBFDDSupervisorBin = "/kube-ovn/kube-ovn-bfdd-supervisor"
+)
+
+var (
+	vegBFDDSupervisorLimitCPU    = resource.MustParse("300m")
+	vegBFDDSupervisorLimitMemory = resource.MustParse("64Mi")
 )
 
 func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
@@ -1131,6 +1137,8 @@ func vpcEgressGatewayInitContainerEnv(af int, internalGateway, externalGateway s
 
 func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32) corev1.Container {
 	container := genGatewayBFDDContainer(image, bfdIP, minTX, minRX, multiplier)
+	container.Resources.Limits[corev1.ResourceCPU] = vegBFDDSupervisorLimitCPU
+	container.Resources.Limits[corev1.ResourceMemory] = vegBFDDSupervisorLimitMemory
 	probeHandler := func() corev1.ProbeHandler {
 		return corev1.ProbeHandler{Exec: &corev1.ExecAction{
 			Command: []string{vegBFDDSupervisorBin, "live"},
