@@ -13,19 +13,20 @@ import (
 
 func TestMetricsHandlerServesSupervisorHealth(t *testing.T) {
 	reporter := NewMetricsReporter()
-	handler := reporter.handler(func() SupervisorStatus {
-		return SupervisorStatus{Live: true, Ready: false}
-	})
 
 	tests := []struct {
+		name       string
 		path       string
+		status     SupervisorStatus
 		statusCode int
 	}{
-		{path: "/livez", statusCode: http.StatusOK},
-		{path: "/metrics", statusCode: http.StatusOK},
+		{name: "live", path: "/livez", status: SupervisorStatus{Live: true, Ready: false}, statusCode: http.StatusOK},
+		{name: "not live", path: "/livez", status: SupervisorStatus{Live: false}, statusCode: http.StatusServiceUnavailable},
+		{name: "metrics", path: "/metrics", statusCode: http.StatusOK},
 	}
 	for _, test := range tests {
-		t.Run(test.path, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
+			handler := reporter.handler(func() SupervisorStatus { return test.status })
 			request := httptest.NewRequest(http.MethodGet, test.path, nil)
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
