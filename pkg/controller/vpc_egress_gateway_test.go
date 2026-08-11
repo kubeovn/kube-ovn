@@ -256,7 +256,7 @@ func TestHandleDelVpcEgressGatewayRecordsSuccessAfterFinalizerUpdate(t *testing.
 }
 
 func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
-	container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5)
+	container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5, false)
 
 	require.Equal(t, "200m", container.Resources.Requests.Cpu().String())
 	require.Equal(t, "300m", container.Resources.Limits.Cpu().String())
@@ -279,12 +279,34 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	require.Contains(t, container.Ports, corev1.ContainerPort{Name: "metrics", ContainerPort: 10669, Protocol: corev1.ProtocolTCP})
 }
 
+func TestVpcEgressGatewayBFDDRuntimeProbeTransport(t *testing.T) {
+	t.Run("default VPC uses HTTP", func(t *testing.T) {
+		container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5, true)
+
+		require.Equal(t, []string{vegBFDDSupervisorBin, "live"}, container.StartupProbe.Exec.Command)
+		for _, probe := range []*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
+			require.Nil(t, probe.Exec)
+			require.Equal(t, "/livez", probe.HTTPGet.Path)
+			require.Equal(t, "metrics", probe.HTTPGet.Port.StrVal)
+		}
+	})
+
+	t.Run("custom VPC falls back to exec", func(t *testing.T) {
+		container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5, false)
+
+		for _, probe := range []*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
+			require.Nil(t, probe.HTTPGet)
+			require.Equal(t, []string{vegBFDDSupervisorBin, "live"}, probe.Exec.Command)
+		}
+	})
+}
+
 func TestConfigureVpcEgressGatewayBFDWorkload(t *testing.T) {
 	deploy := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
 		Containers:     []corev1.Container{{Name: "sleep"}},
 		InitContainers: []corev1.Container{{Command: []string{"bash", "-c", "old"}}},
 	}}}}
-	container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 3)
+	container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 3, false)
 
 	configureVpcEgressGatewayBFDWorkload(deploy, container)
 

@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -740,7 +741,10 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	if bfdIP != "" {
 		// Run BFD in the gateway container to establish BFD sessions with the VPC BFD LRP.
-		container := genVpcEgressGatewayBFDDContainer(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
+		container := genVpcEgressGatewayBFDDContainer(
+			image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier,
+			vpc.Name == c.config.ClusterRouter,
+		)
 		configureVpcEgressGatewayBFDWorkload(deploy, container)
 	}
 
@@ -1135,14 +1139,24 @@ func vpcEgressGatewayInitContainerEnv(af int, internalGateway, externalGateway s
 	}}, nil
 }
 
-func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32) corev1.Container {
+func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32, useHTTPProbe bool) corev1.Container {
 	container := genGatewayBFDDContainer(image, bfdIP, minTX, minRX, multiplier)
 	container.Resources.Limits[corev1.ResourceCPU] = vegBFDDSupervisorLimitCPU
 	container.Resources.Limits[corev1.ResourceMemory] = vegBFDDSupervisorLimitMemory
-	probeHandler := func() corev1.ProbeHandler {
+	execProbeHandler := func() corev1.ProbeHandler {
 		return corev1.ProbeHandler{Exec: &corev1.ExecAction{
 			Command: []string{vegBFDDSupervisorBin, "live"},
 		}}
+	}
+	runtimeProbeHandler := execProbeHandler
+	if useHTTPProbe {
+		runtimeProbeHandler = func() corev1.ProbeHandler {
+			return corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{
+				Path:   "/livez",
+				Port:   intstr.FromString("metrics"),
+				Scheme: corev1.URISchemeHTTP,
+			}}
+		}
 	}
 
 	container.Command = []string{vegBFDDSupervisorBin, "run"}
@@ -1152,14 +1166,14 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 		Protocol:      corev1.ProtocolTCP,
 	}}
 	container.StartupProbe = &corev1.Probe{
-		ProbeHandler:        probeHandler(),
+		ProbeHandler:        execProbeHandler(),
 		InitialDelaySeconds: 1,
 		PeriodSeconds:       2,
 		TimeoutSeconds:      10,
 		FailureThreshold:    30,
 	}
 	container.LivenessProbe = &corev1.Probe{
-		ProbeHandler:        probeHandler(),
+		ProbeHandler:        runtimeProbeHandler(),
 		InitialDelaySeconds: 1,
 		PeriodSeconds:       5,
 		TimeoutSeconds:      10,
@@ -1167,7 +1181,7 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 	container.ReadinessProbe = &corev1.Probe{
 		// Strict session readiness remains disabled until every supported
 		// controller can reconcile network-complete NotReady pods.
-		ProbeHandler:        probeHandler(),
+		ProbeHandler:        runtimeProbeHandler(),
 		InitialDelaySeconds: 3,
 		PeriodSeconds:       3,
 		TimeoutSeconds:      10,
