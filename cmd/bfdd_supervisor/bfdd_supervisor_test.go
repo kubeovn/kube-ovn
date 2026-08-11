@@ -1,4 +1,4 @@
-package bfdd_supervisor
+package main
 
 import (
 	"bytes"
@@ -57,9 +57,13 @@ func TestStatusCommandUsesSupervisorSocketInterface(t *testing.T) {
 	require.NoError(t, supervisor.Reconcile(context.Background()))
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	socketPath := filepath.Join(t.TempDir(), "supervisor.sock")
-	go func() { _ = supervisor.Serve(ctx, socketPath) }()
+	serveResult := make(chan error, 1)
+	go func() { serveResult <- supervisor.Serve(ctx, socketPath) }()
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, <-serveResult)
+	})
 	t.Setenv("BFDD_SUPERVISOR_SOCKET", socketPath)
 	require.Eventually(t, func() bool {
 		_, err := bfddsupervisor.Probe(context.Background(), socketPath, "live")
