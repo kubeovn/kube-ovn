@@ -248,7 +248,7 @@ func (s *Supervisor) StartChild(ctx context.Context) error {
 	if startErr != nil {
 		s.updateLivenessLocked(now)
 	} else {
-		s.status.Live = s.child.Running()
+		s.updateChildRunningLivenessLocked(now)
 	}
 	s.status.Ready = false
 	s.refreshStatusLocked()
@@ -299,7 +299,7 @@ func (s *Supervisor) reconcileControlFailure(ctx context.Context, now time.Time,
 		s.updateLivenessLocked(now)
 	} else {
 		s.controlFailures = 0
-		s.status.Live = s.child.Running()
+		s.updateChildRunningLivenessLocked(now)
 		s.status.ChildRestarts++
 	}
 	s.refreshStatusLocked()
@@ -328,7 +328,6 @@ func (s *Supervisor) planSessionRecovery(now time.Time, sessions []Session) (*pe
 	}
 
 	s.mutex.Lock()
-	s.status.Live = s.child.Running()
 	s.status.Ready = true
 	var pending *pendingRecoveryAction
 
@@ -345,6 +344,7 @@ func (s *Supervisor) planSessionRecovery(now time.Time, sessions []Session) (*pe
 		s.childCircuitUntil = time.Time{}
 		s.inheritedCircuitUntil = time.Time{}
 	}
+	s.updateChildRunningLivenessLocked(now)
 	s.refreshStatusLocked()
 	state := s.persistentStateLocked()
 	s.mutex.Unlock()
@@ -467,7 +467,7 @@ func (s *Supervisor) recordRecoveryResult(pending pendingRecoveryAction, actionE
 	if pending.action == RecoveryRestartChild && actionErr != nil {
 		s.updateLivenessLocked(s.clock.Now())
 	} else {
-		s.status.Live = s.child.Running()
+		s.updateChildRunningLivenessLocked(s.clock.Now())
 	}
 	s.refreshStatusLocked()
 	state := s.persistentStateLocked()
@@ -508,6 +508,10 @@ func (s *Supervisor) refreshStatusLocked() {
 
 func (s *Supervisor) updateLivenessLocked(now time.Time) {
 	s.status.Live = !s.childCircuitFailsLivenessLocked(now)
+}
+
+func (s *Supervisor) updateChildRunningLivenessLocked(now time.Time) {
+	s.status.Live = s.child.Running() && !s.childCircuitFailsLivenessLocked(now)
 }
 
 func (s *Supervisor) childCircuitFailsLivenessLocked(now time.Time) bool {
