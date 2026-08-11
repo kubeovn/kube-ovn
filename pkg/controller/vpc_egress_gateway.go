@@ -40,6 +40,13 @@ var (
 	vegResourceEphemeralStorage = resource.MustParse("1Gi")
 )
 
+const (
+	vegBFDInitCommand    = "chmod +t /usr/local/sbin && chmod 1777 /var/run/kube-ovn/bfdd-supervisor && bash /kube-ovn/init-vpc-egress-gateway.sh"
+	vegBFDDStateDir      = "/var/run/kube-ovn/bfdd-supervisor"
+	vegBFDDStateVolume   = "bfdd-supervisor-state"
+	vegBFDDSupervisorBin = "/kube-ovn/kube-ovn-bfdd-supervisor"
+)
+
 func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue add vpc-egress-gateway %s", key)
@@ -107,9 +114,12 @@ func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods 
 			continue
 		}
 
-		if !podReady(pod) {
+		if pod.Status.Phase != corev1.PodRunning {
 			notReadyMessages = append(notReadyMessages, fmt.Sprintf("pod %s/%s is not ready", pod.Namespace, pod.Name))
 			continue
+		}
+		if !podReady(pod) {
+			notReadyMessages = append(notReadyMessages, fmt.Sprintf("pod %s/%s is not ready", pod.Namespace, pod.Name))
 		}
 
 		ips := util.PodIPs(*pod)
@@ -141,7 +151,7 @@ func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods 
 	}
 
 	if len(gw.Status.ExternalIPs) != int(gw.Spec.Replicas) {
-		notReadyMessages = append(notReadyMessages, fmt.Sprintf("expected %d ready workload pods with network %s, got %d", gw.Spec.Replicas, attachmentNetworkName, len(gw.Status.ExternalIPs)))
+		notReadyMessages = append(notReadyMessages, fmt.Sprintf("expected %d networked workload pods with network %s, got %d", gw.Spec.Replicas, attachmentNetworkName, len(gw.Status.ExternalIPs)))
 	}
 
 	return nodeNexthopIPv4, nodeNexthopIPv6, notReadyMessages
@@ -746,8 +756,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 
 	if bfdIP != "" {
 		// run BFD in the gateway container	to establish BFD session(s) with the VPC BFD LRP
-		container := vpcEgressGatewayContainerBFDD(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
-		deploy.Spec.Template.Spec.Containers[0] = container
+		container := genVpcEgressGatewayBFDDContainer(image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier)
+		configureVpcEgressGatewayBFDWorkload(deploy, container)
 	}
 
 	if gw.Spec.Resources != nil {
@@ -1169,12 +1179,12 @@ func vpcEgressGatewayInitContainerEnv(af int, internalGateway, externalGateway s
 	}}, nil
 }
 
-func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier int32) corev1.Container {
-	return corev1.Container{
+func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32) corev1.Container {
+	container := corev1.Container{
 		Name:            "bfdd",
 		Image:           image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command:         []string{"bash", "/kube-ovn/start-bfdd.sh"},
+		Command:         []string{vegBFDDSupervisorBin, "run"},
 		Env: []corev1.EnvVar{{
 			Name: "POD_IPS",
 			ValueFrom: &corev1.EnvVarSource{
@@ -1195,38 +1205,6 @@ func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier
 			Name:  "BFD_MULTI",
 			Value: strconv.Itoa(int(multiplier)),
 		}},
-		// wait for the BFD process to be running and initialize the BFD configuration
-		StartupProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bash", "/kube-ovn/bfdd-prestart.sh"},
-				},
-			},
-			InitialDelaySeconds: 1,
-			FailureThreshold:    1,
-		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					// Restart bfdd when its local session table remains empty.
-					Command: []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"},
-				},
-			},
-			InitialDelaySeconds: 1,
-			PeriodSeconds:       5,
-			TimeoutSeconds:      10,
-		},
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
-				},
-			},
-			InitialDelaySeconds: 3,
-			PeriodSeconds:       3,
-			TimeoutSeconds:      10,
-			FailureThreshold:    1,
-		},
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceCPU:    vegBFDDResourceCPU,
@@ -1251,6 +1229,59 @@ func vpcEgressGatewayContainerBFDD(image, bfdIP string, minTX, minRX, multiplier
 			MountPath: "/usr/local/sbin",
 		}},
 	}
+	probeHandler := func() corev1.ProbeHandler {
+		return corev1.ProbeHandler{Exec: &corev1.ExecAction{
+			Command: []string{vegBFDDSupervisorBin, "live"},
+		}}
+	}
+	container.Ports = []corev1.ContainerPort{{
+		Name:          "metrics",
+		ContainerPort: 10669,
+		Protocol:      corev1.ProtocolTCP,
+	}}
+	container.StartupProbe = &corev1.Probe{
+		ProbeHandler:        probeHandler(),
+		InitialDelaySeconds: 1,
+		PeriodSeconds:       2,
+		TimeoutSeconds:      10,
+		FailureThreshold:    30,
+	}
+	container.LivenessProbe = &corev1.Probe{
+		ProbeHandler:        probeHandler(),
+		InitialDelaySeconds: 1,
+		PeriodSeconds:       5,
+		TimeoutSeconds:      10,
+	}
+	container.ReadinessProbe = &corev1.Probe{
+		// Strict session readiness remains disabled until every supported
+		// controller can reconcile network-complete NotReady pods.
+		ProbeHandler:        probeHandler(),
+		InitialDelaySeconds: 3,
+		PeriodSeconds:       3,
+		TimeoutSeconds:      10,
+		FailureThreshold:    1,
+	}
+	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+		Name:      vegBFDDStateVolume,
+		MountPath: vegBFDDStateDir,
+	})
+	return container
+}
+
+func configureVpcEgressGatewayBFDWorkload(deploy *appsv1.Deployment, container corev1.Container) {
+	deploy.Spec.Template.Spec.Containers[0] = container
+	deploy.Spec.Template.Spec.InitContainers[0].Command[2] = vegBFDInitCommand
+	deploy.Spec.Template.Spec.InitContainers[0].VolumeMounts = append(deploy.Spec.Template.Spec.InitContainers[0].VolumeMounts, corev1.VolumeMount{
+		Name:      vegBFDDStateVolume,
+		MountPath: vegBFDDStateDir,
+	})
+	deploy.Spec.Template.Spec.Volumes = append(deploy.Spec.Template.Spec.Volumes, corev1.Volume{
+		Name: vegBFDDStateVolume,
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	})
+	deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To[int64](30)
 }
 
 func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.BgpConf, evpnConf *kubeovnv1.EvpnConf) corev1.Container {
