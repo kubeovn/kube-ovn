@@ -15,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ktesting "k8s.io/client-go/testing"
@@ -328,8 +329,13 @@ func TestConfigureVpcEgressGatewayBFDWorkload(t *testing.T) {
 		},
 	})
 	require.EqualValues(t, 30, *deploy.Spec.Template.Spec.TerminationGracePeriodSeconds)
+	resources := corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")}}
+	require.NoError(t, setVpcEgressGatewayWorkloadResources(deploy, resources))
+	require.Empty(t, deploy.Spec.Template.Spec.Containers[0].Resources)
+	require.Equal(t, resources, deploy.Spec.Template.Spec.Containers[1].Resources)
 
 	require.Error(t, configureVpcEgressGatewayBFDWorkload(&appsv1.Deployment{}, container))
+	require.Error(t, setVpcEgressGatewayWorkloadResources(&appsv1.Deployment{}, resources))
 }
 
 func TestOpenBFDDControlHardeningPatch(t *testing.T) {
