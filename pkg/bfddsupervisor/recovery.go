@@ -75,6 +75,8 @@ type SupervisorStatus struct {
 	Live                  bool
 	Ready                 bool
 	Sessions              []SessionRecoveryStatus
+	ControlFailures       int
+	LastControlError      string
 	ChildRestarts         int
 	ChildRecoveryAttempts int
 	ChildNextRetry        time.Time
@@ -207,6 +209,8 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 	}
 	s.mutex.Lock()
 	s.controlFailures = 0
+	s.status.ControlFailures = 0
+	s.status.LastControlError = ""
 	s.mutex.Unlock()
 
 	pending, state := s.planSessionRecovery(now, sessions)
@@ -222,6 +226,9 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 	saveErr := s.saveState(state)
 	if pending.childHalfOpen && actionErr != nil {
 		return errors.Join(saveErr, fmt.Errorf("failed to half-open OpenBFDD child recovery circuit: %w", actionErr))
+	}
+	if actionErr != nil {
+		return errors.Join(saveErr, fmt.Errorf("failed to execute BFD recovery action %s: %w", pending.action, actionErr))
 	}
 	return saveErr
 }
@@ -272,6 +279,8 @@ func (s *Supervisor) StartChild(ctx context.Context) error {
 func (s *Supervisor) reconcileControlFailure(ctx context.Context, now time.Time, statusErr error) error {
 	s.mutex.Lock()
 	s.controlFailures++
+	s.status.ControlFailures = s.controlFailures
+	s.status.LastControlError = statusErr.Error()
 	s.status.Ready = false
 	s.updateLivenessLocked(now)
 	if s.controlFailures < 3 {
@@ -311,6 +320,7 @@ func (s *Supervisor) reconcileControlFailure(ctx context.Context, now time.Time,
 		s.updateLivenessLocked(now)
 	} else {
 		s.controlFailures = 0
+		s.status.ControlFailures = 0
 		s.updateChildRunningLivenessLocked(now)
 		s.status.ChildRestarts++
 	}
