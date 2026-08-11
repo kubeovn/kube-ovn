@@ -146,13 +146,6 @@ func (r *MetricsReporter) handler(status func() SupervisorStatus) http.Handler {
 		}
 		writer.WriteHeader(http.StatusOK)
 	})
-	mux.HandleFunc("/readyz", func(writer http.ResponseWriter, _ *http.Request) {
-		if !status().Ready {
-			http.Error(writer, "expected BFD sessions are not ready", http.StatusServiceUnavailable)
-			return
-		}
-		writer.WriteHeader(http.StatusOK)
-	})
 	return mux
 }
 
