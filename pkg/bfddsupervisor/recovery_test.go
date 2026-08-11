@@ -488,6 +488,36 @@ func TestSupervisorFailsLivenessAfterExhaustingCurrentGenerationRecovery(t *test
 	require.False(t, supervisor.Status().Live)
 }
 
+func TestSupervisorFailsLivenessWhenSuccessfulRestartExhaustsChildCircuit(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(11_250, 0)}
+	control := &fakeControl{statusErr: errors.New("control unavailable")}
+	child := &fakeChild{running: true}
+	supervisor, err := NewSupervisor(SupervisorConfig{
+		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
+		PodIPs:        []string{"10.16.0.2"},
+		GracePeriod:   time.Minute,
+		StablePeriod:  time.Minute,
+		Backoffs:      []time.Duration{time.Minute},
+		ChildBackoffs: []time.Duration{time.Second},
+		CircuitOpen:   time.Hour,
+	}, control, child, clock)
+	require.NoError(t, err)
+
+	for range 3 {
+		require.NoError(t, supervisor.Reconcile(context.Background()))
+	}
+	clock.now = clock.now.Add(time.Second)
+	for range 3 {
+		require.NoError(t, supervisor.Reconcile(context.Background()))
+	}
+	require.Equal(t, 2, child.restarts)
+	require.True(t, supervisor.Status().ChildCircuitOpen)
+
+	control.statusErr = nil
+	require.NoError(t, supervisor.Reconcile(context.Background()))
+	require.False(t, supervisor.Status().Live, "current generation must fail liveness once after exhausting child recovery")
+}
+
 func TestSupervisorKeepsRuntimeLiveWhenContainerInheritsOpenChildCircuit(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(11_500, 0)}
 	control := &fakeControl{statusErr: errors.New("control unavailable")}
