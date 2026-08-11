@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -515,7 +516,15 @@ func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter
 	if subnet.Status.DHCPv4OptionsUUID != dhcpOptionsUUIDs.DHCPv4OptionsUUID || subnet.Status.DHCPv6OptionsUUID != dhcpOptionsUUIDs.DHCPv6OptionsUUID {
 		subnet.Status.DHCPv4OptionsUUID = dhcpOptionsUUIDs.DHCPv4OptionsUUID
 		subnet.Status.DHCPv6OptionsUUID = dhcpOptionsUUIDs.DHCPv6OptionsUUID
-		bytes, err := subnet.Status.Bytes()
+		patch := struct {
+			Status struct {
+				DHCPv4OptionsUUID string `json:"dhcpV4OptionsUUID"`
+				DHCPv6OptionsUUID string `json:"dhcpV6OptionsUUID"`
+			} `json:"status"`
+		}{}
+		patch.Status.DHCPv4OptionsUUID = subnet.Status.DHCPv4OptionsUUID
+		patch.Status.DHCPv6OptionsUUID = subnet.Status.DHCPv6OptionsUUID
+		bytes, err := json.Marshal(patch)
 		if err != nil {
 			klog.Error(err)
 			return err
