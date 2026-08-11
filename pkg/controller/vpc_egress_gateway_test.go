@@ -22,9 +22,9 @@ func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
 	container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5)
 
 	require.Equal(t, "200m", container.Resources.Requests.Cpu().String())
-	require.Equal(t, "200m", container.Resources.Limits.Cpu().String())
+	require.Equal(t, "300m", container.Resources.Limits.Cpu().String())
 	require.Equal(t, "50Mi", container.Resources.Requests.Memory().String())
-	require.Equal(t, "50Mi", container.Resources.Limits.Memory().String())
+	require.Equal(t, "64Mi", container.Resources.Limits.Memory().String())
 	ephemeralStorage := container.Resources.Limits[corev1.ResourceEphemeralStorage]
 	require.Equal(t, "1Gi", ephemeralStorage.String())
 
