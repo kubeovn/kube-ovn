@@ -446,6 +446,7 @@ func TestSupervisorRestartsChildAfterRepeatedControlFailures(t *testing.T) {
 	require.NoError(t, supervisor.Reconcile(context.Background()))
 	require.Equal(t, 1, child.restarts)
 	require.True(t, supervisor.Status().Live)
+	require.Empty(t, supervisor.Status().LastControlError)
 }
 
 func TestSupervisorProtectsRecentlyHealthySessionFromControlRecovery(t *testing.T) {
