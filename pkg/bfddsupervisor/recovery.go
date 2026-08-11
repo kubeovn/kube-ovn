@@ -281,6 +281,9 @@ func (s *Supervisor) reconcileControlFailure(ctx context.Context, now time.Time,
 	s.controlFailures++
 	s.status.ControlFailures = s.controlFailures
 	s.status.LastControlError = statusErr.Error()
+	if s.controlFailures == 1 || s.controlFailures == 3 {
+		klog.Errorf("failed to query OpenBFDD status (%d consecutive failures): %v", s.controlFailures, statusErr)
+	}
 	s.status.Ready = false
 	s.updateLivenessLocked(now)
 	if s.controlFailures < 3 {
@@ -321,6 +324,7 @@ func (s *Supervisor) reconcileControlFailure(ctx context.Context, now time.Time,
 	} else {
 		s.controlFailures = 0
 		s.status.ControlFailures = 0
+		s.status.LastControlError = ""
 		s.updateChildRunningLivenessLocked(now)
 		s.status.ChildRestarts++
 	}
