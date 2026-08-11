@@ -115,6 +115,7 @@ type Supervisor struct {
 	episodes        map[string]*recoveryEpisode
 	status          SupervisorStatus
 	controlFailures int
+	lastHealthyAt   time.Time
 
 	childRecoveryAttempts   int
 	childNextRetry          time.Time
@@ -277,6 +278,12 @@ func (s *Supervisor) reconcileControlFailure(ctx context.Context, now time.Time,
 		s.mutex.Unlock()
 		return nil
 	}
+	if s.recentlyObservedHealthySessionLocked(now) {
+		s.refreshStatusLocked()
+		state := s.persistentStateLocked()
+		s.mutex.Unlock()
+		return s.saveState(state)
+	}
 	if !s.reserveChildRestartLocked(now) {
 		s.updateLivenessLocked(now)
 		s.refreshStatusLocked()
@@ -334,6 +341,11 @@ func (s *Supervisor) planSessionRecovery(now time.Time, sessions []Session) (*pe
 
 	s.mutex.Lock()
 	s.status.Ready = true
+	if allUnhealthy {
+		s.lastHealthyAt = time.Time{}
+	} else {
+		s.lastHealthyAt = now
+	}
 	var pending *pendingRecoveryAction
 
 	if allUnhealthy && s.childHalfOpenDueLocked(now) {
@@ -560,6 +572,10 @@ func (s *Supervisor) childCircuitOpenLocked(now time.Time) bool {
 func (s *Supervisor) childHalfOpenDueLocked(now time.Time) bool {
 	return s.childRecoveryAttempts > len(s.config.ChildBackoffs) &&
 		!s.childNextRetry.IsZero() && !now.Before(s.childNextRetry)
+}
+
+func (s *Supervisor) recentlyObservedHealthySessionLocked(now time.Time) bool {
+	return !s.lastHealthyAt.IsZero() && now.Before(s.lastHealthyAt.Add(s.config.GracePeriod))
 }
 
 func (s *Supervisor) allExpectedSessionsStableLocked(now time.Time) bool {

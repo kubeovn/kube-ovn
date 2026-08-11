@@ -447,6 +447,37 @@ func TestSupervisorRestartsChildAfterRepeatedControlFailures(t *testing.T) {
 	require.True(t, supervisor.Status().Live)
 }
 
+func TestSupervisorProtectsRecentlyHealthySessionFromControlRecovery(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(10_500, 0)}
+	control := &fakeControl{sessions: []Session{
+		{ID: 1, Local: "10.16.0.2", Remote: "10.255.255.255", State: SessionDown},
+		{ID: 2, Local: "fd00::2", Remote: "fd00::ffff", State: SessionUp},
+	}}
+	child := &fakeChild{running: true}
+	supervisor, err := NewSupervisor(SupervisorConfig{
+		Daemon: DaemonConfig{
+			MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3,
+			PeerIPs: []string{"10.255.255.255", "fd00::ffff"},
+		},
+		PodIPs: []string{"10.16.0.2", "fd00::2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,
+		Backoffs: []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute}, CircuitOpen: time.Hour,
+	}, control, child, clock)
+	require.NoError(t, err)
+	require.NoError(t, supervisor.Reconcile(context.Background()))
+
+	control.statusErr = errors.New("control unavailable")
+	for range 3 {
+		require.NoError(t, supervisor.Reconcile(context.Background()))
+	}
+	require.Equal(t, 0, child.restarts, "a recently healthy address family must protect the child")
+	require.True(t, supervisor.Status().Live)
+	require.False(t, supervisor.Status().Ready)
+
+	clock.now = clock.now.Add(time.Minute)
+	require.NoError(t, supervisor.Reconcile(context.Background()))
+	require.Equal(t, 1, child.restarts, "stale health evidence must not suppress bounded control recovery")
+}
+
 func TestSupervisorFailsLivenessAfterExhaustingCurrentGenerationRecovery(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(11_000, 0)}
 	control := &fakeControl{statusErr: errors.New("control unavailable")}
