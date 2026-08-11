@@ -305,16 +305,21 @@ func TestVpcEgressGatewayBFDDRuntimeProbeTransport(t *testing.T) {
 
 func TestConfigureVpcEgressGatewayBFDWorkload(t *testing.T) {
 	deploy := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
-		Containers:     []corev1.Container{{Name: "sleep"}},
-		InitContainers: []corev1.Container{{Command: []string{"bash", "-c", "old"}}},
+		Containers: []corev1.Container{{Name: "sidecar"}, {Name: "gateway"}},
+		InitContainers: []corev1.Container{
+			{Name: "other", Command: []string{"bash", "-c", "unchanged"}},
+			{Name: "init", Command: []string{"bash", "-c", "old"}},
+		},
 	}}}}
 	container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 3, false)
 
-	configureVpcEgressGatewayBFDWorkload(deploy, container)
+	require.NoError(t, configureVpcEgressGatewayBFDWorkload(deploy, container))
 
-	require.Equal(t, "bfdd", deploy.Spec.Template.Spec.Containers[0].Name)
-	require.Equal(t, vegBFDInitCommand, deploy.Spec.Template.Spec.InitContainers[0].Command[2])
-	require.Contains(t, deploy.Spec.Template.Spec.InitContainers[0].VolumeMounts,
+	require.Equal(t, "sidecar", deploy.Spec.Template.Spec.Containers[0].Name)
+	require.Equal(t, "bfdd", deploy.Spec.Template.Spec.Containers[1].Name)
+	require.Equal(t, "unchanged", deploy.Spec.Template.Spec.InitContainers[0].Command[2])
+	require.Equal(t, vegBFDInitCommand, deploy.Spec.Template.Spec.InitContainers[1].Command[2])
+	require.Contains(t, deploy.Spec.Template.Spec.InitContainers[1].VolumeMounts,
 		corev1.VolumeMount{Name: vegBFDDStateVolume, MountPath: vegBFDDStateDir})
 	require.Contains(t, deploy.Spec.Template.Spec.Volumes, corev1.Volume{
 		Name: vegBFDDStateVolume,
@@ -323,6 +328,8 @@ func TestConfigureVpcEgressGatewayBFDWorkload(t *testing.T) {
 		},
 	})
 	require.EqualValues(t, 30, *deploy.Spec.Template.Spec.TerminationGracePeriodSeconds)
+
+	require.Error(t, configureVpcEgressGatewayBFDWorkload(&appsv1.Deployment{}, container))
 }
 
 func TestOpenBFDDControlHardeningPatch(t *testing.T) {

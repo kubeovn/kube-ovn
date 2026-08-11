@@ -765,7 +765,9 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			image, bfdIP, gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier,
 			vpc.Name == c.config.ClusterRouter,
 		)
-		configureVpcEgressGatewayBFDWorkload(deploy, container)
+		if err = configureVpcEgressGatewayBFDWorkload(deploy, container); err != nil {
+			return attachmentNetworkName, nil, nil, nil, err
+		}
 	}
 
 	if gw.Spec.Resources != nil {
@@ -1289,20 +1291,31 @@ func vpcEgressGatewayBFDDProbeHandler(useHTTP bool) corev1.ProbeHandler {
 	}}
 }
 
-func configureVpcEgressGatewayBFDWorkload(deploy *appsv1.Deployment, container corev1.Container) {
-	deploy.Spec.Template.Spec.Containers[0] = container
-	deploy.Spec.Template.Spec.InitContainers[0].Command[2] = vegBFDInitCommand
-	deploy.Spec.Template.Spec.InitContainers[0].VolumeMounts = append(deploy.Spec.Template.Spec.InitContainers[0].VolumeMounts, corev1.VolumeMount{
+func configureVpcEgressGatewayBFDWorkload(deploy *appsv1.Deployment, container corev1.Container) error {
+	podSpec := &deploy.Spec.Template.Spec
+	containerIndex := slices.IndexFunc(podSpec.Containers, func(item corev1.Container) bool { return item.Name == "gateway" })
+	if containerIndex == -1 {
+		return errors.New("vpc egress gateway workload container not found")
+	}
+	initIndex := slices.IndexFunc(podSpec.InitContainers, func(item corev1.Container) bool { return item.Name == "init" })
+	if initIndex == -1 || len(podSpec.InitContainers[initIndex].Command) < 3 {
+		return errors.New("vpc egress gateway init container is invalid")
+	}
+
+	podSpec.Containers[containerIndex] = container
+	podSpec.InitContainers[initIndex].Command[2] = vegBFDInitCommand
+	podSpec.InitContainers[initIndex].VolumeMounts = append(podSpec.InitContainers[initIndex].VolumeMounts, corev1.VolumeMount{
 		Name:      vegBFDDStateVolume,
 		MountPath: vegBFDDStateDir,
 	})
-	deploy.Spec.Template.Spec.Volumes = append(deploy.Spec.Template.Spec.Volumes, corev1.Volume{
+	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
 		Name: vegBFDDStateVolume,
 		VolumeSource: corev1.VolumeSource{
 			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		},
 	})
 	deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To[int64](30)
+	return nil
 }
 
 func vpcEgressGatewayInitContainerFRRConfig(image string, bgpConf *kubeovnv1.BgpConf, evpnConf *kubeovnv1.EvpnConf) corev1.Container {
