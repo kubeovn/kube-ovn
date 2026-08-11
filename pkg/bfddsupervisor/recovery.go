@@ -14,7 +14,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/kubeovn/kube-ovn/pkg/fileutil"
 )
 
 type RecoveryPhase string
@@ -116,9 +116,11 @@ type Supervisor struct {
 	status          SupervisorStatus
 	controlFailures int
 
-	childRecoveryAttempts int
-	childNextRetry        time.Time
-	childCircuitUntil     time.Time
+	childRecoveryAttempts   int
+	childNextRetry          time.Time
+	childCircuitUntil       time.Time
+	childBootstrapAttempted bool
+	inheritedCircuitUntil   time.Time
 }
 
 type pendingRecoveryAction struct {
@@ -185,6 +187,9 @@ func NewSupervisor(config SupervisorConfig, control ControlAdapter, child ChildC
 	if err := supervisor.loadState(); err != nil {
 		return nil, err
 	}
+	if supervisor.childCircuitOpenLocked(clock.Now()) {
+		supervisor.inheritedCircuitUntil = supervisor.childCircuitUntil
+	}
 	supervisor.refreshStatusLocked()
 	return supervisor, nil
 }
@@ -211,7 +216,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 	}
 
 	actionErr := s.executeRecoveryAction(ctx, *pending)
-	state = s.recordRecoveryResult(now, *pending, actionErr)
+	state = s.recordRecoveryResult(*pending, actionErr)
 	return s.saveState(state)
 }
 
@@ -221,17 +226,17 @@ func (s *Supervisor) StartChild(ctx context.Context) error {
 
 	now := s.clock.Now()
 	s.mutex.Lock()
-	if s.childRecoveryAttempts != 0 && !s.reserveChildRestartLocked(now) {
-		s.status.Live = !s.childCircuitOpenLocked(now)
-		s.status.Ready = false
-		s.refreshStatusLocked()
-		state := s.persistentStateLocked()
+	if s.childBootstrapAttempted {
 		s.mutex.Unlock()
-		return s.saveState(state)
+		return nil
 	}
+	s.childBootstrapAttempted = true
 	state := s.persistentStateLocked()
 	s.mutex.Unlock()
 	if err := s.saveState(state); err != nil {
+		s.mutex.Lock()
+		s.childBootstrapAttempted = false
+		s.mutex.Unlock()
 		return err
 	}
 
@@ -240,7 +245,11 @@ func (s *Supervisor) StartChild(ctx context.Context) error {
 	if startErr != nil && s.childRecoveryAttempts == 0 {
 		s.reserveChildRestartLocked(now)
 	}
-	s.status.Live = startErr == nil || !s.childCircuitOpenLocked(now)
+	if startErr != nil {
+		s.updateLivenessLocked(now)
+	} else {
+		s.status.Live = s.child.Running()
+	}
 	s.status.Ready = false
 	s.refreshStatusLocked()
 	state = s.persistentStateLocked()
@@ -258,13 +267,13 @@ func (s *Supervisor) reconcileControlFailure(ctx context.Context, now time.Time,
 	s.mutex.Lock()
 	s.controlFailures++
 	s.status.Ready = false
+	s.updateLivenessLocked(now)
 	if s.controlFailures < 3 {
-		s.status.Live = !s.childCircuitOpenLocked(now)
 		s.mutex.Unlock()
 		return nil
 	}
 	if !s.reserveChildRestartLocked(now) {
-		s.status.Live = !s.childCircuitOpenLocked(now)
+		s.updateLivenessLocked(now)
 		s.refreshStatusLocked()
 		state := s.persistentStateLocked()
 		live := s.status.Live
@@ -287,7 +296,7 @@ func (s *Supervisor) reconcileControlFailure(ctx context.Context, now time.Time,
 	restartErr := s.child.Restart(ctx)
 	s.mutex.Lock()
 	if restartErr != nil {
-		s.status.Live = !s.childCircuitOpenLocked(now)
+		s.updateLivenessLocked(now)
 	} else {
 		s.controlFailures = 0
 		s.status.Live = s.child.Running()
@@ -334,6 +343,7 @@ func (s *Supervisor) planSessionRecovery(now time.Time, sessions []Session) (*pe
 		s.childRecoveryAttempts = 0
 		s.childNextRetry = time.Time{}
 		s.childCircuitUntil = time.Time{}
+		s.inheritedCircuitUntil = time.Time{}
 	}
 	s.refreshStatusLocked()
 	state := s.persistentStateLocked()
@@ -444,7 +454,7 @@ func (s *Supervisor) scheduleEpisodeActionLocked(now time.Time, episode *recover
 	episode.Phase = RecoveryBackoff
 }
 
-func (s *Supervisor) recordRecoveryResult(now time.Time, pending pendingRecoveryAction, actionErr error) persistentState {
+func (s *Supervisor) recordRecoveryResult(pending pendingRecoveryAction, actionErr error) persistentState {
 	s.mutex.Lock()
 	if actionErr != nil {
 		pending.episode.LastResult = actionErr.Error()
@@ -455,7 +465,7 @@ func (s *Supervisor) recordRecoveryResult(now time.Time, pending pendingRecovery
 		}
 	}
 	if pending.action == RecoveryRestartChild && actionErr != nil {
-		s.status.Live = !s.childCircuitOpenLocked(now)
+		s.updateLivenessLocked(s.clock.Now())
 	} else {
 		s.status.Live = s.child.Running()
 	}
@@ -494,6 +504,17 @@ func (s *Supervisor) refreshStatusLocked() {
 	s.status.ChildRecoveryAttempts = s.childRecoveryAttempts
 	s.status.ChildNextRetry = s.childNextRetry
 	s.status.ChildCircuitOpen = s.childCircuitOpenLocked(s.clock.Now())
+}
+
+func (s *Supervisor) updateLivenessLocked(now time.Time) {
+	s.status.Live = !s.childCircuitFailsLivenessLocked(now)
+}
+
+func (s *Supervisor) childCircuitFailsLivenessLocked(now time.Time) bool {
+	if !s.childCircuitOpenLocked(now) {
+		return false
+	}
+	return s.inheritedCircuitUntil.IsZero() || !s.childCircuitUntil.Equal(s.inheritedCircuitUntil)
 }
 
 func (s *Supervisor) reserveChildRestartLocked(now time.Time) bool {
@@ -612,7 +633,7 @@ func (s *Supervisor) saveState(state persistentState) error {
 	if err := os.MkdirAll(filepath.Dir(s.config.StatePath), 0o750); err != nil {
 		return fmt.Errorf("failed to create BFD recovery state directory: %w", err)
 	}
-	if err := util.AtomicWriteFile(s.config.StatePath, data, 0o600); err != nil {
+	if err := fileutil.AtomicWriteFile(s.config.StatePath, data, 0o600); err != nil {
 		return fmt.Errorf("failed to persist BFD recovery state: %w", err)
 	}
 	return nil

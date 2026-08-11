@@ -1,0 +1,39 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kube-ovn-bfdd
+  namespace: monitoring
+spec:
+  groups:
+    - name: kube-ovn-bfdd
+      rules:
+        - alert: KubeOVNBFDSessionRecoveryCircuitOpen
+          annotations:
+            description: BFD session {{ $labels.local }} to {{ $labels.remote }} in pod {{ $labels.namespace }}/{{ $labels.pod }} has exhausted automatic recovery.
+            summary: Kube-OVN BFD session recovery circuit is open
+          expr: kube_ovn_bfdd_circuit_open == 1
+          for: 5m
+          labels:
+            severity: warning
+        - alert: KubeOVNBFDChildRecoveryCircuitOpen
+          annotations:
+            description: OpenBFDD child recovery in pod {{ $labels.namespace }}/{{ $labels.pod }} has exhausted its automatic restart budget.
+            summary: Kube-OVN OpenBFDD child recovery circuit is open
+          expr: kube_ovn_bfdd_child_circuit_open == 1
+          for: 5m
+          labels:
+            severity: warning
+        - alert: KubeOVNBFDZeroSessions
+          annotations:
+            description: Pod {{ $labels.namespace }}/{{ $labels.pod }} has had no Up BFD sessions for more than five minutes.
+            summary: Kube-OVN BFD has no Up sessions
+          expr: kube_ovn_bfdd_session_zero_seconds > 300
+          labels:
+            severity: warning
+        - alert: KubeOVNBFDRecoveryFailure
+          annotations:
+            description: Pod {{ $labels.namespace }}/{{ $labels.pod }} has failed a BFD recovery action during the last ten minutes.
+            summary: Kube-OVN BFD recovery action failed
+          expr: increase(kube_ovn_bfdd_recovery_attempts_total{result="error"}[10m]) > 0
+          labels:
+            severity: warning

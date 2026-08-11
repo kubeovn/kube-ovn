@@ -20,6 +20,7 @@ type MetricsReporter struct {
 	recoveryPhase    *prometheus.GaugeVec
 	sessionZero      prometheus.Gauge
 	childRestarts    prometheus.Counter
+	childCircuitOpen prometheus.Gauge
 	circuitOpen      *prometheus.GaugeVec
 
 	mutex             sync.Mutex
@@ -56,6 +57,10 @@ func NewMetricsReporter() *MetricsReporter {
 			Name: "kube_ovn_bfdd_child_restarts_total",
 			Help: "Number of successful OpenBFDD child restarts.",
 		}),
+		childCircuitOpen: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kube_ovn_bfdd_child_circuit_open",
+			Help: "Whether automatic OpenBFDD child recovery is circuit-open.",
+		}),
 		circuitOpen: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "kube_ovn_bfdd_circuit_open",
 			Help: "Whether automatic recovery is circuit-open for a BFD session.",
@@ -69,6 +74,7 @@ func NewMetricsReporter() *MetricsReporter {
 		reporter.recoveryPhase,
 		reporter.sessionZero,
 		reporter.childRestarts,
+		reporter.childCircuitOpen,
 		reporter.circuitOpen,
 	)
 	return reporter
@@ -109,6 +115,11 @@ func (r *MetricsReporter) Update(now time.Time, status SupervisorStatus) {
 		r.seenAttempts[key] = session.Attempts
 	}
 	r.upSessions.Set(float64(up))
+	if status.ChildCircuitOpen {
+		r.childCircuitOpen.Set(1)
+	} else {
+		r.childCircuitOpen.Set(0)
+	}
 	if len(status.Sessions) != 0 && up == 0 {
 		if r.zeroSince.IsZero() {
 			r.zeroSince = now
