@@ -99,7 +99,7 @@ func runSupervisor(ctx context.Context) error {
 	reporter := bfddsupervisor.NewMetricsReporter()
 	reporter.Update(time.Now(), supervisor.Status())
 	go func() {
-		if err := reporter.Serve(ctx, environmentOrDefault("BFDD_METRICS_ADDRESS", defaultMetricsAddress)); err != nil {
+		if err := reporter.Serve(ctx, environmentOrDefault("BFDD_METRICS_ADDRESS", defaultMetricsAddress), supervisor.Status); err != nil {
 			klog.Errorf("BFD supervisor metrics server failed: %v", err)
 		}
 	}()
