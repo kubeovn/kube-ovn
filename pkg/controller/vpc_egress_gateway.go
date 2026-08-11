@@ -1239,21 +1239,8 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 	}
 	container.Resources.Limits[corev1.ResourceCPU] = vegBFDDSupervisorLimitCPU
 	container.Resources.Limits[corev1.ResourceMemory] = vegBFDDSupervisorLimitMemory
-	execProbeHandler := func() corev1.ProbeHandler {
-		return corev1.ProbeHandler{Exec: &corev1.ExecAction{
-			Command: []string{vegBFDDSupervisorBin, "live"},
-		}}
-	}
-	runtimeProbeHandler := execProbeHandler
-	if useHTTPProbe {
-		runtimeProbeHandler = func() corev1.ProbeHandler {
-			return corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{
-				Path:   "/livez",
-				Port:   intstr.FromString("metrics"),
-				Scheme: corev1.URISchemeHTTP,
-			}}
-		}
-	}
+	execProbeHandler := vpcEgressGatewayBFDDProbeHandler(false)
+	runtimeProbeHandler := vpcEgressGatewayBFDDProbeHandler(useHTTPProbe)
 
 	container.Ports = []corev1.ContainerPort{{
 		Name:          "metrics",
@@ -1261,14 +1248,14 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 		Protocol:      corev1.ProtocolTCP,
 	}}
 	container.StartupProbe = &corev1.Probe{
-		ProbeHandler:        execProbeHandler(),
+		ProbeHandler:        execProbeHandler,
 		InitialDelaySeconds: 1,
 		PeriodSeconds:       2,
 		TimeoutSeconds:      10,
 		FailureThreshold:    30,
 	}
 	container.LivenessProbe = &corev1.Probe{
-		ProbeHandler:        runtimeProbeHandler(),
+		ProbeHandler:        runtimeProbeHandler,
 		InitialDelaySeconds: 1,
 		PeriodSeconds:       5,
 		TimeoutSeconds:      10,
@@ -1276,7 +1263,7 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 	container.ReadinessProbe = &corev1.Probe{
 		// Strict session readiness remains disabled until every supported
 		// controller can reconcile network-complete NotReady pods.
-		ProbeHandler:        runtimeProbeHandler(),
+		ProbeHandler:        runtimeProbeHandler,
 		InitialDelaySeconds: 3,
 		PeriodSeconds:       3,
 		TimeoutSeconds:      10,
@@ -1287,6 +1274,19 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 		MountPath: vegBFDDStateDir,
 	})
 	return container
+}
+
+func vpcEgressGatewayBFDDProbeHandler(useHTTP bool) corev1.ProbeHandler {
+	if useHTTP {
+		return corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{
+			Path:   "/livez",
+			Port:   intstr.FromString("metrics"),
+			Scheme: corev1.URISchemeHTTP,
+		}}
+	}
+	return corev1.ProbeHandler{Exec: &corev1.ExecAction{
+		Command: []string{vegBFDDSupervisorBin, "live"},
+	}}
 }
 
 func configureVpcEgressGatewayBFDWorkload(deploy *appsv1.Deployment, container corev1.Container) {
