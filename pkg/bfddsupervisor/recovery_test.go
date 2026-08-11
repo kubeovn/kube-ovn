@@ -20,8 +20,9 @@ func (c *fakeClock) Now() time.Time {
 }
 
 type fakeControl struct {
-	sessions  []Session
-	statusErr error
+	sessions     []Session
+	statusErr    error
+	configureErr error
 }
 
 func (c *fakeControl) Status(context.Context) ([]Session, error) {
@@ -29,7 +30,7 @@ func (c *fakeControl) Status(context.Context) ([]Session, error) {
 }
 
 func (c *fakeControl) Configure(context.Context, DaemonConfig) error {
-	return nil
+	return c.configureErr
 }
 
 func (c *fakeControl) Reset(context.Context, SessionPair) error {
@@ -419,7 +420,7 @@ func TestSupervisorKeepsLivenessDuringPlannedChildRestartBackoff(t *testing.T) {
 	clock.now = clock.now.Add(time.Minute)
 	require.NoError(t, supervisor.Reconcile(context.Background()))
 	clock.now = clock.now.Add(5 * time.Minute)
-	require.NoError(t, supervisor.Reconcile(context.Background()))
+	require.ErrorContains(t, supervisor.Reconcile(context.Background()), "failed to execute BFD recovery action RestartChild")
 	status := supervisor.Status()
 	require.True(t, status.Live)
 	require.Equal(t, 1, status.ChildRecoveryAttempts)
@@ -476,6 +477,36 @@ func TestSupervisorProtectsRecentlyHealthySessionFromControlRecovery(t *testing.
 	clock.now = clock.now.Add(time.Minute)
 	require.NoError(t, supervisor.Reconcile(context.Background()))
 	require.Equal(t, 1, child.restarts, "stale health evidence must not suppress bounded control recovery")
+}
+
+func TestSupervisorReportsControlAndRecoveryActionErrors(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(10_750, 0)}
+	actionErr := errors.New("configure failed")
+	control := &fakeControl{configureErr: actionErr}
+	child := &fakeChild{running: true}
+	supervisor, err := NewSupervisor(SupervisorConfig{
+		Daemon: DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
+		PodIPs: []string{"10.16.0.2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,
+		Backoffs: []time.Duration{time.Minute}, CircuitOpen: time.Hour,
+	}, control, child, clock)
+	require.NoError(t, err)
+	require.NoError(t, supervisor.Reconcile(context.Background()))
+	clock.now = clock.now.Add(time.Minute)
+	require.ErrorIs(t, supervisor.Reconcile(context.Background()), actionErr)
+	require.Contains(t, supervisor.Status().Sessions[0].LastResult, actionErr.Error())
+
+	control.statusErr = errors.New("control unavailable")
+	require.NoError(t, supervisor.Reconcile(context.Background()))
+	status := supervisor.Status()
+	require.Equal(t, 1, status.ControlFailures)
+	require.Equal(t, control.statusErr.Error(), status.LastControlError)
+
+	control.statusErr = nil
+	control.sessions = []Session{{ID: 1, Local: "10.16.0.2", Remote: "10.255.255.255", State: SessionUp}}
+	require.NoError(t, supervisor.Reconcile(context.Background()))
+	status = supervisor.Status()
+	require.Zero(t, status.ControlFailures)
+	require.Empty(t, status.LastControlError)
 }
 
 func TestSupervisorFailsLivenessAfterExhaustingCurrentGenerationRecovery(t *testing.T) {
