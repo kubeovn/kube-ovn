@@ -71,7 +71,7 @@ func (c *ControlClient) Status(ctx context.Context) ([]Session, error) {
 		}
 		var idText, local, remote string
 		var state SessionState
-		for _, field := range strings.Fields(line) {
+		for field := range strings.FieldsSeq(line) {
 			switch {
 			case strings.HasPrefix(field, "id="):
 				idText = strings.TrimPrefix(field, "id=")
@@ -213,7 +213,7 @@ func (c *ControlClient) run(ctx context.Context, args ...string) (string, error)
 	if err != nil {
 		return response, fmt.Errorf("bfdd-control %q failed: %w: %s", strings.Join(args, " "), err, response)
 	}
-	for _, line := range strings.Split(response, "\n") {
+	for line := range strings.SplitSeq(response, "\n") {
 		for _, prefix := range []string{"Unable to complete ", "Unknown command ", "No session ", "Failed to ", "Must "} {
 			if strings.HasPrefix(line, prefix) {
 				return response, fmt.Errorf("bfdd-control %q rejected: %s", strings.Join(args, " "), response)
