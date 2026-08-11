@@ -124,9 +124,10 @@ type Supervisor struct {
 }
 
 type pendingRecoveryAction struct {
-	episode *recoveryEpisode
-	pair    SessionPair
-	action  RecoveryAction
+	episode       *recoveryEpisode
+	pair          SessionPair
+	action        RecoveryAction
+	childHalfOpen bool
 }
 
 func NewSupervisor(config SupervisorConfig, control ControlAdapter, child ChildController, clock Clock) (*Supervisor, error) {
@@ -217,7 +218,11 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 
 	actionErr := s.executeRecoveryAction(ctx, *pending)
 	state = s.recordRecoveryResult(*pending, actionErr)
-	return s.saveState(state)
+	saveErr := s.saveState(state)
+	if pending.childHalfOpen && actionErr != nil {
+		return errors.Join(saveErr, fmt.Errorf("failed to half-open OpenBFDD child recovery circuit: %w", actionErr))
+	}
+	return saveErr
 }
 
 func (s *Supervisor) StartChild(ctx context.Context) error {
@@ -331,14 +336,21 @@ func (s *Supervisor) planSessionRecovery(now time.Time, sessions []Session) (*pe
 	s.status.Ready = true
 	var pending *pendingRecoveryAction
 
-	for _, pair := range s.expected {
-		session, exists := observed[pairKey(pair)]
-		pending = s.planEpisodeRecoveryLocked(now, pair, session, exists, allUnhealthy)
-		if pending != nil {
-			break
+	if allUnhealthy && s.childHalfOpenDueLocked(now) {
+		s.status.Ready = false
+		if s.reserveChildRestartLocked(now) {
+			pending = &pendingRecoveryAction{action: RecoveryRestartChild, childHalfOpen: true}
+		}
+	} else {
+		for _, pair := range s.expected {
+			session, exists := observed[pairKey(pair)]
+			pending = s.planEpisodeRecoveryLocked(now, pair, session, exists, allUnhealthy)
+			if pending != nil {
+				break
+			}
 		}
 	}
-	if s.allExpectedSessionsStableLocked(now) {
+	if !allUnhealthy && s.allExpectedSessionsStableLocked(now) {
 		s.childRecoveryAttempts = 0
 		s.childNextRetry = time.Time{}
 		s.childCircuitUntil = time.Time{}
@@ -456,10 +468,14 @@ func (s *Supervisor) scheduleEpisodeActionLocked(now time.Time, episode *recover
 
 func (s *Supervisor) recordRecoveryResult(pending pendingRecoveryAction, actionErr error) persistentState {
 	s.mutex.Lock()
-	if actionErr != nil {
-		pending.episode.LastResult = actionErr.Error()
-	} else {
-		pending.episode.LastResult = "success"
+	if pending.episode != nil {
+		if actionErr != nil {
+			pending.episode.LastResult = actionErr.Error()
+		} else {
+			pending.episode.LastResult = "success"
+		}
+	}
+	if actionErr == nil {
 		if pending.action == RecoveryRestartChild {
 			s.status.ChildRestarts++
 		}
@@ -539,6 +555,11 @@ func (s *Supervisor) reserveChildRestartLocked(now time.Time) bool {
 
 func (s *Supervisor) childCircuitOpenLocked(now time.Time) bool {
 	return !s.childCircuitUntil.IsZero() && now.Before(s.childCircuitUntil)
+}
+
+func (s *Supervisor) childHalfOpenDueLocked(now time.Time) bool {
+	return s.childRecoveryAttempts > len(s.config.ChildBackoffs) &&
+		!s.childNextRetry.IsZero() && !now.Before(s.childNextRetry)
 }
 
 func (s *Supervisor) allExpectedSessionsStableLocked(now time.Time) bool {

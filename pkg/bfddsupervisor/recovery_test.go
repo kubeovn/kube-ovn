@@ -567,6 +567,57 @@ func TestSupervisorKeepsRuntimeLiveWhenContainerInheritsOpenChildCircuit(t *test
 	require.False(t, second.Status().Live, "failed half-open retry creates a new circuit for kubelet recovery")
 }
 
+func TestSupervisorHalfOpensInheritedChildCircuitWhenSessionsStayUnhealthy(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(11_750, 0)}
+	control := &fakeControl{}
+	child := &fakeChild{running: true}
+	config := SupervisorConfig{
+		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.254", "10.255.255.255"}},
+		PodIPs:        []string{"10.16.0.2"},
+		GracePeriod:   time.Second,
+		StablePeriod:  time.Second,
+		Backoffs:      []time.Duration{time.Second, time.Second},
+		ChildBackoffs: []time.Duration{time.Second},
+		CircuitOpen:   time.Hour,
+		StatePath:     filepath.Join(t.TempDir(), "state.json"),
+	}
+
+	first, err := NewSupervisor(config, control, child, clock)
+	require.NoError(t, err)
+	require.NoError(t, first.Reconcile(context.Background()))
+	clock.now = clock.now.Add(time.Second)
+	require.NoError(t, first.Reconcile(context.Background()))
+	require.NoError(t, first.Reconcile(context.Background()))
+	clock.now = clock.now.Add(time.Second)
+	require.NoError(t, first.Reconcile(context.Background()))
+	require.NoError(t, first.Reconcile(context.Background()))
+	clock.now = clock.now.Add(time.Second)
+	require.NoError(t, first.Reconcile(context.Background()))
+	require.NoError(t, first.Reconcile(context.Background()))
+	require.True(t, first.Status().ChildCircuitOpen)
+	require.False(t, first.Status().Live)
+	require.Equal(t, 2, child.restarts)
+
+	second, err := NewSupervisor(config, control, child, clock)
+	require.NoError(t, err)
+	require.NoError(t, second.StartChild(context.Background()))
+	require.True(t, second.Status().Live)
+	require.Equal(t, 3, child.restarts)
+	control.sessions = []Session{
+		{ID: 1, Local: "10.16.0.2", Remote: "10.255.255.254", State: SessionUp},
+		{ID: 2, Local: "10.16.0.2", Remote: "10.255.255.255", State: SessionUp},
+	}
+	require.NoError(t, second.Reconcile(context.Background()))
+	require.True(t, second.Status().ChildCircuitOpen, "sessions have not remained Up for the stable window")
+
+	control.sessions = nil
+	clock.now = second.Status().ChildNextRetry
+	require.NoError(t, second.Reconcile(context.Background()))
+	require.Equal(t, 4, child.restarts, "expired child circuit must allow one independent half-open restart")
+	require.True(t, second.Status().ChildCircuitOpen, "stale Up observations must not clear the new child circuit")
+	require.False(t, second.Status().Live, "half-open restart with persistently unhealthy sessions must open a fresh circuit")
+}
+
 func TestSupervisorSerializesChildRestartsAcrossFailedPeers(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(12_000, 0)}
 	control := &fakeControl{}
