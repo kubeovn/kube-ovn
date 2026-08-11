@@ -47,6 +47,11 @@ const (
 	vegBFDDSupervisorBin = "/kube-ovn/kube-ovn-bfdd-supervisor"
 )
 
+var (
+	vegBFDDSupervisorLimitCPU    = resource.MustParse("300m")
+	vegBFDDSupervisorLimitMemory = resource.MustParse("64Mi")
+)
+
 func (c *Controller) enqueueAddVpcEgressGateway(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcEgressGateway)).String()
 	klog.V(3).Infof("enqueue add vpc-egress-gateway %s", key)
@@ -1229,6 +1234,8 @@ func genVpcEgressGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multipl
 			MountPath: "/usr/local/sbin",
 		}},
 	}
+	container.Resources.Limits[corev1.ResourceCPU] = vegBFDDSupervisorLimitCPU
+	container.Resources.Limits[corev1.ResourceMemory] = vegBFDDSupervisorLimitMemory
 	probeHandler := func() corev1.ProbeHandler {
 		return corev1.ProbeHandler{Exec: &corev1.ExecAction{
 			Command: []string{vegBFDDSupervisorBin, "live"},
