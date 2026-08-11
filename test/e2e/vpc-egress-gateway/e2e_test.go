@@ -1115,10 +1115,19 @@ func verifyBFDDZeroSessionsRecovery(f *framework.Framework, namespaceName string
 
 func bfddUsesSupervisor(f *framework.Framework, namespaceName, podName string) bool {
 	ginkgo.GinkgoHelper()
-	const detectSupervisor = `if [ -x /kube-ovn/kube-ovn-bfdd-supervisor ]; then printf supervisor; else printf legacy; fi`
+	const detectSupervisor = `tr '\0' ' ' </proc/1/cmdline; printf '\n'; if [ -S /var/run/kube-ovn/bfdd-supervisor/control.sock ]; then printf socket; else printf missing; fi`
 	stdout, stderr, err := framework.ExecShellInContainer(f, namespaceName, podName, "bfdd", detectSupervisor)
 	framework.ExpectNoError(err, "failed to detect BFD implementation in pod %s/%s: %s", namespaceName, podName, stderr)
-	return strings.TrimSpace(stdout) == "supervisor"
+	return bfddSupervisorRuntimeDetected(stdout)
+}
+
+func bfddSupervisorRuntimeDetected(output string) bool {
+	parts := strings.SplitN(strings.TrimSpace(output), "\n", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) != "socket" {
+		return false
+	}
+	command := strings.Fields(parts[0])
+	return len(command) >= 2 && command[0] == "/kube-ovn/kube-ovn-bfdd-supervisor" && command[1] == "run"
 }
 
 func bfddPeerIPs(f *framework.Framework, namespaceName, podName string) []string {
@@ -1280,6 +1289,24 @@ Session 2
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			gomega.NewWithT(t).Expect(bfddStatusHasAllExpectedPeersUp(tt.status, tt.peers)).To(gomega.Equal(tt.want))
+		})
+	}
+}
+
+func TestBFDDUsesSupervisorRuntime(t *testing.T) {
+	tests := []struct {
+		name    string
+		runtime string
+		want    bool
+	}{
+		{name: "supervisor PID 1 with control socket", runtime: "/kube-ovn/kube-ovn-bfdd-supervisor run\nsocket", want: true},
+		{name: "legacy PID 1 in new image", runtime: "bash /kube-ovn/start-bfdd.sh\nsocket"},
+		{name: "supervisor without control socket", runtime: "/kube-ovn/kube-ovn-bfdd-supervisor run\nmissing"},
+		{name: "supervisor probe subcommand", runtime: "/kube-ovn/kube-ovn-bfdd-supervisor live\nsocket"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gomega.NewWithT(t).Expect(bfddSupervisorRuntimeDetected(tt.runtime)).To(gomega.Equal(tt.want))
 		})
 	}
 }
