@@ -140,10 +140,19 @@ func (c *Controller) enqueueAddOrUpdateVpcNatGwByName(gwName, reason string) {
 	c.addOrUpdateVpcNatGatewayQueue.Add(gwName)
 }
 
-func (c *Controller) enqueueUpdateVpcNatGw(_, newObj any) {
-	key := cache.MetaObjectToName(newObj.(*kubeovnv1.VpcNatGateway)).String()
+func (c *Controller) enqueueUpdateVpcNatGw(oldObj, newObj any) {
+	oldGw := oldObj.(*kubeovnv1.VpcNatGateway)
+	newGw := newObj.(*kubeovnv1.VpcNatGateway)
+	key := cache.MetaObjectToName(newGw).String()
 	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
+
+	// QoS reconcile decides "in use" via the QoSLabel selector, so key the re-enqueue on the
+	// label's previous value: when it is cleared or switched, re-enqueue the previous QoS so it
+	// can drop its finalizer. UpdateFunc fires after the informer cache reflects the label change.
+	if oldQoS := oldGw.Labels[util.QoSLabel]; oldQoS != "" && oldQoS != newGw.Labels[util.QoSLabel] {
+		c.updateQoSPolicyQueue.Add(oldQoS)
+	}
 }
 
 func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
@@ -172,10 +181,10 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
 
-	// Trigger QoS Policy reconcile after NatGw is deleted
-	// This allows the QoS Policy to remove its finalizer if no other NatGws are using it
-	if gw.Status.QoSPolicy != "" {
-		c.updateQoSPolicyQueue.Add(gw.Status.QoSPolicy)
+	// Trigger QoS Policy reconcile after NatGw is deleted so it can drop its finalizer if no
+	// other NatGw references it. Key on the QoSLabel, matching the QoS in-use check.
+	if qos := gw.Labels[util.QoSLabel]; qos != "" {
+		c.updateQoSPolicyQueue.Add(qos)
 	}
 }
 

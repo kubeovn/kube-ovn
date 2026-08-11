@@ -23,7 +23,16 @@ import (
 )
 
 func (c *Controller) enqueueAddQoSPolicy(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.QoSPolicy)).String()
+	qos := obj.(*kubeovnv1.QoSPolicy)
+	key := cache.MetaObjectToName(qos).String()
+	// A policy already marked for deletion must go through the update reconcile so its finalizer
+	// can be released; handleAddQoSPolicy does not process terminating policies. This also covers
+	// controller restart, where the informer re-lists objects already in their final state.
+	if !qos.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("enqueue update to clean qos %s", key)
+		c.updateQoSPolicyQueue.Add(key)
+		return
+	}
 	klog.V(3).Infof("enqueue add qos policy %s", key)
 	c.addQoSPolicyQueue.Add(key)
 }
@@ -104,6 +113,13 @@ func (c *Controller) handleAddQoSPolicy(key string) error {
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add QoS policy %s", key)
+
+	// Add the finalizer as soon as the policy exists so that deletion always goes through
+	// the reference check, even for policies whose spec is never updated after creation.
+	if err = c.handleAddQoSPolicyFinalizer(key); err != nil {
+		klog.Errorf("failed to handle add finalizer for qos %s, %v", key, err)
+		return err
+	}
 
 	sortedNewRules := cachedQoS.Spec.BandwidthLimitRules
 	sort.Slice(sortedNewRules, func(i, j int) bool {
@@ -511,7 +527,7 @@ func (c *Controller) handleAddQoSPolicyFinalizer(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if !cachedQoSPolicy.DeletionTimestamp.IsZero() || len(cachedQoSPolicy.GetFinalizers()) != 0 {
+	if !cachedQoSPolicy.DeletionTimestamp.IsZero() || controllerutil.ContainsFinalizer(cachedQoSPolicy, util.KubeOVNControllerFinalizer) {
 		return nil
 	}
 	newQoSPolicy := cachedQoSPolicy.DeepCopy()

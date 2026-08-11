@@ -689,6 +689,96 @@ func eipQoSCases(f *framework.Framework,
 	// Cleanup is now handled by DeferCleanup
 }
 
+// createQoSMarkedForDeletionWhileBound creates a QoS policy of the given binding type, waits for
+// its KubeOVN controller finalizer, runs bind to attach it to a resource, then deletes it while
+// still bound and asserts it stays in Terminating. It returns the policy name so the caller can
+// exercise the release trigger (deleting or unbinding the referencing resource).
+func createQoSMarkedForDeletionWhileBound(
+	f *framework.Framework,
+	shared bool,
+	bindingType apiv1.QoSPolicyBindingType,
+	rules apiv1.QoSPolicyBandwidthLimitRules,
+	bind func(qosName string),
+) (qosName string) {
+	ginkgo.GinkgoHelper()
+
+	qosPolicyClient := f.QoSPolicyClient()
+
+	qosName = "qos-life-policy-" + framework.RandomSuffix()
+	ginkgo.By("Creating qos policy " + qosName)
+	qos := framework.MakeQoSPolicy(qosName, shared, bindingType, rules)
+	_ = qosPolicyClient.CreateSync(qos)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up qos policy " + qosName)
+		qosPolicyClient.DeleteSync(qosName)
+	})
+
+	// A newly created policy must carry the KubeOVN controller finalizer, otherwise deletion
+	// would not be blocked while still referenced and there would be nothing to regress on.
+	ginkgo.By("Verifying qos policy " + qosName + " has the controller finalizer")
+	gomega.Eventually(func(g gomega.Gomega) {
+		p, err := qosPolicyClient.QoSPolicyInterface.Get(context.TODO(), qosName, metav1.GetOptions{})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(p.Finalizers).To(gomega.ContainElement(util.KubeOVNControllerFinalizer))
+	}, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
+
+	bind(qosName)
+
+	ginkgo.By("Marking qos policy " + qosName + " for deletion while still bound")
+	qosPolicyClient.Delete(qosName)
+
+	// Wait for the policy to enter Terminating, then assert it stays there while still
+	// referenced. The initial Eventually avoids a flake if the apiserver update lags.
+	stillTerminating := func(g gomega.Gomega) {
+		p, err := qosPolicyClient.QoSPolicyInterface.Get(context.TODO(), qosName, metav1.GetOptions{})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(p.DeletionTimestamp.IsZero()).To(gomega.BeFalse())
+	}
+	ginkgo.By("Waiting for qos policy " + qosName + " to enter Terminating")
+	gomega.Eventually(stillTerminating, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
+	ginkgo.By("Verifying qos policy " + qosName + " stays in Terminating while still referenced")
+	gomega.Consistently(stillTerminating, 5*time.Second, 1*time.Second).Should(gomega.Succeed())
+
+	return qosName
+}
+
+// setupEIPBoundQoSMarkedForDeletion binds a fresh EIP (no FIP, so it can be deleted freely) to a
+// new EIP-type QoS policy marked for deletion. It returns the EIP and QoS names.
+func setupEIPBoundQoSMarkedForDeletion(f *framework.Framework, vpcQosParams *qosParams) (eipName, qosName string) {
+	ginkgo.GinkgoHelper()
+
+	eipClient := f.IptablesEIPClient()
+
+	eipName = "qos-life-eip-" + framework.RandomSuffix()
+	ginkgo.By("Creating dedicated eip " + eipName)
+	eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcQosParams.qosNatGwName, vpcQosParams.attachDefName, "")
+	_ = eipClient.CreateSync(eip)
+	waitForIptablesEIPReady(eipClient, eipName, 60*time.Second)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up eip " + eipName)
+		eipClient.DeleteSync(eipName)
+	})
+
+	qosName = createQoSMarkedForDeletionWhileBound(f, false, apiv1.QoSBindingTypeEIP, getEIPQoSRule(eipLimit), func(qos string) {
+		ginkgo.By("Binding eip " + eipName + " to qos policy " + qos)
+		_ = eipClient.PatchQoSPolicySync(eipName, qos)
+	})
+	return eipName, qosName
+}
+
+// setupNatGwBoundQoSMarkedForDeletion binds the given NAT gateway to a new NatGw-type QoS policy
+// marked for deletion. It returns the QoS name.
+func setupNatGwBoundQoSMarkedForDeletion(f *framework.Framework, natgwName string) (qosName string) {
+	ginkgo.GinkgoHelper()
+
+	natgwClient := f.VpcNatGatewayClient()
+	// A NatGw-bound QoS policy must be shared (see validateQosPolicy).
+	return createQoSMarkedForDeletionWhileBound(f, true, apiv1.QoSBindingTypeNatGw, getNicDefaultQoSPolicy(defaultNicLimit), func(qos string) {
+		ginkgo.By("Binding natgw " + natgwName + " to qos policy " + qos)
+		_ = natgwClient.PatchQoSPolicySync(natgwName, qos)
+	})
+}
+
 // multiEIPQoSIsolationCases tests that QoS policies on multiple EIPs on the SAME NAT Gateway
 // don't interfere with each other. This also tests decimal bandwidth values.
 //
@@ -1468,6 +1558,57 @@ var _ = framework.OrderedDescribe("[group:qos-policy]", func() {
 			attachDefName:  networkAttachDefName,
 			subnetProvider: externalSubnetProvider,
 		}
+	})
+
+	framework.ConformanceIt("eip qos policy finalizer is released after the bound eip is deleted", func() {
+		// Regression: deleting an EIP without first unbinding its QoS policy must still let
+		// the QoS policy (already marked for deletion) drop its finalizer.
+		setupQosTestResources(f, dockerExtNetNetwork, vpcQosParams, net1NicName)
+
+		eipClient := f.IptablesEIPClient()
+		qosPolicyClient := f.QoSPolicyClient()
+		eipName, qosName := setupEIPBoundQoSMarkedForDeletion(f, vpcQosParams)
+
+		ginkgo.By("Deleting eip " + eipName + " without unbinding qos policy " + qosName)
+		eipClient.DeleteSync(eipName)
+
+		ginkgo.By("Expecting qos policy " + qosName + " to be cleaned up after the eip is deleted")
+		gomega.Expect(qosPolicyClient.WaitToDisappear(qosName, 2*time.Second, 2*time.Minute)).To(gomega.Succeed(),
+			"qos policy should drop its finalizer once the bound eip is deleted")
+	})
+
+	framework.ConformanceIt("eip qos policy finalizer is released after the qos policy is unbound", func() {
+		// Regression: unbinding the QoS policy from an EIP must re-trigger the QoS reconcile
+		// so a policy already marked for deletion can drop its finalizer.
+		setupQosTestResources(f, dockerExtNetNetwork, vpcQosParams, net1NicName)
+
+		eipClient := f.IptablesEIPClient()
+		qosPolicyClient := f.QoSPolicyClient()
+		eipName, qosName := setupEIPBoundQoSMarkedForDeletion(f, vpcQosParams)
+
+		ginkgo.By("Unbinding qos policy " + qosName + " from eip " + eipName)
+		_ = eipClient.PatchQoSPolicySync(eipName, "")
+
+		ginkgo.By("Expecting qos policy " + qosName + " to be cleaned up after being unbound")
+		gomega.Expect(qosPolicyClient.WaitToDisappear(qosName, 2*time.Second, 2*time.Minute)).To(gomega.Succeed(),
+			"qos policy should drop its finalizer once it is unbound from the eip")
+	})
+
+	framework.ConformanceIt("natgw qos policy finalizer is released after the qos policy is unbound", func() {
+		// Regression: unbinding a NatGw-level QoS must re-trigger the QoS reconcile (keyed on the
+		// QoSLabel) so a policy already marked for deletion can drop its finalizer.
+		setupQosTestResources(f, dockerExtNetNetwork, vpcQosParams, net1NicName)
+
+		natgwClient := f.VpcNatGatewayClient()
+		qosPolicyClient := f.QoSPolicyClient()
+		qosName := setupNatGwBoundQoSMarkedForDeletion(f, vpcQosParams.qosNatGwName)
+
+		ginkgo.By("Unbinding qos policy " + qosName + " from natgw " + vpcQosParams.qosNatGwName)
+		_ = natgwClient.PatchQoSPolicySync(vpcQosParams.qosNatGwName, "")
+
+		ginkgo.By("Expecting qos policy " + qosName + " to be cleaned up after being unbound")
+		gomega.Expect(qosPolicyClient.WaitToDisappear(qosName, 2*time.Second, 2*time.Minute)).To(gomega.Succeed(),
+			"qos policy should drop its finalizer once it is unbound from the natgw")
 	})
 
 	framework.ConformanceIt("default nic qos", func() {
