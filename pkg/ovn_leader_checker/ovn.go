@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/fileutil"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -447,7 +448,7 @@ func backupRaftHeaderAt(db, dbDir string) {
 	klog.Infof("Found changes in raft header for ovn%s database, updating file %s", db, hdrFile)
 	klog.Infof("Previous content of raft header file %s:\n%s", hdrFile, string(content))
 
-	if err = util.AtomicWriteFile(hdrFile, hdr, 0o600); err != nil {
+	if err = fileutil.AtomicWriteFile(hdrFile, hdr, 0o600); err != nil {
 		klog.Errorf("failed to write raft header file %s: %v", hdrFile, err)
 		return
 	}
