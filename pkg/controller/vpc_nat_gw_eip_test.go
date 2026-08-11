@@ -83,3 +83,40 @@ func TestDelEipQoSInPod_NatGwExistsPodMissing(t *testing.T) {
 	err = fc.fakeController.delEipQoSInPod("test-gw", "10.0.0.1", "kube-system", kubeovnv1.QoSDirectionEgress)
 	require.Error(t, err, "should return error to retry when pod is temporarily absent")
 }
+
+// TestEnqueueAddIptablesEip verifies that on the add path a terminating EIP is routed to the
+// update queue (which runs deletion cleanup) instead of the add queue. This is what lets a
+// stuck-terminating EIP be finalized after a controller restart, where the informer re-lists
+// existing objects and fires only AddFunc.
+func TestEnqueueAddIptablesEip(t *testing.T) {
+	t.Parallel()
+
+	newController := func(t *testing.T) *Controller {
+		c := &Controller{
+			addIptablesEipQueue:    newTypedRateLimitingQueue[string]("AddIptablesEip", nil),
+			updateIptablesEipQueue: newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
+		}
+		t.Cleanup(c.addIptablesEipQueue.ShutDown)
+		t.Cleanup(c.updateIptablesEipQueue.ShutDown)
+		return c
+	}
+
+	t.Run("live eip goes to the add queue", func(t *testing.T) {
+		c := newController(t)
+		c.enqueueAddIptablesEip(&kubeovnv1.IptablesEIP{
+			ObjectMeta: metav1.ObjectMeta{Name: "live-eip"},
+		})
+		require.Equal(t, 1, c.addIptablesEipQueue.Len())
+		require.Equal(t, 0, c.updateIptablesEipQueue.Len())
+	})
+
+	t.Run("terminating eip goes to the update queue for cleanup", func(t *testing.T) {
+		c := newController(t)
+		now := metav1.Now()
+		c.enqueueAddIptablesEip(&kubeovnv1.IptablesEIP{
+			ObjectMeta: metav1.ObjectMeta{Name: "terminating-eip", DeletionTimestamp: &now},
+		})
+		require.Equal(t, 0, c.addIptablesEipQueue.Len())
+		require.Equal(t, 1, c.updateIptablesEipQueue.Len())
+	})
+}

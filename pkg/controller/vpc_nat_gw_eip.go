@@ -23,7 +23,12 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesEip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesEIP)).String()
+	eip := obj.(*kubeovnv1.IptablesEIP)
+	key := cache.MetaObjectToName(eip).String()
+	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
+	if enqueueUpdateIfTerminating(c.updateIptablesEipQueue, key, "iptables eip", eip.DeletionTimestamp) {
+		return
+	}
 	klog.Infof("enqueue add iptables eip %s", key)
 	c.addIptablesEipQueue.Add(key)
 }
@@ -39,12 +44,9 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 		c.updateIptablesEipQueue.Add(key)
 	}
 
-	// QoS reconcile decides "in use" via the QoSLabel selector, so key the re-enqueue on the
-	// label's previous value: when it is cleared or switched, re-enqueue the previous QoS so it
-	// can drop its finalizer. UpdateFunc fires after the informer cache reflects the label change.
-	if oldQoS := oldEip.Labels[util.QoSLabel]; oldQoS != "" && oldQoS != newEip.Labels[util.QoSLabel] {
-		c.updateQoSPolicyQueue.Add(oldQoS)
-	}
+	// When the QoSLabel is cleared or switched, re-enqueue the previous QoS policy so it can drop
+	// its finalizer once unused (the in-use check is keyed on the label).
+	c.enqueueQoSPolicyRelease(oldEip.Labels, newEip.Labels)
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -69,10 +71,8 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 	c.delIptablesEipQueue.Add(eip)
 
 	// Re-trigger QoS reconcile so it can drop its finalizer once unused. DeleteFunc runs after
-	// the informer cache dropped this EIP. Key on the QoSLabel, matching the QoS in-use check.
-	if qos := eip.Labels[util.QoSLabel]; qos != "" {
-		c.updateQoSPolicyQueue.Add(qos)
-	}
+	// the informer cache dropped this EIP; key on the QoSLabel, matching the QoS in-use check.
+	c.enqueueQoSPolicyRelease(eip.Labels, nil)
 }
 
 // natEipNamespace returns the namespace where the NAT gateway pod for the given EIP resides.
