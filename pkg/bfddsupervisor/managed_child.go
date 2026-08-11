@@ -58,8 +58,10 @@ func (c *ManagedChild) waitAndConfigure(ctx context.Context) error {
 	defer cancel()
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
+	var lastStatusErr error
 	for {
-		if _, err := c.control.Status(waitCtx); err == nil {
+		_, statusErr := c.control.Status(waitCtx)
+		if statusErr == nil {
 			configureCtx, configureCancel := context.WithTimeout(ctx, c.startTimeout)
 			err := c.control.Configure(configureCtx, c.config)
 			configureCancel()
@@ -68,9 +70,13 @@ func (c *ManagedChild) waitAndConfigure(ctx context.Context) error {
 			}
 			return nil
 		}
+		lastStatusErr = statusErr
 		select {
 		case <-waitCtx.Done():
-			return fmt.Errorf("OpenBFDD control did not become ready: %w", waitCtx.Err())
+			return errors.Join(
+				fmt.Errorf("OpenBFDD control did not become ready: %w", waitCtx.Err()),
+				fmt.Errorf("last OpenBFDD control status error: %w", lastStatusErr),
+			)
 		case <-ticker.C:
 		}
 	}
