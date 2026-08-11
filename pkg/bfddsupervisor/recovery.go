@@ -90,17 +90,17 @@ type recoveryEpisode struct {
 
 type persistentEpisode struct {
 	Status       SessionRecoveryStatus `json:"status"`
-	FailingSince time.Time             `json:"failingSince,omitempty"`
-	StableSince  time.Time             `json:"stableSince,omitempty"`
-	CircuitUntil time.Time             `json:"circuitUntil,omitempty"`
+	FailingSince time.Time             `json:"failingSince,omitzero"`
+	StableSince  time.Time             `json:"stableSince,omitzero"`
+	CircuitUntil time.Time             `json:"circuitUntil,omitzero"`
 }
 
 type persistentState struct {
 	Episodes              map[string]persistentEpisode `json:"episodes"`
 	ChildRestarts         int                          `json:"childRestarts"`
 	ChildRecoveryAttempts int                          `json:"childRecoveryAttempts,omitempty"`
-	ChildNextRetry        time.Time                    `json:"childNextRetry,omitempty"`
-	ChildCircuitUntil     time.Time                    `json:"childCircuitUntil,omitempty"`
+	ChildNextRetry        time.Time                    `json:"childNextRetry,omitzero"`
+	ChildCircuitUntil     time.Time                    `json:"childCircuitUntil,omitzero"`
 }
 
 type Supervisor struct {
