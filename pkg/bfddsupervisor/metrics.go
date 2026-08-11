@@ -136,10 +136,30 @@ func (r *MetricsReporter) Update(now time.Time, status SupervisorStatus) {
 	r.initializedChild = true
 }
 
-func (r *MetricsReporter) Serve(ctx context.Context, address string) error {
+func (r *MetricsReporter) handler(status func() SupervisorStatus) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(r.registry, promhttp.HandlerOpts{}))
+	mux.HandleFunc("/livez", func(writer http.ResponseWriter, _ *http.Request) {
+		if !status().Live {
+			http.Error(writer, "BFD supervisor is not live", http.StatusServiceUnavailable)
+			return
+		}
+		writer.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/readyz", func(writer http.ResponseWriter, _ *http.Request) {
+		if !status().Ready {
+			http.Error(writer, "expected BFD sessions are not ready", http.StatusServiceUnavailable)
+			return
+		}
+		writer.WriteHeader(http.StatusOK)
+	})
+	return mux
+}
+
+func (r *MetricsReporter) Serve(ctx context.Context, address string, status func() SupervisorStatus) error {
 	server := &http.Server{
 		Addr:              address,
-		Handler:           promhttp.HandlerFor(r.registry, promhttp.HandlerOpts{}),
+		Handler:           r.handler(status),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

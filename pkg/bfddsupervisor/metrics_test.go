@@ -1,6 +1,8 @@
 package bfddsupervisor
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +10,30 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMetricsHandlerServesSupervisorHealth(t *testing.T) {
+	reporter := NewMetricsReporter()
+	handler := reporter.handler(func() SupervisorStatus {
+		return SupervisorStatus{Live: true, Ready: false}
+	})
+
+	tests := []struct {
+		path       string
+		statusCode int
+	}{
+		{path: "/livez", statusCode: http.StatusOK},
+		{path: "/readyz", statusCode: http.StatusServiceUnavailable},
+		{path: "/metrics", statusCode: http.StatusOK},
+	}
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			require.Equal(t, test.statusCode, response.Code)
+		})
+	}
+}
 
 func TestMetricsReporterPublishesSessionAndCircuitState(t *testing.T) {
 	reporter := NewMetricsReporter()
