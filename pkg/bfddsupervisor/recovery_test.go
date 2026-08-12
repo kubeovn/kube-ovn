@@ -755,6 +755,39 @@ func TestSupervisorAdvancesExpiredBootstrapBudgetAcrossContainerGenerations(t *t
 	require.Equal(t, 3, fourth.Status().ChildRecoveryAttempts)
 }
 
+func TestSupervisorDoesNotRestartAgainAfterSuccessfulExpiredCircuitBootstrap(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(14_400, 0)}
+	child := &fakeChild{running: false}
+	config := SupervisorConfig{
+		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
+		PodIPs:        []string{"10.16.0.2"},
+		GracePeriod:   time.Minute,
+		StablePeriod:  time.Minute,
+		Backoffs:      []time.Duration{time.Second},
+		ChildBackoffs: []time.Duration{time.Second},
+		CircuitOpen:   time.Hour,
+		StatePath:     filepath.Join(t.TempDir(), "state.json"),
+	}
+	state := persistentState{
+		Episodes:              map[string]persistentEpisode{},
+		ChildRecoveryAttempts: len(config.ChildBackoffs) + 1,
+		ChildNextRetry:        clock.now,
+		ChildCircuitUntil:     clock.now,
+	}
+	data, err := json.Marshal(state)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(config.StatePath, data, 0o600))
+
+	supervisor, err := NewSupervisor(config, &fakeControl{}, child, clock)
+	require.NoError(t, err)
+	require.NoError(t, supervisor.StartChild(context.Background()))
+	require.Equal(t, 1, child.restarts)
+	require.NoError(t, supervisor.Reconcile(context.Background()))
+	require.Equal(t, 1, child.restarts, "successful bootstrap is the half-open attempt and must not be repeated immediately")
+	require.True(t, supervisor.Status().Live)
+	require.True(t, supervisor.Status().ChildCircuitOpen, "the observation circuit remains open until sessions stabilize")
+}
+
 func TestSupervisorCanRetryBootstrapAfterStatePersistenceFailure(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(14_500, 0)}
 	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
