@@ -20,6 +20,7 @@ const (
 	CmdWebhook          = "kube-ovn-webhook"
 	CmdOvnLeaderChecker = "kube-ovn-leader-checker"
 	CmdOvnICController  = "kube-ovn-ic-controller"
+	CmdFrr              = "kube-ovn-frr"
 )
 
 func main() {
@@ -42,6 +43,13 @@ func main() {
 		ovn_leader_checker.CmdMain()
 	case CmdOvnICController:
 		ovn_ic_controller.CmdMain()
+	case CmdFrr:
+		if len(os.Args) > 1 && os.Args[1] == "init" {
+			frr.InitMain()
+			return
+		}
+		profiling.DumpProfile()
+		frr.AgentMain()
 	default:
 		util.LogFatalAndExit(nil, "%s is an unknown command", cmd)
 	}
