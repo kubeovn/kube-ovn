@@ -2789,3 +2789,93 @@ func (suite *OvnClientTestSuite) testReconcilePortDHCPOptions() {
 		require.Empty(t, result.DHCPv6OptionsUUID)
 	})
 }
+
+func (suite *OvnClientTestSuite) testCreateVtepLogicalSwitchPort() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-create-vtep-port-ls"
+	lspName := "vtep.test-create-vtep-port"
+	physicalSwitch := "nexus01"
+	vtepLogicalSwitch := "tenant-a-backend"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	t.Run("create vtep logical switch port", func(t *testing.T) {
+		externalIDs := map[string]string{
+			VtepBindingKey:  "test-create-vtep-port",
+			"physical-port": "Ethernet1/20",
+			"vlan-id":       "120",
+		}
+		err = nbClient.CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch, externalIDs)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, lspName, lsp.Name)
+		require.Equal(t, "vtep", lsp.Type)
+		require.ElementsMatch(t, []string{"unknown"}, lsp.Addresses)
+		require.Equal(t, map[string]string{
+			"vtep-physical-switch": physicalSwitch,
+			"vtep-logical-switch":  vtepLogicalSwitch,
+		}, lsp.Options)
+		require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
+		require.Equal(t, lsName, lsp.ExternalIDs[LogicalSwitchKey])
+		require.Equal(t, "test-create-vtep-port", lsp.ExternalIDs[VtepBindingKey])
+		require.Equal(t, "Ethernet1/20", lsp.ExternalIDs["physical-port"])
+		require.Equal(t, "120", lsp.ExternalIDs["vlan-id"])
+	})
+
+	t.Run("idempotent create vtep logical switch port", func(t *testing.T) {
+		externalIDs := map[string]string{
+			VtepBindingKey:  "test-create-vtep-port",
+			"physical-port": "Ethernet1/20",
+			"vlan-id":       "120",
+		}
+		err = nbClient.CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch, externalIDs)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, "vtep", lsp.Type)
+	})
+
+	t.Run("update vtep logical switch port options", func(t *testing.T) {
+		updatedPhysicalSwitch := "nexus02"
+		externalIDs := map[string]string{
+			VtepBindingKey:  "test-create-vtep-port",
+			"physical-port": "Ethernet1/21",
+			"vlan-id":       "130",
+		}
+		err = nbClient.CreateVtepLogicalSwitchPort(lsName, lspName, updatedPhysicalSwitch, vtepLogicalSwitch, externalIDs)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, map[string]string{
+			"vtep-physical-switch": updatedPhysicalSwitch,
+			"vtep-logical-switch":  vtepLogicalSwitch,
+		}, lsp.Options)
+		require.Equal(t, "Ethernet1/21", lsp.ExternalIDs["physical-port"])
+		require.Equal(t, "130", lsp.ExternalIDs["vlan-id"])
+	})
+
+	t.Run("reject empty names", func(t *testing.T) {
+		err = nbClient.CreateVtepLogicalSwitchPort("", "", physicalSwitch, vtepLogicalSwitch, nil)
+		require.Error(t, err)
+		err = nbClient.CreateVtepLogicalSwitchPort(lsName, lspName, "", vtepLogicalSwitch, nil)
+		require.Error(t, err)
+		err = nbClient.CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, "", nil)
+		require.Error(t, err)
+	})
+
+	t.Run("delete owned vtep logical switch port", func(t *testing.T) {
+		err = nbClient.DeleteLogicalSwitchPort(lspName)
+		require.NoError(t, err)
+		exist, err := nbClient.LogicalSwitchPortExists(lspName)
+		require.NoError(t, err)
+		require.False(t, exist)
+	})
+}

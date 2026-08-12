@@ -194,7 +194,7 @@ RUN mkdir /packages/ && \
     cp /usr/src/python3-openvswitch*deb /packages && \
     cp /usr/src/ovn-*deb /packages && \
     cp /usr/src/ovs/tutorial/ovs-sandbox /packages && \
-    cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
+    cd /packages && rm -f *source* *doc* *datapath* *docker* *test* *dev*
 
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 

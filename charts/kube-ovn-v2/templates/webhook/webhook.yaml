@@ -55,6 +55,7 @@ webhooks:
           - vpcs
           - vips
           - vpc-nat-gateways
+          - vtep-bindings
           - iptables-eips
           - iptables-dnat-rules
           - iptables-snat-rules

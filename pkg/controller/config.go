@@ -74,6 +74,7 @@ func (config LeaderElectionConfiguration) validate() error {
 type Configuration struct {
 	OvnNbAddr              string
 	OvnSbAddr              string
+	VtepDbAddr             string
 	OvnTimeout             int
 	OvsDbConnectTimeout    int
 	OvsDbConnectMaxRetry   int
@@ -198,6 +199,7 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argOvnNbAddr              = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr              = pflag.String("ovn-sb-addr", "", "ovn-sb address")
+		argVtepDbAddr             = pflag.String("vtep-db-addr", "", "Hardware VTEP OVSDB address (optional; enables Logical_Switch and vlan_bindings writes)")
 		argOvnTimeout             = pflag.Int("ovn-timeout", 60, "The seconds to wait ovn command timeout")
 		argOvsDbConTimeout        = pflag.Int("ovsdb-con-timeout", 3, "The seconds to wait ovsdb connect timeout")
 		argOvsDbConnectMaxRetry   = pflag.Int("ovsdb-con-maxretry", 60, "The maximum number of retries for connecting to ovsdb")
@@ -309,6 +311,7 @@ func ParseFlags() (*Configuration, error) {
 	config := &Configuration{
 		OvnNbAddr:                      *argOvnNbAddr,
 		OvnSbAddr:                      *argOvnSbAddr,
+		VtepDbAddr:                     *argVtepDbAddr,
 		OvnTimeout:                     *argOvnTimeout,
 		OvsDbConnectTimeout:            *argOvsDbConTimeout,
 		OvsDbConnectMaxRetry:           *argOvsDbConnectMaxRetry,

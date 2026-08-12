@@ -1219,6 +1219,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) CreateVirtualLogicalSwitchPorts(lsN
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVirtualLogicalSwitchPorts", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateVirtualLogicalSwitchPorts), varargs...)
 }
 
+// CreateVtepLogicalSwitchPort mocks base method.
+func (m *MockLogicalSwitchPort) CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch string, externalIDs map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateVtepLogicalSwitchPort", lsName, lspName, physicalSwitch, vtepLogicalSwitch, externalIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateVtepLogicalSwitchPort indicates an expected call of CreateVtepLogicalSwitchPort.
+func (mr *MockLogicalSwitchPortMockRecorder) CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVtepLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateVtepLogicalSwitchPort), lsName, lspName, physicalSwitch, vtepLogicalSwitch, externalIDs)
+}
+
 // DeleteLogicalSwitchPort mocks base method.
 func (m *MockLogicalSwitchPort) DeleteLogicalSwitchPort(lspName string) error {
 	m.ctrl.T.Helper()
@@ -2997,6 +3011,20 @@ func (mr *MockNATMockRecorder) DeleteNats(lrName, natType, logicalIP any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNats", reflect.TypeOf((*MockNAT)(nil).DeleteNats), lrName, natType, logicalIP)
 }
 
+// EnsureSnat mocks base method.
+func (m *MockNAT) EnsureSnat(lrName, externalIP, logicalIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureSnat indicates an expected call of EnsureSnat.
+func (mr *MockNATMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNAT)(nil).EnsureSnat), lrName, externalIP, logicalIP)
+}
+
 // GetNATByUUID mocks base method.
 func (m *MockNAT) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
 	m.ctrl.T.Helper()
@@ -3054,20 +3082,6 @@ func (m *MockNAT) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, exte
 func (mr *MockNATMockRecorder) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDnatAndSnat", reflect.TypeOf((*MockNAT)(nil).UpdateDnatAndSnat), lrName, externalIP, logicalIP, lspName, externalMac, gatewayType)
-}
-
-// EnsureSnat mocks base method.
-func (m *MockNAT) EnsureSnat(lrName, externalIP, logicalIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// EnsureSnat indicates an expected call of EnsureSnat.
-func (mr *MockNATMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNAT)(nil).EnsureSnat), lrName, externalIP, logicalIP)
 }
 
 // MockDHCPOptions is a mock of DHCPOptions interface.
@@ -3862,6 +3876,20 @@ func (mr *MockNbClientMockRecorder) CreateVirtualLogicalSwitchPorts(lsName any, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVirtualLogicalSwitchPorts", reflect.TypeOf((*MockNbClient)(nil).CreateVirtualLogicalSwitchPorts), varargs...)
 }
 
+// CreateVtepLogicalSwitchPort mocks base method.
+func (m *MockNbClient) CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch string, externalIDs map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateVtepLogicalSwitchPort", lsName, lspName, physicalSwitch, vtepLogicalSwitch, externalIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateVtepLogicalSwitchPort indicates an expected call of CreateVtepLogicalSwitchPort.
+func (mr *MockNbClientMockRecorder) CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateVtepLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).CreateVtepLogicalSwitchPort), lsName, lspName, physicalSwitch, vtepLogicalSwitch, externalIDs)
+}
+
 // DeleteAcls mocks base method.
 func (m *MockNbClient) DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error {
 	m.ctrl.T.Helper()
@@ -4363,6 +4391,20 @@ func (m *MockNbClient) EnablePortLayer2forward(lspName string) error {
 func (mr *MockNbClientMockRecorder) EnablePortLayer2forward(lspName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnablePortLayer2forward", reflect.TypeOf((*MockNbClient)(nil).EnablePortLayer2forward), lspName)
+}
+
+// EnsureSnat mocks base method.
+func (m *MockNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureSnat indicates an expected call of EnsureSnat.
+func (mr *MockNbClientMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNbClient)(nil).EnsureSnat), lrName, externalIP, logicalIP)
 }
 
 // FindBFD mocks base method.
@@ -6097,20 +6139,6 @@ func (mr *MockNbClientMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSgACL", reflect.TypeOf((*MockNbClient)(nil).UpdateSgACL), sg, direction)
 }
 
-// EnsureSnat mocks base method.
-func (m *MockNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// EnsureSnat indicates an expected call of EnsureSnat.
-func (mr *MockNbClientMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNbClient)(nil).EnsureSnat), lrName, externalIP, logicalIP)
-}
-
 // MockSbClient is a mock of SbClient interface.
 type MockSbClient struct {
 	ctrl     *gomock.Controller
@@ -6219,6 +6247,21 @@ func (mr *MockSbClientMockRecorder) GetChassisByHost(nodeName any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisByHost", reflect.TypeOf((*MockSbClient)(nil).GetChassisByHost), nodeName)
 }
 
+// GetChassisNameByUUID mocks base method.
+func (m *MockSbClient) GetChassisNameByUUID(uuid string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChassisNameByUUID", uuid)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChassisNameByUUID indicates an expected call of GetChassisNameByUUID.
+func (mr *MockSbClientMockRecorder) GetChassisNameByUUID(uuid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisNameByUUID", reflect.TypeOf((*MockSbClient)(nil).GetChassisNameByUUID), uuid)
+}
+
 // GetEntityInfo mocks base method.
 func (m *MockSbClient) GetEntityInfo(entity any) error {
 	m.ctrl.T.Helper()
@@ -6246,6 +6289,21 @@ func (m *MockSbClient) GetKubeOvnChassises() (*[]ovnsb.Chassis, error) {
 func (mr *MockSbClientMockRecorder) GetKubeOvnChassises() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKubeOvnChassises", reflect.TypeOf((*MockSbClient)(nil).GetKubeOvnChassises))
+}
+
+// GetPortBindingByLogicalPort mocks base method.
+func (m *MockSbClient) GetPortBindingByLogicalPort(logicalPort string, ignoreNotFound bool) (*ovnsb.PortBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPortBindingByLogicalPort", logicalPort, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnsb.PortBinding)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPortBindingByLogicalPort indicates an expected call of GetPortBindingByLogicalPort.
+func (mr *MockSbClientMockRecorder) GetPortBindingByLogicalPort(logicalPort, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPortBindingByLogicalPort", reflect.TypeOf((*MockSbClient)(nil).GetPortBindingByLogicalPort), logicalPort, ignoreNotFound)
 }
 
 // ListChassis mocks base method.
@@ -6308,6 +6366,166 @@ func (m *MockSbClient) UpdateChassisTag(chassisName, nodeName string) error {
 func (mr *MockSbClientMockRecorder) UpdateChassisTag(chassisName, nodeName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassisTag", reflect.TypeOf((*MockSbClient)(nil).UpdateChassisTag), chassisName, nodeName)
+}
+
+// MockPortBinding is a mock of PortBinding interface.
+type MockPortBinding struct {
+	ctrl     *gomock.Controller
+	recorder *MockPortBindingMockRecorder
+	isgomock struct{}
+}
+
+// MockPortBindingMockRecorder is the mock recorder for MockPortBinding.
+type MockPortBindingMockRecorder struct {
+	mock *MockPortBinding
+}
+
+// NewMockPortBinding creates a new mock instance.
+func NewMockPortBinding(ctrl *gomock.Controller) *MockPortBinding {
+	mock := &MockPortBinding{ctrl: ctrl}
+	mock.recorder = &MockPortBindingMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPortBinding) EXPECT() *MockPortBindingMockRecorder {
+	return m.recorder
+}
+
+// GetChassisNameByUUID mocks base method.
+func (m *MockPortBinding) GetChassisNameByUUID(uuid string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChassisNameByUUID", uuid)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChassisNameByUUID indicates an expected call of GetChassisNameByUUID.
+func (mr *MockPortBindingMockRecorder) GetChassisNameByUUID(uuid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChassisNameByUUID", reflect.TypeOf((*MockPortBinding)(nil).GetChassisNameByUUID), uuid)
+}
+
+// GetPortBindingByLogicalPort mocks base method.
+func (m *MockPortBinding) GetPortBindingByLogicalPort(logicalPort string, ignoreNotFound bool) (*ovnsb.PortBinding, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPortBindingByLogicalPort", logicalPort, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnsb.PortBinding)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPortBindingByLogicalPort indicates an expected call of GetPortBindingByLogicalPort.
+func (mr *MockPortBindingMockRecorder) GetPortBindingByLogicalPort(logicalPort, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPortBindingByLogicalPort", reflect.TypeOf((*MockPortBinding)(nil).GetPortBindingByLogicalPort), logicalPort, ignoreNotFound)
+}
+
+// MockVtepDBClient is a mock of VtepDBClient interface.
+type MockVtepDBClient struct {
+	ctrl     *gomock.Controller
+	recorder *MockVtepDBClientMockRecorder
+	isgomock struct{}
+}
+
+// MockVtepDBClientMockRecorder is the mock recorder for MockVtepDBClient.
+type MockVtepDBClientMockRecorder struct {
+	mock *MockVtepDBClient
+}
+
+// NewMockVtepDBClient creates a new mock instance.
+func NewMockVtepDBClient(ctrl *gomock.Controller) *MockVtepDBClient {
+	mock := &MockVtepDBClient{ctrl: ctrl}
+	mock.recorder = &MockVtepDBClientMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockVtepDBClient) EXPECT() *MockVtepDBClientMockRecorder {
+	return m.recorder
+}
+
+// Close mocks base method.
+func (m *MockVtepDBClient) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockVtepDBClientMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockVtepDBClient)(nil).Close))
+}
+
+// Echo mocks base method.
+func (m *MockVtepDBClient) Echo(arg0 context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Echo", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Echo indicates an expected call of Echo.
+func (mr *MockVtepDBClientMockRecorder) Echo(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Echo", reflect.TypeOf((*MockVtepDBClient)(nil).Echo), arg0)
+}
+
+// EnsureVtepBinding mocks base method.
+func (m *MockVtepDBClient) EnsureVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName string, vlanID int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureVtepBinding", physicalSwitch, physicalPort, logicalSwitch, bindingName, vlanID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureVtepBinding indicates an expected call of EnsureVtepBinding.
+func (mr *MockVtepDBClientMockRecorder) EnsureVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName, vlanID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureVtepBinding", reflect.TypeOf((*MockVtepDBClient)(nil).EnsureVtepBinding), physicalSwitch, physicalPort, logicalSwitch, bindingName, vlanID)
+}
+
+// GetEntityInfo mocks base method.
+func (m *MockVtepDBClient) GetEntityInfo(entity any) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEntityInfo", entity)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// GetEntityInfo indicates an expected call of GetEntityInfo.
+func (mr *MockVtepDBClientMockRecorder) GetEntityInfo(entity any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntityInfo", reflect.TypeOf((*MockVtepDBClient)(nil).GetEntityInfo), entity)
+}
+
+// RemoveVtepBinding mocks base method.
+func (m *MockVtepDBClient) RemoveVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName string, vlanID int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveVtepBinding", physicalSwitch, physicalPort, logicalSwitch, bindingName, vlanID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveVtepBinding indicates an expected call of RemoveVtepBinding.
+func (mr *MockVtepDBClientMockRecorder) RemoveVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName, vlanID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveVtepBinding", reflect.TypeOf((*MockVtepDBClient)(nil).RemoveVtepBinding), physicalSwitch, physicalPort, logicalSwitch, bindingName, vlanID)
+}
+
+// Transact mocks base method.
+func (m *MockVtepDBClient) Transact(method string, operations []ovsdb.Operation) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Transact", method, operations)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Transact indicates an expected call of Transact.
+func (mr *MockVtepDBClientMockRecorder) Transact(method, operations any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Transact", reflect.TypeOf((*MockVtepDBClient)(nil).Transact), method, operations)
 }
 
 // MockCommon is a mock of Common interface.

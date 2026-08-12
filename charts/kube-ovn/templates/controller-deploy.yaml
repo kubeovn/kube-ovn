@@ -221,6 +221,10 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.func.ENABLE_BIND_LOCAL_IP }}"
+            {{- if .Values.func.ENABLE_HARDWARE_VTEP }}
+            - name: VTEP_DB_ADDR
+              value: "{{ .Values.networking.VTEP_DB_ADDR }}"
+            {{- end }}
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime

@@ -443,6 +443,7 @@ var (
 	KindVpc              = ObjectKind[*kubeovnv1.Vpc]()
 	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
 	KindVpcNatGateway    = ObjectKind[*kubeovnv1.VpcNatGateway]()
+	KindVtepBinding      = ObjectKind[*kubeovnv1.VtepBinding]()
 
 	KindVirtualMachine                  = ObjectKind[*kubevirtv1.VirtualMachine]()
 	KindVirtualMachineInstance          = ObjectKind[*kubevirtv1.VirtualMachineInstance]()

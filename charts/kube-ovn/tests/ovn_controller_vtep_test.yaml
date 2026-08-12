@@ -1,0 +1,29 @@
+suite: test ovn-controller-vtep deployment
+templates:
+  - ovn-controller-vtep-deploy.yaml
+tests:
+  - it: is not rendered when ENABLE_HARDWARE_VTEP is false
+    set:
+      func.ENABLE_HARDWARE_VTEP: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: deploys ovn-controller-vtep when ENABLE_HARDWARE_VTEP is true
+    set:
+      func.ENABLE_HARDWARE_VTEP: true
+      networking.VTEP_DB_ADDR: "tcp:[192.0.2.10]:6640"
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: ovn-controller-vtep
+      - equal:
+          path: spec.template.spec.containers[0].command[0]
+          value: /kube-ovn/start-ovn-controller-vtep.sh
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VTEP_DB_ADDR
+            value: "tcp:[192.0.2.10]:6640"

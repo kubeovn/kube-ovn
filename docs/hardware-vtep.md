@@ -1,0 +1,133 @@
+# Hardware VTEP Binding
+
+Extend a Kube-OVN Subnet (OVN Logical Switch) to bare-metal servers attached to a
+Hardware VTEP-capable physical switch (any switch that implements the standard
+OVSDB Hardware VTEP schema, for example Cisco Nexus).
+
+## Topology
+
+```text
+                         Kube-OVN Subnet
+                          10.20.0.0/24
+                                |
+                +---------------+---------------+
+                |                               |
+           KubeVirt VM                        Pod
+          10.20.0.20                       10.20.0.30
+                |
+          OVN Logical Switch
+                |
+             VXLAN
+                |
+        Hardware VTEP Switch
+                |
+          Ethernet1/20
+                |
+         Bare-metal Server
+           10.20.0.10
+```
+
+Kube-OVN is **not** responsible for configuring the IP address inside the physical
+server.
+
+## How it works
+
+1. You create a `VtepBinding` that references a Subnet and a Hardware VTEP
+   physical switch / logical switch / port / VLAN.
+2. `kube-ovn-controller` creates an OVN Northbound Logical Switch Port with
+   `type=vtep` and options:
+   - `vtep-physical-switch`
+   - `vtep-logical-switch`
+3. When `--vtep-db-addr` / `VTEP_DB_ADDR` is set, the controller also writes the
+   Hardware VTEP OVSDB:
+   - `Logical_Switch` (named by `spec.vtepLogicalSwitch` or the Subnet)
+   - `Physical_Port.vlan_bindings[vlanID] = Logical_Switch`
+4. `ovn-controller-vtep` (deployed when `ENABLE_HARDWARE_VTEP=true`) synchronizes
+   OVN Southbound with the Hardware VTEP OVSDB (tunnel keys, remote MACs,
+   chassis binding).
+5. `VtepBinding.status.ready` becomes true only after the SB `Port_Binding` for
+   the VTEP LSP is chassis-bound.
+
+## Enable Hardware VTEP
+
+Helm:
+
+```bash
+helm upgrade --install kube-ovn charts/kube-ovn -n kube-system \
+  --set func.ENABLE_HARDWARE_VTEP=true \
+  --set networking.VTEP_DB_ADDR='tcp:[192.0.2.10]:6640'
+```
+
+`install.sh`:
+
+```bash
+ENABLE_HARDWARE_VTEP=true VTEP_DB_ADDR='tcp:[192.0.2.10]:6640' bash dist/images/install.sh
+```
+
+This deploys `ovn-controller-vtep` and configures `kube-ovn-controller` with
+`--vtep-db-addr`. The switch must already expose a Hardware VTEP OVSDB with
+`Physical_Switch` / `Physical_Port` rows that match the CR.
+
+## Prerequisites
+
+- OVN with Hardware VTEP support (Kube-OVN ships OVN 25.03; VTEP packages are
+  kept in the image).
+- Hardware VTEP OVSDB reachable at `VTEP_DB_ADDR` containing:
+  - `Physical_Switch` whose name matches `spec.physicalSwitch`
+  - `Physical_Port` whose name matches `spec.physicalPort` on that switch
+- Optional: TLS materials in the `kube-ovn-tls` secret when using `ssl:` remotes.
+
+Kube-OVN does **not** configure the switch via NX-API or CLI, and does **not**
+create `Physical_Switch` / `Physical_Port` rows (those come from the switch NMS).
+
+## Example
+
+```yaml
+apiVersion: kubeovn.io/v1
+kind: Subnet
+metadata:
+  name: tenant-a-backend
+spec:
+  vpc: tenant-a
+  cidrBlock: 10.20.0.0/24
+  gateway: 10.20.0.1
+  excludeIps:
+  - 10.20.0.0..10.20.0.10
+---
+apiVersion: kubeovn.io/v1
+kind: VtepBinding
+metadata:
+  name: tenant-a-rack1
+spec:
+  subnet: tenant-a-backend
+  physicalSwitch: nexus01
+  # optional; defaults to subnet name
+  vtepLogicalSwitch: tenant-a-backend
+  physicalPort: Ethernet1/20
+  vlanID: 120
+```
+
+Then on the bare-metal host connected to `Ethernet1/20` (VLAN 120), configure an
+IP in `10.20.0.0/24` (for example `10.20.0.10/24`). Pods and KubeVirt VMs on
+`tenant-a-backend` should have L2 reachability to that host once
+`status.ready=true`.
+
+## Multi-tenant usage
+
+Create one `VtepBinding` (and matching switch VLAN binding) per tenant Subnet:
+
+| Tenant | Subnet | VTEP Logical Switch | VLAN |
+|--------|--------|---------------------|------|
+| A | tenant-a-backend | tenant-a-backend | 120 |
+| B | tenant-b-backend | tenant-b-backend | 130 |
+
+`(physicalSwitch, vtepLogicalSwitch)` must be unique across `VtepBinding`
+resources because OVN allows only one VTEP Logical Switch Port for that pair.
+
+## Limitations
+
+- No BGP / EVPN / MLAG / vPC automation.
+- No DHCP or IPAM for bare-metal servers.
+- Without `VTEP_DB_ADDR`, Kube-OVN still creates the NB `type=vtep` LSP, but does
+  not write VTEP `Logical_Switch` / `vlan_bindings`; Ready still waits for SB
+  chassis binding via `ovn-controller-vtep`.

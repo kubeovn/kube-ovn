@@ -22,6 +22,8 @@ rules:
       - ips
       - vips
       - vips/status
+      - vtep-bindings
+      - vtep-bindings/status
       - vlans
       - vlans/status
       - provider-networks

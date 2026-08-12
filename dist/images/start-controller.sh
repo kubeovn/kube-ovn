@@ -8,6 +8,7 @@ OVN_SB_ADDR=${OVN_SB_ADDR:-}
 # externally-exposed ovn-central whose NodePort/LoadBalancer remaps ports.
 KUBE_OVN_NB_PORT=${KUBE_OVN_NB_PORT:-6641}
 KUBE_OVN_SB_PORT=${KUBE_OVN_SB_PORT:-6642}
+VTEP_DB_ADDR=${VTEP_DB_ADDR:-}
 
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then
@@ -38,6 +39,13 @@ function gen_conn_str {
 nb_addr="${OVN_NB_ADDR:-$(gen_conn_str "$KUBE_OVN_NB_PORT")}"
 sb_addr="${OVN_SB_ADDR:-$(gen_conn_str "$KUBE_OVN_SB_PORT")}"
 
+if [[ -n "${VTEP_DB_ADDR}" ]]; then
+  exec ./kube-ovn-controller --ovn-nb-addr="$nb_addr" \
+                             --ovn-sb-addr="$sb_addr" \
+                             --vtep-db-addr="$VTEP_DB_ADDR" \
+                             "$@"
+fi
+
 exec ./kube-ovn-controller --ovn-nb-addr="$nb_addr" \
                            --ovn-sb-addr="$sb_addr" \
-                           $@
+                           "$@"

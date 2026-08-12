@@ -30,6 +30,11 @@ func GetLocalnetName(subnet string) string {
 	return "localnet." + subnet
 }
 
+// GetVtepLogicalSwitchPortName returns the OVN Logical Switch Port name for a VtepBinding.
+func GetVtepLogicalSwitchPortName(bindingName string) string {
+	return "vtep." + bindingName
+}
+
 func trimCommandOutput(raw []byte) string {
 	return strings.Trim(strings.TrimSpace(string(raw)), `"`)
 }

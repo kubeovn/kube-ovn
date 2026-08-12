@@ -201,6 +201,73 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider,
 	return nil
 }
 
+// CreateVtepLogicalSwitchPort creates or updates a Logical Switch Port of type "vtep".
+// physicalSwitch maps to options:vtep-physical-switch and vtepLogicalSwitch maps to
+// options:vtep-logical-switch. externalIDs should include ownership markers such as
+// vendor and vtep-binding.
+func (c *OVNNbClient) CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch string, externalIDs map[string]string) error {
+	if lsName == "" || lspName == "" {
+		return errors.New("logical switch name and logical switch port name must be set")
+	}
+	if physicalSwitch == "" || vtepLogicalSwitch == "" {
+		return errors.New("vtep physical switch and vtep logical switch must be set")
+	}
+
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	finalExternalIDs := make(map[string]string, len(externalIDs)+2)
+	maps.Copy(finalExternalIDs, externalIDs)
+	finalExternalIDs[LogicalSwitchKey] = lsName
+	finalExternalIDs["vendor"] = util.CniTypeName
+
+	options := map[string]string{
+		"vtep-physical-switch": physicalSwitch,
+		"vtep-logical-switch":  vtepLogicalSwitch,
+	}
+
+	if lsp != nil {
+		if lsp.Type == "vtep" && maps.Equal(lsp.ExternalIDs, finalExternalIDs) && maps.Equal(lsp.Options, options) {
+			return nil
+		}
+
+		lsp.Type = "vtep"
+		lsp.Addresses = []string{"unknown"}
+		lsp.ExternalIDs = finalExternalIDs
+		lsp.Options = options
+		if err = c.UpdateLogicalSwitchPort(lsp, &lsp.Type, &lsp.Addresses, &lsp.ExternalIDs, &lsp.Options); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to update vtep logical switch port %s: %w", lspName, err)
+		}
+		return nil
+	}
+
+	lsp = &ovnnb.LogicalSwitchPort{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lspName,
+		Type:        "vtep",
+		Addresses:   []string{"unknown"},
+		Options:     options,
+		ExternalIDs: finalExternalIDs,
+	}
+
+	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if err = c.Transact("lsp-add", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("create vtep logical switch port %s: %w", lspName, err)
+	}
+
+	return nil
+}
+
 // CreateVirtualLogicalSwitchPorts create several virtual type logical switch port once
 func (c *OVNNbClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(ips))
