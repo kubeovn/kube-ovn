@@ -51,8 +51,6 @@ type subnetStatusPatch struct {
 	Status struct {
 		Conditions             []kubeovnv1.Condition                   `json:"conditions,omitempty"`
 		ActivateGateway        string                                  `json:"activateGateway"`
-		DHCPv4OptionsUUID      string                                  `json:"dhcpV4OptionsUUID"`
-		DHCPv6OptionsUUID      string                                  `json:"dhcpV6OptionsUUID"`
 		U2OInterconnectionIP   string                                  `json:"u2oInterconnectionIP"`
 		U2OInterconnectionMAC  string                                  `json:"u2oInterconnectionMAC"`
 		U2OInterconnectionVPC  string                                  `json:"u2oInterconnectionVPC"`
@@ -66,8 +64,6 @@ func buildSubnetStatusPatch(status *kubeovnv1.SubnetStatus) ([]byte, error) {
 	patch := subnetStatusPatch{}
 	patch.Status.Conditions = status.Conditions
 	patch.Status.ActivateGateway = status.ActivateGateway
-	patch.Status.DHCPv4OptionsUUID = status.DHCPv4OptionsUUID
-	patch.Status.DHCPv6OptionsUUID = status.DHCPv6OptionsUUID
 	patch.Status.U2OInterconnectionIP = status.U2OInterconnectionIP
 	patch.Status.U2OInterconnectionMAC = status.U2OInterconnectionMAC
 	patch.Status.U2OInterconnectionVPC = status.U2OInterconnectionVPC

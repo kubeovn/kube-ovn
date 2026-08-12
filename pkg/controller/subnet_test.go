@@ -70,6 +70,37 @@ func TestPatchSubnetStatusPreservesIPStatistics(t *testing.T) {
 	require.Equal(t, "node-1", updated.Status.ActivateGateway)
 }
 
+func TestPatchSubnetStatusPreservesDHCPOptions(t *testing.T) {
+	t.Parallel()
+
+	const subnetName = "centralized-dual"
+	liveSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Status: kubeovnv1.SubnetStatus{
+			DHCPv4OptionsUUID: "new-v4",
+			DHCPv6OptionsUUID: "new-v6",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{liveSubnet},
+	})
+	require.NoError(t, err)
+
+	staleSubnet := liveSubnet.DeepCopy()
+	staleSubnet.Status.DHCPv4OptionsUUID = "old-v4"
+	staleSubnet.Status.DHCPv6OptionsUUID = "old-v6"
+	staleSubnet.Status.ActivateGateway = "node-1"
+
+	require.NoError(t, fc.fakeController.patchSubnetStatus(staleSubnet, "ReconcileCentralizedGatewaySuccess", ""))
+	updated, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().Subnets().Get(
+		context.Background(), subnetName, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "new-v4", updated.Status.DHCPv4OptionsUUID)
+	require.Equal(t, "new-v6", updated.Status.DHCPv6OptionsUUID)
+	require.Equal(t, "node-1", updated.Status.ActivateGateway)
+}
+
 func Test_readyToRemoveFinalizer(t *testing.T) {
 	t.Parallel()
 
