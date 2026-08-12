@@ -22,6 +22,7 @@ const (
 	providerVlanPortCurrent
 	providerVlanPortLegacy
 	providerVlanPortStale
+	providerVlanPortForeign
 )
 
 func classifyProviderVlanPort(portName, bridge string, vlanID int) providerVlanPortKind {
@@ -36,10 +37,13 @@ func classifyProviderVlanPort(portName, bridge string, vlanID int) providerVlanP
 	return providerVlanPortUnrelated
 }
 
-func classifyProviderVlanPortForBridge(portName, bridge string, vlanInterfaceMap map[string]int) (providerVlanPortKind, int, string) {
+func classifyProviderVlanPortForBridge(portName, bridge string, vlanInterfaceMap map[string]int, owned bool) (providerVlanPortKind, int, string) {
 	matched, vlanID := util.IsVlanInternalPortForBridge(portName, bridge)
 	if !matched {
 		return providerVlanPortUnrelated, 0, ""
+	}
+	if !owned {
+		return providerVlanPortForeign, vlanID, ""
 	}
 
 	for vlanInterface, desiredVlanID := range vlanInterfaceMap {
@@ -326,25 +330,25 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 				klog.Infof("Skipping main NIC port %s on bridge %s", port, bridge)
 				continue
 			}
-			vlanPortKind, vlanID, vlanInterface := classifyProviderVlanPortForBridge(port, bridge, vlanInterfaceMap)
+			owned, err := ovs.ValidatePortVendor(port)
+			if err != nil {
+				return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
+			}
+			vlanPortKind, vlanID, vlanInterface := classifyProviderVlanPortForBridge(port, bridge, vlanInterfaceMap, owned)
 			if vlanPortKind == providerVlanPortCurrent {
 				klog.Infof("Preserving VLAN internal port %s for VLAN interface %s on bridge %s", port, vlanInterface, bridge)
 				continue
 			}
 			if vlanPortKind == providerVlanPortLegacy || vlanPortKind == providerVlanPortStale {
 				klog.Infof("Removing obsolete VLAN internal port %s from bridge %s", port, bridge)
-				if err = c.removeProviderVlanInterface(port, provider, bridge, providerNic, vlanInterfaces, vlanID); err != nil {
+				ctx := providerVlanRestoreContext{provider: provider, bridge: bridge, nic: providerNic, vlanInterfaces: vlanInterfaces}
+				if err = c.removeProviderVlanInterface(port, ctx, vlanID); err != nil {
 					return fmt.Errorf("failed to remove obsolete VLAN internal port %s from OVS bridge %s: %w", port, bridge, err)
 				}
 				continue
 			}
 
-			ok, err := ovs.ValidatePortVendor(port)
-			if err != nil {
-				return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
-			}
-
-			if ok {
+			if owned {
 				klog.Infof("Removing unmanaged port %s from bridge %s", port, bridge)
 				if err = c.removeProviderNic(port, bridge); err != nil {
 					return fmt.Errorf("failed to remove port %s from OVS bridge %s: %w", port, bridge, err)

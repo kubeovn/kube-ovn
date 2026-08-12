@@ -207,6 +207,7 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterface
 
 		// remove host nic from the external bridge
 		if output != "" {
+			ctx := providerVlanRestoreContext{provider: provider, bridge: brName, nic: nic, vlanInterfaces: vlanInterfaces}
 			for port := range strings.SplitSeq(output, "\n") {
 				// patch port created by ovn-controller has an external ID ovn-localnet-port=localnet.<SUBNET>
 				if output, err = ovs.Exec("--data=bare", "--no-heading", "--columns=_uuid", "find", "port", "name="+port, `external-ids:ovn-localnet-port!=""`); err != nil {
@@ -217,9 +218,13 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterface
 					continue
 				}
 				// Check if this is a VLAN internal port.
-				if matched, vlanID := util.IsVlanInternalPortForBridge(port, brName); matched {
+				owned, err := ovs.ValidatePortVendor(port)
+				if err != nil {
+					return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
+				}
+				if matched, vlanID := util.IsVlanInternalPortForBridge(port, brName); matched && owned {
 					klog.Infof("removing VLAN internal port %s (VLAN %d) from bridge %s", port, vlanID, brName)
-					if err = c.removeProviderVlanInterface(port, provider, brName, nic, vlanInterfaces, vlanID); err != nil {
+					if err = c.removeProviderVlanInterface(port, ctx, vlanID); err != nil {
 						klog.Errorf("failed to remove VLAN internal port %s from external bridge %s: %v", port, brName, err)
 						return err
 					}
