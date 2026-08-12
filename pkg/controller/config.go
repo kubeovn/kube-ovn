@@ -11,6 +11,7 @@ import (
 	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
 	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -88,6 +89,7 @@ type Configuration struct {
 	AttachNetClient attachnetclientset.Interface
 	KubevirtClient  kubecli.KubevirtClient
 	ExtClient       extClientSet.Interface
+	DynamicClient   dynamic.Interface
 
 	KubeFactoryClient    kubernetes.Interface
 	KubeOvnFactoryClient clientset.Interface
@@ -506,6 +508,13 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.ExtClient = ExtClient
+
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		klog.Errorf("init dynamic client failed %v", err)
+		return err
+	}
+	config.DynamicClient = dynamicClient
 
 	cfg.ContentType = util.ContentTypeProtobuf
 	cfg.AcceptContentTypes = util.AcceptContentTypes

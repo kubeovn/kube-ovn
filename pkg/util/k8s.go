@@ -188,6 +188,10 @@ func SetOwnerReference(owner, object metav1.Object) error {
 	return controllerutil.SetOwnerReference(owner, object, scheme.Scheme)
 }
 
+func SetControllerReference(owner, object metav1.Object) error {
+	return controllerutil.SetControllerReference(owner, object, scheme.Scheme)
+}
+
 func DeploymentIsReady(deployment *appsv1.Deployment) bool {
 	if deployment.Generation > deployment.Status.ObservedGeneration {
 		return false
