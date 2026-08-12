@@ -3520,10 +3520,12 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ipv4
+          n_worker=2 make kind-ghcr-pull kind-init-ipv4
 
       - name: Install Kube-OVN
         id: install
+        env:
+          UNTAINT_CONTROL_PLANE: "false"
         run: make kind-install-ipv4
 
       - name: Run E2E
