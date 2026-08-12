@@ -710,6 +710,51 @@ func TestSupervisorBootstrapsChildOncePerContainerGenerationWithoutResettingBudg
 	require.Equal(t, 2, child.attempts, "one container generation must bootstrap the child only once")
 }
 
+func TestSupervisorAdvancesExpiredBootstrapBudgetAcrossContainerGenerations(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(14_250, 0)}
+	control := &fakeControl{statusErr: errors.New("control unavailable")}
+	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
+	config := SupervisorConfig{
+		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
+		PodIPs:        []string{"10.16.0.2"},
+		GracePeriod:   time.Minute,
+		StablePeriod:  time.Minute,
+		Backoffs:      []time.Duration{time.Second},
+		ChildBackoffs: []time.Duration{time.Second, 2 * time.Second},
+		CircuitOpen:   time.Hour,
+		StatePath:     filepath.Join(t.TempDir(), "state.json"),
+	}
+
+	first, err := NewSupervisor(config, control, child, clock)
+	require.NoError(t, err)
+	require.Error(t, first.StartChild(context.Background()))
+	require.Equal(t, 1, first.Status().ChildRecoveryAttempts)
+
+	clock.now = first.Status().ChildNextRetry
+	second, err := NewSupervisor(config, control, child, clock)
+	require.NoError(t, err)
+	require.Error(t, second.StartChild(context.Background()))
+	require.Equal(t, 2, second.Status().ChildRecoveryAttempts, "expired retry must advance the persisted budget")
+	require.Equal(t, clock.now.Add(2*time.Second), second.Status().ChildNextRetry)
+	require.NoError(t, second.Reconcile(context.Background()))
+	require.True(t, second.Status().Live, "new backoff must prevent an immediate kubelet restart")
+
+	clock.now = second.Status().ChildNextRetry
+	third, err := NewSupervisor(config, control, child, clock)
+	require.NoError(t, err)
+	require.Error(t, third.StartChild(context.Background()))
+	require.Equal(t, 3, third.Status().ChildRecoveryAttempts)
+	require.True(t, third.Status().ChildCircuitOpen)
+	require.False(t, third.Status().Live, "newly exhausted budget must request one fresh container generation")
+
+	fourth, err := NewSupervisor(config, control, child, clock)
+	require.NoError(t, err)
+	require.Error(t, fourth.StartChild(context.Background()))
+	require.NoError(t, fourth.Reconcile(context.Background()))
+	require.True(t, fourth.Status().Live, "generation inheriting the same circuit must not enter a kubelet restart loop")
+	require.Equal(t, 3, fourth.Status().ChildRecoveryAttempts)
+}
+
 func TestSupervisorCanRetryBootstrapAfterStatePersistenceFailure(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(14_500, 0)}
 	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
