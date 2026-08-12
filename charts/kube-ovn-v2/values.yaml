@@ -697,6 +697,58 @@ bgpSpeaker:
   #  - --cluster-as=65000
   #  - --allowed-source-addresses=10.32.32.2,10.32.32.3,10.32.32.4,10.32.32.5
 
+frr:
+  # -- Enable the kube-ovn-frr agent for VPC dynamic routing advertisement.
+  # @section -- FRR agent configuration
+  enabled: false
+  # -- Override image settings for the kube-ovn-frr agent. Empty fields fall back to the global kube-ovn image.
+  # @section -- FRR agent configuration
+  image:
+    # -- Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.
+    # @section -- FRR agent configuration
+    registry: ""
+    # -- Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.
+    # @section -- FRR agent configuration
+    repository: ""
+    # -- Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.
+    # @section -- FRR agent configuration
+    tag: ""
+    # -- Pull policy override for this component image. Defaults to `.image.pullPolicy`.
+    # @section -- FRR agent configuration
+    pullPolicy: ""
+  # -- Image settings for the FRR routing daemon container.
+  # @section -- FRR agent configuration
+  frrImage:
+    # -- FRR image repository.
+    # @section -- FRR agent configuration
+    repository: quay.io/frrouting/frr
+    # -- FRR image tag.
+    # @section -- FRR agent configuration
+    tag: "10.7.0"
+    # -- FRR image pull policy.
+    # @section -- FRR agent configuration
+    pullPolicy: IfNotPresent
+  # -- Annotations to be added to all top-level kube-ovn-frr objects (resources under templates/frr)
+  # @section -- FRR agent configuration
+  annotations: {}
+  # -- Annotations to be added to kube-ovn-frr pods.
+  # @section -- FRR agent configuration
+  podAnnotations: {}
+  # -- kube-ovn-frr agent resource limits & requests.
+  # ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+  # @section -- FRR agent configuration
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "100Mi"
+    limits: {}
+  # -- Node selector to restrict the deployment of the FRR agent to specific nodes, merged with the built-in external-gw selector.
+  # @section -- FRR agent configuration
+  nodeSelector: {}
+  # -- Args passed to the kube-ovn-frr agent.
+  # @section -- FRR agent configuration
+  args: []
+
 # -- Configuration for kube-ovn-pinger, the agent monitoring and returning metrics for OVS/external connectivity.
 # @section -- Ping daemon configuration
 # @default -- "{}"
