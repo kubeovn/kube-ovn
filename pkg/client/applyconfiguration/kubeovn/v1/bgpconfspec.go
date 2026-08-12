@@ -25,16 +25,19 @@ import (
 // BgpConfSpecApplyConfiguration represents a declarative configuration of the BgpConfSpec type for use
 // with apply.
 type BgpConfSpecApplyConfiguration struct {
-	LocalASN        *uint32          `json:"localASN,omitempty"`
-	PeerASN         *uint32          `json:"peerASN,omitempty"`
-	RouterID        *string          `json:"routerId,omitempty"`
-	Neighbours      []string         `json:"neighbours,omitempty"`
-	Password        *string          `json:"password,omitempty"`
-	HoldTime        *metav1.Duration `json:"holdTime,omitempty"`
-	KeepaliveTime   *metav1.Duration `json:"keepaliveTime,omitempty"`
-	ConnectTime     *metav1.Duration `json:"connectTime,omitempty"`
-	EbgpMultiHop    *bool            `json:"ebgpMultiHop,omitempty"`
-	GracefulRestart *bool            `json:"gracefulRestart,omitempty"`
+	LocalASN        *uint32                     `json:"localASN,omitempty"`
+	PeerASN         *uint32                     `json:"peerASN,omitempty"`
+	RouterID        *string                     `json:"routerId,omitempty"`
+	Neighbours      []string                    `json:"neighbours,omitempty"`
+	Password        *string                     `json:"password,omitempty"`
+	HoldTime        *metav1.Duration            `json:"holdTime,omitempty"`
+	KeepaliveTime   *metav1.Duration            `json:"keepaliveTime,omitempty"`
+	ConnectTime     *metav1.Duration            `json:"connectTime,omitempty"`
+	EbgpMultiHop    *bool                       `json:"ebgpMultiHop,omitempty"`
+	GracefulRestart *bool                       `json:"gracefulRestart,omitempty"`
+	NodeSelector    map[string]string           `json:"nodeSelector,omitempty"`
+	Peers           []BgpPeerApplyConfiguration `json:"peers,omitempty"`
+	AdvertiseFilter []string                    `json:"advertiseFilter,omitempty"`
 }
 
 // BgpConfSpecApplyConfiguration constructs a declarative configuration of the BgpConfSpec type for use with
@@ -122,5 +125,42 @@ func (b *BgpConfSpecApplyConfiguration) WithEbgpMultiHop(value bool) *BgpConfSpe
 // If called multiple times, the GracefulRestart field is set to the value of the last call.
 func (b *BgpConfSpecApplyConfiguration) WithGracefulRestart(value bool) *BgpConfSpecApplyConfiguration {
 	b.GracefulRestart = &value
+	return b
+}
+
+// WithNodeSelector puts the entries into the NodeSelector field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the NodeSelector field,
+// overwriting an existing map entries in NodeSelector field with the same key.
+func (b *BgpConfSpecApplyConfiguration) WithNodeSelector(entries map[string]string) *BgpConfSpecApplyConfiguration {
+	if b.NodeSelector == nil && len(entries) > 0 {
+		b.NodeSelector = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.NodeSelector[k] = v
+	}
+	return b
+}
+
+// WithPeers adds the given value to the Peers field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the Peers field.
+func (b *BgpConfSpecApplyConfiguration) WithPeers(values ...*BgpPeerApplyConfiguration) *BgpConfSpecApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithPeers")
+		}
+		b.Peers = append(b.Peers, *values[i])
+	}
+	return b
+}
+
+// WithAdvertiseFilter adds the given value to the AdvertiseFilter field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the AdvertiseFilter field.
+func (b *BgpConfSpecApplyConfiguration) WithAdvertiseFilter(values ...string) *BgpConfSpecApplyConfiguration {
+	for i := range values {
+		b.AdvertiseFilter = append(b.AdvertiseFilter, values[i])
+	}
 	return b
 }

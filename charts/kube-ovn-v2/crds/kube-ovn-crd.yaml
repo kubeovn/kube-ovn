@@ -37,6 +37,10 @@ spec:
             type: object
           spec:
             properties:
+              advertiseFilter:
+                items:
+                  type: string
+                type: array
               connectTime:
                 type: string
               ebgpMultiHop:
@@ -54,11 +58,30 @@ spec:
                 items:
                   type: string
                 type: array
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                type: object
               password:
                 type: string
               peerASN:
                 format: int32
                 type: integer
+              peers:
+                items:
+                  properties:
+                    address:
+                      minLength: 1
+                      type: string
+                    asn:
+                      format: int32
+                      type: integer
+                    bfd:
+                      type: boolean
+                  required:
+                  - address
+                  type: object
+                type: array
               routerId:
                 type: string
             type: object
