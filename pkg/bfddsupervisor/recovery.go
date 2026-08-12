@@ -284,11 +284,10 @@ func (s *Supervisor) reconcileControlFailure(_ context.Context, now time.Time, s
 		klog.Errorf("failed to query OpenBFDD status (%d consecutive failures): %v", s.controlFailures, statusErr)
 	}
 	s.status.Ready = false
-	s.updateLivenessLocked(now)
+	s.updateControlFailureLivenessLocked(now)
 	s.refreshStatusLocked()
-	state := s.persistentStateLocked()
 	s.mutex.Unlock()
-	return s.saveState(state)
+	return nil
 }
 
 func (s *Supervisor) planSessionRecovery(now time.Time, sessions []Session) (*pendingRecoveryAction, persistentState) {
@@ -500,6 +499,18 @@ func (s *Supervisor) updateLivenessLocked(now time.Time) {
 
 func (s *Supervisor) updateChildRunningLivenessLocked(now time.Time) {
 	s.status.Live = s.child.Running() && !s.childCircuitFailsLivenessLocked(now)
+}
+
+func (s *Supervisor) updateControlFailureLivenessLocked(now time.Time) {
+	if s.child.Running() {
+		s.updateLivenessLocked(now)
+		return
+	}
+	if s.childCircuitFailsLivenessLocked(now) {
+		s.status.Live = false
+		return
+	}
+	s.status.Live = !s.childNextRetry.IsZero() && now.Before(s.childNextRetry)
 }
 
 func (s *Supervisor) childCircuitFailsLivenessLocked(now time.Time) bool {
