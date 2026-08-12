@@ -90,33 +90,15 @@ func TestDelEipQoSInPod_NatGwExistsPodMissing(t *testing.T) {
 // existing objects and fires only AddFunc.
 func TestEnqueueAddIptablesEip(t *testing.T) {
 	t.Parallel()
-
-	newController := func(t *testing.T) *Controller {
-		c := &Controller{
-			addIptablesEipQueue:    newTypedRateLimitingQueue[string]("AddIptablesEip", nil),
-			updateIptablesEipQueue: newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
-		}
-		t.Cleanup(c.addIptablesEipQueue.ShutDown)
-		t.Cleanup(c.updateIptablesEipQueue.ShutDown)
-		return c
+	c := &Controller{
+		addIptablesEipQueue:    newTypedRateLimitingQueue[string]("AddIptablesEip", nil),
+		updateIptablesEipQueue: newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
 	}
-
-	t.Run("live eip goes to the add queue", func(t *testing.T) {
-		c := newController(t)
-		c.enqueueAddIptablesEip(&kubeovnv1.IptablesEIP{
-			ObjectMeta: metav1.ObjectMeta{Name: "live-eip"},
-		})
-		require.Equal(t, 1, c.addIptablesEipQueue.Len())
-		require.Equal(t, 0, c.updateIptablesEipQueue.Len())
-	})
-
-	t.Run("terminating eip goes to the update queue for cleanup", func(t *testing.T) {
-		c := newController(t)
-		now := metav1.Now()
-		c.enqueueAddIptablesEip(&kubeovnv1.IptablesEIP{
-			ObjectMeta: metav1.ObjectMeta{Name: "terminating-eip", DeletionTimestamp: &now},
-		})
-		require.Equal(t, 0, c.addIptablesEipQueue.Len())
-		require.Equal(t, 1, c.updateIptablesEipQueue.Len())
-	})
+	t.Cleanup(c.addIptablesEipQueue.ShutDown)
+	t.Cleanup(c.updateIptablesEipQueue.ShutDown)
+	now := metav1.Now()
+	assertEnqueueAddRouting(t, c.addIptablesEipQueue, c.updateIptablesEipQueue, c.enqueueAddIptablesEip,
+		&kubeovnv1.IptablesEIP{ObjectMeta: metav1.ObjectMeta{Name: "live-eip"}},
+		&kubeovnv1.IptablesEIP{ObjectMeta: metav1.ObjectMeta{Name: "terminating-eip", DeletionTimestamp: &now}},
+	)
 }
