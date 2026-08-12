@@ -15,7 +15,10 @@ import (
 
 const gatewayCheckMaxRetry = 200
 
-type providerVlanPortKind uint8
+type (
+	providerVlanPortKind     uint8
+	providerBridgePortAction uint8
+)
 
 const (
 	providerVlanPortUnrelated providerVlanPortKind = iota
@@ -24,6 +27,22 @@ const (
 	providerVlanPortStale
 	providerVlanPortForeign
 )
+
+const (
+	providerBridgePortReject providerBridgePortAction = iota
+	providerBridgePortRemoveVlan
+	providerBridgePortRemoveNic
+)
+
+func providerBridgePortCleanupAction(portName, bridge string, owned bool) providerBridgePortAction {
+	if matched, _ := util.IsVlanInternalPortForBridge(portName, bridge); matched {
+		if owned {
+			return providerBridgePortRemoveVlan
+		}
+		return providerBridgePortReject
+	}
+	return providerBridgePortRemoveNic
+}
 
 func classifyProviderVlanPort(portName, bridge string, vlanID int) providerVlanPortKind {
 	currentName := util.VlanInternalPortName(bridge, vlanID)

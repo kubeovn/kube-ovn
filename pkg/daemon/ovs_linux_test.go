@@ -219,6 +219,20 @@ func TestTransferProviderVlanAddressesPreservesSourceUntilDestinationReady(t *te
 	require.ErrorIs(t, err, deleteErr)
 }
 
+func TestTransferProviderVlanRoutesReturnsDestinationFailure(t *testing.T) {
+	t.Parallel()
+
+	dst := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "kv20-l2bvmi7mc4", Index: 21}}
+	_, network, err := net.ParseCIDR("198.51.100.0/24")
+	require.NoError(t, err)
+	replaceErr := errors.New("replace route")
+
+	err = transferProviderVlanRoutes(dst, []netlink.Route{{Dst: network, Scope: netlink.SCOPE_UNIVERSE}}, func(*netlink.Route) error {
+		return replaceErr
+	})
+	require.ErrorIs(t, err, replaceErr)
+}
+
 func TestSelectProviderVlanSourceInterface(t *testing.T) {
 	t.Parallel()
 

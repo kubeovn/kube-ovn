@@ -2219,7 +2219,7 @@ func providerVlanSourceCandidates(vlanID int, requested string) ([]string, bool,
 }
 
 func providerVlanLinkHasNetworkState(link netlink.Link) (bool, error) {
-	addrs, err := util.AddrList(link, netlink.FAMILY_ALL)
+	addrs, err := netlink.AddrList(link, netlink.FAMILY_ALL)
 	if err != nil {
 		return false, fmt.Errorf("failed to list addresses on candidate source VLAN interface %s: %w", link.Attrs().Name, err)
 	}
@@ -2319,19 +2319,21 @@ func (c *Controller) transferVlanAddrsToInternalPort(srcName, dstName string) er
 	if err != nil {
 		return fmt.Errorf("failed to get routes on source %s: %w", srcName, err)
 	}
+	return transferProviderVlanRoutes(dst, routes, netlink.RouteReplace)
+}
 
-	for _, route := range routes {
+func transferProviderVlanRoutes(dst netlink.Link, routes []netlink.Route, routeReplace func(*netlink.Route) error) error {
+	for _, current := range routes {
+		route := current
 		if route.Gw == nil && route.Dst != nil && route.Dst.IP.IsLinkLocalUnicast() {
 			continue
 		}
 		route.LinkIndex = dst.Attrs().Index
-		if err = netlink.RouteReplace(&route); err != nil {
-			klog.Warningf("failed to add/replace route %s to destination %s: %v", route.String(), dstName, err)
-		} else {
-			klog.Infof("route %q has been added/replaced to link %s", route.String(), dstName)
+		if err := routeReplace(&route); err != nil {
+			return fmt.Errorf("failed to add/replace route %s on destination %s: %w", route.String(), dst.Attrs().Name, err)
 		}
+		klog.Infof("route %q has been added/replaced to link %s", route.String(), dst.Attrs().Name)
 	}
-
 	return nil
 }
 

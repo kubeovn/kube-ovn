@@ -40,3 +40,12 @@ func TestClassifyProviderVlanPortForBridge(t *testing.T) {
 	require.Equal(t, 20, vlanID)
 	require.Empty(t, vlanInterface)
 }
+
+func TestProviderBridgePortCleanupAction(t *testing.T) {
+	t.Parallel()
+
+	const bridge = "br-underlay"
+	require.Equal(t, providerBridgePortReject, providerBridgePortCleanupAction("br-underlay-vlan20", bridge, false))
+	require.Equal(t, providerBridgePortRemoveVlan, providerBridgePortCleanupAction("br-underlay-vlan20", bridge, true))
+	require.Equal(t, providerBridgePortRemoveNic, providerBridgePortCleanupAction("eth0", bridge, false))
+}
