@@ -2,6 +2,7 @@ package bfddsupervisor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -427,29 +428,7 @@ func TestSupervisorKeepsLivenessDuringPlannedChildRestartBackoff(t *testing.T) {
 	require.Equal(t, clock.now.Add(time.Minute), status.ChildNextRetry)
 }
 
-func TestSupervisorRestartsChildAfterRepeatedControlFailures(t *testing.T) {
-	clock := &fakeClock{now: time.Unix(10_000, 0)}
-	control := &fakeControl{statusErr: errors.New("control unavailable")}
-	child := &fakeChild{running: true}
-	supervisor, err := NewSupervisor(SupervisorConfig{
-		Daemon: DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
-		PodIPs: []string{"10.16.0.2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,
-		Backoffs: []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute}, CircuitOpen: time.Hour,
-	}, control, child, clock)
-	require.NoError(t, err)
-
-	require.NoError(t, supervisor.Reconcile(context.Background()))
-	require.NoError(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 0, child.restarts)
-	require.True(t, supervisor.Status().Live)
-
-	require.NoError(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 1, child.restarts)
-	require.True(t, supervisor.Status().Live)
-	require.Empty(t, supervisor.Status().LastControlError)
-}
-
-func TestSupervisorProtectsRecentlyHealthySessionFromControlRecovery(t *testing.T) {
+func TestSupervisorDoesNotRestartChildWithoutSessionHealthEvidence(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(10_500, 0)}
 	control := &fakeControl{sessions: []Session{
 		{ID: 1, Local: "10.16.0.2", Remote: "10.255.255.255", State: SessionDown},
@@ -477,7 +456,10 @@ func TestSupervisorProtectsRecentlyHealthySessionFromControlRecovery(t *testing.
 
 	clock.now = clock.now.Add(time.Minute)
 	require.NoError(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 1, child.restarts, "stale health evidence must not suppress bounded control recovery")
+	require.Equal(t, 0, child.restarts, "control failure cannot prove every expected session is unhealthy")
+	require.True(t, supervisor.Status().Live)
+	require.False(t, supervisor.Status().Ready)
+	require.Equal(t, "control unavailable", supervisor.Status().LastControlError)
 }
 
 func TestSupervisorReportsControlAndRecoveryActionErrors(t *testing.T) {
@@ -510,81 +492,11 @@ func TestSupervisorReportsControlAndRecoveryActionErrors(t *testing.T) {
 	require.Empty(t, status.LastControlError)
 }
 
-func TestSupervisorFailsLivenessAfterExhaustingCurrentGenerationRecovery(t *testing.T) {
-	clock := &fakeClock{now: time.Unix(11_000, 0)}
-	control := &fakeControl{statusErr: errors.New("control unavailable")}
-	child := &boundedFailingChild{fakeChild: fakeChild{running: true}}
-	supervisor, err := NewSupervisor(SupervisorConfig{
-		Daemon: DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
-		PodIPs: []string{"10.16.0.2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,
-		Backoffs: []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute}, CircuitOpen: time.Hour,
-	}, control, child, clock)
-	require.NoError(t, err)
-	require.NoError(t, supervisor.Reconcile(context.Background()))
-	require.NoError(t, supervisor.Reconcile(context.Background()))
-	require.Error(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 1, child.attempts)
-	require.True(t, supervisor.Status().Live)
-
-	clock.now = clock.now.Add(time.Minute)
-	require.Error(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 2, child.attempts)
-	require.True(t, supervisor.Status().Live)
-
-	clock.now = clock.now.Add(5 * time.Minute)
-	require.Error(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 3, child.attempts)
-	require.True(t, supervisor.Status().Live)
-	require.Equal(t, clock.now.Add(30*time.Minute), supervisor.Status().ChildNextRetry)
-
-	clock.now = clock.now.Add(30 * time.Minute)
-	require.Error(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 4, child.attempts)
-	require.False(t, supervisor.Status().Live)
-
-	circuitUntil := supervisor.Status().ChildNextRetry
-	require.Error(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 4, child.attempts, "open circuit must suppress repeated child restarts")
-	clock.now = circuitUntil
-	require.Error(t, supervisor.Reconcile(context.Background()))
-	require.Equal(t, 5, child.attempts, "half-open must allow one child restart")
-	require.False(t, supervisor.Status().Live)
-}
-
-func TestSupervisorFailsLivenessWhenSuccessfulRestartExhaustsChildCircuit(t *testing.T) {
-	clock := &fakeClock{now: time.Unix(11_250, 0)}
-	control := &fakeControl{statusErr: errors.New("control unavailable")}
-	child := &fakeChild{running: true}
-	supervisor, err := NewSupervisor(SupervisorConfig{
-		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
-		PodIPs:        []string{"10.16.0.2"},
-		GracePeriod:   time.Minute,
-		StablePeriod:  time.Minute,
-		Backoffs:      []time.Duration{time.Minute},
-		ChildBackoffs: []time.Duration{time.Second},
-		CircuitOpen:   time.Hour,
-	}, control, child, clock)
-	require.NoError(t, err)
-
-	for range 3 {
-		require.NoError(t, supervisor.Reconcile(context.Background()))
-	}
-	clock.now = clock.now.Add(time.Second)
-	for range 3 {
-		require.NoError(t, supervisor.Reconcile(context.Background()))
-	}
-	require.Equal(t, 2, child.restarts)
-	require.True(t, supervisor.Status().ChildCircuitOpen)
-
-	control.statusErr = nil
-	require.NoError(t, supervisor.Reconcile(context.Background()))
-	require.False(t, supervisor.Status().Live, "current generation must fail liveness once after exhausting child recovery")
-}
-
 func TestSupervisorKeepsRuntimeLiveWhenContainerInheritsOpenChildCircuit(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(11_500, 0)}
 	control := &fakeControl{statusErr: errors.New("control unavailable")}
 	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
+	circuitUntil := clock.now.Add(time.Hour)
 	config := SupervisorConfig{
 		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
 		PodIPs:        []string{"10.16.0.2"},
@@ -595,38 +507,34 @@ func TestSupervisorKeepsRuntimeLiveWhenContainerInheritsOpenChildCircuit(t *test
 		CircuitOpen:   time.Hour,
 		StatePath:     filepath.Join(t.TempDir(), "state.json"),
 	}
-
-	first, err := NewSupervisor(config, control, child, clock)
+	state := persistentState{
+		Episodes:              map[string]persistentEpisode{},
+		ChildRecoveryAttempts: len(config.ChildBackoffs) + 1,
+		ChildNextRetry:        circuitUntil,
+		ChildCircuitUntil:     circuitUntil,
+	}
+	data, err := json.Marshal(state)
 	require.NoError(t, err)
-	require.Error(t, first.StartChild(context.Background()))
-	clock.now = clock.now.Add(time.Minute)
-	require.NoError(t, first.Reconcile(context.Background()))
-	require.NoError(t, first.Reconcile(context.Background()))
-	require.Error(t, first.Reconcile(context.Background()))
-	clock.now = clock.now.Add(5 * time.Minute)
-	require.Error(t, first.Reconcile(context.Background()))
-	clock.now = clock.now.Add(30 * time.Minute)
-	require.Error(t, first.Reconcile(context.Background()))
-	require.True(t, first.Status().ChildCircuitOpen)
-	require.False(t, first.Status().Live, "new circuit in the current container generation must request one kubelet recovery")
+	require.NoError(t, os.WriteFile(config.StatePath, data, 0o600))
 
 	second, err := NewSupervisor(config, control, child, clock)
 	require.NoError(t, err)
 	require.Error(t, second.StartChild(context.Background()))
-	require.Equal(t, 5, child.attempts, "new container generation gets one bootstrap attempt")
+	require.Equal(t, 1, child.attempts, "new container generation gets one bootstrap attempt")
 	require.True(t, second.Status().Live, "child circuit must not fail supervisor runtime liveness")
 	require.NoError(t, second.StartChild(context.Background()))
-	require.Equal(t, 5, child.attempts, "same container generation must not bootstrap twice")
+	require.Equal(t, 1, child.attempts, "same container generation must not bootstrap twice")
 
 	require.NoError(t, second.Reconcile(context.Background()))
 	require.NoError(t, second.Reconcile(context.Background()))
 	require.NoError(t, second.Reconcile(context.Background()))
 	require.True(t, second.Status().Live)
-	require.Equal(t, 5, child.attempts, "inherited circuit must suppress same-interval retries")
+	require.Equal(t, 1, child.attempts, "unreadable status must not trigger child recovery")
 
 	clock.now = second.Status().ChildNextRetry
+	control.statusErr = nil
 	require.Error(t, second.Reconcile(context.Background()))
-	require.Equal(t, 6, child.attempts, "expired circuit must allow one half-open retry")
+	require.Equal(t, 2, child.attempts, "confirmed unhealthy sessions must allow one half-open retry")
 	require.False(t, second.Status().Live, "failed half-open retry creates a new circuit for kubelet recovery")
 }
 
