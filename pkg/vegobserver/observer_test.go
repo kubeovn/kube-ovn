@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -77,6 +78,22 @@ func TestConntrackCollectorUsesSeparateEventAndDumpConnections(t *testing.T) {
 	require.False(t, eventConnection.dumped)
 	require.False(t, dumpConnection.listened)
 	require.True(t, dumpConnection.dumped)
+}
+
+func TestNewConntrackCollectorDoesNotPreallocateCache(t *testing.T) {
+	metrics := newObserverMetrics()
+	identity := observerIdentity{namespace: "ns", name: "gateway", pod: "pod", node: "node"}
+	settings := func() *runtimeSettings { return &runtimeSettings{} }
+	logQueue := make(chan flowRecord, 1)
+
+	result := testing.Benchmark(func(b *testing.B) {
+		for b.Loop() {
+			collector := newConntrackCollector(settings, identity, metrics, logQueue)
+			runtime.KeepAlive(collector)
+		}
+	})
+
+	require.Less(t, result.AllocedBytesPerOp(), int64(1<<20), "new collectors must allocate cache buckets on demand")
 }
 
 func TestRecordFromFlowPreservesNATIdentityAndAccountingAvailability(t *testing.T) {
