@@ -28,13 +28,24 @@ func (c *Controller) enqueueAddQoSPolicy(obj any) {
 	// A policy already marked for deletion must go through the update reconcile so its finalizer
 	// can be released; handleAddQoSPolicy does not process terminating policies. This also covers
 	// controller restart, where the informer re-lists objects already in their final state.
-	if !qos.DeletionTimestamp.IsZero() {
-		klog.V(3).Infof("enqueue update to clean qos %s", key)
-		c.updateQoSPolicyQueue.Add(key)
+	if enqueueUpdateIfTerminating(c.updateQoSPolicyQueue, key, "qos", qos.DeletionTimestamp) {
 		return
 	}
 	klog.V(3).Infof("enqueue add qos policy %s", key)
 	c.addQoSPolicyQueue.Add(key)
+}
+
+// enqueueQoSPolicyRelease re-enqueues a QoS policy whose QoSLabel a referencing resource (EIP or
+// NatGw) no longer carries, so a policy marked for deletion can drop its finalizer once unused.
+// The QoS reconcile decides "in use" via the QoSLabel selector, so the re-enqueue must key on the
+// label's old value. It is triggered from the delete handler (old labels only, newLabels nil) and
+// from the update handler when the label is cleared or switched; both fire only after the informer
+// cache already reflects the change, which avoids the stale-cache race that left policies stuck in
+// Terminating.
+func (c *Controller) enqueueQoSPolicyRelease(oldLabels, newLabels map[string]string) {
+	if oldQoS := oldLabels[util.QoSLabel]; oldQoS != "" && oldQoS != newLabels[util.QoSLabel] {
+		c.updateQoSPolicyQueue.Add(oldQoS)
+	}
 }
 
 func compareQoSPolicyBandwidthLimitRules(oldObj, newObj kubeovnv1.QoSPolicyBandwidthLimitRules) bool {

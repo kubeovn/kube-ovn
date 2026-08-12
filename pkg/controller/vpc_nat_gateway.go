@@ -147,12 +147,9 @@ func (c *Controller) enqueueUpdateVpcNatGw(oldObj, newObj any) {
 	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 
-	// QoS reconcile decides "in use" via the QoSLabel selector, so key the re-enqueue on the
-	// label's previous value: when it is cleared or switched, re-enqueue the previous QoS so it
-	// can drop its finalizer. UpdateFunc fires after the informer cache reflects the label change.
-	if oldQoS := oldGw.Labels[util.QoSLabel]; oldQoS != "" && oldQoS != newGw.Labels[util.QoSLabel] {
-		c.updateQoSPolicyQueue.Add(oldQoS)
-	}
+	// When the QoSLabel is cleared or switched, re-enqueue the previous QoS policy so it can drop
+	// its finalizer once unused (the in-use check is keyed on the label).
+	c.enqueueQoSPolicyRelease(oldGw.Labels, newGw.Labels)
 }
 
 func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
@@ -183,9 +180,7 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 
 	// Trigger QoS Policy reconcile after NatGw is deleted so it can drop its finalizer if no
 	// other NatGw references it. Key on the QoSLabel, matching the QoS in-use check.
-	if qos := gw.Labels[util.QoSLabel]; qos != "" {
-		c.updateQoSPolicyQueue.Add(qos)
-	}
+	c.enqueueQoSPolicyRelease(gw.Labels, nil)
 }
 
 // handleDelVpcNatGw handles NAT gateways when they've been deleted

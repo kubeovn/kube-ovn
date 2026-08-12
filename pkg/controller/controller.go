@@ -355,6 +355,20 @@ func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.
 	return workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[T]{Name: name})
 }
 
+// enqueueUpdateIfTerminating routes an object that is already marked for deletion to the update
+// queue so the deletion cleanup runs. On controller restart the informer re-lists existing objects
+// and fires only AddFunc, so a terminating object would otherwise land in the add queue, hit the
+// already-ok short-circuit (or worse, recreate rules for a deleted resource) and never remove its
+// finalizer. The update handlers run the deletion path for these resources.
+func enqueueUpdateIfTerminating(queue workqueue.TypedRateLimitingInterface[string], key, kind string, deletionTimestamp *metav1.Time) bool {
+	if !deletionTimestamp.IsZero() {
+		klog.V(3).Infof("enqueue update to clean %s %s", kind, key)
+		queue.Add(key)
+		return true
+	}
+	return false
+}
+
 // Run creates and runs a new ovn controller
 func Run(ctx context.Context, config *Configuration) {
 	klog.V(4).Info("Creating event broadcaster")
