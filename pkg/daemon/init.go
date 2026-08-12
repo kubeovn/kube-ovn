@@ -232,12 +232,19 @@ func (c *Controller) cleanProviderBridgePorts(ctx providerVlanRestoreContext) er
 	if err != nil {
 		return fmt.Errorf("failed to list ports of OVS bridge %s: %w: %q", ctx.bridge, err, output)
 	}
-	for port := range strings.SplitSeq(output, "\n") {
+	for _, port := range providerBridgePorts(output) {
 		if err := c.cleanProviderBridgePort(port, ctx); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func providerBridgePorts(output string) []string {
+	if output == "" {
+		return nil
+	}
+	return slices.Collect(strings.SplitSeq(output, "\n"))
 }
 
 func (c *Controller) cleanProviderBridgePort(port string, ctx providerVlanRestoreContext) error {

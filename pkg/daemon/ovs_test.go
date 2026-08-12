@@ -49,3 +49,10 @@ func TestProviderBridgePortCleanupAction(t *testing.T) {
 	require.Equal(t, providerBridgePortRemoveVlan, providerBridgePortCleanupAction("br-underlay-vlan20", bridge, true))
 	require.Equal(t, providerBridgePortRemoveNic, providerBridgePortCleanupAction("eth0", bridge, false))
 }
+
+func TestProviderBridgePorts(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, providerBridgePorts(""))
+	require.Equal(t, []string{"eth0", "br-underlay-vlan20"}, providerBridgePorts("eth0\nbr-underlay-vlan20"))
+}
