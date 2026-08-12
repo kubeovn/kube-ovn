@@ -243,6 +243,7 @@ func (s *Supervisor) StartChild(ctx context.Context) error {
 		return nil
 	}
 	s.childBootstrapAttempted = true
+	bootstrapHalfOpen := s.childHalfOpenDueLocked(now)
 	state := s.persistentStateLocked()
 	s.mutex.Unlock()
 	if err := s.saveState(state); err != nil {
@@ -257,6 +258,10 @@ func (s *Supervisor) StartChild(ctx context.Context) error {
 	if startErr != nil && !s.childCircuitOpenLocked(now) &&
 		(s.childNextRetry.IsZero() || !now.Before(s.childNextRetry)) {
 		s.reserveChildRestartLocked(now)
+	}
+	if startErr == nil && bootstrapHalfOpen {
+		s.reserveChildRestartLocked(now)
+		s.inheritedCircuitUntil = s.childCircuitUntil
 	}
 	if startErr != nil {
 		s.updateLivenessLocked(now)
