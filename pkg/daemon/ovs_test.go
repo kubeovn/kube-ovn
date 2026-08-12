@@ -25,13 +25,18 @@ func TestClassifyProviderVlanPortForBridge(t *testing.T) {
 
 	vlanInterfaces := map[string]int{"bond0.20": 20}
 
-	kind, vlanID, vlanInterface := classifyProviderVlanPortForBridge(util.VlanInternalPortName("br-underlay", 20), "br-underlay", vlanInterfaces)
+	kind, vlanID, vlanInterface := classifyProviderVlanPortForBridge(util.VlanInternalPortName("br-underlay", 20), "br-underlay", vlanInterfaces, true)
 	require.Equal(t, providerVlanPortCurrent, kind)
 	require.Equal(t, 20, vlanID)
 	require.Equal(t, "bond0.20", vlanInterface)
 
-	kind, vlanID, vlanInterface = classifyProviderVlanPortForBridge(util.VlanInternalPortName("br-underlay", 30), "br-underlay", vlanInterfaces)
+	kind, vlanID, vlanInterface = classifyProviderVlanPortForBridge(util.VlanInternalPortName("br-underlay", 30), "br-underlay", vlanInterfaces, true)
 	require.Equal(t, providerVlanPortStale, kind)
 	require.Equal(t, 30, vlanID)
+	require.Empty(t, vlanInterface)
+
+	kind, vlanID, vlanInterface = classifyProviderVlanPortForBridge("br-underlay-vlan20", "br-underlay", vlanInterfaces, false)
+	require.Equal(t, providerVlanPortForeign, kind)
+	require.Equal(t, 20, vlanID)
 	require.Empty(t, vlanInterface)
 }

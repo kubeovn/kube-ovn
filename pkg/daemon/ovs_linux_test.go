@@ -76,7 +76,8 @@ func TestProviderVlanRestoreNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			vlanName, parentName, err := providerVlanRestoreNames(tt.provider, tt.bridge, tt.nic, tt.vlanInterface, tt.vlanID)
+			ctx := providerVlanRestoreContext{provider: tt.provider, bridge: tt.bridge, nic: tt.nic}
+			vlanName, parentName, err := providerVlanRestoreNames(ctx, tt.vlanInterface, tt.vlanID)
 			if tt.wantError {
 				require.Error(t, err)
 				return
@@ -112,10 +113,23 @@ func TestValidateProviderVlanInterfaceMap(t *testing.T) {
 func TestValidateProviderVlanPortSource(t *testing.T) {
 	t.Parallel()
 
-	require.NoError(t, validateProviderVlanPortSource("kv20-l2bvmi7mc4", "", "bond0.20"))
-	require.NoError(t, validateProviderVlanPortSource("kv20-l2bvmi7mc4", "[]", "bond0.20"))
-	require.NoError(t, validateProviderVlanPortSource("kv20-l2bvmi7mc4", "bond0.20", "bond0.20"))
-	require.Error(t, validateProviderVlanPortSource("kv20-l2bvmi7mc4", "bond0.20", "eth0.20"))
+	require.NoError(t, validateProviderVlanPortSource("kv20-l2bvmi7mc4", "bond0.20", providerVlanPortSourceState{}))
+	require.Error(t, validateProviderVlanPortSource("kv20-l2bvmi7mc4", "bond0.20", providerVlanPortSourceState{exists: true}))
+	require.NoError(t, validateProviderVlanPortSource("br-e-vlan20", "bond0.20", providerVlanPortSourceState{
+		exists: true, owned: true, recorded: "[]", candidates: []string{"bond0.20"},
+	}))
+	require.Error(t, validateProviderVlanPortSource("br-e-vlan20", "eth0.20", providerVlanPortSourceState{
+		exists: true, owned: true, candidates: []string{"eth0.20"}, requestedHasState: true,
+	}))
+	require.Error(t, validateProviderVlanPortSource("br-e-vlan20", "eth0.20", providerVlanPortSourceState{
+		exists: true, owned: true, candidates: []string{"bond0.20", "eth0.20"},
+	}))
+	require.NoError(t, validateProviderVlanPortSource("kv20-l2bvmi7mc4", "bond0.20", providerVlanPortSourceState{
+		exists: true, owned: true, recorded: "bond0.20",
+	}))
+	require.Error(t, validateProviderVlanPortSource("kv20-l2bvmi7mc4", "eth0.20", providerVlanPortSourceState{
+		exists: true, owned: true, recorded: "bond0.20",
+	}))
 }
 
 func TestValidateProviderVlanLink(t *testing.T) {
@@ -163,6 +177,46 @@ func TestRestoreProviderVlanNetworkStateReturnsError(t *testing.T) {
 		func(*netlink.Route) error { return routeErr },
 	)
 	require.ErrorIs(t, err, routeErr)
+}
+
+func TestTransferProviderVlanAddressesPreservesSourceUntilDestinationReady(t *testing.T) {
+	t.Parallel()
+
+	src := &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "bond0.20", Index: 20}, VlanId: 20}
+	dst := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "kv20-l2bvmi7mc4", Index: 21}}
+	addr := netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP("192.0.2.10"), Mask: net.CIDRMask(24, 32)}}
+	replaceErr := errors.New("replace address")
+	deleted := false
+
+	err := transferProviderVlanAddresses(src, dst, []netlink.Addr{addr},
+		func(netlink.Link, *netlink.Addr) error { return replaceErr },
+		func(netlink.Link, *netlink.Addr) error {
+			deleted = true
+			return nil
+		},
+	)
+	require.ErrorIs(t, err, replaceErr)
+	require.False(t, deleted, "source address must remain when destination setup fails")
+
+	steps := make([]string, 0, 2)
+	require.NoError(t, transferProviderVlanAddresses(src, dst, []netlink.Addr{addr},
+		func(netlink.Link, *netlink.Addr) error {
+			steps = append(steps, "replace-destination")
+			return nil
+		},
+		func(netlink.Link, *netlink.Addr) error {
+			steps = append(steps, "delete-source")
+			return nil
+		},
+	))
+	require.Equal(t, []string{"replace-destination", "delete-source"}, steps)
+
+	deleteErr := errors.New("delete source address")
+	err = transferProviderVlanAddresses(src, dst, []netlink.Addr{addr},
+		func(netlink.Link, *netlink.Addr) error { return nil },
+		func(netlink.Link, *netlink.Addr) error { return deleteErr },
+	)
+	require.ErrorIs(t, err, deleteErr)
 }
 
 func TestSelectProviderVlanSourceInterface(t *testing.T) {
