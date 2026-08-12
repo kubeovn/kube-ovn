@@ -98,10 +98,9 @@ func runSupervisor(ctx context.Context) error {
 	}
 	reporter := bfddsupervisor.NewMetricsReporter()
 	reporter.Update(time.Now(), supervisor.Status())
+	metricsErr := make(chan error, 1)
 	go func() {
-		if err := reporter.Serve(ctx, environmentOrDefault("BFDD_METRICS_ADDRESS", defaultMetricsAddress), supervisor.Status); err != nil {
-			klog.Errorf("BFD supervisor metrics server failed: %v", err)
-		}
+		metricsErr <- reporter.Serve(ctx, environmentOrDefault("BFDD_METRICS_ADDRESS", defaultMetricsAddress), supervisor.Status)
 	}()
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -112,7 +111,12 @@ func runSupervisor(ctx context.Context) error {
 			return nil
 		case err := <-serverErr:
 			if err != nil {
-				return err
+				return fmt.Errorf("BFD supervisor control server failed: %w", err)
+			}
+			return nil
+		case err := <-metricsErr:
+			if err != nil {
+				return fmt.Errorf("BFD supervisor metrics server failed: %w", err)
 			}
 			return nil
 		case <-ticker.C:

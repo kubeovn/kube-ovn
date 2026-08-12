@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,38 @@ func TestStatusCommandUsesSupervisorSocketInterface(t *testing.T) {
 }
 
 func TestRunCommandStartsChildAndServesRuntimeHealth(t *testing.T) {
+	socketPath := configureRunCommandTest(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() { result <- runCommand(ctx, []string{"run"}, &bytes.Buffer{}) }()
+	require.Eventually(t, func() bool {
+		status, err := bfddsupervisor.Probe(context.Background(), socketPath, "live")
+		return err == nil && status.Live
+	}, 2*time.Second, 10*time.Millisecond)
+
+	status, err := bfddsupervisor.Probe(context.Background(), socketPath, "status")
+	require.NoError(t, err)
+	require.False(t, status.Ready, "zero sessions must not make the runtime unhealthy")
+	cancel()
+	require.NoError(t, <-result)
+}
+
+func TestRunCommandFailsWhenMetricsServerCannotStart(t *testing.T) {
+	configureRunCommandTest(t)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, listener.Close()) })
+	t.Setenv("BFDD_METRICS_ADDRESS", listener.Addr().String())
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err = runCommand(ctx, []string{"run"}, &bytes.Buffer{})
+	require.ErrorContains(t, err, "BFD supervisor metrics server")
+}
+
+func configureRunCommandTest(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
 	beaconPath := filepath.Join(dir, "bfdd-beacon")
 	beaconScript := `#!/usr/bin/env bash
@@ -108,18 +141,5 @@ esac
 	t.Setenv("BFDD_CONTROL_PATH", controlPath)
 	t.Setenv("BFDD_SUPERVISOR_SOCKET", socketPath)
 	t.Setenv("BFDD_SUPERVISOR_STATE", filepath.Join(dir, "state.json"))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	result := make(chan error, 1)
-	go func() { result <- runCommand(ctx, []string{"run"}, &bytes.Buffer{}) }()
-	require.Eventually(t, func() bool {
-		status, err := bfddsupervisor.Probe(context.Background(), socketPath, "live")
-		return err == nil && status.Live
-	}, 2*time.Second, 10*time.Millisecond)
-
-	status, err := bfddsupervisor.Probe(context.Background(), socketPath, "status")
-	require.NoError(t, err)
-	require.False(t, status.Ready, "zero sessions must not make the runtime unhealthy")
-	cancel()
-	require.NoError(t, <-result)
+	return socketPath
 }
