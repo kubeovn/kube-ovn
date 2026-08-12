@@ -4,6 +4,7 @@
 dist/images/test-server
 dist/images/kube-ovn
 dist/images/kube-ovn-cmd
+dist/images/kube-ovn-bfdd-supervisor
 dist/images/kube-ovn-daemon
 dist/images/kube-ovn-controller
 dist/images/kube-ovn-pinger

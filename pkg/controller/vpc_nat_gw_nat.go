@@ -22,7 +22,12 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesFip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesFIPRule)).String()
+	fip := obj.(*kubeovnv1.IptablesFIPRule)
+	key := cache.MetaObjectToName(fip).String()
+	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
+	if enqueueUpdateIfTerminating(c.updateIptablesFipQueue, key, "fip", fip.DeletionTimestamp) {
+		return
+	}
 	klog.V(3).Infof("enqueue add iptables fip %s", key)
 	c.addIptablesFipQueue.Add(key)
 }
@@ -73,7 +78,12 @@ func (c *Controller) enqueueDelIptablesFip(obj any) {
 }
 
 func (c *Controller) enqueueAddIptablesDnatRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesDnatRule)).String()
+	dnat := obj.(*kubeovnv1.IptablesDnatRule)
+	key := cache.MetaObjectToName(dnat).String()
+	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
+	if enqueueUpdateIfTerminating(c.updateIptablesDnatRuleQueue, key, "dnat", dnat.DeletionTimestamp) {
+		return
+	}
 	klog.V(3).Infof("enqueue add iptables dnat %s", key)
 	c.addIptablesDnatRuleQueue.Add(key)
 }
@@ -129,7 +139,12 @@ func (c *Controller) enqueueDelIptablesDnatRule(obj any) {
 }
 
 func (c *Controller) enqueueAddIptablesSnatRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesSnatRule)).String()
+	snat := obj.(*kubeovnv1.IptablesSnatRule)
+	key := cache.MetaObjectToName(snat).String()
+	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
+	if enqueueUpdateIfTerminating(c.updateIptablesSnatRuleQueue, key, "snat", snat.DeletionTimestamp) {
+		return
+	}
 	klog.V(3).Infof("enqueue add iptables snat %s", key)
 	c.addIptablesSnatRuleQueue.Add(key)
 }

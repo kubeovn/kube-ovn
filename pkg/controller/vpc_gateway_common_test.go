@@ -119,6 +119,18 @@ func TestOpenBFDDControlHardeningPatch(t *testing.T) {
 	}
 }
 
+func TestBFDDPodMonitorUsesSupervisorMetricsPort(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current filename")
+	}
+	monitorPath := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "monitoring", "bfdd-monitor.yaml")
+	content, err := os.ReadFile(monitorPath)
+	if assert.NoError(t, err) {
+		assert.Contains(t, string(content), "port: "+vegBFDDMetricsPort)
+	}
+}
+
 func TestBFDDHealthcheck(t *testing.T) {
 	bash, err := exec.LookPath("bash")
 	if err != nil {

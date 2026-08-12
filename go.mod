@@ -32,7 +32,7 @@ require (
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	github.com/osrg/gobgp/v4 v4.8.0
 	github.com/ovn-kubernetes/libovsdb v0.8.1
@@ -44,12 +44,14 @@ require (
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
+	github.com/ti-mo/conntrack v0.6.0
+	github.com/ti-mo/netfilter v0.5.3
 	github.com/vishvananda/netlink v1.3.2-0.20260402033159-af2a3ea580ab
 	go.podman.io/image/v5 v5.41.0
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
 	go.universe.tf/metallb v0.16.1
-	golang.org/x/mod v0.38.0
+	golang.org/x/mod v0.39.0
 	golang.org/x/net v0.57.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.15.0
@@ -175,6 +177,7 @@ require (
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/mattn/go-shellwords v1.0.14 // indirect
 	github.com/mdlayher/ethernet v0.0.0-20220221185849-529eae5b6118 // indirect
+	github.com/mdlayher/netlink v1.11.2 // indirect
 	github.com/mdlayher/socket v0.6.1 // indirect
 	github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect

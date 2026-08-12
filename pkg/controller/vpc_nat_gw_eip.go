@@ -23,7 +23,12 @@ import (
 )
 
 func (c *Controller) enqueueAddIptablesEip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IptablesEIP)).String()
+	eip := obj.(*kubeovnv1.IptablesEIP)
+	key := cache.MetaObjectToName(eip).String()
+	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
+	if enqueueUpdateIfTerminating(c.updateIptablesEipQueue, key, "iptables eip", eip.DeletionTimestamp) {
+		return
+	}
 	klog.Infof("enqueue add iptables eip %s", key)
 	c.addIptablesEipQueue.Add(key)
 }
@@ -38,6 +43,10 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 		klog.Infof("enqueue update iptables eip %s", key)
 		c.updateIptablesEipQueue.Add(key)
 	}
+
+	// When the QoSLabel is cleared or switched, re-enqueue the previous QoS policy so it can drop
+	// its finalizer once unused (the in-use check is keyed on the label).
+	c.enqueueQoSPolicyRelease(oldEip.Labels, newEip.Labels)
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -60,6 +69,10 @@ func (c *Controller) enqueueDelIptablesEip(obj any) {
 	key := cache.MetaObjectToName(eip).String()
 	klog.Infof("enqueue del iptables eip %s", key)
 	c.delIptablesEipQueue.Add(eip)
+
+	// Re-trigger QoS reconcile so it can drop its finalizer once unused. DeleteFunc runs after
+	// the informer cache dropped this EIP; key on the QoSLabel, matching the QoS in-use check.
+	c.enqueueQoSPolicyRelease(eip.Labels, nil)
 }
 
 // natEipNamespace returns the namespace where the NAT gateway pod for the given EIP resides.
@@ -239,9 +252,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 				return err
 			}
 		}
-		// Save qosPolicy before deleting, we need to trigger QoS Policy reconcile after EIP is deleted
-		qosPolicyName := cachedEip.Status.QoSPolicy
-		if qosPolicyName != "" {
+		if cachedEip.Status.QoSPolicy != "" {
 			if err = c.delEipQoS(cachedEip, cachedEip.Status.IP); err != nil {
 				klog.Errorf("failed to del qos '%s' in pod, %v", key, err)
 				return err
@@ -250,16 +261,11 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 		// Release IP from IPAM before removing finalizer
 		c.ipam.ReleaseAddressByPod(key, cachedEip.Spec.ExternalSubnet)
 
-		// Now remove finalizer, which will trigger subnet status update
+		// Now remove finalizer, which will trigger subnet status update.
+		// QoS reconcile is re-triggered from the EIP DeleteFunc after the cache drops this EIP.
 		if err = c.handleDelIptablesEipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle del finalizer for eip %s, %v", key, err)
 			return err
-		}
-
-		// Trigger QoS Policy reconcile after EIP is deleted
-		// This allows the QoS Policy to remove its finalizer if no other EIPs are using it
-		if qosPolicyName != "" {
-			c.updateQoSPolicyQueue.Add(qosPolicyName)
 		}
 
 		return nil

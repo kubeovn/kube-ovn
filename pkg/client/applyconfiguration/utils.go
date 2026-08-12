@@ -210,12 +210,32 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.VpcEgressGatewayApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayBFDConfig"):
 		return &kubeovnv1.VpcEgressGatewayBFDConfigApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayConntrackLog"):
+		return &kubeovnv1.VpcEgressGatewayConntrackLogApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayConntrackLogFilter"):
+		return &kubeovnv1.VpcEgressGatewayConntrackLogFilterApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayConntrackLogFilters"):
+		return &kubeovnv1.VpcEgressGatewayConntrackLogFiltersApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayConntrackLogRateLimit"):
+		return &kubeovnv1.VpcEgressGatewayConntrackLogRateLimitApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayConntrackObservability"):
+		return &kubeovnv1.VpcEgressGatewayConntrackObservabilityApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayConntrackTupleFilter"):
+		return &kubeovnv1.VpcEgressGatewayConntrackTupleFilterApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayNodeSelector"):
 		return &kubeovnv1.VpcEgressGatewayNodeSelectorApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayObservability"):
+		return &kubeovnv1.VpcEgressGatewayObservabilityApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayObservabilityFeature"):
+		return &kubeovnv1.VpcEgressGatewayObservabilityFeatureApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayPolicy"):
 		return &kubeovnv1.VpcEgressGatewayPolicyApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayPortRange"):
+		return &kubeovnv1.VpcEgressGatewayPortRangeApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewaySelector"):
 		return &kubeovnv1.VpcEgressGatewaySelectorApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayServiceMonitor"):
+		return &kubeovnv1.VpcEgressGatewayServiceMonitorApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewaySpec"):
 		return &kubeovnv1.VpcEgressGatewaySpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayStatus"):
