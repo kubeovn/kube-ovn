@@ -288,7 +288,7 @@ kubectl-ko-log:
 
 .PHONY: clean
 clean:
-	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd dist/images/vpc-egress-gateway-observer
+	$(RM) dist/images/kube-ovn dist/images/kube-ovn-cmd dist/images/kube-ovn-bfdd-supervisor dist/images/vpc-egress-gateway-observer
 	$(RM) yamls/kind.yaml
 	$(RM) yamls/clab-bgp.yaml yamls/clab-bgp-ha.yaml
 	$(RM) ovn.yaml kube-ovn.yaml kube-ovn-crd.yaml

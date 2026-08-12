@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kube-ovn-bfdd
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    any: true
+  podMetricsEndpoints:
+    - interval: 15s
+      path: /metrics
+      port: bfdd-metrics
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app: vpc-egress-gateway

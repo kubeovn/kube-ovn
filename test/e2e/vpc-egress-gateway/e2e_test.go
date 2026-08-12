@@ -1066,40 +1066,31 @@ func addEcmpRoutes(namespaceName, podName string, destinations, nextHops []strin
 	}
 }
 
-func verifyBFDDZeroSessionsTriggersRestart(f *framework.Framework, namespaceName string, pod corev1.Pod) {
+func verifyBFDDZeroSessionsRecovery(f *framework.Framework, namespaceName string, pod corev1.Pod) {
 	ginkgo.GinkgoHelper()
 
 	const bfddContainer = "bfdd"
 	podClient := f.PodClientNS(namespaceName)
+	usesSupervisor := bfddUsesSupervisor(f, namespaceName, pod.Name)
+	peerIPs := bfddPeerIPs(f, namespaceName, pod.Name)
 
 	ginkgo.By("Waiting for the BFD session in gateway pod " + pod.Name)
-	framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
-		stdout, stderr, err := framework.ExecCommandInContainer(f, namespaceName, pod.Name, bfddContainer, "bfdd-control", "status")
-		if err != nil {
-			framework.Logf("failed to get BFD status from pod %s/%s: %v, stderr: %s", namespaceName, pod.Name, err, stderr)
-			return false, nil
-		}
-		return strings.Contains(stdout, "There are ") && !strings.Contains(stdout, "There are 0 sessions:"), nil
-	}, "BFD session to be established in gateway pod "+pod.Name)
+	waitForAllBFDSessionsUp(f, namespaceName, pod.Name, usesSupervisor, peerIPs)
 
 	pod = *podClient.GetPod(pod.Name)
 	initialRestartCount := containerRestartCount(pod, bfddContainer)
 
-	ginkgo.By("Continuously removing BFD sessions from gateway pod " + pod.Name)
-	const injectZeroSessions = `nohup bash -c '
-while true; do
-  IFS=, read -ra peers <<< "${BFD_PEER_IPS:-}"
-  for peer in "${peers[@]}"; do
-    if [[ -n "${peer}" ]]; then
-      bfdd-control block "${peer}"
-    fi
-  done
-  bfdd-control session all kill
-  sleep 0.1
-done
-' >/tmp/bfdd-zero-sessions-inject.log 2>&1 </dev/null &`
-	_, stderr, err := framework.ExecShellInContainer(f, namespaceName, pod.Name, bfddContainer, injectZeroSessions)
-	framework.ExpectNoError(err, "failed to inject zero BFD sessions in pod %s/%s: %s", namespaceName, pod.Name, stderr)
+	ginkgo.By("Blocking peers and removing BFD sessions from gateway pod " + pod.Name)
+	injectBFDDZeroSessions(f, namespaceName, pod.Name)
+	peersRestored := false
+	restorePeers := func() {
+		if peersRestored {
+			return
+		}
+		restoreBFDDPeers(f, namespaceName, pod.Name)
+		peersRestored = true
+	}
+	ginkgo.DeferCleanup(restorePeers)
 
 	ginkgo.By("Validating the gateway pod reports zero BFD sessions")
 	framework.WaitUntil(200*time.Millisecond, 10*time.Second, func(_ context.Context) (bool, error) {
@@ -1107,17 +1098,216 @@ done
 		return err == nil && strings.Contains(stdout, "There are 0 sessions:"), nil
 	}, "gateway pod to report zero BFD sessions")
 
-	ginkgo.By("Waiting for the bfdd liveness probe to restart the container")
-	framework.WaitUntil(time.Second, 45*time.Second, func(_ context.Context) (bool, error) {
-		currentPod := podClient.GetPod(pod.Name)
-		return containerRestartCount(*currentPod, bfddContainer) > initialRestartCount, nil
-	}, "bfdd container to restart after consecutive zero-session health check failures")
+	if usesSupervisor {
+		waitForSupervisorBFDDRecovery(f, namespaceName, pod.Name, initialRestartCount)
+	} else {
+		waitForLegacyBFDDRestart(f, namespaceName, pod.Name, initialRestartCount)
+	}
 
-	ginkgo.By("Validating the BFD session recovers after the bfdd container restart")
+	ginkgo.By("Validating every expected BFD session recovers")
+	waitForAllBFDSessionsUp(f, namespaceName, pod.Name, usesSupervisor, peerIPs)
+	if usesSupervisor {
+		gomega.Expect(containerRestartCount(*podClient.GetPod(pod.Name), bfddContainer)).To(gomega.Equal(initialRestartCount))
+	}
+	restorePeers()
+}
+
+func bfddUsesSupervisor(f *framework.Framework, namespaceName, podName string) bool {
+	ginkgo.GinkgoHelper()
+	const detectSupervisor = `tr '\0' ' ' </proc/1/cmdline; printf '\n'; if [ -S /var/run/kube-ovn/bfdd-supervisor/control.sock ]; then printf socket; else printf missing; fi`
+	stdout, stderr, err := framework.ExecShellInContainer(f, namespaceName, podName, "bfdd", detectSupervisor)
+	framework.ExpectNoError(err, "failed to detect BFD implementation in pod %s/%s: %s", namespaceName, podName, stderr)
+	return bfddSupervisorRuntimeDetected(stdout)
+}
+
+func bfddSupervisorRuntimeDetected(output string) bool {
+	parts := strings.SplitN(strings.TrimSpace(output), "\n", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[1]) != "socket" {
+		return false
+	}
+	command := strings.Fields(parts[0])
+	return len(command) >= 2 && command[0] == "/kube-ovn/kube-ovn-bfdd-supervisor" && command[1] == "run"
+}
+
+func bfddPeerIPs(f *framework.Framework, namespaceName, podName string) []string {
+	ginkgo.GinkgoHelper()
+	stdout, stderr, err := framework.ExecCommandInContainer(f, namespaceName, podName, "bfdd", "printenv", "BFD_PEER_IPS")
+	framework.ExpectNoError(err, "failed to get BFD peers from pod %s/%s: %s", namespaceName, podName, stderr)
+	peers := strings.FieldsFunc(strings.TrimSpace(stdout), func(r rune) bool { return r == ',' })
+	gomega.Expect(peers).NotTo(gomega.BeEmpty(), "BFD_PEER_IPS must contain at least one peer")
+	return peers
+}
+
+func injectBFDDZeroSessions(f *framework.Framework, namespaceName, podName string) {
+	ginkgo.GinkgoHelper()
+	const injectZeroSessions = `bash -c '
+set -euo pipefail
+IFS=, read -ra peers <<< "${BFD_PEER_IPS:-}"
+for peer in "${peers[@]}"; do
+  [[ -z "${peer}" ]] || bfdd-control block "${peer}" >/dev/null
+done
+bfdd-control session all kill >/dev/null
+'`
+	_, stderr, err := framework.ExecShellInContainer(f, namespaceName, podName, "bfdd", injectZeroSessions)
+	framework.ExpectNoError(err, "failed to inject zero BFD sessions in pod %s/%s: %s", namespaceName, podName, stderr)
+}
+
+func restoreBFDDPeers(f *framework.Framework, namespaceName, podName string) {
+	ginkgo.GinkgoHelper()
+	const restorePeers = `bash -c '
+set -euo pipefail
+IFS=, read -ra peers <<< "${BFD_PEER_IPS:-}"
+for peer in "${peers[@]}"; do
+  [[ -z "${peer}" ]] || bfdd-control allow "${peer}" >/dev/null
+done
+'`
+	_, stderr, err := framework.ExecShellInContainer(f, namespaceName, podName, "bfdd", restorePeers)
+	framework.ExpectNoError(err, "failed to restore BFD peers in pod %s/%s: %s", namespaceName, podName, stderr)
+}
+
+type bfddSupervisorE2EStatus struct {
+	Live     bool
+	Sessions []bfddSupervisorE2ESessionStatus
+}
+
+type bfddSupervisorE2ESessionStatus struct {
+	Attempts   int
+	LastAction string
+}
+
+func waitForSupervisorBFDDRecovery(f *framework.Framework, namespaceName, podName string, initialRestartCount int32) {
+	ginkgo.GinkgoHelper()
+	podClient := f.PodClientNS(namespaceName)
+	ginkgo.By("Waiting for the supervisor to replay configuration without restarting the container")
 	framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
-		stdout, _, err := framework.ExecCommandInContainer(f, namespaceName, pod.Name, bfddContainer, "bfdd-control", "status")
-		return err == nil && strings.Contains(stdout, "There are ") && !strings.Contains(stdout, "There are 0 sessions:"), nil
-	}, "BFD session to recover after bfdd container restart")
+		gomega.Expect(containerRestartCount(*podClient.GetPod(podName), "bfdd")).To(gomega.Equal(initialRestartCount))
+		stdout, _, err := framework.ExecCommandInContainer(
+			f, namespaceName, podName, "bfdd", "/kube-ovn/kube-ovn-bfdd-supervisor", "status",
+		)
+		if err != nil {
+			return false, nil
+		}
+		var status bfddSupervisorE2EStatus
+		if err := json.Unmarshal([]byte(stdout), &status); err != nil {
+			framework.Logf("failed to decode BFD supervisor status from pod %s/%s: %v", namespaceName, podName, err)
+			return false, nil
+		}
+		gomega.Expect(status.Live).To(gomega.BeTrue(), "BFD supervisor must remain live during session recovery")
+		return slices.ContainsFunc(status.Sessions, func(session bfddSupervisorE2ESessionStatus) bool {
+			return session.Attempts > 0 && session.LastAction == "ReplayConfiguration"
+		}), nil
+	}, "BFD supervisor to replay configuration")
+}
+
+func waitForLegacyBFDDRestart(f *framework.Framework, namespaceName, podName string, initialRestartCount int32) {
+	ginkgo.GinkgoHelper()
+	podClient := f.PodClientNS(namespaceName)
+	ginkgo.By("Waiting for the legacy bfdd liveness probe to restart the container")
+	framework.WaitUntil(time.Second, 45*time.Second, func(_ context.Context) (bool, error) {
+		return containerRestartCount(*podClient.GetPod(podName), "bfdd") > initialRestartCount, nil
+	}, "bfdd container to restart after consecutive zero-session health check failures")
+}
+
+func waitForAllBFDSessionsUp(f *framework.Framework, namespaceName, podName string, usesSupervisor bool, peerIPs []string) {
+	ginkgo.GinkgoHelper()
+	framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+		if usesSupervisor {
+			_, _, err := framework.ExecCommandInContainer(
+				f, namespaceName, podName, "bfdd", "/kube-ovn/kube-ovn-bfdd-supervisor", "ready",
+			)
+			return err == nil, nil
+		}
+		stdout, _, err := framework.ExecCommandInContainer(f, namespaceName, podName, "bfdd", "bfdd-control", "status")
+		return err == nil && bfddStatusHasAllExpectedPeersUp(stdout, peerIPs), nil
+	}, "all expected BFD sessions to be Up")
+}
+
+func bfddStatusHasAllExpectedPeersUp(output string, peerIPs []string) bool {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	var reported int
+	if len(lines) == 0 {
+		return false
+	}
+	if _, err := fmt.Sscanf(lines[0], "There are %d sessions:", &reported); err != nil || reported == 0 {
+		return false
+	}
+	observed := make(map[string]struct{}, reported)
+	sessionCount := 0
+	for _, line := range lines[1:] {
+		var remote, state string
+		for field := range strings.FieldsSeq(line) {
+			if value, ok := strings.CutPrefix(field, "remote="); ok {
+				remote = value
+			} else if value, ok := strings.CutPrefix(field, "state="); ok {
+				state = value
+			}
+		}
+		if remote == "" && state == "" {
+			continue
+		}
+		address := net.ParseIP(remote)
+		if address == nil || state != "Up" {
+			return false
+		}
+		observed[address.String()] = struct{}{}
+		sessionCount++
+	}
+	if sessionCount != reported {
+		return false
+	}
+	for _, peer := range peerIPs {
+		address := net.ParseIP(peer)
+		if address == nil {
+			return false
+		}
+		if _, exists := observed[address.String()]; !exists {
+			return false
+		}
+	}
+	return true
+}
+
+func TestBFDDStatusHasAllExpectedPeersUp(t *testing.T) {
+	const dualUp = `There are 2 sessions:
+Session 1
+ id=1 local=10.16.0.2 (p) remote=10.255.255.255 state=Up
+Session 2
+ id=2 local=fd00::2 (p) remote=fd00::ffff state=Up`
+	tests := []struct {
+		name   string
+		status string
+		peers  []string
+		want   bool
+	}{
+		{name: "all expected peers up", status: dualUp, peers: []string{"10.255.255.255", "fd00::ffff"}, want: true},
+		{name: "expected peer missing", status: dualUp, peers: []string{"10.255.255.255", "fd00::1"}},
+		{name: "session down", status: strings.Replace(dualUp, "state=Up", "state=Down", 1), peers: []string{"10.255.255.255", "fd00::ffff"}},
+		{name: "reported count mismatch", status: strings.Replace(dualUp, "There are 2", "There are 3", 1), peers: []string{"10.255.255.255", "fd00::ffff"}},
+		{name: "invalid expected peer", status: dualUp, peers: []string{"not-an-ip"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gomega.NewWithT(t).Expect(bfddStatusHasAllExpectedPeersUp(tt.status, tt.peers)).To(gomega.Equal(tt.want))
+		})
+	}
+}
+
+func TestBFDDUsesSupervisorRuntime(t *testing.T) {
+	tests := []struct {
+		name    string
+		runtime string
+		want    bool
+	}{
+		{name: "supervisor PID 1 with control socket", runtime: "/kube-ovn/kube-ovn-bfdd-supervisor run\nsocket", want: true},
+		{name: "legacy PID 1 in new image", runtime: "bash /kube-ovn/start-bfdd.sh\nsocket"},
+		{name: "supervisor without control socket", runtime: "/kube-ovn/kube-ovn-bfdd-supervisor run\nmissing"},
+		{name: "supervisor probe subcommand", runtime: "/kube-ovn/kube-ovn-bfdd-supervisor live\nsocket"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gomega.NewWithT(t).Expect(bfddSupervisorRuntimeDetected(tt.runtime)).To(gomega.Equal(tt.want))
+		})
+	}
 }
 
 func containerRestartCount(pod corev1.Pod, containerName string) int32 {
@@ -1863,7 +2053,7 @@ func validateVegTestWorkload(f *framework.Framework, veg *apiv1.VpcEgressGateway
 		}
 	}
 	if veg.Spec.BFD.Enabled && !f.VersionPriorTo(1, 15) {
-		verifyBFDDZeroSessionsTriggersRestart(f, veg.Namespace, workloadPods.Items[0])
+		verifyBFDDZeroSessionsRecovery(f, veg.Namespace, workloadPods.Items[0])
 	}
 	return workloadPods.Items, intIPs
 }

@@ -246,6 +246,26 @@ func requirePreservedObserverState(t *testing.T, state vpcEgressObserverState) {
 	require.Equal(t, state.preservedVolumes, podSpec.Volumes)
 }
 
+func TestVpcEgressGatewayBFDAndObservabilityPortNamesAreUnique(t *testing.T) {
+	podSpec := corev1.PodSpec{Containers: []corev1.Container{
+		genVpcEgressGatewayBFDDContainer("kubeovn/kube-ovn:test", "10.255.255.255", 100, 100, 3, true),
+	}}
+	config := &kubeovnv1.VpcEgressGatewayObservability{
+		InterfaceMetrics: kubeovnv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
+	}
+	addVpcEgressGatewayObserver(&podSpec, "kubeovn/kube-ovn:test", config, vpcEgressObserverState{
+		enabled: true, configName: "gateway-observability",
+	})
+
+	portNames := map[string]string{}
+	for _, container := range append(podSpec.Containers, podSpec.InitContainers...) {
+		for _, port := range container.Ports {
+			require.NotContains(t, portNames, port.Name, "port name %q is reused by %s and %s", port.Name, portNames[port.Name], container.Name)
+			portNames[port.Name] = container.Name
+		}
+	}
+}
+
 func observabilityTestGateway() *kubeovnv1.VpcEgressGateway {
 	return &kubeovnv1.VpcEgressGateway{
 		TypeMeta:   metav1.TypeMeta{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway"},
