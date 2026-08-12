@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -459,6 +461,44 @@ func TestSupervisorDoesNotRestartChildWithoutSessionHealthEvidence(t *testing.T)
 	require.Equal(t, 0, child.restarts, "control failure cannot prove every expected session is unhealthy")
 	require.True(t, supervisor.Status().Live)
 	require.False(t, supervisor.Status().Ready)
+	require.Equal(t, "control unavailable", supervisor.Status().LastControlError)
+}
+
+func TestSupervisorFailsLivenessWhenChildStopsDuringControlFailure(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(10_600, 0)}
+	control := &fakeControl{statusErr: errors.New("control unavailable")}
+	child := &fakeChild{running: false}
+	supervisor, err := NewSupervisor(SupervisorConfig{
+		Daemon: DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
+		PodIPs: []string{"10.16.0.2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,
+		Backoffs: []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute}, CircuitOpen: time.Hour,
+	}, control, child, clock)
+	require.NoError(t, err)
+
+	require.NoError(t, supervisor.Reconcile(context.Background()))
+	require.False(t, supervisor.Status().Live, "a stopped child must fail liveness even when session status is unreadable")
+	require.Equal(t, 0, child.restarts, "control failure must not infer session health or restart the child")
+	reporter := NewMetricsReporter()
+	request := httptest.NewRequest(http.MethodGet, "/livez", nil)
+	response := httptest.NewRecorder()
+	reporter.handler(supervisor.Status).ServeHTTP(response, request)
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+}
+
+func TestSupervisorDoesNotPersistTransientControlFailures(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(10_700, 0)}
+	blockedPath := filepath.Join(t.TempDir(), "blocked")
+	config := SupervisorConfig{
+		Daemon: DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
+		PodIPs: []string{"10.16.0.2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,
+		Backoffs: []time.Duration{time.Minute, 5 * time.Minute, 30 * time.Minute}, CircuitOpen: time.Hour,
+		StatePath: filepath.Join(blockedPath, "state.json"),
+	}
+	supervisor, err := NewSupervisor(config, &fakeControl{statusErr: errors.New("control unavailable")}, &fakeChild{running: true}, clock)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(blockedPath, []byte("not a directory"), 0o600))
+
+	require.NoError(t, supervisor.Reconcile(context.Background()), "transient status belongs in memory, not persistent recovery state")
 	require.Equal(t, "control unavailable", supervisor.Status().LastControlError)
 }
 
