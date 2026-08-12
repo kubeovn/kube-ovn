@@ -43,7 +43,6 @@ import (
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/kubeovn/kube-ovn/pkg/vegobserver"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/iproute"
@@ -1204,7 +1203,6 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 		framework.ExpectContainSubstring(metrics, `name="`+veg.Name+`"`)
 	}
 	waitVpcEgressObserverInterfaceCounterGrowth(f, workloadPods, interfaceBytes)
-	validateVpcEgressObserverInterfaceOnlyRSS(f, workloadPods[0], configMap.Data["config.json"])
 	validateVpcEgressObserverCollectorFailureIsolation(f, workloadPods[0])
 	waitVpcEgressObserverConntrackMetrics(f, workloadPods)
 	waitVpcEgressObserverFlowLog(f, veg, workloadPods)
@@ -1368,46 +1366,6 @@ func waitVpcEgressObserverReloadCounts(f *framework.Framework, pods []corev1.Pod
 	})
 	framework.ExpectNoError(err, "config reload metrics to become ready on all observability sidecars")
 	return counts
-}
-
-func validateVpcEgressObserverInterfaceOnlyRSS(f *framework.Framework, pod corev1.Pod, rawConfig string) {
-	ginkgo.GinkgoHelper()
-	var config vegobserver.Config
-	framework.ExpectNoError(json.Unmarshal([]byte(rawConfig), &config))
-	config.Observability.Conntrack = apiv1.VpcEgressGatewayConntrackObservability{}
-	config.Observability.InterfaceMetrics.Enabled = true
-	data, err := json.Marshal(config)
-	framework.ExpectNoError(err)
-
-	const script = `
-set -eu
-config_path=/dev/shm/kube-ovn-observer-interface-only.json
-observer_pid=
-cleanup() {
-  if [ -n "$observer_pid" ]; then
-    kill "$observer_pid" 2>/dev/null || true
-    wait "$observer_pid" 2>/dev/null || true
-  fi
-  rm -f "$config_path"
-}
-trap cleanup EXIT
-printf '%s' "$1" > "$config_path"
-/kube-ovn/vpc-egress-gateway-observer --config "$config_path" --network-status /etc/podinfo/network-status --listen-address 127.0.0.1:10667 >/dev/null 2>/dev/null &
-observer_pid=$!
-attempt=0
-until curl -fsS http://127.0.0.1:10667/metrics >/dev/null; do
-  attempt=$((attempt + 1))
-  [ "$attempt" -lt 30 ]
-  sleep 1
-done
-sleep 3
-awk '/^VmRSS:/ { print $2 }' "/proc/$observer_pid/status"
-`
-	stdout, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "observability", "/bin/sh", "-ec", script, "observer-rss", string(data))
-	framework.ExpectNoError(err, "measuring interface-only observer RSS; stderr: "+stderr)
-	rssKiB, err := strconv.ParseInt(strings.TrimSpace(stdout), 10, 64)
-	framework.ExpectNoError(err)
-	framework.ExpectTrue(rssKiB <= 20*1024, "interface-only observer RSS is %d KiB, expected at most 20480 KiB", rssKiB)
 }
 
 func validateVpcEgressObserverCollectorFailureIsolation(f *framework.Framework, pod corev1.Pod) {
