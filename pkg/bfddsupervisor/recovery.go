@@ -254,7 +254,8 @@ func (s *Supervisor) StartChild(ctx context.Context) error {
 
 	startErr := s.child.Restart(ctx)
 	s.mutex.Lock()
-	if startErr != nil && s.childRecoveryAttempts == 0 {
+	if startErr != nil && !s.childCircuitOpenLocked(now) &&
+		(s.childNextRetry.IsZero() || !now.Before(s.childNextRetry)) {
 		s.reserveChildRestartLocked(now)
 	}
 	if startErr != nil {
