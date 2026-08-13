@@ -93,6 +93,8 @@ type FakeControllerOptions struct {
 	OvnDnatRules       []*kubeovnv1.OvnDnatRule
 	OvnFipRules        []*kubeovnv1.OvnFip
 	OvnSnatRules       []*kubeovnv1.OvnSnatRule
+	QoSPolicies        []*kubeovnv1.QoSPolicy
+	IptablesEips       []*kubeovnv1.IptablesEIP
 }
 
 // newFakeControllerWithOptions creates a fake controller with optional pre-populated objects
@@ -226,6 +228,20 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, qos := range opts.QoSPolicies {
+		_, err := kubeovnClient.KubeovnV1().QoSPolicies().Create(
+			context.Background(), qos, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, eip := range opts.IptablesEips {
+		_, err := kubeovnClient.KubeovnV1().IptablesEIPs().Create(
+			context.Background(), eip, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
@@ -268,6 +284,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
+	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
+	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -316,6 +334,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		netAttachLister:         nadInformer.Lister(),
 		netAttachSynced:         alwaysReady,
 		vpcNatGatewayLister:     vpcNatGwInformer.Lister(),
+		qosPoliciesLister:       qosPolicyInformer.Lister(),
+		qosPolicySynced:         alwaysReady,
+		iptablesEipsLister:      iptablesEipInformer.Lister(),
+		vpcNatGwKeyMutex:        keymutex.NewHashed(0),
 		OVNNbClient:             mockOvnClient,
 		OVNSbClient:             mockOvnSbClient,
 		ipam:                    ovnipam.NewIPAM(),

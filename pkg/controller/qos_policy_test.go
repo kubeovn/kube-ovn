@@ -1,12 +1,16 @@
 package controller
 
 import (
+	"context"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestValidateRateValue(t *testing.T) {
@@ -687,4 +691,214 @@ func TestCompareQoSPolicyBandwidthLimitRules(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestValidateQosPolicy(t *testing.T) {
+	t.Parallel()
+
+	ctrl := &Controller{}
+	tests := []struct {
+		name      string
+		qosPolicy *kubeovnv1.QoSPolicy
+		errMsg    string
+	}{
+		{
+			name: "natgw binding must be shared",
+			qosPolicy: &kubeovnv1.QoSPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "qos-natgw-unshared"},
+				Spec: kubeovnv1.QoSPolicySpec{
+					Shared:      false,
+					BindingType: kubeovnv1.QoSBindingTypeNatGw,
+				},
+			},
+			errMsg: "qos policy qos-natgw-unshared is not shared, but binding to nat gateway",
+		},
+		{
+			name: "shared natgw binding is valid",
+			qosPolicy: &kubeovnv1.QoSPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "qos-natgw-shared"},
+				Spec: kubeovnv1.QoSPolicySpec{
+					Shared:      true,
+					BindingType: kubeovnv1.QoSBindingTypeNatGw,
+					BandwidthLimitRules: kubeovnv1.QoSPolicyBandwidthLimitRules{{
+						Name:      "net1-egress",
+						Interface: "net1",
+						RateMax:   "50",
+						BurstMax:  "50",
+						Direction: kubeovnv1.QoSDirectionEgress,
+					}},
+				},
+			},
+		},
+		{
+			name: "unshared eip binding is valid",
+			qosPolicy: &kubeovnv1.QoSPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "qos-eip-unshared"},
+				Spec: kubeovnv1.QoSPolicySpec{
+					Shared:      false,
+					BindingType: kubeovnv1.QoSBindingTypeEIP,
+					BandwidthLimitRules: kubeovnv1.QoSPolicyBandwidthLimitRules{{
+						Name:      "eip-ingress",
+						RateMax:   "0.5",
+						BurstMax:  "0.06",
+						Direction: kubeovnv1.QoSDirectionIngress,
+					}},
+				},
+			},
+		},
+		{
+			name: "invalid rate is rejected",
+			qosPolicy: &kubeovnv1.QoSPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "qos-invalid-rate"},
+				Spec: kubeovnv1.QoSPolicySpec{
+					Shared:      true,
+					BindingType: kubeovnv1.QoSBindingTypeNatGw,
+					BandwidthLimitRules: kubeovnv1.QoSPolicyBandwidthLimitRules{{
+						Name:    "net1-egress",
+						RateMax: "10; rm -rf /",
+					}},
+				},
+			},
+			errMsg: "invalid rateMax value",
+		},
+		{
+			name: "invalid ip match value is rejected",
+			qosPolicy: &kubeovnv1.QoSPolicy{
+				ObjectMeta: metav1.ObjectMeta{Name: "qos-invalid-match"},
+				Spec: kubeovnv1.QoSPolicySpec{
+					Shared:      true,
+					BindingType: kubeovnv1.QoSBindingTypeNatGw,
+					BandwidthLimitRules: kubeovnv1.QoSPolicyBandwidthLimitRules{{
+						Name:       "net1-extip-egress",
+						RateMax:    "25",
+						BurstMax:   "25",
+						Direction:  kubeovnv1.QoSDirectionEgress,
+						MatchType:  kubeovnv1.QoSMatchTypeIP,
+						MatchValue: "dst 172.20.0.24",
+					}},
+				},
+			},
+			errMsg: "invalid ip MatchValue",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := ctrl.validateQosPolicy(tt.qosPolicy)
+			if tt.errMsg == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.errMsg)
+		})
+	}
+}
+
+func makeQoSPolicyForUpdate(name string, shared bool, bindingType kubeovnv1.QoSPolicyBindingType,
+	statusRules, specRules kubeovnv1.QoSPolicyBandwidthLimitRules,
+) *kubeovnv1.QoSPolicy {
+	return &kubeovnv1.QoSPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: kubeovnv1.QoSPolicySpec{
+			Shared:              shared,
+			BindingType:         bindingType,
+			BandwidthLimitRules: specRules,
+		},
+		Status: kubeovnv1.QoSPolicyStatus{
+			Shared:              shared,
+			BindingType:         bindingType,
+			BandwidthLimitRules: statusRules,
+		},
+	}
+}
+
+func eipQoSRules(rate string) kubeovnv1.QoSPolicyBandwidthLimitRules {
+	return kubeovnv1.QoSPolicyBandwidthLimitRules{
+		{Name: "eip-ingress", RateMax: rate, BurstMax: rate, Priority: 1, Direction: kubeovnv1.QoSDirectionIngress},
+		{Name: "eip-egress", RateMax: rate, BurstMax: rate, Priority: 1, Direction: kubeovnv1.QoSDirectionEgress},
+	}
+}
+
+func TestHandleUpdateQoSPolicy(t *testing.T) {
+	// A shared QoS policy (which a NAT gateway bound policy always is, see validateQosPolicy)
+	// does not support changing its bandwidth limit rules: the limits of a NAT gateway can only
+	// be changed by binding it to another policy.
+	sharedNatGwQoS := makeQoSPolicyForUpdate("qos-natgw-rule-change", true, kubeovnv1.QoSBindingTypeNatGw,
+		kubeovnv1.QoSPolicyBandwidthLimitRules{{
+			Name: "net1-egress", Interface: "net1", RateMax: "10", BurstMax: "10",
+			Priority: 3, Direction: kubeovnv1.QoSDirectionEgress,
+		}},
+		kubeovnv1.QoSPolicyBandwidthLimitRules{{
+			Name: "net1-egress", Interface: "net1", RateMax: "50", BurstMax: "50",
+			Priority: 3, Direction: kubeovnv1.QoSDirectionEgress,
+		}},
+	)
+	// An unshared EIP policy supports hot updating its rules, but only when it is bound to at
+	// most one EIP, otherwise the rules of the other EIPs would silently change as well.
+	unboundEIPQoS := makeQoSPolicyForUpdate("qos-eip-unbound", false, kubeovnv1.QoSBindingTypeEIP,
+		eipQoSRules("10"), eipQoSRules("50"))
+	multiEIPQoS := makeQoSPolicyForUpdate("qos-eip-multi", false, kubeovnv1.QoSBindingTypeEIP,
+		eipQoSRules("10"), eipQoSRules("50"))
+	unchangedQoS := makeQoSPolicyForUpdate("qos-natgw-unchanged", true, kubeovnv1.QoSBindingTypeNatGw,
+		eipQoSRules("10"), eipQoSRules("10"))
+	// Changing .spec.shared of an existing policy is not supported either
+	sharedChangedQoS := makeQoSPolicyForUpdate("qos-shared-changed", true, kubeovnv1.QoSBindingTypeNatGw,
+		eipQoSRules("10"), eipQoSRules("10"))
+	sharedChangedQoS.Spec.Shared = false
+
+	eips := make([]*kubeovnv1.IptablesEIP, 0, 2)
+	for _, name := range []string{"eip-1", "eip-2"} {
+		eips = append(eips, &kubeovnv1.IptablesEIP{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   name,
+				Labels: map[string]string{util.QoSLabel: multiEIPQoS.Name},
+			},
+			Spec:   kubeovnv1.IptablesEIPSpec{QoSPolicy: multiEIPQoS.Name},
+			Status: kubeovnv1.IptablesEIPStatus{IP: "172.20.0.10"},
+		})
+	}
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		QoSPolicies:  []*kubeovnv1.QoSPolicy{sharedNatGwQoS, unboundEIPQoS, multiEIPQoS, unchangedQoS, sharedChangedQoS},
+		IptablesEips: eips,
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+
+	t.Run("shared qos policy does not support changing its rules", func(t *testing.T) {
+		err := ctrl.handleUpdateQoSPolicy(sharedNatGwQoS.Name)
+		require.ErrorContains(t, err, "not support shared qos "+sharedNatGwQoS.Name+" change rule")
+	})
+
+	t.Run("qos policy does not support changing shared", func(t *testing.T) {
+		err := ctrl.handleUpdateQoSPolicy(sharedChangedQoS.Name)
+		require.ErrorContains(t, err, "not support qos "+sharedChangedQoS.Name+" change shared")
+	})
+
+	t.Run("unshared eip qos policy bound to multiple eips does not support changing its rules", func(t *testing.T) {
+		err := ctrl.handleUpdateQoSPolicy(multiEIPQoS.Name)
+		require.ErrorContains(t, err, "related eip more than one")
+	})
+
+	t.Run("unshared eip qos policy without eip updates its status", func(t *testing.T) {
+		require.NoError(t, ctrl.handleUpdateQoSPolicy(unboundEIPQoS.Name))
+
+		qos, err := ctrl.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(
+			context.Background(), unboundEIPQoS.Name, metav1.GetOptions{})
+		require.NoError(t, err)
+		// the controller sorts the rules by name before writing them to the status
+		expected := eipQoSRules("50")
+		sort.Slice(expected, func(i, j int) bool { return expected[i].Name < expected[j].Name })
+		require.Equal(t, expected, qos.Status.BandwidthLimitRules)
+		require.Contains(t, qos.Finalizers, util.KubeOVNControllerFinalizer)
+	})
+
+	t.Run("qos policy without rule change is a no-op", func(t *testing.T) {
+		require.NoError(t, ctrl.handleUpdateQoSPolicy(unchangedQoS.Name))
+	})
+
+	t.Run("deleted qos policy is ignored", func(t *testing.T) {
+		require.NoError(t, ctrl.handleUpdateQoSPolicy("qos-not-found"))
+	})
 }
