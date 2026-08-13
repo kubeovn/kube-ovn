@@ -51,6 +51,23 @@ class E2ESelectorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "catalog matrix does not match"):
             e2eSelector.validateWorkflow(self.catalog, drifted)
 
+    def testCatalogRejectsDuplicateWorkflowMatrixEntries(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        drifted = workflow.replace(
+            """          - ipv6
+          - dual
+        mode:""",
+            """          - ipv6
+          - dual
+          - dual
+        mode:""",
+            1,
+        )
+        self.assertNotEqual(workflow, drifted)
+
+        with self.assertRaisesRegex(ValueError, "catalog matrix does not match"):
+            e2eSelector.validateWorkflow(self.catalog, drifted)
+
     def testSmokeIsAlwaysSelected(self):
         plan = self.select(["docs/design.md"])
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import collections
 import fnmatch
 import hashlib
 import itertools
@@ -142,8 +143,8 @@ def validateWorkflow(catalog, workflow):
         for jobId in sorted(workflowJobs)
         for entry in workflowJobMatrix(jobId, blocks[jobId])
     ]
-    workflowIdentities = {matrixIdentity(entry) for entry in workflowEntries}
-    catalogIdentities = {matrixIdentity(entry) for entry in expandAll(catalog)}
+    workflowIdentities = collections.Counter(matrixIdentity(entry) for entry in workflowEntries)
+    catalogIdentities = collections.Counter(matrixIdentity(entry) for entry in expandAll(catalog))
     if workflowIdentities != catalogIdentities:
         raise ValueError("catalog matrix does not match the x86 workflow")
 
