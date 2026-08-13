@@ -602,7 +602,7 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 		return err
 	}
 
-	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, node.Name)); err != nil {
+	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, node.Name), pn.Spec.VlanInterfaces); err != nil {
 		return err
 	}
 
@@ -610,7 +610,7 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 }
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
-	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, c.config.NodeName)); err != nil {
+	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, c.config.NodeName), pn.Spec.VlanInterfaces); err != nil {
 		klog.Error(err)
 		return err
 	}
