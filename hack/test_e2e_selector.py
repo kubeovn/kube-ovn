@@ -231,6 +231,33 @@ class E2ESelectorTest(unittest.TestCase):
                 self.assertTrue(plan["full"])
                 self.assertEqual(len(plan["matrix"]), 81)
 
+    def testSharedE2EMakeScriptsPromoteToFull(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        makefile = (repoRoot / "Makefile").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        targetCounts = {}
+        for jobId in e2eSelector.workflowTestJobs(workflow):
+            for target in set(re.findall(r"\bmake\s+([a-z0-9][a-z0-9-]+)", blocks[jobId])):
+                targetCounts[target] = targetCounts.get(target, 0) + 1
+        sharedTargets = {target for target, count in targetCounts.items() if count >= 3}
+        scripts = {
+            script
+            for target in sharedTargets
+            for script in re.findall(
+                rf"(?ms)^{re.escape(target)}:[^\n]*\n(.*?)(?=^[a-z0-9][a-z0-9-]+:|\Z)",
+                makefile,
+            )
+            for script in re.findall(r"(?:\./)?(hack/[a-z0-9_./-]+\.sh)", script)
+            if (repoRoot / script).is_file()
+        }
+        self.assertIn("hack/ci-check-crash.sh", scripts)
+
+        for script in scripts:
+            with self.subTest(script=script):
+                plan = self.select([script])
+                self.assertTrue(plan["full"])
+                self.assertEqual(len(plan["matrix"]), 81)
+
     def testForceFullLabelPromotesToFull(self):
         plan = self.select(["docs/design.md"], labels=["e2e:full"])
 

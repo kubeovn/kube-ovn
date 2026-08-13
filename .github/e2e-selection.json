@@ -21,6 +21,7 @@
     "go.sum",
     "dist/images/**",
     "charts/**",
+    "hack/ci-check-crash.sh",
     "hack/gen-crd.sh",
     "hack/go-list.sh",
     "hack/update-codegen.sh",
