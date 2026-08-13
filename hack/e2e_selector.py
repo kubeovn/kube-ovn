@@ -136,8 +136,17 @@ def workflowJobMatrix(jobId, block):
     return expandJob({"id": jobId, "matrix": matrix})
 
 
-def validateWorkflow(catalog, workflow):
+def expandWorkflow(workflow):
     blocks = workflowJobBlocks(workflow)
+    jobs = workflowTestJobs(workflow)
+    return [
+        entry
+        for jobId in sorted(jobs)
+        for entry in workflowJobMatrix(jobId, blocks[jobId])
+    ]
+
+
+def validateWorkflow(catalog, workflow):
     workflowJobs = workflowTestJobs(workflow)
     catalogJobs = {
         job["id"]
@@ -146,11 +155,7 @@ def validateWorkflow(catalog, workflow):
     }
     if workflowJobs != catalogJobs:
         raise ValueError("catalog jobs do not match the x86 workflow")
-    workflowEntries = [
-        entry
-        for jobId in sorted(workflowJobs)
-        for entry in workflowJobMatrix(jobId, blocks[jobId])
-    ]
+    workflowEntries = expandWorkflow(workflow)
     workflowIdentities = collections.Counter(matrixIdentity(entry) for entry in workflowEntries)
     catalogIdentities = collections.Counter(matrixIdentity(entry) for entry in expandAll(catalog))
     if workflowIdentities != catalogIdentities:
@@ -325,12 +330,9 @@ def renderSummary(plan, changedPaths):
 
 def fallbackPlan(headSHA, error, workflow, source):
     reason = f"{source} error requires the full suite: {error}"
-    blocks = workflowJobBlocks(workflow)
-    jobs = workflowTestJobs(workflow)
     matrix = [
         {**entry, "selection": "group"}
-        for jobId in sorted(jobs)
-        for entry in workflowJobMatrix(jobId, blocks[jobId])
+        for entry in expandWorkflow(workflow)
     ]
     identities = {matrixIdentity(entry) for entry in matrix}
     if len(matrix) != expectedX86RunnerJobs or len(identities) != len(matrix):
@@ -391,22 +393,33 @@ def parseArgs():
 
 def main():
     args = parseArgs()
-    paths = readPaths(args.pathsFile)
+    paths = []
+    try:
+        paths = readPaths(args.pathsFile)
+    except Exception as error:
+        workflow = Path(args.workflow).read_text(encoding="utf-8")
+        plan = fallbackPlan(args.headSHA, error, workflow, "selection")
+        writePlan(plan, paths, args.planFile, args.summaryFile)
+        return
     try:
         catalog = loadCatalog(args.catalog)
     except Exception as error:
         workflow = Path(args.workflow).read_text(encoding="utf-8")
         plan = fallbackPlan(args.headSHA, error, workflow, "catalog")
     else:
-        labels = args.label + eventLabels(args.eventFile)
         try:
+            labels = args.label + eventLabels(args.eventFile)
             plan = select(catalog, paths, labels, args.requestGroup, args.headSHA)
-        except ValueError as error:
+        except Exception as error:
             workflow = Path(args.workflow).read_text(encoding="utf-8")
             plan = fallbackPlan(args.headSHA, error, workflow, "selection")
-    Path(args.planFile).write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
-    if args.summaryFile:
-        Path(args.summaryFile).write_text(renderSummary(plan, paths), encoding="utf-8")
+    writePlan(plan, paths, args.planFile, args.summaryFile)
+
+
+def writePlan(plan, paths, planFile, summaryFile):
+    Path(planFile).write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+    if summaryFile:
+        Path(summaryFile).write_text(renderSummary(plan, paths), encoding="utf-8")
 
 
 if __name__ == "__main__":

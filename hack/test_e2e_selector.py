@@ -120,6 +120,20 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertTrue(plan["full"])
         self.assertIn("shared path", plan["fullReason"])
 
+    def testInstallationBuildAndCodegenPathsPromoteToFull(self):
+        for path in [
+            "charts/kube-ovn/Chart.yaml",
+            "charts/kube-ovn-v2/Chart.yaml",
+            "makefiles/ut.mk",
+            "hack/gen-crd.sh",
+            "hack/update-codegen.sh",
+        ]:
+            with self.subTest(path=path):
+                plan = self.select([path])
+                self.assertTrue(plan["full"])
+                self.assertEqual(len(plan["matrix"]), 81)
+                self.assertIn("shared path", plan["fullReason"])
+
     def testForceFullLabelPromotesToFull(self):
         plan = self.select(["docs/design.md"], labels=["e2e:full"])
 
@@ -261,6 +275,58 @@ class E2ESelectorTest(unittest.TestCase):
             "catalog",
         )
         self.assertEqual(len(plan["matrix"]), 81)
+
+    def testInvalidEventPayloadFallsBackToFullThroughCLI(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            paths = directory / "paths"
+            paths.write_bytes(b"docs/design.md\0")
+            malformed = directory / "malformed.json"
+            malformed.write_text("{")
+            invalidLabel = directory / "invalid-label.json"
+            invalidLabel.write_text('{"pull_request": {"labels": [{}]}}')
+
+            for name, event in {
+                "missing": directory / "missing.json",
+                "malformed": malformed,
+                "invalid-label": invalidLabel,
+            }.items():
+                with self.subTest(name=name):
+                    plan = directory / f"{name}-plan.json"
+                    subprocess.run(
+                        [
+                            sys.executable,
+                            str(repoRoot / "hack/e2e_selector.py"),
+                            "--paths-file",
+                            str(paths),
+                            "--event-file",
+                            str(event),
+                            "--head-sha",
+                            "0123456789abcdef",
+                            "--plan-file",
+                            str(plan),
+                        ],
+                        cwd=repoRoot,
+                        check=True,
+                    )
+                    result = json.loads(plan.read_text())
+                    self.assertTrue(result["full"])
+                    self.assertEqual(len(result["matrix"]), 81)
+                    self.assertIn("selection error", result["fullReason"])
+
+    def testSelectorFilesHaveCodeOwners(self):
+        codeowners = (repoRoot / ".github/CODEOWNERS").read_text()
+
+        for path in [
+            "/.github/e2e-selection.json",
+            "/hack/e2e_selector.py",
+            "/hack/test_e2e_selector.py",
+        ]:
+            with self.subTest(path=path):
+                self.assertRegex(
+                    codeowners,
+                    rf"(?m)^{re.escape(path)}\s+@oilbeater\s+@zhangzujian$",
+                )
 
     def testEveryPathMappingHasARegressionCase(self):
         cases = [
