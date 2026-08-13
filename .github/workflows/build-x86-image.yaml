@@ -54,9 +54,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: git diff --name-only --diff-filter=ACDMRT -z "$BASE_SHA...$HEAD_SHA" > changed-paths.txt
 
-      - name: Validate the E2E selection catalog
-        run: python3 -m unittest hack/test_e2e_selector.py
-
       - name: Compute the shadow selection plan
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -69,7 +66,11 @@ jobs:
             --summary-file e2e-selection-summary.md
           cat e2e-selection-summary.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Validate the E2E selection catalog
+        run: python3 -m unittest hack/test_e2e_selector.py
+
       - name: Upload the shadow selection plan
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: x86-e2e-selection-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}

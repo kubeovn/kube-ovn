@@ -3,14 +3,13 @@
 import argparse
 import fnmatch
 import hashlib
-import html
 import itertools
 import json
 import re
 from pathlib import Path
 
 
-INFRASTRUCTURE_JOBS = {
+infrastructureJobs = {
     "build-kube-ovn-base",
     "build-kube-ovn-dpdk-base",
     "build-kube-ovn",
@@ -22,36 +21,36 @@ INFRASTRUCTURE_JOBS = {
 }
 
 
-def load_catalog(path):
+def loadCatalog(path):
     with Path(path).open(encoding="utf-8") as stream:
         catalog = json.load(stream)
-    validate_catalog(catalog)
+    validateCatalog(catalog)
     return catalog
 
 
-def validate_catalog(catalog):
+def validateCatalog(catalog):
     if catalog.get("schemaVersion") != 1:
         raise ValueError("unsupported catalog schemaVersion")
     groups = catalog.get("groups")
     if not isinstance(groups, dict) or not groups:
         raise ValueError("catalog groups must be a non-empty object")
-    known_jobs = set()
+    knownJobs = set()
     for name, group in groups.items():
         if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
             raise ValueError(f"invalid group name {name!r}")
         for job in group.get("jobs", []):
-            job_id = job.get("id")
-            if not job_id or job_id in known_jobs:
-                raise ValueError(f"missing or duplicate job id {job_id!r}")
-            known_jobs.add(job_id)
-    expanded = expand_all(catalog)
-    identities = {matrix_identity(entry) for entry in expanded}
+            jobId = job.get("id")
+            if not jobId or jobId in knownJobs:
+                raise ValueError(f"missing or duplicate job id {jobId!r}")
+            knownJobs.add(jobId)
+    expanded = expandAll(catalog)
+    identities = {matrixIdentity(entry) for entry in expanded}
     if not expanded or len(expanded) != len(identities):
         raise ValueError("catalog must define unique x86 E2E runner jobs")
     if len(expanded) != catalog.get("expectedRunnerJobs"):
         raise ValueError("catalog runner count does not match expectedRunnerJobs")
     for smoke in catalog.get("smoke", []):
-        if matrix_identity(smoke) not in identities:
+        if matrixIdentity(smoke) not in identities:
             raise ValueError(f"smoke entry is not present in the full matrix: {smoke}")
     for rule in catalog.get("pathRules", []):
         unknown = set(rule.get("groups", [])) - groups.keys()
@@ -61,15 +60,91 @@ def validate_catalog(catalog):
             raise ValueError("every path rule requires owner and reason")
 
 
-def workflow_test_jobs(workflow):
+def workflowTestJobs(workflow):
     jobs = {
         match.group(1)
         for match in re.finditer(r"^  ([a-z0-9][a-z0-9-]+):\s*$", workflow, re.MULTILINE)
     }
-    return jobs - INFRASTRUCTURE_JOBS
+    return jobs - infrastructureJobs
 
 
-def expand_job(job):
+def yamlScalar(value):
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    if value.isdigit():
+        return int(value)
+    return value
+
+
+def workflowJobBlocks(workflow):
+    matches = list(re.finditer(r"^  ([a-z0-9][a-z0-9-]+):\s*$", workflow, re.MULTILINE))
+    return {
+        match.group(1): workflow[match.end() : matches[index + 1].start() if index + 1 < len(matches) else None]
+        for index, match in enumerate(matches)
+    }
+
+
+def workflowJobMatrix(jobId, block):
+    lines = block.splitlines()
+    try:
+        start = lines.index("      matrix:") + 1
+    except ValueError:
+        return [{"job": jobId}]
+    matrixLines = []
+    for line in lines[start:]:
+        if line.strip() and len(line) - len(line.lstrip()) <= 6:
+            break
+        matrixLines.append(line)
+    if any(line == "        include:" for line in matrixLines):
+        entries = []
+        current = None
+        for line in matrixLines:
+            match = re.fullmatch(r"          - ([a-z0-9-]+): (.+)", line)
+            if match:
+                current = {match.group(1): yamlScalar(match.group(2))}
+                entries.append(current)
+                continue
+            match = re.fullmatch(r"            ([a-z0-9-]+): (.+)", line)
+            if match and current is not None:
+                current[match.group(1)] = yamlScalar(match.group(2))
+        return [{"job": jobId, **entry} for entry in entries]
+    matrix = {}
+    currentKey = None
+    for line in matrixLines:
+        match = re.fullmatch(r"        ([a-z0-9-]+):", line)
+        if match:
+            currentKey = match.group(1)
+            matrix[currentKey] = []
+            continue
+        match = re.fullmatch(r"          - (.+)", line)
+        if match and currentKey is not None:
+            matrix[currentKey].append(yamlScalar(match.group(1)))
+    return expandJob({"id": jobId, "matrix": matrix})
+
+
+def validateWorkflow(catalog, workflow):
+    blocks = workflowJobBlocks(workflow)
+    workflowJobs = workflowTestJobs(workflow)
+    catalogJobs = {
+        job["id"]
+        for group in catalog["groups"].values()
+        for job in group["jobs"]
+    }
+    if workflowJobs != catalogJobs:
+        raise ValueError("catalog jobs do not match the x86 workflow")
+    workflowEntries = [
+        entry
+        for jobId in sorted(workflowJobs)
+        for entry in workflowJobMatrix(jobId, blocks[jobId])
+    ]
+    workflowIdentities = {matrixIdentity(entry) for entry in workflowEntries}
+    catalogIdentities = {matrixIdentity(entry) for entry in expandAll(catalog)}
+    if workflowIdentities != catalogIdentities:
+        raise ValueError("catalog matrix does not match the x86 workflow")
+
+
+def expandJob(job):
     if "include" in job:
         entries = job["include"]
     else:
@@ -82,20 +157,20 @@ def expand_job(job):
     return [{"job": job["id"], **entry} for entry in entries]
 
 
-def expand_groups(catalog, groups):
+def expandGroups(catalog, groups):
     return [
         entry
-        for group_name in groups
-        for job in catalog["groups"][group_name]["jobs"]
-        for entry in expand_job(job)
+        for groupName in groups
+        for job in catalog["groups"][groupName]["jobs"]
+        for entry in expandJob(job)
     ]
 
 
-def expand_all(catalog):
-    return expand_groups(catalog, sorted(catalog["groups"]))
+def expandAll(catalog):
+    return expandGroups(catalog, sorted(catalog["groups"]))
 
 
-def matrix_identity(entry):
+def matrixIdentity(entry):
     identity = {key: value for key, value in entry.items() if key != "selection"}
     return json.dumps(identity, sort_keys=True, separators=(",", ":"))
 
@@ -104,10 +179,10 @@ def matches(path, pattern):
     return fnmatch.fnmatchcase(path, pattern)
 
 
-def matched_path_groups(catalog, paths):
+def matchedPathGroups(catalog, paths):
     groups = set()
     reasons = []
-    classified_paths = set()
+    classifiedPaths = set()
     for rule in catalog.get("pathRules", []):
         matched = sorted(
             path for path in paths if any(matches(path, pattern) for pattern in rule["patterns"])
@@ -115,7 +190,7 @@ def matched_path_groups(catalog, paths):
         if not matched:
             continue
         groups.update(rule["groups"])
-        classified_paths.update(matched)
+        classifiedPaths.update(matched)
         reasons.append(
             {
                 "source": "path",
@@ -125,10 +200,10 @@ def matched_path_groups(catalog, paths):
                 "reason": rule["reason"],
             }
         )
-    return groups, reasons, classified_paths
+    return groups, reasons, classifiedPaths
 
 
-def full_reason(catalog, paths, labels, path_groups, classified_paths):
+def fullReason(catalog, paths, labels, pathGroups, classifiedPaths):
     if catalog.get("forceFull"):
         return "catalog forceFull is enabled"
     if "e2e:full" in labels:
@@ -136,30 +211,30 @@ def full_reason(catalog, paths, labels, path_groups, classified_paths):
     for path in sorted(paths):
         if any(matches(path, pattern) for pattern in catalog.get("fullPaths", [])):
             return f"shared path {path} requires the full suite"
-    unknown_production = sorted(
+    unknownProduction = sorted(
         path
         for path in paths
         if any(path.startswith(prefix) for prefix in catalog.get("productionPrefixes", []))
-        and path not in classified_paths
+        and path not in classifiedPaths
     )
-    if unknown_production:
-        return f"unclassified production path {unknown_production[0]} requires the full suite"
+    if unknownProduction:
+        return f"unclassified production path {unknownProduction[0]} requires the full suite"
     threshold = catalog.get("fullThreshold", 3)
-    if len(path_groups) >= threshold:
-        return f"path selection matched {len(path_groups)} test groups"
+    if len(pathGroups) >= threshold:
+        return f"path selection matched {len(pathGroups)} test groups"
     return ""
 
 
-def catalog_revision(catalog):
+def catalogRevision(catalog):
     payload = json.dumps(catalog, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(payload).hexdigest()
 
 
-def deduplicate_matrix(entries):
+def deduplicateMatrix(entries):
     result = []
     seen = {}
     for entry in entries:
-        key = matrix_identity(entry)
+        key = matrixIdentity(entry)
         if key not in seen:
             seen[key] = len(result)
             result.append(entry)
@@ -168,51 +243,51 @@ def deduplicate_matrix(entries):
     return result
 
 
-def select(catalog, paths, labels, requested_groups, head_sha):
+def select(catalog, paths, labels, requestedGroups, headSHA):
     paths = sorted(set(paths))
     labels = sorted(set(labels))
-    requested_groups = sorted(set(requested_groups))
-    known_groups = set(catalog["groups"])
-    invalid_requests = set(requested_groups) - known_groups
-    if invalid_requests:
-        raise ValueError(f"unknown requested group: {sorted(invalid_requests)}")
+    requestedGroups = sorted(set(requestedGroups))
+    knownGroups = set(catalog["groups"])
+    invalidRequests = set(requestedGroups) - knownGroups
+    if invalidRequests:
+        raise ValueError(f"unknown requested group: {sorted(invalidRequests)}")
 
-    label_groups = {label.removeprefix("e2e:") for label in labels if label.startswith("e2e:")}
-    label_groups.discard("full")
-    invalid_labels = label_groups - known_groups
-    if invalid_labels:
-        raise ValueError(f"unknown label group: {sorted(invalid_labels)}")
+    labelGroups = {label.removeprefix("e2e:") for label in labels if label.startswith("e2e:")}
+    labelGroups.discard("full")
+    invalidLabels = labelGroups - knownGroups
+    if invalidLabels:
+        raise ValueError(f"unknown label group: {sorted(invalidLabels)}")
 
-    path_groups, reasons, classified_paths = matched_path_groups(catalog, paths)
-    selected_groups = path_groups | label_groups | set(requested_groups)
+    pathGroups, reasons, classifiedPaths = matchedPathGroups(catalog, paths)
+    selectedGroups = pathGroups | labelGroups | set(requestedGroups)
     reasons.extend(
         {"source": "label", "groups": [group], "reason": f"label e2e:{group}"}
-        for group in sorted(label_groups)
+        for group in sorted(labelGroups)
     )
     reasons.extend(
         {"source": "request", "groups": [group], "reason": f"requested group {group}"}
-        for group in requested_groups
+        for group in requestedGroups
     )
-    reason = full_reason(catalog, paths, labels, path_groups, classified_paths)
+    reason = fullReason(catalog, paths, labels, pathGroups, classifiedPaths)
     full = bool(reason)
-    effective_groups = sorted(known_groups if full else selected_groups)
+    effectiveGroups = sorted(knownGroups if full else selectedGroups)
     smoke = [{**entry, "selection": "smoke"} for entry in catalog["smoke"]]
-    selected = [{**entry, "selection": "group"} for entry in expand_groups(catalog, effective_groups)]
-    matrix = deduplicate_matrix(smoke + selected)
+    selected = [{**entry, "selection": "group"} for entry in expandGroups(catalog, effectiveGroups)]
+    matrix = deduplicateMatrix(smoke + selected)
     return {
         "schemaVersion": 1,
-        "headSHA": head_sha,
-        "selectedGroups": effective_groups,
+        "headSHA": headSHA,
+        "selectedGroups": effectiveGroups,
         "matrix": matrix,
         "reasons": reasons,
         "full": full,
         "fullReason": reason,
-        "catalogRevision": catalog_revision(catalog),
+        "catalogRevision": catalogRevision(catalog),
     }
 
 
-def render_summary(plan, changed_paths):
-    groups = safe_summary_text(", ".join(plan["selectedGroups"]) or "smoke only")
+def renderSummary(plan, changedPaths):
+    groups = safeSummaryText(", ".join(plan["selectedGroups"]) or "smoke only")
     lines = [
         "## x86 E2E selection shadow report",
         "",
@@ -222,25 +297,51 @@ def render_summary(plan, changed_paths):
         f"- Full suite: `{'yes' if plan['full'] else 'no'}`",
         f"- Selected groups: {groups}",
         f"- Proposed runner jobs: {len(plan['matrix'])}",
-        f"- Changed paths: {len(changed_paths)}",
+        f"- Changed paths: {len(changedPaths)}",
     ]
     if plan["fullReason"]:
-        lines.append(f"- Full-suite reason: {safe_summary_text(plan['fullReason'])}")
+        lines.append(f"- Full-suite reason: {safeSummaryText(plan['fullReason'])}")
     if plan["reasons"]:
         lines.extend(["", "### Selection reasons", ""])
         for reason in plan["reasons"]:
-            source = safe_summary_text(reason["source"])
-            explanation = safe_summary_text(reason["reason"])
+            source = safeSummaryText(reason["source"])
+            explanation = safeSummaryText(reason["reason"])
             lines.append(f"- `{source}`: {explanation}")
     return "\n".join(lines) + "\n"
 
 
-def safe_summary_text(value):
+def fallbackPlan(headSHA, error, workflow):
+    reason = f"catalog error requires the full suite: {error}"
+    blocks = workflowJobBlocks(workflow)
+    jobs = workflowTestJobs(workflow)
+    matrix = [
+        {**entry, "selection": "group"}
+        for jobId in sorted(jobs)
+        for entry in workflowJobMatrix(jobId, blocks[jobId])
+    ]
+    return {
+        "schemaVersion": 1,
+        "headSHA": headSHA,
+        "selectedGroups": [],
+        "matrix": matrix,
+        "reasons": [{"source": "catalog", "groups": [], "reason": reason}],
+        "full": True,
+        "fullReason": reason,
+        "catalogRevision": "",
+    }
+
+
+def safeSummaryText(value):
     printable = "".join(character if character.isprintable() else " " for character in value)
-    return html.escape(printable, quote=False)
+    return "".join(
+        character
+        if character.isalnum() or character in " /_-"
+        else f"&#{ord(character)};"
+        for character in printable
+    )
 
 
-def event_labels(path):
+def eventLabels(path):
     if not path:
         return []
     with Path(path).open(encoding="utf-8") as stream:
@@ -248,35 +349,41 @@ def event_labels(path):
     return [label["name"] for label in event.get("pull_request", {}).get("labels", [])]
 
 
-def read_paths(path):
+def readPaths(path):
     data = Path(path).read_bytes()
     if b"\0" in data:
         return [item.decode("utf-8", errors="surrogateescape") for item in data.split(b"\0") if item]
     return data.decode("utf-8").splitlines()
 
 
-def parse_args():
+def parseArgs():
     parser = argparse.ArgumentParser(description="Compute the x86 E2E selection plan")
     parser.add_argument("--catalog", default=".github/e2e-selection.json")
-    parser.add_argument("--paths-file", required=True)
-    parser.add_argument("--event-file")
+    parser.add_argument("--workflow", default=".github/workflows/build-x86-image.yaml")
+    parser.add_argument("--paths-file", dest="pathsFile", required=True)
+    parser.add_argument("--event-file", dest="eventFile")
     parser.add_argument("--label", action="append", default=[])
-    parser.add_argument("--request-group", action="append", default=[])
-    parser.add_argument("--head-sha", required=True)
-    parser.add_argument("--plan-file", required=True)
-    parser.add_argument("--summary-file")
+    parser.add_argument("--request-group", dest="requestGroup", action="append", default=[])
+    parser.add_argument("--head-sha", dest="headSHA", required=True)
+    parser.add_argument("--plan-file", dest="planFile", required=True)
+    parser.add_argument("--summary-file", dest="summaryFile")
     return parser.parse_args()
 
 
 def main():
-    args = parse_args()
-    catalog = load_catalog(args.catalog)
-    paths = read_paths(args.paths_file)
-    labels = args.label + event_labels(args.event_file)
-    plan = select(catalog, paths, labels, args.request_group, args.head_sha)
-    Path(args.plan_file).write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
-    if args.summary_file:
-        Path(args.summary_file).write_text(render_summary(plan, paths), encoding="utf-8")
+    args = parseArgs()
+    paths = readPaths(args.pathsFile)
+    try:
+        catalog = loadCatalog(args.catalog)
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        workflow = Path(args.workflow).read_text(encoding="utf-8")
+        plan = fallbackPlan(args.headSHA, error, workflow)
+    else:
+        labels = args.label + eventLabels(args.eventFile)
+        plan = select(catalog, paths, labels, args.requestGroup, args.headSHA)
+    Path(args.planFile).write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+    if args.summaryFile:
+        Path(args.summaryFile).write_text(renderSummary(plan, paths), encoding="utf-8")
 
 
 if __name__ == "__main__":
