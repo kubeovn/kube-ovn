@@ -296,6 +296,8 @@ def select(catalog, paths, labels, requestedGroups, headSHA):
     )
     reason = fullReason(catalog, paths, labels, pathGroups, classifiedPaths)
     full = bool(reason)
+    recommendedGroups = sorted(pathGroups | labelGroups) if not full else []
+    automaticGroups = sorted(knownGroups) if full else []
     effectiveGroups = sorted(knownGroups if full else selectedGroups)
     smoke = [{**entry, "selection": "smoke"} for entry in catalog["smoke"]]
     selected = [{**entry, "selection": "group"} for entry in expandGroups(catalog, effectiveGroups)]
@@ -303,10 +305,14 @@ def select(catalog, paths, labels, requestedGroups, headSHA):
     return {
         "schemaVersion": 1,
         "headSHA": headSHA,
+        "automaticGroups": automaticGroups,
+        "recommendedGroups": recommendedGroups,
+        "requestedGroups": requestedGroups,
         "selectedGroups": effectiveGroups,
         "matrix": matrix,
         "reasons": reasons,
         "full": full,
+        "approvalRequired": bool(recommendedGroups),
         "fullReason": reason,
         "catalogRevision": catalogRevision(catalog),
     }
@@ -314,6 +320,13 @@ def select(catalog, paths, labels, requestedGroups, headSHA):
 
 def renderSummary(plan, changedPaths):
     groups = safeSummaryText(", ".join(plan["selectedGroups"]) or "smoke only")
+    recommended = safeSummaryText(", ".join(plan["recommendedGroups"]) or "none")
+    requested = safeSummaryText(", ".join(plan["requestedGroups"]) or "none")
+    automatic = (
+        f"full suite ({len(plan['matrix'])} runner jobs)"
+        if plan["full"]
+        else f"mandatory smoke ({len(mandatorySmoke)} runner jobs)"
+    )
     lines = [
         "## x86 E2E selection shadow report",
         "",
@@ -321,12 +334,24 @@ def renderSummary(plan, changedPaths):
         "",
         f"- HEAD: `{plan['headSHA']}`",
         f"- Full suite: `{'yes' if plan['full'] else 'no'}`",
+        f"- Automatic coverage: {safeSummaryText(automatic)}",
+        f"- Recommended deferred groups: {recommended}",
+        f"- Requested groups: {requested}",
+        f"- Approval required: `{'yes' if plan['approvalRequired'] else 'no'}`",
         f"- Selected groups: {groups}",
         f"- Proposed runner jobs: {len(plan['matrix'])}",
         f"- Changed paths: {len(changedPaths)}",
     ]
     if plan["fullReason"]:
         lines.append(f"- Full-suite reason: {safeSummaryText(plan['fullReason'])}")
+    if plan["approvalRequired"]:
+        commandGroups = safeSummaryText(",".join(plan["recommendedGroups"]))
+        lines.extend(
+            [
+                "- Waiting for: `/test e2e`",
+                f"- Alternative: `/test e2e {commandGroups}`",
+            ]
+        )
     if plan["reasons"]:
         lines.extend(["", "### Selection reasons", ""])
         for reason in plan["reasons"]:
@@ -351,10 +376,14 @@ def fallbackPlan(headSHA, error, workflow, source):
     return {
         "schemaVersion": 1,
         "headSHA": headSHA,
+        "automaticGroups": [],
+        "recommendedGroups": [],
+        "requestedGroups": [],
         "selectedGroups": [],
         "matrix": matrix,
         "reasons": [{"source": source, "groups": [], "reason": reason}],
         "full": True,
+        "approvalRequired": False,
         "fullReason": reason,
         "catalogRevision": "",
     }

@@ -100,6 +100,10 @@ class E2ESelectorTest(unittest.TestCase):
             plan["selectedGroups"],
             ["multi-cni", "nat-egress", "policy"],
         )
+        self.assertEqual(plan["automaticGroups"], [])
+        self.assertEqual(plan["recommendedGroups"], ["multi-cni", "policy"])
+        self.assertEqual(plan["requestedGroups"], ["nat-egress"])
+        self.assertTrue(plan["approvalRequired"])
         self.assertEqual(len(plan["matrix"]), 3 + 6 + 5 + 15)
         self.assertTrue(any(reason["source"] == "path" for reason in plan["reasons"]))
         self.assertTrue(any(reason["source"] == "label" for reason in plan["reasons"]))
@@ -130,6 +134,9 @@ class E2ESelectorTest(unittest.TestCase):
 
         self.assertTrue(plan["full"])
         self.assertIn("shared path", plan["fullReason"])
+        self.assertEqual(plan["automaticGroups"], sorted(self.catalog["groups"]))
+        self.assertEqual(plan["recommendedGroups"], [])
+        self.assertFalse(plan["approvalRequired"])
 
     def testControllerPathPromotesToFull(self):
         for path in [
@@ -207,6 +214,23 @@ class E2ESelectorTest(unittest.TestCase):
                 if len(expectedGroups) >= self.catalog["fullThreshold"]:
                     self.assertTrue(plan["full"])
 
+    def testInfrastructureWorkflowScriptsPromoteToFull(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        scripts = {
+            script
+            for jobId in e2eSelector.infrastructureJobs
+            for script in re.findall(r"(?:\./)?(hack/[a-z0-9_./-]+\.sh)", blocks.get(jobId, ""))
+            if (repoRoot / script).is_file()
+        }
+        self.assertIn("hack/go-list.sh", scripts)
+
+        for script in scripts:
+            with self.subTest(script=script):
+                plan = self.select([script])
+                self.assertTrue(plan["full"])
+                self.assertEqual(len(plan["matrix"]), 81)
+
     def testForceFullLabelPromotesToFull(self):
         plan = self.select(["docs/design.md"], labels=["e2e:full"])
 
@@ -279,6 +303,16 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertNotIn("](", summary)
         self.assertNotIn("`code`", summary)
         self.assertIn("&#60;details&#62; &#35;&#35; injected&#46;go", summary)
+
+    def testSummaryShowsAutomaticAndDeferredCoverage(self):
+        plan = self.select(["test/e2e/cnp-domain/e2e_test.go"])
+
+        summary = e2eSelector.renderSummary(plan, ["test/e2e/cnp-domain/e2e_test.go"])
+        self.assertIn("Automatic coverage: mandatory smoke &#40;3 runner jobs&#41;", summary)
+        self.assertIn("Recommended deferred groups: policy", summary)
+        self.assertIn("Approval required: `yes`", summary)
+        self.assertIn("Waiting for: `/test e2e`", summary)
+        self.assertIn("Alternative: `/test e2e policy`", summary)
 
     def testCatalogFailureEmitsFullFallbackPlan(self):
         with tempfile.TemporaryDirectory() as directory:

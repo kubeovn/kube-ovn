@@ -22,6 +22,7 @@
     "dist/images/**",
     "charts/**",
     "hack/gen-crd.sh",
+    "hack/go-list.sh",
     "hack/update-codegen.sh",
     "hack/mockgen.sh",
     "hack/modelgen.sh",
