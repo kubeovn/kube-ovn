@@ -38,7 +38,11 @@ def validateCatalog(catalog):
     for name, group in groups.items():
         if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
             raise ValueError(f"invalid group name {name!r}")
-        for job in group.get("jobs", []):
+        if not isinstance(group, dict) or not isinstance(group.get("jobs"), list):
+            raise ValueError(f"catalog group {name!r} must define a jobs array")
+        for job in group["jobs"]:
+            if not isinstance(job, dict):
+                raise ValueError(f"catalog group {name!r} contains an invalid job")
             jobId = job.get("id")
             if not jobId or jobId in knownJobs:
                 raise ValueError(f"missing or duplicate job id {jobId!r}")
@@ -375,7 +379,7 @@ def main():
     paths = readPaths(args.pathsFile)
     try:
         catalog = loadCatalog(args.catalog)
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+    except Exception as error:
         workflow = Path(args.workflow).read_text(encoding="utf-8")
         plan = fallbackPlan(args.headSHA, error, workflow)
     else:

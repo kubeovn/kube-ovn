@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "hack"))
+repoRoot = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(repoRoot / "hack"))
 
 import e2e_selector as e2eSelector
 
@@ -16,7 +16,7 @@ import e2e_selector as e2eSelector
 class E2ESelectorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.catalog = e2eSelector.loadCatalog(ROOT / ".github/e2e-selection.json")
+        cls.catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
 
     def select(self, paths, labels=(), requestedGroups=()):
         return e2eSelector.select(
@@ -28,11 +28,11 @@ class E2ESelectorTest(unittest.TestCase):
         )
 
     def testCatalogCoversCurrentX86TestJobs(self):
-        workflow = (ROOT / ".github/workflows/build-x86-image.yaml").read_text()
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         e2eSelector.validateWorkflow(self.catalog, workflow)
 
     def testCatalogRejectsSameSizeWorkflowMatrixDrift(self):
-        workflow = (ROOT / ".github/workflows/build-x86-image.yaml").read_text()
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         drifted = workflow.replace(
             """        ip-family:
           - ipv4
@@ -121,7 +121,7 @@ class E2ESelectorTest(unittest.TestCase):
             result = subprocess.run(
                 [
                     sys.executable,
-                    str(ROOT / "hack/e2e_selector.py"),
+                    str(repoRoot / "hack/e2e_selector.py"),
                     "--paths-file",
                     str(paths),
                     "--request-group",
@@ -131,7 +131,7 @@ class E2ESelectorTest(unittest.TestCase):
                     "--plan-file",
                     str(directory / "plan.json"),
                 ],
-                cwd=ROOT,
+                cwd=repoRoot,
                 capture_output=True,
                 text=True,
             )
@@ -148,7 +148,7 @@ class E2ESelectorTest(unittest.TestCase):
         json.dumps(plan)
 
     def testNulDelimitedPathsPreserveNewlines(self):
-        pathFile = ROOT / "e2e-selector-paths.test"
+        pathFile = repoRoot / "e2e-selector-paths.test"
         try:
             pathFile.write_bytes(b"docs/normal.md\0test/e2e/cnp-domain/file\nname.go\0")
             self.assertEqual(
@@ -179,11 +179,14 @@ class E2ESelectorTest(unittest.TestCase):
             malformed.write_text("{")
             incompatible = directory / "incompatible.json"
             incompatible.write_text('{"schemaVersion": 999}')
+            invalidStructure = directory / "invalid-structure.json"
+            invalidStructure.write_text('{"schemaVersion": 1, "groups": {"core": null}}')
 
             for name, catalog in {
                 "missing": directory / "missing.json",
                 "malformed": malformed,
                 "incompatible": incompatible,
+                "invalid-structure": invalidStructure,
             }.items():
                 with self.subTest(name=name):
                     plan = directory / f"{name}-plan.json"
@@ -191,7 +194,7 @@ class E2ESelectorTest(unittest.TestCase):
                     subprocess.run(
                         [
                             sys.executable,
-                            str(ROOT / "hack/e2e_selector.py"),
+                            str(repoRoot / "hack/e2e_selector.py"),
                             "--catalog",
                             str(catalog),
                             "--paths-file",
@@ -203,7 +206,7 @@ class E2ESelectorTest(unittest.TestCase):
                             "--summary-file",
                             str(summary),
                         ],
-                        cwd=ROOT,
+                        cwd=repoRoot,
                         check=True,
                     )
 
