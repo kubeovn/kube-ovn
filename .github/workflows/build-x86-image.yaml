@@ -37,6 +37,48 @@ env:
   TALOS_VERSION: v1.13.8
 
 jobs:
+  e2e-selection-shadow:
+    name: x86 E2E Selection (Shadow)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Collect changed paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git diff --name-only --diff-filter=ACDMRT -z "$BASE_SHA...$HEAD_SHA" > changed-paths.txt
+
+      - name: Validate the E2E selection catalog
+        run: python3 -m unittest hack/test_e2e_selector.py
+
+      - name: Compute the shadow selection plan
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 hack/e2e_selector.py \
+            --paths-file changed-paths.txt \
+            --event-file "$GITHUB_EVENT_PATH" \
+            --head-sha "$HEAD_SHA" \
+            --plan-file e2e-selection-plan.json \
+            --summary-file e2e-selection-summary.md
+          cat e2e-selection-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the shadow selection plan
+        uses: actions/upload-artifact@v7
+        with:
+          name: x86-e2e-selection-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: |
+            changed-paths.txt
+            e2e-selection-plan.json
+            e2e-selection-summary.md
+          retention-days: 30
+
   build-kube-ovn-base:
     name: Build kube-ovn-base
     runs-on: ubuntu-24.04
