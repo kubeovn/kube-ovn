@@ -47,7 +47,7 @@ require (
 	github.com/ti-mo/conntrack v0.6.0
 	github.com/ti-mo/netfilter v0.5.3
 	github.com/vishvananda/netlink v1.3.2-0.20260402033159-af2a3ea580ab
-	go.podman.io/image/v5 v5.41.0
+	go.podman.io/image/v5 v5.41.1
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
 	go.universe.tf/metallb v0.16.1
