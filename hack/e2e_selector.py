@@ -20,6 +20,7 @@ infrastructureJobs = {
     "e2e-selection-shadow",
     "push",
 }
+expectedX86RunnerJobs = 81
 
 
 def loadCatalog(path):
@@ -117,6 +118,13 @@ def workflowJobMatrix(jobId, block):
     matrix = {}
     currentKey = None
     for line in matrixLines:
+        match = re.fullmatch(r"        ([a-z0-9-]+): \[(.*)\]", line)
+        if match:
+            currentKey = None
+            matrix[match.group(1)] = [
+                yamlScalar(value) for value in match.group(2).split(",") if value.strip()
+            ]
+            continue
         match = re.fullmatch(r"        ([a-z0-9-]+):", line)
         if match:
             currentKey = match.group(1)
@@ -315,8 +323,8 @@ def renderSummary(plan, changedPaths):
     return "\n".join(lines) + "\n"
 
 
-def fallbackPlan(headSHA, error, workflow):
-    reason = f"catalog error requires the full suite: {error}"
+def fallbackPlan(headSHA, error, workflow, source):
+    reason = f"{source} error requires the full suite: {error}"
     blocks = workflowJobBlocks(workflow)
     jobs = workflowTestJobs(workflow)
     matrix = [
@@ -324,12 +332,18 @@ def fallbackPlan(headSHA, error, workflow):
         for jobId in sorted(jobs)
         for entry in workflowJobMatrix(jobId, blocks[jobId])
     ]
+    identities = {matrixIdentity(entry) for entry in matrix}
+    if len(matrix) != expectedX86RunnerJobs or len(identities) != len(matrix):
+        raise ValueError(
+            "workflow fallback matrix must contain exactly "
+            f"{expectedX86RunnerJobs} unique x86 E2E runner jobs"
+        )
     return {
         "schemaVersion": 1,
         "headSHA": headSHA,
         "selectedGroups": [],
         "matrix": matrix,
-        "reasons": [{"source": "catalog", "groups": [], "reason": reason}],
+        "reasons": [{"source": source, "groups": [], "reason": reason}],
         "full": True,
         "fullReason": reason,
         "catalogRevision": "",
@@ -382,10 +396,14 @@ def main():
         catalog = loadCatalog(args.catalog)
     except Exception as error:
         workflow = Path(args.workflow).read_text(encoding="utf-8")
-        plan = fallbackPlan(args.headSHA, error, workflow)
+        plan = fallbackPlan(args.headSHA, error, workflow, "catalog")
     else:
         labels = args.label + eventLabels(args.eventFile)
-        plan = select(catalog, paths, labels, args.requestGroup, args.headSHA)
+        try:
+            plan = select(catalog, paths, labels, args.requestGroup, args.headSHA)
+        except ValueError as error:
+            workflow = Path(args.workflow).read_text(encoding="utf-8")
+            plan = fallbackPlan(args.headSHA, error, workflow, "selection")
     Path(args.planFile).write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
     if args.summaryFile:
         Path(args.summaryFile).write_text(renderSummary(plan, paths), encoding="utf-8")

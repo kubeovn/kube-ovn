@@ -31,6 +31,9 @@
     "pkg/ovs/**",
     "pkg/ovsdb/**",
     "pkg/util/**",
+    "test/e2e/framework/**",
+    "test/e2e/kubevirt/**",
+    "test/e2e/single-replica/**",
     "cmd/cni/**",
     "cmd/controller/**",
     "cmd/daemon/**",
@@ -41,7 +44,7 @@
   ],
   "pathRules": [
     {
-      "patterns": ["test/e2e/kube-ovn/**", "test/e2e/k8s-network/**"],
+      "patterns": ["test/e2e/kube-ovn/**", "test/e2e/k8s-network/**", "test/e2e/connectivity/**", "test/e2e/vip/**"],
       "groups": ["core"],
       "owner": "networking-e2e",
       "reason": "core Kube-OVN and Kubernetes networking suites"
@@ -83,13 +86,13 @@
       "reason": "chart and platform installation coverage"
     },
     {
-      "patterns": ["test/e2e/ha/**", "hack/kamaji-e2e.sh", "hack/kamaji-e2e-test.sh"],
+      "patterns": ["test/e2e/ha/**", "test/e2e/kamaji/**", "hack/kamaji-e2e.sh", "hack/kamaji-e2e-test.sh"],
       "groups": ["ha-hosted"],
       "owner": "networking-e2e",
       "reason": "high availability and hosted control plane suites"
     },
     {
-      "patterns": ["test/e2e/kube-ovn-ic/**", "test/e2e/submariner/**"],
+      "patterns": ["test/e2e/ovn-ic/**", "test/e2e/submariner/**"],
       "groups": ["multi-cluster"],
       "owner": "networking-e2e",
       "reason": "interconnection and multi-cluster suites"
@@ -113,7 +116,7 @@
       "reason": "NAT and egress gateway reconciliation"
     },
     {
-      "patterns": ["test/e2e/webhook/**", "test/e2e/ipsec/**"],
+      "patterns": ["test/e2e/webhook/**", "test/e2e/ipsec/**", "test/e2e/security/**"],
       "groups": ["security-webhook"],
       "owner": "networking-e2e",
       "reason": "webhook and encrypted transport suites"

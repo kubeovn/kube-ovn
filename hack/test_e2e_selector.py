@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -130,31 +131,36 @@ class E2ESelectorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown requested group"):
             self.select(["docs/design.md"], requestedGroups=["not-a-group"])
 
-    def testInvalidRequestedGroupFailsThroughCLI(self):
+    def testInvalidStructuredInputFallsBackToFullThroughCLI(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             paths = directory / "paths"
             paths.write_bytes(b"docs/design.md\0")
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(repoRoot / "hack/e2e_selector.py"),
-                    "--paths-file",
-                    str(paths),
-                    "--request-group",
-                    "not-a-group",
-                    "--head-sha",
-                    "0123456789abcdef",
-                    "--plan-file",
-                    str(directory / "plan.json"),
-                ],
-                cwd=repoRoot,
-                capture_output=True,
-                text=True,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("unknown requested group", result.stderr)
+            for name, option in {
+                "request": ("--request-group", "not-a-group"),
+                "label": ("--label", "e2e:polcy"),
+            }.items():
+                with self.subTest(name=name):
+                    plan = directory / f"{name}-plan.json"
+                    subprocess.run(
+                        [
+                            sys.executable,
+                            str(repoRoot / "hack/e2e_selector.py"),
+                            "--paths-file",
+                            str(paths),
+                            *option,
+                            "--head-sha",
+                            "0123456789abcdef",
+                            "--plan-file",
+                            str(plan),
+                        ],
+                        cwd=repoRoot,
+                        check=True,
+                    )
+                    result = json.loads(plan.read_text())
+                    self.assertTrue(result["full"])
+                    self.assertEqual(len(result["matrix"]), 81)
+                    self.assertIn("selection error", result["fullReason"])
 
     def testPlanIsJsonSerializableAndBoundToHead(self):
         plan = self.select(["test/e2e/ipsec/e2e_test.go"])
@@ -234,6 +240,28 @@ class E2ESelectorTest(unittest.TestCase):
                     self.assertIn("catalog error", result["fullReason"])
                     self.assertIn("Full suite: `yes`", summary.read_text())
 
+    def testCatalogFailureFallbackAcceptsInlineWorkflowMatrix(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        inlineWorkflow = workflow.replace(
+            """        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+        mode:""",
+            """        ip-family: [ipv4, ipv6, dual]
+        mode:""",
+            1,
+        )
+        self.assertNotEqual(workflow, inlineWorkflow)
+
+        plan = e2eSelector.fallbackPlan(
+            "0123456789abcdef",
+            "missing catalog",
+            inlineWorkflow,
+            "catalog",
+        )
+        self.assertEqual(len(plan["matrix"]), 81)
+
     def testEveryPathMappingHasARegressionCase(self):
         cases = [
             ("test/e2e/kube-ovn/subnet/subnet.go", "core"),
@@ -244,7 +272,7 @@ class E2ESelectorTest(unittest.TestCase):
             ("pkg/controller/service.go", "service-lb-underlay"),
             ("charts/kube-ovn/Chart.yaml", "install-platform"),
             ("test/e2e/ha/e2e_test.go", "ha-hosted"),
-            ("test/e2e/kube-ovn-ic/e2e_test.go", "multi-cluster"),
+            ("test/e2e/ovn-ic/e2e_test.go", "multi-cluster"),
             ("pkg/controller/ovn_ic_controller.go", "multi-cluster"),
             ("test/e2e/vpc-egress-gateway/e2e_test.go", "nat-egress"),
             ("pkg/controller/vpc_egress_gateway.go", "nat-egress"),
@@ -263,6 +291,28 @@ class E2ESelectorTest(unittest.TestCase):
                     for group in reason["groups"]
                 }
                 self.assertIn(expectedGroup, mappedGroups)
+
+    def testEveryBuiltE2ESourceIsClassified(self):
+        makefile = (repoRoot / "makefiles/e2e.mk").read_text()
+        sourceDirectories = sorted(
+            set(re.findall(r"\./test/e2e/([a-z0-9-]+)", makefile))
+        )
+        self.assertTrue(sourceDirectories)
+
+        for directory in sourceDirectories:
+            path = f"test/e2e/{directory}/e2e_test.go"
+            with self.subTest(path=path):
+                plan = self.select([path])
+                self.assertTrue(
+                    plan["full"] or plan["selectedGroups"],
+                    f"{path} silently selected smoke only",
+                )
+
+    def testSharedE2EFrameworkPromotesToFull(self):
+        plan = self.select(["test/e2e/framework/pod.go"])
+
+        self.assertTrue(plan["full"])
+        self.assertEqual(len(plan["matrix"]), 81)
 
 
 if __name__ == "__main__":
