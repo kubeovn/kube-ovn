@@ -147,6 +147,7 @@ class E2ESelectorTest(unittest.TestCase):
 
     def testInstallationBuildAndCodegenPathsPromoteToFull(self):
         for path in [
+            "VERSION",
             "charts/kube-ovn/Chart.yaml",
             "charts/kube-ovn-v2/Chart.yaml",
             "makefiles/ut.mk",
@@ -158,6 +159,53 @@ class E2ESelectorTest(unittest.TestCase):
                 self.assertTrue(plan["full"])
                 self.assertEqual(len(plan["matrix"]), 81)
                 self.assertIn("shared path", plan["fullReason"])
+
+    def testSharedE2ESourcesSelectEveryExecutingGroup(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        makefile = (repoRoot / "makefiles/e2e.mk").read_text()
+        targetMatches = list(
+            re.finditer(r"^([a-z0-9][a-z0-9-]+):[^\n]*\n", makefile, re.MULTILINE)
+        )
+        targetBodies = {
+            match.group(1): makefile[
+                match.end() : targetMatches[index + 1].start()
+                if index + 1 < len(targetMatches)
+                else None
+            ]
+            for index, match in enumerate(targetMatches)
+        }
+        workflowBlocks = e2eSelector.workflowJobBlocks(workflow)
+        expectedGroupsByDirectory = {}
+        for groupName, group in self.catalog["groups"].items():
+            for job in group["jobs"]:
+                targets = set(re.findall(r"\bmake\s+([a-z0-9][a-z0-9-]+)", workflowBlocks[job["id"]]))
+                directories = {
+                    directory
+                    for target in targets
+                    for directory in re.findall(
+                        r"\./test/e2e/([a-z0-9-]+)", targetBodies.get(target, "")
+                    )
+                }
+                for directory in directories:
+                    expectedGroupsByDirectory.setdefault(directory, set()).add(groupName)
+
+        self.assertGreater(len(expectedGroupsByDirectory), 10)
+        for directory, expectedGroups in expectedGroupsByDirectory.items():
+            path = f"test/e2e/{directory}/e2e_test.go"
+            with self.subTest(path=path):
+                plan = self.select([path])
+                mappedGroups = {
+                    group
+                    for reason in plan["reasons"]
+                    if reason["source"] == "path"
+                    for group in reason["groups"]
+                }
+                if plan["full"]:
+                    self.assertTrue(expectedGroups)
+                else:
+                    self.assertEqual(mappedGroups, expectedGroups)
+                if len(expectedGroups) >= self.catalog["fullThreshold"]:
+                    self.assertTrue(plan["full"])
 
     def testForceFullLabelPromotesToFull(self):
         plan = self.select(["docs/design.md"], labels=["e2e:full"])
@@ -367,6 +415,8 @@ class E2ESelectorTest(unittest.TestCase):
     def testEveryPathMappingHasARegressionCase(self):
         cases = [
             ("test/e2e/kube-ovn/subnet/subnet.go", "core"),
+            ("test/e2e/k8s-network/e2e_test.go", "policy"),
+            ("test/e2e/connectivity/e2e_test.go", "core"),
             ("test/e2e/cnp-domain/e2e_test.go", "policy"),
             ("pkg/controller/network_policy.go", "policy"),
             ("test/e2e/multus/e2e_test.go", "multi-cni"),
@@ -379,6 +429,7 @@ class E2ESelectorTest(unittest.TestCase):
             ("test/e2e/vpc-egress-gateway/e2e_test.go", "nat-egress"),
             ("pkg/controller/vpc_egress_gateway.go", "nat-egress"),
             ("test/e2e/webhook/e2e_test.go", "security-webhook"),
+            ("test/e2e/security/e2e_test.go", "ha-hosted"),
             ("pkg/webhook/webhook.go", "security-webhook"),
         ]
         self.assertEqual(len(cases), len(self.catalog["pathRules"]))

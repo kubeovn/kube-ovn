@@ -15,6 +15,7 @@
     "hack/e2e_selector.py",
     "hack/test_e2e_selector.py",
     "Makefile",
+    "VERSION",
     "makefiles/**",
     "go.mod",
     "go.sum",
@@ -46,10 +47,22 @@
   ],
   "pathRules": [
     {
-      "patterns": ["test/e2e/kube-ovn/**", "test/e2e/k8s-network/**", "test/e2e/connectivity/**", "test/e2e/vip/**"],
+      "patterns": ["test/e2e/kube-ovn/**"],
+      "groups": ["core", "service-lb-underlay"],
+      "owner": "networking-e2e",
+      "reason": "Kube-OVN conformance and router load balancer suites"
+    },
+    {
+      "patterns": ["test/e2e/k8s-network/**"],
+      "groups": ["core", "policy", "multi-cni"],
+      "owner": "networking-e2e",
+      "reason": "shared Kubernetes networking suite used by conformance, policy, and Cilium chaining jobs"
+    },
+    {
+      "patterns": ["test/e2e/connectivity/**"],
       "groups": ["core"],
       "owner": "networking-e2e",
-      "reason": "core Kube-OVN and Kubernetes networking suites"
+      "reason": "core Kube-OVN connectivity suite"
     },
     {
       "patterns": ["test/e2e/cnp-domain/**", "test/e2e/anp-domain/**", "test/cnp/**", "test/anp/**", "test/e2e/cyclonus.yaml"],
@@ -106,7 +119,7 @@
       "reason": "OVN interconnection reconciliation"
     },
     {
-      "patterns": ["test/e2e/vpc-egress-gateway/**", "test/e2e/iptables-vpc-nat-gw/**", "test/e2e/ovn-vpc-nat-gw/**", "test/e2e/iptables-eip-qos/**"],
+      "patterns": ["test/e2e/vpc-egress-gateway/**", "test/e2e/iptables-vpc-nat-gw/**", "test/e2e/ovn-vpc-nat-gw/**", "test/e2e/iptables-eip-qos/**", "test/e2e/vip/**"],
       "groups": ["nat-egress"],
       "owner": "networking-e2e",
       "reason": "NAT and egress gateway suites"
@@ -118,10 +131,16 @@
       "reason": "NAT and egress gateway reconciliation"
     },
     {
-      "patterns": ["test/e2e/webhook/**", "test/e2e/ipsec/**", "test/e2e/security/**"],
+      "patterns": ["test/e2e/webhook/**", "test/e2e/ipsec/**"],
       "groups": ["security-webhook"],
       "owner": "networking-e2e",
       "reason": "webhook and encrypted transport suites"
+    },
+    {
+      "patterns": ["test/e2e/security/**"],
+      "groups": ["ha-hosted"],
+      "owner": "networking-e2e",
+      "reason": "security suite executed by the high availability job"
     },
     {
       "patterns": ["pkg/webhook/**", "cmd/webhook/**", "pkg/controller/ipsec*.go"],
