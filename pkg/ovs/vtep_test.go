@@ -47,7 +47,8 @@ func (suite *OvnClientTestSuite) testEnsureVtepBinding() {
 
 	portUUID := ovsclient.NamedUUID()
 	psUUID := ovsclient.NamedUUID()
-	ops, err := vtepClient.Create(&vtep.PhysicalPort{
+	globalUUID := ovsclient.NamedUUID()
+	portOps, err := vtepClient.Create(&vtep.PhysicalPort{
 		UUID: portUUID,
 		Name: portName,
 	})
@@ -58,7 +59,15 @@ func (suite *OvnClientTestSuite) testEnsureVtepBinding() {
 		Ports: []string{portUUID},
 	})
 	require.NoError(t, err)
-	ops = append(ops, psOps...)
+	// Physical_Switch / Physical_Port are not root tables; they must be
+	// referenced from Global.switches or OVSDB garbage-collects them.
+	globalOps, err := vtepClient.Create(&vtep.Global{
+		UUID:     globalUUID,
+		Switches: []string{psUUID},
+	})
+	require.NoError(t, err)
+	ops := append(portOps, psOps...)
+	ops = append(ops, globalOps...)
 	require.NoError(t, vtepClient.Transact("vtep-fixture", ops))
 
 	err = vtepClient.EnsureVtepBinding(psName, portName, lsName, bindingName, vlanID)
@@ -96,19 +105,43 @@ func (suite *OvnClientTestSuite) testGetPortBindingByLogicalPort() {
 	sbClient := suite.ovnSBClient
 	logicalPort := "vtep.test-port-binding"
 
+	encapUUID := ovsclient.NamedUUID()
 	chassisUUID := ovsclient.NamedUUID()
+	datapathUUID := ovsclient.NamedUUID()
 	pbUUID := ovsclient.NamedUUID()
 	up := true
-	ops, err := sbClient.Create(&ovnsb.PortBinding{
+
+	encapOps, err := sbClient.Create(&ovnsb.Encap{
+		UUID:        encapUUID,
+		Type:        ovnsb.EncapTypeVxlan,
+		IP:          "192.0.2.10",
+		ChassisName: "vtep-chassis-ut",
+	})
+	require.NoError(t, err)
+	chassisOps, err := sbClient.Create(&ovnsb.Chassis{
+		UUID:   chassisUUID,
+		Name:   "vtep-chassis-ut",
+		Encaps: []string{encapUUID},
+	})
+	require.NoError(t, err)
+	datapathOps, err := sbClient.Create(&ovnsb.DatapathBinding{
+		UUID:      datapathUUID,
+		TunnelKey: 42,
+	})
+	require.NoError(t, err)
+	pbOps, err := sbClient.Create(&ovnsb.PortBinding{
 		UUID:        pbUUID,
 		LogicalPort: logicalPort,
-		Datapath:    ovsclient.NamedUUID(),
+		Datapath:    datapathUUID,
 		TunnelKey:   1,
 		Chassis:     &chassisUUID,
 		Up:          &up,
 		Type:        "vtep",
 	})
 	require.NoError(t, err)
+	ops := append(encapOps, chassisOps...)
+	ops = append(ops, datapathOps...)
+	ops = append(ops, pbOps...)
 	require.NoError(t, sbClient.Transact("pb-add", ops))
 
 	pb, err := sbClient.GetPortBindingByLogicalPort(logicalPort, false)
