@@ -181,3 +181,133 @@ func TestExtractVlanIDFromInterface(t *testing.T) {
 		})
 	}
 }
+
+func TestVlanInternalPortName(t *testing.T) {
+	tests := []struct {
+		name       string
+		bridgeName string
+		vlanID     int
+		want       string
+	}{
+		{
+			name:       "preserves compatible name",
+			bridgeName: "br-eth0",
+			vlanID:     10,
+			want:       "br-eth0-vlan10",
+		},
+		{
+			name:       "shortens name exceeding Linux limit",
+			bridgeName: "br-underlay",
+			vlanID:     500,
+			want:       "kv500-l2bvmi7mc",
+		},
+		{
+			name:       "fits maximum VLAN ID",
+			bridgeName: "br-underlay",
+			vlanID:     4094,
+			want:       "kv4094-l2bvmi7m",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := VlanInternalPortName(tt.bridgeName, tt.vlanID)
+			if got != tt.want {
+				t.Fatalf("VlanInternalPortName() = %q, want %q", got, tt.want)
+			}
+			if len(got) > linuxInterfaceNameMaxLength {
+				t.Fatalf("VlanInternalPortName() length = %d, want at most %d", len(got), linuxInterfaceNameMaxLength)
+			}
+		})
+	}
+}
+
+func TestIsVlanInternalPort(t *testing.T) {
+	tests := []struct {
+		name     string
+		portName string
+		matched  bool
+		vlanID   int
+	}{
+		{
+			name:     "legacy name",
+			portName: "br-eth0-vlan10",
+			matched:  true,
+			vlanID:   10,
+		},
+		{
+			name:     "short name",
+			portName: "kv500-l2bvmi7mc",
+			matched:  true,
+			vlanID:   500,
+		},
+		{
+			name:     "invalid short name hash",
+			portName: "kv500-notbase3!",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matched, vlanID := IsVlanInternalPort(tt.portName)
+			if matched != tt.matched || vlanID != tt.vlanID {
+				t.Fatalf("IsVlanInternalPort() = (%t, %d), want (%t, %d)", matched, vlanID, tt.matched, tt.vlanID)
+			}
+		})
+	}
+}
+
+func TestIsVlanInternalPortForBridge(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		portName string
+		bridge   string
+		matched  bool
+		vlanID   int
+	}{
+		{
+			name:     "exchange link name legacy port",
+			portName: "enp16s0f0-vlan500",
+			bridge:   "enp16s0f0",
+			matched:  true,
+			vlanID:   500,
+		},
+		{
+			name:     "compact port",
+			portName: "kv500-l2bvmi7mc",
+			bridge:   "br-underlay",
+			matched:  true,
+			vlanID:   500,
+		},
+		{
+			name:     "compact priority-tag VLAN",
+			portName: VlanInternalPortName("br-underlay", 0),
+			bridge:   "br-underlay",
+			matched:  true,
+		},
+		{
+			name:     "compact maximum API VLAN",
+			portName: VlanInternalPortName("br-underlay", 4095),
+			bridge:   "br-underlay",
+			matched:  true,
+			vlanID:   4095,
+		},
+		{
+			name:     "different bridge legacy port",
+			portName: "enp16s0f0-vlan500",
+			bridge:   "enp17s0f0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			matched, vlanID := IsVlanInternalPortForBridge(tt.portName, tt.bridge)
+			if matched != tt.matched || vlanID != tt.vlanID {
+				t.Fatalf("IsVlanInternalPortForBridge() = (%t, %d), want (%t, %d)", matched, vlanID, tt.matched, tt.vlanID)
+			}
+		})
+	}
+}
