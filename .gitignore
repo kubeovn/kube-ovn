@@ -9,6 +9,7 @@ dist/images/kube-ovn-daemon
 dist/images/kube-ovn-controller
 dist/images/kube-ovn-pinger
 dist/images/kube-ovn-webhook
+dist/images/vpc-egress-gateway-observer
 dist/windows/kube-ovn.exe
 dist/windows/kube-ovn-daemon.exe
 ovnnb_db.*.backup
