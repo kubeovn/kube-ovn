@@ -76,6 +76,17 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertEqual(plan["selectedGroups"], [])
         self.assertEqual(len(plan["matrix"]), 3)
         self.assertEqual({entry["selection"] for entry in plan["matrix"]}, {"smoke"})
+        self.assertEqual(
+            [
+                {key: value for key, value in entry.items() if key != "selection"}
+                for entry in plan["matrix"]
+            ],
+            [
+                {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
+                {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "underlay"},
+                {"job": "k8s-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
+            ],
+        )
 
     def testPathsLabelsAndRequestsAreUnioned(self):
         plan = self.select(
@@ -108,7 +119,7 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertIn("matched 3 test groups", plan["fullReason"])
 
     def testUnknownProductionPathPromotesToFull(self):
-        plan = self.select(["pkg/controller/new_feature.go"])
+        plan = self.select(["pkg/new-component/new_feature.go"])
 
         self.assertTrue(plan["full"])
         self.assertEqual(len(plan["matrix"]), 81)
@@ -119,6 +130,20 @@ class E2ESelectorTest(unittest.TestCase):
 
         self.assertTrue(plan["full"])
         self.assertIn("shared path", plan["fullReason"])
+
+    def testControllerPathPromotesToFull(self):
+        for path in [
+            "pkg/controller/network_policy.go",
+            "pkg/controller/service.go",
+            "pkg/controller/ovn_ic_controller.go",
+            "pkg/controller/vpc_nat_gateway.go",
+            "pkg/controller/ipsec.go",
+        ]:
+            with self.subTest(path=path):
+                plan = self.select([path])
+                self.assertTrue(plan["full"])
+                self.assertEqual(len(plan["matrix"]), 81)
+                self.assertIn("shared path", plan["fullReason"])
 
     def testInstallationBuildAndCodegenPathsPromoteToFull(self):
         for path in [
@@ -218,12 +243,17 @@ class E2ESelectorTest(unittest.TestCase):
             incompatible.write_text('{"schemaVersion": 999}')
             invalidStructure = directory / "invalid-structure.json"
             invalidStructure.write_text('{"schemaVersion": 1, "groups": {"core": null}}')
+            noSmoke = directory / "no-smoke.json"
+            noSmoke.write_text(
+                json.dumps({**self.catalog, "smoke": []})
+            )
 
             for name, catalog in {
                 "missing": directory / "missing.json",
                 "malformed": malformed,
                 "incompatible": incompatible,
                 "invalid-structure": invalidStructure,
+                "no-smoke": noSmoke,
             }.items():
                 with self.subTest(name=name):
                     plan = directory / f"{name}-plan.json"
@@ -285,11 +315,17 @@ class E2ESelectorTest(unittest.TestCase):
             malformed.write_text("{")
             invalidLabel = directory / "invalid-label.json"
             invalidLabel.write_text('{"pull_request": {"labels": [{}]}}')
+            missingPullRequest = directory / "missing-pull-request.json"
+            missingPullRequest.write_text("{}")
+            missingLabels = directory / "missing-labels.json"
+            missingLabels.write_text('{"pull_request": {}}')
 
             for name, event in {
                 "missing": directory / "missing.json",
                 "malformed": malformed,
                 "invalid-label": invalidLabel,
+                "missing-pull-request": missingPullRequest,
+                "missing-labels": missingLabels,
             }.items():
                 with self.subTest(name=name):
                     plan = directory / f"{name}-plan.json"

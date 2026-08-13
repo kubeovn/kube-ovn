@@ -21,6 +21,11 @@ infrastructureJobs = {
     "push",
 }
 expectedX86RunnerJobs = 81
+mandatorySmoke = [
+    {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
+    {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "underlay"},
+    {"job": "k8s-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
+]
 
 
 def loadCatalog(path):
@@ -55,7 +60,10 @@ def validateCatalog(catalog):
         raise ValueError("catalog must define unique x86 E2E runner jobs")
     if len(expanded) != catalog.get("expectedRunnerJobs"):
         raise ValueError("catalog runner count does not match expectedRunnerJobs")
-    for smoke in catalog.get("smoke", []):
+    smokeEntries = catalog.get("smoke")
+    if smokeEntries != mandatorySmoke:
+        raise ValueError("catalog smoke must contain the mandatory three runner jobs")
+    for smoke in smokeEntries:
         if matrixIdentity(smoke) not in identities:
             raise ValueError(f"smoke entry is not present in the full matrix: {smoke}")
     for rule in catalog.get("pathRules", []):
@@ -367,7 +375,13 @@ def eventLabels(path):
         return []
     with Path(path).open(encoding="utf-8") as stream:
         event = json.load(stream)
-    return [label["name"] for label in event.get("pull_request", {}).get("labels", [])]
+    pullRequest = event.get("pull_request") if isinstance(event, dict) else None
+    labels = pullRequest.get("labels") if isinstance(pullRequest, dict) else None
+    if not isinstance(labels, list):
+        raise ValueError("event pull_request labels must be an array")
+    if any(not isinstance(label, dict) or not isinstance(label.get("name"), str) for label in labels):
+        raise ValueError("event labels must contain string names")
+    return [label["name"] for label in labels]
 
 
 def readPaths(path):

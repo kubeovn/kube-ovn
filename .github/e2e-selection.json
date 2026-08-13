@@ -26,6 +26,7 @@
     "hack/modelgen.sh",
     "pkg/apis/**",
     "pkg/client/**",
+    "pkg/controller/**",
     "pkg/informer/**",
     "pkg/daemon/**",
     "pkg/ipam/**",
