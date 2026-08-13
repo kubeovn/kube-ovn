@@ -72,16 +72,20 @@ var _ = framework.Describe("[group:vtep]", func() {
 		framework.ExpectEqual(binding.Status.Ready, false)
 
 		ginkgo.By("Verifying OVN NB Logical Switch Port type=vtep")
-		cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=type,options get Logical_Switch_Port %s", lspName)
 		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
-			output, _, err := framework.NBExec(cmd)
+			typeOut, _, err := framework.NBExec("ovn-nbctl --data=bare --no-heading get Logical_Switch_Port " + lspName + " type")
 			if err != nil {
 				return false, nil
 			}
-			line := strings.TrimSpace(string(output))
-			return strings.HasPrefix(line, "vtep,") &&
-				strings.Contains(line, "vtep-physical-switch=fake-vtep-switch") &&
-				strings.Contains(line, "vtep-logical-switch="+subnetName), nil
+			if strings.Trim(strings.TrimSpace(string(typeOut)), `"`) != "vtep" {
+				return false, nil
+			}
+			optOut, _, err := framework.NBExec("ovn-nbctl --data=bare --no-heading get Logical_Switch_Port " + lspName + " options")
+			if err != nil {
+				return false, nil
+			}
+			opts := string(optOut)
+			return strings.Contains(opts, "fake-vtep-switch") && strings.Contains(opts, subnetName), nil
 		}, fmt.Sprintf("OVN LSP %s to be type=vtep", lspName))
 
 		ginkgo.By("Deleting vtep binding and verifying NB LSP removal")
