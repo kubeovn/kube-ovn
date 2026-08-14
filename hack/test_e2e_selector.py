@@ -269,6 +269,33 @@ class E2ESelectorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown requested group"):
             self.select(["docs/design.md"], requestedGroups=["not-a-group"])
 
+    def testRequestedGroupsJsonFeedsTheCli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            paths = directory / "paths"
+            plan = directory / "plan.json"
+            paths.write_bytes(b"docs/design.md\0")
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(repoRoot / "hack/e2e_selector.py"),
+                    "--paths-file",
+                    str(paths),
+                    "--request-groups-json",
+                    '["policy", "multi-cni"]',
+                    "--head-sha",
+                    "0123456789abcdef",
+                    "--plan-file",
+                    str(plan),
+                ],
+                cwd=repoRoot,
+                check=True,
+            )
+
+            result = json.loads(plan.read_text())
+            self.assertEqual(result["requestedGroups"], ["multi-cni", "policy"])
+
     def testInvalidStructuredInputFallsBackToFullThroughCLI(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
@@ -318,6 +345,35 @@ class E2ESelectorTest(unittest.TestCase):
             )
         finally:
             pathFile.unlink(missing_ok=True)
+
+    def testRenameRecordsPreserveOldAndNewPaths(self):
+        paths = e2eSelector.changedPathsFromNameStatus(
+            b"R100\0pkg/controller/x.go\0docs/x.go\0"
+            b"R085\0.github/workflows/x.yml\0misc/x.yml\0"
+            b"R090\0test/e2e/k8s-network/e2e_test.go\0test/e2e/multus/e2e_test.go\0"
+        )
+
+        self.assertEqual(
+            paths,
+            [
+                "pkg/controller/x.go",
+                "docs/x.go",
+                ".github/workflows/x.yml",
+                "misc/x.yml",
+                "test/e2e/k8s-network/e2e_test.go",
+                "test/e2e/multus/e2e_test.go",
+            ],
+        )
+
+    def testNameStatusPreservesTabsAndNewlines(self):
+        paths = e2eSelector.changedPathsFromNameStatus(
+            b"M\0test/e2e/cnp-domain/file\nname.go\0A\0docs/tab\tname.md\0"
+        )
+
+        self.assertEqual(
+            paths,
+            ["test/e2e/cnp-domain/file\nname.go", "docs/tab\tname.md"],
+        )
 
     def testSummaryEscapesUntrustedPathText(self):
         path = "pkg/![loaded](https://example.invalid/pixel)`code`<details>\n## injected.go"
@@ -464,7 +520,12 @@ class E2ESelectorTest(unittest.TestCase):
 
         for path in [
             "/.github/e2e-selection.json",
+            "/.github/workflows/build-x86-image.yaml",
+            "/.github/workflows/x86-e2e-dispatcher.yaml",
+            "/.github/workflows/x86-e2e-gate.yaml",
+            "/hack/e2e_control.py",
             "/hack/e2e_selector.py",
+            "/hack/test_e2e_control.py",
             "/hack/test_e2e_selector.py",
         ]:
             with self.subTest(path=path):

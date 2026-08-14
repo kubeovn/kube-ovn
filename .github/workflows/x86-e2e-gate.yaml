@@ -1,0 +1,332 @@
+name: Update x86 E2E gate
+
+on:
+  workflow_run:
+    workflows: [Build x86 Image]
+    types: [requested, completed]
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: read
+
+concurrency:
+  group: x86-e2e-required-gate-mutations
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Evaluate x86-e2e / required-gate
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out trusted control logic
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Resolve executor metadata and current PR
+        id: context
+        env:
+          RUN_ACTION: ${{ github.event.action }}
+          RUN_ACTOR: ${{ github.event.workflow_run.actor.login }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_NAME: ${{ github.event.workflow_run.display_title }}
+          RUN_PATH: ${{ github.event.workflow_run.path }}
+          RUN_PULL_REQUESTS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+          RUN_WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$RUN_PATH" != '.github/workflows/build-x86-image.yaml' ]; then
+            echo 'workflow_run did not originate from the trusted executor path.' >&2
+            exit 1
+          fi
+          if [ "$RUN_EVENT" = workflow_dispatch ]; then
+            python3 - "$RUN_NAME" <<'PY' > executor-metadata.json
+          import json
+          import sys
+          import e2e_control as e2eControl
+
+          print(json.dumps(e2eControl.parseExecutorRunName(sys.argv[1])))
+          PY
+            prNumber=$(jq -r '.prNumber' executor-metadata.json)
+            expectedHead=$(jq -r '.headSHA' executor-metadata.json)
+            requestedGroups=$(jq -c '.requestedGroups' executor-metadata.json)
+            expectedCatalogRevision=$(jq -r '.catalogRevision' executor-metadata.json)
+            trustedRef="$RUN_WORKFLOW_SHA"
+            full=$(jq -r '.full' executor-metadata.json)
+            approved=true
+          else
+            printf '%s' "$RUN_PULL_REQUESTS" > run-pull-requests.json
+            prNumber=$(jq -r '.[0].number // empty' run-pull-requests.json)
+            expectedHead=$(jq -r '.[0].head.sha // empty' run-pull-requests.json)
+            trustedRef=$(jq -r '.[0].base.sha // empty' run-pull-requests.json)
+            requestedGroups='[]'
+            expectedCatalogRevision=''
+            full=false
+            approved=false
+            if [ -z "$prNumber" ] || [ -z "$expectedHead" ] || [ -z "$trustedRef" ]; then
+              echo 'The completed pull_request run is not associated with a pull request.' >&2
+              exit 1
+            fi
+          fi
+          if ! [[ "$trustedRef" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Trusted workflow revision is invalid.' >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$prNumber" > pull-request.json
+          currentHead=$(jq -r '.head.sha' pull-request.json)
+          baseRef=$(jq -r '.base.ref' pull-request.json)
+          state=$(jq -r '.state' pull-request.json)
+          if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            echo 'Pull request base branch is outside the supported trusted set.' >&2
+            exit 1
+          fi
+          if [ "$RUN_EVENT" = workflow_dispatch ] && {
+            [ "$RUN_ACTOR" != 'github-actions[bot]' ] || [ "$RUN_HEAD_BRANCH" != "$baseRef" ];
+          }; then
+            echo 'Executor dispatch did not originate from the trusted dispatcher and base branch.' >&2
+            exit 1
+          fi
+          if [ "$state" != open ]; then
+            echo 'Pull request is no longer open; no gate update is needed.'
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$RUN_EVENT" = workflow_dispatch ] || [ "$RUN_EVENT" = pull_request ]; then
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              > executor-run-pages.json
+            latestRun=$(python3 - "$prNumber" "$expectedHead" "$baseRef" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("executor-run-pages.json").read_text())
+          runs = [run for page in pages for run in page["workflow_runs"]]
+          latestRun = e2eControl.latestExecutorRun(
+              runs,
+              int(sys.argv[1]),
+              sys.argv[2],
+              sys.argv[3],
+          )
+          if latestRun is not None:
+              print(latestRun["id"])
+          PY
+            )
+            if [ -n "$latestRun" ] && [ "$latestRun" != "$RUN_ID" ]; then
+              echo 'A newer cumulative executor request supersedes this run.'
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$RUN_ACTION" = requested ]; then
+              runStatus=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.status')
+              if [ "$runStatus" = completed ]; then
+                echo 'The executor already completed; ignore the delayed requested event.'
+                echo 'skip=true' >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+          fi
+          {
+            echo 'skip=false'
+            echo "runAction=$RUN_ACTION"
+            echo "prNumber=$prNumber"
+            echo "expectedHead=$expectedHead"
+            echo "currentHead=$currentHead"
+            echo "baseRef=$baseRef"
+            echo "trustedRef=$trustedRef"
+            echo "expectedCatalogRevision=$expectedCatalogRevision"
+            echo "approved=$approved"
+            echo "full=$full"
+            echo "requestedGroups=$requestedGroups"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download the executed SelectionPlan
+        if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
+        id: executedPlan
+        env:
+          HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
+          PR_NUMBER: ${{ steps.context.outputs.prNumber }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          artifactName="x86-e2e-selection-$PR_NUMBER-$HEAD_SHA-$RUN_ID-$RUN_ATTEMPT"
+          artifactId=$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
+            --jq "[.[].artifacts[] | select(.name == \"$artifactName\" and .expired == false)][0].id // empty")
+          if [ -z "$artifactId" ]; then
+            echo 'found=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifactId/zip" > "$RUNNER_TEMP/executor-plan.zip"
+          unzip -p "$RUNNER_TEMP/executor-plan.zip" e2e-selection-plan.json \
+            > "$RUNNER_TEMP/executed-selection-plan.json"
+          echo 'found=true' >> "$GITHUB_OUTPUT"
+
+      - name: Check out the trusted target branch
+        if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.context.outputs.trustedRef }}
+          persist-credentials: false
+
+      - name: Recompute the trusted selection plan
+        if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
+        env:
+          PR_NUMBER: ${{ steps.context.outputs.prNumber }}
+          HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
+          REQUESTED_GROUPS: ${{ steps.context.outputs.requestedGroups }}
+          FULL: ${{ steps.context.outputs.full }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          pullRequest = json.loads(Path("pull-request.json").read_text())
+          pullRequest["labels"] = []
+          Path("selector-event.json").write_text(json.dumps({"pull_request": pullRequest}))
+          PY
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" > pull-request-files.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          pages = json.loads(Path("pull-request-files.json").read_text())
+          with Path("changed-paths.txt").open("wb") as stream:
+              for page in pages:
+                  for changedFile in page:
+                      for field in ("previous_filename", "filename"):
+                          if field in changedFile:
+                              stream.write(changedFile[field].encode() + b"\0")
+          PY
+          args=(
+            --paths-file changed-paths.txt
+            --event-file selector-event.json
+            --request-groups-json "$REQUESTED_GROUPS"
+            --head-sha "$HEAD_SHA"
+            --plan-file e2e-selection-plan.json
+          )
+          if [ "$FULL" = true ]; then
+            args+=(--label e2e:full)
+          fi
+          python3 hack/e2e_selector.py "${args[@]}"
+
+      - name: Evaluate the fixed gate
+        if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
+        id: gate
+        env:
+          APPROVED: ${{ steps.context.outputs.approved }}
+          CURRENT_HEAD: ${{ steps.context.outputs.currentHead }}
+          EXECUTED_PLAN_FILE: ${{ runner.temp }}/executed-selection-plan.json
+          EXECUTED_PLAN_FOUND: ${{ steps.executedPlan.outputs.found }}
+          EXPECTED_CATALOG_REVISION: ${{ steps.context.outputs.expectedCatalogRevision }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          plan = json.loads(Path("e2e-selection-plan.json").read_text())
+          executedPlan = None
+          if os.environ["EXECUTED_PLAN_FOUND"] == "true":
+              executedPlan = json.loads(Path(os.environ["EXECUTED_PLAN_FILE"]).read_text())
+          decision = e2eControl.evaluateGate(
+              plan,
+              os.environ["CURRENT_HEAD"],
+              os.environ["RUN_CONCLUSION"],
+              os.environ["APPROVED"] == "true",
+              os.environ["EXPECTED_CATALOG_REVISION"] or None,
+              executedPlan,
+          )
+          Path("gate-decision.json").write_text(json.dumps(decision, indent=2) + "\n")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
+              stream.write(f"update={'true' if decision['update'] else 'false'}\n")
+          PY
+
+      - name: Create or update the fixed gate check
+        if: >-
+          steps.context.outputs.skip != 'true' &&
+          (steps.context.outputs.runAction == 'requested' || steps.gate.outputs.update == 'true')
+        env:
+          BASE_REF: ${{ steps.context.outputs.baseRef }}
+          HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
+          PR_NUMBER: ${{ steps.context.outputs.prNumber }}
+          RUN_ACTION: ${{ steps.context.outputs.runAction }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+            > final-executor-run-pages.json
+          latestRun=$(python3 - "$PR_NUMBER" "$HEAD_SHA" "$BASE_REF" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("final-executor-run-pages.json").read_text())
+          runs = [run for page in pages for run in page["workflow_runs"]]
+          latestRun = e2eControl.latestExecutorRun(
+              runs,
+              int(sys.argv[1]),
+              sys.argv[2],
+              sys.argv[3],
+          )
+          if latestRun is not None:
+              print(latestRun["id"])
+          PY
+          )
+          if [ -n "$latestRun" ] && [ "$latestRun" != "$RUN_ID" ]; then
+            echo 'A newer cumulative executor request appeared before the gate update.'
+            exit 0
+          fi
+          if [ "$RUN_ACTION" = requested ]; then
+            status=in_progress
+            conclusion=''
+            summary='x86 E2E execution is in progress for the current HEAD.'
+          else
+            status=completed
+            conclusion=$(jq -r '.conclusion' gate-decision.json)
+            summary=$(jq -r '.summary' gate-decision.json)
+          fi
+          checkId=$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?check_name=x86-e2e%20%2F%20required-gate&per_page=100" \
+            --jq '[.check_runs[] | select(.name == "x86-e2e / required-gate")][0].id // empty')
+          jq -n \
+            --arg name 'x86-e2e / required-gate' \
+            --arg headSHA "$HEAD_SHA" \
+            --arg status "$status" \
+            --arg conclusion "$conclusion" \
+            --arg detailsURL "$RUN_URL" \
+            --arg externalId "x86-e2e-pr-$PR_NUMBER-$HEAD_SHA" \
+            --arg summary "$summary" \
+            '({name: $name, head_sha: $headSHA, status: $status,
+               details_url: $detailsURL, external_id: $externalId,
+               output: {title: "x86 E2E gate", summary: $summary}}
+              + if $status == "completed" then {conclusion: $conclusion} else {} end)' > check-run.json
+          if [ -n "$checkId" ]; then
+            jq 'del(.name, .head_sha)' check-run.json > check-run-update.json
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/check-runs/$checkId" \
+              --input check-run-update.json
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" \
+              --input check-run.json
+          fi

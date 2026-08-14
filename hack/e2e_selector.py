@@ -17,7 +17,8 @@ infrastructureJobs = {
     "build-vpc-nat-gateway",
     "build-e2e-binaries",
     "netpol-path-filter",
-    "e2e-selection-shadow",
+    "e2e-selection",
+    "e2e-executor-result",
     "push",
 }
 expectedX86RunnerJobs = 81
@@ -413,6 +414,30 @@ def eventLabels(path):
     return [label["name"] for label in labels]
 
 
+def changedPathsFromNameStatus(data):
+    if not data:
+        return []
+    if not data.endswith(b"\0"):
+        raise ValueError("git name-status output must be NUL terminated")
+    fields = data[:-1].split(b"\0")
+    paths = []
+    index = 0
+    while index < len(fields):
+        status = fields[index]
+        index += 1
+        if not re.fullmatch(rb"[ACDMRT](?:[0-9]+)?", status):
+            raise ValueError("invalid git name-status record")
+        pathCount = 2 if status.startswith((b"R", b"C")) else 1
+        if index + pathCount > len(fields):
+            raise ValueError("incomplete git name-status record")
+        paths.extend(
+            field.decode("utf-8", errors="surrogateescape")
+            for field in fields[index : index + pathCount]
+        )
+        index += pathCount
+    return paths
+
+
 def readPaths(path):
     data = Path(path).read_bytes()
     if b"\0" in data:
@@ -428,6 +453,7 @@ def parseArgs():
     parser.add_argument("--event-file", dest="eventFile")
     parser.add_argument("--label", action="append", default=[])
     parser.add_argument("--request-group", dest="requestGroup", action="append", default=[])
+    parser.add_argument("--request-groups-json", dest="requestGroupsJSON", default="[]")
     parser.add_argument("--head-sha", dest="headSHA", required=True)
     parser.add_argument("--plan-file", dest="planFile", required=True)
     parser.add_argument("--summary-file", dest="summaryFile")
@@ -452,7 +478,18 @@ def main():
     else:
         try:
             labels = args.label + eventLabels(args.eventFile)
-            plan = select(catalog, paths, labels, args.requestGroup, args.headSHA)
+            requestedGroups = json.loads(args.requestGroupsJSON)
+            if not isinstance(requestedGroups, list) or any(
+                not isinstance(group, str) for group in requestedGroups
+            ):
+                raise ValueError("request groups JSON must be an array of strings")
+            plan = select(
+                catalog,
+                paths,
+                labels,
+                args.requestGroup + requestedGroups,
+                args.headSHA,
+            )
         except Exception as error:
             workflow = Path(args.workflow).read_text(encoding="utf-8")
             plan = fallbackPlan(args.headSHA, error, workflow, "selection")

@@ -1,0 +1,239 @@
+name: Dispatch x86 E2E from PR comments
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: x86-e2e-dispatch-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Validate and dispatch x86 E2E
+    if: >-
+      github.event.issue.pull_request &&
+      (startsWith(github.event.comment.body, '/test e2e') ||
+       startsWith(github.event.comment.body, '/retest e2e-failed'))
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out the trusted default branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Validate command, permission, and current HEAD
+        id: decision
+        env:
+          COMMENTER: ${{ github.event.comment.user.login }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          permission=$(gh api \
+            "repos/$GITHUB_REPOSITORY/collaborators/$COMMENTER/permission" \
+            --jq '.permission' 2>/dev/null || printf 'none')
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
+          baseRef=$(jq -r '.base.ref' pull-request.json)
+          if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            echo 'Pull request base branch is outside the supported trusted set.' >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+            --jq '.content' | base64 --decode > trusted-catalog.json
+          confirmedHead=$(gh api \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+            --jq '.head.sha')
+          python3 hack/e2e_control.py dispatch \
+            --event-file "$GITHUB_EVENT_PATH" \
+            --catalog trusted-catalog.json \
+            --permission "$permission" \
+            --pull-request-file pull-request.json \
+            --confirmed-head-sha "$confirmedHead" \
+            --decision-file dispatch-decision.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          decision = json.loads(Path("dispatch-decision.json").read_text())
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
+              stream.write(f"recognized={'true' if decision is not None else 'false'}\n")
+              if decision is not None:
+                  stream.write(f"accepted={'true' if decision['accepted'] else 'false'}\n")
+                  stream.write(f"action={decision['action']}\n")
+          PY
+
+      - name: Reply with rejection reason
+        if: steps.decision.outputs.recognized == 'true' && steps.decision.outputs.accepted != 'true'
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          reason=$(jq -r '.reason' dispatch-decision.json)
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            -f body="x86 E2E request rejected: $reason."
+
+      - name: Prepare the approved cumulative request
+        if: steps.decision.outputs.accepted == 'true'
+        id: request
+        run: |
+          set -euo pipefail
+          prNumber=$(jq -r '.prNumber' dispatch-decision.json)
+          action=$(jq -r '.action' dispatch-decision.json)
+          if [ "$action" = dispatch ]; then
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments?per_page=100" > pull-request-comments.json
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          decision = json.loads(Path("dispatch-decision.json").read_text())
+          pages = json.loads(Path("pull-request-comments.json").read_text())
+          priorRequests = []
+          for page in pages:
+              for comment in page:
+                  user = comment.get("user", {})
+                  if user.get("login") != "github-actions[bot]" or user.get("type") != "Bot":
+                      continue
+                  marker = e2eControl.parseRequestMarker(comment.get("body", ""))
+                  if marker is not None:
+                      priorRequests.append(marker)
+          merged = e2eControl.mergeApprovedRequests(decision, priorRequests)
+          Path("dispatch-decision.json").write_text(json.dumps(merged, indent=2) + "\n")
+          Path("request-marker.txt").write_text(e2eControl.renderRequestMarker(merged))
+          PY
+          fi
+          headSHA=$(jq -r '.headSHA' dispatch-decision.json)
+          confirmedHead=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$prNumber" --jq '.head.sha')
+          if [ "$confirmedHead" != "$headSHA" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments" \
+              -f body='x86 E2E request became stale before dispatch; comment again on the current HEAD.'
+            exit 1
+          fi
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+            | jq '{workflow_runs: [.[].workflow_runs[]]}' > executor-runs.json
+          {
+            echo "action=$action"
+            echo "baseRef=$(jq -r '.baseRef' dispatch-decision.json)"
+            echo "catalogRevision=$(jq -r '.catalogRevision' dispatch-decision.json)"
+            echo "full=$(jq -r '.full' dispatch-decision.json)"
+            echo "headSHA=$headSHA"
+            echo "prNumber=$prNumber"
+            echo "requestKey=$(jq -r '.requestKey' dispatch-decision.json)"
+            echo "requestedGroupNames=$(jq -r '.requestedGroups | if length == 0 then "-" else join(",") end' dispatch-decision.json)"
+            echo "requestedGroups=$(jq -c '.requestedGroups' dispatch-decision.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cancel stale executor runs
+        if: steps.decision.outputs.accepted == 'true'
+        env:
+          HEAD_SHA: ${{ steps.request.outputs.headSHA }}
+          PR_NUMBER: ${{ steps.request.outputs.prNumber }}
+        run: |
+          python3 - "$PR_NUMBER" "$HEAD_SHA" <<'PY' > stale-runs.txt
+          import json
+          import sys
+          from pathlib import Path
+
+          prefix = f"x86-e2e pr={sys.argv[1]} "
+          currentHead = f"head={sys.argv[2]} "
+          runs = json.loads(Path("executor-runs.json").read_text())["workflow_runs"]
+          for run in runs:
+              title = run.get("display_title") or ""
+              if (
+                  title.startswith(prefix)
+                  and currentHead not in title
+                  and run.get("status") in {"queued", "in_progress"}
+              ):
+                  print(run["id"])
+          PY
+          while IFS= read -r runId; do
+            [ -n "$runId" ] || continue
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$runId/cancel"
+          done < stale-runs.txt
+
+      - name: Rerun the latest failed executor request
+        if: steps.request.outputs.action == 'rerun-failed'
+        env:
+          BASE_REF: ${{ steps.request.outputs.baseRef }}
+          HEAD_SHA: ${{ steps.request.outputs.headSHA }}
+          PR_NUMBER: ${{ steps.request.outputs.prNumber }}
+        run: |
+          runId=$(python3 - "$PR_NUMBER" "$HEAD_SHA" "$BASE_REF" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          runs = json.loads(Path("executor-runs.json").read_text())["workflow_runs"]
+          latestRun = e2eControl.latestExecutorRun(runs, int(sys.argv[1]), sys.argv[2], sys.argv[3])
+          if latestRun is not None and latestRun.get("conclusion") == "failure":
+              print(latestRun["id"])
+          PY
+          )
+          if [ -z "$runId" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body='No failed x86 E2E executor run exists for the current HEAD.'
+            exit 0
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$runId/rerun-failed-jobs"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            -f body="Rerunning failed x86 E2E jobs for current HEAD \`$HEAD_SHA\`."
+
+      - name: Dispatch the cumulative executor request
+        if: steps.request.outputs.action == 'dispatch'
+        env:
+          BASE_REF: ${{ steps.request.outputs.baseRef }}
+          CATALOG_REVISION: ${{ steps.request.outputs.catalogRevision }}
+          FULL: ${{ steps.request.outputs.full }}
+          HEAD_SHA: ${{ steps.request.outputs.headSHA }}
+          PR_NUMBER: ${{ steps.request.outputs.prNumber }}
+          REQUEST_KEY: ${{ steps.request.outputs.requestKey }}
+          REQUESTED_GROUP_NAMES: ${{ steps.request.outputs.requestedGroupNames }}
+          REQUESTED_GROUPS: ${{ steps.request.outputs.requestedGroups }}
+        run: |
+          duplicate=$(python3 - "$PR_NUMBER" "$HEAD_SHA" "$BASE_REF" "$REQUEST_KEY" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          runs = json.loads(Path("executor-runs.json").read_text())["workflow_runs"]
+          latestRun = e2eControl.latestExecutorRun(runs, int(sys.argv[1]), sys.argv[2], sys.argv[3])
+          if latestRun is not None:
+              metadata = e2eControl.parseExecutorRunName(latestRun["display_title"])
+              if metadata["requestKey"] == sys.argv[4]:
+                  print(latestRun["html_url"])
+          PY
+          )
+          if [ -n "$duplicate" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body="This x86 E2E request is already recorded: $duplicate"
+            exit 0
+          fi
+          gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/dispatches" \
+            -f ref="$BASE_REF" \
+            -F "inputs[prNumber]=$PR_NUMBER" \
+            -f "inputs[headSHA]=$HEAD_SHA" \
+            -f "inputs[requestedGroups]=$REQUESTED_GROUPS" \
+            -f "inputs[requestedGroupNames]=$REQUESTED_GROUP_NAMES" \
+            -F "inputs[full]=$FULL" \
+            -f "inputs[requestKey]=$REQUEST_KEY" \
+            -f "inputs[catalogRevision]=$CATALOG_REVISION"
+          marker=$(cat request-marker.txt)
+          body=$(printf "Accepted x86 E2E request for current HEAD %s: groups=%s, full=%s.\n\n%s" \
+            "$HEAD_SHA" "$REQUESTED_GROUP_NAMES" "$FULL" "$marker")
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body"

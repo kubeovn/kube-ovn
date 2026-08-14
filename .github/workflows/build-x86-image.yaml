@@ -1,5 +1,7 @@
 name: Build x86 Image
 
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('x86-e2e pr={0} head={1} request={2} catalog={3} groups={4} full={5}', inputs.prNumber, inputs.headSHA, inputs.requestKey, inputs.catalogRevision, inputs.requestedGroupNames, inputs.full && '1' || '0') || '' }}
+
 permissions:
   contents: read
   packages: read
@@ -19,9 +21,42 @@ on:
     paths-ignore:
     - 'docs/**'
     - '**.md'
+  workflow_dispatch:
+    inputs:
+      prNumber:
+        description: Open pull request number
+        required: true
+        type: number
+      headSHA:
+        description: Exact current pull request HEAD SHA
+        required: true
+        type: string
+      requestedGroups:
+        description: JSON array of explicitly requested stable groups
+        required: true
+        default: '[]'
+        type: string
+      requestedGroupNames:
+        description: Canonical comma-separated groups, or a single dash
+        required: true
+        default: '-'
+        type: string
+      full:
+        description: Run the complete x86 E2E suite
+        required: true
+        default: false
+        type: boolean
+      requestKey:
+        description: Dispatcher-generated idempotency key
+        required: true
+        type: string
+      catalogRevision:
+        description: Trusted E2E catalog revision bound by the dispatcher
+        required: true
+        type: string
 
 concurrency:
-  group: "${{ github.workflow }}-${{ github.ref }}"
+  group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-{1}', github.workflow, inputs.requestKey) || format('{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: true
 
 env:
@@ -37,43 +72,194 @@ env:
   TALOS_VERSION: v1.13.8
 
 jobs:
-  e2e-selection-shadow:
-    name: x86 E2E Selection (Shadow)
-    if: github.event_name == 'pull_request'
+  e2e-selection:
+    name: x86 E2E Selection
+    continue-on-error: ${{ github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     env:
+      GH_TOKEN: ${{ github.token }}
       PYTHONDONTWRITEBYTECODE: "1"
+    outputs:
+      executionJobIds: ${{ steps.outputs.outputs.executionJobIds }}
+      headSHA: ${{ steps.context.outputs.headSHA }}
+      prNumber: ${{ steps.context.outputs.prNumber }}
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref || github.sha }}
+          persist-credentials: false
           fetch-depth: 0
 
-      - name: Collect changed paths
+      - name: Collect trusted selection context
+        id: context
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: git diff --name-only --diff-filter=ACDMRT -z "$BASE_SHA...$HEAD_SHA" > changed-paths.txt
-
-      - name: Compute the shadow selection plan
-        env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_HEAD_SHA: ${{ inputs.headSHA }}
+          INPUT_PR_NUMBER: ${{ inputs.prNumber }}
+          INPUT_REQUESTED_GROUPS: ${{ inputs.requestedGroups }}
+          INPUT_REQUESTED_GROUP_NAMES: ${{ inputs.requestedGroupNames }}
+          INPUT_CATALOG_REVISION: ${{ inputs.catalogRevision }}
+          INPUT_FULL: ${{ inputs.full }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          python3 hack/e2e_selector.py \
-            --paths-file changed-paths.txt \
-            --event-file "$GITHUB_EVENT_PATH" \
-            --head-sha "$HEAD_SHA" \
-            --plan-file e2e-selection-plan.json \
+          set -euo pipefail
+          printf '{}' > selector-event.json
+          : > changed-paths.txt
+          forceFull=false
+          requestedGroups='[]'
+          headSHA="$GITHUB_SHA"
+          prNumber=0
+          if [ "$EVENT_NAME" = pull_request ]; then
+            git diff --name-status --diff-filter=ACDMRT -z -M \
+              "$PR_BASE_SHA...$PR_HEAD_SHA" > changed-name-status.bin
+            python3 - <<'PY'
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "hack")
+          import e2e_selector as e2eSelector
+
+          paths = e2eSelector.changedPathsFromNameStatus(
+              Path("changed-name-status.bin").read_bytes()
+          )
+          Path("changed-paths.txt").write_bytes(
+              b"".join(path.encode("utf-8", errors="surrogateescape") + b"\0" for path in paths)
+          )
+          PY
+            cp "$GITHUB_EVENT_PATH" selector-event.json
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          event = json.loads(Path("selector-event.json").read_text())
+          event["pull_request"]["labels"] = []
+          Path("selector-event.json").write_text(json.dumps(event))
+          PY
+            headSHA="$PR_HEAD_SHA"
+            prNumber="$PR_NUMBER"
+          elif [ "$EVENT_NAME" = workflow_dispatch ]; then
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER" > pull-request.json
+            python3 - "$INPUT_HEAD_SHA" "$GITHUB_REF_NAME" <<'PY'
+          import json
+          import re
+          import sys
+          from pathlib import Path
+
+          pullRequest = json.loads(Path("pull-request.json").read_text())
+          if pullRequest.get("state") != "open":
+              raise SystemExit("pull request is not open")
+          if not re.fullmatch(r"[0-9a-f]{40}", sys.argv[1]):
+              raise SystemExit("invalid requested HEAD SHA")
+          if pullRequest["head"]["sha"] != sys.argv[1]:
+              raise SystemExit("pull request HEAD changed; dispatch again")
+          if pullRequest["base"]["ref"] != sys.argv[2]:
+              raise SystemExit("executor must run from the pull request base branch")
+          pullRequest["labels"] = []
+          Path("selector-event.json").write_text(json.dumps({"pull_request": pullRequest}))
+          PY
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER/files?per_page=100" > pull-request-files.json
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          pages = json.loads(Path("pull-request-files.json").read_text())
+          with Path("changed-paths.txt").open("wb") as stream:
+              for page in pages:
+                  for changedFile in page:
+                      for field in ("previous_filename", "filename"):
+                          if field in changedFile:
+                              stream.write(changedFile[field].encode() + b"\0")
+          PY
+            python3 - "$INPUT_REQUESTED_GROUPS" "$INPUT_REQUESTED_GROUP_NAMES" "$INPUT_CATALOG_REVISION" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          groups = json.loads(sys.argv[1])
+          if not isinstance(groups, list) or any(not isinstance(group, str) for group in groups):
+              raise SystemExit("requestedGroups must be a JSON array of strings")
+          canonicalGroups = sorted(set(groups))
+          catalog = json.loads(Path(".github/e2e-selection.json").read_text())
+          catalogRevision = hashlib.sha256(
+              json.dumps(catalog, sort_keys=True, separators=(",", ":")).encode()
+          ).hexdigest()
+          if catalogRevision != sys.argv[3]:
+              raise SystemExit("executor catalog revision does not match dispatcher")
+          unknownGroups = sorted(set(canonicalGroups) - set(catalog["groups"]))
+          if unknownGroups:
+              raise SystemExit(f"unknown requested E2E group: {unknownGroups[0]}")
+          canonical = ",".join(canonicalGroups) or "-"
+          if canonical != sys.argv[2]:
+              raise SystemExit("requested group names do not match requestedGroups")
+          PY
+            headSHA="$INPUT_HEAD_SHA"
+            prNumber="$INPUT_PR_NUMBER"
+            requestedGroups="$INPUT_REQUESTED_GROUPS"
+            forceFull="$INPUT_FULL"
+          else
+            forceFull=true
+          fi
+          echo "headSHA=$headSHA" >> "$GITHUB_OUTPUT"
+          echo "prNumber=$prNumber" >> "$GITHUB_OUTPUT"
+          echo "forceFull=$forceFull" >> "$GITHUB_OUTPUT"
+          echo "requestedGroups=$requestedGroups" >> "$GITHUB_OUTPUT"
+
+      - name: Compute the selection plan
+        env:
+          FORCE_FULL: ${{ steps.context.outputs.forceFull }}
+          HEAD_SHA: ${{ steps.context.outputs.headSHA }}
+          REQUESTED_GROUPS: ${{ steps.context.outputs.requestedGroups }}
+        run: |
+          args=(
+            --paths-file changed-paths.txt
+            --event-file selector-event.json
+            --request-groups-json "$REQUESTED_GROUPS"
+            --head-sha "$HEAD_SHA"
+            --plan-file e2e-selection-plan.json
             --summary-file e2e-selection-summary.md
+          )
+          if [ "$FORCE_FULL" = true ]; then
+            args+=(--label e2e:full)
+          fi
+          python3 hack/e2e_selector.py "${args[@]}"
           cat e2e-selection-summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Validate the E2E selection catalog
-        run: python3 -m unittest hack/test_e2e_selector.py
+      - name: Export executor job IDs
+        id: outputs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-      - name: Upload the shadow selection plan
+          catalog = json.loads(Path(".github/e2e-selection.json").read_text())
+          plan = json.loads(Path("e2e-selection-plan.json").read_text())
+          if os.environ["EVENT_NAME"] == "workflow_dispatch":
+              jobIds = sorted({entry["job"] for entry in plan["matrix"]})
+          else:
+              jobIds = sorted(
+                  job["id"]
+                  for group in catalog["groups"].values()
+                  for job in group["jobs"]
+              )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
+              stream.write("executionJobIds=" + json.dumps(jobIds, separators=(",", ":")) + "\n")
+          PY
+
+      - name: Validate the E2E control modules
+        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
+
+      - name: Upload the selection plan
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: x86-e2e-selection-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          name: x86-e2e-selection-${{ steps.context.outputs.prNumber }}-${{ steps.context.outputs.headSHA }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             changed-paths.txt
             e2e-selection-plan.json
@@ -88,6 +274,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 2
 
       - id: check
@@ -156,6 +344,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 2
 
       - id: check
@@ -205,6 +395,7 @@ jobs:
     name: Build kube-ovn
     runs-on: ubuntu-24.04
     needs:
+      - e2e-selection
       - build-kube-ovn-base
       - build-kube-ovn-dpdk-base
     steps:
@@ -219,6 +410,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
       - uses: docker/setup-buildx-action@v4
       - uses: actions/setup-go@v7
         id: setup-go
@@ -404,6 +598,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Build
         run: |
@@ -422,6 +619,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -432,6 +632,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -501,6 +702,9 @@ jobs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
       - uses: actions/setup-go@v7
         id: setup-go
         with:
@@ -530,7 +734,9 @@ jobs:
 
   k8s-conformance-e2e:
     name: Kubernetes Conformance E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-conformance-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -557,6 +763,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -567,6 +776,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -628,7 +838,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -728,9 +938,14 @@ jobs:
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
     if: |
-      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
+      (github.event_name == 'workflow_dispatch' &&
+       contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-netpol-e2e')) ||
+      (github.event_name != 'workflow_dispatch' && (
+        always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+        (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
+      ))
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
       - netpol-path-filter
@@ -758,6 +973,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -768,6 +986,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -831,7 +1050,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -927,9 +1146,14 @@ jobs:
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
     if: |
-      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
+      (github.event_name == 'workflow_dispatch' &&
+       contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cyclonus-netpol-e2e')) ||
+      (github.event_name != 'workflow_dispatch' && (
+        always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+        (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
+      ))
     needs:
+      - e2e-selection
       - build-kube-ovn
       - netpol-path-filter
     runs-on: ubuntu-24.04
@@ -956,6 +1180,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -966,6 +1193,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1001,7 +1229,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -1098,7 +1326,9 @@ jobs:
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-conformance-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1125,6 +1355,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1135,6 +1368,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1191,7 +1425,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -1297,7 +1531,9 @@ jobs:
 
   kube-ovn-ic-conformance-e2e:
     name: Kube-OVN IC Conformance E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ic-conformance-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1321,6 +1557,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1331,6 +1570,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1379,7 +1619,7 @@ jobs:
 
       - name: Create kind clusters
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-init-ovn-ic-${{ matrix.ip-family }}
@@ -1456,7 +1696,9 @@ jobs:
 
   multus-conformance-e2e:
     name: Multus Conformance E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'multus-conformance-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1480,6 +1722,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1490,6 +1735,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1538,7 +1784,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -1605,7 +1851,9 @@ jobs:
 
   non-primary-cni-e2e:
     name: Non-Primary CNI E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'non-primary-cni-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1627,6 +1875,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1637,6 +1888,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1695,7 +1947,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -1764,7 +2016,9 @@ jobs:
 
   kube-ovn-hosted-ovn-central-e2e:
     name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-hosted-ovn-central-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1803,6 +2057,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Remove DNS search domain
         run: |
@@ -1920,7 +2177,10 @@ jobs:
 
   chart-test:
     name: Chart Installation/Uninstallation Test
-    needs: build-kube-ovn
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'chart-test')
+    needs:
+      - e2e-selection
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -1941,6 +2201,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -1958,7 +2221,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -1992,7 +2255,10 @@ jobs:
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
-    needs: build-kube-ovn
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'underlay-logical-gateway-installation-test')
+    needs:
+      - e2e-selection
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -2007,6 +2273,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2024,7 +2293,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-dual
@@ -2056,7 +2325,10 @@ jobs:
 
   no-ovn-lb-test:
     name: Disable OVN LB Test
-    needs: build-kube-ovn
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-ovn-lb-test')
+    needs:
+      - e2e-selection
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -2071,6 +2343,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2088,7 +2363,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -2122,7 +2397,10 @@ jobs:
 
   no-np-test:
     name: Disable Network Policy Test
-    needs: build-kube-ovn
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-np-test')
+    needs:
+      - e2e-selection
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -2137,6 +2415,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2154,7 +2435,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -2188,7 +2469,9 @@ jobs:
 
   lb-svc-e2e:
     name: LB Service E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'lb-svc-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
@@ -2206,6 +2489,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2216,6 +2502,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2271,7 +2558,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -2334,7 +2621,9 @@ jobs:
 
   webhook-e2e:
     name: Webhook E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'webhook-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2351,6 +2640,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2361,6 +2653,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2410,7 +2703,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -2447,7 +2740,10 @@ jobs:
 
   installation-compatibility-test:
     name: Installation Compatibility Test
-    needs: build-kube-ovn
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'installation-compatibility-test')
+    needs:
+      - e2e-selection
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -2467,6 +2763,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2484,7 +2783,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
           K8S_VERSION: ${{ matrix.k8s-version }}
         run: |
           pipx install jinjanator
@@ -2517,7 +2816,10 @@ jobs:
 
   talos-installation-test:
     name: Talos Installation Test
-    needs: build-kube-ovn
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'talos-installation-test')
+    needs:
+      - e2e-selection
+      - build-kube-ovn
     runs-on: larger-runner
     timeout-minutes: 30
     strategy:
@@ -2542,6 +2844,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Install talosctl
         run: |
@@ -2604,7 +2909,9 @@ jobs:
 
   kube-ovn-cnp-domain-e2e:
     name: Kube-OVN CNP Domain E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-cnp-domain-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2628,6 +2935,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2638,6 +2948,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2692,7 +3003,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -2752,7 +3063,9 @@ jobs:
 
   kube-ovn-anp-domain-e2e:
     name: Kube-OVN ANP Domain E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-anp-domain-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2776,6 +3089,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2786,6 +3102,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2840,7 +3157,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -2900,7 +3217,9 @@ jobs:
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cilium-chaining-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2927,6 +3246,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
       - uses: azure/setup-helm@v5.0.1
         with:
           version: '${{ env.HELM_VERSION }}'
@@ -2940,6 +3262,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2997,7 +3320,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-cilium-chaining-${{ matrix.ip-family }}
@@ -3066,7 +3389,9 @@ jobs:
 
   kube-ovn-ha-e2e:
     name: Kube-OVN HA E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ha-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3096,6 +3421,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3106,6 +3434,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3154,7 +3483,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-ha-${{ matrix.ip-family }}
@@ -3204,7 +3533,9 @@ jobs:
 
   kube-ovn-submariner-conformance-e2e:
     name: Kube-OVN Submariner Conformance E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-submariner-conformance-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -3220,6 +3551,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3230,6 +3564,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3263,7 +3598,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init-ovn-submariner
@@ -3301,7 +3636,9 @@ jobs:
 
   vpc-egress-gateway-e2e:
     name: VPC Egress Gateway E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'vpc-egress-gateway-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3325,6 +3662,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3335,6 +3675,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3383,7 +3724,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           n_worker=2 make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -3485,7 +3826,9 @@ jobs:
 
   iptables-vpc-nat-gw-conformance-e2e:
     name: Iptables VPC NAT Gateway E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'iptables-vpc-nat-gw-conformance-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
@@ -3503,6 +3846,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3513,6 +3859,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3568,7 +3915,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -3631,7 +3978,9 @@ jobs:
 
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'ovn-vpc-nat-gw-conformance-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3648,6 +3997,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3658,6 +4010,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3706,7 +4059,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -3776,7 +4129,9 @@ jobs:
 
   kube-ovn-ipsec-e2e:
     name: OVN IPSEC E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3793,6 +4148,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3803,6 +4161,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3851,7 +4210,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -3916,7 +4275,9 @@ jobs:
 
   kube-ovn-ipsec-cert-mgr-e2e:
     name: OVN IPSEC E2E CERT MANAGER
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-cert-mgr-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3933,6 +4294,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3943,6 +4307,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3991,7 +4356,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -4054,7 +4419,9 @@ jobs:
 
   kube-ovn-connectivity-test:
     name: Kube-OVN Connectivity E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-connectivity-test')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4077,6 +4444,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4087,6 +4457,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4135,7 +4506,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -4167,7 +4538,9 @@ jobs:
 
   kube-ovn-underlay-metallb-e2e:
     name: OVN METALLB E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-underlay-metallb-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4191,6 +4564,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4201,6 +4577,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4249,7 +4626,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           n_worker=2 make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
@@ -4313,7 +4690,9 @@ jobs:
 
   router-lb-rule-e2e:
     name: Router LB Rule E2E
+    if: github.event_name != 'workflow_dispatch' || contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'router-lb-rule-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4330,6 +4709,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4340,6 +4722,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4388,7 +4771,7 @@ jobs:
 
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ github.event_name != 'workflow_dispatch' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
           make kind-ghcr-pull kind-init
@@ -4448,9 +4831,68 @@ jobs:
           name: router-lb-rule-e2e-ko-log
           path: router-lb-rule-e2e-ko-log.tar.gz
 
+  e2e-executor-result:
+    name: x86 E2E Executor Result
+    if: github.event_name == 'workflow_dispatch' && always()
+    permissions: {}
+    needs:
+      - e2e-selection
+      - chart-test
+      - cilium-chaining-e2e
+      - cyclonus-netpol-e2e
+      - installation-compatibility-test
+      - iptables-vpc-nat-gw-conformance-e2e
+      - k8s-conformance-e2e
+      - k8s-netpol-e2e
+      - kube-ovn-anp-domain-e2e
+      - kube-ovn-cnp-domain-e2e
+      - kube-ovn-conformance-e2e
+      - kube-ovn-connectivity-test
+      - kube-ovn-ha-e2e
+      - kube-ovn-hosted-ovn-central-e2e
+      - kube-ovn-ic-conformance-e2e
+      - kube-ovn-ipsec-cert-mgr-e2e
+      - kube-ovn-ipsec-e2e
+      - kube-ovn-submariner-conformance-e2e
+      - kube-ovn-underlay-metallb-e2e
+      - lb-svc-e2e
+      - multus-conformance-e2e
+      - no-np-test
+      - no-ovn-lb-test
+      - non-primary-cni-e2e
+      - ovn-vpc-nat-gw-conformance-e2e
+      - router-lb-rule-e2e
+      - talos-installation-test
+      - underlay-logical-gateway-installation-test
+      - vpc-egress-gateway-e2e
+      - webhook-e2e
+    runs-on: ubuntu-24.04
+    env:
+      NEEDS_JSON: ${{ toJSON(needs) }}
+      SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
+    steps:
+      - name: Verify every selected test Job succeeded
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          selectedJobIds = json.loads(os.environ["SELECTED_JOB_IDS"])
+          incomplete = {
+              jobId: needs.get(jobId, {}).get("result", "missing")
+              for jobId in selectedJobIds
+              if needs.get(jobId, {}).get("result") != "success"
+          }
+          if incomplete:
+              raise SystemExit(f"selected x86 E2E Jobs did not succeed: {incomplete}")
+          print(f"Verified {len(selectedJobIds)} selected x86 E2E Jobs.")
+          PY
+
   push:
     name: Push Images
     needs:
+      - e2e-selection
       - k8s-conformance-e2e
       - k8s-netpol-e2e
       - cyclonus-netpol-e2e
@@ -4477,7 +4919,7 @@ jobs:
       - kube-ovn-ha-e2e
       - kube-ovn-submariner-conformance-e2e
       - router-lb-rule-e2e
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    if: github.event_name != 'workflow_dispatch' && always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-24.04
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -4491,6 +4933,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.headSHA || github.sha }}
+          persist-credentials: ${{ github.event_name != 'workflow_dispatch' }}
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v8
