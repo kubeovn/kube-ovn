@@ -124,9 +124,12 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[VpcNatGatewayAnnotation] = gw.Name
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
 
-	// Don't set a static IP for HA gateways
-	if !IsNatGwHAMode(gw) {
+	// An empty LAN IP requests dynamic allocation. HA gateways always allocate
+	// one address per replica dynamically.
+	if !IsNatGwHAMode(gw) && gw.Spec.LanIP != "" {
 		result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+	} else {
+		delete(result, fmt.Sprintf(IPAddressAnnotationTemplate, p))
 	}
 
 	// Validate the custom provider string whenever it isn't the built-in ovn one, regardless of

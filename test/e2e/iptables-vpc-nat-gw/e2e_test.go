@@ -693,6 +693,56 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// Cleanup is handled by DeferCleanup in setupVpcNatGwTestEnvironment
 	})
 
+	framework.ConformanceIt("dynamically allocates and persists the non-HA LAN IP", func() {
+		f.SkipVersionPriorTo(1, 18, "Dynamic VpcNatGateway LAN IP allocation was introduced in v1.18")
+		const (
+			overlayCIDR = "10.0.20.0/24"
+			overlayGW   = "10.0.20.1"
+		)
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName+"-dynamic", vpcNatGwName, "",
+			overlayCIDR, overlayGW, "",
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, // the shared NAD is created in BeforeAll
+			nil, "", 1,
+		)
+
+		ginkgo.By("Waiting for the observed LAN IP to be persisted to spec")
+		var persistedLANIP string
+		gomega.Eventually(func() bool {
+			gw := vpcNatGwClient.Get(vpcNatGwName)
+			persistedLANIP = gw.Status.LanIP
+			return persistedLANIP != "" && gw.Spec.LanIP == persistedLANIP
+		}, 2*time.Minute, time.Second).Should(gomega.BeTrue())
+
+		ginkgo.By("Verifying the StatefulSet is controller-owned by the VpcNatGateway")
+		gw := vpcNatGwClient.Get(vpcNatGwName)
+		sts, err := f.ClientSet.AppsV1().StatefulSets(framework.KubeOvnNamespace).Get(
+			context.Background(), util.GenNatGwName(vpcNatGwName), metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		owner := metav1.GetControllerOf(sts)
+		framework.ExpectNotNil(owner)
+		framework.ExpectEqual(owner.Kind, util.KindVpcNatGateway)
+		framework.ExpectEqual(owner.UID, gw.UID)
+
+		ginkgo.By("Recreating the gateway Pod and verifying the persisted LAN IP is retained")
+		podName := getNatGwPodName(f, vpcNatGwName, "")
+		oldPod, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		framework.ExpectNoError(f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).Delete(
+			context.Background(), podName, metav1.DeleteOptions{}))
+		gomega.Eventually(func() bool {
+			pod, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+			if err != nil || pod.UID == oldPod.UID || pod.Annotations[util.VpcNatGatewayInitAnnotation] != "true" {
+				return false
+			}
+			return pod.Annotations[util.IPAddressAnnotation] == persistedLANIP
+		}, 2*time.Minute, time.Second).Should(gomega.BeTrue())
+	})
+
 	framework.ConformanceIt("[2] iptables EIP FIP SNAT DNAT", func() {
 		// Test-specific variables
 		randomSuffix := framework.RandomSuffix()
