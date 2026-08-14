@@ -23,22 +23,19 @@ import (
 func (c *Controller) enqueueAddOvnEip(obj any) {
 	eip := obj.(*kubeovnv1.OvnEip)
 	key := cache.MetaObjectToName(eip).String()
+	c.requeueRouterLBRulesForEip(eip.Name, false)
+	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
+	if enqueueUpdateIfTerminatingWithFinalizer(c.updateOvnEipQueue, key, "ovn eip", eip.DeletionTimestamp, eip.GetFinalizers()) {
+		return
+	}
 	klog.Infof("enqueue add ovn eip %s", key)
 	c.addOvnEipQueue.Add(key)
-	c.requeueRouterLBRulesForEip(eip.Name, false)
 }
 
 func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 	newEip := newObj.(*kubeovnv1.OvnEip)
 	key := cache.MetaObjectToName(newEip).String()
-	if !newEip.DeletionTimestamp.IsZero() {
-		if len(newEip.GetFinalizers()) == 0 {
-			// avoid delete eip twice
-			return
-		}
-		// EIP with finalizer should be handled in updateOvnEipQueue
-		klog.Infof("enqueue update (deleting) ovn eip %s", key)
-		c.updateOvnEipQueue.Add(key)
+	if enqueueUpdateIfTerminatingWithFinalizer(c.updateOvnEipQueue, key, "ovn eip", newEip.DeletionTimestamp, newEip.GetFinalizers()) {
 		return
 	}
 	oldEip := oldObj.(*kubeovnv1.OvnEip)

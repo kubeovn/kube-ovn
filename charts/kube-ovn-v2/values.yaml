@@ -886,6 +886,18 @@ monitor:
 # @section -- Kube-OVN controller configuration
 # @default -- "{}"
 controller:
+  # -- Leader election timing configuration.
+  # @section -- Kube-OVN controller configuration
+  leaderElection:
+    # -- Duration non-leader candidates wait after observing a renewal before attempting to acquire leadership. Empty uses the controller default of 30s.
+    # @section -- Kube-OVN controller configuration
+    leaseDuration: ""
+    # -- Duration the acting leader retries refreshing leadership before giving up. Empty uses the controller default of 20s.
+    # @section -- Kube-OVN controller configuration
+    renewDeadline: ""
+    # -- Duration leader election clients wait between attempts. Empty uses the controller default of 6s.
+    # @section -- Kube-OVN controller configuration
+    retryPeriod: ""
   # -- Override image settings for kube-ovn-controller. Empty fields fall back to the global kube-ovn image.
   # @section -- Kube-OVN controller configuration
   image:

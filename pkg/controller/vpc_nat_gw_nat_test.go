@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -691,4 +692,67 @@ func TestIsDnatDuplicated(t *testing.T) {
 			}
 		})
 	}
+}
+
+// assertEnqueueAddRouting checks that the add handler routes a live object to the add queue and a
+// terminating object to the update queue (the deletion-cleanup path relied on after a restart).
+func assertEnqueueAddRouting(
+	t *testing.T,
+	addQueue, updateQueue workqueue.TypedRateLimitingInterface[string],
+	enqueue func(any),
+	live, terminating any,
+) {
+	t.Helper()
+	enqueue(live)
+	require.Equal(t, 1, addQueue.Len(), "live object should go to the add queue")
+	require.Equal(t, 0, updateQueue.Len(), "live object must not go to the update queue")
+
+	enqueue(terminating)
+	require.Equal(t, 1, addQueue.Len(), "terminating object must not go to the add queue")
+	require.Equal(t, 1, updateQueue.Len(), "terminating object should go to the update queue for cleanup")
+}
+
+func TestEnqueueAddIptablesFip(t *testing.T) {
+	t.Parallel()
+	c := &Controller{
+		addIptablesFipQueue:    newTypedRateLimitingQueue[string]("AddIptablesFip", nil),
+		updateIptablesFipQueue: newTypedRateLimitingQueue[string]("UpdateIptablesFip", nil),
+	}
+	t.Cleanup(c.addIptablesFipQueue.ShutDown)
+	t.Cleanup(c.updateIptablesFipQueue.ShutDown)
+	now := metav1.Now()
+	assertEnqueueAddRouting(t, c.addIptablesFipQueue, c.updateIptablesFipQueue, c.enqueueAddIptablesFip,
+		&kubeovnv1.IptablesFIPRule{ObjectMeta: metav1.ObjectMeta{Name: "live-fip"}},
+		&kubeovnv1.IptablesFIPRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-fip", DeletionTimestamp: &now}},
+	)
+}
+
+func TestEnqueueAddIptablesDnatRule(t *testing.T) {
+	t.Parallel()
+	c := &Controller{
+		addIptablesDnatRuleQueue:    newTypedRateLimitingQueue[string]("AddIptablesDnat", nil),
+		updateIptablesDnatRuleQueue: newTypedRateLimitingQueue[string]("UpdateIptablesDnat", nil),
+	}
+	t.Cleanup(c.addIptablesDnatRuleQueue.ShutDown)
+	t.Cleanup(c.updateIptablesDnatRuleQueue.ShutDown)
+	now := metav1.Now()
+	assertEnqueueAddRouting(t, c.addIptablesDnatRuleQueue, c.updateIptablesDnatRuleQueue, c.enqueueAddIptablesDnatRule,
+		&kubeovnv1.IptablesDnatRule{ObjectMeta: metav1.ObjectMeta{Name: "live-dnat"}},
+		&kubeovnv1.IptablesDnatRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-dnat", DeletionTimestamp: &now}},
+	)
+}
+
+func TestEnqueueAddIptablesSnatRule(t *testing.T) {
+	t.Parallel()
+	c := &Controller{
+		addIptablesSnatRuleQueue:    newTypedRateLimitingQueue[string]("AddIptablesSnat", nil),
+		updateIptablesSnatRuleQueue: newTypedRateLimitingQueue[string]("UpdateIptablesSnat", nil),
+	}
+	t.Cleanup(c.addIptablesSnatRuleQueue.ShutDown)
+	t.Cleanup(c.updateIptablesSnatRuleQueue.ShutDown)
+	now := metav1.Now()
+	assertEnqueueAddRouting(t, c.addIptablesSnatRuleQueue, c.updateIptablesSnatRuleQueue, c.enqueueAddIptablesSnatRule,
+		&kubeovnv1.IptablesSnatRule{ObjectMeta: metav1.ObjectMeta{Name: "live-snat"}},
+		&kubeovnv1.IptablesSnatRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-snat", DeletionTimestamp: &now}},
+	)
 }

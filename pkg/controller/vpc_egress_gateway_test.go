@@ -9,7 +9,9 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ktesting "k8s.io/client-go/testing"
@@ -255,14 +257,83 @@ func TestHandleDelVpcEgressGatewayRecordsSuccessAfterFinalizerUpdate(t *testing.
 }
 
 func TestVpcEgressGatewayContainerBFDDDefaultResources(t *testing.T) {
-	container := genGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5)
+	container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5, false)
 
 	require.Equal(t, "200m", container.Resources.Requests.Cpu().String())
-	require.Equal(t, "200m", container.Resources.Limits.Cpu().String())
+	require.Equal(t, "300m", container.Resources.Limits.Cpu().String())
 	require.Equal(t, "50Mi", container.Resources.Requests.Memory().String())
-	require.Equal(t, "50Mi", container.Resources.Limits.Memory().String())
+	require.Equal(t, "64Mi", container.Resources.Limits.Memory().String())
 	ephemeralStorage := container.Resources.Limits[corev1.ResourceEphemeralStorage]
 	require.Equal(t, "1Gi", ephemeralStorage.String())
+
+	require.NotNil(t, container.StartupProbe)
+	require.NotNil(t, container.LivenessProbe)
+	require.NotNil(t, container.ReadinessProbe)
+	require.Equal(t, []string{"/kube-ovn/kube-ovn-bfdd-supervisor", "run"}, container.Command)
+	require.Equal(t, []string{"/kube-ovn/kube-ovn-bfdd-supervisor", "live"}, container.StartupProbe.Exec.Command)
+	require.EqualValues(t, 30, container.StartupProbe.FailureThreshold)
+	require.Equal(t, []string{"/kube-ovn/kube-ovn-bfdd-supervisor", "live"}, container.LivenessProbe.Exec.Command)
+	require.EqualValues(t, 10, container.LivenessProbe.TimeoutSeconds)
+	require.Equal(t, []string{"/kube-ovn/kube-ovn-bfdd-supervisor", "live"}, container.ReadinessProbe.Exec.Command)
+	require.EqualValues(t, 10, container.ReadinessProbe.TimeoutSeconds)
+	require.Contains(t, container.VolumeMounts, corev1.VolumeMount{Name: "bfdd-supervisor-state", MountPath: "/var/run/kube-ovn/bfdd-supervisor"})
+	require.Contains(t, container.Ports, corev1.ContainerPort{Name: "bfdd-metrics", ContainerPort: 10669, Protocol: corev1.ProtocolTCP})
+}
+
+func TestVpcEgressGatewayBFDDRuntimeProbeTransport(t *testing.T) {
+	t.Run("default VPC uses HTTP", func(t *testing.T) {
+		container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5, true)
+
+		require.Equal(t, []string{vegBFDDSupervisorBin, "live"}, container.StartupProbe.Exec.Command)
+		for _, probe := range []*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
+			require.Nil(t, probe.Exec)
+			require.Equal(t, "/livez", probe.HTTPGet.Path)
+			require.Equal(t, "bfdd-metrics", probe.HTTPGet.Port.StrVal)
+		}
+	})
+
+	t.Run("custom VPC falls back to exec", func(t *testing.T) {
+		container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 5, false)
+
+		for _, probe := range []*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
+			require.Nil(t, probe.HTTPGet)
+			require.Equal(t, []string{vegBFDDSupervisorBin, "live"}, probe.Exec.Command)
+		}
+	})
+}
+
+func TestConfigureVpcEgressGatewayBFDWorkload(t *testing.T) {
+	deploy := &appsv1.Deployment{Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
+		Containers: []corev1.Container{{Name: "sidecar"}, {Name: "gateway"}},
+		InitContainers: []corev1.Container{
+			{Name: "other", Command: []string{"bash", "-c", "unchanged"}},
+			{Name: "init", Command: []string{"bash", "-c", "old"}},
+		},
+	}}}}
+	container := genVpcEgressGatewayBFDDContainer("kube-ovn", "10.255.255.255", 100, 100, 3, false)
+
+	require.NoError(t, configureVpcEgressGatewayBFDWorkload(deploy, container))
+
+	require.Equal(t, "sidecar", deploy.Spec.Template.Spec.Containers[0].Name)
+	require.Equal(t, "bfdd", deploy.Spec.Template.Spec.Containers[1].Name)
+	require.Equal(t, "unchanged", deploy.Spec.Template.Spec.InitContainers[0].Command[2])
+	require.Equal(t, vegBFDInitCommand, deploy.Spec.Template.Spec.InitContainers[1].Command[2])
+	require.Contains(t, deploy.Spec.Template.Spec.InitContainers[1].VolumeMounts,
+		corev1.VolumeMount{Name: "bfdd-supervisor-state", MountPath: "/var/run/kube-ovn/bfdd-supervisor"})
+	require.Contains(t, deploy.Spec.Template.Spec.Volumes, corev1.Volume{
+		Name: "bfdd-supervisor-state",
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	})
+	require.EqualValues(t, 30, *deploy.Spec.Template.Spec.TerminationGracePeriodSeconds)
+	resources := corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")}}
+	require.NoError(t, setVpcEgressGatewayWorkloadResources(deploy, resources))
+	require.Empty(t, deploy.Spec.Template.Spec.Containers[0].Resources)
+	require.Equal(t, resources, deploy.Spec.Template.Spec.Containers[1].Resources)
+
+	require.Error(t, configureVpcEgressGatewayBFDWorkload(&appsv1.Deployment{}, container))
+	require.Error(t, setVpcEgressGatewayWorkloadResources(&appsv1.Deployment{}, resources))
 }
 
 func TestFlattenVpcEgressGatewayNexthops(t *testing.T) {
@@ -302,7 +373,8 @@ func TestLocalGatewayPolicyBFDSessions(t *testing.T) {
 		"10.16.1.11": "bfd-2",
 		"10.16.2.10": "bfd-3",
 	}
-	require.Equal(t,
+	require.Equal(
+		t,
 		set.New("bfd-1", "bfd-2"),
 		localGatewayPolicyBFDSessions(bfdMap, set.New("10.16.1.10", "10.16.1.11")),
 	)
@@ -597,4 +669,21 @@ func TestCollectVpcEgressGatewayWorkloadStatus(t *testing.T) {
 			require.Len(t, messages, tt.wantNotReadyCount)
 		})
 	}
+}
+
+func TestCollectVpcEgressGatewayWorkloadStatusRetainsNetworkedNotReadyPod(t *testing.T) {
+	const attachmentNetwork = "default/eth1"
+	readyPod := newVegWorkloadPod("veg-1", "node-1", "10.16.1.10", `[{"name":"default/eth1","ips":["172.17.1.10"]}]`)
+	notReadyPod := newVegWorkloadPod("veg-2", "node-2", "10.16.1.11", `[{"name":"default/eth1","ips":["172.17.1.11"]}]`)
+	notReadyPod.Status.Conditions[0].Status = corev1.ConditionFalse
+	gw := &kubeovnv1.VpcEgressGateway{Spec: kubeovnv1.VpcEgressGatewaySpec{Replicas: 2}}
+
+	ipv4, ipv6, messages := collectVpcEgressGatewayWorkloadStatus(gw, []*corev1.Pod{readyPod, notReadyPod}, attachmentNetwork)
+
+	require.Equal(t, []string{"10.16.1.10", "10.16.1.11"}, gw.Status.InternalIPs)
+	require.Equal(t, []string{"172.17.1.10", "172.17.1.11"}, gw.Status.ExternalIPs)
+	require.Equal(t, []string{"node-1", "node-2"}, gw.Status.Workload.Nodes)
+	require.Equal(t, map[string]set.Set[string]{"node-1": set.New("10.16.1.10"), "node-2": set.New("10.16.1.11")}, ipv4)
+	require.Empty(t, ipv6)
+	require.Len(t, messages, 1)
 }

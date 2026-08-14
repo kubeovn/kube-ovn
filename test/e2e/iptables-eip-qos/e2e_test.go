@@ -16,9 +16,11 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
+	gomegatypes "github.com/onsi/gomega/types"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
@@ -50,21 +52,30 @@ const (
 )
 
 const (
+	overlaySubnetV4Cidr = "10.0.0.0/24"
+	overlaySubnetV4Gw   = "10.0.0.1"
+	lanIP               = "10.0.0.254"
+)
+
+const (
 	dockerExtNetName       = "kube-ovn-qos"
 	networkAttachDefName   = "qos-ovn-vpc-external-network"
 	externalSubnetProvider = "qos-ovn-vpc-external-network.kube-system"
 )
 
+// QoS rate limits used by the tests. Every two limits which are compared against each other are
+// spaced by a factor of 5, so that the measured bandwidth of one limit can never fall into the
+// 50%~150% tolerance window of the other one.
 const (
-	eipLimit        = 10 // Initial EIP QoS limit
-	updatedEIPLimit = 30 // Updated EIP QoS limit (3x of initial)
-	newEIPLimit     = 90 // New EIP QoS limit (9x of initial)
-	specificIPLimit = 25 // Specific IP matching QoS limit
-	defaultNicLimit = 50 // Default NIC QoS limit
+	eipLimit         = 10 // EIP QoS limit, also the limit after the policy is restored
+	updatedEIPLimit  = 50 // EIP QoS limit after the policy is updated in place (5x of eipLimit)
+	priorityEIPLimit = 2  // EIP QoS limit used to verify the priority matching (priority 1)
+	specificIPLimit  = 10 // Specific IP matching QoS limit (priority 2, 5x of priorityEIPLimit)
+	defaultNicLimit  = 50 // Default NIC QoS limit (priority 3, 5x of specificIPLimit)
 )
 
-// Bandwidth limits for multi-EIP isolation test
-// These test decimal bandwidth values on the SAME NAT Gateway to verify:
+// Decimal bandwidth limits used by the EIP QoS test. They are applied to two different EIPs on
+// the SAME NAT Gateway to verify at once that:
 // 1. Multiple EIPs with different QoS don't interfere with each other
 // 2. Sub-Mbps decimal bandwidth limiting works correctly
 //
@@ -81,12 +92,12 @@ type decimalQoSConfig struct {
 	LimitMbps float64 // Rate as float for validation
 }
 
-var decimalQoSConfigs = []decimalQoSConfig{
-	{"0.5", "0.06", 0.5}, // 0.5 Mbps = 500 Kbps, burst = 62,500 bytes
-	{"1.5", "0.18", 1.5}, // 1.5 Mbps, burst = 187,500 bytes
-	{"3", "0.36", 3},     // 3 Mbps, burst = 375,000 bytes
-	{"9", "1.08", 9},     // 9 Mbps, burst = 1,125,000 bytes
-}
+var (
+	// decimalQoSLow is applied to the EIP created by the test setup (0.5 Mbps, burst = 62,500 bytes)
+	decimalQoSLow = decimalQoSConfig{"0.5", "0.06", 0.5}
+	// decimalQoSHigh is applied to an extra EIP on the same NAT Gateway (2.5 Mbps, burst = 312,500 bytes)
+	decimalQoSHigh = decimalQoSConfig{"2.5", "0.3", 2.5}
+)
 
 func setupNetworkAttachmentDefinition(
 	f *framework.Framework,
@@ -368,9 +379,9 @@ func iperf(f *framework.Framework, iperfClientPod *corev1.Pod, iperfServerEIP *a
 
 func checkQos(f *framework.Framework,
 	qosPod, noQosPod *corev1.Pod, qosEIP, noQosEIP *apiv1.IptablesEIP,
-	limit int, expect bool,
+	limit int,
 ) {
-	checkQosFloat(f, qosPod, noQosPod, qosEIP, noQosEIP, float64(limit), expect)
+	checkQosFloat(f, qosPod, noQosPod, qosEIP, noQosEIP, float64(limit))
 }
 
 // checkQosFloat validates QoS with float64 limit (supports decimal Mbps values like 0.5)
@@ -384,51 +395,31 @@ func checkQos(f *framework.Framework,
 // Ingress test: noQosPod → qosEIP (traffic enters through qosEIP's NAT GW, QoS limits inbound)
 func checkQosFloat(f *framework.Framework,
 	qosPod, noQosPod *corev1.Pod, qosEIP, noQosEIP *apiv1.IptablesEIP,
-	limitMbps float64, expect bool,
+	limitMbps float64,
 ) {
 	ginkgo.GinkgoHelper()
 
-	if !skipIperf {
-		testType := "QoS Enabled"
-		if !expect {
-			testType = "QoS Disabled"
-		}
-
-		if expect {
-			// When QoS is expected to be applied, bandwidth should be within limit * bandwidthToleranceLow ~ limit * bandwidthToleranceHigh
-
-			// Test egress: qosPod → noQosEIP (QoS applied on qosEIP's egress)
-			output := iperf(f, qosPod, noQosEIP)
-			result := validateRateLimitFloatWithResult(output, limitMbps)
-			klog.Info(formatBandwidthSummary(result, testType, "Egress: qosPod -> noQosEIP"))
-			framework.ExpectTrue(result.Passed, "expected egress bandwidth to be limited to %.2f~%.2f Mbps, but got %.2f Mbps",
-				result.MinExpected, result.MaxExpected, result.BestMatch)
-
-			// Test ingress: noQosPod → qosEIP (QoS applied on qosEIP's ingress)
-			output = iperf(f, noQosPod, qosEIP)
-			result = validateRateLimitFloatWithResult(output, limitMbps)
-			klog.Info(formatBandwidthSummary(result, testType, "Ingress: noQosPod -> qosEIP"))
-			framework.ExpectTrue(result.Passed, "expected ingress bandwidth to be limited to %.2f~%.2f Mbps, but got %.2f Mbps",
-				result.MinExpected, result.MaxExpected, result.BestMatch)
-		} else {
-			// When QoS is not expected to be applied, bandwidth should exceed limit * bandwidthToleranceHigh
-			// This verifies that QoS was actually working before (not just slow network)
-
-			// Test egress: qosPod → noQosEIP (no QoS, should be fast)
-			output := iperf(f, qosPod, noQosEIP)
-			result := validateBandwidthExceedsLimitFloatWithResult(output, limitMbps)
-			klog.Info(formatBandwidthSummary(result, testType, "Egress: qosPod -> noQosEIP"))
-			framework.ExpectTrue(result.Passed, "expected egress bandwidth to exceed %.2f Mbps when QoS is disabled, but got %.2f Mbps",
-				result.MinExpected, result.BestMatch)
-
-			// Test ingress: noQosPod → qosEIP (no QoS, should be fast)
-			output = iperf(f, noQosPod, qosEIP)
-			result = validateBandwidthExceedsLimitFloatWithResult(output, limitMbps)
-			klog.Info(formatBandwidthSummary(result, testType, "Ingress: noQosPod -> qosEIP"))
-			framework.ExpectTrue(result.Passed, "expected ingress bandwidth to exceed %.2f Mbps when QoS is disabled, but got %.2f Mbps",
-				result.MinExpected, result.BestMatch)
-		}
+	if skipIperf {
+		return
 	}
+
+	// Bandwidth should be within limit * bandwidthToleranceLow ~ limit * bandwidthToleranceHigh.
+	// The unlimited case is intentionally not tested: saturating the link is expensive and flaky,
+	// removing a policy is instead verified by falling back to another expected rate limit.
+
+	// Test egress: qosPod → noQosEIP (QoS applied on qosEIP's egress)
+	output := iperf(f, qosPod, noQosEIP)
+	result := validateRateLimitFloatWithResult(output, limitMbps)
+	klog.Info(formatBandwidthSummary(result, "Egress: qosPod -> noQosEIP"))
+	framework.ExpectTrue(result.Passed, "expected egress bandwidth to be limited to %.2f~%.2f Mbps, but got %.2f Mbps",
+		result.MinExpected, result.MaxExpected, result.BestMatch)
+
+	// Test ingress: noQosPod → qosEIP (QoS applied on qosEIP's ingress)
+	output = iperf(f, noQosPod, qosEIP)
+	result = validateRateLimitFloatWithResult(output, limitMbps)
+	klog.Info(formatBandwidthSummary(result, "Ingress: noQosPod -> qosEIP"))
+	framework.ExpectTrue(result.Passed, "expected ingress bandwidth to be limited to %.2f~%.2f Mbps, but got %.2f Mbps",
+		result.MinExpected, result.MaxExpected, result.BestMatch)
 }
 
 func getNicDefaultQoSPolicy(limit int) apiv1.QoSPolicyBandwidthLimitRules {
@@ -508,7 +499,7 @@ func getEIPQoSRule(limit int) apiv1.QoSPolicyBandwidthLimitRules {
 // Test case values:
 //
 //	0.5 Mbps: 0.5 × 125,000 = 62,500 bytes  → burst_MB ≈ 0.06 (>> MTU 1500) ✓
-//	1.5 Mbps: 1.5 × 125,000 = 187,500 bytes → burst_MB ≈ 0.18 (>> MTU 1500) ✓
+//	2.5 Mbps: 2.5 × 125,000 = 312,500 bytes → burst_MB ≈ 0.30 (>> MTU 1500) ✓
 func getEIPQoSRuleWithDecimal(rateMax, burstMax string) apiv1.QoSPolicyBandwidthLimitRules {
 	return apiv1.QoSPolicyBandwidthLimitRules{
 		apiv1.QoSPolicyBandwidthLimitRule{
@@ -553,479 +544,440 @@ func getSpecialQoSRule(limit int, ip string) apiv1.QoSPolicyBandwidthLimitRules 
 	}
 }
 
-// defaultQoSCases test default qos policy
-func defaultQoSCases(f *framework.Framework,
+// restartNatGwPods deletes the NAT gateway pods and waits until the recreated pods become ready.
+func restartNatGwPods(f *framework.Framework, natgwName string) {
+	ginkgo.GinkgoHelper()
+
+	podClient := f.PodClientNS(framework.KubeOvnNamespace)
+	labels := util.GenNatGwLabels(natgwName)
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
+
+	ginkgo.By("Delete natgw pods for " + natgwName)
+	pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	framework.ExpectNoError(err)
+	oldUIDs := make(map[types.UID]string, len(pods.Items))
+	for _, pod := range pods.Items {
+		oldUIDs[pod.UID] = pod.Name
+		framework.ExpectNoError(podClient.Delete(pod.Name), "failed to delete natgw pod "+pod.Name)
+	}
+
+	// The old pods must be gone before waiting for readiness, otherwise the readiness check could
+	// observe the pod which is still terminating and return before the gateway is rebuilt.
+	ginkgo.By("Wait for the old natgw pods of " + natgwName + " to disappear")
+	gomega.Eventually(func(g gomega.Gomega) {
+		pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		for _, pod := range pods.Items {
+			g.Expect(oldUIDs).NotTo(gomega.HaveKey(pod.UID), "natgw pod %s is still terminating", pod.Name)
+		}
+	}, 2*time.Minute, 2*time.Second).Should(gomega.Succeed())
+
+	ginkgo.By("Wait for natgw " + natgwName + " pod to be ready after recreation")
+	f.VpcNatGatewayClient().WaitGwPodReady(natgwName, "", 2*time.Minute, f.ClientSet)
+}
+
+// tcRateMatcher builds a matcher for the rate of a tc class as printed by tc, which uses either
+// Mbit or Kbit depending on the value, e.g. 50 -> "rate 50Mbit", 0.5 -> "rate 500Kbit".
+func tcRateMatcher(rateMbps float64) gomegatypes.GomegaMatcher {
+	return gomega.SatisfyAny(
+		gomega.ContainSubstring(fmt.Sprintf("rate %gMbit", rateMbps)),
+		gomega.ContainSubstring(fmt.Sprintf("rate %gKbit", rateMbps*1000)),
+	)
+}
+
+// natGwEgressDev and natGwIngressDev are the devices carrying the HTB classes of the NAT gateway:
+// the egress rules are applied on the external nic, the ingress ones on its IFB device.
+const (
+	natGwEgressDev  = "net1"
+	natGwIngressDev = "ifb-net1"
+)
+
+// expectTcClassOnNatGwDev asserts that a tc class limited to the given rate does (or does not)
+// exist on the given device of the NAT gateway. Checking the tc rules is used instead of an extra
+// iperf run whenever the expected bandwidth of a direction would be unlimited or unchanged.
+func expectTcClassOnNatGwDev(f *framework.Framework, natgwName, dev string, rateMbps float64, expectExists bool) {
+	ginkgo.GinkgoHelper()
+
+	matcher := tcRateMatcher(rateMbps)
+	if !expectExists {
+		matcher = gomega.Not(matcher)
+	}
+	gomega.Eventually(func(g gomega.Gomega) {
+		podName := getNatGwPodName(f, natgwName, "")
+		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, podName, "tc class show dev "+dev)
+		g.Expect(err).NotTo(gomega.HaveOccurred(), errOutput)
+		g.Expect(stdOutput).To(matcher)
+	}, 60*time.Second, 3*time.Second).Should(gomega.Succeed(),
+		"expected the tc class limited to %gMbps on %s of natgw %s to exist: %v", rateMbps, dev, natgwName, expectExists)
+}
+
+// expectTcRateOnNatGw asserts that the HTB classes on the NAT gateway carry the expected rates in
+// both directions (egress on net1, ingress on ifb-net1).
+func expectTcRateOnNatGw(f *framework.Framework, natgwName string, ratesMbps ...float64) {
+	ginkgo.GinkgoHelper()
+
+	for _, dev := range []string{natGwEgressDev, natGwIngressDev} {
+		for _, rate := range ratesMbps {
+			expectTcClassOnNatGwDev(f, natgwName, dev, rate, true)
+		}
+	}
+}
+
+// natGwQoSCases covers the NAT gateway scoped QoS:
+//   - the policy bound at NAT gateway creation time takes effect (default nic rules, priority 3)
+//   - the tc rules are restored after the NAT gateway pod is recreated
+//   - switching the NAT gateway to another policy takes effect
+//   - priority matching: eip rule (priority 1) > specific ip rule (priority 2) > nic rule (priority 3)
+//   - unbinding the eip policy falls back to the NAT gateway policy
+//   - unbinding the NAT gateway policy removes its tc classes
+//
+// The NAT gateway is expected to be created with natgwQoSPolicyName (defaultNicLimit) already bound.
+func natGwQoSCases(f *framework.Framework,
 	qosPod, noQosPod *corev1.Pod,
 	qosEIP, noQosEIP *apiv1.IptablesEIP,
-	natgwName string,
+	vpcQosParams *qosParams, natgwQoSPolicyName string,
 ) {
 	ginkgo.GinkgoHelper()
 
-	// Derive clients from framework
 	vpcNatGwClient := f.VpcNatGatewayClient()
-	podClient := f.PodClientNS(framework.KubeOvnNamespace)
+	eipClient := f.IptablesEIPClient()
 	qosPolicyClient := f.QoSPolicyClient()
+	natgwName := vpcQosParams.qosNatGwName
 
-	// create nic qos policy
-	qosPolicyName := "default-nic-qos-policy-" + framework.RandomSuffix()
-	ginkgo.By("Creating qos policy " + qosPolicyName)
+	ginkgo.By("Check qos " + natgwQoSPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit)
+
+	// switch to a policy which also matches the peer eip with a higher priority rule
+	specificQoSPolicyName := "specific-nic-qos-policy-" + framework.RandomSuffix()
+	ginkgo.By("Creating qos policy " + specificQoSPolicyName)
 	rules := getNicDefaultQoSPolicy(defaultNicLimit)
-
-	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
-	_ = qosPolicyClient.CreateSync(qosPolicy)
+	rules = append(rules, getSpecialQoSRule(specificIPLimit, noQosEIP.Status.IP)...)
+	specificQoSPolicy := framework.MakeQoSPolicy(specificQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
+	_ = qosPolicyClient.CreateSync(specificQoSPolicy)
 	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up qos policy " + qosPolicyName)
-		qosPolicyClient.DeleteSync(qosPolicyName)
+		ginkgo.By("Cleaning up natgw qos policy " + specificQoSPolicyName)
+		qosPolicyClient.DeleteSync(specificQoSPolicyName)
 	})
 
-	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + qosPolicyName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, qosPolicyName)
-
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, true)
-
-	ginkgo.By("Delete natgw pods for " + natgwName)
-	labels := util.GenNatGwLabels(natgwName)
-	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
-	pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
-	framework.ExpectNoError(err)
-	for _, pod := range pods.Items {
-		err = podClient.Delete(pod.Name)
-		framework.ExpectNoError(err, "failed to delete natgw pod "+pod.Name)
-	}
-
-	ginkgo.By("Wait for natgw " + natgwName + " pod to be ready after recreation")
-	vpcNatGwClient.WaitGwPodReady(natgwName, "", 2*time.Minute, f.ClientSet)
-
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, true)
-
-	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + natgwName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
-
-	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, false)
-}
-
-// eipQoSCases tests EIP-level QoS policy
-func eipQoSCases(f *framework.Framework,
-	qosPod, noQosPod *corev1.Pod,
-	qosEIP, noQosEIP *apiv1.IptablesEIP,
-	eipName, natgwName string,
-) {
-	ginkgo.GinkgoHelper()
-
-	// Derive clients from framework
-	vpcNatGwClient := f.VpcNatGatewayClient()
-	eipClient := f.IptablesEIPClient()
-	podClient := f.PodClientNS(framework.KubeOvnNamespace)
-	qosPolicyClient := f.QoSPolicyClient()
-
-	// create eip qos policy
-	qosPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
-	ginkgo.By("Creating qos policy " + qosPolicyName)
-	rules := getEIPQoSRule(eipLimit)
-
-	qosPolicy := framework.MakeQoSPolicy(qosPolicyName, false, apiv1.QoSBindingTypeEIP, rules)
-	qosPolicy = qosPolicyClient.CreateSync(qosPolicy)
+	ginkgo.By("Change qos policy of natgw " + natgwName + " to " + specificQoSPolicyName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, specificQoSPolicyName)
+	// The QoS policy keeps a finalizer while it is bound, so it must be unbound before it gets
+	// deleted by the cleanup registered above (deferred cleanups run in reverse order).
 	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up qos policy " + qosPolicyName)
-		qosPolicyClient.DeleteSync(qosPolicyName)
+		ginkgo.By("Unbinding the qos policy from natgw " + natgwName)
+		_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
 	})
 
-	ginkgo.By("Patch eip " + eipName + " with qos policy " + qosPolicyName)
-	_ = eipClient.PatchQoSPolicySync(eipName, qosPolicyName)
+	ginkgo.By("Check qos to match priority 2 is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, specificIPLimit)
 
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(eipLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, eipLimit, true)
-
-	ginkgo.By("Update qos policy " + qosPolicyName + " with new rate limit")
-
-	rules = getEIPQoSRule(updatedEIPLimit)
-	modifiedqosPolicy := qosPolicy.DeepCopy()
-	modifiedqosPolicy.Spec.BandwidthLimitRules = rules
-	qosPolicyClient.Patch(qosPolicy, modifiedqosPolicy)
-	qosPolicyClient.WaitToQoSReady(qosPolicyName)
-
-	ginkgo.By("Check qos " + qosPolicyName + " is changed to " + strconv.Itoa(updatedEIPLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, updatedEIPLimit, true)
-
-	ginkgo.By("Delete natgw pods for " + natgwName)
-	labels := util.GenNatGwLabels(natgwName)
-	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
-	pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
-	framework.ExpectNoError(err)
-	for _, pod := range pods.Items {
-		err = podClient.Delete(pod.Name)
-		framework.ExpectNoError(err, "failed to delete natgw pod "+pod.Name)
-	}
-
-	ginkgo.By("Wait for natgw " + natgwName + " pod to be ready after recreation")
-	vpcNatGwClient.WaitGwPodReady(natgwName, "", 2*time.Minute, f.ClientSet)
-
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(updatedEIPLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, updatedEIPLimit, true)
-
-	newQoSPolicyName := "new-eip-qos-policy-" + framework.RandomSuffix()
-	newRules := getEIPQoSRule(newEIPLimit)
-	newQoSPolicy := framework.MakeQoSPolicy(newQoSPolicyName, false, apiv1.QoSBindingTypeEIP, newRules)
-	_ = qosPolicyClient.CreateSync(newQoSPolicy)
-	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up new qos policy " + newQoSPolicyName)
-		qosPolicyClient.DeleteSync(newQoSPolicyName)
-	})
-
-	ginkgo.By("Change qos policy of eip " + eipName + " to " + newQoSPolicyName)
-	_ = eipClient.PatchQoSPolicySync(eipName, newQoSPolicyName)
-
-	ginkgo.By("Check qos " + qosPolicyName + " is limited to " + strconv.Itoa(newEIPLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, newEIPLimit, true)
-
-	ginkgo.By("Remove qos policy " + qosPolicyName + " from natgw " + eipName)
-	_ = eipClient.PatchQoSPolicySync(eipName, "")
-
-	ginkgo.By("Check qos " + qosPolicyName + " is not limited to " + strconv.Itoa(newEIPLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, newEIPLimit, false)
-	// Cleanup is now handled by DeferCleanup
-}
-
-// multiEIPQoSIsolationCases tests that QoS policies on multiple EIPs on the SAME NAT Gateway
-// don't interfere with each other. This also tests decimal bandwidth values.
-//
-// Test structure (setup-first, test-last pattern):
-// 1. Create 4 additional EIPs on the same NAT GW with different decimal QoS limits
-// 2. Apply QoS policies: 0.01, 0.1, 0.5, 2.5 Mbps
-// 3. Wait for all tc rules to stabilize
-// 4. Test each EIP's bandwidth sequentially
-//
-// This verifies:
-// - Multiple EIPs with different QoS don't interfere with each other
-// - Sub-Mbps decimal bandwidth limiting works correctly (0.01, 0.1, 0.5 Mbps)
-// - Decimal values > 1 Mbps work correctly (2.5 Mbps)
-func multiEIPQoSIsolationCases(f *framework.Framework,
-	_, noQosPod *corev1.Pod,
-	_, noQosEIP *apiv1.IptablesEIP,
-	_, _ string, // qosEIPName, noQosEIPName - not used in this test
-	natgwName string,
-	attachDefName string,
-	qosSubnetName string,
-) {
-	ginkgo.GinkgoHelper()
-
-	// Derive clients from framework
-	podClient := f.PodClient()
-	eipClient := f.IptablesEIPClient()
-	fipClient := f.IptablesFIPClient()
-	qosPolicyClient := f.QoSPolicyClient()
-
-	// ============================================================
-	// PHASE 1: Create additional EIPs and pods on the SAME NAT GW
-	// ============================================================
-
-	// We need to create additional EIPs on the same NAT GW to test isolation
-	// The test will use decimalQoSConfigs: 0.01, 0.1, 0.5, 2.5 Mbps
-	type eipTestResource struct {
-		eipName   string
-		fipName   string
-		podName   string
-		pod       *corev1.Pod
-		eip       *apiv1.IptablesEIP
-		qosPolicy string
-		config    decimalQoSConfig
-	}
-
-	resources := make([]eipTestResource, len(decimalQoSConfigs))
-	randomSuffix := framework.RandomSuffix()
-
-	// Create pods, EIPs, FIPs for each test config
-	for i, cfg := range decimalQoSConfigs {
-		resources[i] = eipTestResource{
-			eipName: fmt.Sprintf("isolation-eip-%d-%s", i, randomSuffix),
-			fipName: fmt.Sprintf("isolation-fip-%d-%s", i, randomSuffix),
-			podName: fmt.Sprintf("isolation-pod-%d-%s", i, randomSuffix),
-			config:  cfg,
-		}
-	}
-
-	iperfServerCmd := []string{"iperf", "-s", "-i", "1", "-p", iperf2Port}
-
-	// Create all pods first - must be in qosVpc's subnet to use the qosNatGw
-	for i := range resources {
-		res := &resources[i]
-		annotations := map[string]string{
-			util.LogicalSwitchAnnotation: qosSubnetName,
-		}
-		ginkgo.By(fmt.Sprintf("Creating pod %s for %.2f Mbps test", res.podName, res.config.LimitMbps))
-		pod := framework.MakePod(f.Namespace.Name, res.podName, nil, annotations, framework.AgnhostImage, iperfServerCmd, nil)
-		res.pod = podClient.CreateSync(pod)
-		ginkgo.DeferCleanup(func() {
-			podClient.DeleteSync(res.podName)
-		})
-	}
-
-	// Create all EIPs on the same NAT GW
-	for i := range resources {
-		res := &resources[i]
-		ginkgo.By(fmt.Sprintf("Creating EIP %s on NAT GW %s", res.eipName, natgwName))
-		eip := framework.MakeIptablesEIP(res.eipName, "", "", "", natgwName, attachDefName, "")
-		_ = eipClient.CreateSync(eip)
-		res.eip = waitForIptablesEIPReady(eipClient, res.eipName, 60*time.Second)
-		ginkgo.DeferCleanup(func() {
-			eipClient.DeleteSync(res.eipName)
-		})
-	}
-
-	// Create all FIPs
-	for i := range resources {
-		res := &resources[i]
-		ginkgo.By(fmt.Sprintf("Creating FIP %s for pod %s -> EIP %s", res.fipName, res.podName, res.eipName))
-		fip := framework.MakeIptablesFIPRule(res.fipName, res.eipName, res.pod.Status.PodIP)
-		_ = fipClient.CreateSync(fip)
-		ginkgo.DeferCleanup(func() {
-			fipClient.DeleteSync(res.fipName)
-		})
-	}
-
-	// ============================================================
-	// PHASE 2: Create and apply all QoS policies
-	// ============================================================
-
-	for i := range resources {
-		res := &resources[i]
-		res.qosPolicy = fmt.Sprintf("isolation-qos-%d-%s", i, randomSuffix)
-
-		ginkgo.By(fmt.Sprintf("Creating QoS policy %s with %s Mbps", res.qosPolicy, res.config.Rate))
-		rules := getEIPQoSRuleWithDecimal(res.config.Rate, res.config.Burst)
-		qosPolicy := framework.MakeQoSPolicy(res.qosPolicy, false, apiv1.QoSBindingTypeEIP, rules)
-		_ = qosPolicyClient.CreateSync(qosPolicy)
-		ginkgo.DeferCleanup(func() {
-			qosPolicyClient.DeleteSync(res.qosPolicy)
-		})
-
-		ginkgo.By(fmt.Sprintf("Applying QoS policy %s to EIP %s", res.qosPolicy, res.eipName))
-		_ = eipClient.PatchQoSPolicySync(res.eipName, res.qosPolicy)
-		ginkgo.DeferCleanup(func() {
-			_ = eipClient.PatchQoSPolicySync(res.eipName, "")
-		})
-	}
-
-	// Wait for all tc rules to be applied
-	ginkgo.By("Waiting for all QoS rules to be applied and network to stabilize")
-	time.Sleep(10 * time.Second)
-
-	// Dump tc rules for debugging
-	ginkgo.By("Dumping tc rules on NAT GW " + natgwName)
-	if len(resources) > 0 {
-		dumpTcRulesOnNatGw(f, natgwName, resources[0].eip.Status.IP)
-	}
-
-	// ============================================================
-	// PHASE 3: Test all EIPs' bandwidth - tests at the end
-	// ============================================================
-
-	framework.Logf("\n========== Starting Multi-EIP QoS Isolation Tests ==========")
-	framework.Logf("Testing %d EIPs on the same NAT GW with different decimal QoS limits", len(resources))
-
-	for i, res := range resources {
-		ginkgo.By(fmt.Sprintf("Testing EIP %d (%s) - should be limited to %s Mbps",
-			i+1, res.eip.Status.IP, res.config.Rate))
-
-		// Test bandwidth: noQosPod -> res.eip (ingress to the test EIP)
-		//                 res.pod -> noQosEIP (egress from the test pod)
-		checkQosFloat(f, res.pod, noQosPod, res.eip, noQosEIP, res.config.LimitMbps, true)
-
-		framework.Logf("✓ EIP %d (%s) passed: limited to %s Mbps as expected",
-			i+1, res.eip.Status.IP, res.config.Rate)
-	}
-
-	framework.Logf("\n========== Multi-EIP QoS Isolation Test PASSED ==========")
-	framework.Logf("All %d EIPs on NAT GW %s verified with correct bandwidth limits:", len(resources), natgwName)
-	for i, res := range resources {
-		framework.Logf("  EIP %d (%s): %s Mbps", i+1, res.eip.Status.IP, res.config.Rate)
-	}
-}
-
-// priorityQoSCases test qos match priority
-func priorityQoSCases(f *framework.Framework,
-	qosPod, noQosPod *corev1.Pod,
-	qosEIP, noQosEIP *apiv1.IptablesEIP,
-	natgwName, eipName string,
-) {
-	ginkgo.GinkgoHelper()
-
-	// Derive clients from framework
-	vpcNatGwClient := f.VpcNatGatewayClient()
-	eipClient := f.IptablesEIPClient()
-	qosPolicyClient := f.QoSPolicyClient()
-
-	// create nic qos policy
-	natGwQoSPolicyName := "priority-nic-qos-policy-" + framework.RandomSuffix()
-	ginkgo.By("Creating qos policy " + natGwQoSPolicyName)
-	// default qos policy + special qos policy
-	natgwRules := getNicDefaultQoSPolicy(defaultNicLimit)
-	natgwRules = append(natgwRules, getSpecialQoSRule(specificIPLimit, noQosEIP.Status.IP)...)
-
-	natgwQoSPolicy := framework.MakeQoSPolicy(natGwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, natgwRules)
-	_ = qosPolicyClient.CreateSync(natgwQoSPolicy)
-	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up natgw qos policy " + natGwQoSPolicyName)
-		qosPolicyClient.DeleteSync(natGwQoSPolicyName)
-	})
-
-	ginkgo.By("Patch natgw " + natgwName + " with qos policy " + natGwQoSPolicyName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, natGwQoSPolicyName)
-
+	// eip scoped rules have the highest priority
 	eipQoSPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
 	ginkgo.By("Creating qos policy " + eipQoSPolicyName)
-	eipRules := getEIPQoSRule(eipLimit)
-
-	eipQoSPolicy := framework.MakeQoSPolicy(eipQoSPolicyName, false, apiv1.QoSBindingTypeEIP, eipRules)
+	eipQoSPolicy := framework.MakeQoSPolicy(eipQoSPolicyName, false, apiv1.QoSBindingTypeEIP, getEIPQoSRule(priorityEIPLimit))
 	_ = qosPolicyClient.CreateSync(eipQoSPolicy)
 	ginkgo.DeferCleanup(func() {
 		ginkgo.By("Cleaning up eip qos policy " + eipQoSPolicyName)
 		qosPolicyClient.DeleteSync(eipQoSPolicyName)
 	})
 
-	ginkgo.By("Patch eip " + eipName + " with qos policy " + eipQoSPolicyName)
-	_ = eipClient.PatchQoSPolicySync(eipName, eipQoSPolicyName)
+	ginkgo.By("Patch eip " + vpcQosParams.qosEIPName + " with qos policy " + eipQoSPolicyName)
+	_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, eipQoSPolicyName)
 
-	// match qos of priority 1
-	ginkgo.By("Check qos to match priority 1 is limited to " + strconv.Itoa(eipLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, eipLimit, true)
+	ginkgo.By("Check qos to match priority 1 is limited to " + strconv.Itoa(priorityEIPLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, priorityEIPLimit)
 
-	ginkgo.By("Remove qos policy " + eipQoSPolicyName + " from natgw " + eipName)
-	_ = eipClient.PatchQoSPolicySync(eipName, "")
+	ginkgo.By("Remove qos policy " + eipQoSPolicyName + " from eip " + vpcQosParams.qosEIPName)
+	_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, "")
 
-	// match qos of priority 2
-	ginkgo.By("Check qos to match priority 2 is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, specificIPLimit, true)
+	ginkgo.By("Check qos falls back to priority 2 and is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, specificIPLimit)
 
-	// change qos policy of natgw
-	newNatGwQoSPolicyName := "new-priority-nic-qos-policy-" + framework.RandomSuffix()
-	ginkgo.By("Creating qos policy " + newNatGwQoSPolicyName)
-	newNatgwRules := getNicDefaultQoSPolicy(defaultNicLimit)
+	restartNatGwPods(f, natgwName)
 
-	newNatgwQoSPolicy := framework.MakeQoSPolicy(newNatGwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, newNatgwRules)
-	_ = qosPolicyClient.CreateSync(newNatgwQoSPolicy)
-	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up new natgw qos policy " + newNatGwQoSPolicyName)
-		qosPolicyClient.DeleteSync(newNatGwQoSPolicyName)
-	})
+	ginkgo.By("Check tc rules of qos " + specificQoSPolicyName + " are restored after natgw pod recreation")
+	expectTcRateOnNatGw(f, natgwName, defaultNicLimit, specificIPLimit)
 
-	ginkgo.By("Change qos policy of natgw " + natgwName + " to " + newNatGwQoSPolicyName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, newNatGwQoSPolicyName)
-
-	// match qos of priority 3
-	ginkgo.By("Check qos to match priority 3 is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, true)
-
-	ginkgo.By("Remove qos policy " + natGwQoSPolicyName + " from natgw " + natgwName)
+	ginkgo.By("Remove qos policy " + specificQoSPolicyName + " from natgw " + natgwName)
 	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
 
-	ginkgo.By("Check qos " + natGwQoSPolicyName + " is not limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, false)
-	// Cleanup is now handled by DeferCleanup
+	// Unbinding must remove all the tc classes of the policy. Verifying it on the tc rules is both
+	// cheaper and stricter than measuring an unlimited bandwidth.
+	ginkgo.By("Check tc rules of qos " + specificQoSPolicyName + " are removed from natgw " + natgwName)
+	for _, dev := range []string{natGwEgressDev, natGwIngressDev} {
+		expectTcClassOnNatGwDev(f, natgwName, dev, defaultNicLimit, false)
+		expectTcClassOnNatGwDev(f, natgwName, dev, specificIPLimit, false)
+	}
 }
 
-func createNatGwAndSetQosCases(f *framework.Framework,
+// updateEIPQoSPolicyRules updates the bandwidth limit rules of a bound EIP QoS policy in place and
+// waits until the policy status reflects the new rules, i.e. until they have been applied on the
+// NAT gateway.
+func updateEIPQoSPolicyRules(f *framework.Framework, qosPolicyName string, rules apiv1.QoSPolicyBandwidthLimitRules) {
+	ginkgo.GinkgoHelper()
+
+	qosPolicyClient := f.QoSPolicyClient()
+
+	qosPolicy := qosPolicyClient.Get(qosPolicyName)
+	modifiedQoSPolicy := qosPolicy.DeepCopy()
+	modifiedQoSPolicy.Spec.BandwidthLimitRules = rules
+	qosPolicyClient.Patch(qosPolicy, modifiedQoSPolicy)
+	framework.ExpectTrue(qosPolicyClient.WaitToQoSReady(qosPolicyName),
+		"qos policy %s should apply its new bandwidth limit rules", qosPolicyName)
+}
+
+// updateEIPQoSPolicyRate updates the rate limit of the ingress and egress rules of a bound EIP QoS
+// policy in place.
+func updateEIPQoSPolicyRate(f *framework.Framework, qosPolicyName string, limit int) {
+	ginkgo.GinkgoHelper()
+
+	ginkgo.By("Update qos policy " + qosPolicyName + " with rate limit " + strconv.Itoa(limit) + "Mbps")
+	updateEIPQoSPolicyRules(f, qosPolicyName, getEIPQoSRule(limit))
+}
+
+// eipQoSCases covers the EIP scoped QoS:
+//   - the policy bound at EIP creation time takes effect
+//   - hot updating the rules of a bound policy takes effect, both when the rate is raised from
+//     eipLimit to updatedEIPLimit and when it is restored to eipLimit
+//   - hot updating the rule set of a bound policy takes effect: deleting a rule removes the tc
+//     class of that direction only, adding one creates it again, and renaming a rule (a deletion
+//     and an addition within a single update) keeps it
+//   - the tc rules are restored after the NAT gateway pod is recreated
+//   - switching the EIP to another policy takes effect (rate lowered to a decimal, sub-Mbps value)
+//   - multiple EIPs on the SAME NAT gateway with different (decimal) limits don't interfere, both
+//     while they are bound and when one of them is unbound
+//
+// The EIP is expected to be created with eipQoSPolicyName (eipLimit) already bound.
+func eipQoSCases(f *framework.Framework,
 	qosPod, noQosPod *corev1.Pod,
-	noQosEIP *apiv1.IptablesEIP,
-	natgwName, eipName, fipName string,
-	vpcName, overlaySubnetName, lanIP, attachDefName string,
+	qosEIP, noQosEIP *apiv1.IptablesEIP,
+	vpcQosParams *qosParams, eipQoSPolicyName string,
 ) {
 	ginkgo.GinkgoHelper()
 
-	// Derive clients from framework
-	vpcNatGwClient := f.VpcNatGatewayClient()
-	ipClient := f.IPClient()
+	podClient := f.PodClient()
 	eipClient := f.IptablesEIPClient()
 	fipClient := f.IptablesFIPClient()
 	qosPolicyClient := f.QoSPolicyClient()
+	natgwName := vpcQosParams.qosNatGwName
 
-	// delete fip
-	ginkgo.By("Deleting fip " + fipName)
-	fipClient.DeleteSync(fipName)
+	ginkgo.By("Check qos " + eipQoSPolicyName + " is limited to " + strconv.Itoa(eipLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, eipLimit)
 
-	ginkgo.By("Deleting eip " + eipName)
-	eipClient.DeleteSync(eipName)
+	// hot update the bound policy: raise the rate limit and restore it afterwards
+	updateEIPQoSPolicyRate(f, eipQoSPolicyName, updatedEIPLimit)
 
-	// delete vpc nat gw statefulset/deployment remaining ip for eth0 and net2
-	ginkgo.By("Deleting custom vpc nat gw " + natgwName)
-	vpcNatGwClient.DeleteSync(natgwName)
+	ginkgo.By("Check qos " + eipQoSPolicyName + " is changed to " + strconv.Itoa(updatedEIPLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, updatedEIPLimit)
 
-	ginkgo.By("Deleting remaining IPs for natgw " + natgwName)
-	labels := util.GenNatGwLabels(natgwName)
-	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: labels})
-	ips, err := f.IPClient().List(context.Background(), metav1.ListOptions{LabelSelector: selector})
-	framework.ExpectNoError(err)
-	for _, ip := range ips.Items {
-		ginkgo.By("Deleting ip " + ip.Name)
-		ipClient.DeleteSync(ip.Name)
+	updateEIPQoSPolicyRate(f, eipQoSPolicyName, eipLimit)
+
+	ginkgo.By("Check qos " + eipQoSPolicyName + " is restored to " + strconv.Itoa(eipLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, eipLimit)
+
+	// Hot update the rule set (not only the rate) of the bound policy. The effect is verified on
+	// the tc rules of the NAT gateway: measuring it would require saturating the link, since a
+	// deleted rule means "no limit" for that direction.
+	rules := getEIPQoSRule(eipLimit)
+	ingressRule, egressRule := rules[0], rules[1]
+
+	ginkgo.By("Delete the egress rule of qos policy " + eipQoSPolicyName)
+	updateEIPQoSPolicyRules(f, eipQoSPolicyName, apiv1.QoSPolicyBandwidthLimitRules{ingressRule})
+	expectTcClassOnNatGwDev(f, natgwName, natGwEgressDev, eipLimit, false)
+	expectTcClassOnNatGwDev(f, natgwName, natGwIngressDev, eipLimit, true)
+
+	ginkgo.By("Add an egress rule to qos policy " + eipQoSPolicyName)
+	newEgressRule := *egressRule.DeepCopy()
+	newEgressRule.Name = egressRule.Name + "-v2"
+	updateEIPQoSPolicyRules(f, eipQoSPolicyName, apiv1.QoSPolicyBandwidthLimitRules{ingressRule, newEgressRule})
+	expectTcRateOnNatGw(f, natgwName, eipLimit)
+
+	// Renaming a rule is a deletion and an addition within a single update: the deletion has to be
+	// applied first, otherwise the tc class added for the new rule would be removed right away.
+	ginkgo.By("Rename the egress rule of qos policy " + eipQoSPolicyName)
+	renamedEgressRule := *egressRule.DeepCopy()
+	renamedEgressRule.Name = egressRule.Name + "-v3"
+	updateEIPQoSPolicyRules(f, eipQoSPolicyName, apiv1.QoSPolicyBandwidthLimitRules{ingressRule, renamedEgressRule})
+	expectTcRateOnNatGw(f, natgwName, eipLimit)
+
+	// Create an extra pod/eip/fip on the SAME natgw with a different decimal rate limit, so that
+	// the isolation between the QoS policies of both EIPs can be verified.
+	randomSuffix := framework.RandomSuffix()
+	extraPodName := "isolation-pod-" + randomSuffix
+	extraEIPName := "isolation-eip-" + randomSuffix
+	extraFIPName := "isolation-fip-" + randomSuffix
+
+	ginkgo.By("Creating pod " + extraPodName + " for the " + decimalQoSHigh.Rate + "Mbps test")
+	annotations := map[string]string{util.LogicalSwitchAnnotation: vpcQosParams.qosSubnetName}
+	iperfServerCmd := []string{"iperf", "-s", "-i", "1", "-p", iperf2Port}
+	extraPod := framework.MakePod(f.Namespace.Name, extraPodName, nil, annotations, framework.AgnhostImage, iperfServerCmd, nil)
+	extraPod = podClient.CreateSync(extraPod)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up pod " + extraPodName)
+		podClient.DeleteSync(extraPodName)
+	})
+
+	extraQoSPolicyName := "isolation-qos-policy-" + randomSuffix
+	ginkgo.By("Creating qos policy " + extraQoSPolicyName + " with " + decimalQoSHigh.Rate + "Mbps")
+	extraRules := getEIPQoSRuleWithDecimal(decimalQoSHigh.Rate, decimalQoSHigh.Burst)
+	extraQoSPolicy := framework.MakeQoSPolicy(extraQoSPolicyName, false, apiv1.QoSBindingTypeEIP, extraRules)
+	_ = qosPolicyClient.CreateSync(extraQoSPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up qos policy " + extraQoSPolicyName)
+		qosPolicyClient.DeleteSync(extraQoSPolicyName)
+	})
+
+	ginkgo.By("Creating eip " + extraEIPName + " on natgw " + natgwName + " with qos policy " + extraQoSPolicyName)
+	extraEIP := framework.MakeIptablesEIP(extraEIPName, "", "", "", natgwName, vpcQosParams.attachDefName, extraQoSPolicyName)
+	_ = eipClient.CreateSync(extraEIP)
+	extraEIP = waitForIptablesEIPReady(eipClient, extraEIPName, 60*time.Second)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up eip " + extraEIPName)
+		eipClient.DeleteSync(extraEIPName)
+	})
+
+	ginkgo.By("Creating fip " + extraFIPName + " for pod " + extraPodName + " -> eip " + extraEIPName)
+	extraFIP := framework.MakeIptablesFIPRule(extraFIPName, extraEIPName, extraPod.Status.PodIP)
+	_ = fipClient.CreateSync(extraFIP)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up fip " + extraFIPName)
+		fipClient.DeleteSync(extraFIPName)
+	})
+
+	// switch the eip to another policy, using a sub-Mbps decimal rate
+	newQoSPolicyName := "new-eip-qos-policy-" + randomSuffix
+	ginkgo.By("Creating qos policy " + newQoSPolicyName + " with " + decimalQoSLow.Rate + "Mbps")
+	newRules := getEIPQoSRuleWithDecimal(decimalQoSLow.Rate, decimalQoSLow.Burst)
+	newQoSPolicy := framework.MakeQoSPolicy(newQoSPolicyName, false, apiv1.QoSBindingTypeEIP, newRules)
+	_ = qosPolicyClient.CreateSync(newQoSPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up qos policy " + newQoSPolicyName)
+		qosPolicyClient.DeleteSync(newQoSPolicyName)
+	})
+
+	ginkgo.By("Change qos policy of eip " + vpcQosParams.qosEIPName + " to " + newQoSPolicyName)
+	_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, newQoSPolicyName)
+	// The QoS policy keeps a finalizer while it is bound, so it must be unbound before it gets
+	// deleted by the cleanup registered above (deferred cleanups run in reverse order).
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Unbinding the qos policy from eip " + vpcQosParams.qosEIPName)
+		_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, "")
+	})
+
+	ginkgo.By("Dumping tc rules on natgw " + natgwName)
+	dumpTcRulesOnNatGw(f, natgwName, qosEIP.Status.IP)
+
+	ginkgo.By("Check qos " + newQoSPolicyName + " is limited to " + decimalQoSLow.Rate + "Mbps")
+	checkQosFloat(f, qosPod, noQosPod, qosEIP, noQosEIP, decimalQoSLow.LimitMbps)
+
+	ginkgo.By("Check qos " + extraQoSPolicyName + " of eip " + extraEIPName + " is limited to " + decimalQoSHigh.Rate + "Mbps")
+	checkQosFloat(f, extraPod, noQosPod, extraEIP, noQosEIP, decimalQoSHigh.LimitMbps)
+
+	restartNatGwPods(f, natgwName)
+
+	ginkgo.By("Check tc rules of the eip qos policies are restored after natgw pod recreation")
+	expectTcRateOnNatGw(f, natgwName, decimalQoSLow.LimitMbps, decimalQoSHigh.LimitMbps)
+
+	ginkgo.By("Remove qos policy " + newQoSPolicyName + " from eip " + vpcQosParams.qosEIPName)
+	_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, "")
+
+	// Unbinding must remove the tc classes of this eip only, the ones of the other eip on the same
+	// NAT gateway must be left untouched.
+	ginkgo.By("Check tc rules of qos " + newQoSPolicyName + " are removed, the ones of " + extraQoSPolicyName + " are kept")
+	for _, dev := range []string{natGwEgressDev, natGwIngressDev} {
+		expectTcClassOnNatGwDev(f, natgwName, dev, decimalQoSLow.LimitMbps, false)
+		expectTcClassOnNatGwDev(f, natgwName, dev, decimalQoSHigh.LimitMbps, true)
 	}
+}
 
-	natgwQoSPolicyName := "default-nic-qos-policy-" + framework.RandomSuffix()
-	ginkgo.By("Creating qos policy " + natgwQoSPolicyName)
-	rules := getNicDefaultQoSPolicy(defaultNicLimit)
+// createQoSMarkedForDeletionWhileBound creates a QoS policy of the given binding type, waits for
+// its KubeOVN controller finalizer, runs bind to attach it to a resource, then deletes it while
+// still bound and asserts it stays in Terminating. It returns the policy name so the caller can
+// exercise the release trigger (deleting or unbinding the referencing resource).
+func createQoSMarkedForDeletionWhileBound(
+	f *framework.Framework,
+	shared bool,
+	bindingType apiv1.QoSPolicyBindingType,
+	rules apiv1.QoSPolicyBandwidthLimitRules,
+	bind func(qosName string),
+) (qosName string) {
+	ginkgo.GinkgoHelper()
 
-	qosPolicy := framework.MakeQoSPolicy(natgwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
-	_ = qosPolicyClient.CreateSync(qosPolicy)
+	qosPolicyClient := f.QoSPolicyClient()
+
+	qosName = "qos-life-policy-" + framework.RandomSuffix()
+	ginkgo.By("Creating qos policy " + qosName)
+	qos := framework.MakeQoSPolicy(qosName, shared, bindingType, rules)
+	_ = qosPolicyClient.CreateSync(qos)
 	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up recreated qos policy " + natgwQoSPolicyName)
-		qosPolicyClient.DeleteSync(natgwQoSPolicyName)
+		ginkgo.By("Cleaning up qos policy " + qosName)
+		qosPolicyClient.DeleteSync(qosName)
 	})
 
-	ginkgo.By("Creating custom vpc nat gw")
-	vpcNatGw := framework.MakeVpcNatGateway(natgwName, vpcName, overlaySubnetName, lanIP, attachDefName, natgwQoSPolicyName)
-	_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
-	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up recreated vpc nat gw " + natgwName)
-		vpcNatGwClient.DeleteSync(natgwName)
-	})
+	// A newly created policy must carry the KubeOVN controller finalizer, otherwise deletion
+	// would not be blocked while still referenced and there would be nothing to regress on.
+	ginkgo.By("Verifying qos policy " + qosName + " has the controller finalizer")
+	gomega.Eventually(func(g gomega.Gomega) {
+		p, err := qosPolicyClient.QoSPolicyInterface.Get(context.TODO(), qosName, metav1.GetOptions{})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(p.Finalizers).To(gomega.ContainElement(util.KubeOVNControllerFinalizer))
+	}, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
 
-	eipQoSPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
-	ginkgo.By("Creating qos policy " + eipQoSPolicyName)
-	rules = getEIPQoSRule(eipLimit)
+	bind(qosName)
 
-	eipQoSPolicy := framework.MakeQoSPolicy(eipQoSPolicyName, false, apiv1.QoSBindingTypeEIP, rules)
-	_ = qosPolicyClient.CreateSync(eipQoSPolicy)
-	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up recreated qos policy " + eipQoSPolicyName)
-		qosPolicyClient.DeleteSync(eipQoSPolicyName)
-	})
+	ginkgo.By("Marking qos policy " + qosName + " for deletion while still bound")
+	qosPolicyClient.Delete(qosName)
 
-	ginkgo.By("Creating eip " + eipName)
-	qosEIP := framework.MakeIptablesEIP(eipName, "", "", "", natgwName, attachDefName, eipQoSPolicyName)
-	_ = eipClient.CreateSync(qosEIP)
-	qosEIP = waitForIptablesEIPReady(eipClient, eipName, 60*time.Second)
+	// Wait for the policy to enter Terminating, then assert it stays there while still
+	// referenced. The initial Eventually avoids a flake if the apiserver update lags.
+	stillTerminating := func(g gomega.Gomega) {
+		p, err := qosPolicyClient.QoSPolicyInterface.Get(context.TODO(), qosName, metav1.GetOptions{})
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(p.DeletionTimestamp.IsZero()).To(gomega.BeFalse())
+	}
+	ginkgo.By("Waiting for qos policy " + qosName + " to enter Terminating")
+	gomega.Eventually(stillTerminating, 10*time.Second, 1*time.Second).Should(gomega.Succeed())
+	ginkgo.By("Verifying qos policy " + qosName + " stays in Terminating while still referenced")
+	gomega.Consistently(stillTerminating, 5*time.Second, 1*time.Second).Should(gomega.Succeed())
+
+	return qosName
+}
+
+// setupEIPBoundQoSMarkedForDeletion binds a fresh EIP (no FIP, so it can be deleted freely) to a
+// new EIP-type QoS policy marked for deletion. It returns the EIP and QoS names.
+func setupEIPBoundQoSMarkedForDeletion(f *framework.Framework, vpcQosParams *qosParams) (eipName, qosName string) {
+	ginkgo.GinkgoHelper()
+
+	eipClient := f.IptablesEIPClient()
+
+	eipName = "qos-life-eip-" + framework.RandomSuffix()
+	ginkgo.By("Creating dedicated eip " + eipName)
+	eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcQosParams.qosNatGwName, vpcQosParams.attachDefName, "")
+	_ = eipClient.CreateSync(eip)
+	waitForIptablesEIPReady(eipClient, eipName, 60*time.Second)
 	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up recreated eip " + eipName)
+		ginkgo.By("Cleaning up eip " + eipName)
 		eipClient.DeleteSync(eipName)
 	})
 
-	ginkgo.By("Creating fip " + fipName)
-	fip := framework.MakeIptablesFIPRule(fipName, eipName, qosPod.Status.PodIP)
-	_ = fipClient.CreateSync(fip)
-	ginkgo.DeferCleanup(func() {
-		ginkgo.By("Cleaning up recreated fip " + fipName)
-		fipClient.DeleteSync(fipName)
+	qosName = createQoSMarkedForDeletionWhileBound(f, false, apiv1.QoSBindingTypeEIP, getEIPQoSRule(eipLimit), func(qos string) {
+		ginkgo.By("Binding eip " + eipName + " to qos policy " + qos)
+		_ = eipClient.PatchQoSPolicySync(eipName, qos)
 	})
+	return eipName, qosName
+}
 
-	ginkgo.By("Check qos " + eipQoSPolicyName + " is limited to " + strconv.Itoa(eipLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, eipLimit, true)
+// setupNatGwBoundQoSMarkedForDeletion binds the given NAT gateway to a new NatGw-type QoS policy
+// marked for deletion. It returns the QoS name.
+func setupNatGwBoundQoSMarkedForDeletion(f *framework.Framework, natgwName string) (qosName string) {
+	ginkgo.GinkgoHelper()
 
-	ginkgo.By("Remove qos policy " + eipQoSPolicyName + " from natgw " + natgwName)
-	_ = eipClient.PatchQoSPolicySync(eipName, "")
-
-	ginkgo.By("Check qos " + natgwQoSPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, true)
-
-	ginkgo.By("Remove qos policy " + natgwQoSPolicyName + " from natgw " + natgwName)
-	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
-
-	ginkgo.By("Check qos " + natgwQoSPolicyName + " is not limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
-	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit, false)
-
-	// Cleanup is now handled by DeferCleanup registered after each resource creation
+	natgwClient := f.VpcNatGatewayClient()
+	// A NatGw-bound QoS policy must be shared (see validateQosPolicy).
+	return createQoSMarkedForDeletionWhileBound(f, true, apiv1.QoSBindingTypeNatGw, getNicDefaultQoSPolicy(defaultNicLimit), func(qos string) {
+		ginkgo.By("Binding natgw " + natgwName + " to qos policy " + qos)
+		_ = natgwClient.PatchQoSPolicySync(natgwName, qos)
+	})
 }
 
 // parseBandwidthFromIperfOutput extracts bandwidth values from iperf CSV output
@@ -1053,26 +1005,21 @@ type bandwidthValidationResult struct {
 	LimitMbps    float64   // Configured QoS limit in Mbps
 	MeasuredMbps []float64 // All measured bandwidth values in Mbps
 	MinExpected  float64   // Expected minimum in Mbps
-	MaxExpected  float64   // Expected maximum in Mbps (or 0 for "exceeds limit" case)
+	MaxExpected  float64   // Expected maximum in Mbps
 	BestMatch    float64   // The bandwidth value that matched (or closest), in Mbps
 }
 
 // formatBandwidthSummary creates a human-readable summary of bandwidth test results
-func formatBandwidthSummary(result bandwidthValidationResult, testType, direction string) string {
+func formatBandwidthSummary(result bandwidthValidationResult, direction string) string {
 	var sb strings.Builder
 	sb.WriteString("\n╔═══════════════════════════════════════════════════════════════════════════════╗\n")
-	fmt.Fprintf(&sb, "║  QoS Bandwidth Test Summary - %s (%s)\n", testType, direction)
+	fmt.Fprintf(&sb, "║  QoS Bandwidth Test Summary (%s)\n", direction)
 	sb.WriteString("╠═══════════════════════════════════════════════════════════════════════════════╣\n")
 	fmt.Fprintf(&sb, "║  QoS Limit:         %.2f Mbps\n", result.LimitMbps)
 
-	if result.MaxExpected > 0 {
-		fmt.Fprintf(&sb, "║  Expected Range:    %.2f ~ %.2f Mbps (%.0f%% ~ %.0f%% of limit)\n",
-			result.MinExpected, result.MaxExpected,
-			bandwidthToleranceLow*100, bandwidthToleranceHigh*100)
-	} else {
-		fmt.Fprintf(&sb, "║  Expected:          > %.2f Mbps (QoS disabled, should exceed %.0f%% of limit)\n",
-			result.MinExpected, bandwidthToleranceHigh*100)
-	}
+	fmt.Fprintf(&sb, "║  Expected Range:    %.2f ~ %.2f Mbps (%.0f%% ~ %.0f%% of limit)\n",
+		result.MinExpected, result.MaxExpected,
+		bandwidthToleranceLow*100, bandwidthToleranceHigh*100)
 
 	sb.WriteString("║  Measured Values:   ")
 	for i, bw := range result.MeasuredMbps {
@@ -1137,45 +1084,38 @@ func validateRateLimitFloatWithResult(text string, limitMbps float64) bandwidthV
 	return result
 }
 
-// validateBandwidthExceedsLimitFloatWithResult validates bandwidth exceeds limit and returns detailed result
-// This is used to verify that QoS is actually working by confirming that
-// without QoS, the bandwidth can exceed the limit significantly
-func validateBandwidthExceedsLimitFloatWithResult(text string, limitMbps float64) bandwidthValidationResult {
-	// bandwidth should exceed limit by at least 50% when QoS is not applied
-	minValue := limitMbps * bitsPerMbit * bandwidthToleranceHigh
+// setupQosNatGwEnvironment creates only the VPC, the overlay subnet and the NAT gateway where the
+// QoS policies are applied. It is used by the tests which don't need to send any traffic.
+func setupQosNatGwEnvironment(
+	f *framework.Framework,
+	dockerExtNetNetwork *dockernetwork.Inspect,
+	vpcQosParams *qosParams,
+	net1NicName string,
+	natgwQoSPolicy string,
+) {
+	ginkgo.GinkgoHelper()
 
-	result := bandwidthValidationResult{
-		Passed:      false,
-		LimitMbps:   limitMbps,
-		MinExpected: limitMbps * bandwidthToleranceHigh, // Should exceed this
-		MaxExpected: 0,                                  // No upper bound
-	}
-
-	bandwidths := parseBandwidthFromIperfOutput(text)
-	for _, bw := range bandwidths {
-		result.MeasuredMbps = append(result.MeasuredMbps, bw/bitsPerMbit)
-	}
-
-	var bestMatch float64
-	for _, bw := range bandwidths {
-		if bw >= minValue {
-			result.Passed = true
-			result.BestMatch = bw / bitsPerMbit
-			return result
-		}
-		// Track highest value for failure reporting
-		if bw > bestMatch {
-			bestMatch = bw
-		}
-	}
-	result.BestMatch = bestMatch / bitsPerMbit
-	return result
+	setupVpcNatGwTestEnvironment(
+		f, dockerExtNetNetwork, f.NetworkAttachmentDefinitionClientNS(framework.KubeOvnNamespace),
+		f.SubnetClient(), f.VpcClient(), f.VpcNatGatewayClient(),
+		vpcQosParams.qosVpcName, vpcQosParams.qosSubnetName, vpcQosParams.qosNatGwName,
+		natgwQoSPolicy, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+		dockerExtNetName, vpcQosParams.attachDefName, net1NicName,
+		vpcQosParams.subnetProvider,
+		true,
+		nil,
+		"",
+		0,
+	)
 }
 
 // setupQosTestResources creates two VPCs with NAT Gateways, EIPs, FIPs and pods:
 //
 //   - qosVpc: The test target where QoS policies will be applied
 //   - noQosVpc: Clean endpoint without any QoS (used as traffic source/destination)
+//
+// natgwQoSPolicy and eipQoSPolicy are bound to the qosNatGw resp. the qosEIP at creation time,
+// both may be empty to create the resources without any QoS policy.
 //
 // This setup allows testing qosEIP's ingress/egress QoS in isolation:
 //
@@ -1188,6 +1128,8 @@ func setupQosTestResources(
 	dockerExtNetNetwork *dockernetwork.Inspect,
 	vpcQosParams *qosParams,
 	net1NicName string,
+	natgwQoSPolicy string,
+	eipQoSPolicy string,
 ) (*corev1.Pod, *corev1.Pod, *apiv1.IptablesEIP, *apiv1.IptablesEIP) {
 	ginkgo.GinkgoHelper()
 
@@ -1201,17 +1143,13 @@ func setupQosTestResources(
 	iptablesFIPClient := f.IptablesFIPClient()
 
 	iperfServerCmd := []string{"iperf", "-s", "-i", "1", "-p", iperf2Port}
-	overlaySubnetV4Cidr := "10.0.0.0/24"
-	overlaySubnetV4Gw := "10.0.0.1"
-	lanIP := "10.0.0.254"
-	natgwQoS := "" // No default QoS on NAT Gateway - QoS is applied per-EIP
 
 	// Create qosVpc + qosNatGw (test target where QoS will be applied)
 	setupVpcNatGwTestEnvironment(
 		f, dockerExtNetNetwork, attachNetClient,
 		subnetClient, vpcClient, vpcNatGwClient,
 		vpcQosParams.qosVpcName, vpcQosParams.qosSubnetName, vpcQosParams.qosNatGwName,
-		natgwQoS, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+		natgwQoSPolicy, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
 		dockerExtNetName, vpcQosParams.attachDefName, net1NicName,
 		vpcQosParams.subnetProvider,
 		true,
@@ -1225,7 +1163,7 @@ func setupQosTestResources(
 		f, dockerExtNetNetwork, attachNetClient,
 		subnetClient, vpcClient, vpcNatGwClient,
 		vpcQosParams.noQosVpcName, vpcQosParams.noQosSubnetName, vpcQosParams.noQosNatGwName,
-		natgwQoS, overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+		"", overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
 		dockerExtNetName, vpcQosParams.attachDefName, net1NicName,
 		vpcQosParams.subnetProvider,
 		true,
@@ -1248,7 +1186,7 @@ func setupQosTestResources(
 
 	// Create qosEIP (test target where QoS policies will be applied)
 	ginkgo.By("Creating eip " + vpcQosParams.qosEIPName)
-	qosEIP := framework.MakeIptablesEIP(vpcQosParams.qosEIPName, "", "", "", vpcQosParams.qosNatGwName, vpcQosParams.attachDefName, "")
+	qosEIP := framework.MakeIptablesEIP(vpcQosParams.qosEIPName, "", "", "", vpcQosParams.qosNatGwName, vpcQosParams.attachDefName, eipQoSPolicy)
 	_ = iptablesEIPClient.CreateSync(qosEIP)
 	qosEIP = waitForIptablesEIPReady(iptablesEIPClient, vpcQosParams.qosEIPName, 60*time.Second)
 	ginkgo.DeferCleanup(func() {
@@ -1470,67 +1408,97 @@ var _ = framework.OrderedDescribe("[group:qos-policy]", func() {
 		}
 	})
 
-	framework.ConformanceIt("default nic qos", func() {
-		// Setup resources
+	framework.ConformanceIt("eip qos policy finalizer is released after the bound eip is deleted", func() {
+		// Regression: deleting an EIP without first unbinding its QoS policy must still let
+		// the QoS policy (already marked for deletion) drop its finalizer.
+		setupQosNatGwEnvironment(f, dockerExtNetNetwork, vpcQosParams, net1NicName, "")
+
+		eipClient := f.IptablesEIPClient()
+		qosPolicyClient := f.QoSPolicyClient()
+		eipName, qosName := setupEIPBoundQoSMarkedForDeletion(f, vpcQosParams)
+
+		ginkgo.By("Deleting eip " + eipName + " without unbinding qos policy " + qosName)
+		eipClient.DeleteSync(eipName)
+
+		ginkgo.By("Expecting qos policy " + qosName + " to be cleaned up after the eip is deleted")
+		gomega.Expect(qosPolicyClient.WaitToDisappear(qosName, 2*time.Second, 2*time.Minute)).To(gomega.Succeed(),
+			"qos policy should drop its finalizer once the bound eip is deleted")
+	})
+
+	framework.ConformanceIt("eip qos policy finalizer is released after the qos policy is unbound", func() {
+		// Regression: unbinding the QoS policy from an EIP must re-trigger the QoS reconcile
+		// so a policy already marked for deletion can drop its finalizer.
+		setupQosNatGwEnvironment(f, dockerExtNetNetwork, vpcQosParams, net1NicName, "")
+
+		eipClient := f.IptablesEIPClient()
+		qosPolicyClient := f.QoSPolicyClient()
+		eipName, qosName := setupEIPBoundQoSMarkedForDeletion(f, vpcQosParams)
+
+		ginkgo.By("Unbinding qos policy " + qosName + " from eip " + eipName)
+		_ = eipClient.PatchQoSPolicySync(eipName, "")
+
+		ginkgo.By("Expecting qos policy " + qosName + " to be cleaned up after being unbound")
+		gomega.Expect(qosPolicyClient.WaitToDisappear(qosName, 2*time.Second, 2*time.Minute)).To(gomega.Succeed(),
+			"qos policy should drop its finalizer once it is unbound from the eip")
+	})
+
+	framework.ConformanceIt("natgw qos policy finalizer is released after the qos policy is unbound", func() {
+		// Regression: unbinding a NatGw-level QoS must re-trigger the QoS reconcile (keyed on the
+		// QoSLabel) so a policy already marked for deletion can drop its finalizer.
+		setupQosNatGwEnvironment(f, dockerExtNetNetwork, vpcQosParams, net1NicName, "")
+
+		natgwClient := f.VpcNatGatewayClient()
+		qosPolicyClient := f.QoSPolicyClient()
+		qosName := setupNatGwBoundQoSMarkedForDeletion(f, vpcQosParams.qosNatGwName)
+
+		ginkgo.By("Unbinding qos policy " + qosName + " from natgw " + vpcQosParams.qosNatGwName)
+		_ = natgwClient.PatchQoSPolicySync(vpcQosParams.qosNatGwName, "")
+
+		ginkgo.By("Expecting qos policy " + qosName + " to be cleaned up after being unbound")
+		gomega.Expect(qosPolicyClient.WaitToDisappear(qosName, 2*time.Second, 2*time.Minute)).To(gomega.Succeed(),
+			"qos policy should drop its finalizer once it is unbound from the natgw")
+	})
+
+	framework.ConformanceIt("natgw qos", func() {
+		qosPolicyClient := f.QoSPolicyClient()
+
+		// bind the qos policy to the natgw at creation time
+		natgwQoSPolicyName := "default-nic-qos-policy-" + framework.RandomSuffix()
+		ginkgo.By("Creating qos policy " + natgwQoSPolicyName)
+		natgwQoSPolicy := framework.MakeQoSPolicy(natgwQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, getNicDefaultQoSPolicy(defaultNicLimit))
+		_ = qosPolicyClient.CreateSync(natgwQoSPolicy)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up natgw qos policy " + natgwQoSPolicyName)
+			qosPolicyClient.DeleteSync(natgwQoSPolicyName)
+		})
+
 		qosPod, noQosPod, qosEIP, noQosEIP := setupQosTestResources(
-			f, dockerExtNetNetwork, vpcQosParams, net1NicName,
+			f, dockerExtNetNetwork, vpcQosParams, net1NicName, natgwQoSPolicyName, "",
 		)
 
-		// Run test
-		defaultQoSCases(f, qosPod, noQosPod, qosEIP, noQosEIP, vpcQosParams.qosNatGwName)
+		natGwQoSCases(f, qosPod, noQosPod, qosEIP, noQosEIP, vpcQosParams, natgwQoSPolicyName)
 		// Cleanup is handled automatically by DeferCleanup in setupQosTestResources
 	})
 
 	framework.ConformanceIt("eip qos", func() {
-		// Setup resources
+		qosPolicyClient := f.QoSPolicyClient()
+
+		// bind the qos policy to the eip at creation time
+		eipQoSPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
+		ginkgo.By("Creating qos policy " + eipQoSPolicyName)
+		eipQoSPolicy := framework.MakeQoSPolicy(eipQoSPolicyName, false, apiv1.QoSBindingTypeEIP, getEIPQoSRule(eipLimit))
+		_ = qosPolicyClient.CreateSync(eipQoSPolicy)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up eip qos policy " + eipQoSPolicyName)
+			qosPolicyClient.DeleteSync(eipQoSPolicyName)
+		})
+
 		qosPod, noQosPod, qosEIP, noQosEIP := setupQosTestResources(
-			f, dockerExtNetNetwork, vpcQosParams, net1NicName,
+			f, dockerExtNetNetwork, vpcQosParams, net1NicName, "", eipQoSPolicyName,
 		)
 
-		// Run test
-		eipQoSCases(f, qosPod, noQosPod, qosEIP, noQosEIP, vpcQosParams.qosEIPName, vpcQosParams.qosNatGwName)
+		eipQoSCases(f, qosPod, noQosPod, qosEIP, noQosEIP, vpcQosParams, eipQoSPolicyName)
 		// Cleanup is handled automatically by DeferCleanup in setupQosTestResources
-	})
-
-	framework.ConformanceIt("multi-eip qos isolation with decimal rates", func() {
-		// Setup resources - creates VPCs, NAT gateways, and base EIPs/pods
-		qosPod, noQosPod, qosEIP, noQosEIP := setupQosTestResources(
-			f, dockerExtNetNetwork, vpcQosParams, net1NicName,
-		)
-
-		// Run test - creates additional EIPs on the SAME NAT GW with decimal QoS limits
-		// Tests: 0.5, 1.5, 3, 9 Mbps to verify:
-		// 1. Multiple EIPs with different QoS don't interfere with each other
-		// 2. Decimal bandwidth limiting works correctly
-		multiEIPQoSIsolationCases(f, qosPod, noQosPod, qosEIP, noQosEIP,
-			vpcQosParams.qosEIPName, vpcQosParams.noQosEIPName,
-			vpcQosParams.qosNatGwName, vpcQosParams.attachDefName,
-			vpcQosParams.qosSubnetName)
-		// Cleanup is handled automatically by DeferCleanup in setupQosTestResources
-	})
-
-	framework.ConformanceIt("qos priority matching", func() {
-		// Setup resources
-		qosPod, noQosPod, qosEIP, noQosEIP := setupQosTestResources(
-			f, dockerExtNetNetwork, vpcQosParams, net1NicName,
-		)
-
-		// Run test
-		priorityQoSCases(f, qosPod, noQosPod, qosEIP, noQosEIP, vpcQosParams.qosNatGwName, vpcQosParams.qosEIPName)
-		// Cleanup is handled automatically by DeferCleanup in setupQosTestResources
-	})
-
-	framework.ConformanceIt("create resource with qos policy", func() {
-		// Setup resources
-		qosPod, noQosPod, _, noQosEIP := setupQosTestResources(
-			f, dockerExtNetNetwork, vpcQosParams, net1NicName,
-		)
-
-		// Run test (this test deletes and recreates resources internally)
-		lanIP := "10.0.0.254"
-		createNatGwAndSetQosCases(f, qosPod, noQosPod, noQosEIP,
-			vpcQosParams.qosNatGwName, vpcQosParams.qosEIPName, vpcQosParams.qosFIPName,
-			vpcQosParams.qosVpcName, vpcQosParams.qosSubnetName, lanIP, vpcQosParams.attachDefName)
 	})
 })
 

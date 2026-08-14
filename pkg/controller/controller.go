@@ -118,6 +118,8 @@ type Controller struct {
 	addOrUpdateVpcEgressGatewayQueue workqueue.TypedRateLimitingInterface[string]
 	delVpcEgressGatewayQueue         workqueue.TypedRateLimitingInterface[string]
 	vpcEgressGatewayKeyMutex         keymutex.KeyMutex
+	restartableInitContainersMu      sync.Mutex
+	restartableInitContainerSupport  restartableInitContainerSupport
 
 	// bgpConfLister/evpnConfLister are published asynchronously by the
 	// optional-CRD background poller (StartBgpEvpnConfInformerFactory), but
@@ -355,6 +357,35 @@ func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.
 		rateLimiter = workqueue.DefaultTypedControllerRateLimiter[T]()
 	}
 	return workqueue.NewTypedRateLimitingQueueWithConfig(rateLimiter, workqueue.TypedRateLimitingQueueConfig[T]{Name: name})
+}
+
+// enqueueUpdateIfTerminating routes an object that is already marked for deletion to the update
+// queue so the deletion cleanup runs. On controller restart the informer re-lists existing objects
+// and fires only AddFunc, so a terminating object would otherwise land in the add queue, hit the
+// already-ok short-circuit (or worse, recreate rules for a deleted resource) and never remove its
+// finalizer. The update handlers run the deletion path for these resources.
+func enqueueUpdateIfTerminating(queue workqueue.TypedRateLimitingInterface[string], key, kind string, deletionTimestamp *metav1.Time) bool {
+	if !deletionTimestamp.IsZero() {
+		klog.V(3).Infof("enqueue update to clean %s %s", kind, key)
+		queue.Add(key)
+		return true
+	}
+	return false
+}
+
+// enqueueUpdateIfTerminatingWithFinalizer behaves like enqueueUpdateIfTerminating but skips objects
+// whose finalizer has already been removed (their cleanup is done and they only await API server
+// deletion), mirroring the OVN enqueueUpdate* deletion branch to avoid a double delete. It returns
+// true when the object is terminating, so the add handler stops regardless of whether it enqueued.
+func enqueueUpdateIfTerminatingWithFinalizer(queue workqueue.TypedRateLimitingInterface[string], key, kind string, deletionTimestamp *metav1.Time, finalizers []string) bool {
+	if deletionTimestamp.IsZero() {
+		return false
+	}
+	if len(finalizers) != 0 {
+		klog.V(3).Infof("enqueue update to clean %s %s", kind, key)
+		queue.Add(key)
+	}
+	return true
 }
 
 // Run creates and runs a new ovn controller

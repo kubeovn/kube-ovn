@@ -439,6 +439,22 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.23 (2026-08-12)
+
+ * [ddb4413bb](https://github.com/kubeovn/kube-ovn/commit/ddb4413bb1a45291f6b8b0b57810a6a3f1122231) release v1.15.23
+ * [fe36f9020](https://github.com/kubeovn/kube-ovn/commit/fe36f9020df707a8f8bd1b7903c9d71789bf6ce1) [reelase-1.15] fix(gateway): add bounded BFD session recovery (#7208)
+ * [57cba9f6a](https://github.com/kubeovn/kube-ovn/commit/57cba9f6acc89eb1973c4f5178bc0fa241860f33) Update golang (#7213)
+ * [83b04d632](https://github.com/kubeovn/kube-ovn/commit/83b04d63205d99fc5623024728fbed10f191c84f) fix(deps): update module golang.org/x/mod to v0.39.0 (#7207)
+ * [ec82a2e6b](https://github.com/kubeovn/kube-ovn/commit/ec82a2e6bc39a787ec1351ca38e8d3d717ccefcf) chore(codegen): regenerate Kubernetes API code (#7193)
+ * [9b2232343](https://github.com/kubeovn/kube-ovn/commit/9b2232343f811fe48c70c8676badaa738b57ba1c) [release-1.15] feat: make controller leader election timings configurable (#7178)
+ * [354dc594d](https://github.com/kubeovn/kube-ovn/commit/354dc594dae1dd85206e9ca0b3616c970979351a) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.15.22 (2026-08-07)
 
  * [05dfb2558](https://github.com/kubeovn/kube-ovn/commit/05dfb2558bc5493b09ff0bcd2c82b1eb3becafe2) release v1.15.22

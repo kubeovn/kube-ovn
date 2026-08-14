@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -1437,6 +1438,20 @@ func TestHandleAddOrUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
 	assertPodEvent(t, controller, "Warning PodNetworkUpdateFailed", "stage=getPodKubeovnNets", "provider net1.default is not bound to any subnet")
 }
 
+func TestHandleAddOrUpdatePodSyncFailureRecordsOriginalPod(t *testing.T) {
+	pod, subnet := podEventFixture()
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	injectedErr := errors.New("list ports failed")
+	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return(nil, injectedErr)
+	events := useRealPodEventRecorder(t, fc.fakeController)
+
+	err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
+
+	require.ErrorIs(t, err, injectedErr)
+	assertRecordedPodEvent(t, events, pod, "PodNetworkUpdateFailed", "stage=syncKubeOvnNet")
+}
+
 func TestEnqueueUpdatePodRecordsIPAMSubnetMissingEvent(t *testing.T) {
 	controller := newIPAMSubnetMissingController(t, ipamNADConfig(util.CniTypeName))
 	oldPod := &corev1.Pod{
@@ -2111,6 +2126,26 @@ func TestReconcileAllocateSubnetsSpecificFailureEventsIncludeStage(t *testing.T)
 	})
 }
 
+func TestReconcileAllocateSubnetsRefetchFailureRecordsOriginalPod(t *testing.T) {
+	pod, subnet := podEventFixture()
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+	injectedErr := errors.New("get patched pod failed")
+	fc.fakeController.config.KubeClient.(*k8sfake.Clientset).PrependReactor("get", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, injectedErr
+	})
+	events := useRealPodEventRecorder(t, fc.fakeController)
+
+	updatedPod, err := fc.fakeController.reconcileAllocateSubnets(pod, []*kubeovnNet{{
+		Type: providerTypeIPAM, ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true,
+	}})
+
+	require.Nil(t, updatedPod)
+	require.ErrorIs(t, err, injectedErr)
+	assertRecordedPodEvent(t, events, pod, "PodNetworkAllocationFailed", "stage=getPatchedPod")
+}
+
 func TestHandleAddOrUpdatePodReportsActualAllocatedSubnet(t *testing.T) {
 	pod, subnetA := podEventFixture()
 	pod.Annotations = map[string]string{
@@ -2442,5 +2477,40 @@ func assertNoPodEvent(t *testing.T, controller *Controller) {
 	case event := <-recorder.Events:
 		t.Fatalf("unexpected pod event: %s", event)
 	default:
+	}
+}
+
+func useRealPodEventRecorder(t *testing.T, controller *Controller) <-chan *corev1.Event {
+	t.Helper()
+
+	events := make(chan *corev1.Event, 1)
+	broadcaster := record.NewBroadcaster()
+	watcher := broadcaster.StartEventWatcher(func(event *corev1.Event) {
+		events <- event
+	})
+	t.Cleanup(func() {
+		watcher.Stop()
+		broadcaster.Shutdown()
+	})
+	controller.recorder = broadcaster.NewRecorder(kubescheme.Scheme, corev1.EventSource{Component: controllerAgentName})
+	return events
+}
+
+func assertRecordedPodEvent(t *testing.T, events <-chan *corev1.Event, pod *corev1.Pod, reason string, messageParts ...string) {
+	t.Helper()
+
+	select {
+	case event := <-events:
+		assert.Equal(t, corev1.EventTypeWarning, event.Type)
+		assert.Equal(t, reason, event.Reason)
+		assert.Equal(t, "Pod", event.InvolvedObject.Kind)
+		assert.Equal(t, pod.Namespace, event.InvolvedObject.Namespace)
+		assert.Equal(t, pod.Name, event.InvolvedObject.Name)
+		assert.Equal(t, pod.UID, event.InvolvedObject.UID)
+		for _, part := range messageParts {
+			assert.Contains(t, event.Message, part)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected pod event")
 	}
 }

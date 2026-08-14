@@ -83,3 +83,22 @@ func TestDelEipQoSInPod_NatGwExistsPodMissing(t *testing.T) {
 	err = fc.fakeController.delEipQoSInPod("test-gw", "10.0.0.1", "kube-system", kubeovnv1.QoSDirectionEgress)
 	require.Error(t, err, "should return error to retry when pod is temporarily absent")
 }
+
+// TestEnqueueAddIptablesEip verifies that on the add path a terminating EIP is routed to the
+// update queue (which runs deletion cleanup) instead of the add queue. This is what lets a
+// stuck-terminating EIP be finalized after a controller restart, where the informer re-lists
+// existing objects and fires only AddFunc.
+func TestEnqueueAddIptablesEip(t *testing.T) {
+	t.Parallel()
+	c := &Controller{
+		addIptablesEipQueue:    newTypedRateLimitingQueue[string]("AddIptablesEip", nil),
+		updateIptablesEipQueue: newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
+	}
+	t.Cleanup(c.addIptablesEipQueue.ShutDown)
+	t.Cleanup(c.updateIptablesEipQueue.ShutDown)
+	now := metav1.Now()
+	assertEnqueueAddRouting(t, c.addIptablesEipQueue, c.updateIptablesEipQueue, c.enqueueAddIptablesEip,
+		&kubeovnv1.IptablesEIP{ObjectMeta: metav1.ObjectMeta{Name: "live-eip"}},
+		&kubeovnv1.IptablesEIP{ObjectMeta: metav1.ObjectMeta{Name: "terminating-eip", DeletionTimestamp: &now}},
+	)
+}

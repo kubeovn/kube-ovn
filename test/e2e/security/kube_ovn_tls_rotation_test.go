@@ -15,8 +15,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
+	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
+	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
@@ -65,10 +68,6 @@ var _ = framework.Describe("[group:security] kube-ovn TLS rotation", func() {
 		originalData := copySecretData(originalSecret.Data)
 		originalHash := kubeOVNTLSDataHash(originalData)
 		originalSerial := kubeOVNTLSCertSerial(originalData)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Restoring kube-ovn-tls secret")
-			restoreSecretData(cs, originalData)
-		})
 
 		ginkgo.By("Recording kube-ovn-controller restart counts")
 		restartCounts := deploymentContainerRestartCounts(cs, deploy, kubeOVNControllerContainer)
@@ -93,6 +92,48 @@ var _ = framework.Describe("[group:security] kube-ovn TLS rotation", func() {
 		seedOVSTLSHashes(ovsPods)
 		initialOVNControllerPIDs := ovnControllerPIDs(ovsPods)
 
+		projectionPods := deploymentPods(cs, deploy)
+		projectionPods.Items = append(projectionPods.Items, deploymentPods(cs, monitorDeploy).Items...)
+		pingerPods, err := daemonSetClient.GetPods(pingerDS)
+		framework.ExpectNoError(err)
+		projectionPods.Items = append(projectionPods.Items, pingerPods.Items...)
+		projectionPods.Items = append(projectionPods.Items, deploymentPods(cs, centralDeploy).Items...)
+		projectionPods.Items = append(projectionPods.Items, ovsPods...)
+
+		projectionTimeout := e2epod.GetPodSecretUpdateTimeout(context.Background(), cs)
+		secretUpdated := false
+		ginkgo.DeferCleanup(func() {
+			if !secretUpdated {
+				return
+			}
+
+			var projectionDeadline time.Time
+			restoreKubeOVNTLSState(
+				func() {
+					ginkgo.By("Restoring kube-ovn-tls secret")
+					updateKubeOVNTLSSecretData(cs, originalData)
+					projectionDeadline = time.Now().Add(projectionTimeout)
+				},
+				func() {
+					ginkgo.By("Waiting for restored kube-ovn-tls files to be projected")
+					waitPodListTLSFilesProjected(projectionPods, kubeOVNTLSFileHashes(originalData), projectionDeadline, "kube-ovn components")
+				},
+				func() {
+					ginkgo.By("Waiting for ovn-central to reload the restored TLS files")
+					waitDeploymentTLSHashFiles(cs, centralDeploy, ovnCentralTLSHashFile, "ovn-central")
+				},
+				func() {
+					ginkgo.By("Waiting for ovn-controller to reload the restored TLS files")
+					waitPodListTLSHashFiles(&corev1.PodList{Items: ovsPods}, ovsOVNTLSHashFile, "ovs-ovn")
+				},
+				func() {
+					ginkgo.By("Ensuring restored TLS files can connect to OVN databases")
+					assertDeploymentOVNDBSSLConnectivity(cs, deploy)
+					assertPodListOVNDBSSLConnectivity(&corev1.PodList{Items: ovsPods}, "ovs-ovn")
+				},
+			)
+		})
+
 		ginkgo.By("Installing updated kube-ovn-tls secret")
 		updatedData, err := generateUpdatedKubeOVNTLSSecretData()
 		framework.ExpectNoError(err)
@@ -100,14 +141,12 @@ var _ = framework.Describe("[group:security] kube-ovn TLS rotation", func() {
 		framework.ExpectNotEqual(updatedHash, originalHash)
 		framework.ExpectNotEqual(kubeOVNTLSCertSerial(updatedData), originalSerial)
 		updateKubeOVNTLSSecretData(cs, updatedData)
+		secretUpdated = true
+		projectionDeadline := time.Now().Add(projectionTimeout)
 
 		ginkgo.By("Waiting for kube-ovn-tls files to be projected")
 		expectedFileHashes := kubeOVNTLSFileHashes(updatedData)
-		waitDeploymentTLSFilesProjected(cs, deploy, expectedFileHashes, "kube-ovn-controller")
-		waitDeploymentTLSFilesProjected(cs, monitorDeploy, expectedFileHashes, "kube-ovn-monitor")
-		waitDaemonSetTLSFilesProjected(daemonSetClient, pingerDS, expectedFileHashes, "kube-ovn-pinger")
-		waitDeploymentTLSFilesProjected(cs, centralDeploy, expectedFileHashes, "ovn-central")
-		waitPodListTLSFilesProjected(&corev1.PodList{Items: ovsPods}, expectedFileHashes, "ovs-ovn")
+		waitPodListTLSFilesProjected(projectionPods, expectedFileHashes, projectionDeadline, "kube-ovn components")
 
 		ginkgo.By("Waiting for ovn-central to reload TLS")
 		waitOVNCentralTLSReloaded(cs, centralDeploy, centralTLSHashes)
@@ -163,10 +202,12 @@ func copySecretData(data map[string][]byte) map[string][]byte {
 	return copied
 }
 
-func restoreSecretData(cs kubernetes.Interface, data map[string][]byte) {
-	ginkgo.GinkgoHelper()
-
-	updateKubeOVNTLSSecretData(cs, data)
+func restoreKubeOVNTLSState(restoreSecret, waitForProjection, waitForOVNCentral, waitForOVS, verifyConnectivity func()) {
+	restoreSecret()
+	waitForProjection()
+	waitForOVNCentral()
+	waitForOVS()
+	verifyConnectivity()
 }
 
 func updateKubeOVNTLSSecretData(cs kubernetes.Interface, data map[string][]byte) *corev1.Secret {
@@ -358,27 +399,13 @@ func deploymentTLSHashes(cs kubernetes.Interface, deploy *appsv1.Deployment) map
 	return hashes
 }
 
-func waitDeploymentTLSFilesProjected(cs kubernetes.Interface, deploy *appsv1.Deployment, expectedHashes map[string]string, name string) {
-	ginkgo.GinkgoHelper()
-
-	waitPodListTLSFilesProjected(deploymentPods(cs, deploy), expectedHashes, name)
-}
-
-func waitDaemonSetTLSFilesProjected(client *framework.DaemonSetClient, ds *appsv1.DaemonSet, expectedHashes map[string]string, name string) {
-	ginkgo.GinkgoHelper()
-
-	pods, err := client.GetPods(ds)
-	framework.ExpectNoError(err)
-	waitPodListTLSFilesProjected(pods, expectedHashes, name)
-}
-
-func waitPodListTLSFilesProjected(pods *corev1.PodList, expectedHashes map[string]string, name string) {
+func waitPodListTLSFilesProjected(pods *corev1.PodList, expectedHashes map[string]string, deadline time.Time, name string) {
 	ginkgo.GinkgoHelper()
 
 	framework.ExpectNotEmpty(pods.Items, "no %s pod found", name)
-	framework.WaitUntil(5*time.Second, 90*time.Second, func(_ context.Context) (bool, error) {
+	err := wait.PollUntilContextTimeout(context.Background(), 5*time.Second, time.Until(deadline), true, func(_ context.Context) (bool, error) {
 		for _, pod := range pods.Items {
-			hashes, err := podTLSFileHashes(pod)
+			hashes, err := podTLSFileHashes(pod, deadline)
 			if err != nil {
 				return false, nil
 			}
@@ -387,21 +414,36 @@ func waitPodListTLSFilesProjected(pods *corev1.PodList, expectedHashes map[strin
 			}
 		}
 		return true, nil
-	}, fmt.Sprintf("%s projected kube-ovn-tls files", name))
+	})
+	if errors.Is(err, context.DeadlineExceeded) {
+		framework.Failf("timed out while waiting for %s projected kube-ovn-tls files", name)
+	}
+	framework.ExpectNoError(err)
 }
 
-func podTLSFileHashes(pod corev1.Pod) (map[string]string, error) {
+func podTLSFileHashes(pod corev1.Pod, deadline time.Time) (map[string]string, error) {
 	ginkgo.GinkgoHelper()
 
-	output, err := e2epodoutput.RunHostCmd(
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return nil, context.DeadlineExceeded
+	}
+	timer := time.NewTimer(remaining)
+	defer timer.Stop()
+	output, err := e2ekubectl.NewKubectlCommand(
 		pod.Namespace,
+		"exec",
 		pod.Name,
+		"--",
+		"/bin/sh",
+		"-x",
+		"-c",
 		`set -eu
 for file in cacert cert key; do
   test -s "/var/run/tls/${file}"
   printf "%s %s\n" "${file}" "$(sha256sum "/var/run/tls/${file}" | awk '{print $1}')"
 done`,
-	)
+	).WithTimeout(timer.C).Exec()
 	if err != nil {
 		return nil, err
 	}
