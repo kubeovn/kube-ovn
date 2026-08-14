@@ -367,7 +367,7 @@ func TestGetExternalSubnetNad(t *testing.T) {
 			controller := fakeController.fakeController
 			controller.config.PodNamespace = tt.podNamespace
 
-			namespace, name, err := controller.getExternalSubnetNad(tt.gw)
+			nads, err := controller.getExternalSubnetNads(tt.gw)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -375,8 +375,9 @@ func TestGetExternalSubnetNad(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedNamespace, namespace, "namespace mismatch")
-			assert.Equal(t, tt.expectedName, name, "name mismatch")
+			// since the testcase uses single external subnet, we expect only one NAD to be returned
+			assert.Equal(t, tt.expectedNamespace, nads[0].Namespace, "namespace mismatch")
+			assert.Equal(t, tt.expectedName, nads[0].Name, "name mismatch")
 		})
 	}
 }
