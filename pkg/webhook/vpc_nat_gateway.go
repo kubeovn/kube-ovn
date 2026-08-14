@@ -87,6 +87,10 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 }
 
 func validateVpcNatGatewayLanIPUpdate(oldGw, newGw *ovnv1.VpcNatGateway) error {
+	if newGw.Spec.Replicas > 1 {
+		// ValidateVpcNatGW reports the HA-specific error.
+		return nil
+	}
 	// A dynamically allocated LAN IP may be persisted exactly once, but only
 	// after the controller has published the observed Pod IP to status.
 	if oldGw.Spec.LanIP == "" && newGw.Spec.LanIP != "" &&

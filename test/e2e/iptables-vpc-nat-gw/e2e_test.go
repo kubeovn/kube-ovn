@@ -600,6 +600,21 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
 
+		// Recover the image via DeferCleanup so a failure later in this spec still
+		// restores the shared ConfigMap instead of leaking v1.14.25 into subsequent specs.
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Recovering NAT gateway image to " + oldImage)
+			cur, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
+			if err != nil {
+				framework.Logf("failed to get configmap %s for image recovery: %v", vpcNatConfigName, err)
+				return
+			}
+			cur.Data["image"] = oldImage
+			if _, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cur, metav1.UpdateOptions{}); err != nil {
+				framework.Logf("failed to recover NAT gateway image: %v", err)
+			}
+		})
+
 		// Custom namespace for the NAT gateway pod is a v1.17+ feature; on older
 		// versions the pod always lives in the controller PodNamespace.
 		// Register the namespace cleanup BEFORE setupVpcNatGwTestEnvironment so it is
@@ -686,10 +701,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"controller should auto-backfill spec.namespace from the referenced VpcNatGateway")
 		}
 
-		// recover the image
-		cm.Data["image"] = oldImage
-		_, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
-		framework.ExpectNoError(err)
 		// Cleanup is handled by DeferCleanup in setupVpcNatGwTestEnvironment
 	})
 

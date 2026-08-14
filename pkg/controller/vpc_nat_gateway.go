@@ -1756,10 +1756,10 @@ func selectNatGwLanIP(ip, protocol string) string {
 	}
 }
 
-func (c *Controller) getNatGwObservedLanIPs(gw *kubeovnv1.VpcNatGateway) ([]string, error) {
+func (c *Controller) getNatGwObservedState(gw *kubeovnv1.VpcNatGateway) ([]string, bool, error) {
 	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get subnet %s: %w", gw.Spec.Subnet, err)
+		return nil, false, fmt.Errorf("failed to get subnet %s: %w", gw.Spec.Subnet, err)
 	}
 	provider := subnet.Spec.Provider
 	if provider == "" {
@@ -1769,9 +1769,10 @@ func (c *Controller) getNatGwObservedLanIPs(gw *kubeovnv1.VpcNatGateway) ([]stri
 	selector := labels.Set{"app": util.GenNatGwName(gw.Name), util.VpcNatGatewayLabel: "true"}.AsSelector()
 	pods, err := c.podsLister.Pods(c.natGwNamespace(gw)).List(selector)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	lanIPSet := set.New[string]()
+	needsInit := false
 	for _, pod := range pods {
 		if pod.Status.Phase != corev1.PodRunning || pod.DeletionTimestamp != nil {
 			continue
@@ -1785,18 +1786,23 @@ func (c *Controller) getNatGwObservedLanIPs(gw *kubeovnv1.VpcNatGateway) ([]stri
 		if !util.IsNatGwHAMode(gw) {
 			podLANIP = selectNatGwLanIP(podLANIP, subnet.Spec.Protocol)
 		}
+		hasValidLanIP := false
 		for lanIP := range strings.SplitSeq(podLANIP, ",") {
 			if lanIP != "" && net.ParseIP(lanIP) != nil {
 				lanIPSet.Insert(lanIP)
+				hasValidLanIP = true
 			}
+		}
+		if _, initialized := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasValidLanIP && !initialized {
+			needsInit = true
 		}
 	}
 	lanIPs := lanIPSet.UnsortedList()
 	slices.Sort(lanIPs)
 	if !util.IsNatGwHAMode(gw) && len(lanIPs) > 1 {
-		return nil, fmt.Errorf("non-HA vpc nat gateway %s has multiple observed LAN IPs: %s", gw.Name, strings.Join(lanIPs, ","))
+		return nil, false, fmt.Errorf("non-HA vpc nat gateway %s has multiple observed LAN IPs: %s", gw.Name, strings.Join(lanIPs, ","))
 	}
-	return lanIPs, nil
+	return lanIPs, needsInit, nil
 }
 
 func (c *Controller) persistNatGwLanIP(gw *kubeovnv1.VpcNatGateway, observedLanIP string) error {
@@ -1871,7 +1877,7 @@ func (c *Controller) patchNatGwStatus(key string) error {
 		changed = true
 	}
 
-	lanIPs, err := c.getNatGwObservedLanIPs(gw)
+	lanIPs, needsInit, err := c.getNatGwObservedState(gw)
 	if err != nil {
 		return err
 	}
@@ -1902,7 +1908,7 @@ func (c *Controller) patchNatGwStatus(key string) error {
 	if err := c.persistNatGwLanIP(updatedGw, lanIP); err != nil {
 		return err
 	}
-	if lanIP != "" && c.initVpcNatGatewayQueue != nil {
+	if needsInit && c.initVpcNatGatewayQueue != nil {
 		c.initVpcNatGatewayQueue.Add(gw.Name)
 	}
 	return nil

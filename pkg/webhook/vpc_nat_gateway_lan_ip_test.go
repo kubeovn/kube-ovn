@@ -37,6 +37,7 @@ func TestValidateVpcNatGatewayLanIPUpdate(t *testing.T) {
 		name      string
 		oldSpec   string
 		oldStatus string
+		replicas  int32
 		newSpec   string
 		wantError bool
 	}{
@@ -46,6 +47,7 @@ func TestValidateVpcNatGatewayLanIPUpdate(t *testing.T) {
 		{name: "value different from status is rejected", oldSpec: "", oldStatus: "10.0.0.10", newSpec: "10.0.0.11", wantError: true},
 		{name: "persisted value is immutable", oldSpec: "10.0.0.10", oldStatus: "10.0.0.10", newSpec: "10.0.0.11", wantError: true},
 		{name: "persisted value may remain unchanged", oldSpec: "10.0.0.10", oldStatus: "10.0.0.10", newSpec: "10.0.0.10"},
+		{name: "HA validation is handled separately", oldStatus: "10.0.0.10", replicas: 2, newSpec: "10.0.0.11"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,6 +58,7 @@ func TestValidateVpcNatGatewayLanIPUpdate(t *testing.T) {
 			}
 			newGw := oldGw.DeepCopy()
 			newGw.Spec.LanIP = tt.newSpec
+			newGw.Spec.Replicas = tt.replicas
 			err := validateVpcNatGatewayLanIPUpdate(oldGw, newGw)
 			if tt.wantError {
 				require.Error(t, err)

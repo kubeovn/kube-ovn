@@ -123,7 +123,9 @@ func podEventAffectsVpcNatGateway(oldPod, newPod *corev1.Pod) bool {
 func (c *Controller) enqueueUpdateVpcNatGatewayForPod(oldObj, newObj any) {
 	oldPod, oldOK := oldObj.(*corev1.Pod)
 	newPod, newOK := newObj.(*corev1.Pod)
-	if !oldOK || !newOK || !podEventAffectsVpcNatGateway(oldPod, newPod) {
+	if !oldOK || !newOK ||
+		(oldPod.Labels[util.VpcNatGatewayLabel] != "true" && newPod.Labels[util.VpcNatGatewayLabel] != "true") ||
+		!podEventAffectsVpcNatGateway(oldPod, newPod) {
 		return
 	}
 	// Match controller-runtime's owner handler behavior by reconciling both

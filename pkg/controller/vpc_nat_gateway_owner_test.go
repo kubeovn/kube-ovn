@@ -64,6 +64,12 @@ func TestVpcNatGatewayOwnerFromStatefulSetPod(t *testing.T) {
 	fakeController.fakeController.enqueueVpcNatGatewayForPod(pod)
 	require.Equal(t, 1, fakeController.fakeController.addOrUpdateVpcNatGatewayQueue.Len())
 
+	oldRegularPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "regular", Namespace: namespace}}
+	newRegularPod := oldRegularPod.DeepCopy()
+	newRegularPod.Annotations = map[string]string{"changed": "true"}
+	fakeController.fakeController.enqueueUpdateVpcNatGatewayForPod(oldRegularPod, newRegularPod)
+	require.Equal(t, 1, fakeController.fakeController.addOrUpdateVpcNatGatewayQueue.Len())
+
 	pod.OwnerReferences[0].UID = "stale-sts-uid"
 	_, err = fakeController.fakeController.vpcNatGatewayOwnerFromPod(pod)
 	require.ErrorContains(t, err, "does not match")
@@ -101,10 +107,13 @@ func TestVpcNatGatewayOwnerFromDeploymentPod(t *testing.T) {
 	}}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            rs.Name + "-xyz",
-			Namespace:       namespace,
-			Labels:          util.GenNatGwLabels(gwName),
-			Annotations:     map[string]string{util.IPAddressAnnotation: "10.20.0.10,fd00::10"},
+			Name:      rs.Name + "-xyz",
+			Namespace: namespace,
+			Labels:    util.GenNatGwLabels(gwName),
+			Annotations: map[string]string{
+				util.IPAddressAnnotation:         "10.20.0.10,fd00::10",
+				util.VpcNatGatewayInitAnnotation: "true",
+			},
 			OwnerReferences: []metav1.OwnerReference{controllerOwnerReference(appsv1.SchemeGroupVersion.String(), "ReplicaSet", rs.Name, rsUID)},
 		},
 		Status: corev1.PodStatus{Phase: corev1.PodRunning},
@@ -127,9 +136,10 @@ func TestVpcNatGatewayOwnerFromDeploymentPod(t *testing.T) {
 	require.Equal(t, gwName, owner.Name)
 	require.Equal(t, gwUID, owner.UID)
 
-	lanIPs, err := fakeController.fakeController.getNatGwObservedLanIPs(gw)
+	lanIPs, needsInit, err := fakeController.fakeController.getNatGwObservedState(gw)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.20.0.10", "fd00::10"}, lanIPs)
+	require.False(t, needsInit)
 }
 
 func TestPatchNatGwStatusPersistsDynamicLanIP(t *testing.T) {
