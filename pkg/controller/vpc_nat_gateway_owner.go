@@ -18,6 +18,22 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+// objectFromEvent returns the metadata object carried by an informer event,
+// including delete tombstones.
+//
+// VPC NAT gateway workload events are mapped back to the owning gateway through
+// controller owner references. Kubernetes uses owner references for ownership
+// and garbage collection, but does not propagate child events automatically, so
+// this controller watches each relevant level and enqueues the domain root:
+//
+//	VpcNatGateway event                         -> VpcNatGateway
+//	StatefulSet/Deployment event                -> VpcNatGateway
+//	Pod -> StatefulSet                          -> VpcNatGateway
+//	Pod -> ReplicaSet -> Deployment             -> VpcNatGateway
+//
+// Pod events are filtered by the NAT gateway label before resolving the owner
+// chain. Resolution uses informer listers and validates UIDs, avoiding API calls,
+// resource scans, and stale owner matches.
 func objectFromEvent(obj any) metav1.Object {
 	switch t := obj.(type) {
 	case metav1.Object:
@@ -97,6 +113,12 @@ func (c *Controller) enqueueVpcNatGatewayOwner(ref *metav1.OwnerReference, reaso
 	c.enqueueAddOrUpdateVpcNatGwByName(ref.Name, reason)
 }
 
+func isVpcNatGatewayPod(obj any) bool {
+	object := objectFromEvent(obj)
+	pod, ok := object.(*corev1.Pod)
+	return ok && pod.Labels[util.VpcNatGatewayLabel] == "true"
+}
+
 func (c *Controller) enqueueVpcNatGatewayForWorkload(obj any) {
 	object := objectFromEvent(obj)
 	if object == nil {
@@ -123,13 +145,11 @@ func podEventAffectsVpcNatGateway(oldPod, newPod *corev1.Pod) bool {
 func (c *Controller) enqueueUpdateVpcNatGatewayForPod(oldObj, newObj any) {
 	oldPod, oldOK := oldObj.(*corev1.Pod)
 	newPod, newOK := newObj.(*corev1.Pod)
-	if !oldOK || !newOK ||
-		(oldPod.Labels[util.VpcNatGatewayLabel] != "true" && newPod.Labels[util.VpcNatGatewayLabel] != "true") ||
-		!podEventAffectsVpcNatGateway(oldPod, newPod) {
+	if !oldOK || !newOK || !podEventAffectsVpcNatGateway(oldPod, newPod) {
 		return
 	}
-	// Match controller-runtime's owner handler behavior by reconciling both
-	// the old and new owners when ownership changes.
+	// Reconcile both the old and new Pods so that ownership changes are handled
+	// for both the previous and the current owner.
 	c.enqueueVpcNatGatewayForPod(oldPod)
 	c.enqueueVpcNatGatewayForPod(newPod)
 }
@@ -137,7 +157,7 @@ func (c *Controller) enqueueUpdateVpcNatGatewayForPod(oldObj, newObj any) {
 func (c *Controller) enqueueVpcNatGatewayForPod(obj any) {
 	object := objectFromEvent(obj)
 	pod, ok := object.(*corev1.Pod)
-	if !ok || pod.Labels[util.VpcNatGatewayLabel] != "true" {
+	if !ok {
 		return
 	}
 	ref, err := c.vpcNatGatewayOwnerFromPod(pod)

@@ -9,7 +9,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) enqueueAddDeployment(obj any) {
+func (c *Controller) enqueueDeploymentEvent(obj any) {
 	object := objectFromEvent(obj)
 	deploy, ok := object.(*appsv1.Deployment)
 	if !ok {
@@ -33,6 +33,6 @@ func (c *Controller) enqueueAddDeployment(obj any) {
 }
 
 func (c *Controller) enqueueUpdateDeployment(oldObj, newObj any) {
-	c.enqueueAddDeployment(oldObj)
-	c.enqueueAddDeployment(newObj)
+	c.enqueueDeploymentEvent(oldObj)
+	c.enqueueDeploymentEvent(newObj)
 }

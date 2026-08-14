@@ -615,7 +615,7 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		informerFactory.Start(stopCh)
 		informerFactory.WaitForCacheSync(stopCh)
 
-		changed := updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		changed := updateNatGwWorkloadStatus(gw, podLister, deployLister, nil, namespace)
 		assert.True(t, changed)
 		assert.Equal(t, util.KindDeployment, gw.Status.Workload.Kind)
 		assert.Equal(t, "apps/v1", gw.Status.Workload.APIVersion)
@@ -623,7 +623,7 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		assert.Equal(t, []string{"node-1"}, gw.Status.Workload.Nodes)
 
 		// Test no change
-		changed = updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		changed = updateNatGwWorkloadStatus(gw, podLister, deployLister, nil, namespace)
 		assert.False(t, changed)
 	})
 
@@ -658,6 +658,7 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		informerFactory := informers.NewSharedInformerFactory(client, 0)
 		podLister := informerFactory.Core().V1().Pods().Lister()
 		deployLister := informerFactory.Apps().V1().Deployments().Lister()
+		stsLister := informerFactory.Apps().V1().StatefulSets().Lister()
 
 		// Start informers and wait for sync
 		stopCh := make(chan struct{})
@@ -665,7 +666,7 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		informerFactory.Start(stopCh)
 		informerFactory.WaitForCacheSync(stopCh)
 
-		changed := updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		changed := updateNatGwWorkloadStatus(gw, podLister, deployLister, stsLister, namespace)
 		assert.True(t, changed)
 		assert.Equal(t, util.KindStatefulSet, gw.Status.Workload.Kind)
 		assert.Equal(t, "apps/v1", gw.Status.Workload.APIVersion)

@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
@@ -23,6 +24,30 @@ func controllerOwnerReference(apiVersion, kind, name string, uid types.UID) meta
 		Name:       name,
 		UID:        uid,
 		Controller: &controller,
+	}
+}
+
+func TestIsVpcNatGatewayPod(t *testing.T) {
+	natGwPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
+		Name:   "nat-gw",
+		Labels: util.GenNatGwLabels("gw"),
+	}}
+	regularPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "regular"}}
+
+	tests := []struct {
+		name string
+		obj  any
+		want bool
+	}{
+		{name: "NAT gateway Pod", obj: natGwPod, want: true},
+		{name: "regular Pod", obj: regularPod},
+		{name: "delete tombstone", obj: cache.DeletedFinalStateUnknown{Obj: natGwPod}, want: true},
+		{name: "unexpected object", obj: &appsv1.Deployment{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isVpcNatGatewayPod(tt.obj))
+		})
 	}
 }
 

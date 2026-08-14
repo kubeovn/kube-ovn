@@ -869,10 +869,13 @@ func Run(ctx context.Context, config *Configuration) {
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add pod event handler")
 	}
-	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueVpcNatGatewayForPod,
-		DeleteFunc: controller.enqueueVpcNatGatewayForPod,
-		UpdateFunc: controller.enqueueUpdateVpcNatGatewayForPod,
+	if _, err = podInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: isVpcNatGatewayPod,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueVpcNatGatewayForPod,
+			DeleteFunc: controller.enqueueVpcNatGatewayForPod,
+			UpdateFunc: controller.enqueueUpdateVpcNatGatewayForPod,
+		},
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vpc nat gateway pod owner event handler")
 	}
@@ -917,9 +920,9 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	if _, err = deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddDeployment,
+		AddFunc:    controller.enqueueDeploymentEvent,
 		UpdateFunc: controller.enqueueUpdateDeployment,
-		DeleteFunc: controller.enqueueAddDeployment,
+		DeleteFunc: controller.enqueueDeploymentEvent,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add deployment event handler")
 	}

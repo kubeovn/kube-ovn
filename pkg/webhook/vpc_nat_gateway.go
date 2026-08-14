@@ -87,8 +87,8 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 }
 
 func validateVpcNatGatewayLanIPUpdate(oldGw, newGw *ovnv1.VpcNatGateway) error {
-	if newGw.Spec.Replicas > 1 {
-		// ValidateVpcNatGW reports the HA-specific error.
+	if util.IsNatGwHAMode(newGw) {
+		// lanIp is ignored in HA mode (see ValidateVpcNatGW).
 		return nil
 	}
 	// A dynamically allocated LAN IP may be persisted exactly once, but only
@@ -414,12 +414,12 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return err
 	}
 
-	// An empty LAN IP requests dynamic allocation. A single static LAN IP is
-	// supported only by the non-HA StatefulSet mode.
-	if gw.Spec.Replicas > 1 && gw.Spec.LanIP != "" {
-		return errors.New("lanIp must be empty in HA mode")
-	}
-	if gw.Spec.LanIP != "" {
+	// An empty LAN IP requests dynamic allocation. A static LAN IP is only
+	// meaningful for the non-HA StatefulSet mode. In HA mode lanIp is ignored
+	// (each replica allocates its address dynamically); we intentionally do not
+	// reject a non-empty lanIp there to stay compatible with objects created
+	// before dynamic allocation that may still carry a stale value.
+	if !util.IsNatGwHAMode(gw) && gw.Spec.LanIP != "" {
 		if net.ParseIP(gw.Spec.LanIP) == nil {
 			return fmt.Errorf("lanIP %s is not a valid IP", gw.Spec.LanIP)
 		}

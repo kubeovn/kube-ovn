@@ -27,9 +27,11 @@ func TestValidateVpcNatGatewayAllowsDynamicLanIP(t *testing.T) {
 	}
 	require.NoError(t, hook.ValidateVpcNatGW(context.Background(), gw))
 
+	// lanIp is ignored in HA mode to remain compatible with objects that may
+	// still carry a stale value from before dynamic allocation was introduced.
 	gw.Spec.Replicas = 2
 	gw.Spec.LanIP = "10.0.0.10"
-	require.ErrorContains(t, hook.ValidateVpcNatGW(context.Background(), gw), "lanIp must be empty in HA mode")
+	require.NoError(t, hook.ValidateVpcNatGW(context.Background(), gw))
 }
 
 func TestValidateVpcNatGatewayLanIPUpdate(t *testing.T) {

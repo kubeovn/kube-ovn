@@ -1741,6 +1741,8 @@ func (c *Controller) patchNatGwQoSStatus(key, qos string) error {
 	return nil
 }
 
+// selectNatGwLanIP picks the address matching the subnet protocol from a
+// comma-separated dual-stack annotation value.
 func selectNatGwLanIP(ip, protocol string) string {
 	v4IP, v6IP := util.SplitStringIP(ip)
 	switch protocol {
@@ -1756,6 +1758,9 @@ func selectNatGwLanIP(ip, protocol string) string {
 	}
 }
 
+// getNatGwObservedState returns the LAN IPs observed on the running gateway Pods
+// owned by gw and whether any of them still needs the one-time init flow
+// (has a valid LAN IP but no init annotation yet).
 func (c *Controller) getNatGwObservedState(gw *kubeovnv1.VpcNatGateway) ([]string, bool, error) {
 	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
 	if err != nil {
@@ -1886,7 +1891,7 @@ func (c *Controller) patchNatGwStatus(key string) error {
 		gw.Status.LanIP = lanIP
 		changed = true
 	}
-	if updateNatGwWorkloadStatus(gw, c.podsLister, c.deploymentsLister, c.config.KubeClient, c.natGwNamespace(gw)) {
+	if updateNatGwWorkloadStatus(gw, c.podsLister, c.deploymentsLister, c.statefulSetsLister, c.natGwNamespace(gw)) {
 		changed = true
 	}
 
