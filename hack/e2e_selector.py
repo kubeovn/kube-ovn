@@ -27,6 +27,16 @@ mandatorySmoke = [
     {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "underlay"},
     {"job": "k8s-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
 ]
+dynamicWorkflowMatrices = {
+    "k8s-conformance-e2e": {
+        "output": "k8sConformanceMatrix",
+        "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]},
+    },
+    "kube-ovn-conformance-e2e": {
+        "output": "kubeOvnConformanceMatrix",
+        "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]},
+    },
+}
 
 
 def loadCatalog(path):
@@ -75,10 +85,21 @@ def validateCatalog(catalog):
             raise ValueError("every path rule requires owner and reason")
 
 
+def workflowJobsSection(workflow):
+    match = re.search(r"^jobs:\s*$", workflow, re.MULTILINE)
+    if match is None:
+        raise ValueError("workflow does not define jobs")
+    return workflow[match.end() :]
+
+
 def workflowTestJobs(workflow):
     jobs = {
         match.group(1)
-        for match in re.finditer(r"^  ([a-z0-9][a-z0-9-]+):\s*$", workflow, re.MULTILINE)
+        for match in re.finditer(
+            r"^  ([a-z0-9][a-z0-9-]+):\s*$",
+            workflowJobsSection(workflow),
+            re.MULTILINE,
+        )
     }
     return jobs - infrastructureJobs
 
@@ -93,15 +114,31 @@ def yamlScalar(value):
 
 
 def workflowJobBlocks(workflow):
-    matches = list(re.finditer(r"^  ([a-z0-9][a-z0-9-]+):\s*$", workflow, re.MULTILINE))
+    jobsSection = workflowJobsSection(workflow)
+    matches = list(
+        re.finditer(r"^  ([a-z0-9][a-z0-9-]+):\s*$", jobsSection, re.MULTILINE)
+    )
     return {
-        match.group(1): workflow[match.end() : matches[index + 1].start() if index + 1 < len(matches) else None]
+        match.group(1): jobsSection[
+            match.end() : matches[index + 1].start()
+            if index + 1 < len(matches)
+            else None
+        ]
         for index, match in enumerate(matches)
     }
 
 
 def workflowJobMatrix(jobId, block):
     lines = block.splitlines()
+    dynamic = dynamicWorkflowMatrices.get(jobId)
+    if dynamic is not None:
+        expression = (
+            "      matrix: ${{ fromJSON(needs.e2e-selection.outputs."
+            + dynamic["output"]
+            + ") }}"
+        )
+        if expression in lines:
+            return expandJob({"id": jobId, "matrix": dynamic["matrix"]})
     try:
         start = lines.index("      matrix:") + 1
     except ValueError:
@@ -202,6 +239,21 @@ def matrixIdentity(entry):
     return json.dumps(identity, sort_keys=True, separators=(",", ":"))
 
 
+def jobMatrix(plan, jobId):
+    entries = [
+        {
+            key: value
+            for key, value in entry.items()
+            if key not in {"job", "selection"}
+        }
+        for entry in plan["matrix"]
+        if entry["job"] == jobId
+    ]
+    if not entries:
+        raise ValueError(f"selection plan does not contain job {jobId!r}")
+    return {"include": entries}
+
+
 def matches(path, pattern):
     return fnmatch.fnmatchcase(path, pattern)
 
@@ -270,7 +322,7 @@ def deduplicateMatrix(entries):
     return result
 
 
-def select(catalog, paths, labels, requestedGroups, headSHA):
+def select(catalog, paths, labels, requestedGroups, headSHA, forcedFullReason=""):
     paths = sorted(set(paths))
     labels = sorted(set(labels))
     requestedGroups = sorted(set(requestedGroups))
@@ -295,7 +347,13 @@ def select(catalog, paths, labels, requestedGroups, headSHA):
         {"source": "request", "groups": [group], "reason": f"requested group {group}"}
         for group in requestedGroups
     )
-    reason = fullReason(catalog, paths, labels, pathGroups, classifiedPaths)
+    reason = forcedFullReason or fullReason(
+        catalog,
+        paths,
+        labels,
+        pathGroups,
+        classifiedPaths,
+    )
     full = bool(reason)
     recommendedGroups = sorted(pathGroups | labelGroups) if not full else []
     automaticGroups = sorted(knownGroups) if full else []
@@ -455,6 +513,7 @@ def parseArgs():
     parser.add_argument("--request-group", dest="requestGroup", action="append", default=[])
     parser.add_argument("--request-groups-json", dest="requestGroupsJSON", default="[]")
     parser.add_argument("--head-sha", dest="headSHA", required=True)
+    parser.add_argument("--force-full-reason", dest="forceFullReason", default="")
     parser.add_argument("--plan-file", dest="planFile", required=True)
     parser.add_argument("--summary-file", dest="summaryFile")
     return parser.parse_args()
@@ -489,6 +548,7 @@ def main():
                 labels,
                 args.requestGroup + requestedGroups,
                 args.headSHA,
+                args.forceFullReason,
             )
         except Exception as error:
             workflow = Path(args.workflow).read_text(encoding="utf-8")

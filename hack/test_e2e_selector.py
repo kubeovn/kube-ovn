@@ -88,6 +88,49 @@ class E2ESelectorTest(unittest.TestCase):
             ],
         )
 
+    def testSmokeMatricesContainOnlyTheThreeApprovedRunnerJobs(self):
+        plan = self.select(["docs/design.md"])
+
+        self.assertEqual(
+            e2eSelector.jobMatrix(plan, "k8s-conformance-e2e"),
+            {"include": [{"ip-family": "ipv4", "mode": "overlay"}]},
+        )
+        self.assertEqual(
+            e2eSelector.jobMatrix(plan, "kube-ovn-conformance-e2e"),
+            {
+                "include": [
+                    {"ip-family": "ipv4", "mode": "overlay"},
+                    {"ip-family": "ipv4", "mode": "underlay"},
+                ]
+            },
+        )
+
+    def testCoreSelectionRestoresTheFullConformanceMatrices(self):
+        plan = self.select(["docs/design.md"], requestedGroups=["core"])
+
+        self.assertEqual(
+            len(e2eSelector.jobMatrix(plan, "k8s-conformance-e2e")["include"]),
+            6,
+        )
+        self.assertEqual(
+            len(e2eSelector.jobMatrix(plan, "kube-ovn-conformance-e2e")["include"]),
+            6,
+        )
+
+    def testExplicitForceFullReasonOverridesAVisibleSafeFileList(self):
+        plan = e2eSelector.select(
+            self.catalog,
+            ["docs/design.md"],
+            [],
+            [],
+            "0123456789abcdef",
+            "pull request file list is incomplete; the full suite is required",
+        )
+
+        self.assertTrue(plan["full"])
+        self.assertEqual(len(plan["matrix"]), 81)
+        self.assertIn("file list is incomplete", plan["fullReason"])
+
     def testPathsLabelsAndRequestsAreUnioned(self):
         plan = self.select(
             ["test/e2e/cnp-domain/e2e_test.go"],
