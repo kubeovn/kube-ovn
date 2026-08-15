@@ -287,23 +287,22 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 				}},
 			},
 		}
-		service, err := f.ClientSet.CoreV1().Services(f.Namespace.Name).Create(context.TODO(), service, metav1.CreateOptions{})
-		framework.ExpectNoError(err)
-		ginkgo.DeferCleanup(func() { f.ServiceClient().DeleteSync(serviceName) })
+		serviceClient := f.ServiceClient()
+		service = serviceClient.Create(service)
+		ginkgo.DeferCleanup(func() { serviceClient.DeleteSync(serviceName) })
 		servicePrefix := ipv4Prefix(service.Spec.ClusterIP)
 
 		ginkgo.By("Waiting for both speakers to advertise the ClusterIP")
 		waitForRouteNextHops(servicePrefix, controlPlaneNextHop, workerNextHop)
 
 		ginkgo.By("Removing the BGP annotation while keeping the Service")
-		service = service.DeepCopy()
-		delete(service.Annotations, util.BgpAnnotation)
-		service, err = f.ClientSet.CoreV1().Services(f.Namespace.Name).Update(context.TODO(), service, metav1.UpdateOptions{})
-		framework.ExpectNoError(err)
+		original := serviceClient.Get(serviceName)
+		modified := original.DeepCopy()
+		delete(modified.Annotations, util.BgpAnnotation)
+		service = serviceClient.Patch(original, modified)
 		waitForRouteWithdrawal(servicePrefix)
 
-		current, err := f.ClientSet.CoreV1().Services(f.Namespace.Name).Get(context.TODO(), serviceName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
+		current := serviceClient.Get(serviceName)
 		gomega.Expect(current.Spec.ClusterIP).To(gomega.Equal(service.Spec.ClusterIP))
 	})
 })
