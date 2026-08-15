@@ -160,7 +160,6 @@ func createPodOnNode(f *framework.Framework, name, nodeName string) (*corev1.Pod
 	pod := framework.MakePod(f.Namespace.Name, name, nil, nil, framework.AgnhostImage, nil, nil)
 	pod.Spec.NodeName = nodeName
 	pod = f.PodClient().CreateSync(pod)
-	pod = f.PodClient().GetPod(name)
 	return pod, ipv4Prefix(pod.Annotations[util.IPAddressAnnotation])
 }
 
