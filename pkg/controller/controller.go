@@ -376,6 +376,21 @@ func enqueueUpdateIfTerminating(queue workqueue.TypedRateLimitingInterface[strin
 	return false
 }
 
+// enqueueUpdateIfTerminatingWithFinalizer behaves like enqueueUpdateIfTerminating but skips objects
+// whose finalizer has already been removed (their cleanup is done and they only await API server
+// deletion), mirroring the OVN enqueueUpdate* deletion branch to avoid a double delete. It returns
+// true when the object is terminating, so the add handler stops regardless of whether it enqueued.
+func enqueueUpdateIfTerminatingWithFinalizer(queue workqueue.TypedRateLimitingInterface[string], key, kind string, deletionTimestamp *metav1.Time, finalizers []string) bool {
+	if deletionTimestamp.IsZero() {
+		return false
+	}
+	if len(finalizers) != 0 {
+		klog.V(3).Infof("enqueue update to clean %s %s", kind, key)
+		queue.Add(key)
+	}
+	return true
+}
+
 // Run creates and runs a new ovn controller
 func Run(ctx context.Context, config *Configuration) {
 	klog.V(4).Info("Creating event broadcaster")

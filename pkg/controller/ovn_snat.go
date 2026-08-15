@@ -20,7 +20,12 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnSnatRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnSnatRule)).String()
+	snat := obj.(*kubeovnv1.OvnSnatRule)
+	key := cache.MetaObjectToName(snat).String()
+	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
+	if enqueueUpdateIfTerminatingWithFinalizer(c.updateOvnSnatRuleQueue, key, "ovn snat", snat.DeletionTimestamp, snat.GetFinalizers()) {
+		return
+	}
 	klog.Infof("enqueue add ovn snat %s", key)
 	c.addOvnSnatRuleQueue.Add(key)
 }
@@ -28,14 +33,7 @@ func (c *Controller) enqueueAddOvnSnatRule(obj any) {
 func (c *Controller) enqueueUpdateOvnSnatRule(oldObj, newObj any) {
 	newSnat := newObj.(*kubeovnv1.OvnSnatRule)
 	key := cache.MetaObjectToName(newSnat).String()
-	if !newSnat.DeletionTimestamp.IsZero() {
-		if len(newSnat.GetFinalizers()) == 0 {
-			// avoid delete twice
-			return
-		}
-		// SNAT with finalizer should be handled in updateOvnSnatRuleQueue
-		klog.Infof("enqueue update (deleting) ovn snat %s", key)
-		c.updateOvnSnatRuleQueue.Add(key)
+	if enqueueUpdateIfTerminatingWithFinalizer(c.updateOvnSnatRuleQueue, key, "ovn snat", newSnat.DeletionTimestamp, newSnat.GetFinalizers()) {
 		return
 	}
 	oldSnat := oldObj.(*kubeovnv1.OvnSnatRule)

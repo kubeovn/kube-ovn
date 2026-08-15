@@ -117,7 +117,7 @@ ARG PIP_BREAK_SYSTEM_PACKAGES=1
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 libunwind8 netbase \
         ethtool iproute2 ncat libunbound8 libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
         tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack iputils-tracepath \
-        logrotate dnsutils net-tools lsb-release strongswan strongswan-pki libcharon-extra-plugins \
+        gzip logrotate dnsutils net-tools lsb-release strongswan strongswan-pki libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
         python3-pip build-essential libssl-dev libibverbs-dev libnuma-dev libpcap-dev -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \

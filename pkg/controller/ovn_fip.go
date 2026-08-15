@@ -22,7 +22,12 @@ import (
 )
 
 func (c *Controller) enqueueAddOvnFip(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.OvnFip)).String()
+	fip := obj.(*kubeovnv1.OvnFip)
+	key := cache.MetaObjectToName(fip).String()
+	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
+	if enqueueUpdateIfTerminatingWithFinalizer(c.updateOvnFipQueue, key, "ovn fip", fip.DeletionTimestamp, fip.GetFinalizers()) {
+		return
+	}
 	klog.Infof("enqueue add ovn fip %s", key)
 	c.addOvnFipQueue.Add(key)
 }
@@ -30,14 +35,7 @@ func (c *Controller) enqueueAddOvnFip(obj any) {
 func (c *Controller) enqueueUpdateOvnFip(oldObj, newObj any) {
 	newFip := newObj.(*kubeovnv1.OvnFip)
 	key := cache.MetaObjectToName(newFip).String()
-	if !newFip.DeletionTimestamp.IsZero() {
-		if len(newFip.GetFinalizers()) == 0 {
-			// avoid delete twice
-			return
-		}
-		// FIP with finalizer should be handled in updateOvnFipQueue
-		klog.Infof("enqueue update (deleting) ovn fip %s", key)
-		c.updateOvnFipQueue.Add(key)
+	if enqueueUpdateIfTerminatingWithFinalizer(c.updateOvnFipQueue, key, "ovn fip", newFip.DeletionTimestamp, newFip.GetFinalizers()) {
 		return
 	}
 	oldFip := oldObj.(*kubeovnv1.OvnFip)
