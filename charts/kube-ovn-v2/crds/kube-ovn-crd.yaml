@@ -7139,8 +7139,12 @@ spec:
                 description: |-
                   PhysicalPort is the Hardware VTEP Physical_Port.name. When --vtep-db-addr
                   is configured, Kube-OVN writes Physical_Port.vlan_bindings for this port.
+                  Immutable.
                 minLength: 1
                 type: string
+                x-kubernetes-validations:
+                - message: spec.physicalPort is immutable
+                  rule: self == oldSelf
               physicalSwitch:
                 description: |-
                   PhysicalSwitch is the Hardware VTEP Physical_Switch.name.
@@ -7162,9 +7166,13 @@ spec:
                 description: |-
                   VlanID is the VLAN used on the physical port (0 = untagged). When
                   --vtep-db-addr is configured, this becomes the vlan_bindings map key.
+                  Immutable.
                 maximum: 4095
                 minimum: 0
                 type: integer
+                x-kubernetes-validations:
+                - message: spec.vlanID is immutable
+                  rule: self == oldSelf
               vtepLogicalSwitch:
                 description: |-
                   VtepLogicalSwitch is the Hardware VTEP Logical_Switch.name.

@@ -50,12 +50,20 @@ server.
 
 ## Enable Hardware VTEP
 
-Helm:
+Helm (v1 chart):
 
 ```bash
 helm upgrade --install kube-ovn charts/kube-ovn -n kube-system \
   --set func.ENABLE_HARDWARE_VTEP=true \
   --set networking.VTEP_DB_ADDR='tcp:[192.0.2.10]:6640'
+```
+
+Helm (v2 chart):
+
+```bash
+helm upgrade --install kube-ovn charts/kube-ovn-v2 -n kube-system \
+  --set features.enableHardwareVtep=true \
+  --set networking.vtepDbAddr='tcp:[192.0.2.10]:6640'
 ```
 
 `install.sh`:
@@ -67,6 +75,11 @@ ENABLE_HARDWARE_VTEP=true VTEP_DB_ADDR='tcp:[192.0.2.10]:6640' bash dist/images/
 This deploys `ovn-controller-vtep` and configures `kube-ovn-controller` with
 `--vtep-db-addr`. The switch must already expose a Hardware VTEP OVSDB with
 `Physical_Switch` / `Physical_Port` rows that match the CR.
+
+If the Hardware VTEP DB is unreachable at controller startup, kube-ovn-controller
+still starts and continues reconciling other resources. Affected `VtepBinding`
+objects report `VTEPDBNotConnected` until the DB is reachable; the controller
+retries in the background.
 
 ## Prerequisites
 
@@ -121,8 +134,11 @@ Create one `VtepBinding` (and matching switch VLAN binding) per tenant Subnet:
 | A | tenant-a-backend | tenant-a-backend | 120 |
 | B | tenant-b-backend | tenant-b-backend | 130 |
 
-`(physicalSwitch, vtepLogicalSwitch)` must be unique across `VtepBinding`
-resources because OVN allows only one VTEP Logical Switch Port for that pair.
+`(physicalSwitch, vtepLogicalSwitch)` and `(physicalSwitch, physicalPort, vlanID)`
+must each be unique across `VtepBinding` resources. Spec fields other than
+status are immutable after create (`subnet`, `physicalSwitch`,
+`vtepLogicalSwitch`, `physicalPort`, `vlanID`); recreate the CR to change the
+physical attachment.
 
 ## Limitations
 

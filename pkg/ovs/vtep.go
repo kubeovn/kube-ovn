@@ -104,9 +104,16 @@ func (c *VtepClient) EnsureVtepBinding(physicalSwitch, physicalPort, logicalSwit
 
 // RemoveVtepBinding removes the owned vlan_binding and deletes the Logical_Switch
 // when it is owned by this binding and no longer referenced.
+// vlan_bindings entries are cleared only when they still reference this binding's
+// Logical_Switch UUID, so another CR's mapping is never removed by mistake.
 func (c *VtepClient) RemoveVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName string, vlanID int) error {
 	if physicalSwitch == "" || physicalPort == "" {
 		return nil
+	}
+
+	ls, err := c.GetLogicalSwitch(logicalSwitch, true)
+	if err != nil {
+		return err
 	}
 
 	port, err := c.GetPhysicalPort(physicalSwitch, physicalPort, true)
@@ -114,17 +121,22 @@ func (c *VtepClient) RemoveVtepBinding(physicalSwitch, physicalPort, logicalSwit
 		return err
 	}
 	if port != nil && port.VLANBindings != nil {
-		if _, ok := port.VLANBindings[vlanID]; ok {
-			delete(port.VLANBindings, vlanID)
-			ops, err := c.Where(port).Update(port, &port.VLANBindings)
-			if err != nil {
-				return fmt.Errorf("generate update to clear vlan_bindings on port %s: %w", physicalPort, err)
+		if ref, ok := port.VLANBindings[vlanID]; ok {
+			if ls == nil || ref != ls.UUID {
+				klog.Infof("skip clearing VTEP vlan_bindings[%d] on %s/%s: mapping does not reference logical switch %s",
+					vlanID, physicalSwitch, physicalPort, logicalSwitch)
+			} else {
+				delete(port.VLANBindings, vlanID)
+				ops, err := c.Where(port).Update(port, &port.VLANBindings)
+				if err != nil {
+					return fmt.Errorf("generate update to clear vlan_bindings on port %s: %w", physicalPort, err)
+				}
+				if err = c.Transact("vtep-vlan-unbind", ops); err != nil {
+					return fmt.Errorf("clear vlan_bindings[%d] on physical port %s: %w", vlanID, physicalPort, err)
+				}
+				klog.Infof("cleared VTEP vlan_bindings[%d] on physical switch %s port %s",
+					vlanID, physicalSwitch, physicalPort)
 			}
-			if err = c.Transact("vtep-vlan-unbind", ops); err != nil {
-				return fmt.Errorf("clear vlan_bindings[%d] on physical port %s: %w", vlanID, physicalPort, err)
-			}
-			klog.Infof("cleared VTEP vlan_bindings[%d] on physical switch %s port %s",
-				vlanID, physicalSwitch, physicalPort)
 		}
 	}
 

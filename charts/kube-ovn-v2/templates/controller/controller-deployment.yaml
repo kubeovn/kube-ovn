@@ -221,6 +221,10 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+            {{- if .Values.features.enableHardwareVtep }}
+            - name: VTEP_DB_ADDR
+              value: "{{ .Values.networking.vtepDbAddr }}"
+            {{- end }}
             {{- with .Values.controller.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}

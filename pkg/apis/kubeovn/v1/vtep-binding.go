@@ -73,15 +73,19 @@ type VtepBindingSpec struct {
 
 	// PhysicalPort is the Hardware VTEP Physical_Port.name. When --vtep-db-addr
 	// is configured, Kube-OVN writes Physical_Port.vlan_bindings for this port.
+	// Immutable.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.physicalPort is immutable"
 	PhysicalPort string `json:"physicalPort"`
 
 	// VlanID is the VLAN used on the physical port (0 = untagged). When
 	// --vtep-db-addr is configured, this becomes the vlan_bindings map key.
+	// Immutable.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Maximum=4095
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.vlanID is immutable"
 	VlanID int `json:"vlanID"`
 }
 

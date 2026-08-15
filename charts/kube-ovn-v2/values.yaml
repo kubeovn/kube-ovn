@@ -181,6 +181,10 @@ networking:
   # -- Enable listening on the metrics endpoint for the CNI daemons.
   # @section -- Network parameters of the CNI
   enableMetrics: true
+  # -- Hardware VTEP OVSDB remote used by ovn-controller-vtep and kube-ovn-controller
+  # when features.enableHardwareVtep is true (e.g. tcp:[192.0.2.10]:6640).
+  # @section -- Network parameters of the CNI
+  vtepDbAddr: ""
 
   # -- Configuration if we're running on top of a VLAN.
   # @section -- Network parameters of the CNI
@@ -233,6 +237,9 @@ features:
   # -- Enable OVN interconnections
   # @section -- Opt-in/out Features
   enableOvnInterconnections: false
+  # -- Enable Hardware VTEP (deploys ovn-controller-vtep and wires VTEP_DB_ADDR into kube-ovn-controller)
+  # @section -- Opt-in/out Features
+  enableHardwareVtep: false
   # -- Enable NAT gateways
   # @section -- Opt-in/out Features
   enableNatGateways: true
@@ -1128,6 +1135,34 @@ ic:
   extraEnv: []
   #  - name: CUSTOM_ENV_VAR
   #    value: "custom-value"
+
+# -- Configuration for ovn-controller-vtep (Hardware VTEP).
+# @section -- Hardware VTEP configuration
+# @default -- "{}"
+hardwareVtep:
+  # -- Override image settings for ovn-controller-vtep. Empty fields fall back to the global kube-ovn image.
+  # @section -- Hardware VTEP configuration
+  image:
+    # -- Registry override for this component image. Defaults to `.global.registry.address`.
+    # @section -- Hardware VTEP configuration
+    registry: ""
+    # -- Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.
+    # @section -- Hardware VTEP configuration
+    repository: ""
+    # -- Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.
+    # @section -- Hardware VTEP configuration
+    tag: ""
+    # -- Pull policy override for this component image. Defaults to `.image.pullPolicy`.
+    # @section -- Hardware VTEP configuration
+    pullPolicy: ""
+  # -- Node affinity configuration for ovn-controller-vtep.
+  # @section -- Hardware VTEP configuration
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution: []
+    requiredDuringSchedulingIgnoredDuringExecution: []
+  # -- Extra environment variables to be added to ovn-controller-vtep pods.
+  # @section -- Hardware VTEP configuration
+  extraEnv: []
 
 # -- Configuration for kube-ovn-cni, the agent responsible for handling CNI requests from the CRI.
 # @section -- CNI agent configuration

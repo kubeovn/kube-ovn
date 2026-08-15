@@ -71,4 +71,16 @@ func TestValidateVtepBindingImmutableFields(t *testing.T) {
 	err = v.ValidateVtepBinding(t.Context(), newBinding, oldBinding)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "vtepLogicalSwitch is immutable")
+
+	newBinding = oldBinding.DeepCopy()
+	newBinding.Spec.PhysicalPort = "Ethernet1/21"
+	err = v.ValidateVtepBinding(t.Context(), newBinding, oldBinding)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "physicalPort is immutable")
+
+	newBinding = oldBinding.DeepCopy()
+	newBinding.Spec.VlanID = 121
+	err = v.ValidateVtepBinding(t.Context(), newBinding, oldBinding)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "vlanID is immutable")
 }

@@ -75,9 +75,10 @@ type Controller struct {
 	bnpNamePrioMap   map[string]int32
 	priorityMapMutex sync.RWMutex
 
-	OVNNbClient ovs.NbClient
-	OVNSbClient ovs.SbClient
-	VtepClient  ovs.VtepDBClient
+	OVNNbClient  ovs.NbClient
+	OVNSbClient  ovs.SbClient
+	VtepClient   ovs.VtepDBClient
+	vtepClientMu sync.RWMutex
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -240,7 +241,6 @@ type Controller struct {
 	vtepBindingsLister          kubeovnlister.VtepBindingLister
 	vtepBindingSynced           cache.InformerSynced
 	addOrUpdateVtepBindingQueue workqueue.TypedRateLimitingInterface[string]
-	deleteVtepBindingQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.VtepBinding]
 	vtepBindingKeyMutex         keymutex.KeyMutex
 
 	namespacesLister  v1.NamespaceLister
@@ -572,7 +572,6 @@ func Run(ctx context.Context, config *Configuration) {
 		vtepBindingsLister:          vtepBindingInformer.Lister(),
 		vtepBindingSynced:           vtepBindingInformer.Informer().HasSynced,
 		addOrUpdateVtepBindingQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVtepBinding", nil),
-		deleteVtepBindingQueue:      newTypedRateLimitingQueue[*kubeovnv1.VtepBinding]("DeleteVtepBinding", nil),
 		vtepBindingKeyMutex:         keymutex.NewHashed(numKeyLocks),
 
 		providerNetworksLister: providerNetworkInformer.Lister(),
@@ -701,16 +700,10 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
 	if config.VtepDbAddr != "" {
-		if controller.VtepClient, err = ovs.NewVtepClient(
-			config.VtepDbAddr,
-			config.OvsDbConnectTimeout,
-			config.OvsDbInactivityTimeout,
-			config.OvnTimeout,
-			config.OvsDbConnectMaxRetry,
-		); err != nil {
-			util.LogFatalAndExit(err, "failed to create hardware VTEP client")
+		if err = controller.tryConnectVtepClient(); err != nil {
+			klog.Warningf("hardware VTEP DB not available at %s during startup: %v; will retry in background",
+				config.VtepDbAddr, err)
 		}
-		klog.Infof("hardware VTEP client connected to %s", config.VtepDbAddr)
 	}
 	if config.EnableLb {
 		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
@@ -1240,8 +1233,8 @@ func (c *Controller) Run(ctx context.Context) {
 
 	c.OVNNbClient.Close()
 	c.OVNSbClient.Close()
-	if c.VtepClient != nil {
-		c.VtepClient.Close()
+	if vtepClient := c.getVtepClient(); vtepClient != nil {
+		vtepClient.Close()
 	}
 }
 
@@ -1319,7 +1312,6 @@ func (c *Controller) shutdown() {
 	c.updateVlanQueue.ShutDown()
 
 	c.addOrUpdateVtepBindingQueue.ShutDown()
-	c.deleteVtepBindingQueue.ShutDown()
 
 	c.addOrUpdateVpcQueue.ShutDown()
 	c.updateVpcStatusQueue.ShutDown()
@@ -1538,9 +1530,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 
 		go wait.Until(runWorker("delete vlan", c.delVlanQueue, c.handleDelVlan), time.Second, ctx.Done())
-		go wait.Until(runWorker("delete vtep binding", c.deleteVtepBindingQueue, c.handleDeleteVtepBinding), time.Second, ctx.Done())
 		go wait.Until(runWorker("update vlan", c.updateVlanQueue, c.handleUpdateVlan), time.Second, ctx.Done())
 	}
+	c.startVtepClientReconnect(ctx)
 
 	if c.config.EnableEipSnat {
 		go wait.Until(func() {

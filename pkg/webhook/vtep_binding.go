@@ -67,6 +67,12 @@ func (v *ValidatingHook) ValidateVtepBinding(ctx context.Context, binding, oldBi
 		if binding.Spec.VtepLogicalSwitch != oldBinding.Spec.VtepLogicalSwitch {
 			return errors.New("vtepLogicalSwitch is immutable")
 		}
+		if binding.Spec.PhysicalPort != oldBinding.Spec.PhysicalPort {
+			return errors.New("physicalPort is immutable")
+		}
+		if binding.Spec.VlanID != oldBinding.Spec.VlanID {
+			return errors.New("vlanID is immutable")
+		}
 	}
 
 	subnet := &ovnv1.Subnet{}
@@ -87,6 +93,12 @@ func (v *ValidatingHook) ValidateVtepBinding(ctx context.Context, binding, oldBi
 			other.VtepLogicalSwitchName() == vtepLogicalSwitch {
 			return fmt.Errorf("vtep binding conflicts with %s: physicalSwitch %q and vtepLogicalSwitch %q already in use",
 				other.Name, binding.Spec.PhysicalSwitch, vtepLogicalSwitch)
+		}
+		if other.Spec.PhysicalSwitch == binding.Spec.PhysicalSwitch &&
+			other.Spec.PhysicalPort == binding.Spec.PhysicalPort &&
+			other.Spec.VlanID == binding.Spec.VlanID {
+			return fmt.Errorf("vtep binding conflicts with %s: physicalSwitch %q physicalPort %q vlanID %d already in use",
+				other.Name, binding.Spec.PhysicalSwitch, binding.Spec.PhysicalPort, binding.Spec.VlanID)
 		}
 	}
 	return nil

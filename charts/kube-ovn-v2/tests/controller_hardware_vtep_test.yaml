@@ -1,0 +1,27 @@
+suite: test controller hardware VTEP env
+templates:
+  - controller/controller-deployment.yaml
+tests:
+  - it: does not set VTEP_DB_ADDR when enableHardwareVtep is false
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      features.enableHardwareVtep: false
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VTEP_DB_ADDR
+
+  - it: sets VTEP_DB_ADDR when enableHardwareVtep is true
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      features.enableHardwareVtep: true
+      networking.vtepDbAddr: "tcp:[192.0.2.10]:6640"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VTEP_DB_ADDR
+            value: "tcp:[192.0.2.10]:6640"
