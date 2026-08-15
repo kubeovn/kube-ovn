@@ -35,7 +35,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.43.0
 	github.com/osrg/gobgp/v4 v4.9.0
-	github.com/ovn-kubernetes/libovsdb v0.8.1
+	github.com/ovn-kubernetes/libovsdb v0.8.2-0.20260710115425-adb4e0375fb5
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/prometheus/client_golang v1.24.1
@@ -147,7 +147,7 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.26.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.30.2 // indirect
+	github.com/go-playground/validator/v10 v10.30.3 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
@@ -294,7 +294,6 @@ replace (
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20260528080449-dad82eb4dedd
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
-	github.com/ovn-kubernetes/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20251212071713-cb1c2bc5d43e
 	k8s.io/api => k8s.io/api v0.36.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.4
 	k8s.io/apimachinery => k8s.io/apimachinery v0.36.4
@@ -315,7 +314,6 @@ replace (
 	k8s.io/endpointslice => k8s.io/endpointslice v0.36.4
 	k8s.io/externaljwt => k8s.io/externaljwt v0.36.4
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.36.4
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.36.4
 	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912
 	k8s.io/kube-proxy => k8s.io/kube-proxy v0.36.4
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.36.4

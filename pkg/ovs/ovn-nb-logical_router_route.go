@@ -476,7 +476,9 @@ func (c *OVNNbClient) listLogicalRouterStaticRoutesByFilter(lrName string, filte
 	}
 
 	routeList := make([]*ovnnb.LogicalRouterStaticRoute, 0, len(lr.StaticRoutes))
-	if err = c.WhereCache(predicate).List(context.Background(), &routeList); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	if err := c.WhereCache(predicate).List(ctx, &routeList); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
