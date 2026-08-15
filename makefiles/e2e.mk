@@ -92,6 +92,7 @@ e2e-build:
 	$(GINKGO_E2E_BUILD) ./test/e2e/ovn-ic
 	$(GINKGO_E2E_BUILD) ./test/e2e/multus
 	$(GINKGO_E2E_BUILD) ./test/e2e/non-primary-cni
+	$(GINKGO_E2E_BUILD) ./test/e2e/bgp
 	$(GINKGO_E2E_BUILD) ./test/e2e/lb-svc
 	$(GINKGO_E2E_BUILD) ./test/e2e/vip
 	$(GINKGO_E2E_BUILD) ./test/e2e/vpc-egress-gateway
@@ -188,6 +189,16 @@ kube-ovn-non-primary-cni-e2e:
 	KUBE_OVN_PRIMARY_CNI=$(shell echo $${KUBE_OVN_PRIMARY_CNI:-false}) \
 	$(GINKGO_E2E_RUN_PARALLEL) --timeout=15m \
 		--focus="group:non-primary-cni" ./test/e2e/non-primary-cni/non-primary-cni.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-bgp-speaker-e2e
+kube-ovn-bgp-speaker-e2e:
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
+	$(GINKGO_E2E_BUILD) ./test/e2e/bgp
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=ipv4 \
+	E2E_NETWORK_MODE=overlay \
+	$(GINKGO_E2E_RUN) --timeout=15m \
+		--focus="group:bgp-speaker" ./test/e2e/bgp/bgp.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-lb-svc-conformance-e2e
 kube-ovn-lb-svc-conformance-e2e:
