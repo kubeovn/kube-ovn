@@ -38,35 +38,6 @@ type frrSummary struct {
 	} `json:"peers"`
 }
 
-type frrRoute struct {
-	Paths []struct {
-		PeerID   string `json:"peerId"`
-		Valid    bool   `json:"valid"`
-		Nexthops []struct {
-			IP string `json:"ip"`
-		} `json:"nexthops"`
-	} `json:"paths"`
-}
-
-type frrRoutePath struct {
-	PeerID  string
-	NextHop string
-	Valid   bool
-}
-
-func validNodeRoutePath(address string) frrRoutePath {
-	return frrRoutePath{PeerID: address, NextHop: address, Valid: true}
-}
-
-func sortRoutePaths(paths []frrRoutePath) {
-	slices.SortFunc(paths, func(a, b frrRoutePath) int {
-		if result := strings.Compare(a.PeerID, b.PeerID); result != 0 {
-			return result
-		}
-		return strings.Compare(a.NextHop, b.NextHop)
-	})
-}
-
 type speakerPodState struct {
 	UID          string
 	RestartCount int32
@@ -128,15 +99,7 @@ func waitForBGPPeers() {
 }
 
 func readFRRRoute(prefix string) (*frrRoute, error) {
-	output, err := runFRR("show bgp ipv4 unicast " + prefix + " json")
-	if err != nil {
-		return nil, err
-	}
-	var route frrRoute
-	if err = json.Unmarshal(output, &route); err != nil {
-		return nil, fmt.Errorf("failed to parse FRR route output for %s: %w: %s", prefix, err, output)
-	}
-	return &route, nil
+	return readFRRRouteWithRunner(prefix, runFRR)
 }
 
 func routePaths(prefix string) ([]frrRoutePath, error) {
@@ -147,29 +110,26 @@ func routePaths(prefix string) ([]frrRoutePath, error) {
 	return routePathsFromRoute(route), nil
 }
 
-func routePathsFromRoute(route *frrRoute) []frrRoutePath {
-	paths := make([]frrRoutePath, 0, len(route.Paths))
-	for _, path := range route.Paths {
-		for _, nextHop := range path.Nexthops {
-			if nextHop.IP != "" {
-				paths = append(paths, frrRoutePath{PeerID: path.PeerID, NextHop: nextHop.IP, Valid: path.Valid})
-			}
-		}
-	}
-	sortRoutePaths(paths)
-	return paths
-}
-
 func waitForRoutePaths(prefix string, expected ...frrRoutePath) {
 	ginkgo.GinkgoHelper()
 	sortRoutePaths(expected)
+	var lastObserved []frrRoutePath
+	haveObservation := false
 	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 		paths, err := routePaths(prefix)
 		if err != nil {
 			framework.Logf("Failed to read FRR route %s: %v", prefix, err)
 			return false, nil
 		}
-		return slices.Equal(paths, expected), nil
+		if slices.Equal(paths, expected) {
+			return true, nil
+		}
+		if !haveObservation || !slices.Equal(paths, lastObserved) {
+			framework.Logf("FRR route %s has paths %v, waiting for %v", prefix, paths, expected)
+			lastObserved = slices.Clone(paths)
+			haveObservation = true
+		}
+		return false, nil
 	}, fmt.Sprintf("route %s to have paths %v", prefix, expected))
 }
 
