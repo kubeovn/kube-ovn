@@ -46,10 +46,6 @@ func (c *Controller) syncEIPRoutes() error {
 
 // announceEIPs announce all the prefixes related to EIPs attached to a GW
 func (c *Controller) announceEIPs(eips []*v1.IptablesEIP) error {
-	return c.reconcileRoutes(collectEIPExpectedPrefixes(eips))
-}
-
-func collectEIPExpectedPrefixes(eips []*v1.IptablesEIP) prefixMap {
 	expectedPrefixes := make(prefixMap)
 	for _, eip := range eips {
 		// Only announce EIPs marked as "ready" and with the BGP annotation set to true
@@ -66,5 +62,5 @@ func collectEIPExpectedPrefixes(eips []*v1.IptablesEIP) prefixMap {
 		}
 	}
 
-	return expectedPrefixes
+	return c.reconcileRoutes(expectedPrefixes)
 }

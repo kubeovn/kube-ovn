@@ -16,9 +16,20 @@ func TestCheckGracefulRestartOptions(t *testing.T) {
 		expectError  string
 	}{
 		{
-			name:         "valid boundary values",
+			name:         "valid lower boundary values",
+			restartTime:  time.Second,
+			deferralTime: time.Second,
+		},
+		{
+			name:         "valid upper boundary values",
 			restartTime:  4095 * time.Second,
 			deferralTime: 18 * time.Hour,
+		},
+		{
+			name:         "restart time below one second",
+			restartTime:  time.Second - time.Nanosecond,
+			deferralTime: time.Minute,
+			expectError:  "GracefulRestartTime",
 		},
 		{
 			name:         "zero restart time",
@@ -31,6 +42,12 @@ func TestCheckGracefulRestartOptions(t *testing.T) {
 			restartTime:  4095*time.Second + time.Nanosecond,
 			deferralTime: time.Minute,
 			expectError:  "GracefulRestartTime",
+		},
+		{
+			name:         "deferral time below one second",
+			restartTime:  time.Minute,
+			deferralTime: time.Second - time.Nanosecond,
+			expectError:  "GracefulRestartDeferralTime",
 		},
 		{
 			name:         "zero deferral time",

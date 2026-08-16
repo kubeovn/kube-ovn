@@ -11,6 +11,7 @@ import (
 	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	gobgp "github.com/osrg/gobgp/v4/pkg/server"
 	"github.com/stretchr/testify/require"
+	"github.com/vishvananda/netlink"
 	"k8s.io/utils/set"
 )
 
@@ -33,7 +34,7 @@ func newTestBgpServer(t *testing.T, routerID string) *gobgp.BgpServer {
 	return server
 }
 
-func listTestPrefixes(t *testing.T, server *gobgp.BgpServer, afi api.Family_Afi) map[string][]net.IP {
+func listTestPrefixNextHops(t *testing.T, server *gobgp.BgpServer, afi api.Family_Afi) map[string][]net.IP {
 	t.Helper()
 
 	prefixes := map[string][]net.IP{}
@@ -69,7 +70,7 @@ func TestReconcileRoutesAddsAndWithdrawsIPv4Routes(t *testing.T) {
 	require.NoError(t, controller.reconcileRoutes(prefixMap{
 		api.Family_AFI_IP: set.New(prefix),
 	}))
-	routes := listTestPrefixes(t, controller.config.BgpServer, api.Family_AFI_IP)
+	routes := listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP)
 	require.Contains(t, routes, prefix)
 	require.Len(t, routes[prefix], 1)
 	require.True(t, net.ParseIP(routerID).Equal(routes[prefix][0]))
@@ -77,7 +78,7 @@ func TestReconcileRoutesAddsAndWithdrawsIPv4Routes(t *testing.T) {
 	require.NoError(t, controller.reconcileRoutes(prefixMap{
 		api.Family_AFI_IP: set.New[string](),
 	}))
-	require.NotContains(t, listTestPrefixes(t, controller.config.BgpServer, api.Family_AFI_IP), prefix)
+	require.NotContains(t, listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP), prefix)
 }
 
 func TestGetPathRequest(t *testing.T) {
@@ -204,12 +205,30 @@ func TestGetNextHopFromPathAttributes(t *testing.T) {
 	}
 }
 
-func TestGetNextHopAttributeUsesCachedLocalAddress(t *testing.T) {
-	const neighbor = "192.0.2.1"
-	localAddress := net.ParseIP("192.0.2.10")
-	controller := &Controller{config: &Configuration{
-		NeighborLocalAddresses: map[string]net.IP{neighbor: localAddress},
-	}}
+func TestGetNextHopAttributeReusesInitializedNeighborLocalAddresses(t *testing.T) {
+	ipv4Neighbor := net.ParseIP("192.0.2.1")
+	ipv4StartupAddress := net.ParseIP("192.0.2.10")
+	ipv6Neighbor := net.ParseIP("2001:db8::1")
+	ipv6StartupAddress := net.ParseIP("2001:db8::10")
+	routeSources := map[string]net.IP{
+		ipv4Neighbor.String(): ipv4StartupAddress,
+		ipv6Neighbor.String(): ipv6StartupAddress,
+	}
+	config := &Configuration{
+		NeighborAddresses:          []net.IP{ipv4Neighbor},
+		NeighborIPv6Addresses:      []net.IP{ipv6Neighbor},
+		AllowedSourceAddresses:     []net.IP{ipv4StartupAddress},
+		AllowedSourceIPv6Addresses: []net.IP{ipv6StartupAddress},
+	}
+	require.NoError(t, config.initNeighborLocalAddressesWithRouteLookup(func(address net.IP) ([]netlink.Route, error) {
+		source, ok := routeSources[address.String()]
+		require.True(t, ok)
+		return []netlink.Route{{Src: source}}, nil
+	}))
 
-	require.True(t, localAddress.Equal(controller.getNextHopAttribute(net.ParseIP(neighbor))))
+	routeSources[ipv4Neighbor.String()] = net.ParseIP("192.0.2.20")
+	routeSources[ipv6Neighbor.String()] = net.ParseIP("2001:db8::20")
+	controller := &Controller{config: config}
+	require.True(t, ipv4StartupAddress.Equal(controller.getNextHopAttribute(ipv4Neighbor)))
+	require.True(t, ipv6StartupAddress.Equal(controller.getNextHopAttribute(ipv6Neighbor)))
 }

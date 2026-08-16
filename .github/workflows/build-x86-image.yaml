@@ -1815,8 +1815,13 @@ jobs:
           E2E_NETWORK_MODE: overlay
         run: make kube-ovn-bgp-speaker-e2e
 
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
       - name: Collect BGP diagnostics
-        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           mkdir -p bgp-speaker-e2e-diagnostics
           docker exec clab-bgp-router vtysh -c "show bgp ipv4 unicast summary json" > bgp-speaker-e2e-diagnostics/frr-summary.json || true
@@ -1830,25 +1835,24 @@ jobs:
 
       - name: Upload BGP diagnostics
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
           name: bgp-speaker-e2e-diagnostics
           path: bgp-speaker-e2e-diagnostics.tar.gz
 
-      - name: Check kube ovn pod restarts
-        id: check-restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
-        run: make check-kube-ovn-pod-restarts
-
       - name: kubectl ko log
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz bgp-speaker-e2e-ko-log.tar.gz
+          if make kubectl-ko-log && test -f kubectl-ko-log.tar.gz; then
+            mv kubectl-ko-log.tar.gz bgp-speaker-e2e-ko-log.tar.gz
+          else
+            echo "kubectl ko log was unavailable because the BGP test cluster did not become usable." > bgp-speaker-e2e-ko-log-unavailable.txt
+            tar zcf bgp-speaker-e2e-ko-log.tar.gz bgp-speaker-e2e-ko-log-unavailable.txt
+          fi
 
       - name: Upload kubectl ko log
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
           name: bgp-speaker-e2e-ko-log
           path: bgp-speaker-e2e-ko-log.tar.gz
