@@ -45,6 +45,7 @@ func (c *Controller) gc() error {
 		c.gcRoutePolicy,
 		c.gcStaticRoute,
 		c.gcVpcNatGateway,
+		c.gcVpcIPsecGateway,
 		c.gcLogicalRouterPort,
 		c.gcIP,
 		c.gcVip,
@@ -127,6 +128,50 @@ func (c *Controller) gcVpcNatGateway() error {
 		}
 	}
 	klog.Infof("finish to gc vpc nat gateway")
+	return nil
+}
+
+func (c *Controller) gcVpcIPsecGateway() error {
+	klog.Infof("start to gc vpc ipsec gateway")
+	gws, err := c.vpcIPsecGatewayLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpc ipsec gateway: %v", err)
+		return err
+	}
+
+	var gwStsNames []string
+	for _, gw := range gws {
+		_, err = c.vpcsLister.Get(gw.Spec.Vpc)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get vpc: %v", err)
+				return err
+			}
+			if err = c.config.KubeOvnClient.KubeovnV1().VpcIPsecGateways().Delete(context.Background(), gw.Name, metav1.DeleteOptions{}); err != nil {
+				klog.Errorf("failed to delete vpc ipsec gateway: %v", err)
+				return err
+			}
+		}
+		gwStsNames = append(gwStsNames, util.GenIPsecGwName(gw.Name))
+	}
+
+	stss, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: labels.Set{util.VpcIPsecGatewayLabel: "true"}.AsSelector().String(),
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc ipsec gateway statefulset: %v", err)
+		return err
+	}
+	for _, sts := range stss.Items {
+		if !slices.Contains(gwStsNames, sts.Name) {
+			err = c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).Delete(context.Background(), sts.Name, metav1.DeleteOptions{})
+			if err != nil {
+				klog.Errorf("failed to delete vpc ipsec gateway statefulset: %v", err)
+				return err
+			}
+		}
+	}
+	klog.Infof("finish to gc vpc ipsec gateway")
 	return nil
 }
 

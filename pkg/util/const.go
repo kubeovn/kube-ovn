@@ -40,6 +40,8 @@ const (
 	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
 	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
 	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
+	VpcIPsecGatewayAnnotation               = "ovn.kubernetes.io/vpc_ipsec_gw"
+	VpcIPsecGatewayInitAnnotation           = "ovn.kubernetes.io/vpc_ipsec_gw_init"
 	VpcEipsAnnotation                       = "ovn.kubernetes.io/vpc_eips"
 	VpcFloatingIPMd5Annotation              = "ovn.kubernetes.io/vpc_floating_ips"
 	VpcDnatMd5Annotation                    = "ovn.kubernetes.io/vpc_dnat_md5"
@@ -127,6 +129,8 @@ const (
 	ExGatewayLabel                     = "ovn.kubernetes.io/external-gw"
 	NodeExtGwLabel                     = "ovn.kubernetes.io/node-ext-gw"
 	VpcNatGatewayLabel                 = "ovn.kubernetes.io/vpc-nat-gw"
+	VpcIPsecGatewayLabel               = "ovn.kubernetes.io/vpc-ipsec-gw"
+	VpcIPsecGatewayNameLabel           = "ovn.kubernetes.io/vpc-ipsec-gw-name"
 	IPReservedLabel                    = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel             = "ovn.kubernetes.io/vpc-nat-gw-name"
 	VpcLbLabel                         = "ovn.kubernetes.io/vpc_lb"
@@ -232,10 +236,12 @@ const (
 	InterconnectionSwitch  = "ts"
 	ExternalGatewaySwitch  = "ovn-external"
 	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
+	VpcIPsecGatewayConfig  = "ovn-vpc-ipsec-gw-config"
 	VpcLbNetworkAttachment = "ovn-vpc-lb"
 	VpcDNSConfig           = "vpc-dns-config"
 	VpcDNSDepTemplate      = "vpc-dns-dep"
 	VpcNatConfig           = "ovn-vpc-nat-config"
+	VpcIPsecConfig         = "ovn-vpc-ipsec-config"
 
 	DefaultSecurityGroupName = "default-securitygroup"
 
@@ -442,6 +448,7 @@ var (
 	KindVip              = ObjectKind[*kubeovnv1.Vip]()
 	KindVpc              = ObjectKind[*kubeovnv1.Vpc]()
 	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
+	KindVpcIPsecGateway  = ObjectKind[*kubeovnv1.VpcIPsecGateway]()
 	KindVpcNatGateway    = ObjectKind[*kubeovnv1.VpcNatGateway]()
 
 	KindVirtualMachine                  = ObjectKind[*kubevirtv1.VirtualMachine]()

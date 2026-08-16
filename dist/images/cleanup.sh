@@ -15,6 +15,10 @@ for gw in $(kubectl get vpc-nat-gateways.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $gw
 done
 
+for gw in $(kubectl get vpc-ipsec-gateways.kubeovn.io -o name 2>/dev/null); do
+  kubectl delete --ignore-not-found $gw
+done
+
 for vd in $(kubectl  get vpc-dnses.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $vd
 done
@@ -120,6 +124,7 @@ kubectl delete --ignore-not-found crd \
   security-groups.kubeovn.io \
   ippools.kubeovn.io \
   vpc-nat-gateways.kubeovn.io \
+  vpc-ipsec-gateways.kubeovn.io \
   vpc-egress-gateways.kubeovn.io \
   vlans.kubeovn.io \
   provider-networks.kubeovn.io \

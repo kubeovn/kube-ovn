@@ -295,7 +295,7 @@ clean:
 	$(RM) ovn-ic-config.yaml ovn-ic-0.yaml ovn-ic-1.yaml
 	$(RM) kwok-node.yaml metallb-cr.yaml
 	$(RM) cakey.pem cacert.pem ovn-req.pem ovn-cert.pem ovn-privkey.pem
-	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
+	$(RM) kube-ovn.tar kube-ovn-dpdk.tar vpc-nat-gateway.tar vpc-ipsec-gateway.tar image-amd64.tar image-amd64-dpdk.tar image-arm64.tar
 	$(RM) kubectl-ko-log.tar.gz
 	$(RM) -r kubectl-ko-log/
 
@@ -308,4 +308,5 @@ local-dev:
 	@DEBUG=1 $(MAKE) build-go
 	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 -t $(REGISTRY)/vpc-ipsec-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcipsecgateway/Dockerfile dist/images/vpcipsecgateway
 	@$(MAKE) kind-init kind-install

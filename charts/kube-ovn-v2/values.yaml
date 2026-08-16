@@ -236,6 +236,9 @@ features:
   # -- Enable NAT gateways
   # @section -- Opt-in/out Features
   enableNatGateways: true
+  # -- Enable VPC site-to-site IPsec gateways
+  # @section -- Opt-in/out Features
+  enableIpsecGateways: false
   # -- Enable IPSEC
   # @section -- Opt-in/out Features
   enableOvnIpsec: false
@@ -450,6 +453,27 @@ natGw:
     # See https://kubeovn.github.io/docs/stable/en/advance/with-bgp/
     # @section -- NAT gateways configuration
     apiNadProvider: "{{ .Values.apiNad.name }}.{{ .Values.namespace }}.ovn"
+
+# -- Configuration for the VPC site-to-site IPsec gateways.
+# @section -- IPsec gateways configuration
+# @default -- "{}"
+ipsecGw:
+  # -- Prefix appended to the name of the IPsec gateways when generating the Pods.
+  # @section -- IPsec gateways configuration
+  namePrefix: "vpc-ipsec-gw"
+  # -- Image used by the IPsec gateway.
+  # @section -- IPsec gateways configuration
+  # @default -- "{}"
+  image:
+    # -- Image repository.
+    # @section -- IPsec gateways configuration
+    repository: docker.io/kubeovn/vpc-ipsec-gateway
+    # -- Image tag.
+    # @section -- IPsec gateways configuration
+    tag: v1.17.0
+    # -- Image pull policy.
+    # @section -- IPsec gateways configuration
+    pullPolicy: IfNotPresent
 
 # -- Configuration for network policies
 # @section -- Network Policies
