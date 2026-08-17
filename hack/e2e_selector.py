@@ -17,6 +17,7 @@ infrastructureJobs = {
     "build-vpc-nat-gateway",
     "build-e2e-binaries",
     "e2e-selection",
+    "e2e-control-validation",
     "e2e-executor-result",
     "push",
 }
@@ -389,15 +390,22 @@ def select(
 
 
 def executionPlan(catalog, plan, eventName):
-    if eventName not in {"pull_request", "push", "workflow_dispatch"}:
+    executionModes = {
+        "pull_request": "automatic",
+        "push": "push",
+        "workflow_dispatch": "approved",
+    }
+    if eventName not in executionModes:
         raise ValueError(f"unsupported x86 E2E workflow event: {eventName}")
+    executionMode = executionModes[eventName]
     if plan["full"]:
-        return plan
+        return {**plan, "executionMode": executionMode}
     if eventName == "workflow_dispatch":
         return {
             **plan,
             "recommendedGroups": [],
             "approvalRequired": False,
+            "executionMode": executionMode,
         }
     if catalog is None:
         raise ValueError("a valid catalog is required for a partial execution plan")
@@ -416,11 +424,13 @@ def executionPlan(catalog, plan, eventName):
             "full": True,
             "approvalRequired": False,
             "fullReason": reason,
+            "executionMode": executionMode,
         }
     return {
         **plan,
         "selectedGroups": [],
         "matrix": [{**entry, "selection": "smoke"} for entry in catalog["smoke"]],
+        "executionMode": executionMode,
     }
 
 
@@ -431,19 +441,38 @@ def renderSummary(plan, changedPaths):
     groups = safeSummaryText(groups)
     recommended = safeSummaryText(", ".join(plan["recommendedGroups"]) or "none")
     requested = safeSummaryText(", ".join(plan["requestedGroups"]) or "none")
-    automatic = (
-        f"full suite ({len(plan['matrix'])} runner jobs)"
-        if plan["full"] and not plan.get("requestedFull", False)
-        else f"mandatory smoke ({len(mandatorySmoke)} runner jobs)"
-    )
+    executionMode = plan.get("executionMode", "automatic")
+    if executionMode == "approved":
+        banner = "Authorized coverage is executing for this HEAD."
+        coverageLabel = "Authorized coverage"
+        coverage = (
+            f"full suite ({len(plan['matrix'])} runner jobs)"
+            if plan["full"]
+            else f"approved selection ({len(plan['matrix'])} runner jobs)"
+        )
+    elif executionMode == "push":
+        banner = "Push events execute the complete x86 E2E catalog."
+        coverageLabel = "Push coverage"
+        coverage = f"full suite ({len(plan['matrix'])} runner jobs)"
+    else:
+        banner = (
+            "Automatic smoke or fail-closed full coverage starts immediately; "
+            "deferred groups wait for an authorized comment."
+        )
+        coverageLabel = "Automatic coverage"
+        coverage = (
+            f"full suite ({len(plan['matrix'])} runner jobs)"
+            if plan["full"] and not plan.get("requestedFull", False)
+            else f"mandatory smoke ({len(mandatorySmoke)} runner jobs)"
+        )
     lines = [
         "## x86 E2E selection report",
         "",
-        "> Automatic smoke or fail-closed full coverage starts immediately; deferred groups wait for an authorized comment.",
+        f"> {banner}",
         "",
         f"- HEAD: `{plan['headSHA']}`",
         f"- Full suite: `{'yes' if plan['full'] else 'no'}`",
-        f"- Automatic coverage: {safeSummaryText(automatic)}",
+        f"- {coverageLabel}: {safeSummaryText(coverage)}",
         f"- Recommended deferred groups: {recommended}",
         f"- Requested groups: {requested}",
         f"- Approval required: `{'yes' if plan['approvalRequired'] else 'no'}`",

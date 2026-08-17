@@ -89,6 +89,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  EXECUTION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.32.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
@@ -309,7 +310,8 @@ jobs:
 
           try:
               catalog = e2eSelector.loadCatalog(".github/e2e-selection.json")
-          except Exception:
+          except Exception as error:
+              print(f"failed to reload the E2E catalog: {error}", file=sys.stderr)
               catalog = None
           plan = json.loads(Path("e2e-selection-plan.json").read_text())
           executionPlan = e2eSelector.executionPlan(catalog, plan, os.environ["EVENT_NAME"])
@@ -337,9 +339,6 @@ jobs:
           PY
           cat e2e-selection-summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Validate the E2E control modules
-        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
-
       - name: Upload the selection plan
         if: always()
         uses: actions/upload-artifact@v7
@@ -351,6 +350,21 @@ jobs:
             e2e-selection-summary.md
           retention-days: 30
 
+  e2e-control-validation:
+    name: Validate x86 E2E control modules
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.sha }}
+          persist-credentials: false
+
+      - name: Run control module tests
+        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
+
   build-kube-ovn-base:
     name: Build kube-ovn-base
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
@@ -360,7 +374,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
           fetch-depth: 0
 
@@ -431,7 +445,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
           fetch-depth: 0
 
@@ -498,7 +512,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
       - uses: docker/setup-buildx-action@v4
       - uses: actions/setup-go@v7
@@ -689,7 +703,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Build
@@ -712,7 +726,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -811,7 +825,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -1014,7 +1028,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -1214,7 +1228,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -1382,7 +1396,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -1584,7 +1598,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -1749,7 +1763,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -1902,7 +1916,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -2062,7 +2076,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -2232,7 +2246,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Remove DNS search domain
@@ -2376,7 +2390,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Install kind
@@ -2448,7 +2462,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Install kind
@@ -2518,7 +2532,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Install kind
@@ -2590,7 +2604,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Install kind
@@ -2664,7 +2678,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -2815,7 +2829,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -2938,7 +2952,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Install kind
@@ -3019,7 +3033,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Install talosctl
@@ -3110,7 +3124,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -3264,7 +3278,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -3421,7 +3435,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
       - uses: azure/setup-helm@v5.0.1
         with:
@@ -3596,7 +3610,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -3726,7 +3740,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -3837,7 +3851,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -4021,7 +4035,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -4172,7 +4186,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -4323,7 +4337,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -4469,7 +4483,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -4619,7 +4633,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -4739,7 +4753,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -4884,7 +4898,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Create the default branch directory
@@ -5011,6 +5025,7 @@ jobs:
     permissions: {}
     needs:
       - e2e-selection
+      - e2e-control-validation
       - bgp-speaker-e2e
       - chart-test
       - cilium-chaining-e2e
@@ -5054,14 +5069,15 @@ jobs:
 
           needs = json.loads(os.environ["NEEDS_JSON"])
           selectedJobIds = json.loads(os.environ["SELECTED_JOB_IDS"])
+          requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds
           incomplete = {
               jobId: needs.get(jobId, {}).get("result", "missing")
-              for jobId in selectedJobIds
+              for jobId in requiredJobIds
               if needs.get(jobId, {}).get("result") != "success"
           }
           if incomplete:
-              raise SystemExit(f"selected x86 E2E Jobs did not succeed: {incomplete}")
-          print(f"Verified {len(selectedJobIds)} selected x86 E2E Jobs.")
+              raise SystemExit(f"required x86 E2E Jobs did not succeed: {incomplete}")
+          print(f"Verified {len(requiredJobIds)} required x86 E2E Jobs.")
           PY
 
   push:
@@ -5083,7 +5099,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Download kube-ovn image

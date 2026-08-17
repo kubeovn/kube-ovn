@@ -721,21 +721,19 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("expectedCount >= 3000", workflow)
         self.assertIn("args+=(--request-full)", workflow)
         self.assertNotIn("args+=(--label e2e:full)", workflow)
+        self.assertIn(
+            'e2eSelector.executionPlan(catalog, plan, os.environ["EXECUTION_EVENT"])',
+            workflow,
+        )
+        self.assertIn("EXECUTION_EVENT: ${{ steps.context.outputs.approved == 'true'", workflow)
         self.assertIn("ref: ${{ github.event.repository.default_branch }}", workflow)
         self.assertIn("ref: ${{ steps.context.outputs.trustedRef }}", workflow)
         self.assertNotIn("ref: ${{ steps.context.outputs.baseRef }}", workflow)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
         self.assertNotIn("contents: write", workflow)
 
-    def testPullRequestsExecuteAutomaticCoverageAndPushStaysFull(self):
+    def testExecutorWorkflowUsesUnprivilegedExactHeadContext(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
-        blocks = e2eSelector.workflowJobBlocks(workflow)
-        catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
-        testJobs = {
-            job["id"]
-            for group in catalog["groups"].values()
-            for job in group["jobs"]
-        }
 
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn(
@@ -748,7 +746,6 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("trusted selector checkout does not match the approved base revision", workflow)
         self.assertIn("ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA", workflow)
         self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 5)
-        self.assertGreaterEqual(workflow.count("needs: e2e-selection"), 2)
         self.assertNotIn('entry["selection"] != "smoke"', workflow)
         self.assertIn("contents: read", workflow)
         self.assertIn("packages: read", workflow)
@@ -765,6 +762,34 @@ class E2EControlTest(unittest.TestCase):
             "GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}",
             workflow,
         )
+        self.assertIn(
+            "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "
+            "github.event.pull_request.head.sha || inputs.headSHA || github.sha }}",
+            workflow,
+        )
+        self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
+        self.assertNotIn("github.event.pull_request.head.sha || inputs.headSHA", workflow.replace(
+            "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "
+            "github.event.pull_request.head.sha || inputs.headSHA || github.sha }}",
+            "",
+        ))
+        self.assertGreaterEqual(workflow.count("ref: ${{ env.EXECUTION_SHA }}"), 31)
+        self.assertIn(
+            '"${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"',
+            workflow,
+        )
+
+    def testPullRequestsExecuteAutomaticCoverageAndPushStaysFull(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
+        testJobs = {
+            job["id"]
+            for group in catalog["groups"].values()
+            for job in group["jobs"]
+        }
+
+        self.assertGreaterEqual(workflow.count("needs: e2e-selection"), 2)
         self.assertIn("Initialize fail-closed conformance matrices", workflow)
         self.assertIn("steps.fallbackMatrices.outputs.k8sConformanceMatrix", workflow)
         self.assertIn(
@@ -775,10 +800,7 @@ class E2EControlTest(unittest.TestCase):
             "matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}",
             blocks["kube-ovn-conformance-e2e"],
         )
-        self.assertIn(
-            "if: github.event_name == 'push'\n        uses: actions/cache@v6",
-            workflow,
-        )
+        self.assertIn("if: github.event_name == 'push'\n        uses: actions/cache@v6", workflow)
         self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)
         self.assertIn("--request-full", workflow)
         self.assertNotIn("args+=(--label e2e:full)", workflow)
@@ -787,31 +809,31 @@ class E2EControlTest(unittest.TestCase):
             'e2eSelector.executionPlan(catalog, plan, os.environ["EVENT_NAME"])',
             workflow,
         )
-        self.assertIn("except Exception:\n              catalog = None", workflow)
-        self.assertIn(
-            '"${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"',
-            workflow,
-        )
-        self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
-        self.assertGreaterEqual(
-            workflow.count(
-                "github.event.pull_request.head.sha || inputs.headSHA || github.sha"
-            ),
-            31,
-        )
+        self.assertIn("except Exception as error:", workflow)
+        self.assertIn("failed to reload the E2E catalog", workflow)
         self.assertIn(
             '"e2e-selection-plan.json",\n              "e2e-selection-summary.md",',
             workflow,
         )
         self.assertNotIn("continue-on-error:", blocks["e2e-selection"])
         self.assertNotIn("e2eSelector.expandWorkflow(workflow)", workflow)
+        validationBlock = blocks["e2e-control-validation"]
+        self.assertIn("permissions:\n      contents: read", validationBlock)
+        self.assertIn("python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py", validationBlock)
         resultBlock = blocks["e2e-executor-result"]
         self.assertIn("if: always()", resultBlock)
         self.assertIn("permissions: {}", resultBlock)
-        self.assertIn("selected x86 E2E Jobs did not succeed", resultBlock)
+        self.assertIn(
+            'requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds',
+            resultBlock,
+        )
+        self.assertIn("required x86 E2E Jobs did not succeed", resultBlock)
         self.assertNotIn("netpol-path-filter", blocks)
         resultNeeds = set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", resultBlock))
-        self.assertEqual(resultNeeds, testJobs | {"e2e-selection"})
+        self.assertEqual(
+            resultNeeds,
+            testJobs | {"e2e-selection", "e2e-control-validation"},
+        )
         pushNeeds = set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", blocks["push"]))
         self.assertEqual(pushNeeds, {"e2e-executor-result"})
         for jobId in testJobs:
@@ -820,15 +842,13 @@ class E2EControlTest(unittest.TestCase):
                 block = blocks[jobId]
                 self.assertRegex(block, r"(?m)^    needs:(?:\n      - .+)+\n")
                 self.assertIn("e2e-selection", block)
+                self.assertNotIn("e2e-control-validation", block)
                 self.assertIn(
                     f"contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), '{jobId}')",
                     block,
                 )
                 self.assertNotIn("github.event_name != 'workflow_dispatch'", block)
-                self.assertIn(
-                    "github.event.pull_request.head.sha || inputs.headSHA || github.sha",
-                    block,
-                )
+                self.assertIn("ref: ${{ env.EXECUTION_SHA }}", block)
                 self.assertIn("persist-credentials: false", block)
         self.assertIn("github.event_name == 'push'", blocks["push"])
         self.assertIn("needs.e2e-executor-result.result == 'success'", blocks["push"])

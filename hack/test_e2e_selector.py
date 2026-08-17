@@ -150,12 +150,16 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertEqual(executionPlan["selectedGroups"], ["bgp-routing", "policy"])
         self.assertEqual(executionPlan["recommendedGroups"], [])
         self.assertFalse(executionPlan["approvalRequired"])
+        self.assertEqual(executionPlan["executionMode"], "approved")
         self.assertEqual(len(executionPlan["matrix"]), 19)
         summary = e2eSelector.renderSummary(
             executionPlan,
             ["test/e2e/cnp-domain/e2e_test.go"],
         )
         self.assertIn("Approval required: `no`", summary)
+        self.assertIn("Authorized coverage: approved selection &#40;19 runner jobs&#41;", summary)
+        self.assertIn("Authorized coverage is executing for this HEAD", summary)
+        self.assertNotIn("deferred groups wait", summary)
         self.assertNotIn("Waiting for:", summary)
 
     def testPushExecutesTheCompleteSuite(self):
@@ -371,8 +375,17 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertEqual(plan["selectedGroups"], sorted(self.catalog["groups"]))
         self.assertEqual(len(plan["matrix"]), 82)
         self.assertEqual(plan["fullReason"], "authorized request selected the full suite")
-        summary = e2eSelector.renderSummary(plan, ["test/e2e/cnp-domain/e2e_test.go"])
-        self.assertIn("Automatic coverage: mandatory smoke &#40;3 runner jobs&#41;", summary)
+        executionPlan = e2eSelector.executionPlan(
+            self.catalog,
+            plan,
+            "workflow_dispatch",
+        )
+        summary = e2eSelector.renderSummary(
+            executionPlan,
+            ["test/e2e/cnp-domain/e2e_test.go"],
+        )
+        self.assertIn("Authorized coverage: full suite &#40;82 runner jobs&#41;", summary)
+        self.assertNotIn("Automatic coverage: mandatory smoke", summary)
         self.assertIn("Runner jobs in this run: 82", summary)
 
     def testInvalidRequestedGroupFails(self):
@@ -583,7 +596,7 @@ class E2ESelectorTest(unittest.TestCase):
         )
         self.assertEqual(len(plan["matrix"]), 82)
         executionPlan = e2eSelector.executionPlan(None, plan, "pull_request")
-        self.assertEqual(executionPlan, plan)
+        self.assertEqual(executionPlan, {**plan, "executionMode": "automatic"})
         summary = e2eSelector.renderSummary(executionPlan, [])
         self.assertIn("Automatic coverage: full suite &#40;82 runner jobs&#41;", summary)
         self.assertIn("Groups executing in this run: full suite", summary)

@@ -413,6 +413,7 @@ jobs:
           HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
           REQUESTED_GROUPS: ${{ steps.context.outputs.requestedGroups }}
           FULL: ${{ steps.context.outputs.full }}
+          EXECUTION_EVENT: ${{ steps.context.outputs.approved == 'true' && 'workflow_dispatch' || 'pull_request' }}
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
@@ -464,6 +465,19 @@ jobs:
             args+=(--request-full)
           fi
           python3 hack/e2e_selector.py "${args[@]}"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_selector as e2eSelector
+
+          catalog = e2eSelector.loadCatalog(".github/e2e-selection.json")
+          plan = json.loads(Path("e2e-selection-plan.json").read_text())
+          plan = e2eSelector.executionPlan(catalog, plan, os.environ["EXECUTION_EVENT"])
+          Path("e2e-selection-plan.json").write_text(
+              json.dumps(plan, indent=2) + "\n"
+          )
+          PY
 
       - name: Evaluate the fixed gate
         if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
