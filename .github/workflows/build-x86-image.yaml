@@ -1719,6 +1719,148 @@ jobs:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
+  bgp-speaker-e2e:
+    name: BGP Speaker E2E
+    needs:
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
+            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load kube-ovn image
+        run: docker load -i kube-ovn.tar
+
+      - name: Create BGP kind and containerlab topology
+        id: setup
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init-bgp
+
+      - name: Install Kube-OVN and BGP speakers
+        id: install
+        run: make kind-install-bgp
+
+      - name: Run BGP speaker E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-bgp-speaker-e2e
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: Collect BGP diagnostics
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          mkdir -p bgp-speaker-e2e-diagnostics
+          docker exec clab-bgp-router vtysh -c "show bgp ipv4 unicast summary json" > bgp-speaker-e2e-diagnostics/frr-summary.json || true
+          docker exec clab-bgp-router vtysh -c "show bgp ipv4 unicast json" > bgp-speaker-e2e-diagnostics/frr-routes.json || true
+          kubectl -n kube-system get ds kube-ovn-speaker -o yaml > bgp-speaker-e2e-diagnostics/speaker-daemonset.yaml || true
+          kubectl -n kube-system get pods -l app=kube-ovn-speaker -o wide > bgp-speaker-e2e-diagnostics/speaker-pods.txt || true
+          kubectl -n kube-system logs -l app=kube-ovn-speaker --all-containers --prefix > bgp-speaker-e2e-diagnostics/speaker.log || true
+          kubectl get events -A -o yaml > bgp-speaker-e2e-diagnostics/events.yaml || true
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log bgp-speaker-e2e-diagnostics/ || true
+          tar zcf bgp-speaker-e2e-diagnostics.tar.gz bgp-speaker-e2e-diagnostics
+
+      - name: Upload BGP diagnostics
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: bgp-speaker-e2e-diagnostics
+          path: bgp-speaker-e2e-diagnostics.tar.gz
+
+      - name: kubectl ko log
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          if make kubectl-ko-log && test -f kubectl-ko-log.tar.gz; then
+            mv kubectl-ko-log.tar.gz bgp-speaker-e2e-ko-log.tar.gz
+          else
+            echo "kubectl ko log was unavailable because the BGP test cluster did not become usable." > bgp-speaker-e2e-ko-log-unavailable.txt
+            tar zcf bgp-speaker-e2e-ko-log.tar.gz bgp-speaker-e2e-ko-log-unavailable.txt
+          fi
+
+      - name: Upload kubectl ko log
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: bgp-speaker-e2e-ko-log
+          path: bgp-speaker-e2e-ko-log.tar.gz
+
+      - name: Clean BGP topology
+        if: always()
+        run: make kind-clean-bgp
+
   kube-ovn-hosted-ovn-central-e2e:
     name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)
     needs:
@@ -4418,6 +4560,7 @@ jobs:
       - kube-ovn-underlay-metallb-e2e
       - multus-conformance-e2e
       - non-primary-cni-e2e
+      - bgp-speaker-e2e
       - kube-ovn-hosted-ovn-central-e2e
       - vpc-egress-gateway-e2e
       - ovn-vpc-nat-gw-conformance-e2e
