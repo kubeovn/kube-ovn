@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 1,
+  "expectedRunnerJobs": 82,
+  "forceFull": false,
+  "fullThreshold": 3,
+  "productionPrefixes": ["cmd/", "fastpath/", "pkg/", "versions/"],
+  "smoke": [
+    {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
+    {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "underlay"},
+    {"job": "k8s-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"}
+  ],
+  "fullPaths": [
+    ".github/e2e-selection.json",
+    ".github/workflows/**",
+    "hack/e2e_selector.py",
+    "hack/e2e_control.py",
+    "hack/test_e2e_selector.py",
+    "hack/test_e2e_control.py",
+    "Makefile",
+    "VERSION",
+    "makefiles/**",
+    "go.mod",
+    "go.sum",
+    "dist/images/**",
+    "charts/**",
+    "hack/ci-check-crash.sh",
+    "hack/gen-crd.sh",
+    "hack/go-list.sh",
+    "hack/update-codegen.sh",
+    "hack/mockgen.sh",
+    "hack/modelgen.sh",
+    "pkg/apis/**",
+    "pkg/client/**",
+    "pkg/controller/**",
+    "pkg/informer/**",
+    "pkg/daemon/**",
+    "pkg/ipam/**",
+    "pkg/net/**",
+    "pkg/netconf/**",
+    "pkg/ovs/**",
+    "pkg/ovsdb/**",
+    "pkg/util/**",
+    "test/e2e/framework/**",
+    "test/e2e/kubevirt/**",
+    "test/e2e/single-replica/**",
+    "cmd/cni/**",
+    "cmd/controller/**",
+    "cmd/daemon/**",
+    "cmd/cmdmain.go",
+    "yamls/**"
+  ],
+  "pathRules": [
+    {
+      "patterns": ["test/e2e/kube-ovn/**"],
+      "groups": ["core", "service-lb-underlay"],
+      "owner": "networking-e2e",
+      "reason": "Kube-OVN conformance and router load balancer suites"
+    },
+    {
+      "patterns": ["test/e2e/k8s-network/**"],
+      "groups": ["core", "policy", "multi-cni"],
+      "owner": "networking-e2e",
+      "reason": "shared Kubernetes networking suite used by conformance, policy, and Cilium chaining jobs"
+    },
+    {
+      "patterns": ["test/e2e/connectivity/**"],
+      "groups": ["core"],
+      "owner": "networking-e2e",
+      "reason": "core Kube-OVN connectivity suite"
+    },
+    {
+      "patterns": ["test/e2e/cnp-domain/**", "test/e2e/anp-domain/**", "test/cnp/**", "test/anp/**", "test/e2e/cyclonus.yaml"],
+      "groups": ["policy"],
+      "owner": "networking-e2e",
+      "reason": "network policy suites and fixtures"
+    },
+    {
+      "patterns": ["pkg/controller/network_policy*.go", "pkg/controller/admin_network_policy*.go"],
+      "groups": ["policy"],
+      "owner": "networking-e2e",
+      "reason": "network policy reconciliation"
+    },
+    {
+      "patterns": ["test/e2e/bgp/**", "pkg/speaker/**", "cmd/speaker/**"],
+      "groups": ["bgp-routing"],
+      "owner": "networking-e2e",
+      "reason": "BGP speaker control plane and end-to-end coverage"
+    },
+    {
+      "patterns": ["test/e2e/multus/**", "test/e2e/non-primary-cni/**", "test/e2e/cilium-chaining/**", "yamls/cilium-chaining.yaml"],
+      "groups": ["multi-cni"],
+      "owner": "networking-e2e",
+      "reason": "multiple and chained CNI suites"
+    },
+    {
+      "patterns": ["test/e2e/lb-svc/**", "test/e2e/kube-ovn/switch_lb_rule/**", "test/e2e/metallb/**"],
+      "groups": ["service-lb-underlay"],
+      "owner": "networking-e2e",
+      "reason": "service, load balancer, and underlay suites"
+    },
+    {
+      "patterns": ["pkg/controller/service.go", "pkg/controller/switch_lb_rule.go", "pkg/controller/vpc_dns.go"],
+      "groups": ["service-lb-underlay"],
+      "owner": "networking-e2e",
+      "reason": "service and load balancer reconciliation"
+    },
+    {
+      "patterns": ["charts/**", "makefiles/talos.mk", "talos/**"],
+      "groups": ["install-platform"],
+      "owner": "networking-e2e",
+      "reason": "chart and platform installation coverage"
+    },
+    {
+      "patterns": ["test/e2e/ha/**", "test/e2e/kamaji/**", "hack/kamaji-e2e.sh", "hack/kamaji-e2e-test.sh"],
+      "groups": ["ha-hosted"],
+      "owner": "networking-e2e",
+      "reason": "high availability and hosted control plane suites"
+    },
+    {
+      "patterns": ["test/e2e/ovn-ic/**", "test/e2e/submariner/**"],
+      "groups": ["multi-cluster"],
+      "owner": "networking-e2e",
+      "reason": "interconnection and multi-cluster suites"
+    },
+    {
+      "patterns": ["pkg/controller/ovn_ic_controller.go", "pkg/controller/ovn_ic_controller_test.go"],
+      "groups": ["multi-cluster"],
+      "owner": "networking-e2e",
+      "reason": "OVN interconnection reconciliation"
+    },
+    {
+      "patterns": ["test/e2e/vpc-egress-gateway/**", "test/e2e/iptables-vpc-nat-gw/**", "test/e2e/ovn-vpc-nat-gw/**", "test/e2e/iptables-eip-qos/**", "test/e2e/vip/**"],
+      "groups": ["nat-egress"],
+      "owner": "networking-e2e",
+      "reason": "NAT and egress gateway suites"
+    },
+    {
+      "patterns": ["pkg/controller/vpc_egress_gateway*.go", "pkg/controller/vpc_nat_gateway*.go", "pkg/controller/ovn_*nat*.go", "pkg/controller/iptables_*.go", "pkg/controller/ovn_eip.go", "pkg/controller/ovn_fip.go", "pkg/controller/ovn_snat.go", "pkg/controller/ovn_dnat.go"],
+      "groups": ["nat-egress"],
+      "owner": "networking-e2e",
+      "reason": "NAT and egress gateway reconciliation"
+    },
+    {
+      "patterns": ["test/e2e/webhook/**", "test/e2e/ipsec/**"],
+      "groups": ["security-webhook"],
+      "owner": "networking-e2e",
+      "reason": "webhook and encrypted transport suites"
+    },
+    {
+      "patterns": ["test/e2e/security/**"],
+      "groups": ["ha-hosted"],
+      "owner": "networking-e2e",
+      "reason": "security suite executed by the high availability job"
+    },
+    {
+      "patterns": ["pkg/webhook/**", "cmd/webhook/**", "pkg/controller/ipsec*.go"],
+      "groups": ["security-webhook"],
+      "owner": "networking-e2e",
+      "reason": "webhook and IPsec production paths"
+    }
+  ],
+  "groups": {
+    "core": {
+      "jobs": [
+        {"id": "k8s-conformance-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]}},
+        {"id": "kube-ovn-conformance-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]}},
+        {"id": "kube-ovn-connectivity-test", "matrix": {"mode": ["overlay", "underlay"]}}
+      ]
+    },
+    "policy": {
+      "jobs": [
+        {"id": "k8s-netpol-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "np-enforcement": ["standard", "lax"]}},
+        {"id": "cyclonus-netpol-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "np-enforcement": ["standard", "lax"]}},
+        {"id": "no-np-test"},
+        {"id": "kube-ovn-cnp-domain-e2e", "matrix": {"ip-family": ["ipv4"], "mode": ["overlay"]}},
+        {"id": "kube-ovn-anp-domain-e2e", "matrix": {"ip-family": ["ipv4"], "mode": ["overlay"]}}
+      ]
+    },
+    "bgp-routing": {
+      "jobs": [
+        {"id": "bgp-speaker-e2e"}
+      ]
+    },
+    "multi-cni": {
+      "jobs": [
+        {"id": "multus-conformance-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}},
+        {"id": "non-primary-cni-e2e", "matrix": {"ip-family": ["ipv4"]}},
+        {"id": "cilium-chaining-e2e", "matrix": {"ip-family": ["ipv4"], "mode": ["overlay", "underlay"]}}
+      ]
+    },
+    "service-lb-underlay": {
+      "jobs": [
+        {"id": "underlay-logical-gateway-installation-test"},
+        {"id": "no-ovn-lb-test"},
+        {"id": "lb-svc-e2e"},
+        {"id": "kube-ovn-underlay-metallb-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}},
+        {"id": "router-lb-rule-e2e"}
+      ]
+    },
+    "install-platform": {
+      "jobs": [
+        {"id": "chart-test", "matrix": {"ssl": ["true", "false"]}},
+        {"id": "installation-compatibility-test", "matrix": {"k8s-version": ["v1.29.14"]}},
+        {"id": "talos-installation-test", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]}}
+      ]
+    },
+    "ha-hosted": {
+      "jobs": [
+        {"id": "kube-ovn-hosted-ovn-central-e2e", "include": [
+          {"ip-family": "ipv4", "tenant-control-plane": "single", "tenant-control-plane-replicas": 1},
+          {"ip-family": "ipv6", "tenant-control-plane": "single", "tenant-control-plane-replicas": 1},
+          {"ip-family": "dual", "tenant-control-plane": "single", "tenant-control-plane-replicas": 1},
+          {"ip-family": "ipv4", "tenant-control-plane": "ha", "tenant-control-plane-replicas": 3},
+          {"ip-family": "ipv6", "tenant-control-plane": "ha", "tenant-control-plane-replicas": 3},
+          {"ip-family": "dual", "tenant-control-plane": "ha", "tenant-control-plane-replicas": 3}
+        ]},
+        {"id": "kube-ovn-ha-e2e", "matrix": {"ssl": ["true", "false"], "bind-local": ["true", "false"], "ip-family": ["ipv4", "ipv6", "dual"]}}
+      ]
+    },
+    "multi-cluster": {
+      "jobs": [
+        {"id": "kube-ovn-ic-conformance-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}},
+        {"id": "kube-ovn-submariner-conformance-e2e"}
+      ]
+    },
+    "nat-egress": {
+      "jobs": [
+        {"id": "vpc-egress-gateway-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}},
+        {"id": "iptables-vpc-nat-gw-conformance-e2e"},
+        {"id": "ovn-vpc-nat-gw-conformance-e2e"}
+      ]
+    },
+    "security-webhook": {
+      "jobs": [
+        {"id": "webhook-e2e"},
+        {"id": "kube-ovn-ipsec-e2e"},
+        {"id": "kube-ovn-ipsec-cert-mgr-e2e"}
+      ]
+    }
+  }
+}

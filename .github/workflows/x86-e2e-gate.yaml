@@ -1,0 +1,1505 @@
+name: Update x86 E2E gate
+
+on:
+  workflow_run:
+    workflows: [Build x86 Image]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      prNumber:
+        description: Pull request number with a durable approval marker
+        required: true
+        type: number
+      headSHA:
+        description: Approved pull request HEAD
+        required: true
+        type: string
+      baseSHA:
+        description: Approved pull request base revision
+        required: true
+        type: string
+      approvalGeneration:
+        description: Durable authorized comment generation
+        required: true
+        type: number
+      catalogRevision:
+        description: Trusted catalog revision
+        required: true
+        type: string
+      requestedGroups:
+        description: JSON array of approved stable groups
+        required: true
+        type: string
+      full:
+        description: Approve the complete x86 E2E suite
+        required: true
+        type: boolean
+      recordIntent:
+        description: Require and promote the durable approval intent
+        required: true
+        type: boolean
+      baseRefresh:
+        description: Invalidate a fixed gate after the target branch advances
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  issues: read
+  pull-requests: read
+
+jobs:
+  gate:
+    name: Evaluate x86-e2e / required-gate
+    if: >-
+      github.event_name == 'workflow_run' &&
+      (github.event.workflow_run.event == 'pull_request' ||
+       github.event.workflow_run.event == 'workflow_dispatch')
+    outputs:
+      mutate: ${{ steps.mutation.outputs.mutate }}
+      status: ${{ steps.mutation.outputs.status }}
+      conclusion: ${{ steps.mutation.outputs.conclusion }}
+      summary: ${{ steps.mutation.outputs.summary }}
+      prNumber: ${{ steps.context.outputs.prNumber }}
+      headSHA: ${{ steps.context.outputs.expectedHead }}
+      baseSHA: ${{ steps.context.outputs.expectedBase }}
+      baseRef: ${{ steps.context.outputs.baseRef }}
+      catalogRevision: ${{ steps.context.outputs.expectedCatalogRevision }}
+      approvalGeneration: ${{ steps.context.outputs.approvalGeneration }}
+      dispatchGeneration: ${{ steps.context.outputs.dispatchGeneration }}
+      requestKey: ${{ steps.context.outputs.requestKey }}
+      requestedGroups: ${{ steps.context.outputs.requestedGroups }}
+      full: ${{ steps.context.outputs.full }}
+      trustedExecution: ${{ steps.context.outputs.trustedExecution }}
+      runAction: ${{ steps.context.outputs.runAction }}
+      runAttempt: ${{ steps.context.outputs.runAttempt }}
+      runId: ${{ github.event.workflow_run.id }}
+      runURL: ${{ github.event.workflow_run.html_url }}
+      runEvent: ${{ github.event.workflow_run.event }}
+      trustedRef: ${{ steps.context.outputs.trustedRef }}
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out trusted control logic
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Resolve executor metadata and current PR
+        id: context
+        env:
+          RUN_ACTION: ${{ github.event.action }}
+          RUN_ACTOR: ${{ github.event.workflow_run.actor.login }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_NAME: ${{ github.event.workflow_run.display_title }}
+          RUN_PATH: ${{ github.event.workflow_run.path }}
+          RUN_PULL_REQUESTS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+          RUN_TRIGGERING_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
+          RUN_WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$RUN_PATH" != '.github/workflows/build-x86-image.yaml' ]; then
+            echo 'workflow_run did not originate from the trusted executor path.' >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > context-run-state.json
+          currentAttempt=$(jq -r '.run_attempt' context-run-state.json)
+          currentTriggeringActor=$(jq -r '.triggering_actor.login // ""' context-run-state.json)
+          if [ "$RUN_EVENT" = workflow_dispatch ]; then
+            python3 - "$RUN_NAME" <<'PY' > executor-metadata.json
+          import json
+          import sys
+          import e2e_control as e2eControl
+
+          metadata = e2eControl.parseExecutorRunName(sys.argv[1])
+          metadata["executorHeadBranch"] = e2eControl.executorHeadBranch(metadata)
+          print(json.dumps(metadata))
+          PY
+            prNumber=$(jq -r '.prNumber' executor-metadata.json)
+            expectedExecutorRef=$(jq -r '.executorHeadBranch' executor-metadata.json)
+            expectedHead=$(jq -r '.headSHA' executor-metadata.json)
+            expectedBase="$RUN_WORKFLOW_SHA"
+            approvalGeneration=$(jq -r '.approvalGeneration' executor-metadata.json)
+            dispatchGeneration=$(jq -r '.dispatchGeneration' executor-metadata.json)
+            requestedGroups=$(jq -c '.requestedGroups' executor-metadata.json)
+            requestKey=''
+            expectedCatalogRevision=''
+            trustedRef="$RUN_WORKFLOW_SHA"
+            full=$(jq -r '.full' executor-metadata.json)
+            approved=true
+            trustedExecution=true
+          else
+            printf '%s' "$RUN_PULL_REQUESTS" > run-pull-requests.json
+            prNumber=$(jq -r '.[0].number // empty' run-pull-requests.json)
+            expectedHead=$(jq -r '.[0].head.sha // empty' run-pull-requests.json)
+            trustedRef=$(jq -r '.[0].base.sha // empty' run-pull-requests.json)
+            expectedBase="$trustedRef"
+            approvalGeneration=0
+            dispatchGeneration=0
+            requestedGroups='[]'
+            requestKey=''
+            expectedCatalogRevision=''
+            full=false
+            approved=false
+            trustedExecution=false
+            if [ -z "$prNumber" ] || [ -z "$expectedHead" ] || [ -z "$trustedRef" ]; then
+              echo 'The completed pull_request run is not associated with a pull request.' >&2
+              exit 1
+            fi
+          fi
+          if ! [[ "$trustedRef" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Trusted workflow revision is invalid.' >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$prNumber" > pull-request.json
+          currentHead=$(jq -r '.head.sha' pull-request.json)
+          currentBaseSHA=$(jq -r '.base.sha' pull-request.json)
+          baseRef=$(jq -r '.base.ref' pull-request.json)
+          state=$(jq -r '.state' pull-request.json)
+          if ! [[ "$currentBaseSHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Current pull request base revision is invalid.' >&2
+            exit 1
+          fi
+          if [ "$RUN_EVENT" = workflow_dispatch ] && {
+            [ "$trustedRef" != "$currentBaseSHA" ] || [ "$expectedBase" != "$currentBaseSHA" ];
+          }; then
+            trustedExecution=false
+          fi
+          trustedRef="$currentBaseSHA"
+          if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            echo 'Pull request base branch is outside the supported trusted set.' >&2
+            exit 1
+          fi
+          if [ "$RUN_EVENT" = workflow_dispatch ] && {
+            [ "$RUN_ACTOR" != 'github-actions[bot]' ] || [ "$RUN_HEAD_BRANCH" != "$expectedExecutorRef" ];
+          }; then
+            echo 'Executor dispatch did not originate from the trusted dispatcher and isolated ref.' >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+            --jq '.content' | base64 --decode > current-catalog.json
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments?per_page=100" \
+            > current-comments.json
+          python3 - "$prNumber" "$currentHead" "$currentBaseSHA" "$baseRef" \
+            > current-request.json <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+          import e2e_selector as e2eSelector
+
+          catalog = json.loads(Path("current-catalog.json").read_text())
+          e2eSelector.validateCatalog(catalog)
+          pullRequest = {
+              "number": int(sys.argv[1]),
+              "head": {"sha": sys.argv[2]},
+              "base": {"sha": sys.argv[3], "ref": sys.argv[4]},
+          }
+          pages = json.loads(Path("current-comments.json").read_text())
+          request = e2eControl.approvedRequest(pullRequest, catalog, pages)
+          if request is None:
+              request = {
+                  "approvalGeneration": 0,
+                  "requestKey": "",
+                  "catalogRevision": e2eSelector.catalogRevision(catalog),
+              }
+          print(json.dumps(request))
+          PY
+          latestApprovalGeneration=$(jq -r '.approvalGeneration' current-request.json)
+          latestRequestKey=$(jq -r '.requestKey // ""' current-request.json)
+          currentCatalogRevision=$(jq -r '.catalogRevision' current-request.json)
+          if [ "$RUN_EVENT" = workflow_dispatch ] && [ "$RUN_ATTEMPT" != "$currentAttempt" ]; then
+            newerAttemptAuthorized=false
+            if [ "$currentTriggeringActor" = 'github-actions[bot]' ]; then
+              newerAttemptAuthorized=$(python3 - "$RUN_ID" "$currentAttempt" "$expectedHead" "$expectedBase" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("current-comments.json").read_text())
+          print("true" if e2eControl.hasAuthorizedRerun(pages, *sys.argv[1:]) else "false")
+          PY
+              )
+            fi
+            if [ "$newerAttemptAuthorized" = true ]; then
+              echo 'A newer authorized attempt supersedes this workflow_run event.'
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo 'Ignoring an unmanaged newer attempt while preserving the authorized terminal result.'
+          fi
+          if [ "$RUN_EVENT" = workflow_dispatch ] && [ "$RUN_ATTEMPT" -gt 1 ]; then
+            rerunAuthorized=false
+            if [ "$RUN_TRIGGERING_ACTOR" = 'github-actions[bot]' ]; then
+              rerunAuthorized=$(python3 - "$RUN_ID" "$RUN_ATTEMPT" "$expectedHead" "$expectedBase" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("current-comments.json").read_text())
+          print("true" if e2eControl.hasAuthorizedRerun(pages, *sys.argv[1:]) else "false")
+          PY
+              )
+            fi
+            if [ "$rerunAuthorized" != true ]; then
+              echo 'Unmanaged executor reruns do not change the fixed gate.'
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          if [ "$RUN_EVENT" = workflow_dispatch ]; then
+            requestKey=$(python3 - "$currentBaseSHA" "$currentCatalogRevision" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          metadata = json.loads(Path("executor-metadata.json").read_text())
+          metadata["baseSHA"] = sys.argv[1]
+          metadata["catalogRevision"] = sys.argv[2]
+          print(e2eControl.executorRequestKey(metadata))
+          PY
+            )
+            expectedCatalogRevision="$currentCatalogRevision"
+            if [ "$requestKey" != "$latestRequestKey" ]; then
+              echo 'A different durable approval supersedes this executor.'
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$approvalGeneration" != "$latestApprovalGeneration" ] && \
+               [ "$RUN_ACTION" = completed ]; then
+              runConclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.conclusion // ""')
+              if [ "$runConclusion" != success ] && [ "$runConclusion" != failure ]; then
+                echo 'A fresh approval supersedes this retryable executor result.'
+                echo 'skip=true' >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+            if [ "$expectedCatalogRevision" != "$currentCatalogRevision" ]; then
+              trustedExecution=false
+            fi
+          elif [ "$latestApprovalGeneration" != 0 ]; then
+            echo 'A trusted approval supersedes this untrusted pull request run.'
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$state" != open ]; then
+            echo 'Pull request is no longer open; no gate update is needed.'
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$RUN_EVENT" = workflow_dispatch ] || [ "$RUN_EVENT" = pull_request ]; then
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              > executor-run-pages.json
+            latestRun=$(python3 - "$prNumber" "$expectedHead" "$baseRef" "$expectedCatalogRevision" "$trustedRef" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("executor-run-pages.json").read_text())
+          runs = [run for page in pages for run in page["workflow_runs"]]
+          latestRun = e2eControl.latestExecutorRun(
+              runs,
+              int(sys.argv[1]),
+              sys.argv[2],
+              sys.argv[3],
+              sys.argv[4] or None,
+              sys.argv[5],
+          )
+          if latestRun is not None:
+              print(latestRun["id"])
+          PY
+            )
+            if [ -n "$latestRun" ] && [ "$latestRun" != "$RUN_ID" ]; then
+              echo 'A newer cumulative executor request supersedes this run.'
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          {
+            echo 'skip=false'
+            echo "runAction=$RUN_ACTION"
+            echo "runAttempt=$RUN_ATTEMPT"
+            echo "prNumber=$prNumber"
+            echo "expectedHead=$expectedHead"
+            echo "expectedBase=$expectedBase"
+            echo "currentHead=$currentHead"
+            echo "baseRef=$baseRef"
+            echo "approvalGeneration=$approvalGeneration"
+            echo "dispatchGeneration=$dispatchGeneration"
+            echo "trustedRef=$trustedRef"
+            echo "expectedCatalogRevision=$expectedCatalogRevision"
+            echo "approved=$approved"
+            echo "trustedExecution=$trustedExecution"
+            echo "full=$full"
+            echo "requestedGroups=$requestedGroups"
+            echo "requestKey=$requestKey"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download the executed SelectionPlan
+        if: >-
+          steps.context.outputs.skip != 'true' &&
+          steps.context.outputs.runAction == 'completed' &&
+          steps.context.outputs.trustedExecution == 'true'
+        id: executedPlan
+        env:
+          HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
+          PR_NUMBER: ${{ steps.context.outputs.prNumber }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
+            > executor-artifact-pages.json
+          artifactId=$(python3 - "$PR_NUMBER" "$HEAD_SHA" "$RUN_ID" "$RUN_ATTEMPT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          prefix = f"x86-e2e-selection-{sys.argv[1]}-{sys.argv[2]}-{sys.argv[3]}-"
+          currentAttempt = int(sys.argv[4])
+          pages = json.loads(Path("executor-artifact-pages.json").read_text())
+          candidates = []
+          for page in pages:
+              for artifact in page["artifacts"]:
+                  name = artifact.get("name", "")
+                  if artifact.get("expired") or not name.startswith(prefix):
+                      continue
+                  try:
+                      attempt = int(name.removeprefix(prefix))
+                  except ValueError:
+                      continue
+                  if attempt <= currentAttempt:
+                      candidates.append((attempt, artifact["id"]))
+          if candidates:
+              print(max(candidates)[1])
+          PY
+          )
+          if [ -z "$artifactId" ]; then
+            echo 'found=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifactId/zip" > "$RUNNER_TEMP/executor-plan.zip"
+          unzip -p "$RUNNER_TEMP/executor-plan.zip" e2e-selection-plan.json \
+            > "$RUNNER_TEMP/executed-selection-plan.json"
+          echo 'found=true' >> "$GITHUB_OUTPUT"
+
+      - name: Check out the trusted target branch
+        if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.context.outputs.trustedRef }}
+          persist-credentials: false
+
+      - name: Recompute the trusted selection plan
+        if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
+        env:
+          PR_NUMBER: ${{ steps.context.outputs.prNumber }}
+          HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
+          REQUESTED_GROUPS: ${{ steps.context.outputs.requestedGroups }}
+          FULL: ${{ steps.context.outputs.full }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          pullRequest = json.loads(Path("pull-request.json").read_text())
+          pullRequest["labels"] = []
+          Path("selector-event.json").write_text(json.dumps({"pull_request": pullRequest}))
+          PY
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" > pull-request-files.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          pullRequest = json.loads(Path("pull-request.json").read_text())
+          pages = json.loads(Path("pull-request-files.json").read_text())
+          changedFiles = [changedFile for page in pages for changedFile in page]
+          expectedCount = pullRequest.get("changed_files")
+          if (
+              not isinstance(expectedCount, int)
+              or expectedCount >= 3000
+              or expectedCount != len(changedFiles)
+          ):
+              Path("force-full-reason.txt").write_text(
+                  "pull request file list is incomplete; the full suite is required"
+              )
+          with Path("changed-paths.txt").open("wb") as stream:
+              for changedFile in changedFiles:
+                  for field in ("previous_filename", "filename"):
+                      if field in changedFile:
+                          stream.write(changedFile[field].encode() + b"\0")
+          PY
+          forceFullReason=''
+          if [ -s force-full-reason.txt ]; then
+            forceFullReason=$(cat force-full-reason.txt)
+          fi
+          args=(
+            --paths-file changed-paths.txt
+            --event-file selector-event.json
+            --request-groups-json "$REQUESTED_GROUPS"
+            --head-sha "$HEAD_SHA"
+            --force-full-reason "$forceFullReason"
+            --plan-file e2e-selection-plan.json
+          )
+          if [ "$FULL" = true ]; then
+            args+=(--label e2e:full)
+          fi
+          python3 hack/e2e_selector.py "${args[@]}"
+
+      - name: Evaluate the fixed gate
+        if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
+        id: gate
+        env:
+          APPROVED: ${{ steps.context.outputs.approved }}
+          CURRENT_HEAD: ${{ steps.context.outputs.currentHead }}
+          EXECUTED_PLAN_FILE: ${{ runner.temp }}/executed-selection-plan.json
+          EXECUTED_PLAN_FOUND: ${{ steps.executedPlan.outputs.found }}
+          EXPECTED_CATALOG_REVISION: ${{ steps.context.outputs.expectedCatalogRevision }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          TRUSTED_EXECUTION: ${{ steps.context.outputs.trustedExecution }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          plan = json.loads(Path("e2e-selection-plan.json").read_text())
+          executedPlan = None
+          if os.environ["EXECUTED_PLAN_FOUND"] == "true":
+              executedPlan = json.loads(Path(os.environ["EXECUTED_PLAN_FILE"]).read_text())
+          decision = e2eControl.evaluateGate(
+              plan,
+              os.environ["CURRENT_HEAD"],
+              os.environ["RUN_CONCLUSION"],
+              os.environ["APPROVED"] == "true",
+              os.environ["EXPECTED_CATALOG_REVISION"] or None,
+              executedPlan,
+              os.environ["TRUSTED_EXECUTION"] == "true",
+          )
+          Path("gate-decision.json").write_text(json.dumps(decision, indent=2) + "\n")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
+              stream.write(f"update={'true' if decision['update'] else 'false'}\n")
+          PY
+
+      - name: Prepare the serialized check mutation
+        id: mutation
+        if: steps.context.outputs.skip != 'true' && steps.gate.outputs.update == 'true'
+        env:
+          APPROVAL_GENERATION: ${{ steps.context.outputs.approvalGeneration }}
+          BASE_REF: ${{ steps.context.outputs.baseRef }}
+          BASE_SHA: ${{ steps.context.outputs.expectedBase }}
+          CATALOG_REVISION: ${{ steps.context.outputs.expectedCatalogRevision }}
+          HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
+          PR_NUMBER: ${{ steps.context.outputs.prNumber }}
+          REQUEST_KEY: ${{ steps.context.outputs.requestKey }}
+          RUN_ATTEMPT: ${{ steps.context.outputs.runAttempt }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          conclusion=$(jq -r '.conclusion' gate-decision.json)
+          summary=$(jq -r '.summary' gate-decision.json)
+          {
+            echo 'status=completed'
+            echo "conclusion=$conclusion"
+            echo "summary=$summary"
+            echo 'mutate=true'
+          } >> "$GITHUB_OUTPUT"
+          jq -n \
+            --argjson prNumber "$PR_NUMBER" \
+            --arg headSHA "$HEAD_SHA" \
+            --arg baseSHA "$BASE_SHA" \
+            --arg baseRef "$BASE_REF" \
+            --arg catalogRevision "$CATALOG_REVISION" \
+            --argjson approvalGeneration "$APPROVAL_GENERATION" \
+            --arg requestKey "$REQUEST_KEY" \
+            --argjson runId "$RUN_ID" \
+            --argjson runAttempt "$RUN_ATTEMPT" \
+            --arg runURL "$RUN_URL" \
+            --arg conclusion "$conclusion" \
+            --arg summary "$summary" \
+            '{prNumber: $prNumber, headSHA: $headSHA, baseSHA: $baseSHA,
+              baseRef: $baseRef, catalogRevision: $catalogRevision,
+              approvalGeneration: $approvalGeneration, requestKey: $requestKey,
+              runId: $runId, runAttempt: $runAttempt, runURL: $runURL,
+              status: "completed", conclusion: $conclusion, summary: $summary}' \
+            > gate-mutation.json
+
+      - name: Persist the completed gate decision
+        if: steps.mutation.outputs.mutate == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: x86-e2e-gate-decision-${{ github.event.workflow_run.id }}-${{ steps.context.outputs.runAttempt }}
+          path: gate-mutation.json
+          retention-days: 7
+
+  approval:
+    name: Reconcile a durable x86 E2E approval
+    if: github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'
+    outputs:
+      mutate: ${{ steps.request.outputs.mutate }}
+      status: ${{ steps.request.outputs.status }}
+      conclusion: ${{ steps.request.outputs.conclusion }}
+      summary: ${{ steps.request.outputs.summary }}
+      prNumber: ${{ inputs.prNumber }}
+      headSHA: ${{ inputs.headSHA }}
+      baseSHA: ${{ steps.request.outputs.baseSHA }}
+      baseRef: ${{ steps.request.outputs.baseRef }}
+      catalogRevision: ${{ steps.request.outputs.catalogRevision }}
+      approvalGeneration: ${{ steps.request.outputs.approvalGeneration }}
+      dispatchGeneration: "0"
+      requestKey: ${{ steps.request.outputs.requestKey }}
+      requestedGroups: ${{ steps.request.outputs.requestedGroups }}
+      full: ${{ steps.request.outputs.full }}
+      sourceApprovalGeneration: ${{ inputs.approvalGeneration }}
+      sourceRequestedGroups: ${{ inputs.requestedGroups }}
+      sourceFull: ${{ inputs.full }}
+      trustedExecution: "true"
+      runAction: ${{ inputs.baseRefresh && 'base_refresh' || (inputs.recordIntent && 'approval' || 'reservation') }}
+      runAttempt: "0"
+      runId: "0"
+      runURL: ${{ steps.request.outputs.runURL }}
+      runEvent: workflow_dispatch
+      trustedRef: ${{ steps.request.outputs.baseSHA }}
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out trusted control logic
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Resolve the durable approval
+        id: request
+        env:
+          APPROVAL_GENERATION: ${{ inputs.approvalGeneration }}
+          BASE_SHA: ${{ inputs.baseSHA }}
+          BASE_REFRESH: ${{ inputs.baseRefresh }}
+          CATALOG_REVISION: ${{ inputs.catalogRevision }}
+          FULL: ${{ inputs.full }}
+          HEAD_SHA: ${{ inputs.headSHA }}
+          PR_NUMBER: ${{ inputs.prNumber }}
+          RECORD_INTENT: ${{ inputs.recordIntent }}
+          REQUESTED_GROUPS: ${{ inputs.requestedGroups }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
+          if [ "$(jq -r '.state' pull-request.json)" != open ] || \
+             [ "$(jq -r '.head.sha' pull-request.json)" != "$HEAD_SHA" ]; then
+            echo 'mutate=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          liveBaseSHA=$(jq -r '.base.sha' pull-request.json)
+          if [ "$BASE_REFRESH" = true ]; then
+            export BASE_SHA="$liveBaseSHA"
+          elif [ "$liveBaseSHA" != "$BASE_SHA" ]; then
+            echo 'mutate=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          baseRef=$(jq -r '.base.ref' pull-request.json)
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+            --jq '.content' | base64 --decode > trusted-catalog.json
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            > pull-request-comments.json
+          python3 - <<'PY' > cumulative-request.json
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+          import e2e_selector as e2eSelector
+
+          pullRequest = json.loads(Path("pull-request.json").read_text())
+          catalog = json.loads(Path("trusted-catalog.json").read_text())
+          e2eSelector.validateCatalog(catalog)
+          catalogRevision = e2eSelector.catalogRevision(catalog)
+          if catalogRevision != os.environ["CATALOG_REVISION"]:
+              raise SystemExit("approved catalog revision is stale")
+          requestedGroups = json.loads(os.environ["REQUESTED_GROUPS"])
+          unknownGroups = sorted(set(requestedGroups) - set(catalog["groups"]))
+          if unknownGroups:
+              raise SystemExit(f"unknown approved E2E group: {unknownGroups[0]}")
+          incoming = {
+              "prNumber": pullRequest["number"],
+              "headSHA": pullRequest["head"]["sha"],
+              "baseRef": pullRequest["base"]["ref"],
+              "baseSHA": pullRequest["base"]["sha"],
+              "approvalGeneration": int(os.environ["APPROVAL_GENERATION"]),
+              "catalogRevision": catalogRevision,
+              "requestedGroups": requestedGroups,
+              "full": os.environ["FULL"] == "true",
+          }
+          pages = json.loads(Path("pull-request-comments.json").read_text())
+          intents = e2eControl.approvalIntents(pullRequest, catalog, pages)
+          if os.environ["RECORD_INTENT"] == "true" and not any(
+              intent["approvalGeneration"] == incoming["approvalGeneration"]
+              and intent["requestedGroups"] == incoming["requestedGroups"]
+              and intent["full"] == incoming["full"]
+              for intent in intents
+          ):
+              raise SystemExit("trusted approval intent is missing")
+          prior = e2eControl.approvedRequest(pullRequest, catalog, pages)
+          request = e2eControl.mergeApprovedRequests(
+              incoming,
+              ([prior] if prior is not None else []) + intents,
+          )
+          print(json.dumps(request))
+          PY
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+            > approval-run-pages.json
+          duplicate=$(python3 - "$baseRef" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          request = json.loads(Path("cumulative-request.json").read_text())
+          pages = json.loads(Path("approval-run-pages.json").read_text())
+          commentPages = json.loads(Path("pull-request-comments.json").read_text())
+          runs = [run for page in pages for run in page["workflow_runs"]]
+          latest = e2eControl.latestExecutorRun(
+              runs,
+              request["prNumber"],
+              request["headSHA"],
+              sys.argv[1],
+              request["catalogRevision"],
+              request["baseSHA"],
+          )
+          if latest is not None:
+              metadata = e2eControl.parseExecutorRunName(latest["display_title"])
+              metadata["baseSHA"] = request["baseSHA"]
+              metadata["catalogRevision"] = request["catalogRevision"]
+              authorizedAttempt = e2eControl.isAuthorizedRunAttempt(
+                  latest,
+                  commentPages,
+                  request["headSHA"],
+                  request["baseSHA"],
+              )
+              if (
+                  authorizedAttempt
+                  and e2eControl.executorRequestKey(metadata) == request["requestKey"]
+                  and (
+                      latest.get("status") != "completed"
+                      or latest.get("conclusion") in {"success", "failure"}
+                  )
+              ):
+                  print(latest["id"])
+          PY
+          )
+          if [ "$BASE_REFRESH" != true ] && [ -n "$duplicate" ]; then
+            echo 'mutate=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          summary='The latest authorized x86 E2E approval is waiting for its trusted executor.'
+          if [ "$BASE_REFRESH" = true ]; then
+            summary='The pull request target branch advanced; authorize x86 E2E again for the new base revision.'
+          fi
+          {
+            echo 'mutate=true'
+            echo 'status=completed'
+            echo 'conclusion=action_required'
+            echo "summary=$summary"
+            echo "approvalGeneration=$(jq -r '.approvalGeneration' cumulative-request.json)"
+            echo "baseRef=$baseRef"
+            echo "baseSHA=$(jq -r '.base.sha' pull-request.json)"
+            echo "catalogRevision=$(jq -r '.catalogRevision' cumulative-request.json)"
+            echo "requestKey=$(jq -r '.requestKey' cumulative-request.json)"
+            echo "requestedGroups=$(jq -c '.requestedGroups' cumulative-request.json)"
+            echo "full=$(jq -r '.full' cumulative-request.json)"
+            requestKey=$(jq -r '.requestKey' cumulative-request.json)
+            approvalGeneration=$(jq -r '.approvalGeneration' cumulative-request.json)
+            echo "runURL=https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER?request=$requestKey&approval=$approvalGeneration"
+          } >> "$GITHUB_OUTPUT"
+
+  mutate:
+    name: Serialize x86-e2e / required-gate mutations
+    needs: [gate, approval]
+    if: >-
+      always() &&
+      (needs.gate.outputs.mutate == 'true' || needs.approval.outputs.mutate == 'true')
+    concurrency:
+      group: x86-e2e-required-gate-${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.prNumber || needs.approval.outputs.prNumber }}-${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.headSHA || needs.approval.outputs.headSHA }}
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      checks: write
+      contents: read
+      issues: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+      SOURCE_GATE: ${{ needs.gate.outputs.mutate }}
+      STATUS: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.status || needs.approval.outputs.status }}
+      CONCLUSION: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.conclusion || needs.approval.outputs.conclusion }}
+      SUMMARY: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.summary || needs.approval.outputs.summary }}
+      PR_NUMBER: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.prNumber || needs.approval.outputs.prNumber }}
+      HEAD_SHA: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.headSHA || needs.approval.outputs.headSHA }}
+      BASE_SHA: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.baseSHA || needs.approval.outputs.baseSHA }}
+      BASE_REF: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.baseRef || needs.approval.outputs.baseRef }}
+      CATALOG_REVISION: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.catalogRevision || needs.approval.outputs.catalogRevision }}
+      APPROVAL_GENERATION: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.approvalGeneration || needs.approval.outputs.approvalGeneration }}
+      RUN_ACTION: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runAction || needs.approval.outputs.runAction }}
+      RUN_ATTEMPT: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runAttempt || needs.approval.outputs.runAttempt }}
+      RUN_ID: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runId || needs.approval.outputs.runId }}
+      RUN_EVENT: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runEvent || needs.approval.outputs.runEvent }}
+      RUN_REQUEST_KEY: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.requestKey || needs.approval.outputs.requestKey }}
+      REQUESTED_GROUPS: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.requestedGroups || needs.approval.outputs.requestedGroups }}
+      FULL: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.full || needs.approval.outputs.full }}
+      SOURCE_APPROVAL_GENERATION: ${{ needs.approval.outputs.sourceApprovalGeneration }}
+      SOURCE_REQUESTED_GROUPS: ${{ needs.approval.outputs.sourceRequestedGroups }}
+      SOURCE_FULL: ${{ needs.approval.outputs.sourceFull }}
+      RUN_URL: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runURL || needs.approval.outputs.runURL }}
+      TRUSTED_REF: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.trustedRef || needs.approval.outputs.trustedRef }}
+    steps:
+      - name: Check out trusted mutation logic
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Reconcile the fixed gate from durable state
+        run: |
+          set -euo pipefail
+          runState='{}'
+          if [ "$RUN_ACTION" != approval ] && [ "$RUN_ACTION" != reservation ] && \
+             [ "$RUN_ACTION" != base_refresh ]; then
+            runState=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > final-pull-request.json
+          if [ "$(jq -r '.state' final-pull-request.json)" != open ] || \
+             [ "$(jq -r '.head.sha' final-pull-request.json)" != "$HEAD_SHA" ]; then
+            exit 0
+          fi
+          currentBaseSHA=$(jq -r '.base.sha' final-pull-request.json)
+          if [ "$currentBaseSHA" != "$BASE_SHA" ]; then
+            RUN_ACTION=base_refresh
+            STATUS=completed
+            CONCLUSION=action_required
+            SUMMARY='The pull request target branch advanced; authorize x86 E2E again for the new base revision.'
+            RUN_URL="https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER"
+            export BASE_SHA="$currentBaseSHA"
+            export TRUSTED_REF="$currentBaseSHA"
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$BASE_REF" \
+            --jq '.content' | base64 --decode > final-catalog.json
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            > final-comments.json
+          python3 - <<'PY' > final-request.json
+          import json
+          from pathlib import Path
+          import e2e_control as e2eControl
+          import e2e_selector as e2eSelector
+
+          pullRequest = json.loads(Path("final-pull-request.json").read_text())
+          catalog = json.loads(Path("final-catalog.json").read_text())
+          e2eSelector.validateCatalog(catalog)
+          pages = json.loads(Path("final-comments.json").read_text())
+          request = e2eControl.approvedRequest(pullRequest, catalog, pages)
+          if request is None:
+              request = {
+                  "approvalGeneration": 0,
+                  "requestKey": "",
+                  "catalogRevision": e2eSelector.catalogRevision(catalog),
+              }
+          print(json.dumps(request))
+          PY
+          finalApprovalGeneration=$(jq -r '.approvalGeneration' final-request.json)
+          finalRequestKey=$(jq -r '.requestKey' final-request.json)
+          finalCatalogRevision=$(jq -r '.catalogRevision' final-request.json)
+          python3 - <<'PY' > locked-request.json
+          import json
+          from pathlib import Path
+          import e2e_control as e2eControl
+          import e2e_selector as e2eSelector
+
+          pullRequest = json.loads(Path("final-pull-request.json").read_text())
+          catalog = json.loads(Path("final-catalog.json").read_text())
+          e2eSelector.validateCatalog(catalog)
+          pages = json.loads(Path("final-comments.json").read_text())
+          seed = {
+              "prNumber": pullRequest["number"],
+              "headSHA": pullRequest["head"]["sha"],
+              "baseRef": pullRequest["base"]["ref"],
+              "baseSHA": pullRequest["base"]["sha"],
+              "approvalGeneration": 0,
+              "catalogRevision": e2eSelector.catalogRevision(catalog),
+              "requestedGroups": [],
+              "full": False,
+          }
+          prior = e2eControl.approvedRequest(pullRequest, catalog, pages)
+          intents = e2eControl.approvalIntents(pullRequest, catalog, pages)
+          request = e2eControl.mergeApprovedRequests(
+              seed,
+              ([prior] if prior is not None else []) + intents,
+          )
+          request["intentCount"] = len(intents)
+          print(json.dumps(request))
+          PY
+          lockedRequestKey=$(jq -r '.requestKey' locked-request.json)
+          lockedApprovalGeneration=$(jq -r '.approvalGeneration' locked-request.json)
+          intentCount=$(jq -r '.intentCount' locked-request.json)
+          needsApproval=false
+          if [ "$intentCount" -gt 0 ] && [ "$lockedRequestKey" != "$finalRequestKey" ]; then
+            needsApproval=true
+          elif [ "$intentCount" -gt 0 ] && \
+               [ "$lockedApprovalGeneration" -gt "$finalApprovalGeneration" ]; then
+            if [ "$RUN_ACTION" = approval ] || [ "$RUN_EVENT" != workflow_dispatch ]; then
+              needsApproval=true
+            elif [ "$RUN_ACTION" = completed ]; then
+              runConclusion=$(jq -r '.conclusion // ""' <<< "$runState")
+              if [ "$runConclusion" != success ] && [ "$runConclusion" != failure ]; then
+                needsApproval=true
+              fi
+            fi
+          fi
+          if [ "$needsApproval" = true ]; then
+            RUN_ACTION=approval
+            STATUS=completed
+            CONCLUSION=action_required
+            SUMMARY='The latest authorized x86 E2E approval is waiting for its trusted executor.'
+            RUN_REQUEST_KEY="$lockedRequestKey"
+            APPROVAL_GENERATION="$lockedApprovalGeneration"
+            CATALOG_REVISION=$(jq -r '.catalogRevision' locked-request.json)
+            REQUESTED_GROUPS=$(jq -c '.requestedGroups' locked-request.json)
+            FULL=$(jq -r '.full' locked-request.json)
+            export REQUESTED_GROUPS FULL
+            RUN_URL="https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER?request=$RUN_REQUEST_KEY&approval=$APPROVAL_GENERATION"
+          elif [ "$RUN_ACTION" = approval ]; then
+            exit 0
+          fi
+          if [ "$RUN_ACTION" = completed ] || [ "$RUN_ACTION" = reservation ] || \
+             [ "$RUN_ACTION" = approval ]; then
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              > recovery-run-pages.json
+            python3 - <<'PY' > recovery-latest-run.json
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("recovery-run-pages.json").read_text())
+          commentPages = json.loads(Path("final-comments.json").read_text())
+          runs = [run for page in pages for run in page["workflow_runs"]]
+          latest = e2eControl.latestExecutorRun(
+              runs,
+              int(os.environ["PR_NUMBER"]),
+              os.environ["HEAD_SHA"],
+              os.environ["BASE_REF"],
+              os.environ["CATALOG_REVISION"] or None,
+              os.environ["TRUSTED_REF"],
+          )
+          if latest is not None and not e2eControl.isAuthorizedRunAttempt(
+              latest,
+              commentPages,
+              os.environ["HEAD_SHA"],
+              os.environ["BASE_SHA"],
+          ):
+              latest = None
+          print(json.dumps(latest or {}))
+          PY
+            recoveryRunId=$(jq -r '.id // empty' recovery-latest-run.json)
+            recoveryRunAttempt=$(jq -r '.run_attempt // empty' recovery-latest-run.json)
+            recoveryRunStatus=$(jq -r '.status // empty' recovery-latest-run.json)
+            recoveryRequestKey=$(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("recovery-latest-run.json").read_text())
+          if not run:
+              print("")
+          else:
+              metadata = e2eControl.parseExecutorRunName(run["display_title"])
+              metadata["baseSHA"] = os.environ["BASE_SHA"]
+              metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
+              print(e2eControl.executorRequestKey(metadata))
+          PY
+            )
+            recoverLatest=true
+            if [ "$RUN_ACTION" != completed ] && [ "$recoveryRequestKey" != "$RUN_REQUEST_KEY" ]; then
+              recoverLatest=false
+            fi
+            if [ "$RUN_ID" = "$recoveryRunId" ] && [ "$RUN_ATTEMPT" != "$recoveryRunAttempt" ]; then
+              recoverLatest=$(python3 - "$recoveryRunId" "$recoveryRunAttempt" "$HEAD_SHA" "$BASE_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("final-comments.json").read_text())
+          print("true" if e2eControl.hasAuthorizedRerun(pages, *sys.argv[1:]) else "false")
+          PY
+              )
+            fi
+            if [ "$recoverLatest" = true ] && [ "$recoveryRunStatus" = completed ] && \
+               [ -n "$recoveryRunId" ] && {
+              [ "$RUN_ID" != "$recoveryRunId" ] || [ "$RUN_ATTEMPT" != "$recoveryRunAttempt" ];
+            }; then
+              artifactName="x86-e2e-gate-decision-$recoveryRunId-$recoveryRunAttempt"
+              trustedGateWorkflowId=$(gh api \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml" --jq '.id')
+              defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+              artifactId=''
+              for _ in $(seq 1 12); do
+                gh api --paginate --slurp \
+                  "repos/$GITHUB_REPOSITORY/actions/workflows/$trustedGateWorkflowId/runs?event=workflow_run&branch=$defaultBranch&actor=github-actions%5Bbot%5D&per_page=100" \
+                  > trusted-gate-run-pages.json
+                jq -r \
+                  --argjson workflowId "$trustedGateWorkflowId" \
+                  --arg repository "$GITHUB_REPOSITORY" \
+                  --arg defaultBranch "$defaultBranch" \
+                  '[.[].workflow_runs[] | select(
+                    .workflow_id == $workflowId and
+                    .path == ".github/workflows/x86-e2e-gate.yaml" and
+                    .event == "workflow_run" and
+                    .actor.login == "github-actions[bot]" and
+                    .head_repository.full_name == $repository and
+                    .head_branch == $defaultBranch)]
+                   | sort_by(.created_at) | reverse[] | .id' trusted-gate-run-pages.json \
+                  > trusted-gate-runs.txt
+                while IFS= read -r ownerRunId; do
+                  [ -n "$ownerRunId" ] || continue
+                  gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ownerRunId/artifacts?per_page=100" \
+                    > trusted-run-artifacts.json
+                  artifactId=$(jq -r --arg name "$artifactName" \
+                    '[.artifacts[] | select(.expired == false and .name == $name)]
+                     | sort_by(.created_at) | reverse | .[0].id // empty' \
+                    trusted-run-artifacts.json)
+                  [ -z "$artifactId" ] || break
+                done < trusted-gate-runs.txt
+                [ -n "$artifactId" ] && break
+                sleep 5
+              done
+              if [ -z "$artifactId" ]; then
+                echo 'The latest completed executor decision artifact is not available yet.'
+                exit 0
+              fi
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifactId/zip" > recovered-decision.zip
+              unzip -p recovered-decision.zip gate-mutation.json > recovered-mutation.json
+              python3 - "$recoveryRunId" "$recoveryRunAttempt" "$finalRequestKey" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          decision = json.loads(Path("recovered-mutation.json").read_text())
+          run = json.loads(Path("recovery-latest-run.json").read_text())
+          metadata = e2eControl.parseExecutorRunName(run["display_title"])
+          metadata["baseSHA"] = os.environ["BASE_SHA"]
+          metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
+          expected = {
+              "prNumber": int(os.environ["PR_NUMBER"]),
+              "headSHA": os.environ["HEAD_SHA"],
+              "baseSHA": os.environ["BASE_SHA"],
+              "catalogRevision": os.environ["CATALOG_REVISION"],
+              "runId": int(sys.argv[1]),
+              "runAttempt": int(sys.argv[2]),
+              "runURL": run["html_url"],
+              "requestKey": e2eControl.executorRequestKey(metadata),
+          }
+          for field, value in expected.items():
+              if decision.get(field) != value:
+                  raise SystemExit(f"recovered gate decision mismatches {field}")
+          if decision["requestKey"] != sys.argv[3]:
+              raise SystemExit("recovered gate decision is not current durable coverage")
+          if decision.get("status") != "completed":
+              raise SystemExit("recovered gate decision has an invalid status")
+          if decision.get("conclusion") not in {"success", "failure", "action_required"}:
+              raise SystemExit("recovered gate decision has an invalid conclusion")
+          if not isinstance(decision.get("summary"), str) or not decision["summary"].strip():
+              raise SystemExit("recovered gate decision has an invalid summary")
+          PY
+              RUN_ACTION=completed
+              RUN_ID="$recoveryRunId"
+              RUN_ATTEMPT="$recoveryRunAttempt"
+              APPROVAL_GENERATION=$(jq -r '.approvalGeneration' recovered-mutation.json)
+              RUN_REQUEST_KEY=$(jq -r '.requestKey' recovered-mutation.json)
+              RUN_URL=$(jq -r '.runURL' recovered-mutation.json)
+              STATUS=$(jq -r '.status' recovered-mutation.json)
+              CONCLUSION=$(jq -r '.conclusion' recovered-mutation.json)
+              SUMMARY=$(jq -r '.summary' recovered-mutation.json)
+              runState=$(cat recovery-latest-run.json)
+            fi
+          fi
+          printf '%s' "$runState" > serialized-run-state.json
+          preserveOlderAuthorized=false
+          if [ "$RUN_ACTION" = completed ]; then
+            currentRunAttempt=$(jq -r '.run_attempt' serialized-run-state.json)
+            if [ "$RUN_ATTEMPT" != "$currentRunAttempt" ]; then
+              newerAttemptAuthorized=$(python3 - "$HEAD_SHA" "$BASE_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("serialized-run-state.json").read_text())
+          pages = json.loads(Path("final-comments.json").read_text())
+          print(
+              "true"
+              if e2eControl.isAuthorizedRunAttempt(run, pages, sys.argv[1], sys.argv[2])
+              else "false"
+          )
+          PY
+              )
+              if [ "$newerAttemptAuthorized" = true ]; then
+                exit 0
+              fi
+              preserveOlderAuthorized=true
+            elif [ "$(jq -r '.status' serialized-run-state.json)" != completed ]; then
+              exit 0
+            fi
+          fi
+          if [ "$RUN_ACTION" != approval ] && [ "$RUN_ACTION" != reservation ] && \
+             [ "$RUN_ACTION" != base_refresh ] && [ "$RUN_EVENT" = workflow_dispatch ] && \
+             [ "$RUN_ATTEMPT" -gt 1 ] && [ "$preserveOlderAuthorized" != true ]; then
+            rerunAuthorized=$(python3 - "$HEAD_SHA" "$BASE_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("serialized-run-state.json").read_text())
+          pages = json.loads(Path("final-comments.json").read_text())
+          print(
+              "true"
+              if e2eControl.isAuthorizedRunAttempt(run, pages, sys.argv[1], sys.argv[2])
+              else "false"
+          )
+          PY
+            )
+            if [ "$rerunAuthorized" != true ]; then
+              exit 0
+            fi
+          fi
+          if [ "$RUN_ACTION" != approval ] && [ "$RUN_ACTION" != reservation ] && \
+             [ "$RUN_ACTION" != base_refresh ] && [ "$RUN_EVENT" = workflow_dispatch ]; then
+            if [ "$RUN_REQUEST_KEY" != "$finalRequestKey" ] || \
+               [ "$CATALOG_REVISION" != "$finalCatalogRevision" ]; then
+              echo 'Durable approval coverage changed before the serialized gate mutation.'
+              exit 0
+            fi
+            if [ "$APPROVAL_GENERATION" != "$finalApprovalGeneration" ] && \
+               [ "$RUN_ACTION" = completed ]; then
+              runConclusion=$(jq -r '.conclusion // ""' <<< "$runState")
+              if [ "$runConclusion" != success ] && [ "$runConclusion" != failure ]; then
+                exit 0
+              fi
+            fi
+          elif [ "$RUN_ACTION" != approval ] && [ "$RUN_ACTION" != reservation ] && \
+               [ "$RUN_ACTION" != base_refresh ] && [ "$finalApprovalGeneration" != 0 ]; then
+            exit 0
+          fi
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+            > final-executor-run-pages.json
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            > final-comments.json
+          python3 - <<'PY' > latest-run.json
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("final-executor-run-pages.json").read_text())
+          commentPages = json.loads(Path("final-comments.json").read_text())
+          runs = [run for page in pages for run in page["workflow_runs"]]
+          latest = e2eControl.latestExecutorRun(
+              runs,
+              int(os.environ["PR_NUMBER"]),
+              os.environ["HEAD_SHA"],
+              os.environ["BASE_REF"],
+              os.environ["CATALOG_REVISION"] or None,
+              os.environ["TRUSTED_REF"],
+          )
+          Path("latest-matching-run.json").write_text(json.dumps(latest or {}))
+          if latest is not None and not e2eControl.isAuthorizedRunAttempt(
+              latest,
+              commentPages,
+              os.environ["HEAD_SHA"],
+              os.environ["BASE_SHA"],
+          ):
+              latest = None
+          print(json.dumps(latest or {}))
+          PY
+          latestRunId=$(jq -r '.id // empty' latest-run.json)
+          if [ "$RUN_ACTION" = approval ] || [ "$RUN_ACTION" = reservation ] || \
+             [ "$RUN_ACTION" = base_refresh ]; then
+            if [ -n "$latestRunId" ]; then
+              latestRequestKey=$(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("latest-run.json").read_text())
+          metadata = e2eControl.parseExecutorRunName(run["display_title"])
+          metadata["baseSHA"] = os.environ["BASE_SHA"]
+          metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
+          print(e2eControl.executorRequestKey(metadata))
+          PY
+              )
+              latestStatus=$(jq -r '.status' latest-run.json)
+              latestConclusion=$(jq -r '.conclusion // ""' latest-run.json)
+              if [ "$latestRequestKey" = "$RUN_REQUEST_KEY" ] && {
+                [ "$latestStatus" != completed ] ||
+                [ "$latestConclusion" = success ] ||
+                [ "$latestConclusion" = failure ];
+              }; then
+                exit 0
+              fi
+            fi
+          else
+            matchingRunId=$(jq -r '.id // empty' latest-matching-run.json)
+            if [ -n "$matchingRunId" ]; then
+              matchingRequestKey=$(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("latest-matching-run.json").read_text())
+          metadata = e2eControl.parseExecutorRunName(run["display_title"])
+          metadata["baseSHA"] = os.environ["BASE_SHA"]
+          metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
+          print(e2eControl.executorRequestKey(metadata))
+          PY
+              )
+              if [ "$matchingRequestKey" = "$RUN_REQUEST_KEY" ]; then
+                matchingRunAttempt=$(jq -r '.run_attempt' latest-matching-run.json)
+                latestAuthorizedAttempt=''
+                for candidateAttempt in $(seq "$matchingRunAttempt" -1 1); do
+                  if [ "$candidateAttempt" = "$matchingRunAttempt" ]; then
+                    cp latest-matching-run.json candidate-attempt-state.json
+                  else
+                    gh api "repos/$GITHUB_REPOSITORY/actions/runs/$matchingRunId/attempts/$candidateAttempt" \
+                      > candidate-attempt-state.json
+                  fi
+                  candidateAuthorized=$(python3 - "$HEAD_SHA" "$BASE_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("candidate-attempt-state.json").read_text())
+          pages = json.loads(Path("final-comments.json").read_text())
+          print(
+              "true"
+              if e2eControl.isAuthorizedRunAttempt(run, pages, sys.argv[1], sys.argv[2])
+              else "false"
+          )
+          PY
+                  )
+                  if [ "$candidateAuthorized" = true ]; then
+                    latestAuthorizedAttempt="$candidateAttempt"
+                    break
+                  fi
+                done
+                if [ -n "$latestAuthorizedAttempt" ] && {
+                  [ "$matchingRunId" != "$RUN_ID" ] ||
+                  [ "$latestAuthorizedAttempt" -gt "$RUN_ATTEMPT" ];
+                }; then
+                  artifactName="x86-e2e-gate-decision-$matchingRunId-$latestAuthorizedAttempt"
+                  trustedGateWorkflowId=$(gh api \
+                    "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml" --jq '.id')
+                  defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+                  artifactId=''
+                  for _ in $(seq 1 12); do
+                    gh api --paginate --slurp \
+                      "repos/$GITHUB_REPOSITORY/actions/workflows/$trustedGateWorkflowId/runs?event=workflow_run&branch=$defaultBranch&actor=github-actions%5Bbot%5D&per_page=100" \
+                      > high-water-gate-run-pages.json
+                    jq -r \
+                      --argjson workflowId "$trustedGateWorkflowId" \
+                      --arg repository "$GITHUB_REPOSITORY" \
+                      --arg defaultBranch "$defaultBranch" \
+                      '[.[].workflow_runs[] | select(
+                        .workflow_id == $workflowId and
+                        .path == ".github/workflows/x86-e2e-gate.yaml" and
+                        .event == "workflow_run" and
+                        .actor.login == "github-actions[bot]" and
+                        .head_repository.full_name == $repository and
+                        .head_branch == $defaultBranch)]
+                       | sort_by(.created_at) | reverse[] | .id' high-water-gate-run-pages.json \
+                      > high-water-gate-runs.txt
+                    while IFS= read -r ownerRunId; do
+                      [ -n "$ownerRunId" ] || continue
+                      gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ownerRunId/artifacts?per_page=100" \
+                        > high-water-run-artifacts.json
+                      artifactId=$(jq -r --arg name "$artifactName" \
+                        '[.artifacts[] | select(.expired == false and .name == $name)]
+                         | sort_by(.created_at) | reverse | .[0].id // empty' \
+                        high-water-run-artifacts.json)
+                      [ -z "$artifactId" ] || break
+                    done < high-water-gate-runs.txt
+                    [ -n "$artifactId" ] && break
+                    sleep 5
+                  done
+                  if [ -z "$artifactId" ]; then
+                    echo 'The latest authorized executor decision artifact is unavailable.'
+                    exit 1
+                  fi
+                  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifactId/zip" \
+                    > high-water-decision.zip
+                  unzip -p high-water-decision.zip gate-mutation.json \
+                    > high-water-mutation.json
+                  python3 - "$matchingRunId" "$latestAuthorizedAttempt" "$finalRequestKey" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          decision = json.loads(Path("high-water-mutation.json").read_text())
+          run = json.loads(Path("candidate-attempt-state.json").read_text())
+          metadata = e2eControl.parseExecutorRunName(run["display_title"])
+          metadata["baseSHA"] = os.environ["BASE_SHA"]
+          metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
+          expected = {
+              "prNumber": int(os.environ["PR_NUMBER"]),
+              "headSHA": os.environ["HEAD_SHA"],
+              "baseSHA": os.environ["BASE_SHA"],
+              "catalogRevision": os.environ["CATALOG_REVISION"],
+              "runId": int(sys.argv[1]),
+              "runAttempt": int(sys.argv[2]),
+              "runURL": run["html_url"],
+              "requestKey": e2eControl.executorRequestKey(metadata),
+          }
+          for field, value in expected.items():
+              if decision.get(field) != value:
+                  raise SystemExit(f"high-water gate decision mismatches {field}")
+          if decision["requestKey"] != sys.argv[3]:
+              raise SystemExit("high-water gate decision is not current durable coverage")
+          if decision.get("status") != "completed":
+              raise SystemExit("high-water gate decision has an invalid status")
+          if decision.get("conclusion") not in {"success", "failure", "action_required"}:
+              raise SystemExit("high-water gate decision has an invalid conclusion")
+          if not isinstance(decision.get("summary"), str) or not decision["summary"].strip():
+              raise SystemExit("high-water gate decision has an invalid summary")
+          PY
+                  RUN_ACTION=completed
+                  RUN_ID="$matchingRunId"
+                  RUN_ATTEMPT="$latestAuthorizedAttempt"
+                  APPROVAL_GENERATION=$(jq -r '.approvalGeneration' high-water-mutation.json)
+                  RUN_REQUEST_KEY=$(jq -r '.requestKey' high-water-mutation.json)
+                  RUN_URL=$(jq -r '.runURL' high-water-mutation.json)
+                  STATUS=$(jq -r '.status' high-water-mutation.json)
+                  CONCLUSION=$(jq -r '.conclusion' high-water-mutation.json)
+                  SUMMARY=$(jq -r '.summary' high-water-mutation.json)
+                fi
+              fi
+            fi
+          fi
+          if [ "$RUN_ACTION" = completed ]; then
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              > pre-write-run-pages.json
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+              > pre-write-comments.json
+            python3 - <<'PY' > pre-write-latest-run.json
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("pre-write-run-pages.json").read_text())
+          runs = [run for page in pages for run in page["workflow_runs"]]
+          latest = e2eControl.latestExecutorRun(
+              runs,
+              int(os.environ["PR_NUMBER"]),
+              os.environ["HEAD_SHA"],
+              os.environ["BASE_REF"],
+              os.environ["CATALOG_REVISION"] or None,
+              os.environ["TRUSTED_REF"],
+          )
+          print(json.dumps(latest or {}))
+          PY
+            preWriteRunId=$(jq -r '.id // empty' pre-write-latest-run.json)
+            if [ -n "$preWriteRunId" ]; then
+              preWriteRequestKey=$(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("pre-write-latest-run.json").read_text())
+          metadata = e2eControl.parseExecutorRunName(run["display_title"])
+          metadata["baseSHA"] = os.environ["BASE_SHA"]
+          metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
+          print(e2eControl.executorRequestKey(metadata))
+          PY
+              )
+              if [ "$preWriteRequestKey" = "$RUN_REQUEST_KEY" ]; then
+                preWriteRunAttempt=$(jq -r '.run_attempt' pre-write-latest-run.json)
+                for candidateAttempt in $(seq "$preWriteRunAttempt" -1 1); do
+                  if [ "$candidateAttempt" = "$preWriteRunAttempt" ]; then
+                    cp pre-write-latest-run.json pre-write-attempt-state.json
+                  else
+                    gh api "repos/$GITHUB_REPOSITORY/actions/runs/$preWriteRunId/attempts/$candidateAttempt" \
+                      > pre-write-attempt-state.json
+                  fi
+                  candidateAuthorized=$(python3 - "$HEAD_SHA" "$BASE_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("pre-write-attempt-state.json").read_text())
+          pages = json.loads(Path("pre-write-comments.json").read_text())
+          print(
+              "true"
+              if e2eControl.isAuthorizedRunAttempt(run, pages, sys.argv[1], sys.argv[2])
+              else "false"
+          )
+          PY
+                  )
+                  if [ "$candidateAuthorized" = true ]; then
+                    if [ "$preWriteRunId" != "$RUN_ID" ] || \
+                       [ "$candidateAttempt" -gt "$RUN_ATTEMPT" ]; then
+                      exit 0
+                    fi
+                    break
+                  fi
+                done
+              fi
+            fi
+          fi
+          externalId="x86-e2e-pr-$PR_NUMBER-$HEAD_SHA"
+          existingCheck=$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?check_name=x86-e2e%20%2F%20required-gate&per_page=100" \
+            | jq -c --arg externalId "$externalId" \
+              '[.check_runs[] | select(.name == "x86-e2e / required-gate" and .external_id == $externalId)][0] // {}')
+          checkId=$(jq -r '.id // empty' <<< "$existingCheck")
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > write-pull-request.json
+          writeState=$(jq -r '.state' write-pull-request.json)
+          writeHead=$(jq -r '.head.sha' write-pull-request.json)
+          writeBase=$(jq -r '.base.sha' write-pull-request.json)
+          if [ "$writeState" != open ] || [ "$writeHead" != "$HEAD_SHA" ]; then
+            exit 0
+          fi
+          if [ "$writeBase" != "$BASE_SHA" ]; then
+            RUN_ACTION=base_refresh
+            STATUS=completed
+            CONCLUSION=action_required
+            SUMMARY='The pull request target branch advanced; authorize x86 E2E again for the new base revision.'
+            RUN_URL="https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER"
+          fi
+          jq -n \
+            --arg name 'x86-e2e / required-gate' \
+            --arg headSHA "$HEAD_SHA" \
+            --arg status "$STATUS" \
+            --arg conclusion "$CONCLUSION" \
+            --arg detailsURL "$RUN_URL" \
+            --arg externalId "$externalId" \
+            --arg summary "$SUMMARY" \
+            '({name: $name, head_sha: $headSHA, status: $status,
+               details_url: $detailsURL, external_id: $externalId,
+               output: {title: "x86 E2E gate", summary: $summary}}
+              + if $status == "completed" then {conclusion: $conclusion} else {} end)' > check-run.json
+          if [ -n "$checkId" ]; then
+            jq 'del(.name, .head_sha)' check-run.json > check-run-update.json
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/check-runs/$checkId" \
+              --input check-run-update.json
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" \
+              --input check-run.json
+          fi
+          if [ "$RUN_ACTION" = reservation ]; then
+            python3 - <<'PY' > approval-intent.txt
+          import json
+          import os
+          import e2e_control as e2eControl
+
+          request = {
+              "headSHA": os.environ["HEAD_SHA"],
+              "baseSHA": os.environ["BASE_SHA"],
+              "approvalGeneration": int(os.environ["SOURCE_APPROVAL_GENERATION"]),
+              "catalogRevision": os.environ["CATALOG_REVISION"],
+              "requestedGroups": json.loads(os.environ["SOURCE_REQUESTED_GROUPS"]),
+              "full": os.environ["SOURCE_FULL"] == "true",
+          }
+          print(e2eControl.renderApprovalIntent(request))
+          PY
+            intent=$(cat approval-intent.txt)
+            body=$(printf "Queued x86 E2E approval intent for current HEAD %s.\n\n%s" "$HEAD_SHA" "$intent")
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body"
+            defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+            if ! gh api --method POST \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
+              -f ref="$defaultBranch" \
+              -F "inputs[prNumber]=$PR_NUMBER" \
+              -f "inputs[headSHA]=$HEAD_SHA" \
+              -f "inputs[baseSHA]=$BASE_SHA" \
+              -F "inputs[approvalGeneration]=$SOURCE_APPROVAL_GENERATION" \
+              -f "inputs[catalogRevision]=$CATALOG_REVISION" \
+              -f "inputs[requestedGroups]=$SOURCE_REQUESTED_GROUPS" \
+              -F "inputs[full]=$SOURCE_FULL" \
+              -F 'inputs[recordIntent]=true' \
+              -F 'inputs[baseRefresh]=false'; then
+              gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+                -f body='The x86 E2E intent is durable and the gate remains blocked, but reconciliation must be retried.'
+              exit 1
+            fi
+          elif [ "$RUN_ACTION" = approval ]; then
+            python3 - <<'PY' > request-marker.txt
+          import json
+          import os
+          import e2e_control as e2eControl
+
+          request = {
+              "headSHA": os.environ["HEAD_SHA"],
+              "baseSHA": os.environ["BASE_SHA"],
+              "approvalGeneration": int(os.environ["APPROVAL_GENERATION"]),
+              "catalogRevision": os.environ["CATALOG_REVISION"],
+              "requestedGroups": json.loads(os.environ["REQUESTED_GROUPS"]),
+              "full": os.environ["FULL"] == "true",
+          }
+          print(e2eControl.renderRequestMarker(request))
+          PY
+            marker=$(cat request-marker.txt)
+            body=$(printf "Recorded x86 E2E approval for current HEAD %s.\n\n%s" "$HEAD_SHA" "$marker")
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body"
+            defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+            if ! gh api --method POST \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-dispatcher.yaml/dispatches" \
+              -f ref="$defaultBranch" \
+              -F "inputs[prNumber]=$PR_NUMBER" \
+              -f "inputs[headSHA]=$HEAD_SHA" \
+              -F "inputs[approvalGeneration]=$APPROVAL_GENERATION"; then
+              gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+                -f body='The approval was recorded, but its trusted x86 E2E reducer could not be started; retry the authorized command.'
+              exit 1
+            fi
+          fi
