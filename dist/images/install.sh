@@ -9106,7 +9106,8 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "$ENABLE_BIND_LOCAL_IP"
-
+            - name: ENABLE_HARDWARE_VTEP
+              value: "$ENABLE_HARDWARE_VTEP"
             - name: VTEP_DB_ADDR
               value: "$VTEP_DB_ADDR"
           volumeMounts:

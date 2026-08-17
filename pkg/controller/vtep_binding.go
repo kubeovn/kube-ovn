@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -34,7 +35,59 @@ const (
 var (
 	errVtepBindingPending = errors.New("vtep binding waiting for SB chassis binding")
 	errVtepDBNotConnected = errors.New("hardware VTEP DB not connected")
+	errVtepBindingGone    = errors.New("vtep binding no longer exists")
 )
+
+func (c *Controller) hardwareVtepEnabled() bool {
+	return c.config != nil && c.config.EnableHardwareVtep
+}
+
+func (c *Controller) setupHardwareVtep(vtepBindingInformer kubeovninformer.VtepBindingInformer) {
+	if !c.hardwareVtepEnabled() {
+		klog.Info("hardware VTEP is disabled; VtepBinding informer and worker will not start")
+		return
+	}
+	c.vtepBindingsLister = vtepBindingInformer.Lister()
+	c.vtepBindingSynced = vtepBindingInformer.Informer().HasSynced
+}
+
+func (c *Controller) initHardwareVtepClient() {
+	if !c.hardwareVtepEnabled() || c.config.VtepDbAddr == "" {
+		return
+	}
+	if err := c.tryConnectVtepClient(); err != nil {
+		klog.Warningf("hardware VTEP DB not available at %s during startup: %v; will retry in background",
+			c.config.VtepDbAddr, err)
+	}
+}
+
+func (c *Controller) addHardwareVtepEventHandler(vtepBindingInformer kubeovninformer.VtepBindingInformer) {
+	if !c.hardwareVtepEnabled() {
+		return
+	}
+	if _, err := vtepBindingInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueAddOrUpdateVtepBinding,
+		UpdateFunc: c.enqueueUpdateVtepBinding,
+		DeleteFunc: c.enqueueDeleteVtepBinding,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vtep binding event handler")
+	}
+}
+
+func (c *Controller) hardwareVtepCacheSyncs() []cache.InformerSynced {
+	if !c.hardwareVtepEnabled() || c.vtepBindingSynced == nil {
+		return nil
+	}
+	return []cache.InformerSynced{c.vtepBindingSynced}
+}
+
+func (c *Controller) startHardwareVtepWorkers(ctx context.Context) {
+	if !c.hardwareVtepEnabled() {
+		return
+	}
+	go wait.Until(runWorker("add/update vtep binding", c.addOrUpdateVtepBindingQueue, c.handleAddOrUpdateVtepBinding), time.Second, ctx.Done())
+	c.startVtepClientReconnect(ctx)
+}
 
 func (c *Controller) enqueueAddOrUpdateVtepBinding(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.VtepBinding)).String()
@@ -79,6 +132,11 @@ func (c *Controller) enqueueDeleteVtepBinding(obj any) {
 }
 
 func (c *Controller) handleAddOrUpdateVtepBinding(key string) error {
+	if !c.hardwareVtepEnabled() {
+		klog.V(3).Infof("skip vtep binding %s: hardware VTEP is disabled", key)
+		return nil
+	}
+
 	c.vtepBindingKeyMutex.LockKey(key)
 	defer func() { _ = c.vtepBindingKeyMutex.UnlockKey(key) }()
 
@@ -93,6 +151,10 @@ func (c *Controller) handleAddOrUpdateVtepBinding(key string) error {
 
 	binding := cachedBinding.DeepCopy()
 	if err = c.handleAddVtepBindingFinalizer(binding); err != nil {
+		if errors.Is(err, errVtepBindingGone) {
+			klog.Infof("vtep binding %s disappeared before finalizer was installed; skip reconcile", binding.Name)
+			return nil
+		}
 		klog.Errorf("failed to add finalizer for vtep binding %s: %v", binding.Name, err)
 		return err
 	}
@@ -107,15 +169,7 @@ func (c *Controller) handleAddOrUpdateVtepBinding(key string) error {
 	if err = c.reconcileVtepBinding(binding); err != nil {
 		if errors.Is(err, errVtepBindingPending) {
 			binding.Status.NotReady("WaitingForChassis", err.Error())
-			if patchErr := c.patchVtepBindingStatus(binding); patchErr != nil {
-				klog.Error(patchErr)
-				return patchErr
-			}
-			c.addOrUpdateVtepBindingQueue.AddAfter(key, vtepBindingChassisRetryDelay)
-			return nil
-		}
-		if errors.Is(err, errVtepDBNotConnected) {
-			binding.Status.NotReady("VTEPDBNotConnected", err.Error())
+			binding.Status.ClearError()
 			if patchErr := c.patchVtepBindingStatus(binding); patchErr != nil {
 				klog.Error(patchErr)
 				return patchErr
@@ -130,7 +184,10 @@ func (c *Controller) handleAddOrUpdateVtepBinding(key string) error {
 		return err
 	}
 
-	if err = c.patchVtepBindingStatusCondition(binding, "VTEPAttachmentReady", ""); err != nil {
+	binding.Status.ReadyCondition("VTEPAttachmentReady", "")
+	binding.Status.ClearError()
+	c.recorder.Eventf(binding, corev1.EventTypeNormal, "VTEPAttachmentReady", "")
+	if err = c.patchVtepBindingStatus(binding); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -141,7 +198,11 @@ func (c *Controller) handleAddOrUpdateVtepBinding(key string) error {
 
 func (c *Controller) cleanupVtepBinding(binding *kubeovnv1.VtepBinding) error {
 	vtepLogicalSwitch := binding.VtepLogicalSwitchName()
-	if vtepClient := c.getVtepClient(); vtepClient != nil {
+	if c.config.VtepDbAddr != "" {
+		vtepClient := c.getVtepClient()
+		if vtepClient == nil {
+			return fmt.Errorf("%w at %s", errVtepDBNotConnected, c.config.VtepDbAddr)
+		}
 		if err := vtepClient.RemoveVtepBinding(
 			binding.Spec.PhysicalSwitch,
 			binding.Spec.PhysicalPort,
@@ -161,10 +222,8 @@ func (c *Controller) cleanupVtepBinding(binding *kubeovnv1.VtepBinding) error {
 		return err
 	}
 	if lsp != nil {
-		if owner := lsp.ExternalIDs[ovs.VtepBindingKey]; owner != "" && owner != binding.Name {
-			klog.Infof("skip deleting LSP %s: owned by vtep binding %s, not %s", lspName, owner, binding.Name)
-		} else if ownerUID := lsp.ExternalIDs[ovs.VtepBindingUIDKey]; ownerUID != "" && ownerUID != string(binding.UID) {
-			klog.Infof("skip deleting LSP %s: owned by vtep binding UID %s, not %s", lspName, ownerUID, binding.UID)
+		if !ovs.VtepLSPOwnedBy(lsp, binding.Name, string(binding.UID)) {
+			klog.Infof("skip deleting LSP %s: not exactly owned by vtep binding %s/%s", lspName, binding.Name, binding.UID)
 		} else if err := c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
 			klog.Errorf("failed to delete vtep logical switch port %s for binding %s: %v", lspName, binding.Name, err)
 			return err
@@ -216,21 +275,7 @@ func (c *Controller) reconcileVtepBinding(binding *kubeovnv1.VtepBinding) error 
 		return fmt.Errorf("failed to create vtep logical switch port %s: %w", lspName, err)
 	}
 
-	if c.config.VtepDbAddr != "" {
-		vtepClient := c.getVtepClient()
-		if vtepClient == nil {
-			return fmt.Errorf("%w at %s", errVtepDBNotConnected, c.config.VtepDbAddr)
-		}
-		if err = vtepClient.EnsureVtepBinding(
-			binding.Spec.PhysicalSwitch,
-			binding.Spec.PhysicalPort,
-			vtepLogicalSwitch,
-			binding.Name,
-			binding.Spec.VlanID,
-		); err != nil {
-			return fmt.Errorf("failed to ensure VTEP DB binding: %w", err)
-		}
-	}
+	c.reconcileVtepDBStatus(binding, vtepLogicalSwitch)
 
 	binding.Status.LogicalSwitch = subnet.Name
 	binding.Status.LogicalSwitchPort = lspName
@@ -251,6 +296,29 @@ func (c *Controller) reconcileVtepBinding(binding *kubeovnv1.VtepBinding) error 
 	}
 	binding.Status.Chassis = chassisName
 	return nil
+}
+
+func (c *Controller) reconcileVtepDBStatus(binding *kubeovnv1.VtepBinding, vtepLogicalSwitch string) {
+	if c.config.VtepDbAddr == "" {
+		binding.Status.SetVTEPDBReady("NotRequired", "")
+		return
+	}
+	vtepClient := c.getVtepClient()
+	if vtepClient == nil {
+		binding.Status.NotVTEPDBReady("VTEPDBNotConnected", errVtepDBNotConnected.Error())
+		return
+	}
+	if err := vtepClient.EnsureVtepBinding(
+		binding.Spec.PhysicalSwitch,
+		binding.Spec.PhysicalPort,
+		vtepLogicalSwitch,
+		binding.Name,
+		binding.Spec.VlanID,
+	); err != nil {
+		binding.Status.NotVTEPDBReady("VTEPDBReconcileFailed", err.Error())
+		return
+	}
+	binding.Status.SetVTEPDBReady("VTEPDBReconciled", "")
 }
 
 func (c *Controller) validateVtepBindingConflict(binding *kubeovnv1.VtepBinding, vtepLogicalSwitch string) error {
@@ -284,6 +352,7 @@ func (c *Controller) patchVtepBindingStatusCondition(binding *kubeovnv1.VtepBind
 		c.recorder.Eventf(binding, corev1.EventTypeWarning, reason, "%s", errMsg)
 	} else {
 		binding.Status.ReadyCondition(reason, "")
+		binding.Status.ClearError()
 		c.recorder.Eventf(binding, corev1.EventTypeNormal, reason, "")
 	}
 	return c.patchVtepBindingStatus(binding)
@@ -320,7 +389,7 @@ func (c *Controller) handleAddVtepBindingFinalizer(binding *kubeovnv1.VtepBindin
 	if _, err = c.config.KubeOvnClient.KubeovnV1().VtepBindings().Patch(context.Background(), binding.Name,
 		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil
+			return errVtepBindingGone
 		}
 		klog.Errorf("failed to add finalizer for vtep binding %s: %v", binding.Name, err)
 		return err
@@ -367,7 +436,7 @@ func (c *Controller) setVtepClient(client ovs.VtepDBClient) {
 }
 
 func (c *Controller) tryConnectVtepClient() error {
-	if c.config.VtepDbAddr == "" {
+	if !c.hardwareVtepEnabled() || c.config.VtepDbAddr == "" {
 		return nil
 	}
 	if c.getVtepClient() != nil {
@@ -389,20 +458,21 @@ func (c *Controller) tryConnectVtepClient() error {
 }
 
 func (c *Controller) enqueueAllVtepBindings() {
+	if c.vtepBindingsLister == nil || c.addOrUpdateVtepBindingQueue == nil {
+		return
+	}
 	bindings, err := c.vtepBindingsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vtep bindings after VTEP DB connect: %v", err)
 		return
 	}
 	for _, binding := range bindings {
-		if binding.DeletionTimestamp.IsZero() {
-			c.addOrUpdateVtepBindingQueue.Add(binding.Name)
-		}
+		c.addOrUpdateVtepBindingQueue.Add(binding.Name)
 	}
 }
 
 func (c *Controller) startVtepClientReconnect(ctx context.Context) {
-	if c.config.VtepDbAddr == "" {
+	if !c.hardwareVtepEnabled() || c.config.VtepDbAddr == "" {
 		return
 	}
 	go wait.UntilWithContext(ctx, func(context.Context) {

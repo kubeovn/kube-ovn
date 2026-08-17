@@ -25,6 +25,9 @@ func (c *VtepClient) EnsureLogicalSwitch(name, bindingName string) (*vtep.Logica
 		return nil, err
 	}
 	if ls != nil {
+		if vendor := ls.OtherConfig[vtepOtherConfigVendorKey]; vendor != "" && vendor != util.CniTypeName {
+			return nil, fmt.Errorf("VTEP logical switch %s exists but is not owned by Kube-OVN", name)
+		}
 		return ls, nil
 	}
 
@@ -79,8 +82,10 @@ func (c *VtepClient) GetLogicalSwitch(name string, ignoreNotFound bool) (*vtep.L
 	return &lsList[0], nil
 }
 
-// DeleteLogicalSwitchIfOwned deletes the Logical_Switch when owned by the binding
-// and not referenced by any Physical_Port.vlan_bindings.
+// DeleteLogicalSwitchIfOwned deletes the Logical_Switch when it is Kube-OVN-owned
+// and not referenced by any Physical_Port.vlan_bindings. Shared names across
+// bindings are safe: the last unreferenced row is deleted regardless of which
+// binding originally created it.
 func (c *VtepClient) DeleteLogicalSwitchIfOwned(name, bindingName string) error {
 	ls, err := c.GetLogicalSwitch(name, true)
 	if err != nil {
@@ -89,9 +94,8 @@ func (c *VtepClient) DeleteLogicalSwitchIfOwned(name, bindingName string) error 
 	if ls == nil {
 		return nil
 	}
-	if ls.OtherConfig[vtepOtherConfigVendorKey] != util.CniTypeName ||
-		ls.OtherConfig[vtepOtherConfigBindingKey] != bindingName {
-		klog.Infof("skip deleting VTEP logical switch %s: not owned by binding %s", name, bindingName)
+	if ls.OtherConfig[vtepOtherConfigVendorKey] != util.CniTypeName {
+		klog.Infof("skip deleting VTEP logical switch %s: not owned by Kube-OVN (binding %s)", name, bindingName)
 		return nil
 	}
 
@@ -117,6 +121,6 @@ func (c *VtepClient) DeleteLogicalSwitchIfOwned(name, bindingName string) error 
 	if err = c.Transact("vtep-ls-del", ops); err != nil {
 		return fmt.Errorf("delete VTEP logical switch %s: %w", name, err)
 	}
-	klog.Infof("deleted VTEP logical switch %s owned by binding %s", name, bindingName)
+	klog.Infof("deleted VTEP logical switch %s after cleanup of binding %s", name, bindingName)
 	return nil
 }

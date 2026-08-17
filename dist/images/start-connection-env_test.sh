@@ -61,10 +61,12 @@ EOF
     OVN_NB_ADDR=tcp:nb.example.com:30641 \
     OVN_SB_ADDR=tcp:sb.example.com:30642 \
     VTEP_DB_ADDR=tcp:switch.example.com:6640 \
+    ENABLE_HARDWARE_VTEP=true \
     bash ./start-controller.sh
   )
 
   assert_contains "$out" "--vtep-db-addr=tcp:switch.example.com:6640"
+  assert_contains "$out" "--enable-hardware-vtep"
 }
 
 test_start_ovn_controller_vtep_uses_remotes() {

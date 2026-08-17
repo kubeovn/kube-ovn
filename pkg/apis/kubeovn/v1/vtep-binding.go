@@ -175,6 +175,7 @@ func (s *VtepBindingStatus) EnsureCondition(ctype ConditionType) {
 // EnsureStandardConditions - helper to inject standard conditions
 func (s *VtepBindingStatus) EnsureStandardConditions() {
 	s.EnsureCondition(Ready)
+	s.EnsureCondition(VTEPDBReady)
 }
 
 // SetCondition updates or creates a new condition
@@ -202,6 +203,21 @@ func (s *VtepBindingStatus) NotReady(reason, message string) {
 // SetError - shortcut to set error condition
 func (s *VtepBindingStatus) SetError(reason, message string) {
 	s.SetCondition(Error, reason, message)
+}
+
+// ClearError - shortcut to clear a previously recorded error condition
+func (s *VtepBindingStatus) ClearError() {
+	s.ClearCondition(Error, "Recovered", "")
+}
+
+// SetVTEPDBReady marks Hardware VTEP DB reconciliation as healthy or not required
+func (s *VtepBindingStatus) SetVTEPDBReady(reason, message string) {
+	s.SetCondition(VTEPDBReady, reason, message)
+}
+
+// NotVTEPDBReady marks Hardware VTEP DB reconciliation as unhealthy
+func (s *VtepBindingStatus) NotVTEPDBReady(reason, message string) {
+	s.ClearCondition(VTEPDBReady, reason, message)
 }
 
 // IsConditionTrue - if condition is true

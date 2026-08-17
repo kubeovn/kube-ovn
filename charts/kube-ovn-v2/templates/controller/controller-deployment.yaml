@@ -222,6 +222,8 @@ spec:
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
             {{- if .Values.features.enableHardwareVtep }}
+            - name: ENABLE_HARDWARE_VTEP
+              value: "true"
             - name: VTEP_DB_ADDR
               value: "{{ .Values.networking.vtepDbAddr }}"
             {{- end }}

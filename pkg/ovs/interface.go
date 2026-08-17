@@ -302,7 +302,18 @@ type PortBinding interface {
 type VtepDBClient interface {
 	EnsureVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName string, vlanID int) error
 	RemoveVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName string, vlanID int) error
+	GCOrphanedVtepState(live []VtepLiveBinding) error
 	Common
+}
+
+// VtepLiveBinding is the subset of a VtepBinding used to garbage-collect
+// Hardware VTEP Logical_Switch rows and Physical_Port.vlan_bindings.
+type VtepLiveBinding struct {
+	Name           string
+	PhysicalSwitch string
+	PhysicalPort   string
+	LogicalSwitch  string
+	VlanID         int
 }
 
 type Common interface {

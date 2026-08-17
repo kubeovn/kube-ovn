@@ -6486,6 +6486,20 @@ func (mr *MockVtepDBClientMockRecorder) EnsureVtepBinding(physicalSwitch, physic
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureVtepBinding", reflect.TypeOf((*MockVtepDBClient)(nil).EnsureVtepBinding), physicalSwitch, physicalPort, logicalSwitch, bindingName, vlanID)
 }
 
+// GCOrphanedVtepState mocks base method.
+func (m *MockVtepDBClient) GCOrphanedVtepState(live []ovs.VtepLiveBinding) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GCOrphanedVtepState", live)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// GCOrphanedVtepState indicates an expected call of GCOrphanedVtepState.
+func (mr *MockVtepDBClientMockRecorder) GCOrphanedVtepState(live any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GCOrphanedVtepState", reflect.TypeOf((*MockVtepDBClient)(nil).GCOrphanedVtepState), live)
+}
+
 // GetEntityInfo mocks base method.
 func (m *MockVtepDBClient) GetEntityInfo(entity any) error {
 	m.ctrl.T.Helper()

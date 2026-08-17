@@ -33,3 +33,24 @@ func TestVtepBindingStatusReady(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(bytes), `"ready":true`)
 }
+
+func TestVtepBindingStatusClearsErrorAndSetsVTEPDBReady(t *testing.T) {
+	t.Parallel()
+	status := &VtepBindingStatus{}
+	status.EnsureStandardConditions()
+	status.SetError("ReconcileFailed", "subnet missing")
+	require.True(t, status.IsConditionTrue(Error))
+
+	status.ReadyCondition("VTEPAttachmentReady", "")
+	status.ClearError()
+	require.True(t, status.Ready)
+	require.Equal(t, corev1.ConditionFalse, status.GetCondition(Error).Status)
+	require.Equal(t, "Recovered", status.GetCondition(Error).Reason)
+
+	status.NotVTEPDBReady("VTEPDBNotConnected", "hardware VTEP DB not connected")
+	require.False(t, status.IsConditionTrue(VTEPDBReady))
+	require.Equal(t, "VTEPDBNotConnected", status.GetCondition(VTEPDBReady).Reason)
+
+	status.SetVTEPDBReady("VTEPDBReconciled", "")
+	require.True(t, status.IsConditionTrue(VTEPDBReady))
+}

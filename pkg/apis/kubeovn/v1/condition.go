@@ -15,6 +15,8 @@ const (
 	Init = "Init"
 	// Error => last recorded error
 	Error = "Error"
+	// VTEPDBReady => Hardware VTEP OVSDB Logical_Switch / vlan_bindings are reconciled
+	VTEPDBReady = "VTEPDBReady"
 
 	ReasonInit = "Init"
 )

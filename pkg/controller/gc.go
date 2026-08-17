@@ -51,6 +51,7 @@ func (c *Controller) gc() error {
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
 		c.gcRouterLBRules,
+		c.gcVtepBinding,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -1326,6 +1327,69 @@ func (c *Controller) gcRouterLBRules() error {
 	}
 
 	klog.Infof("finish to gc router lb rules")
+	return nil
+}
+
+func (c *Controller) gcVtepBinding() error {
+	if !c.hardwareVtepEnabled() || c.vtepBindingsLister == nil {
+		return nil
+	}
+
+	klog.Infof("start to gc hardware vtep state")
+	bindings, err := c.vtepBindingsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vtep bindings for gc: %v", err)
+		return err
+	}
+
+	liveByName := make(map[string]*kubeovnv1.VtepBinding, len(bindings))
+	live := make([]ovs.VtepLiveBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		if !binding.DeletionTimestamp.IsZero() {
+			continue
+		}
+		liveByName[binding.Name] = binding
+		live = append(live, ovs.VtepLiveBinding{
+			Name:           binding.Name,
+			PhysicalSwitch: binding.Spec.PhysicalSwitch,
+			PhysicalPort:   binding.Spec.PhysicalPort,
+			LogicalSwitch:  binding.VtepLogicalSwitchName(),
+			VlanID:         binding.Spec.VlanID,
+		})
+	}
+
+	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(true, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return lsp.Type == "vtep"
+	})
+	if err != nil {
+		klog.Errorf("failed to list vtep logical switch ports for gc: %v", err)
+		return err
+	}
+	for _, lsp := range lsps {
+		owner := lsp.ExternalIDs[ovs.VtepBindingKey]
+		ownerUID := lsp.ExternalIDs[ovs.VtepBindingUIDKey]
+		if owner == "" {
+			continue
+		}
+		liveBinding, ok := liveByName[owner]
+		if ok && (ownerUID == "" || ownerUID == string(liveBinding.UID)) {
+			continue
+		}
+		klog.Infof("gc orphaned vtep logical switch port %s owned by %s/%s", lsp.Name, owner, ownerUID)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+			klog.Errorf("failed to gc vtep logical switch port %s: %v", lsp.Name, err)
+			return err
+		}
+	}
+
+	if vtepClient := c.getVtepClient(); vtepClient != nil {
+		if err := vtepClient.GCOrphanedVtepState(live); err != nil {
+			klog.Errorf("failed to gc hardware VTEP DB state: %v", err)
+			return err
+		}
+	}
+
+	klog.Infof("finish to gc hardware vtep state")
 	return nil
 }
 

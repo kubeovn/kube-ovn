@@ -584,8 +584,8 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVlanQueue: newTypedRateLimitingQueue[string]("UpdateVlan", nil),
 		vlanKeyMutex:    keymutex.NewHashed(numKeyLocks),
 
-		vtepBindingsLister:          vtepBindingInformer.Lister(),
-		vtepBindingSynced:           vtepBindingInformer.Informer().HasSynced,
+		vtepBindingsLister:          nil,
+		vtepBindingSynced:           nil,
 		addOrUpdateVtepBindingQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVtepBinding", nil),
 		vtepBindingKeyMutex:         keymutex.NewHashed(numKeyLocks),
 
@@ -714,12 +714,8 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
-	if config.VtepDbAddr != "" {
-		if err = controller.tryConnectVtepClient(); err != nil {
-			klog.Warningf("hardware VTEP DB not available at %s during startup: %v; will retry in background",
-				config.VtepDbAddr, err)
-		}
-	}
+	controller.setupHardwareVtep(vtepBindingInformer)
+	controller.initHardwareVtepClient()
 	if config.EnableLb {
 		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
 		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
@@ -849,7 +845,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
-		controller.vlanSynced, controller.vtepBindingSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
+		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
 		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
@@ -866,6 +862,7 @@ func Run(ctx context.Context, config *Configuration) {
 	if controller.config.EnableDNSNameResolver {
 		cacheSyncs = append(cacheSyncs, controller.dnsNameResolversSynced)
 	}
+	cacheSyncs = append(cacheSyncs, controller.hardwareVtepCacheSyncs()...)
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
@@ -984,13 +981,7 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add vlan event handler")
 	}
 
-	if _, err = vtepBindingInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddOrUpdateVtepBinding,
-		UpdateFunc: controller.enqueueUpdateVtepBinding,
-		DeleteFunc: controller.enqueueDeleteVtepBinding,
-	}); err != nil {
-		util.LogFatalAndExit(err, "failed to add vtep binding event handler")
-	}
+	controller.addHardwareVtepEventHandler(vtepBindingInformer)
 
 	if _, err = sgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSg,
@@ -1462,7 +1453,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}
 	go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
 	go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
-	go wait.Until(runWorker("add/update vtep binding", c.addOrUpdateVtepBindingQueue, c.handleAddOrUpdateVtepBinding), time.Second, ctx.Done())
+	c.startHardwareVtepWorkers(ctx)
 	go wait.Until(runWorker("add namespace", c.addNamespaceQueue, c.handleAddNamespace), time.Second, ctx.Done())
 	err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
 		subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
@@ -1547,7 +1538,6 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("delete vlan", c.delVlanQueue, c.handleDelVlan), time.Second, ctx.Done())
 		go wait.Until(runWorker("update vlan", c.updateVlanQueue, c.handleUpdateVlan), time.Second, ctx.Done())
 	}
-	c.startVtepClientReconnect(ctx)
 
 	if c.config.EnableEipSnat {
 		go wait.Until(func() {

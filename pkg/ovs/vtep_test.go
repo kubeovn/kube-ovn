@@ -159,6 +159,110 @@ func (suite *OvnClientTestSuite) testRemoveVtepBindingSkipsForeignMapping() {
 	require.Equal(t, foreign.UUID, port.VLANBindings[vlanID])
 }
 
+func (suite *OvnClientTestSuite) Test_SharedLogicalSwitchDeleteAndGC() {
+	suite.testSharedLogicalSwitchDeleteAndGC()
+}
+
+func (suite *OvnClientTestSuite) testSharedLogicalSwitchDeleteAndGC() {
+	t := suite.T()
+	t.Parallel()
+
+	vtepClient := suite.vtepClient
+	require.NotNil(t, vtepClient)
+
+	psName := "nexus-ut-shared"
+	portName := "Ethernet1/3"
+	lsName := "shared-ls"
+	vlanA, vlanB := 120, 121
+
+	portUUID := ovsclient.NamedUUID()
+	psUUID := ovsclient.NamedUUID()
+	globalUUID := ovsclient.NamedUUID()
+	portOps, err := vtepClient.Create(&vtep.PhysicalPort{
+		UUID: portUUID,
+		Name: portName,
+	})
+	require.NoError(t, err)
+	psOps, err := vtepClient.Create(&vtep.PhysicalSwitch{
+		UUID:  psUUID,
+		Name:  psName,
+		Ports: []string{portUUID},
+	})
+	require.NoError(t, err)
+	globalOps, err := vtepClient.Create(&vtep.Global{
+		UUID:     globalUUID,
+		Switches: []string{psUUID},
+	})
+	require.NoError(t, err)
+	ops := append(portOps, psOps...)
+	ops = append(ops, globalOps...)
+	require.NoError(t, vtepClient.Transact("vtep-fixture-shared", ops))
+
+	require.NoError(t, vtepClient.EnsureVtepBinding(psName, portName, lsName, "binding-a", vlanA))
+	require.NoError(t, vtepClient.EnsureVtepBinding(psName, portName, lsName, "binding-b", vlanB))
+
+	require.NoError(t, vtepClient.RemoveVtepBinding(psName, portName, lsName, "binding-a", vlanA))
+	ls, err := vtepClient.GetLogicalSwitch(lsName, true)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+
+	require.NoError(t, vtepClient.RemoveVtepBinding(psName, portName, lsName, "binding-b", vlanB))
+	ls, err = vtepClient.GetLogicalSwitch(lsName, true)
+	require.NoError(t, err)
+	require.Nil(t, ls)
+}
+
+func (suite *OvnClientTestSuite) Test_GCOrphanedVtepState() {
+	suite.testGCOrphanedVtepState()
+}
+
+func (suite *OvnClientTestSuite) testGCOrphanedVtepState() {
+	t := suite.T()
+	t.Parallel()
+
+	vtepClient := suite.vtepClient
+	require.NotNil(t, vtepClient)
+
+	psName := "nexus-ut-gc"
+	portName := "Ethernet1/4"
+	lsName := "gc-ls"
+	vlanID := 130
+
+	portUUID := ovsclient.NamedUUID()
+	psUUID := ovsclient.NamedUUID()
+	globalUUID := ovsclient.NamedUUID()
+	portOps, err := vtepClient.Create(&vtep.PhysicalPort{
+		UUID: portUUID,
+		Name: portName,
+	})
+	require.NoError(t, err)
+	psOps, err := vtepClient.Create(&vtep.PhysicalSwitch{
+		UUID:  psUUID,
+		Name:  psName,
+		Ports: []string{portUUID},
+	})
+	require.NoError(t, err)
+	globalOps, err := vtepClient.Create(&vtep.Global{
+		UUID:     globalUUID,
+		Switches: []string{psUUID},
+	})
+	require.NoError(t, err)
+	ops := append(portOps, psOps...)
+	ops = append(ops, globalOps...)
+	require.NoError(t, vtepClient.Transact("vtep-fixture-gc", ops))
+
+	require.NoError(t, vtepClient.EnsureVtepBinding(psName, portName, lsName, "gc-binding", vlanID))
+	require.NoError(t, vtepClient.GCOrphanedVtepState(nil))
+
+	port, err := vtepClient.GetPhysicalPort(psName, portName, false)
+	require.NoError(t, err)
+	_, ok := port.VLANBindings[vlanID]
+	require.False(t, ok)
+	ls, err := vtepClient.GetLogicalSwitch(lsName, true)
+	require.NoError(t, err)
+	require.Nil(t, ls)
+}
+
 func (suite *OvnClientTestSuite) testGetPortBindingByLogicalPort() {
 	t := suite.T()
 	t.Parallel()

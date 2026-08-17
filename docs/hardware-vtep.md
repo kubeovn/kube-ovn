@@ -73,13 +73,18 @@ ENABLE_HARDWARE_VTEP=true VTEP_DB_ADDR='tcp:[192.0.2.10]:6640' bash dist/images/
 ```
 
 This deploys `ovn-controller-vtep` and configures `kube-ovn-controller` with
-`--vtep-db-addr`. The switch must already expose a Hardware VTEP OVSDB with
-`Physical_Switch` / `Physical_Port` rows that match the CR.
+`--enable-hardware-vtep` and `--vtep-db-addr`. The switch must already expose a
+Hardware VTEP OVSDB with `Physical_Switch` / `Physical_Port` rows that match the CR.
+
+`--enable-hardware-vtep` is the feature gate (default `false`). When it is disabled,
+the controller does not start the `VtepBinding` informer or worker and will not
+create NB `type=vtep` ports. `--vtep-db-addr` only enables Hardware VTEP OVSDB
+writes after the feature is turned on.
 
 If the Hardware VTEP DB is unreachable at controller startup, kube-ovn-controller
-still starts and continues reconciling other resources. Affected `VtepBinding`
-objects report `VTEPDBNotConnected` until the DB is reachable; the controller
-retries in the background.
+still starts and continues reconciling other resources. `VtepBinding.status.ready`
+follows OVN Southbound chassis attachment. Hardware VTEP DB health is reported on
+the separate `VTEPDBReady` condition and retried in the background.
 
 ## Prerequisites
 
@@ -144,6 +149,8 @@ physical attachment.
 
 - No BGP / EVPN / MLAG / vPC automation.
 - No DHCP or IPAM for bare-metal servers.
-- Without `VTEP_DB_ADDR`, Kube-OVN still creates the NB `type=vtep` LSP, but does
-  not write VTEP `Logical_Switch` / `vlan_bindings`; Ready still waits for SB
-  chassis binding via `ovn-controller-vtep`.
+- Without `VTEP_DB_ADDR`, Kube-OVN still creates the NB `type=vtep` LSP when
+  `--enable-hardware-vtep` is set, but does not write VTEP `Logical_Switch` /
+  `vlan_bindings`. Ready still waits for SB chassis binding via
+  `ovn-controller-vtep`. Hardware VTEP DB reconciliation is reported as
+  `VTEPDBReady=NotRequired`.
