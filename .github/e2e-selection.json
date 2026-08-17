@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedRunnerJobs": 81,
+  "expectedRunnerJobs": 82,
   "forceFull": false,
   "fullThreshold": 3,
   "productionPrefixes": ["cmd/", "fastpath/", "pkg/", "versions/"],
@@ -79,6 +79,12 @@
       "groups": ["policy"],
       "owner": "networking-e2e",
       "reason": "network policy reconciliation"
+    },
+    {
+      "patterns": ["test/e2e/bgp/**", "pkg/speaker/**", "cmd/speaker/**"],
+      "groups": ["bgp-routing"],
+      "owner": "networking-e2e",
+      "reason": "BGP speaker control plane and end-to-end coverage"
     },
     {
       "patterns": ["test/e2e/multus/**", "test/e2e/non-primary-cni/**", "test/e2e/cilium-chaining/**", "yamls/cilium-chaining.yaml"],
@@ -168,6 +174,11 @@
         {"id": "no-np-test"},
         {"id": "kube-ovn-cnp-domain-e2e", "matrix": {"ip-family": ["ipv4"], "mode": ["overlay"]}},
         {"id": "kube-ovn-anp-domain-e2e", "matrix": {"ip-family": ["ipv4"], "mode": ["overlay"]}}
+      ]
+    },
+    "bgp-routing": {
+      "jobs": [
+        {"id": "bgp-speaker-e2e"}
       ]
     },
     "multi-cni": {
