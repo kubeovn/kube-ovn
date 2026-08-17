@@ -643,6 +643,13 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("high-water gate decision is not current durable coverage", workflow)
         self.assertGreaterEqual(workflow.count("for _ in $(seq 1 12)"), 2)
         self.assertIn("RUN_ATTEMPT=\"$latestAuthorizedAttempt\"", workflow)
+        self.assertIn("pre-write-run-pages.json", workflow)
+        self.assertIn("pre-write-comments.json", workflow)
+        self.assertIn("pre-write-attempt-state.json", workflow)
+        self.assertLess(
+            workflow.rindex("> pre-write-run-pages.json"),
+            workflow.rindex("> pre-write-comments.json"),
+        )
         self.assertLess(
             workflow.rindex("> final-executor-run-pages.json"),
             workflow.rindex("> final-comments.json"),

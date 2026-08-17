@@ -1320,6 +1320,81 @@ jobs:
               fi
             fi
           fi
+          if [ "$RUN_ACTION" = completed ]; then
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              > pre-write-run-pages.json
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+              > pre-write-comments.json
+            python3 - <<'PY' > pre-write-latest-run.json
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pages = json.loads(Path("pre-write-run-pages.json").read_text())
+          runs = [run for page in pages for run in page["workflow_runs"]]
+          latest = e2eControl.latestExecutorRun(
+              runs,
+              int(os.environ["PR_NUMBER"]),
+              os.environ["HEAD_SHA"],
+              os.environ["BASE_REF"],
+              os.environ["CATALOG_REVISION"] or None,
+              os.environ["TRUSTED_REF"],
+          )
+          print(json.dumps(latest or {}))
+          PY
+            preWriteRunId=$(jq -r '.id // empty' pre-write-latest-run.json)
+            if [ -n "$preWriteRunId" ]; then
+              preWriteRequestKey=$(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("pre-write-latest-run.json").read_text())
+          metadata = e2eControl.parseExecutorRunName(run["display_title"])
+          metadata["baseSHA"] = os.environ["BASE_SHA"]
+          metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
+          print(e2eControl.executorRequestKey(metadata))
+          PY
+              )
+              if [ "$preWriteRequestKey" = "$RUN_REQUEST_KEY" ]; then
+                preWriteRunAttempt=$(jq -r '.run_attempt' pre-write-latest-run.json)
+                for candidateAttempt in $(seq "$preWriteRunAttempt" -1 1); do
+                  if [ "$candidateAttempt" = "$preWriteRunAttempt" ]; then
+                    cp pre-write-latest-run.json pre-write-attempt-state.json
+                  else
+                    gh api "repos/$GITHUB_REPOSITORY/actions/runs/$preWriteRunId/attempts/$candidateAttempt" \
+                      > pre-write-attempt-state.json
+                  fi
+                  candidateAuthorized=$(python3 - "$HEAD_SHA" "$BASE_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          run = json.loads(Path("pre-write-attempt-state.json").read_text())
+          pages = json.loads(Path("pre-write-comments.json").read_text())
+          print(
+              "true"
+              if e2eControl.isAuthorizedRunAttempt(run, pages, sys.argv[1], sys.argv[2])
+              else "false"
+          )
+          PY
+                  )
+                  if [ "$candidateAuthorized" = true ]; then
+                    if [ "$preWriteRunId" != "$RUN_ID" ] || \
+                       [ "$candidateAttempt" -gt "$RUN_ATTEMPT" ]; then
+                      exit 0
+                    fi
+                    break
+                  fi
+                done
+              fi
+            fi
+          fi
           externalId="x86-e2e-pr-$PR_NUMBER-$HEAD_SHA"
           existingCheck=$(gh api \
             -H 'Accept: application/vnd.github+json' \
