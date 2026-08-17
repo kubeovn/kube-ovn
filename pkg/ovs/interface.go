@@ -60,6 +60,8 @@ type LogicalRouterPort interface {
 	GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error)
 	ListLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error)
 	ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error)
+	CreateGatewayChassises(lrpName string, chassises ...string) error
+	DeleteGatewayChassises(lrpName string, chassises []string) error
 	LogicalRouterPortExists(lrpName string) (bool, error)
 }
 
