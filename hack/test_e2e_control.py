@@ -692,6 +692,10 @@ class E2EControlTest(unittest.TestCase):
             workflow.index("Recorded x86 E2E approval"),
         )
         self.assertGreaterEqual(workflow.count("approvalIntents"), 2)
+
+    def testGateWorkflowRecoversTrustedTerminalDecisions(self):
+        workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
+
         self.assertIn("Unmanaged executor reruns do not change the fixed gate", workflow)
         self.assertIn("Ignoring an unmanaged newer attempt while preserving the authorized terminal result", workflow)
         self.assertIn("name: Persist the completed gate decision", workflow)
