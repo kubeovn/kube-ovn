@@ -1234,33 +1234,37 @@ jobs:
                   trustedGateWorkflowId=$(gh api \
                     "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml" --jq '.id')
                   defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
-                  gh api --paginate --slurp \
-                    "repos/$GITHUB_REPOSITORY/actions/workflows/$trustedGateWorkflowId/runs?event=workflow_run&branch=$defaultBranch&actor=github-actions%5Bbot%5D&per_page=100" \
-                    > high-water-gate-run-pages.json
-                  jq -r \
-                    --argjson workflowId "$trustedGateWorkflowId" \
-                    --arg repository "$GITHUB_REPOSITORY" \
-                    --arg defaultBranch "$defaultBranch" \
-                    '[.[].workflow_runs[] | select(
-                      .workflow_id == $workflowId and
-                      .path == ".github/workflows/x86-e2e-gate.yaml" and
-                      .event == "workflow_run" and
-                      .actor.login == "github-actions[bot]" and
-                      .head_repository.full_name == $repository and
-                      .head_branch == $defaultBranch)]
-                     | sort_by(.created_at) | reverse[] | .id' high-water-gate-run-pages.json \
-                    > high-water-gate-runs.txt
                   artifactId=''
-                  while IFS= read -r ownerRunId; do
-                    [ -n "$ownerRunId" ] || continue
-                    gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ownerRunId/artifacts?per_page=100" \
-                      > high-water-run-artifacts.json
-                    artifactId=$(jq -r --arg name "$artifactName" \
-                      '[.artifacts[] | select(.expired == false and .name == $name)]
-                       | sort_by(.created_at) | reverse | .[0].id // empty' \
-                      high-water-run-artifacts.json)
-                    [ -z "$artifactId" ] || break
-                  done < high-water-gate-runs.txt
+                  for _ in $(seq 1 12); do
+                    gh api --paginate --slurp \
+                      "repos/$GITHUB_REPOSITORY/actions/workflows/$trustedGateWorkflowId/runs?event=workflow_run&branch=$defaultBranch&actor=github-actions%5Bbot%5D&per_page=100" \
+                      > high-water-gate-run-pages.json
+                    jq -r \
+                      --argjson workflowId "$trustedGateWorkflowId" \
+                      --arg repository "$GITHUB_REPOSITORY" \
+                      --arg defaultBranch "$defaultBranch" \
+                      '[.[].workflow_runs[] | select(
+                        .workflow_id == $workflowId and
+                        .path == ".github/workflows/x86-e2e-gate.yaml" and
+                        .event == "workflow_run" and
+                        .actor.login == "github-actions[bot]" and
+                        .head_repository.full_name == $repository and
+                        .head_branch == $defaultBranch)]
+                       | sort_by(.created_at) | reverse[] | .id' high-water-gate-run-pages.json \
+                      > high-water-gate-runs.txt
+                    while IFS= read -r ownerRunId; do
+                      [ -n "$ownerRunId" ] || continue
+                      gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ownerRunId/artifacts?per_page=100" \
+                        > high-water-run-artifacts.json
+                      artifactId=$(jq -r --arg name "$artifactName" \
+                        '[.artifacts[] | select(.expired == false and .name == $name)]
+                         | sort_by(.created_at) | reverse | .[0].id // empty' \
+                        high-water-run-artifacts.json)
+                      [ -z "$artifactId" ] || break
+                    done < high-water-gate-runs.txt
+                    [ -n "$artifactId" ] && break
+                    sleep 5
+                  done
                   if [ -z "$artifactId" ]; then
                     echo 'The latest authorized executor decision artifact is unavailable.'
                     exit 1
