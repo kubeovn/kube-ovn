@@ -117,6 +117,55 @@ class E2ESelectorTest(unittest.TestCase):
             6,
         )
 
+    def testPullRequestExecutesOnlyAutomaticSmokeWhileGroupsWait(self):
+        plan = self.select(["test/e2e/cnp-domain/e2e_test.go"])
+
+        executionPlan = e2eSelector.executionPlan(self.catalog, plan, "pull_request")
+
+        self.assertEqual(executionPlan["selectedGroups"], [])
+        self.assertEqual(len(executionPlan["matrix"]), 3)
+        self.assertEqual(
+            {entry["selection"] for entry in executionPlan["matrix"]},
+            {"smoke"},
+        )
+        self.assertEqual(plan["recommendedGroups"], ["policy"])
+        self.assertTrue(plan["approvalRequired"])
+
+    def testPullRequestExecutesAutomaticFullCoverageWhenRequired(self):
+        plan = self.select(["pkg/controller/pod.go"])
+
+        executionPlan = e2eSelector.executionPlan(self.catalog, plan, "pull_request")
+
+        self.assertTrue(executionPlan["full"])
+        self.assertEqual(len(executionPlan["matrix"]), 82)
+
+    def testTrustedDispatchExecutesRecommendedAndRequestedCoverage(self):
+        plan = self.select(
+            ["test/e2e/cnp-domain/e2e_test.go"],
+            requestedGroups=["bgp-routing"],
+        )
+
+        executionPlan = e2eSelector.executionPlan(self.catalog, plan, "workflow_dispatch")
+
+        self.assertEqual(executionPlan["selectedGroups"], ["bgp-routing", "policy"])
+        self.assertEqual(executionPlan["recommendedGroups"], [])
+        self.assertFalse(executionPlan["approvalRequired"])
+        self.assertEqual(len(executionPlan["matrix"]), 19)
+        summary = e2eSelector.renderSummary(
+            executionPlan,
+            ["test/e2e/cnp-domain/e2e_test.go"],
+        )
+        self.assertIn("Approval required: `no`", summary)
+        self.assertNotIn("Waiting for:", summary)
+
+    def testPushExecutesTheCompleteSuite(self):
+        plan = self.select(["docs/design.md"])
+
+        executionPlan = e2eSelector.executionPlan(self.catalog, plan, "push")
+
+        self.assertTrue(executionPlan["full"])
+        self.assertEqual(len(executionPlan["matrix"]), 82)
+
     def testExplicitForceFullReasonOverridesAVisibleSafeFileList(self):
         plan = e2eSelector.select(
             self.catalog,
@@ -266,8 +315,6 @@ class E2ESelectorTest(unittest.TestCase):
             for script in re.findall(r"(?:\./)?(hack/[a-z0-9_./-]+\.sh)", blocks.get(jobId, ""))
             if (repoRoot / script).is_file()
         }
-        self.assertIn("hack/go-list.sh", scripts)
-
         for script in scripts:
             with self.subTest(script=script):
                 plan = self.select([script])
@@ -307,6 +354,26 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertTrue(plan["full"])
         self.assertEqual(len(plan["matrix"]), 82)
         self.assertEqual(plan["fullReason"], "label e2e:full requested the full suite")
+
+    def testRequestedFullIsNotReportedAsAutomaticCoverage(self):
+        plan = e2eSelector.select(
+            self.catalog,
+            ["test/e2e/cnp-domain/e2e_test.go"],
+            [],
+            [],
+            "0123456789abcdef",
+            requestedFull=True,
+        )
+
+        self.assertTrue(plan["full"])
+        self.assertTrue(plan["requestedFull"])
+        self.assertEqual(plan["automaticGroups"], [])
+        self.assertEqual(plan["selectedGroups"], sorted(self.catalog["groups"]))
+        self.assertEqual(len(plan["matrix"]), 82)
+        self.assertEqual(plan["fullReason"], "authorized request selected the full suite")
+        summary = e2eSelector.renderSummary(plan, ["test/e2e/cnp-domain/e2e_test.go"])
+        self.assertIn("Automatic coverage: mandatory smoke &#40;3 runner jobs&#41;", summary)
+        self.assertIn("Runner jobs in this run: 82", summary)
 
     def testInvalidRequestedGroupFails(self):
         with self.assertRaisesRegex(ValueError, "unknown requested group"):
@@ -434,6 +501,8 @@ class E2ESelectorTest(unittest.TestCase):
         plan = self.select(["test/e2e/cnp-domain/e2e_test.go"])
 
         summary = e2eSelector.renderSummary(plan, ["test/e2e/cnp-domain/e2e_test.go"])
+        self.assertIn("## x86 E2E selection report", summary)
+        self.assertNotIn("Shadow mode", summary)
         self.assertIn("Automatic coverage: mandatory smoke &#40;3 runner jobs&#41;", summary)
         self.assertIn("Recommended deferred groups: policy", summary)
         self.assertIn("Approval required: `yes`", summary)
@@ -513,6 +582,12 @@ class E2ESelectorTest(unittest.TestCase):
             "catalog",
         )
         self.assertEqual(len(plan["matrix"]), 82)
+        executionPlan = e2eSelector.executionPlan(None, plan, "pull_request")
+        self.assertEqual(executionPlan, plan)
+        summary = e2eSelector.renderSummary(executionPlan, [])
+        self.assertIn("Automatic coverage: full suite &#40;82 runner jobs&#41;", summary)
+        self.assertIn("Groups executing in this run: full suite", summary)
+        self.assertNotIn("Groups executing in this run: smoke only", summary)
 
     def testInvalidEventPayloadFallsBackToFullThroughCLI(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -614,7 +615,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("print(e2eControl.executorHeadBranch(request))", workflow)
         self.assertIn('git/refs/heads/$executorRef', workflow)
         self.assertIn('-f ref="$executorRef"', workflow)
-        self.assertNotIn("inputs.headSHA || github.sha", workflow)
+        self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
 
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
@@ -718,13 +719,15 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("attempt <= currentAttempt", workflow)
         self.assertIn("executed-selection-plan.json", workflow)
         self.assertIn("expectedCount >= 3000", workflow)
+        self.assertIn("args+=(--request-full)", workflow)
+        self.assertNotIn("args+=(--label e2e:full)", workflow)
         self.assertIn("ref: ${{ github.event.repository.default_branch }}", workflow)
         self.assertIn("ref: ${{ steps.context.outputs.trustedRef }}", workflow)
         self.assertNotIn("ref: ${{ steps.context.outputs.baseRef }}", workflow)
-        self.assertNotIn("inputs.headSHA || github.sha", workflow)
+        self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
         self.assertNotIn("contents: write", workflow)
 
-    def testExecutorDispatchKeepsPullRequestAndPushCoverageUnchanged(self):
+    def testPullRequestsExecuteAutomaticCoverageAndPushStaysFull(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
         catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
@@ -744,8 +747,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("executor workflow revision does not match the approved base", workflow)
         self.assertIn("trusted selector checkout does not match the approved base revision", workflow)
         self.assertIn("ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA", workflow)
-        self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 6)
-        self.assertGreaterEqual(workflow.count("needs: e2e-selection"), 3)
+        self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 5)
+        self.assertGreaterEqual(workflow.count("needs: e2e-selection"), 2)
         self.assertNotIn('entry["selection"] != "smoke"', workflow)
         self.assertIn("contents: read", workflow)
         self.assertIn("packages: read", workflow)
@@ -757,8 +760,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("allowed=('TAG','GO_VERSION','E2E_DIR','VERSION','DEBUG_WRAPPER')", workflow)
         self.assertNotIn("actions: write", workflow)
         self.assertNotIn("checks: write", workflow)
-        self.assertIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
-        self.assertNotIn(
+        self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
+        self.assertIn(
             "GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}",
             workflow,
         )
@@ -777,21 +780,59 @@ class E2EControlTest(unittest.TestCase):
             workflow,
         )
         self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)
+        self.assertIn("--request-full", workflow)
+        self.assertNotIn("args+=(--label e2e:full)", workflow)
         self.assertIn("expectedCount >= 3000", workflow)
-        self.assertIn("e2eSelector.expandWorkflow(workflow)", workflow)
+        self.assertIn(
+            'e2eSelector.executionPlan(catalog, plan, os.environ["EVENT_NAME"])',
+            workflow,
+        )
+        self.assertIn("except Exception:\n              catalog = None", workflow)
+        self.assertIn(
+            '"${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"',
+            workflow,
+        )
+        self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
+        self.assertGreaterEqual(
+            workflow.count(
+                "github.event.pull_request.head.sha || inputs.headSHA || github.sha"
+            ),
+            31,
+        )
+        self.assertIn(
+            '"e2e-selection-plan.json",\n              "e2e-selection-summary.md",',
+            workflow,
+        )
+        self.assertNotIn("continue-on-error:", blocks["e2e-selection"])
+        self.assertNotIn("e2eSelector.expandWorkflow(workflow)", workflow)
         resultBlock = blocks["e2e-executor-result"]
+        self.assertIn("if: always()", resultBlock)
         self.assertIn("permissions: {}", resultBlock)
         self.assertIn("selected x86 E2E Jobs did not succeed", resultBlock)
+        self.assertNotIn("netpol-path-filter", blocks)
+        resultNeeds = set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", resultBlock))
+        self.assertEqual(resultNeeds, testJobs | {"e2e-selection"})
+        pushNeeds = set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", blocks["push"]))
+        self.assertEqual(pushNeeds, {"e2e-executor-result"})
         for jobId in testJobs:
             with self.subTest(jobId=jobId):
                 self.assertIn(f"      - {jobId}\n", resultBlock)
                 block = blocks[jobId]
                 self.assertRegex(block, r"(?m)^    needs:(?:\n      - .+)+\n")
                 self.assertIn("e2e-selection", block)
-                self.assertIn("github.event_name != 'workflow_dispatch'", block)
-                self.assertIn("inputs.headSHA || github.sha", block)
+                self.assertIn(
+                    f"contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), '{jobId}')",
+                    block,
+                )
+                self.assertNotIn("github.event_name != 'workflow_dispatch'", block)
+                self.assertIn(
+                    "github.event.pull_request.head.sha || inputs.headSHA || github.sha",
+                    block,
+                )
                 self.assertIn("persist-credentials: false", block)
-        self.assertIn("github.event_name != 'workflow_dispatch'", blocks["push"])
+        self.assertIn("github.event_name == 'push'", blocks["push"])
+        self.assertIn("needs.e2e-executor-result.result == 'success'", blocks["push"])
+        self.assertNotIn("github.event_name != 'workflow_dispatch'", blocks["push"])
 
     def testKindPullUsesAnonymousGhcrWhenTokenIsAbsent(self):
         makefile = (repoRoot / "makefiles/kind.mk").read_text()

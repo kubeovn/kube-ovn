@@ -461,7 +461,7 @@ jobs:
             --plan-file e2e-selection-plan.json
           )
           if [ "$FULL" = true ]; then
-            args+=(--label e2e:full)
+            args+=(--request-full)
           fi
           python3 hack/e2e_selector.py "${args[@]}"
 

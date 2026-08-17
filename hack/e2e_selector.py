@@ -16,7 +16,6 @@ infrastructureJobs = {
     "build-kube-ovn",
     "build-vpc-nat-gateway",
     "build-e2e-binaries",
-    "netpol-path-filter",
     "e2e-selection",
     "e2e-executor-result",
     "push",
@@ -322,7 +321,15 @@ def deduplicateMatrix(entries):
     return result
 
 
-def select(catalog, paths, labels, requestedGroups, headSHA, forcedFullReason=""):
+def select(
+    catalog,
+    paths,
+    labels,
+    requestedGroups,
+    headSHA,
+    forcedFullReason="",
+    requestedFull=False,
+):
     paths = sorted(set(paths))
     labels = sorted(set(labels))
     requestedGroups = sorted(set(requestedGroups))
@@ -347,16 +354,19 @@ def select(catalog, paths, labels, requestedGroups, headSHA, forcedFullReason=""
         {"source": "request", "groups": [group], "reason": f"requested group {group}"}
         for group in requestedGroups
     )
-    reason = forcedFullReason or fullReason(
+    automaticFullReason = forcedFullReason or fullReason(
         catalog,
         paths,
         labels,
         pathGroups,
         classifiedPaths,
     )
-    full = bool(reason)
+    full = bool(automaticFullReason) or requestedFull
+    reason = automaticFullReason or (
+        "authorized request selected the full suite" if requestedFull else ""
+    )
     recommendedGroups = sorted(pathGroups | labelGroups) if not full else []
-    automaticGroups = sorted(knownGroups) if full else []
+    automaticGroups = sorted(knownGroups) if automaticFullReason else []
     effectiveGroups = sorted(knownGroups if full else selectedGroups)
     smoke = [{**entry, "selection": "smoke"} for entry in catalog["smoke"]]
     selected = [{**entry, "selection": "group"} for entry in expandGroups(catalog, effectiveGroups)]
@@ -367,6 +377,7 @@ def select(catalog, paths, labels, requestedGroups, headSHA, forcedFullReason=""
         "automaticGroups": automaticGroups,
         "recommendedGroups": recommendedGroups,
         "requestedGroups": requestedGroups,
+        "requestedFull": requestedFull and not bool(automaticFullReason),
         "selectedGroups": effectiveGroups,
         "matrix": matrix,
         "reasons": reasons,
@@ -377,19 +388,58 @@ def select(catalog, paths, labels, requestedGroups, headSHA, forcedFullReason=""
     }
 
 
+def executionPlan(catalog, plan, eventName):
+    if eventName not in {"pull_request", "push", "workflow_dispatch"}:
+        raise ValueError(f"unsupported x86 E2E workflow event: {eventName}")
+    if plan["full"]:
+        return plan
+    if eventName == "workflow_dispatch":
+        return {
+            **plan,
+            "recommendedGroups": [],
+            "approvalRequired": False,
+        }
+    if catalog is None:
+        raise ValueError("a valid catalog is required for a partial execution plan")
+    if eventName == "push":
+        reason = plan.get("fullReason") or "push requires the full suite"
+        return {
+            **plan,
+            "automaticGroups": sorted(catalog["groups"]),
+            "recommendedGroups": [],
+            "requestedFull": False,
+            "selectedGroups": sorted(catalog["groups"]),
+            "matrix": [
+                {**entry, "selection": "group"}
+                for entry in expandAll(catalog)
+            ],
+            "full": True,
+            "approvalRequired": False,
+            "fullReason": reason,
+        }
+    return {
+        **plan,
+        "selectedGroups": [],
+        "matrix": [{**entry, "selection": "smoke"} for entry in catalog["smoke"]],
+    }
+
+
 def renderSummary(plan, changedPaths):
-    groups = safeSummaryText(", ".join(plan["selectedGroups"]) or "smoke only")
+    groups = ", ".join(plan["selectedGroups"])
+    if not groups:
+        groups = "full suite" if plan["full"] else "smoke only"
+    groups = safeSummaryText(groups)
     recommended = safeSummaryText(", ".join(plan["recommendedGroups"]) or "none")
     requested = safeSummaryText(", ".join(plan["requestedGroups"]) or "none")
     automatic = (
         f"full suite ({len(plan['matrix'])} runner jobs)"
-        if plan["full"]
+        if plan["full"] and not plan.get("requestedFull", False)
         else f"mandatory smoke ({len(mandatorySmoke)} runner jobs)"
     )
     lines = [
-        "## x86 E2E selection shadow report",
+        "## x86 E2E selection report",
         "",
-        "> Shadow mode only: the current x86 E2E jobs still run unchanged.",
+        "> Automatic smoke or fail-closed full coverage starts immediately; deferred groups wait for an authorized comment.",
         "",
         f"- HEAD: `{plan['headSHA']}`",
         f"- Full suite: `{'yes' if plan['full'] else 'no'}`",
@@ -397,8 +447,8 @@ def renderSummary(plan, changedPaths):
         f"- Recommended deferred groups: {recommended}",
         f"- Requested groups: {requested}",
         f"- Approval required: `{'yes' if plan['approvalRequired'] else 'no'}`",
-        f"- Selected groups: {groups}",
-        f"- Proposed runner jobs: {len(plan['matrix'])}",
+        f"- Groups executing in this run: {groups}",
+        f"- Runner jobs in this run: {len(plan['matrix'])}",
         f"- Changed paths: {len(changedPaths)}",
     ]
     if plan["fullReason"]:
@@ -438,6 +488,7 @@ def fallbackPlan(headSHA, error, workflow, source):
         "automaticGroups": [],
         "recommendedGroups": [],
         "requestedGroups": [],
+        "requestedFull": False,
         "selectedGroups": [],
         "matrix": matrix,
         "reasons": [{"source": source, "groups": [], "reason": reason}],
@@ -514,6 +565,7 @@ def parseArgs():
     parser.add_argument("--request-groups-json", dest="requestGroupsJSON", default="[]")
     parser.add_argument("--head-sha", dest="headSHA", required=True)
     parser.add_argument("--force-full-reason", dest="forceFullReason", default="")
+    parser.add_argument("--request-full", dest="requestedFull", action="store_true")
     parser.add_argument("--plan-file", dest="planFile", required=True)
     parser.add_argument("--summary-file", dest="summaryFile")
     return parser.parse_args()
@@ -549,6 +601,7 @@ def main():
                 args.requestGroup + requestedGroups,
                 args.headSHA,
                 args.forceFullReason,
+                requestedFull=args.requestedFull,
             )
         except Exception as error:
             workflow = Path(args.workflow).read_text(encoding="utf-8")
