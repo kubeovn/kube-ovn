@@ -141,6 +141,10 @@ type Controller struct {
 	addSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
 	updateSwitchLBRuleQueue workqueue.TypedRateLimitingInterface[*SwitchLBRuleInfo]
 	delSwitchLBRuleQueue    workqueue.TypedRateLimitingInterface[*SwitchLBRuleInfo]
+	// httpHealthCheckStatus tracks HTTP probe results for SwitchLBRule backends.
+	// Key is namespace/service/ip; missing or false means the backend is unhealthy.
+	httpHealthCheckStatus    *xsync.Map[string, bool]
+	httpHealthCheckLastProbe *xsync.Map[string, time.Time]
 
 	vpcDNSLister           kubeovnlister.VpcDnsLister
 	vpcDNSSynced           cache.InformerSynced
@@ -481,11 +485,13 @@ func Run(ctx context.Context, config *Configuration) {
 
 	numKeyLocks := max(runtime.NumCPU()*2, config.WorkerNum*2)
 	controller := &Controller{
-		config:             config,
-		deletingPodObjMap:  xsync.NewMap[string, *corev1.Pod](),
-		deletingNodeObjMap: xsync.NewMap[string, *corev1.Node](),
-		ipam:               ovnipam.NewIPAM(),
-		namedPort:          NewNamedPort(),
+		config:                   config,
+		deletingPodObjMap:        xsync.NewMap[string, *corev1.Pod](),
+		deletingNodeObjMap:       xsync.NewMap[string, *corev1.Node](),
+		httpHealthCheckStatus:    xsync.NewMap[string, bool](),
+		httpHealthCheckLastProbe: xsync.NewMap[string, time.Time](),
+		ipam:                     ovnipam.NewIPAM(),
+		namedPort:                NewNamedPort(),
 
 		vpcsLister:           vpcInformer.Lister(),
 		vpcSynced:            vpcInformer.Informer().HasSynced,
@@ -1482,6 +1488,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add/update switch lb rule", c.addSwitchLBRuleQueue, c.handleAddOrUpdateSwitchLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete switch lb rule", c.delSwitchLBRuleQueue, c.handleDelSwitchLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete switch lb rule", c.updateSwitchLBRuleQueue, c.handleUpdateSwitchLBRule), time.Second, ctx.Done())
+		go wait.Until(c.resyncSwitchLBRuleHTTPHealthChecks, time.Second, ctx.Done())
 
 		go wait.Until(runWorker("add/update vpc dns", c.addOrUpdateVpcDNSQueue, c.handleAddOrUpdateVPCDNS), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete vpc dns", c.delVpcDNSQueue, c.handleDelVpcDNS), time.Second, ctx.Done())

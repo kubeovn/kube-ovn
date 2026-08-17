@@ -128,8 +128,9 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok && vip != "" {
 		lbVips = []string{vip}
 
-		// Health checks can only run against IPv4 endpoints and if the service doesn't specify they must be disabled
-		if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
+		// Health checks can only run against IPv4 endpoints and if the service doesn't specify they must be disabled.
+		// HTTP health checks replace OVN TCP health checks so both are not active at once.
+		if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) && !serviceHTTPHealthCheckEnabled(svc) {
 			ignoreHealthCheck = false
 		}
 	} else if vip, ok = svc.Annotations[util.RouterLBRuleVipsAnnotation]; ok && vip != "" {
@@ -139,7 +140,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				continue
 			}
 			lbVips = append(lbVips, ip)
-			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
+			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) && !serviceHTTPHealthCheckEnabled(svc) {
 				ignoreHealthCheck = false
 			}
 		}
@@ -245,6 +246,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			}
 
 			backends = c.getEndpointBackend(endpointSlices, port, lbVip)
+			backends = c.filterHTTPHealthCheckBackends(svc, backends)
 
 			if !ignoreHealthCheck || isPreferLocalBackend {
 				ipPortMapping, err = c.getIPPortMapping(endpointSlices, svc, checkIP)

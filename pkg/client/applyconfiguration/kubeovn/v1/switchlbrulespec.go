@@ -21,12 +21,13 @@ package v1
 // SwitchLBRuleSpecApplyConfiguration represents a declarative configuration of the SwitchLBRuleSpec type for use
 // with apply.
 type SwitchLBRuleSpecApplyConfiguration struct {
-	Vip             *string                              `json:"vip,omitempty"`
-	Namespace       *string                              `json:"namespace,omitempty"`
-	Selector        []string                             `json:"selector,omitempty"`
-	Endpoints       []string                             `json:"endpoints,omitempty"`
-	SessionAffinity *string                              `json:"sessionAffinity,omitempty"`
-	Ports           []SwitchLBRulePortApplyConfiguration `json:"ports,omitempty"`
+	Vip             *string                                    `json:"vip,omitempty"`
+	Namespace       *string                                    `json:"namespace,omitempty"`
+	Selector        []string                                   `json:"selector,omitempty"`
+	Endpoints       []string                                   `json:"endpoints,omitempty"`
+	SessionAffinity *string                                    `json:"sessionAffinity,omitempty"`
+	Ports           []SwitchLBRulePortApplyConfiguration       `json:"ports,omitempty"`
+	HealthCheck     *SwitchLBRuleHealthCheckApplyConfiguration `json:"healthCheck,omitempty"`
 }
 
 // SwitchLBRuleSpecApplyConfiguration constructs a declarative configuration of the SwitchLBRuleSpec type for use with
@@ -89,5 +90,13 @@ func (b *SwitchLBRuleSpecApplyConfiguration) WithPorts(values ...*SwitchLBRulePo
 		}
 		b.Ports = append(b.Ports, *values[i])
 	}
+	return b
+}
+
+// WithHealthCheck sets the HealthCheck field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HealthCheck field is set to the value of the last call.
+func (b *SwitchLBRuleSpecApplyConfiguration) WithHealthCheck(value *SwitchLBRuleHealthCheckApplyConfiguration) *SwitchLBRuleSpecApplyConfiguration {
+	b.HealthCheck = value
 	return b
 }
