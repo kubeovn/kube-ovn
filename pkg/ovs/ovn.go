@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
@@ -30,6 +31,8 @@ type LegacyClient struct {
 
 type OVNNbClient struct {
 	ovsDbClient
+	aclSamplingMonitorMu sync.Mutex
+	aclSamplingMonitored bool
 }
 
 type OVNSbClient struct {
