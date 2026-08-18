@@ -175,3 +175,16 @@ func (r SampleReference) Validate() error {
 	}
 	return nil
 }
+
+// Cookie returns the 64-bit OVS user cookie represented by a reference from a
+// local psample event. Metadata-only references cannot be converted back to a
+// cookie because they do not contain an observation domain.
+func (r SampleReference) Cookie() (uint64, error) {
+	if err := r.Validate(); err != nil {
+		return 0, err
+	}
+	if r.ObservationDomain == nil {
+		return 0, errors.New("ACL sample observation domain is required to format a cookie")
+	}
+	return uint64(*r.ObservationDomain)<<32 | uint64(r.Metadata), nil
+}
