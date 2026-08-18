@@ -492,6 +492,16 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
+	if len(gw.Spec.InternalIPs) != 0 && gw.Spec.InternalIPPool != "" {
+		err := fmt.Errorf("internalIPs and internalIPPool are mutually exclusive")
+		klog.Error(err)
+		return "", nil, nil, nil, err
+	}
+	if len(gw.Spec.ExternalIPs) != 0 && gw.Spec.ExternalIPPool != "" {
+		err := fmt.Errorf("externalIPs and externalIPPool are mutually exclusive")
+		klog.Error(err)
+		return "", nil, nil, nil, err
+	}
 
 	internalSubnet := gw.Spec.InternalSubnet
 	if internalSubnet == "" {
@@ -615,10 +625,36 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	if len(gw.Spec.InternalIPs) != 0 {
 		// set internal IPs
 		annotations[util.IPPoolAnnotation] = strings.Join(gw.Spec.InternalIPs, ";")
+	} else if gw.Spec.InternalIPPool != "" {
+		// allocate the internal IP from the referenced IPPool
+		pool, err := c.ippoolLister.Get(gw.Spec.InternalIPPool)
+		if err != nil {
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		if pool.Spec.Subnet != intSubnet.Name {
+			err = fmt.Errorf("subnet %q of internal IPPool %q does not match internal subnet %q", pool.Spec.Subnet, gw.Spec.InternalIPPool, intSubnet.Name)
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		annotations[util.IPPoolAnnotation] = gw.Spec.InternalIPPool
 	}
 	if len(gw.Spec.ExternalIPs) != 0 {
 		// set external IPs
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
+	} else if gw.Spec.ExternalIPPool != "" {
+		// allocate the external IP from the referenced IPPool
+		pool, err := c.ippoolLister.Get(gw.Spec.ExternalIPPool)
+		if err != nil {
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		if pool.Spec.Subnet != extSubnet.Name {
+			err = fmt.Errorf("subnet %q of external IPPool %q does not match external subnet %q", pool.Spec.Subnet, gw.Spec.ExternalIPPool, extSubnet.Name)
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = gw.Spec.ExternalIPPool
 	}
 	if err := setVpcEgressGatewayBandwidthAnnotations(annotations, gw.Spec.Bandwidth); err != nil {
 		return attachmentNetworkName, nil, nil, nil, err
