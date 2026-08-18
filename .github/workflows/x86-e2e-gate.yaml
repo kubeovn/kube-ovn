@@ -101,6 +101,7 @@ jobs:
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           RUN_EVENT: ${{ github.event.workflow_run.event }}
           RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_NAME: ${{ github.event.workflow_run.display_title }}
           RUN_PATH: ${{ github.event.workflow_run.path }}
@@ -143,6 +144,35 @@ jobs:
             trustedExecution=true
           else
             printf '%s' "$RUN_PULL_REQUESTS" > run-pull-requests.json
+            if [ "$(jq 'length' run-pull-requests.json)" -eq 0 ]; then
+              if ! [[ "$RUN_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+                echo 'The pull request workflow HEAD is invalid.' >&2
+                exit 1
+              fi
+              headOwner=${RUN_HEAD_REPOSITORY%%/*}
+              if [ -z "$headOwner" ] || [ "$headOwner" = "$RUN_HEAD_REPOSITORY" ]; then
+                echo 'The pull request workflow head repository is invalid.' >&2
+                exit 1
+              fi
+              gh api --method GET \
+                "repos/$GITHUB_REPOSITORY/pulls" \
+                -f state=open \
+                -f "head=$headOwner:$RUN_HEAD_BRANCH" \
+                > associated-pull-requests.json
+              jq \
+                --arg repository "$GITHUB_REPOSITORY" \
+                --arg headSHA "$RUN_WORKFLOW_SHA" \
+                --arg headRepository "$RUN_HEAD_REPOSITORY" \
+                '[.[] | select(
+                  .state == "open" and
+                  .head.sha == $headSHA and
+                  .head.repo.full_name == $headRepository and
+                  .base.repo.full_name == $repository
+                )] |
+                if length == 1 then .
+                else error("workflow HEAD must resolve to exactly one open pull request")
+                end' associated-pull-requests.json > run-pull-requests.json
+            fi
             prNumber=$(jq -r '.[0].number // empty' run-pull-requests.json)
             expectedHead=$(jq -r '.[0].head.sha // empty' run-pull-requests.json)
             trustedRef=$(jq -r '.[0].base.sha // empty' run-pull-requests.json)
@@ -158,7 +188,7 @@ jobs:
             approved=false
             trustedExecution=false
             if [ -z "$prNumber" ] || [ -z "$expectedHead" ] || [ -z "$trustedRef" ]; then
-              echo 'The completed pull_request run is not associated with a pull request.' >&2
+              echo 'The completed pull_request run is not associated with one open pull request.' >&2
               exit 1
             fi
           fi

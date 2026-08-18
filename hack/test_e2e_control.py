@@ -874,6 +874,14 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("RUN_ACTOR: ${{ github.event.workflow_run.actor.login }}", workflow)
         self.assertIn("RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}", workflow)
         self.assertIn("RUN_TRIGGERING_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}", workflow)
+        self.assertIn(
+            "RUN_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}",
+            workflow,
+        )
+        self.assertIn('-f "head=$headOwner:$RUN_HEAD_BRANCH"', workflow)
+        self.assertIn("workflow HEAD must resolve to exactly one open pull request", workflow)
+        self.assertIn('.head.repo.full_name == $headRepository', workflow)
+        self.assertIn('.base.repo.full_name == $repository', workflow)
         self.assertIn("automatic: ${{ steps.context.outputs.automatic }}", workflow)
         self.assertIn("controlledLabels: ${{ steps.context.outputs.controlledLabels }}", workflow)
         self.assertIn("A trusted comment approval supersedes this automatic executor.", workflow)
