@@ -730,7 +730,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		)
 
 		ginkgo.By("Creating iptables vip for fip")
-		fipVip := framework.MakeVip(f.Namespace.Name, fipVipName, overlaySubnetName, "", "", "")
+		fipVip := framework.MakeVip(f.Namespace.Name, fipVipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(fipVip)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up fip vip " + fipVipName)
@@ -872,7 +872,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}
 
 		ginkgo.By("Creating iptables vip for dnat")
-		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, overlaySubnetName, "", "", "")
+		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(dnatVip)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up dnat vip " + dnatVipName)
@@ -908,7 +908,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		// share eip case
 		ginkgo.By("Creating share vip")
-		shareVip := framework.MakeVip(f.Namespace.Name, sharedVipName, overlaySubnetName, "", "", "")
+		shareVip := framework.MakeVip(f.Namespace.Name, sharedVipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(shareVip)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up shared vip " + sharedVipName)
@@ -1084,7 +1084,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		)
 
 		ginkgo.By("Creating iptables vip for share dnat")
-		shareDnatVip1 := framework.MakeVip(f.Namespace.Name, shareDnatVip1Name, overlaySubnetName, "", "", "")
+		shareDnatVip1 := framework.MakeVip(f.Namespace.Name, shareDnatVip1Name, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(shareDnatVip1)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up share dnat vip1 " + shareDnatVip1Name)
@@ -1092,7 +1092,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		})
 		shareDnatVip1 = vipClient.Get(shareDnatVip1Name)
 
-		shareDnatVip2 := framework.MakeVip(f.Namespace.Name, shareDnatVip2Name, overlaySubnetName, "", "", "")
+		shareDnatVip2 := framework.MakeVip(f.Namespace.Name, shareDnatVip2Name, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(shareDnatVip2)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up share dnat vip2 " + shareDnatVip2Name)
@@ -1100,7 +1100,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		})
 		shareDnatVip2 = vipClient.Get(shareDnatVip2Name)
 
-		shareDnatVip3 := framework.MakeVip(f.Namespace.Name, shareDnatVip3Name, overlaySubnetName, "", "", "")
+		shareDnatVip3 := framework.MakeVip(f.Namespace.Name, shareDnatVip3Name, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(shareDnatVip3)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up share dnat vip3 " + shareDnatVip3Name)
@@ -1370,14 +1370,14 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		)
 
 		ginkgo.By("Creating vips for conflict test")
-		conflictVip1 := framework.MakeVip(f.Namespace.Name, conflictVip1Name, overlaySubnetName, "", "", "")
+		conflictVip1 := framework.MakeVip(f.Namespace.Name, conflictVip1Name, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(conflictVip1)
 		ginkgo.DeferCleanup(func() {
 			vipClient.DeleteSync(conflictVip1Name)
 		})
 		conflictVip1 = vipClient.Get(conflictVip1Name)
 
-		conflictVip2 := framework.MakeVip(f.Namespace.Name, conflictVip2Name, overlaySubnetName, "", "", "")
+		conflictVip2 := framework.MakeVip(f.Namespace.Name, conflictVip2Name, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(conflictVip2)
 		ginkgo.DeferCleanup(func() {
 			vipClient.DeleteSync(conflictVip2Name)
@@ -1674,7 +1674,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("1. Create a VIP for FIP")
 		vipName := "test-vip-" + framework.RandomSuffix()
-		vip := framework.MakeVip(f.Namespace.Name, vipName, overlaySubnetName, "", "", "")
+		vip := framework.MakeVip(f.Namespace.Name, vipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(vip)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up vip " + vipName)
@@ -1875,7 +1875,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("9. Testing VIP and FIP with manual EIP")
 		vipName := "test-vip-no-ipam-" + framework.RandomSuffix()
-		vip := framework.MakeVip(f.Namespace.Name, vipName, overlaySubnetName, "", "", "")
+		vip := framework.MakeVip(f.Namespace.Name, vipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(vip)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up vip " + vipName)
@@ -2016,11 +2016,11 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("5. Creating VIPs for DNAT/FIP testing")
 		fipVipName := "ha-fip-vip-" + randomSuffix
 		dnatVipName := "ha-dnat-vip-" + randomSuffix
-		fipVip := framework.MakeVip(f.Namespace.Name, fipVipName, haOverlaySubnetName, "", "", "")
+		fipVip := framework.MakeVip(f.Namespace.Name, fipVipName, haOverlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(fipVip)
 		fipVip = vipClient.Get(fipVipName)
 
-		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, haOverlaySubnetName, "", "", "")
+		dnatVip := framework.MakeVip(f.Namespace.Name, dnatVipName, haOverlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(dnatVip)
 		dnatVip = vipClient.Get(dnatVipName)
 
@@ -2249,12 +2249,12 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		randomSuffix := framework.RandomSuffix()
 		oldFipVipName := "old-fip-vip-" + randomSuffix
 		newFipVipName := "new-fip-vip-" + randomSuffix
-		oldFipVip := framework.MakeVip(f.Namespace.Name, oldFipVipName, overlaySubnetName, "", "", "")
+		oldFipVip := framework.MakeVip(f.Namespace.Name, oldFipVipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(oldFipVip)
 		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(oldFipVipName) })
 		oldFipVip = vipClient.Get(oldFipVipName)
 
-		newFipVip := framework.MakeVip(f.Namespace.Name, newFipVipName, overlaySubnetName, "", "", "")
+		newFipVip := framework.MakeVip(f.Namespace.Name, newFipVipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(newFipVip)
 		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(newFipVipName) })
 		newFipVip = vipClient.Get(newFipVipName)
@@ -2331,12 +2331,12 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("10. Creating VIPs for DNAT (old and new InternalIP)")
 		oldDnatVipName := "old-dnat-vip-" + randomSuffix
 		newDnatVipName := "new-dnat-vip-" + randomSuffix
-		oldDnatVip := framework.MakeVip(f.Namespace.Name, oldDnatVipName, overlaySubnetName, "", "", "")
+		oldDnatVip := framework.MakeVip(f.Namespace.Name, oldDnatVipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(oldDnatVip)
 		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(oldDnatVipName) })
 		oldDnatVip = vipClient.Get(oldDnatVipName)
 
-		newDnatVip := framework.MakeVip(f.Namespace.Name, newDnatVipName, overlaySubnetName, "", "", "")
+		newDnatVip := framework.MakeVip(f.Namespace.Name, newDnatVipName, overlaySubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(newDnatVip)
 		ginkgo.DeferCleanup(func() { vipClient.DeleteSync(newDnatVipName) })
 		newDnatVip = vipClient.Get(newDnatVipName)

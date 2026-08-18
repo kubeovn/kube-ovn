@@ -17,6 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -42,6 +44,10 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 	if !slices.Equal(oldVip.Spec.Selector, newVip.Spec.Selector) {
 		klog.Infof("enqueue update virtual parents for %s", key)
 		c.updateVirtualParentsQueue.Add(key)
+	}
+	if !slices.Equal(oldVip.Spec.AttachSubnets, newVip.Spec.AttachSubnets) {
+		klog.Infof("enqueue update vip %s for attachSubnets change", key)
+		c.updateVirtualIPQueue.Add(key)
 	}
 }
 
@@ -170,6 +176,12 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 
+	if vip.Spec.Type == util.SwitchLBRuleVip {
+		if err := c.reconcileVipAttachSubnets(vip); err != nil {
+			return err
+		}
+	}
+
 	// Trigger subnet status update after all operations complete
 	// At this point: IPAM allocated, VIP CR created with labels+status+finalizer
 	c.updateSubnetStatusQueue.Add(subnetName)
@@ -212,6 +224,12 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		// Release IP from IPAM before removing finalizer
 		c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
 
+		if vip.Spec.Type == util.SwitchLBRuleVip {
+			if err := c.detachAllVipAttachSubnets(vip); err != nil {
+				return err
+			}
+		}
+
 		// Now remove finalizer, which will trigger subnet status update
 		if err = c.handleDelVipFinalizer(key); err != nil {
 			klog.Errorf("failed to handle vip finalizer %v", err)
@@ -253,6 +271,11 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	if err = c.handleAddOrUpdateVipFinalizer(key); err != nil {
 		klog.Errorf("failed to handle vip finalizer %v", err)
 		return err
+	}
+	if vip.Spec.Type == util.SwitchLBRuleVip {
+		if err := c.reconcileVipAttachSubnets(vip); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -588,6 +611,137 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
 	c.updateSubnetStatusQueue.AddAfter(cachedVip.Spec.Subnet, 300*time.Millisecond)
+	return nil
+}
+
+// reconcileVipAttachSubnets attaches the home VPC's LBs to every subnet listed in
+// vip.Spec.AttachSubnets and detaches them from any subnet that was previously
+// attached (tracked via annotation) but is no longer in the spec.
+func (c *Controller) reconcileVipAttachSubnets(vip *kubeovnv1.Vip) error {
+	homeSubnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s for vip %s: %v", vip.Spec.Subnet, vip.Name, err)
+		return err
+	}
+	vpc, err := c.vpcsLister.Get(homeSubnet.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s for vip %s: %v", homeSubnet.Spec.Vpc, vip.Name, err)
+		return err
+	}
+
+	var lbs []string
+	for _, lb := range []string{
+		vpc.Status.TCPLoadBalancer,
+		vpc.Status.TCPSessionLoadBalancer,
+		vpc.Status.UDPLoadBalancer,
+		vpc.Status.UDPSessionLoadBalancer,
+		vpc.Status.SctpLoadBalancer,
+		vpc.Status.SctpSessionLoadBalancer,
+	} {
+		if lb != "" {
+			lbs = append(lbs, lb)
+		}
+	}
+	if len(lbs) == 0 {
+		return nil
+	}
+
+	// Determine which subnets were previously attached via annotation.
+	var prevSubnets []string
+	if ann := vip.Annotations[util.VipAttachSubnetsAnnotation]; ann != "" {
+		prevSubnets = strings.Split(ann, ",")
+	}
+	desired := vip.Spec.AttachSubnets
+
+	// Detach from subnets that were previously attached but are no longer desired.
+	for _, s := range prevSubnets {
+		if !slices.Contains(desired, s) {
+			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(s, ovsdb.MutateOperationDelete, lbs...); err != nil {
+				klog.Errorf("failed to detach vpc %s load balancers from subnet %s for vip %s: %v", vpc.Name, s, vip.Name, err)
+				return err
+			}
+			klog.Infof("detached vpc %s load balancers from subnet %s for vip %s", vpc.Name, s, vip.Name)
+		}
+	}
+
+	// Attach to all desired subnets (idempotent INSERT).
+	for _, s := range desired {
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(s, ovsdb.MutateOperationInsert, lbs...); err != nil {
+			klog.Errorf("failed to attach vpc %s load balancers to subnet %s for vip %s: %v", vpc.Name, s, vip.Name, err)
+			return err
+		}
+		klog.Infof("attached vpc %s load balancers to subnet %s for vip %s", vpc.Name, s, vip.Name)
+	}
+
+	// Persist the current desired list so future reconciles can diff against it.
+	desiredAnn := strings.Join(desired, ",")
+	existingAnn := ""
+	if vip.Annotations != nil {
+		existingAnn = vip.Annotations[util.VipAttachSubnetsAnnotation]
+	}
+	if desiredAnn != existingAnn {
+		patch := fmt.Sprintf(`{"metadata":{"annotations":{%q:%q}}}`, util.VipAttachSubnetsAnnotation, desiredAnn)
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(
+			context.Background(), vip.Name, types.MergePatchType, []byte(patch), metav1.PatchOptions{},
+		); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to update attach-subnets annotation for vip %s: %v", vip.Name, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// detachAllVipAttachSubnets removes the home VPC's LBs from every subnet that was
+// listed in vip.Spec.AttachSubnets or tracked by the annotation. Called on VIP deletion.
+func (c *Controller) detachAllVipAttachSubnets(vip *kubeovnv1.Vip) error {
+	toDetach := vip.Spec.AttachSubnets
+	// Union with annotation in case the spec was partially updated before deletion.
+	if ann := vip.Annotations[util.VipAttachSubnetsAnnotation]; ann != "" {
+		for s := range strings.SplitSeq(ann, ",") {
+			if s != "" && !slices.Contains(toDetach, s) {
+				toDetach = append(toDetach, s)
+			}
+		}
+	}
+	if len(toDetach) == 0 {
+		return nil
+	}
+
+	homeSubnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s for vip %s: %v", vip.Spec.Subnet, vip.Name, err)
+		return err
+	}
+	vpc, err := c.vpcsLister.Get(homeSubnet.Spec.Vpc)
+	if err != nil {
+		klog.Errorf("failed to get vpc %s for vip %s: %v", homeSubnet.Spec.Vpc, vip.Name, err)
+		return err
+	}
+
+	var lbs []string
+	for _, lb := range []string{
+		vpc.Status.TCPLoadBalancer,
+		vpc.Status.TCPSessionLoadBalancer,
+		vpc.Status.UDPLoadBalancer,
+		vpc.Status.UDPSessionLoadBalancer,
+		vpc.Status.SctpLoadBalancer,
+		vpc.Status.SctpSessionLoadBalancer,
+	} {
+		if lb != "" {
+			lbs = append(lbs, lb)
+		}
+	}
+	if len(lbs) == 0 {
+		return nil
+	}
+
+	for _, s := range toDetach {
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(s, ovsdb.MutateOperationDelete, lbs...); err != nil {
+			klog.Errorf("failed to detach vpc %s load balancers from subnet %s for vip %s: %v", vpc.Name, s, vip.Name, err)
+			return err
+		}
+		klog.Infof("detached vpc %s load balancers from subnet %s for deleted vip %s", vpc.Name, s, vip.Name)
+	}
 	return nil
 }
 
