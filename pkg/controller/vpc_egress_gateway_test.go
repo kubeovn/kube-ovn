@@ -810,7 +810,7 @@ func TestReconcileVpcEgressGatewayWorkloadMutuallyExclusiveIPFields(t *testing.T
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Controller{}
+			c := &Controller{config: &Configuration{}}
 			gw := &kubeovnv1.VpcEgressGateway{Spec: kubeovnv1.VpcEgressGatewaySpec{Image: "test-image"}}
 			tt.setSpec(&gw.Spec)
 
