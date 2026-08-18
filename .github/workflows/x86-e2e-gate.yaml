@@ -79,6 +79,8 @@ jobs:
       runURL: ${{ github.event.workflow_run.html_url }}
       runEvent: ${{ github.event.workflow_run.event }}
       trustedRef: ${{ steps.context.outputs.trustedRef }}
+      automatic: ${{ steps.context.outputs.automatic }}
+      controlledLabels: ${{ steps.context.outputs.controlledLabels }}
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -131,11 +133,13 @@ jobs:
             approvalGeneration=$(jq -r '.approvalGeneration' executor-metadata.json)
             dispatchGeneration=$(jq -r '.dispatchGeneration' executor-metadata.json)
             requestedGroups=$(jq -c '.requestedGroups' executor-metadata.json)
+            controlledLabels=$(jq -c '.controlledLabels' executor-metadata.json)
+            automatic=$(jq -r '.automatic' executor-metadata.json)
             requestKey=''
             expectedCatalogRevision=''
             trustedRef="$RUN_WORKFLOW_SHA"
             full=$(jq -r '.full' executor-metadata.json)
-            approved=true
+            approved=$([ "$automatic" = true ] && echo false || echo true)
             trustedExecution=true
           else
             printf '%s' "$RUN_PULL_REQUESTS" > run-pull-requests.json
@@ -146,6 +150,8 @@ jobs:
             approvalGeneration=0
             dispatchGeneration=0
             requestedGroups='[]'
+            controlledLabels='[]'
+            automatic=false
             requestKey=''
             expectedCatalogRevision=''
             full=false
@@ -205,6 +211,8 @@ jobs:
               "head": {"sha": sys.argv[2]},
               "base": {"sha": sys.argv[3], "ref": sys.argv[4]},
           }
+          livePullRequest = json.loads(Path("pull-request.json").read_text())
+          pullRequest["labels"] = livePullRequest.get("labels", [])
           pages = json.loads(Path("current-comments.json").read_text())
           request = e2eControl.approvedRequest(pullRequest, catalog, pages)
           if request is None:
@@ -213,11 +221,17 @@ jobs:
                   "requestKey": "",
                   "catalogRevision": e2eSelector.catalogRevision(catalog),
               }
+          request["controlledLabels"] = e2eControl.trustedControlledLabels(
+              catalog,
+              pages,
+              [label.get("name", "") for label in pullRequest["labels"]],
+          )
           print(json.dumps(request))
           PY
           latestApprovalGeneration=$(jq -r '.approvalGeneration' current-request.json)
           latestRequestKey=$(jq -r '.requestKey // ""' current-request.json)
           currentCatalogRevision=$(jq -r '.catalogRevision' current-request.json)
+          currentControlledLabels=$(jq -c '.controlledLabels // []' current-request.json)
           if [ "$RUN_EVENT" = workflow_dispatch ] && [ "$RUN_ATTEMPT" != "$currentAttempt" ]; then
             newerAttemptAuthorized=false
             if [ "$currentTriggeringActor" = 'github-actions[bot]' ]; then
@@ -273,7 +287,19 @@ jobs:
           PY
             )
             expectedCatalogRevision="$currentCatalogRevision"
-            if [ "$requestKey" != "$latestRequestKey" ]; then
+            if [ "$automatic" = true ]; then
+              requestKey=''
+              if [ "$latestApprovalGeneration" != 0 ]; then
+                echo 'A trusted comment approval supersedes this automatic executor.'
+                echo 'skip=true' >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              if [ "$controlledLabels" != "$currentControlledLabels" ]; then
+                echo 'Controlled label provenance changed; the automatic executor is stale.'
+                echo 'skip=true' >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            elif [ "$requestKey" != "$latestRequestKey" ]; then
               echo 'A different durable approval supersedes this executor.'
               echo 'skip=true' >> "$GITHUB_OUTPUT"
               exit 0
@@ -301,6 +327,11 @@ jobs:
             exit 0
           fi
           if [ "$RUN_EVENT" = workflow_dispatch ] || [ "$RUN_EVENT" = pull_request ]; then
+            # A stale approved run must not suppress a fresh automatic probe
+            # after controlled-label provenance changed.
+            if [ "$automatic" = true ] && [ "$latestApprovalGeneration" = 0 ]; then
+              latestRun=''
+            else
             gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
               > executor-run-pages.json
@@ -329,6 +360,7 @@ jobs:
               echo 'skip=true' >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            fi
           fi
           {
             echo 'skip=false'
@@ -347,6 +379,8 @@ jobs:
             echo "trustedExecution=$trustedExecution"
             echo "full=$full"
             echo "requestedGroups=$requestedGroups"
+            echo "automatic=$automatic"
+            echo "controlledLabels=$controlledLabels"
             echo "requestKey=$requestKey"
           } >> "$GITHUB_OUTPUT"
 
@@ -413,6 +447,7 @@ jobs:
           HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
           REQUESTED_GROUPS: ${{ steps.context.outputs.requestedGroups }}
           FULL: ${{ steps.context.outputs.full }}
+          CONTROLLED_LABELS: ${{ steps.context.outputs.controlledLabels }}
           EXECUTION_EVENT: ${{ steps.context.outputs.approved == 'true' && 'workflow_dispatch' || 'pull_request' }}
         run: |
           set -euo pipefail
@@ -422,7 +457,8 @@ jobs:
           from pathlib import Path
 
           pullRequest = json.loads(Path("pull-request.json").read_text())
-          pullRequest["labels"] = []
+          controlledLabels = json.loads(__import__("os").environ["CONTROLLED_LABELS"])
+          pullRequest["labels"] = [{"name": label} for label in controlledLabels]
           Path("selector-event.json").write_text(json.dumps({"pull_request": pullRequest}))
           PY
           gh api --paginate --slurp \
@@ -458,6 +494,8 @@ jobs:
             --event-file selector-event.json
             --request-groups-json "$REQUESTED_GROUPS"
             --head-sha "$HEAD_SHA"
+            --base-sha "${{ steps.context.outputs.expectedBase }}"
+            --pr-number "$PR_NUMBER"
             --force-full-reason "$forceFullReason"
             --plan-file e2e-selection-plan.json
           )

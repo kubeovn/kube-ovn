@@ -18,6 +18,7 @@ infrastructureJobs = {
     "build-e2e-binaries",
     "e2e-selection",
     "e2e-control-validation",
+    "prepare-kind-node-images",
     "e2e-executor-result",
     "push",
 }
@@ -309,6 +310,18 @@ def catalogRevision(catalog):
     return hashlib.sha256(payload).hexdigest()
 
 
+def requestNonce(prNumber, headSHA, baseSHA, catalogRevisionValue):
+    payload = {
+        "prNumber": int(prNumber),
+        "headSHA": headSHA,
+        "baseSHA": baseSHA,
+        "catalogRevision": catalogRevisionValue,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()[:16]
+
+
 def deduplicateMatrix(entries):
     result = []
     seen = {}
@@ -330,6 +343,8 @@ def select(
     headSHA,
     forcedFullReason="",
     requestedFull=False,
+    prNumber=0,
+    baseSHA="",
 ):
     paths = sorted(set(paths))
     labels = sorted(set(labels))
@@ -372,6 +387,15 @@ def select(
     smoke = [{**entry, "selection": "smoke"} for entry in catalog["smoke"]]
     selected = [{**entry, "selection": "group"} for entry in expandGroups(catalog, effectiveGroups)]
     matrix = deduplicateMatrix(smoke + selected)
+    revision = catalogRevision(catalog)
+    nonce = ""
+    if (
+        isinstance(prNumber, int)
+        and prNumber > 0
+        and re.fullmatch(r"[0-9a-f]{40}", headSHA or "")
+        and re.fullmatch(r"[0-9a-f]{40}", baseSHA or "")
+    ):
+        nonce = requestNonce(prNumber, headSHA, baseSHA, revision)
     return {
         "schemaVersion": 1,
         "headSHA": headSHA,
@@ -385,7 +409,10 @@ def select(
         "full": full,
         "approvalRequired": bool(recommendedGroups),
         "fullReason": reason,
-        "catalogRevision": catalogRevision(catalog),
+        "catalogRevision": revision,
+        "prNumber": prNumber,
+        "baseSHA": baseSHA,
+        "requestNonce": nonce,
     }
 
 
@@ -484,10 +511,15 @@ def renderSummary(plan, changedPaths):
         lines.append(f"- Full-suite reason: {safeSummaryText(plan['fullReason'])}")
     if plan["approvalRequired"]:
         commandGroups = safeSummaryText(",".join(plan["recommendedGroups"]))
+        binding = ""
+        if plan.get("requestNonce"):
+            binding = (
+                f" --head {plan['headSHA']} --nonce {plan['requestNonce']}"
+            )
         lines.extend(
             [
-                "- Waiting for: `/test e2e`",
-                f"- Alternative: `/test e2e {commandGroups}`",
+                f"- Waiting for: `/test e2e{binding}`",
+                f"- Alternative: `/test e2e {commandGroups}{binding}`",
             ]
         )
     if plan["reasons"]:
@@ -525,6 +557,9 @@ def fallbackPlan(headSHA, error, workflow, source):
         "approvalRequired": False,
         "fullReason": reason,
         "catalogRevision": "",
+        "prNumber": 0,
+        "baseSHA": "",
+        "requestNonce": "",
     }
 
 
@@ -593,6 +628,8 @@ def parseArgs():
     parser.add_argument("--request-group", dest="requestGroup", action="append", default=[])
     parser.add_argument("--request-groups-json", dest="requestGroupsJSON", default="[]")
     parser.add_argument("--head-sha", dest="headSHA", required=True)
+    parser.add_argument("--base-sha", dest="baseSHA", default="")
+    parser.add_argument("--pr-number", dest="prNumber", type=int, default=0)
     parser.add_argument("--force-full-reason", dest="forceFullReason", default="")
     parser.add_argument("--request-full", dest="requestedFull", action="store_true")
     parser.add_argument("--plan-file", dest="planFile", required=True)
@@ -631,6 +668,8 @@ def main():
                 args.headSHA,
                 args.forceFullReason,
                 requestedFull=args.requestedFull,
+                prNumber=args.prNumber,
+                baseSHA=args.baseSHA,
             )
         except Exception as error:
             workflow = Path(args.workflow).read_text(encoding="utf-8")

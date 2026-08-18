@@ -4,7 +4,7 @@ on:
   issue_comment:
     types: [created]
   pull_request_target:
-    types: [synchronize, closed]
+    types: [opened, reopened, synchronize, labeled, unlabeled, closed]
   push:
     branches:
       - master
@@ -32,6 +32,111 @@ permissions:
   issues: write
 
 jobs:
+  record-controlled-label:
+    name: Record trusted x86 E2E controlled labels
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      (github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
+      startsWith(github.event.label.name, 'e2e:')
+    runs-on: ubuntu-24.04
+    env:
+      ACTION: ${{ github.event.action }}
+      GH_TOKEN: ${{ github.token }}
+      LABEL_NAME: ${{ github.event.label.name }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+      SENDER: ${{ github.actor }}
+    steps:
+      - name: Check out trusted control logic
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Validate and record the controlled label transition
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > label-pull-request.json
+          baseRef=$(jq -r '.base.ref' label-pull-request.json)
+          if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+            --jq '.content' | base64 --decode > label-catalog.json
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            > label-comments.json
+          permission=$(gh api \
+            "repos/$GITHUB_REPOSITORY/collaborators/$SENDER/permission" \
+            --jq '.permission' 2>/dev/null || printf 'none')
+          known=$(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          catalog = json.loads(Path("label-catalog.json").read_text())
+          known = {"e2e:full"} | {f"e2e:{group}" for group in catalog["groups"]}
+          print("true" if os.environ["LABEL_NAME"] in known else "false")
+          PY
+          )
+          authorized=false
+          if [[ "$permission" == admin || "$permission" == maintain || "$permission" == write ]] && \
+             [ "$known" = true ]; then
+            authorized=true
+          fi
+          if [ "$authorized" != true ]; then
+            encodedLabel=$(jq -rn --arg value "$LABEL_NAME" '$value | @uri')
+            if [ "$ACTION" = labeled ]; then
+              gh api --method DELETE \
+                "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels/$encodedLabel" \
+                >/dev/null 2>&1 || true
+            else
+              restore=$(python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          catalog = json.loads(Path("label-catalog.json").read_text())
+          pages = json.loads(Path("label-comments.json").read_text())
+          labels = e2eControl.trustedControlledLabels(
+              catalog,
+              pages,
+              [os.environ["LABEL_NAME"]],
+          )
+          print("true" if os.environ["LABEL_NAME"] in labels else "false")
+          PY
+              )
+              if [ "$restore" = true ]; then
+                gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" \
+                  -f "labels[]=$LABEL_NAME" >/dev/null
+              fi
+            fi
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body="Rejected controlled label \`$LABEL_NAME\`: repository write permission and a catalog-defined label are required."
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > confirmed-label-pull-request.json
+          present=$(jq -r --arg label "$LABEL_NAME" \
+            'any(.labels[]; .name == $label)' confirmed-label-pull-request.json)
+          expectedPresent=false
+          [ "$ACTION" != labeled ] || expectedPresent=true
+          if [ "$present" != "$expectedPresent" ]; then
+            echo 'Controlled label state changed before provenance could be recorded.'
+            exit 0
+          fi
+          marker=$(python3 - "$LABEL_NAME" "$expectedPresent" <<'PY'
+          import sys
+          import e2e_control as e2eControl
+
+          print(e2eControl.renderControlledLabelMarker(sys.argv[1], sys.argv[2] == "true"))
+          PY
+          )
+          body=$(printf "Recorded trusted x86 E2E label transition by \`%s\`: \`%s\` is now \`%s\`.\n\n%s" \
+            "$SENDER" "$LABEL_NAME" "$expectedPresent" "$marker")
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body"
+
   cancel-stale:
     name: Cancel obsolete x86 E2E executors
     if: github.event_name == 'pull_request_target'
@@ -84,6 +189,139 @@ jobs:
               echo "Executor run $runId finished before cancellation." >&2
             fi
           done < stale-runs.txt
+
+  automatic:
+    name: Start trusted automatic x86 E2E coverage
+    needs:
+      - record-controlled-label
+      - cancel-stale
+    if: >-
+      always() &&
+      github.event_name == 'pull_request_target' &&
+      github.event.action != 'closed'
+    permissions:
+      actions: write
+      contents: write
+      issues: read
+      pull-requests: read
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out trusted automatic dispatcher logic
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Dispatch automatic smoke or fail-closed full coverage
+        env:
+          DISPATCH_GENERATION: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > automatic-pull-request.json
+          if [ "$(jq -r '.state' automatic-pull-request.json)" != open ]; then
+            exit 0
+          fi
+          headSHA=$(jq -r '.head.sha' automatic-pull-request.json)
+          baseSHA=$(jq -r '.base.sha' automatic-pull-request.json)
+          baseRef=$(jq -r '.base.ref' automatic-pull-request.json)
+          if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+            --jq '.content' | base64 --decode > automatic-catalog.json
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            > automatic-comments.json
+          python3 - <<'PY' > automatic-context.json
+          import json
+          from pathlib import Path
+          import e2e_control as e2eControl
+          import e2e_selector as e2eSelector
+
+          pullRequest = json.loads(Path("automatic-pull-request.json").read_text())
+          catalog = json.loads(Path("automatic-catalog.json").read_text())
+          e2eSelector.validateCatalog(catalog)
+          pages = json.loads(Path("automatic-comments.json").read_text())
+          liveLabels = [label["name"] for label in pullRequest.get("labels", [])]
+          labels = e2eControl.trustedControlledLabels(catalog, pages, liveLabels)
+          print(json.dumps({
+              "catalogRevision": e2eSelector.catalogRevision(catalog),
+              "controlledLabels": labels,
+          }))
+          PY
+          catalogRevision=$(jq -r '.catalogRevision' automatic-context.json)
+          controlledLabels=$(jq -c '.controlledLabels' automatic-context.json)
+          controlledLabelNames=$(jq -r \
+            '.controlledLabels | if length == 0 then "-" else join(",") end' \
+            automatic-context.json)
+          approvalGeneration=1
+          requestKey="automatic-$DISPATCH_GENERATION"
+          executorRef=$(python3 - "$PR_NUMBER" "$approvalGeneration" "$DISPATCH_GENERATION" <<'PY'
+          import sys
+          import e2e_control as e2eControl
+
+          print(e2eControl.executorHeadBranch({
+              "prNumber": int(sys.argv[1]),
+              "approvalGeneration": int(sys.argv[2]),
+              "dispatchGeneration": int(sys.argv[3]),
+          }))
+          PY
+          )
+          refPath="refs/heads/$executorRef"
+          existingSHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$executorRef" \
+            --jq '.object.sha' 2>/dev/null || true)
+          if [ -n "$existingSHA" ] && [ "$existingSHA" != "$baseSHA" ]; then
+            echo 'The isolated automatic executor ref points at an unexpected revision.' >&2
+            exit 1
+          fi
+          createdRef=false
+          if [ -z "$existingSHA" ]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="$refPath" -f sha="$baseSHA"
+            createdRef=true
+          fi
+          if ! gh api --method POST \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/dispatches" \
+            -f ref="$executorRef" \
+            -F "inputs[prNumber]=$PR_NUMBER" \
+            -f "inputs[headSHA]=$headSHA" \
+            -f "inputs[baseSHA]=$baseSHA" \
+            -F "inputs[approvalGeneration]=$approvalGeneration" \
+            -F 'inputs[automatic]=true' \
+            -F "inputs[dispatchGeneration]=$DISPATCH_GENERATION" \
+            -f 'inputs[requestedGroups]=[]' \
+            -f 'inputs[requestedGroupNames]=-' \
+            -f "inputs[controlledLabels]=$controlledLabels" \
+            -f "inputs[controlledLabelNames]=$controlledLabelNames" \
+            -F 'inputs[full]=false' \
+            -f "inputs[requestKey]=$requestKey" \
+            -f "inputs[catalogRevision]=$catalogRevision"; then
+            [ "$createdRef" = false ] || gh api --method DELETE \
+              "repos/$GITHUB_REPOSITORY/git/refs/heads/$executorRef"
+            exit 1
+          fi
+          expectedTitle="x86-e2e pr=$PR_NUMBER head=$headSHA approval=$approvalGeneration generation=$DISPATCH_GENERATION mode=automatic groups=- labels=$controlledLabelNames full=0"
+          runVisible=false
+          for _ in $(seq 1 24); do
+            runVisible=$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&branch=$executorRef&per_page=100" \
+              | jq -r --arg branch "$executorRef" --arg sha "$baseSHA" --arg title "$expectedTitle" \
+                'any(.[].workflow_runs[]; .path == ".github/workflows/build-x86-image.yaml" and
+                  .actor.login == "github-actions[bot]" and .head_branch == $branch and
+                  .head_sha == $sha and .display_title == $title)')
+            [ "$runVisible" = true ] && break
+            sleep 5
+          done
+          if [ "$runVisible" != true ]; then
+            echo 'The isolated automatic executor run was not visible; its temporary ref was retained.' >&2
+            exit 1
+          fi
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$executorRef"
 
   invalidate-base:
     name: Invalidate x86 E2E gates after a base update
@@ -162,6 +400,7 @@ jobs:
       - name: Validate command, permission, and current HEAD
         id: decision
         env:
+          COMMENT_ID: ${{ github.event.comment.id }}
           COMMENTER: ${{ github.event.comment.user.login }}
           PR_NUMBER: ${{ github.event.issue.number }}
         run: |
@@ -170,6 +409,9 @@ jobs:
             "repos/$GITHUB_REPOSITORY/collaborators/$COMMENTER/permission" \
             --jq '.permission' 2>/dev/null || printf 'none')
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
+          if ! gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" > live-comment.json; then
+            printf 'null\n' > live-comment.json
+          fi
           baseRef=$(jq -r '.base.ref' pull-request.json)
           if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
             echo 'Pull request base branch is outside the supported trusted set.' >&2
@@ -177,6 +419,20 @@ jobs:
           fi
           gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
             --jq '.content' | base64 --decode > trusted-catalog.json
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            > controlled-label-comments.json
+          python3 - <<'PY' > controlled-labels.json
+          import json
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pullRequest = json.loads(Path("pull-request.json").read_text())
+          catalog = json.loads(Path("trusted-catalog.json").read_text())
+          pages = json.loads(Path("controlled-label-comments.json").read_text())
+          liveLabels = [label["name"] for label in pullRequest.get("labels", [])]
+          print(json.dumps(e2eControl.trustedControlledLabels(catalog, pages, liveLabels)))
+          PY
           confirmedHead=$(gh api \
             "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
             --jq '.head.sha')
@@ -186,6 +442,8 @@ jobs:
             --permission "$permission" \
             --pull-request-file pull-request.json \
             --confirmed-head-sha "$confirmedHead" \
+            --live-comment-file live-comment.json \
+            --controlled-labels-file controlled-labels.json \
             --decision-file dispatch-decision.json
           python3 - <<'PY'
           import json
@@ -783,9 +1041,12 @@ jobs:
             -f "inputs[headSHA]=$HEAD_SHA" \
             -f "inputs[baseSHA]=$BASE_SHA" \
             -F "inputs[approvalGeneration]=$APPROVAL_GENERATION" \
+            -F 'inputs[automatic]=false' \
             -F "inputs[dispatchGeneration]=$DISPATCH_GENERATION" \
             -f "inputs[requestedGroups]=$REQUESTED_GROUPS" \
             -f "inputs[requestedGroupNames]=$REQUESTED_GROUP_NAMES" \
+            -f 'inputs[controlledLabels]=[]' \
+            -f 'inputs[controlledLabelNames]=-' \
             -F "inputs[full]=$FULL" \
             -f "inputs[requestKey]=$REQUEST_KEY" \
             -f "inputs[catalogRevision]=$CATALOG_REVISION"; then
@@ -795,7 +1056,7 @@ jobs:
               -f body='The trusted x86 E2E executor could not be started; retry the authorized command.'
             exit 1
           fi
-          expectedTitle="x86-e2e pr=$PR_NUMBER head=$HEAD_SHA approval=$APPROVAL_GENERATION generation=$DISPATCH_GENERATION groups=$REQUESTED_GROUP_NAMES full=$([ "$FULL" = true ] && echo 1 || echo 0)"
+          expectedTitle="x86-e2e pr=$PR_NUMBER head=$HEAD_SHA approval=$APPROVAL_GENERATION generation=$DISPATCH_GENERATION mode=approved groups=$REQUESTED_GROUP_NAMES labels=- full=$([ "$FULL" = true ] && echo 1 || echo 0)"
           runVisible=false
           for _ in $(seq 1 24); do
             runVisible=$(gh api --paginate --slurp \

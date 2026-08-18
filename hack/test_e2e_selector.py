@@ -25,7 +25,9 @@ class E2ESelectorTest(unittest.TestCase):
             paths,
             labels,
             requestedGroups,
-            "0123456789abcdef",
+            "a" * 40,
+            prNumber=7231,
+            baseSHA="b" * 40,
         )
 
     def testCatalogCoversCurrentX86TestJobs(self):
@@ -453,7 +455,7 @@ class E2ESelectorTest(unittest.TestCase):
     def testPlanIsJsonSerializableAndBoundToHead(self):
         plan = self.select(["test/e2e/ipsec/e2e_test.go"])
 
-        self.assertEqual(plan["headSHA"], "0123456789abcdef")
+        self.assertEqual(plan["headSHA"], "a" * 40)
         self.assertEqual(plan["schemaVersion"], 1)
         self.assertIn("catalogRevision", plan)
         json.dumps(plan)
@@ -519,8 +521,15 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertIn("Automatic coverage: mandatory smoke &#40;3 runner jobs&#41;", summary)
         self.assertIn("Recommended deferred groups: policy", summary)
         self.assertIn("Approval required: `yes`", summary)
-        self.assertIn("Waiting for: `/test e2e`", summary)
-        self.assertIn("Alternative: `/test e2e policy`", summary)
+        nonce = e2eSelector.requestNonce(
+            7231,
+            "a" * 40,
+            "b" * 40,
+            plan["catalogRevision"],
+        )
+        binding = f"--head {'a' * 40} --nonce {nonce}"
+        self.assertIn(f"Waiting for: `/test e2e {binding}`", summary)
+        self.assertIn(f"Alternative: `/test e2e policy {binding}`", summary)
 
     def testCatalogFailureEmitsFullFallbackPlan(self):
         with tempfile.TemporaryDirectory() as directory:

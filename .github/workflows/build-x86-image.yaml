@@ -1,6 +1,6 @@
 name: Build x86 Image
 
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('x86-e2e pr={0} head={1} approval={2} generation={3} groups={4} full={5}', inputs.prNumber, inputs.headSHA, inputs.approvalGeneration, inputs.dispatchGeneration, inputs.requestedGroupNames, inputs.full && '1' || '0') || '' }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('x86-e2e pr={0} head={1} approval={2} generation={3} mode={4} groups={5} labels={6} full={7}', inputs.prNumber, inputs.headSHA, inputs.approvalGeneration, inputs.dispatchGeneration, inputs.automatic && 'automatic' || 'approved', inputs.requestedGroupNames, inputs.controlledLabelNames, inputs.full && '1' || '0') || '' }}
 
 permissions:
   contents: read
@@ -56,6 +56,11 @@ on:
         description: Durable authorized comment generation
         required: true
         type: number
+      automatic:
+        description: Execute automatic smoke or fail-closed full coverage
+        required: true
+        default: false
+        type: boolean
       dispatchGeneration:
         description: Unique trusted reducer run generation
         required: true
@@ -67,6 +72,16 @@ on:
         type: string
       requestedGroupNames:
         description: Canonical comma-separated groups, or a single dash
+        required: true
+        default: '-'
+        type: string
+      controlledLabels:
+        description: JSON array of trusted persistent E2E labels
+        required: true
+        default: '[]'
+        type: string
+      controlledLabelNames:
+        description: Canonical comma-separated controlled labels, or a single dash
         required: true
         default: '-'
         type: string
@@ -114,6 +129,7 @@ jobs:
       k8sConformanceMatrix: ${{ steps.outputs.outputs.k8sConformanceMatrix || steps.fallbackMatrices.outputs.k8sConformanceMatrix }}
       kubeOvnConformanceMatrix: ${{ steps.outputs.outputs.kubeOvnConformanceMatrix || steps.fallbackMatrices.outputs.kubeOvnConformanceMatrix }}
       headSHA: ${{ steps.context.outputs.headSHA }}
+      baseSHA: ${{ steps.context.outputs.baseSHA }}
       prNumber: ${{ steps.context.outputs.prNumber }}
     steps:
       - uses: actions/checkout@v7
@@ -136,6 +152,9 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_HEAD_SHA: ${{ inputs.headSHA }}
           INPUT_BASE_SHA: ${{ inputs.baseSHA }}
+          INPUT_AUTOMATIC: ${{ inputs.automatic }}
+          INPUT_CONTROLLED_LABELS: ${{ inputs.controlledLabels }}
+          INPUT_CONTROLLED_LABEL_NAMES: ${{ inputs.controlledLabelNames }}
           INPUT_PR_NUMBER: ${{ inputs.prNumber }}
           INPUT_REQUESTED_GROUPS: ${{ inputs.requestedGroups }}
           INPUT_REQUESTED_GROUP_NAMES: ${{ inputs.requestedGroupNames }}
@@ -152,6 +171,7 @@ jobs:
           forceFullReason=''
           requestedGroups='[]'
           headSHA="$GITHUB_SHA"
+          baseSHA="$GITHUB_SHA"
           prNumber=0
           checkedOutSHA=$(git rev-parse HEAD)
           if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$checkedOutSHA" != "$INPUT_BASE_SHA" ]; then
@@ -185,11 +205,13 @@ jobs:
           Path("selector-event.json").write_text(json.dumps(event))
           PY
             headSHA="$PR_HEAD_SHA"
+            baseSHA="$PR_BASE_SHA"
             prNumber="$PR_NUMBER"
           elif [ "$EVENT_NAME" = workflow_dispatch ]; then
             gh api "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER" > pull-request.json
             python3 - "$INPUT_HEAD_SHA" "$INPUT_BASE_SHA" "$GITHUB_REF_NAME" "$GITHUB_SHA" <<'PY'
           import json
+          import os
           import re
           import sys
           from pathlib import Path
@@ -207,7 +229,14 @@ jobs:
               raise SystemExit("executor must run from the pull request base branch")
           if sys.argv[4] != sys.argv[2]:
               raise SystemExit("executor workflow revision does not match the approved base")
-          pullRequest["labels"] = []
+          controlledLabels = json.loads(os.environ["INPUT_CONTROLLED_LABELS"])
+          if not isinstance(controlledLabels, list) or any(
+              not isinstance(label, str) for label in controlledLabels
+          ):
+              raise SystemExit("controlledLabels must be a JSON array of strings")
+          if os.environ["INPUT_AUTOMATIC"] != "true":
+              controlledLabels = []
+          pullRequest["labels"] = [{"name": label} for label in controlledLabels]
           Path("selector-event.json").write_text(json.dumps({"pull_request": pullRequest}))
           PY
             gh api --paginate --slurp \
@@ -237,7 +266,7 @@ jobs:
             if [ -s force-full-reason.txt ]; then
               forceFullReason=$(cat force-full-reason.txt)
             fi
-            python3 - "$INPUT_REQUESTED_GROUPS" "$INPUT_REQUESTED_GROUP_NAMES" "$INPUT_CATALOG_REVISION" <<'PY'
+            python3 - "$INPUT_REQUESTED_GROUPS" "$INPUT_REQUESTED_GROUP_NAMES" "$INPUT_CATALOG_REVISION" "$INPUT_CONTROLLED_LABELS" "$INPUT_CONTROLLED_LABEL_NAMES" "$INPUT_AUTOMATIC" "$INPUT_FULL" <<'PY'
           import hashlib
           import json
           import sys
@@ -259,8 +288,25 @@ jobs:
           canonical = ",".join(canonicalGroups) or "-"
           if canonical != sys.argv[2]:
               raise SystemExit("requested group names do not match requestedGroups")
+          labels = json.loads(sys.argv[4])
+          knownLabels = {"e2e:full"} | {f"e2e:{group}" for group in catalog["groups"]}
+          if (
+              not isinstance(labels, list)
+              or any(not isinstance(label, str) for label in labels)
+              or set(labels) - knownLabels
+          ):
+              raise SystemExit("controlledLabels contains an unknown label")
+          canonicalLabels = ",".join(sorted(set(labels))) or "-"
+          if canonicalLabels != sys.argv[5]:
+              raise SystemExit("controlled label names do not match controlledLabels")
+          automatic = sys.argv[6] == "true"
+          if automatic and (canonicalGroups or sys.argv[7] == "true"):
+              raise SystemExit("automatic execution cannot contain an approved request")
+          if not automatic and labels:
+              raise SystemExit("approved execution cannot carry automatic controlled labels")
           PY
             headSHA="$INPUT_HEAD_SHA"
+            baseSHA="$INPUT_BASE_SHA"
             prNumber="$INPUT_PR_NUMBER"
             requestedGroups="$INPUT_REQUESTED_GROUPS"
             requestFull="$INPUT_FULL"
@@ -268,6 +314,7 @@ jobs:
             forceFullReason='push events always run the full x86 E2E suite'
           fi
           echo "headSHA=$headSHA" >> "$GITHUB_OUTPUT"
+          echo "baseSHA=$baseSHA" >> "$GITHUB_OUTPUT"
           echo "prNumber=$prNumber" >> "$GITHUB_OUTPUT"
           echo "requestFull=$requestFull" >> "$GITHUB_OUTPUT"
           echo "forceFullReason=$forceFullReason" >> "$GITHUB_OUTPUT"
@@ -285,6 +332,8 @@ jobs:
             --event-file selector-event.json
             --request-groups-json "$REQUESTED_GROUPS"
             --head-sha "$HEAD_SHA"
+            --base-sha "${{ steps.context.outputs.baseSHA }}"
+            --pr-number "${{ steps.context.outputs.prNumber }}"
             --force-full-reason "$FORCE_FULL_REASON"
             --plan-file e2e-selection-plan.json
             --summary-file e2e-selection-summary.md
@@ -297,7 +346,7 @@ jobs:
       - name: Export executor job IDs
         id: outputs
         env:
-          EVENT_NAME: ${{ github.event_name }}
+          EVENT_NAME: ${{ inputs.automatic && 'pull_request' || github.event_name }}
         run: |
           python3 - <<'PY'
           import json
@@ -364,6 +413,44 @@ jobs:
 
       - name: Run control module tests
         run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
+
+  prepare-kind-node-images:
+    name: Prepare private Kind node image (${{ matrix.k8s-version }})
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]') ||
+      github.event_name == 'push'
+    needs: e2e-selection
+    permissions:
+      contents: read
+      packages: read
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-version:
+          - v1.36.1
+          - v1.29.14
+    steps:
+      - name: Pull private Kind node image with trusted token
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          K8S_VERSION: ${{ matrix.k8s-version }}
+        run: |
+          set -euo pipefail
+          dockerConfig=$(mktemp -d)
+          trap 'rm -rf "$dockerConfig"' EXIT
+          export DOCKER_CONFIG="$dockerConfig"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
+          docker pull "ghcr.io/kubeovn/kindest-node:$K8S_VERSION"
+          docker tag "ghcr.io/kubeovn/kindest-node:$K8S_VERSION" "kindest/node:$K8S_VERSION"
+          docker save "kindest/node:$K8S_VERSION" -o "kind-node-$K8S_VERSION.tar"
+
+      - name: Upload private Kind node image without credentials
+        uses: actions/upload-artifact@v7
+        with:
+          name: kind-node-${{ matrix.k8s-version }}
+          path: kind-node-${{ matrix.k8s-version }}.tar
+          retention-days: 2
 
   build-kube-ovn-base:
     name: Build kube-ovn-base
@@ -497,6 +584,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn-base
       - build-kube-ovn-dpdk-base
     steps:
@@ -897,12 +985,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1102,12 +1196,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1274,12 +1374,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         env:
@@ -1463,12 +1569,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1657,9 +1769,15 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Create kind clusters
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
+      - name: Create kind cluster
         run: |
           pipx install jinjanator
           make kind-init-ovn-ic-${{ matrix.ip-family }}
@@ -1822,12 +1940,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1985,12 +2109,18 @@ jobs:
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Load vpc-nat-gateway image into kind cluster
         run: make kind-load-image-vpc-nat-gateway
@@ -2135,13 +2265,19 @@ jobs:
       - name: Load kube-ovn image
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create BGP kind and containerlab topology
         id: setup
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-bgp
+          make kind-init-bgp
 
       - name: Install Kube-OVN and BGP speakers
         id: install
@@ -2407,12 +2543,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -2479,12 +2621,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-dual
+          make kind-init-dual
 
       - name: Install Kube-OVN
         id: install
@@ -2549,12 +2697,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN without LoadBalancer
         id: install
@@ -2621,12 +2775,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -2744,12 +2904,18 @@ jobs:
           docker load -i kube-ovn.tar
           docker load -i vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Multus and Kube-OVN
         id: install
@@ -2889,12 +3055,18 @@ jobs:
         run: |
           docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN with webhook
         id: install
@@ -2969,13 +3141,20 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.29.14
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.29.14.tar
+
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
           K8S_VERSION: ${{ matrix.k8s-version }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -3189,12 +3368,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Clone DNSNameResolver repository
         run: |
@@ -3343,12 +3528,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Clone DNSNameResolver repository
         run: |
@@ -3506,12 +3697,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-cilium-chaining-${{ matrix.ip-family }}
+          make kind-init-cilium-chaining-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN with Cilium chaining
         id: install
@@ -3669,12 +3866,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ha-${{ matrix.ip-family }}
+          make kind-init-ha-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -3784,12 +3987,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ovn-submariner
+          make kind-init-ovn-submariner
 
       - name: Install Kube-OVN and Submariner
         id: install
@@ -3910,12 +4119,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          n_worker=2 make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          n_worker=2 make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -4101,12 +4316,18 @@ jobs:
           docker load -i kube-ovn.tar
           docker load -i vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN with VPC NAT gateway enabled
         id: install
@@ -4245,12 +4466,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -4396,12 +4623,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -4542,12 +4775,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -4692,12 +4931,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -4812,12 +5057,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          n_worker=2 make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          n_worker=2 make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -4957,12 +5208,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -5021,7 +5278,7 @@ jobs:
 
   e2e-executor-result:
     name: x86 E2E Selected Result
-    if: always()
+    if: always() && github.event_name != 'pull_request'
     permissions: {}
     needs:
       - e2e-selection
