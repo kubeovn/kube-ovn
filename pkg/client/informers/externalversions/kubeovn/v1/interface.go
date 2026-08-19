@@ -72,6 +72,10 @@ type Interface interface {
 	VpcDnses() VpcDnsInformer
 	// VpcEgressGateways returns a VpcEgressGatewayInformer.
 	VpcEgressGateways() VpcEgressGatewayInformer
+	// VpcEndpoints returns a VpcEndpointInformer.
+	VpcEndpoints() VpcEndpointInformer
+	// VpcEndpointServices returns a VpcEndpointServiceInformer.
+	VpcEndpointServices() VpcEndpointServiceInformer
 	// VpcNatGateways returns a VpcNatGatewayInformer.
 	VpcNatGateways() VpcNatGatewayInformer
 }
@@ -205,6 +209,16 @@ func (v *version) VpcDnses() VpcDnsInformer {
 // VpcEgressGateways returns a VpcEgressGatewayInformer.
 func (v *version) VpcEgressGateways() VpcEgressGatewayInformer {
 	return &vpcEgressGatewayInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// VpcEndpoints returns a VpcEndpointInformer.
+func (v *version) VpcEndpoints() VpcEndpointInformer {
+	return &vpcEndpointInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VpcEndpointServices returns a VpcEndpointServiceInformer.
+func (v *version) VpcEndpointServices() VpcEndpointServiceInformer {
+	return &vpcEndpointServiceInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
 
 // VpcNatGateways returns a VpcNatGatewayInformer.

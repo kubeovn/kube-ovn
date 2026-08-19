@@ -3142,6 +3142,20 @@ func (mr *MockNATMockRecorder) AddNat(lrName, natType, externalIP, logicalIP, lo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNat", reflect.TypeOf((*MockNAT)(nil).AddNat), lrName, natType, externalIP, logicalIP, logicalMac, port, options)
 }
 
+// AddSnatWithMatch mocks base method.
+func (m *MockNAT) AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddSnatWithMatch", lrName, externalIP, logicalIP, match)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddSnatWithMatch indicates an expected call of AddSnatWithMatch.
+func (mr *MockNATMockRecorder) AddSnatWithMatch(lrName, externalIP, logicalIP, match any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSnatWithMatch", reflect.TypeOf((*MockNAT)(nil).AddSnatWithMatch), lrName, externalIP, logicalIP, match)
+}
+
 // DeleteNat mocks base method.
 func (m *MockNAT) DeleteNat(lrName, natType, externalIP, logicalIP string) error {
 	m.ctrl.T.Helper()
@@ -3168,6 +3182,20 @@ func (m *MockNAT) DeleteNats(lrName, natType, logicalIP string) error {
 func (mr *MockNATMockRecorder) DeleteNats(lrName, natType, logicalIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNats", reflect.TypeOf((*MockNAT)(nil).DeleteNats), lrName, natType, logicalIP)
+}
+
+// DeleteSnatWithMatch mocks base method.
+func (m *MockNAT) DeleteSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteSnatWithMatch", lrName, externalIP, logicalIP, match)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteSnatWithMatch indicates an expected call of DeleteSnatWithMatch.
+func (mr *MockNATMockRecorder) DeleteSnatWithMatch(lrName, externalIP, logicalIP, match any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSnatWithMatch", reflect.TypeOf((*MockNAT)(nil).DeleteSnatWithMatch), lrName, externalIP, logicalIP, match)
 }
 
 // EnsureSnat mocks base method.
@@ -3523,6 +3551,20 @@ func (m *MockNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac
 func (mr *MockNbClientMockRecorder) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNat", reflect.TypeOf((*MockNbClient)(nil).AddNat), lrName, natType, externalIP, logicalIP, logicalMac, port, options)
+}
+
+// AddSnatWithMatch mocks base method.
+func (m *MockNbClient) AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddSnatWithMatch", lrName, externalIP, logicalIP, match)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddSnatWithMatch indicates an expected call of AddSnatWithMatch.
+func (mr *MockNbClientMockRecorder) AddSnatWithMatch(lrName, externalIP, logicalIP, match any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSnatWithMatch", reflect.TypeOf((*MockNbClient)(nil).AddSnatWithMatch), lrName, externalIP, logicalIP, match)
 }
 
 // AddressSetUpdateAddress mocks base method.
@@ -4555,6 +4597,20 @@ func (m *MockNbClient) DeleteSecurityGroup(sgName string) error {
 func (mr *MockNbClientMockRecorder) DeleteSecurityGroup(sgName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSecurityGroup", reflect.TypeOf((*MockNbClient)(nil).DeleteSecurityGroup), sgName)
+}
+
+// DeleteSnatWithMatch mocks base method.
+func (m *MockNbClient) DeleteSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteSnatWithMatch", lrName, externalIP, logicalIP, match)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteSnatWithMatch indicates an expected call of DeleteSnatWithMatch.
+func (mr *MockNbClientMockRecorder) DeleteSnatWithMatch(lrName, externalIP, logicalIP, match any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSnatWithMatch", reflect.TypeOf((*MockNbClient)(nil).DeleteSnatWithMatch), lrName, externalIP, logicalIP, match)
 }
 
 // Echo mocks base method.

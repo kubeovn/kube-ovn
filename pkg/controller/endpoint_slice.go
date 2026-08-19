@@ -52,6 +52,7 @@ func (c *Controller) enqueueAddEndpointSlice(obj any) {
 		klog.V(3).Infof("enqueue add endpointSlice %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
 		c.enqueueNftableLbService(key)
+		c.enqueueVpcEndpointServiceFromServiceKey(key)
 	}
 }
 
@@ -77,8 +78,10 @@ func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
 	}
 
 	if key := findServiceKey(endpointSlice); key != "" {
+		klog.V(3).Infof("enqueue delete endpointSlice for service %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
 		c.enqueueNftableLbService(key)
+		c.enqueueVpcEndpointServiceFromServiceKey(key)
 	}
 }
 
@@ -99,8 +102,11 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 		if oldKey != newKey {
 			c.enqueueNftableLbService(oldKey)
 			c.enqueueNftableLbService(newKey)
+			c.enqueueVpcEndpointServiceFromServiceKey(oldKey)
+			c.enqueueVpcEndpointServiceFromServiceKey(newKey)
 		} else if !reflect.DeepEqual(oldEndpointSlice.Ports, newEndpointSlice.Ports) {
 			c.enqueueNftableLbService(newKey)
+			c.enqueueVpcEndpointServiceFromServiceKey(newKey)
 		}
 		return
 	}
@@ -116,11 +122,13 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 
 	if oldKey != newKey {
 		c.enqueueNftableLbService(oldKey)
+		c.enqueueVpcEndpointServiceFromServiceKey(oldKey)
 	}
 	if newKey != "" {
 		klog.V(3).Infof("enqueue update endpointSlice for service %s", newKey)
 		c.addOrUpdateEndpointSliceQueue.Add(newKey)
 		c.enqueueNftableLbService(newKey)
+		c.enqueueVpcEndpointServiceFromServiceKey(newKey)
 	}
 }
 
