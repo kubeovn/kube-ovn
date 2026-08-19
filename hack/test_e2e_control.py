@@ -1103,6 +1103,36 @@ class E2EControlTest(unittest.TestCase):
             workflow,
         )
 
+    def testPullRequestKeepsBaselineBuildWithoutKindImageGate(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
+        testJobs = {
+            job["id"]
+            for group in catalog["groups"].values()
+            for job in group["jobs"]
+        }
+        build = blocks["build-kube-ovn"]
+
+        self.assertIn("make ut", build)
+        self.assertIn("make lint", build)
+        self.assertIn("make image-kube-ovn", build)
+        self.assertNotIn("- prepare-kind-node-images", build)
+        self.assertIn(
+            "if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'",
+            build,
+        )
+        for jobId in sorted(testJobs):
+            with self.subTest(jobId=jobId):
+                block = blocks[jobId]
+                self.assertIn(
+                    "github.event_name != 'pull_request' && "
+                    "contains(fromJSON(needs.e2e-selection.outputs.executionJobIds)",
+                    block,
+                )
+                if "docker load --input kind-node-" in block:
+                    self.assertIn("- prepare-kind-node-images", block)
+
     def testPullRequestsExecuteAutomaticCoverageAndPushStaysFull(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
