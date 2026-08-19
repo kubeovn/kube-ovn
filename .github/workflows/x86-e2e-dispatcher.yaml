@@ -273,14 +273,25 @@ jobs:
           PY
           )
           refPath="refs/heads/$executorRef"
-          existingSHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$executorRef" \
-            --jq '.object.sha' 2>/dev/null || true)
-          if [ -n "$existingSHA" ] && [ "$existingSHA" != "$baseSHA" ]; then
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$executorRef" \
+            > automatic-executor-ref.json || true
+          refAction=$(python3 - "$baseSHA" <<'PY'
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          print(e2eControl.isolatedExecutorRefAction(
+              Path("automatic-executor-ref.json").read_text(),
+              sys.argv[1],
+          ))
+          PY
+          )
+          if [ "$refAction" = reject ]; then
             echo 'The isolated automatic executor ref points at an unexpected revision.' >&2
             exit 1
           fi
           createdRef=false
-          if [ -z "$existingSHA" ]; then
+          if [ "$refAction" = create ]; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
               -f ref="$refPath" -f sha="$baseSHA"
             createdRef=true
@@ -1022,14 +1033,25 @@ jobs:
           PY
           )
           refPath="refs/heads/$executorRef"
-          existingSHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$executorRef" \
-            --jq '.object.sha' 2>/dev/null || true)
-          if [ -n "$existingSHA" ] && [ "$existingSHA" != "$BASE_SHA" ]; then
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$executorRef" \
+            > approved-executor-ref.json || true
+          refAction=$(python3 - "$BASE_SHA" <<'PY'
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          print(e2eControl.isolatedExecutorRefAction(
+              Path("approved-executor-ref.json").read_text(),
+              sys.argv[1],
+          ))
+          PY
+          )
+          if [ "$refAction" = reject ]; then
             echo 'The isolated executor ref points at an unexpected revision.' >&2
             exit 1
           fi
           createdRef=false
-          if [ -z "$existingSHA" ]; then
+          if [ "$refAction" = create ]; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
               -f ref="$refPath" -f sha="$BASE_SHA"
             createdRef=true

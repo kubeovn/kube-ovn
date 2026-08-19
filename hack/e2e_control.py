@@ -629,6 +629,39 @@ def executorHeadBranch(request):
     )
 
 
+def isolatedExecutorRefSHA(payload):
+    if payload is None:
+        return ""
+    if isinstance(payload, (bytes, bytearray)):
+        payload = payload.decode()
+    if isinstance(payload, str):
+        text = payload.strip()
+        if not text:
+            return ""
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return ""
+    if not isinstance(payload, dict):
+        return ""
+    obj = payload.get("object")
+    sha = obj.get("sha") if isinstance(obj, dict) else None
+    if isinstance(sha, str) and re.fullmatch(headPattern, sha):
+        return sha
+    return ""
+
+
+def isolatedExecutorRefAction(payload, expectedSHA):
+    if not re.fullmatch(headPattern, expectedSHA or ""):
+        raise ValueError("invalid expected isolated executor revision")
+    sha = isolatedExecutorRefSHA(payload)
+    if not sha:
+        return "create"
+    if sha != expectedSHA:
+        return "reject"
+    return "reuse"
+
+
 def latestExecutorRun(
     runs,
     prNumber,

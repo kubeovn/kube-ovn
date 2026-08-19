@@ -598,6 +598,28 @@ class E2EControlTest(unittest.TestCase):
 
         self.assertNotEqual(first, second)
 
+    def testIsolatedExecutorRefActionTreatsMissingGitHubRefAsCreate(self):
+        expected = "e" * 40
+        missingRef = json.dumps(
+            {
+                "message": "Not Found",
+                "documentation_url": "https://docs.github.com/rest/git/refs#get-a-reference",
+                "status": "404",
+            }
+        )
+
+        self.assertEqual(e2eControl.isolatedExecutorRefAction("", expected), "create")
+        self.assertEqual(e2eControl.isolatedExecutorRefAction(missingRef, expected), "create")
+        self.assertEqual(e2eControl.isolatedExecutorRefAction("null", expected), "create")
+        self.assertEqual(
+            e2eControl.isolatedExecutorRefAction({"object": {"sha": expected}}, expected),
+            "reuse",
+        )
+        self.assertEqual(
+            e2eControl.isolatedExecutorRefAction({"object": {"sha": "f" * 40}}, expected),
+            "reject",
+        )
+
     def testRejectsMalformedExecutorRunName(self):
         with self.assertRaisesRegex(ValueError, "invalid x86 E2E executor run name"):
             e2eControl.parseExecutorRunName(
@@ -856,6 +878,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertNotIn("group: x86-e2e-dispatch-", workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("print(e2eControl.executorHeadBranch(request))", workflow)
+        self.assertGreaterEqual(workflow.count("isolatedExecutorRefAction"), 2)
+        self.assertNotIn("--jq '.object.sha'", workflow)
         self.assertIn('git/refs/heads/$executorRef', workflow)
         self.assertIn('-f ref="$executorRef"', workflow)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
