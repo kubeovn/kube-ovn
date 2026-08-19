@@ -1588,6 +1588,75 @@ func TestValidateVpc(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "valid dynamic routing",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					DynamicRouting: &kubeovnv1.VpcDynamicRouting{
+						Enabled:      true,
+						Redistribute: []kubeovnv1.RedistributeType{kubeovnv1.RedistributeNAT},
+						VrfName:      "t-acme",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "dynamic routing enabled without redistribute",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					DynamicRouting: &kubeovnv1.VpcDynamicRouting{Enabled: true},
+				},
+			},
+			wantErr: true,
+			errMsg:  "redistribute must be set explicitly when dynamic routing is enabled",
+		},
+		{
+			name: "dynamic routing unknown redistribute type",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					DynamicRouting: &kubeovnv1.VpcDynamicRouting{
+						Enabled:      true,
+						Redistribute: []kubeovnv1.RedistributeType{"ospf"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "dynamic routing duplicate redistribute type",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					DynamicRouting: &kubeovnv1.VpcDynamicRouting{
+						Enabled:      true,
+						Redistribute: []kubeovnv1.RedistributeType{kubeovnv1.RedistributeNAT, kubeovnv1.RedistributeNAT},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "dynamic routing invalid vrf name",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					DynamicRouting: &kubeovnv1.VpcDynamicRouting{
+						Enabled:      true,
+						Redistribute: []kubeovnv1.RedistributeType{kubeovnv1.RedistributeNAT},
+						VrfName:      "bad/name",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "dynamic routing disabled skips validation",
+			vpc: &kubeovnv1.Vpc{
+				Spec: kubeovnv1.VpcSpec{
+					DynamicRouting: &kubeovnv1.VpcDynamicRouting{Enabled: false},
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

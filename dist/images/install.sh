@@ -449,6 +449,10 @@ spec:
             type: object
           spec:
             properties:
+              advertiseFilter:
+                items:
+                  type: string
+                type: array
               connectTime:
                 type: string
               ebgpMultiHop:
@@ -466,11 +470,30 @@ spec:
                 items:
                   type: string
                 type: array
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                type: object
               password:
                 type: string
               peerASN:
                 format: int32
                 type: integer
+              peers:
+                items:
+                  properties:
+                    address:
+                      minLength: 1
+                      type: string
+                    asn:
+                      format: int32
+                      type: integer
+                    bfd:
+                      type: boolean
+                  required:
+                  - address
+                  type: object
+                type: array
               routerId:
                 type: string
             type: object
@@ -7312,6 +7335,59 @@ spec:
               defaultSubnet:
                 description: The default subnet name for the VPC
                 type: string
+              dynamicRouting:
+                description: optional OVN dynamic routing configuration
+                properties:
+                  enabled:
+                    default: false
+                    type: boolean
+                  localOnly:
+                    description: |-
+                      Advertise chassis-specific routes (NAT/LB IPs) only from the chassis
+                      where the backing port is bound.
+                    type: boolean
+                  maintainVrf:
+                    description: |-
+                      Let ovn-controller create and maintain the VRF on the gateway chassis.
+                      When false, the VRF must already exist on the chassis with a table id
+                      equal to the logical router's datapath tunnel key.
+                    type: boolean
+                  redistribute:
+                    description: |-
+                      Route types to advertise. Must be set explicitly when enabled:
+                      OVN would otherwise default to advertising connected and static
+                      routes, silently exposing internal subnets to the fabric.
+                    items:
+                      enum:
+                      - connected
+                      - connected-as-host
+                      - static
+                      - nat
+                      - lb
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  vrfId:
+                    description: |-
+                      Linux routing table id used by the VRF.
+                      Defaults to the logical router's datapath id.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  vrfName:
+                    description: |-
+                      Name of the VRF used to advertise and learn routes.
+                      Must be a valid Linux interface name.
+                      Defaults to "ovnvrf" plus the vrf table id.
+                    maxLength: 15
+                    pattern: ^[^/\s]+$
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: redistribute must be set explicitly when dynamic routing
+                    is enabled
+                  rule: '!self.enabled || (has(self.redistribute) && self.redistribute.size()
+                    > 0)'
               enableBfd:
                 description: Enable BFD (Bidirectional Forwarding Detection) for the
                   VPC

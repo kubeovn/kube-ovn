@@ -34,4 +34,16 @@ type BgpConfSpec struct {
 	EbgpMultiHop  bool            `json:"ebgpMultiHop,omitempty"`
 
 	GracefulRestart bool `json:"gracefulRestart,omitempty"`
+
+	NodeSelector    map[string]string `json:"nodeSelector,omitempty"`
+	Peers           []BgpPeer         `json:"peers,omitempty"`
+	AdvertiseFilter []string          `json:"advertiseFilter,omitempty"`
+}
+
+type BgpPeer struct {
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Address string `json:"address"`
+	ASN     uint32 `json:"asn,omitempty"`
+	BFD     bool   `json:"bfd,omitempty"`
 }

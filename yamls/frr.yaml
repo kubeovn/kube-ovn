@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-ovn-frr
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:kube-ovn-frr
+rules:
+  - apiGroups:
+      - kubeovn.io
+    resources:
+      - bgp-confs
+      - vpcs
+      - ovn-eips
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-ovn-frr
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:kube-ovn-frr
+subjects:
+  - kind: ServiceAccount
+    name: kube-ovn-frr
+    namespace: kube-system
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: kube-ovn-frr
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: kube-ovn-frr
+  template:
+    metadata:
+      labels:
+        app: kube-ovn-frr
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+      priorityClassName: system-node-critical
+      serviceAccountName: kube-ovn-frr
+      automountServiceAccountToken: false
+      hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/os: "linux"
+        ovn.kubernetes.io/external-gw: "true"
+      initContainers:
+        - name: init-frr
+          image: "docker.io/kubeovn/kube-ovn:v1.17.0"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /kube-ovn/kube-ovn-frr
+            - init
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: frr-config
+              mountPath: /etc/frr
+      containers:
+        - name: frr
+          image: "quay.io/frrouting/frr:10.7.0"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - /usr/lib/frr/docker-start & exec sh /etc/frr/kube-ovn-reload.sh
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - NET_RAW
+                - NET_BIND_SERVICE
+                - SYS_ADMIN
+          volumeMounts:
+            - name: frr-config
+              mountPath: /etc/frr
+        - name: kube-ovn-frr
+          image: "docker.io/kubeovn/kube-ovn:v1.17.0"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /kube-ovn/kube-ovn-frr
+          args:
+            - --logtostderr=false
+            - --alsologtostderr=true
+            - --log_file=/var/log/kube-ovn/kube-ovn-frr.log
+            - --log_file_max_size=200
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: frr-config
+              mountPath: /etc/frr
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
+            - name: serviceaccount
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+      volumes:
+        - name: frr-config
+          emptyDir: {}
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
+            type: DirectoryOrCreate
+        - name: serviceaccount
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace

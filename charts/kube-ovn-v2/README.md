@@ -598,6 +598,90 @@ false
 		</tr>
 	</tbody>
 </table>
+<h3>FRR agent configuration</h3>
+<table>
+	<thead>
+		<th>Key</th>
+		<th>Type</th>
+		<th>Default</th>
+		<th>Description</th>
+	</thead>
+	<tbody>
+		<tr>
+			<td>frr.annotations</td>
+			<td>object</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+			<td>Annotations to be added to all top-level kube-ovn-frr objects (resources under templates/frr)</td>
+		</tr>
+		<tr>
+			<td>frr.args</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Args passed to the kube-ovn-frr agent.</td>
+		</tr>
+		<tr>
+			<td>frr.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable the kube-ovn-frr agent for VPC dynamic routing advertisement.</td>
+		</tr>
+		<tr>
+			<td>frr.frrImage</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "IfNotPresent",
+  "repository": "quay.io/frrouting/frr",
+  "tag": "10.7.0"
+}
+</pre>
+</td>
+			<td>Image settings for the FRR routing daemon container.</td>
+		</tr>
+		<tr>
+			<td>frr.nodeSelector</td>
+			<td>object</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+			<td>Node selector to restrict the deployment of the FRR agent to specific nodes, merged with the built-in external-gw selector.</td>
+		</tr>
+		<tr>
+			<td>frr.podAnnotations</td>
+			<td>object</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+			<td>Annotations to be added to kube-ovn-frr pods.</td>
+		</tr>
+		<tr>
+			<td>frr.resources</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "limits": {},
+  "requests": {
+    "cpu": "100m",
+    "memory": "100Mi"
+  }
+}
+</pre>
+</td>
+			<td>kube-ovn-frr agent resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
+		</tr>
+	</tbody>
+</table>
 <h3>OVN-central daemon configuration</h3>
 <table>
 	<thead>

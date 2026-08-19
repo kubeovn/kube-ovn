@@ -44,6 +44,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.BgpConfApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("BgpConfSpec"):
 		return &kubeovnv1.BgpConfSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("BgpPeer"):
+		return &kubeovnv1.BgpPeerApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("Condition"):
 		return &kubeovnv1.ConditionApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("CustomInterface"):
@@ -202,6 +204,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.VpcDNSSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcDNSStatus"):
 		return &kubeovnv1.VpcDNSStatusApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcDynamicRouting"):
+		return &kubeovnv1.VpcDynamicRoutingApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGateway"):
 		return &kubeovnv1.VpcEgressGatewayApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcEgressGatewayBFDConfig"):
