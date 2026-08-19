@@ -50,8 +50,7 @@ import (
 )
 
 var (
-	uuidRegexp    = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
-	ipTokenRegexp = regexp.MustCompile(`[0-9A-Fa-f:.]+`)
+	uuidRegexp = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 )
 
 func init() {
@@ -925,9 +924,8 @@ func waitPortGroupExists(pgName string) {
 	}, "Port_Group "+pgName+" to exist")
 }
 
-func waitVpcEgressGatewayPolicyNexthops(vegKey string, priority, af int, expected []string) {
+func waitVpcEgressGatewayPolicyNexthops(vegKey string, priority, af int, expected []string, expectedPolicyCount int) {
 	ginkgo.GinkgoHelper()
-	want := set.New(expected...)
 
 	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 		cmd := fmt.Sprintf(
@@ -942,22 +940,9 @@ func waitVpcEgressGatewayPolicyNexthops(vegKey string, priority, af int, expecte
 			return false, nil
 		}
 
-		lines := strings.Split(strings.TrimSpace(string(stdout)), "\n")
-		if len(lines) != 2 || lines[0] == "" {
-			framework.Logf("gateway %s has %d matching policies, expected 2", vegKey, len(lines))
+		if err := validateVpcEgressGatewayPolicyNexthops(string(stdout), expected, expectedPolicyCount); err != nil {
+			framework.Logf("gateway %s policy nexthops are not ready: %v", vegKey, err)
 			return false, nil
-		}
-		for _, line := range lines {
-			got := set.New[string]()
-			for _, token := range ipTokenRegexp.FindAllString(line, -1) {
-				if net.ParseIP(token) != nil {
-					got.Insert(token)
-				}
-			}
-			if !want.Equal(got) {
-				framework.Logf("gateway %s policy nexthops are %v, expected %v", vegKey, got.UnsortedList(), expected)
-				return false, nil
-			}
 		}
 		return true, nil
 	}, fmt.Sprintf("gateway %s priority %d IPv%d policy nexthops", vegKey, priority, af))
@@ -2045,11 +2030,12 @@ func validateVegTestWorkload(f *framework.Framework, veg *apiv1.VpcEgressGateway
 	expectedIPv4, expectedIPv6 := util.SplitIpsByProtocol(expectedNexthops)
 	if veg.Spec.PodAntiAffinity == apiv1.PodAntiAffinityPreferred {
 		vegKey := veg.Namespace + "/" + veg.Name
+		expectedPolicyCount := vpcEgressGatewayPolicyCount(veg)
 		if len(expectedIPv4) != 0 {
-			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayPolicyPriority, 4, expectedIPv4)
+			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayPolicyPriority, 4, expectedIPv4, expectedPolicyCount)
 		}
 		if len(expectedIPv6) != 0 {
-			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayPolicyPriority, 6, expectedIPv6)
+			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayPolicyPriority, 6, expectedIPv6, expectedPolicyCount)
 		}
 	}
 	if veg.Spec.BFD.Enabled && !f.VersionPriorTo(1, 15) {
@@ -2114,11 +2100,12 @@ func validateVegTestAccess(f *framework.Framework, veg *apiv1.VpcEgressGateway, 
 		veg = vegClient.PatchSync(original, modified)
 
 		vegKey := namespaceName + "/" + veg.Name
+		expectedPolicyCount := vpcEgressGatewayPolicyCount(veg)
 		if len(expectedIPv4) != 0 {
-			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayLocalPolicyPriority, 4, expectedIPv4)
+			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayLocalPolicyPriority, 4, expectedIPv4, expectedPolicyCount)
 		}
 		if len(expectedIPv6) != 0 {
-			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayLocalPolicyPriority, 6, expectedIPv6)
+			waitVpcEgressGatewayPolicyNexthops(vegKey, util.EgressGatewayLocalPolicyPriority, 6, expectedIPv6, expectedPolicyCount)
 		}
 		checkAccess(veg.Status.Workload.Nodes[0])
 	}
