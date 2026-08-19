@@ -156,6 +156,8 @@ jobs:
           INPUT_CONTROLLED_LABELS: ${{ inputs.controlledLabels }}
           INPUT_CONTROLLED_LABEL_NAMES: ${{ inputs.controlledLabelNames }}
           INPUT_PR_NUMBER: ${{ inputs.prNumber }}
+          INPUT_APPROVAL_GENERATION: ${{ inputs.approvalGeneration }}
+          INPUT_DISPATCH_GENERATION: ${{ inputs.dispatchGeneration }}
           INPUT_REQUESTED_GROUPS: ${{ inputs.requestedGroups }}
           INPUT_REQUESTED_GROUP_NAMES: ${{ inputs.requestedGroupNames }}
           INPUT_CATALOG_REVISION: ${{ inputs.catalogRevision }}
@@ -209,12 +211,16 @@ jobs:
             prNumber="$PR_NUMBER"
           elif [ "$EVENT_NAME" = workflow_dispatch ]; then
             gh api "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER" > pull-request.json
-            python3 - "$INPUT_HEAD_SHA" "$INPUT_BASE_SHA" "$GITHUB_REF_NAME" "$GITHUB_SHA" <<'PY'
+            python3 - "$INPUT_HEAD_SHA" "$INPUT_BASE_SHA" "$GITHUB_REF_NAME" "$GITHUB_SHA" \
+              "$INPUT_PR_NUMBER" "$INPUT_APPROVAL_GENERATION" "$INPUT_DISPATCH_GENERATION" <<'PY'
           import json
           import os
           import re
           import sys
           from pathlib import Path
+
+          sys.path.insert(0, "hack")
+          import e2e_control as e2eControl
 
           pullRequest = json.loads(Path("pull-request.json").read_text())
           if pullRequest.get("state") != "open":
@@ -225,7 +231,15 @@ jobs:
               raise SystemExit("pull request HEAD changed; dispatch again")
           if pullRequest["base"]["sha"] != sys.argv[2]:
               raise SystemExit("pull request base revision changed; dispatch again")
-          if pullRequest["base"]["ref"] != sys.argv[3]:
+          if not e2eControl.isTrustedExecutorRef(
+              sys.argv[3],
+              pullRequest["base"]["ref"],
+              {
+                  "prNumber": int(sys.argv[5]),
+                  "approvalGeneration": int(sys.argv[6]),
+                  "dispatchGeneration": int(sys.argv[7]),
+              },
+          ):
               raise SystemExit("executor must run from the pull request base branch")
           if sys.argv[4] != sys.argv[2]:
               raise SystemExit("executor workflow revision does not match the approved base")

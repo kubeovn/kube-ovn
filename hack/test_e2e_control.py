@@ -620,6 +620,25 @@ class E2EControlTest(unittest.TestCase):
             "reject",
         )
 
+    def testTrustedExecutorRefAcceptsIsolatedBranchName(self):
+        request = {
+            "prNumber": 7251,
+            "approvalGeneration": 1,
+            "dispatchGeneration": 32235889723,
+        }
+        isolated = "x86-e2e/pr-7251-a-1-d-32235889723"
+
+        self.assertTrue(e2eControl.isTrustedExecutorRef("master", "master", request))
+        self.assertTrue(e2eControl.isTrustedExecutorRef(isolated, "master", request))
+        self.assertFalse(e2eControl.isTrustedExecutorRef("ci-e2e-demand-gate", "master", request))
+        self.assertFalse(
+            e2eControl.isTrustedExecutorRef(
+                "x86-e2e/pr-7251-a-1-d-1",
+                "master",
+                request,
+            )
+        )
+
     def testRejectsMalformedExecutorRunName(self):
         with self.assertRaisesRegex(ValueError, "invalid x86 E2E executor run name"):
             e2eControl.parseExecutorRunName(
@@ -1040,6 +1059,11 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("unknown requested E2E group", workflow)
         self.assertIn("executor catalog revision does not match dispatcher", workflow)
         self.assertIn("executor workflow revision does not match the approved base", workflow)
+        self.assertIn("isTrustedExecutorRef", workflow)
+        self.assertNotIn(
+            'if pullRequest["base"]["ref"] != sys.argv[3]:',
+            workflow,
+        )
         self.assertIn("trusted selector checkout does not match the approved base revision", workflow)
         self.assertIn("ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA", workflow)
         self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 5)

@@ -662,6 +662,10 @@ def isolatedExecutorRefAction(payload, expectedSHA):
     return "reuse"
 
 
+def isTrustedExecutorRef(refName, baseRef, request):
+    return refName == baseRef or refName == executorHeadBranch(request)
+
+
 def latestExecutorRun(
     runs,
     prNumber,
