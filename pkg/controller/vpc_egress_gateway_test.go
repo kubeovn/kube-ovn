@@ -413,6 +413,9 @@ func newVegOVNRouteFixture(t *testing.T) *vegOVNRouteFixture {
 			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "veg"},
 			Spec: kubeovnv1.VpcEgressGatewaySpec{
 				TrafficPolicy: kubeovnv1.TrafficPolicyLocal,
+				Selectors: []kubeovnv1.VpcEgressGatewaySelector{{
+					PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"test": "selected"}},
+				}},
 				BFD: kubeovnv1.VpcEgressGatewayBFDConfig{
 					Enabled:    true,
 					MinTX:      100,
