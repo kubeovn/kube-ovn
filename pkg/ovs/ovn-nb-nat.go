@@ -14,6 +14,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
@@ -127,6 +128,81 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 		return fmt.Errorf("add nats to %s: %w", lrName, err)
 	}
 
+	return nil
+}
+
+// AddSnatWithMatch creates or updates an SNAT rule that only matches traffic
+// selected by match (for example `ip4.dst == <transitVIP>`).
+func (c *OVNNbClient) AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
+	if match == "" {
+		return c.EnsureSnat(lrName, externalIP, logicalIP)
+	}
+	if externalIP == "" {
+		err := errors.New("snat external ip is required")
+		klog.Error(err)
+		return err
+	}
+	if logicalIP == "" {
+		err := errors.New("snat logical ip is required")
+		klog.Error(err)
+		return err
+	}
+
+	nats, err := c.ListNats(lrName, ovnnb.NATTypeSNAT, logicalIP, nil)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	for _, nat := range nats {
+		if nat.ExternalIP != externalIP {
+			continue
+		}
+		if nat.Match == match {
+			return nil
+		}
+		nat.Match = match
+		return c.UpdateNat(nat, &nat.Match)
+	}
+
+	nat, err := c.newNat(lrName, ovnnb.NATTypeSNAT, externalIP, logicalIP, "", "", func(n *ovnnb.NAT) {
+		n.Match = match
+		if n.ExternalIDs == nil {
+			n.ExternalIDs = make(map[string]string, 1)
+		}
+		n.ExternalIDs["vendor"] = util.CniTypeName
+	})
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if nat == nil {
+		return nil
+	}
+	return c.CreateNats(lrName, nat)
+}
+
+// DeleteSnatWithMatch deletes the SNAT rule that matches the given match expression.
+func (c *OVNNbClient) DeleteSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
+	nats, err := c.ListNats(lrName, ovnnb.NATTypeSNAT, logicalIP, nil)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	for _, nat := range nats {
+		if nat.ExternalIP != externalIP || nat.Match != match {
+			continue
+		}
+		ops, err := c.LogicalRouterUpdateNatOp(lrName, []string{nat.UUID}, ovsdb.MutateOperationDelete)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("generate operations for deleting snat from logical router %s: %w", lrName, err)
+		}
+		if err = c.Transact("lr-nat-del", ops); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("del snat from logical router %s: %w", lrName, err)
+		}
+		return nil
+	}
 	return nil
 }
 

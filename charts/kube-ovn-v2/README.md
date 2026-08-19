@@ -2019,6 +2019,24 @@ false
 			<td>Name of the join subnet once it gets generated in the cluster.</td>
 		</tr>
 		<tr>
+			<td>networking.vpcEndpointTransit.switchName</td>
+			<td>string</td>
+			<td><pre lang="json">
+"vpc-endpoint-transit"
+</pre>
+</td>
+			<td>Name of the transit logical switch used for VPC endpoint services.</td>
+		</tr>
+		<tr>
+			<td>networking.vpcEndpointTransit.cidr</td>
+			<td>string</td>
+			<td><pre lang="json">
+"100.65.0.0/16"
+</pre>
+</td>
+			<td>CIDR of the VPC endpoint transit switch. Must not overlap join/pod/service CIDRs. Join defaults to 100.64.0.0/16.</td>
+		</tr>
+		<tr>
 			<td>networking.networkType</td>
 			<td>string</td>
 			<td><pre lang="json">

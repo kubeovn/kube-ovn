@@ -249,6 +249,8 @@ type LogicalRouterPolicy interface {
 type NAT interface {
 	GetNATByUUID(uuid string) (*ovnnb.NAT, error)
 	AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error
+	AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error
+	DeleteSnatWithMatch(lrName, externalIP, logicalIP, match string) error
 	EnsureSnat(lrName, externalIP, logicalIP string) error
 	UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error
 	DeleteNats(lrName, natType, logicalIP string) error

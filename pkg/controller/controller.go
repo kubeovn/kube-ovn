@@ -121,6 +121,16 @@ type Controller struct {
 	restartableInitContainersMu      sync.Mutex
 	restartableInitContainerSupport  restartableInitContainerSupport
 
+	vpcEndpointServiceLister           kubeovnlister.VpcEndpointServiceLister
+	vpcEndpointServiceSynced           cache.InformerSynced
+	addOrUpdateVpcEndpointServiceQueue workqueue.TypedRateLimitingInterface[string]
+	vpcEndpointServiceKeyMutex         keymutex.KeyMutex
+
+	vpcEndpointLister           kubeovnlister.VpcEndpointLister
+	vpcEndpointSynced           cache.InformerSynced
+	addOrUpdateVpcEndpointQueue workqueue.TypedRateLimitingInterface[string]
+	vpcEndpointKeyMutex         keymutex.KeyMutex
+
 	// bgpConfLister/evpnConfLister are published asynchronously by the
 	// optional-CRD background poller (StartBgpEvpnConfInformerFactory), but
 	// read by VEG worker goroutines. Atomic pointers keep the read/write
@@ -456,6 +466,8 @@ func Run(ctx context.Context, config *Configuration) {
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
+	vpcEndpointServiceInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEndpointServices()
+	vpcEndpointInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEndpoints()
 	// BgpConf/EvpnConf informers are started lazily via StartBgpEvpnConfInformerFactory
 	// because their CRDs are optional on clusters that don't use vpc-egress-gateway BGP/EVPN.
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
@@ -525,6 +537,15 @@ func Run(ctx context.Context, config *Configuration) {
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
 		delVpcEgressGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcEgressGateway", custCrdRateLimiter),
 		vpcEgressGatewayKeyMutex:         keymutex.NewHashed(numKeyLocks),
+
+		vpcEndpointServiceLister:           vpcEndpointServiceInformer.Lister(),
+		vpcEndpointServiceSynced:           vpcEndpointServiceInformer.Informer().HasSynced,
+		addOrUpdateVpcEndpointServiceQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEndpointService", custCrdRateLimiter),
+		vpcEndpointServiceKeyMutex:         keymutex.NewHashed(numKeyLocks),
+		vpcEndpointLister:                  vpcEndpointInformer.Lister(),
+		vpcEndpointSynced:                  vpcEndpointInformer.Informer().HasSynced,
+		addOrUpdateVpcEndpointQueue:        newTypedRateLimitingQueue("AddOrUpdateVpcEndpoint", custCrdRateLimiter),
+		vpcEndpointKeyMutex:                keymutex.NewHashed(numKeyLocks),
 
 		// bgpConfLister/bgpConfSynced/evpnConfLister/evpnConfSynced are populated lazily
 		// in startBgpEvpnConfInformer once the matching CRDs are detected.
@@ -849,6 +870,7 @@ func Run(ctx context.Context, config *Configuration) {
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
 		controller.vpcNatGatewaySynced, controller.vpcEgressGatewaySynced,
+		controller.vpcEndpointServiceSynced, controller.vpcEndpointSynced,
 		controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
@@ -953,6 +975,22 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDeleteVpcEgressGateway,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vpc egress gateway event handler")
+	}
+
+	if _, err = vpcEndpointServiceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpcEndpointService,
+		UpdateFunc: controller.enqueueUpdateVpcEndpointService,
+		DeleteFunc: controller.enqueueDeleteVpcEndpointService,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc endpoint service event handler")
+	}
+
+	if _, err = vpcEndpointInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpcEndpoint,
+		UpdateFunc: controller.enqueueUpdateVpcEndpoint,
+		DeleteFunc: controller.enqueueDeleteVpcEndpoint,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc endpoint event handler")
 	}
 
 	if _, err = subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1214,6 +1252,10 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
 
+	if err := c.initVpcEndpointTransit(); err != nil {
+		util.LogFatalAndExit(err, "failed to initialize vpc endpoint transit switch")
+	}
+
 	if err := c.syncNodeRoutes(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
@@ -1331,6 +1373,9 @@ func (c *Controller) shutdown() {
 
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
+
+	c.addOrUpdateVpcEndpointServiceQueue.ShutDown()
+	c.addOrUpdateVpcEndpointQueue.ShutDown()
 
 	if c.config.EnableLb {
 		c.addRouterLBRuleQueue.ShutDown()
@@ -1456,6 +1501,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("delete vpc nat gateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update vpc egress gateway", c.addOrUpdateVpcEgressGatewayQueue, c.handleAddOrUpdateVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc egress gateway", c.delVpcEgressGatewayQueue, c.handleDelVpcEgressGateway), time.Second, ctx.Done())
+	if c.config.EnableLb {
+		go wait.Until(runWorker("add/update vpc endpoint service", c.addOrUpdateVpcEndpointServiceQueue, c.handleAddOrUpdateVpcEndpointService), time.Second, ctx.Done())
+		go wait.Until(runWorker("add/update vpc endpoint", c.addOrUpdateVpcEndpointQueue, c.handleAddOrUpdateVpcEndpoint), time.Second, ctx.Done())
+	}
 	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update eip for vpc nat gateway", c.updateVpcEipQueue, c.handleUpdateVpcEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update dnat for vpc nat gateway", c.updateVpcDnatQueue, c.handleUpdateVpcDnat), time.Second, ctx.Done())
