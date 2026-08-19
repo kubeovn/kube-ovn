@@ -84,7 +84,10 @@ writes after the feature is turned on.
 If the Hardware VTEP DB is unreachable at controller startup, kube-ovn-controller
 still starts and continues reconciling other resources. `VtepBinding.status.ready`
 follows OVN Southbound chassis attachment. Hardware VTEP DB health is reported on
-the separate `VTEPDBReady` condition and retried in the background.
+the separate `VTEPDBReady` condition and retried in the background. The controller
+also emits Kubernetes Events for `WaitingForChassis`, chassis loss, VTEP DB
+unavailability or reconcile failure, and cleanup success or failure, so
+`kubectl describe vtepbinding` explains why `Ready` is false.
 
 ## Prerequisites
 

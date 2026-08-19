@@ -30,6 +30,14 @@ const (
 	// SB Port_Binding chassis disappears later.
 	vtepBindingReadyRequeueDelay = 30 * time.Second
 	vtepClientReconnectInterval  = 30 * time.Second
+
+	eventVTEPAttachmentReady      = "VTEPAttachmentReady"
+	eventWaitingForChassis        = "WaitingForChassis"
+	eventChassisLost              = "ChassisLost"
+	eventVTEPDBNotConnected       = "VTEPDBNotConnected"
+	eventVTEPDBReconcileFailed    = "VTEPDBReconcileFailed"
+	eventVtepBindingCleanedUp     = "CleanedUp"
+	eventVtepBindingCleanupFailed = "CleanupFailed"
 )
 
 var (
@@ -164,12 +172,23 @@ func (c *Controller) handleAddOrUpdateVtepBinding(key string) error {
 	}
 
 	klog.Infof("handle add/update vtep binding %s", binding.Name)
+	prevReady := cachedBinding.Status.GetCondition(kubeovnv1.Ready)
+	wasReady := cachedBinding.Status.Ready
+	prevChassis := cachedBinding.Status.Chassis
 	binding.Status.EnsureStandardConditions()
 
 	if err = c.reconcileVtepBinding(binding); err != nil {
 		if errors.Is(err, errVtepBindingPending) {
-			binding.Status.NotReady("WaitingForChassis", err.Error())
+			reason := eventWaitingForChassis
+			if wasReady {
+				reason = eventChassisLost
+			}
+			msg := err.Error()
+			binding.Status.NotReady(reason, msg)
 			binding.Status.ClearError()
+			if vtepConditionNeedsEvent(prevReady, reason, msg, corev1.ConditionFalse) {
+				c.eventVtepBinding(binding, corev1.EventTypeWarning, reason, msg)
+			}
 			if patchErr := c.patchVtepBindingStatus(binding); patchErr != nil {
 				klog.Error(patchErr)
 				return patchErr
@@ -184,9 +203,13 @@ func (c *Controller) handleAddOrUpdateVtepBinding(key string) error {
 		return err
 	}
 
-	binding.Status.ReadyCondition("VTEPAttachmentReady", "")
+	readyMsg := fmt.Sprintf("logical switch port %s bound to chassis %s",
+		binding.Status.LogicalSwitchPort, binding.Status.Chassis)
+	binding.Status.ReadyCondition(eventVTEPAttachmentReady, readyMsg)
 	binding.Status.ClearError()
-	c.recorder.Eventf(binding, corev1.EventTypeNormal, "VTEPAttachmentReady", "")
+	if !wasReady || prevChassis != binding.Status.Chassis {
+		c.eventVtepBinding(binding, corev1.EventTypeNormal, eventVTEPAttachmentReady, readyMsg)
+	}
 	if err = c.patchVtepBindingStatus(binding); err != nil {
 		klog.Error(err)
 		return err
@@ -197,6 +220,20 @@ func (c *Controller) handleAddOrUpdateVtepBinding(key string) error {
 }
 
 func (c *Controller) cleanupVtepBinding(binding *kubeovnv1.VtepBinding) error {
+	if err := c.removeVtepBindingResources(binding); err != nil {
+		c.eventVtepBinding(binding, corev1.EventTypeWarning, eventVtepBindingCleanupFailed, err.Error())
+		return err
+	}
+	if err := c.handleDelVtepBindingFinalizer(binding); err != nil {
+		c.eventVtepBinding(binding, corev1.EventTypeWarning, eventVtepBindingCleanupFailed, err.Error())
+		return err
+	}
+	c.eventVtepBinding(binding, corev1.EventTypeNormal, eventVtepBindingCleanedUp,
+		fmt.Sprintf("removed hardware VTEP state for %s", binding.Name))
+	return nil
+}
+
+func (c *Controller) removeVtepBindingResources(binding *kubeovnv1.VtepBinding) error {
 	vtepLogicalSwitch := binding.VtepLogicalSwitchName()
 	if c.config.VtepDbAddr != "" {
 		vtepClient := c.getVtepClient()
@@ -228,10 +265,6 @@ func (c *Controller) cleanupVtepBinding(binding *kubeovnv1.VtepBinding) error {
 			klog.Errorf("failed to delete vtep logical switch port %s for binding %s: %v", lspName, binding.Name, err)
 			return err
 		}
-	}
-	if err := c.handleDelVtepBindingFinalizer(binding); err != nil {
-		klog.Errorf("failed to remove finalizer for vtep binding %s: %v", binding.Name, err)
-		return err
 	}
 	return nil
 }
@@ -299,13 +332,18 @@ func (c *Controller) reconcileVtepBinding(binding *kubeovnv1.VtepBinding) error 
 }
 
 func (c *Controller) reconcileVtepDBStatus(binding *kubeovnv1.VtepBinding, vtepLogicalSwitch string) {
+	prev := binding.Status.GetCondition(kubeovnv1.VTEPDBReady)
 	if c.config.VtepDbAddr == "" {
 		binding.Status.SetVTEPDBReady("NotRequired", "")
 		return
 	}
 	vtepClient := c.getVtepClient()
 	if vtepClient == nil {
-		binding.Status.NotVTEPDBReady("VTEPDBNotConnected", errVtepDBNotConnected.Error())
+		msg := errVtepDBNotConnected.Error()
+		binding.Status.NotVTEPDBReady(eventVTEPDBNotConnected, msg)
+		if vtepConditionNeedsEvent(prev, eventVTEPDBNotConnected, msg, corev1.ConditionFalse) {
+			c.eventVtepBinding(binding, corev1.EventTypeWarning, eventVTEPDBNotConnected, msg)
+		}
 		return
 	}
 	if err := vtepClient.EnsureVtepBinding(
@@ -315,7 +353,11 @@ func (c *Controller) reconcileVtepDBStatus(binding *kubeovnv1.VtepBinding, vtepL
 		binding.Name,
 		binding.Spec.VlanID,
 	); err != nil {
-		binding.Status.NotVTEPDBReady("VTEPDBReconcileFailed", err.Error())
+		msg := err.Error()
+		binding.Status.NotVTEPDBReady(eventVTEPDBReconcileFailed, msg)
+		if vtepConditionNeedsEvent(prev, eventVTEPDBReconcileFailed, msg, corev1.ConditionFalse) {
+			c.eventVtepBinding(binding, corev1.EventTypeWarning, eventVTEPDBReconcileFailed, msg)
+		}
 		return
 	}
 	binding.Status.SetVTEPDBReady("VTEPDBReconciled", "")
@@ -349,13 +391,27 @@ func (c *Controller) patchVtepBindingStatusCondition(binding *kubeovnv1.VtepBind
 	if errMsg != "" {
 		binding.Status.SetError(reason, errMsg)
 		binding.Status.NotReady(reason, errMsg)
-		c.recorder.Eventf(binding, corev1.EventTypeWarning, reason, "%s", errMsg)
+		c.eventVtepBinding(binding, corev1.EventTypeWarning, reason, errMsg)
 	} else {
 		binding.Status.ReadyCondition(reason, "")
 		binding.Status.ClearError()
-		c.recorder.Eventf(binding, corev1.EventTypeNormal, reason, "")
+		c.eventVtepBinding(binding, corev1.EventTypeNormal, reason, reason)
 	}
 	return c.patchVtepBindingStatus(binding)
+}
+
+func (c *Controller) eventVtepBinding(binding *kubeovnv1.VtepBinding, eventType, reason, message string) {
+	if c.recorder == nil || binding == nil {
+		return
+	}
+	c.recorder.Eventf(binding, eventType, reason, "%s", message)
+}
+
+func vtepConditionNeedsEvent(prev *kubeovnv1.Condition, reason, message string, status corev1.ConditionStatus) bool {
+	if prev == nil {
+		return true
+	}
+	return prev.Reason != reason || prev.Message != message || prev.Status != status
 }
 
 func (c *Controller) patchVtepBindingStatus(binding *kubeovnv1.VtepBinding) error {

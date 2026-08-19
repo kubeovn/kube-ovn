@@ -2,7 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -11,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/keymutex"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -118,6 +122,8 @@ func TestHandleAddOrUpdateVtepBindingAddsFinalizer(t *testing.T) {
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), binding.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Contains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+	require.Equal(t, eventWaitingForChassis, got.Status.GetCondition(kubeovnv1.Ready).Reason)
+	requireVtepEventContains(t, drainVtepEvents(ctrl), "Warning", eventWaitingForChassis)
 }
 
 func TestHandleAddOrUpdateVtepBindingStopsWhenObjectGone(t *testing.T) {
@@ -157,6 +163,7 @@ func TestCleanupVtepBindingRetriesWhenDBDisconnected(t *testing.T) {
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), binding.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Contains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+	requireVtepEventContains(t, drainVtepEvents(ctrl), "Warning", eventVtepBindingCleanupFailed, eventVTEPDBNotConnected)
 }
 
 func TestHandleAddOrUpdateVtepBindingReadyDespiteDBOutage(t *testing.T) {
@@ -178,7 +185,12 @@ func TestHandleAddOrUpdateVtepBindingReadyDespiteDBOutage(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, got.Status.Ready)
 	require.Equal(t, corev1.ConditionFalse, got.Status.GetCondition(kubeovnv1.VTEPDBReady).Status)
-	require.Equal(t, "VTEPDBNotConnected", got.Status.GetCondition(kubeovnv1.VTEPDBReady).Reason)
+	require.Equal(t, eventVTEPDBNotConnected, got.Status.GetCondition(kubeovnv1.VTEPDBReady).Reason)
+	require.Contains(t, got.Status.GetCondition(kubeovnv1.Ready).Message, "vtep.ready-db-down")
+	require.Contains(t, got.Status.GetCondition(kubeovnv1.Ready).Message, "gw1")
+	events := drainVtepEvents(ctrl)
+	requireVtepEventContains(t, events, "Normal", eventVTEPAttachmentReady, "vtep.ready-db-down", "gw1")
+	requireVtepEventContains(t, events, "Warning", eventVTEPDBNotConnected)
 }
 
 func TestHandleAddOrUpdateVtepBindingClearsErrorOnRecovery(t *testing.T) {
@@ -198,6 +210,7 @@ func TestHandleAddOrUpdateVtepBindingClearsErrorOnRecovery(t *testing.T) {
 	failed, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), binding.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.True(t, failed.Status.IsConditionTrue(kubeovnv1.Error))
+	requireVtepEventContains(t, drainVtepEvents(ctrl), "Warning", "ReconcileFailed")
 
 	expectVtepReady(fc.mockOvnClient, fc.mockOvnSbClient, binding)
 	require.NoError(t, ctrl.handleAddOrUpdateVtepBinding(binding.Name))
@@ -221,12 +234,51 @@ func TestHandleAddOrUpdateVtepBindingRevalidatesReady(t *testing.T) {
 	expectVtepReady(fc.mockOvnClient, fc.mockOvnSbClient, binding)
 	require.NoError(t, ctrl.handleAddOrUpdateVtepBinding(binding.Name))
 
+	require.Eventually(t, func() bool {
+		cached, err := ctrl.vtepBindingsLister.Get(binding.Name)
+		return err == nil && cached.Status.Ready
+	}, 2*time.Second, 20*time.Millisecond)
+
+	_ = drainVtepEvents(ctrl)
 	expectVtepPending(fc.mockOvnClient, fc.mockOvnSbClient, binding)
 	require.NoError(t, ctrl.handleAddOrUpdateVtepBinding(binding.Name))
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), binding.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.False(t, got.Status.Ready)
-	require.Equal(t, "WaitingForChassis", got.Status.GetCondition(kubeovnv1.Ready).Reason)
+	require.Equal(t, eventChassisLost, got.Status.GetCondition(kubeovnv1.Ready).Reason)
+	requireVtepEventContains(t, drainVtepEvents(ctrl), "Warning", eventChassisLost)
+}
+
+func TestHandleAddOrUpdateVtepBindingDBReconcileFailed(t *testing.T) {
+	t.Parallel()
+
+	binding := vtepBindingFixture("db-reconcile-fail")
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:      []*kubeovnv1.Subnet{vtepSubnetFixture()},
+		VtepBindings: []*kubeovnv1.VtepBinding{binding},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.config.EnableHardwareVtep = true
+	ctrl.config.VtepDbAddr = "tcp:192.0.2.10:6640"
+
+	mockVtep := mockovs.NewMockVtepDBClient(gomock.NewController(t))
+	mockVtep.EXPECT().EnsureVtepBinding(
+		binding.Spec.PhysicalSwitch,
+		binding.Spec.PhysicalPort,
+		binding.VtepLogicalSwitchName(),
+		binding.Name,
+		binding.Spec.VlanID,
+	).Return(errors.New("vlan mutate failed"))
+	ctrl.setVtepClient(mockVtep)
+	expectVtepReady(fc.mockOvnClient, fc.mockOvnSbClient, binding)
+
+	require.NoError(t, ctrl.handleAddOrUpdateVtepBinding(binding.Name))
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), binding.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.True(t, got.Status.Ready)
+	require.Equal(t, eventVTEPDBReconcileFailed, got.Status.GetCondition(kubeovnv1.VTEPDBReady).Reason)
+	requireVtepEventContains(t, drainVtepEvents(ctrl), "Warning", eventVTEPDBReconcileFailed, "vlan mutate failed")
 }
 
 func TestCleanupVtepBindingSkipsUnownedLSP(t *testing.T) {
@@ -258,6 +310,7 @@ func TestCleanupVtepBindingSkipsUnownedLSP(t *testing.T) {
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), binding.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotContains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+	requireVtepEventContains(t, drainVtepEvents(ctrl), "Normal", eventVtepBindingCleanedUp)
 }
 
 func TestEnqueueAllVtepBindingsIncludesTerminating(t *testing.T) {
@@ -318,6 +371,7 @@ func TestCleanupVtepBindingAfterReconnect(t *testing.T) {
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), binding.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotContains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+	requireVtepEventContains(t, drainVtepEvents(ctrl), "Normal", eventVtepBindingCleanedUp)
 }
 
 func TestGcVtepBindingDisabled(t *testing.T) {
@@ -413,4 +467,37 @@ func expectVtepReady(mockNb *mockovs.MockNbClient, mockSb *mockovs.MockSbClient,
 	chassis := "chassis-uuid"
 	mockSb.EXPECT().GetPortBindingByLogicalPort(ovs.GetVtepLogicalSwitchPortName(binding.Name), true).Return(&ovnsb.PortBinding{Chassis: &chassis}, nil)
 	mockSb.EXPECT().GetChassisNameByUUID(chassis).Return("gw1", nil)
+}
+
+func drainVtepEvents(ctrl *Controller) []string {
+	rec, ok := ctrl.recorder.(*record.FakeRecorder)
+	if !ok {
+		return nil
+	}
+	var events []string
+	for {
+		select {
+		case event := <-rec.Events:
+			events = append(events, event)
+		default:
+			return events
+		}
+	}
+}
+
+func requireVtepEventContains(t *testing.T, events []string, parts ...string) {
+	t.Helper()
+	for _, event := range events {
+		matched := true
+		for _, part := range parts {
+			if !strings.Contains(event, part) {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return
+		}
+	}
+	require.Failf(t, "missing vtep binding event", "want parts %v in events %v", parts, events)
 }
