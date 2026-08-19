@@ -595,10 +595,10 @@ jobs:
 
   build-kube-ovn:
     name: Build kube-ovn
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     needs:
       - e2e-selection
-      - prepare-kind-node-images
       - build-kube-ovn-base
       - build-kube-ovn-dpdk-base
     steps:
@@ -904,9 +904,10 @@ jobs:
 
   k8s-conformance-e2e:
     name: Kubernetes Conformance E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-conformance-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1106,9 +1107,10 @@ jobs:
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-netpol-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-netpol-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1313,9 +1315,10 @@ jobs:
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cyclonus-netpol-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cyclonus-netpol-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1493,9 +1496,10 @@ jobs:
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-conformance-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1697,9 +1701,10 @@ jobs:
 
   kube-ovn-ic-conformance-e2e:
     name: Kube-OVN IC Conformance E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ic-conformance-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ic-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1868,9 +1873,10 @@ jobs:
 
   multus-conformance-e2e:
     name: Multus Conformance E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'multus-conformance-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'multus-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2029,9 +2035,10 @@ jobs:
 
   non-primary-cni-e2e:
     name: Non-Primary CNI E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'non-primary-cni-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'non-primary-cni-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2200,9 +2207,10 @@ jobs:
 
   bgp-speaker-e2e:
     name: BGP Speaker E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'bgp-speaker-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'bgp-speaker-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2354,7 +2362,7 @@ jobs:
 
   kube-ovn-hosted-ovn-central-e2e:
     name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-hosted-ovn-central-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-hosted-ovn-central-e2e')
     needs:
       - e2e-selection
       - build-kube-ovn
@@ -2515,9 +2523,10 @@ jobs:
 
   chart-test:
     name: Chart Installation/Uninstallation Test
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'chart-test')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'chart-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     strategy:
@@ -2599,9 +2608,10 @@ jobs:
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'underlay-logical-gateway-installation-test')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'underlay-logical-gateway-installation-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -2675,9 +2685,10 @@ jobs:
 
   no-ovn-lb-test:
     name: Disable OVN LB Test
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-ovn-lb-test')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-ovn-lb-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -2753,9 +2764,10 @@ jobs:
 
   no-np-test:
     name: Disable Network Policy Test
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-np-test')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-np-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -2831,9 +2843,10 @@ jobs:
 
   lb-svc-e2e:
     name: LB Service E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'lb-svc-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'lb-svc-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
@@ -2989,9 +3002,10 @@ jobs:
 
   webhook-e2e:
     name: Webhook E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'webhook-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'webhook-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3114,9 +3128,10 @@ jobs:
 
   installation-compatibility-test:
     name: Installation Compatibility Test
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'installation-compatibility-test')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'installation-compatibility-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -3197,7 +3212,7 @@ jobs:
 
   talos-installation-test:
     name: Talos Installation Test
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'talos-installation-test')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'talos-installation-test')
     needs:
       - e2e-selection
       - build-kube-ovn
@@ -3290,9 +3305,10 @@ jobs:
 
   kube-ovn-cnp-domain-e2e:
     name: Kube-OVN CNP Domain E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-cnp-domain-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-cnp-domain-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3450,9 +3466,10 @@ jobs:
 
   kube-ovn-anp-domain-e2e:
     name: Kube-OVN ANP Domain E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-anp-domain-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-anp-domain-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3610,9 +3627,10 @@ jobs:
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cilium-chaining-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cilium-chaining-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3788,9 +3806,10 @@ jobs:
 
   kube-ovn-ha-e2e:
     name: Kube-OVN HA E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ha-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ha-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3938,9 +3957,10 @@ jobs:
 
   kube-ovn-submariner-conformance-e2e:
     name: Kube-OVN Submariner Conformance E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-submariner-conformance-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-submariner-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -4047,9 +4067,10 @@ jobs:
 
   vpc-egress-gateway-e2e:
     name: VPC Egress Gateway E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'vpc-egress-gateway-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'vpc-egress-gateway-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4243,9 +4264,10 @@ jobs:
 
   iptables-vpc-nat-gw-conformance-e2e:
     name: Iptables VPC NAT Gateway E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'iptables-vpc-nat-gw-conformance-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'iptables-vpc-nat-gw-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
@@ -4401,9 +4423,10 @@ jobs:
 
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'ovn-vpc-nat-gw-conformance-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'ovn-vpc-nat-gw-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4558,9 +4581,10 @@ jobs:
 
   kube-ovn-ipsec-e2e:
     name: OVN IPSEC E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4710,9 +4734,10 @@ jobs:
 
   kube-ovn-ipsec-cert-mgr-e2e:
     name: OVN IPSEC E2E CERT MANAGER
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-cert-mgr-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-cert-mgr-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4860,9 +4885,10 @@ jobs:
 
   kube-ovn-connectivity-test:
     name: Kube-OVN Connectivity E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-connectivity-test')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-connectivity-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4985,9 +5011,10 @@ jobs:
 
   kube-ovn-underlay-metallb-e2e:
     name: OVN METALLB E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-underlay-metallb-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-underlay-metallb-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -5143,9 +5170,10 @@ jobs:
 
   router-lb-rule-e2e:
     name: Router LB Rule E2E
-    if: contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'router-lb-rule-e2e')
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'router-lb-rule-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
