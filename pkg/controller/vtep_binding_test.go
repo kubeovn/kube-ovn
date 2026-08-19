@@ -71,18 +71,18 @@ func TestValidateVtepBindingConflict(t *testing.T) {
 	c := &Controller{}
 	c.vtepBindingsLister = &fakeVtepBindingLister{items: []*kubeovnv1.VtepBinding{existing}}
 
-	err := c.validateVtepBindingConflict(candidate, candidate.VtepLogicalSwitchName())
+	err := c.validateVtepBindingConflict(candidate)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "physicalPort")
 	require.Contains(t, err.Error(), "vlanID")
 
 	candidate.Spec.VlanID = 121
-	err = c.validateVtepBindingConflict(candidate, candidate.VtepLogicalSwitchName())
+	err = c.validateVtepBindingConflict(candidate)
 	require.NoError(t, err)
 
 	candidate.Spec.Subnet = "subnet-a"
 	candidate.Spec.PhysicalPort = "Ethernet1/21"
-	err = c.validateVtepBindingConflict(candidate, candidate.VtepLogicalSwitchName())
+	err = c.validateVtepBindingConflict(candidate)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "vtepLogicalSwitch")
 }
@@ -191,6 +191,30 @@ func TestHandleAddOrUpdateVtepBindingReadyDespiteDBOutage(t *testing.T) {
 	events := drainVtepEvents(ctrl)
 	requireVtepEventContains(t, events, "Normal", eventVTEPAttachmentReady, "vtep.ready-db-down", "gw1")
 	requireVtepEventContains(t, events, "Warning", eventVTEPDBNotConnected)
+}
+
+func TestHandleAddOrUpdateVtepBindingReadyWhenChassisUpFalse(t *testing.T) {
+	t.Parallel()
+
+	binding := vtepBindingFixture("ready-up-false")
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:      []*kubeovnv1.Subnet{vtepSubnetFixture()},
+		VtepBindings: []*kubeovnv1.VtepBinding{binding},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.config.EnableHardwareVtep = true
+	expectVtepLSP(fc.mockOvnClient, binding)
+	chassis := "chassis-uuid"
+	upFalse := false
+	fc.mockOvnSbClient.EXPECT().GetPortBindingByLogicalPort(ovs.GetVtepLogicalSwitchPortName(binding.Name), true).Return(&ovnsb.PortBinding{Chassis: &chassis, Up: &upFalse}, nil)
+	fc.mockOvnSbClient.EXPECT().GetChassisNameByUUID(chassis).Return("gw1", nil)
+
+	require.NoError(t, ctrl.handleAddOrUpdateVtepBinding(binding.Name))
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), binding.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.True(t, got.Status.Ready)
+	require.Equal(t, "gw1", got.Status.Chassis)
 }
 
 func TestHandleAddOrUpdateVtepBindingClearsErrorOnRecovery(t *testing.T) {

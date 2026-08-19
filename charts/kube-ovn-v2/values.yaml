@@ -181,8 +181,8 @@ networking:
   # -- Enable listening on the metrics endpoint for the CNI daemons.
   # @section -- Network parameters of the CNI
   enableMetrics: true
-  # -- Hardware VTEP OVSDB remote used by ovn-controller-vtep and kube-ovn-controller
-  # when features.enableHardwareVtep is true (e.g. tcp:[192.0.2.10]:6640).
+  # -- Hardware VTEP OVSDB remote. Required when features.enableHardwareVtep is true
+  # (e.g. tcp:[192.0.2.10]:6640). ovn-controller-vtep cannot start without this remote.
   # @section -- Network parameters of the CNI
   vtepDbAddr: ""
 
@@ -237,7 +237,7 @@ features:
   # -- Enable OVN interconnections
   # @section -- Opt-in/out Features
   enableOvnInterconnections: false
-  # -- Enable Hardware VTEP (deploys ovn-controller-vtep and wires VTEP_DB_ADDR into kube-ovn-controller)
+  # -- Enable Hardware VTEP (requires networking.vtepDbAddr; deploys ovn-controller-vtep)
   # @section -- Opt-in/out Features
   enableHardwareVtep: false
   # -- Enable NAT gateways

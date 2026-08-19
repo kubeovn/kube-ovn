@@ -38,16 +38,11 @@ func (c *OVNSbClient) GetPortBindingByLogicalPort(logicalPort string, ignoreNotF
 	return &list[0], nil
 }
 
-// IsPortBindingChassisBound reports whether the Port_Binding is chassis-bound
-// (and not explicitly down).
+// IsPortBindingChassisBound reports whether the Port_Binding has a non-empty
+// chassis. Ready does not require up=true: ovn-controller-vtep can leave
+// Port_Binding.up=false after chassis is already assigned.
 func IsPortBindingChassisBound(pb *ovnsb.PortBinding) bool {
-	if pb == nil || pb.Chassis == nil || *pb.Chassis == "" {
-		return false
-	}
-	if pb.Up != nil && !*pb.Up {
-		return false
-	}
-	return true
+	return pb != nil && pb.Chassis != nil && *pb.Chassis != ""
 }
 
 // GetChassisNameByUUID returns Chassis.Name for a Chassis UUID.

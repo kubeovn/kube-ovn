@@ -80,25 +80,13 @@ func (v *ValidatingHook) ValidateVtepBinding(ctx context.Context, binding, oldBi
 		return fmt.Errorf("failed to get subnet %s: %w", binding.Spec.Subnet, err)
 	}
 
-	vtepLogicalSwitch := binding.VtepLogicalSwitchName()
 	bindingList := &ovnv1.VtepBindingList{}
 	if err := v.cache.List(ctx, bindingList, &client.ListOptions{LabelSelector: labels.Everything()}); err != nil {
 		return fmt.Errorf("failed to list vtep bindings: %w", err)
 	}
-	for _, other := range bindingList.Items {
-		if other.Name == binding.Name || !other.DeletionTimestamp.IsZero() {
-			continue
-		}
-		if other.Spec.PhysicalSwitch == binding.Spec.PhysicalSwitch &&
-			other.VtepLogicalSwitchName() == vtepLogicalSwitch {
-			return fmt.Errorf("vtep binding conflicts with %s: physicalSwitch %q and vtepLogicalSwitch %q already in use",
-				other.Name, binding.Spec.PhysicalSwitch, vtepLogicalSwitch)
-		}
-		if other.Spec.PhysicalSwitch == binding.Spec.PhysicalSwitch &&
-			other.Spec.PhysicalPort == binding.Spec.PhysicalPort &&
-			other.Spec.VlanID == binding.Spec.VlanID {
-			return fmt.Errorf("vtep binding conflicts with %s: physicalSwitch %q physicalPort %q vlanID %d already in use",
-				other.Name, binding.Spec.PhysicalSwitch, binding.Spec.PhysicalPort, binding.Spec.VlanID)
+	for i := range bindingList.Items {
+		if err := ovnv1.VtepBindingConflict(binding, &bindingList.Items[i]); err != nil {
+			return err
 		}
 	}
 	return nil

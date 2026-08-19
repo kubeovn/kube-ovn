@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestVtepBindingVtepLogicalSwitchName(t *testing.T) {
@@ -13,6 +14,35 @@ func TestVtepBindingVtepLogicalSwitchName(t *testing.T) {
 	require.Equal(t, "subnet-a", b.VtepLogicalSwitchName())
 	b.Spec.VtepLogicalSwitch = "custom"
 	require.Equal(t, "custom", b.VtepLogicalSwitchName())
+}
+
+func TestVtepBindingConflict(t *testing.T) {
+	t.Parallel()
+	existing := &VtepBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "existing"},
+		Spec: VtepBindingSpec{
+			Subnet:         "subnet-a",
+			PhysicalSwitch: "nexus01",
+			PhysicalPort:   "Ethernet1/20",
+			VlanID:         120,
+		},
+	}
+	candidate := &VtepBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "candidate"},
+		Spec: VtepBindingSpec{
+			Subnet:         "subnet-b",
+			PhysicalSwitch: "nexus01",
+			PhysicalPort:   "Ethernet1/20",
+			VlanID:         120,
+		},
+	}
+	err := VtepBindingConflict(candidate, existing)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "vlanID")
+
+	candidate.Spec.VlanID = 121
+	require.NoError(t, VtepBindingConflict(candidate, existing))
+	require.NoError(t, VtepBindingConflict(existing, existing))
 }
 
 func TestVtepBindingStatusReady(t *testing.T) {

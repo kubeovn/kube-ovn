@@ -107,19 +107,41 @@ func (c *VtepClient) EnsureVtepBinding(physicalSwitch, physicalPort, logicalSwit
 		}
 	}
 
-	ops, err := c.Where(port).Mutate(port, model.Mutation{
-		Field:   &port.VLANBindings,
-		Mutator: ovsdb.MutateOperationInsert,
-		Value:   map[int]string{vlanID: ls.UUID},
-	})
-	if err != nil {
-		return fmt.Errorf("generate mutate for vlan_bindings on port %s: %w", physicalPort, err)
-	}
-	if err = c.Transact("vtep-vlan-bind", ops); err != nil {
-		return fmt.Errorf("set vlan_bindings[%d]=%s on physical port %s: %w", vlanID, ls.UUID, physicalPort, err)
+	if err = c.setPhysicalPortVLANBinding(port, vlanID, ls.UUID); err != nil {
+		return err
 	}
 	klog.Infof("set VTEP vlan_bindings[%d] on physical switch %s port %s to logical switch %s",
 		vlanID, physicalSwitch, physicalPort, logicalSwitch)
+	return nil
+}
+
+func (c *VtepClient) setPhysicalPortVLANBinding(port *vtep.PhysicalPort, vlanID int, lsUUID string) error {
+	var ops []ovsdb.Operation
+	if port.VLANBindings != nil {
+		if existing, ok := port.VLANBindings[vlanID]; ok && existing != lsUUID {
+			delOps, err := c.Where(port).Mutate(port, model.Mutation{
+				Field:   &port.VLANBindings,
+				Mutator: ovsdb.MutateOperationDelete,
+				Value:   map[int]string{vlanID: existing},
+			})
+			if err != nil {
+				return fmt.Errorf("generate mutate to replace vlan_bindings on port %s: %w", port.Name, err)
+			}
+			ops = append(ops, delOps...)
+		}
+	}
+	insOps, err := c.Where(port).Mutate(port, model.Mutation{
+		Field:   &port.VLANBindings,
+		Mutator: ovsdb.MutateOperationInsert,
+		Value:   map[int]string{vlanID: lsUUID},
+	})
+	if err != nil {
+		return fmt.Errorf("generate mutate for vlan_bindings on port %s: %w", port.Name, err)
+	}
+	ops = append(ops, insOps...)
+	if err = c.Transact("vtep-vlan-bind", ops); err != nil {
+		return fmt.Errorf("set vlan_bindings[%d]=%s on physical port %s: %w", vlanID, lsUUID, port.Name, err)
+	}
 	return nil
 }
 

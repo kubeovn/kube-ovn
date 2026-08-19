@@ -50,5 +50,5 @@ fi
 
 exec ./kube-ovn-controller --ovn-nb-addr="$nb_addr" \
                            --ovn-sb-addr="$sb_addr" \
-                           "${extra_args[@]}" \
+                           ${extra_args[@]+"${extra_args[@]}"} \
                            "$@"

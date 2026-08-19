@@ -27,3 +27,11 @@ tests:
           content:
             name: VTEP_DB_ADDR
             value: "tcp:[192.0.2.10]:6640"
+
+  - it: fails when ENABLE_HARDWARE_VTEP is true without VTEP_DB_ADDR
+    set:
+      func.ENABLE_HARDWARE_VTEP: true
+      networking.VTEP_DB_ADDR: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: VTEP_DB_ADDR is required

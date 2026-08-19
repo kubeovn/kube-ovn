@@ -39,6 +39,10 @@ SKIP_CONNTRACK_DST_CIDRS=${SKIP_CONNTRACK_DST_CIDRS:-}
 ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
 ENABLE_HARDWARE_VTEP=${ENABLE_HARDWARE_VTEP:-false}
 VTEP_DB_ADDR=${VTEP_DB_ADDR:-}
+if $ENABLE_HARDWARE_VTEP && [ -z "$VTEP_DB_ADDR" ]; then
+  echo "Error: VTEP_DB_ADDR must be set when ENABLE_HARDWARE_VTEP=true (ovn-controller-vtep cannot start without a Hardware VTEP OVSDB remote)"
+  exit 1
+fi
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
 EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}

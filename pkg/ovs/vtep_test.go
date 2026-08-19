@@ -27,7 +27,7 @@ func (suite *OvnClientTestSuite) Test_IsPortBindingChassisBound() {
 	chassis := "chassis-uuid"
 	upFalse := false
 	upTrue := true
-	require.False(t, IsPortBindingChassisBound(&ovnsb.PortBinding{Chassis: &chassis, Up: &upFalse}))
+	require.True(t, IsPortBindingChassisBound(&ovnsb.PortBinding{Chassis: &chassis, Up: &upFalse}))
 	require.True(t, IsPortBindingChassisBound(&ovnsb.PortBinding{Chassis: &chassis}))
 	require.True(t, IsPortBindingChassisBound(&ovnsb.PortBinding{Chassis: &chassis, Up: &upTrue}))
 }
@@ -96,6 +96,56 @@ func (suite *OvnClientTestSuite) testEnsureVtepBinding() {
 
 	err = vtepClient.EnsureVtepBinding(psName, "missing-port", lsName, bindingName, vlanID)
 	require.Error(t, err)
+}
+
+func (suite *OvnClientTestSuite) Test_EnsureVtepBindingReplacesStaleVLANMapping() {
+	suite.testEnsureVtepBindingReplacesStaleVLANMapping()
+}
+
+func (suite *OvnClientTestSuite) testEnsureVtepBindingReplacesStaleVLANMapping() {
+	t := suite.T()
+	t.Parallel()
+
+	vtepClient := suite.vtepClient
+	require.NotNil(t, vtepClient)
+
+	psName := "nexus-ut-rebind"
+	portName := "Ethernet1/5"
+	oldLS := "stale-ls"
+	newLS := "current-ls"
+	vlanID := 140
+
+	portUUID := ovsclient.NamedUUID()
+	psUUID := ovsclient.NamedUUID()
+	globalUUID := ovsclient.NamedUUID()
+	portOps, err := vtepClient.Create(&vtep.PhysicalPort{
+		UUID: portUUID,
+		Name: portName,
+	})
+	require.NoError(t, err)
+	psOps, err := vtepClient.Create(&vtep.PhysicalSwitch{
+		UUID:  psUUID,
+		Name:  psName,
+		Ports: []string{portUUID},
+	})
+	require.NoError(t, err)
+	globalOps, err := vtepClient.Create(&vtep.Global{
+		UUID:     globalUUID,
+		Switches: []string{psUUID},
+	})
+	require.NoError(t, err)
+	ops := append(portOps, psOps...)
+	ops = append(ops, globalOps...)
+	require.NoError(t, vtepClient.Transact("vtep-fixture-rebind", ops))
+
+	require.NoError(t, vtepClient.EnsureVtepBinding(psName, portName, oldLS, "stale-binding", vlanID))
+	require.NoError(t, vtepClient.EnsureVtepBinding(psName, portName, newLS, "current-binding", vlanID))
+
+	ls, err := vtepClient.GetLogicalSwitch(newLS, false)
+	require.NoError(t, err)
+	port, err := vtepClient.GetPhysicalPort(psName, portName, false)
+	require.NoError(t, err)
+	require.Equal(t, ls.UUID, port.VLANBindings[vlanID])
 }
 
 func (suite *OvnClientTestSuite) Test_RemoveVtepBindingSkipsForeignMapping() {

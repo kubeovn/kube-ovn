@@ -27,3 +27,11 @@ tests:
           content:
             name: VTEP_DB_ADDR
             value: "tcp:[192.0.2.10]:6640"
+
+  - it: fails when enableHardwareVtep is true without vtepDbAddr
+    set:
+      features.enableHardwareVtep: true
+      networking.vtepDbAddr: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: vtepDbAddr is required

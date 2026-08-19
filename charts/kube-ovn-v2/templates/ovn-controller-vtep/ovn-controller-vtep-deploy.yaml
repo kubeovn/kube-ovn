@@ -1,4 +1,7 @@
 {{- if .Values.features.enableHardwareVtep }}
+{{- if not .Values.networking.vtepDbAddr }}
+{{- fail "networking.vtepDbAddr is required when features.enableHardwareVtep is true (ovn-controller-vtep cannot start without a Hardware VTEP OVSDB remote)" }}
+{{- end }}
 {{- $vtepImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.hardwareVtep.image) | fromYaml -}}
 kind: Deployment
 apiVersion: apps/v1

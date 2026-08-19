@@ -276,7 +276,7 @@ func (c *Controller) reconcileVtepBinding(binding *kubeovnv1.VtepBinding) error 
 	}
 
 	vtepLogicalSwitch := binding.VtepLogicalSwitchName()
-	if err = c.validateVtepBindingConflict(binding, vtepLogicalSwitch); err != nil {
+	if err = c.validateVtepBindingConflict(binding); err != nil {
 		return err
 	}
 
@@ -340,6 +340,7 @@ func (c *Controller) reconcileVtepDBStatus(binding *kubeovnv1.VtepBinding, vtepL
 	vtepClient := c.getVtepClient()
 	if vtepClient == nil {
 		msg := errVtepDBNotConnected.Error()
+		klog.Errorf("hardware VTEP DB not connected for vtep binding %s at %s", binding.Name, c.config.VtepDbAddr)
 		binding.Status.NotVTEPDBReady(eventVTEPDBNotConnected, msg)
 		if vtepConditionNeedsEvent(prev, eventVTEPDBNotConnected, msg, corev1.ConditionFalse) {
 			c.eventVtepBinding(binding, corev1.EventTypeWarning, eventVTEPDBNotConnected, msg)
@@ -354,6 +355,7 @@ func (c *Controller) reconcileVtepDBStatus(binding *kubeovnv1.VtepBinding, vtepL
 		binding.Spec.VlanID,
 	); err != nil {
 		msg := err.Error()
+		klog.Errorf("failed to reconcile hardware VTEP DB for vtep binding %s: %v", binding.Name, err)
 		binding.Status.NotVTEPDBReady(eventVTEPDBReconcileFailed, msg)
 		if vtepConditionNeedsEvent(prev, eventVTEPDBReconcileFailed, msg, corev1.ConditionFalse) {
 			c.eventVtepBinding(binding, corev1.EventTypeWarning, eventVTEPDBReconcileFailed, msg)
@@ -363,25 +365,14 @@ func (c *Controller) reconcileVtepDBStatus(binding *kubeovnv1.VtepBinding, vtepL
 	binding.Status.SetVTEPDBReady("VTEPDBReconciled", "")
 }
 
-func (c *Controller) validateVtepBindingConflict(binding *kubeovnv1.VtepBinding, vtepLogicalSwitch string) error {
+func (c *Controller) validateVtepBindingConflict(binding *kubeovnv1.VtepBinding) error {
 	bindings, err := c.vtepBindingsLister.List(labels.Everything())
 	if err != nil {
 		return fmt.Errorf("failed to list vtep bindings: %w", err)
 	}
 	for _, other := range bindings {
-		if other.Name == binding.Name || !other.DeletionTimestamp.IsZero() {
-			continue
-		}
-		if other.Spec.PhysicalSwitch == binding.Spec.PhysicalSwitch &&
-			other.VtepLogicalSwitchName() == vtepLogicalSwitch {
-			return fmt.Errorf("vtep binding %s conflicts with %s: physicalSwitch %q and vtepLogicalSwitch %q already in use",
-				binding.Name, other.Name, binding.Spec.PhysicalSwitch, vtepLogicalSwitch)
-		}
-		if other.Spec.PhysicalSwitch == binding.Spec.PhysicalSwitch &&
-			other.Spec.PhysicalPort == binding.Spec.PhysicalPort &&
-			other.Spec.VlanID == binding.Spec.VlanID {
-			return fmt.Errorf("vtep binding %s conflicts with %s: physicalSwitch %q physicalPort %q vlanID %d already in use",
-				binding.Name, other.Name, binding.Spec.PhysicalSwitch, binding.Spec.PhysicalPort, binding.Spec.VlanID)
+		if err = kubeovnv1.VtepBindingConflict(binding, other); err != nil {
+			return err
 		}
 	}
 	return nil

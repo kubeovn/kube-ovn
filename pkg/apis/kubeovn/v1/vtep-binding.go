@@ -51,8 +51,30 @@ func (b *VtepBinding) VtepLogicalSwitchName() string {
 	return b.Spec.Subnet
 }
 
+// VtepBindingConflict returns an error when other occupies the same
+// physicalSwitch+vtepLogicalSwitch or physicalSwitch+physicalPort+vlanID as binding.
+func VtepBindingConflict(binding, other *VtepBinding) error {
+	if binding == nil || other == nil || other.Name == binding.Name || !other.DeletionTimestamp.IsZero() {
+		return nil
+	}
+	vtepLogicalSwitch := binding.VtepLogicalSwitchName()
+	if other.Spec.PhysicalSwitch == binding.Spec.PhysicalSwitch &&
+		other.VtepLogicalSwitchName() == vtepLogicalSwitch {
+		return fmt.Errorf("vtep binding %s conflicts with %s: physicalSwitch %q and vtepLogicalSwitch %q already in use",
+			binding.Name, other.Name, binding.Spec.PhysicalSwitch, vtepLogicalSwitch)
+	}
+	if other.Spec.PhysicalSwitch == binding.Spec.PhysicalSwitch &&
+		other.Spec.PhysicalPort == binding.Spec.PhysicalPort &&
+		other.Spec.VlanID == binding.Spec.VlanID {
+		return fmt.Errorf("vtep binding %s conflicts with %s: physicalSwitch %q physicalPort %q vlanID %d already in use",
+			binding.Name, other.Name, binding.Spec.PhysicalSwitch, binding.Spec.PhysicalPort, binding.Spec.VlanID)
+	}
+	return nil
+}
+
 type VtepBindingSpec struct {
 	// Subnet is the Kube-OVN Subnet (OVN Logical Switch) to extend. Immutable.
+	// The Subnet must already exist; the validating webhook rejects the CR otherwise.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec.subnet is immutable"
@@ -90,8 +112,9 @@ type VtepBindingSpec struct {
 }
 
 type VtepBindingStatus struct {
-	// Ready indicates the OVN VTEP Logical Switch Port is chassis-bound in SB
-	// (ovn-controller-vtep has completed binding).
+	// Ready indicates the OVN VTEP Logical Switch Port has a non-empty SB chassis
+	// (ovn-controller-vtep has assigned Port_Binding.chassis). Port_Binding.up is
+	// not required.
 	// +optional
 	Ready bool `json:"ready"`
 
