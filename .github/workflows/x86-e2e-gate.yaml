@@ -1541,15 +1541,15 @@ jobs:
             if ! gh api --method POST \
               "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
               -f ref="$defaultBranch" \
-              -F "inputs[prNumber]=$PR_NUMBER" \
+              -f "inputs[prNumber]=$PR_NUMBER" \
               -f "inputs[headSHA]=$HEAD_SHA" \
               -f "inputs[baseSHA]=$BASE_SHA" \
-              -F "inputs[approvalGeneration]=$SOURCE_APPROVAL_GENERATION" \
+              -f "inputs[approvalGeneration]=$SOURCE_APPROVAL_GENERATION" \
               -f "inputs[catalogRevision]=$CATALOG_REVISION" \
               -f "inputs[requestedGroups]=$SOURCE_REQUESTED_GROUPS" \
-              -F "inputs[full]=$SOURCE_FULL" \
-              -F 'inputs[recordIntent]=true' \
-              -F 'inputs[baseRefresh]=false'; then
+              -f "inputs[full]=$SOURCE_FULL" \
+              -f 'inputs[recordIntent]=true' \
+              -f 'inputs[baseRefresh]=false'; then
               gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
                 -f body='The x86 E2E intent is durable and the gate remains blocked, but reconciliation must be retried.'
               exit 1
@@ -1577,9 +1577,9 @@ jobs:
             if ! gh api --method POST \
               "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-dispatcher.yaml/dispatches" \
               -f ref="$defaultBranch" \
-              -F "inputs[prNumber]=$PR_NUMBER" \
+              -f "inputs[prNumber]=$PR_NUMBER" \
               -f "inputs[headSHA]=$HEAD_SHA" \
-              -F "inputs[approvalGeneration]=$APPROVAL_GENERATION"; then
+              -f "inputs[approvalGeneration]=$APPROVAL_GENERATION"; then
               gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
                 -f body='The approval was recorded, but its trusted x86 E2E reducer could not be started; retry the authorized command.'
               exit 1

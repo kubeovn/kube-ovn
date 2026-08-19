@@ -950,6 +950,19 @@ class E2EControlTest(unittest.TestCase):
         )
         self.assertGreaterEqual(workflow.count("approvalIntents"), 2)
 
+    def testWorkflowDispatchInputsUseGitHubRESTStringFields(self):
+        for workflowName in ["x86-e2e-dispatcher.yaml", "x86-e2e-gate.yaml"]:
+            with self.subTest(workflow=workflowName):
+                workflow = (repoRoot / ".github/workflows" / workflowName).read_text()
+                typedInputs = re.findall(r"-F\s+['\"]inputs\[", workflow)
+
+                self.assertEqual(
+                    typedInputs,
+                    [],
+                    "workflow_dispatch REST inputs must use -f so GitHub can "
+                    "validate and coerce them using the target workflow schema",
+                )
+
     def testGateWorkflowRecoversTrustedTerminalDecisions(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
 

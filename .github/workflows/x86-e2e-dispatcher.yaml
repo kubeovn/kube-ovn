@@ -288,17 +288,17 @@ jobs:
           if ! gh api --method POST \
             "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/dispatches" \
             -f ref="$executorRef" \
-            -F "inputs[prNumber]=$PR_NUMBER" \
+            -f "inputs[prNumber]=$PR_NUMBER" \
             -f "inputs[headSHA]=$headSHA" \
             -f "inputs[baseSHA]=$baseSHA" \
-            -F "inputs[approvalGeneration]=$approvalGeneration" \
-            -F 'inputs[automatic]=true' \
-            -F "inputs[dispatchGeneration]=$DISPATCH_GENERATION" \
+            -f "inputs[approvalGeneration]=$approvalGeneration" \
+            -f 'inputs[automatic]=true' \
+            -f "inputs[dispatchGeneration]=$DISPATCH_GENERATION" \
             -f 'inputs[requestedGroups]=[]' \
             -f 'inputs[requestedGroupNames]=-' \
             -f "inputs[controlledLabels]=$controlledLabels" \
             -f "inputs[controlledLabelNames]=$controlledLabelNames" \
-            -F 'inputs[full]=false' \
+            -f 'inputs[full]=false' \
             -f "inputs[requestKey]=$requestKey" \
             -f "inputs[catalogRevision]=$catalogRevision"; then
             [ "$createdRef" = false ] || gh api --method DELETE \
@@ -364,15 +364,15 @@ jobs:
             gh api --method POST \
               "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
               -f ref="$GITHUB_REF_NAME" \
-              -F "inputs[prNumber]=$prNumber" \
+              -f "inputs[prNumber]=$prNumber" \
               -f "inputs[headSHA]=$headSHA" \
               -f "inputs[baseSHA]=$GITHUB_SHA" \
-              -F 'inputs[approvalGeneration]=1' \
+              -f 'inputs[approvalGeneration]=1' \
               -f "inputs[catalogRevision]=$catalogRevision" \
               -f 'inputs[requestedGroups]=[]' \
-              -F 'inputs[full]=false' \
-              -F 'inputs[recordIntent]=false' \
-              -F 'inputs[baseRefresh]=true'
+              -f 'inputs[full]=false' \
+              -f 'inputs[recordIntent]=false' \
+              -f 'inputs[baseRefresh]=true'
           done < open-pulls.tsv
 
   dispatch:
@@ -553,15 +553,15 @@ jobs:
               gh api --method POST \
                 "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
                 -f ref="$defaultBranch" \
-                -F "inputs[prNumber]=$prNumber" \
+                -f "inputs[prNumber]=$prNumber" \
                 -f "inputs[headSHA]=$headSHA" \
                 -f "inputs[baseSHA]=$baseSHA" \
-                -F "inputs[approvalGeneration]=$approvalGeneration" \
+                -f "inputs[approvalGeneration]=$approvalGeneration" \
                 -f "inputs[catalogRevision]=$catalogRevision" \
                 -f "inputs[requestedGroups]=$requestedGroups" \
-                -F "inputs[full]=$full" \
-                -F "inputs[recordIntent]=$recordIntent" \
-                -F 'inputs[baseRefresh]=false'
+                -f "inputs[full]=$full" \
+                -f "inputs[recordIntent]=$recordIntent" \
+                -f 'inputs[baseRefresh]=false'
             }
             if ! dispatchGate false; then
               gh api "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments" \
@@ -1037,17 +1037,17 @@ jobs:
           if ! gh api --method POST \
             "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/dispatches" \
             -f ref="$executorRef" \
-            -F "inputs[prNumber]=$PR_NUMBER" \
+            -f "inputs[prNumber]=$PR_NUMBER" \
             -f "inputs[headSHA]=$HEAD_SHA" \
             -f "inputs[baseSHA]=$BASE_SHA" \
-            -F "inputs[approvalGeneration]=$APPROVAL_GENERATION" \
-            -F 'inputs[automatic]=false' \
-            -F "inputs[dispatchGeneration]=$DISPATCH_GENERATION" \
+            -f "inputs[approvalGeneration]=$APPROVAL_GENERATION" \
+            -f 'inputs[automatic]=false' \
+            -f "inputs[dispatchGeneration]=$DISPATCH_GENERATION" \
             -f "inputs[requestedGroups]=$REQUESTED_GROUPS" \
             -f "inputs[requestedGroupNames]=$REQUESTED_GROUP_NAMES" \
             -f 'inputs[controlledLabels]=[]' \
             -f 'inputs[controlledLabelNames]=-' \
-            -F "inputs[full]=$FULL" \
+            -f "inputs[full]=$FULL" \
             -f "inputs[requestKey]=$REQUEST_KEY" \
             -f "inputs[catalogRevision]=$CATALOG_REVISION"; then
             [ "$createdRef" = false ] || gh api --method DELETE \
