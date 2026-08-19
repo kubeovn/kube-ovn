@@ -104,5 +104,15 @@ func (v *ValidatingHook) VpcDeleteHook(ctx context.Context, req admission.Reques
 		}
 	}
 
+	wgList := &ovnv1.VpcWireGuardList{}
+	if err := v.cache.List(ctx, wgList); err != nil {
+		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
+	}
+	for _, item := range wgList.Items {
+		if item.Spec.Vpc == vpc.Name {
+			return ctrlwebhook.Denied(fmt.Sprintf("can't delete vpc %q: still referenced by VpcWireGuard %q", vpc.Name, item.Name))
+		}
+	}
+
 	return ctrlwebhook.Allowed("bypass")
 }

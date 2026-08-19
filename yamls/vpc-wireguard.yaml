@@ -1,0 +1,46 @@
+# Example: DualNIC VpcWireGuard + a generated peer.
+# Prerequisites:
+# - VPC, overlay subnet, client-pool subnet, and (for DualNIC) an underlay NAD/subnet
+# - ConfigMap ovn-vpc-nat-config with image kubeovn/vpc-nat-gateway:<version>
+#   that includes wireguard-tools
+---
+apiVersion: kubeovn.io/v1
+kind: VpcWireGuard
+metadata:
+  name: office-vpn
+spec:
+  vpc: tenant-vpc
+  subnet: tenant-overlay
+  lanIp: 10.0.8.10
+  clientSubnet: tenant-vpn-pool
+  generateServerKey: true
+  listenPort: 51820
+  exposure:
+    type: DualNIC
+    externalSubnets:
+      - ovn-vpc-external-network
+---
+apiVersion: kubeovn.io/v1
+kind: VpcWireGuardPeer
+metadata:
+  name: alice
+spec:
+  wireGuard: office-vpn
+  generateKey: true
+  persistentKeepalive: 25
+---
+# DNAT exposure (requires a VpcNatGateway EIP):
+# spec:
+#   generateServerKey: true
+#   exposure:
+#     type: DNAT
+#     eip: vpn-eip
+#     natGateway: tenant-nat
+#
+# FIP exposure:
+# spec:
+#   generateServerKey: true
+#   exposure:
+#     type: FIP
+#     eip: vpn-eip
+#     natGateway: tenant-nat

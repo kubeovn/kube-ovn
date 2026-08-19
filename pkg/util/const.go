@@ -127,6 +127,8 @@ const (
 	ExGatewayLabel                     = "ovn.kubernetes.io/external-gw"
 	NodeExtGwLabel                     = "ovn.kubernetes.io/node-ext-gw"
 	VpcNatGatewayLabel                 = "ovn.kubernetes.io/vpc-nat-gw"
+	VpcWireGuardLabel                  = "ovn.kubernetes.io/vpc-wireguard"
+	VpcWireGuardAnnotation             = "ovn.kubernetes.io/vpc_wireguard"
 	IPReservedLabel                    = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel             = "ovn.kubernetes.io/vpc-nat-gw-name"
 	VpcLbLabel                         = "ovn.kubernetes.io/vpc_lb"
@@ -443,6 +445,8 @@ var (
 	KindVpc              = ObjectKind[*kubeovnv1.Vpc]()
 	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
 	KindVpcNatGateway    = ObjectKind[*kubeovnv1.VpcNatGateway]()
+	KindVpcWireGuard     = ObjectKind[*kubeovnv1.VpcWireGuard]()
+	KindVpcWireGuardPeer = ObjectKind[*kubeovnv1.VpcWireGuardPeer]()
 
 	KindVirtualMachine                  = ObjectKind[*kubevirtv1.VirtualMachine]()
 	KindVirtualMachineInstance          = ObjectKind[*kubevirtv1.VirtualMachineInstance]()

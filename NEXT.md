@@ -4,6 +4,8 @@ This document lists the features merged into the master branch for the next mino
 
 ## Post-v1.16.0
 
+- Add `VpcWireGuard` and `VpcWireGuardPeer` CRDs for remote WireGuard access into a VPC, using the existing NAT-gateway image, DualNIC/DNAT/FIP exposure, and client IPAM.
+
 ## v1.16.0
 
 - NetworkPolicy now supports provider-scoped policies for multi-network pods using the `ovn.kubernetes.io/policy-for` annotation. [#6223](https://github.com/kubeovn/kube-ovn/pull/6223)

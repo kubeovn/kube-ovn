@@ -21,6 +21,10 @@ rules:
       - vpcs/status
       - vpc-nat-gateways
       - vpc-nat-gateways/status
+      - vpc-wireguards
+      - vpc-wireguards/status
+      - vpc-wireguard-peers
+      - vpc-wireguard-peers/status
       - vpc-egress-gateways
       - vpc-egress-gateways/status
       - subnets

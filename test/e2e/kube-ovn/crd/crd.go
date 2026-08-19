@@ -15,6 +15,12 @@ var _ = framework.Describe("[group:crd]", func() {
 	f := framework.NewDefaultFramework("crd")
 
 	ginkgo.Context("CRD Generation and Installation", func() {
+		ginkgo.It("should establish VpcWireGuard CRDs", func() {
+			f.SkipVersionPriorTo(1, 18, "VpcWireGuard was introduced in v1.18")
+			gomega.Expect(waitForCRDEstablished("vpc-wireguards.kubeovn.io")).NotTo(gomega.HaveOccurred())
+			gomega.Expect(waitForCRDEstablished("vpc-wireguard-peers.kubeovn.io")).NotTo(gomega.HaveOccurred())
+		})
+
 		ginkgo.It("should generate and install successfully, and support basic networking", func() {
 			ginkgo.By("Verifying Subnet CRD is established")
 			err := waitForCRDEstablished("subnets.kubeovn.io")
