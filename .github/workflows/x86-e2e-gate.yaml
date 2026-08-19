@@ -79,6 +79,8 @@ jobs:
       runURL: ${{ github.event.workflow_run.html_url }}
       runEvent: ${{ github.event.workflow_run.event }}
       trustedRef: ${{ steps.context.outputs.trustedRef }}
+      automatic: ${{ steps.context.outputs.automatic }}
+      controlledLabels: ${{ steps.context.outputs.controlledLabels }}
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -99,6 +101,7 @@ jobs:
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           RUN_EVENT: ${{ github.event.workflow_run.event }}
           RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_NAME: ${{ github.event.workflow_run.display_title }}
           RUN_PATH: ${{ github.event.workflow_run.path }}
@@ -131,14 +134,45 @@ jobs:
             approvalGeneration=$(jq -r '.approvalGeneration' executor-metadata.json)
             dispatchGeneration=$(jq -r '.dispatchGeneration' executor-metadata.json)
             requestedGroups=$(jq -c '.requestedGroups' executor-metadata.json)
+            controlledLabels=$(jq -c '.controlledLabels' executor-metadata.json)
+            automatic=$(jq -r '.automatic' executor-metadata.json)
             requestKey=''
             expectedCatalogRevision=''
             trustedRef="$RUN_WORKFLOW_SHA"
             full=$(jq -r '.full' executor-metadata.json)
-            approved=true
+            approved=$([ "$automatic" = true ] && echo false || echo true)
             trustedExecution=true
           else
             printf '%s' "$RUN_PULL_REQUESTS" > run-pull-requests.json
+            if [ "$(jq 'length' run-pull-requests.json)" -eq 0 ]; then
+              if ! [[ "$RUN_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+                echo 'The pull request workflow HEAD is invalid.' >&2
+                exit 1
+              fi
+              headOwner=${RUN_HEAD_REPOSITORY%%/*}
+              if [ -z "$headOwner" ] || [ "$headOwner" = "$RUN_HEAD_REPOSITORY" ]; then
+                echo 'The pull request workflow head repository is invalid.' >&2
+                exit 1
+              fi
+              gh api --method GET \
+                "repos/$GITHUB_REPOSITORY/pulls" \
+                -f state=open \
+                -f "head=$headOwner:$RUN_HEAD_BRANCH" \
+                > associated-pull-requests.json
+              jq \
+                --arg repository "$GITHUB_REPOSITORY" \
+                --arg headSHA "$RUN_WORKFLOW_SHA" \
+                --arg headRepository "$RUN_HEAD_REPOSITORY" \
+                '[.[] | select(
+                  .state == "open" and
+                  .head.sha == $headSHA and
+                  .head.repo.full_name == $headRepository and
+                  .base.repo.full_name == $repository
+                )] |
+                if length == 1 then .
+                else error("workflow HEAD must resolve to exactly one open pull request")
+                end' associated-pull-requests.json > run-pull-requests.json
+            fi
             prNumber=$(jq -r '.[0].number // empty' run-pull-requests.json)
             expectedHead=$(jq -r '.[0].head.sha // empty' run-pull-requests.json)
             trustedRef=$(jq -r '.[0].base.sha // empty' run-pull-requests.json)
@@ -146,13 +180,15 @@ jobs:
             approvalGeneration=0
             dispatchGeneration=0
             requestedGroups='[]'
+            controlledLabels='[]'
+            automatic=false
             requestKey=''
             expectedCatalogRevision=''
             full=false
             approved=false
             trustedExecution=false
             if [ -z "$prNumber" ] || [ -z "$expectedHead" ] || [ -z "$trustedRef" ]; then
-              echo 'The completed pull_request run is not associated with a pull request.' >&2
+              echo 'The completed pull_request run is not associated with one open pull request.' >&2
               exit 1
             fi
           fi
@@ -205,6 +241,8 @@ jobs:
               "head": {"sha": sys.argv[2]},
               "base": {"sha": sys.argv[3], "ref": sys.argv[4]},
           }
+          livePullRequest = json.loads(Path("pull-request.json").read_text())
+          pullRequest["labels"] = livePullRequest.get("labels", [])
           pages = json.loads(Path("current-comments.json").read_text())
           request = e2eControl.approvedRequest(pullRequest, catalog, pages)
           if request is None:
@@ -213,11 +251,17 @@ jobs:
                   "requestKey": "",
                   "catalogRevision": e2eSelector.catalogRevision(catalog),
               }
+          request["controlledLabels"] = e2eControl.trustedControlledLabels(
+              catalog,
+              pages,
+              [label.get("name", "") for label in pullRequest["labels"]],
+          )
           print(json.dumps(request))
           PY
           latestApprovalGeneration=$(jq -r '.approvalGeneration' current-request.json)
           latestRequestKey=$(jq -r '.requestKey // ""' current-request.json)
           currentCatalogRevision=$(jq -r '.catalogRevision' current-request.json)
+          currentControlledLabels=$(jq -c '.controlledLabels // []' current-request.json)
           if [ "$RUN_EVENT" = workflow_dispatch ] && [ "$RUN_ATTEMPT" != "$currentAttempt" ]; then
             newerAttemptAuthorized=false
             if [ "$currentTriggeringActor" = 'github-actions[bot]' ]; then
@@ -273,7 +317,19 @@ jobs:
           PY
             )
             expectedCatalogRevision="$currentCatalogRevision"
-            if [ "$requestKey" != "$latestRequestKey" ]; then
+            if [ "$automatic" = true ]; then
+              requestKey=''
+              if [ "$latestApprovalGeneration" != 0 ]; then
+                echo 'A trusted comment approval supersedes this automatic executor.'
+                echo 'skip=true' >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              if [ "$controlledLabels" != "$currentControlledLabels" ]; then
+                echo 'Controlled label provenance changed; the automatic executor is stale.'
+                echo 'skip=true' >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            elif [ "$requestKey" != "$latestRequestKey" ]; then
               echo 'A different durable approval supersedes this executor.'
               echo 'skip=true' >> "$GITHUB_OUTPUT"
               exit 0
@@ -301,6 +357,11 @@ jobs:
             exit 0
           fi
           if [ "$RUN_EVENT" = workflow_dispatch ] || [ "$RUN_EVENT" = pull_request ]; then
+            # A stale approved run must not suppress a fresh automatic probe
+            # after controlled-label provenance changed.
+            if [ "$automatic" = true ] && [ "$latestApprovalGeneration" = 0 ]; then
+              latestRun=''
+            else
             gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
               > executor-run-pages.json
@@ -329,6 +390,7 @@ jobs:
               echo 'skip=true' >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            fi
           fi
           {
             echo 'skip=false'
@@ -347,6 +409,8 @@ jobs:
             echo "trustedExecution=$trustedExecution"
             echo "full=$full"
             echo "requestedGroups=$requestedGroups"
+            echo "automatic=$automatic"
+            echo "controlledLabels=$controlledLabels"
             echo "requestKey=$requestKey"
           } >> "$GITHUB_OUTPUT"
 
@@ -413,6 +477,8 @@ jobs:
           HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
           REQUESTED_GROUPS: ${{ steps.context.outputs.requestedGroups }}
           FULL: ${{ steps.context.outputs.full }}
+          CONTROLLED_LABELS: ${{ steps.context.outputs.controlledLabels }}
+          EXECUTION_EVENT: ${{ steps.context.outputs.approved == 'true' && 'workflow_dispatch' || 'pull_request' }}
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
@@ -421,7 +487,8 @@ jobs:
           from pathlib import Path
 
           pullRequest = json.loads(Path("pull-request.json").read_text())
-          pullRequest["labels"] = []
+          controlledLabels = json.loads(__import__("os").environ["CONTROLLED_LABELS"])
+          pullRequest["labels"] = [{"name": label} for label in controlledLabels]
           Path("selector-event.json").write_text(json.dumps({"pull_request": pullRequest}))
           PY
           gh api --paginate --slurp \
@@ -457,13 +524,28 @@ jobs:
             --event-file selector-event.json
             --request-groups-json "$REQUESTED_GROUPS"
             --head-sha "$HEAD_SHA"
+            --base-sha "${{ steps.context.outputs.expectedBase }}"
+            --pr-number "$PR_NUMBER"
             --force-full-reason "$forceFullReason"
             --plan-file e2e-selection-plan.json
           )
           if [ "$FULL" = true ]; then
-            args+=(--label e2e:full)
+            args+=(--request-full)
           fi
           python3 hack/e2e_selector.py "${args[@]}"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import e2e_selector as e2eSelector
+
+          catalog = e2eSelector.loadCatalog(".github/e2e-selection.json")
+          plan = json.loads(Path("e2e-selection-plan.json").read_text())
+          plan = e2eSelector.executionPlan(catalog, plan, os.environ["EXECUTION_EVENT"])
+          Path("e2e-selection-plan.json").write_text(
+              json.dumps(plan, indent=2) + "\n"
+          )
+          PY
 
       - name: Evaluate the fixed gate
         if: steps.context.outputs.skip != 'true' && steps.context.outputs.runAction == 'completed'
@@ -1459,15 +1541,15 @@ jobs:
             if ! gh api --method POST \
               "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
               -f ref="$defaultBranch" \
-              -F "inputs[prNumber]=$PR_NUMBER" \
+              -f "inputs[prNumber]=$PR_NUMBER" \
               -f "inputs[headSHA]=$HEAD_SHA" \
               -f "inputs[baseSHA]=$BASE_SHA" \
-              -F "inputs[approvalGeneration]=$SOURCE_APPROVAL_GENERATION" \
+              -f "inputs[approvalGeneration]=$SOURCE_APPROVAL_GENERATION" \
               -f "inputs[catalogRevision]=$CATALOG_REVISION" \
               -f "inputs[requestedGroups]=$SOURCE_REQUESTED_GROUPS" \
-              -F "inputs[full]=$SOURCE_FULL" \
-              -F 'inputs[recordIntent]=true' \
-              -F 'inputs[baseRefresh]=false'; then
+              -f "inputs[full]=$SOURCE_FULL" \
+              -f 'inputs[recordIntent]=true' \
+              -f 'inputs[baseRefresh]=false'; then
               gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
                 -f body='The x86 E2E intent is durable and the gate remains blocked, but reconciliation must be retried.'
               exit 1
@@ -1495,9 +1577,9 @@ jobs:
             if ! gh api --method POST \
               "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-dispatcher.yaml/dispatches" \
               -f ref="$defaultBranch" \
-              -F "inputs[prNumber]=$PR_NUMBER" \
+              -f "inputs[prNumber]=$PR_NUMBER" \
               -f "inputs[headSHA]=$HEAD_SHA" \
-              -F "inputs[approvalGeneration]=$APPROVAL_GENERATION"; then
+              -f "inputs[approvalGeneration]=$APPROVAL_GENERATION"; then
               gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
                 -f body='The approval was recorded, but its trusted x86 E2E reducer could not be started; retry the authorized command.'
               exit 1

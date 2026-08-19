@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,11 +17,21 @@ import e2e_selector as e2eSelector
 
 class E2EControlTest(unittest.TestCase):
     def testParsesSupportedCommentCommands(self):
+        headSHA = "a" * 40
+        nonce = "b" * 16
         cases = {
-            "/test e2e": ("dispatch", [], False),
-            "/test e2e policy,multi-cni": ("dispatch", ["multi-cni", "policy"], False),
-            "/test e2e-all": ("dispatch", [], True),
-            "/retest e2e-failed": ("rerun-failed", [], False),
+            f"/test e2e --head {headSHA} --nonce {nonce}": ("dispatch", [], False),
+            f"/test e2e policy,multi-cni --head {headSHA} --nonce {nonce}": (
+                "dispatch",
+                ["multi-cni", "policy"],
+                False,
+            ),
+            f"/test e2e-all --head {headSHA} --nonce {nonce}": ("dispatch", [], True),
+            f"/retest e2e-failed --head {headSHA} --nonce {nonce}": (
+                "rerun-failed",
+                [],
+                False,
+            ),
         }
 
         for body, expected in cases.items():
@@ -30,9 +41,12 @@ class E2EControlTest(unittest.TestCase):
                     (command["action"], command["requestedGroups"], command["full"]),
                     expected,
                 )
+                self.assertEqual(command["headSHA"], headSHA)
+                self.assertEqual(command["nonce"], nonce)
 
     def testRejectsMalformedOrInjectedCommands(self):
         for body in [
+            "/test e2e",
             "/test e2e policy bogus",
             "/test e2e policy;echo-owned",
             "/test e2e policy\n/test e2e-all",
@@ -48,13 +62,23 @@ class E2EControlTest(unittest.TestCase):
 
     def dispatchDecision(
         self,
-        body="/test e2e policy",
+        body=None,
         permission="write",
         observedHeadSHA="a" * 40,
         confirmedHeadSHA="a" * 40,
         state="open",
         baseRef="master",
+        controlledLabels=(),
     ):
+        catalog = json.loads((repoRoot / ".github/e2e-selection.json").read_text())
+        catalogRevision = e2eSelector.catalogRevision(catalog)
+        baseSHA = "b" * 40
+        if body is None:
+            nonce = e2eControl.requestNonce(7231, observedHeadSHA, baseSHA, catalogRevision)
+            body = f"/test e2e policy --head {observedHeadSHA} --nonce {nonce}"
+        elif " --head " not in body:
+            nonce = e2eControl.requestNonce(7231, observedHeadSHA, baseSHA, catalogRevision)
+            body = f"{body} --head {observedHeadSHA} --nonce {nonce}"
         event = {
             "action": "created",
             "comment": {"id": 1001, "body": body, "user": {"login": "maintainer"}},
@@ -65,16 +89,17 @@ class E2EControlTest(unittest.TestCase):
             "number": 7231,
             "state": state,
             "head": {"sha": observedHeadSHA},
-            "base": {"ref": baseRef, "sha": "b" * 40},
+            "base": {"ref": baseRef, "sha": baseSHA},
         }
-        catalog = json.loads((repoRoot / ".github/e2e-selection.json").read_text())
         return e2eControl.decideDispatch(
             event,
             permission,
             pullRequest,
             confirmedHeadSHA,
             set(catalog["groups"]),
-            e2eSelector.catalogRevision(catalog),
+            catalogRevision,
+            liveComment=event["comment"],
+            controlledLabels=controlledLabels,
         )
 
     def testAuthorizedCommandIsBoundToCurrentHead(self):
@@ -106,6 +131,57 @@ class E2EControlTest(unittest.TestCase):
         self.assertFalse(decision["accepted"])
         self.assertEqual(decision["reason"], "pull request HEAD changed; comment again")
 
+    def testCommentBindingCannotBeReplayedForAnotherHead(self):
+        catalog = json.loads((repoRoot / ".github/e2e-selection.json").read_text())
+        nonce = e2eControl.requestNonce(
+            7231,
+            "a" * 40,
+            "b" * 40,
+            e2eSelector.catalogRevision(catalog),
+        )
+        decision = self.dispatchDecision(
+            body=f"/test e2e --head {'a' * 40} --nonce {nonce}",
+            observedHeadSHA="c" * 40,
+            confirmedHeadSHA="c" * 40,
+        )
+
+        self.assertFalse(decision["accepted"])
+        self.assertEqual(decision["reason"], "comment is bound to another pull request HEAD")
+
+    def testEditedOrDeletedCommentEventCannotBeReplayed(self):
+        catalog = json.loads((repoRoot / ".github/e2e-selection.json").read_text())
+        catalogRevision = e2eSelector.catalogRevision(catalog)
+        nonce = e2eControl.requestNonce(7231, "a" * 40, "b" * 40, catalogRevision)
+        event = {
+            "action": "created",
+            "comment": {
+                "id": 1001,
+                "body": f"/test e2e --head {'a' * 40} --nonce {nonce}",
+                "user": {"login": "maintainer"},
+            },
+            "issue": {"number": 7231, "pull_request": {}},
+            "repository": {"full_name": "kubeovn/kube-ovn"},
+        }
+        pullRequest = {
+            "number": 7231,
+            "state": "open",
+            "head": {"sha": "a" * 40},
+            "base": {"ref": "master", "sha": "b" * 40},
+        }
+
+        decision = e2eControl.decideDispatch(
+            event,
+            "write",
+            pullRequest,
+            "a" * 40,
+            set(catalog["groups"]),
+            catalogRevision,
+            liveComment={**event["comment"], "body": "edited"},
+        )
+
+        self.assertFalse(decision["accepted"])
+        self.assertEqual(decision["reason"], "comment changed or was deleted before dispatch")
+
     def testClosedPullRequestIsRejected(self):
         decision = self.dispatchDecision(state="closed")
 
@@ -123,6 +199,20 @@ class E2EControlTest(unittest.TestCase):
 
         self.assertFalse(decision["accepted"])
         self.assertEqual(decision["reason"], "unknown requested E2E group: not-a-group")
+
+    def testTrustedControlledLabelsCanOnlyAddApprovedCoverage(self):
+        grouped = self.dispatchDecision(
+            body="/test e2e",
+            controlledLabels=["e2e:multi-cni", "e2e:policy"],
+        )
+        full = self.dispatchDecision(
+            body="/test e2e policy",
+            controlledLabels=["e2e:full"],
+        )
+
+        self.assertEqual(grouped["requestedGroups"], ["multi-cni", "policy"])
+        self.assertTrue(full["full"])
+        self.assertEqual(full["requestedGroups"], [])
 
     def testUnrelatedCommentProducesNoDecision(self):
         self.assertIsNone(self.dispatchDecision(body="looks good"))
@@ -282,6 +372,79 @@ class E2EControlTest(unittest.TestCase):
 
         self.assertEqual(intents, [intent])
 
+    def testControlledLabelsRequireLatestTrustedBotMarkerAndLivePresence(self):
+        catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
+        policyPresent = e2eControl.renderControlledLabelMarker("e2e:policy", True)
+        policyRemoved = e2eControl.renderControlledLabelMarker("e2e:policy", False)
+        fullPresent = e2eControl.renderControlledLabelMarker("e2e:full", True)
+        pages = [[
+            {
+                "id": 10,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": policyPresent,
+            },
+            {
+                "id": 11,
+                "user": {"login": "attacker", "type": "User"},
+                "body": fullPresent,
+            },
+            {
+                "id": 12,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": policyRemoved,
+            },
+            {
+                "id": 13,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": fullPresent,
+            },
+        ]]
+
+        labels = e2eControl.trustedControlledLabels(
+            catalog,
+            pages,
+            ["e2e:policy", "e2e:full", "e2e:unknown"],
+        )
+
+        self.assertEqual(labels, ["e2e:full"])
+        self.assertEqual(
+            e2eControl.parseControlledLabelMarker(fullPresent),
+            {"label": "e2e:full", "present": True},
+        )
+
+    def testApprovalMarkerIsInvalidatedWhenTrustedLabelsChange(self):
+        catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
+        pullRequest = {
+            "number": 7231,
+            "head": {"sha": "a" * 40},
+            "base": {"ref": "master", "sha": "b" * 40},
+            "labels": [{"name": "e2e:policy"}],
+        }
+        catalogRevision = e2eSelector.catalogRevision(catalog)
+        pages = [[
+            {
+                "id": 10,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": e2eControl.renderControlledLabelMarker("e2e:policy", True),
+            },
+            {
+                "id": 11,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": e2eControl.renderRequestMarker(
+                    {
+                        "headSHA": "a" * 40,
+                        "baseSHA": "b" * 40,
+                        "approvalGeneration": 1001,
+                        "catalogRevision": catalogRevision,
+                        "requestedGroups": ["policy"],
+                        "full": False,
+                    }
+                ),
+            },
+        ]]
+
+        self.assertIsNone(e2eControl.approvedRequest(pullRequest, catalog, pages))
+
     def testRerunAuthorizationMarkerBindsExactAttempt(self):
         marker = e2eControl.renderRerunMarker(42, 2, "a" * 40, "b" * 40)
         pages = [[
@@ -376,7 +539,7 @@ class E2EControlTest(unittest.TestCase):
         metadata = e2eControl.parseExecutorRunName(
             "x86-e2e pr=7231 head="
             + "a" * 40
-            + " approval=1001 generation=2001 groups=multi-cni,policy full=0"
+            + " approval=1001 generation=2001 mode=approved groups=multi-cni,policy labels=- full=0"
         )
 
         self.assertEqual(metadata["prNumber"], 7231)
@@ -384,7 +547,22 @@ class E2EControlTest(unittest.TestCase):
         self.assertEqual(metadata["approvalGeneration"], 1001)
         self.assertEqual(metadata["dispatchGeneration"], 2001)
         self.assertEqual(metadata["requestedGroups"], ["multi-cni", "policy"])
+        self.assertEqual(metadata["controlledLabels"], [])
+        self.assertFalse(metadata["automatic"])
         self.assertFalse(metadata["full"])
+
+    def testParsesTrustedAutomaticExecutorRunName(self):
+        metadata = e2eControl.parseExecutorRunName(
+            "x86-e2e pr=7231 head="
+            + "a" * 40
+            + " approval=1 generation=2001 mode=automatic groups=- labels=e2e:policy full=0"
+        )
+        metadata["baseSHA"] = "b" * 40
+        metadata["catalogRevision"] = "c" * 64
+
+        self.assertTrue(metadata["automatic"])
+        self.assertEqual(metadata["controlledLabels"], ["e2e:policy"])
+        self.assertEqual(e2eControl.executorRequestKey(metadata), "")
 
     def testFullRequestIdentityIgnoresRequestedGroups(self):
         request = {
@@ -425,7 +603,7 @@ class E2EControlTest(unittest.TestCase):
             e2eControl.parseExecutorRunName(
                 "x86-e2e pr=7231 head="
                 + "a" * 40
-                + " approval=0 generation=2001 groups=multi-cni,policy full=0"
+                + " approval=0 generation=2001 mode=approved groups=multi-cni,policy labels=- full=0"
             )
 
     def testLatestExecutorRunRejectsUntrustedCandidates(self):
@@ -446,7 +624,7 @@ class E2EControlTest(unittest.TestCase):
         title = (
             "x86-e2e pr=7231 head="
             + "a" * 40
-            + " approval=1001 generation=2001 groups=policy full=0"
+            + " approval=1001 generation=2001 mode=approved groups=policy labels=- full=0"
         )
         trusted = {
             "id": 3,
@@ -477,7 +655,7 @@ class E2EControlTest(unittest.TestCase):
             "display_title": (
                 "x86-e2e pr=7231 head="
                 + "a" * 40
-                + " approval=1001 generation=2001 groups=policy full=0"
+                + " approval=1001 generation=2001 mode=approved groups=policy labels=- full=0"
             ),
         }
 
@@ -502,17 +680,67 @@ class E2EControlTest(unittest.TestCase):
             )
         )
 
+    def testLatestExecutorRunPrefersApprovedCoverageOverAutomaticProbe(self):
+        head = "a" * 40
+        base = "d" * 40
+        automatic = {
+            "id": 9,
+            "path": ".github/workflows/build-x86-image.yaml",
+            "actor": {"login": "github-actions[bot]"},
+            "head_branch": "x86-e2e/pr-7231-a-1-d-2002",
+            "head_sha": base,
+            "display_title": (
+                "x86-e2e pr=7231 head=" + head
+                + " approval=1 generation=2002 mode=automatic groups=- labels=- full=0"
+            ),
+        }
+        approved = {
+            **automatic,
+            "id": 8,
+            "head_branch": "x86-e2e/pr-7231-a-1-d-2001",
+            "display_title": (
+                "x86-e2e pr=7231 head=" + head
+                + " approval=1 generation=2001 mode=approved groups=policy labels=- full=0"
+            ),
+        }
+
+        latest = e2eControl.latestExecutorRun(
+            [automatic, approved], 7231, head, "master", None, base
+        )
+
+        self.assertEqual(latest["id"], 8)
+
     def testDispatchCliWritesDecisionJson(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             event = directory / "event.json"
             pullRequest = directory / "pr.json"
+            liveComment = directory / "comment.json"
+            controlledLabels = directory / "controlled-labels.json"
             decision = directory / "decision.json"
             event.write_text(
                 json.dumps(
                     {
                         "action": "created",
-                        "comment": {"id": 1001, "body": "/test e2e policy", "user": {"login": "maintainer"}},
+                        "comment": {
+                            "id": 1001,
+                            "body": (
+                                "/test e2e policy --head "
+                                + "a" * 40
+                                + " --nonce "
+                                + e2eControl.requestNonce(
+                                    7231,
+                                    "a" * 40,
+                                    "b" * 40,
+                                    e2eSelector.catalogRevision(
+                                        e2eSelector.loadCatalog(
+                                            repoRoot / ".github/e2e-selection.json"
+                                        )
+                                    ),
+                                )
+                            ),
+                            "user": {"login": "maintainer"},
+                        },
                         "issue": {"number": 7231, "pull_request": {"url": "https://api.example/pr/7231"}},
                         "repository": {"full_name": "kubeovn/kube-ovn"},
                     }
@@ -528,6 +756,8 @@ class E2EControlTest(unittest.TestCase):
                     }
                 )
             )
+            liveComment.write_text(json.dumps(json.loads(event.read_text())["comment"]))
+            controlledLabels.write_text("[]")
 
             subprocess.run(
                 [
@@ -542,6 +772,10 @@ class E2EControlTest(unittest.TestCase):
                     str(pullRequest),
                     "--confirmed-head-sha",
                     "a" * 40,
+                    "--live-comment-file",
+                    str(liveComment),
+                    "--controlled-labels-file",
+                    str(controlledLabels),
                     "--decision-file",
                     str(decision),
                 ],
@@ -555,7 +789,10 @@ class E2EControlTest(unittest.TestCase):
         workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
 
         self.assertIn("issue_comment:\n    types: [created]", workflow)
-        self.assertIn("pull_request_target:\n    types: [synchronize, closed]", workflow)
+        self.assertIn(
+            "pull_request_target:\n    types: [opened, reopened, synchronize, labeled, unlabeled, closed]",
+            workflow,
+        )
         self.assertIn("push:\n    branches:", workflow)
         self.assertIn("name: Invalidate x86 E2E gates after a base update", workflow)
         self.assertIn("inputs[baseRefresh]=true", workflow)
@@ -566,8 +803,15 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("pull-requests: read", workflow)
         self.assertIn("issues: write", workflow)
         self.assertIn("--catalog trusted-catalog.json", workflow)
+        self.assertIn("--live-comment-file live-comment.json", workflow)
+        self.assertIn("issues/comments/$COMMENT_ID", workflow)
         self.assertIn("e2e-selection.json?ref=$baseRef", workflow)
         self.assertIn("Cancel obsolete x86 E2E executors", workflow)
+        self.assertIn("Record trusted x86 E2E controlled labels", workflow)
+        self.assertIn("collaborators/$SENDER/permission", workflow)
+        self.assertIn("renderControlledLabelMarker", workflow)
+        self.assertIn("trustedControlledLabels", workflow)
+        self.assertIn("labels/$encodedLabel", workflow)
         self.assertIn("live-pull-request.json", workflow)
         self.assertNotIn("Recorded x86 E2E approval", workflow)
         self.assertNotIn("Queued x86 E2E approval intent", workflow)
@@ -614,7 +858,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("print(e2eControl.executorHeadBranch(request))", workflow)
         self.assertIn('git/refs/heads/$executorRef', workflow)
         self.assertIn('-f ref="$executorRef"', workflow)
-        self.assertNotIn("inputs.headSHA || github.sha", workflow)
+        self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
 
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
@@ -630,6 +874,19 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("RUN_ACTOR: ${{ github.event.workflow_run.actor.login }}", workflow)
         self.assertIn("RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}", workflow)
         self.assertIn("RUN_TRIGGERING_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}", workflow)
+        self.assertIn(
+            "RUN_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}",
+            workflow,
+        )
+        self.assertIn('-f "head=$headOwner:$RUN_HEAD_BRANCH"', workflow)
+        self.assertIn("workflow HEAD must resolve to exactly one open pull request", workflow)
+        self.assertIn('.head.repo.full_name == $headRepository', workflow)
+        self.assertIn('.base.repo.full_name == $repository', workflow)
+        self.assertIn("automatic: ${{ steps.context.outputs.automatic }}", workflow)
+        self.assertIn("controlledLabels: ${{ steps.context.outputs.controlledLabels }}", workflow)
+        self.assertIn("A trusted comment approval supersedes this automatic executor.", workflow)
+        self.assertIn("Controlled label provenance changed; the automatic executor is stale.", workflow)
+        self.assertIn("CONTROLLED_LABELS: ${{ steps.context.outputs.controlledLabels }}", workflow)
         self.assertIn("currentTriggeringActor=$(jq -r", workflow)
         self.assertIn("[ \"$RUN_TRIGGERING_ACTOR\" = 'github-actions[bot]' ]", workflow)
         self.assertGreaterEqual(workflow.count("isAuthorizedRunAttempt"), 6)
@@ -693,6 +950,19 @@ class E2EControlTest(unittest.TestCase):
         )
         self.assertGreaterEqual(workflow.count("approvalIntents"), 2)
 
+    def testWorkflowDispatchInputsUseGitHubRESTStringFields(self):
+        for workflowName in ["x86-e2e-dispatcher.yaml", "x86-e2e-gate.yaml"]:
+            with self.subTest(workflow=workflowName):
+                workflow = (repoRoot / ".github/workflows" / workflowName).read_text()
+                typedInputs = re.findall(r"-F\s+['\"]inputs\[", workflow)
+
+                self.assertEqual(
+                    typedInputs,
+                    [],
+                    "workflow_dispatch REST inputs must use -f so GitHub can "
+                    "validate and coerce them using the target workflow schema",
+                )
+
     def testGateWorkflowRecoversTrustedTerminalDecisions(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
 
@@ -718,23 +988,27 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("attempt <= currentAttempt", workflow)
         self.assertIn("executed-selection-plan.json", workflow)
         self.assertIn("expectedCount >= 3000", workflow)
+        self.assertIn("args+=(--request-full)", workflow)
+        self.assertNotIn("args+=(--label e2e:full)", workflow)
+        self.assertIn(
+            'e2eSelector.executionPlan(catalog, plan, os.environ["EXECUTION_EVENT"])',
+            workflow,
+        )
+        self.assertIn("EXECUTION_EVENT: ${{ steps.context.outputs.approved == 'true'", workflow)
         self.assertIn("ref: ${{ github.event.repository.default_branch }}", workflow)
         self.assertIn("ref: ${{ steps.context.outputs.trustedRef }}", workflow)
         self.assertNotIn("ref: ${{ steps.context.outputs.baseRef }}", workflow)
-        self.assertNotIn("inputs.headSHA || github.sha", workflow)
+        self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
         self.assertNotIn("contents: write", workflow)
 
-    def testExecutorDispatchKeepsPullRequestAndPushCoverageUnchanged(self):
+    def testExecutorWorkflowUsesUnprivilegedExactHeadContext(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
-        blocks = e2eSelector.workflowJobBlocks(workflow)
-        catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
-        testJobs = {
-            job["id"]
-            for group in catalog["groups"].values()
-            for job in group["jobs"]
-        }
 
         self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("automatic:", workflow)
+        self.assertIn("controlledLabels:", workflow)
+        self.assertIn("inputs.automatic && 'automatic'", workflow)
+        self.assertIn("EVENT_NAME: ${{ inputs.automatic && 'pull_request' || github.event_name }}", workflow)
         self.assertIn(
             "GH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && github.token || '' }}",
             workflow,
@@ -744,8 +1018,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("executor workflow revision does not match the approved base", workflow)
         self.assertIn("trusted selector checkout does not match the approved base revision", workflow)
         self.assertIn("ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA", workflow)
-        self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 6)
-        self.assertGreaterEqual(workflow.count("needs: e2e-selection"), 3)
+        self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 5)
         self.assertNotIn('entry["selection"] != "smoke"', workflow)
         self.assertIn("contents: read", workflow)
         self.assertIn("packages: read", workflow)
@@ -757,11 +1030,42 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("allowed=('TAG','GO_VERSION','E2E_DIR','VERSION','DEBUG_WRAPPER')", workflow)
         self.assertNotIn("actions: write", workflow)
         self.assertNotIn("checks: write", workflow)
-        self.assertIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
-        self.assertNotIn(
-            "GHCR_TOKEN: ${{ github.event_name == 'push' && secrets.GITHUB_TOKEN || '' }}",
+        self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
+        self.assertIn(
+            "Pull private Kind node image with trusted token",
             workflow,
         )
+        self.assertIn("kind-node-v1.36.1.tar", workflow)
+        self.assertIn("kind-node-v1.29.14.tar", workflow)
+        self.assertNotIn("kind-ghcr-pull", workflow)
+        self.assertIn(
+            "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "
+            "github.event.pull_request.head.sha || inputs.headSHA || github.sha }}",
+            workflow,
+        )
+        self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
+        self.assertNotIn("github.event.pull_request.head.sha || inputs.headSHA", workflow.replace(
+            "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "
+            "github.event.pull_request.head.sha || inputs.headSHA || github.sha }}",
+            "",
+        ))
+        self.assertGreaterEqual(workflow.count("ref: ${{ env.EXECUTION_SHA }}"), 31)
+        self.assertIn(
+            '"${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"',
+            workflow,
+        )
+
+    def testPullRequestsExecuteAutomaticCoverageAndPushStaysFull(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
+        testJobs = {
+            job["id"]
+            for group in catalog["groups"].values()
+            for job in group["jobs"]
+        }
+
+        self.assertGreaterEqual(workflow.count("needs: e2e-selection"), 2)
         self.assertIn("Initialize fail-closed conformance matrices", workflow)
         self.assertIn("steps.fallbackMatrices.outputs.k8sConformanceMatrix", workflow)
         self.assertIn(
@@ -772,26 +1076,59 @@ class E2EControlTest(unittest.TestCase):
             "matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}",
             blocks["kube-ovn-conformance-e2e"],
         )
+        self.assertIn("if: github.event_name == 'push'\n        uses: actions/cache@v6", workflow)
+        self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)
+        self.assertIn("--request-full", workflow)
+        self.assertNotIn("args+=(--label e2e:full)", workflow)
+        self.assertIn("expectedCount >= 3000", workflow)
         self.assertIn(
-            "if: github.event_name == 'push'\n        uses: actions/cache@v6",
+            'e2eSelector.executionPlan(catalog, plan, os.environ["EVENT_NAME"])',
             workflow,
         )
-        self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)
-        self.assertIn("expectedCount >= 3000", workflow)
-        self.assertIn("e2eSelector.expandWorkflow(workflow)", workflow)
+        self.assertIn("except Exception as error:", workflow)
+        self.assertIn("failed to reload the E2E catalog", workflow)
+        self.assertIn(
+            '"e2e-selection-plan.json",\n              "e2e-selection-summary.md",',
+            workflow,
+        )
+        self.assertNotIn("continue-on-error:", blocks["e2e-selection"])
+        self.assertNotIn("e2eSelector.expandWorkflow(workflow)", workflow)
+        validationBlock = blocks["e2e-control-validation"]
+        self.assertIn("permissions:\n      contents: read", validationBlock)
+        self.assertIn("python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py", validationBlock)
         resultBlock = blocks["e2e-executor-result"]
+        self.assertIn("if: always() && github.event_name != 'pull_request'", resultBlock)
         self.assertIn("permissions: {}", resultBlock)
-        self.assertIn("selected x86 E2E Jobs did not succeed", resultBlock)
+        self.assertIn(
+            'requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds',
+            resultBlock,
+        )
+        self.assertIn("required x86 E2E Jobs did not succeed", resultBlock)
+        self.assertNotIn("netpol-path-filter", blocks)
+        resultNeeds = set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", resultBlock))
+        self.assertEqual(
+            resultNeeds,
+            testJobs | {"e2e-selection", "e2e-control-validation"},
+        )
+        pushNeeds = set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", blocks["push"]))
+        self.assertEqual(pushNeeds, {"e2e-executor-result"})
         for jobId in testJobs:
             with self.subTest(jobId=jobId):
                 self.assertIn(f"      - {jobId}\n", resultBlock)
                 block = blocks[jobId]
                 self.assertRegex(block, r"(?m)^    needs:(?:\n      - .+)+\n")
                 self.assertIn("e2e-selection", block)
-                self.assertIn("github.event_name != 'workflow_dispatch'", block)
-                self.assertIn("inputs.headSHA || github.sha", block)
+                self.assertNotIn("e2e-control-validation", block)
+                self.assertIn(
+                    f"contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), '{jobId}')",
+                    block,
+                )
+                self.assertNotIn("github.event_name != 'workflow_dispatch'", block)
+                self.assertIn("ref: ${{ env.EXECUTION_SHA }}", block)
                 self.assertIn("persist-credentials: false", block)
-        self.assertIn("github.event_name != 'workflow_dispatch'", blocks["push"])
+        self.assertIn("github.event_name == 'push'", blocks["push"])
+        self.assertIn("needs.e2e-executor-result.result == 'success'", blocks["push"])
+        self.assertNotIn("github.event_name != 'workflow_dispatch'", blocks["push"])
 
     def testKindPullUsesAnonymousGhcrWhenTokenIsAbsent(self):
         makefile = (repoRoot / "makefiles/kind.mk").read_text()

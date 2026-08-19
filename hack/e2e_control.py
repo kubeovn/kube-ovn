@@ -10,29 +10,62 @@ import e2e_selector as e2eSelector
 
 
 groupPattern = r"[a-z0-9]+(?:-[a-z0-9]+)*"
+headPattern = r"[0-9a-f]{40}"
+noncePattern = r"[0-9a-f]{16}"
 
 
 def canonicalRequestedGroups(requestedGroups, full):
     return [] if full else sorted(set(requestedGroups))
 
 
+def requestNonce(prNumber, headSHA, baseSHA, catalogRevision):
+    return e2eSelector.requestNonce(prNumber, headSHA, baseSHA, catalogRevision)
+
+
 def parseCommand(body):
     body = body.strip()
-    if not body.startswith("/test e2e") and body != "/retest e2e-failed":
+    if not body.startswith("/test e2e") and not body.startswith("/retest e2e-failed"):
         return None
-    if body == "/test e2e":
-        return {"action": "dispatch", "requestedGroups": [], "full": False}
-    if body == "/test e2e-all":
-        return {"action": "dispatch", "requestedGroups": [], "full": True}
-    if body == "/retest e2e-failed":
-        return {"action": "rerun-failed", "requestedGroups": [], "full": False}
-    match = re.fullmatch(rf"/test e2e ({groupPattern}(?:,{groupPattern})*)", body)
+    binding = rf" --head ({headPattern}) --nonce ({noncePattern})"
+    match = re.fullmatch(rf"/test e2e{binding}", body)
+    if match:
+        return {
+            "action": "dispatch",
+            "requestedGroups": [],
+            "full": False,
+            "headSHA": match.group(1),
+            "nonce": match.group(2),
+        }
+    match = re.fullmatch(rf"/test e2e-all{binding}", body)
+    if match:
+        return {
+            "action": "dispatch",
+            "requestedGroups": [],
+            "full": True,
+            "headSHA": match.group(1),
+            "nonce": match.group(2),
+        }
+    match = re.fullmatch(rf"/retest e2e-failed{binding}", body)
+    if match:
+        return {
+            "action": "rerun-failed",
+            "requestedGroups": [],
+            "full": False,
+            "headSHA": match.group(1),
+            "nonce": match.group(2),
+        }
+    match = re.fullmatch(
+        rf"/test e2e ({groupPattern}(?:,{groupPattern})*){binding}",
+        body,
+    )
     if not match:
         raise ValueError("invalid E2E command")
     return {
         "action": "dispatch",
         "requestedGroups": sorted(set(match.group(1).split(","))),
         "full": False,
+        "headSHA": match.group(2),
+        "nonce": match.group(3),
     }
 
 
@@ -53,6 +86,8 @@ def decideDispatch(
     confirmedHeadSHA,
     knownGroups,
     catalogRevision,
+    liveComment=None,
+    controlledLabels=(),
 ):
     body = event.get("comment", {}).get("body", "")
     try:
@@ -64,6 +99,34 @@ def decideDispatch(
         )
     if command is None:
         return None
+    controlledLabels = set(controlledLabels)
+    knownControlledLabels = {"e2e:full"} | {f"e2e:{group}" for group in knownGroups}
+    invalidControlledLabels = sorted(controlledLabels - knownControlledLabels)
+    if invalidControlledLabels:
+        return rejectedDecision(command, "controlled label provenance is invalid")
+    controlledGroups = {
+        label.removeprefix("e2e:")
+        for label in controlledLabels
+        if label != "e2e:full"
+    }
+    command = {
+        **command,
+        "requestedGroups": canonicalRequestedGroups(
+            set(command["requestedGroups"]) | controlledGroups,
+            command["full"] or "e2e:full" in controlledLabels,
+        ),
+        "full": command["full"] or "e2e:full" in controlledLabels,
+    }
+    eventComment = event.get("comment", {})
+    eventUser = eventComment.get("user", {})
+    liveUser = liveComment.get("user", {}) if isinstance(liveComment, dict) else {}
+    if (
+        liveComment is None
+        or liveComment.get("id") != eventComment.get("id")
+        or liveComment.get("body") != eventComment.get("body")
+        or liveUser.get("login") != eventUser.get("login")
+    ):
+        return rejectedDecision(command, "comment changed or was deleted before dispatch")
     unknownGroups = sorted(set(command["requestedGroups"]) - set(knownGroups))
     if unknownGroups:
         return rejectedDecision(
@@ -88,6 +151,11 @@ def decideDispatch(
     if not re.fullmatch(r"[0-9a-f]{40}", baseSHA or ""):
         return rejectedDecision(command, "pull request base revision is invalid")
     prNumber = pullRequest.get("number")
+    if command["headSHA"] != headSHA:
+        return rejectedDecision(command, "comment is bound to another pull request HEAD")
+    expectedNonce = requestNonce(prNumber, headSHA, baseSHA, catalogRevision)
+    if command["nonce"] != expectedNonce:
+        return rejectedDecision(command, "comment binding nonce is stale or invalid")
     approvalGeneration = event.get("comment", {}).get("id")
     if not isinstance(approvalGeneration, int) or approvalGeneration <= 0:
         return rejectedDecision(command, "comment identifier is invalid")
@@ -115,10 +183,13 @@ def decideDispatch(
         "approvalGeneration": approvalGeneration,
         "catalogRevision": catalogRevision,
         "requestKey": requestKey,
+        "controlledLabels": sorted(controlledLabels),
     }
 
 
 def executorRequestKey(request):
+    if request.get("automatic", False):
+        return ""
     payload = {
         "prNumber": request["prNumber"],
         "headSHA": request["headSHA"],
@@ -156,11 +227,24 @@ def mergeApprovedRequests(decision, priorRequests):
     merged["requestedGroups"] = canonicalRequestedGroups(groups, full)
     merged["full"] = full
     merged["approvalGeneration"] = approvalGeneration
+    merged["controlledLabels"] = sorted(
+        set(decision.get("controlledLabels", []))
+        | {
+            label
+            for request in priorRequests
+            for label in request.get("controlledLabels", [])
+        }
+    )
     merged["requestKey"] = executorRequestKey(merged)
     return merged
 
 
 def approvedRequest(pullRequest, catalog, commentPages):
+    currentControlledLabels = trustedControlledLabels(
+        catalog,
+        commentPages,
+        [label.get("name", "") for label in pullRequest.get("labels", [])],
+    )
     seed = {
         "prNumber": pullRequest["number"],
         "headSHA": pullRequest["head"]["sha"],
@@ -170,6 +254,7 @@ def approvedRequest(pullRequest, catalog, commentPages):
         "catalogRevision": e2eSelector.catalogRevision(catalog),
         "requestedGroups": [],
         "full": False,
+        "controlledLabels": currentControlledLabels,
     }
     approvals = []
     for page in commentPages:
@@ -186,6 +271,7 @@ def approvedRequest(pullRequest, catalog, commentPages):
                 and marker["headSHA"] == seed["headSHA"]
                 and marker["baseSHA"] == seed["baseSHA"]
                 and marker["catalogRevision"] == seed["catalogRevision"]
+                and marker.get("controlledLabels", []) == currentControlledLabels
             ):
                 approvals.append(marker)
     if not approvals:
@@ -204,6 +290,9 @@ def renderRequestMarker(request):
         ),
         "full": request["full"],
     }
+    controlledLabels = sorted(set(request.get("controlledLabels", [])))
+    if controlledLabels:
+        payload["controlledLabels"] = controlledLabels
     return "<!-- x86-e2e-request " + json.dumps(
         payload, sort_keys=True, separators=(",", ":")
     ) + " -->"
@@ -220,6 +309,9 @@ def renderApprovalIntent(request):
         ),
         "full": request["full"],
     }
+    controlledLabels = sorted(set(request.get("controlledLabels", [])))
+    if controlledLabels:
+        payload["controlledLabels"] = controlledLabels
     return "<!-- x86-e2e-intent " + json.dumps(
         payload, sort_keys=True, separators=(",", ":")
     ) + " -->"
@@ -236,6 +328,11 @@ def approvalIntents(pullRequest, catalog, commentPages):
     headSHA = pullRequest["head"]["sha"]
     baseSHA = pullRequest["base"]["sha"]
     catalogRevision = e2eSelector.catalogRevision(catalog)
+    currentControlledLabels = trustedControlledLabels(
+        catalog,
+        commentPages,
+        [label.get("name", "") for label in pullRequest.get("labels", [])],
+    )
     intents = []
     for page in commentPages:
         for comment in page:
@@ -251,9 +348,63 @@ def approvalIntents(pullRequest, catalog, commentPages):
                 and intent["headSHA"] == headSHA
                 and intent["baseSHA"] == baseSHA
                 and intent["catalogRevision"] == catalogRevision
+                and intent.get("controlledLabels", []) == currentControlledLabels
             ):
                 intents.append(intent)
     return intents
+
+
+def renderControlledLabelMarker(label, present):
+    payload = {"label": label, "present": bool(present)}
+    return "<!-- x86-e2e-label " + json.dumps(
+        payload, sort_keys=True, separators=(",", ":")
+    ) + " -->"
+
+
+def parseControlledLabelMarker(body):
+    match = re.search(r"<!-- x86-e2e-label (\{[^\n]*\}) -->", body)
+    if not match:
+        return None
+    marker = json.loads(match.group(1))
+    label = marker.get("label")
+    if not isinstance(label, str) or not re.fullmatch(
+        rf"e2e:(?:full|{groupPattern})", label
+    ):
+        raise ValueError("invalid controlled label marker")
+    if not isinstance(marker.get("present"), bool):
+        raise ValueError("invalid controlled label state")
+    return {"label": label, "present": marker["present"]}
+
+
+def trustedControlledLabels(catalog, commentPages, liveLabels):
+    knownLabels = {"e2e:full"} | {f"e2e:{group}" for group in catalog["groups"]}
+    live = set(liveLabels)
+    latest = {}
+    for page in commentPages:
+        for comment in page:
+            user = comment.get("user", {})
+            commentId = comment.get("id")
+            if (
+                user.get("login") != "github-actions[bot]"
+                or user.get("type") != "Bot"
+                or not isinstance(commentId, int)
+                or commentId <= 0
+            ):
+                continue
+            try:
+                marker = parseControlledLabelMarker(comment.get("body", ""))
+            except (ValueError, json.JSONDecodeError):
+                continue
+            if marker is None or marker["label"] not in knownLabels:
+                continue
+            prior = latest.get(marker["label"])
+            if prior is None or commentId > prior[0]:
+                latest[marker["label"]] = (commentId, marker["present"])
+    return sorted(
+        label
+        for label, (_, present) in latest.items()
+        if present and label in live
+    )
 
 
 def renderRerunMarker(runId, runAttempt, headSHA, baseSHA):
@@ -328,6 +479,7 @@ def validateRequestMarker(request):
     catalogRevision = request.get("catalogRevision")
     groups = request.get("requestedGroups")
     full = request.get("full")
+    controlledLabels = request.get("controlledLabels", [])
     if not re.fullmatch(r"[0-9a-f]{40}", headSHA or ""):
         raise ValueError("invalid request marker HEAD")
     if not re.fullmatch(r"[0-9a-f]{40}", baseSHA or ""):
@@ -343,7 +495,13 @@ def validateRequestMarker(request):
         raise ValueError("invalid request marker groups")
     if not isinstance(full, bool):
         raise ValueError("invalid request marker full value")
-    return {
+    if not isinstance(controlledLabels, list) or any(
+        not isinstance(label, str)
+        or not re.fullmatch(rf"e2e:(?:full|{groupPattern})", label)
+        for label in controlledLabels
+    ):
+        raise ValueError("invalid request marker controlled labels")
+    parsed = {
         "headSHA": headSHA,
         "baseSHA": baseSHA,
         "approvalGeneration": approvalGeneration,
@@ -351,6 +509,9 @@ def validateRequestMarker(request):
         "requestedGroups": canonicalRequestedGroups(groups, full),
         "full": full,
     }
+    if "controlledLabels" in request:
+        parsed["controlledLabels"] = sorted(set(controlledLabels))
+    return parsed
 
 
 def parseRequestMarker(body):
@@ -436,19 +597,28 @@ def parseExecutorRunName(name):
     match = re.fullmatch(
         rf"x86-e2e pr=([1-9][0-9]*) head=([0-9a-f]{{40}}) "
         rf"approval=([1-9][0-9]*) generation=([1-9][0-9]*) "
-        rf"groups=({groupPattern}(?:,{groupPattern})*|-) full=([01])",
+        rf"(?:mode=(automatic|approved) )?"
+        rf"groups=({groupPattern}(?:,{groupPattern})*|-) "
+        rf"(?:labels=(e2e:(?:full|{groupPattern})(?:,e2e:(?:full|{groupPattern}))*|-) )?"
+        rf"full=([01])",
         name,
     )
     if not match:
         raise ValueError("invalid x86 E2E executor run name")
-    groups = [] if match.group(5) == "-" else sorted(set(match.group(5).split(",")))
+    groups = [] if match.group(6) == "-" else sorted(set(match.group(6).split(",")))
+    labelsValue = match.group(7) or "-"
+    controlledLabels = (
+        [] if labelsValue == "-" else sorted(set(labelsValue.split(",")))
+    )
     return {
         "prNumber": int(match.group(1)),
         "headSHA": match.group(2),
         "approvalGeneration": int(match.group(3)),
         "dispatchGeneration": int(match.group(4)),
+        "automatic": match.group(5) == "automatic",
         "requestedGroups": groups,
-        "full": match.group(6) == "1",
+        "controlledLabels": controlledLabels,
+        "full": match.group(8) == "1",
     }
 
 
@@ -471,6 +641,7 @@ def latestExecutorRun(
         r"release-[A-Za-z0-9._-]+", baseRef or ""
     ):
         return None
+    matchingRuns = []
     for run in runs:
         if (
             run.get("path") != ".github/workflows/build-x86-image.yaml"
@@ -487,8 +658,15 @@ def latestExecutorRun(
             and metadata["prNumber"] == prNumber
             and metadata["headSHA"] == headSHA
         ):
+            matchingRuns.append((metadata, run))
+    if not matchingRuns:
+        return None
+    # An automatic run is a coverage probe and must never supersede a durable
+    # approved request that is already in flight for the same HEAD.
+    for metadata, run in matchingRuns:
+        if not metadata["automatic"]:
             return run
-    return None
+    return matchingRuns[0][1]
 
 
 def parseArgs():
@@ -500,6 +678,12 @@ def parseArgs():
     dispatch.add_argument("--permission", required=True)
     dispatch.add_argument("--pull-request-file", dest="pullRequestFile", required=True)
     dispatch.add_argument("--confirmed-head-sha", dest="confirmedHeadSHA", required=True)
+    dispatch.add_argument("--live-comment-file", dest="liveCommentFile", required=True)
+    dispatch.add_argument(
+        "--controlled-labels-file",
+        dest="controlledLabelsFile",
+        required=True,
+    )
     dispatch.add_argument("--decision-file", dest="decisionFile", required=True)
     return parser.parse_args()
 
@@ -510,6 +694,14 @@ def main():
         event = json.loads(Path(args.eventFile).read_text(encoding="utf-8"))
         catalog = json.loads(Path(args.catalog).read_text(encoding="utf-8"))
         pullRequest = json.loads(Path(args.pullRequestFile).read_text(encoding="utf-8"))
+        liveComment = json.loads(Path(args.liveCommentFile).read_text(encoding="utf-8"))
+        controlledLabels = json.loads(
+            Path(args.controlledLabelsFile).read_text(encoding="utf-8")
+        )
+        if not isinstance(controlledLabels, list) or any(
+            not isinstance(label, str) for label in controlledLabels
+        ):
+            raise SystemExit("controlled labels must be a JSON array of strings")
         decision = decideDispatch(
             event,
             args.permission,
@@ -517,6 +709,8 @@ def main():
             args.confirmedHeadSHA,
             set(catalog["groups"]),
             e2eSelector.catalogRevision(catalog),
+            liveComment,
+            controlledLabels,
         )
         Path(args.decisionFile).write_text(
             json.dumps(decision, indent=2) + "\n",
