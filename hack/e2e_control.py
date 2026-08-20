@@ -952,6 +952,34 @@ def latestExecutorRun(
     return matchingRuns[0][1]
 
 
+def inProgressAutomaticExecutorRunIds(runs, prNumber, headSHA):
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid pull request HEAD for automatic executor cancellation")
+    prNumber = int(prNumber)
+    matched = []
+    for run in runs:
+        if run.get("status") not in {"queued", "in_progress"}:
+            continue
+        if run.get("actor", {}).get("login") != "github-actions[bot]":
+            continue
+        path = run.get("path")
+        if path not in (None, "", ".github/workflows/build-x86-image.yaml"):
+            continue
+        try:
+            metadata = parseExecutorRunName(run.get("display_title") or "")
+        except ValueError:
+            continue
+        if (
+            metadata["prNumber"] == prNumber
+            and metadata["headSHA"] == headSHA
+            and metadata["automatic"]
+        ):
+            runId = run.get("id")
+            if runId is not None:
+                matched.append(runId)
+    return matched
+
+
 def parseArgs():
     parser = argparse.ArgumentParser(description="Control comment-gated x86 E2E workflows")
     subparsers = parser.add_subparsers(dest="command", required=True)
