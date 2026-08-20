@@ -205,6 +205,8 @@ func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string
 }
 
 func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+	existingV4 := s.V4NicToIP[nicName]
+
 	v4IP, _, _, err := s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
 		klog.Error(err)
@@ -212,6 +214,10 @@ func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *st
 	}
 	_, v6IP, macStr, err := s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
+		if existingV4 == nil || !existingV4.Equal(v4IP) {
+			s.releaseV4Addr(podName, nicName)
+			s.popPodNic(podName, nicName)
+		}
 		klog.Error(err)
 		return nil, nil, "", err
 	}
