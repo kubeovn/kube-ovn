@@ -1215,3 +1215,17 @@ func TestIPAMRandomAddressDoesNotRecycleReservedIPs(t *testing.T) {
 	_, _, _, err = ipam.GetRandomAddress("random-pod", "random-pod", nil, subnetName, "", nil, true)
 	require.ErrorIs(t, err, ErrNoAvailable)
 }
+
+func TestIPAMDualRandomAddressRollsBackV4OnV6Exhaustion(t *testing.T) {
+	ipam := NewIPAM()
+	require.NoError(t, ipam.AddOrUpdateSubnet(
+		"dual", "10.0.0.0/30,fd00::/126", "10.0.0.1,fd00::1", []string{"10.0.0.1", "fd00::1..fd00::2"},
+	))
+
+	_, _, _, err := ipam.GetRandomAddress("pod", "pod", nil, "dual", "", nil, true)
+	require.ErrorIs(t, err, ErrNoAvailable)
+
+	_, v4Using, _, v6Using, _, _, _, _ := ipam.IPPoolStatistics("dual", "")
+	require.Equal(t, "0", v4Using.String())
+	require.Equal(t, "0", v6Using.String())
+}

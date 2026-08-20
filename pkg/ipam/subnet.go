@@ -205,6 +205,8 @@ func (s *Subnet) GetRandomAddress(poolName, podName, nicName string, mac *string
 }
 
 func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *string, skippedAddrs []string, checkConflict bool) (IP, IP, string, error) {
+	existingV4 := s.V4NicToIP[nicName]
+
 	v4IP, _, _, err := s.getV4RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
 		klog.Error(err)
@@ -212,6 +214,10 @@ func (s *Subnet) getDualRandomAddress(poolName, podName, nicName string, mac *st
 	}
 	_, v6IP, macStr, err := s.getV6RandomAddress(poolName, podName, nicName, mac, skippedAddrs, checkConflict)
 	if err != nil {
+		if existingV4 == nil || !existingV4.Equal(v4IP) {
+			s.releaseV4Addr(podName, nicName)
+			s.popPodNic(podName, nicName)
+		}
 		klog.Error(err)
 		return nil, nil, "", err
 	}
@@ -539,6 +545,53 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	}
 	klog.Errorf("no available ip")
 	return nil, "", ErrNoAvailable
+}
+
+func (s *Subnet) releaseV4Addr(podName, nicName string) {
+	ip, ok := s.V4NicToIP[nicName]
+	if !ok {
+		return
+	}
+	oldPods := strings.Split(s.V4IPToPod[ip.String()], ",")
+	if len(oldPods) > 1 {
+		newPods := util.RemoveString(oldPods, podName)
+		s.V4IPToPod[ip.String()] = strings.Join(newPods, ",")
+		return
+	}
+	delete(s.V4NicToIP, nicName)
+	delete(s.V4IPToPod, ip.String())
+	var mac string
+	if m, hasMac := s.NicToMac[nicName]; hasMac {
+		mac = m
+		if _, hasV6 := s.V6NicToIP[nicName]; !hasV6 {
+			delete(s.NicToMac, nicName)
+			delete(s.MacToPod, mac)
+		}
+	}
+	var changed bool
+	if !s.V4CIDR.Contains(net.IP(ip)) {
+		klog.Infof("release v4 %s mac %s from subnet %s for %s, ignore ip", ip, mac, s.Name, podName)
+		changed = true
+	}
+	if s.V4Reserved.Contains(ip) {
+		klog.Infof("release v4 %s mac %s from subnet %s for %s, ip is in reserved list", ip, mac, s.Name, podName)
+		changed = true
+	}
+	s.V4Using.Remove(ip)
+	if !changed {
+		s.V4Available.Add(ip)
+	}
+	for _, pool := range s.IPPools {
+		if pool.V4Using.Remove(ip) {
+			if !changed {
+				pool.V4Available.Add(ip)
+				if pool.V4Released.Add(ip) {
+					klog.Infof("release v4 %s mac %s from subnet %s for %s, add ip to released list", ip, mac, s.Name, podName)
+				}
+			}
+			break
+		}
+	}
 }
 
 func (s *Subnet) releaseAddr(podName, nicName string) {
