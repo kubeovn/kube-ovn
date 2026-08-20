@@ -980,6 +980,27 @@ def inProgressAutomaticExecutorRunIds(runs, prNumber, headSHA):
     return matched
 
 
+def associatedOpenPullRequests(pulls, repository, headSHA, headRepository):
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid pull request HEAD for gate association")
+    matched = []
+    for pull in pulls or []:
+        if not isinstance(pull, dict):
+            continue
+        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
+        base = pull.get("base") if isinstance(pull.get("base"), dict) else {}
+        headRepo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
+        baseRepo = base.get("repo") if isinstance(base.get("repo"), dict) else {}
+        if (
+            pull.get("state") == "open"
+            and head.get("sha") == headSHA
+            and headRepo.get("full_name") == headRepository
+            and baseRepo.get("full_name") == repository
+        ):
+            matched.append(pull)
+    return matched
+
+
 def parseArgs():
     parser = argparse.ArgumentParser(description="Control comment-gated x86 E2E workflows")
     subparsers = parser.add_subparsers(dest="command", required=True)

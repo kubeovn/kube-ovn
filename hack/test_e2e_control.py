@@ -1037,6 +1037,66 @@ class E2EControlTest(unittest.TestCase):
             [11, 12],
         )
 
+    def testAssociatedOpenPullRequestsSkipMergedHeads(self):
+        head = "a" * 40
+        other = "b" * 40
+        openPR = {
+            "number": 7280,
+            "state": "open",
+            "head": {
+                "sha": head,
+                "repo": {"full_name": "zhangzujian/kube-ovn"},
+            },
+            "base": {"repo": {"full_name": "kubeovn/kube-ovn"}},
+        }
+        closedPR = {
+            **openPR,
+            "number": 7279,
+            "state": "closed",
+        }
+        otherHead = {
+            **openPR,
+            "number": 7281,
+            "head": {
+                "sha": other,
+                "repo": {"full_name": "zhangzujian/kube-ovn"},
+            },
+        }
+
+        self.assertEqual(
+            e2eControl.associatedOpenPullRequests(
+                [closedPR, otherHead],
+                "kubeovn/kube-ovn",
+                head,
+                "zhangzujian/kube-ovn",
+            ),
+            [],
+        )
+        self.assertEqual(
+            [
+                pull["number"]
+                for pull in e2eControl.associatedOpenPullRequests(
+                    [closedPR, openPR, otherHead],
+                    "kubeovn/kube-ovn",
+                    head,
+                    "zhangzujian/kube-ovn",
+                )
+            ],
+            [7280],
+        )
+        self.assertEqual(
+            [
+                pull["number"]
+                for pull in e2eControl.associatedOpenPullRequests(
+                    [openPR, {**openPR, "number": 7282}],
+                    "kubeovn/kube-ovn",
+                    head,
+                    "zhangzujian/kube-ovn",
+                )
+            ],
+            [7280, 7282],
+        )
+
     def testDispatchCliWritesDecisionJson(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
@@ -1233,9 +1293,21 @@ class E2EControlTest(unittest.TestCase):
             workflow,
         )
         self.assertIn('-f "head=$headOwner:$RUN_HEAD_BRANCH"', workflow)
-        self.assertIn("workflow HEAD must resolve to exactly one open pull request", workflow)
-        self.assertIn('.head.repo.full_name == $headRepository', workflow)
-        self.assertIn('.base.repo.full_name == $repository', workflow)
+        gate = e2eSelector.workflowJobBlocks(workflow)["gate"]
+        resolve = gate.split("Download the executed SelectionPlan")[0]
+        self.assertIn("associatedOpenPullRequests", resolve)
+        self.assertIn("workflow HEAD must resolve to exactly one open pull request", resolve)
+        self.assertIn(
+            "The completed pull_request run is not associated with one open pull request.",
+            resolve,
+        )
+        missing = resolve.index(
+            "The completed pull_request run is not associated with one open pull request."
+        )
+        self.assertIn(
+            'echo \'skip=true\' >> "$GITHUB_OUTPUT"',
+            resolve[missing:missing + 400],
+        )
         self.assertIn("automatic: ${{ steps.context.outputs.automatic }}", workflow)
         self.assertIn("controlledLabels: ${{ steps.context.outputs.controlledLabels }}", workflow)
         self.assertIn("A trusted comment approval supersedes this automatic executor.", workflow)
