@@ -493,12 +493,12 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		return "", nil, nil, nil, err
 	}
 	if len(gw.Spec.InternalIPs) != 0 && gw.Spec.InternalIPPool != "" {
-		err := fmt.Errorf("internalIPs and internalIPPool are mutually exclusive")
+		err := errors.New("internalIPs and internalIPPool are mutually exclusive")
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
 	if len(gw.Spec.ExternalIPs) != 0 && gw.Spec.ExternalIPPool != "" {
-		err := fmt.Errorf("externalIPs and externalIPPool are mutually exclusive")
+		err := errors.New("externalIPs and externalIPPool are mutually exclusive")
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
@@ -836,20 +836,24 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	// replicas and the hash annotation should be excluded from hash calculation
 	deploy.Spec.Replicas = new(gw.Spec.Replicas)
 	deploy.Annotations = map[string]string{util.GenerateHashAnnotation: hash}
-	if currentDeploy, err := c.deploymentsLister.Deployments(gw.Namespace).Get(deploy.Name); err != nil {
-		if !k8serrors.IsNotFound(err) {
+	var currentDeploy *appsv1.Deployment
+	if c.deploymentsLister != nil {
+		if currentDeploy, err = c.deploymentsLister.Deployments(gw.Namespace).Get(deploy.Name); err != nil && !k8serrors.IsNotFound(err) {
 			err = fmt.Errorf("failed to get deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
 		}
+	}
+	switch {
+	case currentDeploy == nil:
 		if deploy, err = c.config.KubeClient.AppsV1().Deployments(gw.Namespace).
 			Create(context.Background(), deploy, metav1.CreateOptions{}); err != nil {
 			err = fmt.Errorf("failed to create deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
 		}
-	} else if !reflect.DeepEqual(currentDeploy.Spec.Replicas, deploy.Spec.Replicas) ||
-		currentDeploy.Annotations[util.GenerateHashAnnotation] != hash {
+	case !reflect.DeepEqual(currentDeploy.Spec.Replicas, deploy.Spec.Replicas) ||
+		currentDeploy.Annotations[util.GenerateHashAnnotation] != hash:
 		// update the deployment if replicas or hash annotation is changed
 		if deploy, err = c.config.KubeClient.AppsV1().Deployments(gw.Namespace).
 			Update(context.Background(), deploy, metav1.UpdateOptions{}); err != nil {
@@ -857,7 +861,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
 		}
-	} else {
+	default:
 		// no need to create or update the deployment
 		deploy = currentDeploy
 	}
