@@ -1513,40 +1513,41 @@ func TestIPAMNamedPoolStaticAddressRemainsAllocatableAfterSubnetUpdate(t *testin
 
 func TestIPAMRandomAddressSkipsReleasedExcludeIPsAfterIPPoolReconcile(t *testing.T) {
 	ipam := NewIPAM()
-	subnetName := "underlay-186"
-	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "172.24.186.0/23", "172.24.187.254", []string{
-		"172.24.186.1..172.24.186.21",
-		"172.24.187.229..172.24.187.255",
+	subnetName := "subnet"
+	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "10.10.0.0/24", "10.10.0.1", []string{
+		"10.10.0.1",
+		"10.10.0.10..10.10.0.12",
 	}))
-	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "lb186-ips", []string{"172.24.187.180..172.24.187.199"}))
+	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "pool", []string{"10.10.0.200..10.10.0.210"}))
 
-	v4IP, _, _, err := ipam.GetStaticAddress("sit-mng", "sit-mng", "172.24.186.4", nil, subnetName, true)
+	v4IP, _, _, err := ipam.GetStaticAddress("static-pod", "static-pod", "10.10.0.10", nil, subnetName, true)
 	require.NoError(t, err)
-	require.Equal(t, "172.24.186.4", v4IP)
-	ipam.ReleaseAddressByNic("sit-mng", "sit-mng", subnetName)
+	require.Equal(t, "10.10.0.10", v4IP)
+	ipam.ReleaseAddressByNic("static-pod", "static-pod", subnetName)
 
-	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "lb186-ips", []string{"172.24.187.180..172.24.187.199"}))
+	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "pool", []string{"10.10.0.200..10.10.0.210"}))
 
-	v4IP, _, _, err = ipam.GetRandomAddress("uat-pod", "uat-pod", nil, subnetName, "", nil, true)
+	v4IP, _, _, err = ipam.GetRandomAddress("random-pod", "random-pod", nil, subnetName, "", nil, true)
 	require.NoError(t, err)
-	require.Equal(t, "172.24.186.22", v4IP)
+	require.Equal(t, "10.10.0.2", v4IP)
 }
 
 func TestIPAMRandomAddressDoesNotRecycleReservedIPs(t *testing.T) {
 	ipam := NewIPAM()
-	subnetName := "underlay-186"
-	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "172.24.186.0/24", "172.24.186.1", []string{
-		"172.24.186.1..172.24.186.21",
+	subnetName := "subnet"
+	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "10.10.0.0/30", "10.10.0.1", []string{
+		"10.10.0.1",
+		"10.10.0.2",
 	}))
 
 	subnet := ipam.Subnets[subnetName]
 	pool := subnet.IPPools[""]
-	reservedIP, err := NewIP("172.24.186.4")
+	reservedIP, err := NewIP("10.10.0.2")
 	require.NoError(t, err)
 	require.True(t, pool.V4Released.Add(reservedIP))
 	pool.V4Free = NewEmptyIPRangeList()
 	subnet.V4Free = NewEmptyIPRangeList()
 
-	_, _, _, err = ipam.GetRandomAddress("uat-pod", "uat-pod", nil, subnetName, "", nil, true)
+	_, _, _, err = ipam.GetRandomAddress("random-pod", "random-pod", nil, subnetName, "", nil, true)
 	require.ErrorIs(t, err, ErrNoAvailable)
 }
