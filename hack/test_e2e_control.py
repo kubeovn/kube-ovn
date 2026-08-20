@@ -44,9 +44,25 @@ class E2EControlTest(unittest.TestCase):
                 self.assertEqual(command["headSHA"], headSHA)
                 self.assertEqual(command["nonce"], nonce)
 
+    def testParsesUnboundCommentCommands(self):
+        cases = {
+            "/test e2e": ("dispatch", [], False),
+            "/test e2e core": ("dispatch", ["core"], False),
+            "/test e2e-all": ("dispatch", [], True),
+            "/retest e2e-failed": ("rerun-failed", [], False),
+        }
+        for body, expected in cases.items():
+            with self.subTest(body=body):
+                command = e2eControl.parseCommand(body)
+                self.assertEqual(
+                    (command["action"], command["requestedGroups"], command["full"]),
+                    expected,
+                )
+                self.assertEqual(command["headSHA"], "")
+                self.assertEqual(command["nonce"], "")
+
     def testRejectsMalformedOrInjectedCommands(self):
         for body in [
-            "/test e2e",
             "/test e2e policy bogus",
             "/test e2e policy;echo-owned",
             "/test e2e policy\n/test e2e-all",
@@ -69,6 +85,7 @@ class E2EControlTest(unittest.TestCase):
         state="open",
         baseRef="master",
         controlledLabels=(),
+        bindHead=True,
     ):
         catalog = json.loads((repoRoot / ".github/e2e-selection.json").read_text())
         catalogRevision = e2eSelector.catalogRevision(catalog)
@@ -76,7 +93,7 @@ class E2EControlTest(unittest.TestCase):
         if body is None:
             nonce = e2eControl.requestNonce(7231, observedHeadSHA, baseSHA, catalogRevision)
             body = f"/test e2e policy --head {observedHeadSHA} --nonce {nonce}"
-        elif " --head " not in body:
+        elif bindHead and " --head " not in body:
             nonce = e2eControl.requestNonce(7231, observedHeadSHA, baseSHA, catalogRevision)
             body = f"{body} --head {observedHeadSHA} --nonce {nonce}"
         event = {
@@ -101,6 +118,16 @@ class E2EControlTest(unittest.TestCase):
             liveComment=event["comment"],
             controlledLabels=controlledLabels,
         )
+
+    def testUnboundCommandBindsToLiveHead(self):
+        decision = self.dispatchDecision(body="/test e2e core", bindHead=False)
+
+        self.assertTrue(decision["accepted"])
+        self.assertEqual(decision["action"], "dispatch")
+        self.assertEqual(decision["requestedGroups"], ["core"])
+        self.assertEqual(decision["headSHA"], "a" * 40)
+        self.assertEqual(decision["baseSHA"], "b" * 40)
+        self.assertRegex(decision["nonce"], r"^[0-9a-f]{16}$")
 
     def testAuthorizedCommandIsBoundToCurrentHead(self):
         decision = self.dispatchDecision()
@@ -842,6 +869,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("checks: read", workflow)
         self.assertNotIn("checks: write", workflow)
         self.assertIn("pull-requests: read", workflow)
+        self.assertIn("pull-requests: write", workflow)
         self.assertIn("issues: write", workflow)
         self.assertIn("--catalog trusted-catalog.json", workflow)
         self.assertIn("--live-comment-file live-comment.json", workflow)
