@@ -1280,7 +1280,6 @@ func TestIPAMNamedPoolStaticAddressRemainsAllocatableAfterSubnetUpdate(t *testin
 	}
 }
 
-
 func TestIPAMRandomAddressSkipsReleasedExcludeIPsAfterIPPoolReconcile(t *testing.T) {
 	ipam := NewIPAM()
 	subnetName := "subnet"
