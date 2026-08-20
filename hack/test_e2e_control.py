@@ -869,6 +869,67 @@ class E2EControlTest(unittest.TestCase):
 
         self.assertEqual(latest["id"], 8)
 
+    def testInProgressAutomaticExecutorsForTheSameHeadAreCancelled(self):
+        head = "a" * 40
+        otherHead = "b" * 40
+        runs = [
+            {
+                "id": 11,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "in_progress",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + head
+                    + " approval=1 generation=1001 mode=automatic groups=- labels=- full=0"
+                ),
+            },
+            {
+                "id": 12,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "queued",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + head
+                    + " approval=1 generation=1002 mode=automatic groups=- labels=- full=0"
+                ),
+            },
+            {
+                "id": 13,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "in_progress",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + head
+                    + " approval=1 generation=1003 mode=approved groups=core labels=- full=0"
+                ),
+            },
+            {
+                "id": 14,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "in_progress",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + otherHead
+                    + " approval=1 generation=1004 mode=automatic groups=- labels=- full=0"
+                ),
+            },
+            {
+                "id": 15,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "completed",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + head
+                    + " approval=1 generation=1005 mode=automatic groups=- labels=- full=0"
+                ),
+            },
+        ]
+
+        self.assertEqual(
+            e2eControl.inProgressAutomaticExecutorRunIds(runs, 7278, head),
+            [11, 12],
+        )
+
     def testDispatchCliWritesDecisionJson(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
@@ -1023,6 +1084,28 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn('git/refs/heads/$executorRef', workflow)
         self.assertIn('-f ref="$executorRef"', workflow)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
+
+    def testAutomaticCoverageIgnoresUncontrolledLabelEvents(self):
+        workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
+        automatic = e2eSelector.workflowJobBlocks(workflow)["automatic"]
+
+        self.assertIn("github.event.action == 'opened'", automatic)
+        self.assertIn("github.event.action == 'reopened'", automatic)
+        self.assertIn("github.event.action == 'synchronize'", automatic)
+        self.assertIn("github.event.action == 'labeled'", automatic)
+        self.assertIn("github.event.action == 'unlabeled'", automatic)
+        self.assertIn("startsWith(github.event.label.name, 'e2e:')", automatic)
+        self.assertNotIn("github.event.action != 'closed'", automatic)
+        self.assertIn(
+            "group: x86-e2e-automatic-${{ github.event.pull_request.number }}-"
+            "${{ github.event.pull_request.head.sha }}",
+            automatic,
+        )
+        self.assertIn("cancel-in-progress: true", automatic)
+        self.assertIn("inProgressAutomaticExecutorRunIds", automatic)
+        self.assertIn("actions/runs/$runId/cancel", automatic)
+        self.assertIn('requestKey="automatic-$PR_NUMBER-$headSHA"', automatic)
+        self.assertNotIn('requestKey="automatic-$DISPATCH_GENERATION"', automatic)
 
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
