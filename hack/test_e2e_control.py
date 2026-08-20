@@ -119,6 +119,34 @@ class E2EControlTest(unittest.TestCase):
             controlledLabels=controlledLabels,
         )
 
+    def testApprovedGateReservationIgnoresGitHubRewrittenDetailsURL(self):
+        headSHA = "94fd288b1db022d10863ac3254d2b40fe1dad01a"
+        check = {
+            "name": "x86-e2e / required-gate",
+            "external_id": f"x86-e2e-pr-7260-{headSHA}",
+            "status": "completed",
+            "conclusion": "action_required",
+            "details_url": "https://github.com/kubeovn/kube-ovn/runs/96297378780",
+            "output": {
+                "title": "x86 E2E gate",
+                "summary": "The latest authorized x86 E2E approval is waiting for its trusted executor.",
+            },
+        }
+
+        self.assertTrue(e2eControl.isApprovedGateReservation(check, 7260, headSHA))
+        self.assertFalse(
+            e2eControl.isApprovedGateReservation(
+                {
+                    **check,
+                    "output": {
+                        "summary": "The pull request target branch advanced; authorize x86 E2E again for the new base revision."
+                    },
+                },
+                7260,
+                headSHA,
+            )
+        )
+
     def testUnboundCommandBindsToLiveHead(self):
         decision = self.dispatchDecision(body="/test e2e core", bindHead=False)
 
@@ -925,6 +953,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertNotIn("group: x86-e2e-dispatch-", workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("print(e2eControl.executorHeadBranch(request))", workflow)
+        self.assertIn("isApprovedGateReservation", workflow)
+        self.assertNotIn(".details_url == $expectedURL", workflow)
         self.assertGreaterEqual(workflow.count("isolatedExecutorRefAction"), 2)
         self.assertNotIn("--jq '.object.sha'", workflow)
         self.assertIn('git/refs/heads/$executorRef', workflow)

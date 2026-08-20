@@ -684,6 +684,24 @@ def isolatedExecutorRefAction(payload, expectedSHA):
     return "reuse"
 
 
+def isApprovedGateReservation(check, prNumber, headSHA):
+    if not isinstance(check, dict):
+        return False
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid approved gate HEAD")
+    summary = ""
+    output = check.get("output")
+    if isinstance(output, dict):
+        summary = output.get("summary") or ""
+    return (
+        check.get("name") == "x86-e2e / required-gate"
+        and check.get("external_id") == f"x86-e2e-pr-{int(prNumber)}-{headSHA}"
+        and check.get("status") == "completed"
+        and check.get("conclusion") == "action_required"
+        and "waiting for its trusted executor" in summary
+    )
+
+
 def isTrustedExecutorRef(refName, baseRef, request):
     return refName == baseRef or refName == executorHeadBranch(request)
 
