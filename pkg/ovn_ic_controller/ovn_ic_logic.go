@@ -19,21 +19,6 @@ const (
 	icGatewayChange
 )
 
-type gatewayChassisStatus struct {
-	ChassisName string
-	Priority    int
-}
-
-type gatewayChassisPlan struct {
-	ToDelete         []string
-	ToCreate         []string
-	ToUpdatePriority map[string]int
-}
-
-func (p gatewayChassisPlan) NeedsUpdate() bool {
-	return len(p.ToDelete) > 0 || len(p.ToCreate) > 0 || len(p.ToUpdatePriority) > 0
-}
-
 func cloneICConfig(data map[string]string) map[string]string {
 	if data == nil {
 		return nil
@@ -101,42 +86,6 @@ func mergeConflictCIDRs(localCIDRs, learnedPrefixes, sticky []string) []string {
 	list := out.List()
 	sort.Strings(list)
 	return list
-}
-
-func planGatewayChassis(desired []string, existing []gatewayChassisStatus) gatewayChassisPlan {
-	desiredSet := strset.New()
-	for _, name := range desired {
-		if name != "" {
-			desiredSet.Add(name)
-		}
-	}
-	existingSet := strset.New()
-	existingPriority := make(map[string]int, len(existing))
-	var toDelete []string
-	for _, gw := range existing {
-		existingSet.Add(gw.ChassisName)
-		existingPriority[gw.ChassisName] = gw.Priority
-		if !desiredSet.Has(gw.ChassisName) {
-			toDelete = append(toDelete, gw.ChassisName)
-		}
-	}
-
-	var toCreate []string
-	toUpdate := make(map[string]int)
-	for i, name := range desired {
-		if name == "" {
-			continue
-		}
-		priority := 100 - i
-		if !existingSet.Has(name) {
-			toCreate = append(toCreate, name)
-			continue
-		}
-		if existingPriority[name] != priority {
-			toUpdate[name] = priority
-		}
-	}
-	return gatewayChassisPlan{ToDelete: toDelete, ToCreate: toCreate, ToUpdatePriority: toUpdate}
 }
 
 func parseGwNodes(gwNodes string) []string {

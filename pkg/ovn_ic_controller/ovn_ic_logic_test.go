@@ -134,30 +134,3 @@ func TestGenerateNewOrderGwNodesEmpty(t *testing.T) {
 
 	require.Empty(t, generateNewOrderGwNodes(nil, 0))
 }
-
-func TestPlanGatewayChassisMigratesActiveGateway(t *testing.T) {
-	t.Parallel()
-
-	oldPrimary := "chassis-158"
-	newPrimary := "chassis-47"
-	oldStandby := "chassis-70"
-	existing := []gatewayChassisStatus{
-		{ChassisName: oldPrimary, Priority: 100},
-		{ChassisName: newPrimary, Priority: 99},
-		{ChassisName: oldStandby, Priority: 98},
-	}
-
-	plan := planGatewayChassis([]string{newPrimary}, existing)
-	require.ElementsMatch(t, []string{oldPrimary, oldStandby}, plan.ToDelete)
-	require.Empty(t, plan.ToCreate)
-	require.Equal(t, map[string]int{newPrimary: 100}, plan.ToUpdatePriority)
-	require.True(t, plan.NeedsUpdate())
-}
-
-func TestPlanGatewayChassisNoop(t *testing.T) {
-	t.Parallel()
-
-	existing := []gatewayChassisStatus{{ChassisName: "chassis-a", Priority: 100}}
-	plan := planGatewayChassis([]string{"chassis-a"}, existing)
-	require.False(t, plan.NeedsUpdate())
-}
