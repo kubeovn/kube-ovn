@@ -65,6 +65,10 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 			err := fmt.Errorf("VpcNatGateway %q: replica count increase from non-HA (1) to HA (>1) is not supported; delete and recreate instead", gw.Name)
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
+
+		if err := validateVpcNatGatewayLanIPUpdate(&gwOld, &gw); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 	}
 
 	if err := v.ValidateVpcNatConfig(ctx); err != nil {
@@ -80,6 +84,24 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 	}
 
 	return ctrlwebhook.Allowed("bypass")
+}
+
+func validateVpcNatGatewayLanIPUpdate(oldGw, newGw *ovnv1.VpcNatGateway) error {
+	if util.IsNatGwHAMode(newGw) {
+		// lanIp is ignored in HA mode (see ValidateVpcNatGW).
+		return nil
+	}
+	// A dynamically allocated LAN IP may be persisted exactly once, but only
+	// after the controller has published the observed Pod IP to status.
+	if oldGw.Spec.LanIP == "" && newGw.Spec.LanIP != "" &&
+		(oldGw.Status.LanIP == "" || newGw.Spec.LanIP != oldGw.Status.LanIP) {
+		return fmt.Errorf("VpcNatGateway %q: spec.lanIp may only be backfilled from status.lanIp %q",
+			newGw.Name, oldGw.Status.LanIP)
+	}
+	if oldGw.Spec.LanIP != "" && newGw.Spec.LanIP != oldGw.Spec.LanIP {
+		return fmt.Errorf("VpcNatGateway %q: spec.lanIp is immutable once set", newGw.Name)
+	}
+	return nil
 }
 
 func (v *ValidatingHook) VpcNatGwDeleteHook(ctx context.Context, req admission.Request) admission.Response {
@@ -392,11 +414,12 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return err
 	}
 
-	// Validate LanIP: required only for non-HA mode
-	if isHA := gw.Spec.Replicas > 1; !isHA {
-		if gw.Spec.LanIP == "" {
-			return errors.New("lanIp must be specified")
-		}
+	// An empty LAN IP requests dynamic allocation. A static LAN IP is only
+	// meaningful for the non-HA StatefulSet mode. In HA mode lanIp is ignored
+	// (each replica allocates its address dynamically); we intentionally do not
+	// reject a non-empty lanIp there to stay compatible with objects created
+	// before dynamic allocation that may still carry a stale value.
+	if !util.IsNatGwHAMode(gw) && gw.Spec.LanIP != "" {
 		if net.ParseIP(gw.Spec.LanIP) == nil {
 			return fmt.Errorf("lanIP %s is not a valid IP", gw.Spec.LanIP)
 		}

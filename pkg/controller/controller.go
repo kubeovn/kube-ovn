@@ -13,7 +13,6 @@ import (
 	netAttachv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/listers/k8s.cni.cncf.io/v1"
 	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/time/rate"
-	appsv1api "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -265,8 +264,12 @@ type Controller struct {
 	serviceL2StatusSynced         cache.InformerSynced
 	serviceL2StatusStarted        bool
 
-	deploymentsLister appsv1.DeploymentLister
-	deploymentsSynced cache.InformerSynced
+	deploymentsLister  appsv1.DeploymentLister
+	deploymentsSynced  cache.InformerSynced
+	statefulSetsLister appsv1.StatefulSetLister
+	statefulSetsSynced cache.InformerSynced
+	replicaSetsLister  appsv1.ReplicaSetLister
+	replicaSetsSynced  cache.InformerSynced
 
 	npsLister     netv1.NetworkPolicyLister
 	npsSynced     cache.InformerSynced
@@ -462,6 +465,8 @@ func Run(ctx context.Context, config *Configuration) {
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointSliceInformer := informerFactory.Discovery().V1().EndpointSlices()
 	deploymentInformer := deployInformerFactory.Apps().V1().Deployments()
+	statefulSetInformer := deployInformerFactory.Apps().V1().StatefulSets()
+	replicaSetInformer := deployInformerFactory.Apps().V1().ReplicaSets()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
@@ -616,8 +621,12 @@ func Run(ctx context.Context, config *Configuration) {
 		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 		epKeyMutex:                    keymutex.NewHashed(numKeyLocks),
 
-		deploymentsLister: deploymentInformer.Lister(),
-		deploymentsSynced: deploymentInformer.Informer().HasSynced,
+		deploymentsLister:  deploymentInformer.Lister(),
+		deploymentsSynced:  deploymentInformer.Informer().HasSynced,
+		statefulSetsLister: statefulSetInformer.Lister(),
+		statefulSetsSynced: statefulSetInformer.Informer().HasSynced,
+		replicaSetsLister:  replicaSetInformer.Lister(),
+		replicaSetsSynced:  replicaSetInformer.Informer().HasSynced,
 
 		qosPoliciesLister:    qosPolicyInformer.Lister(),
 		qosPolicySynced:      qosPolicyInformer.Informer().HasSynced,
@@ -831,7 +840,8 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
-		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.configMapsSynced,
+		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced,
+		controller.statefulSetsSynced, controller.replicaSetsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
@@ -858,6 +868,16 @@ func Run(ctx context.Context, config *Configuration) {
 		UpdateFunc: controller.enqueueUpdatePod,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add pod event handler")
+	}
+	if _, err = podInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
+		FilterFunc: isVpcNatGatewayPod,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueVpcNatGatewayForPod,
+			DeleteFunc: controller.enqueueVpcNatGatewayForPod,
+			UpdateFunc: controller.enqueueUpdateVpcNatGatewayForPod,
+		},
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc nat gateway pod owner event handler")
 	}
 
 	if _, err = namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -891,20 +911,18 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add endpoint slice event handler")
 	}
 
-	if _, err = deploymentInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj any) bool {
-			if deploy, ok := obj.(*appsv1api.Deployment); ok {
-				// Only watch deployments with VpcEgressGatewayLabel or VpcNatGatewayLabel
-				_, hasNatGwLabel := deploy.Labels[util.VpcNatGatewayLabel]
-				_, hasEgressGwLabel := deploy.Labels[util.VpcEgressGatewayLabel]
-				return hasNatGwLabel || hasEgressGwLabel
-			}
-			return false
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddDeployment,
-			UpdateFunc: controller.enqueueUpdateDeployment,
-		},
+	if _, err = statefulSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueVpcNatGatewayForWorkload,
+		UpdateFunc: controller.enqueueUpdateVpcNatGatewayForWorkload,
+		DeleteFunc: controller.enqueueVpcNatGatewayForWorkload,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc nat gateway statefulset event handler")
+	}
+
+	if _, err = deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueDeploymentEvent,
+		UpdateFunc: controller.enqueueUpdateDeployment,
+		DeleteFunc: controller.enqueueDeploymentEvent,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add deployment event handler")
 	}

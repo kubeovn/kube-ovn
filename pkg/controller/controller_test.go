@@ -24,6 +24,7 @@ import (
 	nadinformers "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/informers/externalversions"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -95,6 +96,9 @@ type FakeControllerOptions struct {
 	OvnSnatRules       []*kubeovnv1.OvnSnatRule
 	QoSPolicies        []*kubeovnv1.QoSPolicy
 	IptablesEips       []*kubeovnv1.IptablesEIP
+	StatefulSets       []*appsv1.StatefulSet
+	Deployments        []*appsv1.Deployment
+	ReplicaSets        []*appsv1.ReplicaSet
 }
 
 // newFakeControllerWithOptions creates a fake controller with optional pre-populated objects
@@ -116,8 +120,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}}
 	}
 
-	// Create fake Kubernetes client with namespaces, pods, nodes, and services
-	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods)+len(opts.Nodes)+len(opts.Services))
+	// Create fake Kubernetes client with namespaces, pods, nodes, services, and workloads.
+	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods)+len(opts.Nodes)+len(opts.Services)+
+		len(opts.StatefulSets)+len(opts.Deployments)+len(opts.ReplicaSets))
 	for _, ns := range namespaces {
 		kubeObjects = append(kubeObjects, ns)
 	}
@@ -129,6 +134,15 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 	for _, svc := range opts.Services {
 		kubeObjects = append(kubeObjects, svc)
+	}
+	for _, sts := range opts.StatefulSets {
+		kubeObjects = append(kubeObjects, sts)
+	}
+	for _, deploy := range opts.Deployments {
+		kubeObjects = append(kubeObjects, deploy)
+	}
+	for _, rs := range opts.ReplicaSets {
+		kubeObjects = append(kubeObjects, rs)
 	}
 	kubeClient := fake.NewSimpleClientset(kubeObjects...)
 
@@ -256,6 +270,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	endpointSliceInformer := kubeInformerFactory.Discovery().V1().EndpointSlices()
+	statefulSetInformer := kubeInformerFactory.Apps().V1().StatefulSets()
+	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
+	replicaSetInformer := kubeInformerFactory.Apps().V1().ReplicaSets()
 
 	nadInformerFactory := nadinformers.NewSharedInformerFactoryWithOptions(nadClient, 0,
 		nadinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
@@ -306,48 +323,53 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 
 	// Create controller with all informers
 	ctrl := &Controller{
-		servicesLister:          serviceInformer.Lister(),
-		namespacesLister:        namespaceInformer.Lister(),
-		nodesLister:             nodeInformer.Lister(),
-		podsLister:              podInformer.Lister(),
-		endpointSlicesLister:    endpointSliceInformer.Lister(),
-		vpcsLister:              vpcInformer.Lister(),
-		vpcSynced:               alwaysReady,
-		subnetsLister:           subnetInformer.Lister(),
-		subnetSynced:            alwaysReady,
-		ippoolLister:            ippoolInformer.Lister(),
-		ippoolSynced:            alwaysReady,
-		ipsLister:               ipInformer.Lister(),
-		ipSynced:                alwaysReady,
-		vlansLister:             vlanInformer.Lister(),
-		providerNetworksLister:  providerNetworkInformer.Lister(),
-		routerLBRuleLister:      routerLBRuleInformer.Lister(),
-		routerLBRuleSynced:      alwaysReady,
-		ovnEipsLister:           ovnEipInformer.Lister(),
-		ovnEipSynced:            alwaysReady,
-		ovnDnatRulesLister:      ovnDnatRuleInformer.Lister(),
-		ovnDnatRuleSynced:       alwaysReady,
-		ovnFipsLister:           ovnFipInformer.Lister(),
-		ovnFipSynced:            alwaysReady,
-		ovnSnatRulesLister:      ovnSnatRuleInformer.Lister(),
-		ovnSnatRuleSynced:       alwaysReady,
-		netAttachLister:         nadInformer.Lister(),
-		netAttachSynced:         alwaysReady,
-		vpcNatGatewayLister:     vpcNatGwInformer.Lister(),
-		qosPoliciesLister:       qosPolicyInformer.Lister(),
-		qosPolicySynced:         alwaysReady,
-		iptablesEipsLister:      iptablesEipInformer.Lister(),
-		vpcNatGwKeyMutex:        keymutex.NewHashed(0),
-		OVNNbClient:             mockOvnClient,
-		OVNSbClient:             mockOvnSbClient,
-		ipam:                    ovnipam.NewIPAM(),
-		recorder:                record.NewFakeRecorder(100),
-		podKeyMutex:             keymutex.NewHashed(0),
-		subnetKeyMutex:          keymutex.NewHashed(0),
-		nsKeyMutex:              keymutex.NewHashed(0),
-		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
-		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
-		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		servicesLister:                serviceInformer.Lister(),
+		namespacesLister:              namespaceInformer.Lister(),
+		nodesLister:                   nodeInformer.Lister(),
+		podsLister:                    podInformer.Lister(),
+		endpointSlicesLister:          endpointSliceInformer.Lister(),
+		vpcsLister:                    vpcInformer.Lister(),
+		vpcSynced:                     alwaysReady,
+		subnetsLister:                 subnetInformer.Lister(),
+		subnetSynced:                  alwaysReady,
+		ippoolLister:                  ippoolInformer.Lister(),
+		ippoolSynced:                  alwaysReady,
+		ipsLister:                     ipInformer.Lister(),
+		ipSynced:                      alwaysReady,
+		vlansLister:                   vlanInformer.Lister(),
+		providerNetworksLister:        providerNetworkInformer.Lister(),
+		routerLBRuleLister:            routerLBRuleInformer.Lister(),
+		routerLBRuleSynced:            alwaysReady,
+		ovnEipsLister:                 ovnEipInformer.Lister(),
+		ovnEipSynced:                  alwaysReady,
+		ovnDnatRulesLister:            ovnDnatRuleInformer.Lister(),
+		ovnDnatRuleSynced:             alwaysReady,
+		ovnFipsLister:                 ovnFipInformer.Lister(),
+		ovnFipSynced:                  alwaysReady,
+		ovnSnatRulesLister:            ovnSnatRuleInformer.Lister(),
+		ovnSnatRuleSynced:             alwaysReady,
+		netAttachLister:               nadInformer.Lister(),
+		netAttachSynced:               alwaysReady,
+		vpcNatGatewayLister:           vpcNatGwInformer.Lister(),
+		qosPoliciesLister:             qosPolicyInformer.Lister(),
+		qosPolicySynced:               alwaysReady,
+		iptablesEipsLister:            iptablesEipInformer.Lister(),
+		statefulSetsLister:            statefulSetInformer.Lister(),
+		deploymentsLister:             deploymentInformer.Lister(),
+		replicaSetsLister:             replicaSetInformer.Lister(),
+		vpcNatGwKeyMutex:              keymutex.NewHashed(0),
+		OVNNbClient:                   mockOvnClient,
+		OVNSbClient:                   mockOvnSbClient,
+		ipam:                          ovnipam.NewIPAM(),
+		recorder:                      record.NewFakeRecorder(100),
+		podKeyMutex:                   keymutex.NewHashed(0),
+		subnetKeyMutex:                keymutex.NewHashed(0),
+		nsKeyMutex:                    keymutex.NewHashed(0),
+		addOrUpdateSubnetQueue:        newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
+		syncVirtualPortsQueue:         newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
+		updateSubnetStatusQueue:       newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcNatGateway", nil),
+		initVpcNatGatewayQueue:        newTypedRateLimitingQueue[string]("InitVpcNatGateway", nil),
 	}
 
 	ctrl.config = &Configuration{

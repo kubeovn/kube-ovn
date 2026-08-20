@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -12,7 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes"
 	appsv1listers "k8s.io/client-go/listers/apps/v1"
 	v1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
@@ -385,7 +383,7 @@ func updateNatGwWorkloadStatus(
 	gw *kubeovnv1.VpcNatGateway,
 	podLister v1.PodLister,
 	deployLister appsv1listers.DeploymentLister,
-	kubeClient kubernetes.Interface,
+	stsLister appsv1listers.StatefulSetLister,
 	natGwNamespace string,
 ) bool {
 	workloadName := util.GenNatGwName(gw.Name)
@@ -409,8 +407,8 @@ func updateNatGwWorkloadStatus(
 		workloadKind = util.KindStatefulSet
 		workloadAPIVersion = "apps/v1"
 		var sts *appsv1.StatefulSet
-		if kubeClient != nil {
-			sts, err = kubeClient.AppsV1().StatefulSets(natGwNamespace).Get(context.Background(), workloadName, metav1.GetOptions{})
+		if stsLister != nil {
+			sts, err = stsLister.StatefulSets(natGwNamespace).Get(workloadName)
 		}
 		if err == nil && sts != nil {
 			workloadNodes, err = getWorkloadNodes(podLister, natGwNamespace, sts.Spec.Selector)
