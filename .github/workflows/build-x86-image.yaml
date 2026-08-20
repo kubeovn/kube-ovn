@@ -5379,6 +5379,82 @@ jobs:
           print(f"Verified {len(requiredJobIds)} required x86 E2E Jobs.")
           PY
 
+  publish-pr-e2e-checks:
+    name: Publish x86 E2E checks on the pull request
+    if: always() && github.event_name == 'workflow_dispatch'
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+    needs:
+      - e2e-selection
+      - e2e-executor-result
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+      HEAD_SHA: ${{ inputs.headSHA }}
+      PR_NUMBER: ${{ inputs.prNumber }}
+      SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.baseSHA }}
+          persist-credentials: false
+
+      - name: Mirror selected executor jobs onto the pull request HEAD
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" \
+            | jq '[.[].jobs[]]' > executor-jobs.json
+          python3 - "$PR_NUMBER" "$HEAD_SHA" "$SELECTED_JOB_IDS" <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+          import e2e_selector as e2eSelector
+
+          prNumber = int(sys.argv[1])
+          headSHA = sys.argv[2]
+          selectedJobIds = json.loads(sys.argv[3])
+          workflow = Path(".github/workflows/build-x86-image.yaml").read_text()
+          blocks = e2eSelector.workflowJobBlocks(workflow)
+          selectedTitles = [
+              e2eControl.workflowJobTitle(blocks[jobId])
+              for jobId in selectedJobIds
+              if jobId in blocks
+          ]
+          jobs = json.loads(Path("executor-jobs.json").read_text())
+          checks = [
+              e2eControl.prCheckRunFromExecutorJob(job, headSHA, prNumber)
+              for job in e2eControl.selectedExecutorJobs(jobs, selectedTitles)
+          ]
+          Path("pr-e2e-checks.json").write_text(json.dumps(checks) + "\n")
+          print(f"Publishing {len(checks)} pull request E2E checks.")
+          PY
+          jq -c '.[]' pr-e2e-checks.json | while read -r payload; do
+            name=$(jq -r '.name' <<< "$payload")
+            externalId=$(jq -r '.external_id' <<< "$payload")
+            existing=$(gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?per_page=100" \
+              | jq -r --arg externalId "$externalId" \
+                '[.check_runs[] | select(.external_id == $externalId)][0].id // empty')
+            if [ -n "$existing" ]; then
+              jq 'del(.name, .head_sha)' <<< "$payload" | \
+                gh api --method PATCH "repos/$GITHUB_REPOSITORY/check-runs/$existing" --input -
+            else
+              gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" --input - <<< "$payload"
+            fi
+            echo "Published $name"
+          done
+
   push:
     name: Push Images
     needs:

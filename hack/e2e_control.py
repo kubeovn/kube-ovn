@@ -706,6 +706,57 @@ def isTrustedExecutorRef(refName, baseRef, request):
     return refName == baseRef or refName == executorHeadBranch(request)
 
 
+def workflowJobTitle(block):
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("name:"):
+            return stripped.split(":", 1)[1].strip()
+    return ""
+
+
+def selectedExecutorJobs(jobs, selectedTitles):
+    matched = []
+    seen = set()
+    for job in jobs:
+        name = job.get("name") or ""
+        for title in selectedTitles:
+            prefix = title.split("${{", 1)[0].rstrip()
+            if name == title or (prefix and name.startswith(prefix)):
+                jobId = job.get("id")
+                if jobId in seen:
+                    break
+                seen.add(jobId)
+                matched.append(job)
+                break
+    return matched
+
+
+def prCheckRunFromExecutorJob(job, headSHA, prNumber):
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid pull request HEAD for E2E check")
+    name = job.get("name") or ""
+    if not name:
+        raise ValueError("executor job is missing a name")
+    conclusion = job.get("conclusion")
+    completed = job.get("status") == "completed" or bool(conclusion)
+    payload = {
+        "name": name,
+        "head_sha": headSHA,
+        "status": "completed" if completed else "in_progress",
+        "external_id": f"x86-e2e-pr-{int(prNumber)}-{headSHA}-{name}"[:255],
+        "details_url": job.get("html_url") or "",
+        "output": {
+            "title": name,
+            "summary": (
+                f"Trusted x86 E2E result for pull request HEAD `{headSHA}`."
+            ),
+        },
+    }
+    if completed:
+        payload["conclusion"] = conclusion or "cancelled"
+    return payload
+
+
 def latestExecutorRun(
     runs,
     prNumber,
