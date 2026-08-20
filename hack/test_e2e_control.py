@@ -160,6 +160,27 @@ class E2EControlTest(unittest.TestCase):
         self.assertEqual(completed["details_url"], jobs[0]["html_url"])
         self.assertEqual(pending["status"], "in_progress")
         self.assertNotIn("conclusion", pending)
+        self.assertFalse(
+            e2eControl.selectedExecutorJobsAreTerminal(
+                jobs,
+                [
+                    "Kubernetes Conformance E2E",
+                    "Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)",
+                ],
+            )
+        )
+        self.assertTrue(
+            e2eControl.selectedExecutorJobsAreTerminal(
+                [jobs[0]],
+                ["Kubernetes Conformance E2E"],
+            )
+        )
+        self.assertFalse(
+            e2eControl.selectedExecutorJobsAreTerminal(
+                [],
+                ["Kubernetes Conformance E2E"],
+            )
+        )
 
     def testApprovedGateReservationIgnoresGitHubRewrittenDetailsURL(self):
         headSHA = "94fd288b1db022d10863ac3254d2b40fe1dad01a"
@@ -1279,10 +1300,14 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("if: always() && github.event_name != 'pull_request'", resultBlock)
         self.assertIn("permissions: {}", resultBlock)
         publish = blocks["publish-pr-e2e-checks"]
-        self.assertIn("if: always() && github.event_name == 'workflow_dispatch'", publish)
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", publish)
         self.assertIn("checks: write", publish)
         self.assertIn("prCheckRunFromExecutorJob", publish)
+        self.assertIn("selectedExecutorJobsAreTerminal", publish)
+        self.assertIn("time.sleep(20)", publish)
         self.assertIn("HEAD_SHA: ${{ inputs.headSHA }}", publish)
+        self.assertIn("- e2e-selection\n", publish)
+        self.assertNotIn("- e2e-executor-result", publish)
         self.assertIn(
             'requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds',
             resultBlock,
