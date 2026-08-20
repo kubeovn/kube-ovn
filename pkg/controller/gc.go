@@ -40,6 +40,7 @@ func (c *Controller) gc() error {
 		// The lsp gc is processed periodically by markAndCleanLSP, will not gc lsp when init
 		c.gcLoadBalancer,
 		c.gcNetworkPolicy,
+		c.gcAdminNetworkPolicy,
 		c.gcSecurityGroup,
 		c.gcAddressSet,
 		c.gcRoutePolicy,
@@ -939,7 +940,79 @@ func (c *Controller) gcNetworkPolicy() error {
 		return err
 	}
 
+	if !c.config.EnableNP {
+		if err := c.gcDisabledNetworkPolicyResources(delPgNames.List()); err != nil {
+			return err
+		}
+	}
+
 	klog.Infof("finish to gc network policy")
+	return nil
+}
+
+func (c *Controller) gcDisabledNetworkPolicyResources(pgNames []string) error {
+	meterPGs := strset.New(pgNames...)
+	addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{networkPolicyKey: ""})
+	if err != nil {
+		klog.Errorf("failed to list network policy address sets: %v", err)
+		return err
+	}
+	for _, as := range addressSets {
+		parts := strings.Split(as.ExternalIDs[networkPolicyKey], "/")
+		if len(parts) != 3 {
+			continue
+		}
+		meterPGs.Add(npPortGroupName(parts[0], parts[1]))
+	}
+	for _, pgName := range meterPGs.List() {
+		for _, meterName := range networkPolicyMeterNames(pgName) {
+			if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+				klog.Errorf("failed to gc network policy meter %s: %v", meterName, err)
+				return err
+			}
+		}
+	}
+	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{networkPolicyKey: ""}); err != nil {
+		klog.Errorf("failed to gc network policy address sets: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) gcAdminNetworkPolicy() error {
+	if c.config.EnableANP {
+		return nil
+	}
+
+	klog.Infof("start to gc admin network policy")
+	for _, key := range []string{adminNetworkPolicyKey, baselineAdminNetworkPolicyKey, clusterNetworkPolicyKey} {
+		if err := c.gcPortGroupsAndAddressSetsByExternalID(key); err != nil {
+			return err
+		}
+	}
+	klog.Infof("finish to gc admin network policy")
+	return nil
+}
+
+func (c *Controller) gcPortGroupsAndAddressSetsByExternalID(externalIDKey string) error {
+	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{externalIDKey: ""})
+	if err != nil {
+		klog.Errorf("list port groups with external id %s: %v", externalIDKey, err)
+		return err
+	}
+	pgNames := make([]string, 0, len(pgs))
+	for _, pg := range pgs {
+		klog.Infof("gc port group %s with external id %s=%s", pg.Name, externalIDKey, pg.ExternalIDs[externalIDKey])
+		pgNames = append(pgNames, pg.Name)
+	}
+	if err := c.OVNNbClient.DeletePortGroup(pgNames...); err != nil {
+		klog.Errorf("failed to gc port groups %v: %v", pgNames, err)
+		return err
+	}
+	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{externalIDKey: ""}); err != nil {
+		klog.Errorf("failed to gc address sets with external id %s: %v", externalIDKey, err)
+		return err
+	}
 	return nil
 }
 

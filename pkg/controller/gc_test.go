@@ -9,6 +9,7 @@ import (
 	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -175,4 +176,83 @@ func TestGetVMLsps(t *testing.T) {
 			ovs.PodNameToPortName("vm-nad", "ns3", nadProvider),
 		}, lsps)
 	})
+}
+
+func TestGcNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+	})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableNP = false
+
+	npPG := ovnnb.PortGroup{
+		Name: "allow.default",
+		ExternalIDs: map[string]string{
+			networkPolicyKey: "default/allow",
+		},
+	}
+	nodePG := ovnnb.PortGroup{
+		Name: "node.node1",
+		ExternalIDs: map[string]string{
+			networkPolicyKey: "node/node1",
+		},
+	}
+
+	mockOvnClient.EXPECT().ListPortGroups(map[string]string{networkPolicyKey: ""}).Return([]ovnnb.PortGroup{npPG, nodePG}, nil)
+	mockOvnClient.EXPECT().DeletePortGroup(npPG.Name).Return(nil)
+	mockOvnClient.EXPECT().ListAddressSets(map[string]string{networkPolicyKey: ""}).Return([]ovnnb.AddressSet{{
+		Name: "default.allow.ipv4.ingress",
+		ExternalIDs: map[string]string{
+			networkPolicyKey: "default/allow/ingress",
+		},
+	}}, nil)
+	mockOvnClient.EXPECT().DeleteMeter("allow.default_to-lport_meter").Return(nil)
+	mockOvnClient.EXPECT().DeleteMeter("allow.default_from-lport_meter").Return(nil)
+	mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{networkPolicyKey: ""}).Return(nil)
+
+	require.NoError(t, ctrl.gcNetworkPolicy())
+}
+
+func TestGcAdminNetworkPolicySkipsWhenEnabled(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	ctrl.config.EnableANP = true
+
+	require.NoError(t, ctrl.gcAdminNetworkPolicy())
+}
+
+func TestGcAdminNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableANP = false
+
+	anpPG := ovnnb.PortGroup{
+		Name: "anp.foo",
+		ExternalIDs: map[string]string{
+			adminNetworkPolicyKey: "anp.foo",
+		},
+	}
+	banpPG := ovnnb.PortGroup{
+		Name: "banp.bar",
+		ExternalIDs: map[string]string{
+			baselineAdminNetworkPolicyKey: "banp.bar",
+		},
+	}
+
+	mockOvnClient.EXPECT().ListPortGroups(map[string]string{adminNetworkPolicyKey: ""}).Return([]ovnnb.PortGroup{anpPG}, nil)
+	mockOvnClient.EXPECT().DeletePortGroup(anpPG.Name).Return(nil)
+	mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{adminNetworkPolicyKey: ""}).Return(nil)
+
+	mockOvnClient.EXPECT().ListPortGroups(map[string]string{baselineAdminNetworkPolicyKey: ""}).Return([]ovnnb.PortGroup{banpPG}, nil)
+	mockOvnClient.EXPECT().DeletePortGroup(banpPG.Name).Return(nil)
+	mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{baselineAdminNetworkPolicyKey: ""}).Return(nil)
+
+	mockOvnClient.EXPECT().ListPortGroups(map[string]string{clusterNetworkPolicyKey: ""}).Return(nil, nil)
+	mockOvnClient.EXPECT().DeletePortGroup().Return(nil)
+	mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{clusterNetworkPolicyKey: ""}).Return(nil)
+
+	require.NoError(t, ctrl.gcAdminNetworkPolicy())
 }

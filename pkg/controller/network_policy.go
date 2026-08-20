@@ -525,16 +525,11 @@ func (c *Controller) handleDeleteNp(key string) error {
 		npName = "np" + name
 	}
 
-	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, namespace), "-", ".")
-	ingressMeterName := fmt.Sprintf("%s_to-lport_meter", pgName)
-	egressMeterName := fmt.Sprintf("%s_from-lport_meter", pgName)
-
-	if err := c.OVNNbClient.DeleteMeter(ingressMeterName); err != nil {
-		klog.Errorf("delete ingress meter %s for np %s: %v", ingressMeterName, key, err)
-	}
-
-	if err := c.OVNNbClient.DeleteMeter(egressMeterName); err != nil {
-		klog.Errorf("delete egress meter %s for np %s: %v", egressMeterName, key, err)
+	pgName := npPortGroupName(namespace, npName)
+	for _, meterName := range networkPolicyMeterNames(pgName) {
+		if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+			klog.Errorf("delete meter %s for np %s: %v", meterName, key, err)
+		}
 	}
 
 	if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
@@ -868,4 +863,15 @@ func parseACLLogRate(annotations map[string]string) int {
 		return 0
 	}
 	return rate
+}
+
+func npPortGroupName(namespace, npName string) string {
+	return strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, namespace), "-", ".")
+}
+
+func networkPolicyMeterNames(pgName string) []string {
+	return []string{
+		fmt.Sprintf("%s_to-lport_meter", pgName),
+		fmt.Sprintf("%s_from-lport_meter", pgName),
+	}
 }
