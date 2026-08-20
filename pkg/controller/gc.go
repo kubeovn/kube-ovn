@@ -1003,6 +1003,9 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 	resolvers, err := c.config.KubeOvnClient.KubeovnV1().DNSNameResolvers().List(
 		context.TODO(), metav1.ListOptions{LabelSelector: adminNetworkPolicyKey})
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
 		klog.Errorf("list disabled admin network policy DNSNameResolvers: %v", err)
 		return err
 	}
