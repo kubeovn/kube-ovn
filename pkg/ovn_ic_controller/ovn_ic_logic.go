@@ -103,7 +103,7 @@ func subnetCIDRs(subnets []*kubeovnv1.Subnet) []string {
 
 func filterPersistedConflictCIDRs(localCIDRs []string, blacklist string) []string {
 	var persisted []string
-	for _, entry := range strings.Split(blacklist, ",") {
+	for entry := range strings.SplitSeq(blacklist, ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
