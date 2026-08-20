@@ -986,19 +986,30 @@ jobs:
             echo "The cumulative x86 E2E request is already recorded: $duplicate"
             exit 0
           fi
-          externalId="x86-e2e-pr-$PR_NUMBER-$HEAD_SHA"
-          expectedURL="https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER?request=$REQUEST_KEY&approval=$APPROVAL_GENERATION"
           approvalReady=false
           for _ in $(seq 1 24); do
-            ready=$(gh api \
+            gh api \
               -H 'Accept: application/vnd.github+json' \
               "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?check_name=x86-e2e%20%2F%20required-gate&per_page=100" \
-              | jq -r --arg externalId "$externalId" --arg expectedURL "$expectedURL" \
-                'any(.check_runs[]; .name == "x86-e2e / required-gate" and
-                  .external_id == $externalId and .status == "completed" and
-                  .conclusion == "action_required" and .details_url == $expectedURL)')
-            if [ "$ready" = true ]; then
-              approvalReady=true
+              > approved-gate-checks.json
+            approvalReady=$(python3 - "$PR_NUMBER" "$HEAD_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          checks = json.loads(Path("approved-gate-checks.json").read_text()).get("check_runs") or []
+          print(
+              "true"
+              if any(
+                  e2eControl.isApprovedGateReservation(check, sys.argv[1], sys.argv[2])
+                  for check in checks
+              )
+              else "false"
+          )
+          PY
+            )
+            if [ "$approvalReady" = true ]; then
               break
             fi
             sleep 5
@@ -1015,13 +1026,27 @@ jobs:
             echo 'The cumulative request became stale during gate reconciliation.'
             exit 0
           fi
-          ready=$(gh api \
+          gh api \
             -H 'Accept: application/vnd.github+json' \
             "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?check_name=x86-e2e%20%2F%20required-gate&per_page=100" \
-            | jq -r --arg externalId "$externalId" --arg expectedURL "$expectedURL" \
-              'any(.check_runs[]; .name == "x86-e2e / required-gate" and
-                .external_id == $externalId and .status == "completed" and
-                .conclusion == "action_required" and .details_url == $expectedURL)')
+            > approved-gate-checks.json
+          ready=$(python3 - "$PR_NUMBER" "$HEAD_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          checks = json.loads(Path("approved-gate-checks.json").read_text()).get("check_runs") or []
+          print(
+              "true"
+              if any(
+                  e2eControl.isApprovedGateReservation(check, sys.argv[1], sys.argv[2])
+                  for check in checks
+              )
+              else "false"
+          )
+          PY
+          )
           if [ "$ready" != true ]; then
             exit 0
           fi
