@@ -306,33 +306,8 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	if err := c.syncICGatewayNodeLabels(gwNodes); err != nil {
 		return err
 	}
-	chassises := make([]string, len(gwNodes))
 
 	for i, tsName := range tsNames {
-		gwNodesOrdered := generateNewOrderGwNodes(gwNodes, i)
-		for j, gw := range gwNodesOrdered {
-			chassis, err := c.OVNSbClient.GetChassisByHost(gw)
-			if err != nil {
-				klog.Errorf("failed to get gw %q chassis: %v", gw, err)
-				return err
-			}
-			if chassis.Name == "" {
-				return fmt.Errorf("no chassis for gw %q", gw)
-			}
-			chassises[j] = chassis.Name
-
-			node, err := c.nodesLister.Get(gw)
-			if err != nil {
-				klog.Errorf("failed to get gw node %q: %v", gw, err)
-				return err
-			}
-			patch := util.KVPatch{util.ICGatewayLabel: "true"}
-			if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
-				klog.Errorf("failed to patch ic gw node %s: %v", node.Name, err)
-				return err
-			}
-		}
-
 		tsPort := fmt.Sprintf("%s-%s", tsName, config["az-name"])
 		lrpName := fmt.Sprintf("%s-%s", config["az-name"], tsName)
 		exist, err := c.OVNNbClient.LogicalSwitchPortExists(tsPort)
@@ -342,10 +317,17 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		}
 		if exist {
 			klog.Infof("ts port %s already exists, reconciling gateway chassis", tsPort)
+			chassises, err := c.gatewayChassisNames(gwNodes, i)
+			if err != nil {
+				return err
+			}
 			if err := c.OVNNbClient.ReconcileGatewayChassises(lrpName, chassises); err != nil {
 				klog.Errorf("failed to reconcile gateway chassis for ic lrp %q: %v", lrpName, err)
 				return err
 			}
+			continue
+		}
+		if len(gwNodes) == 0 {
 			continue
 		}
 
@@ -355,6 +337,10 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			return err
 		}
 
+		chassises, err := c.gatewayChassisNames(gwNodes, i)
+		if err != nil {
+			return err
+		}
 		if err := c.OVNNbClient.CreateLogicalPatchPort(tsName, c.config.ClusterRouter, tsPort, lrpName, lrpAddr, util.GenerateMac(), chassises...); err != nil {
 			klog.Errorf("failed to create ovn-ic lrp %q: %v", lrpName, err)
 			return err
@@ -362,6 +348,34 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	}
 
 	return nil
+}
+
+func (c *Controller) gatewayChassisNames(gwNodes []string, order int) ([]string, error) {
+	ordered := generateNewOrderGwNodes(gwNodes, order)
+	chassises := make([]string, len(ordered))
+	for i, gw := range ordered {
+		chassis, err := c.OVNSbClient.GetChassisByHost(gw)
+		if err != nil {
+			klog.Errorf("failed to get gw %q chassis: %v", gw, err)
+			return nil, err
+		}
+		if chassis.Name == "" {
+			return nil, fmt.Errorf("no chassis for gw %q", gw)
+		}
+		chassises[i] = chassis.Name
+
+		node, err := c.nodesLister.Get(gw)
+		if err != nil {
+			klog.Errorf("failed to get gw node %q: %v", gw, err)
+			return nil, err
+		}
+		patch := util.KVPatch{util.ICGatewayLabel: "true"}
+		if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+			klog.Errorf("failed to patch ic gw node %s: %v", node.Name, err)
+			return nil, err
+		}
+	}
+	return chassises, nil
 }
 
 func (c *Controller) acquireLrpAddress(ts string) (string, error) {
@@ -628,6 +642,9 @@ func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
 }
 
 func generateNewOrderGwNodes(arr []string, order int) []string {
+	if len(arr) == 0 {
+		return nil
+	}
 	if order >= len(arr) {
 		order %= len(arr)
 	}
@@ -651,6 +668,10 @@ func (c *Controller) refreshConflictCIDRs() error {
 		return err
 	}
 	localCIDRs := subnetCIDRs(subnets)
+	persisted, err := c.persistedConflictCIDRs(localCIDRs)
+	if err != nil {
+		return err
+	}
 
 	lrList, err := c.OVNNbClient.ListLogicalRouter(false, nil)
 	if err != nil {
@@ -677,7 +698,8 @@ func (c *Controller) refreshConflictCIDRs() error {
 		}
 	}
 
-	conflicts := mergeConflictCIDRs(localCIDRs, learnedPrefixes, c.conflictCIDRList())
+	sticky := append(c.conflictCIDRList(), persisted...)
+	conflicts := mergeConflictCIDRs(localCIDRs, learnedPrefixes, sticky)
 	if c.icConflictCIDRs == nil {
 		c.icConflictCIDRs = strset.New()
 	}
@@ -708,6 +730,16 @@ func (c *Controller) refreshConflictCIDRs() error {
 		klog.Infof("deleted conflicting learned route %s on logical router %s", route.prefix, route.lrName)
 	}
 	return nil
+}
+
+func (c *Controller) persistedConflictCIDRs(localCIDRs []string) ([]string, error) {
+	nbGlobal, err := c.OVNNbClient.GetNbGlobal()
+	if err != nil {
+		klog.Errorf("failed to get NB_Global while restoring IC conflicts: %v", err)
+		return nil, err
+	}
+
+	return filterPersistedConflictCIDRs(localCIDRs, nbGlobal.Options["ic-route-blacklist"]), nil
 }
 
 func (c *Controller) syncICGatewayNodeLabels(gwNodes []string) error {

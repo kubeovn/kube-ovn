@@ -80,17 +80,20 @@ func reversePolicy(origin ovnnb.LogicalRouterStaticRoutePolicy) kubeovnv1.RouteP
 }
 
 func mergeConflictCIDRs(localCIDRs, learnedPrefixes, sticky []string) []string {
-	localSet := strset.New(localCIDRs...)
 	out := strset.New()
 	for _, cidr := range sticky {
-		if localSet.Has(cidr) {
-			out.Add(cidr)
+		for _, local := range localCIDRs {
+			if util.CIDROverlap(local, cidr) {
+				out.Add(cidr)
+				break
+			}
 		}
 	}
 	for _, local := range localCIDRs {
 		for _, learned := range learnedPrefixes {
 			if util.CIDROverlap(local, learned) {
 				out.Add(local)
+				out.Add(learned)
 				break
 			}
 		}
@@ -152,8 +155,31 @@ func subnetCIDRs(subnets []*kubeovnv1.Subnet) []string {
 	cidrs := make([]string, 0, len(subnets))
 	for _, subnet := range subnets {
 		if subnet != nil && subnet.Spec.CIDRBlock != "" {
-			cidrs = append(cidrs, subnet.Spec.CIDRBlock)
+			v4, v6 := util.SplitStringIP(subnet.Spec.CIDRBlock)
+			if v4 != "" {
+				cidrs = append(cidrs, v4)
+			}
+			if v6 != "" {
+				cidrs = append(cidrs, v6)
+			}
 		}
 	}
 	return cidrs
+}
+
+func filterPersistedConflictCIDRs(localCIDRs []string, blacklist string) []string {
+	var persisted []string
+	for _, entry := range strings.Split(blacklist, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		for _, local := range localCIDRs {
+			if util.CIDROverlap(local, entry) {
+				persisted = append(persisted, entry)
+				break
+			}
+		}
+	}
+	return persisted
 }

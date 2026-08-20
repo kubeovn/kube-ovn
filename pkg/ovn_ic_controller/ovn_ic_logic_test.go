@@ -84,6 +84,18 @@ func TestMergeConflictCIDRs(t *testing.T) {
 	got := mergeConflictCIDRs(local, learned, nil)
 	require.Equal(t, []string{"10.254.201.0/24"}, got)
 
+	t.Run("blacklists both sides of a broad overlap", func(t *testing.T) {
+		t.Parallel()
+		got := mergeConflictCIDRs([]string{"10.0.1.0/24"}, []string{"10.0.0.0/16"}, nil)
+		require.Equal(t, []string{"10.0.0.0/16", "10.0.1.0/24"}, got)
+	})
+
+	t.Run("keeps persisted overlap after learned route is deleted", func(t *testing.T) {
+		t.Parallel()
+		got := mergeConflictCIDRs([]string{"10.0.1.0/24"}, nil, []string{"10.0.0.0/16"})
+		require.Equal(t, []string{"10.0.0.0/16"}, got)
+	})
+
 	t.Run("sticky keeps conflict after learned route is gone", func(t *testing.T) {
 		t.Parallel()
 		got := mergeConflictCIDRs(local, []string{"10.3.0.0/16"}, []string{"10.254.201.0/24"})
@@ -101,6 +113,26 @@ func TestMergeConflictCIDRs(t *testing.T) {
 		got := mergeConflictCIDRs([]string{"10.16.0.0/16"}, []string{"10.3.0.0/16"}, nil)
 		require.Empty(t, got)
 	})
+}
+
+func TestSubnetCIDRsSplitsFamilies(t *testing.T) {
+	t.Parallel()
+
+	subnets := []*kubeovnv1.Subnet{{Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24,fd00::/64"}}}
+	require.Equal(t, []string{"10.0.0.0/24", "fd00::/64"}, subnetCIDRs(subnets))
+}
+
+func TestFilterPersistedConflictCIDRs(t *testing.T) {
+	t.Parallel()
+
+	local := []string{"10.0.1.0/24", "fd00::/64"}
+	require.Equal(t, []string{"10.0.0.0/16", "fd00::/64"}, filterPersistedConflictCIDRs(local, "10.0.0.0/16,10.10.0.0/16,fd00::/64"))
+}
+
+func TestGenerateNewOrderGwNodesEmpty(t *testing.T) {
+	t.Parallel()
+
+	require.Empty(t, generateNewOrderGwNodes(nil, 0))
 }
 
 func TestPlanGatewayChassisMigratesActiveGateway(t *testing.T) {
