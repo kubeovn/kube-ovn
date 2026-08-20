@@ -839,7 +839,7 @@ jobs:
       contents: write
       actions: write
       checks: read
-      pull-requests: read
+      pull-requests: write
       issues: write
     concurrency:
       group: x86-e2e-reduce-${{ inputs.prNumber }}-${{ inputs.approvalGeneration }}
