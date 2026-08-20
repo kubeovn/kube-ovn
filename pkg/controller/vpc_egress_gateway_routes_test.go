@@ -56,7 +56,7 @@ func TestVpcEgressGatewayLocalPolicyMatches(t *testing.T) {
 	}, got.SortedList())
 }
 
-func TestReconcileVpcEgressGatewayOVNRoutesOmitsPortGroupMatchWithoutSelectors(t *testing.T) {
+func TestReconcileVpcEgressGatewayOVNRoutesKeepsCompatibilityMatchWithoutSelectors(t *testing.T) {
 	fakeController := newFakeController(t)
 	controller := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
@@ -73,12 +73,15 @@ func TestReconcileVpcEgressGatewayOVNRoutesOmitsPortGroupMatchWithoutSelectors(t
 	}
 	pgName := vegPortGroupName("default/veg")
 	asName := vegAddressSetName("default/veg", 4)
+	compatAsName := vegPortGroupAddressSetName("default/veg", 4)
 	asMatch := "ip4.src == $" + asName
+	compatMatch := "ip4.src == $" + compatAsName
 
-	mockOvnClient.EXPECT().CreatePortGroup(pgName, externalIDs).Return(nil)
-	mockOvnClient.EXPECT().PortGroupSetPorts(pgName, gomock.Any()).Return(nil)
+	mockOvnClient.EXPECT().DeletePortGroup(pgName).Return(nil)
 	mockOvnClient.EXPECT().CreateAddressSet(asName, externalIDs).Return(nil)
 	mockOvnClient.EXPECT().AddressSetUpdateAddress(asName, "10.0.0.0/24").Return(nil)
+	mockOvnClient.EXPECT().CreateAddressSet(compatAsName, externalIDs).Return(nil)
+	mockOvnClient.EXPECT().AddressSetUpdateAddress(compatAsName).Return(nil)
 	mockOvnClient.EXPECT().FindBFD(externalIDs).Return(nil, nil)
 	mockOvnClient.EXPECT().DeleteLogicalRouterPolicies("tenant", util.EgressGatewayLocalPolicyPriority, externalIDs).Return(nil)
 	mockOvnClient.EXPECT().ListLogicalRouterPolicies("tenant", util.EgressGatewayPolicyPriority, externalIDs, false).Return(nil, nil)
@@ -86,9 +89,17 @@ func TestReconcileVpcEgressGatewayOVNRoutesOmitsPortGroupMatchWithoutSelectors(t
 		"tenant", util.EgressGatewayPolicyPriority, asMatch, ovnnb.LogicalRouterPolicyActionReroute,
 		[]string{"192.0.2.2"}, gomock.Any(), externalIDs,
 	).Return(nil)
+	mockOvnClient.EXPECT().AddLogicalRouterPolicy(
+		"tenant", util.EgressGatewayPolicyPriority, compatMatch, ovnnb.LogicalRouterPolicyActionReroute,
+		[]string{"192.0.2.2"}, gomock.Any(), externalIDs,
+	).Return(nil)
 	mockOvnClient.EXPECT().ListLogicalRouterPolicies("tenant", util.EgressGatewayDropPolicyPriority, externalIDs, false).Return(nil, nil)
 	mockOvnClient.EXPECT().AddLogicalRouterPolicy(
 		"tenant", util.EgressGatewayDropPolicyPriority, asMatch, ovnnb.LogicalRouterPolicyActionDrop,
+		nil, nil, externalIDs,
+	).Return(nil)
+	mockOvnClient.EXPECT().AddLogicalRouterPolicy(
+		"tenant", util.EgressGatewayDropPolicyPriority, compatMatch, ovnnb.LogicalRouterPolicyActionDrop,
 		nil, nil, externalIDs,
 	).Return(nil)
 
@@ -113,15 +124,17 @@ func TestReconcileVpcEgressGatewayOVNRoutesCleansStalePolicyWithoutNextHops(t *t
 	}
 	pgName := vegPortGroupName("default/veg")
 	asName := vegAddressSetName("default/veg", 4)
+	compatAsName := vegPortGroupAddressSetName("default/veg", 4)
 	stalePolicy := &ovnnb.LogicalRouterPolicy{
 		UUID:  "stale-policy",
 		Match: "ip4.src == $" + pgName + "_ip4",
 	}
 
-	mockOvnClient.EXPECT().CreatePortGroup(pgName, externalIDs).Return(nil)
-	mockOvnClient.EXPECT().PortGroupSetPorts(pgName, gomock.Any()).Return(nil)
+	mockOvnClient.EXPECT().DeletePortGroup(pgName).Return(nil)
 	mockOvnClient.EXPECT().CreateAddressSet(asName, externalIDs).Return(nil)
 	mockOvnClient.EXPECT().AddressSetUpdateAddress(asName, "10.0.0.0/24").Return(nil)
+	mockOvnClient.EXPECT().CreateAddressSet(compatAsName, externalIDs).Return(nil)
+	mockOvnClient.EXPECT().AddressSetUpdateAddress(compatAsName).Return(nil)
 	mockOvnClient.EXPECT().FindBFD(externalIDs).Return(nil, nil)
 	mockOvnClient.EXPECT().DeleteLogicalRouterPolicies("tenant", util.EgressGatewayLocalPolicyPriority, externalIDs).Return(nil)
 	mockOvnClient.EXPECT().ListLogicalRouterPolicies("tenant", util.EgressGatewayPolicyPriority, externalIDs, false).

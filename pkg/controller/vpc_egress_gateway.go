@@ -950,14 +950,24 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	key := cache.MetaObjectToName(gw).String()
 	pgName := vegPortGroupName(key)
-	includePortGroup := len(gw.Spec.Selectors) > 0
-	if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
-		err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
-		err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
+	// Keep both policy forms for compatibility with existing policy observers. For
+	// subnet-only gateways, the port-group address-set name is backed by an empty
+	// standalone address set below because no Port Group selector exists.
+	includePortGroup := true
+	hasSelectors := len(gw.Spec.Selectors) > 0
+	if hasSelectors {
+		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
+			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
+			klog.Error(err)
+			return err
+		}
+		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
+			err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
+			klog.Error(err)
+			return err
+		}
+	} else if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+		err = fmt.Errorf("failed to delete stale port group %s: %w", pgName, err)
 		klog.Error(err)
 		return err
 	}
@@ -971,6 +981,23 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	if err = c.OVNNbClient.AddressSetUpdateAddress(asName, sources.SortedList()...); err != nil {
 		err = fmt.Errorf("failed to update address set %s: %w", asName, err)
+		klog.Error(err)
+		return err
+	}
+	compatAsName := vegPortGroupAddressSetName(key, af)
+	if !hasSelectors {
+		if err = c.OVNNbClient.CreateAddressSet(compatAsName, externalIDs); err != nil {
+			err = fmt.Errorf("failed to create compatibility address set %s: %w", compatAsName, err)
+			klog.Error(err)
+			return err
+		}
+		if err = c.OVNNbClient.AddressSetUpdateAddress(compatAsName); err != nil {
+			err = fmt.Errorf("failed to clear compatibility address set %s: %w", compatAsName, err)
+			klog.Error(err)
+			return err
+		}
+	} else if err = c.OVNNbClient.DeleteAddressSet(compatAsName); err != nil {
+		err = fmt.Errorf("failed to delete stale compatibility address set %s: %w", compatAsName, err)
 		klog.Error(err)
 		return err
 	}
@@ -1536,6 +1563,10 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 			klog.Error(err)
 			return err
 		}
+		if err = c.OVNNbClient.DeleteAddressSet(vegPortGroupAddressSetName(key, af)); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	return nil
@@ -1544,6 +1575,10 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 func vegPortGroupName(key string) string {
 	hash := util.Sha256Hash([]byte(key))
 	return "VEG." + hash[:12]
+}
+
+func vegPortGroupAddressSetName(key string, af int) string {
+	return fmt.Sprintf("%s_ip%d", vegPortGroupName(key), af)
 }
 
 func vegAddressSetName(key string, af int) string {
