@@ -1509,3 +1509,44 @@ func TestIPAMNamedPoolStaticAddressRemainsAllocatableAfterSubnetUpdate(t *testin
 		})
 	}
 }
+
+
+func TestIPAMRandomAddressSkipsReleasedExcludeIPsAfterIPPoolReconcile(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "underlay-186"
+	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "172.24.186.0/23", "172.24.187.254", []string{
+		"172.24.186.1..172.24.186.21",
+		"172.24.187.229..172.24.187.255",
+	}))
+	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "lb186-ips", []string{"172.24.187.180..172.24.187.199"}))
+
+	v4IP, _, _, err := ipam.GetStaticAddress("sit-mng", "sit-mng", "172.24.186.4", nil, subnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, "172.24.186.4", v4IP)
+	ipam.ReleaseAddressByNic("sit-mng", "sit-mng", subnetName)
+
+	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "lb186-ips", []string{"172.24.187.180..172.24.187.199"}))
+
+	v4IP, _, _, err = ipam.GetRandomAddress("uat-pod", "uat-pod", nil, subnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "172.24.186.22", v4IP)
+}
+
+func TestIPAMRandomAddressDoesNotRecycleReservedIPs(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "underlay-186"
+	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "172.24.186.0/24", "172.24.186.1", []string{
+		"172.24.186.1..172.24.186.21",
+	}))
+
+	subnet := ipam.Subnets[subnetName]
+	pool := subnet.IPPools[""]
+	reservedIP, err := NewIP("172.24.186.4")
+	require.NoError(t, err)
+	require.True(t, pool.V4Released.Add(reservedIP))
+	pool.V4Free = NewEmptyIPRangeList()
+	subnet.V4Free = NewEmptyIPRangeList()
+
+	_, _, _, err = ipam.GetRandomAddress("uat-pod", "uat-pod", nil, subnetName, "", nil, true)
+	require.ErrorIs(t, err, ErrNoAvailable)
+}
