@@ -5488,7 +5488,7 @@ jobs:
                       None,
                   )
                   if checkId is None:
-                      subprocess.check_call(
+                      subprocess.run(
                           [
                               "gh",
                               "api",
@@ -5500,12 +5500,13 @@ jobs:
                           ],
                           input=json.dumps(payload),
                           text=True,
+                          check=True,
                       )
                   else:
                       update = dict(payload)
                       update.pop("name", None)
                       update.pop("head_sha", None)
-                      subprocess.check_call(
+                      subprocess.run(
                           [
                               "gh",
                               "api",
@@ -5517,6 +5518,7 @@ jobs:
                           ],
                           input=json.dumps(update),
                           text=True,
+                          check=True,
                       )
                   published[externalId] = fingerprint
                   print(
