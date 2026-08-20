@@ -5430,6 +5430,7 @@ jobs:
               for jobId in selectedJobIds
               if jobId in blocks
           ]
+          infraTitles = e2eControl.visibleInfrastructureTitles(blocks)
 
           def gh_json(*args):
               return json.loads(
@@ -5457,11 +5458,14 @@ jobs:
           published = {}
           for _ in range(720):
               jobs = load_jobs()
-              selected = e2eControl.selectedExecutorJobs(jobs, selectedTitles)
-              for job in selected:
-                  payload = e2eControl.prCheckRunFromExecutorJob(
-                      job, headSHA, prNumber
-                  )
+              for payload in e2eControl.prCheckRunsToPublish(
+                  jobs,
+                  selectedTitles,
+                  headSHA,
+                  prNumber,
+                  detailsURL=f"https://github.com/{repository}/actions/runs/{runId}",
+                  infraTitles=infraTitles,
+              ):
                   fingerprint = (
                       payload["status"],
                       payload.get("conclusion"),

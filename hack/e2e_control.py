@@ -714,20 +714,58 @@ def workflowJobTitle(block):
     return ""
 
 
+visibleInfrastructureJobIds = (
+    "build-kube-ovn",
+    "build-e2e-binaries",
+    "build-vpc-nat-gateway",
+    "prepare-kind-node-images",
+)
+
+
+def visibleInfrastructureTitles(blocks):
+    titles = []
+    for jobId in visibleInfrastructureJobIds:
+        block = blocks.get(jobId)
+        if not block:
+            continue
+        title = workflowJobTitle(block)
+        if title:
+            titles.append(title)
+    return titles
+
+
+def jobTitlePrefix(title):
+    return title.split("${{", 1)[0].rstrip()
+
+
+def jobMatchesTitle(name, title):
+    prefix = jobTitlePrefix(title)
+    return bool(name) and (name == title or (bool(prefix) and name.startswith(prefix)))
+
+
+def placeholderCheckName(title):
+    if "${{" not in title:
+        return title
+    prefix = jobTitlePrefix(title)
+    if prefix.endswith("("):
+        prefix = prefix[:-1].rstrip()
+    return prefix or title
+
+
 def selectedExecutorJobs(jobs, selectedTitles):
     matched = []
     seen = set()
     for job in jobs:
         name = job.get("name") or ""
         for title in selectedTitles:
-            prefix = title.split("${{", 1)[0].rstrip()
-            if name == title or (prefix and name.startswith(prefix)):
-                jobId = job.get("id")
-                if jobId in seen:
-                    break
-                seen.add(jobId)
-                matched.append(job)
+            if not jobMatchesTitle(name, title):
+                continue
+            jobId = job.get("id")
+            if jobId in seen:
                 break
+            seen.add(jobId)
+            matched.append(job)
+            break
     return matched
 
 
@@ -739,8 +777,7 @@ def selectedExecutorJobsAreTerminal(jobs, selectedTitles):
     for job in matched:
         name = job.get("name") or ""
         for title in selectedTitles:
-            prefix = title.split("${{", 1)[0].rstrip()
-            if name == title or (prefix and name.startswith(prefix)):
+            if jobMatchesTitle(name, title):
                 seenTitles.add(title)
                 break
     if seenTitles != set(selectedTitles):
@@ -751,6 +788,10 @@ def selectedExecutorJobsAreTerminal(jobs, selectedTitles):
     )
 
 
+def prCheckRunExternalId(name, headSHA, prNumber):
+    return f"x86-e2e-pr-{int(prNumber)}-{headSHA}-{name}"[:255]
+
+
 def prCheckRunFromExecutorJob(job, headSHA, prNumber):
     if not re.fullmatch(headPattern, headSHA or ""):
         raise ValueError("invalid pull request HEAD for E2E check")
@@ -758,12 +799,19 @@ def prCheckRunFromExecutorJob(job, headSHA, prNumber):
     if not name:
         raise ValueError("executor job is missing a name")
     conclusion = job.get("conclusion")
-    completed = job.get("status") == "completed" or bool(conclusion)
+    status = job.get("status") or ""
+    completed = status == "completed" or bool(conclusion)
+    if completed:
+        checkStatus = "completed"
+    elif status == "queued":
+        checkStatus = "queued"
+    else:
+        checkStatus = "in_progress"
     payload = {
         "name": name,
         "head_sha": headSHA,
-        "status": "completed" if completed else "in_progress",
-        "external_id": f"x86-e2e-pr-{int(prNumber)}-{headSHA}-{name}"[:255],
+        "status": checkStatus,
+        "external_id": prCheckRunExternalId(name, headSHA, prNumber),
         "details_url": job.get("html_url") or "",
         "output": {
             "title": name,
@@ -775,6 +823,93 @@ def prCheckRunFromExecutorJob(job, headSHA, prNumber):
     if completed:
         payload["conclusion"] = conclusion or "cancelled"
     return payload
+
+
+def placeholderCheckRun(name, headSHA, prNumber, *, queued, detailsURL, summary):
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid pull request HEAD for E2E check")
+    if not name:
+        raise ValueError("executor job is missing a name")
+    payload = {
+        "name": name,
+        "head_sha": headSHA,
+        "status": "queued" if queued else "completed",
+        "external_id": prCheckRunExternalId(name, headSHA, prNumber),
+        "details_url": detailsURL or "",
+        "output": {
+            "title": name,
+            "summary": summary,
+        },
+    }
+    if not queued:
+        payload["conclusion"] = "skipped"
+    return payload
+
+
+def prCheckRunsToPublish(
+    jobs,
+    selectedTitles,
+    headSHA,
+    prNumber,
+    detailsURL="",
+    infraTitles=None,
+):
+    payloads = []
+    seenNames = set()
+
+    def add(payload):
+        name = payload["name"]
+        if name in seenNames:
+            return
+        seenNames.add(name)
+        payloads.append(payload)
+
+    for job in selectedExecutorJobs(jobs, infraTitles or []):
+        add(prCheckRunFromExecutorJob(job, headSHA, prNumber))
+    selected = selectedExecutorJobs(jobs, selectedTitles)
+    for job in selected:
+        add(prCheckRunFromExecutorJob(job, headSHA, prNumber))
+    matchedByTitle = {title: [] for title in selectedTitles}
+    for job in selected:
+        name = job.get("name") or ""
+        for title in selectedTitles:
+            if jobMatchesTitle(name, title):
+                matchedByTitle[title].append(job)
+                break
+    for title in selectedTitles:
+        placeholderName = placeholderCheckName(title)
+        matched = matchedByTitle.get(title) or []
+        if any((job.get("name") or "") == placeholderName for job in matched):
+            continue
+        if matched:
+            add(
+                placeholderCheckRun(
+                    placeholderName,
+                    headSHA,
+                    prNumber,
+                    queued=False,
+                    detailsURL=matched[0].get("html_url") or detailsURL,
+                    summary=(
+                        f"Trusted x86 E2E matrix `{placeholderName}` is running "
+                        f"for pull request HEAD `{headSHA}`."
+                    ),
+                )
+            )
+            continue
+        add(
+            placeholderCheckRun(
+                placeholderName,
+                headSHA,
+                prNumber,
+                queued=True,
+                detailsURL=detailsURL,
+                summary=(
+                    f"Trusted x86 E2E job `{placeholderName}` is waiting to start "
+                    f"for pull request HEAD `{headSHA}`."
+                ),
+            )
+        )
+    return payloads
 
 
 def latestExecutorRun(
