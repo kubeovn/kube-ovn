@@ -32,6 +32,15 @@ func (suite *OvnClientTestSuite) Test_IsPortBindingChassisBound() {
 	require.True(t, IsPortBindingChassisBound(&ovnsb.PortBinding{Chassis: &chassis, Up: &upTrue}))
 }
 
+func (suite *OvnClientTestSuite) Test_IsVTEPChassis() {
+	t := suite.T()
+	t.Parallel()
+
+	require.False(t, IsVTEPChassis(nil))
+	require.False(t, IsVTEPChassis(&ovnsb.Chassis{Name: "node-chassis"}))
+	require.True(t, IsVTEPChassis(&ovnsb.Chassis{Name: "vtep-chassis", VtepLogicalSwitches: []string{"ls-a"}}))
+}
+
 func (suite *OvnClientTestSuite) testEnsureVtepBinding() {
 	t := suite.T()
 	t.Parallel()

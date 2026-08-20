@@ -49,6 +49,8 @@ server.
 5. `VtepBinding.status.ready` becomes true only after the SB `Port_Binding` for
    the VTEP LSP has a non-empty chassis. `Port_Binding.up=false` does not block
    Ready; `ovn-controller-vtep` can leave `up=false` after chassis assignment.
+   Chassis GC skips SB `Chassis` rows with a non-empty `vtep_logical_switches`
+   column so periodic node GC cannot drop that chassis and flap `Ready`.
 
 ## Enable Hardware VTEP
 
@@ -81,8 +83,10 @@ the feature is enabled. The switch must already expose a Hardware VTEP OVSDB wit
 
 `--enable-hardware-vtep` is the feature gate (default `false`). When it is disabled,
 the controller does not start the `VtepBinding` informer or worker and will not
-create NB `type=vtep` ports. `--vtep-db-addr` enables Hardware VTEP OVSDB writes
-after the feature is turned on.
+create NB `type=vtep` ports. Periodic GC still lists Kube-OVN-owned `type=vtep` LSPs
+(and Hardware VTEP OVSDB state if a client is still connected) and deletes them as
+orphans. `--vtep-db-addr` enables Hardware VTEP OVSDB writes after the feature is
+turned on.
 
 If the Hardware VTEP DB is unreachable at controller startup, kube-ovn-controller
 still starts and continues reconciling other resources. `VtepBinding.status.ready`
@@ -101,8 +105,12 @@ and cleanup success or failure, so `kubectl describe vtepbinding` explains why
   is enabled) containing:
   - `Physical_Switch` whose name matches `spec.physicalSwitch`
   - `Physical_Port` whose name matches `spec.physicalPort` on that switch
-- The referenced Subnet must already exist; the validating webhook rejects the
-  CR otherwise.
+- The referenced Subnet must already exist. When the validating webhook is
+  deployed, admission rejects a `VtepBinding` whose Subnet is missing. Helm v1
+  and `install.sh` do not deploy that webhook (`charts/kube-ovn-v2` with
+  `validatingWebhook.enabled=true`, or `yamls/webhook.yaml`, do). On webhook-less
+  installs, `kube-ovn-controller` is the only admission path and rejects a missing
+  Subnet during reconcile.
 - Optional: TLS materials in the `kube-ovn-tls` secret when using `ssl:` remotes.
 
 Kube-OVN does **not** configure the switch via NX-API or CLI, and does **not**
@@ -150,8 +158,10 @@ Create one `VtepBinding` (and matching switch VLAN binding) per tenant Subnet:
 | B | tenant-b-backend | tenant-b-backend | 130 |
 
 `(physicalSwitch, vtepLogicalSwitch)` and `(physicalSwitch, physicalPort, vlanID)`
-must each be unique across `VtepBinding` resources. Spec fields other than
-status are immutable after create (`subnet`, `physicalSwitch`,
+must each be unique across `VtepBinding` resources. The validating webhook
+enforces those keys when it is deployed; `kube-ovn-controller` always enforces
+them on reconcile, including webhook-less Helm v1 / `install.sh` installs. Spec
+fields other than status are immutable after create (`subnet`, `physicalSwitch`,
 `vtepLogicalSwitch`, `physicalPort`, `vlanID`); recreate the CR to change the
 physical attachment.
 

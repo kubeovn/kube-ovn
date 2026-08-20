@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -37,6 +38,72 @@ func TestValidateVtepBindingSpecFields(t *testing.T) {
 	err = v.ValidateVtepBinding(t.Context(), binding, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "vlanID")
+}
+
+func TestValidateVtepBindingMissingSubnet(t *testing.T) {
+	t.Parallel()
+
+	v := &ValidatingHook{cache: &mockCache{objects: map[string]runtime.Object{}}}
+	binding := &ovnv1.VtepBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "test"},
+		Spec: ovnv1.VtepBindingSpec{
+			Subnet:         "missing-subnet",
+			PhysicalSwitch: "nexus01",
+			PhysicalPort:   "Ethernet1/20",
+			VlanID:         120,
+		},
+	}
+	err := v.ValidateVtepBinding(t.Context(), binding, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to get subnet")
+}
+
+func TestValidateVtepBindingConflicts(t *testing.T) {
+	t.Parallel()
+
+	existing := &ovnv1.VtepBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "existing"},
+		Spec: ovnv1.VtepBindingSpec{
+			Subnet:         "subnet-a",
+			PhysicalSwitch: "nexus01",
+			PhysicalPort:   "Ethernet1/20",
+			VlanID:         120,
+		},
+	}
+	v := &ValidatingHook{
+		cache: &mockCache{objects: map[string]runtime.Object{
+			"/subnet-a": &ovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}},
+			"/subnet-b": &ovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-b"}},
+			"/existing": existing,
+		}},
+	}
+
+	portVLANConflict := &ovnv1.VtepBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "candidate"},
+		Spec: ovnv1.VtepBindingSpec{
+			Subnet:         "subnet-b",
+			PhysicalSwitch: "nexus01",
+			PhysicalPort:   "Ethernet1/20",
+			VlanID:         120,
+		},
+	}
+	err := v.ValidateVtepBinding(t.Context(), portVLANConflict, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "physicalPort")
+	require.Contains(t, err.Error(), "vlanID")
+
+	logicalSwitchConflict := &ovnv1.VtepBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "candidate"},
+		Spec: ovnv1.VtepBindingSpec{
+			Subnet:         "subnet-a",
+			PhysicalSwitch: "nexus01",
+			PhysicalPort:   "Ethernet1/21",
+			VlanID:         121,
+		},
+	}
+	err = v.ValidateVtepBinding(t.Context(), logicalSwitchConflict, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "vtepLogicalSwitch")
 }
 
 func TestValidateVtepBindingImmutableFields(t *testing.T) {

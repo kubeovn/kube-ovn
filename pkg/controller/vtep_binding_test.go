@@ -398,11 +398,64 @@ func TestCleanupVtepBindingAfterReconnect(t *testing.T) {
 	requireVtepEventContains(t, drainVtepEvents(ctrl), "Normal", eventVtepBindingCleanedUp)
 }
 
-func TestGcVtepBindingDisabled(t *testing.T) {
+func TestGcVtepBindingDeletesOrphansWhenDisabled(t *testing.T) {
 	t.Parallel()
 
-	fc := newFakeController(t)
-	require.NoError(t, fc.fakeController.gcVtepBinding())
+	leftover := vtepBindingFixture("leftover")
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VtepBindings: []*kubeovnv1.VtepBinding{leftover},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.config.EnableHardwareVtep = false
+	orphan := &ovnnb.LogicalSwitchPort{
+		Name: "vtep.orphan",
+		Type: "vtep",
+		ExternalIDs: map[string]string{
+			"vendor":              util.CniTypeName,
+			ovs.VtepBindingKey:    "missing",
+			ovs.VtepBindingUIDKey: "missing-uid",
+		},
+	}
+	ownedByLeftoverCR := &ovnnb.LogicalSwitchPort{
+		Name: ovs.GetVtepLogicalSwitchPortName(leftover.Name),
+		Type: "vtep",
+		ExternalIDs: map[string]string{
+			"vendor":              util.CniTypeName,
+			ovs.VtepBindingKey:    leftover.Name,
+			ovs.VtepBindingUIDKey: string(leftover.UID),
+		},
+	}
+	fc.mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, nil, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{*orphan, *ownedByLeftoverCR}, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort("vtep.orphan").Return(nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.GetVtepLogicalSwitchPortName(leftover.Name)).Return(nil)
+
+	require.NoError(t, ctrl.gcVtepBinding())
+}
+
+func TestGcChassisSkipsHardwareVTEPChassis(t *testing.T) {
+	t.Parallel()
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "gw1",
+				Annotations: map[string]string{
+					util.ChassisAnnotation: "node-chassis",
+				},
+			},
+		}},
+	})
+	require.NoError(t, err)
+	chassises := []ovnsb.Chassis{
+		{Name: "node-chassis", Hostname: "gw1"},
+		{Name: "vtep-chassis", Hostname: "nexus01", VtepLogicalSwitches: []string{"tenant-a"}},
+		{Name: "orphan-chassis", Hostname: "gone"},
+	}
+	fc.mockOvnSbClient.EXPECT().ListChassis().Return(&chassises, nil)
+	fc.mockOvnSbClient.EXPECT().DeleteChassis("orphan-chassis").Return(nil)
+
+	require.NoError(t, fc.fakeController.gcChassis())
 }
 
 func TestGcVtepBindingDeletesOrphanLSP(t *testing.T) {

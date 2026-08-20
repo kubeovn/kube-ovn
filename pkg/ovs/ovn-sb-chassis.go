@@ -15,6 +15,13 @@ import (
 
 var ErrOneNodeMultiChassis = errors.New("OneNodeMultiChassis")
 
+// IsVTEPChassis reports whether an SB Chassis belongs to ovn-controller-vtep.
+// Those rows populate Chassis.vtep_logical_switches and are not registered via
+// kube-ovn-cni node annotations, so node chassis GC must keep them.
+func IsVTEPChassis(chassis *ovnsb.Chassis) bool {
+	return chassis != nil && len(chassis.VtepLogicalSwitches) > 0
+}
+
 func (c *OVNSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error {
 	op, err := c.ovsDbClient.Where(chassis).Update(chassis, fields...)
 	if err != nil {
