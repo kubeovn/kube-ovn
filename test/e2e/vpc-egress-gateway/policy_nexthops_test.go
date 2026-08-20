@@ -13,7 +13,7 @@ func TestVpcEgressGatewayPolicyCount(t *testing.T) {
 		selectors []apiv1.VpcEgressGatewaySelector
 		want      int
 	}{
-		{name: "subnet-only gateway", want: 1},
+		{name: "subnet-only gateway", want: 2},
 		{name: "selector gateway", selectors: []apiv1.VpcEgressGatewaySelector{{}}, want: 2},
 	}
 

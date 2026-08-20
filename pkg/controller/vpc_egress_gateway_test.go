@@ -190,7 +190,7 @@ func newVpcEgressGatewayDeleteController(t *testing.T, gw *kubeovnv1.VpcEgressGa
 	mockOvnClient.EXPECT().FindBFD(gomock.Any()).Return(nil, nil)
 	mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(util.DefaultVpc, -1, gomock.Any()).Return(nil)
 	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Return(nil)
-	mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).Times(2)
+	mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).Times(4)
 	recorder := record.NewFakeRecorder(2)
 
 	c := &Controller{
@@ -460,6 +460,7 @@ func newVegOVNRouteFixture(t *testing.T) *vegOVNRouteFixture {
 func (f *vegOVNRouteFixture) expectResources() {
 	f.fc.mockOvnClient.EXPECT().CreatePortGroup(f.pgName, f.externalIDs).Return(nil)
 	f.fc.mockOvnClient.EXPECT().PortGroupSetPorts(f.pgName, gomock.Any()).Return(nil)
+	f.fc.mockOvnClient.EXPECT().DeleteAddressSet(vegPortGroupAddressSetName("default/veg", 4)).Return(nil)
 	f.fc.mockOvnClient.EXPECT().CreateAddressSet(f.asName, f.externalIDs).Return(nil)
 	f.fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(f.asName).Return(nil)
 }

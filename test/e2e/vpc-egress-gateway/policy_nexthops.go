@@ -13,10 +13,7 @@ import (
 
 var ipTokenRegexp = regexp.MustCompile(`[0-9A-Fa-f:.]+`)
 
-func vpcEgressGatewayPolicyCount(veg *apiv1.VpcEgressGateway) int {
-	if len(veg.Spec.Selectors) == 0 {
-		return 1
-	}
+func vpcEgressGatewayPolicyCount(_ *apiv1.VpcEgressGateway) int {
 	return 2
 }
 
