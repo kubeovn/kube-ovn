@@ -8,7 +8,6 @@ import (
 	"github.com/scylladb/go-set/strset"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -48,20 +47,6 @@ func classifyICConfig(enabled string, last, cur map[string]string) int {
 		}
 	}
 	return icConfigChange
-}
-
-func staticRoutePolicyOrDefault(policy *ovnnb.LogicalRouterStaticRoutePolicy) ovnnb.LogicalRouterStaticRoutePolicy {
-	if policy == nil || *policy == "" {
-		return ovnnb.LogicalRouterStaticRoutePolicyDstIP
-	}
-	return *policy
-}
-
-func reversePolicy(origin ovnnb.LogicalRouterStaticRoutePolicy) kubeovnv1.RoutePolicy {
-	if origin == ovnnb.LogicalRouterStaticRoutePolicySrcIP {
-		return kubeovnv1.PolicySrc
-	}
-	return kubeovnv1.PolicyDst
 }
 
 func mergeConflictCIDRs(localCIDRs, learnedPrefixes, sticky []string) []string {

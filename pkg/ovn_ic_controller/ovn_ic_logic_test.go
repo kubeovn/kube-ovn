@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
 func TestClassifyICConfig(t *testing.T) {
@@ -54,26 +53,6 @@ func TestCloneICConfigIsIndependent(t *testing.T) {
 	cloned := cloneICConfig(orig)
 	orig["gw-nodes"] = "b"
 	require.Equal(t, "a,b", cloned["gw-nodes"])
-}
-
-func TestStaticRoutePolicyOrDefault(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, ovnnb.LogicalRouterStaticRoutePolicyDstIP, staticRoutePolicyOrDefault(nil))
-
-	src := ovnnb.LogicalRouterStaticRoutePolicySrcIP
-	require.Equal(t, ovnnb.LogicalRouterStaticRoutePolicySrcIP, staticRoutePolicyOrDefault(&src))
-
-	dst := ovnnb.LogicalRouterStaticRoutePolicyDstIP
-	require.Equal(t, ovnnb.LogicalRouterStaticRoutePolicyDstIP, staticRoutePolicyOrDefault(&dst))
-}
-
-func TestReversePolicyDefaultsToDst(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, kubeovnv1.PolicyDst, reversePolicy(""))
-	require.Equal(t, kubeovnv1.PolicyDst, reversePolicy(ovnnb.LogicalRouterStaticRoutePolicyDstIP))
-	require.Equal(t, kubeovnv1.PolicySrc, reversePolicy(ovnnb.LogicalRouterStaticRoutePolicySrcIP))
 }
 
 func TestMergeConflictCIDRs(t *testing.T) {
