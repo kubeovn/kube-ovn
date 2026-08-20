@@ -1325,16 +1325,35 @@ func TestIPAMRandomAddressDoesNotRecycleReservedIPs(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoAvailable)
 }
 
-func TestIPAMDualRandomAddressRollsBackV4OnV6Exhaustion(t *testing.T) {
-	ipam := NewIPAM()
-	require.NoError(t, ipam.AddOrUpdateSubnet(
-		"dual", "10.0.0.0/30,fd00::/126", "10.0.0.1,fd00::1", []string{"10.0.0.1", "fd00::1..fd00::2"},
-	))
+func TestIPAMDualRandomAddressHandlesV4OnV6Exhaustion(t *testing.T) {
+	tests := []struct {
+		name        string
+		existingV4  string
+		wantV4Using string
+	}{
+		{name: "RollsBackNewV4", wantV4Using: "0"},
+		{name: "PreservesExistingV4", existingV4: "10.0.0.2", wantV4Using: "1"},
+	}
 
-	_, _, _, err := ipam.GetRandomAddress("pod", "pod", nil, "dual", "", nil, true)
-	require.ErrorIs(t, err, ErrNoAvailable)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ipam := NewIPAM()
+			if tt.existingV4 != "" {
+				require.NoError(t, ipam.AddOrUpdateSubnet("dual", "10.0.0.0/30", "10.0.0.1", []string{"10.0.0.1"}))
+				v4IP, _, _, err := ipam.GetStaticAddress("pod", "pod", tt.existingV4, nil, "dual", true)
+				require.NoError(t, err)
+				require.Equal(t, tt.existingV4, v4IP)
+			}
+			require.NoError(t, ipam.AddOrUpdateSubnet(
+				"dual", "10.0.0.0/30,fd00::/126", "10.0.0.1,fd00::1", []string{"10.0.0.1", "fd00::1..fd00::2"},
+			))
 
-	_, v4Using, _, v6Using, _, _, _, _ := ipam.IPPoolStatistics("dual", "")
-	require.Equal(t, "0", v4Using.String())
-	require.Equal(t, "0", v6Using.String())
+			_, _, _, err := ipam.GetRandomAddress("pod", "pod", nil, "dual", "", nil, true)
+			require.ErrorIs(t, err, ErrNoAvailable)
+
+			_, v4Using, _, v6Using, _, _, _, _ := ipam.IPPoolStatistics("dual", "")
+			require.Equal(t, tt.wantV4Using, v4Using.String())
+			require.Equal(t, "0", v6Using.String())
+		})
+	}
 }
