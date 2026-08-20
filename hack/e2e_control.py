@@ -731,6 +731,26 @@ def selectedExecutorJobs(jobs, selectedTitles):
     return matched
 
 
+def selectedExecutorJobsAreTerminal(jobs, selectedTitles):
+    if not selectedTitles:
+        return True
+    matched = selectedExecutorJobs(jobs, selectedTitles)
+    seenTitles = set()
+    for job in matched:
+        name = job.get("name") or ""
+        for title in selectedTitles:
+            prefix = title.split("${{", 1)[0].rstrip()
+            if name == title or (prefix and name.startswith(prefix)):
+                seenTitles.add(title)
+                break
+    if seenTitles != set(selectedTitles):
+        return False
+    return all(
+        job.get("status") == "completed" or bool(job.get("conclusion"))
+        for job in matched
+    )
+
+
 def prCheckRunFromExecutorJob(job, headSHA, prNumber):
     if not re.fullmatch(headPattern, headSHA or ""):
         raise ValueError("invalid pull request HEAD for E2E check")
