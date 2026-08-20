@@ -1,0 +1,131 @@
+package ovn_ic_controller
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+)
+
+func TestClassifyICConfig(t *testing.T) {
+	t.Parallel()
+
+	base := map[string]string{
+		"enable-ic":  "true",
+		"az-name":    "region1",
+		"ic-db-host": "192.168.0.1",
+		"ic-nb-port": "6645",
+		"ic-sb-port": "6646",
+		"auto-route": "true",
+		"gw-nodes":   "192.168.137.158,192.168.142.47,192.168.143.70",
+	}
+
+	t.Run("first establish", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, icFirstEstablish, classifyICConfig("unknown", nil, base))
+	})
+
+	t.Run("no action when unchanged", func(t *testing.T) {
+		t.Parallel()
+		require.Equal(t, icNoAction, classifyICConfig("true", cloneICConfig(base), cloneICConfig(base)))
+	})
+
+	t.Run("gateway-only change", func(t *testing.T) {
+		t.Parallel()
+		cur := cloneICConfig(base)
+		cur["gw-nodes"] = "192.168.142.47"
+		require.Equal(t, icGatewayChange, classifyICConfig("true", cloneICConfig(base), cur))
+	})
+
+	t.Run("az change is full reestablish", func(t *testing.T) {
+		t.Parallel()
+		cur := cloneICConfig(base)
+		cur["az-name"] = "region2"
+		require.Equal(t, icConfigChange, classifyICConfig("true", cloneICConfig(base), cur))
+	})
+}
+
+func TestCloneICConfigIsIndependent(t *testing.T) {
+	t.Parallel()
+
+	orig := map[string]string{"gw-nodes": "a,b"}
+	cloned := cloneICConfig(orig)
+	orig["gw-nodes"] = "b"
+	require.Equal(t, "a,b", cloned["gw-nodes"])
+}
+
+func TestStaticRoutePolicyOrDefault(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, ovnnb.LogicalRouterStaticRoutePolicyDstIP, staticRoutePolicyOrDefault(nil))
+
+	src := ovnnb.LogicalRouterStaticRoutePolicySrcIP
+	require.Equal(t, ovnnb.LogicalRouterStaticRoutePolicySrcIP, staticRoutePolicyOrDefault(&src))
+
+	dst := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+	require.Equal(t, ovnnb.LogicalRouterStaticRoutePolicyDstIP, staticRoutePolicyOrDefault(&dst))
+}
+
+func TestReversePolicyDefaultsToDst(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, kubeovnv1.PolicyDst, reversePolicy(""))
+	require.Equal(t, kubeovnv1.PolicyDst, reversePolicy(ovnnb.LogicalRouterStaticRoutePolicyDstIP))
+	require.Equal(t, kubeovnv1.PolicySrc, reversePolicy(ovnnb.LogicalRouterStaticRoutePolicySrcIP))
+}
+
+func TestMergeConflictCIDRs(t *testing.T) {
+	t.Parallel()
+
+	local := []string{"10.16.0.0/16", "10.254.201.0/24"}
+	learned := []string{"10.3.0.0/16", "10.254.201.0/24"}
+	got := mergeConflictCIDRs(local, learned, nil)
+	require.Equal(t, []string{"10.254.201.0/24"}, got)
+
+	t.Run("sticky keeps conflict after learned route is gone", func(t *testing.T) {
+		t.Parallel()
+		got := mergeConflictCIDRs(local, []string{"10.3.0.0/16"}, []string{"10.254.201.0/24"})
+		require.Equal(t, []string{"10.254.201.0/24"}, got)
+	})
+
+	t.Run("drop sticky after local subnet is deleted", func(t *testing.T) {
+		t.Parallel()
+		got := mergeConflictCIDRs([]string{"10.16.0.0/16"}, nil, []string{"10.254.201.0/24"})
+		require.Empty(t, got)
+	})
+
+	t.Run("unique remote cidr is not a conflict", func(t *testing.T) {
+		t.Parallel()
+		got := mergeConflictCIDRs([]string{"10.16.0.0/16"}, []string{"10.3.0.0/16"}, nil)
+		require.Empty(t, got)
+	})
+}
+
+func TestPlanGatewayChassisMigratesActiveGateway(t *testing.T) {
+	t.Parallel()
+
+	oldPrimary := "chassis-158"
+	newPrimary := "chassis-47"
+	oldStandby := "chassis-70"
+	existing := []gatewayChassisStatus{
+		{ChassisName: oldPrimary, Priority: 100},
+		{ChassisName: newPrimary, Priority: 99},
+		{ChassisName: oldStandby, Priority: 98},
+	}
+
+	plan := planGatewayChassis([]string{newPrimary}, existing)
+	require.ElementsMatch(t, []string{oldPrimary, oldStandby}, plan.ToDelete)
+	require.Empty(t, plan.ToCreate)
+	require.Equal(t, map[string]int{newPrimary: 100}, plan.ToUpdatePriority)
+	require.True(t, plan.NeedsUpdate())
+}
+
+func TestPlanGatewayChassisNoop(t *testing.T) {
+	t.Parallel()
+
+	existing := []gatewayChassisStatus{{ChassisName: "chassis-a", Priority: 100}}
+	plan := planGatewayChassis([]string{"chassis-a"}, existing)
+	require.False(t, plan.NeedsUpdate())
+}
