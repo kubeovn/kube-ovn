@@ -940,7 +940,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("checks: write", workflow)
         self.assertIn("actions: write", workflow)
         self.assertIn("issues: write", workflow)
-        self.assertIn("pull-requests: read", workflow)
+        self.assertIn("pull-requests: write", workflow)
         self.assertIn("RUN_PATH: ${{ github.event.workflow_run.path }}", workflow)
         self.assertIn("RUN_ACTOR: ${{ github.event.workflow_run.actor.login }}", workflow)
         self.assertIn("RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}", workflow)
