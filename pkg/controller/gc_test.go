@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -13,9 +14,11 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/keymutex"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -255,4 +258,70 @@ func TestGcAdminNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
 	mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{clusterNetworkPolicyKey: ""}).Return(nil)
 
 	require.NoError(t, ctrl.gcAdminNetworkPolicy())
+}
+
+func TestGcDisabledDNSNameResolvers(t *testing.T) {
+	tests := []struct {
+		name                  string
+		enableANP             bool
+		enableDNSNameResolver bool
+		shouldDelete          bool
+	}{
+		{name: "all features enabled", enableANP: true, enableDNSNameResolver: true},
+		{name: "anp disabled", enableDNSNameResolver: true, shouldDelete: true},
+		{name: "dns resolver disabled", enableANP: true, shouldDelete: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeController := newFakeController(t)
+			ctrl := fakeController.fakeController
+			ctrl.config.EnableANP = tt.enableANP
+			ctrl.config.EnableDNSNameResolver = tt.enableDNSNameResolver
+
+			resolver := &kubeovnv1.DNSNameResolver{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "anp-example-resolver",
+					Labels: map[string]string{adminNetworkPolicyKey: "example"},
+				},
+			}
+			unmanaged := &kubeovnv1.DNSNameResolver{ObjectMeta: metav1.ObjectMeta{Name: "unmanaged-resolver"}}
+			client := ctrl.config.KubeOvnClient.KubeovnV1().DNSNameResolvers()
+			_, err := client.Create(context.Background(), resolver, metav1.CreateOptions{})
+			require.NoError(t, err)
+			_, err = client.Create(context.Background(), unmanaged, metav1.CreateOptions{})
+			require.NoError(t, err)
+
+			require.NoError(t, ctrl.gcDisabledDNSNameResolvers())
+			_, err = client.Get(context.Background(), resolver.Name, metav1.GetOptions{})
+			if tt.shouldDelete {
+				require.True(t, k8serrors.IsNotFound(err))
+			} else {
+				require.NoError(t, err)
+			}
+			_, err = client.Get(context.Background(), unmanaged.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestHandleDeleteNpReturnsMeterError(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.npKeyMutex = keymutex.NewHashed(1)
+	meterErr := errors.New("meter delete failed")
+
+	mockOvnClient.EXPECT().DeleteMeter("allow.default_to-lport_meter").Return(meterErr)
+	mockOvnClient.EXPECT().DeleteMeter("allow.default_from-lport_meter").Return(nil)
+	mockOvnClient.EXPECT().DeletePortGroup("allow.default").Return(nil)
+	mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{
+		networkPolicyKey: "default/allow/ingress",
+	}).Return(nil)
+	mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{
+		networkPolicyKey: "default/allow/egress",
+	}).Return(nil)
+
+	err := ctrl.handleDeleteNp("default/allow")
+	require.ErrorIs(t, err, meterErr)
 }

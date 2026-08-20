@@ -41,6 +41,7 @@ func (c *Controller) gc() error {
 		c.gcLoadBalancer,
 		c.gcNetworkPolicy,
 		c.gcAdminNetworkPolicy,
+		c.gcDisabledDNSNameResolvers,
 		c.gcSecurityGroup,
 		c.gcAddressSet,
 		c.gcRoutePolicy,
@@ -991,6 +992,29 @@ func (c *Controller) gcAdminNetworkPolicy() error {
 		}
 	}
 	klog.Infof("finish to gc admin network policy")
+	return nil
+}
+
+func (c *Controller) gcDisabledDNSNameResolvers() error {
+	if c.config.EnableANP && c.config.EnableDNSNameResolver {
+		return nil
+	}
+
+	resolvers, err := c.config.KubeOvnClient.KubeovnV1().DNSNameResolvers().List(
+		context.TODO(), metav1.ListOptions{LabelSelector: adminNetworkPolicyKey})
+	if err != nil {
+		klog.Errorf("list disabled admin network policy DNSNameResolvers: %v", err)
+		return err
+	}
+
+	for i := range resolvers.Items {
+		resolver := &resolvers.Items[i]
+		if err := c.config.KubeOvnClient.KubeovnV1().DNSNameResolvers().Delete(
+			context.TODO(), resolver.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("delete disabled admin network policy DNSNameResolver %s: %v", resolver.Name, err)
+			return err
+		}
+	}
 	return nil
 }
 

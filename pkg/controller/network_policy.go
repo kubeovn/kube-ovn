@@ -526,31 +526,42 @@ func (c *Controller) handleDeleteNp(key string) error {
 	}
 
 	pgName := npPortGroupName(namespace, npName)
+	var firstErr error
 	for _, meterName := range networkPolicyMeterNames(pgName) {
 		if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
 			klog.Errorf("delete meter %s for np %s: %v", meterName, key, err)
+			if firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
 
-	if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete np %s port group: %v", key, err)
+		if firstErr == nil {
+			firstErr = err
+		}
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "ingress"),
 	}); err != nil {
 		klog.Errorf("delete np %s ingress address set: %v", key, err)
-		return err
+		if firstErr == nil {
+			firstErr = err
+		}
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "egress"),
 	}); err != nil {
 		klog.Errorf("delete np %s egress address set: %v", key, err)
-		return err
+		if firstErr == nil {
+			firstErr = err
+		}
 	}
 
-	return nil
+	return firstErr
 }
 
 func parsePolicyFor(np *netv1.NetworkPolicy) set.Set[string] {
