@@ -1516,20 +1516,24 @@ func TestIPAMRandomAddressSkipsReleasedExcludeIPsAfterIPPoolReconcile(t *testing
 	subnetName := "subnet"
 	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "10.10.0.0/24", "10.10.0.1", []string{
 		"10.10.0.1",
-		"10.10.0.10..10.10.0.12",
+		"10.10.0.2..10.10.0.5",
 	}))
 	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "pool", []string{"10.10.0.200..10.10.0.210"}))
 
-	v4IP, _, _, err := ipam.GetStaticAddress("static-pod", "static-pod", "10.10.0.10", nil, subnetName, true)
+	v4IP, _, _, err := ipam.GetStaticAddress("static-pod", "static-pod", "10.10.0.2", nil, subnetName, true)
 	require.NoError(t, err)
-	require.Equal(t, "10.10.0.10", v4IP)
+	require.Equal(t, "10.10.0.2", v4IP)
 	ipam.ReleaseAddressByNic("static-pod", "static-pod", subnetName)
 
 	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "pool", []string{"10.10.0.200..10.10.0.210"}))
 
+	excludedIP, err := NewIP("10.10.0.2")
+	require.NoError(t, err)
+	require.False(t, ipam.Subnets[subnetName].IPPools[""].V4Free.Contains(excludedIP))
+
 	v4IP, _, _, err = ipam.GetRandomAddress("random-pod", "random-pod", nil, subnetName, "", nil, true)
 	require.NoError(t, err)
-	require.Equal(t, "10.10.0.2", v4IP)
+	require.Equal(t, "10.10.0.6", v4IP)
 }
 
 func TestIPAMRandomAddressDoesNotRecycleReservedIPs(t *testing.T) {

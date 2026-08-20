@@ -328,10 +328,6 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 
 	pool.V4Free = pool.V4Free.Separate(pool.V4Reserved)
 	if pool.V4Free.Len() == 0 {
-		if pool.V4Released.Len() == 0 {
-			klog.Errorf("no free v4 ip in ip pool %s", ippoolName)
-			return nil, nil, "", ErrNoAvailable
-		}
 		pool.V4Free = pool.V4Released.Separate(pool.V4Reserved)
 		pool.V4Released = NewEmptyIPRangeList()
 		if pool.V4Free.Len() == 0 {
@@ -397,10 +393,6 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 
 	pool.V6Free = pool.V6Free.Separate(pool.V6Reserved)
 	if pool.V6Free.Len() == 0 {
-		if pool.V6Released.Len() == 0 {
-			klog.Errorf("no free v6 ip in ip pool %s", ippoolName)
-			return nil, nil, "", ErrNoAvailable
-		}
 		pool.V6Free = pool.V6Released.Separate(pool.V6Reserved)
 		pool.V6Released = NewEmptyIPRangeList()
 		if pool.V6Free.Len() == 0 {
