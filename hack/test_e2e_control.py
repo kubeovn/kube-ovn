@@ -119,6 +119,48 @@ class E2EControlTest(unittest.TestCase):
             controlledLabels=controlledLabels,
         )
 
+    def testExecutorJobsArePublishedAsPullRequestChecks(self):
+        jobs = [
+            {
+                "id": 1,
+                "name": "Kubernetes Conformance E2E (ipv4, overlay)",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/11",
+            },
+            {
+                "id": 2,
+                "name": "Build kube-ovn",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/12",
+            },
+            {
+                "id": 3,
+                "name": "Kube-OVN Hosted OVN Central E2E (ipv4, 1 control-plane)",
+                "status": "in_progress",
+                "conclusion": None,
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/13",
+            },
+        ]
+        selected = e2eControl.selectedExecutorJobs(
+            jobs,
+            [
+                "Kubernetes Conformance E2E",
+                "Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)",
+            ],
+        )
+        self.assertEqual([job["id"] for job in selected], [1, 3])
+        headSHA = "a" * 40
+        completed = e2eControl.prCheckRunFromExecutorJob(jobs[0], headSHA, 7260)
+        pending = e2eControl.prCheckRunFromExecutorJob(jobs[2], headSHA, 7260)
+        self.assertEqual(completed["head_sha"], headSHA)
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["conclusion"], "success")
+        self.assertEqual(completed["details_url"], jobs[0]["html_url"])
+        self.assertEqual(pending["status"], "in_progress")
+        self.assertNotIn("conclusion", pending)
+
     def testApprovedGateReservationIgnoresGitHubRewrittenDetailsURL(self):
         headSHA = "94fd288b1db022d10863ac3254d2b40fe1dad01a"
         check = {
@@ -1135,7 +1177,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("os.environ['GITHUB_ENV']=shadowDir+'/env'", workflow)
         self.assertIn("allowed=('TAG','GO_VERSION','E2E_DIR','VERSION','DEBUG_WRAPPER')", workflow)
         self.assertNotIn("actions: write", workflow)
-        self.assertNotIn("checks: write", workflow)
+        self.assertEqual(workflow.count("checks: write"), 1)
+        self.assertIn("name: Publish x86 E2E checks on the pull request", workflow)
         self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
         self.assertIn(
             "Pull private Kind node image with trusted token",
@@ -1235,6 +1278,11 @@ class E2EControlTest(unittest.TestCase):
         resultBlock = blocks["e2e-executor-result"]
         self.assertIn("if: always() && github.event_name != 'pull_request'", resultBlock)
         self.assertIn("permissions: {}", resultBlock)
+        publish = blocks["publish-pr-e2e-checks"]
+        self.assertIn("if: always() && github.event_name == 'workflow_dispatch'", publish)
+        self.assertIn("checks: write", publish)
+        self.assertIn("prCheckRunFromExecutorJob", publish)
+        self.assertIn("HEAD_SHA: ${{ inputs.headSHA }}", publish)
         self.assertIn(
             'requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds',
             resultBlock,

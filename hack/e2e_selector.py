@@ -20,6 +20,7 @@ infrastructureJobs = {
     "e2e-control-validation",
     "prepare-kind-node-images",
     "e2e-executor-result",
+    "publish-pr-e2e-checks",
     "push",
 }
 expectedX86RunnerJobs = 82
