@@ -58,14 +58,34 @@ def parseCommand(body):
         rf"/test e2e ({groupPattern}(?:,{groupPattern})*){binding}",
         body,
     )
+    if match:
+        return {
+            "action": "dispatch",
+            "requestedGroups": sorted(set(match.group(1).split(","))),
+            "full": False,
+            "headSHA": match.group(2),
+            "nonce": match.group(3),
+        }
+    unbound = {
+        "/test e2e": {"action": "dispatch", "requestedGroups": [], "full": False},
+        "/test e2e-all": {"action": "dispatch", "requestedGroups": [], "full": True},
+        "/retest e2e-failed": {
+            "action": "rerun-failed",
+            "requestedGroups": [],
+            "full": False,
+        },
+    }
+    if body in unbound:
+        return {**unbound[body], "headSHA": "", "nonce": ""}
+    match = re.fullmatch(rf"/test e2e ({groupPattern}(?:,{groupPattern})*)", body)
     if not match:
         raise ValueError("invalid E2E command")
     return {
         "action": "dispatch",
         "requestedGroups": sorted(set(match.group(1).split(","))),
         "full": False,
-        "headSHA": match.group(2),
-        "nonce": match.group(3),
+        "headSHA": "",
+        "nonce": "",
     }
 
 
@@ -151,11 +171,13 @@ def decideDispatch(
     if not re.fullmatch(r"[0-9a-f]{40}", baseSHA or ""):
         return rejectedDecision(command, "pull request base revision is invalid")
     prNumber = pullRequest.get("number")
-    if command["headSHA"] != headSHA:
-        return rejectedDecision(command, "comment is bound to another pull request HEAD")
     expectedNonce = requestNonce(prNumber, headSHA, baseSHA, catalogRevision)
-    if command["nonce"] != expectedNonce:
-        return rejectedDecision(command, "comment binding nonce is stale or invalid")
+    if command.get("headSHA") or command.get("nonce"):
+        if command["headSHA"] != headSHA:
+            return rejectedDecision(command, "comment is bound to another pull request HEAD")
+        if command["nonce"] != expectedNonce:
+            return rejectedDecision(command, "comment binding nonce is stale or invalid")
+    command = {**command, "headSHA": headSHA, "nonce": expectedNonce}
     approvalGeneration = event.get("comment", {}).get("id")
     if not isinstance(approvalGeneration, int) or approvalGeneration <= 0:
         return rejectedDecision(command, "comment identifier is invalid")

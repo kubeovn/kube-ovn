@@ -28,7 +28,7 @@ permissions:
   contents: read
   actions: write
   checks: read
-  pull-requests: read
+  pull-requests: write
   issues: write
 
 jobs:
@@ -393,6 +393,11 @@ jobs:
       github.event.issue.pull_request &&
       (startsWith(github.event.comment.body, '/test e2e') ||
        startsWith(github.event.comment.body, '/retest e2e-failed'))
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: write
     outputs:
       accepted: ${{ steps.decision.outputs.accepted }}
       action: ${{ steps.decision.outputs.action }}
