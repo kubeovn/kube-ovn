@@ -182,6 +182,113 @@ class E2EControlTest(unittest.TestCase):
             )
         )
 
+    def testUnstartedSelectedJobsArePublishedAsQueuedPlaceholders(self):
+        jobs = [
+            {
+                "id": 10,
+                "name": "Build kube-ovn",
+                "status": "in_progress",
+                "conclusion": None,
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/10",
+            }
+        ]
+        selectedTitles = [
+            "Kubernetes Conformance E2E (${{ matrix.ip-family }}, ${{ matrix.mode }})",
+            "Kube-OVN Conformance E2E (${{ matrix.ip-family }}, ${{ matrix.mode }})",
+            "Cilium Chaining E2E",
+        ]
+        payloads = e2eControl.prCheckRunsToPublish(
+            jobs,
+            selectedTitles,
+            "a" * 40,
+            7275,
+            detailsURL="https://github.com/kubeovn/kube-ovn/actions/runs/1",
+            infraTitles=[
+                "Build kube-ovn",
+                "Build E2E Binaries",
+                "Prepare private Kind node image (${{ matrix.k8s-version }})",
+            ],
+        )
+        byName = {payload["name"]: payload for payload in payloads}
+        self.assertEqual(
+            [payload["name"] for payload in payloads],
+            [
+                "Build kube-ovn",
+                "Kubernetes Conformance E2E",
+                "Kube-OVN Conformance E2E",
+                "Cilium Chaining E2E",
+            ],
+        )
+        self.assertEqual(byName["Build kube-ovn"]["status"], "in_progress")
+        self.assertEqual(byName["Build kube-ovn"]["head_sha"], "a" * 40)
+        self.assertEqual(
+            byName["Build kube-ovn"]["details_url"],
+            jobs[0]["html_url"],
+        )
+        self.assertEqual(byName["Kubernetes Conformance E2E"]["status"], "queued")
+        self.assertNotIn("conclusion", byName["Kubernetes Conformance E2E"])
+        self.assertEqual(
+            byName["Kubernetes Conformance E2E"]["details_url"],
+            "https://github.com/kubeovn/kube-ovn/actions/runs/1",
+        )
+        self.assertEqual(byName["Cilium Chaining E2E"]["status"], "queued")
+        self.assertTrue(
+            byName["Kubernetes Conformance E2E"]["external_id"].startswith(
+                "x86-e2e-pr-7275-"
+            )
+        )
+
+    def testMatrixPlaceholdersCompleteAfterRealJobsStart(self):
+        jobs = [
+            {
+                "id": 2,
+                "name": "Build kube-ovn",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/12",
+            },
+            {
+                "id": 4,
+                "name": "Kubernetes Conformance E2E (ipv4, overlay)",
+                "status": "in_progress",
+                "conclusion": None,
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/14",
+            },
+            {
+                "id": 5,
+                "name": "Cilium Chaining E2E",
+                "status": "queued",
+                "conclusion": None,
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/15",
+            },
+        ]
+        payloads = e2eControl.prCheckRunsToPublish(
+            jobs,
+            [
+                "Kubernetes Conformance E2E (${{ matrix.ip-family }}, ${{ matrix.mode }})",
+                "Cilium Chaining E2E",
+            ],
+            "a" * 40,
+            7275,
+            detailsURL="https://github.com/kubeovn/kube-ovn/actions/runs/1",
+            infraTitles=["Build kube-ovn"],
+        )
+        byName = {payload["name"]: payload for payload in payloads}
+        self.assertEqual(byName["Build kube-ovn"]["status"], "completed")
+        self.assertEqual(byName["Build kube-ovn"]["conclusion"], "success")
+        self.assertEqual(
+            byName["Kubernetes Conformance E2E (ipv4, overlay)"]["status"],
+            "in_progress",
+        )
+        self.assertEqual(byName["Kubernetes Conformance E2E"]["status"], "completed")
+        self.assertEqual(byName["Kubernetes Conformance E2E"]["conclusion"], "skipped")
+        self.assertEqual(byName["Cilium Chaining E2E"]["status"], "queued")
+        self.assertNotIn("conclusion", byName["Cilium Chaining E2E"])
+        self.assertEqual(
+            [payload["name"] for payload in payloads].count("Cilium Chaining E2E"),
+            1,
+        )
+
     def testApprovedGateReservationIgnoresGitHubRewrittenDetailsURL(self):
         headSHA = "94fd288b1db022d10863ac3254d2b40fe1dad01a"
         check = {
@@ -1302,7 +1409,8 @@ class E2EControlTest(unittest.TestCase):
         publish = blocks["publish-pr-e2e-checks"]
         self.assertIn("if: github.event_name == 'workflow_dispatch'", publish)
         self.assertIn("checks: write", publish)
-        self.assertIn("prCheckRunFromExecutorJob", publish)
+        self.assertIn("prCheckRunsToPublish", publish)
+        self.assertIn("visibleInfrastructureTitles", publish)
         self.assertIn("selectedExecutorJobsAreTerminal", publish)
         self.assertIn("time.sleep(20)", publish)
         self.assertIn("HEAD_SHA: ${{ inputs.headSHA }}", publish)
