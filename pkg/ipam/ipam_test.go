@@ -1218,12 +1218,13 @@ func TestIPAMRandomAddressDoesNotRecycleReservedIPs(t *testing.T) {
 
 func TestIPAMDualRandomAddressHandlesV4OnV6Exhaustion(t *testing.T) {
 	tests := []struct {
-		name        string
-		existingV4  string
-		wantV4Using string
+		name             string
+		existingV4       string
+		wantV4Using      string
+		wantV4UsingRange string
 	}{
 		{name: "RollsBackNewV4", wantV4Using: "0"},
-		{name: "PreservesExistingV4", existingV4: "10.0.0.2", wantV4Using: "1"},
+		{name: "PreservesExistingV4", existingV4: "10.0.0.2", wantV4Using: "1", wantV4UsingRange: "10.0.0.2"},
 	}
 
 	for _, tt := range tests {
@@ -1242,8 +1243,9 @@ func TestIPAMDualRandomAddressHandlesV4OnV6Exhaustion(t *testing.T) {
 			_, _, _, err := ipam.GetRandomAddress("pod", "pod", nil, "dual", "", nil, true)
 			require.ErrorIs(t, err, ErrNoAvailable)
 
-			_, v4Using, _, v6Using, _, _, _, _ := ipam.IPPoolStatistics("dual", "")
+			_, v4Using, _, v6Using, _, v4UsingRange, _, _ := ipam.IPPoolStatistics("dual", "")
 			require.Equal(t, tt.wantV4Using, v4Using.String())
+			require.Equal(t, tt.wantV4UsingRange, v4UsingRange)
 			require.Equal(t, "0", v6Using.String())
 		})
 	}
