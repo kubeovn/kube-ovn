@@ -161,7 +161,8 @@ func pingNodes(config *Configuration, setMetrics bool) error {
 							no.Name, addr.Address,
 							float64(stats.AvgRtt)/float64(time.Millisecond),
 							int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
-							int(float64(stats.PacketsSent)))
+							int(float64(stats.PacketsSent)),
+						)
 					}
 				}(addr.Address, no.Name)
 			}
@@ -232,7 +233,8 @@ func pingPods(config *Configuration, setMetrics bool) error {
 							podIP,
 							float64(stats.AvgRtt)/float64(time.Millisecond),
 							int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
-							int(float64(stats.PacketsSent)))
+							int(float64(stats.PacketsSent)),
+						)
 					}
 				}(podIP.IP, pod.Name, pod.Status.HostIP, pod.Spec.NodeName)
 			}
@@ -277,7 +279,8 @@ func pingExternal(config *Configuration, setMetrics bool) error {
 				config.PodIP,
 				addr,
 				float64(stats.AvgRtt)/float64(time.Millisecond),
-				int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))))
+				int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))),
+			)
 		}
 		if int(math.Abs(float64(stats.PacketsSent-stats.PacketsRecv))) != 0 {
 			return errors.New("ping failed")

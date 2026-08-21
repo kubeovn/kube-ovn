@@ -1771,7 +1771,8 @@ func (c *Controller) setExGateway() error {
 		if !isUserspaceDP && !keepExternalSubnet {
 			klog.Infof("delete external bridge %s", externalBridge)
 			if _, err := ovs.Exec(
-				ovs.IfExists, "del-br", externalBridge); err != nil {
+				ovs.IfExists, "del-br", externalBridge,
+			); err != nil {
 				err = fmt.Errorf("failed to disable external gateway, %w", err)
 				klog.Error(err)
 				return err

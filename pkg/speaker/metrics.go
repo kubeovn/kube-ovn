@@ -27,42 +27,48 @@ var (
 			Name: "kube_ovn_speaker_bgp_peer_up",
 			Help: "Whether the BGP session with the peer is established (1) or not (0).",
 		},
-		[]string{"node", "peer", "peer_asn"})
+		[]string{"node", "peer", "peer_asn"},
+	)
 
 	metricBGPPeerState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bgp_peer_session_state",
 			Help: "BGP session FSM state of the peer (0=unspecified,1=idle,2=connect,3=active,4=opensent,5=openconfirm,6=established).",
 		},
-		[]string{"node", "peer", "peer_asn"})
+		[]string{"node", "peer", "peer_asn"},
+	)
 
 	metricBGPPeerFlapCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bgp_peer_flap_count",
 			Help: "Number of times the BGP session with the peer has flapped.",
 		},
-		[]string{"node", "peer", "peer_asn"})
+		[]string{"node", "peer", "peer_asn"},
+	)
 
 	metricBGPPeerOutQueue = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bgp_peer_out_queue",
 			Help: "Number of BGP messages queued to be sent to the peer.",
 		},
-		[]string{"node", "peer", "peer_asn"})
+		[]string{"node", "peer", "peer_asn"},
+	)
 
 	metricBGPPeerReceivedMessages = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bgp_peer_received_messages",
 			Help: "Cumulative number of BGP messages received from the peer, by message type.",
 		},
-		[]string{"node", "peer", "type"})
+		[]string{"node", "peer", "type"},
+	)
 
 	metricBGPPeerSentMessages = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bgp_peer_sent_messages",
 			Help: "Cumulative number of BGP messages sent to the peer, by message type.",
 		},
-		[]string{"node", "peer", "type"})
+		[]string{"node", "peer", "type"},
+	)
 
 	// BFD server-wide metrics.
 	metricBFDServerReceivedPackets = prometheus.NewGaugeVec(
@@ -70,35 +76,40 @@ var (
 			Name: "kube_ovn_speaker_bfd_server_received_packets",
 			Help: "Cumulative number of BFD packets received by the server.",
 		},
-		[]string{"node"})
+		[]string{"node"},
+	)
 
 	metricBFDServerReceivedDrop = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_server_received_drop",
 			Help: "Cumulative number of BFD packets dropped by the server.",
 		},
-		[]string{"node"})
+		[]string{"node"},
+	)
 
 	metricBFDServerReceivedError = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_server_received_error",
 			Help: "Cumulative number of BFD packets received with errors by the server.",
 		},
-		[]string{"node"})
+		[]string{"node"},
+	)
 
 	metricBFDServerInvalidPacket = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_server_invalid_packet",
 			Help: "Cumulative number of invalid BFD packets received by the server.",
 		},
-		[]string{"node"})
+		[]string{"node"},
+	)
 
 	metricBFDServerUnknownPeer = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_server_unknown_peer",
 			Help: "Cumulative number of BFD packets received from unknown peers.",
 		},
-		[]string{"node"})
+		[]string{"node"},
+	)
 
 	// BFD per-peer metrics.
 	metricBFDPeerUp = prometheus.NewGaugeVec(
@@ -106,42 +117,48 @@ var (
 			Name: "kube_ovn_speaker_bfd_peer_up",
 			Help: "Whether the BFD session with the peer is UP (1) or not (0).",
 		},
-		[]string{"node", "peer"})
+		[]string{"node", "peer"},
+	)
 
 	metricBFDPeerState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_session_state",
 			Help: "Local BFD session state of the peer (0=unspecified,1=up,2=down,3=admin_down,4=init).",
 		},
-		[]string{"node", "peer"})
+		[]string{"node", "peer"},
+	)
 
 	metricBFDPeerRemoteState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_remote_session_state",
 			Help: "Remote BFD session state of the peer (0=unspecified,1=up,2=down,3=admin_down,4=init). Not reported by GoBGP v4.6.0 (always 0); will become meaningful once upstream populates it.",
 		},
-		[]string{"node", "peer"})
+		[]string{"node", "peer"},
+	)
 
 	metricBFDPeerFailureTransitions = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_failure_transitions",
 			Help: "Cumulative number of BFD session failure transitions for the peer. Not reported by GoBGP v4.6.0 (always 0); will become meaningful once upstream populates it.",
 		},
-		[]string{"node", "peer"})
+		[]string{"node", "peer"},
+	)
 
 	metricBFDPeerTransmittedPackets = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_transmitted_packets",
 			Help: "Cumulative number of BFD control packets transmitted to the peer.",
 		},
-		[]string{"node", "peer"})
+		[]string{"node", "peer"},
+	)
 
 	metricBFDPeerReceivedPackets = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "kube_ovn_speaker_bfd_peer_received_packets",
 			Help: "Cumulative number of BFD control packets received from the peer.",
 		},
-		[]string{"node", "peer"})
+		[]string{"node", "peer"},
+	)
 )
 
 var registerSpeakerMetricsOnce sync.Once

@@ -58,14 +58,34 @@ def parseCommand(body):
         rf"/test e2e ({groupPattern}(?:,{groupPattern})*){binding}",
         body,
     )
+    if match:
+        return {
+            "action": "dispatch",
+            "requestedGroups": sorted(set(match.group(1).split(","))),
+            "full": False,
+            "headSHA": match.group(2),
+            "nonce": match.group(3),
+        }
+    unbound = {
+        "/test e2e": {"action": "dispatch", "requestedGroups": [], "full": False},
+        "/test e2e-all": {"action": "dispatch", "requestedGroups": [], "full": True},
+        "/retest e2e-failed": {
+            "action": "rerun-failed",
+            "requestedGroups": [],
+            "full": False,
+        },
+    }
+    if body in unbound:
+        return {**unbound[body], "headSHA": "", "nonce": ""}
+    match = re.fullmatch(rf"/test e2e ({groupPattern}(?:,{groupPattern})*)", body)
     if not match:
         raise ValueError("invalid E2E command")
     return {
         "action": "dispatch",
         "requestedGroups": sorted(set(match.group(1).split(","))),
         "full": False,
-        "headSHA": match.group(2),
-        "nonce": match.group(3),
+        "headSHA": "",
+        "nonce": "",
     }
 
 
@@ -151,11 +171,13 @@ def decideDispatch(
     if not re.fullmatch(r"[0-9a-f]{40}", baseSHA or ""):
         return rejectedDecision(command, "pull request base revision is invalid")
     prNumber = pullRequest.get("number")
-    if command["headSHA"] != headSHA:
-        return rejectedDecision(command, "comment is bound to another pull request HEAD")
     expectedNonce = requestNonce(prNumber, headSHA, baseSHA, catalogRevision)
-    if command["nonce"] != expectedNonce:
-        return rejectedDecision(command, "comment binding nonce is stale or invalid")
+    if command.get("headSHA") or command.get("nonce"):
+        if command["headSHA"] != headSHA:
+            return rejectedDecision(command, "comment is bound to another pull request HEAD")
+        if command["nonce"] != expectedNonce:
+            return rejectedDecision(command, "comment binding nonce is stale or invalid")
+    command = {**command, "headSHA": headSHA, "nonce": expectedNonce}
     approvalGeneration = event.get("comment", {}).get("id")
     if not isinstance(approvalGeneration, int) or approvalGeneration <= 0:
         return rejectedDecision(command, "comment identifier is invalid")
@@ -662,8 +684,232 @@ def isolatedExecutorRefAction(payload, expectedSHA):
     return "reuse"
 
 
+def isApprovedGateReservation(check, prNumber, headSHA):
+    if not isinstance(check, dict):
+        return False
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid approved gate HEAD")
+    summary = ""
+    output = check.get("output")
+    if isinstance(output, dict):
+        summary = output.get("summary") or ""
+    return (
+        check.get("name") == "x86-e2e / required-gate"
+        and check.get("external_id") == f"x86-e2e-pr-{int(prNumber)}-{headSHA}"
+        and check.get("status") == "completed"
+        and check.get("conclusion") == "action_required"
+        and "waiting for its trusted executor" in summary
+    )
+
+
 def isTrustedExecutorRef(refName, baseRef, request):
     return refName == baseRef or refName == executorHeadBranch(request)
+
+
+def workflowJobTitle(block):
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("name:"):
+            return stripped.split(":", 1)[1].strip()
+    return ""
+
+
+visibleInfrastructureJobIds = (
+    "build-kube-ovn",
+    "build-e2e-binaries",
+    "build-vpc-nat-gateway",
+    "prepare-kind-node-images",
+)
+
+
+def visibleInfrastructureTitles(blocks):
+    titles = []
+    for jobId in visibleInfrastructureJobIds:
+        block = blocks.get(jobId)
+        if not block:
+            continue
+        title = workflowJobTitle(block)
+        if title:
+            titles.append(title)
+    return titles
+
+
+def jobTitlePrefix(title):
+    return title.split("${{", 1)[0].rstrip()
+
+
+def jobMatchesTitle(name, title):
+    prefix = jobTitlePrefix(title)
+    return bool(name) and (name == title or (bool(prefix) and name.startswith(prefix)))
+
+
+def placeholderCheckName(title):
+    if "${{" not in title:
+        return title
+    prefix = jobTitlePrefix(title)
+    if prefix.endswith("("):
+        prefix = prefix[:-1].rstrip()
+    return prefix or title
+
+
+def selectedExecutorJobs(jobs, selectedTitles):
+    matched = []
+    seen = set()
+    for job in jobs:
+        name = job.get("name") or ""
+        for title in selectedTitles:
+            if not jobMatchesTitle(name, title):
+                continue
+            jobId = job.get("id")
+            if jobId in seen:
+                break
+            seen.add(jobId)
+            matched.append(job)
+            break
+    return matched
+
+
+def selectedExecutorJobsAreTerminal(jobs, selectedTitles):
+    if not selectedTitles:
+        return True
+    matched = selectedExecutorJobs(jobs, selectedTitles)
+    seenTitles = set()
+    for job in matched:
+        name = job.get("name") or ""
+        for title in selectedTitles:
+            if jobMatchesTitle(name, title):
+                seenTitles.add(title)
+                break
+    if seenTitles != set(selectedTitles):
+        return False
+    return all(
+        job.get("status") == "completed" or bool(job.get("conclusion"))
+        for job in matched
+    )
+
+
+def prCheckRunExternalId(name, headSHA, prNumber):
+    return f"x86-e2e-pr-{int(prNumber)}-{headSHA}-{name}"[:255]
+
+
+def prCheckRunFromExecutorJob(job, headSHA, prNumber):
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid pull request HEAD for E2E check")
+    name = job.get("name") or ""
+    if not name:
+        raise ValueError("executor job is missing a name")
+    conclusion = job.get("conclusion")
+    status = job.get("status") or ""
+    completed = status == "completed" or bool(conclusion)
+    if completed:
+        checkStatus = "completed"
+    elif status == "queued":
+        checkStatus = "queued"
+    else:
+        checkStatus = "in_progress"
+    payload = {
+        "name": name,
+        "head_sha": headSHA,
+        "status": checkStatus,
+        "external_id": prCheckRunExternalId(name, headSHA, prNumber),
+        "details_url": job.get("html_url") or "",
+        "output": {
+            "title": name,
+            "summary": (
+                f"Trusted x86 E2E result for pull request HEAD `{headSHA}`."
+            ),
+        },
+    }
+    if completed:
+        payload["conclusion"] = conclusion or "cancelled"
+    return payload
+
+
+def placeholderCheckRun(name, headSHA, prNumber, *, queued, detailsURL, summary):
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid pull request HEAD for E2E check")
+    if not name:
+        raise ValueError("executor job is missing a name")
+    payload = {
+        "name": name,
+        "head_sha": headSHA,
+        "status": "queued" if queued else "completed",
+        "external_id": prCheckRunExternalId(name, headSHA, prNumber),
+        "details_url": detailsURL or "",
+        "output": {
+            "title": name,
+            "summary": summary,
+        },
+    }
+    if not queued:
+        payload["conclusion"] = "skipped"
+    return payload
+
+
+def prCheckRunsToPublish(
+    jobs,
+    selectedTitles,
+    headSHA,
+    prNumber,
+    detailsURL="",
+    infraTitles=None,
+):
+    payloads = []
+    seenNames = set()
+
+    def add(payload):
+        name = payload["name"]
+        if name in seenNames:
+            return
+        seenNames.add(name)
+        payloads.append(payload)
+
+    for job in selectedExecutorJobs(jobs, infraTitles or []):
+        add(prCheckRunFromExecutorJob(job, headSHA, prNumber))
+    selected = selectedExecutorJobs(jobs, selectedTitles)
+    for job in selected:
+        add(prCheckRunFromExecutorJob(job, headSHA, prNumber))
+    matchedByTitle = {title: [] for title in selectedTitles}
+    for job in selected:
+        name = job.get("name") or ""
+        for title in selectedTitles:
+            if jobMatchesTitle(name, title):
+                matchedByTitle[title].append(job)
+                break
+    for title in selectedTitles:
+        placeholderName = placeholderCheckName(title)
+        matched = matchedByTitle.get(title) or []
+        if any((job.get("name") or "") == placeholderName for job in matched):
+            continue
+        if matched:
+            add(
+                placeholderCheckRun(
+                    placeholderName,
+                    headSHA,
+                    prNumber,
+                    queued=False,
+                    detailsURL=matched[0].get("html_url") or detailsURL,
+                    summary=(
+                        f"Trusted x86 E2E matrix `{placeholderName}` is running "
+                        f"for pull request HEAD `{headSHA}`."
+                    ),
+                )
+            )
+            continue
+        add(
+            placeholderCheckRun(
+                placeholderName,
+                headSHA,
+                prNumber,
+                queued=True,
+                detailsURL=detailsURL,
+                summary=(
+                    f"Trusted x86 E2E job `{placeholderName}` is waiting to start "
+                    f"for pull request HEAD `{headSHA}`."
+                ),
+            )
+        )
+    return payloads
 
 
 def latestExecutorRun(
@@ -704,6 +950,55 @@ def latestExecutorRun(
         if not metadata["automatic"]:
             return run
     return matchingRuns[0][1]
+
+
+def inProgressAutomaticExecutorRunIds(runs, prNumber, headSHA):
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid pull request HEAD for automatic executor cancellation")
+    prNumber = int(prNumber)
+    matched = []
+    for run in runs:
+        if run.get("status") not in {"queued", "in_progress"}:
+            continue
+        if run.get("actor", {}).get("login") != "github-actions[bot]":
+            continue
+        path = run.get("path")
+        if path not in (None, "", ".github/workflows/build-x86-image.yaml"):
+            continue
+        try:
+            metadata = parseExecutorRunName(run.get("display_title") or "")
+        except ValueError:
+            continue
+        if (
+            metadata["prNumber"] == prNumber
+            and metadata["headSHA"] == headSHA
+            and metadata["automatic"]
+        ):
+            runId = run.get("id")
+            if runId is not None:
+                matched.append(runId)
+    return matched
+
+
+def associatedOpenPullRequests(pulls, repository, headSHA, headRepository):
+    if not re.fullmatch(headPattern, headSHA or ""):
+        raise ValueError("invalid pull request HEAD for gate association")
+    matched = []
+    for pull in pulls or []:
+        if not isinstance(pull, dict):
+            continue
+        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
+        base = pull.get("base") if isinstance(pull.get("base"), dict) else {}
+        headRepo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
+        baseRepo = base.get("repo") if isinstance(base.get("repo"), dict) else {}
+        if (
+            pull.get("state") == "open"
+            and head.get("sha") == headSHA
+            and headRepo.get("full_name") == headRepository
+            and baseRepo.get("full_name") == repository
+        ):
+            matched.append(pull)
+    return matched
 
 
 def parseArgs():

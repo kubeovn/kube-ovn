@@ -1551,6 +1551,15 @@ false
 			<td>Labels to be added to kube-ovn-monitor pods.</td>
 		</tr>
 		<tr>
+			<td>monitor.replicas</td>
+			<td>int</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+			<td>Number of kube-ovn-monitor replicas.</td>
+		</tr>
+		<tr>
 			<td>monitor.resources</td>
 			<td>object</td>
 			<td><pre lang="json">

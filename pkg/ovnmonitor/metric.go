@@ -16,7 +16,8 @@ var (
 		[]string{
 			"hostname",
 			"component",
-		})
+		},
+	)
 
 	metricOvnHealthyStatusContent = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -28,7 +29,8 @@ var (
 			"hostname",
 			"component",
 			"status",
-		})
+		},
+	)
 
 	metricRequestErrorNums = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -38,7 +40,8 @@ var (
 		},
 		[]string{
 			"hostname",
-		})
+		},
+	)
 
 	metricLogFileSize = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -50,7 +53,8 @@ var (
 			"hostname",
 			"component",
 			"filename",
-		})
+		},
+	)
 
 	metricDBFileSize = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -61,7 +65,8 @@ var (
 		[]string{
 			"hostname",
 			"db_name",
-		})
+		},
+	)
 
 	// OVN Chassis metrics
 	metricChassisInfo = prometheus.NewGaugeVec(
@@ -75,7 +80,8 @@ var (
 			"uuid",
 			"name",
 			"ip",
-		})
+		},
+	)
 
 	metricLogicalSwitchInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -87,7 +93,8 @@ var (
 			"hostname",
 			"uuid",
 			"name",
-		})
+		},
+	)
 
 	metricLogicalSwitchExternalIDs = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -101,7 +108,8 @@ var (
 			"key",
 			"value",
 			"logical_switch_name",
-		})
+		},
+	)
 
 	metricLogicalSwitchPortBinding = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -114,7 +122,8 @@ var (
 			"uuid",
 			"port",
 			"logical_switch_name",
-		})
+		},
+	)
 
 	metricLogicalSwitchTunnelKey = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -126,7 +135,8 @@ var (
 			"hostname",
 			"uuid",
 			"logical_switch_name",
-		})
+		},
+	)
 
 	metricLogicalSwitchPortsNum = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -138,7 +148,8 @@ var (
 			"hostname",
 			"uuid",
 			"logical_switch_name",
-		})
+		},
+	)
 
 	metricLogicalSwitchPortInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -156,7 +167,8 @@ var (
 			"port_binding",
 			"mac_address",
 			"ip_address",
-		})
+		},
+	)
 
 	metricLogicalSwitchPortTunnelKey = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -169,7 +181,8 @@ var (
 			"uuid",
 			"logical_switch_name",
 			"port_name",
-		})
+		},
+	)
 
 	// OVN Cluster basic info metrics
 	metricClusterEnabled = prometheus.NewGaugeVec(
@@ -181,7 +194,8 @@ var (
 		[]string{
 			"hostname",
 			"db_name",
-		})
+		},
+	)
 
 	metricClusterRole = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -195,7 +209,8 @@ var (
 			"server_id",
 			"cluster_id",
 			"server_role",
-		})
+		},
+	)
 
 	metricClusterStatus = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -209,7 +224,8 @@ var (
 			"server_id",
 			"cluster_id",
 			"server_status",
-		})
+		},
+	)
 
 	metricClusterTerm = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -222,7 +238,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterLeaderSelf = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -235,7 +252,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterVoteSelf = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -248,7 +266,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterElectionTimer = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -261,7 +280,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterNotCommittedEntryCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -274,7 +294,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterNotAppliedEntryCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -287,7 +308,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterLogIndexStart = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -300,7 +322,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterLogIndexNext = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -313,7 +336,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterInConnTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -326,7 +350,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterOutConnTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -339,7 +364,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterInConnErrTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -352,7 +378,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterOutConnErrTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -365,7 +392,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	// Todo: The metrics below are to be implemented
 	metricClusterPeerInConnInfo = prometheus.NewGaugeVec(
@@ -381,7 +409,8 @@ var (
 			"cluster_id",
 			"peer_id",
 			"peer_address",
-		})
+		},
+	)
 
 	metricClusterPeerOutConnInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -396,7 +425,8 @@ var (
 			"cluster_id",
 			"peer_id",
 			"peer_address",
-		})
+		},
+	)
 
 	metricClusterPeerCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -409,7 +439,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterPeerNextIndex = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -423,7 +454,8 @@ var (
 			"server_id",
 			"cluster_id",
 			"peer_id",
-		})
+		},
+	)
 
 	metricClusterPeerMatchIndex = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -437,7 +469,8 @@ var (
 			"server_id",
 			"cluster_id",
 			"peer_id",
-		})
+		},
+	)
 
 	metricClusterNextIndex = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -450,7 +483,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricClusterMatchIndex = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -463,7 +497,8 @@ var (
 			"db_name",
 			"server_id",
 			"cluster_id",
-		})
+		},
+	)
 
 	metricDBStatus = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -474,7 +509,8 @@ var (
 		[]string{
 			"hostname",
 			"db_name",
-		})
+		},
+	)
 )
 
 func registerOvnMetrics() {

@@ -14,7 +14,7 @@ func (c LegacyClient) ovnIcSbCommand(cmdArgs ...string) (string, error) {
 	start := time.Now()
 	cmdArgs = append([]string{fmt.Sprintf("--timeout=%d", c.OvnTimeout), "--db=" + c.OvnICSbAddress}, cmdArgs...)
 	raw, err := exec.Command(OVNIcSbCtl, cmdArgs...).CombinedOutput()
-	elapsed := float64((time.Since(start)) / time.Millisecond)
+	elapsed := float64(time.Since(start) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", OVNIcSbCtl, strings.Join(cmdArgs, " "), elapsed)
 	method := ""
 	for _, arg := range cmdArgs {
