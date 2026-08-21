@@ -33,6 +33,9 @@
 #
 # ============================================================================
 
+#file for eip to external interface mapping
+EIP_INTERFACE_MAP="/run/kube-ovn/eip-interface-map"
+
 # Read interfaces from persistent file
 if [ -f /etc/kube-ovn/nat-gateway.env ]; then
     # shellcheck disable=SC1091
@@ -40,7 +43,10 @@ if [ -f /etc/kube-ovn/nat-gateway.env ]; then
 fi
 # Default interfaces
 VPC_INTERFACE=${VPC_INTERFACE:-"eth0"}
-EXTERNAL_INTERFACE=${EXTERNAL_INTERFACE:-"net1"}
+# Comma-separated external interfaces. The first one is kept as the
+# backward-compatible EXTERNAL_INTERFACE alias.
+EXTERNAL_INTERFACES=${EXTERNAL_INTERFACES:-${EXTERNAL_INTERFACE:-"net1"}}
+EXTERNAL_INTERFACE=$(echo "$EXTERNAL_INTERFACES" | cut -d',' -f1)
 # Debug mode: set to "true" to enable verbose QoS debugging output
 # In production, leave this as "false" to reduce log volume
 QOS_DEBUG=${QOS_DEBUG:-"false"}
@@ -58,7 +64,8 @@ function show_help() {
     echo ""
     echo "Environment Variables:"
     echo "  VPC_INTERFACE       - Interface connecting to VPC (default: eth0)"
-    echo "  EXTERNAL_INTERFACE  - Interface connecting to external network (default: net1)"
+    echo "  EXTERNAL_INTERFACES - Comma-separated external interfaces (default: net1)"
+    echo "  EXTERNAL_INTERFACE  - Backward-compatible alias for the first external interface"
     echo "  QOS_DEBUG           - Enable verbose QoS debugging output (default: false)"
     echo ""
     echo "Usage: $0 [COMMAND] [ARGS...]"
@@ -86,8 +93,9 @@ function show_help() {
     echo "  get-iptables-version     - Show iptables version"
     echo ""
     echo "Examples:"
-    echo "  # Use custom interfaces"
-    echo "  $0 init net1, net2"
+    echo "  # Use one internal/VPC interface and one or more external interfaces"
+    echo "  $0 init net1,net2"
+    echo "  $0 init net1,net2,net3"
     echo ""
     echo "  # Use default interfaces (eth0,net1)"
     echo "  $0 init"
@@ -114,42 +122,71 @@ function check_inited() {
     fi
 }
 
+function init_eip_interface_map() {
+    mkdir -p "$(dirname "$EIP_INTERFACE_MAP")"
+
+    # Start with an empty mapping file
+    : > "$EIP_INTERFACE_MAP"
+
+    echo "Initialized EIP interface mapping: $EIP_INTERFACE_MAP"
+}
+
 function init() {
     interfaces=$1
     echo "init $interfaces"
     if [ -n "$interfaces" ]; then
-        # First, remove all spaces around commas
+        # First interface is the VPC/tenant interface.
+        # All remaining interfaces are external interfaces.
         interfaces=$(echo "$interfaces" | sed 's/[[:space:]]*,[[:space:]]*/,/g')
         IFS=',' read -r -a interface_array <<< "$interfaces"
-        if [ ${#interface_array[@]} -ne 2 ]; then
-            >&2 echo "Error: Expected two interfaces separated by a comma (e.g., net1,net2)"
+
+        if [ ${#interface_array[@]} -lt 2 ]; then
+            >&2 echo "Error: Expected at least two interfaces: VPC interface followed by one or more external interfaces (e.g., net1,net2,net3)"
             exit 1
         fi
 
-        # Trim any remaining leading and trailing whitespace
         VPC_INTERFACE=$(echo "${interface_array[0]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        EXTERNAL_INTERFACE=$(echo "${interface_array[1]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        EXTERNAL_INTERFACES=""
+        for ((i=1; i<${#interface_array[@]}; i++)); do
+            ext=$(echo "${interface_array[$i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [ -z "$ext" ]; then
+                >&2 echo "Error: External interface names cannot be empty"
+                exit 1
+            fi
+            if [ -z "$EXTERNAL_INTERFACES" ]; then
+                EXTERNAL_INTERFACES="$ext"
+            else
+                EXTERNAL_INTERFACES="$EXTERNAL_INTERFACES,$ext"
+            fi
+        done
+        EXTERNAL_INTERFACE=$(echo "$EXTERNAL_INTERFACES" | cut -d',' -f1)
 
-        # Validate interface names are not empty after trimming
-        if [ -z "$VPC_INTERFACE" ] || [ -z "$EXTERNAL_INTERFACE" ]; then
+        if [ -z "$VPC_INTERFACE" ] || [ -z "$EXTERNAL_INTERFACES" ]; then
             >&2 echo "Error: Interface names cannot be empty"
             exit 1
         fi
     fi
+
     echo "using VPC interface: $VPC_INTERFACE"
-    echo "using External interface: $EXTERNAL_INTERFACE"
-    # check if interfaces exist
+    echo "using External interfaces: $EXTERNAL_INTERFACES"
+
     if ! ip link show "$VPC_INTERFACE" >/dev/null 2>&1; then
         >&2 echo "Error: VPC interface '$VPC_INTERFACE' not found"
         exit 1
     fi
-    if ! ip link show "$EXTERNAL_INTERFACE" >/dev/null 2>&1; then
-        >&2 echo "Error: External interface '$EXTERNAL_INTERFACE' not found"
-        exit 1
-    fi
-    # Store interfaces persistently
+
+    IFS=',' read -r -a external_interface_array <<< "$EXTERNAL_INTERFACES"
+    for ext in "${external_interface_array[@]}"; do
+        if ! ip link show "$ext" >/dev/null 2>&1; then
+            >&2 echo "Error: External interface '$ext' not found"
+            exit 1
+        fi
+    done
+
+    # Store interfaces persistently.
     mkdir -p /etc/kube-ovn
     echo "VPC_INTERFACE=$VPC_INTERFACE" > /etc/kube-ovn/nat-gateway.env
+    echo "EXTERNAL_INTERFACES=$EXTERNAL_INTERFACES" >> /etc/kube-ovn/nat-gateway.env
     echo "EXTERNAL_INTERFACE=$EXTERNAL_INTERFACE" >> /etc/kube-ovn/nat-gateway.env
 
     # run once is enough
@@ -180,11 +217,8 @@ function init() {
     $iptables_cmd -t mangle -A VPC_MARK -i "$VPC_INTERFACE" -j MARK --set-xmark 0x1/0x1
 
     # Load IFB kernel module for ingress QoS traffic shaping
-    # IFB (Intermediate Functional Block) is required for ingress rate limiting using HTB
-    # Load it early in init to detect any issues before QoS rules are applied
     echo "Loading IFB kernel module for ingress QoS support..."
     if ! modprobe ifb 2>/dev/null; then
-        # Check if IFB module is already loaded
         if lsmod | grep -q "^ifb "; then
             echo "IFB kernel module already loaded"
         else
@@ -196,17 +230,21 @@ function init() {
         echo "IFB kernel module loaded successfully"
     fi
 
-    # Send gratuitous ARP for all the IPs on the external network interface at initialization
-    # This is especially useful to update the MAC of the nexthop we announce to the BGP speaker
-    # Only send ARP if there are IP addresses on the external interface (skip in no-IPAM mode)
-    external_ips=$(ip -4 addr show dev $EXTERNAL_INTERFACE | awk '/inet /{print $2}' | cut -d/ -f1)
-    if [ -n "$external_ips" ]; then
-        echo "Sending gratuitous ARP for external IPs on $EXTERNAL_INTERFACE"
-        echo "$external_ips" | xargs -n1 arping -I $EXTERNAL_INTERFACE -c 3 -U
-        echo "Gratuitous ARP completed"
-    else
-        echo "INFO: No IP addresses on $EXTERNAL_INTERFACE, skipping gratuitous ARP (no-IPAM mode or waiting for EIP allocation)"
-    fi
+    # Send gratuitous ARP on every external interface.
+    IFS=',' read -r -a external_interface_array <<< "$EXTERNAL_INTERFACES"
+    for ext in "${external_interface_array[@]}"; do
+        external_ips=$(ip -4 addr show dev "$ext" | awk '/inet /{print $2}' | cut -d/ -f1)
+        if [ -n "$external_ips" ]; then
+            echo "Sending gratuitous ARP for external IPs on $ext"
+            echo "$external_ips" | xargs -n1 arping -I "$ext" -c 3 -U
+            echo "Gratuitous ARP completed on $ext"
+        else
+            echo "INFO: No IP addresses on $ext, skipping gratuitous ARP (no-IPAM mode or waiting for EIP allocation)"
+        fi
+    done
+
+    #create a file foe storing EIP to external interface mapping
+    init_eip_interface_map
 }
 
 
@@ -239,53 +277,100 @@ function del_vpc_internal_route() {
     done
 }
 
-function del_vpc_external_route() {
-    # make sure inited
-    check_inited
-    # never do this, if deleted, will cause error
+get_external_interface_for_eip() {
+    local eip="$1"
 
-    # for rule in $@
-    # do
-    #     arr=(${rule//,/ })
-    #     cidr=${arr[0]}
-    #     exec_cmd "ip route del $cidr dev $EXTERNAL_INTERFACE"
-    #     sleep 1
-    #     exec_cmd "ip route del default dev $EXTERNAL_INTERFACE"
-    # done
+    if [[ ! -f "$EIP_INTERFACE_MAP" ]]; then
+        echo "Error: EIP interface mapping file does not exist: $EIP_INTERFACE_MAP" >&2
+        return 1
+    fi
+
+    local interface
+    interface=$(awk -v eip="$eip" '$1 == eip {print $2; exit}' "$EIP_INTERFACE_MAP")
+
+    if [[ -n "$interface" ]]; then
+        echo "$interface"
+        return 0
+    fi
+
+    echo "Error: No external interface mapping found for EIP '$eip'" >&2
+    return 1
+}
+
+# Resolve an EIP to its external interface.
+#
+# An interface can be supplied explicitly as the second comma-separated field:
+#   eip-add 10.20.30.40/24
+#
+# The script uses the connected route
+# from EIP to determine the correct interface.
+
+function get_external_interface_for_ip() {
+    local ip=$1
+    local route_output
+    local external_interface
+
+    route_output=$(ip route get "$ip" 2>&1)
+    local route_status=$?
+
+    if [ $route_status -ne 0 ]; then
+        >&2 echo "Error: Could not determine route for EIP '$ip'"
+        return 1
+    fi
+
+    external_interface=$(echo "$route_output" | awk '
+        {
+            for (i = 1; i < NF; i++) {
+                if ($i == "dev") {
+                    print $(i + 1)
+                    exit
+                }
+            }
+        }
+    ')
+
+    if [ -z "$external_interface" ]; then
+        >&2 echo "Error: Could not determine external interface for EIP '$ip'"
+        >&2 echo "Route output: $route_output"
+        return 1
+    fi
+
+    echo "$external_interface"
+    return 0
 }
 
 function add_eip() {
     # make sure inited
     check_inited
-    for rule in $@
+    for rule in "$@"
     do
-        eip=${rule}
+        arr=(${rule//,/ })
+        eip=${arr[0]}
         eip_without_prefix=(${eip//\// })
-        exec_cmd "ip addr replace $eip dev $EXTERNAL_INTERFACE"
-        exec_cmd "arping -I $EXTERNAL_INTERFACE -c 3 -U $eip_without_prefix"
 
-        # Add hairpin SNAT rule for this EIP
-        # This rule SNATs traffic originating from the VPC and targeting an EIP back to the same EIP
-        # when it is DNAT'd and routed back to the VPC. This avoids asymmetric routing issues.
+        ext=$(get_external_interface_for_ip "$eip_without_prefix") || exit 1
+
+        if [[ ! -f "$EIP_INTERFACE_MAP" ]]; then
+            echo "Error: EIP interface mapping file does not exist. Run init first." >&2
+            return 1
+        fi
+
+        # Remove existing mapping
+        sed -i "\|^${eip_without_prefix}[[:space:]]|d" "$EIP_INTERFACE_MAP" 2>/dev/null || true
+
+        # Store EIP -> interface
+        echo "$eip_without_prefix $ext" >> "$EIP_INTERFACE_MAP"
+
+        echo "Adding EIP $eip on external interface $ext"
+
+        exec_cmd "ip addr replace $eip dev $ext"
+
+        # Add hairpin SNAT rule for this EIP.
         local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
-        # Check if the rule already exists to maintain idempotency
         if ! $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
             exec_cmd "$iptables_cmd -t nat -A HAIRPIN_SNAT $hairpin_rule --random-fully"
         fi
     done
-
-    # Use "onlink" to skip the kernel's "gateway must be directly reachable" check.
-    # This allows EIPs from a different external subnet to share the NAT gateway's
-    # default route, as long as the gateway is L2-reachable (same VLAN/broadcast domain).
-    # When the gateway IS on the same subnet, "onlink" has no behavioral difference
-    # from the non-onlink form — the forwarding path and ARP resolution are identical.
-    if [ -n "$GATEWAY_V4" ]; then
-        exec_cmd "ip route replace default via $GATEWAY_V4 dev $EXTERNAL_INTERFACE onlink"
-    fi
-
-    if [ -n "$GATEWAY_V6" ]; then
-        exec_cmd "ip -6 route replace default via $GATEWAY_V6 dev $EXTERNAL_INTERFACE onlink"
-    fi
 }
 
 function del_eip() {
@@ -296,17 +381,25 @@ function del_eip() {
         arr=(${rule//,/ })
         eip=${arr[0]}
         eip_without_prefix=(${eip//\// })
-        ipCidr=`ip addr show "$EXTERNAL_INTERFACE" | grep -w "$eip" | awk '{print $2 }'`
+
+        ext=$(get_external_interface_for_eip "$eip_without_prefix") || continue
+        ipCidr=$(ip addr show "$ext" | grep -w "$eip" | awk '{print $2 }')
         if [ -n "$ipCidr" ]; then
-            exec_cmd "ip addr del $ipCidr dev $EXTERNAL_INTERFACE"
+            exec_cmd "ip addr del $ipCidr dev $ext"
         fi
 
-        # Remove hairpin SNAT rule for this EIP
+        # Remove hairpin SNAT rule for this EIP.
         local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -m conntrack --ctstate DNAT --ctorigdst $eip_without_prefix -j SNAT --to-source $eip_without_prefix"
-        # Check if the rule exists before attempting to delete it
         if $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
             exec_cmd "$iptables_cmd -t nat -D HAIRPIN_SNAT $hairpin_rule --random-fully"
         fi
+
+        if [[ ! -f "$EIP_INTERFACE_MAP" ]]; then
+            echo "Warning: EIP interface mapping file does not exist: $EIP_INTERFACE_MAP" >&2
+            return 0
+        fi
+
+        sed -i "\|^${eip_without_prefix}[[:space:]]|d" "$EIP_INTERFACE_MAP"
     done
 }
 
@@ -405,6 +498,7 @@ function add_snat() {
         eip=(${arr[0]//\// })
         internalCIDR=${arr[1]}
         randomFullyOption=${arr[2]}
+	ext=$(get_external_interface_for_eip "$eip") || exit 1
         # check if exact (eip, internalCIDR) pair already exists (idempotent)
         ruleMatch=$(echo "$all_shared_snat_rules" | grep -w -- "-s $internalCIDR" | grep -E -- "--to-source $eip(\$| )")
         if [ -n "$ruleMatch" ]; then
@@ -428,17 +522,24 @@ function add_snat() {
             }
             END { print n + 1 }
         ')
-        exec_cmd "$iptables_cmd -t nat -I SHARED_SNAT $pos -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+        exec_cmd "$iptables_cmd -t nat -I SHARED_SNAT $pos -o $ext -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
         # Keep the local snapshot in sync so subsequent iterations in this
         # invocation compute position correctly.
         all_shared_snat_rules="$all_shared_snat_rules
--A SHARED_SNAT -o $EXTERNAL_INTERFACE -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
+-A SHARED_SNAT -o $ext -s $internalCIDR -j SNAT --to-source $eip $randomFullyOption"
     done
 }
 function del_snat() {
     # NOTE: Current SNAT CRD/controller path sends one rule per invocation.
     # The for-loop is currently of limited practical value.
     # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
+    #
+    # Ordering: iptables evaluates rules in a chain top-down (first-match wins).
+    # When multiple SHARED_SNAT rules have overlapping CIDRs (e.g., 10.0.0.0/16 and
+    # 10.0.1.0/24), the more specific rule must come first to honor longest-prefix
+    # match. We therefore insert each new rule at the position right after all
+    # existing rules whose prefix length is equal to or greater (more specific)
+    # than the new rule's prefix, yielding a descending-prefix order in the chain.
     # make sure inited
     check_inited
     local all_shared_snat_rules
@@ -1165,7 +1266,7 @@ function delete_ifb_filter_and_class() {
 
 # EIP-level ingress QoS using IFB + HTB (TCP-friendly, queues instead of drops)
 # Caller: controller via execNatGwRules(gwPod, natGwEipIngressQoSAdd, rules)
-# Flow: external --> $EXTERNAL_INTERFACE --> ingress redirect --> IFB --> HTB class --> internal
+# Flow: external --> selected external interface --> ingress redirect --> IFB --> HTB class --> internal
 #
 # Parameter count: 4 fields (comma-separated)
 # Format: "ip,priority,rate,burst"
@@ -1191,8 +1292,9 @@ function eip_ingress_qos_add() {
         local priority=${arr[1]} # 2
         local rate=${arr[2]}     # Mbit/s
         local burst=${arr[3]}    # MB
-        local dev="$EXTERNAL_INTERFACE"
         local matchDirection="dst"
+        local dev
+        dev=$(get_external_interface_for_ip "$v4ip") || exit 1
 
         qos_debug "Processing ingress QoS rule - v4ip=$v4ip, priority=$priority, rate=$rate, burst=$burst, dev=$dev"
 
@@ -1275,7 +1377,7 @@ function eip_ingress_qos_add() {
 #
 # Example: "172.21.0.23,2,25,25"
 #
-# Flow: internal --> $EXTERNAL_INTERFACE --> HTB class --> external
+# Flow: internal --> selected external interface --> HTB class --> external
 function eip_egress_qos_add() {
     qos_debug "eip_egress_qos_add called with args: $@"
     for rule in $@
@@ -1285,7 +1387,8 @@ function eip_egress_qos_add() {
         local priority=${arr[1]} # 2
         local rate=${arr[2]}     # Mbit/s
         local burst=${arr[3]}    # MB
-        local dev="$EXTERNAL_INTERFACE"
+        local dev
+        dev=$(get_external_interface_for_ip "$v4ip") || exit 1
 
         qos_debug "Processing egress QoS rule - v4ip=$v4ip, priority=$priority, rate=$rate, burst=$burst, dev=$dev"
 
@@ -1679,7 +1782,8 @@ function eip_ingress_qos_del() {
         arr=(${rule//,/ })
         local v4ip=${arr[0]}  # 172.21.0.23
         local matchDirection="dst"
-        local dev="$EXTERNAL_INTERFACE"
+        local dev
+        dev=$(get_external_interface_for_ip "$v4ip") || continue
         local ifb_dev
         ifb_dev=$(get_ifb_device "$dev")
 
@@ -1722,7 +1826,8 @@ function eip_egress_qos_del() {
     do
         arr=(${rule//,/ })
         local v4ip=${arr[0]}  # 172.21.0.23
-        local dev="$EXTERNAL_INTERFACE"
+        local dev
+        dev=$(get_external_interface_for_ip "$v4ip") || continue
 
         # Ensure HTB root qdisc exists before trying to delete
         if ! tc qdisc show dev "$dev" | grep -q "htb 1:"; then
