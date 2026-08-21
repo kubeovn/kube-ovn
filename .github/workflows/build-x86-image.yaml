@@ -204,6 +204,17 @@ jobs:
             prNumber="$PR_NUMBER"
           elif [ "$EVENT_NAME" = workflow_dispatch ]; then
             gh api "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER" > pull-request.json
+            baseRef=$(jq -r '.base.ref' pull-request.json)
+            if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+              echo 'pull request base branch is outside the supported trusted set' >&2
+              exit 1
+            fi
+            baseSHA=$(gh api \
+              "repos/$GITHUB_REPOSITORY/git/ref/heads/$baseRef" \
+              --jq '.object.sha')
+            jq --arg baseSHA "$baseSHA" '.base.sha = $baseSHA' pull-request.json \
+              > live-pull-request.json
+            mv live-pull-request.json pull-request.json
             python3 - "$INPUT_HEAD_SHA" "$INPUT_BASE_SHA" "$GITHUB_REF_NAME" "$GITHUB_SHA" \
               "$INPUT_PR_NUMBER" "$INPUT_APPROVAL_GENERATION" "$INPUT_DISPATCH_GENERATION" <<'PY'
           import json

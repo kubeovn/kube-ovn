@@ -1601,6 +1601,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("executor catalog revision does not match dispatcher", workflow)
         self.assertIn("executor workflow revision does not match the approved base", workflow)
         self.assertIn("isTrustedExecutorRef", workflow)
+        self.assertIn('git/ref/heads/$baseRef', workflow)
+        self.assertIn("'.base.sha = $baseSHA' pull-request.json", workflow)
         self.assertNotIn(
             'if pullRequest["base"]["ref"] != sys.argv[3]:',
             workflow,
