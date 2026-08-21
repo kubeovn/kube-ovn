@@ -50,9 +50,19 @@ type VpcEgressGatewaySpecApplyConfiguration struct {
 	// optional internal/external IPs used to create the workload
 	// these IPs must be in the internal/external subnet
 	// when specified, the IPs count must NOT be less than the replicas count
+	// mutually exclusive with internalIPPool
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	// External IP addresses for the egress gateway
+	// mutually exclusive with externalIPPool
 	ExternalIPs []string `json:"externalIPs,omitempty"`
+	// optional name of an IPPool resource used to allocate the internal IP for the workload
+	// the referenced IPPool's subnet must match the internal subnet
+	// mutually exclusive with internalIPs
+	InternalIPPool *string `json:"internalIPPool,omitempty"`
+	// optional name of an IPPool resource used to allocate the external IP for the workload
+	// the referenced IPPool's subnet must match the external subnet
+	// mutually exclusive with externalIPs
+	ExternalIPPool *string `json:"externalIPPool,omitempty"`
 	// namespace/pod selectors
 	Selectors []VpcEgressGatewaySelectorApplyConfiguration `json:"selectors,omitempty"`
 	// optional traffic policy used to control the traffic routing
@@ -171,6 +181,22 @@ func (b *VpcEgressGatewaySpecApplyConfiguration) WithExternalIPs(values ...strin
 	for i := range values {
 		b.ExternalIPs = append(b.ExternalIPs, values[i])
 	}
+	return b
+}
+
+// WithInternalIPPool sets the InternalIPPool field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InternalIPPool field is set to the value of the last call.
+func (b *VpcEgressGatewaySpecApplyConfiguration) WithInternalIPPool(value string) *VpcEgressGatewaySpecApplyConfiguration {
+	b.InternalIPPool = &value
+	return b
+}
+
+// WithExternalIPPool sets the ExternalIPPool field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ExternalIPPool field is set to the value of the last call.
+func (b *VpcEgressGatewaySpecApplyConfiguration) WithExternalIPPool(value string) *VpcEgressGatewaySpecApplyConfiguration {
+	b.ExternalIPPool = &value
 	return b
 }
 
