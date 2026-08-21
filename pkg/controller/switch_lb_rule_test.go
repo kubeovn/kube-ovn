@@ -244,6 +244,8 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
 		// Second call: after LBHC deletion, no more LBHCs for this subnet
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+		// The VIP mapping itself is deleted directly from the SLR's VPC load balancer
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
 
 		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
@@ -275,6 +277,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		fc.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping(tcpLBName, vip1).Return(nil)
 		fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
 
 		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
@@ -311,6 +314,9 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 				ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: subnetName},
 			}}, nil,
 		)
+		// The SLR's own VPC LB is still checked/cleaned directly, independent of
+		// which VPC's LBHC was found above.
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
 
 		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
@@ -328,6 +334,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 		// Fallback: no LBHC for subnet after deletion check
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
 
 		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
@@ -400,6 +407,8 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 				ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: subnetName},
 			}}, nil,
 		)
+		// info.VPC still resolves the SLR's own VPC LB, which is checked/cleaned directly.
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
 
 		info := &SwitchLBRuleInfo{
 			Name:      slrName,
@@ -432,6 +441,8 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
 		// After deletion, no more LBHCs for this subnet
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip2, true).Return(nil)
 
 		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1, vip2}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
