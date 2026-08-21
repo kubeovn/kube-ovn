@@ -388,7 +388,7 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		ippoolClient := f.IPPoolClient()
 
 		internalIPPoolName := "int-pool-" + framework.RandomSuffix()
-		internalPoolIPs := strings.Split(framework.RandomIPs(intSubnet.Spec.CIDRBlock, ",", int(replicas)), ",")
+		internalPoolIPs := randomIPPoolIPs(intSubnet.Spec.CIDRBlock, int(replicas), intSubnet.Spec.ExcludeIps)
 		internalIPPool := framework.MakeIPPool(internalIPPoolName, internalSubnetName, internalPoolIPs, nil)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting IPPool " + internalIPPoolName)
@@ -397,7 +397,7 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		ippoolClient.CreateSync(internalIPPool)
 
 		externalIPPoolName := "ext-pool-" + framework.RandomSuffix()
-		externalPoolIPs := strings.Split(framework.RandomIPs(extSubnet.Spec.CIDRBlock, ",", int(replicas)), ",")
+		externalPoolIPs := randomIPPoolIPs(extSubnet.Spec.CIDRBlock, int(replicas), extSubnet.Spec.ExcludeIps)
 		externalIPPool := framework.MakeIPPool(externalIPPoolName, externalSubnetName, externalPoolIPs, nil)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting IPPool " + externalIPPoolName)
@@ -424,6 +424,104 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		}
 		framework.ExpectConsistOf(flattenIPs(veg.Status.InternalIPs), internalPoolIPs)
 		framework.ExpectConsistOf(flattenIPs(veg.Status.ExternalIPs), externalPoolIPs)
+	})
+
+	framework.ConformanceIt("should reject mutually exclusive named and explicit IPs", func() {
+		f.SkipVersionPriorTo(1, 16, "VpcEgressGateway named IPPool support requires v1.16+")
+
+		_, vpc, internalSubnetName := createMacvlanVpc()
+		intSubnet := subnetClient.Get(internalSubnetName)
+		extSubnet := subnetClient.Get(externalSubnetName)
+		internalPoolIPs := randomIPPoolIPs(intSubnet.Spec.CIDRBlock, 1, intSubnet.Spec.ExcludeIps)
+		externalPoolIPs := randomIPPoolIPs(extSubnet.Spec.CIDRBlock, 1, extSubnet.Spec.ExcludeIps)
+		vegClient := f.VpcEgressGatewayClient()
+
+		tests := []struct {
+			name   string
+			mutate func(spec *apiv1.VpcEgressGatewaySpec)
+		}{
+			{
+				name: "internal IPs and pool",
+				mutate: func(spec *apiv1.VpcEgressGatewaySpec) {
+					spec.InternalIPs = internalPoolIPs
+					spec.InternalIPPool = "missing-internal-pool"
+				},
+			},
+			{
+				name: "external IPs and pool",
+				mutate: func(spec *apiv1.VpcEgressGatewaySpec) {
+					spec.ExternalIPs = externalPoolIPs
+					spec.ExternalIPPool = "missing-external-pool"
+				},
+			},
+		}
+
+		for _, tt := range tests {
+			ginkgo.By("Creating invalid VpcEgressGateway with " + tt.name)
+			veg := framework.MakeVpcEgressGateway(namespaceName, "veg-"+framework.RandomSuffix(), vpc.Name, 1, internalSubnetName, externalSubnetName)
+			veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{Subnets: []string{internalSubnetName}}}
+			tt.mutate(&veg.Spec)
+			_, err := vegClient.VpcEgressGatewayInterface.Create(context.Background(), veg, metav1.CreateOptions{})
+			framework.ExpectError(err, "expected %s to be rejected", tt.name)
+			framework.ExpectTrue(strings.Contains(err.Error(), "mutually exclusive"), "unexpected validation error: %v", err)
+		}
+	})
+
+	framework.ConformanceIt("should report not ready when a named IPPool subnet mismatches", func() {
+		f.SkipVersionPriorTo(1, 16, "VpcEgressGateway named IPPool support requires v1.16+")
+
+		_, vpc, internalSubnetName := createMacvlanVpc()
+		intSubnet := subnetClient.Get(internalSubnetName)
+		extSubnet := subnetClient.Get(externalSubnetName)
+		ippoolClient := f.IPPoolClient()
+		vegClient := f.VpcEgressGatewayClient()
+
+		tests := []struct {
+			name            string
+			poolSubnet      string
+			poolIPs         []string
+			setPool         func(spec *apiv1.VpcEgressGatewaySpec, poolName string)
+			expectedMessage string
+		}{
+			{
+				name:            "internal IPPool",
+				poolSubnet:      externalSubnetName,
+				poolIPs:         randomIPPoolIPs(extSubnet.Spec.CIDRBlock, 1, extSubnet.Spec.ExcludeIps),
+				setPool:         func(spec *apiv1.VpcEgressGatewaySpec, poolName string) { spec.InternalIPPool = poolName },
+				expectedMessage: "does not match internal subnet",
+			},
+			{
+				name:            "external IPPool",
+				poolSubnet:      internalSubnetName,
+				poolIPs:         randomIPPoolIPs(intSubnet.Spec.CIDRBlock, 1, intSubnet.Spec.ExcludeIps),
+				setPool:         func(spec *apiv1.VpcEgressGatewaySpec, poolName string) { spec.ExternalIPPool = poolName },
+				expectedMessage: "does not match external subnet",
+			},
+		}
+
+		for _, tt := range tests {
+			poolName := "mismatch-pool-" + framework.RandomSuffix()
+			ippoolClient.CreateSync(framework.MakeIPPool(poolName, tt.poolSubnet, tt.poolIPs, nil))
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Deleting IPPool " + poolName)
+				ippoolClient.DeleteSync(poolName)
+			})
+
+			veg := framework.MakeVpcEgressGateway(namespaceName, "veg-"+framework.RandomSuffix(), vpc.Name, 1, internalSubnetName, externalSubnetName)
+			veg.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{Subnets: []string{internalSubnetName}}}
+			tt.setPool(&veg.Spec, poolName)
+			vegClient.Create(veg)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Deleting VpcEgressGateway " + veg.Name)
+				vegClient.DeleteSync(veg.Name)
+			})
+
+			observed := vegClient.WaitUntil(veg.Name, func(g *apiv1.VpcEgressGateway) (bool, error) {
+				condition := g.Status.Conditions.GetCondition(apiv1.Ready)
+				return condition != nil && condition.Reason == "ReconcileWorkloadFailed" && strings.Contains(condition.Message, tt.expectedMessage), nil
+			}, "ReconcileWorkloadFailed", time.Second, 2*time.Minute)
+			framework.ExpectFalse(observed.Status.Ready)
+		}
 	})
 
 	registerVpcEgressGatewayObservabilityTest(f, &schedulableNodes, createMacvlanVpc, &nadName, &externalSubnetName)
@@ -768,6 +866,17 @@ func registerVpcEgressGatewayObservabilityTest(
 		veg = f.VpcEgressGatewayClient().PatchSync(original, modified)
 		validateVpcEgressObservabilityHotReload(f, veg, workloadPods, reloadCounts)
 	})
+}
+
+func randomIPPoolIPs(cidr string, count int, excluded []string) []string {
+	for {
+		ips := strings.Split(framework.RandomIPs(cidr, ",", count), ",")
+		if !slices.ContainsFunc(ips, func(ip string) bool {
+			return slices.Contains(excluded, ip)
+		}) {
+			return ips
+		}
+	}
 }
 
 func generateSubnetFromDockerNetwork(subnetName string, network *dockernetwork.Inspect, ipv4, ipv6 bool) *apiv1.Subnet {
