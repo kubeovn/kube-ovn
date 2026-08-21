@@ -66,7 +66,10 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 		uuid, delOps, err := c.DeleteGatewayChassisOp(gwChassisName)
 		if err != nil {
 			klog.Error(err)
-			return nil
+			return err
+		}
+		if uuid == "" {
+			continue
 		}
 
 		mutateOps, err := c.Where(lrp).Mutate(lrp, model.Mutation{
@@ -76,11 +79,14 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 		})
 		if err != nil {
 			klog.Error(err)
-			return nil
+			return err
 		}
 
 		ops = append(ops, mutateOps...)
 		ops = append(ops, delOps...)
+	}
+	if len(ops) == 0 {
+		return nil
 	}
 
 	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
@@ -234,4 +240,52 @@ func (c *OVNNbClient) DeleteGatewayChassisOp(chassisName string) (uuid string, o
 	}
 
 	return gwChassis.UUID, ops, nil
+}
+
+// ReconcileGatewayChassises make gateway chassis of a logical router port match the desired list and priority.
+func (c *OVNNbClient) ReconcileGatewayChassises(lrpName string, chassises []string) error {
+	existing, err := c.ListGatewayChassisByLogicalRouterPort(lrpName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	desired := make(map[string]int, len(chassises))
+	for i, chassisName := range chassises {
+		if chassisName != "" {
+			desired[chassisName] = 100 - i
+		}
+	}
+
+	var stale []string
+	for _, gw := range existing {
+		if _, ok := desired[gw.ChassisName]; !ok {
+			stale = append(stale, gw.ChassisName)
+		}
+	}
+	if err := c.DeleteGatewayChassises(lrpName, stale); err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.CreateGatewayChassises(lrpName, chassises...); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	for chassisName, priority := range desired {
+		gwChassis, err := c.GetGatewayChassis(lrpName+"-"+chassisName, false)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		if gwChassis.Priority == priority {
+			continue
+		}
+		gwChassis.Priority = priority
+		if err := c.UpdateGatewayChassis(gwChassis, &gwChassis.Priority); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
+	return nil
 }
