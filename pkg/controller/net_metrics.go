@@ -15,7 +15,8 @@ var (
 			"subnet_name",
 			"protocol",
 			"subnet_cidr",
-		})
+		},
+	)
 
 	metricSubnetUsedIPs = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -26,7 +27,8 @@ var (
 			"subnet_name",
 			"protocol",
 			"subnet_cidr",
-		})
+		},
+	)
 
 	metricCentralSubnetInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -40,7 +42,8 @@ var (
 			"active_gateway",
 			"match",
 			"nexthops",
-		})
+		},
+	)
 
 	metricSubnetIPAMInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -54,7 +57,8 @@ var (
 			"reserved",
 			"available",
 			"using",
-		})
+		},
+	)
 
 	metricSubnetIPAssignedInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -65,7 +69,8 @@ var (
 			"subnet_name",
 			"ip",
 			"pod_name",
-		})
+		},
+	)
 )
 
 func registerMetrics() {

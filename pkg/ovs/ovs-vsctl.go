@@ -79,7 +79,7 @@ func Exec(args ...string) (string, error) {
 	start := time.Now()
 	args = slices.Insert(args, 0, "--timeout=30")
 	output, err := exec.Command(OvsVsCtl, args...).CombinedOutput()
-	elapsed := float64((time.Since(start)) / time.Millisecond)
+	elapsed := float64(time.Since(start) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", OvsVsCtl, strings.Join(args, " "), elapsed)
 
 	code := "0"
