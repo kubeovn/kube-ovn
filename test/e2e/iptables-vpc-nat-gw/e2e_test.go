@@ -2671,6 +2671,170 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
 			"bare-IP SNAT rule must be treated as /32 and sort before less-specific rules")
 	})
+
+	framework.ConformanceIt("[8] VpcWireGuard DualNIC, generated and BYO peer, DNAT and FIP", func() {
+		f.SkipVersionPriorTo(1, 18, "VpcWireGuard was introduced in v1.18")
+
+		vpcWireGuardClient := f.VpcWireGuardClient()
+		vpcWireGuardPeerClient := f.VpcWireGuardPeerClient()
+
+		overlaySubnetV4Cidr := "10.0.8.0/24"
+		overlaySubnetV4Gw := "10.0.8.1"
+		lanIP := "10.0.8.10"
+		clientSubnetName := "vpn-subnet-" + framework.RandomSuffix()
+		clientSubnetCidr := "10.255.8.0/24"
+		clientSubnetGw := "10.255.8.1"
+		wgName := "wg-" + framework.RandomSuffix()
+		peerName := "wg-peer-" + framework.RandomSuffix()
+
+		ginkgo.By("Creating custom vpc " + vpcName)
+		vpc := framework.MakeVpc(vpcName, lanIP, false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
+		ginkgo.DeferCleanup(func() {
+			vpcClient.DeleteSync(vpcName)
+		})
+
+		ginkgo.By("Creating overlay subnet " + overlaySubnetName)
+		overlaySubnet := framework.MakeSubnet(overlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, vpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+		ginkgo.DeferCleanup(func() {
+			subnetClient.DeleteSync(overlaySubnetName)
+		})
+
+		ginkgo.By("Creating client subnet " + clientSubnetName)
+		clientSubnet := framework.MakeSubnet(clientSubnetName, "", clientSubnetCidr, clientSubnetGw, vpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(clientSubnet)
+		ginkgo.DeferCleanup(func() {
+			subnetClient.DeleteSync(clientSubnetName)
+		})
+
+		ginkgo.By("Creating DualNIC VpcWireGuard " + wgName)
+		wg := framework.MakeVpcWireGuard(wgName, vpcName, overlaySubnetName, lanIP, clientSubnetName, apiv1.VpcWireGuardExposureDualNIC)
+		wg.Spec.Exposure.ExternalSubnets = []string{networkAttachDefName}
+		wg = vpcWireGuardClient.CreateSync(wg)
+		ginkgo.DeferCleanup(func() {
+			vpcWireGuardClient.DeleteSync(wgName)
+		})
+		framework.ExpectTrue(wg.Status.Ready, "DualNIC VpcWireGuard should be ready")
+		framework.ExpectNotEmpty(wg.Status.Endpoint, "VpcWireGuard should have a public endpoint")
+		framework.ExpectNotEmpty(wg.Status.PublicKey, "VpcWireGuard should have a server public key")
+		framework.ExpectEqual(wg.Status.LanIP, lanIP)
+		framework.ExpectEqual(wg.Status.ClientCIDR, clientSubnetCidr)
+		framework.ExpectNotEmpty(wg.Status.ServerTunnelIP, "server tunnel IP should be allocated from client subnet")
+
+		ginkgo.By("Creating generated VpcWireGuardPeer " + peerName)
+		peer := framework.MakeVpcWireGuardPeer(peerName, wgName, true, "")
+		peer = vpcWireGuardPeerClient.CreateSync(peer)
+		ginkgo.DeferCleanup(func() {
+			vpcWireGuardPeerClient.DeleteSync(peerName)
+		})
+		framework.ExpectTrue(peer.Status.Ready)
+		framework.ExpectNotEmpty(peer.Status.ClientIP)
+		framework.ExpectNotEmpty(peer.Status.PublicKey)
+		framework.ExpectEqual(peer.Status.ServerPublicKey, wg.Status.PublicKey)
+		framework.ExpectEqual(peer.Status.Endpoint, wg.Status.Endpoint)
+		framework.ExpectEqual(peer.Status.ConfigSecret, util.GenVpcWireGuardPeerSecretName(peerName))
+
+		ginkgo.By("Verifying generated client config Secret exists")
+		secret, err := f.ClientSet.CoreV1().Secrets(framework.KubeOvnNamespace).Get(context.Background(), peer.Status.ConfigSecret, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		framework.ExpectNotEmpty(secret.Data["wg-quick.conf"])
+		framework.ExpectNotEmpty(secret.Data["privateKey"])
+
+		ginkgo.By("Creating a bring-your-own-key VpcWireGuardPeer")
+		_, byoPublicKey, err := util.GenerateWireGuardKeyPair()
+		framework.ExpectNoError(err)
+		byoPeerName := "wg-peer-byo-" + framework.RandomSuffix()
+		byoPeer := framework.MakeVpcWireGuardPeer(byoPeerName, wgName, false, byoPublicKey)
+		byoPeer = vpcWireGuardPeerClient.CreateSync(byoPeer)
+		ginkgo.DeferCleanup(func() {
+			vpcWireGuardPeerClient.DeleteSync(byoPeerName)
+		})
+		framework.ExpectTrue(byoPeer.Status.Ready)
+		framework.ExpectEqual(byoPeer.Status.PublicKey, byoPublicKey)
+		framework.ExpectEmpty(byoPeer.Status.ConfigSecret)
+
+		ginkgo.By("Deleting DualNIC WireGuard resources before DNAT scenario")
+		vpcWireGuardPeerClient.DeleteSync(byoPeerName)
+		vpcWireGuardPeerClient.DeleteSync(peerName)
+		vpcWireGuardClient.DeleteSync(wgName)
+
+		ginkgo.By("Creating NAT gateway for DNAT exposure")
+		natGwLanIP := "10.0.9.254"
+		wgLanIP := "10.0.9.10"
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName+"-dnat", overlaySubnetName+"-dnat", vpcNatGwName, "",
+			"10.0.9.0/24", "10.0.9.1", natGwLanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, nil, "", 0,
+		)
+		dnatClientSubnetName := "vpn-dnat-" + framework.RandomSuffix()
+		dnatClientSubnet := framework.MakeSubnet(dnatClientSubnetName, "", "10.255.9.0/24", "10.255.9.1", vpcName+"-dnat", "", nil, nil, nil)
+		_ = subnetClient.CreateSync(dnatClientSubnet)
+		ginkgo.DeferCleanup(func() {
+			subnetClient.DeleteSync(dnatClientSubnetName)
+		})
+
+		eipName := "wg-eip-" + framework.RandomSuffix()
+		eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcNatGwName, "", "")
+		eip = iptablesEIPClient.CreateSync(eip)
+		ginkgo.DeferCleanup(func() {
+			iptablesEIPClient.DeleteSync(eipName)
+		})
+
+		dnatWgName := "wg-dnat-" + framework.RandomSuffix()
+		dnatWg := framework.MakeVpcWireGuard(dnatWgName, vpcName+"-dnat", overlaySubnetName+"-dnat", wgLanIP, dnatClientSubnetName, apiv1.VpcWireGuardExposureDNAT)
+		dnatWg.Spec.Exposure.EIP = eipName
+		dnatWg.Spec.Exposure.NatGateway = vpcNatGwName
+		dnatWg = vpcWireGuardClient.CreateSync(dnatWg)
+		ginkgo.DeferCleanup(func() {
+			vpcWireGuardClient.DeleteSync(dnatWgName)
+		})
+		framework.ExpectTrue(dnatWg.Status.Ready)
+		framework.ExpectEqual(dnatWg.Status.Endpoint, fmt.Sprintf("%s:51820", eip.Status.IP))
+
+		dnatRuleName := util.GenVpcWireGuardDnatName(dnatWgName)
+		gomega.Eventually(func() bool {
+			dnat, err := f.KubeOVNClientSet.KubeovnV1().IptablesDnatRules().Get(context.Background(), dnatRuleName, metav1.GetOptions{})
+			if err != nil {
+				return false
+			}
+			return dnat.Status.Ready && dnat.Spec.Protocol == "udp" && dnat.Spec.InternalIP == wgLanIP
+		}, 2*time.Minute, 2*time.Second).Should(gomega.BeTrue(), "owned DNAT rule should become ready")
+
+		ginkgo.By("Deleting DNAT WireGuard before FIP scenario")
+		vpcWireGuardClient.DeleteSync(dnatWgName)
+
+		fipEipName := "wg-fip-eip-" + framework.RandomSuffix()
+		fipEip := framework.MakeIptablesEIP(fipEipName, "", "", "", vpcNatGwName, "", "")
+		fipEip = iptablesEIPClient.CreateSync(fipEip)
+		ginkgo.DeferCleanup(func() {
+			iptablesEIPClient.DeleteSync(fipEipName)
+		})
+
+		fipWgName := "wg-fip-" + framework.RandomSuffix()
+		fipWg := framework.MakeVpcWireGuard(fipWgName, vpcName+"-dnat", overlaySubnetName+"-dnat", wgLanIP, dnatClientSubnetName, apiv1.VpcWireGuardExposureFIP)
+		fipWg.Spec.Exposure.EIP = fipEipName
+		fipWg.Spec.Exposure.NatGateway = vpcNatGwName
+		fipWg = vpcWireGuardClient.CreateSync(fipWg)
+		ginkgo.DeferCleanup(func() {
+			vpcWireGuardClient.DeleteSync(fipWgName)
+		})
+		framework.ExpectTrue(fipWg.Status.Ready)
+		framework.ExpectEqual(fipWg.Status.Endpoint, fmt.Sprintf("%s:51820", fipEip.Status.IP))
+
+		fipRuleName := util.GenVpcWireGuardFipName(fipWgName)
+		gomega.Eventually(func() bool {
+			fip, err := f.KubeOVNClientSet.KubeovnV1().IptablesFIPRules().Get(context.Background(), fipRuleName, metav1.GetOptions{})
+			if err != nil {
+				return false
+			}
+			return fip.Status.Ready && fip.Spec.InternalIP == wgLanIP
+		}, 2*time.Minute, 2*time.Second).Should(gomega.BeTrue(), "owned FIP rule should become ready")
+	})
 })
 
 func init() {

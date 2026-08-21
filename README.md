@@ -15,7 +15,7 @@ Kube-OVN, a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/), integ
 
 ## Features
 
-- **VPC Support**: Multi-tenant network with independent address spaces, where each tenant has its own network infrastructure such as eips, nat gateways, security groups and loadbalancers.
+- **VPC Support**: Multi-tenant network with independent address spaces, where each tenant has its own network infrastructure such as eips, nat gateways, security groups, loadbalancers and WireGuard VPN.
 - **Namespaced Subnets**: Each Namespace can have a unique Subnet (backed by a Logical Switch). Pods within the Namespace will have IP addresses allocated from the Subnet. It's also possible for multiple Namespaces to share a Subnet.
 - **Vlan/Underlay Support**: In addition to overlay network, Kube-OVN also supports underlay and vlan mode network for better performance and direct connectivity with physical network.
 - **Static IP Addresses for Workloads**: Allocate random or static IP addresses to workloads.
