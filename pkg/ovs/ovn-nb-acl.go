@@ -883,20 +883,28 @@ func (c *OVNNbClient) buildRoutedGatewayDiscoveryACLs(lsName, gateway string, op
 func (c *OVNNbClient) buildRoutedIPAllowACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool, options func(*ovnnb.ACL)) ([]*ovnnb.ACL, error) {
 	acls := make([]*ovnnb.ACL, 0)
 
-	egressToGW := NewAndACLMatch(NewACLMatch("ip", "", "", ""), NewACLMatch("eth.dst", "==", gatewayMAC, ""))
-	egressACL, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, egressToGW.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
-	if err != nil {
-		return nil, fmt.Errorf("new routed egress-to-gateway acl for logical switch %s: %w", lsName, err)
+	// from-lport is evaluated on inport and to-lport on outport. Pod->router
+	// frames still have eth.src=<pod> and eth.dst=<LRP>, so both ACL directions
+	// must allow eth.dst==LRP (to the router) and eth.src==LRP (from the router).
+	// Direct L2 pod->pod has neither and hits default-deny.
+	for _, direction := range []string{ovnnb.ACLDirectionFromLport, ovnnb.ACLDirectionToLport} {
+		for _, ethField := range []string{"eth.src", "eth.dst"} {
+			// Private mode replaces the blanket to-lport eth.src allow with
+			// CIDR-constrained ingress rules below.
+			if private && direction == ovnnb.ACLDirectionToLport && ethField == "eth.src" {
+				continue
+			}
+			match := NewAndACLMatch(NewACLMatch("ip", "", "", ""), NewACLMatch(ethField, "==", gatewayMAC, ""))
+			acl, err := c.newACL(lsName, direction, util.RoutedAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+			if err != nil {
+				return nil, fmt.Errorf("new routed %s %s acl for logical switch %s: %w", direction, ethField, lsName, err)
+			}
+			acls = append(acls, acl)
+		}
 	}
-	acls = append(acls, egressACL)
 
 	if !private {
-		ingressFromGW := NewAndACLMatch(NewACLMatch("ip", "", "", ""), NewACLMatch("eth.src", "==", gatewayMAC, ""))
-		ingressACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ingressFromGW.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
-		if err != nil {
-			return nil, fmt.Errorf("new routed ingress-from-gateway acl for logical switch %s: %w", lsName, err)
-		}
-		return append(acls, ingressACL), nil
+		return acls, nil
 	}
 
 	privateIngress, err := c.buildRoutedPrivateIngressACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR, allowSubnets, options)
