@@ -84,19 +84,25 @@ func TestReconcileRoutesAddsAndWithdrawsIPv4Routes(t *testing.T) {
 func TestReconcileRoutesRefreshesIPv4NextHop(t *testing.T) {
 	const (
 		routerID       = "192.0.2.254"
-		neighbor       = "203.0.113.1"
+		firstNeighbor  = "203.0.113.1"
+		secondNeighbor = "203.0.113.2"
 		prefix         = "10.244.0.8/32"
 		initialNextHop = "127.0.0.2"
 		updatedNextHop = "127.0.0.3"
+		stableNextHop  = "127.0.0.4"
 	)
 
-	nextHop := net.ParseIP(initialNextHop)
+	nextHops := map[string]net.IP{
+		firstNeighbor:  net.ParseIP(initialNextHop),
+		secondNeighbor: net.ParseIP(stableNextHop),
+	}
 	controller := &Controller{config: &Configuration{
 		RouterID:          net.ParseIP(routerID),
-		NeighborAddresses: []net.IP{net.ParseIP(neighbor)},
+		NeighborAddresses: []net.IP{net.ParseIP(firstNeighbor), net.ParseIP(secondNeighbor)},
 		BgpServer:         newTestBgpServer(t, routerID),
 		routeLookup: func(address net.IP) ([]netlink.Route, error) {
-			require.True(t, net.ParseIP(neighbor).Equal(address))
+			nextHop, ok := nextHops[address.String()]
+			require.True(t, ok)
 			return []netlink.Route{{Src: nextHop}}, nil
 		},
 	}}
@@ -104,14 +110,17 @@ func TestReconcileRoutesRefreshesIPv4NextHop(t *testing.T) {
 
 	require.NoError(t, controller.reconcileRoutes(expectedPrefixes))
 	routes := listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP)
-	require.Len(t, routes[prefix], 1)
-	require.True(t, net.ParseIP(initialNextHop).Equal(routes[prefix][0]))
+	require.Len(t, routes[prefix], 2)
+	require.Contains(t, routes[prefix], net.ParseIP(initialNextHop))
+	require.Contains(t, routes[prefix], net.ParseIP(stableNextHop))
 
-	nextHop = net.ParseIP(updatedNextHop)
+	nextHops[firstNeighbor] = net.ParseIP(updatedNextHop)
 	require.NoError(t, controller.reconcileRoutes(expectedPrefixes))
 	routes = listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP)
-	require.Len(t, routes[prefix], 1)
-	require.True(t, net.ParseIP(updatedNextHop).Equal(routes[prefix][0]))
+	require.Len(t, routes[prefix], 2)
+	require.Contains(t, routes[prefix], net.ParseIP(updatedNextHop))
+	require.Contains(t, routes[prefix], net.ParseIP(stableNextHop))
+	require.NotContains(t, routes[prefix], net.ParseIP(initialNextHop))
 }
 
 func TestReconcileRoutesAddsMissingIPv4NextHop(t *testing.T) {
