@@ -30,6 +30,10 @@ on:
         description: JSON array of approved stable groups
         required: true
         type: string
+      controlledLabels:
+        description: Trusted persistent E2E labels
+        required: true
+        type: string
       full:
         description: Approve the complete x86 E2E suite
         required: true
@@ -656,9 +660,11 @@ jobs:
       dispatchGeneration: "0"
       requestKey: ${{ steps.request.outputs.requestKey }}
       requestedGroups: ${{ steps.request.outputs.requestedGroups }}
+      controlledLabels: ${{ steps.request.outputs.controlledLabels }}
       full: ${{ steps.request.outputs.full }}
       sourceApprovalGeneration: ${{ inputs.approvalGeneration }}
       sourceRequestedGroups: ${{ inputs.requestedGroups }}
+      sourceControlledLabels: ${{ inputs.controlledLabels }}
       sourceFull: ${{ inputs.full }}
       trustedExecution: "true"
       runAction: ${{ inputs.baseRefresh && 'base_refresh' || (inputs.recordIntent && 'approval' || 'reservation') }}
@@ -691,6 +697,7 @@ jobs:
           PR_NUMBER: ${{ inputs.prNumber }}
           RECORD_INTENT: ${{ inputs.recordIntent }}
           REQUESTED_GROUPS: ${{ inputs.requestedGroups }}
+          CONTROLLED_LABELS: ${{ inputs.controlledLabels }}
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
@@ -737,6 +744,7 @@ jobs:
               "approvalGeneration": int(os.environ["APPROVAL_GENERATION"]),
               "catalogRevision": catalogRevision,
               "requestedGroups": requestedGroups,
+              "controlledLabels": json.loads(os.environ["CONTROLLED_LABELS"]),
               "full": os.environ["FULL"] == "true",
           }
           pages = json.loads(Path("pull-request-comments.json").read_text())
@@ -816,6 +824,7 @@ jobs:
             echo "catalogRevision=$(jq -r '.catalogRevision' cumulative-request.json)"
             echo "requestKey=$(jq -r '.requestKey' cumulative-request.json)"
             echo "requestedGroups=$(jq -c '.requestedGroups' cumulative-request.json)"
+            echo "controlledLabels=$(jq -c '.controlledLabels // []' cumulative-request.json)"
             echo "full=$(jq -r '.full' cumulative-request.json)"
             requestKey=$(jq -r '.requestKey' cumulative-request.json)
             approvalGeneration=$(jq -r '.approvalGeneration' cumulative-request.json)
@@ -858,9 +867,11 @@ jobs:
       RUN_EVENT: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runEvent || needs.approval.outputs.runEvent }}
       RUN_REQUEST_KEY: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.requestKey || needs.approval.outputs.requestKey }}
       REQUESTED_GROUPS: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.requestedGroups || needs.approval.outputs.requestedGroups }}
+      CONTROLLED_LABELS: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.controlledLabels || needs.approval.outputs.controlledLabels }}
       FULL: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.full || needs.approval.outputs.full }}
       SOURCE_APPROVAL_GENERATION: ${{ needs.approval.outputs.sourceApprovalGeneration }}
       SOURCE_REQUESTED_GROUPS: ${{ needs.approval.outputs.sourceRequestedGroups }}
+      SOURCE_CONTROLLED_LABELS: ${{ needs.approval.outputs.sourceControlledLabels }}
       SOURCE_FULL: ${{ needs.approval.outputs.sourceFull }}
       RUN_URL: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runURL || needs.approval.outputs.runURL }}
       TRUSTED_REF: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.trustedRef || needs.approval.outputs.trustedRef }}
@@ -1535,6 +1546,7 @@ jobs:
               "approvalGeneration": int(os.environ["SOURCE_APPROVAL_GENERATION"]),
               "catalogRevision": os.environ["CATALOG_REVISION"],
               "requestedGroups": json.loads(os.environ["SOURCE_REQUESTED_GROUPS"]),
+              "controlledLabels": json.loads(os.environ["SOURCE_CONTROLLED_LABELS"]),
               "full": os.environ["SOURCE_FULL"] == "true",
           }
           print(e2eControl.renderApprovalIntent(request))
@@ -1552,6 +1564,7 @@ jobs:
               -f "inputs[approvalGeneration]=$SOURCE_APPROVAL_GENERATION" \
               -f "inputs[catalogRevision]=$CATALOG_REVISION" \
               -f "inputs[requestedGroups]=$SOURCE_REQUESTED_GROUPS" \
+              -f "inputs[controlledLabels]=$SOURCE_CONTROLLED_LABELS" \
               -f "inputs[full]=$SOURCE_FULL" \
               -f 'inputs[recordIntent]=true' \
               -f 'inputs[baseRefresh]=false'; then
@@ -1571,6 +1584,7 @@ jobs:
               "approvalGeneration": int(os.environ["APPROVAL_GENERATION"]),
               "catalogRevision": os.environ["CATALOG_REVISION"],
               "requestedGroups": json.loads(os.environ["REQUESTED_GROUPS"]),
+              "controlledLabels": json.loads(os.environ["CONTROLLED_LABELS"]),
               "full": os.environ["FULL"] == "true",
           }
           print(e2eControl.renderRequestMarker(request))
