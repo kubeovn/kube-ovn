@@ -150,7 +150,7 @@ func secretBytes(secret *corev1.Secret, key string) []byte {
 	return nil
 }
 
-func newWireGuardTestEnv(t *testing.T, kubeObjs []runtime.Object, ovnObjs []runtime.Object) *wireGuardTestEnv {
+func newWireGuardTestEnv(t *testing.T, kubeObjs, ovnObjs []runtime.Object) *wireGuardTestEnv {
 	t.Helper()
 	kubeClient := fake.NewSimpleClientset()
 	ovnClient := kubeovnfake.NewSimpleClientset()
@@ -235,8 +235,7 @@ func newWireGuardTestEnv(t *testing.T, kubeObjs []runtime.Object, ovnObjs []runt
 
 	require.Eventually(t, func() bool {
 		for _, obj := range kubeObjs {
-			switch o := obj.(type) {
-			case *corev1.Pod:
+			if o, ok := obj.(*corev1.Pod); ok {
 				if _, err := c.podsLister.Pods(o.Namespace).Get(o.Name); err != nil {
 					return false
 				}
