@@ -397,6 +397,8 @@ jobs:
   invalidate-base:
     name: Invalidate x86 E2E gates after a base update
     if: github.event_name == 'push'
+    outputs:
+      approvedPullRequests: ${{ steps.invalidate.outputs.approvedPullRequests }}
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -410,8 +412,10 @@ jobs:
           persist-credentials: false
 
       - name: Block fixed gates bound to the previous base revision
+        id: invalidate
         run: |
           set -euo pipefail
+          : > approved-pulls.txt
           catalogRevision=$(python3 - <<'PY'
           import json
           from pathlib import Path
@@ -449,6 +453,7 @@ jobs:
           print(json.dumps(request or {}))
           PY
             if [ "$(jq -r 'length' refresh-request.json)" -gt 0 ]; then
+              printf '%s\n' "$prNumber" >> approved-pulls.txt
               refreshHeadSHA=$(jq -r '.headSHA' refresh-request.json)
               refreshBaseSHA=$(jq -r '.baseSHA' refresh-request.json)
               refreshApprovalGeneration=$(jq -r '.approvalGeneration' refresh-request.json)
@@ -485,6 +490,10 @@ jobs:
                 -f 'inputs[baseRefresh]=true'
             fi
           done < open-pulls.tsv
+          approvedPullRequests=$(jq -Rsc \
+            'split("\n") | map(select(length > 0) | tonumber) | unique' \
+            approved-pulls.txt)
+          echo "approvedPullRequests=$approvedPullRequests" >> "$GITHUB_OUTPUT"
 
   dispatch:
     name: Validate and record x86 E2E commands
@@ -948,6 +957,7 @@ jobs:
     needs:
       - dispatch
       - automatic
+      - invalidate-base
     if: >-
       always() &&
       (
@@ -964,6 +974,11 @@ jobs:
           github.event_name == 'pull_request_target' &&
           needs.automatic.result == 'success' &&
           needs.automatic.outputs.durableApproval == 'true'
+        ) ||
+        (
+          github.event_name == 'push' &&
+          needs.invalidate-base.result == 'success' &&
+          needs.invalidate-base.outputs.approvedPullRequests != '[]'
         )
       )
     permissions:
@@ -973,12 +988,16 @@ jobs:
       pull-requests: write
       issues: write
     concurrency:
-      group: x86-e2e-reduce-${{ inputs.prNumber || github.event.issue.number || github.event.pull_request.number }}-${{ inputs.approvalGeneration || github.run_id }}
+      group: x86-e2e-reduce-${{ matrix.prNumber }}-${{ inputs.approvalGeneration || github.run_id }}
       cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        prNumber: ${{ fromJSON(github.event_name == 'push' && needs.invalidate-base.outputs.approvedPullRequests || format('[{0}]', inputs.prNumber || github.event.issue.number || github.event.pull_request.number)) }}
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
-      PR_NUMBER: ${{ inputs.prNumber || github.event.issue.number || github.event.pull_request.number }}
+      PR_NUMBER: ${{ matrix.prNumber }}
       PYTHONPATH: hack
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
