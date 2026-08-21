@@ -512,15 +512,10 @@ def renderSummary(plan, changedPaths):
         lines.append(f"- Full-suite reason: {safeSummaryText(plan['fullReason'])}")
     if plan["approvalRequired"]:
         commandGroups = safeSummaryText(",".join(plan["recommendedGroups"]))
-        binding = ""
-        if plan.get("requestNonce"):
-            binding = (
-                f" --head {plan['headSHA']} --nonce {plan['requestNonce']}"
-            )
         lines.extend(
             [
-                f"- Waiting for: `/test e2e{binding}`",
-                f"- Alternative: `/test e2e {commandGroups}{binding}`",
+                "- Waiting for: `/test e2e`",
+                f"- Alternative: `/test e2e {commandGroups}`",
             ]
         )
     if plan["reasons"]:

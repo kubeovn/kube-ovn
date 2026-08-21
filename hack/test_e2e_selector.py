@@ -521,15 +521,8 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertIn("Automatic coverage: mandatory smoke &#40;3 runner jobs&#41;", summary)
         self.assertIn("Recommended deferred groups: policy", summary)
         self.assertIn("Approval required: `yes`", summary)
-        nonce = e2eSelector.requestNonce(
-            7231,
-            "a" * 40,
-            "b" * 40,
-            plan["catalogRevision"],
-        )
-        binding = f"--head {'a' * 40} --nonce {nonce}"
-        self.assertIn(f"Waiting for: `/test e2e {binding}`", summary)
-        self.assertIn(f"Alternative: `/test e2e policy {binding}`", summary)
+        self.assertIn("Waiting for: `/test e2e`", summary)
+        self.assertIn("Alternative: `/test e2e policy`", summary)
 
     def testCatalogFailureEmitsFullFallbackPlan(self):
         with tempfile.TemporaryDirectory() as directory:
