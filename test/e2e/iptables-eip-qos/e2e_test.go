@@ -624,6 +624,72 @@ func expectTcRateOnNatGw(f *framework.Framework, natgwName string, ratesMbps ...
 	}
 }
 
+// natGwQoSCasesLegacy validates QoS on versions whose nat-gateway image still uses tc police
+// filters. Those versions do not create HTB classes, so bandwidth measurements are used for the
+// pod-recreation check instead of inspecting tc class state.
+func natGwQoSCasesLegacy(f *framework.Framework,
+	qosPod, noQosPod *corev1.Pod,
+	qosEIP, noQosEIP *apiv1.IptablesEIP,
+	vpcQosParams *qosParams, natgwQoSPolicyName string,
+) {
+	ginkgo.GinkgoHelper()
+
+	vpcNatGwClient := f.VpcNatGatewayClient()
+	eipClient := f.IptablesEIPClient()
+	qosPolicyClient := f.QoSPolicyClient()
+	natgwName := vpcQosParams.qosNatGwName
+
+	ginkgo.By("Check legacy qos " + natgwQoSPolicyName + " is limited to " + strconv.Itoa(defaultNicLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, defaultNicLimit)
+
+	specificQoSPolicyName := "specific-nic-qos-policy-" + framework.RandomSuffix()
+	ginkgo.By("Creating legacy qos policy " + specificQoSPolicyName)
+	rules := getNicDefaultQoSPolicy(defaultNicLimit)
+	rules = append(rules, getSpecialQoSRule(specificIPLimit, noQosEIP.Status.IP)...)
+	specificQoSPolicy := framework.MakeQoSPolicy(specificQoSPolicyName, true, apiv1.QoSBindingTypeNatGw, rules)
+	_ = qosPolicyClient.CreateSync(specificQoSPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up legacy natgw qos policy " + specificQoSPolicyName)
+		qosPolicyClient.DeleteSync(specificQoSPolicyName)
+	})
+
+	ginkgo.By("Change natgw " + natgwName + " to legacy qos policy " + specificQoSPolicyName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, specificQoSPolicyName)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Unbinding legacy qos policy from natgw " + natgwName)
+		_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
+	})
+
+	ginkgo.By("Check legacy qos priority 2 is limited to " + strconv.Itoa(specificIPLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, specificIPLimit)
+
+	eipQoSPolicyName := "eip-qos-policy-" + framework.RandomSuffix()
+	ginkgo.By("Creating legacy eip qos policy " + eipQoSPolicyName)
+	eipQoSPolicy := framework.MakeQoSPolicy(eipQoSPolicyName, false, apiv1.QoSBindingTypeEIP, getEIPQoSRule(priorityEIPLimit))
+	_ = qosPolicyClient.CreateSync(eipQoSPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up legacy eip qos policy " + eipQoSPolicyName)
+		qosPolicyClient.DeleteSync(eipQoSPolicyName)
+	})
+
+	ginkgo.By("Bind legacy eip qos policy to " + vpcQosParams.qosEIPName)
+	_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, eipQoSPolicyName)
+	ginkgo.By("Check legacy qos priority 1 is limited to " + strconv.Itoa(priorityEIPLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, priorityEIPLimit)
+
+	ginkgo.By("Unbind legacy eip qos policy from " + vpcQosParams.qosEIPName)
+	_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, "")
+	ginkgo.By("Check legacy qos falls back to priority 2 at " + strconv.Itoa(specificIPLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, specificIPLimit)
+
+	restartNatGwPods(f, natgwName)
+	ginkgo.By("Check legacy qos is restored after natgw pod recreation")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, specificIPLimit)
+
+	ginkgo.By("Remove legacy qos policy from natgw " + natgwName)
+	_ = vpcNatGwClient.PatchQoSPolicySync(natgwName, "")
+}
+
 // natGwQoSCases covers the NAT gateway scoped QoS:
 //   - the policy bound at NAT gateway creation time takes effect (default nic rules, priority 3)
 //   - the tc rules are restored after the NAT gateway pod is recreated
@@ -639,6 +705,11 @@ func natGwQoSCases(f *framework.Framework,
 	vpcQosParams *qosParams, natgwQoSPolicyName string,
 ) {
 	ginkgo.GinkgoHelper()
+
+	if f.VersionPriorTo(1, 16) {
+		natGwQoSCasesLegacy(f, qosPod, noQosPod, qosEIP, noQosEIP, vpcQosParams, natgwQoSPolicyName)
+		return
+	}
 
 	vpcNatGwClient := f.VpcNatGatewayClient()
 	eipClient := f.IptablesEIPClient()
@@ -736,6 +807,50 @@ func updateEIPQoSPolicyRate(f *framework.Framework, qosPolicyName string, limit 
 	updateEIPQoSPolicyRules(f, qosPolicyName, getEIPQoSRule(limit))
 }
 
+// eipQoSCasesLegacy covers the pre-HTB EIP path. The legacy image supports bandwidth updates and
+// QoS replay, but exposes police filters rather than HTB classes, so the class/rule-set assertions
+// used by the modern path are intentionally replaced with iperf checks.
+func eipQoSCasesLegacy(f *framework.Framework,
+	qosPod, noQosPod *corev1.Pod,
+	qosEIP, noQosEIP *apiv1.IptablesEIP,
+	vpcQosParams *qosParams, eipQoSPolicyName string,
+) {
+	ginkgo.GinkgoHelper()
+
+	eipClient := f.IptablesEIPClient()
+	qosPolicyClient := f.QoSPolicyClient()
+	natgwName := vpcQosParams.qosNatGwName
+
+	ginkgo.By("Check legacy eip qos " + eipQoSPolicyName + " is limited to " + strconv.Itoa(eipLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, eipLimit)
+
+	updateEIPQoSPolicyRate(f, eipQoSPolicyName, updatedEIPLimit)
+	ginkgo.By("Check legacy eip qos is changed to " + strconv.Itoa(updatedEIPLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, updatedEIPLimit)
+
+	restartNatGwPods(f, natgwName)
+	ginkgo.By("Check legacy eip qos is restored after natgw pod recreation")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, updatedEIPLimit)
+
+	legacyPolicyName := "legacy-new-eip-qos-policy-" + framework.RandomSuffix()
+	ginkgo.By("Creating legacy replacement eip qos policy " + legacyPolicyName)
+	legacyPolicy := framework.MakeQoSPolicy(legacyPolicyName, false, apiv1.QoSBindingTypeEIP, getEIPQoSRule(eipLimit))
+	_ = qosPolicyClient.CreateSync(legacyPolicy)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Cleaning up legacy replacement eip qos policy " + legacyPolicyName)
+		qosPolicyClient.DeleteSync(legacyPolicyName)
+	})
+
+	ginkgo.By("Switching eip to legacy replacement qos policy " + legacyPolicyName)
+	_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, legacyPolicyName)
+	ginkgo.DeferCleanup(func() {
+		ginkgo.By("Unbinding legacy replacement qos policy from eip " + vpcQosParams.qosEIPName)
+		_ = eipClient.PatchQoSPolicySync(vpcQosParams.qosEIPName, "")
+	})
+	ginkgo.By("Check legacy replacement eip qos is limited to " + strconv.Itoa(eipLimit) + "Mbps")
+	checkQos(f, qosPod, noQosPod, qosEIP, noQosEIP, eipLimit)
+}
+
 // eipQoSCases covers the EIP scoped QoS:
 //   - the policy bound at EIP creation time takes effect
 //   - hot updating the rules of a bound policy takes effect, both when the rate is raised from
@@ -755,6 +870,11 @@ func eipQoSCases(f *framework.Framework,
 	vpcQosParams *qosParams, eipQoSPolicyName string,
 ) {
 	ginkgo.GinkgoHelper()
+
+	if f.VersionPriorTo(1, 16) {
+		eipQoSCasesLegacy(f, qosPod, noQosPod, qosEIP, noQosEIP, vpcQosParams, eipQoSPolicyName)
+		return
+	}
 
 	podClient := f.PodClient()
 	eipClient := f.IptablesEIPClient()
