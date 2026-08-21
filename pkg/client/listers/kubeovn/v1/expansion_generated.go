@@ -118,6 +118,10 @@ type VpcEgressGatewayListerExpansion interface{}
 // VpcEgressGatewayNamespaceLister.
 type VpcEgressGatewayNamespaceListerExpansion interface{}
 
+// VpcIPsecGatewayListerExpansion allows custom methods to be added to
+// VpcIPsecGatewayLister.
+type VpcIPsecGatewayListerExpansion interface{}
+
 // VpcNatGatewayListerExpansion allows custom methods to be added to
 // VpcNatGatewayLister.
 type VpcNatGatewayListerExpansion interface{}

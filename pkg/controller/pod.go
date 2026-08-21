@@ -883,6 +883,13 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		c.initVpcNatGatewayQueue.Add(vpcGwName)
 	}
 
+	isVpcIPsecGw, ipsecGwName := c.checkIsPodVpcIPsecGw(pod)
+	if isVpcIPsecGw {
+		c.enqueueAddOrUpdateVpcIPsecGwByName(ipsecGwName, "ipsecgw-pod-update")
+		klog.Infof("init vpc ipsec gateway pod %s/%s with name %s", namespace, name, ipsecGwName)
+		c.initVpcIPsecGatewayQueue.Add(ipsecGwName)
+	}
+
 	return pod, nil
 }
 
@@ -3250,6 +3257,23 @@ func (c *Controller) checkIsPodVpcNatGw(pod *v1.Pod) (bool, string) {
 		klog.Infof("pod %s is vpc nat gateway %s", pod.Name, vpcGwName)
 	}
 	return isVpcNatGw, vpcGwName
+}
+
+// Check if pod is a VPC IPsec gateway using pod annotations
+func (c *Controller) checkIsPodVpcIPsecGw(pod *v1.Pod) (bool, string) {
+	if pod == nil || pod.Annotations == nil {
+		return false, ""
+	}
+	gwName, ok := pod.Annotations[util.VpcIPsecGatewayAnnotation]
+	if !ok {
+		return false, ""
+	}
+	if gwName == "" {
+		klog.Errorf("pod %s is vpc ipsec gateway but name is empty", pod.Name)
+		return false, ""
+	}
+	klog.Infof("pod %s is vpc ipsec gateway %s", pod.Name, gwName)
+	return true, gwName
 }
 
 func natGwNameFromStatefulSetOwner(pod *v1.Pod) string {

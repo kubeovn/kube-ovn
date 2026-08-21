@@ -1,0 +1,22 @@
+{{- if include "kubeovn.renderDataPlane" . }}
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-ipsec-config
+  namespace: {{ .Values.namespace }}
+  annotations:
+    kubernetes.io/description: |
+      kube-ovn vpc-ipsec common config
+data:
+  image: {{ .Values.global.registry.address }}/{{ .Values.global.images.ipsecgateway.repository }}:{{ or .Values.global.images.ipsecgateway.tag .Values.global.images.kubeovn.tag }}
+
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: ovn-vpc-ipsec-gw-config
+  namespace: {{ .Values.namespace }}
+data:
+  enable-vpc-ipsec-gw: "{{ .Values.func.ENABLE_IPSEC_GW }}"
+
+{{- end }}
