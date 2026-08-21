@@ -44,24 +44,11 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 		TableType: api.TableType_TABLE_TYPE_GLOBAL,
 		Family:    apiutil.ToFamily(&api.Family{Afi: afi, Safi: api.Family_SAFI_UNICAST}),
 	}
+	currentNextHops := c.currentNextHops(afi)
 
 	// Anonymous function that stores the prefixes we are announcing for this AFI
 	existingPrefixes := set.New[string]()
 	fn := func(prefix bgp.NLRI, paths []*apiutil.Path) {
-		currentPaths, err := c.getPathRequest(prefix.String())
-		if err != nil {
-			klog.Errorf("failed to derive current next hops for prefix %s: %v", prefix, err)
-			return
-		}
-		currentNextHops := make(set.Set[string])
-		for _, pathGroup := range currentPaths {
-			for _, path := range pathGroup {
-				if nextHop := getNextHopFromPathAttributes(path.Attrs); nextHop != nil {
-					currentNextHops.Insert(nextHop.String())
-				}
-			}
-		}
-
 		existingNextHops := make(set.Set[string])
 		for _, path := range paths {
 			nextHop := getNextHopFromPathAttributes(path.Attrs)
@@ -87,6 +74,21 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 	// Announce routes we should be announcing and withdraw the ones that are no longer valid
 	c.announceAndWithdraw(expectedPrefixes[afi], existingPrefixes)
 	return nil
+}
+
+func (c *Controller) currentNextHops(afi api.Family_Afi) set.Set[string] {
+	neighborAddresses := c.config.NeighborAddresses
+	if c.config.ExtendedNexthop {
+		neighborAddresses = append(append([]net.IP{}, neighborAddresses...), c.config.NeighborIPv6Addresses...)
+	} else if afi == api.Family_AFI_IP6 {
+		neighborAddresses = c.config.NeighborIPv6Addresses
+	}
+
+	nextHops := make(set.Set[string])
+	for _, neighborAddress := range neighborAddresses {
+		nextHops.Insert(c.getNextHopAttribute(neighborAddress).String())
+	}
+	return nextHops
 }
 
 // announceAndWithdraw commands the BGP speaker to start announcing new routes and to withdraw others
