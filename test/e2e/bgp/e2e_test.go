@@ -23,13 +23,15 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
+	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 )
 
 const (
-	frrRouterContainer  = "clab-bgp-router"
-	workerNode          = "kube-ovn-worker"
-	controlPlaneAddress = "10.0.1.2"
-	workerAddress       = "10.0.1.3"
+	frrRouterContainer   = "clab-bgp-router"
+	workerNode           = "kube-ovn-worker"
+	controlPlaneAddress  = "10.0.1.2"
+	workerAddress        = "10.0.1.3"
+	updatedWorkerAddress = "10.0.1.4"
 )
 
 type frrSummary struct {
@@ -62,6 +64,14 @@ func runFRR(command string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to run FRR command %q: %w: %s", command, err, output)
 	}
 	return output, nil
+}
+
+func runNodeCommand(node string, args ...string) error {
+	output, stderr, err := docker.Exec(node, nil, args...)
+	if err != nil {
+		return fmt.Errorf("failed to execute command in %s: %w: stdout=%s stderr=%s", node, err, output, stderr)
+	}
+	return nil
 }
 
 func bgpPeersEstablished() (bool, error) {
@@ -246,6 +256,35 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 		ginkgo.By("Waiting for the Pod route to be withdrawn")
 		waitForRouteWithdrawal(prefix)
 		waitForBGPPeers()
+	})
+
+	ginkgo.It("should refresh a Pod route when the node source address changes", func() {
+		podName := "source-refresh-" + framework.RandomSuffix()
+		_, prefix := createPodOnNode(f, podName, workerNode)
+		ginkgo.DeferCleanup(func() { f.PodClient().DeleteSync(podName) })
+
+		ginkgo.By("Waiting for the worker speaker to advertise the Pod route with its original source address")
+		waitForRoutePaths(prefix, validNodeRoutePath(workerAddress))
+
+		ginkgo.By("Changing the worker route source address without restarting the speaker")
+		framework.ExpectNoError(runNodeCommand(workerNode, "ip", "addr", "add", updatedWorkerAddress+"/24", "dev", "net1"))
+		framework.ExpectNoError(runNodeCommand(workerNode, "ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", updatedWorkerAddress))
+		ginkgo.DeferCleanup(func() {
+			if err := runNodeCommand(workerNode, "ip", "route", "del", "10.0.1.1/32"); err != nil {
+				framework.Logf("failed to remove temporary worker route: %v", err)
+			}
+			if err := runNodeCommand(workerNode, "ip", "addr", "del", updatedWorkerAddress+"/24", "dev", "net1"); err != nil {
+				framework.Logf("failed to remove temporary worker address: %v", err)
+			}
+		})
+
+		ginkgo.By("Triggering a speaker reconcile after the route source change")
+		triggerName := "source-refresh-trigger-" + framework.RandomSuffix()
+		createPodOnNode(f, triggerName, workerNode)
+		ginkgo.DeferCleanup(func() { f.PodClient().DeleteSync(triggerName) })
+
+		ginkgo.By("Waiting for the original Pod route to use the refreshed source address")
+		waitForRoutePaths(prefix, validNodeRoutePathWithNextHop(workerAddress, updatedWorkerAddress))
 	})
 
 	ginkgo.It("should reconcile cluster and local policies without restarting speakers", func() {
