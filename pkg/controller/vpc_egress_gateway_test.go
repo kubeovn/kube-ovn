@@ -190,7 +190,7 @@ func newVpcEgressGatewayDeleteController(t *testing.T, gw *kubeovnv1.VpcEgressGa
 	mockOvnClient.EXPECT().FindBFD(gomock.Any()).Return(nil, nil)
 	mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(util.DefaultVpc, -1, gomock.Any()).Return(nil)
 	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Return(nil)
-	mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).Times(2)
+	mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).Times(4)
 	recorder := record.NewFakeRecorder(2)
 
 	c := &Controller{
@@ -413,6 +413,9 @@ func newVegOVNRouteFixture(t *testing.T) *vegOVNRouteFixture {
 			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "veg"},
 			Spec: kubeovnv1.VpcEgressGatewaySpec{
 				TrafficPolicy: kubeovnv1.TrafficPolicyLocal,
+				Selectors: []kubeovnv1.VpcEgressGatewaySelector{{
+					PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"test": "selected"}},
+				}},
 				BFD: kubeovnv1.VpcEgressGatewayBFDConfig{
 					Enabled:    true,
 					MinTX:      100,
@@ -457,6 +460,7 @@ func newVegOVNRouteFixture(t *testing.T) *vegOVNRouteFixture {
 func (f *vegOVNRouteFixture) expectResources() {
 	f.fc.mockOvnClient.EXPECT().CreatePortGroup(f.pgName, f.externalIDs).Return(nil)
 	f.fc.mockOvnClient.EXPECT().PortGroupSetPorts(f.pgName, gomock.Any()).Return(nil)
+	f.fc.mockOvnClient.EXPECT().DeleteAddressSet(vegPortGroupAddressSetName("default/veg", 4)).Return(nil)
 	f.fc.mockOvnClient.EXPECT().CreateAddressSet(f.asName, f.externalIDs).Return(nil)
 	f.fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(f.asName).Return(nil)
 }
@@ -686,4 +690,136 @@ func TestCollectVpcEgressGatewayWorkloadStatusRetainsNetworkedNotReadyPod(t *tes
 	require.Equal(t, map[string]set.Set[string]{"node-1": set.New("10.16.1.10"), "node-2": set.New("10.16.1.11")}, ipv4)
 	require.Empty(t, ipv6)
 	require.Len(t, messages, 1)
+}
+
+func newVpcEgressGatewayWorkloadTestController(t *testing.T, ippools []*kubeovnv1.IPPool) (*Controller, *kubeovnv1.Subnet, *kubeovnv1.Subnet) {
+	t.Helper()
+	intSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "int-subnet"},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.16.0.0/16",
+			Gateway:   "10.16.0.1",
+		},
+	}
+	extSubnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "ext-subnet"},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "172.20.0.0/16",
+			Gateway:   "172.20.0.1",
+			Provider:  "eth1.default",
+		},
+	}
+	nad := &nadv1.NetworkAttachmentDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "eth1", Namespace: "default"},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:            []*kubeovnv1.Subnet{intSubnet, extSubnet},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{nad},
+		IPPools:            ippools,
+	})
+	require.NoError(t, err)
+	return fc.fakeController, intSubnet, extSubnet
+}
+
+func newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet *kubeovnv1.Subnet) *kubeovnv1.VpcEgressGateway {
+	return &kubeovnv1.VpcEgressGateway{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "veg"},
+		Spec: kubeovnv1.VpcEgressGatewaySpec{
+			Image:          "test-image",
+			InternalSubnet: intSubnet.Name,
+			ExternalSubnet: extSubnet.Name,
+		},
+	}
+}
+
+func TestReconcileVpcEgressGatewayWorkloadIPPoolAnnotations(t *testing.T) {
+	ippools := []*kubeovnv1.IPPool{
+		{ObjectMeta: metav1.ObjectMeta{Name: "int-pool"}, Spec: kubeovnv1.IPPoolSpec{Subnet: "int-subnet"}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "ext-pool"}, Spec: kubeovnv1.IPPoolSpec{Subnet: "ext-subnet"}},
+	}
+	c, intSubnet, extSubnet := newVpcEgressGatewayWorkloadTestController(t, ippools)
+
+	gw := newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet)
+	gw.Spec.InternalIPPool = "int-pool"
+	gw.Spec.ExternalIPPool = "ext-pool"
+
+	_, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+	require.NoError(t, err)
+	require.Equal(t, "int-pool", deploy.Spec.Template.Annotations[util.IPPoolAnnotation])
+	require.Equal(t, "ext-pool", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)])
+}
+
+func TestReconcileVpcEgressGatewayWorkloadIPPoolSubnetMismatch(t *testing.T) {
+	tests := []struct {
+		name    string
+		pool    *kubeovnv1.IPPool
+		setSpec func(spec *kubeovnv1.VpcEgressGatewaySpec, poolName string)
+		wantErr string
+	}{
+		{
+			name: "internal pool subnet mismatch",
+			pool: &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: "int-pool"}, Spec: kubeovnv1.IPPoolSpec{Subnet: "other-subnet"}},
+			setSpec: func(spec *kubeovnv1.VpcEgressGatewaySpec, poolName string) {
+				spec.InternalIPPool = poolName
+			},
+			wantErr: "does not match internal subnet",
+		},
+		{
+			name: "external pool subnet mismatch",
+			pool: &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: "ext-pool"}, Spec: kubeovnv1.IPPoolSpec{Subnet: "other-subnet"}},
+			setSpec: func(spec *kubeovnv1.VpcEgressGatewaySpec, poolName string) {
+				spec.ExternalIPPool = poolName
+			},
+			wantErr: "does not match external subnet",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, intSubnet, extSubnet := newVpcEgressGatewayWorkloadTestController(t, []*kubeovnv1.IPPool{tt.pool})
+
+			gw := newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet)
+			tt.setSpec(&gw.Spec, tt.pool.Name)
+
+			_, _, _, _, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestReconcileVpcEgressGatewayWorkloadMutuallyExclusiveIPFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		setSpec func(spec *kubeovnv1.VpcEgressGatewaySpec)
+		wantErr string
+	}{
+		{
+			name: "internal IPs and pool set",
+			setSpec: func(spec *kubeovnv1.VpcEgressGatewaySpec) {
+				spec.InternalIPs = []string{"10.16.0.10"}
+				spec.InternalIPPool = "int-pool"
+			},
+			wantErr: "internalIPs and internalIPPool are mutually exclusive",
+		},
+		{
+			name: "external IPs and pool set",
+			setSpec: func(spec *kubeovnv1.VpcEgressGatewaySpec) {
+				spec.ExternalIPs = []string{"172.20.0.10"}
+				spec.ExternalIPPool = "ext-pool"
+			},
+			wantErr: "externalIPs and externalIPPool are mutually exclusive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Controller{config: &Configuration{}}
+			gw := &kubeovnv1.VpcEgressGateway{Spec: kubeovnv1.VpcEgressGatewaySpec{Image: "test-image"}}
+			tt.setSpec(&gw.Spec)
+
+			_, _, _, _, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
 }

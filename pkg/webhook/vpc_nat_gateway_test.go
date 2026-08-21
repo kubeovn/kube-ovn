@@ -34,15 +34,15 @@ func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Obje
 
 	switch t := obj.(type) {
 	case *ovnv1.Vpc:
-		*t = *(o.(*ovnv1.Vpc))
+		*t = *o.(*ovnv1.Vpc)
 	case *ovnv1.Subnet:
-		*t = *(o.(*ovnv1.Subnet))
+		*t = *o.(*ovnv1.Subnet)
 	case *corev1.ConfigMap:
-		*t = *(o.(*corev1.ConfigMap))
+		*t = *o.(*corev1.ConfigMap)
 	case *ovnv1.QoSPolicy:
-		*t = *(o.(*ovnv1.QoSPolicy))
+		*t = *o.(*ovnv1.QoSPolicy)
 	case *ovnv1.IptablesEIP:
-		*t = *(o.(*ovnv1.IptablesEIP))
+		*t = *o.(*ovnv1.IptablesEIP)
 	default:
 		return fmt.Errorf("unsupported type in mock cache: %T", obj)
 	}

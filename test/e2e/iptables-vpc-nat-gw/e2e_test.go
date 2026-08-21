@@ -172,7 +172,8 @@ func setupVpcNatGwTestEnvironment(
 	if !skipNADSetup {
 		setupNetworkAttachmentDefinition(
 			f, dockerExtNetNetwork, attachNetClient,
-			subnetClient, externalNetworkName, nicName, provider, dockerExtNetName)
+			subnetClient, externalNetworkName, nicName, provider, dockerExtNetName,
+		)
 	}
 
 	ginkgo.By("Getting config map " + vpcNatGWConfigMapName)
@@ -542,7 +543,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		setupNetworkAttachmentDefinition(
 			f, dockerExtNet1Network, attachNetClient,
 			subnetClient, networkAttachDefName, net1NicName,
-			externalSubnetProvider, dockerExtNet1Name)
+			externalSubnetProvider, dockerExtNet1Name,
+		)
 
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Waiting for all EIPs using subnet " + networkAttachDefName + " to be deleted")

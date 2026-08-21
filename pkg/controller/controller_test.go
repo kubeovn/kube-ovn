@@ -137,7 +137,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	nadClient := nadfake.NewSimpleClientset()
 	for _, nad := range opts.NetworkAttachments {
 		_, err := nadClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(nad.Namespace).Create(
-			context.Background(), nad, metav1.CreateOptions{})
+			context.Background(), nad, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -147,98 +148,112 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeovnClient := kubeovnfake.NewSimpleClientset()
 	for _, subnet := range opts.Subnets {
 		_, err := kubeovnClient.KubeovnV1().Subnets().Create(
-			context.Background(), subnet, metav1.CreateOptions{})
+			context.Background(), subnet, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, ippool := range opts.IPPools {
 		_, err := kubeovnClient.KubeovnV1().IPPools().Create(
-			context.Background(), ippool, metav1.CreateOptions{})
+			context.Background(), ippool, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, gw := range opts.VpcNatGateways {
 		_, err := kubeovnClient.KubeovnV1().VpcNatGateways().Create(
-			context.Background(), gw, metav1.CreateOptions{})
+			context.Background(), gw, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, ip := range opts.IPs {
 		_, err := kubeovnClient.KubeovnV1().IPs().Create(
-			context.Background(), ip, metav1.CreateOptions{})
+			context.Background(), ip, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, vlan := range opts.Vlans {
 		_, err := kubeovnClient.KubeovnV1().Vlans().Create(
-			context.Background(), vlan, metav1.CreateOptions{})
+			context.Background(), vlan, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, pn := range opts.ProviderNetworks {
 		_, err := kubeovnClient.KubeovnV1().ProviderNetworks().Create(
-			context.Background(), pn, metav1.CreateOptions{})
+			context.Background(), pn, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, vpc := range opts.Vpcs {
 		_, err := kubeovnClient.KubeovnV1().Vpcs().Create(
-			context.Background(), vpc, metav1.CreateOptions{})
+			context.Background(), vpc, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, rlr := range opts.RouterLBRules {
 		_, err := kubeovnClient.KubeovnV1().RouterLBRules().Create(
-			context.Background(), rlr, metav1.CreateOptions{})
+			context.Background(), rlr, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, eip := range opts.OvnEips {
 		_, err := kubeovnClient.KubeovnV1().OvnEips().Create(
-			context.Background(), eip, metav1.CreateOptions{})
+			context.Background(), eip, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, dnat := range opts.OvnDnatRules {
 		_, err := kubeovnClient.KubeovnV1().OvnDnatRules().Create(
-			context.Background(), dnat, metav1.CreateOptions{})
+			context.Background(), dnat, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, fip := range opts.OvnFipRules {
 		_, err := kubeovnClient.KubeovnV1().OvnFips().Create(
-			context.Background(), fip, metav1.CreateOptions{})
+			context.Background(), fip, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, snat := range opts.OvnSnatRules {
 		_, err := kubeovnClient.KubeovnV1().OvnSnatRules().Create(
-			context.Background(), snat, metav1.CreateOptions{})
+			context.Background(), snat, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, qos := range opts.QoSPolicies {
 		_, err := kubeovnClient.KubeovnV1().QoSPolicies().Create(
-			context.Background(), qos, metav1.CreateOptions{})
+			context.Background(), qos, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, eip := range opts.IptablesEips {
 		_, err := kubeovnClient.KubeovnV1().IptablesEIPs().Create(
-			context.Background(), eip, metav1.CreateOptions{})
+			context.Background(), eip, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}

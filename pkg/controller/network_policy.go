@@ -132,7 +132,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	// TODO: ovn acl doesn't support address_set name with '-', now we replace '-' by '.'.
 	// This may cause conflict if two np with name test-np and test.np. Maybe hash is a better solution,
 	// but we do not want to lost the readability now.
-	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, np.Namespace), "-", ".")
+	pgName := npPortGroupName(np.Namespace, npName)
 	ingressAllowAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.ingress.allow", npName, np.Namespace), "-", ".")
 	ingressExceptAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.ingress.except", npName, np.Namespace), "-", ".")
 	egressAllowAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.allow", npName, np.Namespace), "-", ".")
@@ -525,37 +525,43 @@ func (c *Controller) handleDeleteNp(key string) error {
 		npName = "np" + name
 	}
 
-	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, namespace), "-", ".")
-	ingressMeterName := fmt.Sprintf("%s_to-lport_meter", pgName)
-	egressMeterName := fmt.Sprintf("%s_from-lport_meter", pgName)
-
-	if err := c.OVNNbClient.DeleteMeter(ingressMeterName); err != nil {
-		klog.Errorf("delete ingress meter %s for np %s: %v", ingressMeterName, key, err)
+	pgName := npPortGroupName(namespace, npName)
+	var firstErr error
+	for _, meterName := range networkPolicyMeterNames(pgName) {
+		if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+			klog.Errorf("delete meter %s for np %s: %v", meterName, key, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 
-	if err := c.OVNNbClient.DeleteMeter(egressMeterName); err != nil {
-		klog.Errorf("delete egress meter %s for np %s: %v", egressMeterName, key, err)
-	}
-
-	if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("delete np %s port group: %v", key, err)
+		if firstErr == nil {
+			firstErr = err
+		}
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "ingress"),
 	}); err != nil {
 		klog.Errorf("delete np %s ingress address set: %v", key, err)
-		return err
+		if firstErr == nil {
+			firstErr = err
+		}
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "egress"),
 	}); err != nil {
 		klog.Errorf("delete np %s egress address set: %v", key, err)
-		return err
+		if firstErr == nil {
+			firstErr = err
+		}
 	}
 
-	return nil
+	return firstErr
 }
 
 func parsePolicyFor(np *netv1.NetworkPolicy) set.Set[string] {
@@ -868,4 +874,15 @@ func parseACLLogRate(annotations map[string]string) int {
 		return 0
 	}
 	return rate
+}
+
+func npPortGroupName(namespace, npName string) string {
+	return strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, namespace), "-", ".")
+}
+
+func networkPolicyMeterNames(pgName string) []string {
+	return []string{
+		fmt.Sprintf("%s_to-lport_meter", pgName),
+		fmt.Sprintf("%s_from-lport_meter", pgName),
+	}
 }

@@ -701,6 +701,8 @@ kind-install-bgp: kind-install
 		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
 		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
 		kubectl apply -f -
+	kubectl -n kube-system patch ds kube-ovn-speaker --type=json \
+		-p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--announce-cluster-ip=true"}]'
 	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
 	docker exec clab-bgp-router vtysh -c "show ip route bgp"
 
@@ -860,7 +862,9 @@ kind-clean-bgp-ha:
 
 .PHONY: kind-ghcr-pull
 kind-ghcr-pull:
-	@echo $${GHCR_TOKEN} | docker login ghcr.io -u github-actions --password-stdin
+	@if [ -n "$${GHCR_TOKEN:-}" ]; then \
+		printf '%s' "$${GHCR_TOKEN}" | docker login ghcr.io -u github-actions --password-stdin; \
+	fi
 	docker pull ghcr.io/kubeovn/kindest-node:$(K8S_VERSION)
 	docker tag ghcr.io/kubeovn/kindest-node:$(K8S_VERSION) kindest/node:$(K8S_VERSION)
 

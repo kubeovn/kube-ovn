@@ -512,6 +512,14 @@ func (suite *OvnClientTestSuite) Test_NewGatewayChassis() {
 	suite.testNewGatewayChassis()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteGatewayChassises() {
+	suite.testDeleteGatewayChassises()
+}
+
+func (suite *OvnClientTestSuite) Test_ReconcileGatewayChassises() {
+	suite.testReconcileGatewayChassises()
+}
+
 /* ha_chassis_group unit test */
 func (suite *OvnClientTestSuite) Test_CreateHAChassisGroup() {
 	suite.testCreateHAChassisGroup()
