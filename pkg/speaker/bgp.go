@@ -72,7 +72,7 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 				existingNextHops.Insert(nextHop.String())
 			}
 		}
-		if existingNextHops.Len() > 0 && existingNextHops.Difference(currentNextHops).Len() == 0 {
+		if existingNextHops.Equal(currentNextHops) {
 			existingPrefixes.Insert(prefix.String())
 		}
 	}
