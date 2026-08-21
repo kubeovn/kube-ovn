@@ -37,6 +37,12 @@ NODE_LOCAL_DNS_IP=${NODE_LOCAL_DNS_IP:-}
 # comma-separated list of destination IP CIDRs that should skip conntrack processing
 SKIP_CONNTRACK_DST_CIDRS=${SKIP_CONNTRACK_DST_CIDRS:-}
 ENABLE_IC=${ENABLE_IC:-$(kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false)}
+ENABLE_HARDWARE_VTEP=${ENABLE_HARDWARE_VTEP:-false}
+VTEP_DB_ADDR=${VTEP_DB_ADDR:-}
+if $ENABLE_HARDWARE_VTEP && [ -z "$VTEP_DB_ADDR" ]; then
+  echo "Error: VTEP_DB_ADDR must be set when ENABLE_HARDWARE_VTEP=true (ovn-controller-vtep cannot start without a Hardware VTEP OVSDB remote)"
+  exit 1
+fi
 # exchange link names of OVS bridge and the provider nic
 # in the default provider-network
 EXCHANGE_LINK_NAME=${EXCHANGE_LINK_NAME:-false}
@@ -7500,6 +7506,196 @@ spec:
     storage: true
     subresources:
       status: {}
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: vtep-bindings.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    kind: VtepBinding
+    listKind: VtepBindingList
+    plural: vtep-bindings
+    shortNames:
+    - vtepb
+    singular: vtep-binding
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.subnet
+      name: Subnet
+      type: string
+    - jsonPath: .spec.physicalSwitch
+      name: PhysicalSwitch
+      type: string
+    - jsonPath: .status.vtepLogicalSwitch
+      name: VtepLogicalSwitch
+      type: string
+    - jsonPath: .spec.physicalPort
+      name: PhysicalPort
+      type: string
+    - jsonPath: .spec.vlanID
+      name: VLAN
+      type: integer
+    - jsonPath: .status.chassis
+      name: Chassis
+      type: string
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          VtepBinding attaches a Kube-OVN Subnet (OVN Logical Switch) to a Hardware VTEP
+          physical switch via an OVN Logical Switch Port of type "vtep".
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              physicalPort:
+                description: |-
+                  PhysicalPort is the Hardware VTEP Physical_Port.name. When --vtep-db-addr
+                  is configured, Kube-OVN writes Physical_Port.vlan_bindings for this port.
+                  Immutable.
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: spec.physicalPort is immutable
+                  rule: self == oldSelf
+              physicalSwitch:
+                description: |-
+                  PhysicalSwitch is the Hardware VTEP Physical_Switch.name.
+                  Maps to options:vtep-physical-switch. Immutable.
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: spec.physicalSwitch is immutable
+                  rule: self == oldSelf
+              subnet:
+                description: |-
+                  Subnet is the Kube-OVN Subnet (OVN Logical Switch) to extend. Immutable.
+                  The Subnet must already exist; the validating webhook rejects the CR otherwise.
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: spec.subnet is immutable
+                  rule: self == oldSelf
+              vlanID:
+                description: |-
+                  VlanID is the VLAN used on the physical port (0 = untagged). When
+                  --vtep-db-addr is configured, this becomes the vlan_bindings map key.
+                  Immutable.
+                maximum: 4095
+                minimum: 0
+                type: integer
+                x-kubernetes-validations:
+                - message: spec.vlanID is immutable
+                  rule: self == oldSelf
+              vtepLogicalSwitch:
+                description: |-
+                  VtepLogicalSwitch is the Hardware VTEP Logical_Switch.name.
+                  Maps to options:vtep-logical-switch. Defaults to subnet when empty. Immutable.
+                type: string
+                x-kubernetes-validations:
+                - message: spec.vtepLogicalSwitch is immutable
+                  rule: self == oldSelf
+            required:
+            - physicalPort
+            - physicalSwitch
+            - subnet
+            - vlanID
+            type: object
+          status:
+            properties:
+              chassis:
+                description: Chassis is the OVN SB Chassis name bound to the VTEP
+                  Logical Switch Port.
+                type: string
+              conditions:
+                description: Conditions represents the latest state of the object
+                items:
+                  description: Condition describes the state of an object at a certain
+                    point.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another.
+                      format: date-time
+                      type: string
+                    lastUpdateTime:
+                      description: Last time the condition was probed
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9,
+                        the condition is out of date with respect to the current state of the instance.
+                      format: int64
+                      type: integer
+                    reason:
+                      description: The reason for the condition's last transition.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition.
+                      type: string
+                  type: object
+                type: array
+              logicalSwitch:
+                description: LogicalSwitch is the OVN Logical Switch name (the referenced
+                  Subnet).
+                type: string
+              logicalSwitchPort:
+                description: LogicalSwitchPort is the OVN Logical Switch Port name
+                  created for this binding.
+                type: string
+              ready:
+                description: |-
+                  Ready indicates the OVN VTEP Logical Switch Port has a non-empty SB chassis
+                  (ovn-controller-vtep has assigned Port_Binding.chassis). Port_Binding.up is
+                  not required.
+                type: boolean
+              vtepLogicalSwitch:
+                description: VtepLogicalSwitch is the resolved VTEP Logical_Switch
+                  name.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
 EOF
 # END GENERATED KUBE-OVN CRD BUNDLE
 
@@ -7592,6 +7788,8 @@ rules:
       - ips
       - vips
       - vips/status
+      - vtep-bindings
+      - vtep-bindings/status
       - vlans
       - vlans/status
       - provider-networks
@@ -8937,6 +9135,10 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "$ENABLE_BIND_LOCAL_IP"
+            - name: ENABLE_HARDWARE_VTEP
+              value: "$ENABLE_HARDWARE_VTEP"
+            - name: VTEP_DB_ADDR
+              value: "$VTEP_DB_ADDR"
           volumeMounts:
             - mountPath: /etc/localtime
               name: localtime
@@ -9601,6 +9803,117 @@ spec:
 EOF
 kubectl apply -f ovn-ic-controller.yaml
 kubectl rollout status deployment/ovn-ic-controller -n kube-system --timeout 60s
+fi
+
+if $ENABLE_HARDWARE_VTEP; then
+cat <<EOF > ovn-controller-vtep.yaml
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: ovn-controller-vtep
+  namespace: kube-system
+  annotations:
+    kubernetes.io/description: |
+      OVN Hardware VTEP controller
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: ovn-controller-vtep
+  template:
+    metadata:
+      labels:
+        app: ovn-controller-vtep
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - effect: NoExecute
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: ovn-controller-vtep
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
+      serviceAccountName: ovn
+      automountServiceAccountToken: true
+      hostNetwork: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ovn-controller-vtep
+          image: "$REGISTRY/kube-ovn:$VERSION"
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/start-ovn-controller-vtep.sh"]
+          securityContext:
+            runAsUser: ${RUN_AS_USER}
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+                - SYS_NICE
+          env:
+            - name: ENABLE_SSL
+              value: "$ENABLE_SSL"
+            - name: VTEP_DB_ADDR
+              value: "$VTEP_DB_ADDR"
+            - name: OVN_DB_IPS
+              value: "$addresses"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 200Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
+              ephemeral-storage: 500Mi
+          volumeMounts:
+            - mountPath: /var/run/ovn
+              name: host-run-ovn
+            - mountPath: /var/log/ovn
+              name: host-log-ovn
+            - mountPath: /etc/localtime
+              name: localtime
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+      nodeSelector:
+        kubernetes.io/os: "linux"
+        kube-ovn/role: "master"
+      volumes:
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+        - name: host-log-ovn
+          hostPath:
+            path: /var/log/ovn
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-log
+          hostPath:
+            path: /var/log/kube-ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+EOF
+kubectl apply -f ovn-controller-vtep.yaml
+kubectl rollout status deployment/ovn-controller-vtep -n kube-system --timeout 60s
 fi
 
 echo "-------------------------------"

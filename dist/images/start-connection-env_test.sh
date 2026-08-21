@@ -41,6 +41,88 @@ EOF
   assert_contains "$out" "--extra-flag"
 }
 
+test_start_controller_passes_vtep_db_addr() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  out="$tmp/args"
+  trap 'rm -rf "$tmp"' RETURN
+
+  cp "$script_dir/start-controller.sh" "$tmp/"
+  cat > "$tmp/kube-ovn-controller" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$OUT"
+EOF
+  chmod +x "$tmp/kube-ovn-controller"
+
+  (
+    cd "$tmp"
+    OUT="$out" \
+    ENABLE_SSL=false \
+    OVN_NB_ADDR=tcp:nb.example.com:30641 \
+    OVN_SB_ADDR=tcp:sb.example.com:30642 \
+    VTEP_DB_ADDR=tcp:switch.example.com:6640 \
+    ENABLE_HARDWARE_VTEP=true \
+    bash ./start-controller.sh
+  )
+
+  assert_contains "$out" "--vtep-db-addr=tcp:switch.example.com:6640"
+  assert_contains "$out" "--enable-hardware-vtep"
+}
+
+test_start_ovn_controller_vtep_uses_remotes() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  out="$tmp/args"
+  trap 'rm -rf "$tmp"' RETURN
+
+  cp "$script_dir/start-ovn-controller-vtep.sh" "$tmp/"
+  mkdir -p "$tmp/bin"
+  cat > "$tmp/bin/ovn-controller-vtep" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$OUT"
+EOF
+  chmod +x "$tmp/bin/ovn-controller-vtep"
+
+  (
+    cd "$tmp"
+    PATH="$tmp/bin:$PATH" \
+    OUT="$out" \
+    ENABLE_SSL=false \
+    OVN_SB_ADDR=tcp:sb.example.com:30642 \
+    VTEP_DB_ADDR=tcp:switch.example.com:6640 \
+    bash ./start-ovn-controller-vtep.sh
+  )
+
+  assert_contains "$out" "--ovnsb-db=tcp:sb.example.com:30642"
+  assert_contains "$out" "--vtep-db=tcp:switch.example.com:6640"
+}
+
+test_start_ovn_controller_vtep_requires_vtep_db_addr() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  cp "$script_dir/start-ovn-controller-vtep.sh" "$tmp/"
+  mkdir -p "$tmp/bin"
+  cat > "$tmp/bin/ovn-controller-vtep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "$tmp/bin/ovn-controller-vtep"
+
+  if (
+    cd "$tmp"
+    PATH="$tmp/bin:$PATH" \
+    ENABLE_SSL=false \
+    OVN_SB_ADDR=tcp:sb.example.com:30642 \
+    VTEP_DB_ADDR= \
+    bash ./start-ovn-controller-vtep.sh
+  ); then
+    echo "expected start-ovn-controller-vtep.sh to fail without VTEP_DB_ADDR" >&2
+    exit 1
+  fi
+}
+
 test_start_ic_controller_uses_explicit_ovn_addresses() {
   local tmp out
   tmp="$(mktemp -d)"
@@ -113,5 +195,8 @@ EOF
 }
 
 test_start_controller_uses_explicit_ovn_addresses
+test_start_controller_passes_vtep_db_addr
+test_start_ovn_controller_vtep_uses_remotes
+test_start_ovn_controller_vtep_requires_vtep_db_addr
 test_start_ic_controller_uses_explicit_ovn_addresses
 test_upgrade_ovs_uses_explicit_ovn_nb_address

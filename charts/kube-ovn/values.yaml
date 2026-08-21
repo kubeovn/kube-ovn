@@ -53,6 +53,9 @@ networking:
   # NET_STACK could be dual_stack, ipv4, ipv6
   NET_STACK: ipv4
   ENABLE_SSL: false
+  # Required when func.ENABLE_HARDWARE_VTEP is true (e.g. tcp:[192.0.2.10]:6640).
+  # ovn-controller-vtep cannot start without this remote.
+  VTEP_DB_ADDR: ""
   # Minimum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints.
   TLS_MIN_VERSION: ""
   # Maximum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints.
@@ -115,6 +118,7 @@ func:
   U2O_INTERCONNECTION: false
   ENABLE_TPROXY: false
   ENABLE_IC: false
+  ENABLE_HARDWARE_VTEP: false
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false
   ENABLE_ANP: false

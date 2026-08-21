@@ -53,6 +53,7 @@ type KubeovnV1Interface interface {
 	VpcDnsesGetter
 	VpcEgressGatewaysGetter
 	VpcNatGatewaysGetter
+	VtepBindingsGetter
 }
 
 // KubeovnV1Client is used to interact with features provided by the kubeovn.io group.
@@ -158,6 +159,10 @@ func (c *KubeovnV1Client) VpcEgressGateways(namespace string) VpcEgressGatewayIn
 
 func (c *KubeovnV1Client) VpcNatGateways() VpcNatGatewayInterface {
 	return newVpcNatGateways(c)
+}
+
+func (c *KubeovnV1Client) VtepBindings() VtepBindingInterface {
+	return newVtepBindings(c)
 }
 
 // NewForConfig creates a new KubeovnV1Client for the given config.

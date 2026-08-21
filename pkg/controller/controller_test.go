@@ -108,6 +108,7 @@ type FakeControllerOptions struct {
 	OvnSnatRules       []*kubeovnv1.OvnSnatRule
 	QoSPolicies        []*kubeovnv1.QoSPolicy
 	IptablesEips       []*kubeovnv1.IptablesEIP
+	VtepBindings       []*kubeovnv1.VtepBinding
 }
 
 // newFakeControllerWithOptions creates a fake controller with optional pre-populated objects
@@ -270,6 +271,13 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, binding := range opts.VtepBindings {
+		_, err := kubeovnClient.KubeovnV1().VtepBindings().Create(
+			context.Background(), binding, metav1.CreateOptions{})
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
@@ -314,6 +322,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
+	vtepBindingInformer := kubeovnInformerFactory.Kubeovn().V1().VtepBindings()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -334,48 +343,51 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 
 	// Create controller with all informers
 	ctrl := &Controller{
-		servicesLister:          serviceInformer.Lister(),
-		namespacesLister:        namespaceInformer.Lister(),
-		nodesLister:             nodeInformer.Lister(),
-		podsLister:              podInformer.Lister(),
-		endpointSlicesLister:    endpointSliceInformer.Lister(),
-		vpcsLister:              vpcInformer.Lister(),
-		vpcSynced:               alwaysReady,
-		subnetsLister:           subnetInformer.Lister(),
-		subnetSynced:            alwaysReady,
-		ippoolLister:            ippoolInformer.Lister(),
-		ippoolSynced:            alwaysReady,
-		ipsLister:               ipInformer.Lister(),
-		ipSynced:                alwaysReady,
-		vlansLister:             vlanInformer.Lister(),
-		providerNetworksLister:  providerNetworkInformer.Lister(),
-		routerLBRuleLister:      routerLBRuleInformer.Lister(),
-		routerLBRuleSynced:      alwaysReady,
-		ovnEipsLister:           ovnEipInformer.Lister(),
-		ovnEipSynced:            alwaysReady,
-		ovnDnatRulesLister:      ovnDnatRuleInformer.Lister(),
-		ovnDnatRuleSynced:       alwaysReady,
-		ovnFipsLister:           ovnFipInformer.Lister(),
-		ovnFipSynced:            alwaysReady,
-		ovnSnatRulesLister:      ovnSnatRuleInformer.Lister(),
-		ovnSnatRuleSynced:       alwaysReady,
-		netAttachLister:         nadInformer.Lister(),
-		netAttachSynced:         alwaysReady,
-		vpcNatGatewayLister:     vpcNatGwInformer.Lister(),
-		qosPoliciesLister:       qosPolicyInformer.Lister(),
-		qosPolicySynced:         alwaysReady,
-		iptablesEipsLister:      iptablesEipInformer.Lister(),
-		vpcNatGwKeyMutex:        keymutex.NewHashed(0),
-		OVNNbClient:             mockOvnClient,
-		OVNSbClient:             mockOvnSbClient,
-		ipam:                    ovnipam.NewIPAM(),
-		recorder:                record.NewFakeRecorder(100),
-		podKeyMutex:             keymutex.NewHashed(0),
-		subnetKeyMutex:          keymutex.NewHashed(0),
-		nsKeyMutex:              keymutex.NewHashed(0),
-		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
-		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
-		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		servicesLister:              serviceInformer.Lister(),
+		namespacesLister:            namespaceInformer.Lister(),
+		nodesLister:                 nodeInformer.Lister(),
+		podsLister:                  podInformer.Lister(),
+		endpointSlicesLister:        endpointSliceInformer.Lister(),
+		vpcsLister:                  vpcInformer.Lister(),
+		vpcSynced:                   alwaysReady,
+		subnetsLister:               subnetInformer.Lister(),
+		subnetSynced:                alwaysReady,
+		ippoolLister:                ippoolInformer.Lister(),
+		ippoolSynced:                alwaysReady,
+		ipsLister:                   ipInformer.Lister(),
+		ipSynced:                    alwaysReady,
+		vlansLister:                 vlanInformer.Lister(),
+		providerNetworksLister:      providerNetworkInformer.Lister(),
+		routerLBRuleLister:          routerLBRuleInformer.Lister(),
+		routerLBRuleSynced:          alwaysReady,
+		ovnEipsLister:               ovnEipInformer.Lister(),
+		ovnEipSynced:                alwaysReady,
+		ovnDnatRulesLister:          ovnDnatRuleInformer.Lister(),
+		ovnDnatRuleSynced:           alwaysReady,
+		ovnFipsLister:               ovnFipInformer.Lister(),
+		ovnFipSynced:                alwaysReady,
+		ovnSnatRulesLister:          ovnSnatRuleInformer.Lister(),
+		ovnSnatRuleSynced:           alwaysReady,
+		netAttachLister:             nadInformer.Lister(),
+		netAttachSynced:             alwaysReady,
+		vpcNatGatewayLister:         vpcNatGwInformer.Lister(),
+		qosPoliciesLister:           qosPolicyInformer.Lister(),
+		qosPolicySynced:             alwaysReady,
+		iptablesEipsLister:          iptablesEipInformer.Lister(),
+		vtepBindingsLister:          vtepBindingInformer.Lister(),
+		addOrUpdateVtepBindingQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVtepBinding", nil),
+		vtepBindingKeyMutex:         keymutex.NewHashed(0),
+		vpcNatGwKeyMutex:            keymutex.NewHashed(0),
+		OVNNbClient:                 mockOvnClient,
+		OVNSbClient:                 mockOvnSbClient,
+		ipam:                        ovnipam.NewIPAM(),
+		recorder:                    record.NewFakeRecorder(100),
+		podKeyMutex:                 keymutex.NewHashed(0),
+		subnetKeyMutex:              keymutex.NewHashed(0),
+		nsKeyMutex:                  keymutex.NewHashed(0),
+		addOrUpdateSubnetQueue:      newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
+		syncVirtualPortsQueue:       newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
+		updateSubnetStatusQueue:     newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 	}
 
 	ctrl.config = &Configuration{

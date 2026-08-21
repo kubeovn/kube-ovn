@@ -221,6 +221,15 @@ spec:
                   fieldPath: status.podIPs
             - name: ENABLE_BIND_LOCAL_IP
               value: "{{- .Values.features.ENABLE_BIND_LOCAL_IP }}"
+            {{- if .Values.features.enableHardwareVtep }}
+            {{- if not .Values.networking.vtepDbAddr }}
+            {{- fail "networking.vtepDbAddr is required when features.enableHardwareVtep is true (ovn-controller-vtep cannot start without a Hardware VTEP OVSDB remote)" }}
+            {{- end }}
+            - name: ENABLE_HARDWARE_VTEP
+              value: "true"
+            - name: VTEP_DB_ADDR
+              value: "{{ .Values.networking.vtepDbAddr }}"
+            {{- end }}
             {{- with .Values.controller.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -75,8 +75,10 @@ type Controller struct {
 	bnpNamePrioMap   map[string]int32
 	priorityMapMutex sync.RWMutex
 
-	OVNNbClient ovs.NbClient
-	OVNSbClient ovs.SbClient
+	OVNNbClient  ovs.NbClient
+	OVNSbClient  ovs.SbClient
+	VtepClient   ovs.VtepDBClient
+	vtepClientMu sync.RWMutex
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -235,6 +237,11 @@ type Controller struct {
 	delVlanQueue    workqueue.TypedRateLimitingInterface[string]
 	updateVlanQueue workqueue.TypedRateLimitingInterface[string]
 	vlanKeyMutex    keymutex.KeyMutex
+
+	vtepBindingsLister          kubeovnlister.VtepBindingLister
+	vtepBindingSynced           cache.InformerSynced
+	addOrUpdateVtepBindingQueue workqueue.TypedRateLimitingInterface[string]
+	vtepBindingKeyMutex         keymutex.KeyMutex
 
 	namespacesLister  v1.NamespaceLister
 	namespacesSynced  cache.InformerSynced
@@ -465,6 +472,7 @@ func Run(ctx context.Context, config *Configuration) {
 	iptablesDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesDnatRules()
 	iptablesSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesSnatRules()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
+	vtepBindingInformer := kubeovnInformerFactory.Kubeovn().V1().VtepBindings()
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	sgInformer := kubeovnInformerFactory.Kubeovn().V1().SecurityGroups()
 	podInformer := informerFactory.Core().V1().Pods()
@@ -586,6 +594,11 @@ func Run(ctx context.Context, config *Configuration) {
 		delVlanQueue:    newTypedRateLimitingQueue[string]("DeleteVlan", nil),
 		updateVlanQueue: newTypedRateLimitingQueue[string]("UpdateVlan", nil),
 		vlanKeyMutex:    keymutex.NewHashed(numKeyLocks),
+
+		vtepBindingsLister:          nil,
+		vtepBindingSynced:           nil,
+		addOrUpdateVtepBindingQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVtepBinding", nil),
+		vtepBindingKeyMutex:         keymutex.NewHashed(numKeyLocks),
 
 		providerNetworksLister: providerNetworkInformer.Lister(),
 		providerNetworkSynced:  providerNetworkInformer.Informer().HasSynced,
@@ -712,6 +725,8 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
+	controller.setupHardwareVtep(vtepBindingInformer)
+	controller.initHardwareVtepClient()
 	if config.EnableLb {
 		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
 		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
@@ -858,6 +873,7 @@ func Run(ctx context.Context, config *Configuration) {
 	if controller.config.EnableDNSNameResolver {
 		cacheSyncs = append(cacheSyncs, controller.dnsNameResolversSynced)
 	}
+	cacheSyncs = append(cacheSyncs, controller.hardwareVtepCacheSyncs()...)
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
@@ -975,6 +991,8 @@ func Run(ctx context.Context, config *Configuration) {
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vlan event handler")
 	}
+
+	controller.addHardwareVtepEventHandler(vtepBindingInformer)
 
 	if _, err = sgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddSg,
@@ -1232,6 +1250,9 @@ func (c *Controller) Run(ctx context.Context) {
 
 	c.OVNNbClient.Close()
 	c.OVNSbClient.Close()
+	if vtepClient := c.getVtepClient(); vtepClient != nil {
+		vtepClient.Close()
+	}
 }
 
 func (c *Controller) dbStatus() {
@@ -1304,6 +1325,8 @@ func (c *Controller) shutdown() {
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
 	c.updateVlanQueue.ShutDown()
+
+	c.addOrUpdateVtepBindingQueue.ShutDown()
 
 	c.addOrUpdateVpcQueue.ShutDown()
 	c.updateVpcStatusQueue.ShutDown()
@@ -1439,6 +1462,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}
 	go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
 	go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
+	c.startHardwareVtepWorkers(ctx)
 	go wait.Until(runWorker("add namespace", c.addNamespaceQueue, c.handleAddNamespace), time.Second, ctx.Done())
 	err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
 		subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
