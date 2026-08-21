@@ -479,44 +479,38 @@ func (c *Controller) podReuseVip(vipName, portName string, keepVIP bool) error {
 	return nil
 }
 
-func (c *Controller) releaseVip(key string) error {
+func (c *Controller) releaseVip(key string) (bool, error) {
 	// clean vip label when pod delete
 	oriVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return nil
+			return false, nil
 		}
 		klog.Error(err)
-		return err
+		return false, err
 	}
 	vip := oriVip.DeepCopy()
-	var needUpdateLabel bool
-	var op string
 	if vip.Labels[util.IPReservedLabel] == "" {
-		return nil
+		return false, nil
 	}
-	op = "replace"
 	vip.Labels[util.IPReservedLabel] = ""
-	needUpdateLabel = true
-	if needUpdateLabel {
-		klog.V(3).Infof("clean reserved label from vip %s", key)
-		patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-		raw, _ := json.Marshal(vip.Labels)
-		patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name,
-			types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
-			klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
-			return err
-		}
-		mac := &vip.Status.Mac
-		if vip.Status.Mac == "" {
-			mac = nil
-		}
-		if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Status.V4ip, mac, vip.Spec.Subnet, false); err != nil {
-			klog.Errorf("failed to recover IPAM from vip CR %s: %v", vip.Name, err)
-		}
+	klog.V(3).Infof("clean reserved label from vip %s", key)
+	patchPayloadTemplate := `[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`
+	raw, _ := json.Marshal(vip.Labels)
+	patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name,
+		types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
+		klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
+		return false, err
 	}
-	return nil
+	mac := &vip.Status.Mac
+	if vip.Status.Mac == "" {
+		mac = nil
+	}
+	if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Status.V4ip, mac, vip.Spec.Subnet, false); err != nil {
+		klog.Errorf("failed to recover IPAM from vip CR %s: %v", vip.Name, err)
+	}
+	return true, nil
 }
 
 func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
