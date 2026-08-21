@@ -53,6 +53,7 @@ type Configuration struct {
 	AllowedSourceAddresses      []net.IP
 	AllowedSourceIPv6Addresses  []net.IP
 	NeighborLocalAddresses      map[string]net.IP
+	routeLookup                 routeLookupFunc
 	NeighborAs                  uint32
 	AuthPassword                string
 	HoldTime                    float64
