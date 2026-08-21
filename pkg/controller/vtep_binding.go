@@ -236,19 +236,27 @@ func (c *Controller) cleanupVtepBinding(binding *kubeovnv1.VtepBinding) error {
 func (c *Controller) removeVtepBindingResources(binding *kubeovnv1.VtepBinding) error {
 	vtepLogicalSwitch := binding.VtepLogicalSwitchName()
 	if c.config.VtepDbAddr != "" {
-		vtepClient := c.getVtepClient()
-		if vtepClient == nil {
-			return fmt.Errorf("%w at %s", errVtepDBNotConnected, c.config.VtepDbAddr)
-		}
-		if err := vtepClient.RemoveVtepBinding(
-			binding.Spec.PhysicalSwitch,
-			binding.Spec.PhysicalPort,
-			vtepLogicalSwitch,
-			binding.Name,
-			binding.Spec.VlanID,
-		); err != nil {
-			klog.Errorf("failed to remove VTEP DB binding for %s: %v", binding.Name, err)
+		claimed, err := c.otherVtepBindingClaimsSharedState(binding)
+		if err != nil {
 			return err
+		}
+		if claimed {
+			klog.Infof("skip clearing shared VTEP DB state for %s: another binding claims the same attachment", binding.Name)
+		} else {
+			vtepClient := c.getVtepClient()
+			if vtepClient == nil {
+				return fmt.Errorf("%w at %s", errVtepDBNotConnected, c.config.VtepDbAddr)
+			}
+			if err := vtepClient.RemoveVtepBinding(
+				binding.Spec.PhysicalSwitch,
+				binding.Spec.PhysicalPort,
+				vtepLogicalSwitch,
+				binding.Name,
+				binding.Spec.VlanID,
+			); err != nil {
+				klog.Errorf("failed to remove VTEP DB binding for %s: %v", binding.Name, err)
+				return err
+			}
 		}
 	}
 
@@ -376,6 +384,25 @@ func (c *Controller) validateVtepBindingConflict(binding *kubeovnv1.VtepBinding)
 		}
 	}
 	return nil
+}
+
+// otherVtepBindingClaimsSharedState reports whether another VtepBinding occupies the
+// same physical attachment keys. Used during finalizer cleanup so a terminating CR
+// does not clear VTEP DB state already claimed by a replacement binding.
+func (c *Controller) otherVtepBindingClaimsSharedState(binding *kubeovnv1.VtepBinding) (bool, error) {
+	if c.vtepBindingsLister == nil {
+		return false, nil
+	}
+	bindings, err := c.vtepBindingsLister.List(labels.Everything())
+	if err != nil {
+		return false, fmt.Errorf("failed to list vtep bindings: %w", err)
+	}
+	for _, other := range bindings {
+		if err = kubeovnv1.VtepBindingConflict(binding, other); err != nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (c *Controller) patchVtepBindingStatusCondition(binding *kubeovnv1.VtepBinding, reason, errMsg string) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
 	"k8s.io/klog/v2"
@@ -19,6 +20,8 @@ const (
 )
 
 // EnsureLogicalSwitch creates the Hardware VTEP Logical_Switch if missing.
+// When the row already exists and is Kube-OVN-owned, the caller binding claims
+// other_config ownership so a terminating CR's cleanup cannot wipe shared state.
 func (c *VtepClient) EnsureLogicalSwitch(name, bindingName string) (*vtep.LogicalSwitch, error) {
 	ls, err := c.GetLogicalSwitch(name, true)
 	if err != nil {
@@ -27,6 +30,9 @@ func (c *VtepClient) EnsureLogicalSwitch(name, bindingName string) (*vtep.Logica
 	if ls != nil {
 		if vendor := ls.OtherConfig[vtepOtherConfigVendorKey]; vendor != "" && vendor != util.CniTypeName {
 			return nil, fmt.Errorf("VTEP logical switch %s exists but is not owned by Kube-OVN", name)
+		}
+		if err = c.claimLogicalSwitchOwnership(ls, bindingName); err != nil {
+			return nil, err
 		}
 		return ls, nil
 	}
@@ -53,6 +59,31 @@ func (c *VtepClient) EnsureLogicalSwitch(name, bindingName string) (*vtep.Logica
 		return nil, err
 	}
 	return ls, nil
+}
+
+func (c *VtepClient) claimLogicalSwitchOwnership(ls *vtep.LogicalSwitch, bindingName string) error {
+	if ls == nil || bindingName == "" {
+		return nil
+	}
+	if ls.OtherConfig != nil &&
+		ls.OtherConfig[vtepOtherConfigVendorKey] == util.CniTypeName &&
+		ls.OtherConfig[vtepOtherConfigBindingKey] == bindingName {
+		return nil
+	}
+	otherConfig := map[string]string{}
+	maps.Copy(otherConfig, ls.OtherConfig)
+	otherConfig[vtepOtherConfigVendorKey] = util.CniTypeName
+	otherConfig[vtepOtherConfigBindingKey] = bindingName
+	ls.OtherConfig = otherConfig
+	ops, err := c.Where(ls).Update(ls, &ls.OtherConfig)
+	if err != nil {
+		return fmt.Errorf("generate update for VTEP logical switch %s ownership: %w", ls.Name, err)
+	}
+	if err = c.Transact("vtep-ls-claim", ops); err != nil {
+		return fmt.Errorf("claim VTEP logical switch %s for binding %s: %w", ls.Name, bindingName, err)
+	}
+	klog.Infof("claimed VTEP logical switch %s for binding %s", ls.Name, bindingName)
+	return nil
 }
 
 // GetLogicalSwitch returns a Hardware VTEP Logical_Switch by name.
@@ -83,9 +114,7 @@ func (c *VtepClient) GetLogicalSwitch(name string, ignoreNotFound bool) (*vtep.L
 }
 
 // DeleteLogicalSwitchIfOwned deletes the Logical_Switch when it is Kube-OVN-owned
-// and not referenced by any Physical_Port.vlan_bindings. Shared names across
-// bindings are safe: the last unreferenced row is deleted regardless of which
-// binding originally created it.
+// by this binding and not referenced by any Physical_Port.vlan_bindings.
 func (c *VtepClient) DeleteLogicalSwitchIfOwned(name, bindingName string) error {
 	ls, err := c.GetLogicalSwitch(name, true)
 	if err != nil {
@@ -96,6 +125,10 @@ func (c *VtepClient) DeleteLogicalSwitchIfOwned(name, bindingName string) error 
 	}
 	if ls.OtherConfig[vtepOtherConfigVendorKey] != util.CniTypeName {
 		klog.Infof("skip deleting VTEP logical switch %s: not owned by Kube-OVN (binding %s)", name, bindingName)
+		return nil
+	}
+	if owner := ls.OtherConfig[vtepOtherConfigBindingKey]; owner != "" && owner != bindingName {
+		klog.Infof("skip deleting VTEP logical switch %s: owned by binding %s, not %s", name, owner, bindingName)
 		return nil
 	}
 

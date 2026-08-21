@@ -146,9 +146,10 @@ func (c *VtepClient) setPhysicalPortVLANBinding(port *vtep.PhysicalPort, vlanID 
 }
 
 // RemoveVtepBinding removes the owned vlan_binding and deletes the Logical_Switch
-// when it is Kube-OVN-owned and no longer referenced.
+// when it is still owned by this binding and no longer referenced.
 // vlan_bindings entries are cleared only when they still reference this binding's
-// Logical_Switch UUID, so another CR's mapping is never removed by mistake.
+// Logical_Switch UUID and that Logical_Switch is still owned by bindingName, so a
+// replacement CR that reclaimed the same Logical_Switch is never wiped.
 func (c *VtepClient) RemoveVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName string, vlanID int) error {
 	if physicalSwitch == "" || physicalPort == "" {
 		return nil
@@ -169,10 +170,14 @@ func (c *VtepClient) RemoveVtepBinding(physicalSwitch, physicalPort, logicalSwit
 	}
 	if port != nil && port.VLANBindings != nil {
 		if ref, ok := port.VLANBindings[vlanID]; ok {
-			if ls == nil || ref != ls.UUID {
+			switch {
+			case ls == nil || ref != ls.UUID:
 				klog.Infof("skip clearing VTEP vlan_bindings[%d] on %s/%s: mapping does not reference logical switch %s",
 					vlanID, physicalSwitch, physicalPort, logicalSwitch)
-			} else {
+			case ls.OtherConfig[vtepOtherConfigBindingKey] != "" && ls.OtherConfig[vtepOtherConfigBindingKey] != bindingName:
+				klog.Infof("skip clearing VTEP vlan_bindings[%d] on %s/%s: logical switch %s owned by binding %s",
+					vlanID, physicalSwitch, physicalPort, logicalSwitch, ls.OtherConfig[vtepOtherConfigBindingKey])
+			default:
 				ops, err := c.Where(port).Mutate(port, model.Mutation{
 					Field:   &port.VLANBindings,
 					Mutator: ovsdb.MutateOperationDelete,

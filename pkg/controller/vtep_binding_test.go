@@ -85,6 +85,17 @@ func TestValidateVtepBindingConflict(t *testing.T) {
 	err = c.validateVtepBindingConflict(candidate)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "vtepLogicalSwitch")
+
+	now := metav1.Now()
+	terminating := existing.DeepCopy()
+	terminating.DeletionTimestamp = &now
+	c.vtepBindingsLister = &fakeVtepBindingLister{items: []*kubeovnv1.VtepBinding{terminating}}
+	candidate.Spec.PhysicalPort = "Ethernet1/20"
+	candidate.Spec.VlanID = 120
+	candidate.Spec.Subnet = "subnet-b"
+	err = c.validateVtepBindingConflict(candidate)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "vlanID")
 }
 
 func TestHandleAddOrUpdateVtepBindingDisabled(t *testing.T) {
@@ -396,6 +407,46 @@ func TestCleanupVtepBindingAfterReconnect(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
 	requireVtepEventContains(t, drainVtepEvents(ctrl), "Normal", eventVtepBindingCleanedUp)
+}
+
+func TestCleanupVtepBindingSkipsSharedStateWhenReplacementClaimsTuple(t *testing.T) {
+	t.Parallel()
+
+	now := metav1.Now()
+	oldBinding := vtepBindingFixture("old-binding")
+	oldBinding.DeletionTimestamp = &now
+	controllerutil.AddFinalizer(oldBinding, util.KubeOVNControllerFinalizer)
+
+	replacement := vtepBindingFixture("replacement")
+	replacement.Spec = oldBinding.Spec
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:      []*kubeovnv1.Subnet{vtepSubnetFixture()},
+		VtepBindings: []*kubeovnv1.VtepBinding{oldBinding, replacement},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.config.EnableHardwareVtep = true
+	ctrl.config.VtepDbAddr = "tcp:192.0.2.10:6640"
+
+	mockVtep := mockovs.NewMockVtepDBClient(gomock.NewController(t))
+	mockVtep.EXPECT().RemoveVtepBinding(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	ctrl.setVtepClient(mockVtep)
+
+	lspName := ovs.GetVtepLogicalSwitchPortName(oldBinding.Name)
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(lspName, true).Return(&ovnnb.LogicalSwitchPort{
+		Name: lspName,
+		ExternalIDs: map[string]string{
+			ovs.VtepBindingKey:    oldBinding.Name,
+			ovs.VtepBindingUIDKey: string(oldBinding.UID),
+		},
+	}, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName).Return(nil)
+
+	require.NoError(t, ctrl.handleAddOrUpdateVtepBinding(oldBinding.Name))
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().VtepBindings().Get(context.Background(), oldBinding.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotContains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
 }
 
 func TestGcVtepBindingDeletesOrphansWhenDisabled(t *testing.T) {

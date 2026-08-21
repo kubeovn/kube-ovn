@@ -7182,8 +7182,9 @@ spec:
                 - message: spec.physicalSwitch is immutable
                   rule: self == oldSelf
               subnet:
-                description: Subnet is the Kube-OVN Subnet (OVN Logical Switch) to
-                  extend. Immutable.
+                description: |-
+                  Subnet is the Kube-OVN Subnet (OVN Logical Switch) to extend. Immutable.
+                  The Subnet must already exist; the validating webhook rejects the CR otherwise.
                 minLength: 1
                 type: string
                 x-kubernetes-validations:
@@ -7267,8 +7268,9 @@ spec:
                 type: string
               ready:
                 description: |-
-                  Ready indicates the OVN VTEP Logical Switch Port is chassis-bound in SB
-                  (ovn-controller-vtep has completed binding).
+                  Ready indicates the OVN VTEP Logical Switch Port has a non-empty SB chassis
+                  (ovn-controller-vtep has assigned Port_Binding.chassis). Port_Binding.up is
+                  not required.
                 type: boolean
               vtepLogicalSwitch:
                 description: VtepLogicalSwitch is the resolved VTEP Logical_Switch

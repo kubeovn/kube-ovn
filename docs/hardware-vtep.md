@@ -158,10 +158,11 @@ Create one `VtepBinding` (and matching switch VLAN binding) per tenant Subnet:
 | B | tenant-b-backend | tenant-b-backend | 130 |
 
 `(physicalSwitch, vtepLogicalSwitch)` and `(physicalSwitch, physicalPort, vlanID)`
-must each be unique across `VtepBinding` resources. The validating webhook
-enforces those keys when it is deployed; `kube-ovn-controller` always enforces
-them on reconcile, including webhook-less Helm v1 / `install.sh` installs. Spec
-fields other than status are immutable after create (`subnet`, `physicalSwitch`,
+must each be unique across `VtepBinding` resources, including bindings that are
+still terminating with a finalizer. The validating webhook enforces those keys
+when it is deployed; `kube-ovn-controller` always enforces them on reconcile,
+including webhook-less Helm v1 / `install.sh` installs. Spec fields other than
+status are immutable after create (`subnet`, `physicalSwitch`,
 `vtepLogicalSwitch`, `physicalPort`, `vlanID`); recreate the CR to change the
 physical attachment.
 

@@ -53,8 +53,10 @@ func (b *VtepBinding) VtepLogicalSwitchName() string {
 
 // VtepBindingConflict returns an error when other occupies the same
 // physicalSwitch+vtepLogicalSwitch or physicalSwitch+physicalPort+vlanID as binding.
+// Terminating bindings still reserve the tuple until finalizer cleanup removes them
+// from the API, so a replacement CR cannot claim shared VTEP state early.
 func VtepBindingConflict(binding, other *VtepBinding) error {
-	if binding == nil || other == nil || other.Name == binding.Name || !other.DeletionTimestamp.IsZero() {
+	if binding == nil || other == nil || other.Name == binding.Name {
 		return nil
 	}
 	vtepLogicalSwitch := binding.VtepLogicalSwitchName()

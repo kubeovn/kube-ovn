@@ -43,6 +43,14 @@ func TestVtepBindingConflict(t *testing.T) {
 	candidate.Spec.VlanID = 121
 	require.NoError(t, VtepBindingConflict(candidate, existing))
 	require.NoError(t, VtepBindingConflict(existing, existing))
+
+	now := metav1.Now()
+	terminating := existing.DeepCopy()
+	terminating.DeletionTimestamp = &now
+	candidate.Spec.VlanID = 120
+	err = VtepBindingConflict(candidate, terminating)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "vlanID")
 }
 
 func TestVtepBindingStatusReady(t *testing.T) {
