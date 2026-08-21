@@ -57,10 +57,7 @@ permissions:
 jobs:
   gate:
     name: Evaluate x86-e2e / required-gate
-    if: >-
-      github.event_name == 'workflow_run' &&
-      (github.event.workflow_run.event == 'pull_request' ||
-       github.event.workflow_run.event == 'workflow_dispatch')
+    if: github.event_name == 'workflow_run'
     outputs:
       mutate: ${{ steps.mutation.outputs.mutate }}
       status: ${{ steps.mutation.outputs.status }}
@@ -116,6 +113,10 @@ jobs:
           set -euo pipefail
           if [ "$RUN_PATH" != '.github/workflows/build-x86-image.yaml' ]; then
             echo 'workflow_run did not originate from the trusted executor path.' >&2
+            exit 1
+          fi
+          if [ "$RUN_EVENT" != workflow_dispatch ] && [ "$RUN_EVENT" != pull_request ]; then
+            echo "Unsupported x86 E2E source event: $RUN_EVENT" >&2
             exit 1
           fi
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > context-run-state.json

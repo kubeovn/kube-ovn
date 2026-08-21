@@ -1523,6 +1523,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("RUN_REQUEST_KEY: ${{ needs.gate.outputs.mutate == 'true'", workflow)
         self.assertIn("inputs.baseRefresh && 'base_refresh'", workflow)
         self.assertIn("Queued x86 E2E approval intent", workflow)
+
         self.assertIn("Recorded x86 E2E approval", workflow)
         self.assertLess(
             workflow.index('gh api --method PATCH "repos/$GITHUB_REPOSITORY/check-runs/$checkId"'),
@@ -1533,6 +1534,20 @@ class E2EControlTest(unittest.TestCase):
             workflow.index("Recorded x86 E2E approval"),
         )
         self.assertGreaterEqual(workflow.count("approvalIntents"), 2)
+
+    def testGateWorkflowValidatesCompletedSourceEventsInsideTheJob(self):
+        workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
+        gate = e2eSelector.workflowJobBlocks(workflow)["gate"]
+        gateHeader = gate.split("outputs:", 1)[0]
+        resolve = gate.split("Download the executed SelectionPlan", 1)[0]
+
+        self.assertIn("if: github.event_name == 'workflow_run'", gateHeader)
+        self.assertNotIn("github.event.workflow_run.event", gateHeader)
+        self.assertIn(
+            'if [ "$RUN_EVENT" != workflow_dispatch ] && [ "$RUN_EVENT" != pull_request ]; then',
+            resolve,
+        )
+        self.assertIn("Unsupported x86 E2E source event", resolve)
 
     def testWorkflowDispatchInputsUseGitHubRESTStringFields(self):
         for workflowName in ["x86-e2e-dispatcher.yaml", "x86-e2e-gate.yaml"]:
