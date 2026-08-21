@@ -1088,10 +1088,8 @@ jobs:
           REQUEST_KEY: ${{ steps.request.outputs.requestKey }}
           REQUESTED_GROUP_NAMES: ${{ steps.request.outputs.requestedGroupNames }}
           REQUESTED_GROUPS: ${{ steps.request.outputs.requestedGroups }}
-          CONTROLLED_LABELS: ${{ steps.request.outputs.controlledLabels }}
         run: |
           set -euo pipefail
-          controlledLabelNames=$(jq -r '.controlledLabels | if length == 0 then "-" else join(",") end' cumulative-request.json)
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > confirmed-pull-request.json
           if [ "$(jq -r '.head.sha' confirmed-pull-request.json)" != "$HEAD_SHA" ] || \
              [ "$(jq -r '.base.sha' confirmed-pull-request.json)" != "$BASE_SHA" ]; then
@@ -1254,8 +1252,8 @@ jobs:
             -f "inputs[dispatchGeneration]=$DISPATCH_GENERATION" \
             -f "inputs[requestedGroups]=$REQUESTED_GROUPS" \
             -f "inputs[requestedGroupNames]=$REQUESTED_GROUP_NAMES" \
-            -f "inputs[controlledLabels]=$CONTROLLED_LABELS" \
-            -f "inputs[controlledLabelNames]=$controlledLabelNames" \
+            -f 'inputs[controlledLabels]=[]' \
+            -f 'inputs[controlledLabelNames]=-' \
             -f "inputs[full]=$FULL" \
             -f "inputs[requestKey]=$REQUEST_KEY" \
             -f "inputs[catalogRevision]=$CATALOG_REVISION"; then
@@ -1265,7 +1263,7 @@ jobs:
               -f body='The trusted x86 E2E executor could not be started; retry the authorized command.'
             exit 1
           fi
-          expectedTitle="x86-e2e pr=$PR_NUMBER head=$HEAD_SHA approval=$APPROVAL_GENERATION generation=$DISPATCH_GENERATION mode=approved groups=$REQUESTED_GROUP_NAMES labels=$controlledLabelNames full=$([ "$FULL" = true ] && echo 1 || echo 0)"
+          expectedTitle="x86-e2e pr=$PR_NUMBER head=$HEAD_SHA approval=$APPROVAL_GENERATION generation=$DISPATCH_GENERATION mode=approved groups=$REQUESTED_GROUP_NAMES labels=- full=$([ "$FULL" = true ] && echo 1 || echo 0)"
           runVisible=false
           for _ in $(seq 1 24); do
             runVisible=$(gh api --paginate --slurp \

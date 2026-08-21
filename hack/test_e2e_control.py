@@ -1295,7 +1295,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("inputs[baseSHA]=$BASE_SHA", workflow)
         self.assertIn("inputs[approvalGeneration]=$APPROVAL_GENERATION", workflow)
         self.assertIn("inputs[dispatchGeneration]=$DISPATCH_GENERATION", workflow)
-        self.assertIn('inputs[controlledLabels]=$CONTROLLED_LABELS', workflow)
+        self.assertIn('inputs[controlledLabels]=$controlledLabels', workflow)
+        self.assertIn("-f 'inputs[controlledLabels]=[]'", workflow)
         self.assertIn("controlledLabels=", workflow)
         self.assertIn("retry the authorized command", workflow)
         self.assertIn("REQUEST_KEY: ${{ steps.request.outputs.requestKey }}", workflow)
@@ -1396,6 +1397,15 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("matrix:", reduce)
         self.assertIn("needs.invalidate-base.outputs.approvedPullRequests", reduce)
         self.assertIn("PR_NUMBER: ${{ matrix.prNumber }}", reduce)
+
+    def testApprovedExecutorDoesNotCarryAutomaticControlledLabels(self):
+        workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
+        reduce = e2eSelector.workflowJobBlocks(workflow)["reduce"]
+
+        self.assertIn("-f 'inputs[controlledLabels]=[]'", reduce)
+        self.assertIn("-f 'inputs[controlledLabelNames]=-'", reduce)
+        self.assertIn("mode=approved groups=$REQUESTED_GROUP_NAMES labels=-", reduce)
+        self.assertNotIn('inputs[controlledLabels]=$CONTROLLED_LABELS', reduce)
 
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
