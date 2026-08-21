@@ -1001,7 +1001,8 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 	}
 
 	resolvers, err := c.config.KubeOvnClient.KubeovnV1().DNSNameResolvers().List(
-		context.TODO(), metav1.ListOptions{LabelSelector: adminNetworkPolicyKey})
+		context.TODO(), metav1.ListOptions{LabelSelector: adminNetworkPolicyKey},
+	)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1013,7 +1014,8 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 	for i := range resolvers.Items {
 		resolver := &resolvers.Items[i]
 		if err := c.config.KubeOvnClient.KubeovnV1().DNSNameResolvers().Delete(
-			context.TODO(), resolver.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			context.TODO(), resolver.Name, metav1.DeleteOptions{},
+		); err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("delete disabled admin network policy DNSNameResolver %s: %v", resolver.Name, err)
 			return err
 		}
