@@ -9210,6 +9210,9 @@ rules:
     verbs:
     - get
     - create
+    - update
+    - patch
+    - delete
   - apiGroups:
     - ""
     resourceNames:
