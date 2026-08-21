@@ -1501,6 +1501,49 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testSetLogicalSwitchRouted() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	cidrBlock := "10.244.0.0/16"
+	gateway := "10.244.0.1"
+	gatewayMAC := "00:00:00:11:22:33"
+
+	t.Run("routed overlay ipv4", func(t *testing.T) {
+		t.Parallel()
+
+		lsName := "test_set_routed_ls"
+		err := nbClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		err = nbClient.SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, "100.64.0.0/16", nil, false)
+		require.NoError(t, err)
+
+		ls, err := nbClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		// ARP allow + ARP ingress + IP egress + IP ingress + same-subnet drop + peer ARP drop
+		require.Len(t, ls.ACLs, 6)
+
+		match := fmt.Sprintf("ip && eth.dst == %s", gatewayMAC)
+		acl, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, match, util.NetpolACLTier, false)
+		require.NoError(t, err)
+		require.Equal(t, ovnnb.ACLActionAllowRelated, acl.Action)
+	})
+
+	t.Run("missing gateway mac", func(t *testing.T) {
+		t.Parallel()
+		err := nbClient.SetLogicalSwitchRouted("test_routed_no_mac", cidrBlock, gateway, "", "", nil, false)
+		require.ErrorContains(t, err, "gateway MAC is required")
+	})
+
+	t.Run("empty ls name", func(t *testing.T) {
+		t.Parallel()
+		err := nbClient.SetLogicalSwitchRouted("", cidrBlock, gateway, gatewayMAC, "", nil, false)
+		require.ErrorContains(t, err, "logical switch name is required")
+	})
+}
+
 func (suite *OvnClientTestSuite) testNewSgRuleACL() {
 	t := suite.T()
 	t.Parallel()

@@ -70,9 +70,13 @@ const (
 	PortSecurityAnnotation          = "ovn.kubernetes.io/port_security"
 	NorthGatewayAnnotation          = "ovn.kubernetes.io/north_gateway"
 
-	AllocatedAnnotationSuffix       = ".kubernetes.io/allocated"
-	AllocatedAnnotationTemplate     = "%s.kubernetes.io/allocated"
-	RoutedAnnotationTemplate        = "%s.kubernetes.io/routed"
+	AllocatedAnnotationSuffix   = ".kubernetes.io/allocated"
+	AllocatedAnnotationTemplate = "%s.kubernetes.io/allocated"
+	RoutedAnnotationTemplate    = "%s.kubernetes.io/routed"
+	// RoutedSubnetAnnotationTemplate marks that the pod's subnet uses routed
+	// mode (/32 or /128 addresses with on-link gateway routes). Distinct from
+	// RoutedAnnotationTemplate, which means OVN routes are ready for the pod.
+	RoutedSubnetAnnotationTemplate  = "%s.kubernetes.io/routed_subnet"
 	RoutesAnnotationTemplate        = "%s.kubernetes.io/routes"
 	MacAddressAnnotationTemplate    = "%s.kubernetes.io/mac_address"
 	IPAddressAnnotationTemplate     = "%s.kubernetes.io/ip_address"
@@ -188,6 +192,10 @@ const (
 	EgressDefaultDrop   = "2000"
 
 	AllowEWTrafficPriority = "1900"
+
+	// Routed subnet ACL priorities (gateway-only L2).
+	RoutedAllowPriority = "1002"
+	RoutedDropPriority  = "1001"
 
 	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"

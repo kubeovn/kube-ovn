@@ -158,6 +158,10 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		return errors.New("logicalGateway and u2oInterconnection can't be opened at the same time")
 	}
 
+	if err := validateRoutedSubnet(subnet, isUnderlayWithoutCIDR); err != nil {
+		return err
+	}
+
 	if subnet.Spec.U2OFeatures.OverlayOnlyRouting {
 		if !subnet.Spec.U2OInterconnection {
 			return errors.New("u2oFeatures.overlayOnlyRouting can only be enabled when u2OInterconnection is true")
@@ -200,6 +204,38 @@ func ValidateSubnet(subnet kubeovnv1.Subnet) error {
 		}
 	}
 
+	return nil
+}
+
+// validateRoutedSubnet checks constraints for routed (/32|/128 + gateway hairpin) mode.
+func validateRoutedSubnet(subnet kubeovnv1.Subnet, isUnderlayWithoutCIDR bool) error {
+	if !subnet.Spec.Routed {
+		return nil
+	}
+
+	if isUnderlayWithoutCIDR || subnet.Spec.Protocol == kubeovnv1.ProtocolMac {
+		return fmt.Errorf("routed mode is not supported for mac-only / BYO-DHCP subnet %s", subnet.Name)
+	}
+	if subnet.Spec.CIDRBlock == "" {
+		return fmt.Errorf("routed mode requires cidrBlock on subnet %s", subnet.Name)
+	}
+	if !IsOvnProvider(subnet.Spec.Provider) {
+		return fmt.Errorf("routed mode requires an OVN provider on subnet %s", subnet.Name)
+	}
+	// Routed mode needs an OVN logical router port to hairpin same-subnet traffic.
+	hasRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway || subnet.Spec.U2OInterconnection
+	if !hasRouter {
+		return fmt.Errorf("routed mode requires overlay or underlay with logicalGateway/u2oInterconnection on subnet %s", subnet.Name)
+	}
+	if subnet.Spec.EnableMulticastSnoop {
+		return fmt.Errorf("routed mode conflicts with enableMulticastSnoop on subnet %s", subnet.Name)
+	}
+	if subnet.Spec.EnableDHCP {
+		return fmt.Errorf("routed mode conflicts with enableDHCP on subnet %s", subnet.Name)
+	}
+	if subnet.Spec.EnableIPv6RA {
+		return fmt.Errorf("routed mode conflicts with enableIPv6RA on subnet %s", subnet.Name)
+	}
 	return nil
 }
 

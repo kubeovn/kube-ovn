@@ -1000,6 +1000,54 @@ func TestGetStringIP(t *testing.T) {
 	}
 }
 
+func TestGetIPAddrWithHostMask(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		cidr string
+		want string
+	}{
+		{
+			name: "IPv4 host mask",
+			ip:   "192.168.1.1",
+			cidr: "192.168.1.0/24",
+			want: "192.168.1.1/32",
+		},
+		{
+			name: "IPv6 host mask",
+			ip:   "2001:db8::1",
+			cidr: "2001:db8::/32",
+			want: "2001:db8::1/128",
+		},
+		{
+			name: "Dual stack host masks",
+			ip:   "192.168.1.1,2001:db8::1",
+			cidr: "192.168.1.0/24,2001:db8::/32",
+			want: "192.168.1.1/32,2001:db8::1/128",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := GetIPAddrWithHostMask(tt.ip, tt.cidr)
+			if err != nil || got != tt.want {
+				t.Errorf("got %v (err=%v), but want %v", got, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetIPAddrWithMaskForCNIHostMask(t *testing.T) {
+	got, noIP, err := GetIPAddrWithMaskForCNIHostMask("10.0.0.5", "10.0.0.0/16", true)
+	if err != nil || noIP || got != "10.0.0.5/32" {
+		t.Fatalf("got %q noIP=%v err=%v, want 10.0.0.5/32", got, noIP, err)
+	}
+	got, noIP, err = GetIPAddrWithMaskForCNIHostMask("10.0.0.5,fd00::5", "10.0.0.0/16,fd00::/64", true)
+	if err != nil || noIP || got != "10.0.0.5/32,fd00::5/128" {
+		t.Fatalf("got %q noIP=%v err=%v", got, noIP, err)
+	}
+}
+
 func TestGetIPAddrWithMask(t *testing.T) {
 	tests := []struct {
 		name string

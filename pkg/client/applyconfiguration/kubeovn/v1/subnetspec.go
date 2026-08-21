@@ -59,6 +59,8 @@ type SubnetSpecApplyConfiguration struct {
 	Mtu *uint32 `json:"mtu,omitempty"`
 	// Whether the subnet is private.
 	Private *bool `json:"private,omitempty"`
+	// Routed configures pods with /32 (or /128) addresses and on-link gateway routes.
+	Routed *bool `json:"routed,omitempty"`
 	// Allowed subnets for east-west traffic.
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
 	// VLAN ID or provider network name.
@@ -257,6 +259,14 @@ func (b *SubnetSpecApplyConfiguration) WithMtu(value uint32) *SubnetSpecApplyCon
 // If called multiple times, the Private field is set to the value of the last call.
 func (b *SubnetSpecApplyConfiguration) WithPrivate(value bool) *SubnetSpecApplyConfiguration {
 	b.Private = &value
+	return b
+}
+
+// WithRouted sets the Routed field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Routed field is set to the value of the last call.
+func (b *SubnetSpecApplyConfiguration) WithRouted(value bool) *SubnetSpecApplyConfiguration {
+	b.Routed = &value
 	return b
 }
 

@@ -71,7 +71,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, ingressBurst, egressBurst, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string, appendIfName bool) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, ingressBurst, egressBurst, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string, appendIfName, routedSubnet bool) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -285,7 +285,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return nil, err
 	}
 	defer podNS.Close()
-	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, vmMigration, routes, macAddr, podNS, mtu, gwCheckMode, u2oInterconnectionIP)
+	finalRoutes, err := csh.configureContainerNic(podName, podNamespace, containerNicName, ifName, ip, gateway, isDefaultRoute, vmMigration, routes, macAddr, podNS, mtu, gwCheckMode, u2oInterconnectionIP, routedSubnet)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -477,7 +477,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName, ifName, ipAddr, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu, gwCheckMode int, u2oInterconnectionIP string) ([]request.Route, error) {
+func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName, ifName, ipAddr, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, macAddr net.HardwareAddr, netns ns.NetNS, mtu, gwCheckMode int, u2oInterconnectionIP string, routedSubnet bool) ([]request.Route, error) {
 	containerLink, err := netlink.LinkByName(nicName)
 	if err != nil {
 		return nil, fmt.Errorf("can not find container nic %s: %w", nicName, err)
@@ -517,13 +517,35 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 			return nil
 		}
 
+		containerGw := gateway
+		if u2oInterconnectionIP != "" {
+			containerGw = u2oInterconnectionIP
+		}
+
+		// Routed mode: host-route the gateway on-link before installing the default route
+		// (there is no connected subnet route when the address is /32 or /128).
+		if routedSubnet {
+			for _, gw := range util.SplitTrimmed(containerGw, ",") {
+				gwIP := net.ParseIP(gw)
+				if gwIP == nil {
+					return fmt.Errorf("invalid gateway %s for routed subnet", gw)
+				}
+				bits := 32
+				if gwIP.To4() == nil {
+					bits = 128
+				}
+				if err = netlink.RouteReplace(&netlink.Route{
+					LinkIndex: containerLink.Attrs().Index,
+					Scope:     netlink.SCOPE_LINK,
+					Dst:       &net.IPNet{IP: gwIP, Mask: net.CIDRMask(bits, bits)},
+				}); err != nil {
+					return fmt.Errorf("failed to configure on-link route to gateway %s: %w", gw, err)
+				}
+			}
+		}
+
 		if isDefaultRoute {
 			// Only eth0 requires the default route and gateway
-			containerGw := gateway
-			if u2oInterconnectionIP != "" {
-				containerGw = u2oInterconnectionIP
-			}
-
 			for _, gw := range util.SplitTrimmed(containerGw, ",") {
 				if err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
