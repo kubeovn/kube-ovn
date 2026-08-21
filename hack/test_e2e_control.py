@@ -1548,6 +1548,10 @@ class E2EControlTest(unittest.TestCase):
             resolve,
         )
         self.assertIn("Unsupported x86 E2E source event", resolve)
+        unsupported = resolve.index("Unsupported x86 E2E source event")
+        unsupportedBranch = resolve[unsupported:unsupported + 300]
+        self.assertIn('echo \'skip=true\' >> "$GITHUB_OUTPUT"', unsupportedBranch)
+        self.assertIn("exit 0", unsupportedBranch)
 
     def testWorkflowDispatchInputsUseGitHubRESTStringFields(self):
         for workflowName in ["x86-e2e-dispatcher.yaml", "x86-e2e-gate.yaml"]:
