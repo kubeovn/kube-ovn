@@ -785,6 +785,68 @@ func (m *MockGatewayChassis) EXPECT() *MockGatewayChassisMockRecorder {
 	return m.recorder
 }
 
+// CreateGatewayChassises mocks base method.
+func (m *MockGatewayChassis) CreateGatewayChassises(lrpName string, chassises ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lrpName}
+	for _, a := range chassises {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateGatewayChassises", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateGatewayChassises indicates an expected call of CreateGatewayChassises.
+func (mr *MockGatewayChassisMockRecorder) CreateGatewayChassises(lrpName any, chassises ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lrpName}, chassises...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayChassises", reflect.TypeOf((*MockGatewayChassis)(nil).CreateGatewayChassises), varargs...)
+}
+
+// DeleteGatewayChassises mocks base method.
+func (m *MockGatewayChassis) DeleteGatewayChassises(lrpName string, chassises []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteGatewayChassises", lrpName, chassises)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteGatewayChassises indicates an expected call of DeleteGatewayChassises.
+func (mr *MockGatewayChassisMockRecorder) DeleteGatewayChassises(lrpName, chassises any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGatewayChassises", reflect.TypeOf((*MockGatewayChassis)(nil).DeleteGatewayChassises), lrpName, chassises)
+}
+
+// GetGatewayChassis mocks base method.
+func (m *MockGatewayChassis) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGatewayChassis", name, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.GatewayChassis)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetGatewayChassis indicates an expected call of GetGatewayChassis.
+func (mr *MockGatewayChassisMockRecorder) GetGatewayChassis(name, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGatewayChassis", reflect.TypeOf((*MockGatewayChassis)(nil).GetGatewayChassis), name, ignoreNotFound)
+}
+
+// ReconcileGatewayChassises mocks base method.
+func (m *MockGatewayChassis) ReconcileGatewayChassises(lrpName string, chassises []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileGatewayChassises", lrpName, chassises)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileGatewayChassises indicates an expected call of ReconcileGatewayChassises.
+func (mr *MockGatewayChassisMockRecorder) ReconcileGatewayChassises(lrpName, chassises any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGatewayChassises", reflect.TypeOf((*MockGatewayChassis)(nil).ReconcileGatewayChassises), lrpName, chassises)
+}
+
 // UpdateGatewayChassis mocks base method.
 func (m *MockGatewayChassis) UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...any) error {
 	m.ctrl.T.Helper()
@@ -2983,6 +3045,20 @@ func (mr *MockNATMockRecorder) DeleteNats(lrName, natType, logicalIP any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteNats", reflect.TypeOf((*MockNAT)(nil).DeleteNats), lrName, natType, logicalIP)
 }
 
+// EnsureSnat mocks base method.
+func (m *MockNAT) EnsureSnat(lrName, externalIP, logicalIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureSnat indicates an expected call of EnsureSnat.
+func (mr *MockNATMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNAT)(nil).EnsureSnat), lrName, externalIP, logicalIP)
+}
+
 // GetNATByUUID mocks base method.
 func (m *MockNAT) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
 	m.ctrl.T.Helper()
@@ -3040,20 +3116,6 @@ func (m *MockNAT) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, exte
 func (mr *MockNATMockRecorder) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDnatAndSnat", reflect.TypeOf((*MockNAT)(nil).UpdateDnatAndSnat), lrName, externalIP, logicalIP, lspName, externalMac, gatewayType)
-}
-
-// EnsureSnat mocks base method.
-func (m *MockNAT) EnsureSnat(lrName, externalIP, logicalIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// EnsureSnat indicates an expected call of EnsureSnat.
-func (mr *MockNATMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNAT)(nil).EnsureSnat), lrName, externalIP, logicalIP)
 }
 
 // MockDHCPOptions is a mock of DHCPOptions interface.
@@ -3576,6 +3638,25 @@ func (mr *MockNbClientMockRecorder) CreateGatewayACL(lsName, pgName any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayACL", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayACL), lsName, pgName)
 }
 
+// CreateGatewayChassises mocks base method.
+func (m *MockNbClient) CreateGatewayChassises(lrpName string, chassises ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lrpName}
+	for _, a := range chassises {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateGatewayChassises", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateGatewayChassises indicates an expected call of CreateGatewayChassises.
+func (mr *MockNbClientMockRecorder) CreateGatewayChassises(lrpName any, chassises ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lrpName}, chassises...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).CreateGatewayChassises), varargs...)
+}
+
 // CreateGatewayLogicalSwitch mocks base method.
 func (m *MockNbClient) CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
 	m.ctrl.T.Helper()
@@ -3983,6 +4064,20 @@ func (mr *MockNbClientMockRecorder) DeleteDHCPOptionsForPort(portName any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDHCPOptionsForPort", reflect.TypeOf((*MockNbClient)(nil).DeleteDHCPOptionsForPort), portName)
 }
 
+// DeleteGatewayChassises mocks base method.
+func (m *MockNbClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteGatewayChassises", lrpName, chassises)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteGatewayChassises indicates an expected call of DeleteGatewayChassises.
+func (mr *MockNbClientMockRecorder) DeleteGatewayChassises(lrpName, chassises any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).DeleteGatewayChassises), lrpName, chassises)
+}
+
 // DeleteHAChassisGroup mocks base method.
 func (m *MockNbClient) DeleteHAChassisGroup(name string) error {
 	m.ctrl.T.Helper()
@@ -4351,6 +4446,20 @@ func (mr *MockNbClientMockRecorder) EnablePortLayer2forward(lspName any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnablePortLayer2forward", reflect.TypeOf((*MockNbClient)(nil).EnablePortLayer2forward), lspName)
 }
 
+// EnsureSnat mocks base method.
+func (m *MockNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureSnat indicates an expected call of EnsureSnat.
+func (mr *MockNbClientMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNbClient)(nil).EnsureSnat), lrName, externalIP, logicalIP)
+}
+
 // FindBFD mocks base method.
 func (m *MockNbClient) FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error) {
 	m.ctrl.T.Helper()
@@ -4378,6 +4487,21 @@ func (m *MockNbClient) GetEntityInfo(entity any) error {
 func (mr *MockNbClientMockRecorder) GetEntityInfo(entity any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntityInfo", reflect.TypeOf((*MockNbClient)(nil).GetEntityInfo), entity)
+}
+
+// GetGatewayChassis mocks base method.
+func (m *MockNbClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetGatewayChassis", name, ignoreNotFound)
+	ret0, _ := ret[0].(*ovnnb.GatewayChassis)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetGatewayChassis indicates an expected call of GetGatewayChassis.
+func (mr *MockNbClientMockRecorder) GetGatewayChassis(name, ignoreNotFound any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetGatewayChassis", reflect.TypeOf((*MockNbClient)(nil).GetGatewayChassis), name, ignoreNotFound)
 }
 
 // GetHAChassisGroup mocks base method.
@@ -5288,6 +5412,20 @@ func (mr *MockNbClientMockRecorder) PortGroupSetPorts(pgName, ports any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupSetPorts", reflect.TypeOf((*MockNbClient)(nil).PortGroupSetPorts), pgName, ports)
 }
 
+// ReconcileGatewayChassises mocks base method.
+func (m *MockNbClient) ReconcileGatewayChassises(lrpName string, chassises []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileGatewayChassises", lrpName, chassises)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileGatewayChassises indicates an expected call of ReconcileGatewayChassises.
+func (mr *MockNbClientMockRecorder) ReconcileGatewayChassises(lrpName, chassises any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).ReconcileGatewayChassises), lrpName, chassises)
+}
+
 // ReconcilePortDHCPOptions mocks base method.
 func (m *MockNbClient) ReconcilePortDHCPOptions(lsName, portName string, subnetDHCP *ovs.DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*ovs.DHCPOptionsUUIDs, bool, error) {
 	m.ctrl.T.Helper()
@@ -6067,20 +6205,6 @@ func (m *MockNbClient) UpdateSgACL(sg *v1.SecurityGroup, direction string) error
 func (mr *MockNbClientMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSgACL", reflect.TypeOf((*MockNbClient)(nil).UpdateSgACL), sg, direction)
-}
-
-// EnsureSnat mocks base method.
-func (m *MockNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureSnat", lrName, externalIP, logicalIP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// EnsureSnat indicates an expected call of EnsureSnat.
-func (mr *MockNbClientMockRecorder) EnsureSnat(lrName, externalIP, logicalIP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureSnat", reflect.TypeOf((*MockNbClient)(nil).EnsureSnat), lrName, externalIP, logicalIP)
 }
 
 // MockSbClient is a mock of SbClient interface.
