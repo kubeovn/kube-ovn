@@ -1280,8 +1280,12 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("reservation did not become durable", workflow)
         self.assertIn("github.actor == 'github-actions[bot]'", workflow)
         self.assertIn("name: Reduce recorded x86 E2E approvals", workflow)
-        self.assertIn("group: x86-e2e-reduce-${{ inputs.prNumber }}-${{ inputs.approvalGeneration }}", workflow)
-        self.assertIn("needs: dispatch", workflow)
+        self.assertIn(
+            "group: x86-e2e-reduce-${{ inputs.prNumber || github.event.issue.number || "
+            "github.event.pull_request.number }}-${{ inputs.approvalGeneration || github.run_id }}",
+            workflow,
+        )
+        self.assertIn("needs:\n      - dispatch\n      - automatic", workflow)
         self.assertIn("no approval was recorded", workflow)
         self.assertIn("actions/workflows/x86-e2e-gate.yaml/dispatches", workflow)
         self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
@@ -1349,6 +1353,25 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("actions/runs/$runId/cancel", automatic)
         self.assertIn('requestKey="automatic-$PR_NUMBER-$headSHA"', automatic)
         self.assertNotIn('requestKey="automatic-$DISPATCH_GENERATION"', automatic)
+
+    def testDurableApprovalsReachReducerWithoutNestedWorkflowDispatch(self):
+        workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
+        reduce = e2eSelector.workflowJobBlocks(workflow)["reduce"]
+
+        self.assertIn("needs:\n      - dispatch\n      - automatic", reduce)
+        self.assertIn("github.event_name == 'issue_comment'", reduce)
+        self.assertIn("needs.dispatch.outputs.accepted == 'true'", reduce)
+        self.assertIn("needs.dispatch.outputs.action == 'dispatch'", reduce)
+        self.assertIn("github.event_name == 'pull_request_target'", reduce)
+        self.assertIn("needs.automatic.result == 'success'", reduce)
+        self.assertIn("needs.automatic.outputs.durableApproval == 'true'", reduce)
+        self.assertIn("github.event.issue.number", reduce)
+        self.assertIn("github.event.pull_request.number", reduce)
+
+        automatic = e2eSelector.workflowJobBlocks(workflow)["automatic"]
+        self.assertIn("durableApproval: ${{ steps.coverage.outputs.durableApproval }}", automatic)
+        self.assertIn("id: coverage", automatic)
+        self.assertIn("echo 'durableApproval=true' >> \"$GITHUB_OUTPUT\"", automatic)
 
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
