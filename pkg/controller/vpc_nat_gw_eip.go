@@ -499,7 +499,8 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	}
 	if !qosPolicy.Status.Shared {
 		eips, err := c.iptablesEipsLister.List(
-			labels.SelectorFromSet(labels.Set{util.QoSLabel: qosPolicy.Name}))
+			labels.SelectorFromSet(labels.Set{util.QoSLabel: qosPolicy.Name}),
+		)
 		if err != nil {
 			klog.Errorf("failed to get eip list, %v", err)
 			return err

@@ -492,6 +492,16 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
+	if len(gw.Spec.InternalIPs) != 0 && gw.Spec.InternalIPPool != "" {
+		err := errors.New("internalIPs and internalIPPool are mutually exclusive")
+		klog.Error(err)
+		return "", nil, nil, nil, err
+	}
+	if len(gw.Spec.ExternalIPs) != 0 && gw.Spec.ExternalIPPool != "" {
+		err := errors.New("externalIPs and externalIPPool are mutually exclusive")
+		klog.Error(err)
+		return "", nil, nil, nil, err
+	}
 
 	internalSubnet := gw.Spec.InternalSubnet
 	if internalSubnet == "" {
@@ -615,10 +625,36 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	if len(gw.Spec.InternalIPs) != 0 {
 		// set internal IPs
 		annotations[util.IPPoolAnnotation] = strings.Join(gw.Spec.InternalIPs, ";")
+	} else if gw.Spec.InternalIPPool != "" {
+		// allocate the internal IP from the referenced IPPool
+		pool, err := c.ippoolLister.Get(gw.Spec.InternalIPPool)
+		if err != nil {
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		if pool.Spec.Subnet != intSubnet.Name {
+			err = fmt.Errorf("subnet %q of internal IPPool %q does not match internal subnet %q", pool.Spec.Subnet, gw.Spec.InternalIPPool, intSubnet.Name)
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		annotations[util.IPPoolAnnotation] = gw.Spec.InternalIPPool
 	}
 	if len(gw.Spec.ExternalIPs) != 0 {
 		// set external IPs
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
+	} else if gw.Spec.ExternalIPPool != "" {
+		// allocate the external IP from the referenced IPPool
+		pool, err := c.ippoolLister.Get(gw.Spec.ExternalIPPool)
+		if err != nil {
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		if pool.Spec.Subnet != extSubnet.Name {
+			err = fmt.Errorf("subnet %q of external IPPool %q does not match external subnet %q", pool.Spec.Subnet, gw.Spec.ExternalIPPool, extSubnet.Name)
+			klog.Error(err)
+			return attachmentNetworkName, nil, nil, nil, err
+		}
+		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = gw.Spec.ExternalIPPool
 	}
 	if err := setVpcEgressGatewayBandwidthAnnotations(annotations, gw.Spec.Bandwidth); err != nil {
 		return attachmentNetworkName, nil, nil, nil, err
@@ -800,20 +836,24 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	// replicas and the hash annotation should be excluded from hash calculation
 	deploy.Spec.Replicas = new(gw.Spec.Replicas)
 	deploy.Annotations = map[string]string{util.GenerateHashAnnotation: hash}
-	if currentDeploy, err := c.deploymentsLister.Deployments(gw.Namespace).Get(deploy.Name); err != nil {
-		if !k8serrors.IsNotFound(err) {
+	var currentDeploy *appsv1.Deployment
+	if c.deploymentsLister != nil {
+		if currentDeploy, err = c.deploymentsLister.Deployments(gw.Namespace).Get(deploy.Name); err != nil && !k8serrors.IsNotFound(err) {
 			err = fmt.Errorf("failed to get deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
 		}
+	}
+	switch {
+	case currentDeploy == nil:
 		if deploy, err = c.config.KubeClient.AppsV1().Deployments(gw.Namespace).
 			Create(context.Background(), deploy, metav1.CreateOptions{}); err != nil {
 			err = fmt.Errorf("failed to create deployment %s/%s: %w", deploy.Namespace, deploy.Name, err)
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
 		}
-	} else if !reflect.DeepEqual(currentDeploy.Spec.Replicas, deploy.Spec.Replicas) ||
-		currentDeploy.Annotations[util.GenerateHashAnnotation] != hash {
+	case !reflect.DeepEqual(currentDeploy.Spec.Replicas, deploy.Spec.Replicas) ||
+		currentDeploy.Annotations[util.GenerateHashAnnotation] != hash:
 		// update the deployment if replicas or hash annotation is changed
 		if deploy, err = c.config.KubeClient.AppsV1().Deployments(gw.Namespace).
 			Update(context.Background(), deploy, metav1.UpdateOptions{}); err != nil {
@@ -821,7 +861,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
 		}
-	} else {
+	default:
 		// no need to create or update the deployment
 		deploy = currentDeploy
 	}
@@ -847,6 +887,26 @@ func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, band
 		annotations[util.IngressRateAnnotation] = strconv.FormatInt(egressMbps, 10)
 	}
 	return nil
+}
+
+func vpcEgressGatewayPolicyMatches(af int, pgName, asName string, includePortGroup bool) set.Set[string] {
+	matches := set.New[string](fmt.Sprintf("ip%d.src == $%s", af, asName))
+	if includePortGroup {
+		matches.Insert(fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af))
+	}
+	return matches
+}
+
+func vpcEgressGatewayLocalPolicyMatches(af int, localPgName, pgName, asName string, includePortGroup bool) set.Set[string] {
+	matches := set.New[string](fmt.Sprintf(
+		"ip%d.src == $%s_ip%d && ip%d.src == $%s", af, localPgName, af, af, asName,
+	))
+	if includePortGroup {
+		matches.Insert(fmt.Sprintf(
+			"ip%d.src == $%s_ip%d && ip%d.src == $%s_ip%d", af, localPgName, af, af, pgName, af,
+		))
+	}
+	return matches
 }
 
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nodeNexthops map[string]set.Set[string], sources set.Set[string]) error {
@@ -905,13 +965,24 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	key := cache.MetaObjectToName(gw).String()
 	pgName := vegPortGroupName(key)
-	if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
-		err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
-		err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
+	// Keep both policy forms for compatibility with existing policy observers. For
+	// subnet-only gateways, the port-group address-set name is backed by an empty
+	// standalone address set below because no Port Group selector exists.
+	includePortGroup := true
+	hasSelectors := len(gw.Spec.Selectors) > 0
+	if hasSelectors {
+		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
+			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
+			klog.Error(err)
+			return err
+		}
+		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
+			err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
+			klog.Error(err)
+			return err
+		}
+	} else if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+		err = fmt.Errorf("failed to delete stale port group %s: %w", pgName, err)
 		klog.Error(err)
 		return err
 	}
@@ -925,6 +996,23 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	if err = c.OVNNbClient.AddressSetUpdateAddress(asName, sources.SortedList()...); err != nil {
 		err = fmt.Errorf("failed to update address set %s: %w", asName, err)
+		klog.Error(err)
+		return err
+	}
+	compatAsName := vegPortGroupAddressSetName(key, af)
+	if !hasSelectors {
+		if err = c.OVNNbClient.CreateAddressSet(compatAsName, externalIDs); err != nil {
+			err = fmt.Errorf("failed to create compatibility address set %s: %w", compatAsName, err)
+			klog.Error(err)
+			return err
+		}
+		if err = c.OVNNbClient.AddressSetUpdateAddress(compatAsName); err != nil {
+			err = fmt.Errorf("failed to clear compatibility address set %s: %w", compatAsName, err)
+			klog.Error(err)
+			return err
+		}
+	} else if err = c.OVNNbClient.DeleteAddressSet(compatAsName); err != nil {
+		err = fmt.Errorf("failed to delete stale compatibility address set %s: %w", compatAsName, err)
 		klog.Error(err)
 		return err
 	}
@@ -963,8 +1051,9 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				return err
 			}
 			localPgName := strings.ReplaceAll(portName, "-", ".")
-			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s_ip%d", af, localPgName, af, af, pgName, af)] = nodeNextHops
-			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s", af, localPgName, af, af, asName)] = nodeNextHops
+			for _, match := range vpcEgressGatewayLocalPolicyMatches(af, localPgName, pgName, asName, includePortGroup).UnsortedList() {
+				rules[match] = nodeNextHops
+			}
 		}
 		policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
 		if err != nil {
@@ -1013,10 +1102,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	matches := set.New[string]()
 	if nextHops.Len() != 0 {
-		matches.Insert(
-			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
-			fmt.Sprintf("ip%d.src == $%s", af, asName),
-		)
+		matches = vpcEgressGatewayPolicyMatches(af, pgName, asName, includePortGroup)
 	}
 	for _, policy := range policies {
 		if matches.Has(policy.Match) {
@@ -1050,10 +1136,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			klog.Error(err)
 			return err
 		}
-		matches = set.New(
-			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
-			fmt.Sprintf("ip%d.src == $%s", af, asName),
-		)
+		matches = vpcEgressGatewayPolicyMatches(af, pgName, asName, includePortGroup)
 		for _, policy := range policies {
 			if matches.Has(policy.Match) {
 				matches.Delete(policy.Match)
@@ -1427,6 +1510,10 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 			klog.Error(err)
 			return err
 		}
+		if err = c.OVNNbClient.DeleteAddressSet(vegPortGroupAddressSetName(key, af)); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	return nil
@@ -1435,6 +1522,10 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 func vegPortGroupName(key string) string {
 	hash := util.Sha256Hash([]byte(key))
 	return "VEG." + hash[:12]
+}
+
+func vegPortGroupAddressSetName(key string, af int) string {
+	return fmt.Sprintf("%s_ip%d", vegPortGroupName(key), af)
 }
 
 func vegAddressSetName(key string, af int) string {

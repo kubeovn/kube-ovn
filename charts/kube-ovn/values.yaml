@@ -291,6 +291,7 @@ kube-ovn-pinger:
     memory: "400Mi"
     ephemeral-storage: 1Gi
 kube-ovn-monitor:
+  replicas: 1
   requests:
     cpu: "200m"
     memory: "200Mi"

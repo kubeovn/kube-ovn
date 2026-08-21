@@ -513,14 +513,16 @@ func (config *Configuration) setEncapIPs() error {
 	encapIPStr := strings.Join(ips, ",")
 	// #nosec G204
 	raw, err := exec.Command(
-		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip="+encapIPStr).CombinedOutput()
+		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip="+encapIPStr,
+	).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to set ovn-encap-ip, %s", string(raw))
 	}
 
 	// #nosec G204
 	raw, err = exec.Command(
-		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip-default="+defaultIP).CombinedOutput()
+		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip-default="+defaultIP,
+	).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to set ovn-encap-ip-default, %s", string(raw))
 	}

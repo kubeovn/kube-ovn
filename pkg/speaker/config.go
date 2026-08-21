@@ -335,11 +335,11 @@ func (config *Configuration) initKubeClient() error {
 }
 
 func (config *Configuration) checkGracefulRestartOptions() error {
-	if config.GracefulRestartTime > time.Second*4095 || config.GracefulRestartTime <= 0 {
-		return errors.New("GracefulRestartTime should be less than 4095 seconds or more than 0")
+	if config.GracefulRestartTime > 4095*time.Second || config.GracefulRestartTime < time.Second {
+		return errors.New("GracefulRestartTime should be between 1 and 4095 seconds")
 	}
-	if config.GracefulRestartDeferralTime > time.Hour*18 || config.GracefulRestartDeferralTime <= 0 {
-		return errors.New("GracefulRestartDeferralTime should be less than 18 hours or more than 0")
+	if config.GracefulRestartDeferralTime > 18*time.Hour || config.GracefulRestartDeferralTime < time.Second {
+		return errors.New("GracefulRestartDeferralTime should be between 1 second and 18 hours")
 	}
 
 	return nil
@@ -554,13 +554,19 @@ func (config *Configuration) watchPeerState() {
 	}
 }
 
+type routeLookupFunc func(net.IP) ([]netlink.Route, error)
+
 func (config *Configuration) initNeighborLocalAddresses() error {
+	return config.initNeighborLocalAddressesWithRouteLookup(netlink.RouteGet)
+}
+
+func (config *Configuration) initNeighborLocalAddressesWithRouteLookup(routeLookup routeLookupFunc) error {
 	config.NeighborLocalAddresses = make(map[string]net.IP, len(config.NeighborAddresses)+len(config.NeighborIPv6Addresses))
 
 	for _, neighbor := range config.NeighborAddresses {
 		if len(config.AllowedSourceAddresses) != 0 {
 			klog.Infof("Resolving BGP local address for neighbor %s with allowed IPv4 source addresses %v", neighbor, config.AllowedSourceAddresses)
-			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor, config.AllowedSourceAddresses)
+			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor, config.AllowedSourceAddresses, routeLookup)
 			if err != nil {
 				return err
 			}
@@ -571,7 +577,7 @@ func (config *Configuration) initNeighborLocalAddresses() error {
 	for _, neighbor := range config.NeighborIPv6Addresses {
 		if len(config.AllowedSourceIPv6Addresses) != 0 {
 			klog.Infof("Resolving BGP local address for neighbor %s with allowed IPv6 source addresses %v", neighbor, config.AllowedSourceIPv6Addresses)
-			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor, config.AllowedSourceIPv6Addresses)
+			localAddr, err := config.resolveWhitelistedNeighborLocalAddress(neighbor, config.AllowedSourceIPv6Addresses, routeLookup)
 			if err != nil {
 				return err
 			}
@@ -598,8 +604,8 @@ func (config *Configuration) getNeighborLocalAddress(neighborAddress net.IP) net
 	return nil
 }
 
-func (config *Configuration) resolveWhitelistedNeighborLocalAddress(neighborAddress net.IP, allowedLocalAddresses []net.IP) (net.IP, error) {
-	routes, err := netlink.RouteGet(neighborAddress)
+func (config *Configuration) resolveWhitelistedNeighborLocalAddress(neighborAddress net.IP, allowedLocalAddresses []net.IP, routeLookup routeLookupFunc) (net.IP, error) {
+	routes, err := routeLookup(neighborAddress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine local address for BGP neighbor %s from route lookup: %w", neighborAddress, err)
 	}

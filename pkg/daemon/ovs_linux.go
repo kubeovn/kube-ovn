@@ -1997,7 +1997,7 @@ func TurnOffNicTxChecksum(nicName string) error {
 	start := time.Now()
 	args := []string{"-K", nicName, "tx", "off"}
 	output, err := exec.Command("ethtool", args...).CombinedOutput() // #nosec G204
-	elapsed := float64((time.Since(start)) / time.Millisecond)
+	elapsed := float64(time.Since(start) / time.Millisecond)
 	klog.V(4).Infof("command %s %s in %vms", "ethtool", strings.Join(args, " "), elapsed)
 	if err != nil {
 		klog.Error(err)

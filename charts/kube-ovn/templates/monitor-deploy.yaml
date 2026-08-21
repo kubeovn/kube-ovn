@@ -8,7 +8,7 @@ metadata:
     kubernetes.io/description: |
       Metrics for OVN components: northd, nb and sb.
 spec:
-  replicas: 1
+  replicas: {{ index .Values "kube-ovn-monitor" "replicas" }}
   strategy:
     rollingUpdate:
       maxSurge: 1

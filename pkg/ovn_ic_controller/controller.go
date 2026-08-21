@@ -3,6 +3,7 @@ package ovn_ic_controller
 import (
 	"time"
 
+	"github.com/scylladb/go-set/strset"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -43,6 +44,8 @@ type Controller struct {
 	ovnLegacyClient *ovs.LegacyClient
 	OVNNbClient     ovs.NbClient
 	OVNSbClient     ovs.SbClient
+
+	icConflictCIDRs *strset.Set
 }
 
 func NewController(config *Configuration) *Controller {
@@ -86,6 +89,7 @@ func NewController(config *Configuration) *Controller {
 		recorder:               recorder,
 
 		ovnLegacyClient: ovs.NewLegacyClient(config.OvnTimeout),
+		icConflictCIDRs: strset.New(),
 	}
 
 	var err error
@@ -116,7 +120,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.informerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
-	if !cache.WaitForCacheSync(stopCh, c.subnetSynced, c.nodesSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.subnetSynced, c.nodesSynced, c.configMapsSynced, c.vpcSynced) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 		return
 	}
