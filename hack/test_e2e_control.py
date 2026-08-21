@@ -1281,11 +1281,14 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("github.actor == 'github-actions[bot]'", workflow)
         self.assertIn("name: Reduce recorded x86 E2E approvals", workflow)
         self.assertIn(
-            "group: x86-e2e-reduce-${{ inputs.prNumber || github.event.issue.number || "
-            "github.event.pull_request.number }}-${{ inputs.approvalGeneration || github.run_id }}",
+            "group: x86-e2e-reduce-${{ matrix.prNumber }}-"
+            "${{ inputs.approvalGeneration || github.run_id }}",
             workflow,
         )
-        self.assertIn("needs:\n      - dispatch\n      - automatic", workflow)
+        self.assertIn(
+            "needs:\n      - dispatch\n      - automatic\n      - invalidate-base",
+            workflow,
+        )
         self.assertIn("no approval was recorded", workflow)
         self.assertIn("actions/workflows/x86-e2e-gate.yaml/dispatches", workflow)
         self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
@@ -1358,7 +1361,10 @@ class E2EControlTest(unittest.TestCase):
         workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
         reduce = e2eSelector.workflowJobBlocks(workflow)["reduce"]
 
-        self.assertIn("needs:\n      - dispatch\n      - automatic", reduce)
+        self.assertIn(
+            "needs:\n      - dispatch\n      - automatic\n      - invalidate-base",
+            reduce,
+        )
         self.assertIn("github.event_name == 'issue_comment'", reduce)
         self.assertIn("needs.dispatch.outputs.accepted == 'true'", reduce)
         self.assertIn("needs.dispatch.outputs.action == 'dispatch'", reduce)
@@ -1372,6 +1378,24 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("durableApproval: ${{ steps.coverage.outputs.durableApproval }}", automatic)
         self.assertIn("id: coverage", automatic)
         self.assertIn("echo 'durableApproval=true' >> \"$GITHUB_OUTPUT\"", automatic)
+
+    def testBaseRefreshDurableApprovalsReachReducerMatrix(self):
+        workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        invalidate = blocks["invalidate-base"]
+        reduce = blocks["reduce"]
+
+        self.assertIn("approvedPullRequests: ${{ steps.invalidate.outputs.approvedPullRequests }}", invalidate)
+        self.assertIn("id: invalidate", invalidate)
+        self.assertIn("approved-pulls.txt", invalidate)
+        self.assertIn("approvedPullRequests=$approvedPullRequests", invalidate)
+        self.assertIn("- invalidate-base", reduce)
+        self.assertIn("github.event_name == 'push'", reduce)
+        self.assertIn("needs.invalidate-base.result == 'success'", reduce)
+        self.assertIn("needs.invalidate-base.outputs.approvedPullRequests != '[]'", reduce)
+        self.assertIn("matrix:", reduce)
+        self.assertIn("needs.invalidate-base.outputs.approvedPullRequests", reduce)
+        self.assertIn("PR_NUMBER: ${{ matrix.prNumber }}", reduce)
 
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
