@@ -73,9 +73,9 @@ func (c *Controller) ensureVpcWireGuardServerSecret(gw *kubeovnv1.VpcWireGuard) 
 			Labels:    util.GenVpcWireGuardLabels(gw.Name),
 		},
 		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string{
-			"privateKey": privateKey,
-			"publicKey":  publicKey,
+		Data: map[string][]byte{
+			"privateKey": []byte(privateKey),
+			"publicKey":  []byte(publicKey),
 		},
 	}
 	if err := util.SetOwnerReference(gw, obj); err != nil {
@@ -87,7 +87,7 @@ func (c *Controller) ensureVpcWireGuardServerSecret(gw *kubeovnv1.VpcWireGuard) 
 		}
 		return publicKey, nil
 	}
-	secret.StringData = obj.StringData
+	secret.Data = obj.Data
 	if _, err := c.config.KubeClient.CoreV1().Secrets(ns).Update(context.Background(), secret, metav1.UpdateOptions{}); err != nil {
 		return "", err
 	}
@@ -425,7 +425,7 @@ func (c *Controller) ensureVpcWireGuardDnat(gw *kubeovnv1.VpcWireGuard, lanIP st
 		if err := util.SetOwnerReference(gw, rule); err != nil {
 			return "", err
 		}
-		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Create(context.Background(), rule, metav1.CreateOptions{}); err != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Create(context.Background(), rule, metav1.CreateOptions{}); err != nil && !k8serrors.IsAlreadyExists(err) {
 			return "", err
 		}
 	} else if existing.Spec != spec {
@@ -467,7 +467,7 @@ func (c *Controller) ensureVpcWireGuardFip(gw *kubeovnv1.VpcWireGuard, lanIP str
 		if err := util.SetOwnerReference(gw, rule); err != nil {
 			return "", err
 		}
-		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Create(context.Background(), rule, metav1.CreateOptions{}); err != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Create(context.Background(), rule, metav1.CreateOptions{}); err != nil && !k8serrors.IsAlreadyExists(err) {
 			return "", err
 		}
 	} else if existing.Spec != spec {

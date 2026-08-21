@@ -236,10 +236,10 @@ func (c *Controller) writePeerConfigSecret(peer *kubeovnv1.VpcWireGuardPeer, gw 
 			Labels:    util.GenVpcWireGuardLabels(gw.Name),
 		},
 		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string{
-			"privateKey":    privateKey,
-			"publicKey":     publicKey,
-			"wg-quick.conf": conf,
+		Data: map[string][]byte{
+			"privateKey":    []byte(privateKey),
+			"publicKey":     []byte(publicKey),
+			"wg-quick.conf": []byte(conf),
 		},
 	}
 	if err := util.SetOwnerReference(peer, obj); err != nil {
@@ -253,7 +253,7 @@ func (c *Controller) writePeerConfigSecret(peer *kubeovnv1.VpcWireGuardPeer, gw 
 	if err != nil {
 		return err
 	}
-	existing.StringData = obj.StringData
+	existing.Data = obj.Data
 	_, err = c.config.KubeClient.CoreV1().Secrets(ns).Update(context.Background(), existing, metav1.UpdateOptions{})
 	return err
 }

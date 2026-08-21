@@ -65,10 +65,44 @@ func TestValidateVpcWireGuardPeerSpec(t *testing.T) {
 	peer.Spec.GenerateKey = false
 	peer.Spec.PublicKey = "not-valid"
 	require.Error(t, validateVpcWireGuardPeerSpec(peer))
+
+	peer.Spec.GenerateKey = true
+	peer.Spec.PublicKey = "should-be-empty"
+	require.Error(t, validateVpcWireGuardPeerSpec(peer))
 }
 
 func TestValidateIPInCIDR(t *testing.T) {
 	require.NoError(t, validateIPInCIDR("10.255.0.4", "10.255.0.0/24"))
 	require.Error(t, validateIPInCIDR("10.0.0.4", "10.255.0.0/24"))
 	require.Error(t, validateIPInCIDR("bad", "10.255.0.0/24"))
+	require.NoError(t, validateIPInCIDR("10.255.0.4", "10.0.0.0/8,10.255.0.0/24"))
+	require.Error(t, validateIPInCIDR("10.255.0.4", "not-a-cidr,also-bad"))
+}
+
+func TestValidateVpcWireGuardSpecKeyModes(t *testing.T) {
+	gw := &ovnv1.VpcWireGuard{
+		ObjectMeta: metav1.ObjectMeta{Name: "vpn"},
+		Spec: ovnv1.VpcWireGuardSpec{
+			Vpc:          "tenant",
+			Subnet:       "lan",
+			ClientSubnet: "vpn-pool",
+			Exposure: ovnv1.VpcWireGuardExposure{
+				Type: ovnv1.VpcWireGuardExposureDualNIC,
+			},
+		},
+	}
+	gw.Spec.GenerateServerKey = true
+	gw.Spec.PublicKey = "x"
+	require.Error(t, validateVpcWireGuardSpec(gw))
+
+	gw.Spec.PublicKey = ""
+	gw.Spec.GenerateServerKey = false
+	require.Error(t, validateVpcWireGuardSpec(gw))
+
+	gw.Spec.Vpc = ""
+	require.Error(t, validateVpcWireGuardSpec(gw))
+
+	gw.Spec.Vpc = "tenant"
+	gw.Spec.Exposure.Type = "Nope"
+	require.Error(t, validateVpcWireGuardSpec(gw))
 }

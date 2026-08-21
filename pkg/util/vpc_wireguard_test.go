@@ -33,6 +33,11 @@ func TestGenVpcWireGuardNames(t *testing.T) {
 	require.Equal(t, int32(51820), DefaultVpcWireGuardListenPort(0))
 	require.Equal(t, int32(12345), DefaultVpcWireGuardListenPort(12345))
 	require.NoError(t, ValidateVpcWireGuardStatefulSetNameLength("ok"))
+	require.Error(t, ValidateVpcWireGuardStatefulSetNameLength(strings.Repeat("a", 80)))
+	require.Equal(t, map[string]string{
+		"app":             "vpc-wg-foo",
+		VpcWireGuardLabel: "true",
+	}, GenVpcWireGuardLabels("foo"))
 }
 
 func TestRenderWireGuardConfigs(t *testing.T) {
@@ -48,6 +53,15 @@ func TestRenderWireGuardConfigs(t *testing.T) {
 	require.Contains(t, client, "Endpoint = 1.2.3.4:51820")
 	require.Contains(t, client, "PersistentKeepalive = 25")
 	require.False(t, strings.Contains(client, "DNS ="))
+
+	client = RenderWireGuardClientConfig("ckey", "10.255.0.2/24", "1.1.1.1", "spub", "1.2.3.4:51820", "10.0.0.0/16", "psk", 0)
+	require.Contains(t, client, "DNS = 1.1.1.1")
+	require.Contains(t, client, "PresharedKey = psk")
+	require.NotContains(t, client, "PersistentKeepalive")
+
+	serverNoMTU := RenderWireGuardServerConfig("skey", "10.255.0.1/24", 51820, 0, nil)
+	require.NotContains(t, serverNoMTU, "MTU =")
+	require.NotContains(t, serverNoMTU, "[Peer]")
 }
 
 func TestGenVpcWireGuardPodAnnotations(t *testing.T) {
@@ -74,4 +88,13 @@ func TestGenVpcWireGuardPodAnnotations(t *testing.T) {
 	ann, err = GenVpcWireGuardPodAnnotations(gw, "kube-system", "ext", OvnProvider, false)
 	require.NoError(t, err)
 	require.Equal(t, "kube-system/ext", ann["k8s.v1.cni.cncf.io/networks"])
+
+	_, err = GenVpcWireGuardPodAnnotations(gw, "kube-system", "ext", "bad-provider", false)
+	require.Error(t, err)
+	ann, err = GenVpcWireGuardPodAnnotations(gw, "kube-system", "ext", "net.kube-system.ovn", false)
+	require.NoError(t, err)
+	require.Equal(t, "kube-system/net", ann[DefaultNetworkAnnotation])
+	ann, err = GenVpcWireGuardPodAnnotations(gw, "kube-system", "ext", "net.kube-system.ovn", true)
+	require.NoError(t, err)
+	require.Empty(t, ann[DefaultNetworkAnnotation])
 }
