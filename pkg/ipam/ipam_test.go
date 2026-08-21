@@ -1170,3 +1170,83 @@ func TestIPAMNamedPoolStaticAddressRemainsAllocatableAfterSubnetUpdate(t *testin
 		})
 	}
 }
+
+func TestIPAMRandomAddressSkipsReleasedExcludeIPsAfterIPPoolReconcile(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "subnet"
+	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "10.10.0.0/24", "10.10.0.1", []string{
+		"10.10.0.1",
+		"10.10.0.2..10.10.0.5",
+	}))
+	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "pool", []string{"10.10.0.200..10.10.0.210"}))
+
+	v4IP, _, _, err := ipam.GetStaticAddress("static-pod", "static-pod", "10.10.0.2", nil, subnetName, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.10.0.2", v4IP)
+	ipam.ReleaseAddressByNic("static-pod", "static-pod", subnetName)
+
+	require.NoError(t, ipam.AddOrUpdateIPPool(subnetName, "pool", []string{"10.10.0.200..10.10.0.210"}))
+
+	excludedIP, err := NewIP("10.10.0.2")
+	require.NoError(t, err)
+	require.False(t, ipam.Subnets[subnetName].IPPools[""].V4Free.Contains(excludedIP))
+
+	v4IP, _, _, err = ipam.GetRandomAddress("random-pod", "random-pod", nil, subnetName, "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.10.0.6", v4IP)
+}
+
+func TestIPAMRandomAddressDoesNotRecycleReservedIPs(t *testing.T) {
+	ipam := NewIPAM()
+	subnetName := "subnet"
+	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "10.10.0.0/30", "10.10.0.1", []string{
+		"10.10.0.1",
+		"10.10.0.2",
+	}))
+
+	subnet := ipam.Subnets[subnetName]
+	pool := subnet.IPPools[""]
+	reservedIP, err := NewIP("10.10.0.2")
+	require.NoError(t, err)
+	require.True(t, pool.V4Released.Add(reservedIP))
+	pool.V4Free = NewEmptyIPRangeList()
+	subnet.V4Free = NewEmptyIPRangeList()
+
+	_, _, _, err = ipam.GetRandomAddress("random-pod", "random-pod", nil, subnetName, "", nil, true)
+	require.ErrorIs(t, err, ErrNoAvailable)
+}
+
+func TestIPAMDualRandomAddressHandlesV4OnV6Exhaustion(t *testing.T) {
+	tests := []struct {
+		name             string
+		existingV4       string
+		wantV4Using      string
+		wantV4UsingRange string
+	}{
+		{name: "RollsBackNewV4", wantV4Using: "0"},
+		{name: "PreservesExistingV4", existingV4: "10.0.0.2", wantV4Using: "1", wantV4UsingRange: "10.0.0.2"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ipam := NewIPAM()
+			if tt.existingV4 != "" {
+				require.NoError(t, ipam.AddOrUpdateSubnet("dual", "10.0.0.0/30", "10.0.0.1", []string{"10.0.0.1"}))
+				v4IP, _, _, err := ipam.GetStaticAddress("pod", "pod", tt.existingV4, nil, "dual", true)
+				require.NoError(t, err)
+				require.Equal(t, tt.existingV4, v4IP)
+			}
+			require.NoError(t, ipam.AddOrUpdateSubnet(
+				"dual", "10.0.0.0/30,fd00::/126", "10.0.0.1,fd00::1", []string{"10.0.0.1", "fd00::1..fd00::2"},
+			))
+
+			_, _, _, err := ipam.GetRandomAddress("pod", "pod", nil, "dual", "", nil, true)
+			require.ErrorIs(t, err, ErrNoAvailable)
+
+			_, v4Using, _, v6Using, _, v4UsingRange, _, _ := ipam.IPPoolStatistics("dual", "")
+			require.Equal(t, tt.wantV4Using, v4Using.String())
+			require.Equal(t, tt.wantV4UsingRange, v4UsingRange)
+			require.Equal(t, "0", v6Using.String())
+		})
+	}
+}
