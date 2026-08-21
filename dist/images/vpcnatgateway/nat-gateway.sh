@@ -578,19 +578,79 @@ function nft_transaction_ignore_errors() {
     printf '%s\n' "$@" | nft -f - 2>/dev/null || true
 }
 
+# Compute the identity hash (md5 prefix of eip:dport:protocol). This is the suffix used by
+# the per-identity chain name (dnat-<idhash>) and the prefix of the per-endpoint affinity
+# objects (ep-<idhash>-<bkhash>, aff-<idhash>-<bkhash>), which lets us enumerate and clean up
+# only the affinity objects that belong to one identity.
+function nft_identity_hash() {
+    local eip=$1 dport=$2 protocol=$3
+    echo -n "${eip}:${dport}:${protocol}" | md5sum | cut -c1-12
+}
+
+# Compute the per-endpoint hash (md5 prefix of ip:port). Combined with the identity hash it
+# yields a stable per-backend name, so affinity state for a surviving backend is preserved
+# when other backends are added or removed (kube-proxy names endpoint objects by endpoint,
+# not by index, for the same reason).
+function nft_backend_hash() {
+    local ip=$1 port=$2
+    echo -n "${ip}:${port}" | md5sum | cut -c1-8
+}
+
+# Remove per-endpoint affinity chains/sets of one identity that are no longer wanted.
+# Args: idhash, keep (space-separated list of backend hashes to keep; empty removes all).
+# Stale endpoint chains are unreferenced once the identity chain has been rebuilt, so they
+# are safe to flush+delete here; all operations are best-effort (idempotent cleanup).
+function cleanup_nft_affinity_objects() {
+    local idhash=$1 keep=$2
+    local obj bk
+
+    for obj in $(nft list chains ip $NFT_TABLE 2>/dev/null | grep -oE "chain ep-${idhash}-[0-9a-f]+" | awk '{print $2}'); do
+        bk=${obj#ep-${idhash}-}
+        if ! printf ' %s ' $keep | grep -q " ${bk} "; then
+            nft_transaction_ignore_errors \
+                "flush chain ip $NFT_TABLE $obj" \
+                "delete chain ip $NFT_TABLE $obj"
+        fi
+    done
+
+    for obj in $(nft list sets ip $NFT_TABLE 2>/dev/null | grep -oE "set aff-${idhash}-[0-9a-f]+" | awk '{print $2}'); do
+        bk=${obj#aff-${idhash}-}
+        if ! printf ' %s ' $keep | grep -q " ${bk} "; then
+            nft_transaction_ignore_errors "delete set ip $NFT_TABLE $obj"
+        fi
+    done
+}
+
 function add_nft_dnat_map() {
     # Add or update share-type DNAT backends for a given identity.
     # Uses atomic nft transaction: ensure infrastructure + flush per-identity chain + re-add rule.
     # All nft add operations are idempotent (no-op if already exists).
-    # Format: eip,dport,protocol,ip1:port1@ip2:port2@ip3:port3
+    # Format: eip,dport,protocol,affinity,timeout,ip1:port1@ip2:port2@ip3:port3
+    #   affinity: "none" (stateless numgen-random map) or "clientip" (per-backend affinity sets)
+    #   timeout:  client-IP sticky window in seconds (only used when affinity=clientip)
+    # Legacy format (eip,dport,protocol,backends) is still accepted for compatibility with an
+    # older controller during a rolling upgrade; it is treated as affinity=none.
     # Backends are '@'-separated (not ';') because the rule is passed as a single argument
     # through pod-exec into a shell context, where ';' would act as a command separator.
     check_inited
     for rule in "$@"
     do
-        IFS=',' read -r eip dport protocol backends <<< "$rule"
+        # Detect the format by field count (backends never contain ',', they use '@'):
+        # 4 fields = legacy (no affinity), 6 fields = new (affinity + timeout).
+        local nfields affinity timeout
+        nfields=$(awk -F',' '{print NF}' <<< "$rule")
+        if [ "$nfields" -eq 4 ]; then
+            IFS=',' read -r eip dport protocol backends <<< "$rule"
+            affinity="none"
+            timeout="0"
+        elif [ "$nfields" -eq 6 ]; then
+            IFS=',' read -r eip dport protocol affinity timeout backends <<< "$rule"
+        else
+            echo "Error: invalid nft-dnat-map rule (expected 4 or 6 fields): $rule"
+            exit 1
+        fi
 
-        if [ -z "$eip" ] || [ -z "$dport" ] || [ -z "$protocol" ] || [ -z "$backends" ]; then
+        if [ -z "$eip" ] || [ -z "$dport" ] || [ -z "$protocol" ] || [ -z "$affinity" ] || [ -z "$backends" ]; then
             echo "Error: invalid nft-dnat-map rule: $rule"
             exit 1
         fi
@@ -610,6 +670,16 @@ function add_nft_dnat_map() {
             echo "Error: invalid protocol in nft-dnat-map rule: $protocol"
             exit 1
         fi
+        if [ "$affinity" != "none" ] && [ "$affinity" != "clientip" ]; then
+            echo "Error: invalid affinity in nft-dnat-map rule: $affinity"
+            exit 1
+        fi
+        if [ "$affinity" = "clientip" ]; then
+            if ! [[ "$timeout" =~ ^[0-9]+$ ]] || [ "$timeout" -lt 1 ] || [ "$timeout" -gt 86400 ]; then
+                echo "Error: invalid affinity timeout in nft-dnat-map rule: $timeout"
+                exit 1
+            fi
+        fi
 
         # Parse backends and count them
         IFS='@' read -ra backend_list <<< "$backends"
@@ -620,12 +690,20 @@ function add_nft_dnat_map() {
             exit 1
         fi
 
-        # Determine per-identity chain name
-        local identity_chain
-        identity_chain=$(nft_identity_chain_name "$eip" "$dport" "$protocol")
+        # Map protocol name to nft inet_proto keyword
+        local nft_proto
+        nft_proto=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
 
-        # Build numgen random mod N map entries (following kube-proxy pattern)
-        local map_entries=""
+        # Determine per-identity chain name and identity hash.
+        # The hash uses the raw protocol string (as before the affinity feature) so the
+        # per-identity chain name is unchanged across upgrades; the vmap key below uses the
+        # lowercased protocol, matching the original behavior.
+        local identity_chain idhash
+        identity_chain=$(nft_identity_chain_name "$eip" "$dport" "$protocol")
+        idhash=$(nft_identity_hash "$eip" "$dport" "$protocol")
+
+        # Validate backends up front (shared by both affinity modes)
+        local i ip port
         for i in "${!backend_list[@]}"; do
             IFS=':' read -r ip port <<< "${backend_list[$i]}"
             if ! [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
@@ -636,41 +714,90 @@ function add_nft_dnat_map() {
                 echo "Error: invalid backend port in nft-dnat-map rule: $port"
                 exit 1
             fi
-            if [ -n "$map_entries" ]; then
-                map_entries="$map_entries, "
-            fi
-            map_entries="$map_entries$i : $ip . $port"
         done
 
-        # Map protocol name to nft inet_proto keyword
-        local nft_proto
-        nft_proto=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+        # Common infrastructure commands (idempotent): table, base chain, service vmap,
+        # and the base-chain dispatch rule. The base chain is share-dnat-exclusive; flushing
+        # it wipes any other rule in it (see NFT_PREROUTING_CHAIN).
+        local -a cmds=(
+            "add table ip $NFT_TABLE"
+            "add chain ip $NFT_TABLE $NFT_PREROUTING_CHAIN { type nat hook prerouting priority -150 ; }"
+            "add map ip $NFT_TABLE $NFT_SERVICES_MAP { type ipv4_addr . inet_proto . inet_service : verdict ; }"
+            "flush chain ip $NFT_TABLE $NFT_PREROUTING_CHAIN"
+            "add rule ip $NFT_TABLE $NFT_PREROUTING_CHAIN ip daddr . meta l4proto . th dport vmap @$NFT_SERVICES_MAP"
+            "add chain ip $NFT_TABLE $identity_chain"
+        )
 
-        # Atomic transaction:
-        # 1. Ensure table, base chain, vmap exist (idempotent)
-        # 2. Flush + re-add dispatch rule in base chain
-        #    (base chain is share-dnat-exclusive; flush wipes any other rule in it, see NFT_PREROUTING_CHAIN)
-        # 3. Flush per-identity chain + add new dnat rule
-        #    (the `meta l4proto $nft_proto` match is technically redundant here, since a packet
-        #     only reaches this chain via the vmap key that already selects by protocol; it is
-        #     kept for parity with kube-proxy's per-service dnat rule and as an explicit guard)
-        # 4. Ensure vmap element points to this chain
-        if ! nft_transaction \
-            "add table ip $NFT_TABLE" \
-            "add chain ip $NFT_TABLE $NFT_PREROUTING_CHAIN { type nat hook prerouting priority -150 ; }" \
-            "add map ip $NFT_TABLE $NFT_SERVICES_MAP { type ipv4_addr . inet_proto . inet_service : verdict ; }" \
-            "flush chain ip $NFT_TABLE $NFT_PREROUTING_CHAIN" \
-            "add rule ip $NFT_TABLE $NFT_PREROUTING_CHAIN ip daddr . meta l4proto . th dport vmap @$NFT_SERVICES_MAP" \
-            "add chain ip $NFT_TABLE $identity_chain" \
-            "flush chain ip $NFT_TABLE $identity_chain" \
-            "add rule ip $NFT_TABLE $identity_chain meta l4proto $nft_proto dnat ip addr . port to numgen random mod $count map { $map_entries }" \
-            "add element ip $NFT_TABLE $NFT_SERVICES_MAP { $eip . $nft_proto . $dport : goto $identity_chain }"
-        then
+        local keep_bkhashes=""
+
+        if [ "$affinity" = "clientip" ]; then
+            # Client-IP session affinity (kube-proxy nftables pattern):
+            #   per-backend chain ep-<idhash>-<bkhash>:
+            #       update @aff-<idhash>-<bkhash> { ip saddr }   # record/refresh source IP
+            #       meta l4proto <proto> dnat to <ip>:<port>
+            #   identity chain:
+            #       ip saddr @aff-<...> goto ep-<...>            # pin known clients
+            #       numgen random mod N vmap { i : goto ep-<...> }  # random for new clients
+            # `add set`/`add chain` are idempotent, so surviving backends keep their affinity
+            # state across backend changes; stale backends are cleaned up afterwards.
+            local bkhash ep_chain aff_set
+            local vmap_entries=""
+            local -a ep_chains=()
+            local -a bkhashes=()
+            for i in "${!backend_list[@]}"; do
+                IFS=':' read -r ip port <<< "${backend_list[$i]}"
+                bkhash=$(nft_backend_hash "$ip" "$port")
+                ep_chain="ep-${idhash}-${bkhash}"
+                aff_set="aff-${idhash}-${bkhash}"
+                ep_chains[$i]="$ep_chain"
+                bkhashes[$i]="$bkhash"
+                keep_bkhashes="$keep_bkhashes $bkhash"
+
+                cmds+=("add set ip $NFT_TABLE $aff_set { type ipv4_addr ; flags dynamic,timeout ; timeout ${timeout}s ; }")
+                cmds+=("add chain ip $NFT_TABLE $ep_chain")
+                cmds+=("flush chain ip $NFT_TABLE $ep_chain")
+                cmds+=("add rule ip $NFT_TABLE $ep_chain update @$aff_set { ip saddr }")
+                cmds+=("add rule ip $NFT_TABLE $ep_chain meta l4proto $nft_proto dnat to ${ip}:${port}")
+            done
+
+            cmds+=("flush chain ip $NFT_TABLE $identity_chain")
+            for i in "${!backend_list[@]}"; do
+                cmds+=("add rule ip $NFT_TABLE $identity_chain ip saddr @aff-${idhash}-${bkhashes[$i]} goto ${ep_chains[$i]}")
+                if [ -n "$vmap_entries" ]; then
+                    vmap_entries="$vmap_entries, "
+                fi
+                vmap_entries="$vmap_entries$i : goto ${ep_chains[$i]}"
+            done
+            cmds+=("add rule ip $NFT_TABLE $identity_chain numgen random mod $count vmap { $vmap_entries }")
+        else
+            # Stateless: single per-identity rule with a numgen random dnat map.
+            # (the `meta l4proto $nft_proto` match is technically redundant here, since a packet
+            #  only reaches this chain via the vmap key that already selects by protocol; it is
+            #  kept for parity with kube-proxy's per-service dnat rule and as an explicit guard)
+            local map_entries=""
+            for i in "${!backend_list[@]}"; do
+                IFS=':' read -r ip port <<< "${backend_list[$i]}"
+                if [ -n "$map_entries" ]; then
+                    map_entries="$map_entries, "
+                fi
+                map_entries="$map_entries$i : $ip . $port"
+            done
+            cmds+=("flush chain ip $NFT_TABLE $identity_chain")
+            cmds+=("add rule ip $NFT_TABLE $identity_chain meta l4proto $nft_proto dnat ip addr . port to numgen random mod $count map { $map_entries }")
+        fi
+
+        cmds+=("add element ip $NFT_TABLE $NFT_SERVICES_MAP { $eip . $nft_proto . $dport : goto $identity_chain }")
+
+        if ! nft_transaction "${cmds[@]}"; then
             echo "Error: failed to update nft share dnat for $eip:$dport ($protocol)"
             exit 1
         fi
 
-        echo "Updated nft share dnat: $eip:$dport ($protocol) -> $backends (chain=$identity_chain)"
+        # Remove affinity chains/sets for backends that no longer exist (or all of them when
+        # affinity is disabled). Stale endpoint chains are unreferenced after the rebuild above.
+        cleanup_nft_affinity_objects "$idhash" "$keep_bkhashes"
+
+        echo "Updated nft share dnat: $eip:$dport ($protocol, affinity=$affinity) -> $backends (chain=$identity_chain)"
     done
 }
 
@@ -713,9 +840,10 @@ function del_nft_dnat_map() {
             exit 1
         fi
 
-        local identity_chain nft_proto
-        identity_chain=$(nft_identity_chain_name "$eip" "$dport" "$protocol")
+        local identity_chain nft_proto idhash
         nft_proto=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+        identity_chain=$(nft_identity_chain_name "$eip" "$dport" "$protocol")
+        idhash=$(nft_identity_hash "$eip" "$dport" "$protocol")
 
         # Delete vmap element and per-identity chain.
         # These are separate operations because nft -f is transactional (all-or-nothing):
@@ -725,6 +853,9 @@ function del_nft_dnat_map() {
         nft_transaction_ignore_errors \
             "flush chain ip $NFT_TABLE $identity_chain" \
             "delete chain ip $NFT_TABLE $identity_chain"
+
+        # Remove any per-backend client-IP affinity chains/sets belonging to this identity.
+        cleanup_nft_affinity_objects "$idhash" ""
 
         # Clean up conntrack entries for this identity
         conntrack -D -d "$eip" -p "$nft_proto" --dport "$dport" 2>/dev/null || true

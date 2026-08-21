@@ -45,13 +45,13 @@ import (
 //   - nft object names: lower_case with hyphens/underscores (Linux/nftables convention)
 //   - Per-identity chain: "dnat-" + md5(eip:port:protocol)[:12]  (generated in shell)
 //
-// TODO(share-dnat): source-IP session affinity is not supported yet. Backends are selected
-// purely at random (numgen random) and then pinned per-connection by conntrack; there is no
-// client-IP affinity. kube-proxy's nftables backend implements ClientIP affinity by recording
-// the source IP in a dynamic nftables set ("update @affinity-set { ip saddr }" in the per-endpoint
-// chain, plus a preceding "ip saddr @affinity-set goto <ep>" lookup), layered on top of the same
-// numgen random dispatch (not jhash). The same approach could be adopted here if per-client
-// affinity is needed in the future.
+// Client-IP session affinity: when a share DNAT's Spec.SessionAffinity is "ClientIP", the
+// gateway script programs the kube-proxy nftables affinity pattern instead of the stateless
+// numgen-random map: each backend gets a dynamic timeout set ("update @affinity-set { ip saddr }"
+// in a per-endpoint chain) and the per-identity chain gains a preceding "ip saddr @affinity-set
+// goto <ep>" lookup, layered on top of the same numgen random dispatch (not jhash). Affinity is
+// an identity-level property (all siblings share it) and is threaded through createNftDnatMapInPod
+// as (sessionAffinity, affinityTimeoutSeconds); "" / none keeps the original stateless behavior.
 
 const (
 	// natGwNftDnatMapAdd is the shell command for adding/updating a share DNAT identity.
@@ -75,7 +75,7 @@ const (
 // '@' is used as the separator (not ';') because the rule string is passed as a single
 // argument through the pod-exec API into a shell context, where ';' would be interpreted
 // as a command separator; '@' never appears in an ip:port and is shell-safe.
-func (c *Controller) createNftDnatMapInPod(dp, protocol, v4ip, externalPort string, backends []string) error {
+func (c *Controller) createNftDnatMapInPod(dp, protocol, v4ip, externalPort string, backends []string, sessionAffinity string, affinityTimeoutSeconds int32) error {
 	if v4ip == "" {
 		// Share DNAT is implemented with `ip daddr`/`ip saddr` nft rules and only supports IPv4.
 		return errors.New("cannot create nft dnat map: empty IPv4 EIP (share dnat does not support IPv6)")
@@ -96,8 +96,21 @@ func (c *Controller) createNftDnatMapInPod(dp, protocol, v4ip, externalPort stri
 		return err
 	}
 
+	// Encode client-IP session affinity for the gateway script. "none" keeps the original
+	// stateless numgen-random map; "clientip" enables per-backend affinity sets with the given
+	// sticky timeout (kube-proxy nftables pattern). The timeout is only meaningful for clientip.
+	affinity := "none"
+	timeout := int32(0)
+	if sessionAffinity == kubeovnv1.DnatSessionAffinityClientIP {
+		affinity = "clientip"
+		timeout = affinityTimeoutSeconds
+		if timeout <= 0 {
+			timeout = kubeovnv1.DefaultDnatSessionAffinityTimeoutSeconds
+		}
+	}
+
 	backendStr := strings.Join(backends, "@")
-	rule := fmt.Sprintf("%s,%s,%s,%s", v4ip, externalPort, protocol, backendStr)
+	rule := fmt.Sprintf("%s,%s,%s,%s,%d,%s", v4ip, externalPort, protocol, affinity, timeout, backendStr)
 	if err = c.execNatGwRules(gwPod, natGwNftDnatMapAdd, []string{rule}); err != nil {
 		klog.Errorf("failed to create nft dnat map, err: %v", err)
 		return err
@@ -236,7 +249,7 @@ func (c *Controller) getShareBackends(gwName, eipName, externalPort, protocol, d
 // numgen random map. This is the expected behavior when detaching a backend from a load balancer.
 // Conntrack is only cleared on full identity deletion (see deleteNftDnatMapInPod /
 // del_nft_dnat_map in the gateway script).
-func (c *Controller) cleanupShareDnatInPod(key, gwName, eipName, protocol, v4ip, externalPort, dnatName string) error {
+func (c *Controller) cleanupShareDnatInPod(key, gwName, eipName, protocol, v4ip, externalPort, dnatName, sessionAffinity string, affinityTimeoutSeconds int32) error {
 	remainingBackends, err := c.getShareBackends(gwName, eipName, externalPort, protocol, dnatName)
 	if err != nil {
 		return fmt.Errorf("failed to get share backends for dnat %s: %w", key, err)
@@ -249,7 +262,7 @@ func (c *Controller) cleanupShareDnatInPod(key, gwName, eipName, protocol, v4ip,
 		return nil
 	}
 	// Rebuild nft rule with remaining backends
-	if err := c.createNftDnatMapInPod(gwName, protocol, v4ip, externalPort, remainingBackends); err != nil {
+	if err := c.createNftDnatMapInPod(gwName, protocol, v4ip, externalPort, remainingBackends, sessionAffinity, affinityTimeoutSeconds); err != nil {
 		return fmt.Errorf("failed to rebuild nft dnat map for %s: %w", key, err)
 	}
 	return nil
