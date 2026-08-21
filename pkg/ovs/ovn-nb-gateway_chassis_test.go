@@ -207,3 +207,41 @@ func (suite *OvnClientTestSuite) testNewGatewayChassis() {
 		require.Equal(t, newLrpName, gwChassis.ExternalIDs["lrp"])
 	})
 }
+
+func (suite *OvnClientTestSuite) testReconcileGatewayChassises() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-reconcile-gateway-chassises-lr"
+	lrpName := "test-reconcile-gateway-chassises-lrp"
+	oldPrimary := "reconcile-gw-old"
+	newPrimary := "reconcile-gw-new"
+	standby := "reconcile-gw-standby"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+	err = nbClient.CreateLogicalRouterPort(lrName, lrpName, "00:11:22:37:af:62", []string{"fd00::c0a8:1001/120"})
+	require.NoError(t, err)
+	err = nbClient.CreateGatewayChassises(lrpName, oldPrimary, newPrimary, standby)
+	require.NoError(t, err)
+
+	err = nbClient.ReconcileGatewayChassises(lrpName, []string{newPrimary})
+	require.NoError(t, err)
+
+	exists, err := nbClient.GatewayChassisExist(lrpName + "-" + oldPrimary)
+	require.NoError(t, err)
+	require.False(t, exists)
+	exists, err = nbClient.GatewayChassisExist(lrpName + "-" + standby)
+	require.NoError(t, err)
+	require.False(t, exists)
+
+	gwChassis, err := nbClient.GetGatewayChassis(lrpName+"-"+newPrimary, false)
+	require.NoError(t, err)
+	require.Equal(t, 100, gwChassis.Priority)
+
+	lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
+	require.NoError(t, err)
+	require.Len(t, lrp.GatewayChassis, 1)
+	require.Contains(t, lrp.GatewayChassis, gwChassis.UUID)
+}
