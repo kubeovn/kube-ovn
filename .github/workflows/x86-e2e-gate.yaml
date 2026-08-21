@@ -207,9 +207,15 @@ jobs:
           fi
           gh api "repos/$GITHUB_REPOSITORY/pulls/$prNumber" > pull-request.json
           currentHead=$(jq -r '.head.sha' pull-request.json)
-          currentBaseSHA=$(jq -r '.base.sha' pull-request.json)
           baseRef=$(jq -r '.base.ref' pull-request.json)
           state=$(jq -r '.state' pull-request.json)
+          if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            echo 'Pull request base branch is outside the supported trusted set.' >&2
+            exit 1
+          fi
+          currentBaseSHA=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$baseRef" \
+            --jq '.object.sha')
           if ! [[ "$currentBaseSHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo 'Current pull request base revision is invalid.' >&2
             exit 1
@@ -220,10 +226,6 @@ jobs:
             trustedExecution=false
           fi
           trustedRef="$currentBaseSHA"
-          if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
-            echo 'Pull request base branch is outside the supported trusted set.' >&2
-            exit 1
-          fi
           if [ "$RUN_EVENT" = workflow_dispatch ] && {
             [ "$RUN_ACTOR" != 'github-actions[bot]' ] || [ "$RUN_HEAD_BRANCH" != "$expectedExecutorRef" ];
           }; then
@@ -706,14 +708,23 @@ jobs:
             echo 'mutate=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          liveBaseSHA=$(jq -r '.base.sha' pull-request.json)
+          baseRef=$(jq -r '.base.ref' pull-request.json)
+          if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            echo 'mutate=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          liveBaseSHA=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$baseRef" \
+            --jq '.object.sha')
           if [ "$BASE_REFRESH" = true ]; then
             export BASE_SHA="$liveBaseSHA"
           elif [ "$liveBaseSHA" != "$BASE_SHA" ]; then
             echo 'mutate=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          baseRef=$(jq -r '.base.ref' pull-request.json)
+          jq --arg baseSHA "$liveBaseSHA" '.base.sha = $baseSHA' pull-request.json \
+            > live-pull-request.json
+          mv live-pull-request.json pull-request.json
           gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
             --jq '.content' | base64 --decode > trusted-catalog.json
           gh api --paginate --slurp \
@@ -811,7 +822,7 @@ jobs:
           fi
           summary='The latest authorized x86 E2E approval is waiting for its trusted executor.'
           if [ "$BASE_REFRESH" = true ]; then
-            summary='The pull request target branch advanced; authorize x86 E2E again for the new base revision.'
+            summary='The pull request target branch advanced; trusted x86 E2E coverage is required for the new base revision.'
           fi
           {
             echo 'mutate=true'
@@ -820,7 +831,7 @@ jobs:
             echo "summary=$summary"
             echo "approvalGeneration=$(jq -r '.approvalGeneration' cumulative-request.json)"
             echo "baseRef=$baseRef"
-            echo "baseSHA=$(jq -r '.base.sha' pull-request.json)"
+            echo "baseSHA=$liveBaseSHA"
             echo "catalogRevision=$(jq -r '.catalogRevision' cumulative-request.json)"
             echo "requestKey=$(jq -r '.requestKey' cumulative-request.json)"
             echo "requestedGroups=$(jq -c '.requestedGroups' cumulative-request.json)"
@@ -895,13 +906,23 @@ jobs:
              [ "$(jq -r '.head.sha' final-pull-request.json)" != "$HEAD_SHA" ]; then
             exit 0
           fi
-          currentBaseSHA=$(jq -r '.base.sha' final-pull-request.json)
-          if [ "$currentBaseSHA" != "$BASE_SHA" ]; then
+          currentBaseRef=$(jq -r '.base.ref' final-pull-request.json)
+          if ! [[ "$currentBaseRef" == master || "$currentBaseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            exit 0
+          fi
+          currentBaseSHA=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$currentBaseRef" \
+            --jq '.object.sha')
+          jq --arg baseSHA "$currentBaseSHA" '.base.sha = $baseSHA' final-pull-request.json \
+            > live-final-pull-request.json
+          mv live-final-pull-request.json final-pull-request.json
+          if [ "$currentBaseRef" != "$BASE_REF" ] || [ "$currentBaseSHA" != "$BASE_SHA" ]; then
             RUN_ACTION=base_refresh
             STATUS=completed
             CONCLUSION=action_required
-            SUMMARY='The pull request target branch advanced; authorize x86 E2E again for the new base revision.'
+            SUMMARY='The pull request target branch advanced; trusted x86 E2E coverage is required for the new base revision.'
             RUN_URL="https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER"
+            BASE_REF="$currentBaseRef"
             export BASE_SHA="$currentBaseSHA"
             export TRUSTED_REF="$currentBaseSHA"
           fi
@@ -1503,15 +1524,21 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > write-pull-request.json
           writeState=$(jq -r '.state' write-pull-request.json)
           writeHead=$(jq -r '.head.sha' write-pull-request.json)
-          writeBase=$(jq -r '.base.sha' write-pull-request.json)
+          writeBaseRef=$(jq -r '.base.ref' write-pull-request.json)
+          if ! [[ "$writeBaseRef" == master || "$writeBaseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
+            exit 0
+          fi
+          writeBase=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$writeBaseRef" \
+            --jq '.object.sha')
           if [ "$writeState" != open ] || [ "$writeHead" != "$HEAD_SHA" ]; then
             exit 0
           fi
-          if [ "$writeBase" != "$BASE_SHA" ]; then
+          if [ "$writeBaseRef" != "$BASE_REF" ] || [ "$writeBase" != "$BASE_SHA" ]; then
             RUN_ACTION=base_refresh
             STATUS=completed
             CONCLUSION=action_required
-            SUMMARY='The pull request target branch advanced; authorize x86 E2E again for the new base revision.'
+            SUMMARY='The pull request target branch advanced; trusted x86 E2E coverage is required for the new base revision.'
             RUN_URL="https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER"
           fi
           jq -n \

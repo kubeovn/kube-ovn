@@ -241,11 +241,14 @@ jobs:
             exit 0
           fi
           headSHA=$(jq -r '.head.sha' automatic-pull-request.json)
-          baseSHA=$(jq -r '.base.sha' automatic-pull-request.json)
           baseRef=$(jq -r '.base.ref' automatic-pull-request.json)
           if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
             exit 0
           fi
+          baseSHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$baseRef" --jq '.object.sha')
+          jq --arg baseSHA "$baseSHA" '.base.sha = $baseSHA' automatic-pull-request.json \
+            > live-automatic-pull-request.json
+          mv live-automatic-pull-request.json automatic-pull-request.json
           gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
             --jq '.content' | base64 --decode > automatic-catalog.json
           gh api --paginate --slurp \
@@ -416,6 +419,13 @@ jobs:
         run: |
           set -euo pipefail
           : > approved-pulls.txt
+          liveBaseSHA=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$GITHUB_REF_NAME" \
+            --jq '.object.sha')
+          if [ "$liveBaseSHA" != "$GITHUB_SHA" ]; then
+            echo 'approvedPullRequests=[]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           catalogRevision=$(python3 - <<'PY'
           import json
           from pathlib import Path
@@ -437,6 +447,9 @@ jobs:
               | jq -r 'any(.check_runs[]; .name == "x86-e2e / required-gate")')
             [ "$hasGate" = true ] || continue
             gh api "repos/$GITHUB_REPOSITORY/pulls/$prNumber" > refresh-pull-request.json
+            jq --arg baseSHA "$liveBaseSHA" '.base.sha = $baseSHA' refresh-pull-request.json \
+              > live-refresh-pull-request.json
+            mv live-refresh-pull-request.json refresh-pull-request.json
             gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments?per_page=100" \
               > refresh-comments.json
@@ -542,6 +555,10 @@ jobs:
             echo 'Pull request base branch is outside the supported trusted set.' >&2
             exit 1
           fi
+          baseSHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$baseRef" --jq '.object.sha')
+          jq --arg baseSHA "$baseSHA" '.base.sha = $baseSHA' pull-request.json \
+            > live-pull-request.json
+          mv live-pull-request.json pull-request.json
           gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
             --jq '.content' | base64 --decode > trusted-catalog.json
           gh api --paginate --slurp \
@@ -601,14 +618,23 @@ jobs:
           action=$(jq -r '.action' dispatch-decision.json)
           headSHA=$(jq -r '.headSHA' dispatch-decision.json)
           baseSHA=$(jq -r '.baseSHA' dispatch-decision.json)
+          baseRef=$(jq -r '.baseRef' dispatch-decision.json)
           gh api "repos/$GITHUB_REPOSITORY/pulls/$prNumber" > confirmed-pull-request.json
           confirmedHead=$(jq -r '.head.sha' confirmed-pull-request.json)
-          confirmedBase=$(jq -r '.base.sha' confirmed-pull-request.json)
-          if [ "$confirmedHead" != "$headSHA" ] || [ "$confirmedBase" != "$baseSHA" ]; then
+          confirmedBaseRef=$(jq -r '.base.ref' confirmed-pull-request.json)
+          confirmedBase=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$confirmedBaseRef" \
+            --jq '.object.sha')
+          if [ "$confirmedHead" != "$headSHA" ] || \
+             [ "$confirmedBaseRef" != "$baseRef" ] || \
+             [ "$confirmedBase" != "$baseSHA" ]; then
             gh api "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments" \
               -f body='x86 E2E request became stale before dispatch; comment again for the current HEAD and target revision.'
             exit 1
           fi
+          jq --arg baseSHA "$confirmedBase" '.base.sha = $baseSHA' confirmed-pull-request.json \
+            > live-confirmed-pull-request.json
+          mv live-confirmed-pull-request.json confirmed-pull-request.json
           if [ "$action" = dispatch ]; then
             python3 - <<'PY' > request-marker.txt
           import json
@@ -890,14 +916,21 @@ jobs:
             exit 1
           fi
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > final-rerun-pull-request.json
+          finalBaseRef=$(jq -r '.base.ref' final-rerun-pull-request.json)
+          finalBaseSHA=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$finalBaseRef" \
+            --jq '.object.sha')
           if [ "$(jq -r '.state' final-rerun-pull-request.json)" != open ] || \
              [ "$(jq -r '.head.sha' final-rerun-pull-request.json)" != "$HEAD_SHA" ] || \
-             [ "$(jq -r '.base.sha' final-rerun-pull-request.json)" != "$BASE_SHA" ]; then
+             [ "$finalBaseRef" != "$BASE_REF" ] || [ "$finalBaseSHA" != "$BASE_SHA" ]; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$runId/cancel" >/dev/null 2>&1 || true
             gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
               -f body='The pull request changed before the failed-job rerun; no stale rerun was started.'
             exit 0
           fi
+          jq --arg baseSHA "$finalBaseSHA" '.base.sha = $baseSHA' final-rerun-pull-request.json \
+            > live-final-rerun-pull-request.json
+          mv live-final-rerun-pull-request.json final-rerun-pull-request.json
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
             > final-rerun-comments.json
@@ -1025,6 +1058,10 @@ jobs:
             echo 'hasApprovals=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          baseSHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$baseRef" --jq '.object.sha')
+          jq --arg baseSHA "$baseSHA" '.base.sha = $baseSHA' pull-request.json \
+            > live-pull-request.json
+          mv live-pull-request.json pull-request.json
           gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
             --jq '.content' | base64 --decode > trusted-catalog.json
           gh api --paginate --slurp \
@@ -1091,8 +1128,13 @@ jobs:
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > confirmed-pull-request.json
+          confirmedBaseRef=$(jq -r '.base.ref' confirmed-pull-request.json)
+          confirmedBaseSHA=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$confirmedBaseRef" \
+            --jq '.object.sha')
           if [ "$(jq -r '.head.sha' confirmed-pull-request.json)" != "$HEAD_SHA" ] || \
-             [ "$(jq -r '.base.sha' confirmed-pull-request.json)" != "$BASE_SHA" ]; then
+             [ "$confirmedBaseRef" != "$BASE_REF" ] || \
+             [ "$confirmedBaseSHA" != "$BASE_SHA" ]; then
             echo 'The cumulative request became stale before dispatch.'
             exit 0
           fi
@@ -1175,9 +1217,13 @@ jobs:
             exit 1
           fi
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > final-pull-request.json
+          finalBaseRef=$(jq -r '.base.ref' final-pull-request.json)
+          finalBaseSHA=$(gh api \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$finalBaseRef" \
+            --jq '.object.sha')
           if [ "$(jq -r '.state' final-pull-request.json)" != open ] || \
              [ "$(jq -r '.head.sha' final-pull-request.json)" != "$HEAD_SHA" ] || \
-             [ "$(jq -r '.base.sha' final-pull-request.json)" != "$BASE_SHA" ]; then
+             [ "$finalBaseRef" != "$BASE_REF" ] || [ "$finalBaseSHA" != "$BASE_SHA" ]; then
             echo 'The cumulative request became stale during gate reconciliation.'
             exit 0
           fi
