@@ -326,13 +326,14 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 		return nil, nil, "", ErrNoAvailable
 	}
 
+	pool.V4Free = pool.V4Free.Separate(pool.V4Reserved)
 	if pool.V4Free.Len() == 0 {
-		if pool.V4Released.Len() == 0 {
+		pool.V4Free = pool.V4Released.Separate(pool.V4Reserved)
+		pool.V4Released = NewEmptyIPRangeList()
+		if pool.V4Free.Len() == 0 {
 			klog.Errorf("no free v4 ip in ip pool %s", ippoolName)
 			return nil, nil, "", ErrNoAvailable
 		}
-		pool.V4Free = pool.V4Released
-		pool.V4Released = NewEmptyIPRangeList()
 	}
 
 	skipped := make([]IP, 0, len(skippedAddrs))
@@ -390,13 +391,14 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 		return nil, nil, "", ErrNoAvailable
 	}
 
+	pool.V6Free = pool.V6Free.Separate(pool.V6Reserved)
 	if pool.V6Free.Len() == 0 {
-		if pool.V6Released.Len() == 0 {
+		pool.V6Free = pool.V6Released.Separate(pool.V6Reserved)
+		pool.V6Released = NewEmptyIPRangeList()
+		if pool.V6Free.Len() == 0 {
 			klog.Errorf("no free v6 ip in ip pool %s", ippoolName)
 			return nil, nil, "", ErrNoAvailable
 		}
-		pool.V6Free = pool.V6Released
-		pool.V6Released = NewEmptyIPRangeList()
 	}
 
 	skipped := make([]IP, 0, len(skippedAddrs))
@@ -831,23 +833,23 @@ func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 	if p := s.IPPools[name]; p != nil {
 		defaultPool.V4IPs = defaultPool.V4IPs.Merge(p.V4IPs).Separate(pool.V4IPs)
 		defaultPool.V6IPs = defaultPool.V6IPs.Merge(p.V6IPs).Separate(pool.V6IPs)
-		defaultPool.V4Free = defaultPool.V4Available.Merge(p.V4Available).Separate(pool.V4Free)
-		defaultPool.V6Free = defaultPool.V6Available.Merge(p.V6Available).Separate(pool.V6Free)
 		defaultPool.V4Using = defaultPool.V4Using.Merge(p.V4Using).Separate(pool.V4Using)
 		defaultPool.V6Using = defaultPool.V6Using.Merge(p.V6Using).Separate(pool.V6Using)
 		defaultPool.V4Reserved = defaultPool.V4Reserved.Merge(p.V4Reserved).Separate(pool.V4Reserved)
 		defaultPool.V6Reserved = defaultPool.V6Reserved.Merge(p.V6Reserved).Separate(pool.V6Reserved)
+		defaultPool.V4Free = defaultPool.V4Available.Merge(p.V4Available).Separate(pool.V4Free).Separate(s.V4Reserved)
+		defaultPool.V6Free = defaultPool.V6Available.Merge(p.V6Available).Separate(pool.V6Free).Separate(s.V6Reserved)
 		defaultPool.V4Available = defaultPool.V4Free.Clone()
 		defaultPool.V6Available = defaultPool.V6Free.Clone()
 	} else {
 		defaultPool.V4IPs = defaultPool.V4IPs.Separate(pool.V4IPs)
 		defaultPool.V6IPs = defaultPool.V6IPs.Separate(pool.V6IPs)
-		defaultPool.V4Free = defaultPool.V4Available.Separate(pool.V4Free)
-		defaultPool.V6Free = defaultPool.V6Available.Separate(pool.V6Free)
 		defaultPool.V4Using = defaultPool.V4Using.Separate(pool.V4Using)
 		defaultPool.V6Using = defaultPool.V6Using.Separate(pool.V6Using)
 		defaultPool.V4Reserved = defaultPool.V4Reserved.Separate(pool.V4Reserved)
 		defaultPool.V6Reserved = defaultPool.V6Reserved.Separate(pool.V6Reserved)
+		defaultPool.V4Free = defaultPool.V4Available.Separate(pool.V4Free).Separate(s.V4Reserved)
+		defaultPool.V6Free = defaultPool.V6Available.Separate(pool.V6Free).Separate(s.V6Reserved)
 		defaultPool.V4Available = defaultPool.V4Free.Clone()
 		defaultPool.V6Available = defaultPool.V6Free.Clone()
 	}
