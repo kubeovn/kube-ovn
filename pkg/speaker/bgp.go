@@ -8,7 +8,6 @@ import (
 	"github.com/osrg/gobgp/v4/pkg/apiutil"
 	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
@@ -51,13 +50,12 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 	fn := func(prefix bgp.NLRI, paths []*apiutil.Path) {
 		existingNextHops := make(set.Set[string])
 		for _, path := range paths {
+			if path.PeerASN != 0 {
+				continue
+			}
 			nextHop := getNextHopFromPathAttributes(path.Attrs)
 			klog.V(5).Infof("announcing route with prefix %s and nexthop: %s", prefix, nextHop)
-
-			route, _ := netlink.RouteGet(nextHop)
-			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.Equal(c.config.RouterID) {
-				existingNextHops.Insert(nextHop.String())
-			}
+			existingNextHops.Insert(nextHop.String())
 		}
 		if existingNextHops.Equal(currentNextHops) {
 			existingPrefixes.Insert(prefix.String())
