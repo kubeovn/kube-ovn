@@ -889,6 +889,26 @@ func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, band
 	return nil
 }
 
+func vpcEgressGatewayPolicyMatches(af int, pgName, asName string, includePortGroup bool) set.Set[string] {
+	matches := set.New[string](fmt.Sprintf("ip%d.src == $%s", af, asName))
+	if includePortGroup {
+		matches.Insert(fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af))
+	}
+	return matches
+}
+
+func vpcEgressGatewayLocalPolicyMatches(af int, localPgName, pgName, asName string, includePortGroup bool) set.Set[string] {
+	matches := set.New[string](fmt.Sprintf(
+		"ip%d.src == $%s_ip%d && ip%d.src == $%s", af, localPgName, af, af, asName,
+	))
+	if includePortGroup {
+		matches.Insert(fmt.Sprintf(
+			"ip%d.src == $%s_ip%d && ip%d.src == $%s_ip%d", af, localPgName, af, af, pgName, af,
+		))
+	}
+	return matches
+}
+
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nodeNexthops map[string]set.Set[string], sources set.Set[string]) error {
 	nextHops := flattenVpcEgressGatewayNexthops(nodeNexthops)
 
@@ -945,13 +965,24 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	key := cache.MetaObjectToName(gw).String()
 	pgName := vegPortGroupName(key)
-	if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
-		err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
-		err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
+	// Keep both policy forms for compatibility with existing policy observers. For
+	// subnet-only gateways, the port-group address-set name is backed by an empty
+	// standalone address set below because no Port Group selector exists.
+	includePortGroup := true
+	hasSelectors := len(gw.Spec.Selectors) > 0
+	if hasSelectors {
+		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
+			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
+			klog.Error(err)
+			return err
+		}
+		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
+			err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
+			klog.Error(err)
+			return err
+		}
+	} else if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+		err = fmt.Errorf("failed to delete stale port group %s: %w", pgName, err)
 		klog.Error(err)
 		return err
 	}
@@ -965,6 +996,23 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	if err = c.OVNNbClient.AddressSetUpdateAddress(asName, sources.SortedList()...); err != nil {
 		err = fmt.Errorf("failed to update address set %s: %w", asName, err)
+		klog.Error(err)
+		return err
+	}
+	compatAsName := vegPortGroupAddressSetName(key, af)
+	if !hasSelectors {
+		if err = c.OVNNbClient.CreateAddressSet(compatAsName, externalIDs); err != nil {
+			err = fmt.Errorf("failed to create compatibility address set %s: %w", compatAsName, err)
+			klog.Error(err)
+			return err
+		}
+		if err = c.OVNNbClient.AddressSetUpdateAddress(compatAsName); err != nil {
+			err = fmt.Errorf("failed to clear compatibility address set %s: %w", compatAsName, err)
+			klog.Error(err)
+			return err
+		}
+	} else if err = c.OVNNbClient.DeleteAddressSet(compatAsName); err != nil {
+		err = fmt.Errorf("failed to delete stale compatibility address set %s: %w", compatAsName, err)
 		klog.Error(err)
 		return err
 	}
@@ -1003,8 +1051,9 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				return err
 			}
 			localPgName := strings.ReplaceAll(portName, "-", ".")
-			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s_ip%d", af, localPgName, af, af, pgName, af)] = nodeNextHops
-			rules[fmt.Sprintf("ip%d.src == $%s_ip%d && ip%d.src == $%s", af, localPgName, af, af, asName)] = nodeNextHops
+			for _, match := range vpcEgressGatewayLocalPolicyMatches(af, localPgName, pgName, asName, includePortGroup).UnsortedList() {
+				rules[match] = nodeNextHops
+			}
 		}
 		policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
 		if err != nil {
@@ -1053,10 +1102,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	matches := set.New[string]()
 	if nextHops.Len() != 0 {
-		matches.Insert(
-			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
-			fmt.Sprintf("ip%d.src == $%s", af, asName),
-		)
+		matches = vpcEgressGatewayPolicyMatches(af, pgName, asName, includePortGroup)
 	}
 	for _, policy := range policies {
 		if matches.Has(policy.Match) {
@@ -1090,10 +1136,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			klog.Error(err)
 			return err
 		}
-		matches = set.New(
-			fmt.Sprintf("ip%d.src == $%s_ip%d", af, pgName, af),
-			fmt.Sprintf("ip%d.src == $%s", af, asName),
-		)
+		matches = vpcEgressGatewayPolicyMatches(af, pgName, asName, includePortGroup)
 		for _, policy := range policies {
 			if matches.Has(policy.Match) {
 				matches.Delete(policy.Match)
@@ -1467,6 +1510,10 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 			klog.Error(err)
 			return err
 		}
+		if err = c.OVNNbClient.DeleteAddressSet(vegPortGroupAddressSetName(key, af)); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	return nil
@@ -1475,6 +1522,10 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 func vegPortGroupName(key string) string {
 	hash := util.Sha256Hash([]byte(key))
 	return "VEG." + hash[:12]
+}
+
+func vegPortGroupAddressSetName(key string, af int) string {
+	return fmt.Sprintf("%s_ip%d", vegPortGroupName(key), af)
 }
 
 func vegAddressSetName(key string, af int) string {
