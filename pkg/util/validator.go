@@ -236,6 +236,9 @@ func validateRoutedSubnet(subnet kubeovnv1.Subnet, isUnderlayWithoutCIDR bool) e
 	if subnet.Spec.EnableIPv6RA {
 		return fmt.Errorf("routed mode conflicts with enableIPv6RA on subnet %s", subnet.Name)
 	}
+	if len(subnet.Spec.Acls) != 0 {
+		return fmt.Errorf("routed mode does not support custom spec.acls on subnet %s (they could bypass gateway-only isolation)", subnet.Name)
+	}
 	return nil
 }
 

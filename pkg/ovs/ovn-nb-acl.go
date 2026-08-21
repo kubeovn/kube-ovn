@@ -790,10 +790,11 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	return nil
 }
 
-// SetLogicalSwitchRouted installs ACLs so pods may only ARP/ND the gateway and
-// send IP frames to the logical router port MAC. Same-subnet traffic is hairpinned
-// through the OVN logical router. When private is true, also isolate from other
-// subnets (like SetLogicalSwitchPrivate) without allowing direct same-subnet L2.
+// SetLogicalSwitchRouted installs an allow-list / default-deny ACL policy so
+// pods may only ARP/ND the gateway and send/receive IP frames via the logical
+// router port MAC. Same-subnet traffic is hairpinned through the OVN logical
+// router. When private is true, ingress via the router is further limited to
+// the subnet CIDR (hairpin), node join CIDR, and allowSubnets.
 func (c *OVNNbClient) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
 	if lsName == "" {
 		return errors.New("logical switch name is required")
@@ -807,78 +808,106 @@ func (c *OVNNbClient) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gateway
 		return fmt.Errorf("clear logical switch %s acls: %w", lsName, err)
 	}
 
-	acls := make([]*ovnnb.ACL, 0)
-	options := func(acl *ovnnb.ACL) {
-		setACLName(acl, lsName)
+	acls, err := c.buildRoutedLogicalSwitchACLs(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	if err != nil {
+		return err
 	}
+	if err := c.CreateAcls(lsName, LogicalSwitchKey, acls...); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("add routed acls to logical switch %s: %w", lsName, err)
+	}
+	return nil
+}
 
-	gateways := util.SplitTrimmed(gateway, ",")
-	for _, gw := range gateways {
-		protocol := util.CheckProtocol(gw)
-		switch protocol {
+func (c *OVNNbClient) buildRoutedLogicalSwitchACLs(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) ([]*ovnnb.ACL, error) {
+	options := func(acl *ovnnb.ACL) { setACLName(acl, lsName) }
+	acls := make([]*ovnnb.ACL, 0)
+
+	discoveryACLs, err := c.buildRoutedGatewayDiscoveryACLs(lsName, gateway, options)
+	if err != nil {
+		return nil, err
+	}
+	acls = append(acls, discoveryACLs...)
+
+	ipACLs, err := c.buildRoutedIPAllowACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR, allowSubnets, private, options)
+	if err != nil {
+		return nil, err
+	}
+	acls = append(acls, ipACLs...)
+
+	denyACLs, err := c.buildRoutedDefaultDenyACLs(lsName, options)
+	if err != nil {
+		return nil, err
+	}
+	acls = append(acls, denyACLs...)
+	return acls, nil
+}
+
+func (c *OVNNbClient) buildRoutedGatewayDiscoveryACLs(lsName, gateway string, options func(*ovnnb.ACL)) ([]*ovnnb.ACL, error) {
+	acls := make([]*ovnnb.ACL, 0)
+	for _, gw := range util.SplitTrimmed(gateway, ",") {
+		switch util.CheckProtocol(gw) {
 		case kubeovnv1.ProtocolIPv4:
-			arpAllow := NewAndACLMatch(
-				NewACLMatch("arp", "", "", ""),
-				NewACLMatch("arp.tpa", "==", gw, ""),
-			)
+			arpAllow := NewAndACLMatch(NewACLMatch("arp", "", "", ""), NewACLMatch("arp.tpa", "==", gw, ""))
 			acl, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, arpAllow.String(), ovnnb.ACLActionAllow, util.NetpolACLTier, options)
 			if err != nil {
-				return fmt.Errorf("new routed ARP allow acl for logical switch %s: %w", lsName, err)
+				return nil, fmt.Errorf("new routed ARP allow acl for logical switch %s: %w", lsName, err)
 			}
 			acls = append(acls, acl)
 
-			arpIngress := NewAndACLMatch(
-				NewACLMatch("arp", "", "", ""),
-				NewACLMatch("arp.spa", "==", gw, ""),
-			)
+			arpIngress := NewAndACLMatch(NewACLMatch("arp", "", "", ""), NewACLMatch("arp.spa", "==", gw, ""))
 			acl, err = c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, arpIngress.String(), ovnnb.ACLActionAllow, util.NetpolACLTier, options)
 			if err != nil {
-				return fmt.Errorf("new routed ARP ingress acl for logical switch %s: %w", lsName, err)
+				return nil, fmt.Errorf("new routed ARP ingress acl for logical switch %s: %w", lsName, err)
 			}
 			acls = append(acls, acl)
 		case kubeovnv1.ProtocolIPv6:
-			ndAllow := NewAndACLMatch(
-				NewACLMatch("nd_ns", "", "", ""),
-				NewACLMatch("nd.target", "==", gw, ""),
-			)
+			ndAllow := NewAndACLMatch(NewACLMatch("nd_ns", "", "", ""), NewACLMatch("nd.target", "==", gw, ""))
 			acl, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, ndAllow.String(), ovnnb.ACLActionAllow, util.NetpolACLTier, options)
 			if err != nil {
-				return fmt.Errorf("new routed ND allow acl for logical switch %s: %w", lsName, err)
+				return nil, fmt.Errorf("new routed ND allow acl for logical switch %s: %w", lsName, err)
 			}
 			acls = append(acls, acl)
 
-			ndIngress := NewAndACLMatch(
-				NewACLMatch("nd_na", "", "", ""),
-				NewACLMatch("ip6.src", "==", gw, ""),
-			)
+			ndIngress := NewAndACLMatch(NewACLMatch("nd_na", "", "", ""), NewACLMatch("ip6.src", "==", gw, ""))
 			acl, err = c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ndIngress.String(), ovnnb.ACLActionAllow, util.NetpolACLTier, options)
 			if err != nil {
-				return fmt.Errorf("new routed ND ingress acl for logical switch %s: %w", lsName, err)
+				return nil, fmt.Errorf("new routed ND ingress acl for logical switch %s: %w", lsName, err)
 			}
 			acls = append(acls, acl)
 		}
 	}
+	return acls, nil
+}
 
-	egressToGW := NewAndACLMatch(
-		NewACLMatch("ip", "", "", ""),
-		NewACLMatch("eth.dst", "==", gatewayMAC, ""),
-	)
+func (c *OVNNbClient) buildRoutedIPAllowACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool, options func(*ovnnb.ACL)) ([]*ovnnb.ACL, error) {
+	acls := make([]*ovnnb.ACL, 0)
+
+	egressToGW := NewAndACLMatch(NewACLMatch("ip", "", "", ""), NewACLMatch("eth.dst", "==", gatewayMAC, ""))
 	egressACL, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, egressToGW.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
 	if err != nil {
-		return fmt.Errorf("new routed egress-to-gateway acl for logical switch %s: %w", lsName, err)
+		return nil, fmt.Errorf("new routed egress-to-gateway acl for logical switch %s: %w", lsName, err)
 	}
 	acls = append(acls, egressACL)
 
-	ingressFromGW := NewAndACLMatch(
-		NewACLMatch("ip", "", "", ""),
-		NewACLMatch("eth.src", "==", gatewayMAC, ""),
-	)
-	ingressACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ingressFromGW.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
-	if err != nil {
-		return fmt.Errorf("new routed ingress-from-gateway acl for logical switch %s: %w", lsName, err)
+	if !private {
+		ingressFromGW := NewAndACLMatch(NewACLMatch("ip", "", "", ""), NewACLMatch("eth.src", "==", gatewayMAC, ""))
+		ingressACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ingressFromGW.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+		if err != nil {
+			return nil, fmt.Errorf("new routed ingress-from-gateway acl for logical switch %s: %w", lsName, err)
+		}
+		return append(acls, ingressACL), nil
 	}
-	acls = append(acls, ingressACL)
 
+	privateIngress, err := c.buildRoutedPrivateIngressACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR, allowSubnets, options)
+	if err != nil {
+		return nil, err
+	}
+	return append(acls, privateIngress...), nil
+}
+
+func (c *OVNNbClient) buildRoutedPrivateIngressACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, options func(*ovnnb.ACL)) ([]*ovnnb.ACL, error) {
+	acls := make([]*ovnnb.ACL, 0)
 	for cidr := range strings.SplitSeq(cidrBlock, ",") {
 		if cidr == "" {
 			continue
@@ -889,96 +918,72 @@ func (c *OVNNbClient) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gateway
 			ipSuffix = "ip6"
 		}
 
-		sameSubnetDrop := NewAndACLMatch(
+		// Hairpin: same-subnet traffic returning via the LRP.
+		hairpin := NewAndACLMatch(
+			NewACLMatch("ip", "", "", ""),
+			NewACLMatch("eth.src", "==", gatewayMAC, ""),
 			NewACLMatch(ipSuffix+".src", "==", cidr, ""),
-			NewACLMatch(ipSuffix+".dst", "==", cidr, ""),
 		)
-		dropACL, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedDropPriority, sameSubnetDrop.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, options)
+		acl, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, hairpin.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
 		if err != nil {
-			return fmt.Errorf("new routed same-subnet drop acl for logical switch %s: %w", lsName, err)
+			return nil, fmt.Errorf("new routed private hairpin acl for logical switch %s: %w", lsName, err)
 		}
-		acls = append(acls, dropACL)
+		acls = append(acls, acl)
 
-		var peerDiscoveryDrop ACLMatch
-		if protocol == kubeovnv1.ProtocolIPv4 {
-			peerDiscoveryDrop = NewAndACLMatch(
-				NewACLMatch("arp", "", "", ""),
-				NewACLMatch("arp.tpa", "==", cidr, ""),
+		for nodeCidr := range strings.SplitSeq(nodeSwitchCIDR, ",") {
+			if protocol != util.CheckProtocol(nodeCidr) {
+				continue
+			}
+			match := NewAndACLMatch(
+				NewACLMatch("ip", "", "", ""),
+				NewACLMatch("eth.src", "==", gatewayMAC, ""),
+				NewACLMatch(ipSuffix+".src", "==", nodeCidr, ""),
 			)
-		} else {
-			peerDiscoveryDrop = NewAndACLMatch(
-				NewACLMatch("nd_ns", "", "", ""),
-				NewACLMatch("nd.target", "==", cidr, ""),
+			acl, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+			if err != nil {
+				return nil, fmt.Errorf("new routed private node acl for logical switch %s: %w", lsName, err)
+			}
+			acls = append(acls, acl)
+		}
+
+		for _, allowSubnet := range allowSubnets {
+			subnet := strings.TrimSpace(allowSubnet)
+			if subnet == "" || util.CheckProtocol(subnet) != protocol {
+				continue
+			}
+			match := NewAndACLMatch(
+				NewACLMatch("ip", "", "", ""),
+				NewACLMatch("eth.src", "==", gatewayMAC, ""),
+				NewACLMatch(ipSuffix+".src", "==", subnet, ""),
 			)
-		}
-		dropACL, err = c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedDropPriority, peerDiscoveryDrop.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, options)
-		if err != nil {
-			return fmt.Errorf("new routed peer discovery drop acl for logical switch %s: %w", lsName, err)
-		}
-		acls = append(acls, dropACL)
-
-		if private {
-			nodeSubnetACLFunc := func(protocol, ipSuffix string) error {
-				for nodeCidr := range strings.SplitSeq(nodeSwitchCIDR, ",") {
-					if protocol != util.CheckProtocol(nodeCidr) {
-						continue
-					}
-					match := NewACLMatch(ipSuffix+".src", "==", nodeCidr, "")
-					acl, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
-					if err != nil {
-						return fmt.Errorf("new node subnet ingress acl for logical switch %s: %w", lsName, err)
-					}
-					acls = append(acls, acl)
-				}
-				return nil
+			acl, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+			if err != nil {
+				return nil, fmt.Errorf("new routed private allow-subnet acl for logical switch %s: %w", lsName, err)
 			}
-			if err := nodeSubnetACLFunc(protocol, ipSuffix); err != nil {
-				return err
-			}
-
-			for _, allowSubnet := range allowSubnets {
-				subnet := strings.TrimSpace(allowSubnet)
-				if subnet == "" || util.CheckProtocol(subnet) != protocol {
-					continue
-				}
-				match := NewOrACLMatch(
-					NewAndACLMatch(
-						NewACLMatch(ipSuffix+".src", "==", cidr, ""),
-						NewACLMatch(ipSuffix+".dst", "==", subnet, ""),
-					),
-					NewAndACLMatch(
-						NewACLMatch(ipSuffix+".src", "==", subnet, ""),
-						NewACLMatch(ipSuffix+".dst", "==", cidr, ""),
-					),
-				)
-				acl, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
-				if err != nil {
-					return fmt.Errorf("new allow subnet ingress acl for logical switch %s: %w", lsName, err)
-				}
-				acls = append(acls, acl)
-			}
+			acls = append(acls, acl)
 		}
 	}
+	return acls, nil
+}
 
-	if private {
-		allIPMatch := NewACLMatch("ip", "", "", "")
-		dropOptions := func(acl *ovnnb.ACL) {
-			setACLName(acl, lsName)
-			acl.Log = true
-			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
-		}
-		defaultDropACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, allIPMatch.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, dropOptions)
-		if err != nil {
-			return fmt.Errorf("new default drop ingress acl for logical switch %s: %w", lsName, err)
-		}
-		acls = append(acls, defaultDropACL)
+func (c *OVNNbClient) buildRoutedDefaultDenyACLs(lsName string, options func(*ovnnb.ACL)) ([]*ovnnb.ACL, error) {
+	dropOptions := func(acl *ovnnb.ACL) {
+		options(acl)
+		acl.Log = true
+		acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
 	}
 
-	if err := c.CreateAcls(lsName, LogicalSwitchKey, acls...); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("add routed acls to logical switch %s: %w", lsName, err)
+	acls := make([]*ovnnb.ACL, 0, 8)
+	for _, direction := range []string{ovnnb.ACLDirectionFromLport, ovnnb.ACLDirectionToLport} {
+		for _, match := range []string{"ip", "arp", "nd_ns", "nd_na"} {
+			acl, err := c.newACL(lsName, direction, util.RoutedDefaultDropPriority, match, ovnnb.ACLActionDrop, util.NetpolACLTier, dropOptions)
+			if err != nil {
+				return nil, fmt.Errorf("new routed default-deny %s acl (%s) for logical switch %s: %w", match, direction, lsName, err)
+			}
+			acls = append(acls, acl)
+		}
 	}
-	return nil
+	return acls, nil
 }
 
 func (c *OVNNbClient) SetNetPolACLLog(pgName string, logEnable, isIngress bool) error {

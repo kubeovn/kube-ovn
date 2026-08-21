@@ -1509,24 +1509,91 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchRouted() {
 	cidrBlock := "10.244.0.0/16"
 	gateway := "10.244.0.1"
 	gatewayMAC := "00:00:00:11:22:33"
+	nodeCIDR := "100.64.0.0/16"
 
-	t.Run("routed overlay ipv4", func(t *testing.T) {
+	t.Run("routed overlay ipv4 allow-list and default-deny", func(t *testing.T) {
 		t.Parallel()
 
 		lsName := "test_set_routed_ls"
 		err := nbClient.CreateBareLogicalSwitch(lsName)
 		require.NoError(t, err)
 
-		err = nbClient.SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, "100.64.0.0/16", nil, false)
+		err = nbClient.SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, nodeCIDR, nil, false)
 		require.NoError(t, err)
 
 		ls, err := nbClient.GetLogicalSwitch(lsName, false)
 		require.NoError(t, err)
-		// ARP allow + ARP ingress + IP egress + IP ingress + same-subnet drop + peer ARP drop
-		require.Len(t, ls.ACLs, 6)
+		// ARP allow/ingress + IP egress/ingress + 8 default-deny (ip/arp/nd_ns/nd_na × 2 dirs)
+		require.Len(t, ls.ACLs, 12)
 
 		match := fmt.Sprintf("ip && eth.dst == %s", gatewayMAC)
 		acl, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, match, util.NetpolACLTier, false)
+		require.NoError(t, err)
+		require.Equal(t, ovnnb.ACLActionAllowRelated, acl.Action)
+
+		ingressMatch := fmt.Sprintf("ip && eth.src == %s", gatewayMAC)
+		acl, err = nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ingressMatch, util.NetpolACLTier, false)
+		require.NoError(t, err)
+		require.Equal(t, ovnnb.ACLActionAllowRelated, acl.Action)
+
+		for _, direction := range []string{ovnnb.ACLDirectionFromLport, ovnnb.ACLDirectionToLport} {
+			for _, denyMatch := range []string{"ip", "arp", "nd_ns", "nd_na"} {
+				acl, err = nbClient.GetACL(lsName, direction, util.RoutedDefaultDropPriority, denyMatch, util.NetpolACLTier, false)
+				require.NoError(t, err)
+				require.Equal(t, ovnnb.ACLActionDrop, acl.Action)
+			}
+		}
+	})
+
+	t.Run("routed dual-stack", func(t *testing.T) {
+		t.Parallel()
+
+		lsName := "test_set_routed_dual"
+		err := nbClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		err = nbClient.SetLogicalSwitchRouted(lsName, "10.244.0.0/16,fd00::/64", "10.244.0.1,fd00::1", gatewayMAC, "100.64.0.0/16,fd00:100:64::/112", nil, false)
+		require.NoError(t, err)
+
+		ls, err := nbClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		// v4 ARP×2 + v6 ND×2 + IP egress/ingress + 8 default-deny = 14
+		require.Len(t, ls.ACLs, 14)
+
+		ndMatch := "nd_ns && nd.target == fd00::1"
+		acl, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, ndMatch, util.NetpolACLTier, false)
+		require.NoError(t, err)
+		require.Equal(t, ovnnb.ACLActionAllow, acl.Action)
+	})
+
+	t.Run("private routed constrains router ingress", func(t *testing.T) {
+		t.Parallel()
+
+		lsName := "test_set_routed_private"
+		err := nbClient.CreateBareLogicalSwitch(lsName)
+		require.NoError(t, err)
+
+		allowSubnets := []string{"10.250.0.0/16"}
+		err = nbClient.SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, nodeCIDR, allowSubnets, true)
+		require.NoError(t, err)
+
+		// Blanket eth.src == mac allow must not exist.
+		blanket := fmt.Sprintf("ip && eth.src == %s", gatewayMAC)
+		_, err = nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, blanket, util.NetpolACLTier, false)
+		require.Error(t, err)
+
+		hairpin := fmt.Sprintf("ip && eth.src == %s && ip4.src == %s", gatewayMAC, cidrBlock)
+		acl, err := nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, hairpin, util.NetpolACLTier, false)
+		require.NoError(t, err)
+		require.Equal(t, ovnnb.ACLActionAllowRelated, acl.Action)
+
+		allowMatch := fmt.Sprintf("ip && eth.src == %s && ip4.src == %s", gatewayMAC, allowSubnets[0])
+		acl, err = nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, allowMatch, util.NetpolACLTier, false)
+		require.NoError(t, err)
+		require.Equal(t, ovnnb.ACLActionAllowRelated, acl.Action)
+
+		nodeMatch := fmt.Sprintf("ip && eth.src == %s && ip4.src == %s", gatewayMAC, nodeCIDR)
+		acl, err = nbClient.GetACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, nodeMatch, util.NetpolACLTier, false)
 		require.NoError(t, err)
 		require.Equal(t, ovnnb.ACLActionAllowRelated, acl.Action)
 	})

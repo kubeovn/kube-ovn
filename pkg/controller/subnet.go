@@ -746,7 +746,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	allowEWTraffic := subnet.Spec.AllowEWTraffic && !subnet.Spec.Routed
-	if aclErr := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, allowEWTraffic); aclErr != nil {
+	subnetAcls := subnet.Spec.Acls
+	if subnet.Spec.Routed {
+		// Routed mode installs an allow-list / default-deny policy that must
+		// not be overridden by Spec.Acls (also rejected in ValidateSubnet).
+		subnetAcls = nil
+	}
+	if aclErr := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnetAcls, allowEWTraffic); aclErr != nil {
 		klog.Error(aclErr)
 		if patchErr := c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", aclErr.Error()); patchErr != nil {
 			klog.Error(patchErr)

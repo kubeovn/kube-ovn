@@ -486,6 +486,24 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 		switch nicType {
 		case util.DpdkType:
+			if routedSubnet {
+				errMsg := fmt.Errorf("routed subnet mode is not supported with DPDK/vhost-user NICs for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
+				klog.Error(errMsg)
+				recordFailure("configure-nic", errMsg)
+				if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
+					klog.Errorf("failed to write response, %v", err)
+				}
+				return
+			}
+			if len(routes) > 0 {
+				errMsg := fmt.Errorf("route annotations are not supported with DPDK/vhost-user NICs for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
+				klog.Error(errMsg)
+				recordFailure("configure-nic", errMsg)
+				if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
+					klog.Errorf("failed to write response, %v", err)
+				}
+				return
+			}
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, ingressBurst, egressBurst, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName, podRequest.VhostUserSocketConsumption)
 			routes = nil
 		default:

@@ -525,21 +525,20 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 		// Routed mode: host-route the gateway on-link before installing the default route
 		// (there is no connected subnet route when the address is /32 or /128).
 		if routedSubnet {
-			for _, gw := range util.SplitTrimmed(containerGw, ",") {
-				gwIP := net.ParseIP(gw)
-				if gwIP == nil {
-					return fmt.Errorf("invalid gateway %s for routed subnet", gw)
-				}
-				bits := 32
-				if gwIP.To4() == nil {
-					bits = 128
-				}
+			if err = util.ValidateRoutedAnnotationRoutes(routes, containerGw); err != nil {
+				return err
+			}
+			onLinkRoutes, routeErr := util.GatewayOnLinkRoutes(containerGw, containerLink.Attrs().Index)
+			if routeErr != nil {
+				return routeErr
+			}
+			for _, route := range onLinkRoutes {
 				if err = netlink.RouteReplace(&netlink.Route{
 					LinkIndex: containerLink.Attrs().Index,
 					Scope:     netlink.SCOPE_LINK,
-					Dst:       &net.IPNet{IP: gwIP, Mask: net.CIDRMask(bits, bits)},
+					Dst:       route.Dst,
 				}); err != nil {
-					return fmt.Errorf("failed to configure on-link route to gateway %s: %w", gw, err)
+					return fmt.Errorf("failed to configure on-link route to gateway %s: %w", route.Gateway, err)
 				}
 			}
 		}
@@ -561,16 +560,14 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 			var dst *net.IPNet
 			if r.Destination != "" {
 				if _, dst, err = net.ParseCIDR(r.Destination); err != nil {
-					klog.Errorf("invalid route destination %s: %v", r.Destination, err)
-					continue
+					return fmt.Errorf("invalid route destination %s: %w", r.Destination, err)
 				}
 			}
 
 			var gw net.IP
 			if r.Gateway != "" {
 				if gw = net.ParseIP(r.Gateway); gw == nil {
-					klog.Errorf("invalid route gateway %s", r.Gateway)
-					continue
+					return fmt.Errorf("invalid route gateway %s", r.Gateway)
 				}
 			}
 
@@ -580,7 +577,7 @@ func (csh cniServerHandler) configureContainerNic(podName, podNamespace, nicName
 				LinkIndex: containerLink.Attrs().Index,
 			}
 			if err = netlink.RouteReplace(route); err != nil {
-				klog.Errorf("failed to add route %+v: %v", r, err)
+				return fmt.Errorf("failed to add route %+v: %w", r, err)
 			}
 		}
 

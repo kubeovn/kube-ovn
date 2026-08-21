@@ -12,13 +12,26 @@ ip route add 10.0.0.1/32 dev eth0
 ip route add default via 10.0.0.1
 ```
 
-Same-subnet east-west traffic is hairpinned through the OVN logical router. OVN ACLs allow ARP/ND only for the gateway and IP frames only to/from the logical router port MAC.
+Same-subnet east-west traffic is hairpinned through the OVN logical router. OVN ACLs use an allow-list / default-deny policy:
+
+- Allow ARP/ND only for the gateway
+- Allow IP frames only to/from the logical router port MAC
+- Drop all other IP/ARP/ND (both directions)
+
+When `private: true`, ingress via the router is further limited to hairpin (own CIDR), node join CIDR, and `allowSubnets`.
+
+## Pod route annotations
+
+Provider route annotations (e.g. `ovn.kubernetes.io/routes`) are supported on non-DPDK interfaces when every annotated route uses the **subnet gateway** as next hop (or the U2O interconnection IP when that applies). CNI ADD fails if a route cannot be parsed or installed.
+
+Other next hops are rejected: with `/32`/`/128` addressing and gateway-only ACLs, the pod can only ARP the subnet gateway.
 
 ## Requirements
 
 - OVN provider subnet
 - Overlay, or underlay with `logicalGateway` / `u2oInterconnection` (a logical router port is required)
-- Not compatible with `enableDHCP`, `enableIPv6RA`, `enableMulticastSnoop`, or mac-only / BYO-DHCP subnets
+- Not compatible with `enableDHCP`, `enableIPv6RA`, `enableMulticastSnoop`, mac-only / BYO-DHCP, custom `spec.acls`, or DPDK/vhost-user NICs
+- DPDK/vhost-user also rejects pods that carry route annotations (they cannot be applied on that path)
 
 ## Notes
 

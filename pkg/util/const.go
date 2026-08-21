@@ -193,9 +193,12 @@ const (
 
 	AllowEWTrafficPriority = "1900"
 
-	// Routed subnet ACL priorities (gateway-only L2).
-	RoutedAllowPriority = "1002"
-	RoutedDropPriority  = "1001"
+	// Routed subnet ACL priorities (gateway-only L2). Kept above typical
+	// user ACL priorities (often ~1000) and SubnetAllowPriority so the
+	// allow-list / default-deny policy cannot be bypassed by Spec.Acls;
+	// Spec.Acls are rejected entirely when routed is enabled.
+	RoutedAllowPriority       = "2100"
+	RoutedDefaultDropPriority = "2000"
 
 	SubnetAllowPriority = "1001"
 	DefaultDropPriority = "1000"
