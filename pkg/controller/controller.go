@@ -348,6 +348,17 @@ type Controller struct {
 	distributedSubnetNeedSync atomic.Bool
 }
 
+const (
+	// Secret projected volumes can take up to two minutes to converge on all
+	// nodes. Keep the database health check alive for that TLS rotation window.
+	dbStatusInterval    = 15 * time.Second
+	dbStatusMaxFailures = 11
+)
+
+func dbStatusFailureExceeded(failures int) bool {
+	return failures >= dbStatusMaxFailures
+}
+
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
 	if rateLimiter == nil {
 		rateLimiter = workqueue.DefaultTypedControllerRateLimiter[T]()
@@ -1224,8 +1235,6 @@ func (c *Controller) Run(ctx context.Context) {
 }
 
 func (c *Controller) dbStatus() {
-	const maxFailures = 5
-
 	done := make(chan error, 2)
 	go func() {
 		done <- c.OVNNbClient.Echo(context.Background())
@@ -1243,17 +1252,17 @@ func (c *Controller) dbStatus() {
 			resultsReceived++
 			if err != nil {
 				c.dbFailureCount++
-				klog.Errorf("OVN database echo failed (%d/%d): %v", c.dbFailureCount, maxFailures, err)
-				if c.dbFailureCount >= maxFailures {
-					util.LogFatalAndExit(err, "OVN database connection failed after %d attempts", maxFailures)
+				klog.Errorf("OVN database echo failed (%d/%d): %v", c.dbFailureCount, dbStatusMaxFailures, err)
+				if dbStatusFailureExceeded(c.dbFailureCount) {
+					util.LogFatalAndExit(err, "OVN database connection failed after %d attempts", dbStatusMaxFailures)
 				}
 				return
 			}
 		case <-timeout:
 			c.dbFailureCount++
-			klog.Errorf("OVN database echo timeout (%d/%d) after %ds", c.dbFailureCount, maxFailures, c.config.OvnTimeout)
-			if c.dbFailureCount >= maxFailures {
-				util.LogFatalAndExit(nil, "OVN database connection timeout after %d attempts", maxFailures)
+			klog.Errorf("OVN database echo timeout (%d/%d) after %ds", c.dbFailureCount, dbStatusMaxFailures, c.config.OvnTimeout)
+			if dbStatusFailureExceeded(c.dbFailureCount) {
+				util.LogFatalAndExit(nil, "OVN database connection timeout after %d attempts", dbStatusMaxFailures)
 			}
 			return
 		}
@@ -1632,7 +1641,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 	go wait.Until(runWorker("delete vm", c.deleteVMQueue, c.handleDeleteVM), time.Second, ctx.Done())
 
-	go wait.Until(c.dbStatus, 15*time.Second, ctx.Done())
+	go wait.Until(c.dbStatus, dbStatusInterval, ctx.Done())
 }
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
