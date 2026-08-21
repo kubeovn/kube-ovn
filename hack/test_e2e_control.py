@@ -309,7 +309,7 @@ class E2EControlTest(unittest.TestCase):
                 {
                     **check,
                     "output": {
-                        "summary": "The pull request target branch advanced; authorize x86 E2E again for the new base revision."
+                        "summary": "The pull request target branch advanced; trusted x86 E2E coverage is required for the new base revision."
                     },
                 },
                 7260,
@@ -1329,7 +1329,10 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("isApprovedGateReservation", workflow)
         self.assertNotIn(".details_url == $expectedURL", workflow)
         self.assertGreaterEqual(workflow.count("isolatedExecutorRefAction"), 2)
-        self.assertNotIn("--jq '.object.sha'", workflow)
+        self.assertNotIn(
+            'git/ref/heads/$executorRef" \\\n            --jq',
+            workflow,
+        )
         self.assertIn('git/refs/heads/$executorRef', workflow)
         self.assertIn('-f ref="$executorRef"', workflow)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
@@ -1407,6 +1410,21 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("mode=approved groups=$REQUESTED_GROUP_NAMES labels=-", reduce)
         self.assertNotIn('inputs[controlledLabels]=$CONTROLLED_LABELS', reduce)
 
+    def testTrustedWorkflowsResolveTheLiveTargetBranchRevision(self):
+        dispatcher = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
+        gate = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
+
+        self.assertGreaterEqual(
+            dispatcher.count('git/ref/heads/'),
+            7,
+        )
+        self.assertGreaterEqual(
+            gate.count('git/ref/heads/'),
+            3,
+        )
+        self.assertNotIn("=$(jq -r '.base.sha'", dispatcher)
+        self.assertNotIn("=$(jq -r '.base.sha'", gate)
+
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
 
@@ -1483,17 +1501,21 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("A newer authorized attempt supersedes this workflow_run event", workflow)
         self.assertIn("The latest completed executor decision artifact is not available yet", workflow)
         self.assertIn("Durable approval coverage changed before the serialized gate mutation", workflow)
-        self.assertIn("liveBaseSHA=$(jq -r '.base.sha' pull-request.json)", workflow)
+        self.assertIn('git/ref/heads/$baseRef', workflow)
         self.assertIn('if [ "$BASE_REFRESH" = true ]; then', workflow)
         self.assertIn('if [ "$BASE_REFRESH" != true ] && [ -n "$duplicate" ]; then', workflow)
         self.assertIn('export BASE_SHA="$liveBaseSHA"', workflow)
         self.assertIn('metadata["executorHeadBranch"] = e2eControl.executorHeadBranch(metadata)', workflow)
         self.assertIn('[ "$RUN_HEAD_BRANCH" != "$expectedExecutorRef" ]', workflow)
         self.assertIn("authorizedAttempt = e2eControl.isAuthorizedRunAttempt", workflow)
-        self.assertIn("currentBaseSHA=$(jq -r '.base.sha' final-pull-request.json)", workflow)
+        self.assertIn('git/ref/heads/$currentBaseRef', workflow)
         self.assertIn("RUN_ACTION=base_refresh", workflow)
         self.assertIn("write-pull-request.json", workflow)
-        self.assertIn("if [ \"$writeBase\" != \"$BASE_SHA\" ]; then", workflow)
+        self.assertIn(
+            'if [ "$writeBaseRef" != "$BASE_REF" ] || '
+            '[ "$writeBase" != "$BASE_SHA" ]; then',
+            workflow,
+        )
         self.assertLess(
             workflow.index("write-pull-request.json"),
             workflow.index('gh api --method PATCH "repos/$GITHUB_REPOSITORY/check-runs/$checkId"'),
