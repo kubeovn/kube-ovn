@@ -3,6 +3,7 @@ name: Lint and Test Charts
 on:
   pull_request:
     paths:
+      - 'charts/kube-ovn/**'
       - 'charts/kube-ovn-v2/**'
       - '.github/workflows/helm-testing.yaml'
 
@@ -37,6 +38,8 @@ jobs:
       - name: Run chart-testing (lint)
         run: |
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
+          # Lint the legacy chart separately; it is intentionally not installed in the shared Kind cluster.
+          ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn/ct.yaml
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
