@@ -192,7 +192,7 @@ func newVpcEgressGatewayDeleteController(t *testing.T, gw *kubeovnv1.VpcEgressGa
 	mockOvnClient.EXPECT().FindBFD(gomock.Any()).Return(nil, nil)
 	mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(util.DefaultVpc, -1, gomock.Any()).Return(nil)
 	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Return(nil)
-	mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).Times(2)
+	mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).Times(4)
 	recorder := record.NewFakeRecorder(2)
 
 	c := &Controller{
