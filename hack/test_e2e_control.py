@@ -1487,7 +1487,7 @@ class E2EControlTest(unittest.TestCase):
             workflow,
         )
 
-    def testPullRequestKeepsBaselineBuildWithoutKindImageGate(self):
+    def testTrustedExecutorKeepsBaselineBuildWithoutKindImageGate(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
         catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
@@ -1517,7 +1517,15 @@ class E2EControlTest(unittest.TestCase):
                 if "docker load --input kind-node-" in block:
                     self.assertIn("- prepare-kind-node-images", block)
 
-    def testPullRequestsExecuteAutomaticCoverageAndPushStaysFull(self):
+    def testTrustedDispatchIsTheOnlyPullRequestExecutionEntry(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        triggers = workflow.split("\non:\n", 1)[1].split("\nconcurrency:", 1)[0]
+
+        self.assertNotIn("pull_request:", triggers)
+        self.assertIn("push:", triggers)
+        self.assertIn("workflow_dispatch:", triggers)
+
+    def testTrustedDispatchExecutesAutomaticCoverageAndPushStaysFull(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
         catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
