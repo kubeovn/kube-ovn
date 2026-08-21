@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -15,6 +16,25 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func (c *Controller) recordVlanEvent(vlan *kubeovnv1.Vlan, eventType, reason, message string) {
+	if c.recorder == nil || vlan == nil {
+		return
+	}
+	c.recorder.Eventf(vlan, eventType, reason, "%s", message)
+}
+
+func (c *Controller) recordVlanError(vlan *kubeovnv1.Vlan, reason string, err error) error {
+	if err != nil {
+		c.recordVlanEvent(vlan, corev1.EventTypeWarning, reason, err.Error())
+	}
+	return err
+}
+
+func (c *Controller) recordVlanKeyError(name, reason string, err error) error {
+	vlan := &kubeovnv1.Vlan{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	return c.recordVlanError(vlan, reason, err)
+}
 
 func (c *Controller) enqueueAddVlan(obj any) {
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vlan)).String()
@@ -37,6 +57,7 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets when vlan %s provider changed: %v", newVlan.Name, err)
+		c.recordVlanEvent(newVlan, corev1.EventTypeWarning, "ListSubnetsFailed", err.Error())
 		return
 	}
 
@@ -66,7 +87,7 @@ func (c *Controller) enqueueDelVlan(obj any) {
 
 	key := cache.MetaObjectToName(vlan).String()
 	klog.V(3).Infof("enqueue delete vlan %s", key)
-	c.delVlanQueue.Add(key)
+	c.delVlanQueue.Add(vlan)
 }
 
 func (c *Controller) handleAddVlan(key string) error {
@@ -80,22 +101,24 @@ func (c *Controller) handleAddVlan(key string) error {
 			return nil
 		}
 		klog.Error(err)
-		return err
+		return c.recordVlanKeyError(key, "GetVlanFailed", err)
 	}
 
 	vlan := cachedVlan.DeepCopy()
 	if vlan.Spec.Provider == "" {
 		vlan.Spec.Provider = c.config.DefaultProviderName
-		if vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update vlan %s, %v", vlan.Name, err)
-			return err
+		updatedVlan, updateErr := c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), vlan, metav1.UpdateOptions{})
+		if updateErr != nil {
+			klog.Errorf("failed to update vlan %s, %v", vlan.Name, updateErr)
+			return c.recordVlanError(vlan, "UpdateSpecFailed", updateErr)
 		}
+		vlan = updatedVlan
 	}
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
-		return err
+		return c.recordVlanError(vlan, "ListSubnetsFailed", err)
 	}
 
 	var needUpdate bool
@@ -107,17 +130,18 @@ func (c *Controller) handleAddVlan(key string) error {
 	}
 
 	if needUpdate {
-		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
-			return err
+		updatedVlan, updateErr := c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
+		if updateErr != nil {
+			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, updateErr)
+			return c.recordVlanError(vlan, "UpdateStatusFailed", updateErr)
 		}
+		vlan = updatedVlan
 	}
 
 	pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
 	if err != nil {
 		klog.Errorf("failed to get provider network %s: %v", vlan.Spec.Provider, err)
-		return err
+		return c.recordVlanError(vlan, "GetProviderNetworkFailed", err)
 	}
 
 	if err = c.checkVlanConflict(vlan); err != nil {
@@ -137,7 +161,7 @@ func (c *Controller) handleAddVlan(key string) error {
 		_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
-			return err
+			return c.recordVlanError(vlan, "UpdateProviderNetworkStatusFailed", err)
 		}
 	}
 
@@ -148,6 +172,8 @@ func (c *Controller) handleAddVlan(key string) error {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 		}
 	}
+
+	c.recordVlanEvent(vlan, corev1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Vlan %s reconciled successfully", vlan.Name))
 
 	return nil
 }
@@ -161,7 +187,7 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 	vlans, err := c.vlansLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list vlans: %v", err)
-		return err
+		return c.recordVlanError(vlan, "ListVlansFailed", err)
 	}
 	// check if new vlan conflict with old vlan
 	var conflict bool
@@ -176,11 +202,15 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 	}
 	if vlan.Status.Conflict != conflict {
 		vlan.Status.Conflict = conflict
-		vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
-		if err != nil {
-			klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, err)
-			return err
+		updatedVlan, updateErr := c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), vlan, metav1.UpdateOptions{})
+		if updateErr != nil {
+			klog.Errorf("failed to update conflict status of vlan %s: %v", vlan.Name, updateErr)
+			return c.recordVlanError(vlan, "UpdateStatusFailed", updateErr)
 		}
+		vlan = updatedVlan
+	}
+	if conflictErr != nil {
+		return c.recordVlanError(vlan, "VlanConflict", conflictErr)
 	}
 	return conflictErr
 }
@@ -196,16 +226,18 @@ func (c *Controller) handleUpdateVlan(key string) error {
 			return nil
 		}
 		klog.Error(err)
-		return err
+		return c.recordVlanKeyError(key, "GetVlanFailed", err)
 	}
 
 	if vlan.Spec.Provider == "" {
 		newVlan := vlan.DeepCopy()
 		newVlan.Spec.Provider = c.config.DefaultProviderName
-		if vlan, err = c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), newVlan, metav1.UpdateOptions{}); err != nil {
-			klog.Errorf("failed to update vlan %s: %v", vlan.Name, err)
-			return err
+		updatedVlan, updateErr := c.config.KubeOvnClient.KubeovnV1().Vlans().Update(context.Background(), newVlan, metav1.UpdateOptions{})
+		if updateErr != nil {
+			klog.Errorf("failed to update vlan %s: %v", vlan.Name, updateErr)
+			return c.recordVlanError(vlan, "UpdateSpecFailed", updateErr)
 		}
+		vlan = updatedVlan
 	}
 	newVlan := vlan.DeepCopy()
 	if err = c.checkVlanConflict(newVlan); err != nil {
@@ -220,36 +252,39 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	pn, err := c.providerNetworksLister.Get(vlan.Spec.Provider)
 	if err != nil {
 		klog.Errorf("failed to get provider network %s: %v", vlan.Spec.Provider, err)
-		return err
+		return c.recordVlanError(vlan, "GetProviderNetworkFailed", err)
 	}
 	if !slices.Contains(pn.Status.Vlans, vlan.Name) {
 		newPn := pn.DeepCopy()
 		newPn.Status.Vlans = append(newPn.Status.Vlans, vlan.Name)
 		if _, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{}); err != nil {
 			klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
-			return err
+			return c.recordVlanError(vlan, "UpdateProviderNetworkStatusFailed", err)
 		}
 	}
 
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
-		return err
+		return c.recordVlanError(vlan, "ListSubnetsFailed", err)
 	}
 
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
 			if err = c.setLocalnetTag(subnet.Name, vlan.Spec.ID); err != nil {
 				klog.Error(err)
-				return err
+				return c.recordVlanError(vlan, "SetLocalnetTagFailed", err)
 			}
 		}
 	}
 
+	c.recordVlanEvent(vlan, corev1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Vlan %s reconciled successfully", vlan.Name))
+
 	return nil
 }
 
-func (c *Controller) handleDelVlan(key string) error {
+func (c *Controller) handleDelVlan(vlan *kubeovnv1.Vlan) error {
+	key := cache.MetaObjectToName(vlan).String()
 	c.vlanKeyMutex.LockKey(key)
 	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete vlan %s", key)
@@ -257,7 +292,7 @@ func (c *Controller) handleDelVlan(key string) error {
 	subnet, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
-		return err
+		return c.recordVlanError(vlan, "ListSubnetsFailed", err)
 	}
 
 	for _, s := range subnet {
@@ -269,15 +304,17 @@ func (c *Controller) handleDelVlan(key string) error {
 	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to list provider networks: %v", err)
-		return err
+		return c.recordVlanError(vlan, "ListProviderNetworksFailed", err)
 	}
 
 	for _, pn := range providerNetworks {
 		if err = c.updateProviderNetworkStatusForVlanDeletion(pn, key); err != nil {
 			klog.Error(err)
-			return err
+			return c.recordVlanError(vlan, "UpdateProviderNetworkStatusFailed", err)
 		}
 	}
+
+	c.recordVlanEvent(vlan, corev1.EventTypeNormal, "DeleteSuccess", fmt.Sprintf("Vlan %s deleted successfully", key))
 
 	return nil
 }

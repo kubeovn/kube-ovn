@@ -232,7 +232,7 @@ type Controller struct {
 	vlansLister     kubeovnlister.VlanLister
 	vlanSynced      cache.InformerSynced
 	addVlanQueue    workqueue.TypedRateLimitingInterface[string]
-	delVlanQueue    workqueue.TypedRateLimitingInterface[string]
+	delVlanQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.Vlan]
 	updateVlanQueue workqueue.TypedRateLimitingInterface[string]
 	vlanKeyMutex    keymutex.KeyMutex
 
@@ -583,7 +583,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vlansLister:     vlanInformer.Lister(),
 		vlanSynced:      vlanInformer.Informer().HasSynced,
 		addVlanQueue:    newTypedRateLimitingQueue[string]("AddVlan", nil),
-		delVlanQueue:    newTypedRateLimitingQueue[string]("DeleteVlan", nil),
+		delVlanQueue:    newTypedRateLimitingQueue[*kubeovnv1.Vlan]("DeleteVlan", nil),
 		updateVlanQueue: newTypedRateLimitingQueue[string]("UpdateVlan", nil),
 		vlanKeyMutex:    keymutex.NewHashed(numKeyLocks),
 
