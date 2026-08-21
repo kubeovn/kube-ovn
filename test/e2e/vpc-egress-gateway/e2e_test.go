@@ -42,6 +42,7 @@ import (
 	"github.com/onsi/gomega/format"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -869,11 +870,23 @@ func registerVpcEgressGatewayObservabilityTest(
 }
 
 func randomIPPoolIPs(cidr string, count int, excluded []string) []string {
+	v4Excluded, v6Excluded := util.SplitIpsByProtocol(excluded)
+	v4Range, err := ipam.NewIPRangeListFrom(v4Excluded...)
+	framework.ExpectNoError(err)
+	v6Range, err := ipam.NewIPRangeListFrom(v6Excluded...)
+	framework.ExpectNoError(err)
+
 	for {
 		ips := strings.Split(framework.RandomIPs(cidr, ",", count), ",")
-		if !slices.ContainsFunc(ips, func(ip string) bool {
-			return slices.Contains(excluded, ip)
-		}) {
+		hasExcludedIP := slices.ContainsFunc(ips, func(value string) bool {
+			ip, err := ipam.NewIP(value)
+			framework.ExpectNoError(err)
+			if ip.To4() != nil {
+				return v4Range.Contains(ip)
+			}
+			return v6Range.Contains(ip)
+		})
+		if !hasExcludedIP {
 			return ips
 		}
 	}
