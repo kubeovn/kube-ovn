@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -156,9 +157,7 @@ func (c *Controller) genVpcWireGuardStatefulSet(gw *kubeovnv1.VpcWireGuard) (*v1
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range routeAnn {
-			annotations[k] = v
-		}
+		maps.Copy(annotations, routeAnn)
 	}
 
 	labels := util.GenVpcWireGuardLabels(gw.Name)
@@ -191,8 +190,8 @@ func (c *Controller) genVpcWireGuardStatefulSet(gw *kubeovnv1.VpcWireGuard) (*v1
 								ReadOnly:  true,
 							}},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged:               ptr.To(true),
-								AllowPrivilegeEscalation: ptr.To(true),
+								Privileged:               new(true),
+								AllowPrivilegeEscalation: new(true),
 							},
 						},
 					},
@@ -201,7 +200,7 @@ func (c *Controller) genVpcWireGuardStatefulSet(gw *kubeovnv1.VpcWireGuard) (*v1
 						VolumeSource: corev1.VolumeSource{
 							Secret: &corev1.SecretVolumeSource{
 								SecretName: util.GenVpcWireGuardServerSecretName(gw.Name),
-								Optional:   ptr.To(false),
+								Optional:   new(false),
 							},
 						},
 					}},
