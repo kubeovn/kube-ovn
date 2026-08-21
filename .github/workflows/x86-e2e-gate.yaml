@@ -159,19 +159,23 @@ jobs:
                 -f state=open \
                 -f "head=$headOwner:$RUN_HEAD_BRANCH" \
                 > associated-pull-requests.json
-              jq \
-                --arg repository "$GITHUB_REPOSITORY" \
-                --arg headSHA "$RUN_WORKFLOW_SHA" \
-                --arg headRepository "$RUN_HEAD_REPOSITORY" \
-                '[.[] | select(
-                  .state == "open" and
-                  .head.sha == $headSHA and
-                  .head.repo.full_name == $headRepository and
-                  .base.repo.full_name == $repository
-                )] |
-                if length == 1 then .
-                else error("workflow HEAD must resolve to exactly one open pull request")
-                end' associated-pull-requests.json > run-pull-requests.json
+              python3 - "$GITHUB_REPOSITORY" "$RUN_WORKFLOW_SHA" "$RUN_HEAD_REPOSITORY" <<'PY' \
+                > run-pull-requests.json
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pulls = json.loads(Path("associated-pull-requests.json").read_text())
+          matched = e2eControl.associatedOpenPullRequests(
+              pulls, sys.argv[1], sys.argv[2], sys.argv[3]
+          )
+          if len(matched) > 1:
+              raise SystemExit(
+                  "workflow HEAD must resolve to exactly one open pull request"
+              )
+          print(json.dumps(matched))
+          PY
             fi
             prNumber=$(jq -r '.[0].number // empty' run-pull-requests.json)
             expectedHead=$(jq -r '.[0].head.sha // empty' run-pull-requests.json)
@@ -188,8 +192,9 @@ jobs:
             approved=false
             trustedExecution=false
             if [ -z "$prNumber" ] || [ -z "$expectedHead" ] || [ -z "$trustedRef" ]; then
-              echo 'The completed pull_request run is not associated with one open pull request.' >&2
-              exit 1
+              echo 'The completed pull_request run is not associated with one open pull request.'
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+              exit 0
             fi
           fi
           if ! [[ "$trustedRef" =~ ^[0-9a-f]{40}$ ]]; then
