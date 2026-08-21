@@ -188,7 +188,7 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 // If the finalizer is present, deletions are handled by the update workflow which will detect
 // the new deletionTimestamp set on the resource.
 // This is still useful for legacy NAT gateways which have not been updated with one.
-func (c *Controller) handleDelVpcNatGw(key string) error {
+func (c *Controller) handleDelVpcNatGw(key string) (retErr error) {
 	// key is "namespace/gwName" as encoded by enqueueDeleteVpcNatGw.
 	// Parse gwName first so we can lock by gwName — consistent with all other handlers
 	// (add/update/init) that lock by gwName alone. Using the composite key here would
@@ -201,6 +201,15 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 		// Fallback for legacy queue entries without namespace prefix
 		stsNamespace, gwName = c.config.PodNamespace, key
 	}
+	eventGateway := &kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: gwName}}
+	defer func() {
+		if retErr != nil {
+			c.recordVpcResourceError(eventGateway, "DeleteFailed", retErr)
+			return
+		}
+		c.recordVpcResourceEvent(eventGateway, corev1.EventTypeNormal, "DeleteSuccess",
+			fmt.Sprintf("VpcNatGateway %s deleted successfully", gwName))
+	}()
 
 	c.vpcNatGwKeyMutex.LockKey(gwName)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(gwName) }()
@@ -226,6 +235,7 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 	if k8serrors.IsNotFound(err) {
 		return nil
 	}
+	eventGateway = gw
 
 	// Reconcile the routes to clean up everything (policies, BFD, ...)
 	if err := c.reconcileVpcNatGatewayOVNRoutes(gw); err != nil {
@@ -273,19 +283,26 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 
 // handleAddOrUpdateVpcNatGw is called when a VPC NAT gateway is added or updated.
 // If a VPC NAT gateway is deleted, the deletionTimestamp will be updated and this function will also be called.
-func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
+func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		klog.Error(err)
+		c.recordVpcResourceError(&kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: key}},
+			"GetVpcNatGatewayFailed", err)
 		return err
 	}
 
 	if !gw.DeletionTimestamp.IsZero() {
 		return c.handleDelVpcNatGw(key)
 	}
+	defer func() {
+		if retErr != nil {
+			c.recordVpcResourceError(gw, "ReconcileFailed", retErr)
+		}
+	}()
 
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
@@ -362,6 +379,8 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 				klog.Errorf("failed to patch nat gw deployment status for nat gw %s, %v", key, err)
 				return err
 			}
+			c.recordVpcResourceEvent(gw, corev1.EventTypeNormal, "WorkloadCreated",
+				fmt.Sprintf("Created VpcNatGateway %s workload", gw.Name))
 			return nil
 		}
 
@@ -409,6 +428,8 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 				klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
 				return err
 			}
+			c.recordVpcResourceEvent(gw, corev1.EventTypeNormal, "WorkloadCreated",
+				fmt.Sprintf("Created VpcNatGateway %s workload", gw.Name))
 			return nil
 		}
 
@@ -470,19 +491,28 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 		klog.Errorf("failed to patch nat gw status for nat gw %s, %v", key, err)
 		return err
 	}
+	c.recordVpcResourceEvent(gw, corev1.EventTypeNormal, "ReconcileSuccess",
+		fmt.Sprintf("VpcNatGateway %s reconciled successfully", gw.Name))
 
 	return nil
 }
 
-func (c *Controller) handleInitVpcNatGw(key string) error {
+func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		klog.Error(err)
+		c.recordVpcResourceError(&kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: key}},
+			"GetVpcNatGatewayFailed", err)
 		return err
 	}
+	defer func() {
+		if retErr != nil {
+			c.recordVpcResourceError(gw, "InitializeFailed", retErr)
+		}
+	}()
 
 	if vpcNatEnabled != "true" {
 		return errors.New("iptables nat gw not enable")
