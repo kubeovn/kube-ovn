@@ -232,7 +232,8 @@ func setupVpcNatGwTestEnvironment(
 	if !skipNADSetup {
 		setupNetworkAttachmentDefinition(
 			f, dockerExtNetNetwork, attachNetClient,
-			subnetClient, externalNetworkName, nicName, provider, dockerExtNetName)
+			subnetClient, externalNetworkName, nicName, provider, dockerExtNetName,
+		)
 		// Note: NAD cleanup is handled in AfterAll, not here, to allow reuse across tests
 	}
 
@@ -1363,7 +1364,8 @@ var _ = framework.OrderedDescribe("[group:qos-policy]", func() {
 		ginkgo.By("Creating shared NAD and subnet for all tests")
 		setupNetworkAttachmentDefinition(
 			f, dockerExtNetNetwork, attachNetClient,
-			subnetClient, networkAttachDefName, net1NicName, externalSubnetProvider, dockerExtNetName)
+			subnetClient, networkAttachDefName, net1NicName, externalSubnetProvider, dockerExtNetName,
+		)
 
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up shared macvlan underlay subnet " + networkAttachDefName)

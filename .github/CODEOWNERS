@@ -1,0 +1,8 @@
+/.github/e2e-selection.json @oilbeater @zhangzujian
+/.github/workflows/build-x86-image.yaml @oilbeater @zhangzujian
+/.github/workflows/x86-e2e-dispatcher.yaml @oilbeater @zhangzujian
+/.github/workflows/x86-e2e-gate.yaml @oilbeater @zhangzujian
+/hack/e2e_control.py @oilbeater @zhangzujian
+/hack/e2e_selector.py @oilbeater @zhangzujian
+/hack/test_e2e_control.py @oilbeater @zhangzujian
+/hack/test_e2e_selector.py @oilbeater @zhangzujian

@@ -818,6 +818,10 @@ pinger:
 # @section -- OVN monitoring daemon configuration
 # @default -- "{}"
 monitor:
+  # -- Number of kube-ovn-monitor replicas.
+  # @section -- OVN monitoring daemon configuration
+  replicas: 1
+
   # -- Override image settings for kube-ovn-monitor. Empty fields fall back to the global kube-ovn image.
   # @section -- OVN monitoring daemon configuration
   image:

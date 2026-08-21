@@ -1,17 +1,29 @@
 name: Build x86 Image
 
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('x86-e2e pr={0} head={1} approval={2} generation={3} mode={4} groups={5} labels={6} full={7}', inputs.prNumber, inputs.headSHA, inputs.approvalGeneration, inputs.dispatchGeneration, inputs.automatic && 'automatic' || 'approved', inputs.requestedGroupNames, inputs.controlledLabelNames, inputs.full && '1' || '0') || '' }}
+
 permissions:
   contents: read
   packages: read
 
+defaults:
+  run:
+    shell: >-
+      /usr/bin/env -u ACTIONS_RUNTIME_TOKEN -u ACTIONS_RUNTIME_URL -u ACTIONS_RESULTS_URL
+      -u ACTIONS_CACHE_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL
+      -u LD_PRELOAD -u LD_LIBRARY_PATH -u BASH_ENV -u ENV -u PYTHONPATH -u PYTHONHOME
+      -u NODE_OPTIONS -u PERL5OPT -u RUBYOPT -u GIT_CONFIG_COUNT
+      python3 -c "import os,pathlib,shutil,subprocess,sys,tempfile;
+      realEnv=os.environ['GITHUB_ENV']; shadowDir=tempfile.mkdtemp();
+      os.environ['GITHUB_ENV']=shadowDir+'/env'; os.environ['GITHUB_PATH']=shadowDir+'/path';
+      pathlib.Path(os.environ['GITHUB_ENV']).touch(); pathlib.Path(os.environ['GITHUB_PATH']).touch();
+      result=subprocess.run(['bash','--noprofile','--norc','-e','-o','pipefail',sys.argv[1]],env=os.environ);
+      allowed=('TAG','GO_VERSION','E2E_DIR','VERSION','DEBUG_WRAPPER');
+      lines=[line for line in pathlib.Path(os.environ['GITHUB_ENV']).read_text().splitlines() if line.partition('=')[0] in allowed];
+      open(realEnv,'a').write(('\n'.join(lines)+'\n') if lines else '');
+      shutil.rmtree(shadowDir); sys.exit(result.returncode)" {0}
+
 on:
-  pull_request:
-    branches:
-    - master
-    - release-*
-    paths-ignore:
-    - 'docs/**'
-    - '**.md'
   push:
     branches:
     - master
@@ -19,33 +31,446 @@ on:
     paths-ignore:
     - 'docs/**'
     - '**.md'
+  workflow_dispatch:
+    inputs:
+      prNumber:
+        description: Open pull request number
+        required: true
+        type: number
+      headSHA:
+        description: Exact current pull request HEAD SHA
+        required: true
+        type: string
+      baseSHA:
+        description: Exact trusted pull request base SHA
+        required: true
+        type: string
+      approvalGeneration:
+        description: Durable authorized comment generation
+        required: true
+        type: number
+      automatic:
+        description: Execute automatic smoke or fail-closed full coverage
+        required: true
+        default: false
+        type: boolean
+      dispatchGeneration:
+        description: Unique trusted reducer run generation
+        required: true
+        type: number
+      requestedGroups:
+        description: JSON array of explicitly requested stable groups
+        required: true
+        default: '[]'
+        type: string
+      requestedGroupNames:
+        description: Canonical comma-separated groups, or a single dash
+        required: true
+        default: '-'
+        type: string
+      controlledLabels:
+        description: JSON array of trusted persistent E2E labels
+        required: true
+        default: '[]'
+        type: string
+      controlledLabelNames:
+        description: Canonical comma-separated controlled labels, or a single dash
+        required: true
+        default: '-'
+        type: string
+      full:
+        description: Run the complete x86 E2E suite
+        required: true
+        default: false
+        type: boolean
+      requestKey:
+        description: Dispatcher-generated idempotency key
+        required: true
+        type: string
+      catalogRevision:
+        description: Trusted E2E catalog revision bound by the dispatcher
+        required: true
+        type: string
 
 concurrency:
-  group: "${{ github.workflow }}-${{ github.ref }}"
+  group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-{1}', github.workflow, inputs.requestKey) || format('{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: true
 
 env:
+  EXECUTION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.32.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: v2.12.2
+  GOLANGCI_LINT_VERSION: v2.13.1
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
   HELM_VERSION: v4.2.4
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.24.0
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.13.8
+  TALOS_VERSION: v1.13.9
 
 jobs:
+  e2e-selection:
+    name: x86 E2E Selection
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && github.token || '' }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    outputs:
+      executionJobIds: ${{ steps.outputs.outputs.executionJobIds }}
+      k8sConformanceMatrix: ${{ steps.outputs.outputs.k8sConformanceMatrix || steps.fallbackMatrices.outputs.k8sConformanceMatrix }}
+      kubeOvnConformanceMatrix: ${{ steps.outputs.outputs.kubeOvnConformanceMatrix || steps.fallbackMatrices.outputs.kubeOvnConformanceMatrix }}
+      headSHA: ${{ steps.context.outputs.headSHA }}
+      baseSHA: ${{ steps.context.outputs.baseSHA }}
+      prNumber: ${{ steps.context.outputs.prNumber }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Initialize fail-closed conformance matrices
+        id: fallbackMatrices
+        if: always()
+        run: |
+          matrix='{"include":[{"ip-family":"ipv4","mode":"overlay"},{"ip-family":"ipv4","mode":"underlay"},{"ip-family":"ipv6","mode":"overlay"},{"ip-family":"ipv6","mode":"underlay"},{"ip-family":"dual","mode":"overlay"},{"ip-family":"dual","mode":"underlay"}]}'
+          echo "k8sConformanceMatrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "kubeOvnConformanceMatrix=$matrix" >> "$GITHUB_OUTPUT"
+
+      - name: Collect trusted selection context
+        id: context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_HEAD_SHA: ${{ inputs.headSHA }}
+          INPUT_BASE_SHA: ${{ inputs.baseSHA }}
+          INPUT_AUTOMATIC: ${{ inputs.automatic }}
+          INPUT_CONTROLLED_LABELS: ${{ inputs.controlledLabels }}
+          INPUT_CONTROLLED_LABEL_NAMES: ${{ inputs.controlledLabelNames }}
+          INPUT_PR_NUMBER: ${{ inputs.prNumber }}
+          INPUT_APPROVAL_GENERATION: ${{ inputs.approvalGeneration }}
+          INPUT_DISPATCH_GENERATION: ${{ inputs.dispatchGeneration }}
+          INPUT_REQUESTED_GROUPS: ${{ inputs.requestedGroups }}
+          INPUT_REQUESTED_GROUP_NAMES: ${{ inputs.requestedGroupNames }}
+          INPUT_CATALOG_REVISION: ${{ inputs.catalogRevision }}
+          INPUT_FULL: ${{ inputs.full }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          printf '{}' > selector-event.json
+          : > changed-paths.txt
+          requestFull=false
+          forceFullReason=''
+          requestedGroups='[]'
+          headSHA="$GITHUB_SHA"
+          baseSHA="$GITHUB_SHA"
+          prNumber=0
+          checkedOutSHA=$(git rev-parse HEAD)
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$checkedOutSHA" != "$INPUT_BASE_SHA" ]; then
+            echo 'trusted selector checkout does not match the approved base revision' >&2
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = pull_request ]; then
+            git diff --name-status --diff-filter=ACDMRT -z -M \
+              "$PR_BASE_SHA...$PR_HEAD_SHA" > changed-name-status.bin
+            python3 - <<'PY'
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "hack")
+          import e2e_selector as e2eSelector
+
+          paths = e2eSelector.changedPathsFromNameStatus(
+              Path("changed-name-status.bin").read_bytes()
+          )
+          Path("changed-paths.txt").write_bytes(
+              b"".join(path.encode("utf-8", errors="surrogateescape") + b"\0" for path in paths)
+          )
+          PY
+            cp "$GITHUB_EVENT_PATH" selector-event.json
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          event = json.loads(Path("selector-event.json").read_text())
+          event["pull_request"]["labels"] = []
+          Path("selector-event.json").write_text(json.dumps(event))
+          PY
+            headSHA="$PR_HEAD_SHA"
+            baseSHA="$PR_BASE_SHA"
+            prNumber="$PR_NUMBER"
+          elif [ "$EVENT_NAME" = workflow_dispatch ]; then
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER" > pull-request.json
+            python3 - "$INPUT_HEAD_SHA" "$INPUT_BASE_SHA" "$GITHUB_REF_NAME" "$GITHUB_SHA" \
+              "$INPUT_PR_NUMBER" "$INPUT_APPROVAL_GENERATION" "$INPUT_DISPATCH_GENERATION" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "hack")
+          import e2e_control as e2eControl
+
+          pullRequest = json.loads(Path("pull-request.json").read_text())
+          if pullRequest.get("state") != "open":
+              raise SystemExit("pull request is not open")
+          if not re.fullmatch(r"[0-9a-f]{40}", sys.argv[1]):
+              raise SystemExit("invalid requested HEAD SHA")
+          if pullRequest["head"]["sha"] != sys.argv[1]:
+              raise SystemExit("pull request HEAD changed; dispatch again")
+          if pullRequest["base"]["sha"] != sys.argv[2]:
+              raise SystemExit("pull request base revision changed; dispatch again")
+          if not e2eControl.isTrustedExecutorRef(
+              sys.argv[3],
+              pullRequest["base"]["ref"],
+              {
+                  "prNumber": int(sys.argv[5]),
+                  "approvalGeneration": int(sys.argv[6]),
+                  "dispatchGeneration": int(sys.argv[7]),
+              },
+          ):
+              raise SystemExit("executor must run from the pull request base branch")
+          if sys.argv[4] != sys.argv[2]:
+              raise SystemExit("executor workflow revision does not match the approved base")
+          controlledLabels = json.loads(os.environ["INPUT_CONTROLLED_LABELS"])
+          if not isinstance(controlledLabels, list) or any(
+              not isinstance(label, str) for label in controlledLabels
+          ):
+              raise SystemExit("controlledLabels must be a JSON array of strings")
+          if os.environ["INPUT_AUTOMATIC"] != "true":
+              controlledLabels = []
+          pullRequest["labels"] = [{"name": label} for label in controlledLabels]
+          Path("selector-event.json").write_text(json.dumps({"pull_request": pullRequest}))
+          PY
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER/files?per_page=100" > pull-request-files.json
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          pullRequest = json.loads(Path("pull-request.json").read_text())
+          pages = json.loads(Path("pull-request-files.json").read_text())
+          changedFiles = [changedFile for page in pages for changedFile in page]
+          expectedCount = pullRequest.get("changed_files")
+          if (
+              not isinstance(expectedCount, int)
+              or expectedCount >= 3000
+              or expectedCount != len(changedFiles)
+          ):
+              Path("force-full-reason.txt").write_text(
+                  "pull request file list is incomplete; the full suite is required"
+              )
+          with Path("changed-paths.txt").open("wb") as stream:
+              for changedFile in changedFiles:
+                  for field in ("previous_filename", "filename"):
+                      if field in changedFile:
+                          stream.write(changedFile[field].encode() + b"\0")
+          PY
+            if [ -s force-full-reason.txt ]; then
+              forceFullReason=$(cat force-full-reason.txt)
+            fi
+            python3 - "$INPUT_REQUESTED_GROUPS" "$INPUT_REQUESTED_GROUP_NAMES" "$INPUT_CATALOG_REVISION" "$INPUT_CONTROLLED_LABELS" "$INPUT_CONTROLLED_LABEL_NAMES" "$INPUT_AUTOMATIC" "$INPUT_FULL" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          groups = json.loads(sys.argv[1])
+          if not isinstance(groups, list) or any(not isinstance(group, str) for group in groups):
+              raise SystemExit("requestedGroups must be a JSON array of strings")
+          canonicalGroups = sorted(set(groups))
+          catalog = json.loads(Path(".github/e2e-selection.json").read_text())
+          catalogRevision = hashlib.sha256(
+              json.dumps(catalog, sort_keys=True, separators=(",", ":")).encode()
+          ).hexdigest()
+          if catalogRevision != sys.argv[3]:
+              raise SystemExit("executor catalog revision does not match dispatcher")
+          unknownGroups = sorted(set(canonicalGroups) - set(catalog["groups"]))
+          if unknownGroups:
+              raise SystemExit(f"unknown requested E2E group: {unknownGroups[0]}")
+          canonical = ",".join(canonicalGroups) or "-"
+          if canonical != sys.argv[2]:
+              raise SystemExit("requested group names do not match requestedGroups")
+          labels = json.loads(sys.argv[4])
+          knownLabels = {"e2e:full"} | {f"e2e:{group}" for group in catalog["groups"]}
+          if (
+              not isinstance(labels, list)
+              or any(not isinstance(label, str) for label in labels)
+              or set(labels) - knownLabels
+          ):
+              raise SystemExit("controlledLabels contains an unknown label")
+          canonicalLabels = ",".join(sorted(set(labels))) or "-"
+          if canonicalLabels != sys.argv[5]:
+              raise SystemExit("controlled label names do not match controlledLabels")
+          automatic = sys.argv[6] == "true"
+          if automatic and (canonicalGroups or sys.argv[7] == "true"):
+              raise SystemExit("automatic execution cannot contain an approved request")
+          if not automatic and labels:
+              raise SystemExit("approved execution cannot carry automatic controlled labels")
+          PY
+            headSHA="$INPUT_HEAD_SHA"
+            baseSHA="$INPUT_BASE_SHA"
+            prNumber="$INPUT_PR_NUMBER"
+            requestedGroups="$INPUT_REQUESTED_GROUPS"
+            requestFull="$INPUT_FULL"
+          else
+            forceFullReason='push events always run the full x86 E2E suite'
+          fi
+          echo "headSHA=$headSHA" >> "$GITHUB_OUTPUT"
+          echo "baseSHA=$baseSHA" >> "$GITHUB_OUTPUT"
+          echo "prNumber=$prNumber" >> "$GITHUB_OUTPUT"
+          echo "requestFull=$requestFull" >> "$GITHUB_OUTPUT"
+          echo "forceFullReason=$forceFullReason" >> "$GITHUB_OUTPUT"
+          echo "requestedGroups=$requestedGroups" >> "$GITHUB_OUTPUT"
+
+      - name: Compute the selection plan
+        env:
+          FORCE_FULL_REASON: ${{ steps.context.outputs.forceFullReason }}
+          HEAD_SHA: ${{ steps.context.outputs.headSHA }}
+          REQUESTED_FULL: ${{ steps.context.outputs.requestFull }}
+          REQUESTED_GROUPS: ${{ steps.context.outputs.requestedGroups }}
+        run: |
+          args=(
+            --paths-file changed-paths.txt
+            --event-file selector-event.json
+            --request-groups-json "$REQUESTED_GROUPS"
+            --head-sha "$HEAD_SHA"
+            --base-sha "${{ steps.context.outputs.baseSHA }}"
+            --pr-number "${{ steps.context.outputs.prNumber }}"
+            --force-full-reason "$FORCE_FULL_REASON"
+            --plan-file e2e-selection-plan.json
+            --summary-file e2e-selection-summary.md
+          )
+          if [ "$REQUESTED_FULL" = true ]; then
+            args+=(--request-full)
+          fi
+          python3 hack/e2e_selector.py "${args[@]}"
+
+      - name: Export executor job IDs
+        id: outputs
+        env:
+          EVENT_NAME: ${{ inputs.automatic && 'pull_request' || github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "hack")
+          import e2e_selector as e2eSelector
+
+          try:
+              catalog = e2eSelector.loadCatalog(".github/e2e-selection.json")
+          except Exception as error:
+              print(f"failed to reload the E2E catalog: {error}", file=sys.stderr)
+              catalog = None
+          plan = json.loads(Path("e2e-selection-plan.json").read_text())
+          executionPlan = e2eSelector.executionPlan(catalog, plan, os.environ["EVENT_NAME"])
+          e2eSelector.writePlan(
+              executionPlan,
+              e2eSelector.readPaths("changed-paths.txt"),
+              "e2e-selection-plan.json",
+              "e2e-selection-summary.md",
+          )
+          jobIds = sorted({entry["job"] for entry in executionPlan["matrix"]})
+          matrices = {
+              "k8sConformanceMatrix": e2eSelector.jobMatrix(
+                  executionPlan,
+                  "k8s-conformance-e2e",
+              ),
+              "kubeOvnConformanceMatrix": e2eSelector.jobMatrix(
+                  executionPlan,
+                  "kube-ovn-conformance-e2e",
+              ),
+          }
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
+              stream.write("executionJobIds=" + json.dumps(jobIds, separators=(",", ":")) + "\n")
+              for name, matrix in matrices.items():
+                  stream.write(name + "=" + json.dumps(matrix, separators=(",", ":")) + "\n")
+          PY
+          cat e2e-selection-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the selection plan
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: x86-e2e-selection-${{ steps.context.outputs.prNumber }}-${{ steps.context.outputs.headSHA }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            changed-paths.txt
+            e2e-selection-plan.json
+            e2e-selection-summary.md
+          retention-days: 30
+
+  e2e-control-validation:
+    name: Validate x86 E2E control modules
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.sha }}
+          persist-credentials: false
+
+      - name: Run control module tests
+        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
+
+  prepare-kind-node-images:
+    name: Prepare private Kind node image (${{ matrix.k8s-version }})
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]') ||
+      github.event_name == 'push'
+    needs: e2e-selection
+    permissions:
+      contents: read
+      packages: read
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-version:
+          - v1.36.1
+          - v1.29.14
+    steps:
+      - name: Pull private Kind node image with trusted token
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          K8S_VERSION: ${{ matrix.k8s-version }}
+        run: |
+          set -euo pipefail
+          dockerConfig=$(mktemp -d)
+          trap 'rm -rf "$dockerConfig"' EXIT
+          export DOCKER_CONFIG="$dockerConfig"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
+          docker pull "ghcr.io/kubeovn/kindest-node:$K8S_VERSION"
+          docker tag "ghcr.io/kubeovn/kindest-node:$K8S_VERSION" "kindest/node:$K8S_VERSION"
+          docker save "kindest/node:$K8S_VERSION" -o "kind-node-$K8S_VERSION.tar"
+
+      - name: Upload private Kind node image without credentials
+        uses: actions/upload-artifact@v7
+        with:
+          name: kind-node-${{ matrix.k8s-version }}
+          path: kind-node-${{ matrix.k8s-version }}.tar
+          retention-days: 2
+
   build-kube-ovn-base:
     name: Build kube-ovn-base
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     outputs:
       build-base: ${{ steps.check.outputs.build-base }}
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
+          fetch-depth: 0
 
       - id: check
         run: |
@@ -60,7 +485,7 @@ jobs:
           dist/images/go-deps/download-go-deps.sh
           dist/images/go-deps/rebuild-go-deps.sh
           EOF
-          if git diff --name-only HEAD^ HEAD | grep -Ff "$tmp_dir/on_changes.txt"; then
+          if git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
           rm -frv "$tmp_dir"
@@ -107,13 +532,16 @@ jobs:
 
   build-kube-ovn-dpdk-base:
     name: Build kube-ovn-dpdk-base
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     outputs:
       build-dpdk-base: ${{ steps.check.outputs.build-dpdk-base }}
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
+          fetch-depth: 0
 
       - id: check
         run: |
@@ -125,7 +553,7 @@ jobs:
           dist/images/Dockerfile.base-dpdk
           dist/images/patches/
           EOF
-          if git diff --name-only HEAD^ HEAD | grep -Ff "$tmp_dir/on_changes.txt"; then
+          if git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
           rm -frv "$tmp_dir"
@@ -160,8 +588,10 @@ jobs:
 
   build-kube-ovn:
     name: Build kube-ovn
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     needs:
+      - e2e-selection
       - build-kube-ovn-base
       - build-kube-ovn-dpdk-base
     steps:
@@ -176,6 +606,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
       - uses: docker/setup-buildx-action@v4
       - uses: actions/setup-go@v7
         id: setup-go
@@ -190,6 +623,7 @@ jobs:
           echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
+        if: github.event_name == 'push'
         uses: actions/cache@v6
         with:
           path: |
@@ -348,6 +782,8 @@ jobs:
 
   build-vpc-nat-gateway:
     name: Build vpc-nat-gateway
+    needs: e2e-selection
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -361,6 +797,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Build
         run: |
@@ -375,10 +814,15 @@ jobs:
 
   build-e2e-binaries:
     name: Build E2E Binaries
+    needs: e2e-selection
+    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -389,6 +833,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -435,7 +880,7 @@ jobs:
           swap-storage: false
 
       - name: Go cache
-        if: steps.lookup-go-cache.outputs.cache-hit != 'true'
+        if: steps.lookup-go-cache.outputs.cache-hit != 'true' && github.event_name == 'push'
         uses: actions/cache@v6
         with:
           path: |
@@ -450,58 +895,19 @@ jobs:
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.E2E_DIR }}
 
-  netpol-path-filter:
-    name: Network Policy Path Filter
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    outputs:
-      test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        id: setup-go
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: false
-
-      - name: Generate path filter
-        run: |
-          filter=".github/path-filters.yaml"
-          cat > $filter <<EOF
-          kube-ovn-controller:
-          - go.mod
-          - go.sum
-          EOF
-
-          sh hack/go-list.sh pkg/controller | while read f; do
-            echo "- $f" | tee -a $filter
-          done
-
-      - uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          base: ${{ github.base_ref || github.ref_name }}
-          filters: .github/path-filters.yaml
-          list-files: csv
-
   k8s-conformance-e2e:
     name: Kubernetes Conformance E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-conformance-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      matrix:
-        ip-family:
-          - ipv4
-          - ipv6
-          - dual
-        mode:
-          - overlay
-          - underlay
+      matrix: ${{ fromJSON(needs.e2e-selection.outputs.k8sConformanceMatrix) }}
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -514,6 +920,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -524,6 +933,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -583,12 +993,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -684,13 +1100,12 @@ jobs:
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
-    if: |
-      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-netpol-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-      - netpol-path-filter
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -715,6 +1130,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -725,6 +1143,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -786,12 +1205,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -883,12 +1308,11 @@ jobs:
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
-    if: |
-      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
-      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cyclonus-netpol-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
-      - netpol-path-filter
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -913,6 +1337,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -923,6 +1350,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -956,12 +1384,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         env:
@@ -1055,21 +1489,17 @@ jobs:
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-conformance-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     strategy:
       fail-fast: false
-      matrix:
-        ip-family:
-          - ipv4
-          - ipv6
-          - dual
-        mode:
-          - overlay
-          - underlay
+      matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -1082,6 +1512,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1092,6 +1525,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1146,12 +1580,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1254,7 +1694,10 @@ jobs:
 
   kube-ovn-ic-conformance-e2e:
     name: Kube-OVN IC Conformance E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ic-conformance-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1278,6 +1721,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1288,6 +1734,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1334,9 +1781,15 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Create kind clusters
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
+      - name: Create kind cluster
         run: |
           pipx install jinjanator
           make kind-init-ovn-ic-${{ matrix.ip-family }}
@@ -1413,7 +1866,10 @@ jobs:
 
   multus-conformance-e2e:
     name: Multus Conformance E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'multus-conformance-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1437,6 +1893,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1447,6 +1906,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1493,12 +1953,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -1562,7 +2028,10 @@ jobs:
 
   non-primary-cni-e2e:
     name: Non-Primary CNI E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'non-primary-cni-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1584,6 +2053,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1594,6 +2066,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1650,12 +2123,18 @@ jobs:
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Load vpc-nat-gateway image into kind cluster
         run: make kind-load-image-vpc-nat-gateway
@@ -1719,9 +2198,166 @@ jobs:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
+  bgp-speaker-e2e:
+    name: BGP Speaker E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'bgp-speaker-e2e')
+    needs:
+      - e2e-selection
+      - prepare-kind-node-images
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
+            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load kube-ovn image
+        run: docker load -i kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
+      - name: Create BGP kind and containerlab topology
+        id: setup
+        run: |
+          pipx install jinjanator
+          make kind-init-bgp
+
+      - name: Install Kube-OVN and BGP speakers
+        id: install
+        run: make kind-install-bgp
+
+      - name: Run BGP speaker E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-bgp-speaker-e2e
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: Collect BGP diagnostics
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          mkdir -p bgp-speaker-e2e-diagnostics
+          docker exec clab-bgp-router vtysh -c "show bgp ipv4 unicast summary json" > bgp-speaker-e2e-diagnostics/frr-summary.json || true
+          docker exec clab-bgp-router vtysh -c "show bgp ipv4 unicast json" > bgp-speaker-e2e-diagnostics/frr-routes.json || true
+          kubectl -n kube-system get ds kube-ovn-speaker -o yaml > bgp-speaker-e2e-diagnostics/speaker-daemonset.yaml || true
+          kubectl -n kube-system get pods -l app=kube-ovn-speaker -o wide > bgp-speaker-e2e-diagnostics/speaker-pods.txt || true
+          kubectl -n kube-system logs -l app=kube-ovn-speaker --all-containers --prefix > bgp-speaker-e2e-diagnostics/speaker.log || true
+          kubectl get events -A -o yaml > bgp-speaker-e2e-diagnostics/events.yaml || true
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log bgp-speaker-e2e-diagnostics/ || true
+          tar zcf bgp-speaker-e2e-diagnostics.tar.gz bgp-speaker-e2e-diagnostics
+
+      - name: Upload BGP diagnostics
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: bgp-speaker-e2e-diagnostics
+          path: bgp-speaker-e2e-diagnostics.tar.gz
+
+      - name: kubectl ko log
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          if make kubectl-ko-log && test -f kubectl-ko-log.tar.gz; then
+            mv kubectl-ko-log.tar.gz bgp-speaker-e2e-ko-log.tar.gz
+          else
+            echo "kubectl ko log was unavailable because the BGP test cluster did not become usable." > bgp-speaker-e2e-ko-log-unavailable.txt
+            tar zcf bgp-speaker-e2e-ko-log.tar.gz bgp-speaker-e2e-ko-log-unavailable.txt
+          fi
+
+      - name: Upload kubectl ko log
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: bgp-speaker-e2e-ko-log
+          path: bgp-speaker-e2e-ko-log.tar.gz
+
+      - name: Clean BGP topology
+        if: always()
+        run: make kind-clean-bgp
+
   kube-ovn-hosted-ovn-central-e2e:
     name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-hosted-ovn-central-e2e')
     needs:
+      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1760,6 +2396,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Remove DNS search domain
         run: |
@@ -1877,7 +2516,11 @@ jobs:
 
   chart-test:
     name: Chart Installation/Uninstallation Test
-    needs: build-kube-ovn
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'chart-test')
+    needs:
+      - e2e-selection
+      - prepare-kind-node-images
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -1898,6 +2541,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -1913,12 +2559,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -1949,7 +2601,11 @@ jobs:
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
-    needs: build-kube-ovn
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'underlay-logical-gateway-installation-test')
+    needs:
+      - e2e-selection
+      - prepare-kind-node-images
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -1964,6 +2620,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -1979,12 +2638,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-dual
+          make kind-init-dual
 
       - name: Install Kube-OVN
         id: install
@@ -2013,7 +2678,11 @@ jobs:
 
   no-ovn-lb-test:
     name: Disable OVN LB Test
-    needs: build-kube-ovn
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-ovn-lb-test')
+    needs:
+      - e2e-selection
+      - prepare-kind-node-images
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -2028,6 +2697,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2043,12 +2715,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN without LoadBalancer
         id: install
@@ -2079,7 +2757,11 @@ jobs:
 
   no-np-test:
     name: Disable Network Policy Test
-    needs: build-kube-ovn
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-np-test')
+    needs:
+      - e2e-selection
+      - prepare-kind-node-images
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -2094,6 +2776,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2109,12 +2794,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -2145,7 +2836,10 @@ jobs:
 
   lb-svc-e2e:
     name: LB Service E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'lb-svc-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
@@ -2163,6 +2857,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2173,6 +2870,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2226,12 +2924,18 @@ jobs:
           docker load -i kube-ovn.tar
           docker load -i vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Multus and Kube-OVN
         id: install
@@ -2291,7 +2995,10 @@ jobs:
 
   webhook-e2e:
     name: Webhook E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'webhook-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2308,6 +3015,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2318,6 +3028,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2365,12 +3076,18 @@ jobs:
         run: |
           docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN with webhook
         id: install
@@ -2404,7 +3121,11 @@ jobs:
 
   installation-compatibility-test:
     name: Installation Compatibility Test
-    needs: build-kube-ovn
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'installation-compatibility-test')
+    needs:
+      - e2e-selection
+      - prepare-kind-node-images
+      - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
@@ -2424,6 +3145,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2439,13 +3163,20 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.29.14
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.29.14.tar
+
       - name: Create kind cluster
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           K8S_VERSION: ${{ matrix.k8s-version }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -2474,7 +3205,10 @@ jobs:
 
   talos-installation-test:
     name: Talos Installation Test
-    needs: build-kube-ovn
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'talos-installation-test')
+    needs:
+      - e2e-selection
+      - build-kube-ovn
     runs-on: larger-runner
     timeout-minutes: 30
     strategy:
@@ -2499,6 +3233,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Install talosctl
         run: |
@@ -2561,7 +3298,10 @@ jobs:
 
   kube-ovn-cnp-domain-e2e:
     name: Kube-OVN CNP Domain E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-cnp-domain-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2585,6 +3325,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2595,6 +3338,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2647,12 +3391,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Clone DNSNameResolver repository
         run: |
@@ -2709,7 +3459,10 @@ jobs:
 
   kube-ovn-anp-domain-e2e:
     name: Kube-OVN ANP Domain E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-anp-domain-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2733,6 +3486,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2743,6 +3499,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2795,12 +3552,18 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          make kind-init-${{ matrix.ip-family }}
 
       - name: Clone DNSNameResolver repository
         run: |
@@ -2857,7 +3620,10 @@ jobs:
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cilium-chaining-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2884,6 +3650,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
       - uses: azure/setup-helm@v5.0.1
         with:
           version: '${{ env.HELM_VERSION }}'
@@ -2897,6 +3666,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2952,12 +3722,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-cilium-chaining-${{ matrix.ip-family }}
+          make kind-init-cilium-chaining-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN with Cilium chaining
         id: install
@@ -3023,7 +3799,10 @@ jobs:
 
   kube-ovn-ha-e2e:
     name: Kube-OVN HA E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ha-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3053,6 +3832,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3063,6 +3845,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3109,12 +3892,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ha-${{ matrix.ip-family }}
+          make kind-init-ha-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -3161,7 +3950,10 @@ jobs:
 
   kube-ovn-submariner-conformance-e2e:
     name: Kube-OVN Submariner Conformance E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-submariner-conformance-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -3177,6 +3969,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3187,6 +3982,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3218,12 +4014,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init-ovn-submariner
+          make kind-init-ovn-submariner
 
       - name: Install Kube-OVN and Submariner
         id: install
@@ -3258,7 +4060,10 @@ jobs:
 
   vpc-egress-gateway-e2e:
     name: VPC Egress Gateway E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'vpc-egress-gateway-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3282,6 +4087,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3292,6 +4100,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3338,12 +4147,18 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          n_worker=2 make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          n_worker=2 make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -3442,7 +4257,10 @@ jobs:
 
   iptables-vpc-nat-gw-conformance-e2e:
     name: Iptables VPC NAT Gateway E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'iptables-vpc-nat-gw-conformance-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
@@ -3460,6 +4278,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3470,6 +4291,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3523,12 +4345,18 @@ jobs:
           docker load -i kube-ovn.tar
           docker load -i vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN with VPC NAT gateway enabled
         id: install
@@ -3588,7 +4416,10 @@ jobs:
 
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'ovn-vpc-nat-gw-conformance-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3605,6 +4436,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3615,6 +4449,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3661,12 +4496,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -3733,7 +4574,10 @@ jobs:
 
   kube-ovn-ipsec-e2e:
     name: OVN IPSEC E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3750,6 +4594,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3760,6 +4607,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3806,12 +4654,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -3873,7 +4727,10 @@ jobs:
 
   kube-ovn-ipsec-cert-mgr-e2e:
     name: OVN IPSEC E2E CERT MANAGER
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-cert-mgr-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3890,6 +4747,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3900,6 +4760,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3946,12 +4807,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -4011,7 +4878,10 @@ jobs:
 
   kube-ovn-connectivity-test:
     name: Kube-OVN Connectivity E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-connectivity-test')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4034,6 +4904,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4044,6 +4917,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4090,12 +4964,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -4124,7 +5004,10 @@ jobs:
 
   kube-ovn-underlay-metallb-e2e:
     name: OVN METALLB E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-underlay-metallb-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4148,6 +5031,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4158,6 +5044,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4204,12 +5091,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          n_worker=2 make kind-ghcr-pull kind-init-${{ matrix.ip-family }}
+          n_worker=2 make kind-init-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN
         id: install
@@ -4270,7 +5163,10 @@ jobs:
 
   router-lb-rule-e2e:
     name: Router LB Rule E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'router-lb-rule-e2e')
     needs:
+      - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4287,6 +5183,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4297,6 +5196,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4343,12 +5243,18 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.36.1
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.36.1.tar
+
       - name: Create kind cluster
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pipx install jinjanator
-          make kind-ghcr-pull kind-init
+          make kind-init
 
       - name: Install Kube-OVN
         id: install
@@ -4405,36 +5311,226 @@ jobs:
           name: router-lb-rule-e2e-ko-log
           path: router-lb-rule-e2e-ko-log.tar.gz
 
+  e2e-executor-result:
+    name: x86 E2E Selected Result
+    if: always() && github.event_name != 'pull_request'
+    permissions: {}
+    needs:
+      - e2e-selection
+      - e2e-control-validation
+      - bgp-speaker-e2e
+      - chart-test
+      - cilium-chaining-e2e
+      - cyclonus-netpol-e2e
+      - installation-compatibility-test
+      - iptables-vpc-nat-gw-conformance-e2e
+      - k8s-conformance-e2e
+      - k8s-netpol-e2e
+      - kube-ovn-anp-domain-e2e
+      - kube-ovn-cnp-domain-e2e
+      - kube-ovn-conformance-e2e
+      - kube-ovn-connectivity-test
+      - kube-ovn-ha-e2e
+      - kube-ovn-hosted-ovn-central-e2e
+      - kube-ovn-ic-conformance-e2e
+      - kube-ovn-ipsec-cert-mgr-e2e
+      - kube-ovn-ipsec-e2e
+      - kube-ovn-submariner-conformance-e2e
+      - kube-ovn-underlay-metallb-e2e
+      - lb-svc-e2e
+      - multus-conformance-e2e
+      - no-np-test
+      - no-ovn-lb-test
+      - non-primary-cni-e2e
+      - ovn-vpc-nat-gw-conformance-e2e
+      - router-lb-rule-e2e
+      - talos-installation-test
+      - underlay-logical-gateway-installation-test
+      - vpc-egress-gateway-e2e
+      - webhook-e2e
+    runs-on: ubuntu-24.04
+    env:
+      NEEDS_JSON: ${{ toJSON(needs) }}
+      SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
+    steps:
+      - name: Verify every selected test Job succeeded
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          selectedJobIds = json.loads(os.environ["SELECTED_JOB_IDS"])
+          requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds
+          incomplete = {
+              jobId: needs.get(jobId, {}).get("result", "missing")
+              for jobId in requiredJobIds
+              if needs.get(jobId, {}).get("result") != "success"
+          }
+          if incomplete:
+              raise SystemExit(f"required x86 E2E Jobs did not succeed: {incomplete}")
+          print(f"Verified {len(requiredJobIds)} required x86 E2E Jobs.")
+          PY
+
+  publish-pr-e2e-checks:
+    name: Publish x86 E2E checks on the pull request
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+    needs:
+      - e2e-selection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONDONTWRITEBYTECODE: "1"
+      HEAD_SHA: ${{ inputs.headSHA }}
+      PR_NUMBER: ${{ inputs.prNumber }}
+      SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.baseSHA }}
+          persist-credentials: false
+
+      - name: Stream selected executor jobs onto the pull request HEAD
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - "$PR_NUMBER" "$HEAD_SHA" "$SELECTED_JOB_IDS" "$GITHUB_REPOSITORY" "$RUN_ID" <<'PY'
+          import json
+          import subprocess
+          import sys
+          import time
+          from pathlib import Path
+
+          sys.path.insert(0, "hack")
+          import e2e_control as e2eControl
+          import e2e_selector as e2eSelector
+
+          prNumber = int(sys.argv[1])
+          headSHA = sys.argv[2]
+          selectedJobIds = json.loads(sys.argv[3])
+          repository = sys.argv[4]
+          runId = sys.argv[5]
+          workflow = Path(".github/workflows/build-x86-image.yaml").read_text()
+          blocks = e2eSelector.workflowJobBlocks(workflow)
+          selectedTitles = [
+              e2eControl.workflowJobTitle(blocks[jobId])
+              for jobId in selectedJobIds
+              if jobId in blocks
+          ]
+          infraTitles = e2eControl.visibleInfrastructureTitles(blocks)
+
+          def gh_json(*args):
+              return json.loads(
+                  subprocess.check_output(["gh", "api", *args], text=True)
+              )
+
+          def load_jobs():
+              pages = json.loads(
+                  subprocess.check_output(
+                      [
+                          "gh",
+                          "api",
+                          "--paginate",
+                          "--slurp",
+                          f"repos/{repository}/actions/runs/{runId}/jobs?per_page=100",
+                      ],
+                      text=True,
+                  )
+              )
+              jobs = []
+              for page in pages:
+                  jobs.extend(page.get("jobs") or [])
+              return jobs
+
+          published = {}
+          for _ in range(720):
+              jobs = load_jobs()
+              for payload in e2eControl.prCheckRunsToPublish(
+                  jobs,
+                  selectedTitles,
+                  headSHA,
+                  prNumber,
+                  detailsURL=f"https://github.com/{repository}/actions/runs/{runId}",
+                  infraTitles=infraTitles,
+              ):
+                  fingerprint = (
+                      payload["status"],
+                      payload.get("conclusion"),
+                      payload.get("details_url"),
+                  )
+                  externalId = payload["external_id"]
+                  if published.get(externalId) == fingerprint:
+                      continue
+                  existing = gh_json(
+                      "-H",
+                      "Accept: application/vnd.github+json",
+                      f"repos/{repository}/commits/{headSHA}/check-runs?per_page=100",
+                  )
+                  checkId = next(
+                      (
+                          check.get("id")
+                          for check in existing.get("check_runs") or []
+                          if check.get("external_id") == externalId
+                      ),
+                      None,
+                  )
+                  if checkId is None:
+                      subprocess.run(
+                          [
+                              "gh",
+                              "api",
+                              "--method",
+                              "POST",
+                              f"repos/{repository}/check-runs",
+                              "--input",
+                              "-",
+                          ],
+                          input=json.dumps(payload),
+                          text=True,
+                          check=True,
+                      )
+                  else:
+                      update = dict(payload)
+                      update.pop("name", None)
+                      update.pop("head_sha", None)
+                      subprocess.run(
+                          [
+                              "gh",
+                              "api",
+                              "--method",
+                              "PATCH",
+                              f"repos/{repository}/check-runs/{checkId}",
+                              "--input",
+                              "-",
+                          ],
+                          input=json.dumps(update),
+                          text=True,
+                          check=True,
+                      )
+                  published[externalId] = fingerprint
+                  print(
+                      f"{payload['status']} {payload.get('conclusion') or '-'} {payload['name']}",
+                      flush=True,
+                  )
+              if e2eControl.selectedExecutorJobsAreTerminal(jobs, selectedTitles):
+                  print(f"Mirrored {len(published)} pull request E2E checks.", flush=True)
+                  break
+              time.sleep(20)
+          else:
+              raise SystemExit("timed out while mirroring pull request E2E checks")
+          PY
+
   push:
     name: Push Images
     needs:
-      - k8s-conformance-e2e
-      - k8s-netpol-e2e
-      - cyclonus-netpol-e2e
-      - kube-ovn-conformance-e2e
-      - kube-ovn-ic-conformance-e2e
-      - kube-ovn-ipsec-e2e
-      - kube-ovn-ipsec-cert-mgr-e2e
-      - kube-ovn-underlay-metallb-e2e
-      - multus-conformance-e2e
-      - non-primary-cni-e2e
-      - kube-ovn-hosted-ovn-central-e2e
-      - vpc-egress-gateway-e2e
-      - ovn-vpc-nat-gw-conformance-e2e
-      - iptables-vpc-nat-gw-conformance-e2e
-      - webhook-e2e
-      - lb-svc-e2e
-      - underlay-logical-gateway-installation-test
-      - chart-test
-      - installation-compatibility-test
-      - talos-installation-test
-      - no-ovn-lb-test
-      - no-np-test
-      - cilium-chaining-e2e
-      - kube-ovn-ha-e2e
-      - kube-ovn-submariner-conformance-e2e
-      - router-lb-rule-e2e
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+      - e2e-executor-result
+    if: github.event_name == 'push' && needs.e2e-executor-result.result == 'success'
     runs-on: ubuntu-24.04
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -4448,6 +5544,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v8

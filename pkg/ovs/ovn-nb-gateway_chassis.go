@@ -171,3 +171,121 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 
 	return ops, nil
 }
+
+// DeleteGatewayChassises delete multiple gateway chassis once
+func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string) error {
+	if len(chassises) == 0 {
+		return nil
+	}
+
+	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	ops := make([]ovsdb.Operation, 0, len(chassises)*2)
+	for _, chassisName := range chassises {
+		gwChassisName := lrpName + "-" + chassisName
+		uuid, delOps, err := c.DeleteGatewayChassisOp(gwChassisName)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		if uuid == "" {
+			continue
+		}
+
+		mutateOps, err := c.Where(lrp).Mutate(lrp, model.Mutation{
+			Field:   &lrp.GatewayChassis,
+			Value:   []string{uuid},
+			Mutator: ovsdb.MutateOperationDelete,
+		})
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+
+		ops = append(ops, mutateOps...)
+		ops = append(ops, delOps...)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+
+	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("delete gateway chassises %v from logical router port %s: %w", chassises, lrpName, err)
+	}
+
+	return nil
+}
+
+// DeleteGatewayChassisOp create operation which delete gateway chassis
+func (c *OVNNbClient) DeleteGatewayChassisOp(chassisName string) (uuid string, ops []ovsdb.Operation, err error) {
+	gwChassis, err := c.GetGatewayChassis(chassisName, true)
+	if err != nil {
+		klog.Error(err)
+		return "", nil, err
+	}
+
+	// not found, skip
+	if gwChassis == nil {
+		return "", nil, nil
+	}
+
+	if ops, err = c.Where(gwChassis).Delete(); err != nil {
+		klog.Error(err)
+		return "", nil, err
+	}
+
+	return gwChassis.UUID, ops, nil
+}
+
+// ReconcileGatewayChassises make gateway chassis of a logical router port match the desired list and priority.
+func (c *OVNNbClient) ReconcileGatewayChassises(lrpName string, chassises []string) error {
+	existing, err := c.ListGatewayChassisByLogicalRouterPort(lrpName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	desired := make(map[string]int, len(chassises))
+	for i, chassisName := range chassises {
+		if chassisName != "" {
+			desired[chassisName] = 100 - i
+		}
+	}
+
+	var stale []string
+	for _, gw := range existing {
+		if _, ok := desired[gw.ChassisName]; !ok {
+			stale = append(stale, gw.ChassisName)
+		}
+	}
+	if err := c.DeleteGatewayChassises(lrpName, stale); err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.CreateGatewayChassises(lrpName, chassises...); err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	for chassisName, priority := range desired {
+		gwChassis, err := c.GetGatewayChassis(lrpName+"-"+chassisName, false)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		if gwChassis.Priority == priority {
+			continue
+		}
+		gwChassis.Priority = priority
+		if err := c.UpdateGatewayChassis(gwChassis, &gwChassis.Priority); err != nil {
+			klog.Error(err)
+			return err
+		}
+	}
+	return nil
+}
