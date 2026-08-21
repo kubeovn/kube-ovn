@@ -263,8 +263,32 @@ jobs:
           print(json.dumps({
               "catalogRevision": e2eSelector.catalogRevision(catalog),
               "controlledLabels": labels,
+              "approvedRequest": e2eControl.approvedRequest(pullRequest, catalog, pages),
           }))
           PY
+          approvedRequest=$(jq -r '.approvedRequest != null' automatic-context.json)
+          if [ "$approvedRequest" = true ]; then
+            approvalGeneration=$(jq -r '.approvedRequest.approvalGeneration' automatic-context.json)
+            requestedGroups=$(jq -c '.approvedRequest.requestedGroups' automatic-context.json)
+            controlledLabels=$(jq -c '.approvedRequest.controlledLabels // []' automatic-context.json)
+            full=$(jq -r '.approvedRequest.full' automatic-context.json)
+            catalogRevision=$(jq -r '.catalogRevision' automatic-context.json)
+            defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+            gh api --method POST \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
+              -f ref="$defaultBranch" \
+              -f "inputs[prNumber]=$PR_NUMBER" \
+              -f "inputs[headSHA]=$headSHA" \
+              -f "inputs[baseSHA]=$baseSHA" \
+              -f "inputs[approvalGeneration]=$approvalGeneration" \
+              -f "inputs[catalogRevision]=$catalogRevision" \
+              -f "inputs[requestedGroups]=$requestedGroups" \
+              -f "inputs[controlledLabels]=$controlledLabels" \
+              -f "inputs[full]=$full" \
+              -f 'inputs[recordIntent]=false' \
+              -f 'inputs[baseRefresh]=false'
+            exit 0
+          fi
           catalogRevision=$(jq -r '.catalogRevision' automatic-context.json)
           controlledLabels=$(jq -c '.controlledLabels' automatic-context.json)
           controlledLabelNames=$(jq -r \
@@ -404,19 +428,58 @@ jobs:
               "repos/$GITHUB_REPOSITORY/commits/$headSHA/check-runs?check_name=x86-e2e%20%2F%20required-gate&per_page=100" \
               | jq -r 'any(.check_runs[]; .name == "x86-e2e / required-gate")')
             [ "$hasGate" = true ] || continue
-            gh api --method POST \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
-              -f ref="$GITHUB_REF_NAME" \
-              -f "inputs[prNumber]=$prNumber" \
-              -f "inputs[headSHA]=$headSHA" \
-              -f "inputs[baseSHA]=$GITHUB_SHA" \
-              -f 'inputs[approvalGeneration]=1' \
-              -f "inputs[catalogRevision]=$catalogRevision" \
-              -f 'inputs[requestedGroups]=[]' \
-              -f 'inputs[controlledLabels]=[]' \
-              -f 'inputs[full]=false' \
-              -f 'inputs[recordIntent]=false' \
-              -f 'inputs[baseRefresh]=true'
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$prNumber" > refresh-pull-request.json
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments?per_page=100" \
+              > refresh-comments.json
+            python3 - "$prNumber" <<'PY' > refresh-request.json
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          pullRequest = json.loads(Path("refresh-pull-request.json").read_text())
+          catalog = json.loads(Path(".github/e2e-selection.json").read_text())
+          pages = json.loads(Path("refresh-comments.json").read_text())
+          request = e2eControl.approvedRequest(pullRequest, catalog, pages)
+          print(json.dumps(request or {}))
+          PY
+            if [ "$(jq -r 'length' refresh-request.json)" -gt 0 ]; then
+              refreshHeadSHA=$(jq -r '.headSHA' refresh-request.json)
+              refreshBaseSHA=$(jq -r '.baseSHA' refresh-request.json)
+              refreshApprovalGeneration=$(jq -r '.approvalGeneration' refresh-request.json)
+              refreshCatalogRevision=$(jq -r '.catalogRevision' refresh-request.json)
+              refreshRequestedGroups=$(jq -c '.requestedGroups' refresh-request.json)
+              refreshControlledLabels=$(jq -c '.controlledLabels // []' refresh-request.json)
+              refreshFull=$(jq -r '.full' refresh-request.json)
+              gh api --method POST \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
+                -f ref="$GITHUB_REF_NAME" \
+                -f "inputs[prNumber]=$prNumber" \
+                -f "inputs[headSHA]=$refreshHeadSHA" \
+                -f "inputs[baseSHA]=$refreshBaseSHA" \
+                -f "inputs[approvalGeneration]=$refreshApprovalGeneration" \
+                -f "inputs[catalogRevision]=$refreshCatalogRevision" \
+                -f "inputs[requestedGroups]=$refreshRequestedGroups" \
+                -f "inputs[controlledLabels]=$refreshControlledLabels" \
+                -f "inputs[full]=$refreshFull" \
+                -f 'inputs[recordIntent]=false' \
+                -f 'inputs[baseRefresh]=false'
+            else
+              gh api --method POST \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
+                -f ref="$GITHUB_REF_NAME" \
+                -f "inputs[prNumber]=$prNumber" \
+                -f "inputs[headSHA]=$headSHA" \
+                -f "inputs[baseSHA]=$GITHUB_SHA" \
+                -f 'inputs[approvalGeneration]=1' \
+                -f "inputs[catalogRevision]=$catalogRevision" \
+                -f 'inputs[requestedGroups]=[]' \
+                -f 'inputs[controlledLabels]=[]' \
+                -f 'inputs[full]=false' \
+                -f 'inputs[recordIntent]=false' \
+                -f 'inputs[baseRefresh]=true'
+            fi
           done < open-pulls.tsv
 
   dispatch:
@@ -532,6 +595,19 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments" \
               -f body='x86 E2E request became stale before dispatch; comment again for the current HEAD and target revision.'
             exit 1
+          fi
+          if [ "$action" = dispatch ]; then
+            python3 - <<'PY' > request-marker.txt
+          import json
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          decision = json.loads(Path("dispatch-decision.json").read_text())
+          print(e2eControl.renderRequestMarker(decision))
+          PY
+            marker=$(cat request-marker.txt)
+            body=$(printf "Recorded durable x86 E2E approval for PR HEAD %s.\n\n%s" "$headSHA" "$marker")
+            gh api "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments" -f body="$body"
           fi
           if [ "$action" = dispatch ]; then
             gh api --paginate --slurp \

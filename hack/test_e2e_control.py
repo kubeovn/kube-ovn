@@ -783,6 +783,44 @@ class E2EControlTest(unittest.TestCase):
         self.assertEqual(request["requestedGroups"], ["multi-cni", "policy"])
         self.assertEqual(request["baseSHA"], "b" * 40)
 
+    def testApprovedRequestRebindsTrustedMarkerToCurrentHead(self):
+        catalog = json.loads((repoRoot / ".github/e2e-selection.json").read_text())
+        catalogRevision = e2eSelector.catalogRevision(catalog)
+        oldPullRequest = {
+            "number": 7231,
+            "head": {"sha": "a" * 40},
+            "base": {"ref": "master", "sha": "b" * 40},
+            "labels": [],
+        }
+        marker = e2eControl.renderRequestMarker(
+            {
+                "headSHA": "a" * 40,
+                "baseSHA": "b" * 40,
+                "approvalGeneration": 1001,
+                "catalogRevision": catalogRevision,
+                "requestedGroups": ["policy"],
+                "full": False,
+            }
+        )
+        pages = [[
+            {
+                "id": 10,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": marker,
+            }
+        ]]
+        currentPullRequest = {
+            **oldPullRequest,
+            "head": {"sha": "c" * 40},
+            "base": {"ref": "master", "sha": "d" * 40},
+        }
+
+        request = e2eControl.approvedRequest(currentPullRequest, catalog, pages)
+
+        self.assertEqual(request["headSHA"], "c" * 40)
+        self.assertEqual(request["baseSHA"], "d" * 40)
+        self.assertEqual(request["requestedGroups"], ["policy"])
+
     def testParsesTrustedExecutorRunName(self):
         request = {
             "prNumber": 7231,
@@ -1231,6 +1269,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("Record trusted x86 E2E controlled labels", workflow)
         self.assertIn("collaborators/$SENDER/permission", workflow)
         self.assertIn("renderControlledLabelMarker", workflow)
+        self.assertIn("Recorded durable x86 E2E approval", workflow)
         self.assertIn("trustedControlledLabels", workflow)
         self.assertIn("labels/$encodedLabel", workflow)
         self.assertIn("live-pull-request.json", workflow)
@@ -1305,6 +1344,8 @@ class E2EControlTest(unittest.TestCase):
         )
         self.assertIn("cancel-in-progress: true", automatic)
         self.assertIn("inProgressAutomaticExecutorRunIds", automatic)
+        self.assertIn("approvedRequest", automatic)
+        self.assertIn("actions/workflows/x86-e2e-gate.yaml/dispatches", automatic)
         self.assertIn("actions/runs/$runId/cancel", automatic)
         self.assertIn('requestKey="automatic-$PR_NUMBER-$headSHA"', automatic)
         self.assertNotIn('requestKey="automatic-$DISPATCH_GENERATION"', automatic)
@@ -1584,7 +1625,7 @@ class E2EControlTest(unittest.TestCase):
             "matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}",
             blocks["kube-ovn-conformance-e2e"],
         )
-        self.assertIn("if: github.event_name == 'push'\n        uses: actions/cache@v6", workflow)
+        self.assertIn("if: steps.lookup-go-cache.outputs.cache-hit != 'true' && github.event_name == 'push'", workflow)
         self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)
         self.assertIn("--request-full", workflow)
         self.assertNotIn("args+=(--label e2e:full)", workflow)
