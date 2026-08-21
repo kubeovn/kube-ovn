@@ -28,7 +28,7 @@ permissions:
   contents: read
   actions: write
   checks: read
-  pull-requests: read
+  pull-requests: write
   issues: write
 
 jobs:
@@ -198,7 +198,18 @@ jobs:
     if: >-
       always() &&
       github.event_name == 'pull_request_target' &&
-      github.event.action != 'closed'
+      (
+        github.event.action == 'opened' ||
+        github.event.action == 'reopened' ||
+        github.event.action == 'synchronize' ||
+        (
+          (github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
+          startsWith(github.event.label.name, 'e2e:')
+        )
+      )
+    concurrency:
+      group: x86-e2e-automatic-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      cancel-in-progress: true
     permissions:
       actions: write
       contents: write
@@ -260,7 +271,28 @@ jobs:
             '.controlledLabels | if length == 0 then "-" else join(",") end' \
             automatic-context.json)
           approvalGeneration=1
-          requestKey="automatic-$DISPATCH_GENERATION"
+          requestKey="automatic-$PR_NUMBER-$headSHA"
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+            | jq '{workflow_runs: [.[].workflow_runs[]]}' > automatic-executor-runs.json
+          python3 - "$PR_NUMBER" "$headSHA" <<'PY' > stale-automatic-runs.txt
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          runs = json.loads(Path("automatic-executor-runs.json").read_text())["workflow_runs"]
+          for runId in e2eControl.inProgressAutomaticExecutorRunIds(
+              runs, int(sys.argv[1]), sys.argv[2]
+          ):
+              print(runId)
+          PY
+          while IFS= read -r runId; do
+            [ -n "$runId" ] || continue
+            if ! gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$runId/cancel"; then
+              echo "Automatic executor run $runId finished before cancellation." >&2
+            fi
+          done < stale-automatic-runs.txt
           executorRef=$(python3 - "$PR_NUMBER" "$approvalGeneration" "$DISPATCH_GENERATION" <<'PY'
           import sys
           import e2e_control as e2eControl
@@ -393,6 +425,11 @@ jobs:
       github.event.issue.pull_request &&
       (startsWith(github.event.comment.body, '/test e2e') ||
        startsWith(github.event.comment.body, '/retest e2e-failed'))
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: write
     outputs:
       accepted: ${{ steps.decision.outputs.accepted }}
       action: ${{ steps.decision.outputs.action }}
@@ -834,7 +871,7 @@ jobs:
       contents: write
       actions: write
       checks: read
-      pull-requests: read
+      pull-requests: write
       issues: write
     concurrency:
       group: x86-e2e-reduce-${{ inputs.prNumber }}-${{ inputs.approvalGeneration }}
@@ -981,19 +1018,30 @@ jobs:
             echo "The cumulative x86 E2E request is already recorded: $duplicate"
             exit 0
           fi
-          externalId="x86-e2e-pr-$PR_NUMBER-$HEAD_SHA"
-          expectedURL="https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER?request=$REQUEST_KEY&approval=$APPROVAL_GENERATION"
           approvalReady=false
           for _ in $(seq 1 24); do
-            ready=$(gh api \
+            gh api \
               -H 'Accept: application/vnd.github+json' \
               "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?check_name=x86-e2e%20%2F%20required-gate&per_page=100" \
-              | jq -r --arg externalId "$externalId" --arg expectedURL "$expectedURL" \
-                'any(.check_runs[]; .name == "x86-e2e / required-gate" and
-                  .external_id == $externalId and .status == "completed" and
-                  .conclusion == "action_required" and .details_url == $expectedURL)')
-            if [ "$ready" = true ]; then
-              approvalReady=true
+              > approved-gate-checks.json
+            approvalReady=$(python3 - "$PR_NUMBER" "$HEAD_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          checks = json.loads(Path("approved-gate-checks.json").read_text()).get("check_runs") or []
+          print(
+              "true"
+              if any(
+                  e2eControl.isApprovedGateReservation(check, sys.argv[1], sys.argv[2])
+                  for check in checks
+              )
+              else "false"
+          )
+          PY
+            )
+            if [ "$approvalReady" = true ]; then
               break
             fi
             sleep 5
@@ -1010,13 +1058,27 @@ jobs:
             echo 'The cumulative request became stale during gate reconciliation.'
             exit 0
           fi
-          ready=$(gh api \
+          gh api \
             -H 'Accept: application/vnd.github+json' \
             "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?check_name=x86-e2e%20%2F%20required-gate&per_page=100" \
-            | jq -r --arg externalId "$externalId" --arg expectedURL "$expectedURL" \
-              'any(.check_runs[]; .name == "x86-e2e / required-gate" and
-                .external_id == $externalId and .status == "completed" and
-                .conclusion == "action_required" and .details_url == $expectedURL)')
+            > approved-gate-checks.json
+          ready=$(python3 - "$PR_NUMBER" "$HEAD_SHA" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          import e2e_control as e2eControl
+
+          checks = json.loads(Path("approved-gate-checks.json").read_text()).get("check_runs") or []
+          print(
+              "true"
+              if any(
+                  e2eControl.isApprovedGateReservation(check, sys.argv[1], sys.argv[2])
+                  for check in checks
+              )
+              else "false"
+          )
+          PY
+          )
           if [ "$ready" != true ]; then
             exit 0
           fi

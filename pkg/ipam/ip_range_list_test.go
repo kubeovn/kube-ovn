@@ -373,7 +373,8 @@ func TestNewIPRangeList(t *testing.T) {
 		v41RangeStart1, v41RangeEnd1, v41RangeStart2, v41RangeEnd2,
 		v41RangeStart3, v41RangeEnd3, v41RangeStart4, v41RangeEnd4,
 		v41RangeStart5, v41RangeEnd5, v41RangeStart6, v41RangeEnd6,
-		v41RangeStart7, v41RangeEnd7, v41RangeStart8, v41RangeEnd8)
+		v41RangeStart7, v41RangeEnd7, v41RangeStart8, v41RangeEnd8,
+	)
 	require.NoError(t, err)
 
 	v42RangeStart1, err := NewIP("10.0.0.1")
@@ -413,7 +414,8 @@ func TestNewIPRangeList(t *testing.T) {
 		v42RangeStart1, v42RangeEnd1, v42RangeStart2, v42RangeEnd2,
 		v42RangeStart3, v42RangeEnd3, v42RangeStart4, v42RangeEnd4,
 		v42RangeStart5, v42RangeEnd5, v42RangeStart6, v42RangeEnd6,
-		v42RangeStart7, v42RangeEnd7, v42RangeStart8, v42RangeEnd8)
+		v42RangeStart7, v42RangeEnd7, v42RangeStart8, v42RangeEnd8,
+	)
 	require.NoError(t, err)
 
 	v43RangeStart1, err := NewIP("10.0.0.5")
@@ -476,7 +478,8 @@ func TestNewIPRangeList(t *testing.T) {
 		v61RangeStart1, v61RangeEnd1, v61RangeStart2, v61RangeEnd2,
 		v61RangeStart3, v61RangeEnd3, v61RangeStart4, v61RangeEnd4,
 		v61RangeStart5, v61RangeEnd5, v61RangeStart6, v61RangeEnd6,
-		v61RangeStart7, v61RangeEnd7, v61RangeStart8, v61RangeEnd8)
+		v61RangeStart7, v61RangeEnd7, v61RangeStart8, v61RangeEnd8,
+	)
 	require.NoError(t, err)
 	v62RangeStart1, err := NewIP("2001:db8::1")
 	require.NoError(t, err)
@@ -515,7 +518,8 @@ func TestNewIPRangeList(t *testing.T) {
 		v62RangeStart1, v62RangeEnd1, v62RangeStart2, v62RangeEnd2,
 		v62RangeStart3, v62RangeEnd3, v62RangeStart4, v62RangeEnd4,
 		v62RangeStart5, v62RangeEnd5, v62RangeStart6, v62RangeEnd6,
-		v62RangeStart7, v62RangeEnd7, v62RangeStart8, v62RangeEnd8)
+		v62RangeStart7, v62RangeEnd7, v62RangeStart8, v62RangeEnd8,
+	)
 	require.NoError(t, err)
 
 	v63RangeStart1, err := NewIP("2001:db8::5")
@@ -536,7 +540,8 @@ func TestNewIPRangeList(t *testing.T) {
 	require.NoError(t, err)
 	expected, err = NewIPRangeList(
 		v63RangeStart1, v63RangeEnd1, v63RangeStart2, v63RangeEnd2,
-		v63RangeStart3, v63RangeEnd3, v63RangeStart4, v63RangeEnd4)
+		v63RangeStart3, v63RangeEnd3, v63RangeStart4, v63RangeEnd4,
+	)
 	require.NoError(t, err)
 	separated = v61.Separate(v62)
 	require.True(t, separated.Equal(expected))
@@ -597,7 +602,8 @@ func TestNewIPRangeList(t *testing.T) {
 		v41RangeStart5, v41RangeEnd5, v41RangeStart6, v41RangeEnd6,
 		v41RangeStart7, v41RangeEnd7, v41RangeStart8, v41RangeEnd8,
 		v41RangeStart9, v41RangeEnd9, v41RangeStart10, v41RangeEnd10,
-		v41RangeStart11, v41RangeEnd11, v41RangeStart12, v41RangeEnd12)
+		v41RangeStart11, v41RangeEnd11, v41RangeStart12, v41RangeEnd12,
+	)
 	require.NoError(t, err)
 
 	v42RangeStart1, err = NewIP("10.0.0.1")
@@ -651,7 +657,8 @@ func TestNewIPRangeList(t *testing.T) {
 		v42RangeStart5, v42RangeEnd5, v42RangeStart6, v42RangeEnd6,
 		v42RangeStart7, v42RangeEnd7, v42RangeStart8, v42RangeEnd8,
 		v42RangeStart9, v42RangeEnd9, v42RangeStart10, v42RangeEnd10,
-		v42RangeStart11, v42RangeEnd11)
+		v42RangeStart11, v42RangeEnd11,
+	)
 	require.NoError(t, err)
 
 	v43RangeStart1, err = NewIP("10.0.0.1")

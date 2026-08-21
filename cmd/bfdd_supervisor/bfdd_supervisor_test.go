@@ -22,7 +22,8 @@ func (commandTestControl) Status(context.Context) ([]bfddsupervisor.Session, err
 }
 
 func (commandTestControl) Configure(context.Context, bfddsupervisor.DaemonConfig) error { return nil }
-func (commandTestControl) Reset(context.Context, bfddsupervisor.SessionPair) error      { return nil }
+
+func (commandTestControl) Reset(context.Context, bfddsupervisor.SessionPair) error { return nil }
 
 type commandTestChild struct{}
 

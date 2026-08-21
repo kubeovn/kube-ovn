@@ -137,7 +137,8 @@ func (c *VMClient) WaitToBeReady(name string, timeout time.Duration) error {
 			return func() string {
 				return "expected vm status to be ready, got status instead:\n" + format.Object(vm.Status, 1)
 			}, nil
-		}))
+		}),
+	)
 	if err != nil {
 		return fmt.Errorf("expected vm %s to be ready: %w", name, err)
 	}
@@ -156,7 +157,8 @@ func (c *VMClient) WaitToBeStopped(name string, timeout time.Duration) error {
 			return func() string {
 				return "expected vm status to be stopped, got status instead:\n" + format.Object(vm.Status, 1)
 			}, nil
-		}))
+		}),
+	)
 	if err != nil {
 		return fmt.Errorf("expected vm %s to be stopped: %w", name, err)
 	}

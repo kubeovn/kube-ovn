@@ -44,9 +44,25 @@ class E2EControlTest(unittest.TestCase):
                 self.assertEqual(command["headSHA"], headSHA)
                 self.assertEqual(command["nonce"], nonce)
 
+    def testParsesUnboundCommentCommands(self):
+        cases = {
+            "/test e2e": ("dispatch", [], False),
+            "/test e2e core": ("dispatch", ["core"], False),
+            "/test e2e-all": ("dispatch", [], True),
+            "/retest e2e-failed": ("rerun-failed", [], False),
+        }
+        for body, expected in cases.items():
+            with self.subTest(body=body):
+                command = e2eControl.parseCommand(body)
+                self.assertEqual(
+                    (command["action"], command["requestedGroups"], command["full"]),
+                    expected,
+                )
+                self.assertEqual(command["headSHA"], "")
+                self.assertEqual(command["nonce"], "")
+
     def testRejectsMalformedOrInjectedCommands(self):
         for body in [
-            "/test e2e",
             "/test e2e policy bogus",
             "/test e2e policy;echo-owned",
             "/test e2e policy\n/test e2e-all",
@@ -69,6 +85,7 @@ class E2EControlTest(unittest.TestCase):
         state="open",
         baseRef="master",
         controlledLabels=(),
+        bindHead=True,
     ):
         catalog = json.loads((repoRoot / ".github/e2e-selection.json").read_text())
         catalogRevision = e2eSelector.catalogRevision(catalog)
@@ -76,7 +93,7 @@ class E2EControlTest(unittest.TestCase):
         if body is None:
             nonce = e2eControl.requestNonce(7231, observedHeadSHA, baseSHA, catalogRevision)
             body = f"/test e2e policy --head {observedHeadSHA} --nonce {nonce}"
-        elif " --head " not in body:
+        elif bindHead and " --head " not in body:
             nonce = e2eControl.requestNonce(7231, observedHeadSHA, baseSHA, catalogRevision)
             body = f"{body} --head {observedHeadSHA} --nonce {nonce}"
         event = {
@@ -101,6 +118,214 @@ class E2EControlTest(unittest.TestCase):
             liveComment=event["comment"],
             controlledLabels=controlledLabels,
         )
+
+    def testExecutorJobsArePublishedAsPullRequestChecks(self):
+        jobs = [
+            {
+                "id": 1,
+                "name": "Kubernetes Conformance E2E (ipv4, overlay)",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/11",
+            },
+            {
+                "id": 2,
+                "name": "Build kube-ovn",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/12",
+            },
+            {
+                "id": 3,
+                "name": "Kube-OVN Hosted OVN Central E2E (ipv4, 1 control-plane)",
+                "status": "in_progress",
+                "conclusion": None,
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/13",
+            },
+        ]
+        selected = e2eControl.selectedExecutorJobs(
+            jobs,
+            [
+                "Kubernetes Conformance E2E",
+                "Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)",
+            ],
+        )
+        self.assertEqual([job["id"] for job in selected], [1, 3])
+        headSHA = "a" * 40
+        completed = e2eControl.prCheckRunFromExecutorJob(jobs[0], headSHA, 7260)
+        pending = e2eControl.prCheckRunFromExecutorJob(jobs[2], headSHA, 7260)
+        self.assertEqual(completed["head_sha"], headSHA)
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["conclusion"], "success")
+        self.assertEqual(completed["details_url"], jobs[0]["html_url"])
+        self.assertEqual(pending["status"], "in_progress")
+        self.assertNotIn("conclusion", pending)
+        self.assertFalse(
+            e2eControl.selectedExecutorJobsAreTerminal(
+                jobs,
+                [
+                    "Kubernetes Conformance E2E",
+                    "Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)",
+                ],
+            )
+        )
+        self.assertTrue(
+            e2eControl.selectedExecutorJobsAreTerminal(
+                [jobs[0]],
+                ["Kubernetes Conformance E2E"],
+            )
+        )
+        self.assertFalse(
+            e2eControl.selectedExecutorJobsAreTerminal(
+                [],
+                ["Kubernetes Conformance E2E"],
+            )
+        )
+
+    def testUnstartedSelectedJobsArePublishedAsQueuedPlaceholders(self):
+        jobs = [
+            {
+                "id": 10,
+                "name": "Build kube-ovn",
+                "status": "in_progress",
+                "conclusion": None,
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/10",
+            }
+        ]
+        selectedTitles = [
+            "Kubernetes Conformance E2E (${{ matrix.ip-family }}, ${{ matrix.mode }})",
+            "Kube-OVN Conformance E2E (${{ matrix.ip-family }}, ${{ matrix.mode }})",
+            "Cilium Chaining E2E",
+        ]
+        payloads = e2eControl.prCheckRunsToPublish(
+            jobs,
+            selectedTitles,
+            "a" * 40,
+            7275,
+            detailsURL="https://github.com/kubeovn/kube-ovn/actions/runs/1",
+            infraTitles=[
+                "Build kube-ovn",
+                "Build E2E Binaries",
+                "Prepare private Kind node image (${{ matrix.k8s-version }})",
+            ],
+        )
+        byName = {payload["name"]: payload for payload in payloads}
+        self.assertEqual(
+            [payload["name"] for payload in payloads],
+            [
+                "Build kube-ovn",
+                "Kubernetes Conformance E2E",
+                "Kube-OVN Conformance E2E",
+                "Cilium Chaining E2E",
+            ],
+        )
+        self.assertEqual(byName["Build kube-ovn"]["status"], "in_progress")
+        self.assertEqual(byName["Build kube-ovn"]["head_sha"], "a" * 40)
+        self.assertEqual(
+            byName["Build kube-ovn"]["details_url"],
+            jobs[0]["html_url"],
+        )
+        self.assertEqual(byName["Kubernetes Conformance E2E"]["status"], "queued")
+        self.assertNotIn("conclusion", byName["Kubernetes Conformance E2E"])
+        self.assertEqual(
+            byName["Kubernetes Conformance E2E"]["details_url"],
+            "https://github.com/kubeovn/kube-ovn/actions/runs/1",
+        )
+        self.assertEqual(byName["Cilium Chaining E2E"]["status"], "queued")
+        self.assertTrue(
+            byName["Kubernetes Conformance E2E"]["external_id"].startswith(
+                "x86-e2e-pr-7275-"
+            )
+        )
+
+    def testMatrixPlaceholdersCompleteAfterRealJobsStart(self):
+        jobs = [
+            {
+                "id": 2,
+                "name": "Build kube-ovn",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/12",
+            },
+            {
+                "id": 4,
+                "name": "Kubernetes Conformance E2E (ipv4, overlay)",
+                "status": "in_progress",
+                "conclusion": None,
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/14",
+            },
+            {
+                "id": 5,
+                "name": "Cilium Chaining E2E",
+                "status": "queued",
+                "conclusion": None,
+                "html_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/15",
+            },
+        ]
+        payloads = e2eControl.prCheckRunsToPublish(
+            jobs,
+            [
+                "Kubernetes Conformance E2E (${{ matrix.ip-family }}, ${{ matrix.mode }})",
+                "Cilium Chaining E2E",
+            ],
+            "a" * 40,
+            7275,
+            detailsURL="https://github.com/kubeovn/kube-ovn/actions/runs/1",
+            infraTitles=["Build kube-ovn"],
+        )
+        byName = {payload["name"]: payload for payload in payloads}
+        self.assertEqual(byName["Build kube-ovn"]["status"], "completed")
+        self.assertEqual(byName["Build kube-ovn"]["conclusion"], "success")
+        self.assertEqual(
+            byName["Kubernetes Conformance E2E (ipv4, overlay)"]["status"],
+            "in_progress",
+        )
+        self.assertEqual(byName["Kubernetes Conformance E2E"]["status"], "completed")
+        self.assertEqual(byName["Kubernetes Conformance E2E"]["conclusion"], "skipped")
+        self.assertEqual(byName["Cilium Chaining E2E"]["status"], "queued")
+        self.assertNotIn("conclusion", byName["Cilium Chaining E2E"])
+        self.assertEqual(
+            [payload["name"] for payload in payloads].count("Cilium Chaining E2E"),
+            1,
+        )
+
+    def testApprovedGateReservationIgnoresGitHubRewrittenDetailsURL(self):
+        headSHA = "94fd288b1db022d10863ac3254d2b40fe1dad01a"
+        check = {
+            "name": "x86-e2e / required-gate",
+            "external_id": f"x86-e2e-pr-7260-{headSHA}",
+            "status": "completed",
+            "conclusion": "action_required",
+            "details_url": "https://github.com/kubeovn/kube-ovn/runs/96297378780",
+            "output": {
+                "title": "x86 E2E gate",
+                "summary": "The latest authorized x86 E2E approval is waiting for its trusted executor.",
+            },
+        }
+
+        self.assertTrue(e2eControl.isApprovedGateReservation(check, 7260, headSHA))
+        self.assertFalse(
+            e2eControl.isApprovedGateReservation(
+                {
+                    **check,
+                    "output": {
+                        "summary": "The pull request target branch advanced; authorize x86 E2E again for the new base revision."
+                    },
+                },
+                7260,
+                headSHA,
+            )
+        )
+
+    def testUnboundCommandBindsToLiveHead(self):
+        decision = self.dispatchDecision(body="/test e2e core", bindHead=False)
+
+        self.assertTrue(decision["accepted"])
+        self.assertEqual(decision["action"], "dispatch")
+        self.assertEqual(decision["requestedGroups"], ["core"])
+        self.assertEqual(decision["headSHA"], "a" * 40)
+        self.assertEqual(decision["baseSHA"], "b" * 40)
+        self.assertRegex(decision["nonce"], r"^[0-9a-f]{16}$")
 
     def testAuthorizedCommandIsBoundToCurrentHead(self):
         decision = self.dispatchDecision()
@@ -751,6 +976,127 @@ class E2EControlTest(unittest.TestCase):
 
         self.assertEqual(latest["id"], 8)
 
+    def testInProgressAutomaticExecutorsForTheSameHeadAreCancelled(self):
+        head = "a" * 40
+        otherHead = "b" * 40
+        runs = [
+            {
+                "id": 11,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "in_progress",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + head
+                    + " approval=1 generation=1001 mode=automatic groups=- labels=- full=0"
+                ),
+            },
+            {
+                "id": 12,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "queued",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + head
+                    + " approval=1 generation=1002 mode=automatic groups=- labels=- full=0"
+                ),
+            },
+            {
+                "id": 13,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "in_progress",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + head
+                    + " approval=1 generation=1003 mode=approved groups=core labels=- full=0"
+                ),
+            },
+            {
+                "id": 14,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "in_progress",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + otherHead
+                    + " approval=1 generation=1004 mode=automatic groups=- labels=- full=0"
+                ),
+            },
+            {
+                "id": 15,
+                "path": ".github/workflows/build-x86-image.yaml",
+                "actor": {"login": "github-actions[bot]"},
+                "status": "completed",
+                "display_title": (
+                    "x86-e2e pr=7278 head=" + head
+                    + " approval=1 generation=1005 mode=automatic groups=- labels=- full=0"
+                ),
+            },
+        ]
+
+        self.assertEqual(
+            e2eControl.inProgressAutomaticExecutorRunIds(runs, 7278, head),
+            [11, 12],
+        )
+
+    def testAssociatedOpenPullRequestsSkipMergedHeads(self):
+        head = "a" * 40
+        other = "b" * 40
+        openPR = {
+            "number": 7280,
+            "state": "open",
+            "head": {
+                "sha": head,
+                "repo": {"full_name": "zhangzujian/kube-ovn"},
+            },
+            "base": {"repo": {"full_name": "kubeovn/kube-ovn"}},
+        }
+        closedPR = {
+            **openPR,
+            "number": 7279,
+            "state": "closed",
+        }
+        otherHead = {
+            **openPR,
+            "number": 7281,
+            "head": {
+                "sha": other,
+                "repo": {"full_name": "zhangzujian/kube-ovn"},
+            },
+        }
+
+        self.assertEqual(
+            e2eControl.associatedOpenPullRequests(
+                [closedPR, otherHead],
+                "kubeovn/kube-ovn",
+                head,
+                "zhangzujian/kube-ovn",
+            ),
+            [],
+        )
+        self.assertEqual(
+            [
+                pull["number"]
+                for pull in e2eControl.associatedOpenPullRequests(
+                    [closedPR, openPR, otherHead],
+                    "kubeovn/kube-ovn",
+                    head,
+                    "zhangzujian/kube-ovn",
+                )
+            ],
+            [7280],
+        )
+        self.assertEqual(
+            [
+                pull["number"]
+                for pull in e2eControl.associatedOpenPullRequests(
+                    [openPR, {**openPR, "number": 7282}],
+                    "kubeovn/kube-ovn",
+                    head,
+                    "zhangzujian/kube-ovn",
+                )
+            ],
+            [7280, 7282],
+        )
+
     def testDispatchCliWritesDecisionJson(self):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
@@ -842,6 +1188,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("checks: read", workflow)
         self.assertNotIn("checks: write", workflow)
         self.assertIn("pull-requests: read", workflow)
+        self.assertIn("pull-requests: write", workflow)
         self.assertIn("issues: write", workflow)
         self.assertIn("--catalog trusted-catalog.json", workflow)
         self.assertIn("--live-comment-file live-comment.json", workflow)
@@ -897,11 +1244,35 @@ class E2EControlTest(unittest.TestCase):
         self.assertNotIn("group: x86-e2e-dispatch-", workflow)
         self.assertIn("contents: write", workflow)
         self.assertIn("print(e2eControl.executorHeadBranch(request))", workflow)
+        self.assertIn("isApprovedGateReservation", workflow)
+        self.assertNotIn(".details_url == $expectedURL", workflow)
         self.assertGreaterEqual(workflow.count("isolatedExecutorRefAction"), 2)
         self.assertNotIn("--jq '.object.sha'", workflow)
         self.assertIn('git/refs/heads/$executorRef', workflow)
         self.assertIn('-f ref="$executorRef"', workflow)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
+
+    def testAutomaticCoverageIgnoresUncontrolledLabelEvents(self):
+        workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
+        automatic = e2eSelector.workflowJobBlocks(workflow)["automatic"]
+
+        self.assertIn("github.event.action == 'opened'", automatic)
+        self.assertIn("github.event.action == 'reopened'", automatic)
+        self.assertIn("github.event.action == 'synchronize'", automatic)
+        self.assertIn("github.event.action == 'labeled'", automatic)
+        self.assertIn("github.event.action == 'unlabeled'", automatic)
+        self.assertIn("startsWith(github.event.label.name, 'e2e:')", automatic)
+        self.assertNotIn("github.event.action != 'closed'", automatic)
+        self.assertIn(
+            "group: x86-e2e-automatic-${{ github.event.pull_request.number }}-"
+            "${{ github.event.pull_request.head.sha }}",
+            automatic,
+        )
+        self.assertIn("cancel-in-progress: true", automatic)
+        self.assertIn("inProgressAutomaticExecutorRunIds", automatic)
+        self.assertIn("actions/runs/$runId/cancel", automatic)
+        self.assertIn('requestKey="automatic-$PR_NUMBER-$headSHA"', automatic)
+        self.assertNotIn('requestKey="automatic-$DISPATCH_GENERATION"', automatic)
 
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
@@ -912,7 +1283,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("checks: write", workflow)
         self.assertIn("actions: write", workflow)
         self.assertIn("issues: write", workflow)
-        self.assertIn("pull-requests: read", workflow)
+        self.assertIn("pull-requests: write", workflow)
         self.assertIn("RUN_PATH: ${{ github.event.workflow_run.path }}", workflow)
         self.assertIn("RUN_ACTOR: ${{ github.event.workflow_run.actor.login }}", workflow)
         self.assertIn("RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}", workflow)
@@ -922,9 +1293,21 @@ class E2EControlTest(unittest.TestCase):
             workflow,
         )
         self.assertIn('-f "head=$headOwner:$RUN_HEAD_BRANCH"', workflow)
-        self.assertIn("workflow HEAD must resolve to exactly one open pull request", workflow)
-        self.assertIn('.head.repo.full_name == $headRepository', workflow)
-        self.assertIn('.base.repo.full_name == $repository', workflow)
+        gate = e2eSelector.workflowJobBlocks(workflow)["gate"]
+        resolve = gate.split("Download the executed SelectionPlan")[0]
+        self.assertIn("associatedOpenPullRequests", resolve)
+        self.assertIn("workflow HEAD must resolve to exactly one open pull request", resolve)
+        self.assertIn(
+            "The completed pull_request run is not associated with one open pull request.",
+            resolve,
+        )
+        missing = resolve.index(
+            "The completed pull_request run is not associated with one open pull request."
+        )
+        self.assertIn(
+            'echo \'skip=true\' >> "$GITHUB_OUTPUT"',
+            resolve[missing:missing + 400],
+        )
         self.assertIn("automatic: ${{ steps.context.outputs.automatic }}", workflow)
         self.assertIn("controlledLabels: ${{ steps.context.outputs.controlledLabels }}", workflow)
         self.assertIn("A trusted comment approval supersedes this automatic executor.", workflow)
@@ -1077,7 +1460,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("os.environ['GITHUB_ENV']=shadowDir+'/env'", workflow)
         self.assertIn("allowed=('TAG','GO_VERSION','E2E_DIR','VERSION','DEBUG_WRAPPER')", workflow)
         self.assertNotIn("actions: write", workflow)
-        self.assertNotIn("checks: write", workflow)
+        self.assertEqual(workflow.count("checks: write"), 1)
+        self.assertIn("name: Publish x86 E2E checks on the pull request", workflow)
         self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
         self.assertIn(
             "Pull private Kind node image with trusted token",
@@ -1103,7 +1487,7 @@ class E2EControlTest(unittest.TestCase):
             workflow,
         )
 
-    def testPullRequestKeepsBaselineBuildWithoutKindImageGate(self):
+    def testTrustedExecutorKeepsBaselineBuildWithoutKindImageGate(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
         catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
@@ -1133,7 +1517,15 @@ class E2EControlTest(unittest.TestCase):
                 if "docker load --input kind-node-" in block:
                     self.assertIn("- prepare-kind-node-images", block)
 
-    def testPullRequestsExecuteAutomaticCoverageAndPushStaysFull(self):
+    def testTrustedDispatchIsTheOnlyPullRequestExecutionEntry(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        triggers = workflow.split("\non:\n", 1)[1].split("\nconcurrency:", 1)[0]
+
+        self.assertNotIn("pull_request:", triggers)
+        self.assertIn("push:", triggers)
+        self.assertIn("workflow_dispatch:", triggers)
+
+    def testTrustedDispatchExecutesAutomaticCoverageAndPushStaysFull(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
         catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
@@ -1177,6 +1569,20 @@ class E2EControlTest(unittest.TestCase):
         resultBlock = blocks["e2e-executor-result"]
         self.assertIn("if: always() && github.event_name != 'pull_request'", resultBlock)
         self.assertIn("permissions: {}", resultBlock)
+        publish = blocks["publish-pr-e2e-checks"]
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", publish)
+        self.assertIn("checks: write", publish)
+        self.assertIn("prCheckRunsToPublish", publish)
+        self.assertIn("visibleInfrastructureTitles", publish)
+        self.assertIn("selectedExecutorJobsAreTerminal", publish)
+        self.assertIn("subprocess.run(", publish)
+        self.assertIn("input=json.dumps(payload)", publish)
+        self.assertIn("check=True", publish)
+        self.assertNotIn("subprocess.check_call", publish)
+        self.assertIn("time.sleep(20)", publish)
+        self.assertIn("HEAD_SHA: ${{ inputs.headSHA }}", publish)
+        self.assertIn("- e2e-selection\n", publish)
+        self.assertNotIn("- e2e-executor-result", publish)
         self.assertIn(
             'requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds',
             resultBlock,

@@ -885,7 +885,8 @@ func TestHandleUpdateQoSPolicy(t *testing.T) {
 		require.NoError(t, ctrl.handleUpdateQoSPolicy(unboundEIPQoS.Name))
 
 		qos, err := ctrl.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(
-			context.Background(), unboundEIPQoS.Name, metav1.GetOptions{})
+			context.Background(), unboundEIPQoS.Name, metav1.GetOptions{},
+		)
 		require.NoError(t, err)
 		// the controller sorts the rules by name before writing them to the status
 		expected := eipQoSRules("50")

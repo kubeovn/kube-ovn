@@ -1,0 +1,17 @@
+suite: Kube-OVN monitor deployment (v2)
+templates:
+  - monitor/monitor-deployment.yaml
+tests:
+  - it: uses one replica by default
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+
+  - it: supports a custom replica count
+    set:
+      monitor.replicas: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
