@@ -70,6 +70,10 @@ type HAChassisGroup interface {
 }
 
 type GatewayChassis interface {
+	CreateGatewayChassises(lrpName string, chassises ...string) error
+	DeleteGatewayChassises(lrpName string, chassises []string) error
+	GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error)
+	ReconcileGatewayChassises(lrpName string, chassises []string) error
 	UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...any) error
 }
 
