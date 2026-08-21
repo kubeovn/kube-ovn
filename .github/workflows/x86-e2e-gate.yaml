@@ -116,8 +116,9 @@ jobs:
             exit 1
           fi
           if [ "$RUN_EVENT" != workflow_dispatch ] && [ "$RUN_EVENT" != pull_request ]; then
-            echo "Unsupported x86 E2E source event: $RUN_EVENT" >&2
-            exit 1
+            echo "Unsupported x86 E2E source event: $RUN_EVENT; skipping."
+            echo 'skip=true' >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" > context-run-state.json
           currentAttempt=$(jq -r '.run_attempt' context-run-state.json)
