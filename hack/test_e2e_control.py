@@ -1541,7 +1541,8 @@ class E2EControlTest(unittest.TestCase):
         gateHeader = gate.split("outputs:", 1)[0]
         resolve = gate.split("Download the executed SelectionPlan", 1)[0]
 
-        self.assertIn("if: github.event_name == 'workflow_run'", gateHeader)
+        self.assertIn("github.event_name == 'workflow_run' ||", gateHeader)
+        self.assertIn("inputs.executorRunId != 0", gateHeader)
         self.assertNotIn("github.event.workflow_run.event", gateHeader)
         self.assertIn(
             'if [ "$RUN_EVENT" != workflow_dispatch ] && [ "$RUN_EVENT" != pull_request ]; then',
@@ -1552,6 +1553,26 @@ class E2EControlTest(unittest.TestCase):
         unsupportedBranch = resolve[unsupported:unsupported + 300]
         self.assertIn('echo \'skip=true\' >> "$GITHUB_OUTPUT"', unsupportedBranch)
         self.assertIn("exit 0", unsupportedBranch)
+
+    def testExecutorCompletionNotifiesGateWithoutWorkflowRunEvent(self):
+        executor = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        gate = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
+
+        self.assertIn("name: Notify x86 E2E gate of executor completion", executor)
+        self.assertIn("needs.e2e-executor-result.result != 'skipped'", executor)
+        self.assertIn("github.actor == 'github-actions[bot]'", executor)
+        self.assertIn(
+            'actions/workflows/x86-e2e-gate.yaml/dispatches',
+            executor,
+        )
+        self.assertIn('inputs[executorRunId]', executor)
+        self.assertIn('inputs[executorRunAttempt]', executor)
+        self.assertIn('EXECUTOR_RUN_ID: ${{ inputs.executorRunId || 0 }}', gate)
+        self.assertIn(
+            'The notified executor run is not the requested completed attempt.',
+            gate,
+        )
+        self.assertIn('inputs.executorRunId == 0', gate)
 
     def testWorkflowDispatchInputsUseGitHubRESTStringFields(self):
         for workflowName in ["x86-e2e-dispatcher.yaml", "x86-e2e-gate.yaml"]:
@@ -1638,7 +1659,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("realEnv=os.environ['GITHUB_ENV']", workflow)
         self.assertIn("os.environ['GITHUB_ENV']=shadowDir+'/env'", workflow)
         self.assertIn("allowed=('TAG','GO_VERSION','E2E_DIR','VERSION','DEBUG_WRAPPER')", workflow)
-        self.assertNotIn("actions: write", workflow)
+        self.assertIn("name: Notify x86 E2E gate of executor completion", workflow)
+        self.assertIn("actions: write", workflow)
         self.assertEqual(workflow.count("checks: write"), 1)
         self.assertIn("name: Publish x86 E2E checks on the pull request", workflow)
         self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)

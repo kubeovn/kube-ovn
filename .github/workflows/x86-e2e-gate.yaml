@@ -46,6 +46,21 @@ on:
         description: Invalidate a fixed gate after the target branch advances
         required: true
         type: boolean
+      executorRunId:
+        description: Completed trusted executor run to evaluate
+        required: false
+        default: 0
+        type: number
+      executorRunAttempt:
+        description: Attempt of the completed trusted executor run
+        required: false
+        default: 0
+        type: number
+      executorConclusion:
+        description: Trusted terminal result observed by the executor notifier
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -57,7 +72,11 @@ permissions:
 jobs:
   gate:
     name: Evaluate x86-e2e / required-gate
-    if: github.event_name == 'workflow_run'
+    if: >-
+      github.event_name == 'workflow_run' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.actor == 'github-actions[bot]' &&
+       inputs.executorRunId != 0)
     outputs:
       mutate: ${{ steps.mutation.outputs.mutate }}
       status: ${{ steps.mutation.outputs.status }}
@@ -76,12 +95,13 @@ jobs:
       trustedExecution: ${{ steps.context.outputs.trustedExecution }}
       runAction: ${{ steps.context.outputs.runAction }}
       runAttempt: ${{ steps.context.outputs.runAttempt }}
-      runId: ${{ github.event.workflow_run.id }}
-      runURL: ${{ github.event.workflow_run.html_url }}
-      runEvent: ${{ github.event.workflow_run.event }}
+      runId: ${{ steps.context.outputs.sourceRunId }}
+      runURL: ${{ steps.context.outputs.sourceRunURL }}
+      runEvent: ${{ steps.context.outputs.sourceRunEvent }}
       trustedRef: ${{ steps.context.outputs.trustedRef }}
       automatic: ${{ steps.context.outputs.automatic }}
       controlledLabels: ${{ steps.context.outputs.controlledLabels }}
+      notifiedCompletion: ${{ steps.context.outputs.notifiedCompletion }}
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -109,8 +129,40 @@ jobs:
           RUN_PULL_REQUESTS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
           RUN_TRIGGERING_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
           RUN_WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          EXECUTOR_RUN_ID: ${{ inputs.executorRunId || 0 }}
+          EXECUTOR_RUN_ATTEMPT: ${{ inputs.executorRunAttempt || 0 }}
+          EXECUTOR_RUN_CONCLUSION: ${{ inputs.executorConclusion || '' }}
         run: |
           set -euo pipefail
+          notifiedCompletion=false
+          if [ "$EXECUTOR_RUN_ID" != 0 ]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXECUTOR_RUN_ID" > context-run-state.json
+            if [ "$(jq -r '.run_attempt' context-run-state.json)" != "$EXECUTOR_RUN_ATTEMPT" ] || \
+               { [ "$(jq -r '.status' context-run-state.json)" != completed ] && \
+                 [ -z "$EXECUTOR_RUN_CONCLUSION" ]; }; then
+              echo 'The notified executor run is not the requested completed attempt.' >&2
+              exit 1
+            fi
+            if [ -n "$EXECUTOR_RUN_CONCLUSION" ] && \
+               [ "$EXECUTOR_RUN_CONCLUSION" != success ] && \
+               [ "$EXECUTOR_RUN_CONCLUSION" != failure ]; then
+              echo 'The notified executor conclusion is invalid.' >&2
+              exit 1
+            fi
+            notifiedCompletion=true
+            RUN_ACTION=completed
+            RUN_ACTOR=$(jq -r '.actor.login // ""' context-run-state.json)
+            RUN_ATTEMPT=$(jq -r '.run_attempt' context-run-state.json)
+            RUN_EVENT=$(jq -r '.event // ""' context-run-state.json)
+            RUN_HEAD_BRANCH=$(jq -r '.head_branch // ""' context-run-state.json)
+            RUN_HEAD_REPOSITORY=$(jq -r '.head_repository.full_name // ""' context-run-state.json)
+            RUN_ID="$EXECUTOR_RUN_ID"
+            RUN_NAME=$(jq -r '.display_title // ""' context-run-state.json)
+            RUN_PATH=$(jq -r '.path // ""' context-run-state.json)
+            RUN_PULL_REQUESTS=$(jq -c '.pull_requests // []' context-run-state.json)
+            RUN_TRIGGERING_ACTOR=$(jq -r '.triggering_actor.login // ""' context-run-state.json)
+            RUN_WORKFLOW_SHA=$(jq -r '.head_sha // ""' context-run-state.json)
+          fi
           if [ "$RUN_PATH" != '.github/workflows/build-x86-image.yaml' ]; then
             echo 'workflow_run did not originate from the trusted executor path.' >&2
             exit 1
@@ -425,6 +477,13 @@ jobs:
             echo "automatic=$automatic"
             echo "controlledLabels=$controlledLabels"
             echo "requestKey=$requestKey"
+            echo "sourceRunId=$RUN_ID"
+            echo "sourceRunURL=$(jq -r '.html_url // ""' context-run-state.json)"
+            echo "sourceRunEvent=$RUN_EVENT"
+            sourceRunConclusion=$(jq -r '.conclusion // ""' context-run-state.json)
+            [ -z "$EXECUTOR_RUN_CONCLUSION" ] || sourceRunConclusion="$EXECUTOR_RUN_CONCLUSION"
+            echo "sourceRunConclusion=$sourceRunConclusion"
+            echo "notifiedCompletion=$notifiedCompletion"
           } >> "$GITHUB_OUTPUT"
 
       - name: Download the executed SelectionPlan
@@ -436,8 +495,8 @@ jobs:
         env:
           HEAD_SHA: ${{ steps.context.outputs.expectedHead }}
           PR_NUMBER: ${{ steps.context.outputs.prNumber }}
-          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ steps.context.outputs.runAttempt }}
+          RUN_ID: ${{ steps.context.outputs.sourceRunId }}
         run: |
           set -euo pipefail
           gh api --paginate --slurp \
@@ -569,7 +628,7 @@ jobs:
           EXECUTED_PLAN_FILE: ${{ runner.temp }}/executed-selection-plan.json
           EXECUTED_PLAN_FOUND: ${{ steps.executedPlan.outputs.found }}
           EXPECTED_CATALOG_REVISION: ${{ steps.context.outputs.expectedCatalogRevision }}
-          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_CONCLUSION: ${{ steps.context.outputs.sourceRunConclusion }}
           TRUSTED_EXECUTION: ${{ steps.context.outputs.trustedExecution }}
         run: |
           python3 - <<'PY'
@@ -608,8 +667,8 @@ jobs:
           PR_NUMBER: ${{ steps.context.outputs.prNumber }}
           REQUEST_KEY: ${{ steps.context.outputs.requestKey }}
           RUN_ATTEMPT: ${{ steps.context.outputs.runAttempt }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_ID: ${{ steps.context.outputs.sourceRunId }}
+          RUN_URL: ${{ steps.context.outputs.sourceRunURL }}
         run: |
           conclusion=$(jq -r '.conclusion' gate-decision.json)
           summary=$(jq -r '.summary' gate-decision.json)
@@ -643,13 +702,16 @@ jobs:
         if: steps.mutation.outputs.mutate == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: x86-e2e-gate-decision-${{ github.event.workflow_run.id }}-${{ steps.context.outputs.runAttempt }}
+          name: x86-e2e-gate-decision-${{ steps.context.outputs.sourceRunId }}-${{ steps.context.outputs.runAttempt }}
           path: gate-mutation.json
           retention-days: 7
 
   approval:
     name: Reconcile a durable x86 E2E approval
-    if: github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.actor == 'github-actions[bot]' &&
+      inputs.executorRunId == 0
     outputs:
       mutate: ${{ steps.request.outputs.mutate }}
       status: ${{ steps.request.outputs.status }}
@@ -878,6 +940,7 @@ jobs:
       RUN_ATTEMPT: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runAttempt || needs.approval.outputs.runAttempt }}
       RUN_ID: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runId || needs.approval.outputs.runId }}
       RUN_EVENT: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.runEvent || needs.approval.outputs.runEvent }}
+      SOURCE_RUN_NOTIFIED: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.notifiedCompletion || 'false' }}
       RUN_REQUEST_KEY: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.requestKey || needs.approval.outputs.requestKey }}
       REQUESTED_GROUPS: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.requestedGroups || needs.approval.outputs.requestedGroups }}
       CONTROLLED_LABELS: ${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.controlledLabels || needs.approval.outputs.controlledLabels }}
@@ -1197,7 +1260,7 @@ jobs:
                 exit 0
               fi
               preserveOlderAuthorized=true
-            elif [ "$(jq -r '.status' serialized-run-state.json)" != completed ]; then
+            elif [ "$SOURCE_RUN_NOTIFIED" != true ] && [ "$(jq -r '.status' serialized-run-state.json)" != completed ]; then
               exit 0
             fi
           fi
