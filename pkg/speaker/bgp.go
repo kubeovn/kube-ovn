@@ -48,15 +48,32 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 	// Anonymous function that stores the prefixes we are announcing for this AFI
 	existingPrefixes := set.New[string]()
 	fn := func(prefix bgp.NLRI, paths []*apiutil.Path) {
+		currentPaths, err := c.getPathRequest(prefix.String())
+		if err != nil {
+			klog.Errorf("failed to derive current next hops for prefix %s: %v", prefix, err)
+			return
+		}
+		currentNextHops := make(set.Set[string])
+		for _, pathGroup := range currentPaths {
+			for _, path := range pathGroup {
+				if nextHop := getNextHopFromPathAttributes(path.Attrs); nextHop != nil {
+					currentNextHops.Insert(nextHop.String())
+				}
+			}
+		}
+
+		existingNextHops := make(set.Set[string])
 		for _, path := range paths {
 			nextHop := getNextHopFromPathAttributes(path.Attrs)
 			klog.V(5).Infof("announcing route with prefix %s and nexthop: %s", prefix, nextHop)
 
 			route, _ := netlink.RouteGet(nextHop)
 			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.Equal(c.config.RouterID) {
-				existingPrefixes.Insert(prefix.String())
-				return
+				existingNextHops.Insert(nextHop.String())
 			}
+		}
+		if existingNextHops.Len() > 0 && existingNextHops.Difference(currentNextHops).Len() == 0 {
+			existingPrefixes.Insert(prefix.String())
 		}
 	}
 
@@ -209,7 +226,11 @@ func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
 	nextHop := c.config.RouterID // If no route is found, fallback to router ID
 
 	// Retrieve the route we use to speak to this neighbor and consider the source as next hop.
-	routes, err := netlink.RouteGet(neighborAddress)
+	routeLookup := netlink.RouteGet
+	if c.config.routeLookup != nil {
+		routeLookup = c.config.routeLookup
+	}
+	routes, err := routeLookup(neighborAddress)
 	if err == nil && len(routes) == 1 && routes[0].Src != nil {
 		nextHop = routes[0].Src
 	}
