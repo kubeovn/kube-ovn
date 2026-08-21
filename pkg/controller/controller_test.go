@@ -16,6 +16,7 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadfake "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned/fake"
@@ -39,6 +40,18 @@ import (
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestDBStatusFailureWindowAllowsTLSRotation(t *testing.T) {
+	if got := (dbStatusMaxFailures - 1) * dbStatusInterval; got < 2*time.Minute {
+		t.Fatalf("database health check failure window = %v, want at least 2m", got)
+	}
+	if dbStatusFailureExceeded(dbStatusMaxFailures - 1) {
+		t.Fatalf("database health check must not exit before %d failures during TLS rotation", dbStatusMaxFailures)
+	}
+	if !dbStatusFailureExceeded(dbStatusMaxFailures) {
+		t.Fatalf("database health check must exit after %d failures", dbStatusMaxFailures)
+	}
+}
 
 type fakeControllerInformers struct {
 	vpcInformer       kubeovninformer.VpcInformer
