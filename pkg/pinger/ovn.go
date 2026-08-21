@@ -98,7 +98,8 @@ func checkOvsBindings() (set.Set[string], error) {
 		"--timeout=10",
 		"find",
 		"interface",
-		"external_ids:iface-id!=\"\"").CombinedOutput()
+		"external_ids:iface-id!=\"\"",
+	).CombinedOutput()
 	if err != nil {
 		klog.Errorf("failed to get ovs interface %v", err)
 		return nil, err
