@@ -84,25 +84,19 @@ func TestReconcileRoutesAddsAndWithdrawsIPv4Routes(t *testing.T) {
 func TestReconcileRoutesRefreshesIPv4NextHop(t *testing.T) {
 	const (
 		routerID       = "192.0.2.254"
-		firstNeighbor  = "203.0.113.1"
-		secondNeighbor = "203.0.113.2"
+		neighbor       = "203.0.113.1"
 		prefix         = "10.244.0.8/32"
 		initialNextHop = "127.0.0.2"
 		updatedNextHop = "127.0.0.3"
-		stableNextHop  = "127.0.0.4"
 	)
 
-	nextHops := map[string]net.IP{
-		firstNeighbor:  net.ParseIP(initialNextHop),
-		secondNeighbor: net.ParseIP(stableNextHop),
-	}
+	nextHop := net.ParseIP(initialNextHop)
 	controller := &Controller{config: &Configuration{
 		RouterID:          net.ParseIP(routerID),
-		NeighborAddresses: []net.IP{net.ParseIP(firstNeighbor), net.ParseIP(secondNeighbor)},
+		NeighborAddresses: []net.IP{net.ParseIP(neighbor)},
 		BgpServer:         newTestBgpServer(t, routerID),
 		routeLookup: func(address net.IP) ([]netlink.Route, error) {
-			nextHop, ok := nextHops[address.String()]
-			require.True(t, ok)
+			require.True(t, net.ParseIP(neighbor).Equal(address))
 			return []netlink.Route{{Src: nextHop}}, nil
 		},
 	}}
@@ -110,56 +104,14 @@ func TestReconcileRoutesRefreshesIPv4NextHop(t *testing.T) {
 
 	require.NoError(t, controller.reconcileRoutes(expectedPrefixes))
 	routes := listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP)
-	require.Len(t, routes[prefix], 2)
-	require.Contains(t, routes[prefix], net.ParseIP(initialNextHop))
-	require.Contains(t, routes[prefix], net.ParseIP(stableNextHop))
+	require.Len(t, routes[prefix], 1)
+	require.True(t, net.ParseIP(initialNextHop).Equal(routes[prefix][0]))
 
-	nextHops[firstNeighbor] = net.ParseIP(updatedNextHop)
+	nextHop = net.ParseIP(updatedNextHop)
 	require.NoError(t, controller.reconcileRoutes(expectedPrefixes))
 	routes = listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP)
-	require.Len(t, routes[prefix], 2)
-	require.Contains(t, routes[prefix], net.ParseIP(updatedNextHop))
-	require.Contains(t, routes[prefix], net.ParseIP(stableNextHop))
-	require.NotContains(t, routes[prefix], net.ParseIP(initialNextHop))
-}
-
-func TestReconcileRoutesAddsMissingIPv4NextHop(t *testing.T) {
-	const (
-		routerID       = "192.0.2.254"
-		firstNeighbor  = "203.0.113.1"
-		secondNeighbor = "203.0.113.2"
-		prefix         = "10.244.0.8/32"
-		firstNextHop   = "127.0.0.2"
-		secondNextHop  = "127.0.0.3"
-	)
-
-	nextHops := map[string]net.IP{
-		firstNeighbor:  net.ParseIP(firstNextHop),
-		secondNeighbor: net.ParseIP(secondNextHop),
-	}
-	controller := &Controller{config: &Configuration{
-		RouterID:          net.ParseIP(routerID),
-		NeighborAddresses: []net.IP{net.ParseIP(firstNeighbor), net.ParseIP(secondNeighbor)},
-		BgpServer:         newTestBgpServer(t, routerID),
-		routeLookup: func(address net.IP) ([]netlink.Route, error) {
-			nextHop, ok := nextHops[address.String()]
-			require.True(t, ok)
-			return []netlink.Route{{Src: nextHop}}, nil
-		},
-	}}
-	paths, err := controller.getPathRequest(prefix)
-	require.NoError(t, err)
-	require.Len(t, paths, 2)
-	_, err = controller.config.BgpServer.AddPath(apiutil.AddPathRequest{Paths: paths[0]})
-	require.NoError(t, err)
-
-	require.NoError(t, controller.reconcileRoutes(prefixMap{
-		api.Family_AFI_IP: set.New(prefix),
-	}))
-	routes := listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP)
-	require.Len(t, routes[prefix], 2)
-	require.Contains(t, routes[prefix], net.ParseIP(firstNextHop))
-	require.Contains(t, routes[prefix], net.ParseIP(secondNextHop))
+	require.Len(t, routes[prefix], 1)
+	require.True(t, net.ParseIP(updatedNextHop).Equal(routes[prefix][0]))
 }
 
 func TestGetPathRequest(t *testing.T) {

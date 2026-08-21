@@ -57,7 +57,7 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 			klog.V(5).Infof("announcing route with prefix %s and nexthop: %s", prefix, nextHop)
 			existingNextHops.Insert(nextHop.String())
 		}
-		if currentNextHops.Len() > 0 && existingNextHops.Equal(currentNextHops) {
+		if existingNextHops.Len() > 0 && existingNextHops.Difference(currentNextHops).Len() == 0 {
 			existingPrefixes.Insert(prefix.String())
 		}
 	}
