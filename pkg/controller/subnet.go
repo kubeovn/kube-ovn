@@ -98,13 +98,13 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 		}
 
 		if oldSubnet.Spec.GatewayType != newSubnet.Spec.GatewayType {
-			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayTypeChanged",
-				"subnet gateway type changes from %q to %q", oldSubnet.Spec.GatewayType, newSubnet.Spec.GatewayType)
+			c.recordResourceEvent(newSubnet, v1.EventTypeNormal, "SubnetGatewayTypeChanged",
+				fmt.Sprintf("subnet gateway type changes from %q to %q", oldSubnet.Spec.GatewayType, newSubnet.Spec.GatewayType))
 		}
 
 		if oldSubnet.Spec.GatewayNode != newSubnet.Spec.GatewayNode {
-			c.recorder.Eventf(newSubnet, v1.EventTypeNormal, "SubnetGatewayNodeChanged",
-				"gateway node changes from %q to %q", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode)
+			c.recordResourceEvent(newSubnet, v1.EventTypeNormal, "SubnetGatewayNodeChanged",
+				fmt.Sprintf("gateway node changes from %q to %q", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode))
 		}
 
 		c.addOrUpdateSubnetQueue.Add(key)
@@ -539,14 +539,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			return nil
 		}
 		klog.Error(err)
-		return err
+		return c.recordSubnetKeyError(key, "GetSubnetFailed", err)
 	}
 	klog.V(3).Infof("handle add or update subnet %s", cachedSubnet.Name)
 	subnet, err := c.formatSubnet(cachedSubnet)
 	if err != nil {
 		err := fmt.Errorf("failed to format subnet %s, %w", key, err)
 		klog.Error(err)
-		return err
+		return c.recordResourceError(cachedSubnet, "FormatSubnetFailed", err)
 	}
 
 	err = c.validateSubnetVlan(subnet)
@@ -561,7 +561,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Error(err)
 		if patchErr := c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
-			return patchErr
+			return c.recordResourceError(subnet, "UpdateStatusFailed", patchErr)
 		}
 		return err
 	}
@@ -570,27 +570,28 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
 		if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
-			return patchErr
+			return c.recordResourceError(subnet, "UpdateStatusFailed", patchErr)
 		}
 		return err
 	}
 	if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", ""); err != nil {
 		klog.Error(err)
-		return err
+		return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 	}
 
 	if subnet.Spec.CIDRBlock != "" {
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Error(err)
-			return err
+			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
 		}
 
 		// availableIPStr valued from ipam, so leave update subnet.status after ipam process
-		subnet, err = c.calcSubnetStatusIP(subnet)
+		updatedSubnet, err := c.calcSubnetStatusIP(subnet)
 		if err != nil {
 			klog.Errorf("calculate subnet %s used ip failed, %v", cachedSubnet.Name, err)
-			return err
+			return c.recordResourceError(subnet, "CalculateStatusFailed", err)
 		}
+		subnet = updatedSubnet
 	} else {
 		// Mac-only subnet (underlay without CIDR, BYO-DHCP / external DHCP). Register a
 		// lightweight IPAM entry so MAC allocations are tracked and the GC does not
@@ -598,42 +599,56 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		// is no subnet IP status to calculate.
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil); err != nil {
 			klog.Error(err)
-			return err
+			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
 		}
 		klog.Infof("registered mac-only subnet %s in IPAM (no cidrBlock, BYO-DHCP / external DHCP)", subnet.Name)
 	}
 
-	subnet, deleted, err := c.handleSubnetFinalizer(subnet)
+	updatedSubnet, deleted, err := c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
-		return err
+		return c.recordResourceError(subnet, "UpdateFinalizerFailed", err)
 	}
+	subnet = updatedSubnet
 	if deleted {
 		return nil
 	}
 
 	if !isOvnSubnet(subnet) {
-		// subnet provider is not ovn, and vpc is empty, should not reconcile
-		if err = c.patchSubnetStatus(subnet, "SetNonOvnSubnetSuccess", ""); err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		subnet.Status.EnsureStandardConditions()
-		klog.Infof("non ovn subnet %s is ready", subnet.Name)
-		return nil
+		return c.finishNonOvnSubnetReconcile(subnet)
 	}
 
+	vpc, err := c.prepareOvnSubnet(subnet)
+	if err != nil {
+		return err
+	}
+	return c.finishOvnSubnetReconcile(subnet, vpc)
+}
+
+func (c *Controller) finishNonOvnSubnetReconcile(subnet *kubeovnv1.Subnet) error {
+	// subnet provider is not ovn, and vpc is empty, should not reconcile
+	if err := c.patchSubnetStatus(subnet, "SetNonOvnSubnetSuccess", ""); err != nil {
+		klog.Error(err)
+		return c.recordResourceError(subnet, "UpdateStatusFailed", err)
+	}
+
+	subnet.Status.EnsureStandardConditions()
+	klog.Infof("non ovn subnet %s is ready", subnet.Name)
+	c.recordResourceEvent(subnet, v1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Subnet %s reconciled successfully", subnet.Name))
+	return nil
+}
+
+func (c *Controller) prepareOvnSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc, error) {
 	// This validate should be processed after isOvnSubnet, since maybe there's no vpc for subnet not managed by kube-ovn
 	vpc, err := c.validateVpcBySubnet(subnet)
 	if err != nil {
 		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
-		return err
+		return nil, c.recordResourceError(subnet, "ValidateVpcFailed", err)
 	}
 	_, isMcastQuerierChanged, err := c.reconcileSubnetSpecialIPs(subnet)
 	if err != nil {
 		klog.Errorf("failed to reconcile subnet %s Custom IPs %v", subnet.Name, err)
-		return err
+		return nil, c.recordResourceError(subnet, "ReconcileSpecialIPsFailed", err)
 	}
 
 	needRouter := subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway ||
@@ -652,7 +667,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 
 	if err := c.clearOldU2OResource(subnet); err != nil {
 		klog.Errorf("clear subnet %s old u2o resource failed: %v", subnet.Name, err)
-		return err
+		return nil, c.recordResourceError(subnet, "ClearU2OResourcesFailed", err)
 	}
 
 	// Lock VPC to prevent CIDR conflict between concurrent subnet creations in the same VPC
@@ -671,7 +686,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 		return nil
 	}(); err != nil {
-		return err
+		return nil, c.recordResourceError(subnet, "CreateLogicalSwitchFailed", err)
 	}
 
 	// Record the gateway MAC in ipam if router port exists
@@ -689,46 +704,55 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	if isMcastQuerierChanged {
 		if err := c.handleMcastQuerierChange(subnet); err != nil {
 			klog.Errorf("failed to handle mcast querier IP change for subnet %s: %v", subnet.Name, err)
-			return err
+			return nil, c.recordResourceError(subnet, "UpdateMcastQuerierFailed", err)
 		}
 	}
 
 	subnet.Status.EnsureStandardConditions()
-
 	if err := c.updateSubnetDHCPOption(subnet, needRouter); err != nil {
 		klog.Errorf("failed to update subnet %s dhcpOptions: %v", subnet.Name, err)
-		return err
+		return nil, c.recordResourceError(subnet, "UpdateDHCPOptionsFailed", err)
 	}
-
-	if c.config.EnableLb && subnet.Name != c.config.NodeSwitch {
-		lbs := []string{
-			vpc.Status.TCPLoadBalancer,
-			vpc.Status.TCPSessionLoadBalancer,
-			vpc.Status.UDPLoadBalancer,
-			vpc.Status.UDPSessionLoadBalancer,
-			vpc.Status.SctpLoadBalancer,
-			vpc.Status.SctpSessionLoadBalancer,
-		}
-		if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
-			if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
-				klog.Error(lbErr)
-				if patchErr := c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", lbErr.Error()); patchErr != nil {
-					klog.Error(patchErr)
-					return errors.Join(lbErr, patchErr)
-				}
-				return lbErr
-			}
-		} else {
-			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
-				klog.Errorf("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
-				return err
-			}
-		}
+	if err := c.updateSubnetLoadBalancers(subnet, vpc); err != nil {
+		return nil, err
 	}
+	return vpc, nil
+}
 
+func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *kubeovnv1.Vpc) error {
+	if !c.config.EnableLb || subnet.Name == c.config.NodeSwitch {
+		return nil
+	}
+	lbs := []string{
+		vpc.Status.TCPLoadBalancer,
+		vpc.Status.TCPSessionLoadBalancer,
+		vpc.Status.UDPLoadBalancer,
+		vpc.Status.UDPSessionLoadBalancer,
+		vpc.Status.SctpLoadBalancer,
+		vpc.Status.SctpSessionLoadBalancer,
+	}
+	if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
+		if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
+			klog.Error(lbErr)
+			if patchErr := c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", lbErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return c.recordResourceError(subnet, "UpdateStatusFailed", errors.Join(lbErr, patchErr))
+			}
+			return lbErr
+		}
+		return nil
+	}
+	if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
+		klog.Errorf("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
+		return c.recordResourceError(subnet, "RemoveLbFromLogicalSwitchFailed", err)
+	}
+	return nil
+}
+
+func (c *Controller) finishOvnSubnetReconcile(subnet *kubeovnv1.Subnet, vpc *kubeovnv1.Vpc) error {
 	if err := c.reconcileSubnet(subnet); err != nil {
 		klog.Errorf("reconcile subnet for %s failed, %v", subnet.Name, err)
-		return err
+		return c.recordResourceError(subnet, "ReconcileSubnetFailed", err)
 	}
 
 	subnet.Status.U2OInterconnectionVPC = ""
@@ -736,9 +760,9 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		subnet.Status.U2OInterconnectionVPC = vpc.Status.Router
 	}
 
-	if err = c.updateNatOutgoingPolicyRulesStatus(subnet); err != nil {
+	if err := c.updateNatOutgoingPolicyRulesStatus(subnet); err != nil {
 		klog.Errorf("failed to update NAT outgoing policy status for subnet %s: %v", subnet.Name, err)
-		return err
+		return c.recordResourceError(subnet, "UpdateNatOutgoingPolicyStatusFailed", err)
 	}
 
 	if subnet.Spec.Private {
@@ -746,14 +770,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			klog.Error(privErr)
 			if patchErr := c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", privErr.Error()); patchErr != nil {
 				klog.Error(patchErr)
-				return errors.Join(privErr, patchErr)
+				return c.recordResourceError(subnet, "UpdateStatusFailed", errors.Join(privErr, patchErr))
 			}
 			return privErr
 		}
 
-		if err = c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", ""); err != nil {
+		if err := c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", ""); err != nil {
 			klog.Error(err)
-			return err
+			return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 		}
 	} else {
 		// clear acl when direction is ""
@@ -761,14 +785,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 			klog.Error(aclErr)
 			if patchErr := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", aclErr.Error()); patchErr != nil {
 				klog.Error(patchErr)
-				return errors.Join(aclErr, patchErr)
+				return c.recordResourceError(subnet, "UpdateStatusFailed", errors.Join(aclErr, patchErr))
 			}
 			return aclErr
 		}
 
-		if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", ""); err != nil {
+		if err := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", ""); err != nil {
 			klog.Error(err)
-			return err
+			return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 		}
 	}
 
@@ -776,7 +800,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Error(aclErr)
 		if patchErr := c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", aclErr.Error()); patchErr != nil {
 			klog.Error(patchErr)
-			return errors.Join(aclErr, patchErr)
+			return c.recordResourceError(subnet, "UpdateStatusFailed", errors.Join(aclErr, patchErr))
 		}
 		return aclErr
 	}
@@ -786,7 +810,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	ippools, err := c.ippoolLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ippools: %v", err)
-		return err
+		return c.recordResourceError(subnet, "ListIPPoolsFailed", err)
 	}
 
 	for _, p := range ippools {
@@ -795,6 +819,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		}
 	}
 
+	c.recordResourceEvent(subnet, v1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Subnet %s reconciled successfully", subnet.Name))
 	return nil
 }
 
@@ -849,9 +874,14 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 	return c.delLocalnet(key)
 }
 
-func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) (err error) {
 	c.subnetKeyMutex.LockKey(subnet.Name)
 	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
+	defer func() {
+		if err != nil {
+			_ = c.recordResourceError(subnet, "DeleteFailed", fmt.Errorf("failed to delete subnet %s: %w", subnet.Name, err))
+		}
+	}()
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	klog.Infof("delete u2o interconnection policy route for subnet %s", subnet.Name)
@@ -894,7 +924,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		return err
 	}
 
-	err := c.handleDeleteLogicalSwitch(subnet.Name)
+	err = c.handleDeleteLogicalSwitch(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", subnet.Name, err)
 		return err
@@ -931,6 +961,8 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 	}
+
+	c.recordResourceEvent(subnet, v1.EventTypeNormal, "DeleteSuccess", fmt.Sprintf("Subnet %s deleted successfully", subnet.Name))
 
 	return nil
 }
