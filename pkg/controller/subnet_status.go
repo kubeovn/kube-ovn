@@ -47,6 +47,32 @@ func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet
 	return nil
 }
 
+type subnetStatusPatch struct {
+	Status struct {
+		Conditions             []kubeovnv1.Condition                   `json:"conditions,omitempty"`
+		ActivateGateway        string                                  `json:"activateGateway"`
+		U2OInterconnectionIP   string                                  `json:"u2oInterconnectionIP"`
+		U2OInterconnectionMAC  string                                  `json:"u2oInterconnectionMAC"`
+		U2OInterconnectionVPC  string                                  `json:"u2oInterconnectionVPC"`
+		NatOutgoingPolicyRules []kubeovnv1.NatOutgoingPolicyRuleStatus `json:"natOutgoingPolicyRules"`
+		McastQuerierIP         string                                  `json:"mcastQuerierIP"`
+		McastQuerierMAC        string                                  `json:"mcastQuerierMAC"`
+	} `json:"status"`
+}
+
+func buildSubnetStatusPatch(status *kubeovnv1.SubnetStatus) ([]byte, error) {
+	patch := subnetStatusPatch{}
+	patch.Status.Conditions = status.Conditions
+	patch.Status.ActivateGateway = status.ActivateGateway
+	patch.Status.U2OInterconnectionIP = status.U2OInterconnectionIP
+	patch.Status.U2OInterconnectionMAC = status.U2OInterconnectionMAC
+	patch.Status.U2OInterconnectionVPC = status.U2OInterconnectionVPC
+	patch.Status.NatOutgoingPolicyRules = status.NatOutgoingPolicyRules
+	patch.Status.McastQuerierIP = status.McastQuerierIP
+	patch.Status.McastQuerierMAC = status.McastQuerierMAC
+	return json.Marshal(patch)
+}
+
 func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
@@ -68,7 +94,9 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 		}
 	}
 
-	bytes, err := subnet.Status.Bytes()
+	// IP statistics are owned by calcSubnetStatusIP. Omitting them from this
+	// patch prevents a stale informer object from overwriting newer values.
+	bytes, err := buildSubnetStatusPatch(&subnet.Status)
 	if err != nil {
 		klog.Error(err)
 		return err
