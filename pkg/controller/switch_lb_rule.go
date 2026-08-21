@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -378,6 +379,11 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		}
 	}
 
+	c.clearHTTPHealthCheckStatus(info.Namespace, name)
+	if c.httpHealthCheckLastProbe != nil {
+		c.httpHealthCheckLastProbe.Delete(info.Name)
+	}
+
 	return nil
 }
 
@@ -470,6 +476,7 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 
 	// Set healthcheck annotation on the service if the setting is provided by the user
 	setHealthCheckAnnotation(newSvc, slr)
+	setHTTPHealthCheckAnnotation(newSvc, slr)
 
 	return newSvc
 }
@@ -507,6 +514,27 @@ func setHealthCheckAnnotation(service *corev1.Service, slr *kubeovnv1.SwitchLBRu
 	if healthcheck := slr.Annotations[util.ServiceHealthCheck]; healthcheck != "" {
 		service.Annotations[util.ServiceHealthCheck] = healthcheck
 	}
+}
+
+// setHTTPHealthCheckAnnotation propagates SwitchLBRule HTTP health-check settings to the Service.
+// When healthCheck is unset, previously written annotations are removed.
+func setHTTPHealthCheckAnnotation(service *corev1.Service, slr *kubeovnv1.SwitchLBRule) {
+	if service == nil || slr == nil {
+		return
+	}
+
+	if service.Annotations == nil {
+		service.Annotations = make(map[string]string)
+	}
+
+	if slr.Spec.HealthCheck == nil || slr.Spec.HealthCheck.Port <= 0 {
+		delete(service.Annotations, util.ServiceHTTPHealthCheckPort)
+		delete(service.Annotations, util.ServiceHTTPHealthCheckPath)
+		return
+	}
+
+	service.Annotations[util.ServiceHTTPHealthCheckPort] = strconv.FormatInt(int64(slr.Spec.HealthCheck.Port), 10)
+	service.Annotations[util.ServiceHTTPHealthCheckPath] = normalizeHTTPHealthCheckPath(slr.Spec.HealthCheck.Path)
 }
 
 func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *corev1.Endpoints {

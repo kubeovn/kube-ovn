@@ -3007,6 +3007,41 @@ spec:
                 items:
                   type: string
                 type: array
+              healthCheck:
+                description: |-
+                  HealthCheck probes backends over HTTP on a port that may differ from the
+                  traffic port. A backend is used only when the probe returns HTTP 200;
+                  otherwise it is treated as unhealthy and excluded from load balancing.
+                properties:
+                  intervalSeconds:
+                    default: 5
+                    description: IntervalSeconds is the probe interval. Defaults to
+                      5.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  path:
+                    description: |-
+                      Path is the HTTP path to request. Defaults to "/".
+                      Only an HTTP 200 OK response is treated as healthy.
+                    type: string
+                  port:
+                    description: Port is the HTTP port probed on each backend. It
+                      may differ from the traffic port.
+                    format: int32
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                  timeoutSeconds:
+                    default: 2
+                    description: TimeoutSeconds is the probe timeout. Defaults to
+                      2.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                required:
+                - port
+                type: object
               namespace:
                 type: string
               ports:

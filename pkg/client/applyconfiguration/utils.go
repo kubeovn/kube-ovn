@@ -172,6 +172,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.SubnetStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("SwitchLBRule"):
 		return &kubeovnv1.SwitchLBRuleApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("SwitchLBRuleHealthCheck"):
+		return &kubeovnv1.SwitchLBRuleHealthCheckApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("SwitchLBRulePort"):
 		return &kubeovnv1.SwitchLBRulePortApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("SwitchLBRuleSpec"):
