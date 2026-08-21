@@ -105,7 +105,7 @@ func TestReconcileVpcEgressGatewayOVNRoutesKeepsCompatibilityMatchWithoutSelecto
 
 	err := controller.reconcileVpcEgressGatewayOVNRoutes(
 		gw, 4, "tenant", "tenant-public", "",
-		map[string]set.Set[string]{"node-a": set.New("192.0.2.2")}, set.New("10.0.0.0/24"),
+		map[string]string{"node-a": "192.0.2.2"}, set.New("10.0.0.0/24"),
 	)
 	require.NoError(t, err)
 }
