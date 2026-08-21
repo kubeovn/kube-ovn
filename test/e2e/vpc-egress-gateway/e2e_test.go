@@ -379,6 +379,53 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 		vegTest(f, false, provider, nadName, vpc.Name, internalSubnetName, externalSubnetName, replicas, "", nil)
 	})
 
+	framework.ConformanceIt("should allocate vpc-egress-gateway addresses from named IPPools", func() {
+		f.SkipVersionPriorTo(1, 16, "VpcEgressGateway named IPPool support requires v1.16+")
+
+		provider, vpc, internalSubnetName := createMacvlanVpc()
+		intSubnet := subnetClient.Get(internalSubnetName)
+		extSubnet := subnetClient.Get(externalSubnetName)
+		ippoolClient := f.IPPoolClient()
+
+		internalIPPoolName := "int-pool-" + framework.RandomSuffix()
+		internalPoolIPs := strings.Split(framework.RandomIPs(intSubnet.Spec.CIDRBlock, ",", int(replicas)), ",")
+		internalIPPool := framework.MakeIPPool(internalIPPoolName, internalSubnetName, internalPoolIPs, nil)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting IPPool " + internalIPPoolName)
+			ippoolClient.DeleteSync(internalIPPoolName)
+		})
+		ippoolClient.CreateSync(internalIPPool)
+
+		externalIPPoolName := "ext-pool-" + framework.RandomSuffix()
+		externalPoolIPs := strings.Split(framework.RandomIPs(extSubnet.Spec.CIDRBlock, ",", int(replicas)), ",")
+		externalIPPool := framework.MakeIPPool(externalIPPoolName, externalSubnetName, externalPoolIPs, nil)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Deleting IPPool " + externalIPPoolName)
+			ippoolClient.DeleteSync(externalIPPoolName)
+		})
+		ippoolClient.CreateSync(externalIPPool)
+
+		veg, forwardSubnet, snatSubnetName, snatLabelValue := createVegTestGateway(
+			f, false, provider, vpc.Name, internalSubnetName, externalSubnetName, replicas, "", nil,
+			func(gw *apiv1.VpcEgressGateway) {
+				gw.Spec.InternalIPPool = internalIPPoolName
+				gw.Spec.ExternalIPPool = externalIPPoolName
+			},
+		)
+		workloadPods, intIPs := validateVegTestWorkload(f, veg, nil)
+		validateVegTestAccess(f, veg, provider, nadName, forwardSubnet, snatSubnetName, snatLabelValue, workloadPods, intIPs)
+
+		flattenIPs := func(values []string) []string {
+			flattened := make([]string, 0, len(values)*2)
+			for _, value := range values {
+				flattened = append(flattened, strings.Split(value, ",")...)
+			}
+			return flattened
+		}
+		framework.ExpectConsistOf(flattenIPs(veg.Status.InternalIPs), internalPoolIPs)
+		framework.ExpectConsistOf(flattenIPs(veg.Status.ExternalIPs), externalPoolIPs)
+	})
+
 	registerVpcEgressGatewayObservabilityTest(f, &schedulableNodes, createMacvlanVpc, &nadName, &externalSubnetName)
 
 	framework.ConformanceIt("should allow preferred pod anti-affinity", func() {
