@@ -278,6 +278,7 @@ def approvedRequest(pullRequest, catalog, commentPages):
         "full": False,
         "controlledLabels": currentControlledLabels,
     }
+    knownGroups = set(catalog["groups"])
     approvals = []
     for page in commentPages:
         for comment in page:
@@ -289,13 +290,20 @@ def approvedRequest(pullRequest, catalog, commentPages):
             except ValueError:
                 continue
             if (
-                marker is not None
-                and marker["headSHA"] == seed["headSHA"]
-                and marker["baseSHA"] == seed["baseSHA"]
-                and marker["catalogRevision"] == seed["catalogRevision"]
-                and marker.get("controlledLabels", []) == currentControlledLabels
+                marker is None
+                or marker.get("controlledLabels", []) != currentControlledLabels
             ):
-                approvals.append(marker)
+                continue
+            if any(group not in knownGroups for group in marker["requestedGroups"]):
+                continue
+            approvals.append(
+                {
+                    **marker,
+                    "headSHA": seed["headSHA"],
+                    "baseSHA": seed["baseSHA"],
+                    "catalogRevision": seed["catalogRevision"],
+                }
+            )
     if not approvals:
         return None
     return mergeApprovedRequests(seed, approvals)

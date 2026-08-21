@@ -597,6 +597,39 @@ class E2EControlTest(unittest.TestCase):
 
         self.assertEqual(intents, [intent])
 
+    def testApprovalIntentCarriesTrustedControlledLabels(self):
+        catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
+        catalogRevision = e2eSelector.catalogRevision(catalog)
+        intent = {
+            "headSHA": "a" * 40,
+            "baseSHA": "b" * 40,
+            "approvalGeneration": 1001,
+            "catalogRevision": catalogRevision,
+            "requestedGroups": ["policy"],
+            "controlledLabels": ["e2e:policy"],
+            "full": False,
+        }
+        pullRequest = {
+            "number": 7231,
+            "head": {"sha": "a" * 40},
+            "base": {"ref": "master", "sha": "b" * 40},
+            "labels": [{"name": "e2e:policy"}],
+        }
+        pages = [[
+            {
+                "id": 10,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": e2eControl.renderControlledLabelMarker("e2e:policy", True),
+            },
+            {
+                "id": 11,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": e2eControl.renderApprovalIntent(intent),
+            },
+        ]]
+
+        self.assertEqual(e2eControl.approvalIntents(pullRequest, catalog, pages), [intent])
+
     def testControlledLabelsRequireLatestTrustedBotMarkerAndLivePresence(self):
         catalog = e2eSelector.loadCatalog(repoRoot / ".github/e2e-selection.json")
         policyPresent = e2eControl.renderControlledLabelMarker("e2e:policy", True)
@@ -749,6 +782,44 @@ class E2EControlTest(unittest.TestCase):
         self.assertEqual(request["approvalGeneration"], 1002)
         self.assertEqual(request["requestedGroups"], ["multi-cni", "policy"])
         self.assertEqual(request["baseSHA"], "b" * 40)
+
+    def testApprovedRequestRebindsTrustedMarkerToCurrentHead(self):
+        catalog = json.loads((repoRoot / ".github/e2e-selection.json").read_text())
+        catalogRevision = e2eSelector.catalogRevision(catalog)
+        oldPullRequest = {
+            "number": 7231,
+            "head": {"sha": "a" * 40},
+            "base": {"ref": "master", "sha": "b" * 40},
+            "labels": [],
+        }
+        marker = e2eControl.renderRequestMarker(
+            {
+                "headSHA": "a" * 40,
+                "baseSHA": "b" * 40,
+                "approvalGeneration": 1001,
+                "catalogRevision": catalogRevision,
+                "requestedGroups": ["policy"],
+                "full": False,
+            }
+        )
+        pages = [[
+            {
+                "id": 10,
+                "user": {"login": "github-actions[bot]", "type": "Bot"},
+                "body": marker,
+            }
+        ]]
+        currentPullRequest = {
+            **oldPullRequest,
+            "head": {"sha": "c" * 40},
+            "base": {"ref": "master", "sha": "d" * 40},
+        }
+
+        request = e2eControl.approvedRequest(currentPullRequest, catalog, pages)
+
+        self.assertEqual(request["headSHA"], "c" * 40)
+        self.assertEqual(request["baseSHA"], "d" * 40)
+        self.assertEqual(request["requestedGroups"], ["policy"])
 
     def testParsesTrustedExecutorRunName(self):
         request = {
@@ -1198,6 +1269,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("Record trusted x86 E2E controlled labels", workflow)
         self.assertIn("collaborators/$SENDER/permission", workflow)
         self.assertIn("renderControlledLabelMarker", workflow)
+        self.assertIn("Recorded durable x86 E2E approval", workflow)
         self.assertIn("trustedControlledLabels", workflow)
         self.assertIn("labels/$encodedLabel", workflow)
         self.assertIn("live-pull-request.json", workflow)
@@ -1216,6 +1288,8 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("inputs[baseSHA]=$BASE_SHA", workflow)
         self.assertIn("inputs[approvalGeneration]=$APPROVAL_GENERATION", workflow)
         self.assertIn("inputs[dispatchGeneration]=$DISPATCH_GENERATION", workflow)
+        self.assertIn('inputs[controlledLabels]=$CONTROLLED_LABELS', workflow)
+        self.assertIn("controlledLabels=", workflow)
         self.assertIn("retry the authorized command", workflow)
         self.assertIn("REQUEST_KEY: ${{ steps.request.outputs.requestKey }}", workflow)
         self.assertIn("request = e2eControl.approvedRequest(pullRequest, catalog, pages)", workflow)
@@ -1270,6 +1344,8 @@ class E2EControlTest(unittest.TestCase):
         )
         self.assertIn("cancel-in-progress: true", automatic)
         self.assertIn("inProgressAutomaticExecutorRunIds", automatic)
+        self.assertIn("approvedRequest", automatic)
+        self.assertIn("actions/workflows/x86-e2e-gate.yaml/dispatches", automatic)
         self.assertIn("actions/runs/$runId/cancel", automatic)
         self.assertIn('requestKey="automatic-$PR_NUMBER-$headSHA"', automatic)
         self.assertNotIn('requestKey="automatic-$DISPATCH_GENERATION"', automatic)
@@ -1310,6 +1386,9 @@ class E2EControlTest(unittest.TestCase):
         )
         self.assertIn("automatic: ${{ steps.context.outputs.automatic }}", workflow)
         self.assertIn("controlledLabels: ${{ steps.context.outputs.controlledLabels }}", workflow)
+        self.assertIn("controlledLabels:", workflow)
+        self.assertIn("CONTROLLED_LABELS: ${{ inputs.controlledLabels }}", workflow)
+        self.assertIn('inputs[controlledLabels]=$SOURCE_CONTROLLED_LABELS', workflow)
         self.assertIn("A trusted comment approval supersedes this automatic executor.", workflow)
         self.assertIn("Controlled label provenance changed; the automatic executor is stale.", workflow)
         self.assertIn("CONTROLLED_LABELS: ${{ steps.context.outputs.controlledLabels }}", workflow)
@@ -1546,7 +1625,7 @@ class E2EControlTest(unittest.TestCase):
             "matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}",
             blocks["kube-ovn-conformance-e2e"],
         )
-        self.assertIn("if: github.event_name == 'push'\n        uses: actions/cache@v6", workflow)
+        self.assertIn("if: steps.lookup-go-cache.outputs.cache-hit != 'true' && github.event_name == 'push'", workflow)
         self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)
         self.assertIn("--request-full", workflow)
         self.assertNotIn("args+=(--label e2e:full)", workflow)
