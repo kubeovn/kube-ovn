@@ -254,6 +254,8 @@ func (b *BandwidthLimit) Mbps() (int64, int64, error) {
 	return ingress, egress, nil
 }
 
+// +kubebuilder:validation:XValidation:rule="!(has(self.internalIPs) && size(self.internalIPs) != 0 && has(self.internalIPPool) && size(self.internalIPPool) > 0)",message="internalIPs and internalIPPool are mutually exclusive",fieldPath=".internalIPPool"
+// +kubebuilder:validation:XValidation:rule="!(has(self.externalIPs) && size(self.externalIPs) != 0 && has(self.externalIPPool) && size(self.externalIPPool) > 0)",message="externalIPs and externalIPPool are mutually exclusive",fieldPath=".externalIPPool"
 type VpcEgressGatewaySpec struct {
 	// optional VPC name
 	// if not specified, the default VPC will be used
@@ -285,6 +287,14 @@ type VpcEgressGatewaySpec struct {
 	InternalIPs []string `json:"internalIPs,omitempty"`
 	// External IP addresses for the egress gateway
 	ExternalIPs []string `json:"externalIPs,omitempty"`
+	// optional name of an IPPool resource used to allocate the internal IP for the workload
+	// the referenced IPPool's subnet must match the internal subnet
+	// mutually exclusive with internalIPs
+	InternalIPPool string `json:"internalIPPool,omitempty"`
+	// optional name of an IPPool resource used to allocate the external IP for the workload
+	// the referenced IPPool's subnet must match the external subnet
+	// mutually exclusive with externalIPs
+	ExternalIPPool string `json:"externalIPPool,omitempty"`
 	// namespace/pod selectors
 	Selectors []VpcEgressGatewaySelector `json:"selectors,omitempty"`
 	// optional traffic policy used to control the traffic routing

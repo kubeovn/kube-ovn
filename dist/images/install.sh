@@ -3850,6 +3850,12 @@ spec:
                   optional EVPN configuration name
                   it references a cluster-scoped EvpnConf resource
                 type: string
+              externalIPPool:
+                description: |-
+                  optional name of an IPPool resource used to allocate the external IP for the workload
+                  the referenced IPPool's subnet must match the external subnet
+                  mutually exclusive with externalIPs
+                type: string
               externalIPs:
                 description: External IP addresses for the egress gateway
                 items:
@@ -3862,6 +3868,12 @@ spec:
                 description: |-
                   optional image used by the workload
                   if not specified, the default image passed in by kube-ovn-controller will be used
+                type: string
+              internalIPPool:
+                description: |-
+                  optional name of an IPPool resource used to allocate the internal IP for the workload
+                  the referenced IPPool's subnet must match the internal subnet
+                  mutually exclusive with internalIPs
                 type: string
               internalIPs:
                 description: |-
@@ -4658,6 +4670,15 @@ spec:
             required:
             - externalSubnet
             type: object
+            x-kubernetes-validations:
+            - fieldPath: .internalIPPool
+              message: internalIPs and internalIPPool are mutually exclusive
+              rule: '!(has(self.internalIPs) && size(self.internalIPs) != 0 && has(self.internalIPPool)
+                && size(self.internalIPPool) > 0)'
+            - fieldPath: .externalIPPool
+              message: externalIPs and externalIPPool are mutually exclusive
+              rule: '!(has(self.externalIPs) && size(self.externalIPs) != 0 && has(self.externalIPPool)
+                && size(self.externalIPPool) > 0)'
           status:
             properties:
               conditions:
