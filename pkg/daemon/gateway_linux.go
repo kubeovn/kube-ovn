@@ -134,7 +134,9 @@ func (c *Controller) setIPSet() error {
 			SetID:   OtherNodeSet,
 			Type:    ipsets.IPSetTypeHashNet,
 		}, otherNode)
-		c.reconcileNatOutGoingPolicyIPset(allSubnets, protocol)
+		if err := c.reconcileNatOutGoingPolicyIPset(allSubnets, protocol); err != nil {
+			return err
+		}
 		c.ipsets[protocol].ApplyUpdates()
 	}
 	return nil
@@ -176,11 +178,11 @@ func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPol
 	}
 }
 
-func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicyRuleIDs *strset.Set) {
+func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicyRuleIDs *strset.Set) error {
 	sets, err := c.k8sipsets.ListSets()
 	if err != nil {
 		klog.Errorf("failed to list ipsets: %v", err)
-		return
+		return err
 	}
 	for _, set := range sets {
 		if isNatOutGoingPolicyRuleIPSet(set) {
@@ -190,9 +192,10 @@ func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicy
 			}
 		}
 	}
+	return nil
 }
 
-func (c *Controller) reconcileNatOutGoingPolicyIPset(allSubnets []*kubeovnv1.Subnet, protocol string) {
+func (c *Controller) reconcileNatOutGoingPolicyIPset(allSubnets []*kubeovnv1.Subnet, protocol string) error {
 	subnets := c.getSubnetsNatOutGoingPolicy(allSubnets, protocol)
 	subnetCidrs := make([]string, 0, len(subnets))
 	natPolicyRuleIDs := strset.New()
@@ -221,7 +224,7 @@ func (c *Controller) reconcileNatOutGoingPolicyIPset(allSubnets []*kubeovnv1.Sub
 		Type:    ipsets.IPSetTypeHashNet,
 	}, subnetCidrs)
 
-	c.removeNatOutGoingPolicyRuleIPset(protocol, natPolicyRuleIDs)
+	return c.removeNatOutGoingPolicyRuleIPset(protocol, natPolicyRuleIDs)
 }
 
 func (c *Controller) setPolicyRouting() error {
@@ -789,7 +792,8 @@ func (c *Controller) setIptables() error {
 		if existingIPSets.Has(ipset) {
 			iptablesRules[0].Rule = strings.Fields(fmt.Sprintf(`-i %s -m set --match-set %s src -m set --match-set %s dst,dst -j MARK --set-xmark 0x4000/0x4000`, util.NodeNic, matchset, ipset))
 			rejectRule := strings.Fields(fmt.Sprintf(`-p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set %s dst -m conntrack --ctstate NEW -j REJECT`, svcMatchset))
-			iptablesRules = append(iptablesRules,
+			iptablesRules = append(
+				iptablesRules,
 				util.IPTableRule{Table: "filter", Chain: "INPUT", Rule: rejectRule},
 				util.IPTableRule{Table: "filter", Chain: "OUTPUT", Rule: rejectRule},
 			)
@@ -833,7 +837,8 @@ func (c *Controller) setIptables() error {
 				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, ipset)
 				rule2 := fmt.Sprintf("-p %s -m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark 0x4000/0x4000", p, nodeMatchSet, ipset)
 				obsoleteRules = append(obsoleteRules, util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(rule)})
-				iptablesRules = append(iptablesRules,
+				iptablesRules = append(
+					iptablesRules,
 					util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule)},
 					util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule2)},
 				)
@@ -846,7 +851,8 @@ func (c *Controller) setIptables() error {
 		for _, name := range slices.Sorted(maps.Keys(subnetCidrs)) {
 			subnetCidr := subnetCidrs[name]
 			subnetNames.Insert(name)
-			iptablesRules = append(iptablesRules,
+			iptablesRules = append(
+				iptablesRules,
 				util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -s %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
 				util.IPTableRule{Table: "filter", Chain: "FORWARD", Rule: strings.Fields(fmt.Sprintf(`-m comment --comment %s,%s -d %s`, util.OvnSubnetGatewayIptables, name, subnetCidr))},
 			)
@@ -1061,7 +1067,8 @@ func getKubeOVNBaseIptablesRulesForCleanup(protocol string) []util.IPTableRule {
 	nodePortRules := make([]util.IPTableRule, 0, 4)
 	for _, p := range [...]string{"tcp", "udp"} {
 		nodePortIPSet := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", nodePortPrefix, strings.ToUpper(p))
-		nodePortRules = append(nodePortRules,
+		nodePortRules = append(
+			nodePortRules,
 			util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, nodePortIPSet))},
 			util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(fmt.Sprintf("-p %s -m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark 0x4000/0x4000", p, nodeMatchset, nodePortIPSet))},
 		)

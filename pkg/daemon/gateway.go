@@ -18,24 +18,27 @@ import (
 )
 
 func (c *Controller) runGateway() {
-	if err := c.setIPSet(); err != nil {
-		klog.Errorf("failed to set gw ipsets")
-	}
-	if err := c.setPolicyRouting(); err != nil {
-		klog.Errorf("failed to set gw policy routing")
-	}
-	if err := c.setIptables(); err != nil {
-		klog.Errorf("failed to set gw iptables")
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Errorf("failed to get node %s for gateway reconciliation: %v", c.config.NodeName, err)
+		return
 	}
 
-	if err := c.setGatewayBandwidth(); err != nil {
-		klog.Errorf("failed to set gw bandwidth, %v", err)
+	stages := []struct {
+		name      string
+		reconcile func() error
+	}{
+		{name: "setIPSet", reconcile: c.setIPSet},
+		{name: "setPolicyRouting", reconcile: c.setPolicyRouting},
+		{name: "setIptables", reconcile: c.setIptables},
+		{name: "setGatewayBandwidth", reconcile: c.setGatewayBandwidth},
+		{name: "setICGateway", reconcile: c.setICGateway},
+		{name: "setExGateway", reconcile: c.setExGateway},
 	}
-	if err := c.setICGateway(); err != nil {
-		klog.Errorf("failed to set ic gateway, %v", err)
-	}
-	if err := c.setExGateway(); err != nil {
-		klog.Errorf("failed to set ex gateway, %v", err)
+	for _, stage := range stages {
+		if err := c.reconcileNodeNetworkStage(node, stage.name, stage.reconcile); err != nil {
+			klog.Errorf("gateway reconciliation stage %s failed: %v", stage.name, err)
+		}
 	}
 	c.gcIPSet()
 }

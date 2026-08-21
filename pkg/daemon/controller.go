@@ -79,7 +79,9 @@ type Controller struct {
 	serviceCIDRSynced          cache.InformerSynced
 	serviceCIDRInformerFactory informers.SharedInformerFactory
 
-	recorder record.EventRecorder
+	recorder          record.EventRecorder
+	nodeFailuresMutex sync.Mutex
+	nodeFailures      map[nodeFailureKey]string
 
 	protocol string
 
@@ -999,7 +1001,9 @@ func (c *Controller) handleUpdateNode(key string) error {
 	}
 
 	klog.Infof("updating node networks for node %s", key)
-	return c.config.UpdateNodeNetworks(node)
+	return c.reconcileNodeNetworkStage(node, "updateNodeNetworks", func() error {
+		return c.config.UpdateNodeNetworks(node)
+	})
 }
 
 // Run starts controller
@@ -1019,6 +1023,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
 	if err := c.setIPSet(); err != nil {
+		c.recordLocalNodeFailureSync("setIPSet", err)
 		util.LogFatalAndExit(err, "failed to set ipsets")
 	}
 
