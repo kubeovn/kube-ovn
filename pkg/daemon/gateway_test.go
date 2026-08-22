@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -84,8 +83,8 @@ func mkTProxyPod(ns, name string, annotations map[string]string, podIPs ...strin
 		ips = append(ips, corev1.PodIP{IP: ip})
 	}
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name, Annotations: annotations},
-		Status:     corev1.PodStatus{PodIPs: ips},
+		Namespace: ns, Name: name, Annotations: annotations,
+		Status: corev1.PodStatus{PodIPs: ips},
 	}
 }
 
@@ -165,14 +164,14 @@ func TestGetPodPrimaryNetworkProvider(t *testing.T) {
 func TestGetTProxyConditionPod(t *testing.T) {
 	attachProvider := "macvlan.default.ovn"
 	subnets := []*kubeovnv1.Subnet{{
-		ObjectMeta: metav1.ObjectMeta{Name: "custom-subnet"},
-		Spec:       kubeovnv1.SubnetSpec{Vpc: "custom-vpc"},
+		Name: "custom-subnet",
+		Spec: kubeovnv1.SubnetSpec{Vpc: "custom-vpc"},
 	}, {
-		ObjectMeta: metav1.ObjectMeta{Name: "default-subnet"},
-		Spec:       kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc},
+		Name: "default-subnet",
+		Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc},
 	}, {
-		ObjectMeta: metav1.ObjectMeta{Name: "attach-subnet"},
-		Spec:       kubeovnv1.SubnetSpec{Vpc: "custom-vpc"},
+		Name: "attach-subnet",
+		Spec: kubeovnv1.SubnetSpec{Vpc: "custom-vpc"},
 	}}
 
 	kubeovnClient := kubeovnfake.NewSimpleClientset()
@@ -220,11 +219,11 @@ func TestGetTProxyConditionPod(t *testing.T) {
 
 func TestProviderExistsRequiresSubnetForNamedOvnProvider(t *testing.T) {
 	subnets := []*kubeovnv1.Subnet{{
-		ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
-		Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+		Name: util.DefaultSubnet,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
 	}, {
-		ObjectMeta: metav1.ObjectMeta{Name: "attach-subnet"},
-		Spec:       kubeovnv1.SubnetSpec{Provider: "attachnet-a.default.ovn"},
+		Name: "attach-subnet",
+		Spec: kubeovnv1.SubnetSpec{Provider: "attachnet-a.default.ovn"},
 	}}
 
 	kubeovnClient := kubeovnfake.NewSimpleClientset()

@@ -20,11 +20,9 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "nil selector should match any node",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-					Labels: map[string]string{
-						"env": "test",
-					},
+				Name: "test-node",
+				Labels: map[string]string{
+					"env": "test",
 				},
 			},
 			selector: nil,
@@ -34,12 +32,10 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "node matches simple label selector",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-					Labels: map[string]string{
-						"env":  "test",
-						"zone": "us-east-1",
-					},
+				Name: "test-node",
+				Labels: map[string]string{
+					"env":  "test",
+					"zone": "us-east-1",
 				},
 			},
 			selector: &metav1.LabelSelector{
@@ -53,11 +49,9 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "node does not match label selector",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-					Labels: map[string]string{
-						"env": "prod",
-					},
+				Name: "test-node",
+				Labels: map[string]string{
+					"env": "prod",
 				},
 			},
 			selector: &metav1.LabelSelector{
@@ -71,13 +65,11 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "node matches multiple labels",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-					Labels: map[string]string{
-						"env":      "test",
-						"zone":     "us-east-1",
-						"nodeType": "worker",
-					},
+				Name: "test-node",
+				Labels: map[string]string{
+					"env":      "test",
+					"zone":     "us-east-1",
+					"nodeType": "worker",
 				},
 			},
 			selector: &metav1.LabelSelector{
@@ -92,12 +84,10 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "node matches with match expressions",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-					Labels: map[string]string{
-						"env":      "test",
-						"nodeType": "worker",
-					},
+				Name: "test-node",
+				Labels: map[string]string{
+					"env":      "test",
+					"nodeType": "worker",
 				},
 			},
 			selector: &metav1.LabelSelector{
@@ -115,11 +105,9 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "node does not match with match expressions",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-					Labels: map[string]string{
-						"env": "prod",
-					},
+				Name: "test-node",
+				Labels: map[string]string{
+					"env": "prod",
 				},
 			},
 			selector: &metav1.LabelSelector{
@@ -137,9 +125,7 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "node with no labels and empty selector",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-				},
+				Name: "test-node",
 			},
 			selector: &metav1.LabelSelector{},
 			want:     true,
@@ -148,9 +134,7 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "node with no labels does not match label selector",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-				},
+				Name: "test-node",
 			},
 			selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
@@ -163,9 +147,7 @@ func TestNodeMatchesSelector(t *testing.T) {
 		{
 			name: "invalid label selector should return error",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-node",
-				},
+				Name: "test-node",
 			},
 			selector: &metav1.LabelSelector{
 				MatchExpressions: []metav1.LabelSelectorRequirement{
@@ -206,18 +188,14 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "node matches nodeSelector - should not be excluded",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-1",
-					Labels: map[string]string{
-						"env":      "test",
-						"nodeType": "worker",
-					},
+				Name: "worker-1",
+				Labels: map[string]string{
+					"env":      "test",
+					"nodeType": "worker",
 				},
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
@@ -233,17 +211,13 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "node does not match nodeSelector - should be excluded",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-1",
-					Labels: map[string]string{
-						"env": "prod",
-					},
+				Name: "worker-1",
+				Labels: map[string]string{
+					"env": "prod",
 				},
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
@@ -258,14 +232,10 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "no nodeSelector and node in excludeNodes - should be excluded",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-1",
-				},
+				Name: "worker-1",
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{
 					ExcludeNodes: []string{"worker-1", "worker-2"},
 				},
@@ -276,14 +246,10 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "no nodeSelector and node not in excludeNodes - should not be excluded",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-3",
-				},
+				Name: "worker-3",
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{
 					ExcludeNodes: []string{"worker-1", "worker-2"},
 				},
@@ -294,14 +260,10 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "no nodeSelector and empty excludeNodes - should not be excluded",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-1",
-				},
+				Name: "worker-1",
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{},
 			},
 			want:    false,
@@ -310,14 +272,10 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "invalid nodeSelector should return error",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-1",
-				},
+				Name: "worker-1",
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{
 					NodeSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{
@@ -336,18 +294,14 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "nodeSelector with match expressions - node matches",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-1",
-					Labels: map[string]string{
-						"env":      "test",
-						"nodeType": "worker",
-					},
+				Name: "worker-1",
+				Labels: map[string]string{
+					"env":      "test",
+					"nodeType": "worker",
 				},
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{
 					NodeSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{
@@ -370,17 +324,13 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "nodeSelector with match expressions - node does not match",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-1",
-					Labels: map[string]string{
-						"env": "prod",
-					},
+				Name: "worker-1",
+				Labels: map[string]string{
+					"env": "prod",
 				},
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{
 					NodeSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{
@@ -399,19 +349,15 @@ func TestIsNodeExcludedFromProviderNetwork(t *testing.T) {
 		{
 			name: "complex nodeSelector with both matchLabels and matchExpressions",
 			node: &v1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "worker-1",
-					Labels: map[string]string{
-						"env":      "test",
-						"zone":     "us-east-1",
-						"nodeType": "worker",
-					},
+				Name: "worker-1",
+				Labels: map[string]string{
+					"env":      "test",
+					"zone":     "us-east-1",
+					"nodeType": "worker",
 				},
 			},
 			pn: &kubeovnv1.ProviderNetwork{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-provider",
-				},
+				Name: "test-provider",
 				Spec: kubeovnv1.ProviderNetworkSpec{
 					NodeSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{

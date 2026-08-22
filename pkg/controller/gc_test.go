@@ -142,24 +142,22 @@ func TestGetVMLsps(t *testing.T) {
 	t.Run("lists vms cluster-wide using their own namespace", func(t *testing.T) {
 		vms := &kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
 			{
-				ObjectMeta: metav1.ObjectMeta{Name: "vm-primary", Namespace: "ns1"},
-				Spec:       kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, nil)},
+				Name: "vm-primary", Namespace: "ns1",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, nil)},
 			},
 			{
 				// Default multus network: primary lsp is skipped, but the attachment
 				// network derived from NetworkName must still be kept.
-				ObjectMeta: metav1.ObjectMeta{Name: "vm-default-multus", Namespace: "ns2"},
+				Name: "vm-default-multus", Namespace: "ns2",
 				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{{
-					Name: "secondary",
-					NetworkSource: kubevirtv1.NetworkSource{
-						Multus: &kubevirtv1.MultusNetwork{Default: true, NetworkName: "ns2/net2"},
-					},
+					Name:   "secondary",
+					Multus: &kubevirtv1.MultusNetwork{Default: true, NetworkName: "ns2/net2"},
 				}}, nil)},
 			},
 			{
 				// NAD annotation contributes an attachment lsp on top of the primary one.
-				ObjectMeta: metav1.ObjectMeta{Name: "vm-nad", Namespace: "ns3"},
-				Spec:       kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, map[string]string{nadv1.NetworkAttachmentAnnot: "netx"})},
+				Name: "vm-nad", Namespace: "ns3",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, map[string]string{nadv1.NetworkAttachmentAnnot: "netx"})},
 			},
 		}}
 		c := &Controller{config: &Configuration{
@@ -183,7 +181,7 @@ func TestGetVMLsps(t *testing.T) {
 
 func TestGcNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
 	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		Nodes: []*corev1.Node{{ObjectMeta: metav1.ObjectMeta{Name: "node1"}}},
+		Nodes: []*corev1.Node{{Name: "node1"}},
 	})
 	require.NoError(t, err)
 	ctrl := fakeController.fakeController
@@ -280,12 +278,10 @@ func TestGcDisabledDNSNameResolvers(t *testing.T) {
 			ctrl.config.EnableDNSNameResolver = tt.enableDNSNameResolver
 
 			resolver := &kubeovnv1.DNSNameResolver{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:   "anp-example-resolver",
-					Labels: map[string]string{adminNetworkPolicyKey: "example"},
-				},
+				Name:   "anp-example-resolver",
+				Labels: map[string]string{adminNetworkPolicyKey: "example"},
 			}
-			unmanaged := &kubeovnv1.DNSNameResolver{ObjectMeta: metav1.ObjectMeta{Name: "unmanaged-resolver"}}
+			unmanaged := &kubeovnv1.DNSNameResolver{Name: "unmanaged-resolver"}
 			client := ctrl.config.KubeOvnClient.KubeovnV1().DNSNameResolvers()
 			_, err := client.Create(context.Background(), resolver, metav1.CreateOptions{})
 			require.NoError(t, err)

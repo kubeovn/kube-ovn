@@ -73,7 +73,7 @@ func requireNoProviderNetworkEvent(t *testing.T, recorder *record.FakeRecorder) 
 
 func TestHandleAddOrUpdateProviderNetworkRecordsValidationFailureEvent(t *testing.T) {
 	pn := &kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: "provider-network-1"},
+		Name: "provider-network-1",
 		Spec: kubeovnv1.ProviderNetworkSpec{
 			DefaultInterface: "eth1",
 			NodeSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
@@ -82,7 +82,7 @@ func TestHandleAddOrUpdateProviderNetworkRecordsValidationFailureEvent(t *testin
 			}}},
 		},
 	}
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	node := &corev1.Node{Name: "node-1"}
 	controller, recorder := newProviderNetworkEventController(t, pn, node)
 
 	require.Error(t, controller.handleAddOrUpdateProviderNetwork(pn.Name))
@@ -92,11 +92,11 @@ func TestHandleAddOrUpdateProviderNetworkRecordsValidationFailureEvent(t *testin
 
 func TestHandleAddOrUpdateProviderNetworkRecordsInitializationFailureEvent(t *testing.T) {
 	pn := &kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: "provider-network-1"},
-		Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth1"},
-		Status:     kubeovnv1.ProviderNetworkStatus{Vlans: []string{"vlan-1"}},
+		Name:   "provider-network-1",
+		Spec:   kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth1"},
+		Status: kubeovnv1.ProviderNetworkStatus{Vlans: []string{"vlan-1"}},
 	}
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	node := &corev1.Node{Name: "node-1"}
 	controller, recorder := newProviderNetworkEventController(t, pn, node)
 	controller.vlansLister = errorVlanLister{err: errors.New("cache unavailable")}
 
@@ -106,21 +106,21 @@ func TestHandleAddOrUpdateProviderNetworkRecordsInitializationFailureEvent(t *te
 }
 
 func providerNetworkReadyNode(nodeName, providerNetwork, nic, mtu string) *corev1.Node {
-	return &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	return &corev1.Node{
 		Name: nodeName,
 		Labels: map[string]string{
 			fmt.Sprintf(util.ProviderNetworkReadyTemplate, providerNetwork):     "true",
 			fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, providerNetwork): nic,
 			fmt.Sprintf(util.ProviderNetworkMtuTemplate, providerNetwork):       mtu,
 		},
-	}}
+	}
 }
 
 func TestEnqueueUpdateNodeRecordsProviderNetworkInitializationSuccessEvent(t *testing.T) {
 	const providerNetworkName = "provider-network-1"
 	pn := &kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: providerNetworkName},
-		Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth1"},
+		Name: providerNetworkName,
+		Spec: kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth1"},
 	}
 
 	tests := []struct {
@@ -129,7 +129,7 @@ func TestEnqueueUpdateNodeRecordsProviderNetworkInitializationSuccessEvent(t *te
 	}{
 		{
 			name:    "readiness changed",
-			oldNode: &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}},
+			oldNode: &corev1.Node{Name: "node-1"},
 		},
 		{
 			name:    "interface changed",
@@ -155,7 +155,7 @@ func TestEnqueueUpdateNodeRecordsProviderNetworkInitializationSuccessEvent(t *te
 
 func TestEnqueueUpdateNodeDoesNotRepeatProviderNetworkInitializationSuccessEvent(t *testing.T) {
 	const providerNetworkName = "provider-network-1"
-	pn := &kubeovnv1.ProviderNetwork{ObjectMeta: metav1.ObjectMeta{Name: providerNetworkName}}
+	pn := &kubeovnv1.ProviderNetwork{Name: providerNetworkName}
 	node := providerNetworkReadyNode("node-1", providerNetworkName, "eth1", "1500")
 	controller, recorder := newProviderNetworkEventController(t, pn, node)
 

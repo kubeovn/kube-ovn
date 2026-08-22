@@ -55,10 +55,8 @@ func (c *NetworkAttachmentDefinitionClient) Delete(name string) {
 
 func MakeNetworkAttachmentDefinition(name, namespace, conf string) *apiv1.NetworkAttachmentDefinition {
 	nad := &apiv1.NetworkAttachmentDefinition{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: apiv1.NetworkAttachmentDefinitionSpec{
 			Config: conf,
 		},

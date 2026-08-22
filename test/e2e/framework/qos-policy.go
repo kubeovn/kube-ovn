@@ -292,9 +292,7 @@ func (c *QoSPolicyClient) WaitToQoSReady(name string) bool {
 
 func MakeQoSPolicy(name string, shared bool, qosType apiv1.QoSPolicyBindingType, rules apiv1.QoSPolicyBandwidthLimitRules) *apiv1.QoSPolicy {
 	qosPolicy := &apiv1.QoSPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.QoSPolicySpec{
 			BandwidthLimitRules: rules,
 			Shared:              shared,

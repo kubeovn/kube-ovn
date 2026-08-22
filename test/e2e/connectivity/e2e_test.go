@@ -93,7 +93,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	serviceClient := framework.NewServiceClient(cs, namespaceName)
 
 	ginkgo.By("Creating namespace " + namespaceName)
-	_ = namespaceClient.Create(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespaceName}})
+	_ = namespaceClient.Create(&corev1.Namespace{Name: namespaceName})
 
 	ginkgo.By("Creating deployment " + deploymentName)
 	podLabels := map[string]string{"app": deploymentName}

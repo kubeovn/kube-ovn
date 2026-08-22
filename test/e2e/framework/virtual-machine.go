@@ -202,18 +202,16 @@ func MakeVMWithMultusNetwork(name, image, size string, runStrategy *v1.VirtualMa
 	vm.Spec.Template.Spec.Domain.Devices.Interfaces = append(
 		vm.Spec.Template.Spec.Domain.Devices.Interfaces,
 		v1.Interface{
-			Name:                   "multus-net",
-			InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}},
+			Name:   "multus-net",
+			Bridge: &v1.InterfaceBridge{},
 		},
 	)
 	vm.Spec.Template.Spec.Networks = append(
 		vm.Spec.Template.Spec.Networks,
 		v1.Network{
 			Name: "multus-net",
-			NetworkSource: v1.NetworkSource{
-				Multus: &v1.MultusNetwork{
-					NetworkName: multusNetworkName,
-				},
+			Multus: &v1.MultusNetwork{
+				NetworkName: multusNetworkName,
 			},
 		},
 	)
@@ -222,9 +220,7 @@ func MakeVMWithMultusNetwork(name, image, size string, runStrategy *v1.VirtualMa
 
 func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy) *v1.VirtualMachine {
 	vm := &v1.VirtualMachine{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: v1.VirtualMachineSpec{
 			RunStrategy: runStrategy,
 			Template: &v1.VirtualMachineInstanceTemplateSpec{
@@ -240,18 +236,14 @@ func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy)
 							Disks: []v1.Disk{
 								{
 									Name: "containerdisk",
-									DiskDevice: v1.DiskDevice{
-										Disk: &v1.DiskTarget{
-											Bus: v1.DiskBusVirtio,
-										},
+									Disk: &v1.DiskTarget{
+										Bus: v1.DiskBusVirtio,
 									},
 								},
 								{
 									Name: "cloudinitdisk",
-									DiskDevice: v1.DiskDevice{
-										Disk: &v1.DiskTarget{
-											Bus: v1.DiskBusVirtio,
-										},
+									Disk: &v1.DiskTarget{
+										Bus: v1.DiskBusVirtio,
 									},
 								},
 							},
@@ -277,19 +269,15 @@ func MakeVM(name, image, size string, runStrategy *v1.VirtualMachineRunStrategy)
 					Volumes: []v1.Volume{
 						{
 							Name: "containerdisk",
-							VolumeSource: v1.VolumeSource{
-								ContainerDisk: &v1.ContainerDiskSource{
-									Image:           image,
-									ImagePullPolicy: corev1.PullIfNotPresent,
-								},
+							ContainerDisk: &v1.ContainerDiskSource{
+								Image:           image,
+								ImagePullPolicy: corev1.PullIfNotPresent,
 							},
 						},
 						{
 							Name: "cloudinitdisk",
-							VolumeSource: v1.VolumeSource{
-								CloudInitNoCloud: &v1.CloudInitNoCloudSource{
-									UserDataBase64: "SGkuXG4=",
-								},
+							CloudInitNoCloud: &v1.CloudInitNoCloudSource{
+								UserDataBase64: "SGkuXG4=",
 							},
 						},
 					},

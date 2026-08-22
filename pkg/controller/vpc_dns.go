@@ -346,11 +346,9 @@ func (c *Controller) genVpcDNSSlr(vpcName, namespace string) (*kubeovnv1.SwitchL
 	}
 
 	slr := &kubeovnv1.SwitchLBRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				util.VpcDNSNameLabel: "true",
-			},
+		Name: name,
+		Labels: map[string]string{
+			util.VpcDNSNameLabel: "true",
 		},
 		Spec: kubeovnv1.SwitchLBRuleSpec{
 			Vip:             corednsVip,

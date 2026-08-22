@@ -120,11 +120,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	if len(namespaces) == 0 {
 		// Create default namespace if none provided
 		namespaces = []*corev1.Namespace{{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: metav1.NamespaceDefault,
-				Annotations: map[string]string{
-					util.LogicalSwitchAnnotation: util.DefaultSubnet,
-				},
+			Name: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				util.LogicalSwitchAnnotation: util.DefaultSubnet,
 			},
 		}}
 	}
@@ -422,9 +420,9 @@ func newFakeController(t *testing.T) *fakeController {
 func Test_allSubnetReady(t *testing.T) {
 	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Subnets: []*kubeovnv1.Subnet{{
-			ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
+			Name: util.DefaultSubnet,
 		}, {
-			ObjectMeta: metav1.ObjectMeta{Name: "join"},
+			Name: "join",
 		}},
 	})
 	require.NoError(t, err)
@@ -456,25 +454,21 @@ func TestFakeControllerWithOptions(t *testing.T) {
 	// Example: creating a fake controller with NADs, subnets, and pods
 	opts := &FakeControllerOptions{
 		Subnets: []*kubeovnv1.Subnet{{
-			ObjectMeta: metav1.ObjectMeta{Name: "net1-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "192.168.1.0/24"},
+			Name: "net1-subnet",
+			Spec: kubeovnv1.SubnetSpec{CIDRBlock: "192.168.1.0/24"},
 		}},
 		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "net1",
-				Namespace: metav1.NamespaceDefault,
-			},
+			Name:      "net1",
+			Namespace: metav1.NamespaceDefault,
 			Spec: nadv1.NetworkAttachmentDefinitionSpec{
 				Config: `{"cniVersion": "0.3.1", "name": "net1", "type": "kube-ovn"}`,
 			},
 		}},
 		Pods: []*corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-pod",
-				Namespace: metav1.NamespaceDefault,
-				Annotations: map[string]string{
-					nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
-				},
+			Name:      "test-pod",
+			Namespace: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
 			},
 		}},
 	}

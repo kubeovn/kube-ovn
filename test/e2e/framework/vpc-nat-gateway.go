@@ -226,9 +226,7 @@ func (c *VpcNatGatewayClient) WaitToQoSReady(name string) bool {
 
 func MakeVpcNatGateway(name, vpc, subnet, lanIP, externalSubnet, qosPolicyName string) *apiv1.VpcNatGateway {
 	vpcNatGw := &apiv1.VpcNatGateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.VpcNatGatewaySpec{
 			Vpc:    vpc,
 			Subnet: subnet,

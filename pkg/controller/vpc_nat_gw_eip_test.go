@@ -12,8 +12,8 @@ import (
 // fakeGw returns a minimal VpcNatGateway CRD object for use in tests.
 func fakeGw(name string) *kubeovnv1.VpcNatGateway {
 	return &kubeovnv1.VpcNatGateway{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       kubeovnv1.VpcNatGatewaySpec{},
+		Name: name,
+		Spec: kubeovnv1.VpcNatGatewaySpec{},
 	}
 }
 
@@ -98,7 +98,7 @@ func TestEnqueueAddIptablesEip(t *testing.T) {
 	t.Cleanup(c.updateIptablesEipQueue.ShutDown)
 	now := metav1.Now()
 	assertEnqueueAddRouting(t, c.addIptablesEipQueue, c.updateIptablesEipQueue, c.enqueueAddIptablesEip,
-		&kubeovnv1.IptablesEIP{ObjectMeta: metav1.ObjectMeta{Name: "live-eip"}},
-		&kubeovnv1.IptablesEIP{ObjectMeta: metav1.ObjectMeta{Name: "terminating-eip", DeletionTimestamp: &now}},
+		&kubeovnv1.IptablesEIP{Name: "live-eip"},
+		&kubeovnv1.IptablesEIP{Name: "terminating-eip", DeletionTimestamp: &now},
 	)
 }

@@ -679,9 +679,7 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 	}
 	if needCreateHealthCheckVip {
 		vip := &kubeovnv1.Vip{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vipName,
-			},
+			Name: vipName,
 			Spec: kubeovnv1.VipSpec{
 				Subnet: subnetName,
 			},

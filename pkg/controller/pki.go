@@ -55,10 +55,8 @@ func (c *Controller) InitDefaultOVNIPsecCA() error {
 	}
 
 	secret := &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      util.DefaultOVNIPSecCA,
-			Namespace: namespace,
-		},
+		Name:      util.DefaultOVNIPSecCA,
+		Namespace: namespace,
 		Data: map[string][]byte{
 			"cacert": cacert,
 			"cakey":  cakey,

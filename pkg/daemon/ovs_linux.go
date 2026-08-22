@@ -1757,7 +1757,7 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 	// NOTE: DO NOT use ovs internal type interface for container.
 	// Kubernetes will detect 'eth0' nic in pod, so the nic name in pod must be 'eth0'.
 	// When renaming internal interface to 'eth0', ovs will delete and recreate this interface.
-	veth := netlink.Veth{LinkAttrs: netlink.LinkAttrs{Name: hostNicName}, PeerName: containerNicName}
+	veth := netlink.Veth{Name: hostNicName, PeerName: containerNicName}
 	if mtu > 0 {
 		veth.MTU = mtu
 	}
@@ -2500,11 +2500,9 @@ func ensureProviderVlanInterface(parentName, vlanName string, vlanID int) (netli
 	}
 
 	vlan := &netlink.Vlan{
-		LinkAttrs: netlink.LinkAttrs{
-			Name:        vlanName,
-			ParentIndex: parentLink.Attrs().Index,
-		},
-		VlanId: vlanID,
+		Name:        vlanName,
+		ParentIndex: parentLink.Attrs().Index,
+		VlanId:      vlanID,
 	}
 	if err := netlink.LinkAdd(vlan); err != nil {
 		return nil, fmt.Errorf("failed to create kernel VLAN interface %s: %w", vlanName, err)

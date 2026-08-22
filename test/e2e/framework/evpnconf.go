@@ -80,9 +80,7 @@ func (c *EvpnConfClient) WaitToDisappear(name string, _, timeout time.Duration) 
 
 func MakeEvpnConf(name string, vni uint32, routeTargets []string) *apiv1.EvpnConf {
 	return &apiv1.EvpnConf{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.EvpnConfSpec{
 			VNI:          vni,
 			RouteTargets: routeTargets,

@@ -20,9 +20,7 @@ import (
 // MakeAdminNetworkPolicy creates a basic AdminNetworkPolicy with common defaults
 func MakeAdminNetworkPolicy(name string, priority int32, namespaceSelector *metav1.LabelSelector, egressRules []netpolv1alpha1.AdminNetworkPolicyEgressRule, ingressRules []netpolv1alpha1.AdminNetworkPolicyIngressRule) *netpolv1alpha1.AdminNetworkPolicy {
 	anp := &netpolv1alpha1.AdminNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: netpolv1alpha1.AdminNetworkPolicySpec{
 			Priority: priority,
 			Subject: netpolv1alpha1.AdminNetworkPolicySubject{
@@ -38,9 +36,7 @@ func MakeAdminNetworkPolicy(name string, priority int32, namespaceSelector *meta
 // MakeClusterNetworkPolicy creates a basic ClusterNetworkPolicy with common defaults
 func MakeClusterNetworkPolicy(name string, priority int32, namespaceSelector *metav1.LabelSelector, egressRules []netpolv1alpha2.ClusterNetworkPolicyEgressRule, ingressRules []netpolv1alpha2.ClusterNetworkPolicyIngressRule) *netpolv1alpha2.ClusterNetworkPolicy {
 	anp := &netpolv1alpha2.ClusterNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: netpolv1alpha2.ClusterNetworkPolicySpec{
 			Tier:     netpolv1alpha2.AdminTier,
 			Priority: priority,

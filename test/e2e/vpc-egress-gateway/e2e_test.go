@@ -164,7 +164,7 @@ var _ = framework.SerialDescribe("[group:veg]", func() {
 			ginkgo.By("Deleting vpc " + vpcName)
 			vpcClient.DeleteSync(vpcName)
 		})
-		vpc := vpcClient.CreateSync(&apiv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: vpcName}})
+		vpc := vpcClient.CreateSync(&apiv1.Vpc{Name: vpcName})
 
 		internalSubnetName := "int-" + framework.RandomSuffix()
 		ginkgo.By("Creating internal subnet " + internalSubnetName)

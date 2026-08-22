@@ -162,11 +162,9 @@ func (c *SwitchLBRuleClient) WaitToDisappear(name string, _, timeout time.Durati
 
 func MakeSwitchLBRule(name, namespace, vip string, sessionAffinity corev1.ServiceAffinity, annotations map[string]string, selector, endpoints []string, ports []apiv1.SwitchLBRulePort) *apiv1.SwitchLBRule {
 	return &apiv1.SwitchLBRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Namespace:   namespace,
-			Annotations: annotations,
-		},
+		Name:        name,
+		Namespace:   namespace,
+		Annotations: annotations,
 		Spec: apiv1.SwitchLBRuleSpec{
 			Vip:             vip,
 			Namespace:       namespace,

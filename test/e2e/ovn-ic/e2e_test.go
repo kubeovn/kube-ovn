@@ -113,10 +113,8 @@ var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
 			args := []string{"netexec", "--http-port", ports[i]}
 			pods[i] = framework.MakePod(namespaceNames[i], podNames[i], nil, nil, framework.AgnhostImage, nil, args)
 			pods[i].Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-				ProbeHandler: corev1.ProbeHandler{
-					HTTPGet: &corev1.HTTPGetAction{
-						Port: intstr.FromInt32(port),
-					},
+				HTTPGet: &corev1.HTTPGetAction{
+					Port: intstr.FromInt32(port),
 				},
 			}
 			pods[i] = podClients[i].CreateSync(pods[i])

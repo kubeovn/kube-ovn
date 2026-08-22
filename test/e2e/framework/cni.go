@@ -61,10 +61,8 @@ func MakeOVNNetworkAttachmentDefinition(name, namespace, provider string, routes
 	ginkgo.GinkgoHelper()
 
 	config := &netconf.NetConf{
-		NetConf: types.NetConf{
-			CNIVersion: CNIVersion,
-			Type:       util.CniTypeName,
-		},
+		CNIVersion:   CNIVersion,
+		Type:         util.CniTypeName,
 		ServerSocket: "/run/openvswitch/kube-ovn-daemon.sock",
 		Provider:     provider,
 		Routes:       routes,

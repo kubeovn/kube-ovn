@@ -7,7 +7,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -19,10 +18,8 @@ func buildPodIndexer(tb testing.TB, nPods, nNodes int) cache.Indexer {
 	idx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexPodByNode: indexPodByNode})
 	for i := range nPods {
 		pod := &v1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("pod-%d", i),
-				Namespace: "ns",
-			},
+			Name:      fmt.Sprintf("pod-%d", i),
+			Namespace: "ns",
 		}
 		// Leave every 20th pod unscheduled.
 		if i%20 != 0 {
@@ -43,11 +40,9 @@ func buildEPSIndexer(tb testing.TB, nEPS, nServices int) cache.Indexer {
 	idx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexEPSByService: indexEPSByService})
 	for i := range nEPS {
 		eps := &discoveryv1.EndpointSlice{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("eps-%d", i),
-				Namespace: "ns",
-				Labels:    map[string]string{},
-			},
+			Name:      fmt.Sprintf("eps-%d", i),
+			Namespace: "ns",
+			Labels:    map[string]string{},
 		}
 		// Leave every 25th slice without a service label.
 		if i%25 != 0 {

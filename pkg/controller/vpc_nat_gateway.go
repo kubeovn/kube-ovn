@@ -1251,21 +1251,17 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	labels := util.GenNatGwLabels(gw.Name)
 
 	sts := &v1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      util.GenNatGwName(gw.Name),
-			Namespace: c.natGwNamespace(gw),
-			Labels:    labels,
-		},
+		Name:      util.GenNatGwName(gw.Name),
+		Namespace: c.natGwNamespace(gw),
+		Labels:    labels,
 		Spec: v1.StatefulSetSpec{
 			Replicas: ptr.To[int32](1),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      labels,
-					Annotations: templateAnnotations,
-				},
+				Labels:      labels,
+				Annotations: templateAnnotations,
 				Spec: corev1.PodSpec{
 					TerminationGracePeriodSeconds: ptr.To[int64](0),
 					Containers: []corev1.Container{
@@ -1426,11 +1422,9 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 
 	// Create Deployment with HA configuration
 	deploy := &v1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      util.GenNatGwName(gw.Name),
-			Namespace: c.natGwNamespace(gw),
-			Labels:    labels,
-		},
+		Name:      util.GenNatGwName(gw.Name),
+		Namespace: c.natGwNamespace(gw),
+		Labels:    labels,
 		Spec: v1.DeploymentSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{
@@ -1438,10 +1432,8 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 			},
 			Strategy: genGatewayDeploymentStrategy(),
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      labels,
-					Annotations: templateAnnotations,
-				},
+				Labels:      labels,
+				Annotations: templateAnnotations,
 				Spec: corev1.PodSpec{
 					TerminationGracePeriodSeconds: ptr.To[int64](0),
 					Containers: []corev1.Container{
@@ -1474,10 +1466,8 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 						},
 					},
 					Volumes: []corev1.Volume{{
-						Name: "usr-local-sbin",
-						VolumeSource: corev1.VolumeSource{
-							EmptyDir: &corev1.EmptyDirVolumeSource{},
-						},
+						Name:     "usr-local-sbin",
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					}},
 					NodeSelector: selectors,
 					Tolerations:  gw.Spec.Tolerations,

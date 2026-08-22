@@ -159,9 +159,7 @@ func (c *IptablesSnatClient) WaitToDisappear(name string, _, timeout time.Durati
 
 func MakeIptablesSnatRule(name, eip, internalCIDR string) *apiv1.IptablesSnatRule {
 	snat := &apiv1.IptablesSnatRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.IptablesSnatRuleSpec{
 			EIP:          eip,
 			InternalCIDR: internalCIDR,

@@ -127,11 +127,9 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: netpolName,
-				Annotations: map[string]string{
-					util.NetworkPolicyForAnnotation: fmt.Sprintf("%s/%s", namespaceName, nadName),
-				},
+			Name: netpolName,
+			Annotations: map[string]string{
+				util.NetworkPolicyForAnnotation: fmt.Sprintf("%s/%s", namespaceName, nadName),
 			},
 			Spec: netv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{MatchLabels: serverLabels},
@@ -201,11 +199,9 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: netpolName,
-				Annotations: map[string]string{
-					util.NetworkPolicyForAnnotation: "ovn",
-				},
+			Name: netpolName,
+			Annotations: map[string]string{
+				util.NetworkPolicyForAnnotation: "ovn",
 			},
 			Spec: netv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{MatchLabels: clientLabels},
@@ -272,11 +268,9 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: netpolName,
-				Annotations: map[string]string{
-					util.NetworkPolicyForAnnotation: "ovn",
-				},
+			Name: netpolName,
+			Annotations: map[string]string{
+				util.NetworkPolicyForAnnotation: "ovn",
 			},
 			Spec: netv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{MatchLabels: clientLabels},
@@ -354,11 +348,9 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: netpolName,
-				Annotations: map[string]string{
-					util.NetworkPolicyForAnnotation: fmt.Sprintf("%s/%s", namespaceName, nadName),
-				},
+			Name: netpolName,
+			Annotations: map[string]string{
+				util.NetworkPolicyForAnnotation: fmt.Sprintf("%s/%s", namespaceName, nadName),
 			},
 			Spec: netv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{MatchLabels: clientLabels},

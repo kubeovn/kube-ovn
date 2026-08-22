@@ -4,7 +4,6 @@ import (
 	"context"
 
 	metallbv1beta1 "go.universe.tf/metallb/api/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 )
@@ -65,9 +64,7 @@ func (c *MetallbClientSet) UpdateL2Advertisement(advertisement *metallbv1beta1.L
 
 func (c *MetallbClientSet) MakeL2Advertisement(name string, ipAddressPools []string) *metallbv1beta1.L2Advertisement {
 	return &metallbv1beta1.L2Advertisement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: metallbv1beta1.L2AdvertisementSpec{
 			IPAddressPools: ipAddressPools,
 		},
@@ -76,9 +73,7 @@ func (c *MetallbClientSet) MakeL2Advertisement(name string, ipAddressPools []str
 
 func (c *MetallbClientSet) MakeIPAddressPool(name string, addresses []string, autoAssign bool) *metallbv1beta1.IPAddressPool {
 	return &metallbv1beta1.IPAddressPool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: metallbv1beta1.IPAddressPoolSpec{
 			Addresses:  addresses,
 			AutoAssign: &autoAssign,

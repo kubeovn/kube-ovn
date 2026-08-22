@@ -166,10 +166,8 @@ func (c *ServiceClient) WaitToDisappear(name string, _, timeout time.Duration) e
 
 func MakeService(name string, svcType corev1.ServiceType, annotations, selector map[string]string, ports []corev1.ServicePort, affinity corev1.ServiceAffinity) *corev1.Service {
 	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Annotations: annotations,
-		},
+		Name:        name,
+		Annotations: annotations,
 		Spec: corev1.ServiceSpec{
 			IPFamilyPolicy:  ptr.To(corev1.IPFamilyPolicyPreferDualStack),
 			Ports:           ports,
