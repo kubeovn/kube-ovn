@@ -2210,7 +2210,7 @@ jobs:
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
   bgp-speaker-e2e:
-    name: BGP Speaker E2E
+    name: BGP Speaker E2E (${{ matrix.ip-family }})
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'bgp-speaker-e2e')
     needs:
       - e2e-selection
@@ -2219,6 +2219,13 @@ jobs:
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -2303,18 +2310,18 @@ jobs:
         id: setup
         run: |
           pipx install jinjanator
-          make kind-init-bgp
+          make kind-init-bgp-${{ matrix.ip-family }}
 
       - name: Install Kube-OVN and BGP speakers
         id: install
-        run: make kind-install-bgp
+        run: make kind-install-bgp-${{ matrix.ip-family }}
 
       - name: Run BGP speaker E2E
         id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
-          E2E_IP_FAMILY: ipv4
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: overlay
         run: make kube-ovn-bgp-speaker-e2e
 
@@ -2327,8 +2334,10 @@ jobs:
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           mkdir -p bgp-speaker-e2e-diagnostics
-          docker exec clab-bgp-router vtysh -c "show bgp ipv4 unicast summary json" > bgp-speaker-e2e-diagnostics/frr-summary.json || true
-          docker exec clab-bgp-router vtysh -c "show bgp ipv4 unicast json" > bgp-speaker-e2e-diagnostics/frr-routes.json || true
+          for afi in ipv4 ipv6; do
+            docker exec clab-bgp-router vtysh -c "show bgp $afi unicast summary json" > "bgp-speaker-e2e-diagnostics/frr-summary-$afi.json" || true
+            docker exec clab-bgp-router vtysh -c "show bgp $afi unicast json" > "bgp-speaker-e2e-diagnostics/frr-routes-$afi.json" || true
+          done
           kubectl -n kube-system get ds kube-ovn-speaker -o yaml > bgp-speaker-e2e-diagnostics/speaker-daemonset.yaml || true
           kubectl -n kube-system get pods -l app=kube-ovn-speaker -o wide > bgp-speaker-e2e-diagnostics/speaker-pods.txt || true
           kubectl -n kube-system logs -l app=kube-ovn-speaker --all-containers --prefix > bgp-speaker-e2e-diagnostics/speaker.log || true
@@ -2340,25 +2349,25 @@ jobs:
         uses: actions/upload-artifact@v7
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
-          name: bgp-speaker-e2e-diagnostics
+          name: bgp-speaker-e2e-diagnostics-${{ matrix.ip-family }}
           path: bgp-speaker-e2e-diagnostics.tar.gz
 
       - name: kubectl ko log
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           if make kubectl-ko-log && test -f kubectl-ko-log.tar.gz; then
-            mv kubectl-ko-log.tar.gz bgp-speaker-e2e-ko-log.tar.gz
+            mv kubectl-ko-log.tar.gz bgp-speaker-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
           else
             echo "kubectl ko log was unavailable because the BGP test cluster did not become usable." > bgp-speaker-e2e-ko-log-unavailable.txt
-            tar zcf bgp-speaker-e2e-ko-log.tar.gz bgp-speaker-e2e-ko-log-unavailable.txt
+            tar zcf bgp-speaker-e2e-${{ matrix.ip-family }}-ko-log.tar.gz bgp-speaker-e2e-ko-log-unavailable.txt
           fi
 
       - name: Upload kubectl ko log
         uses: actions/upload-artifact@v7
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
-          name: bgp-speaker-e2e-ko-log
-          path: bgp-speaker-e2e-ko-log.tar.gz
+          name: bgp-speaker-e2e-ko-log-${{ matrix.ip-family }}
+          path: bgp-speaker-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Clean BGP topology
         if: always()

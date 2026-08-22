@@ -195,7 +195,7 @@ kube-ovn-bgp-speaker-e2e:
 	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
 	$(GINKGO_E2E_BUILD) ./test/e2e/bgp
 	E2E_BRANCH=$(E2E_BRANCH) \
-	E2E_IP_FAMILY=ipv4 \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=overlay \
 	$(GINKGO_E2E_RUN) --timeout=15m \
 		--focus="group:bgp-speaker" ./test/e2e/bgp/bgp.test -- $(TEST_BIN_ARGS)
