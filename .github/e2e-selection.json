@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedRunnerJobs": 82,
+  "expectedRunnerJobs": 84,
   "forceFull": false,
   "fullThreshold": 3,
   "productionPrefixes": ["cmd/", "fastpath/", "pkg/", "versions/"],
@@ -177,7 +177,7 @@
     },
     "bgp-routing": {
       "jobs": [
-        {"id": "bgp-speaker-e2e"}
+        {"id": "bgp-speaker-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}}
       ]
     },
     "multi-cni": {

@@ -1,3 +1,6 @@
+{%- if ip_family is not defined -%}
+  {%- set ip_family = "ipv4" -%}
+{%- endif -%}
 name: bgp
 topology:
   kinds:
@@ -17,8 +20,15 @@ topology:
       - ip link set net1 master br0
       - ip link set net2 master br0
       - ip link set br0 up
+{%- if ip_family != "ipv6" %}
       - ip address add 10.0.1.1/24 dev br0
       - ip address add 10.0.2.1/24 dev net3
+{%- endif %}
+{%- if ip_family != "ipv4" %}
+      - ip address add fd00:10:1::1/64 dev br0
+      - ip address add fd00:10:2::1/64 dev net3
+{%- endif %}
+{%- if ip_family != "ipv6" %}
       - ip link add vrf-vpn type vrf table 1016
       - ip link set vrf-vpn up
       - ip link add br-vrf-vpn type bridge
@@ -28,6 +38,7 @@ topology:
       - ip link set vxlan1016 master br-vrf-vpn
       - ip link set vxlan1016 up
       - ip link set net3 master vrf-vpn
+{%- endif %}
       - touch /etc/frr/vtysh.conf
       - sed -i -e 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
       - /usr/lib/frr/frrinit.sh start
@@ -39,27 +50,58 @@ topology:
          -c ' no bgp ebgp-requires-policy'
          -c ' neighbor SERVERS peer-group'
          -c ' neighbor SERVERS remote-as external'
+{%- if ip_family != "ipv6" %}
          -c ' neighbor 10.0.1.2 peer-group SERVERS'
          -c ' neighbor 10.0.1.3 peer-group SERVERS'
+{%- endif %}
+{%- if ip_family != "ipv4" %}
+         -c ' neighbor fd00:10:1::2 peer-group SERVERS'
+         -c ' neighbor fd00:10:1::3 peer-group SERVERS'
+{%- endif %}
+{%- if ip_family != "ipv6" %}
          -c ' address-family ipv4 unicast'
          -c '   redistribute connected'
          -c '  exit-address-family'
+{%- endif %}
+{%- if ip_family != "ipv4" %}
+         -c ' address-family ipv6 unicast'
+         -c '   redistribute connected'
+         -c '  exit-address-family'
+{%- endif %}
          -c '!'
     kube-ovn-control-plane:
       kind: ext-container
       exec:
+{%- if ip_family != "ipv6" %}
       - ip address add 10.0.1.2/24 dev net1
       - ip route add 10.0.0.0/16 via 10.0.1.1
+{%- endif %}
+{%- if ip_family != "ipv4" %}
+      - ip address add fd00:10:1::2/64 dev net1
+      - ip -6 route add fd00:10:0::/48 via fd00:10:1::1
+{%- endif %}
     kube-ovn-worker:
       kind: ext-container
       exec:
+{%- if ip_family != "ipv6" %}
       - ip address add 10.0.1.3/24 dev net1
       - ip route add 10.0.0.0/16 via 10.0.1.1
+{%- endif %}
+{%- if ip_family != "ipv4" %}
+      - ip address add fd00:10:1::3/64 dev net1
+      - ip -6 route add fd00:10:0::/48 via fd00:10:1::1
+{%- endif %}
     ext:
       kind: linux
       exec:
+{%- if ip_family != "ipv6" %}
       - ip address add 10.0.2.2/24 dev net1
       - ip route replace default via 10.0.2.1
+{%- endif %}
+{%- if ip_family != "ipv4" %}
+      - ip address add fd00:10:2::2/64 dev net1
+      - ip -6 route replace default via fd00:10:2::1
+{%- endif %}
 
   links:
   - type: veth

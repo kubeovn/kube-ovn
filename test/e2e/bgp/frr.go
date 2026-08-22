@@ -47,7 +47,11 @@ func sortRoutePaths(paths []frrRoutePath) {
 }
 
 func readFRRRouteWithRunner(prefix string, runner func(string) ([]byte, error)) (*frrRoute, error) {
-	output, err := runner("show bgp ipv4 unicast json")
+	return readFRRRouteWithFamilyWithRunner(prefix, prefixFamily(prefix), runner)
+}
+
+func readFRRRouteWithFamilyWithRunner(prefix, family string, runner func(string) ([]byte, error)) (*frrRoute, error) {
+	output, err := runner("show bgp " + family + " unicast json")
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +60,13 @@ func readFRRRouteWithRunner(prefix string, runner func(string) ([]byte, error)) 
 		return nil, fmt.Errorf("failed to parse FRR RIB output for %s: %w: %s", prefix, err, output)
 	}
 	return &frrRoute{Paths: rib.Routes[prefix]}, nil
+}
+
+func prefixFamily(prefix string) string {
+	if strings.Contains(prefix, ":") {
+		return "ipv6"
+	}
+	return "ipv4"
 }
 
 func routePathsFromRoute(route *frrRoute) []frrRoutePath {

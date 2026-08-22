@@ -27,12 +27,29 @@ import (
 )
 
 const (
-	frrRouterContainer   = "clab-bgp-router"
-	workerNode           = "kube-ovn-worker"
-	controlPlaneAddress  = "10.0.1.2"
-	workerAddress        = "10.0.1.3"
-	updatedWorkerAddress = "10.0.1.4"
+	frrRouterContainer = "clab-bgp-router"
+	workerNode         = "kube-ovn-worker"
 )
+
+type bgpFamily struct {
+	name, controlPlaneAddress, workerAddress, updatedWorkerAddress string
+}
+
+var (
+	ipv4Family = bgpFamily{"ipv4", "10.0.1.2", "10.0.1.3", "10.0.1.4"}
+	ipv6Family = bgpFamily{"ipv6", "fd00:10:1::2", "fd00:10:1::3", "fd00:10:1::4"}
+)
+
+func bgpFamilies(f *framework.Framework) []bgpFamily {
+	families := make([]bgpFamily, 0, 2)
+	if f.HasIPv4() {
+		families = append(families, ipv4Family)
+	}
+	if f.HasIPv6() {
+		families = append(families, ipv6Family)
+	}
+	return families
+}
 
 type frrSummary struct {
 	Peers map[string]struct {
@@ -74,8 +91,8 @@ func runNodeCommand(node string, args ...string) error {
 	return nil
 }
 
-func bgpPeersEstablished() (bool, error) {
-	output, err := runFRR("show bgp ipv4 unicast summary json")
+func bgpPeersEstablished(family bgpFamily) (bool, error) {
+	output, err := runFRR("show bgp " + family.name + " unicast summary json")
 	if err != nil {
 		return false, err
 	}
@@ -84,7 +101,7 @@ func bgpPeersEstablished() (bool, error) {
 		return false, fmt.Errorf("failed to parse FRR BGP summary: %w: %s", err, output)
 	}
 	if len(summary.Peers) != 2 {
-		framework.Logf("Expected two FRR BGP peers, got %d; output=%s", len(summary.Peers), output)
+		framework.Logf("Expected two %s FRR BGP peers, got %d; output=%s", family.name, len(summary.Peers), output)
 		return false, nil
 	}
 	for address, peer := range summary.Peers {
@@ -96,39 +113,42 @@ func bgpPeersEstablished() (bool, error) {
 	return true, nil
 }
 
-func waitForBGPPeers() {
+func waitForBGPPeers(f *framework.Framework) {
 	ginkgo.GinkgoHelper()
-	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
-		established, err := bgpPeersEstablished()
-		if err != nil {
-			framework.Logf("Failed to read FRR BGP peers: %v", err)
-			return false, nil
-		}
-		return established, nil
-	}, "both BGP speaker peers to become Established")
+	for _, family := range bgpFamilies(f) {
+		family := family
+		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			established, err := bgpPeersEstablished(family)
+			if err != nil {
+				framework.Logf("Failed to read %s FRR BGP peers: %v", family.name, err)
+				return false, nil
+			}
+			return established, nil
+		}, "both "+family.name+" BGP speaker peers to become Established")
+	}
 }
 
-func readFRRRoute(prefix string) (*frrRoute, error) {
-	return readFRRRouteWithRunner(prefix, runFRR)
+func readFRRRoute(prefix string, family bgpFamily) (*frrRoute, error) {
+	return readFRRRouteWithFamilyWithRunner(prefix, family.name, runFRR)
 }
 
-func routePaths(prefix string) ([]frrRoutePath, error) {
-	route, err := readFRRRoute(prefix)
+func routePaths(prefix string, family bgpFamily) ([]frrRoutePath, error) {
+	route, err := readFRRRoute(prefix, family)
 	if err != nil {
 		return nil, err
 	}
 	return routePathsFromRoute(route), nil
 }
 
-func waitForRoutePaths(prefix string, expected ...frrRoutePath) {
+func waitForRoutePaths(family bgpFamily, prefix string, expected ...frrRoutePath) {
 	ginkgo.GinkgoHelper()
 	sortRoutePaths(expected)
 	var lastObserved []frrRoutePath
 	haveObservation := false
 	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
-		paths, err := routePaths(prefix)
+		paths, err := routePaths(prefix, family)
 		if err != nil {
-			framework.Logf("Failed to read FRR route %s: %v", prefix, err)
+			framework.Logf("Failed to read %s FRR route %s: %v", family.name, prefix, err)
 			return false, nil
 		}
 		if slices.Equal(paths, expected) {
@@ -143,46 +163,90 @@ func waitForRoutePaths(prefix string, expected ...frrRoutePath) {
 	}, fmt.Sprintf("route %s to have paths %v", prefix, expected))
 }
 
-func waitForRouteWithdrawal(prefix string) {
+func waitForRouteWithdrawal(family bgpFamily, prefix string) {
 	ginkgo.GinkgoHelper()
 	framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
-		established, err := bgpPeersEstablished()
+		established, err := bgpPeersEstablished(family)
 		if err != nil {
-			framework.Logf("Failed to read FRR BGP peers while waiting for route %s withdrawal: %v", prefix, err)
+			framework.Logf("Failed to read %s FRR BGP peers while waiting for route %s withdrawal: %v", family.name, prefix, err)
 			return false, nil
 		}
 		if !established {
 			return false, nil
 		}
 
-		route, err := readFRRRoute(prefix)
+		route, err := readFRRRoute(prefix, family)
 		if err != nil {
-			framework.Logf("Failed to read FRR route %s while waiting for withdrawal: %v", prefix, err)
+			framework.Logf("Failed to read %s FRR route %s while waiting for withdrawal: %v", family.name, prefix, err)
 			return false, nil
 		}
 		return len(route.Paths) == 0, nil
 	}, fmt.Sprintf("route %s to be absent while both BGP peers remain Established", prefix))
 }
 
-func ipv4Prefix(address string) string {
+func prefixForFamily(addresses string, family bgpFamily) string {
 	ginkgo.GinkgoHelper()
-	address = strings.TrimSpace(strings.Split(address, ",")[0])
-	if strings.Contains(address, "/") {
-		prefix, err := netip.ParsePrefix(address)
+	wantIPv6 := family.name == "ipv6"
+	for _, address := range strings.Split(addresses, ",") {
+		address = strings.TrimSpace(address)
+		if address == "" {
+			continue
+		}
+		if strings.Contains(address, "/") {
+			prefix, err := netip.ParsePrefix(address)
+			framework.ExpectNoError(err)
+			if prefix.Addr().Is6() == wantIPv6 {
+				return prefix.Masked().String()
+			}
+			continue
+		}
+		addr, err := netip.ParseAddr(address)
 		framework.ExpectNoError(err)
-		return prefix.Masked().String()
+		if addr.Is6() == wantIPv6 {
+			return netip.PrefixFrom(addr, addr.BitLen()).String()
+		}
 	}
-	addr, err := netip.ParseAddr(address)
-	framework.ExpectNoError(err)
-	return netip.PrefixFrom(addr, addr.BitLen()).String()
+	framework.ExpectNoError(fmt.Errorf("no %s address found in %q", family.name, addresses))
+	return ""
 }
 
-func createPodOnNode(f *framework.Framework, name, nodeName string) (*corev1.Pod, string) {
+func createPodOnNode(f *framework.Framework, name, nodeName string) (*corev1.Pod, map[string]string) {
 	ginkgo.GinkgoHelper()
 	pod := framework.MakePod(f.Namespace.Name, name, nil, nil, framework.AgnhostImage, nil, nil)
 	pod.Spec.NodeName = nodeName
 	pod = f.PodClient().CreateSync(pod)
-	return pod, ipv4Prefix(pod.Annotations[util.IPAddressAnnotation])
+	prefixes := make(map[string]string, 2)
+	for _, family := range bgpFamilies(f) {
+		prefixes[family.name] = prefixForFamily(pod.Annotations[util.IPAddressAnnotation], family)
+	}
+	return pod, prefixes
+}
+
+func updateWorkerRoute(family bgpFamily) error {
+	if family.name == "ipv6" {
+		return runNodeCommand(workerNode, "ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", family.updatedWorkerAddress)
+	}
+	return runNodeCommand(workerNode, "ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", family.updatedWorkerAddress)
+}
+
+func addWorkerSourceAddress(family bgpFamily) error {
+	if family.name == "ipv6" {
+		return runNodeCommand(workerNode, "ip", "-6", "addr", "add", family.updatedWorkerAddress+"/64", "dev", "net1")
+	}
+	return runNodeCommand(workerNode, "ip", "addr", "add", family.updatedWorkerAddress+"/24", "dev", "net1")
+}
+
+func removeWorkerSourceAddress(family bgpFamily) error {
+	if family.name == "ipv6" {
+		if err := runNodeCommand(workerNode, "ip", "-6", "route", "del", "fd00:10:1::1/128"); err != nil {
+			return err
+		}
+		return runNodeCommand(workerNode, "ip", "-6", "addr", "del", family.updatedWorkerAddress+"/64", "dev", "net1")
+	}
+	if err := runNodeCommand(workerNode, "ip", "route", "del", "10.0.1.1/32"); err != nil {
+		return err
+	}
+	return runNodeCommand(workerNode, "ip", "addr", "del", family.updatedWorkerAddress+"/24", "dev", "net1")
 }
 
 func setDefaultSubnetBGPPolicy(f *framework.Framework, policy string) string {
@@ -199,11 +263,15 @@ func setDefaultSubnetBGPPolicy(f *framework.Framework, policy string) string {
 	return oldPolicy
 }
 
-func defaultSubnetIPv4CIDR(f *framework.Framework) string {
+func defaultSubnetCIDRs(f *framework.Framework) map[string]string {
 	ginkgo.GinkgoHelper()
 	subnet, err := f.KubeOVNClientSet.KubeovnV1().Subnets().Get(context.TODO(), util.DefaultSubnet, metav1.GetOptions{})
 	framework.ExpectNoError(err)
-	return ipv4Prefix(subnet.Spec.CIDRBlock)
+	cidrs := make(map[string]string, 2)
+	for _, family := range bgpFamilies(f) {
+		cidrs[family.name] = prefixForFamily(subnet.Spec.CIDRBlock, family)
+	}
+	return cidrs
 }
 
 func requireReadySpeakerPodStates(f *framework.Framework) map[string]speakerPodState {
@@ -236,47 +304,50 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 
 	ginkgo.BeforeEach(func() {
 		f.SkipVersionPriorTo(1, 13, "BGP local and cluster announce policies require v1.13+")
-		if !f.IsIPv4() {
-			ginkgo.Skip("the current BGP containerlab topology supports IPv4 only")
-		}
 		requireReadySpeakerPodStates(f)
-		waitForBGPPeers()
+		waitForBGPPeers(f)
 	})
 
 	ginkgo.It("should advertise and withdraw a local Pod route", func() {
 		podName := "local-route-" + framework.RandomSuffix()
-		_, prefix := createPodOnNode(f, podName, workerNode)
+		_, prefixes := createPodOnNode(f, podName, workerNode)
 
 		ginkgo.By("Waiting for the worker speaker to advertise the Pod route")
-		waitForRoutePaths(prefix, validNodeRoutePath(workerAddress))
+		for _, family := range bgpFamilies(f) {
+			waitForRoutePaths(family, prefixes[family.name], validNodeRoutePath(family.workerAddress))
+		}
 
 		ginkgo.By("Deleting the Pod")
 		f.PodClient().DeleteSync(podName)
 
 		ginkgo.By("Waiting for the Pod route to be withdrawn")
-		waitForRouteWithdrawal(prefix)
-		waitForBGPPeers()
+		for _, family := range bgpFamilies(f) {
+			waitForRouteWithdrawal(family, prefixes[family.name])
+		}
+		waitForBGPPeers(f)
 	})
 
 	ginkgo.It("should refresh a Pod route when the node source address changes", func() {
 		podName := "source-refresh-" + framework.RandomSuffix()
-		_, prefix := createPodOnNode(f, podName, workerNode)
+		_, prefixes := createPodOnNode(f, podName, workerNode)
 		ginkgo.DeferCleanup(func() { f.PodClient().DeleteSync(podName) })
 
 		ginkgo.By("Waiting for the worker speaker to advertise the Pod route with its original source address")
-		waitForRoutePaths(prefix, validNodeRoutePath(workerAddress))
+		for _, family := range bgpFamilies(f) {
+			waitForRoutePaths(family, prefixes[family.name], validNodeRoutePath(family.workerAddress))
+		}
 
 		ginkgo.By("Changing the worker route source address without restarting the speaker")
-		framework.ExpectNoError(runNodeCommand(workerNode, "ip", "addr", "add", updatedWorkerAddress+"/24", "dev", "net1"))
-		framework.ExpectNoError(runNodeCommand(workerNode, "ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", updatedWorkerAddress))
-		ginkgo.DeferCleanup(func() {
-			if err := runNodeCommand(workerNode, "ip", "route", "del", "10.0.1.1/32"); err != nil {
-				framework.Logf("failed to remove temporary worker route: %v", err)
-			}
-			if err := runNodeCommand(workerNode, "ip", "addr", "del", updatedWorkerAddress+"/24", "dev", "net1"); err != nil {
-				framework.Logf("failed to remove temporary worker address: %v", err)
-			}
-		})
+		for _, family := range bgpFamilies(f) {
+			family := family
+			framework.ExpectNoError(addWorkerSourceAddress(family))
+			framework.ExpectNoError(updateWorkerRoute(family))
+			ginkgo.DeferCleanup(func() {
+				if err := removeWorkerSourceAddress(family); err != nil {
+					framework.Logf("failed to remove temporary %s worker source address: %v", family.name, err)
+				}
+			})
+		}
 
 		ginkgo.By("Triggering a speaker reconcile after the route source change")
 		triggerName := "source-refresh-trigger-" + framework.RandomSuffix()
@@ -284,32 +355,38 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 		ginkgo.DeferCleanup(func() { f.PodClient().DeleteSync(triggerName) })
 
 		ginkgo.By("Waiting for the original Pod route to use the refreshed source address")
-		waitForRoutePaths(prefix, validNodeRoutePathWithNextHop(workerAddress, updatedWorkerAddress))
+		for _, family := range bgpFamilies(f) {
+			waitForRoutePaths(family, prefixes[family.name], validNodeRoutePathWithNextHop(family.workerAddress, family.updatedWorkerAddress))
+		}
 	})
 
 	ginkgo.It("should reconcile cluster and local policies without restarting speakers", func() {
 		podName := "policy-route-" + framework.RandomSuffix()
-		_, podPrefix := createPodOnNode(f, podName, workerNode)
+		_, podPrefixes := createPodOnNode(f, podName, workerNode)
 		ginkgo.DeferCleanup(func() { f.PodClient().DeleteSync(podName) })
-		subnetPrefix := defaultSubnetIPv4CIDR(f)
+		subnetPrefixes := defaultSubnetCIDRs(f)
 		initialSpeakers := requireReadySpeakerPodStates(f)
 
 		ginkgo.By("Switching the default subnet to cluster policy")
 		oldPolicy := setDefaultSubnetBGPPolicy(f, "cluster")
 		ginkgo.DeferCleanup(func() { setDefaultSubnetBGPPolicy(f, oldPolicy) })
-		waitForRoutePaths(podPrefix,
-			validNodeRoutePath(controlPlaneAddress),
-			validNodeRoutePath(workerAddress),
-		)
-		waitForRoutePaths(subnetPrefix,
-			validNodeRoutePath(controlPlaneAddress),
-			validNodeRoutePath(workerAddress),
-		)
+		for _, family := range bgpFamilies(f) {
+			waitForRoutePaths(family, podPrefixes[family.name],
+				validNodeRoutePath(family.controlPlaneAddress),
+				validNodeRoutePath(family.workerAddress),
+			)
+			waitForRoutePaths(family, subnetPrefixes[family.name],
+				validNodeRoutePath(family.controlPlaneAddress),
+				validNodeRoutePath(family.workerAddress),
+			)
+		}
 
 		ginkgo.By("Switching the default subnet back to local policy")
 		setDefaultSubnetBGPPolicy(f, "local")
-		waitForRoutePaths(podPrefix, validNodeRoutePath(workerAddress))
-		waitForRouteWithdrawal(subnetPrefix)
+		for _, family := range bgpFamilies(f) {
+			waitForRoutePaths(family, podPrefixes[family.name], validNodeRoutePath(family.workerAddress))
+			waitForRouteWithdrawal(family, subnetPrefixes[family.name])
+		}
 		expectSpeakerPodsUnchanged(f, initialSpeakers)
 	})
 
@@ -339,20 +416,27 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 		serviceClient := f.ServiceClient()
 		service = serviceClient.Create(service)
 		ginkgo.DeferCleanup(func() { serviceClient.DeleteSync(serviceName) })
-		servicePrefix := ipv4Prefix(service.Spec.ClusterIP)
+		servicePrefixes := make(map[string]string, 2)
+		for _, family := range bgpFamilies(f) {
+			servicePrefixes[family.name] = prefixForFamily(strings.Join(util.ServiceClusterIPs(*service), ","), family)
+		}
 
 		ginkgo.By("Waiting for both speakers to advertise the ClusterIP")
-		waitForRoutePaths(servicePrefix,
-			validNodeRoutePath(controlPlaneAddress),
-			validNodeRoutePath(workerAddress),
-		)
+		for _, family := range bgpFamilies(f) {
+			waitForRoutePaths(family, servicePrefixes[family.name],
+				validNodeRoutePath(family.controlPlaneAddress),
+				validNodeRoutePath(family.workerAddress),
+			)
+		}
 
 		ginkgo.By("Removing the BGP annotation while keeping the Service")
 		original := serviceClient.Get(serviceName)
 		modified := original.DeepCopy()
 		delete(modified.Annotations, util.BgpAnnotation)
 		service = serviceClient.Patch(original, modified)
-		waitForRouteWithdrawal(servicePrefix)
+		for _, family := range bgpFamilies(f) {
+			waitForRouteWithdrawal(family, servicePrefixes[family.name])
+		}
 
 		current := serviceClient.Get(serviceName)
 		gomega.Expect(current.Spec.ClusterIP).To(gomega.Equal(service.Spec.ClusterIP))

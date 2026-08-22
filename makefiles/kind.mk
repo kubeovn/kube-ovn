@@ -212,8 +212,12 @@ kind-init-single-%:
 	@single=true $(MAKE) kind-init-$*
 
 .PHONY: kind-init-bgp
-kind-init-bgp: kind-clean-bgp kind-init
-	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) jinjanate yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
+kind-init-bgp: kind-init-bgp-ipv4
+
+.PHONY: kind-init-bgp-%
+kind-init-bgp-%: kind-clean-bgp
+	@$(MAKE) kind-init-$*
+	kube_ovn_version=$(VERSION) frr_image=$(FRR_IMAGE) ip_family=$* jinjanate yamls/clab-bgp.yaml.j2 -o yamls/clab-bgp.yaml
 	docker run --rm --privileged \
 		--name kube-ovn-bgp \
 		--network host \
@@ -693,18 +697,37 @@ kind-install-cilium-delegate-%:
 	kubectl -n kube-system rollout status ds cilium --timeout 120s
 
 .PHONY: kind-install-bgp
-kind-install-bgp: kind-install
+kind-install-bgp: kind-install-bgp-ipv4
+
+.PHONY: kind-install-bgp-%
+kind-install-bgp-%: kind-install-%
 	kubectl label node --all ovn.kubernetes.io/bgp=true
 	kubectl annotate subnet ovn-default ovn.kubernetes.io/bgp=local
+	@case "$*" in \
+		ipv6) neighbor_sed='s/--neighbor-address=.*/--neighbor-ipv6-address=fd00:10:1::1/' ;; \
+		*) neighbor_sed='s/--neighbor-address=.*/--neighbor-address=10.0.1.1/' ;; \
+	esac; \
 	sed -e 's#image: .*#image: $(REGISTRY)/kube-ovn:$(VERSION)#' \
-		-e 's/--neighbor-address=.*/--neighbor-address=10.0.1.1/' \
+		-e "$$neighbor_sed" \
 		-e 's/--neighbor-as=.*/--neighbor-as=65001/' \
 		-e 's/--cluster-as=.*/--cluster-as=65002/' yamls/speaker.yaml | \
 		kubectl apply -f -
+	@if [ "$*" = dual ]; then \
+		kubectl -n kube-system patch ds kube-ovn-speaker --type=json \
+			-p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--neighbor-ipv6-address=fd00:10:1::1"}]'; \
+	fi
+	@if [ "$*" = ipv6 ]; then \
+		kubectl -n kube-system patch ds kube-ovn-speaker --type=json \
+			-p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--router-id=10.0.1.2"}]'; \
+	fi
 	kubectl -n kube-system patch ds kube-ovn-speaker --type=json \
 		-p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--announce-cluster-ip=true"}]'
 	kubectl -n kube-system rollout status ds kube-ovn-speaker --timeout 60s
-	docker exec clab-bgp-router vtysh -c "show ip route bgp"
+	@if [ "$*" = ipv6 ]; then \
+		docker exec clab-bgp-router vtysh -c "show ipv6 route bgp"; \
+	else \
+		docker exec clab-bgp-router vtysh -c "show ip route bgp"; \
+	fi
 
 .PHONY: kind-install-bgp-ha
 kind-install-bgp-ha: kind-install
