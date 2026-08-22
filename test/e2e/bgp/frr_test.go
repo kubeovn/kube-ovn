@@ -22,6 +22,15 @@ func TestPeersForFamilyFiltersFRRAddressFamilies(t *testing.T) {
 	require.Len(t, peersForFamily(summary, ipv6Family), 2)
 }
 
+func TestWorkerSourceAddressCommandsUseNoDADAndRestoreOriginalRoute(t *testing.T) {
+	add, update, restore, remove := workerSourceAddressCommands(ipv6Family)
+
+	require.Equal(t, []string{"ip", "-6", "addr", "add", "fd00:10:1::4/64", "dev", "net1", "nodad"}, add)
+	require.Equal(t, []string{"ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", "fd00:10:1::4"}, update)
+	require.Equal(t, []string{"ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", "fd00:10:1::3"}, restore)
+	require.Equal(t, []string{"ip", "-6", "addr", "del", "fd00:10:1::4/64", "dev", "net1"}, remove)
+}
+
 func TestRoutePathsFromRoutePreservesPeerAndValidity(t *testing.T) {
 	var route frrRoute
 	require.NoError(t, json.Unmarshal([]byte(`{

@@ -238,30 +238,39 @@ func createPodOnNode(f *framework.Framework, name, nodeName string) (*corev1.Pod
 }
 
 func updateWorkerRoute(family bgpFamily) error {
-	if family.name == "ipv6" {
-		return runNodeCommand(workerNode, "ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", family.updatedWorkerAddress)
-	}
-	return runNodeCommand(workerNode, "ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", family.updatedWorkerAddress)
+	_, update, _, _ := workerSourceAddressCommands(family)
+	return runNodeCommand(workerNode, update...)
 }
 
 func addWorkerSourceAddress(family bgpFamily) error {
-	if family.name == "ipv6" {
-		return runNodeCommand(workerNode, "ip", "-6", "addr", "add", family.updatedWorkerAddress+"/64", "dev", "net1")
-	}
-	return runNodeCommand(workerNode, "ip", "addr", "add", family.updatedWorkerAddress+"/24", "dev", "net1")
+	add, _, _, _ := workerSourceAddressCommands(family)
+	return runNodeCommand(workerNode, add...)
 }
 
 func removeWorkerSourceAddress(family bgpFamily) error {
+	_, _, restore, remove := workerSourceAddressCommands(family)
+	restoreErr := runNodeCommand(workerNode, restore...)
+	removeErr := runNodeCommand(workerNode, remove...)
+	if restoreErr != nil && removeErr != nil {
+		return fmt.Errorf("failed to restore worker route: %v; failed to remove temporary address: %w", restoreErr, removeErr)
+	}
+	if restoreErr != nil {
+		return restoreErr
+	}
+	return removeErr
+}
+
+func workerSourceAddressCommands(family bgpFamily) (add, update, restore, remove []string) {
 	if family.name == "ipv6" {
-		if err := runNodeCommand(workerNode, "ip", "-6", "route", "del", "fd00:10:1::1/128"); err != nil {
-			return err
-		}
-		return runNodeCommand(workerNode, "ip", "-6", "addr", "del", family.updatedWorkerAddress+"/64", "dev", "net1")
+		return []string{"ip", "-6", "addr", "add", family.updatedWorkerAddress + "/64", "dev", "net1", "nodad"},
+			[]string{"ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", family.updatedWorkerAddress},
+			[]string{"ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", family.workerAddress},
+			[]string{"ip", "-6", "addr", "del", family.updatedWorkerAddress + "/64", "dev", "net1"}
 	}
-	if err := runNodeCommand(workerNode, "ip", "route", "del", "10.0.1.1/32"); err != nil {
-		return err
-	}
-	return runNodeCommand(workerNode, "ip", "addr", "del", family.updatedWorkerAddress+"/24", "dev", "net1")
+	return []string{"ip", "addr", "add", family.updatedWorkerAddress + "/24", "dev", "net1"},
+		[]string{"ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", family.updatedWorkerAddress},
+		[]string{"ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", family.workerAddress},
+		[]string{"ip", "addr", "del", family.updatedWorkerAddress + "/24", "dev", "net1"}
 }
 
 func setDefaultSubnetBGPPolicy(f *framework.Framework, policy string) string {
@@ -354,13 +363,13 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 
 		ginkgo.By("Changing the worker route source address without restarting the speaker")
 		for _, family := range bgpFamilies(f) {
-			framework.ExpectNoError(addWorkerSourceAddress(family))
-			framework.ExpectNoError(updateWorkerRoute(family))
 			ginkgo.DeferCleanup(func() {
 				if err := removeWorkerSourceAddress(family); err != nil {
 					framework.Logf("failed to remove temporary %s worker source address: %v", family.name, err)
 				}
 			})
+			framework.ExpectNoError(addWorkerSourceAddress(family))
+			framework.ExpectNoError(updateWorkerRoute(family))
 		}
 
 		ginkgo.By("Triggering a speaker reconcile after the route source change")
