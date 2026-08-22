@@ -130,6 +130,17 @@ networking:
       # @section -- Network parameters of the CNI
       v6: "fd00:100:64::/112"
 
+  # -- Logical switch used as the unique transit fabric for VPC endpoint services.
+  # @section -- Network parameters of the CNI
+  vpcEndpointTransit:
+    # -- Name of the transit logical switch.
+    # @section -- Network parameters of the CNI
+    switchName: "vpc-endpoint-transit"
+    # -- CIDR of the transit switch. Must not overlap join/pod/service CIDRs.
+    # Defaults to 100.65.0.0/16 because the join subnet uses 100.64.0.0/16.
+    # @section -- Network parameters of the CNI
+    cidr: "100.65.0.0/16"
+
   # -- Name of the default VPC once it is generated in the cluster.
   # Pods in the default subnet live in this VPC.
   # @section -- Network parameters of the CNI

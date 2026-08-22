@@ -101,6 +101,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcDnses().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vpc-egress-gateways"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcEgressGateways().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("vpc-endpoints"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcEndpoints().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("vpc-endpoint-services"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcEndpointServices().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vpc-nat-gateways"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcNatGateways().Informer()}, nil
 

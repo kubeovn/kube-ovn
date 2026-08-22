@@ -242,6 +242,18 @@ const (
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
 
+	// DefaultVpcEndpointTransitSwitch is the logical switch used as the unique
+	// address space for PrivateLink-style VPC endpoint services.
+	DefaultVpcEndpointTransitSwitch = "vpc-endpoint-transit"
+	// DefaultVpcEndpointTransitCIDR is distinct from the join subnet default
+	// (100.64.0.0/16 / node-switch-cidr).
+	DefaultVpcEndpointTransitCIDR = "100.65.0.0/16"
+
+	VpcEndpointServiceLabel = "ovn.kubernetes.io/vpc-endpoint-service"
+	VpcEndpointVpcLabel     = "ovn.kubernetes.io/vpc-endpoint-vpc"
+	VpcEndpointSvcNsLabel   = "ovn.kubernetes.io/vpc-endpoint-svc-ns"
+	VpcEndpointSvcNameLabel = "ovn.kubernetes.io/vpc-endpoint-svc-name"
+
 	NormalRouteType    = "normal"
 	EcmpRouteType      = "ecmp"
 	StaticRouteBfdEcmp = "ecmp_symmetric_reply"

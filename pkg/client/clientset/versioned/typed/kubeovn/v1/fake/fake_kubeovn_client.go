@@ -124,6 +124,14 @@ func (c *FakeKubeovnV1) VpcEgressGateways(namespace string) v1.VpcEgressGatewayI
 	return newFakeVpcEgressGateways(c, namespace)
 }
 
+func (c *FakeKubeovnV1) VpcEndpoints() v1.VpcEndpointInterface {
+	return newFakeVpcEndpoints(c)
+}
+
+func (c *FakeKubeovnV1) VpcEndpointServices() v1.VpcEndpointServiceInterface {
+	return newFakeVpcEndpointServices(c)
+}
+
 func (c *FakeKubeovnV1) VpcNatGateways() v1.VpcNatGatewayInterface {
 	return newFakeVpcNatGateways(c)
 }
