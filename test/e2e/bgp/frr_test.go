@@ -7,6 +7,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPeersForFamilyFiltersFRRAddressFamilies(t *testing.T) {
+	var summary frrSummary
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"peers": {
+			"10.0.1.2": {"state": "Established"},
+			"10.0.1.3": {"state": "Established"},
+			"fd00:10:1::2": {"state": "Established"},
+			"fd00:10:1::3": {"state": "Established"}
+		}
+	}`), &summary))
+
+	require.Len(t, peersForFamily(summary, ipv4Family), 2)
+	require.Len(t, peersForFamily(summary, ipv6Family), 2)
+}
+
+func TestWorkerSourceAddressCommandsUseNoDADAndRestoreOriginalRoute(t *testing.T) {
+	add, update, restore, remove := workerSourceAddressCommands(ipv6Family)
+
+	require.Equal(t, []string{"ip", "-6", "addr", "add", "fd00:10:1::4/64", "dev", "net1", "nodad"}, add)
+	require.Equal(t, []string{"ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", "fd00:10:1::4"}, update)
+	require.Equal(t, []string{"ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", "fd00:10:1::3"}, restore)
+	require.Equal(t, []string{"ip", "-6", "addr", "del", "fd00:10:1::4/64", "dev", "net1"}, remove)
+}
+
 func TestRoutePathsFromRoutePreservesPeerAndValidity(t *testing.T) {
 	var route frrRoute
 	require.NoError(t, json.Unmarshal([]byte(`{
