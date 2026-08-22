@@ -51,10 +51,25 @@ func bgpFamilies(f *framework.Framework) []bgpFamily {
 	return families
 }
 
+type frrPeer struct {
+	State string `json:"state"`
+}
+
 type frrSummary struct {
-	Peers map[string]struct {
-		State string `json:"state"`
-	} `json:"peers"`
+	Peers map[string]frrPeer `json:"peers"`
+}
+
+func peersForFamily(summary frrSummary, family bgpFamily) map[string]frrPeer {
+	peers := make(map[string]frrPeer)
+	wantIPv6 := family.name == "ipv6"
+	for address, peer := range summary.Peers {
+		parsed, err := netip.ParseAddr(address)
+		if err != nil || parsed.Is6() != wantIPv6 {
+			continue
+		}
+		peers[address] = peer
+	}
+	return peers
 }
 
 type speakerPodState struct {
@@ -100,11 +115,12 @@ func bgpPeersEstablished(family bgpFamily) (bool, error) {
 	if err = json.Unmarshal(output, &summary); err != nil {
 		return false, fmt.Errorf("failed to parse FRR BGP summary: %w: %s", err, output)
 	}
-	if len(summary.Peers) != 2 {
-		framework.Logf("Expected two %s FRR BGP peers, got %d; output=%s", family.name, len(summary.Peers), output)
+	peers := peersForFamily(summary, family)
+	if len(peers) != 2 {
+		framework.Logf("Expected two %s FRR BGP peers, got %d; output=%s", family.name, len(peers), output)
 		return false, nil
 	}
-	for address, peer := range summary.Peers {
+	for address, peer := range peers {
 		if peer.State != "Established" {
 			framework.Logf("FRR BGP peer %s is in state %s", address, peer.State)
 			return false, nil
