@@ -116,7 +116,6 @@ func bgpPeersEstablished(family bgpFamily) (bool, error) {
 func waitForBGPPeers(f *framework.Framework) {
 	ginkgo.GinkgoHelper()
 	for _, family := range bgpFamilies(f) {
-		family := family
 		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 			established, err := bgpPeersEstablished(family)
 			if err != nil {
@@ -187,7 +186,7 @@ func waitForRouteWithdrawal(family bgpFamily, prefix string) {
 func prefixForFamily(addresses string, family bgpFamily) string {
 	ginkgo.GinkgoHelper()
 	wantIPv6 := family.name == "ipv6"
-	for _, address := range strings.Split(addresses, ",") {
+	for address := range strings.SplitSeq(addresses, ",") {
 		address = strings.TrimSpace(address)
 		if address == "" {
 			continue
@@ -339,7 +338,6 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 
 		ginkgo.By("Changing the worker route source address without restarting the speaker")
 		for _, family := range bgpFamilies(f) {
-			family := family
 			framework.ExpectNoError(addWorkerSourceAddress(family))
 			framework.ExpectNoError(updateWorkerRoute(family))
 			ginkgo.DeferCleanup(func() {
