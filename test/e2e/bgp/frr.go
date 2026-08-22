@@ -30,7 +30,11 @@ type frrRoutePath struct {
 }
 
 func validNodeRoutePath(address string) frrRoutePath {
-	return frrRoutePath{PeerID: address, NextHop: address, Valid: true}
+	return validNodeRoutePathWithNextHop(address, address)
+}
+
+func validNodeRoutePathWithNextHop(peerID, nextHop string) frrRoutePath {
+	return frrRoutePath{PeerID: peerID, NextHop: nextHop, Valid: true}
 }
 
 func sortRoutePaths(paths []frrRoutePath) {

@@ -8,7 +8,6 @@ import (
 	"github.com/osrg/gobgp/v4/pkg/apiutil"
 	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	"github.com/vishvananda/netlink"
-	"golang.org/x/sys/unix"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
@@ -44,19 +43,22 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 		TableType: api.TableType_TABLE_TYPE_GLOBAL,
 		Family:    apiutil.ToFamily(&api.Family{Afi: afi, Safi: api.Family_SAFI_UNICAST}),
 	}
+	currentNextHops := c.currentNextHops(afi)
 
 	// Anonymous function that stores the prefixes we are announcing for this AFI
 	existingPrefixes := set.New[string]()
 	fn := func(prefix bgp.NLRI, paths []*apiutil.Path) {
+		existingNextHops := make(set.Set[string])
 		for _, path := range paths {
+			if path.PeerASN != 0 {
+				continue
+			}
 			nextHop := getNextHopFromPathAttributes(path.Attrs)
 			klog.V(5).Infof("announcing route with prefix %s and nexthop: %s", prefix, nextHop)
-
-			route, _ := netlink.RouteGet(nextHop)
-			if len(route) == 1 && route[0].Type == unix.RTN_LOCAL || nextHop.Equal(c.config.RouterID) {
-				existingPrefixes.Insert(prefix.String())
-				return
-			}
+			existingNextHops.Insert(nextHop.String())
+		}
+		if existingNextHops.Len() > 0 && existingNextHops.Difference(currentNextHops).Len() == 0 {
+			existingPrefixes.Insert(prefix.String())
 		}
 	}
 
@@ -70,6 +72,21 @@ func (c *Controller) reconcileIPFamily(afi api.Family_Afi, expectedPrefixes pref
 	// Announce routes we should be announcing and withdraw the ones that are no longer valid
 	c.announceAndWithdraw(expectedPrefixes[afi], existingPrefixes)
 	return nil
+}
+
+func (c *Controller) currentNextHops(afi api.Family_Afi) set.Set[string] {
+	neighborAddresses := c.config.NeighborAddresses
+	if c.config.ExtendedNexthop {
+		neighborAddresses = append(append([]net.IP{}, neighborAddresses...), c.config.NeighborIPv6Addresses...)
+	} else if afi == api.Family_AFI_IP6 {
+		neighborAddresses = c.config.NeighborIPv6Addresses
+	}
+
+	nextHops := make(set.Set[string])
+	for _, neighborAddress := range neighborAddresses {
+		nextHops.Insert(c.getNextHopAttribute(neighborAddress).String())
+	}
+	return nextHops
 }
 
 // announceAndWithdraw commands the BGP speaker to start announcing new routes and to withdraw others
@@ -209,7 +226,11 @@ func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
 	nextHop := c.config.RouterID // If no route is found, fallback to router ID
 
 	// Retrieve the route we use to speak to this neighbor and consider the source as next hop.
-	routes, err := netlink.RouteGet(neighborAddress)
+	routeLookup := netlink.RouteGet
+	if c.config.routeLookup != nil {
+		routeLookup = c.config.routeLookup
+	}
+	routes, err := routeLookup(neighborAddress)
 	if err == nil && len(routes) == 1 && routes[0].Src != nil {
 		nextHop = routes[0].Src
 	}
