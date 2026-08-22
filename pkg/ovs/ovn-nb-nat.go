@@ -546,7 +546,9 @@ func (c *OVNNbClient) listLogicalRouterNatByFilter(lrName string, filter func(ro
 	}
 
 	natList := make([]*ovnnb.NAT, 0, len(lr.Nat))
-	if err = c.WhereCache(predicate).List(context.Background(), &natList); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	if err := c.WhereCache(predicate).List(ctx, &natList); err != nil {
 		klog.Error(err)
 		return nil, err
 	}

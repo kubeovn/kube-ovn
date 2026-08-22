@@ -239,8 +239,8 @@ github.com/go-playground/locales v0.14.1 h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/o
 github.com/go-playground/locales v0.14.1/go.mod h1:hxrqLVvrK65+Rwrd5Fc6F2O76J/NuW9t0sjnWqG1slY=
 github.com/go-playground/universal-translator v0.18.1 h1:Bcnm0ZwsGyWbCzImXv+pAJnYK9S473LQFuzCbDbfSFY=
 github.com/go-playground/universal-translator v0.18.1/go.mod h1:xekY+UJKNuX9WP91TpwSH2VMlDf28Uj24BCp08ZFTUY=
-github.com/go-playground/validator/v10 v10.30.2 h1:JiFIMtSSHb2/XBUbWM4i/MpeQm9ZK2xqPNk8vgvu5JQ=
-github.com/go-playground/validator/v10 v10.30.2/go.mod h1:mAf2pIOVXjTEBrwUMGKkCWKKPs9NheYGabeB04txQSc=
+github.com/go-playground/validator/v10 v10.30.3 h1:4MU6YkEwx7GbcPJOZxrtbu+QfF3pJLJuaYTeAH0DYy8=
+github.com/go-playground/validator/v10 v10.30.3/go.mod h1:4Axh7oCNGcoGkqLoE4YWt6n20mcEIsPRlB7vPk3lpyc=
 github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0/go.mod h1:fyg7847qk6SyHyPtNmDHnmrv/HOrqktSC+C9fM+CJOE=
 github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572/go.mod h1:9Pwr4B2jHnOSGXyyzV8ROjYa2ojvAY6HCGYYfMoC3Ls=
 github.com/go-task/slim-sprig/v3 v3.0.0 h1:sUs3vkvUymDpBKi3qH1YSqBQk9+9D/8M2mN1vB6EwHI=
@@ -381,8 +381,8 @@ github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92 h1:6x4
 github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92/go.mod h1:/SGJYGjOEAz+rw8JvkkbpcAyjQF1v4XPgpn1HqRg1fs=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20260427030114-71d35a2bb8b2 h1:9r0zbCgxavpZ3DhNhiKA7wWWC6fpIAP2wTYKGyPrOD8=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20260427030114-71d35a2bb8b2/go.mod h1:OB5Eqq9BM+N+L0nhSxTe8NuMLryhxxGQW21rSaImHjo=
-github.com/kubeovn/libovsdb v0.0.0-20251212071713-cb1c2bc5d43e h1:/DjPaByhzfDJcJ8A9jqoi16q/O1N5nGOHy9VmNZVnVM=
-github.com/kubeovn/libovsdb v0.0.0-20251212071713-cb1c2bc5d43e/go.mod h1:uqOuVsuGSJPoHDOS5O9VkJz/TIPm6Az/YZesHZ3qwDw=
+github.com/kubeovn/libovsdb v0.0.0-20260822122319-7d52ac1264ec h1:IFNe5ONoOLikvvk/NeT6lDlFSzjkWCRoNRvW8k+TqJg=
+github.com/kubeovn/libovsdb v0.0.0-20260822122319-7d52ac1264ec/go.mod h1:X8p5JMPYK5iKCyZ/RxFxvjl1sHfN7H9mo5UbtS5uImo=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=
