@@ -381,9 +381,11 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	// The LBHC-driven cleanup above only removes health-check-related state; the
 	// actual vip->backends mapping on the VPC load balancers is otherwise only
 	// removed asynchronously once the backing service delete event reaches
-	// handleDeleteService. Delete it here too so the load balancer mapping is
-	// gone as soon as the SLR is deleted, rather than depending on that separate
-	// event to arrive and be processed.
+	// handleDeleteService. When the VPC is known (vpcLBNames != nil), delete the
+	// mapping here too so it is gone as soon as the SLR is deleted, rather than
+	// depending on that separate event to arrive and be processed. If the VPC is
+	// unknown, vpcLBNames is nil and this loop is a no-op, falling back to the
+	// asynchronous handleDeleteService cleanup.
 	for lbName := range vpcLBNames {
 		for _, vip := range info.Vips {
 			if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, true); err != nil && !k8serrors.IsNotFound(err) {
