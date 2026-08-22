@@ -8,11 +8,11 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.15.23
+      tag: v1.15.24
     natgateway:
       repository: vpc-nat-gateway
       # Falls back to the same tag as kubeovn if empty
-      tag: v1.15.23
+      tag: v1.15.24
 
 image:
   pullPolicy: IfNotPresent
@@ -180,7 +180,7 @@ fullnameOverride: ""
 HYBRID_DPDK: false
 HUGEPAGE_SIZE_TYPE: hugepages-2Mi # Default
 HUGEPAGES: 1Gi
-DPDK_IMAGE_TAG: "v1.15.23-dpdk"
+DPDK_IMAGE_TAG: "v1.15.24-dpdk"
 DPDK_CPU: "1000m" # Default CPU configuration
 DPDK_MEMORY: "2Gi" # Default Memory configuration
 
