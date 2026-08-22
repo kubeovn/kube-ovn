@@ -15,6 +15,7 @@ import (
 	"github.com/osrg/gobgp/v4/pkg/packet/bgp"
 	gobgp "github.com/osrg/gobgp/v4/pkg/server"
 	"github.com/spf13/pflag"
+	"github.com/vishvananda/netlink"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -46,6 +47,7 @@ type Configuration struct {
 	NodeIPs                     map[string]net.IP
 	NeighborAddresses           []net.IP
 	NeighborIPv6Addresses       []net.IP
+	routeLookup                 routeLookupFunc
 	NeighborAs                  uint32
 	AuthPassword                string
 	HoldTime                    float64
@@ -68,6 +70,8 @@ type Configuration struct {
 	PprofPort int32
 	LogPerm   string
 }
+
+type routeLookupFunc func(net.IP) ([]netlink.Route, error)
 
 func ParseFlags() (*Configuration, error) {
 	var (
