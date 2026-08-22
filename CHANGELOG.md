@@ -439,6 +439,28 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.24 (2026-08-22)
+
+ * [c95b7e889](https://github.com/kubeovn/kube-ovn/commit/c95b7e889c6c77a4022f078cbdb77c8aa102d340) release v1.15.24
+ * [b9595599c](https://github.com/kubeovn/kube-ovn/commit/b9595599c15383c1a868fc900e9de3967aa7eb7d) fix(controller): tolerate TLS rotation database outage (#7309)
+ * [f3a0e5798](https://github.com/kubeovn/kube-ovn/commit/f3a0e579880ddceee307c51728cb7907a96a4c2d) fix(controller): stop overwriting VPC status on bootstrap (#6650) (#7301)
+ * [fb3d77631](https://github.com/kubeovn/kube-ovn/commit/fb3d77631a8af9a2bff6f152cf9023053b66375e) fix: keep OVN-IC routes and gateways consistent (#7265) (#7287)
+ * [43e2d480e](https://github.com/kubeovn/kube-ovn/commit/43e2d480ea047bc79f345aedc92dcc3b47f69d18) fix(deps): update Kubernetes dependencies (#7289)
+ * [b6d20c391](https://github.com/kubeovn/kube-ovn/commit/b6d20c3919715a8309381592ab002938f543260d) fix(ipam): stop random allocation of excludeIps after IPPool reconcile (#7276)
+ * [5beff6ac6](https://github.com/kubeovn/kube-ovn/commit/5beff6ac6507be9c28d3ae3cabfcecfc1b56894e) fix(deps): update Go to 1.26.7 and grpc to v1.83.1 (#7271)
+ * [c73cd6e05](https://github.com/kubeovn/kube-ovn/commit/c73cd6e0536bda2518a204a1f1bc6c4196e1b92a) add gzip to container image for logrotate compression (#7240)
+ * [6e3803854](https://github.com/kubeovn/kube-ovn/commit/6e3803854ae118447e54ac73b1c119d6fd0502e9) fix(deps): update golang (#7236)
+ * [5411eb959](https://github.com/kubeovn/kube-ovn/commit/5411eb959ddee3b80d3ea193fd53b3486a4bdced) fix(e2e): run KubeVirt tests serially (#7227)
+ * [ac4e6972a](https://github.com/kubeovn/kube-ovn/commit/ac4e6972a32c19691f4d3888eda167b80d761cb3) fix(deps): update module golang.org/x/net to v0.58.0 (#7226)
+ * [74f45bb76](https://github.com/kubeovn/kube-ovn/commit/74f45bb7607b22cabee43e6ddcdde0395ac45ab4) prepare for next release
+
+### Contributors
+
+ * Zujian Zhang
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.15.23 (2026-08-12)
 
  * [ddb4413bb](https://github.com/kubeovn/kube-ovn/commit/ddb4413bb1a45291f6b8b0b57810a6a3f1122231) release v1.15.23
