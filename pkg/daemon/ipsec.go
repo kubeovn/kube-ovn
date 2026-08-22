@@ -243,10 +243,8 @@ func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
 	namespace := os.Getenv(util.EnvPodNamespace)
 	newCR := &certmanagerv1.CertificateRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
-			Namespace: namespace,
-		},
+		Name:      "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
+		Namespace: namespace,
 		Spec: certmanagerv1.CertificateRequestSpec{
 			Request: csrBytes,
 			IssuerRef: cmmeta.IssuerReference{
@@ -303,9 +301,7 @@ func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []by
 
 func (c *Controller) getSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
 	csr := &v1.CertificateSigningRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
-		},
+		Name: "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
 		Spec: v1.CertificateSigningRequestSpec{
 			Request:    csrBytes,
 			SignerName: util.SignerName,

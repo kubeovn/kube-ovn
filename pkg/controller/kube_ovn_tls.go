@@ -70,12 +70,10 @@ func (c *Controller) reconcileKubeOVNTLS(ctx context.Context) error {
 			return genErr
 		}
 		secret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      kubeOVNTLSSecretName,
-				Namespace: c.config.PodNamespace,
-				Annotations: map[string]string{
-					kubeOVNTLSCertHashAnnotation: hash,
-				},
+			Name:      kubeOVNTLSSecretName,
+			Namespace: c.config.PodNamespace,
+			Annotations: map[string]string{
+				kubeOVNTLSCertHashAnnotation: hash,
 			},
 			Data: data,
 		}

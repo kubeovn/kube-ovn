@@ -194,7 +194,7 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 
 func newBFDPortVpc(name string, selector map[string]string) *kubeovnv1.Vpc {
 	return &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Name: name,
 		Spec: kubeovnv1.VpcSpec{
 			BFDPort: &kubeovnv1.BFDPort{
 				Enabled: true,
@@ -243,10 +243,8 @@ func TestEnqueueAddNodeEnqueuesMatchingVpcBFDPort(t *testing.T) {
 	)
 
 	ctrl.enqueueAddNode(&corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "node-a",
-			Labels: map[string]string{"egress": "true"},
-		},
+		Name:   "node-a",
+		Labels: map[string]string{"egress": "true"},
 	})
 
 	require.Equal(t, []string{"selected-vpc"}, drainVpcQueue(t, ctrl))
@@ -255,7 +253,7 @@ func TestEnqueueAddNodeEnqueuesMatchingVpcBFDPort(t *testing.T) {
 func TestEnqueueUpdateNodeEnqueuesVpcBFDPortOnSelectorMembershipChange(t *testing.T) {
 	t.Run("node starts matching selector", func(t *testing.T) {
 		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
-		oldNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a"}}
+		oldNode := &corev1.Node{Name: "node-a"}
 		newNode := oldNode.DeepCopy()
 		newNode.Labels = map[string]string{"egress": "true"}
 
@@ -269,10 +267,8 @@ func TestEnqueueUpdateNodeEnqueuesVpcBFDPortOnSelectorMembershipChange(t *testin
 	t.Run("node stops matching selector", func(t *testing.T) {
 		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
 		oldNode := &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "node-a",
-				Labels: map[string]string{"egress": "true"},
-			},
+			Name:   "node-a",
+			Labels: map[string]string{"egress": "true"},
 		}
 		newNode := oldNode.DeepCopy()
 		newNode.Labels = map[string]string{"egress": "false"}
@@ -287,10 +283,8 @@ func TestEnqueueUpdateNodeEnqueuesVpcBFDPortOnSelectorMembershipChange(t *testin
 	t.Run("unallocated node unrelated label change does not enqueue node or vpc", func(t *testing.T) {
 		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
 		oldNode := &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "node-a",
-				Labels: map[string]string{"role": "worker"},
-			},
+			Name:   "node-a",
+			Labels: map[string]string{"role": "worker"},
 		}
 		newNode := oldNode.DeepCopy()
 		newNode.Labels = map[string]string{"role": "gateway"}
@@ -305,11 +299,9 @@ func TestEnqueueUpdateNodeEnqueuesVpcBFDPortOnSelectorMembershipChange(t *testin
 	t.Run("allocated node unrelated label change enqueues update node only", func(t *testing.T) {
 		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
 		oldNode := &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        "node-a",
-				Labels:      map[string]string{"role": "worker"},
-				Annotations: map[string]string{util.AllocatedAnnotation: "true"},
-			},
+			Name:        "node-a",
+			Labels:      map[string]string{"role": "worker"},
+			Annotations: map[string]string{util.AllocatedAnnotation: "true"},
 		}
 		newNode := oldNode.DeepCopy()
 		newNode.Labels = map[string]string{"role": "gateway"}
@@ -324,10 +316,8 @@ func TestEnqueueUpdateNodeEnqueuesVpcBFDPortOnSelectorMembershipChange(t *testin
 	t.Run("matching node readiness change enqueues", func(t *testing.T) {
 		ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
 		oldNode := &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "node-a",
-				Labels: map[string]string{"egress": "true"},
-			},
+			Name:   "node-a",
+			Labels: map[string]string{"egress": "true"},
 			Status: corev1.NodeStatus{
 				Conditions: []corev1.NodeCondition{
 					{Type: corev1.NodeReady, Status: corev1.ConditionFalse},
@@ -348,10 +338,8 @@ func TestEnqueueUpdateNodeEnqueuesVpcBFDPortOnSelectorMembershipChange(t *testin
 func TestEnqueueDeleteNodeEnqueuesMatchingVpcBFDPort(t *testing.T) {
 	ctrl := prepareNodeQueueTestController(t, newBFDPortVpc("selected-vpc", map[string]string{"egress": "true"}))
 	node := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "node-a",
-			Labels: map[string]string{"egress": "true"},
-		},
+		Name:   "node-a",
+		Labels: map[string]string{"egress": "true"},
 	}
 
 	ctrl.enqueueDeleteNode(cache.DeletedFinalStateUnknown{Obj: node})
@@ -361,7 +349,7 @@ func TestEnqueueDeleteNodeEnqueuesMatchingVpcBFDPort(t *testing.T) {
 
 func TestCleanDuplicatedChassis(t *testing.T) {
 	node := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-node"},
+		Name: "test-node",
 	}
 
 	t.Run("single chassis exists, no cleanup needed", func(t *testing.T) {
@@ -415,12 +403,10 @@ func TestCleanDuplicatedChassis(t *testing.T) {
 
 func TestCheckAndUpdateNodePortGroup_EmptyPgName(t *testing.T) {
 	initializedNode := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "initialized-node",
-			Annotations: map[string]string{
-				util.PortNameAnnotation:  "node-initialized-node",
-				util.IPAddressAnnotation: "100.64.0.2",
-			},
+		Name: "initialized-node",
+		Annotations: map[string]string{
+			util.PortNameAnnotation:  "node-initialized-node",
+			util.IPAddressAnnotation: "100.64.0.2",
 		},
 		Status: corev1.NodeStatus{
 			Addresses: []corev1.NodeAddress{
@@ -429,10 +415,8 @@ func TestCheckAndUpdateNodePortGroup_EmptyPgName(t *testing.T) {
 		},
 	}
 	uninitializedNode := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        "uninitialized-node",
-			Annotations: map[string]string{},
-		},
+		Name:        "uninitialized-node",
+		Annotations: map[string]string{},
 	}
 
 	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{

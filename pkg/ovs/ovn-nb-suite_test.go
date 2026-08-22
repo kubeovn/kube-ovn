@@ -1399,10 +1399,8 @@ func newOvnNbClient(t testing.TB, ovnNbAddr string, ovnNbTimeout int) (*OVNNbCli
 	require.NoError(t, err)
 
 	return &OVNNbClient{
-		ovsDbClient: ovsDbClient{
-			Client:  nbClient,
-			Timeout: time.Duration(ovnNbTimeout) * time.Second,
-		},
+		Client:  nbClient,
+		Timeout: time.Duration(ovnNbTimeout) * time.Second,
 	}, nil
 }
 
@@ -1488,10 +1486,8 @@ func newOvnSbClient(t *testing.T, ovnSbAddr string, ovnSbTimeout int) (*OVNSbCli
 	require.NoError(t, err)
 
 	return &OVNSbClient{
-		ovsDbClient: ovsDbClient{
-			Client:  nbClient,
-			Timeout: time.Duration(ovnSbTimeout) * time.Second,
-		},
+		Client:  nbClient,
+		Timeout: time.Duration(ovnSbTimeout) * time.Second,
 	}, nil
 }
 

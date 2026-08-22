@@ -510,41 +510,33 @@ func TestGetWorkloadNodes(t *testing.T) {
 
 	pods := []corev1.Pod{
 		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod1",
-				Namespace: namespace,
-				Labels:    map[string]string{"app": "test-app"},
-			},
+			Name:      "pod1",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "test-app"},
 			Spec: corev1.PodSpec{
 				NodeName: "node1",
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod2",
-				Namespace: namespace,
-				Labels:    map[string]string{"app": "test-app"},
-			},
+			Name:      "pod2",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "test-app"},
 			Spec: corev1.PodSpec{
 				NodeName: "node2",
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod3",
-				Namespace: namespace,
-				Labels:    map[string]string{"app": "other-app"},
-			},
+			Name:      "pod3",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "other-app"},
 			Spec: corev1.PodSpec{
 				NodeName: "node3",
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod4",
-				Namespace: namespace,
-				Labels:    map[string]string{"app": "test-app"},
-			},
+			Name:      "pod4",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "test-app"},
 			Spec: corev1.PodSpec{
 				NodeName: "", // No node assigned
 			},
@@ -579,15 +571,13 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 
 	t.Run("HA mode (Deployment)", func(t *testing.T) {
 		gw := &kubeovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: gwName},
-			Spec:       kubeovnv1.VpcNatGatewaySpec{Replicas: 2},
+			Name: gwName,
+			Spec: kubeovnv1.VpcNatGatewaySpec{Replicas: 2},
 		}
 
 		deploy := &appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      workloadName,
-				Namespace: namespace,
-			},
+			Name:      workloadName,
+			Namespace: namespace,
 			Spec: appsv1.DeploymentSpec{
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"app": workloadName},
@@ -596,12 +586,10 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		}
 
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod-1",
-				Namespace: namespace,
-				Labels:    map[string]string{"app": workloadName},
-			},
-			Spec: corev1.PodSpec{NodeName: "node-1"},
+			Name:      "pod-1",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": workloadName},
+			Spec:      corev1.PodSpec{NodeName: "node-1"},
 		}
 
 		client := fake.NewSimpleClientset(deploy, pod)
@@ -629,15 +617,13 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 
 	t.Run("Legacy mode (StatefulSet)", func(t *testing.T) {
 		gw := &kubeovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: gwName},
-			Spec:       kubeovnv1.VpcNatGatewaySpec{Replicas: 1},
+			Name: gwName,
+			Spec: kubeovnv1.VpcNatGatewaySpec{Replicas: 1},
 		}
 
 		sts := &appsv1.StatefulSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      workloadName,
-				Namespace: namespace,
-			},
+			Name:      workloadName,
+			Namespace: namespace,
 			Spec: appsv1.StatefulSetSpec{
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{"app": workloadName},
@@ -646,12 +632,10 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		}
 
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      workloadName + "-0",
-				Namespace: namespace,
-				Labels:    map[string]string{"app": workloadName},
-			},
-			Spec: corev1.PodSpec{NodeName: "node-1"},
+			Name:      workloadName + "-0",
+			Namespace: namespace,
+			Labels:    map[string]string{"app": workloadName},
+			Spec:      corev1.PodSpec{NodeName: "node-1"},
 		}
 
 		client := fake.NewSimpleClientset(sts, pod)
@@ -677,12 +661,12 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 func TestResolveInternalCIDRs(t *testing.T) {
 	subnets := []*kubeovnv1.Subnet{
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "subnet1"},
-			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "10.0.1.0/24"},
+			Name: "subnet1",
+			Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.1.0/24"},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "subnet2"},
-			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "10.0.2.0/24,fd00:10:16::/64"},
+			Name: "subnet2",
+			Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.2.0/24,fd00:10:16::/64"},
 		},
 	}
 

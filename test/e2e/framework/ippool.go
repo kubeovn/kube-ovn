@@ -268,9 +268,7 @@ func (c *IPPoolClient) WaitToDisappear(name string, _, timeout time.Duration) er
 
 func MakeIPPool(name, subnet string, ips, namespaces []string) *apiv1.IPPool {
 	return &apiv1.IPPool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.IPPoolSpec{
 			Subnet:     subnet,
 			IPs:        ips,

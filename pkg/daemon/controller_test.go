@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	k8stesting "k8s.io/client-go/testing"
@@ -20,13 +19,11 @@ import (
 
 func newLauncherPod(name, namespace, vmiName string, useNewLabel bool) *v1.Pod {
 	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    map[string]string{},
-			Annotations: map[string]string{
-				kubevirtv1.DomainAnnotation: vmiName,
-			},
+		Name:      name,
+		Namespace: namespace,
+		Labels:    map[string]string{},
+		Annotations: map[string]string{
+			kubevirtv1.DomainAnnotation: vmiName,
 		},
 	}
 	if useNewLabel {
@@ -75,18 +72,16 @@ func TestIsVMLauncherPodAlive(t *testing.T) {
 			name: "found by domain annotation (long VMI name with hashed label)",
 			pods: []*v1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "virt-launcher-long-vm-abc",
-						Namespace: "default",
-						Labels: map[string]string{
-							// Hashed label value doesn't match the full VMI name
-							kubevirtv1.VirtualMachineInstanceIDLabel:     "this-is-a-very-long-vmi-name-that-exceeds-63-chars-so-it-abc123",
-							kubevirtv1.DeprecatedVirtualMachineNameLabel: "this-is-a-very-long-vmi-name-that-exceeds-63-chars-so-it-abc123",
-						},
-						Annotations: map[string]string{
-							// Domain annotation always has the full VMI name
-							kubevirtv1.DomainAnnotation: "this-is-a-very-long-vmi-name-that-exceeds-63-characters-and-gets-hashed-in-the-label",
-						},
+					Name:      "virt-launcher-long-vm-abc",
+					Namespace: "default",
+					Labels: map[string]string{
+						// Hashed label value doesn't match the full VMI name
+						kubevirtv1.VirtualMachineInstanceIDLabel:     "this-is-a-very-long-vmi-name-that-exceeds-63-chars-so-it-abc123",
+						kubevirtv1.DeprecatedVirtualMachineNameLabel: "this-is-a-very-long-vmi-name-that-exceeds-63-chars-so-it-abc123",
+					},
+					Annotations: map[string]string{
+						// Domain annotation always has the full VMI name
+						kubevirtv1.DomainAnnotation: "this-is-a-very-long-vmi-name-that-exceeds-63-characters-and-gets-hashed-in-the-label",
 					},
 				},
 			},
@@ -153,12 +148,10 @@ func TestCleanProviderNetworkPatchIncludesVlanIntLabel(t *testing.T) {
 	nodeName := "test-node"
 
 	node := &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: nodeName,
-			Labels: map[string]string{
-				fmt.Sprintf(util.ProviderNetworkReadyTemplate, pnName):   "true",
-				fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pnName): "true",
-			},
+		Name: nodeName,
+		Labels: map[string]string{
+			fmt.Sprintf(util.ProviderNetworkReadyTemplate, pnName):   "true",
+			fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pnName): "true",
 		},
 	}
 	fakeClient := fake.NewSimpleClientset(node)
@@ -167,8 +160,8 @@ func TestCleanProviderNetworkPatchIncludesVlanIntLabel(t *testing.T) {
 		config: &Configuration{KubeClient: fakeClient},
 	}
 	pn := &kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: pnName},
-		Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth0"},
+		Name: pnName,
+		Spec: kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth0"},
 	}
 
 	// PatchLabels is called before ovsCleanProviderNetwork, so the patch is
@@ -211,13 +204,13 @@ func TestCleanProviderNetworkLabelConsistency(t *testing.T) {
 	for _, key := range expectedCleanedLabels {
 		labels[key] = "true"
 	}
-	node := &v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", Labels: labels}}
+	node := &v1.Node{Name: "node1", Labels: labels}
 	fakeClient := fake.NewSimpleClientset(node)
 
 	c := &Controller{config: &Configuration{KubeClient: fakeClient}}
 	pn := &kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: pnName},
-		Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth0"},
+		Name: pnName,
+		Spec: kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth0"},
 	}
 
 	_ = c.cleanProviderNetwork(pn, node)

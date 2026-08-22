@@ -107,10 +107,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		args := []string{"netexec", "--http-port", portStr}
 		pod := framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt32(port),
-				},
+			HTTPGet: &corev1.HTTPGetAction{
+				Port: intstr.FromInt32(port),
 			},
 			PeriodSeconds:    1,
 			FailureThreshold: 1,
@@ -124,10 +122,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Creating pod with HTTP readiness probe that port is not accessible " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Port: intstr.FromInt32(port + 1),
-				},
+			HTTPGet: &corev1.HTTPGetAction{
+				Port: intstr.FromInt32(port + 1),
 			},
 			PeriodSeconds:    1,
 			FailureThreshold: 1,
@@ -155,10 +151,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Creating pod with TCP readiness probe that port is accessible " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt32(port),
-				},
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.FromInt32(port),
 			},
 			PeriodSeconds:    1,
 			FailureThreshold: 1,
@@ -172,10 +166,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Creating pod with TCP readiness probe that port is not accessible " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				TCPSocket: &corev1.TCPSocketAction{
-					Port: intstr.FromInt32(port - 1),
-				},
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: intstr.FromInt32(port - 1),
 			},
 			PeriodSeconds:    1,
 			FailureThreshold: 1,

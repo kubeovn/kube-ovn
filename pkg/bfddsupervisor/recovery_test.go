@@ -376,7 +376,7 @@ func TestSupervisorRestoresRecoveryBudgetAcrossContainerRestart(t *testing.T) {
 func TestSupervisorStatusRemainsResponsiveDuringPlannedChildRestart(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(8_000, 0)}
 	control := &fakeControl{sessions: []Session{{ID: 1, Local: "10.16.0.2", Remote: "10.255.255.255", State: SessionDown}}}
-	child := &blockingChild{fakeChild: fakeChild{running: true}, started: make(chan struct{}), release: make(chan struct{})}
+	child := &blockingChild{running: true, started: make(chan struct{}), release: make(chan struct{})}
 	supervisor, err := NewSupervisor(SupervisorConfig{
 		Daemon: DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
 		PodIPs: []string{"10.16.0.2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,
@@ -535,7 +535,7 @@ func TestSupervisorReportsControlAndRecoveryActionErrors(t *testing.T) {
 func TestSupervisorKeepsRuntimeLiveWhenContainerInheritsOpenChildCircuit(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(11_500, 0)}
 	control := &fakeControl{statusErr: errors.New("control unavailable")}
-	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
+	child := &boundedFailingChild{running: false}
 	circuitUntil := clock.now.Add(time.Hour)
 	config := SupervisorConfig{
 		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
@@ -682,7 +682,7 @@ func TestSupervisorKeepsChildRecoveryBudgetAcrossContainerRestart(t *testing.T) 
 func TestSupervisorBootstrapsChildOncePerContainerGenerationWithoutResettingBudget(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(14_000, 0)}
 	control := &fakeControl{statusErr: errors.New("control unavailable")}
-	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
+	child := &boundedFailingChild{running: false}
 	config := SupervisorConfig{
 		Daemon: DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
 		PodIPs: []string{"10.16.0.2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,
@@ -713,7 +713,7 @@ func TestSupervisorBootstrapsChildOncePerContainerGenerationWithoutResettingBudg
 func TestSupervisorAdvancesExpiredBootstrapBudgetAcrossContainerGenerations(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(14_250, 0)}
 	control := &fakeControl{statusErr: errors.New("control unavailable")}
-	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
+	child := &boundedFailingChild{running: false}
 	config := SupervisorConfig{
 		Daemon:        DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
 		PodIPs:        []string{"10.16.0.2"},
@@ -790,7 +790,7 @@ func TestSupervisorDoesNotRestartAgainAfterSuccessfulExpiredCircuitBootstrap(t *
 
 func TestSupervisorCanRetryBootstrapAfterStatePersistenceFailure(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(14_500, 0)}
-	child := &boundedFailingChild{fakeChild: fakeChild{running: false}}
+	child := &boundedFailingChild{running: false}
 	blockedPath := filepath.Join(t.TempDir(), "blocked")
 	require.NoError(t, os.Mkdir(blockedPath, 0o750))
 	config := SupervisorConfig{
@@ -815,7 +815,7 @@ func TestSupervisorCanRetryBootstrapAfterStatePersistenceFailure(t *testing.T) {
 func TestSupervisorClearsChildBudgetOnlyAfterAllSessionsAreStable(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(15_000, 0)}
 	control := &fakeControl{sessions: []Session{{ID: 1, Local: "10.16.0.2", Remote: "10.255.255.255", State: SessionUp}}}
-	child := &boundedFailingChild{fakeChild: fakeChild{running: true}}
+	child := &boundedFailingChild{running: true}
 	supervisor, err := NewSupervisor(SupervisorConfig{
 		Daemon: DaemonConfig{MinTXMilliseconds: 100, MinRXMilliseconds: 100, Multiplier: 3, PeerIPs: []string{"10.255.255.255"}},
 		PodIPs: []string{"10.16.0.2"}, GracePeriod: time.Minute, StablePeriod: time.Minute,

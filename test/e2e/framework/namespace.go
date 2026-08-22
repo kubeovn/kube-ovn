@@ -140,11 +140,9 @@ func (c *NamespaceClient) WaitUntil(name string, cond func(ns *corev1.Namespace)
 
 func MakeNamespace(name string, labels, annotations map[string]string) *corev1.Namespace {
 	namespace := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Labels:      labels,
-			Annotations: annotations,
-		},
+		Name:        name,
+		Labels:      labels,
+		Annotations: annotations,
 	}
 	return namespace
 }

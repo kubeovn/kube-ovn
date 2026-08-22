@@ -27,7 +27,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "valid dnat rule",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -41,7 +41,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "empty eip",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "",
 					ExternalPort: "80",
@@ -56,7 +56,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "empty externalPort",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "",
@@ -71,7 +71,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "invalid externalPort not a number",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "abc",
@@ -86,7 +86,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "invalid externalPort out of range",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "70000",
@@ -101,7 +101,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "invalid externalPort zero",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "0",
@@ -116,7 +116,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "empty internalPort",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -131,7 +131,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "invalid internalPort not a number",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -146,7 +146,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "empty internalIP",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -161,7 +161,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "invalid internalIP",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -176,7 +176,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "empty protocol",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -191,7 +191,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "invalid protocol",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -206,7 +206,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "uppercase TCP protocol",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -220,7 +220,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "uppercase UDP protocol",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "80",
@@ -234,7 +234,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "invalid IPv6 internalIP - not supported",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "443",
@@ -249,7 +249,7 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "max valid port",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					EIP:          "test-eip",
 					ExternalPort: "65535",
@@ -287,7 +287,7 @@ func TestValidateFip(t *testing.T) {
 		{
 			name: "valid fip rule",
 			fip: &kubeovnv1.IptablesFIPRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-fip"},
+				Name: "test-fip",
 				Spec: kubeovnv1.IptablesFIPRuleSpec{
 					EIP:        "test-eip",
 					InternalIP: "10.0.0.1",
@@ -298,7 +298,7 @@ func TestValidateFip(t *testing.T) {
 		{
 			name: "empty eip",
 			fip: &kubeovnv1.IptablesFIPRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-fip"},
+				Name: "test-fip",
 				Spec: kubeovnv1.IptablesFIPRuleSpec{
 					EIP:        "",
 					InternalIP: "10.0.0.1",
@@ -310,7 +310,7 @@ func TestValidateFip(t *testing.T) {
 		{
 			name: "empty internalIP",
 			fip: &kubeovnv1.IptablesFIPRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-fip"},
+				Name: "test-fip",
 				Spec: kubeovnv1.IptablesFIPRuleSpec{
 					EIP:        "test-eip",
 					InternalIP: "",
@@ -322,7 +322,7 @@ func TestValidateFip(t *testing.T) {
 		{
 			name: "invalid internalIP",
 			fip: &kubeovnv1.IptablesFIPRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-fip"},
+				Name: "test-fip",
 				Spec: kubeovnv1.IptablesFIPRuleSpec{
 					EIP:        "test-eip",
 					InternalIP: "invalid-ip",
@@ -334,7 +334,7 @@ func TestValidateFip(t *testing.T) {
 		{
 			name: "invalid IPv6 internalIP - not supported",
 			fip: &kubeovnv1.IptablesFIPRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-fip"},
+				Name: "test-fip",
 				Spec: kubeovnv1.IptablesFIPRuleSpec{
 					EIP:        "test-eip",
 					InternalIP: "2001:db8::1",
@@ -370,7 +370,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "valid snat rule",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "test-eip",
 					InternalCIDR: "10.0.0.0/24",
@@ -381,7 +381,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "empty eip",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "",
 					InternalCIDR: "10.0.0.0/24",
@@ -393,7 +393,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "empty internalCIDR",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "test-eip",
 					InternalCIDR: "",
@@ -405,7 +405,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "valid single IP address",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "test-eip",
 					InternalCIDR: "10.0.0.1",
@@ -416,7 +416,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "invalid single IPv6 address - not supported",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "test-eip",
 					InternalCIDR: "fd00::1",
@@ -428,7 +428,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "invalid internalCIDR - malformed IP",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "test-eip",
 					InternalCIDR: "10.0.0.256",
@@ -440,7 +440,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "invalid internalCIDR - invalid format",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "test-eip",
 					InternalCIDR: "invalid-cidr",
@@ -452,7 +452,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "invalid IPv6 internalCIDR - not supported",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "test-eip",
 					InternalCIDR: "fd00::/64",
@@ -464,7 +464,7 @@ func TestValidateSnat(t *testing.T) {
 		{
 			name: "invalid multiple CIDRs - not supported",
 			snat: &kubeovnv1.IptablesSnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-snat"},
+				Name: "test-snat",
 				Spec: kubeovnv1.IptablesSnatRuleSpec{
 					EIP:          "test-eip",
 					InternalCIDR: "10.0.0.0/24,192.168.1.0/24",
@@ -558,12 +558,10 @@ func TestDeleteSnatInPod_NatGwExistsPodMissing(t *testing.T) {
 // and isDnatDuplicated select on. dnatType may be "" (defaults to exclusive behavior).
 func shareDnat(name, gw, eip, eport, proto, intIP, intPort, dnatType string) *kubeovnv1.IptablesDnatRule {
 	return &kubeovnv1.IptablesDnatRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				util.VpcNatGatewayNameLabel: gw,
-				util.VpcDnatEPortLabel:      eport,
-			},
+		Name: name,
+		Labels: map[string]string{
+			util.VpcNatGatewayNameLabel: gw,
+			util.VpcDnatEPortLabel:      eport,
 		},
 		Spec: kubeovnv1.IptablesDnatRuleSpec{
 			EIP:          eip,
@@ -722,8 +720,8 @@ func TestEnqueueAddIptablesFip(t *testing.T) {
 	t.Cleanup(c.updateIptablesFipQueue.ShutDown)
 	now := metav1.Now()
 	assertEnqueueAddRouting(t, c.addIptablesFipQueue, c.updateIptablesFipQueue, c.enqueueAddIptablesFip,
-		&kubeovnv1.IptablesFIPRule{ObjectMeta: metav1.ObjectMeta{Name: "live-fip"}},
-		&kubeovnv1.IptablesFIPRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-fip", DeletionTimestamp: &now}},
+		&kubeovnv1.IptablesFIPRule{Name: "live-fip"},
+		&kubeovnv1.IptablesFIPRule{Name: "terminating-fip", DeletionTimestamp: &now},
 	)
 }
 
@@ -737,8 +735,8 @@ func TestEnqueueAddIptablesDnatRule(t *testing.T) {
 	t.Cleanup(c.updateIptablesDnatRuleQueue.ShutDown)
 	now := metav1.Now()
 	assertEnqueueAddRouting(t, c.addIptablesDnatRuleQueue, c.updateIptablesDnatRuleQueue, c.enqueueAddIptablesDnatRule,
-		&kubeovnv1.IptablesDnatRule{ObjectMeta: metav1.ObjectMeta{Name: "live-dnat"}},
-		&kubeovnv1.IptablesDnatRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-dnat", DeletionTimestamp: &now}},
+		&kubeovnv1.IptablesDnatRule{Name: "live-dnat"},
+		&kubeovnv1.IptablesDnatRule{Name: "terminating-dnat", DeletionTimestamp: &now},
 	)
 }
 
@@ -752,7 +750,7 @@ func TestEnqueueAddIptablesSnatRule(t *testing.T) {
 	t.Cleanup(c.updateIptablesSnatRuleQueue.ShutDown)
 	now := metav1.Now()
 	assertEnqueueAddRouting(t, c.addIptablesSnatRuleQueue, c.updateIptablesSnatRuleQueue, c.enqueueAddIptablesSnatRule,
-		&kubeovnv1.IptablesSnatRule{ObjectMeta: metav1.ObjectMeta{Name: "live-snat"}},
-		&kubeovnv1.IptablesSnatRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-snat", DeletionTimestamp: &now}},
+		&kubeovnv1.IptablesSnatRule{Name: "live-snat"},
+		&kubeovnv1.IptablesSnatRule{Name: "terminating-snat", DeletionTimestamp: &now},
 	)
 }

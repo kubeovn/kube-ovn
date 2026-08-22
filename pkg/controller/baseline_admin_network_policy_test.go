@@ -58,7 +58,7 @@ func prepareBanpQueueTestController(t *testing.T) *Controller {
 
 func newTestBanp(egressRuleName string, peerLabels map[string]string) *v1alpha1.BaselineAdminNetworkPolicy {
 	return &v1alpha1.BaselineAdminNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		Name: "default",
 		Spec: v1alpha1.BaselineAdminNetworkPolicySpec{
 			Subject: v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
 			Egress: []v1alpha1.BaselineAdminNetworkPolicyEgressRule{{

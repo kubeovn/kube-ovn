@@ -19,9 +19,7 @@ func TestValidateAnpConfig(t *testing.T) {
 	ctrl := fakeController.fakeController
 
 	anp := &v1alpha1.AdminNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "anp-prio",
-		},
+		Name: "anp-prio",
 		Spec: v1alpha1.AdminNetworkPolicySpec{
 			Priority: util.AnpMaxPriority,
 			Subject:  v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
@@ -317,7 +315,7 @@ func prepareAnpQueueTestController(t *testing.T) *Controller {
 
 func newTestAnp(ingressRuleName, egressRuleName string, peerLabels map[string]string) *v1alpha1.AdminNetworkPolicy {
 	return &v1alpha1.AdminNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-anp"},
+		Name: "test-anp",
 		Spec: v1alpha1.AdminNetworkPolicySpec{
 			Priority: 10,
 			Subject:  v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},

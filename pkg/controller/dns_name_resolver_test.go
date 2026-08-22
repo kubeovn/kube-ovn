@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
@@ -31,11 +30,9 @@ func newFakeDNSNameResolverController(t *testing.T, enableANP bool, resolvers ..
 
 func newTestDNSNameResolver() *kubeovnv1.DNSNameResolver {
 	return &kubeovnv1.DNSNameResolver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "anp-test-12345678",
-			Labels: map[string]string{adminNetworkPolicyKey: "test-anp"},
-		},
-		Spec: kubeovnv1.DNSNameResolverSpec{Name: "example.com"},
+		Name:   "anp-test-12345678",
+		Labels: map[string]string{adminNetworkPolicyKey: "test-anp"},
+		Spec:   kubeovnv1.DNSNameResolverSpec{Name: "example.com"},
 	}
 }
 

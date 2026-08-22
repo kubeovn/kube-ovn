@@ -274,9 +274,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		tcpPort := 8000 + rand.Int32N(1000)
 		udpPort := 8000 + rand.Int32N(1000)
 		netpol := &netv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: netpolName,
-			},
+			Name: netpolName,
 			Spec: netv1.NetworkPolicySpec{
 				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
 				Egress: []netv1.NetworkPolicyEgressRule{{

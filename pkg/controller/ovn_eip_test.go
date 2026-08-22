@@ -15,30 +15,24 @@ func Test_getOvnEipNat(t *testing.T) {
 	// NAT rules always carry an eip_v4_ip label, so a pure-IPv6 rule still has
 	// eip_v4_ip="" together with its own eip_v6_ip label.
 	ipv6Dnat := &kubeovnv1.OvnDnatRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "dnat-v6",
-			Labels: map[string]string{
-				util.EipV4IpLabel: "",
-				util.EipV6IpLabel: util.IPv6ToLabelValue("fc00:1::a"),
-			},
+		Name: "dnat-v6",
+		Labels: map[string]string{
+			util.EipV4IpLabel: "",
+			util.EipV6IpLabel: util.IPv6ToLabelValue("fc00:1::a"),
 		},
 	}
 	ipv6Snat := &kubeovnv1.OvnSnatRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "snat-v6",
-			Labels: map[string]string{
-				util.EipV4IpLabel: "",
-				util.EipV6IpLabel: util.IPv6ToLabelValue("fc00:1::a"),
-			},
+		Name: "snat-v6",
+		Labels: map[string]string{
+			util.EipV4IpLabel: "",
+			util.EipV6IpLabel: util.IPv6ToLabelValue("fc00:1::a"),
 		},
 	}
 	ipv4Dnat := &kubeovnv1.OvnDnatRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "dnat-v4",
-			Labels: map[string]string{
-				util.EipV4IpLabel: "192.168.0.5",
-				util.EipV6IpLabel: "",
-			},
+		Name: "dnat-v4",
+		Labels: map[string]string{
+			util.EipV4IpLabel: "192.168.0.5",
+			util.EipV6IpLabel: "",
 		},
 	}
 
@@ -134,9 +128,9 @@ func TestEnqueueAddOvnEip(t *testing.T) {
 	now := metav1.Now()
 	fin := []string{util.KubeOVNControllerFinalizer}
 	assertEnqueueAddRoutingWithFinalizer(t, c.addOvnEipQueue, c.updateOvnEipQueue, c.enqueueAddOvnEip,
-		&kubeovnv1.OvnEip{ObjectMeta: metav1.ObjectMeta{Name: "live-eip"}},
-		&kubeovnv1.OvnEip{ObjectMeta: metav1.ObjectMeta{Name: "terminating-eip", DeletionTimestamp: &now, Finalizers: fin}},
-		&kubeovnv1.OvnEip{ObjectMeta: metav1.ObjectMeta{Name: "terminating-eip-no-finalizer", DeletionTimestamp: &now}},
+		&kubeovnv1.OvnEip{Name: "live-eip"},
+		&kubeovnv1.OvnEip{Name: "terminating-eip", DeletionTimestamp: &now, Finalizers: fin},
+		&kubeovnv1.OvnEip{Name: "terminating-eip-no-finalizer", DeletionTimestamp: &now},
 	)
 }
 
@@ -151,9 +145,9 @@ func TestEnqueueAddOvnFip(t *testing.T) {
 	now := metav1.Now()
 	fin := []string{util.KubeOVNControllerFinalizer}
 	assertEnqueueAddRoutingWithFinalizer(t, c.addOvnFipQueue, c.updateOvnFipQueue, c.enqueueAddOvnFip,
-		&kubeovnv1.OvnFip{ObjectMeta: metav1.ObjectMeta{Name: "live-fip"}},
-		&kubeovnv1.OvnFip{ObjectMeta: metav1.ObjectMeta{Name: "terminating-fip", DeletionTimestamp: &now, Finalizers: fin}},
-		&kubeovnv1.OvnFip{ObjectMeta: metav1.ObjectMeta{Name: "terminating-fip-no-finalizer", DeletionTimestamp: &now}},
+		&kubeovnv1.OvnFip{Name: "live-fip"},
+		&kubeovnv1.OvnFip{Name: "terminating-fip", DeletionTimestamp: &now, Finalizers: fin},
+		&kubeovnv1.OvnFip{Name: "terminating-fip-no-finalizer", DeletionTimestamp: &now},
 	)
 }
 
@@ -168,9 +162,9 @@ func TestEnqueueAddOvnDnatRule(t *testing.T) {
 	now := metav1.Now()
 	fin := []string{util.KubeOVNControllerFinalizer}
 	assertEnqueueAddRoutingWithFinalizer(t, c.addOvnDnatRuleQueue, c.updateOvnDnatRuleQueue, c.enqueueAddOvnDnatRule,
-		&kubeovnv1.OvnDnatRule{ObjectMeta: metav1.ObjectMeta{Name: "live-dnat"}},
-		&kubeovnv1.OvnDnatRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-dnat", DeletionTimestamp: &now, Finalizers: fin}},
-		&kubeovnv1.OvnDnatRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-dnat-no-finalizer", DeletionTimestamp: &now}},
+		&kubeovnv1.OvnDnatRule{Name: "live-dnat"},
+		&kubeovnv1.OvnDnatRule{Name: "terminating-dnat", DeletionTimestamp: &now, Finalizers: fin},
+		&kubeovnv1.OvnDnatRule{Name: "terminating-dnat-no-finalizer", DeletionTimestamp: &now},
 	)
 }
 
@@ -185,9 +179,9 @@ func TestEnqueueAddOvnSnatRule(t *testing.T) {
 	now := metav1.Now()
 	fin := []string{util.KubeOVNControllerFinalizer}
 	assertEnqueueAddRoutingWithFinalizer(t, c.addOvnSnatRuleQueue, c.updateOvnSnatRuleQueue, c.enqueueAddOvnSnatRule,
-		&kubeovnv1.OvnSnatRule{ObjectMeta: metav1.ObjectMeta{Name: "live-snat"}},
-		&kubeovnv1.OvnSnatRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-snat", DeletionTimestamp: &now, Finalizers: fin}},
-		&kubeovnv1.OvnSnatRule{ObjectMeta: metav1.ObjectMeta{Name: "terminating-snat-no-finalizer", DeletionTimestamp: &now}},
+		&kubeovnv1.OvnSnatRule{Name: "live-snat"},
+		&kubeovnv1.OvnSnatRule{Name: "terminating-snat", DeletionTimestamp: &now, Finalizers: fin},
+		&kubeovnv1.OvnSnatRule{Name: "terminating-snat-no-finalizer", DeletionTimestamp: &now},
 	)
 }
 
@@ -198,8 +192,8 @@ func TestEnqueueAddOvnEipRequeuesRouterLBRules(t *testing.T) {
 	t.Parallel()
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		RouterLBRules: []*kubeovnv1.RouterLBRule{{
-			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
-			Spec:       kubeovnv1.RouterLBRuleSpec{OvnEip: "eip1"},
+			Name: "rlr1",
+			Spec: kubeovnv1.RouterLBRuleSpec{OvnEip: "eip1"},
 		}},
 	})
 	require.NoError(t, err)
@@ -214,7 +208,7 @@ func TestEnqueueAddOvnEipRequeuesRouterLBRules(t *testing.T) {
 
 	now := metav1.Now()
 	c.enqueueAddOvnEip(&kubeovnv1.OvnEip{
-		ObjectMeta: metav1.ObjectMeta{Name: "eip1", DeletionTimestamp: &now, Finalizers: []string{util.KubeOVNControllerFinalizer}},
+		Name: "eip1", DeletionTimestamp: &now, Finalizers: []string{util.KubeOVNControllerFinalizer},
 	})
 
 	require.Equal(t, 1, c.updateOvnEipQueue.Len(), "terminating eip with finalizer goes to the update queue")

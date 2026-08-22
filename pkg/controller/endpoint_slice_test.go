@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -24,11 +23,9 @@ func TestFindServiceKey(t *testing.T) {
 		{
 			name: "valid endpoint slice with service name",
 			endpointSlice: &discoveryv1.EndpointSlice{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Labels: map[string]string{
-						discoveryv1.LabelServiceName: "test-service",
-					},
+				Namespace: "default",
+				Labels: map[string]string{
+					discoveryv1.LabelServiceName: "test-service",
 				},
 			},
 			expectedKey: "default/test-service",
@@ -36,11 +33,9 @@ func TestFindServiceKey(t *testing.T) {
 		{
 			name: "endpoint slice with empty service name",
 			endpointSlice: &discoveryv1.EndpointSlice{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Labels: map[string]string{
-						discoveryv1.LabelServiceName: "",
-					},
+				Namespace: "default",
+				Labels: map[string]string{
+					discoveryv1.LabelServiceName: "",
 				},
 			},
 			expectedKey: "",
@@ -48,9 +43,7 @@ func TestFindServiceKey(t *testing.T) {
 		{
 			name: "endpoint slice with no labels",
 			endpointSlice: &discoveryv1.EndpointSlice{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-				},
+				Namespace: "default",
 			},
 			expectedKey: "",
 		},
@@ -128,10 +121,8 @@ func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 		{
 			name: "No provider, faulty pod",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "",
-					Namespace: "",
-				},
+				Name:      "",
+				Namespace: "",
 			},
 			provider: "",
 			expected: ".",
@@ -139,10 +130,8 @@ func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 		{
 			name: "Endpoint empty with default provider and faulty pod",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "",
-					Namespace: "",
-				},
+				Name:      "",
+				Namespace: "",
 			},
 			provider: util.OvnProvider,
 			expected: ".",
@@ -150,10 +139,8 @@ func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 		{
 			name: "Pod target with no provider",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "some-pod-1d8fn",
-					Namespace: "default",
-				},
+				Name:      "some-pod-1d8fn",
+				Namespace: "default",
 			},
 			provider: "",
 			expected: "some-pod-1d8fn.default",
@@ -161,10 +148,8 @@ func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 		{
 			name: "Pod target with default provider",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "some-pod-1d8fn",
-					Namespace: "default",
-				},
+				Name:      "some-pod-1d8fn",
+				Namespace: "default",
 			},
 			provider: util.OvnProvider,
 			expected: "some-pod-1d8fn.default",
@@ -172,10 +157,8 @@ func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 		{
 			name: "Pod target with custom provider",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "some-pod-1d8fn",
-					Namespace: "default",
-				},
+				Name:      "some-pod-1d8fn",
+				Namespace: "default",
 			},
 			provider: "custom.provider",
 			expected: "some-pod-1d8fn.default.custom.provider",
@@ -183,12 +166,10 @@ func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 		{
 			name: "VM target with no provider",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "virt-launcher-some-vm-67jd3",
-					Namespace: "default",
-					Annotations: map[string]string{
-						fmt.Sprintf(util.VMAnnotationTemplate, util.OvnProvider): "some-vm",
-					},
+				Name:      "virt-launcher-some-vm-67jd3",
+				Namespace: "default",
+				Annotations: map[string]string{
+					fmt.Sprintf(util.VMAnnotationTemplate, util.OvnProvider): "some-vm",
 				},
 			},
 			provider: "",
@@ -197,12 +178,10 @@ func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 		{
 			name: "VM target with default provider",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "virt-launcher-some-vm-67jd3",
-					Namespace: "default",
-					Annotations: map[string]string{
-						fmt.Sprintf(util.VMAnnotationTemplate, util.OvnProvider): "some-vm",
-					},
+				Name:      "virt-launcher-some-vm-67jd3",
+				Namespace: "default",
+				Annotations: map[string]string{
+					fmt.Sprintf(util.VMAnnotationTemplate, util.OvnProvider): "some-vm",
 				},
 			},
 			provider: util.OvnProvider,
@@ -211,12 +190,10 @@ func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 		{
 			name: "VM target with custom provider",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "virt-launcher-some-vm-67jd3",
-					Namespace: "default",
-					Annotations: map[string]string{
-						fmt.Sprintf(util.VMAnnotationTemplate, "custom.provider"): "some-vm",
-					},
+				Name:      "virt-launcher-some-vm-67jd3",
+				Namespace: "default",
+				Annotations: map[string]string{
+					fmt.Sprintf(util.VMAnnotationTemplate, "custom.provider"): "some-vm",
 				},
 			},
 			provider: "custom.provider",
@@ -245,10 +222,8 @@ func TestGetMatchingProviderForAddress(t *testing.T) {
 		{
 			name: "IP is on default provider and single stack",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider): "1.1.1.1",
-					},
+				Annotations: map[string]string{
+					fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider): "1.1.1.1",
 				},
 			},
 			providers: []string{util.OvnProvider},
@@ -258,10 +233,8 @@ func TestGetMatchingProviderForAddress(t *testing.T) {
 		{
 			name: "IP is on default provider and dual stack",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider): "1.1.1.1,fd00::a",
-					},
+				Annotations: map[string]string{
+					fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider): "1.1.1.1,fd00::a",
 				},
 			},
 			providers: []string{util.OvnProvider},
@@ -271,10 +244,8 @@ func TestGetMatchingProviderForAddress(t *testing.T) {
 		{
 			name: "IP is on custom provider and dual stack",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, "custom.provider"): "1.1.1.1,fd00::a",
-					},
+				Annotations: map[string]string{
+					fmt.Sprintf(util.IPAddressAnnotationTemplate, "custom.provider"): "1.1.1.1,fd00::a",
 				},
 			},
 			providers: []string{"custom.provider"},
@@ -284,13 +255,11 @@ func TestGetMatchingProviderForAddress(t *testing.T) {
 		{
 			name: "IP is on custom provider with multiple other providers present on the pod",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider):  "10.0.0.1,fd10:0:0::1",
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, "first.provider"):  "1.1.1.1,fd00::a",
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, "second.provider"): "2.2.2.2,fd00::b",
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, "third.provider"):  "3.3.3.3,fd00::c",
-					},
+				Annotations: map[string]string{
+					fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider):  "10.0.0.1,fd10:0:0::1",
+					fmt.Sprintf(util.IPAddressAnnotationTemplate, "first.provider"):  "1.1.1.1,fd00::a",
+					fmt.Sprintf(util.IPAddressAnnotationTemplate, "second.provider"): "2.2.2.2,fd00::b",
+					fmt.Sprintf(util.IPAddressAnnotationTemplate, "third.provider"):  "3.3.3.3,fd00::c",
 				},
 			},
 			providers: []string{util.OvnProvider, "first.provider", "second.provider", "third.provider"},
@@ -300,10 +269,8 @@ func TestGetMatchingProviderForAddress(t *testing.T) {
 		{
 			name: "No provider is matching",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider): "10.0.0.1,fd10:0:0::1",
-					},
+				Annotations: map[string]string{
+					fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider): "10.0.0.1,fd10:0:0::1",
 				},
 			},
 			providers: []string{util.OvnProvider},
@@ -313,9 +280,7 @@ func TestGetMatchingProviderForAddress(t *testing.T) {
 		{
 			name: "No annotation is present",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: nil,
-				},
+				Annotations: nil,
 			},
 			providers: []string{},
 			address:   "fd00::b",
@@ -393,49 +358,39 @@ func TestServiceHealthChecksDisabled(t *testing.T) {
 		{
 			name: "no annotation on the service",
 			svc: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-				},
+				Namespace: "default",
 			},
 			expected: false,
 		},
 		{
 			name: "unrelated annotation on the service",
 			svc: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:   "default",
-					Annotations: map[string]string{"key": "value"},
-				},
+				Namespace:   "default",
+				Annotations: map[string]string{"key": "value"},
 			},
 			expected: false,
 		},
 		{
 			name: "annotation to enable checks",
 			svc: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:   "default",
-					Annotations: map[string]string{util.ServiceHealthCheck: "true"},
-				},
+				Namespace:   "default",
+				Annotations: map[string]string{util.ServiceHealthCheck: "true"},
 			},
 			expected: false,
 		},
 		{
 			name: "malformed annotation to enable checks (will be ignored)",
 			svc: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:   "default",
-					Annotations: map[string]string{util.ServiceHealthCheck: "invalid"},
-				},
+				Namespace:   "default",
+				Annotations: map[string]string{util.ServiceHealthCheck: "invalid"},
 			},
 			expected: false,
 		},
 		{
 			name: "annotation to disable checks",
 			svc: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:   "default",
-					Annotations: map[string]string{util.ServiceHealthCheck: "false"},
-				},
+				Namespace:   "default",
+				Annotations: map[string]string{util.ServiceHealthCheck: "false"},
 			},
 			expected: true,
 		},
@@ -467,10 +422,8 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			name: "Replace primary IP with secondary IP from network attachment",
 			endpointSlices: []*discoveryv1.EndpointSlice{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-service-slice",
-						Namespace: "default",
-					},
+					Name:      "test-service-slice",
+					Namespace: "default",
 					Endpoints: []discoveryv1.Endpoint{
 						{
 							Addresses: []string{"10.244.0.5"}, // Primary IP
@@ -484,17 +437,15 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			pods: []*corev1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pod-1",
-						Namespace: "default",
-						Annotations: map[string]string{
-							// Network attachment annotation to indicate this pod uses net1
-							nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
-							// Kube-OVN annotations for net1 provider
-							fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net1.default.ovn"): "net1-subnet",
-							fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net1.default.ovn"): "net1-vpc",
-							fmt.Sprintf(util.IPAddressAnnotationTemplate, "net1.default.ovn"):     "192.168.1.10",
-						},
+					Name:      "test-pod-1",
+					Namespace: "default",
+					Annotations: map[string]string{
+						// Network attachment annotation to indicate this pod uses net1
+						nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
+						// Kube-OVN annotations for net1 provider
+						fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net1.default.ovn"): "net1-subnet",
+						fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net1.default.ovn"): "net1-vpc",
+						fmt.Sprintf(util.IPAddressAnnotationTemplate, "net1.default.ovn"):     "192.168.1.10",
 					},
 					Status: corev1.PodStatus{
 						PodIP: "10.244.0.5",
@@ -503,10 +454,8 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			networkAttachments: []*nadv1.NetworkAttachmentDefinition{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "net1",
-						Namespace: "default",
-					},
+					Name:      "net1",
+					Namespace: "default",
 					Spec: nadv1.NetworkAttachmentDefinitionSpec{
 						Config: `{
 							"cniVersion": "0.3.1",
@@ -520,18 +469,14 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "net1-subnet",
-					},
+					Name: "net1-subnet",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "192.168.1.0/24",
 						Provider:  "net1.default.ovn",
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "ovn-default",
-					},
+					Name: "ovn-default",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "10.244.0.0/24",
 						Provider:  util.OvnProvider,
@@ -548,10 +493,8 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			name: "Replace primary IP with secondary IP from network attachment with format <namespace>/<name>",
 			endpointSlices: []*discoveryv1.EndpointSlice{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-service-slice",
-						Namespace: "default",
-					},
+					Name:      "test-service-slice",
+					Namespace: "default",
 					Endpoints: []discoveryv1.Endpoint{
 						{
 							Addresses: []string{"10.244.0.5"}, // Primary IP
@@ -565,17 +508,15 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			pods: []*corev1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pod-1",
-						Namespace: "default",
-						Annotations: map[string]string{
-							// Network attachment annotation to indicate this pod uses net1
-							nadv1.NetworkAttachmentAnnot: "default/net1",
-							// Kube-OVN annotations for net1 provider
-							fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net1.default.ovn"): "net1-subnet",
-							fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net1.default.ovn"): "net1-vpc",
-							fmt.Sprintf(util.IPAddressAnnotationTemplate, "net1.default.ovn"):     "192.168.1.10",
-						},
+					Name:      "test-pod-1",
+					Namespace: "default",
+					Annotations: map[string]string{
+						// Network attachment annotation to indicate this pod uses net1
+						nadv1.NetworkAttachmentAnnot: "default/net1",
+						// Kube-OVN annotations for net1 provider
+						fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net1.default.ovn"): "net1-subnet",
+						fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net1.default.ovn"): "net1-vpc",
+						fmt.Sprintf(util.IPAddressAnnotationTemplate, "net1.default.ovn"):     "192.168.1.10",
 					},
 					Status: corev1.PodStatus{
 						PodIP: "10.244.0.5",
@@ -584,10 +525,8 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			networkAttachments: []*nadv1.NetworkAttachmentDefinition{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "net1",
-						Namespace: "default",
-					},
+					Name:      "net1",
+					Namespace: "default",
 					Spec: nadv1.NetworkAttachmentDefinitionSpec{
 						Config: `{
 							"cniVersion": "0.3.1",
@@ -601,18 +540,14 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "net1-subnet",
-					},
+					Name: "net1-subnet",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "192.168.1.0/24",
 						Provider:  "net1.default.ovn",
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "ovn-default",
-					},
+					Name: "ovn-default",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "10.244.0.0/24",
 						Provider:  util.OvnProvider,
@@ -629,10 +564,8 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			name: "Pod without network attachment - no changes",
 			endpointSlices: []*discoveryv1.EndpointSlice{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-service-slice",
-						Namespace: "default",
-					},
+					Name:      "test-service-slice",
+					Namespace: "default",
 					Endpoints: []discoveryv1.Endpoint{
 						{
 							Addresses: []string{"10.244.0.5"},
@@ -646,16 +579,14 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			pods: []*corev1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pod-1",
-						Namespace: "default",
-						// No network attachment annotations
-						Annotations: map[string]string{
-							// Only default provider annotations
-							fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider): "default-subnet",
-							fmt.Sprintf(util.LogicalRouterAnnotationTemplate, util.OvnProvider): "ovn-cluster",
-							fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider):     "10.244.0.5",
-						},
+					Name:      "test-pod-1",
+					Namespace: "default",
+					// No network attachment annotations
+					Annotations: map[string]string{
+						// Only default provider annotations
+						fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider): "default-subnet",
+						fmt.Sprintf(util.LogicalRouterAnnotationTemplate, util.OvnProvider): "ovn-cluster",
+						fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider):     "10.244.0.5",
 					},
 					Status: corev1.PodStatus{
 						PodIP: "10.244.0.5",
@@ -665,9 +596,7 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			networkAttachments: []*nadv1.NetworkAttachmentDefinition{},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "default-subnet",
-					},
+					Name: "default-subnet",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "10.244.0.0/24",
 						Provider:  util.OvnProvider,
@@ -682,10 +611,8 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			name: "Pod with multiple network attachments",
 			endpointSlices: []*discoveryv1.EndpointSlice{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-service-slice",
-						Namespace: "default",
-					},
+					Name:      "test-service-slice",
+					Namespace: "default",
 					Endpoints: []discoveryv1.Endpoint{
 						{
 							Addresses: []string{"10.244.0.5"},
@@ -699,21 +626,19 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			pods: []*corev1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-pod-1",
-						Namespace: "default",
-						Annotations: map[string]string{
-							// Network attachment annotation to indicate this pod uses net1, net2
-							nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}, {"name": "net2"}]`,
-							// Kube-OVN annotations for net1 provider
-							fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net1.default.ovn"): "net1-subnet",
-							fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net1.default.ovn"): "net1-vpc",
-							fmt.Sprintf(util.IPAddressAnnotationTemplate, "net1.default.ovn"):     "192.168.1.10",
-							// Kube-OVN annotations for net2 provider
-							fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net2.default.ovn"): "net2-subnet",
-							fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net2.default.ovn"): "net2-vpc",
-							fmt.Sprintf(util.IPAddressAnnotationTemplate, "net2.default.ovn"):     "192.168.2.10",
-						},
+					Name:      "test-pod-1",
+					Namespace: "default",
+					Annotations: map[string]string{
+						// Network attachment annotation to indicate this pod uses net1, net2
+						nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}, {"name": "net2"}]`,
+						// Kube-OVN annotations for net1 provider
+						fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net1.default.ovn"): "net1-subnet",
+						fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net1.default.ovn"): "net1-vpc",
+						fmt.Sprintf(util.IPAddressAnnotationTemplate, "net1.default.ovn"):     "192.168.1.10",
+						// Kube-OVN annotations for net2 provider
+						fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "net2.default.ovn"): "net2-subnet",
+						fmt.Sprintf(util.LogicalRouterAnnotationTemplate, "net2.default.ovn"): "net2-vpc",
+						fmt.Sprintf(util.IPAddressAnnotationTemplate, "net2.default.ovn"):     "192.168.2.10",
 					},
 					Status: corev1.PodStatus{
 						PodIP: "10.244.0.5",
@@ -722,10 +647,8 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			networkAttachments: []*nadv1.NetworkAttachmentDefinition{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "net1",
-						Namespace: "default",
-					},
+					Name:      "net1",
+					Namespace: "default",
 					Spec: nadv1.NetworkAttachmentDefinitionSpec{
 						Config: `{
 							"cniVersion": "0.3.1",
@@ -737,10 +660,8 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "net2",
-						Namespace: "default",
-					},
+					Name:      "net2",
+					Namespace: "default",
 					Spec: nadv1.NetworkAttachmentDefinitionSpec{
 						Config: `{
 							"cniVersion": "0.3.1",
@@ -754,27 +675,21 @@ func TestReplaceEndpointAddressesWithSecondaryIPs(t *testing.T) {
 			},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "net1-subnet",
-					},
+					Name: "net1-subnet",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "192.168.1.0/24",
 						Provider:  "net1.default.ovn",
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "net2-subnet",
-					},
+					Name: "net2-subnet",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "192.168.2.0/24",
 						Provider:  "net2.default.ovn",
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "ovn-default",
-					},
+					Name: "ovn-default",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "10.244.0.0/24",
 						Provider:  util.OvnProvider,

@@ -95,7 +95,7 @@ func (c *Controller) InitDefaultVpc() error {
 		}
 		// create default vpc
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{Name: c.config.ClusterRouter},
+			Name: c.config.ClusterRouter,
 		}
 		cachedVpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
 		if err != nil {
@@ -147,7 +147,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 	}
 
 	defaultSubnet := kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: c.config.DefaultLogicalSwitch},
+		Name: c.config.DefaultLogicalSwitch,
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:                 c.config.ClusterRouter,
 			Default:             true,
@@ -205,7 +205,7 @@ func (c *Controller) initNodeSwitch() error {
 	}
 
 	nodeSubnet := kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: c.config.NodeSwitch},
+		Name: c.config.NodeSwitch,
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:                    c.config.ClusterRouter,
 			Default:                false,
@@ -611,9 +611,7 @@ func (c *Controller) initDefaultProviderNetwork() error {
 	}
 
 	pn := kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: c.config.DefaultProviderName,
-		},
+		Name: c.config.DefaultProviderName,
 		Spec: kubeovnv1.ProviderNetworkSpec{
 			DefaultInterface: c.config.DefaultHostInterface,
 			ExchangeLinkName: c.config.DefaultExchangeLinkName,
@@ -696,7 +694,7 @@ func (c *Controller) initDefaultVlan() error {
 	}
 
 	defaultVlan := kubeovnv1.Vlan{
-		ObjectMeta: metav1.ObjectMeta{Name: c.config.DefaultVlanName},
+		Name: c.config.DefaultVlanName,
 		Spec: kubeovnv1.VlanSpec{
 			ID:       c.config.DefaultVlanID,
 			Provider: c.config.DefaultProviderName,

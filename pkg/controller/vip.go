@@ -369,14 +369,12 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 		if k8serrors.IsNotFound(err) {
 			// Create CR with finalizer, labels and status all at once
 			if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), &kubeovnv1.Vip{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       key,
-					Namespace:  ns,
-					Finalizers: []string{util.KubeOVNControllerFinalizer},
-					Labels: map[string]string{
-						util.SubnetNameLabel: subnet,
-						util.IPReservedLabel: "",
-					},
+				Name:       key,
+				Namespace:  ns,
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
+				Labels: map[string]string{
+					util.SubnetNameLabel: subnet,
+					util.IPReservedLabel: "",
 				},
 				Spec: kubeovnv1.VipSpec{
 					Namespace:  ns,

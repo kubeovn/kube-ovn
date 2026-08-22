@@ -186,9 +186,7 @@ func (c *IptablesEIPClient) WaitToDisappear(name string, _, timeout time.Duratio
 
 func MakeIptablesEIP(name, v4ip, v6ip, mac, natGwDp, externalSubnet, qosPolicyName string) *apiv1.IptablesEIP {
 	eip := &apiv1.IptablesEIP{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.IptablesEIPSpec{
 			V4ip:       v4ip,
 			V6ip:       v6ip,

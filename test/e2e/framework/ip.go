@@ -137,9 +137,7 @@ func MakeIP(name, ns, subnet string) *apiv1.IP {
 	// pod ip name should include: pod name and namespace
 	// node ip name: only node name
 	IP := &apiv1.IP{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.IPSpec{
 			Namespace: ns,
 			Subnet:    subnet,

@@ -586,11 +586,9 @@ func generateRlrHeadlessService(rlr *kubeovnv1.RouterLBRule, oldSvc *corev1.Serv
 		svc.Spec.IPFamilyPolicy = &policy
 	} else {
 		svc = &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        svcName,
-				Namespace:   namespace,
-				Annotations: annotations,
-			},
+			Name:        svcName,
+			Namespace:   namespace,
+			Annotations: annotations,
 			Spec: corev1.ServiceSpec{
 				Ports:           ports,
 				Selector:        selectors,
@@ -635,10 +633,8 @@ func generateRlrEndpoints(rlr *kubeovnv1.RouterLBRule, oldEps *corev1.Endpoints,
 		return eps
 	}
 	return &corev1.Endpoints{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      svcName,
-			Namespace: namespace,
-		},
-		Subsets: subsets,
+		Name:      svcName,
+		Namespace: namespace,
+		Subsets:   subsets,
 	}
 }

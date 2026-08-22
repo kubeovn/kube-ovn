@@ -15,11 +15,9 @@ func Test_handleUpdateIP_deletedSubnet(t *testing.T) {
 
 	now := metav1.Now()
 	ip := &kubeovnv1.IP{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              "test-ip",
-			DeletionTimestamp: &now,
-			Finalizers:        []string{util.KubeOVNControllerFinalizer},
-		},
+		Name:              "test-ip",
+		DeletionTimestamp: &now,
+		Finalizers:        []string{util.KubeOVNControllerFinalizer},
 		Spec: kubeovnv1.IPSpec{
 			Subnet:    "deleted-subnet",
 			Namespace: "default",

@@ -161,9 +161,7 @@ func (c *OvnEipClient) WaitToDisappear(name string, _, timeout time.Duration) er
 
 func MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *apiv1.OvnEip {
 	eip := &apiv1.OvnEip{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.OvnEipSpec{
 			ExternalSubnet: subnet,
 			V4Ip:           v4ip,

@@ -201,11 +201,9 @@ func containsString(values []string, want string) bool {
 
 func testKubeOVNTLSSecret(namespace string, data map[string][]byte, annotations map[string]string) *corev1.Secret {
 	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        kubeOVNTLSSecretName,
-			Namespace:   namespace,
-			Annotations: annotations,
-		},
-		Data: data,
+		Name:        kubeOVNTLSSecretName,
+		Namespace:   namespace,
+		Annotations: annotations,
+		Data:        data,
 	}
 }

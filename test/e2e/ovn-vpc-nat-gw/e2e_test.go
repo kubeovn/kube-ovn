@@ -643,11 +643,9 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 			"external-gw-addr":   strings.Join(cidr, ","),
 		}
 		configMap := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      util.ExternalGatewayConfig,
-				Namespace: framework.KubeOvnNamespace,
-			},
-			Data: cmData,
+			Name:      util.ExternalGatewayConfig,
+			Namespace: framework.KubeOvnNamespace,
+			Data:      cmData,
 		}
 		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Create(context.Background(), configMap, metav1.CreateOptions{})
 		framework.ExpectNoError(err, "failed to create")
@@ -1235,11 +1233,9 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		}
 		// TODO:// external-gw-nodes could be auto managed by recognizing gw chassis node which has the external-gw-nic
 		configMap = &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      util.ExternalGatewayConfig,
-				Namespace: framework.KubeOvnNamespace,
-			},
-			Data: cmData,
+			Name:      util.ExternalGatewayConfig,
+			Namespace: framework.KubeOvnNamespace,
+			Data:      cmData,
 		}
 		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), configMap, metav1.UpdateOptions{})
 		framework.ExpectNoError(err, "failed to update ConfigMap")

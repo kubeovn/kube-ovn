@@ -66,9 +66,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	framework.ConformanceIt("should be able to access pods from node after creating a network policy with empty ingress rules", func() {
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: netpolName,
-			},
+			Name: netpolName,
 			Spec: netv1.NetworkPolicySpec{
 				Ingress: []netv1.NetworkPolicyIngressRule{},
 			},
@@ -148,9 +146,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 	framework.ConformanceIt("should be able to access svc with backend host network pod after any other ingress network policy rules created", func() {
 		ginkgo.By("Creating network policy " + netpolName)
 		netpol := &netv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: netpolName,
-			},
+			Name: netpolName,
 			Spec: netv1.NetworkPolicySpec{
 				Ingress: []netv1.NetworkPolicyIngressRule{
 					{
@@ -238,9 +234,7 @@ var _ = framework.SerialDescribe("[group:network-policy]", func() {
 			dummyCIDR = "fd00::1234/128"
 		}
 		netpol := &netv1.NetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: netpolName,
-			},
+			Name: netpolName,
 			Spec: netv1.NetworkPolicySpec{
 				PodSelector: metav1.LabelSelector{
 					MatchLabels: map[string]string{"app": "server"},

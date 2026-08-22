@@ -25,7 +25,7 @@ import (
 func Test_generateRlrHeadlessService(t *testing.T) {
 	makeRlr := func(name, vpc, eip, ns string, selectors []string, ports []kubeovnv1.RouterLBRulePort) *kubeovnv1.RouterLBRule {
 		return &kubeovnv1.RouterLBRule{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Name: name,
 			Spec: kubeovnv1.RouterLBRuleSpec{
 				Vpc:       vpc,
 				OvnEip:    eip,
@@ -97,12 +97,10 @@ func Test_generateRlrHeadlessService(t *testing.T) {
 			name: "update existing service preserves extra annotations",
 			rlr:  makeRlr("rlr5", "vpc1", "eip1", "", nil, []kubeovnv1.RouterLBRulePort{port80}),
 			oldSvc: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "rlr-rlr5",
-					Namespace: "default",
-					Annotations: map[string]string{
-						"custom-anno": "keep-me",
-					},
+				Name:      "rlr-rlr5",
+				Namespace: "default",
+				Annotations: map[string]string{
+					"custom-anno": "keep-me",
 				},
 			},
 			svcName:     "rlr-rlr5",
@@ -169,7 +167,7 @@ func Test_generateRlrEndpoints(t *testing.T) {
 	t.Run("TargetRef.Namespace uses passed namespace not rlr.Namespace", func(t *testing.T) {
 		rlr := &kubeovnv1.RouterLBRule{
 			// Namespace is empty because RouterLBRule is cluster-scoped
-			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
+			Name: "rlr1",
 			Spec: kubeovnv1.RouterLBRuleSpec{
 				Endpoints: []string{"192.168.1.10", "192.168.1.11"},
 				Ports:     ports,
@@ -188,7 +186,7 @@ func Test_generateRlrEndpoints(t *testing.T) {
 
 	t.Run("endpoint port uses TargetPort not Port", func(t *testing.T) {
 		rlr := &kubeovnv1.RouterLBRule{
-			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
+			Name: "rlr1",
 			Spec: kubeovnv1.RouterLBRuleSpec{
 				Endpoints: []string{"10.0.0.1"},
 				Ports:     ports,
@@ -203,19 +201,17 @@ func Test_generateRlrEndpoints(t *testing.T) {
 
 	t.Run("update reuses existing endpoint metadata", func(t *testing.T) {
 		rlr := &kubeovnv1.RouterLBRule{
-			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
+			Name: "rlr1",
 			Spec: kubeovnv1.RouterLBRuleSpec{
 				Endpoints: []string{"10.0.0.2"},
 				Ports:     ports,
 			},
 		}
 		oldEps := &corev1.Endpoints{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            "rlr-rlr1",
-				Namespace:       "default",
-				ResourceVersion: "42",
-				Labels:          map[string]string{"existing": "label"},
-			},
+			Name:            "rlr-rlr1",
+			Namespace:       "default",
+			ResourceVersion: "42",
+			Labels:          map[string]string{"existing": "label"},
 		}
 		eps := generateRlrEndpoints(rlr, oldEps, "rlr-rlr1", "default")
 
@@ -226,8 +222,8 @@ func Test_generateRlrEndpoints(t *testing.T) {
 
 	t.Run("no static endpoints produces empty addresses", func(t *testing.T) {
 		rlr := &kubeovnv1.RouterLBRule{
-			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
-			Spec:       kubeovnv1.RouterLBRuleSpec{Ports: ports},
+			Name: "rlr1",
+			Spec: kubeovnv1.RouterLBRuleSpec{Ports: ports},
 		}
 		eps := generateRlrEndpoints(rlr, nil, "rlr-rlr1", "default")
 
@@ -239,7 +235,7 @@ func Test_generateRlrEndpoints(t *testing.T) {
 func Test_newRouterLBRuleInfo(t *testing.T) {
 	t.Run("empty namespace defaults to 'default'", func(t *testing.T) {
 		rlr := &kubeovnv1.RouterLBRule{
-			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
+			Name: "rlr1",
 			Spec: kubeovnv1.RouterLBRuleSpec{
 				Namespace: "",
 				OvnEip:    "eip1",
@@ -253,8 +249,8 @@ func Test_newRouterLBRuleInfo(t *testing.T) {
 
 	t.Run("explicit namespace is preserved", func(t *testing.T) {
 		rlr := &kubeovnv1.RouterLBRule{
-			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
-			Spec:       kubeovnv1.RouterLBRuleSpec{Namespace: "custom-ns"},
+			Name: "rlr1",
+			Spec: kubeovnv1.RouterLBRuleSpec{Namespace: "custom-ns"},
 		}
 		info := newRouterLBRuleInfo(rlr)
 		assert.Equal(t, "custom-ns", info.Namespace)
@@ -262,7 +258,7 @@ func Test_newRouterLBRuleInfo(t *testing.T) {
 
 	t.Run("ports extracted from spec", func(t *testing.T) {
 		rlr := &kubeovnv1.RouterLBRule{
-			ObjectMeta: metav1.ObjectMeta{Name: "rlr1"},
+			Name: "rlr1",
 			Spec: kubeovnv1.RouterLBRuleSpec{
 				Ports: []kubeovnv1.RouterLBRulePort{{Port: 80}, {Port: 443}},
 			},
@@ -284,10 +280,8 @@ func Test_getVipIps_routerLBRule(t *testing.T) {
 		{
 			name: "RouterLBRuleVipsAnnotation single IPv4",
 			svc: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.RouterLBRuleVipsAnnotation: "10.0.0.1",
-					},
+				Annotations: map[string]string{
+					util.RouterLBRuleVipsAnnotation: "10.0.0.1",
 				},
 				Spec: corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone},
 			},
@@ -296,10 +290,8 @@ func Test_getVipIps_routerLBRule(t *testing.T) {
 		{
 			name: "RouterLBRuleVipsAnnotation dual-stack splits correctly",
 			svc: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.RouterLBRuleVipsAnnotation: "10.0.0.1,fd00::1",
-					},
+				Annotations: map[string]string{
+					util.RouterLBRuleVipsAnnotation: "10.0.0.1,fd00::1",
 				},
 				Spec: corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone},
 			},
@@ -332,18 +324,16 @@ func Test_getVipIps_routerLBRule(t *testing.T) {
 
 func Test_checkEipPortConflict(t *testing.T) {
 	existingRlr := &kubeovnv1.RouterLBRule{
-		ObjectMeta: metav1.ObjectMeta{Name: "existing-rlr"},
+		Name: "existing-rlr",
 		Spec: kubeovnv1.RouterLBRuleSpec{
 			OvnEip: "eip1",
 			Ports:  []kubeovnv1.RouterLBRulePort{{Port: 80}},
 		},
 	}
 	existingDnat := &kubeovnv1.OvnDnatRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "existing-dnat",
-			Labels: map[string]string{util.VpcDnatEPortLabel: "443"},
-		},
-		Spec: kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1"},
+		Name:   "existing-dnat",
+		Labels: map[string]string{util.VpcDnatEPortLabel: "443"},
+		Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1"},
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
@@ -426,27 +416,27 @@ func Test_checkEipPortConflict(t *testing.T) {
 func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 	makeEip := func(name, v4ip, specType, externalSubnet string) *kubeovnv1.OvnEip {
 		return &kubeovnv1.OvnEip{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       kubeovnv1.OvnEipSpec{Type: specType, ExternalSubnet: externalSubnet},
-			Status:     kubeovnv1.OvnEipStatus{V4Ip: v4ip},
+			Name:   name,
+			Spec:   kubeovnv1.OvnEipSpec{Type: specType, ExternalSubnet: externalSubnet},
+			Status: kubeovnv1.OvnEipStatus{V4Ip: v4ip},
 		}
 	}
 	makeLrpEip := func(vpc, subnet string) *kubeovnv1.OvnEip {
 		return &kubeovnv1.OvnEip{
-			ObjectMeta: metav1.ObjectMeta{Name: vpc + "-" + subnet},
-			Spec:       kubeovnv1.OvnEipSpec{Type: util.OvnEipTypeLRP, ExternalSubnet: subnet},
-			Status:     kubeovnv1.OvnEipStatus{Ready: true},
+			Name:   vpc + "-" + subnet,
+			Spec:   kubeovnv1.OvnEipSpec{Type: util.OvnEipTypeLRP, ExternalSubnet: subnet},
+			Status: kubeovnv1.OvnEipStatus{Ready: true},
 		}
 	}
 	makeVpc := func(name, tcpLB string) *kubeovnv1.Vpc {
 		return &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Status:     kubeovnv1.VpcStatus{TCPLoadBalancer: tcpLB},
+			Name:   name,
+			Status: kubeovnv1.VpcStatus{TCPLoadBalancer: tcpLB},
 		}
 	}
 	makeRlr := func(name, eip, vpc string, ports []kubeovnv1.RouterLBRulePort) *kubeovnv1.RouterLBRule {
 		return &kubeovnv1.RouterLBRule{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Name: name,
 			Spec: kubeovnv1.RouterLBRuleSpec{
 				OvnEip: eip,
 				Vpc:    vpc,
@@ -575,11 +565,9 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 	t.Run("port conflict with OvnDnatRule returns error", func(t *testing.T) {
 		// "rlr1" claims eip1:443; an OvnDnatRule already uses eip1:443.
 		dnat := &kubeovnv1.OvnDnatRule{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "existing-dnat",
-				Labels: map[string]string{util.VpcDnatEPortLabel: "443"},
-			},
-			Spec: kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1"},
+			Name:   "existing-dnat",
+			Labels: map[string]string{util.VpcDnatEPortLabel: "443"},
+			Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1"},
 		}
 		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 443}})
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
@@ -651,12 +639,10 @@ func Test_handleDelRouterLBRule(t *testing.T) {
 
 	makeSvc := func(withVipAnno bool) *corev1.Service {
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      svcName,
-				Namespace: svcNS,
-				Annotations: map[string]string{
-					util.LogicalRouterAnnotation: testVpc,
-				},
+			Name:      svcName,
+			Namespace: svcNS,
+			Annotations: map[string]string{
+				util.LogicalRouterAnnotation: testVpc,
 			},
 		}
 		if withVipAnno {
@@ -692,8 +678,8 @@ func Test_handleDelRouterLBRule(t *testing.T) {
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			Services: []*corev1.Service{makeSvc(true)},
 			Vpcs: []*kubeovnv1.Vpc{{
-				ObjectMeta: metav1.ObjectMeta{Name: testVpc},
-				Status:     kubeovnv1.VpcStatus{TCPLoadBalancer: testTCPLB},
+				Name:   testVpc,
+				Status: kubeovnv1.VpcStatus{TCPLoadBalancer: testTCPLB},
 			}},
 		})
 		require.NoError(t, err)
@@ -742,7 +728,7 @@ func Test_enqueueUpdateRouterLBRule_isRecreate(t *testing.T) {
 	ctrl.updateRouterLBRuleQueue = newTypedRateLimitingQueue[*RouterLBRuleInfo]("UpdateRouterLBRuleTest", nil)
 
 	base := &kubeovnv1.RouterLBRule{
-		ObjectMeta: metav1.ObjectMeta{Name: "rlr1", ResourceVersion: "1"},
+		Name: "rlr1", ResourceVersion: "1",
 		Spec: kubeovnv1.RouterLBRuleSpec{
 			OvnEip:    "eip1",
 			Vpc:       "vpc1",

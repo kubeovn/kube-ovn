@@ -16,7 +16,6 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 )
@@ -152,7 +151,7 @@ var _ = framework.SerialDescribe("[group:veg-evpn]", func() {
 
 		vpcName := "vpc-" + framework.RandomSuffix()
 		ginkgo.By("Creating VPC " + vpcName)
-		vpc := &apiv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: vpcName}}
+		vpc := &apiv1.Vpc{Name: vpcName}
 		_ = vpcClient.CreateSync(vpc)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Deleting VPC " + vpcName)

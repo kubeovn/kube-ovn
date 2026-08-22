@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -72,9 +71,7 @@ func TestHasAllocatedAnnotation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pod := &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: tt.annotations,
-				},
+				Annotations: tt.annotations,
 			}
 			require.Equal(t, tt.expected, hasAllocatedAnnotation(pod))
 		})

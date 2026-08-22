@@ -206,9 +206,7 @@ func (c *ProviderNetworkClient) WaitToDisappear(name string, _, timeout time.Dur
 
 func MakeProviderNetwork(name string, exchangeLinkName bool, defaultInterface string, customInterfaces map[string][]string, excludeNodes []string) *apiv1.ProviderNetwork {
 	pn := &apiv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.ProviderNetworkSpec{
 			DefaultInterface: defaultInterface,
 			ExcludeNodes:     excludeNodes,

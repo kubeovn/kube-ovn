@@ -56,8 +56,9 @@ type OVNDBClusterStatus struct {
 
 // NewExporter returns an initialized Exporter.
 func NewExporter(cfg *Configuration) *Exporter {
-	e := Exporter{}
-	e.Client = ovsdb.NewOvnClient()
+	e := Exporter{
+		Client: ovsdb.NewOvnClient(),
+	}
 	e.initParas(cfg)
 	return &e
 }

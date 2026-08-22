@@ -138,9 +138,7 @@ func (c *VipClient) WaitToDisappear(name string, _, timeout time.Duration) error
 
 func MakeVip(namespaceName, name, subnet, v4ip, v6ip, vipType string) *apiv1.Vip {
 	vip := &apiv1.Vip{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.VipSpec{
 			Namespace: namespaceName,
 			Subnet:    subnet,

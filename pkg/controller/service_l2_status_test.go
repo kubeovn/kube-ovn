@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	metallbv1beta1 "go.universe.tf/metallb/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -85,7 +84,7 @@ func TestGetServiceL2StatusNode(t *testing.T) {
 	require.Empty(t, node)
 
 	status := &metallbv1beta1.ServiceL2Status{
-		ObjectMeta: metav1.ObjectMeta{Name: "l2-status", Namespace: "metallb-system"},
+		Name: "l2-status", Namespace: "metallb-system",
 		Status: metallbv1beta1.MetalLBServiceL2Status{
 			Node:             "worker-1",
 			ServiceNamespace: "test-ns",

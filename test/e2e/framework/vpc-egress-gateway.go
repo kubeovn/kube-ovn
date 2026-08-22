@@ -175,10 +175,8 @@ func (c *VpcEgressGatewayClient) WaitToDisappear(name string, _, timeout time.Du
 
 func MakeVpcEgressGateway(namespace, name, vpc string, replicas int32, internalSubnet, externalSubnet string) *apiv1.VpcEgressGateway {
 	return &apiv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
+		Name:      name,
+		Namespace: namespace,
 		Spec: apiv1.VpcEgressGatewaySpec{
 			Replicas:       replicas,
 			VPC:            vpc,

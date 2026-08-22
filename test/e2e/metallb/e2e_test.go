@@ -363,7 +363,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 
 		ginkgo.By("Creating an IPAddressPool for metallb")
 		ipAddressPool := &metallbv1beta1.IPAddressPool{
-			ObjectMeta: metav1.ObjectMeta{Name: metallbIPPoolName},
+			Name: metallbIPPoolName,
 		}
 		if metallbVIPv4Range != "" {
 			ipAddressPool.Spec.Addresses = append(ipAddressPool.Spec.Addresses, metallbVIPv4Range)
