@@ -347,12 +347,67 @@ func GetStringIP(v4IP, v6IP string) string {
 	return strings.Join(ipList, ",")
 }
 
+func GetIPAddrWithMask(ip, cidr string) (string, error) {
+	return getIPAddrWithMask(ip, cidr, false)
+}
+
+// GetIPAddrWithHostMask returns ip with /32 (IPv4) or /128 (IPv6) masks for routed subnet mode.
+func GetIPAddrWithHostMask(ip, cidr string) (string, error) {
+	return getIPAddrWithMask(ip, cidr, true)
+}
+
+func getIPAddrWithMask(ip, cidr string, hostMask bool) (string, error) {
+	var ipAddr string
+	ips := strings.Split(ip, ",")
+	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+		cidrBlocks := strings.Split(cidr, ",")
+		if len(cidrBlocks) == 2 {
+			if len(ips) == 2 {
+				v4Mask, v6Mask := strings.Split(cidrBlocks[0], "/")[1], strings.Split(cidrBlocks[1], "/")[1]
+				if hostMask {
+					v4Mask, v6Mask = "32", "128"
+				}
+				v4IP := fmt.Sprintf("%s/%s", ips[0], v4Mask)
+				v6IP := fmt.Sprintf("%s/%s", ips[1], v6Mask)
+				ipAddr = v4IP + "," + v6IP
+			} else {
+				err := fmt.Errorf("ip %s should be dualstack", ip)
+				klog.Error(err)
+				return "", err
+			}
+		}
+	} else {
+		if len(ips) == 1 {
+			mask := strings.Split(cidr, "/")[1]
+			if hostMask {
+				if CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+					mask = "128"
+				} else {
+					mask = "32"
+				}
+			}
+			ipAddr = fmt.Sprintf("%s/%s", ip, mask)
+		} else {
+			err := fmt.Errorf("ip %s should be singlestack", ip)
+			klog.Error(err)
+			return ipAddr, err
+		}
+	}
+	return ipAddr, nil
+}
+
 // GetIPAddrWithMaskForCNI returns IP address with mask for CNI plugin.
 // When ip is empty, it indicates no-IPAM mode (e.g., NAT gateway macvlan without default EIP).
 // When cidr is dual-stack, the CNI path uses the actual allocated IP families
 // and selects the matching mask instead of requiring the pod IP itself to be dual-stack.
+// When hostMask is true (routed subnet mode), pods get /32 or /128 addresses.
 // Returns (ipAddr, noIPAM, error) where noIPAM is true when IP allocation is skipped.
 func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
+	return GetIPAddrWithMaskForCNIHostMask(ip, cidr, false)
+}
+
+// GetIPAddrWithMaskForCNIHostMask is like GetIPAddrWithMaskForCNI but can force host (/32|/128) masks.
+func GetIPAddrWithMaskForCNIHostMask(ip, cidr string, hostMask bool) (string, bool, error) {
 	if ip == "" {
 		// Network attachment definition using no-IPAM plugin (e.g., NAT gateway net1 macvlan with no default EIP)
 		// IP is not allocated by Kube-OVN, but cidr still comes from subnet configuration
@@ -380,40 +435,19 @@ func GetIPAddrWithMaskForCNI(ip, cidr string) (string, bool, error) {
 			if !ok || mask == "" {
 				return "", false, fmt.Errorf("invalid cidr %s", cidrBlock)
 			}
+			if hostMask {
+				if CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+					mask = "128"
+				} else {
+					mask = "32"
+				}
+			}
 			ipAddrs = append(ipAddrs, fmt.Sprintf("%s/%s", ip, mask))
 		}
 		return strings.Join(ipAddrs, ","), false, nil
 	}
-	ipAddr, err := GetIPAddrWithMask(ip, cidr)
+	ipAddr, err := getIPAddrWithMask(ip, cidr, hostMask)
 	return ipAddr, false, err
-}
-
-func GetIPAddrWithMask(ip, cidr string) (string, error) {
-	var ipAddr string
-	ips := strings.Split(ip, ",")
-	if CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
-		cidrBlocks := strings.Split(cidr, ",")
-		if len(cidrBlocks) == 2 {
-			if len(ips) == 2 {
-				v4IP := fmt.Sprintf("%s/%s", ips[0], strings.Split(cidrBlocks[0], "/")[1])
-				v6IP := fmt.Sprintf("%s/%s", ips[1], strings.Split(cidrBlocks[1], "/")[1])
-				ipAddr = v4IP + "," + v6IP
-			} else {
-				err := fmt.Errorf("ip %s should be dualstack", ip)
-				klog.Error(err)
-				return "", err
-			}
-		}
-	} else {
-		if len(ips) == 1 {
-			ipAddr = fmt.Sprintf("%s/%s", ip, strings.Split(cidr, "/")[1])
-		} else {
-			err := fmt.Errorf("ip %s should be singlestack", ip)
-			klog.Error(err)
-			return ipAddr, err
-		}
-	}
-	return ipAddr, nil
 }
 
 func GetIPWithoutMask(ipStr string) string {

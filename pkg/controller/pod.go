@@ -705,6 +705,11 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 		}
 		patch[fmt.Sprintf(util.CidrAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.CIDRBlock
 		patch[fmt.Sprintf(util.GatewayAnnotationTemplate, podNet.ProviderName)] = subnet.Spec.Gateway
+		if subnet.Spec.Routed {
+			patch[fmt.Sprintf(util.RoutedSubnetAnnotationTemplate, podNet.ProviderName)] = "true"
+		} else {
+			patch[fmt.Sprintf(util.RoutedSubnetAnnotationTemplate, podNet.ProviderName)] = nil
+		}
 		if isOvnSubnet(podNet.Subnet) {
 			patch[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] = subnet.Name
 			if pod.Annotations[fmt.Sprintf(util.PodNicAnnotationTemplate, podNet.ProviderName)] == "" {

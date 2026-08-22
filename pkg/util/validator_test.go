@@ -328,6 +328,93 @@ func TestValidateSubnet(t *testing.T) {
 			},
 		},
 		{
+			name: "RoutedOverlayCorrect",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-routed-overlay",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					CIDRBlock:   "10.16.0.0/16",
+					Gateway:     "10.16.0.1",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Routed:      true,
+				},
+			},
+		},
+		{
+			name: "RoutedUnderlayWithoutRouterErr",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-routed-underlay-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					CIDRBlock:   "10.16.0.0/16",
+					Gateway:     "10.16.0.1",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Vlan:        "vlan1",
+					Routed:      true,
+				},
+			},
+			err: "routed mode requires overlay or underlay with logicalGateway/u2oInterconnection on subnet ut-routed-underlay-err",
+		},
+		{
+			name: "RoutedWithDHCPErr",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-routed-dhcp-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					CIDRBlock:   "10.16.0.0/16",
+					Gateway:     "10.16.0.1",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Routed:      true,
+					EnableDHCP:  true,
+				},
+			},
+			err: "routed mode conflicts with enableDHCP on subnet ut-routed-dhcp-err",
+		},
+		{
+			name: "RoutedWithCustomAclsErr",
+			subnet: kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "ut-routed-acls-err",
+				},
+				Spec: kubeovnv1.SubnetSpec{
+					Default:     true,
+					Vpc:         DefaultVpc,
+					Protocol:    kubeovnv1.ProtocolIPv4,
+					CIDRBlock:   "10.16.0.0/16",
+					Gateway:     "10.16.0.1",
+					ExcludeIps:  []string{"10.16.0.1"},
+					Provider:    OvnProvider,
+					GatewayType: kubeovnv1.GWDistributedType,
+					Routed:      true,
+					Acls: []kubeovnv1.ACL{{
+						Direction: "to-lport",
+						Priority:  3000,
+						Match:     "ip4",
+						Action:    "allow",
+					}},
+				},
+			},
+			err: "routed mode does not support custom spec.acls on subnet ut-routed-acls-err (they could bypass gateway-only isolation)",
+		},
+		{
 			name: "ValidateNatOutgoingPolicyRulesErr",
 			subnet: kubeovnv1.Subnet{
 				ObjectMeta: metav1.ObjectMeta{

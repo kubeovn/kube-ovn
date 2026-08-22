@@ -741,38 +741,18 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 
-	if subnet.Spec.Private {
-		if privErr := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); privErr != nil {
-			klog.Error(privErr)
-			if patchErr := c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", privErr.Error()); patchErr != nil {
-				klog.Error(patchErr)
-				return errors.Join(privErr, patchErr)
-			}
-			return privErr
-		}
-
-		if err = c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", ""); err != nil {
-			klog.Error(err)
-			return err
-		}
-	} else {
-		// clear acl when direction is ""
-		if aclErr := c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); aclErr != nil {
-			klog.Error(aclErr)
-			if patchErr := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", aclErr.Error()); patchErr != nil {
-				klog.Error(patchErr)
-				return errors.Join(aclErr, patchErr)
-			}
-			return aclErr
-		}
-
-		if err = c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", ""); err != nil {
-			klog.Error(err)
-			return err
-		}
+	if err = c.reconcileSubnetBaseACLs(subnet, vpc.Status.Router); err != nil {
+		return err
 	}
 
-	if aclErr := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Acls, subnet.Spec.AllowEWTraffic); aclErr != nil {
+	allowEWTraffic := subnet.Spec.AllowEWTraffic && !subnet.Spec.Routed
+	subnetAcls := subnet.Spec.Acls
+	if subnet.Spec.Routed {
+		// Routed mode installs an allow-list / default-deny policy that must
+		// not be overridden by Spec.Acls (also rejected in ValidateSubnet).
+		subnetAcls = nil
+	}
+	if aclErr := c.OVNNbClient.UpdateLogicalSwitchACL(subnet.Name, subnet.Spec.CIDRBlock, subnetAcls, allowEWTraffic); aclErr != nil {
 		klog.Error(aclErr)
 		if patchErr := c.patchSubnetStatus(subnet, "SetLogicalSwitchAclsFailed", aclErr.Error()); patchErr != nil {
 			klog.Error(patchErr)
@@ -796,6 +776,56 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 	}
 
 	return nil
+}
+
+// reconcileSubnetBaseACLs applies routed, private, or cleared base ACLs on the subnet LS.
+func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router string) error {
+	switch {
+	case subnet.Spec.Routed:
+		gateway := subnet.Spec.Gateway
+		if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+			gateway = subnet.Status.U2OInterconnectionIP
+		}
+		routerPortName := ovs.LogicalRouterPortName(router, subnet.Name)
+		lrp, lrpErr := c.OVNNbClient.GetLogicalRouterPort(routerPortName, false)
+		if lrpErr != nil {
+			klog.Error(lrpErr)
+			if patchErr := c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchFailed", lrpErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(lrpErr, patchErr)
+			}
+			return lrpErr
+		}
+		if routedErr := c.OVNNbClient.SetLogicalSwitchRouted(subnet.Name, subnet.Spec.CIDRBlock, gateway, lrp.MAC, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets, subnet.Spec.Private); routedErr != nil {
+			klog.Error(routedErr)
+			if patchErr := c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchFailed", routedErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(routedErr, patchErr)
+			}
+			return routedErr
+		}
+		return c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchSuccess", "")
+	case subnet.Spec.Private:
+		if privErr := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); privErr != nil {
+			klog.Error(privErr)
+			if patchErr := c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", privErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(privErr, patchErr)
+			}
+			return privErr
+		}
+		return c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
+	default:
+		if aclErr := c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); aclErr != nil {
+			klog.Error(aclErr)
+			if patchErr := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", aclErr.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(aclErr, patchErr)
+			}
+			return aclErr
+		}
+		return c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
+	}
 }
 
 func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
