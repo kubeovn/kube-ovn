@@ -97,22 +97,31 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 	return s
 }
 
+// hasNetworkAttachment reports whether networks, a comma-separated
+// k8s.v1.cni.cncf.io/networks value, already references nad (a "namespace/name"
+// NAD reference), ignoring any "@ifname" interface-name suffix on each entry.
+func hasNetworkAttachment(networks, nad string) bool {
+	for n := range strings.SplitSeq(networks, ",") {
+		ref, _, _ := strings.Cut(strings.TrimSpace(n), "@")
+		if ref == nad {
+			return true
+		}
+	}
+	return false
+}
+
 // GenNatGwPodAnnotations generates Pod template annotations for a NAT gateway.
 // userAnnotations contains user-defined annotations from gw.Spec.Annotations. System annotations
 // are set on top of it, overwriting any conflicts. additionalNetworks is optional, used when
 // users specify extra NADs in gw.Annotations. enableNonPrimaryCNI indicates whether Kube-OVN is
 // running as a non-primary CNI; in that mode eth0 must stay on the cluster's primary CNI pod
 // network (e.g. Calico) so the gateway pod can reach the Kubernetes control plane, so the
-// v1.multus-cni.io/default-network override is skipped.
+// v1.multus-cni.io/default-network override is skipped and the subnet's NAD is instead attached
+// as an additional network so LanIP is still injected via multus.
 func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string, enableNonPrimaryCNI bool) (map[string]string, error) {
 	p := provider
 	if p == "" {
 		p = OvnProvider
-	}
-
-	attachedNetworks := fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
-	if additionalNetworks != "" {
-		attachedNetworks = additionalNetworks + ", " + attachedNetworks
 	}
 
 	// Create a new map to avoid modifying the input map (which may be from informer cache)
@@ -120,7 +129,6 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	maps.Copy(result, userAnnotations)
 
 	// Set system annotations (overwrites any conflicting user annotations)
-	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
 	result[VpcNatGatewayAnnotation] = gw.Name
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
 
@@ -128,6 +136,10 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	if !IsNatGwHAMode(gw) {
 		result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
 	}
+
+	// internalNad is set when the subnet's own NAD needs to be attached to the pod as a
+	// non-default network (non-primary CNI mode); it stays empty otherwise.
+	var internalNad string
 
 	// Validate the custom provider string whenever it isn't the built-in ovn one, regardless of
 	// the CNI mode, so that malformed providers are caught early rather than producing bogus
@@ -138,16 +150,36 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 		if len(providerSplit) != 3 || providerSplit[2] != OvnProvider {
 			return nil, fmt.Errorf("name of the provider must have syntax 'name.namespace.ovn', got %s", provider)
 		}
+		name, namespace := providerSplit[0], providerSplit[1]
 
-		// Override the default network of the pod only under primary CNI mode, so the default
-		// VPC/Subnet of the cluster isn't accidentally injected. In non-primary CNI mode eth0
-		// belongs to the cluster's primary CNI and overriding it with a tenant NAD would break
-		// pod/control-plane connectivity (see issue #6632).
 		if !enableNonPrimaryCNI {
-			name, namespace := providerSplit[0], providerSplit[1]
+			// Override the default network of the pod only under primary CNI mode, so the default
+			// VPC/Subnet of the cluster isn't accidentally injected.
 			result[DefaultNetworkAnnotation] = fmt.Sprintf("%s/%s", namespace, name)
+		} else {
+			// In non-primary CNI mode eth0 belongs to the cluster's primary CNI and overriding it
+			// with a tenant NAD would break pod/control-plane connectivity (see issue #6632), so
+			// attach the subnet's NAD as an additional network instead. Without this, the
+			// LogicalSwitch/IPAddress annotations above are never consumed by any CNI invocation
+			// and LanIP is never injected into the pod (see issue #6744).
+			internalNad = fmt.Sprintf("%s/%s", namespace, name)
 		}
 	}
+
+	// Append internalNad after the external NAD (rather than prepending it) so that the
+	// external NAD keeps the same position it had before non-primary CNI mode was supported;
+	// some call sites (e.g. the default egress QoS interface) assume the external NAD is the
+	// first attached network and hardcode "net1" to refer to it.
+	attachedNetworks := fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
+	if additionalNetworks != "" {
+		attachedNetworks = additionalNetworks + ", " + attachedNetworks
+	}
+	// Skip internalNad if the user already listed it in additionalNetworks, e.g. via the
+	// manual workaround used before this NAD was auto-attached, so it isn't attached twice.
+	if internalNad != "" && !hasNetworkAttachment(additionalNetworks, internalNad) {
+		attachedNetworks += ", " + internalNad
+	}
+	result[nadv1.NetworkAttachmentAnnot] = attachedNetworks
 
 	return result, nil
 }
