@@ -90,9 +90,7 @@ func (c *VlanClient) Delete(name string) {
 
 func MakeVlan(name, provider string, id int) *apiv1.Vlan {
 	vlan := &apiv1.Vlan{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.VlanSpec{
 			Provider: provider,
 			ID:       id,

@@ -57,13 +57,13 @@ func requireNoPodEvent(t *testing.T, recorder *record.FakeRecorder) {
 }
 
 func TestHandleUpdatePodValidationFailureEmitsOnlyValidationEvent(t *testing.T) {
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+	pod := &v1.Pod{
 		Name:      "pod",
 		Namespace: metav1.NamespaceDefault,
 		Annotations: map[string]string{
 			util.IPAddressAnnotation: "invalid",
 		},
-	}}
+	}
 	controller, recorder := newPodQoSTestController(t, pod)
 
 	require.Error(t, controller.handleUpdatePod("default/pod"))
@@ -74,11 +74,11 @@ func TestHandleUpdatePodValidationFailureEmitsOnlyValidationEvent(t *testing.T) 
 func TestHandleUpdatePodBandwidthFailureEmitsQoSFailureEvent(t *testing.T) {
 	failErr := errors.New("default bandwidth failure")
 	stubPodQoSFunctions(t, "bandwidth", "pod.default", failErr)
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+	pod := &v1.Pod{
 		Name:        "pod",
 		Namespace:   metav1.NamespaceDefault,
 		Annotations: map[string]string{},
-	}}
+	}
 	controller, recorder := newPodQoSTestController(t, pod)
 
 	require.ErrorIs(t, controller.handleUpdatePod("default/pod"), failErr)
@@ -131,11 +131,11 @@ func newPodQoSTestPod(networkAnnotation string) *v1.Pod {
 		annotations[nadv1.NetworkAttachmentAnnot] = networkAnnotation
 		annotations["net1.default.ovn.kubernetes.io/allocated"] = "true"
 	}
-	return &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+	return &v1.Pod{
 		Name:        "pod",
 		Namespace:   metav1.NamespaceDefault,
 		Annotations: annotations,
-	}}
+	}
 }
 
 func TestHandleUpdatePodQoSCallFailuresEmitOneEvent(t *testing.T) {
@@ -280,12 +280,10 @@ func TestEnqueueUpdatePodOnlyQueuesRelevantAnnotationChanges(t *testing.T) {
 
 func newPodForPolicyRouting(name, namespace, subnetName, podIP string, podIPs []v1.PodIP) *v1.Pod {
 	return &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Annotations: map[string]string{
-				util.LogicalSwitchAnnotation: subnetName,
-			},
+		Name:      name,
+		Namespace: namespace,
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
 		},
 		Status: v1.PodStatus{
 			PodIP:  podIP,
@@ -322,7 +320,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "subnet without ExternalEgressGateway returns nil",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:         clusterRouter,
 					GatewayType: kubeovnv1.GWDistributedType,
@@ -334,7 +332,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "subnet with different VPC returns nil",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:                   "other-vpc",
 					ExternalEgressGateway: "10.0.0.1",
@@ -349,7 +347,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "distributed: single-stack IPv4 EGW + IPv4 Pod",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:                   clusterRouter,
 					CIDRBlock:             "10.16.0.0/24",
@@ -375,7 +373,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "distributed: dual-stack EGW + dual-stack Pod",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:                   clusterRouter,
 					CIDRBlock:             "10.16.0.0/24,fd00::/120",
@@ -406,7 +404,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "distributed: dual-stack EGW + IPv4-only Pod should skip IPv6 rule",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:                   clusterRouter,
 					CIDRBlock:             "10.16.0.0/24,fd00::/120",
@@ -430,7 +428,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "distributed: dual-stack EGW + IPv6-only Pod should skip IPv4 rule",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:                   clusterRouter,
 					CIDRBlock:             "10.16.0.0/24,fd00::/120",
@@ -456,7 +454,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "distributed: multiple pods with mixed stacks",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:                   clusterRouter,
 					CIDRBlock:             "10.16.0.0/24,fd00::/120",
@@ -492,7 +490,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "centralized: dual-stack EGW + dual-stack CIDR",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:                   clusterRouter,
 					CIDRBlock:             "10.16.0.0/24,fd00::/120",
@@ -518,7 +516,7 @@ func TestGetPolicyRouting(t *testing.T) {
 		{
 			name: "centralized: dual-stack EGW + single-stack CIDR skips missing protocol",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+				Name: subnetName,
 				Spec: kubeovnv1.SubnetSpec{
 					Vpc:                   clusterRouter,
 					CIDRBlock:             "10.16.0.0/24",
@@ -552,7 +550,7 @@ func TestGetPolicyRouting(t *testing.T) {
 			// Build node indexer for centralized gateway tests
 			nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 			require.NoError(t, nodeIndexer.Add(&v1.Node{
-				ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+				Name: nodeName,
 			}))
 
 			c := &Controller{

@@ -58,9 +58,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes: []*kubeovnv1.StaticRoute{
 					{
@@ -126,9 +124,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes: []*kubeovnv1.StaticRoute{
 					{
@@ -186,9 +182,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpcEmpty := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes:   []*kubeovnv1.StaticRoute{},
 				EnableExternal: false,
@@ -240,9 +234,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes: []*kubeovnv1.StaticRoute{
 					{
@@ -309,9 +301,7 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes:   []*kubeovnv1.StaticRoute{},
 				EnableExternal: false,
@@ -373,9 +363,7 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes:   []*kubeovnv1.StaticRoute{},
 				EnableExternal: false,
@@ -481,7 +469,7 @@ func TestReconcileVpcBfdLRPClearsHAChassisGroupWhenSelectorMatchesNoNodes(t *tes
 	mockOvnClient := fakeController.mockOvnClient
 
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-vpc-bfd"},
+		Name: "test-vpc-bfd",
 		Spec: kubeovnv1.VpcSpec{
 			BFDPort: &kubeovnv1.BFDPort{
 				Enabled: true,

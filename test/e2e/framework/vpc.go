@@ -166,9 +166,7 @@ func MakeVpc(name, gatewayV4 string, enableExternal, enableBfd bool, namespaces 
 		})
 	}
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: kubeovnv1.VpcSpec{
 			StaticRoutes:   routes,
 			EnableExternal: enableExternal,

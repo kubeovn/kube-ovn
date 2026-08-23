@@ -39,9 +39,7 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 		{
 			name: "Match Labels",
 			object: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"app": "nginx"},
-				},
+				Labels: map[string]string{"app": "nginx"},
 			},
 			selector: metav1.SetAsLabelSelector(labels.Set{"app": "nginx"}),
 			expected: true,
@@ -49,9 +47,7 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 		{
 			name: "No Match Labels",
 			object: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"app": "apache"},
-				},
+				Labels: map[string]string{"app": "apache"},
 			},
 			selector: metav1.SetAsLabelSelector(labels.Set{"app": "nginx"}),
 			expected: false,
@@ -59,9 +55,7 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 		{
 			name: "Invalid Selector",
 			object: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"app": "nginx"},
-				},
+				Labels: map[string]string{"app": "nginx"},
 			},
 			selector: metav1.SetAsLabelSelector(labels.Set{"app": "nginx,"}),
 			expected: false,
@@ -69,18 +63,14 @@ func TestObjectMatchesLabelSelector(t *testing.T) {
 		{
 			name: "Nil Selector",
 			object: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"app": "nginx"},
-				},
+				Labels: map[string]string{"app": "nginx"},
 			},
 			expected: false,
 		},
 		{
 			name: "No Labels",
 			object: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{},
-				},
+				Labels: map[string]string{},
 			},
 			selector: metav1.SetAsLabelSelector(labels.Set{"app": "nginx"}),
 			expected: false,
@@ -424,20 +414,16 @@ func TestSetOwnerReference(t *testing.T) {
 		{
 			name: "base",
 			owner: &kubeovnv1.VpcEgressGateway{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
-					UID:  uuid.NewUUID(),
-				},
+				Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
+				UID:  uuid.NewUUID(),
 			},
 			object: &corev1.Pod{},
 		},
 		{
 			name: "not registered",
 			owner: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
-					UID:  uuid.NewUUID(),
-				},
+				Name: fmt.Sprintf("veg-%05d", rand.IntN(10000)),
+				UID:  uuid.NewUUID(),
 			},
 			object:  &corev1.Pod{},
 			wantErr: true,
@@ -473,10 +459,8 @@ func TestPodAttachmentIPs(t *testing.T) {
 		{
 			name: "ipv4",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						nadv1.NetworkStatusAnnot: `[{"name": "default/ipv4", "ips": ["1.1.1.1"]}]`,
-					},
+				Annotations: map[string]string{
+					nadv1.NetworkStatusAnnot: `[{"name": "default/ipv4", "ips": ["1.1.1.1"]}]`,
 				},
 			},
 			network: "default/ipv4",
@@ -485,10 +469,8 @@ func TestPodAttachmentIPs(t *testing.T) {
 		{
 			name: "ipv6",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						nadv1.NetworkStatusAnnot: `[{"name": "default/ipv6", "ips": ["fd00::1"]}]`,
-					},
+				Annotations: map[string]string{
+					nadv1.NetworkStatusAnnot: `[{"name": "default/ipv6", "ips": ["fd00::1"]}]`,
 				},
 			},
 			network: "default/ipv6",
@@ -497,10 +479,8 @@ func TestPodAttachmentIPs(t *testing.T) {
 		{
 			name: "dual-stack",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						nadv1.NetworkStatusAnnot: `[{"name": "default/dual", "ips": ["1.1.1.1", "fd00::1"]}]`,
-					},
+				Annotations: map[string]string{
+					nadv1.NetworkStatusAnnot: `[{"name": "default/dual", "ips": ["1.1.1.1", "fd00::1"]}]`,
 				},
 			},
 			network: "default/dual",
@@ -519,10 +499,8 @@ func TestPodAttachmentIPs(t *testing.T) {
 		{
 			name: "unexpected network status annotation",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						nadv1.NetworkStatusAnnot: `foo_bar`,
-					},
+				Annotations: map[string]string{
+					nadv1.NetworkStatusAnnot: `foo_bar`,
 				},
 			},
 			wantErr: true,
@@ -530,10 +508,8 @@ func TestPodAttachmentIPs(t *testing.T) {
 		{
 			name: "empty network name",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						nadv1.NetworkStatusAnnot: `[{"name": "default/xxx", "ips": ["1.1.1.1", "fd00::1"]}]`,
-					},
+				Annotations: map[string]string{
+					nadv1.NetworkStatusAnnot: `[{"name": "default/xxx", "ips": ["1.1.1.1", "fd00::1"]}]`,
 				},
 			},
 			network: "",
@@ -542,10 +518,8 @@ func TestPodAttachmentIPs(t *testing.T) {
 		{
 			name: "network status not found",
 			pod: &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						nadv1.NetworkStatusAnnot: `[{"name": "default/xyz", "ips": ["1.1.1.1", "fd00::1"]}]`,
-					},
+				Annotations: map[string]string{
+					nadv1.NetworkStatusAnnot: `[{"name": "default/xyz", "ips": ["1.1.1.1", "fd00::1"]}]`,
 				},
 			},
 			network: "default/abc",
@@ -577,9 +551,7 @@ func TestDeploymentIsReady(t *testing.T) {
 		{
 			name: "ready",
 			deploy: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](1),
 				},
@@ -595,9 +567,7 @@ func TestDeploymentIsReady(t *testing.T) {
 		{
 			name: "generation mismatch",
 			deploy: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Status: appsv1.DeploymentStatus{
 					ObservedGeneration: 1,
 				},
@@ -607,9 +577,7 @@ func TestDeploymentIsReady(t *testing.T) {
 		{
 			name: "condition Processing",
 			deploy: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](1),
 				},
@@ -630,9 +598,7 @@ func TestDeploymentIsReady(t *testing.T) {
 		{
 			name: "ProgressDeadlineExceeded",
 			deploy: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Status: appsv1.DeploymentStatus{
 					ObservedGeneration: 2,
 					Conditions: []appsv1.DeploymentCondition{
@@ -648,9 +614,7 @@ func TestDeploymentIsReady(t *testing.T) {
 		{
 			name: "updated replicas less than desired replicas",
 			deploy: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](2),
 				},
@@ -666,9 +630,7 @@ func TestDeploymentIsReady(t *testing.T) {
 		{
 			name: "updated replicas less than current replicas",
 			deploy: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](1),
 				},
@@ -684,9 +646,7 @@ func TestDeploymentIsReady(t *testing.T) {
 		{
 			name: "available replicas less than updated replicas",
 			deploy: &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
 					Replicas: ptr.To[int32](2),
 				},
@@ -718,9 +678,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 		{
 			name: "ready",
 			sts: &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.StatefulSetSpec{
 					Replicas: ptr.To[int32](3),
 				},
@@ -737,9 +695,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 		{
 			name: "generation mismatch",
 			sts: &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Status: appsv1.StatefulSetStatus{
 					ObservedGeneration: 1,
 				},
@@ -749,9 +705,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 		{
 			name: "ready replicas less than desired replicas",
 			sts: &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.StatefulSetSpec{
 					Replicas: ptr.To[int32](3),
 				},
@@ -768,9 +722,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 		{
 			name: "current replicas greater than ready replicas",
 			sts: &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.StatefulSetSpec{
 					Replicas: ptr.To[int32](3),
 				},
@@ -787,9 +739,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 		{
 			name: "updated replicas less than ready replicas",
 			sts: &appsv1.StatefulSet{
-				ObjectMeta: metav1.ObjectMeta{
-					Generation: 2,
-				},
+				Generation: 2,
 				Spec: appsv1.StatefulSetSpec{
 					Replicas: ptr.To[int32](3),
 				},
@@ -902,20 +852,16 @@ func TestTrimManagedFields(t *testing.T) {
 	}{{
 		name: "trim managed fields from object",
 		arg: &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-pod",
-				ManagedFields: []metav1.ManagedFieldsEntry{{
-					Manager:   "controller",
-					Operation: metav1.ManagedFieldsOperationApply,
-				}},
-			},
+			Name: "test-pod",
+			ManagedFields: []metav1.ManagedFieldsEntry{{
+				Manager:   "controller",
+				Operation: metav1.ManagedFieldsOperationApply,
+			}},
 		},
 	}, {
 		name: "object without managed fields",
 		arg: &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-subnet-no-managed-fields",
-			},
+			Name: "test-subnet-no-managed-fields",
 		},
 	}, {
 		name:    "non-object input",
@@ -943,20 +889,18 @@ func TestTrimManagedFields(t *testing.T) {
 func fullyPopulatedPod() *corev1.Pod {
 	alwaysRestart := corev1.ContainerRestartPolicyAlways
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        "demo",
-			Namespace:   "default",
-			Labels:      map[string]string{"app": "demo"},
-			Annotations: map[string]string{"foo": "bar"},
-			Finalizers:  []string{"kubeovn.io/controller"},
-			OwnerReferences: []metav1.OwnerReference{{
-				APIVersion: "apps/v1",
-				Kind:       "StatefulSet",
-				Name:       "demo-sts",
-				UID:        "uid-1",
-			}},
-			ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "kubelet"}},
-		},
+		Name:        "demo",
+		Namespace:   "default",
+		Labels:      map[string]string{"app": "demo"},
+		Annotations: map[string]string{"foo": "bar"},
+		Finalizers:  []string{"kubeovn.io/controller"},
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: "apps/v1",
+			Kind:       "StatefulSet",
+			Name:       "demo-sts",
+			UID:        "uid-1",
+		}},
+		ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "kubelet"}},
 		Spec: corev1.PodSpec{
 			NodeName:                     "node-1",
 			HostNetwork:                  false,
@@ -974,7 +918,7 @@ func fullyPopulatedPod() *corev1.Pod {
 				{Key: "node-role.kubernetes.io/control-plane", Operator: corev1.TolerationOpExists},
 			},
 			Volumes: []corev1.Volume{
-				{Name: "data", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+				{Name: "data", EmptyDir: &corev1.EmptyDirVolumeSource{}},
 			},
 			InitContainers: []corev1.Container{{
 				Name:            "sidecar",
@@ -983,7 +927,7 @@ func fullyPopulatedPod() *corev1.Pod {
 				Args:            []string{"a", "b"},
 				Env:             []corev1.EnvVar{{Name: "X", Value: "1"}},
 				VolumeMounts:    []corev1.VolumeMount{{Name: "data", MountPath: "/data"}},
-				LivenessProbe:   &corev1.Probe{ProbeHandler: corev1.ProbeHandler{TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt(8080)}}},
+				LivenessProbe:   &corev1.Probe{TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt(8080)}},
 				SecurityContext: &corev1.SecurityContext{RunAsNonRoot: new(true)},
 				RestartPolicy:   &alwaysRestart,
 				Ports:           []corev1.ContainerPort{{Name: "sidecar-http", ContainerPort: 9100}},
@@ -995,10 +939,10 @@ func fullyPopulatedPod() *corev1.Pod {
 				Args:            []string{"-g", "daemon off;"},
 				WorkingDir:      "/",
 				Env:             []corev1.EnvVar{{Name: "FOO", Value: "BAR"}},
-				EnvFrom:         []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "cm"}}}},
+				EnvFrom:         []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{Name: "cm"}}},
 				VolumeMounts:    []corev1.VolumeMount{{Name: "data", MountPath: "/srv"}},
-				LivenessProbe:   &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromInt(80)}}},
-				ReadinessProbe:  &corev1.Probe{ProbeHandler: corev1.ProbeHandler{HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromInt(80)}}},
+				LivenessProbe:   &corev1.Probe{HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromInt(80)}},
+				ReadinessProbe:  &corev1.Probe{HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromInt(80)}},
 				Lifecycle:       &corev1.Lifecycle{PreStop: &corev1.LifecycleHandler{Exec: &corev1.ExecAction{Command: []string{"sleep", "1"}}}},
 				SecurityContext: &corev1.SecurityContext{Privileged: new(false)},
 				ImagePullPolicy: corev1.PullIfNotPresent,
@@ -1199,10 +1143,8 @@ func reportRetainedBytesPerPod(b *testing.B, transform func(any) (any, error)) {
 
 func TestTrimPodForControllerNonPod(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:          "s1",
-			ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "ctrl"}},
-		},
+		Name:          "s1",
+		ManagedFields: []metav1.ManagedFieldsEntry{{Manager: "ctrl"}},
 	}
 	ret, err := TrimPodForController(subnet)
 	require.NoError(t, err)

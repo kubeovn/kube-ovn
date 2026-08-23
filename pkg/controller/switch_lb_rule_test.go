@@ -99,17 +99,13 @@ func Test_setUserDefinedNetwork(t *testing.T) {
 			name:    "Propagate VPC",
 			service: &corev1.Service{},
 			slr: &kubeovnv1.SwitchLBRule{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.LogicalRouterAnnotation: "test",
-					},
+				Annotations: map[string]string{
+					util.LogicalRouterAnnotation: "test",
 				},
 			},
 			result: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.LogicalRouterAnnotation: "test",
-					},
+				Annotations: map[string]string{
+					util.LogicalRouterAnnotation: "test",
 				},
 			},
 		},
@@ -117,17 +113,13 @@ func Test_setUserDefinedNetwork(t *testing.T) {
 			name:    "Propagate Subnet",
 			service: &corev1.Service{},
 			slr: &kubeovnv1.SwitchLBRule{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.LogicalSwitchAnnotation: "test",
-					},
+				Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: "test",
 				},
 			},
 			result: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.LogicalSwitchAnnotation: "test",
-					},
+				Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: "test",
 				},
 			},
 		},
@@ -135,19 +127,15 @@ func Test_setUserDefinedNetwork(t *testing.T) {
 			name:    "Propagate VPC/Subnet",
 			service: &corev1.Service{},
 			slr: &kubeovnv1.SwitchLBRule{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.LogicalRouterAnnotation: "test1",
-						util.LogicalSwitchAnnotation: "test2",
-					},
+				Annotations: map[string]string{
+					util.LogicalRouterAnnotation: "test1",
+					util.LogicalSwitchAnnotation: "test2",
 				},
 			},
 			result: &corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.LogicalRouterAnnotation: "test1",
-						util.LogicalSwitchAnnotation: "test2",
-					},
+				Annotations: map[string]string{
+					util.LogicalRouterAnnotation: "test1",
+					util.LogicalSwitchAnnotation: "test2",
 				},
 			},
 		},
@@ -179,7 +167,7 @@ func setupHandleDelSLRTest(t *testing.T, vpcName, subnetName, slrName, namespace
 	ctrl := fc.fakeController
 
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: vpcName},
+		Name: vpcName,
 		Status: kubeovnv1.VpcStatus{
 			TCPLoadBalancer: tcpLBName,
 		},
@@ -190,13 +178,11 @@ func setupHandleDelSLRTest(t *testing.T, vpcName, subnetName, slrName, namespace
 
 	svcName := generateSvcName(slrName)
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      svcName,
-			Namespace: namespace,
-			Annotations: map[string]string{
-				util.LogicalSwitchAnnotation: subnetName,
-				util.VpcAnnotation:           vpcName,
-			},
+		Name:      svcName,
+		Namespace: namespace,
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation: subnetName,
+			util.VpcAnnotation:           vpcName,
 		},
 	}
 	_, err = ctrl.config.KubeClient.CoreV1().Services(namespace).Create(context.Background(), svc, metav1.CreateOptions{})
@@ -204,7 +190,7 @@ func setupHandleDelSLRTest(t *testing.T, vpcName, subnetName, slrName, namespace
 	require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(svc))
 
 	vip := &kubeovnv1.Vip{
-		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Name: subnetName,
 	}
 	_, err = ctrl.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{})
 	require.NoError(t, err)

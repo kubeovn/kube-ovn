@@ -448,11 +448,9 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 		newSvc.Spec.IPFamilyPolicy = &policy
 	} else {
 		newSvc = &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        name,
-				Namespace:   slr.Spec.Namespace,
-				Annotations: map[string]string{util.SwitchLBRuleVipsAnnotation: slr.Spec.Vip},
-			},
+			Name:        name,
+			Namespace:   slr.Spec.Namespace,
+			Annotations: map[string]string{util.SwitchLBRuleVipsAnnotation: slr.Spec.Vip},
 			Spec: corev1.ServiceSpec{
 				Ports:           ports,
 				Selector:        selectors,
@@ -556,11 +554,9 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 		newEps.Subsets = subsets
 	} else {
 		newEps = &corev1.Endpoints{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name,
-				Namespace: slr.Spec.Namespace,
-			},
-			Subsets: subsets,
+			Name:      name,
+			Namespace: slr.Spec.Namespace,
+			Subsets:   subsets,
 		}
 	}
 	return newEps

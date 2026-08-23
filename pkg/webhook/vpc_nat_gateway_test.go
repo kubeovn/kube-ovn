@@ -87,9 +87,7 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("Create - Allowed", func(t *testing.T) {
 		gw := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-gw",
-			},
+			Name: "test-gw",
 			Spec: ovnv1.VpcNatGatewaySpec{
 				Vpc:      "test-vpc",
 				Subnet:   "test-subnet",
@@ -100,31 +98,29 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		gwRaw, _ := json.Marshal(gw)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Create,
-				Object: runtime.RawExtension{
-					Raw: gwRaw,
-				},
+			Operation: admissionv1.Create,
+			Object: runtime.RawExtension{
+				Raw: gwRaw,
 			},
 		}
 
 		cache := &mockCache{
 			objects: map[string]runtime.Object{
 				"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"image": "test-image"},
+					Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"image": "test-image"},
 				},
 				"kube-system/ovn-vpc-nat-gw-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"enable-vpc-nat-gw": "true"},
+					Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"enable-vpc-nat-gw": "true"},
 				},
 				"/test-vpc": &ovnv1.Vpc{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-vpc"},
-					Spec:       ovnv1.VpcSpec{EnableBfd: true},
+					Name: "test-vpc",
+					Spec: ovnv1.VpcSpec{EnableBfd: true},
 				},
 				"/test-subnet": &ovnv1.Subnet{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-					Spec:       ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
+					Name: "test-subnet",
+					Spec: ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
 				},
 			},
 		}
@@ -140,7 +136,7 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("Create - Invalid LanIP", func(t *testing.T) {
 		gw := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+			Name: "test-gw",
 			Spec: ovnv1.VpcNatGatewaySpec{
 				Vpc:      "test-vpc",
 				Subnet:   "test-subnet",
@@ -151,26 +147,24 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		gwRaw, _ := json.Marshal(gw)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Create,
-				Object:    runtime.RawExtension{Raw: gwRaw},
-			},
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: gwRaw},
 		}
 
 		cache := &mockCache{
 			objects: map[string]runtime.Object{
 				"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"image": "test-image"},
+					Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"image": "test-image"},
 				},
 				"kube-system/ovn-vpc-nat-gw-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"enable-vpc-nat-gw": "true"},
+					Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"enable-vpc-nat-gw": "true"},
 				},
-				"/test-vpc": &ovnv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: "test-vpc"}},
+				"/test-vpc": &ovnv1.Vpc{Name: "test-vpc"},
 				"/test-subnet": &ovnv1.Subnet{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-					Spec:       ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
+					Name: "test-subnet",
+					Spec: ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
 				},
 			},
 		}
@@ -183,22 +177,20 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("Update - Immutable Namespace", func(t *testing.T) {
 		gwOld := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-			Spec:       ovnv1.VpcNatGatewaySpec{Namespace: "old-ns"},
+			Name: "test-gw",
+			Spec: ovnv1.VpcNatGatewaySpec{Namespace: "old-ns"},
 		}
 		gwNew := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-			Spec:       ovnv1.VpcNatGatewaySpec{Namespace: "new-ns"},
+			Name: "test-gw",
+			Spec: ovnv1.VpcNatGatewaySpec{Namespace: "new-ns"},
 		}
 		gwOldRaw, _ := json.Marshal(gwOld)
 		gwNewRaw, _ := json.Marshal(gwNew)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Update,
-				Object:    runtime.RawExtension{Raw: gwNewRaw},
-				OldObject: runtime.RawExtension{Raw: gwOldRaw},
-			},
+			Operation: admissionv1.Update,
+			Object:    runtime.RawExtension{Raw: gwNewRaw},
+			OldObject: runtime.RawExtension{Raw: gwOldRaw},
 		}
 
 		v := &ValidatingHook{decoder: decoder}
@@ -209,22 +201,20 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("Update - HA to non-HA Reduction", func(t *testing.T) {
 		gwOld := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-			Spec:       ovnv1.VpcNatGatewaySpec{Replicas: 2},
+			Name: "test-gw",
+			Spec: ovnv1.VpcNatGatewaySpec{Replicas: 2},
 		}
 		gwNew := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-			Spec:       ovnv1.VpcNatGatewaySpec{Replicas: 1},
+			Name: "test-gw",
+			Spec: ovnv1.VpcNatGatewaySpec{Replicas: 1},
 		}
 		gwOldRaw, _ := json.Marshal(gwOld)
 		gwNewRaw, _ := json.Marshal(gwNew)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Update,
-				Object:    runtime.RawExtension{Raw: gwNewRaw},
-				OldObject: runtime.RawExtension{Raw: gwOldRaw},
-			},
+			Operation: admissionv1.Update,
+			Object:    runtime.RawExtension{Raw: gwNewRaw},
+			OldObject: runtime.RawExtension{Raw: gwOldRaw},
 		}
 
 		v := &ValidatingHook{decoder: decoder}
@@ -235,22 +225,20 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("Update - non-HA to HA Increase", func(t *testing.T) {
 		gwOld := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-			Spec:       ovnv1.VpcNatGatewaySpec{Replicas: 1},
+			Name: "test-gw",
+			Spec: ovnv1.VpcNatGatewaySpec{Replicas: 1},
 		}
 		gwNew := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-			Spec:       ovnv1.VpcNatGatewaySpec{Replicas: 2},
+			Name: "test-gw",
+			Spec: ovnv1.VpcNatGatewaySpec{Replicas: 2},
 		}
 		gwOldRaw, _ := json.Marshal(gwOld)
 		gwNewRaw, _ := json.Marshal(gwNew)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Update,
-				Object:    runtime.RawExtension{Raw: gwNewRaw},
-				OldObject: runtime.RawExtension{Raw: gwOldRaw},
-			},
+			Operation: admissionv1.Update,
+			Object:    runtime.RawExtension{Raw: gwNewRaw},
+			OldObject: runtime.RawExtension{Raw: gwOldRaw},
 		}
 
 		v := &ValidatingHook{decoder: decoder}
@@ -261,7 +249,7 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("ConfigMap not found", func(t *testing.T) {
 		gw := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+			Name: "test-gw",
 			Spec: ovnv1.VpcNatGatewaySpec{
 				Vpc:      "test-vpc",
 				Subnet:   "test-subnet",
@@ -272,10 +260,8 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		gwRaw, _ := json.Marshal(gw)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Create,
-				Object:    runtime.RawExtension{Raw: gwRaw},
-			},
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: gwRaw},
 		}
 
 		cache := &mockCache{objects: map[string]runtime.Object{}}
@@ -288,7 +274,7 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("VpcNatGatewayConfig disabled", func(t *testing.T) {
 		gw := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+			Name: "test-gw",
 			Spec: ovnv1.VpcNatGatewaySpec{
 				Vpc:      "test-vpc",
 				Subnet:   "test-subnet",
@@ -299,21 +285,19 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		gwRaw, _ := json.Marshal(gw)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Create,
-				Object:    runtime.RawExtension{Raw: gwRaw},
-			},
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: gwRaw},
 		}
 
 		cache := &mockCache{
 			objects: map[string]runtime.Object{
 				"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"image": "test-image"},
+					Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"image": "test-image"},
 				},
 				"kube-system/ovn-vpc-nat-gw-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"enable-vpc-nat-gw": "false"},
+					Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"enable-vpc-nat-gw": "false"},
 				},
 			},
 		}
@@ -326,7 +310,7 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("ValidateVpcNatGW - missing VPC", func(t *testing.T) {
 		gw := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+			Name: "test-gw",
 			Spec: ovnv1.VpcNatGatewaySpec{
 				Vpc:      "missing-vpc",
 				Subnet:   "test-subnet",
@@ -337,21 +321,19 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		gwRaw, _ := json.Marshal(gw)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Create,
-				Object:    runtime.RawExtension{Raw: gwRaw},
-			},
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: gwRaw},
 		}
 
 		cache := &mockCache{
 			objects: map[string]runtime.Object{
 				"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"image": "test-image"},
+					Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"image": "test-image"},
 				},
 				"kube-system/ovn-vpc-nat-gw-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"enable-vpc-nat-gw": "true"},
+					Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"enable-vpc-nat-gw": "true"},
 				},
 			},
 		}
@@ -364,7 +346,7 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("ValidateVpcNatGW - BFD mismatch", func(t *testing.T) {
 		gw := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+			Name: "test-gw",
 			Spec: ovnv1.VpcNatGatewaySpec{
 				Vpc:      "test-vpc",
 				Subnet:   "test-subnet",
@@ -376,29 +358,27 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		gwRaw, _ := json.Marshal(gw)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Create,
-				Object:    runtime.RawExtension{Raw: gwRaw},
-			},
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: gwRaw},
 		}
 
 		cache := &mockCache{
 			objects: map[string]runtime.Object{
 				"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"image": "test-image"},
+					Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"image": "test-image"},
 				},
 				"kube-system/ovn-vpc-nat-gw-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"enable-vpc-nat-gw": "true"},
+					Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"enable-vpc-nat-gw": "true"},
 				},
 				"/test-vpc": &ovnv1.Vpc{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-vpc"},
-					Spec:       ovnv1.VpcSpec{EnableBfd: false},
+					Name: "test-vpc",
+					Spec: ovnv1.VpcSpec{EnableBfd: false},
 				},
 				"/test-subnet": &ovnv1.Subnet{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-					Spec:       ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
+					Name: "test-subnet",
+					Spec: ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
 				},
 			},
 		}
@@ -411,7 +391,7 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("ValidateVpcNatGW - LanIP not in CIDR", func(t *testing.T) {
 		gw := ovnv1.VpcNatGateway{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
+			Name: "test-gw",
 			Spec: ovnv1.VpcNatGatewaySpec{
 				Vpc:      "test-vpc",
 				Subnet:   "test-subnet",
@@ -422,26 +402,24 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		gwRaw, _ := json.Marshal(gw)
 
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Create,
-				Object:    runtime.RawExtension{Raw: gwRaw},
-			},
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: gwRaw},
 		}
 
 		cache := &mockCache{
 			objects: map[string]runtime.Object{
 				"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"image": "test-image"},
+					Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"image": "test-image"},
 				},
 				"kube-system/ovn-vpc-nat-gw-config": &corev1.ConfigMap{
-					ObjectMeta: metav1.ObjectMeta{Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem},
-					Data:       map[string]string{"enable-vpc-nat-gw": "true"},
+					Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem,
+					Data: map[string]string{"enable-vpc-nat-gw": "true"},
 				},
-				"/test-vpc": &ovnv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: "test-vpc"}},
+				"/test-vpc": &ovnv1.Vpc{Name: "test-vpc"},
 				"/test-subnet": &ovnv1.Subnet{
-					ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-					Spec:       ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
+					Name: "test-subnet",
+					Spec: ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
 				},
 			},
 		}
@@ -454,10 +432,8 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 
 	t.Run("Decoding failure", func(t *testing.T) {
 		req := admission.Request{
-			AdmissionRequest: admissionv1.AdmissionRequest{
-				Operation: admissionv1.Create,
-				Object:    runtime.RawExtension{Raw: []byte("invalid-json")},
-			},
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: []byte("invalid-json")},
 		}
 		v := &ValidatingHook{decoder: decoder}
 		resp := v.VpcNatGwCreateOrUpdateHook(context.Background(), req)
@@ -469,7 +445,7 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 func TestValidateIptablesDnat(t *testing.T) {
 	newDnat := func(externalPort, internalPort string) *ovnv1.IptablesDnatRule {
 		return &ovnv1.IptablesDnatRule{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-dnat"},
+			Name: "test-dnat",
 			Spec: ovnv1.IptablesDnatRuleSpec{
 				EIP:          "test-eip",
 				ExternalPort: externalPort,
@@ -483,8 +459,8 @@ func TestValidateIptablesDnat(t *testing.T) {
 	cache := &mockCache{
 		objects: map[string]runtime.Object{
 			"/test-eip": &ovnv1.IptablesEIP{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-eip"},
-				Spec:       ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"},
+				Name: "test-eip",
+				Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"},
 			},
 		},
 	}

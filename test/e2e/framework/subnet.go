@@ -261,9 +261,7 @@ func (c *SubnetClient) WaitToDisappear(name string, _, timeout time.Duration) er
 
 func MakeSubnet(name, vlan, cidr, gateway, vpc, provider string, excludeIPs, gatewayNodes, namespaces []string) *apiv1.Subnet {
 	subnet := &apiv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.SubnetSpec{
 			Vpc:         vpc,
 			Vlan:        vlan,

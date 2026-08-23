@@ -135,13 +135,13 @@ func TestValidateProviderVlanPortSource(t *testing.T) {
 func TestValidateProviderVlanLink(t *testing.T) {
 	t.Parallel()
 
-	parent := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "bond0", Index: 10}}
+	parent := &netlink.Dummy{Name: "bond0", Index: 10}
 	valid := &netlink.Vlan{
-		LinkAttrs: netlink.LinkAttrs{Name: "bond0.20", ParentIndex: 10},
-		VlanId:    20,
+		Name: "bond0.20", ParentIndex: 10,
+		VlanId: 20,
 	}
 	require.NoError(t, validateProviderVlanLink(valid, parent, 20))
-	require.Error(t, validateProviderVlanLink(&netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "bond0.20"}}, parent, 20))
+	require.Error(t, validateProviderVlanLink(&netlink.Dummy{Name: "bond0.20"}, parent, 20))
 
 	wrongVlanID := *valid
 	wrongVlanID.VlanId = 21
@@ -155,7 +155,7 @@ func TestValidateProviderVlanLink(t *testing.T) {
 func TestRestoreProviderVlanNetworkStateReturnsError(t *testing.T) {
 	t.Parallel()
 
-	vlanLink := &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "bond0.20", Index: 20}, VlanId: 20}
+	vlanLink := &netlink.Vlan{Name: "bond0.20", Index: 20, VlanId: 20}
 	addr := netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP("192.0.2.10"), Mask: net.CIDRMask(24, 32)}}
 	_, dst, err := net.ParseCIDR("198.51.100.0/24")
 	require.NoError(t, err)
@@ -182,8 +182,8 @@ func TestRestoreProviderVlanNetworkStateReturnsError(t *testing.T) {
 func TestTransferProviderVlanAddressesPreservesSourceUntilDestinationReady(t *testing.T) {
 	t.Parallel()
 
-	src := &netlink.Vlan{LinkAttrs: netlink.LinkAttrs{Name: "bond0.20", Index: 20}, VlanId: 20}
-	dst := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "kv20-l2bvmi7mc4", Index: 21}}
+	src := &netlink.Vlan{Name: "bond0.20", Index: 20, VlanId: 20}
+	dst := &netlink.Dummy{Name: "kv20-l2bvmi7mc4", Index: 21}
 	addr := netlink.Addr{IPNet: &net.IPNet{IP: net.ParseIP("192.0.2.10"), Mask: net.CIDRMask(24, 32)}}
 	replaceErr := errors.New("replace address")
 	deleted := false
@@ -222,7 +222,7 @@ func TestTransferProviderVlanAddressesPreservesSourceUntilDestinationReady(t *te
 func TestTransferProviderVlanRoutesReturnsDestinationFailure(t *testing.T) {
 	t.Parallel()
 
-	dst := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: "kv20-l2bvmi7mc4", Index: 21}}
+	dst := &netlink.Dummy{Name: "kv20-l2bvmi7mc4", Index: 21}
 	_, network, err := net.ParseCIDR("198.51.100.0/24")
 	require.NoError(t, err)
 	replaceErr := errors.New("replace route")

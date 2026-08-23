@@ -122,12 +122,10 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 	}
 
 	deployment := &v1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-			Labels: map[string]string{
-				util.VpcNameLabel: vpc.Name,
-				util.VpcLbLabel:   "true",
-			},
+		Name: name,
+		Labels: map[string]string{
+			util.VpcNameLabel: vpc.Name,
+			util.VpcLbLabel:   "true",
 		},
 		Spec: v1.DeploymentSpec{
 			Replicas: &replicas,
@@ -135,10 +133,8 @@ func (c *Controller) genVpcLbDeployment(vpc *kubeovnv1.Vpc) (*v1.Deployment, err
 				MatchLabels: labels,
 			},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      labels,
-					Annotations: podAnnotations,
-				},
+				Labels:      labels,
+				Annotations: podAnnotations,
 				Spec: corev1.PodSpec{
 					InitContainers: []corev1.Container{},
 					Containers: []corev1.Container{

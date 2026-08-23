@@ -109,11 +109,11 @@ func (c *Controller) supportsRestartableInitContainers() restartableInitContaine
 	}
 	labels := map[string]string{"app": "kube-ovn-sidecar-capability-probe"}
 	probe := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{GenerateName: "kube-ovn-sidecar-capability-probe-", Namespace: namespace},
+		GenerateName: "kube-ovn-sidecar-capability-probe-", Namespace: namespace,
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To[int32](0), Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				Labels: labels,
 				Spec: corev1.PodSpec{
 					InitContainers: []corev1.Container{{Name: "sidecar", Image: image, RestartPolicy: ptr.To(corev1.ContainerRestartPolicyAlways)}},
 					Containers:     []corev1.Container{{Name: "main", Image: image}},
@@ -275,7 +275,7 @@ func setVpcEgressGatewayControllerReference(gw *kubeovnv1.VpcEgressGateway, obje
 
 func (c *Controller) reconcileVpcEgressObserverConfigMap(gw *kubeovnv1.VpcEgressGateway, name string, labels map[string]string, data []byte) error {
 	configMaps := c.config.KubeClient.CoreV1().ConfigMaps(gw.Namespace)
-	desired := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gw.Namespace, Labels: maps.Clone(labels)}, Data: map[string]string{"config.json": string(data)}}
+	desired := &corev1.ConfigMap{Name: name, Namespace: gw.Namespace, Labels: maps.Clone(labels), Data: map[string]string{"config.json": string(data)}}
 	return reconcileVpcEgressObserverResource(
 		gw, "config map", name, desired,
 		func() (metav1.Object, error) { return configMaps.Get(context.Background(), name, metav1.GetOptions{}) },
@@ -292,7 +292,7 @@ func (c *Controller) reconcileVpcEgressObserverConfigMap(gw *kubeovnv1.VpcEgress
 
 func (c *Controller) reconcileVpcEgressObserverService(gw *kubeovnv1.VpcEgressGateway, name string, labels map[string]string) error {
 	services := c.config.KubeClient.CoreV1().Services(gw.Namespace)
-	desired := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gw.Namespace, Labels: maps.Clone(labels)}, Spec: corev1.ServiceSpec{
+	desired := &corev1.Service{Name: name, Namespace: gw.Namespace, Labels: maps.Clone(labels), Spec: corev1.ServiceSpec{
 		ClusterIP: corev1.ClusterIPNone, PublishNotReadyAddresses: true, Selector: maps.Clone(labels),
 		Ports: []corev1.ServicePort{{Name: "metrics", Port: vpcEgressObserverPort, TargetPort: intstr.FromInt32(vpcEgressObserverPort)}},
 	}}
@@ -445,7 +445,7 @@ func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *
 	}
 	launcher := fmt.Sprintf("if [ -x /kube-ovn/vpc-egress-gateway-observer ]; then exec /kube-ovn/vpc-egress-gateway-observer --config %s --network-status %s; fi; exec sleep infinity", vpcEgressObserverConfigPath, vpcEgressObserverNetworkStatusPath)
 	healthCheck := "if [ ! -x /kube-ovn/vpc-egress-gateway-observer ]; then exit 0; fi; exec /kube-ovn/vpc-egress-gateway-observer --health-check"
-	livenessProbe := &corev1.Probe{ProbeHandler: corev1.ProbeHandler{Exec: &corev1.ExecAction{Command: []string{"/bin/sh", "-ec", healthCheck}}}, PeriodSeconds: 10, FailureThreshold: 3}
+	livenessProbe := &corev1.Probe{Exec: &corev1.ExecAction{Command: []string{"/bin/sh", "-ec", healthCheck}}, PeriodSeconds: 10, FailureThreshold: 3}
 	podSpec.InitContainers = append(podSpec.InitContainers, corev1.Container{
 		Name: vpcEgressObserverContainerName, Image: image, ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: []string{"/bin/sh", "-ec", launcher}, RestartPolicy: ptr.To(corev1.ContainerRestartPolicyAlways), Resources: resources,
@@ -467,8 +467,8 @@ func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *
 	})
 	podSpec.Volumes = append(
 		podSpec.Volumes,
-		corev1.Volume{Name: vpcEgressObserverConfigVolume, VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: state.configName}}}},
-		corev1.Volume{Name: vpcEgressObserverPodInfoVolume, VolumeSource: corev1.VolumeSource{DownwardAPI: &corev1.DownwardAPIVolumeSource{Items: []corev1.DownwardAPIVolumeFile{{Path: "network-status", FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.annotations['k8s.v1.cni.cncf.io/network-status']"}}}}}},
+		corev1.Volume{Name: vpcEgressObserverConfigVolume, ConfigMap: &corev1.ConfigMapVolumeSource{Name: state.configName}},
+		corev1.Volume{Name: vpcEgressObserverPodInfoVolume, DownwardAPI: &corev1.DownwardAPIVolumeSource{Items: []corev1.DownwardAPIVolumeFile{{Path: "network-status", FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.annotations['k8s.v1.cni.cncf.io/network-status']"}}}}},
 	)
 }
 

@@ -1291,9 +1291,7 @@ func TestValidateCidrConflict(t *testing.T) {
 				},
 			},
 			subnetList: []kubeovnv1.Subnet{{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "utest0",
-				},
+				Name: "utest0",
 				Spec: kubeovnv1.SubnetSpec{
 					Default:     true,
 					Vpc:         "ovn-cluster11",
@@ -1326,9 +1324,7 @@ func TestValidateCidrConflict(t *testing.T) {
 				},
 			},
 			subnetList: []kubeovnv1.Subnet{{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "utest1",
-				},
+				Name: "utest1",
 				Spec: kubeovnv1.SubnetSpec{
 					Default:     true,
 					Vpc:         DefaultVpc,
@@ -1364,9 +1360,7 @@ func TestValidateCidrConflict(t *testing.T) {
 				},
 			},
 			subnetList: []kubeovnv1.Subnet{{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "utest1",
-				},
+				Name: "utest1",
 				Spec: kubeovnv1.SubnetSpec{
 					Default:               true,
 					Vpc:                   DefaultVpc,

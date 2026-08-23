@@ -68,8 +68,8 @@ var _ = framework.Describe("[group:service-cidr]", func() {
 
 		ginkgo.By(fmt.Sprintf("Creating ServiceCIDR %s with cidrs %v", name, cidrs))
 		sc := &networkingv1.ServiceCIDR{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       networkingv1.ServiceCIDRSpec{CIDRs: cidrs},
+			Name: name,
+			Spec: networkingv1.ServiceCIDRSpec{CIDRs: cidrs},
 		}
 		_, err := cs.NetworkingV1().ServiceCIDRs().Create(context.Background(), sc, metav1.CreateOptions{})
 		framework.ExpectNoError(err)

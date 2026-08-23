@@ -157,9 +157,7 @@ func RouterLBRuleIsReady(r *apiv1.RouterLBRule) (bool, error) {
 
 func MakeRouterLBRule(name, vpc, ovnEip, namespace, sessionAffinity string, selector, endpoints []string, ports []apiv1.RouterLBRulePort) *apiv1.RouterLBRule {
 	return &apiv1.RouterLBRule{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.RouterLBRuleSpec{
 			Vpc:             vpc,
 			OvnEip:          ovnEip,

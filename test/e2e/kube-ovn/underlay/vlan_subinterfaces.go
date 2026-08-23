@@ -11,7 +11,6 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -377,9 +376,7 @@ var _ = framework.SerialDescribe("[group:underlay]", func() {
 func createVlanSubinterfaceTestProviderNetwork(name, defaultInterface string, autoCreate bool, customInterfaces map[string][]string) *v1.ProviderNetwork {
 	customIfs := buildCustomInterfaces(customInterfaces)
 	return &v1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: v1.ProviderNetworkSpec{
 			DefaultInterface:            defaultInterface,
 			AutoCreateVlanSubinterfaces: autoCreate,

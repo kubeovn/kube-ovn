@@ -80,9 +80,7 @@ func (c *BgpConfClient) WaitToDisappear(name string, _, timeout time.Duration) e
 
 func MakeBgpConf(name string, localASN, peerASN uint32, neighbours []string, holdTime, keepaliveTime, connectTime time.Duration, ebgpMultiHop bool) *apiv1.BgpConf {
 	return &apiv1.BgpConf{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: apiv1.BgpConfSpec{
 			LocalASN:      localASN,
 			PeerASN:       peerASN,

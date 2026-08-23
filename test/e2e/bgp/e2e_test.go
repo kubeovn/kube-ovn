@@ -398,11 +398,9 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 		ginkgo.DeferCleanup(func() { f.PodClient().DeleteSync(podName) })
 
 		service := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        serviceName,
-				Namespace:   f.Namespace.Name,
-				Annotations: map[string]string{util.BgpAnnotation: "true"},
-			},
+			Name:        serviceName,
+			Namespace:   f.Namespace.Name,
+			Annotations: map[string]string{util.BgpAnnotation: "true"},
 			Spec: corev1.ServiceSpec{
 				Selector: labels,
 				Ports: []corev1.ServicePort{{

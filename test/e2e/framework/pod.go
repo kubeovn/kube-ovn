@@ -116,12 +116,10 @@ func makePod(ns, name string, labels, annotations map[string]string, image strin
 	}
 
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Namespace:   ns,
-			Labels:      labels,
-			Annotations: annotations,
-		},
+		Name:        name,
+		Namespace:   ns,
+		Labels:      labels,
+		Annotations: annotations,
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{

@@ -80,30 +80,24 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 		},
 		// Wait for the BFD process to be running and initialize the BFD configuration
 		StartupProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bash", "/kube-ovn/bfdd-prestart.sh"},
-				},
+			Exec: &corev1.ExecAction{
+				Command: []string{"bash", "/kube-ovn/bfdd-prestart.sh"},
 			},
 			InitialDelaySeconds: 1,
 			FailureThreshold:    1,
 		},
 		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					// Restart bfdd when its local session table remains empty.
-					Command: []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"},
-				},
+			Exec: &corev1.ExecAction{
+				// Restart bfdd when its local session table remains empty.
+				Command: []string{"bash", "/kube-ovn/bfdd-healthcheck.sh"},
 			},
 			InitialDelaySeconds: 1,
 			PeriodSeconds:       5,
 			TimeoutSeconds:      10,
 		},
 		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"bfdd-control", "status"},
-				},
+			Exec: &corev1.ExecAction{
+				Command: []string{"bfdd-control", "status"},
 			},
 			InitialDelaySeconds: 3,
 			PeriodSeconds:       3,

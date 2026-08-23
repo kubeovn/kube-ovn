@@ -161,10 +161,8 @@ func (c *EndpointsClient) WaitToDisappear(name string, _, timeout time.Duration)
 
 func MakeEndpoints(name string, annotations map[string]string, subset []corev1.EndpointSubset) *corev1.Endpoints {
 	return &corev1.Endpoints{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Annotations: annotations,
-		},
-		Subsets: subset,
+		Name:        name,
+		Annotations: annotations,
+		Subsets:     subset,
 	}
 }

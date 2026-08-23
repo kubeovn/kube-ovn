@@ -705,7 +705,7 @@ func TestValidateQosPolicy(t *testing.T) {
 		{
 			name: "natgw binding must be shared",
 			qosPolicy: &kubeovnv1.QoSPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "qos-natgw-unshared"},
+				Name: "qos-natgw-unshared",
 				Spec: kubeovnv1.QoSPolicySpec{
 					Shared:      false,
 					BindingType: kubeovnv1.QoSBindingTypeNatGw,
@@ -716,7 +716,7 @@ func TestValidateQosPolicy(t *testing.T) {
 		{
 			name: "shared natgw binding is valid",
 			qosPolicy: &kubeovnv1.QoSPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "qos-natgw-shared"},
+				Name: "qos-natgw-shared",
 				Spec: kubeovnv1.QoSPolicySpec{
 					Shared:      true,
 					BindingType: kubeovnv1.QoSBindingTypeNatGw,
@@ -733,7 +733,7 @@ func TestValidateQosPolicy(t *testing.T) {
 		{
 			name: "unshared eip binding is valid",
 			qosPolicy: &kubeovnv1.QoSPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "qos-eip-unshared"},
+				Name: "qos-eip-unshared",
 				Spec: kubeovnv1.QoSPolicySpec{
 					Shared:      false,
 					BindingType: kubeovnv1.QoSBindingTypeEIP,
@@ -749,7 +749,7 @@ func TestValidateQosPolicy(t *testing.T) {
 		{
 			name: "invalid rate is rejected",
 			qosPolicy: &kubeovnv1.QoSPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "qos-invalid-rate"},
+				Name: "qos-invalid-rate",
 				Spec: kubeovnv1.QoSPolicySpec{
 					Shared:      true,
 					BindingType: kubeovnv1.QoSBindingTypeNatGw,
@@ -764,7 +764,7 @@ func TestValidateQosPolicy(t *testing.T) {
 		{
 			name: "invalid ip match value is rejected",
 			qosPolicy: &kubeovnv1.QoSPolicy{
-				ObjectMeta: metav1.ObjectMeta{Name: "qos-invalid-match"},
+				Name: "qos-invalid-match",
 				Spec: kubeovnv1.QoSPolicySpec{
 					Shared:      true,
 					BindingType: kubeovnv1.QoSBindingTypeNatGw,
@@ -799,7 +799,7 @@ func makeQoSPolicyForUpdate(name string, shared bool, bindingType kubeovnv1.QoSP
 	statusRules, specRules kubeovnv1.QoSPolicyBandwidthLimitRules,
 ) *kubeovnv1.QoSPolicy {
 	return &kubeovnv1.QoSPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Name: name,
 		Spec: kubeovnv1.QoSPolicySpec{
 			Shared:              shared,
 			BindingType:         bindingType,
@@ -850,10 +850,8 @@ func TestHandleUpdateQoSPolicy(t *testing.T) {
 	eips := make([]*kubeovnv1.IptablesEIP, 0, 2)
 	for _, name := range []string{"eip-1", "eip-2"} {
 		eips = append(eips, &kubeovnv1.IptablesEIP{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   name,
-				Labels: map[string]string{util.QoSLabel: multiEIPQoS.Name},
-			},
+			Name:   name,
+			Labels: map[string]string{util.QoSLabel: multiEIPQoS.Name},
 			Spec:   kubeovnv1.IptablesEIPSpec{QoSPolicy: multiEIPQoS.Name},
 			Status: kubeovnv1.IptablesEIPStatus{IP: "172.20.0.10"},
 		})

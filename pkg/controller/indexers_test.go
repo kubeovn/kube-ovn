@@ -5,7 +5,6 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -57,26 +56,22 @@ func TestIndexEPSByService(t *testing.T) {
 		{
 			name: "eps with service label",
 			obj: &discoveryv1.EndpointSlice{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Labels:    map[string]string{discoveryv1.LabelServiceName: "my-svc"},
-				},
+				Namespace: "default",
+				Labels:    map[string]string{discoveryv1.LabelServiceName: "my-svc"},
 			},
 			want: []string{"default/my-svc"},
 		},
 		{
 			name: "eps without service label",
 			obj: &discoveryv1.EndpointSlice{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Labels:    map[string]string{},
-				},
+				Namespace: "default",
+				Labels:    map[string]string{},
 			},
 			want: nil,
 		},
 		{
 			name: "eps with nil labels",
-			obj:  &discoveryv1.EndpointSlice{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}},
+			obj:  &discoveryv1.EndpointSlice{Namespace: "default"},
 			want: nil,
 		},
 		{
@@ -153,10 +148,10 @@ func TestIndexIPBySubnet(t *testing.T) {
 func TestIndexersLookup(t *testing.T) {
 	podIdx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexPodByNode: indexPodByNode})
 	for _, pod := range []*v1.Pod{
-		{ObjectMeta: metav1.ObjectMeta{Name: "p1", Namespace: "ns"}, Spec: v1.PodSpec{NodeName: "node-a"}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "p2", Namespace: "ns"}, Spec: v1.PodSpec{NodeName: "node-a"}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "p3", Namespace: "ns"}, Spec: v1.PodSpec{NodeName: "node-b"}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "p4", Namespace: "ns"}},
+		{Name: "p1", Namespace: "ns", Spec: v1.PodSpec{NodeName: "node-a"}},
+		{Name: "p2", Namespace: "ns", Spec: v1.PodSpec{NodeName: "node-a"}},
+		{Name: "p3", Namespace: "ns", Spec: v1.PodSpec{NodeName: "node-b"}},
+		{Name: "p4", Namespace: "ns"},
 	} {
 		if err := podIdx.Add(pod); err != nil {
 			t.Fatalf("add pod: %v", err)
@@ -172,10 +167,10 @@ func TestIndexersLookup(t *testing.T) {
 
 	epsIdx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexEPSByService: indexEPSByService})
 	for _, eps := range []*discoveryv1.EndpointSlice{
-		{ObjectMeta: metav1.ObjectMeta{Name: "e1", Namespace: "ns", Labels: map[string]string{discoveryv1.LabelServiceName: "svc-a"}}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "e2", Namespace: "ns", Labels: map[string]string{discoveryv1.LabelServiceName: "svc-a"}}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "e3", Namespace: "ns", Labels: map[string]string{discoveryv1.LabelServiceName: "svc-b"}}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "e4", Namespace: "other", Labels: map[string]string{discoveryv1.LabelServiceName: "svc-a"}}},
+		{Name: "e1", Namespace: "ns", Labels: map[string]string{discoveryv1.LabelServiceName: "svc-a"}},
+		{Name: "e2", Namespace: "ns", Labels: map[string]string{discoveryv1.LabelServiceName: "svc-a"}},
+		{Name: "e3", Namespace: "ns", Labels: map[string]string{discoveryv1.LabelServiceName: "svc-b"}},
+		{Name: "e4", Namespace: "other", Labels: map[string]string{discoveryv1.LabelServiceName: "svc-a"}},
 	} {
 		if err := epsIdx.Add(eps); err != nil {
 			t.Fatalf("add eps: %v", err)
@@ -191,10 +186,10 @@ func TestIndexersLookup(t *testing.T) {
 
 	ipIdx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexIPBySubnet: indexIPBySubnet})
 	for _, ip := range []*kubeovnv1.IP{
-		{ObjectMeta: metav1.ObjectMeta{Name: "ip1"}, Spec: kubeovnv1.IPSpec{Subnet: "subnet-a"}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "ip2"}, Spec: kubeovnv1.IPSpec{Subnet: "subnet-a"}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "ip3"}, Spec: kubeovnv1.IPSpec{Subnet: "subnet-b", AttachSubnets: []string{"subnet-a"}}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "ip4"}, Spec: kubeovnv1.IPSpec{Subnet: "subnet-b"}},
+		{Name: "ip1", Spec: kubeovnv1.IPSpec{Subnet: "subnet-a"}},
+		{Name: "ip2", Spec: kubeovnv1.IPSpec{Subnet: "subnet-a"}},
+		{Name: "ip3", Spec: kubeovnv1.IPSpec{Subnet: "subnet-b", AttachSubnets: []string{"subnet-a"}}},
+		{Name: "ip4", Spec: kubeovnv1.IPSpec{Subnet: "subnet-b"}},
 	} {
 		if err := ipIdx.Add(ip); err != nil {
 			t.Fatalf("add ip: %v", err)
@@ -213,22 +208,20 @@ func TestIndexVpcByBFDPort(t *testing.T) {
 	idx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexVpcByBFDPort: indexVpcByBFDPort})
 	vpcs := []*kubeovnv1.Vpc{
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "bfd-enabled"},
+			Name: "bfd-enabled",
 			Spec: kubeovnv1.VpcSpec{
 				BFDPort: &kubeovnv1.BFDPort{Enabled: true},
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "bfd-disabled"},
+			Name: "bfd-disabled",
 			Spec: kubeovnv1.VpcSpec{
 				BFDPort: &kubeovnv1.BFDPort{Enabled: false},
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "external",
-				Labels: map[string]string{util.VpcExternalLabel: "true"},
-			},
+			Name:   "external",
+			Labels: map[string]string{util.VpcExternalLabel: "true"},
 			Spec: kubeovnv1.VpcSpec{
 				BFDPort: &kubeovnv1.BFDPort{Enabled: true},
 			},

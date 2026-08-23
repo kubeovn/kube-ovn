@@ -130,10 +130,8 @@ func NewDynamicOvnNbClient(
 	}
 
 	c := &OVNNbClient{
-		ovsDbClient: ovsDbClient{
-			Client:  nbClient,
-			Timeout: time.Duration(ovnNbTimeout) * time.Second,
-		},
+		Client:  nbClient,
+		Timeout: time.Duration(ovnNbTimeout) * time.Second,
 	}
 	return c, models, nil
 }
@@ -201,10 +199,8 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	c := &OVNNbClient{
-		ovsDbClient: ovsDbClient{
-			Client:  nbClient,
-			Timeout: time.Duration(ovnNbTimeout) * time.Second,
-		},
+		Client:  nbClient,
+		Timeout: time.Duration(ovnNbTimeout) * time.Second,
 	}
 	return c, nil
 }
@@ -243,10 +239,8 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	c := &OVNSbClient{
-		ovsDbClient: ovsDbClient{
-			Client:  sbClient,
-			Timeout: time.Duration(ovnSbTimeout) * time.Second,
-		},
+		Client:  sbClient,
+		Timeout: time.Duration(ovnSbTimeout) * time.Second,
 	}
 	return c, nil
 }
