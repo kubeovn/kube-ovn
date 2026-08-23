@@ -20,6 +20,7 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -51,10 +52,25 @@ func bgpFamilies(f *framework.Framework) []bgpFamily {
 	return families
 }
 
+type frrPeer struct {
+	State string `json:"state"`
+}
+
 type frrSummary struct {
-	Peers map[string]struct {
-		State string `json:"state"`
-	} `json:"peers"`
+	Peers map[string]frrPeer `json:"peers"`
+}
+
+func peersForFamily(summary frrSummary, family bgpFamily) map[string]frrPeer {
+	peers := make(map[string]frrPeer)
+	wantIPv6 := family.name == "ipv6"
+	for address, peer := range summary.Peers {
+		parsed, err := netip.ParseAddr(address)
+		if err != nil || parsed.Is6() != wantIPv6 {
+			continue
+		}
+		peers[address] = peer
+	}
+	return peers
 }
 
 type speakerPodState struct {
@@ -100,11 +116,12 @@ func bgpPeersEstablished(family bgpFamily) (bool, error) {
 	if err = json.Unmarshal(output, &summary); err != nil {
 		return false, fmt.Errorf("failed to parse FRR BGP summary: %w: %s", err, output)
 	}
-	if len(summary.Peers) != 2 {
-		framework.Logf("Expected two %s FRR BGP peers, got %d; output=%s", family.name, len(summary.Peers), output)
+	peers := peersForFamily(summary, family)
+	if len(peers) != 2 {
+		framework.Logf("Expected two %s FRR BGP peers, got %d; output=%s", family.name, len(peers), output)
 		return false, nil
 	}
-	for address, peer := range summary.Peers {
+	for address, peer := range peers {
 		if peer.State != "Established" {
 			framework.Logf("FRR BGP peer %s is in state %s", address, peer.State)
 			return false, nil
@@ -222,30 +239,41 @@ func createPodOnNode(f *framework.Framework, name, nodeName string) (*corev1.Pod
 }
 
 func updateWorkerRoute(family bgpFamily) error {
-	if family.name == "ipv6" {
-		return runNodeCommand(workerNode, "ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", family.updatedWorkerAddress)
-	}
-	return runNodeCommand(workerNode, "ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", family.updatedWorkerAddress)
+	_, update, _, _ := workerSourceAddressCommands(family)
+	return runNodeCommand(workerNode, update...)
 }
 
 func addWorkerSourceAddress(family bgpFamily) error {
-	if family.name == "ipv6" {
-		return runNodeCommand(workerNode, "ip", "-6", "addr", "add", family.updatedWorkerAddress+"/64", "dev", "net1")
-	}
-	return runNodeCommand(workerNode, "ip", "addr", "add", family.updatedWorkerAddress+"/24", "dev", "net1")
+	add, _, _, _ := workerSourceAddressCommands(family)
+	return runNodeCommand(workerNode, add...)
 }
 
 func removeWorkerSourceAddress(family bgpFamily) error {
+	_, _, restore, remove := workerSourceAddressCommands(family)
+	// Remove the temporary source before restoring the host route; Linux may
+	// delete a route that still references an address when that address is removed.
+	removeErr := runNodeCommand(workerNode, remove...)
+	restoreErr := runNodeCommand(workerNode, restore...)
+	if restoreErr != nil && removeErr != nil {
+		return fmt.Errorf("failed to restore worker route: %w; failed to remove temporary address: %w", restoreErr, removeErr)
+	}
+	if restoreErr != nil {
+		return restoreErr
+	}
+	return removeErr
+}
+
+func workerSourceAddressCommands(family bgpFamily) (add, update, restore, remove []string) {
 	if family.name == "ipv6" {
-		if err := runNodeCommand(workerNode, "ip", "-6", "route", "del", "fd00:10:1::1/128"); err != nil {
-			return err
-		}
-		return runNodeCommand(workerNode, "ip", "-6", "addr", "del", family.updatedWorkerAddress+"/64", "dev", "net1")
+		return []string{"ip", "-6", "addr", "add", family.updatedWorkerAddress + "/64", "dev", "net1", "nodad"},
+			[]string{"ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", family.updatedWorkerAddress},
+			[]string{"ip", "-6", "route", "replace", "fd00:10:1::1/128", "dev", "net1", "src", family.workerAddress},
+			[]string{"ip", "-6", "addr", "del", family.updatedWorkerAddress + "/64", "dev", "net1"}
 	}
-	if err := runNodeCommand(workerNode, "ip", "route", "del", "10.0.1.1/32"); err != nil {
-		return err
-	}
-	return runNodeCommand(workerNode, "ip", "addr", "del", family.updatedWorkerAddress+"/24", "dev", "net1")
+	return []string{"ip", "addr", "add", family.updatedWorkerAddress + "/24", "dev", "net1"},
+		[]string{"ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", family.updatedWorkerAddress},
+		[]string{"ip", "route", "replace", "10.0.1.1/32", "dev", "net1", "src", family.workerAddress},
+		[]string{"ip", "addr", "del", family.updatedWorkerAddress + "/24", "dev", "net1"}
 }
 
 func setDefaultSubnetBGPPolicy(f *framework.Framework, policy string) string {
@@ -338,13 +366,13 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 
 		ginkgo.By("Changing the worker route source address without restarting the speaker")
 		for _, family := range bgpFamilies(f) {
-			framework.ExpectNoError(addWorkerSourceAddress(family))
-			framework.ExpectNoError(updateWorkerRoute(family))
 			ginkgo.DeferCleanup(func() {
 				if err := removeWorkerSourceAddress(family); err != nil {
 					framework.Logf("failed to remove temporary %s worker source address: %v", family.name, err)
 				}
 			})
+			framework.ExpectNoError(addWorkerSourceAddress(family))
+			framework.ExpectNoError(updateWorkerRoute(family))
 		}
 
 		ginkgo.By("Triggering a speaker reconcile after the route source change")
@@ -355,6 +383,17 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 		ginkgo.By("Waiting for the original Pod route to use the refreshed source address")
 		for _, family := range bgpFamilies(f) {
 			waitForRoutePaths(family, prefixes[family.name], validNodeRoutePathWithNextHop(family.workerAddress, family.updatedWorkerAddress))
+		}
+
+		ginkgo.By("Restoring the worker route source address and reconciling the original route")
+		for _, family := range bgpFamilies(f) {
+			framework.ExpectNoError(removeWorkerSourceAddress(family))
+		}
+		restoreTriggerName := "source-refresh-restore-trigger-" + framework.RandomSuffix()
+		createPodOnNode(f, restoreTriggerName, workerNode)
+		ginkgo.DeferCleanup(func() { f.PodClient().DeleteSync(restoreTriggerName) })
+		for _, family := range bgpFamilies(f) {
+			waitForRoutePaths(family, prefixes[family.name], validNodeRoutePath(family.workerAddress))
 		}
 	})
 
@@ -410,7 +449,12 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 			},
 		}
 		serviceClient := f.ServiceClient()
-		service = serviceClient.Create(service)
+		if f.IsDual() {
+			service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyRequireDualStack)
+		}
+		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
+			return len(util.ServiceClusterIPs(*s)) == len(bgpFamilies(f)), nil
+		}, "all BGP address family cluster IPs are allocated")
 		ginkgo.DeferCleanup(func() { serviceClient.DeleteSync(serviceName) })
 		servicePrefixes := make(map[string]string, 2)
 		for _, family := range bgpFamilies(f) {
