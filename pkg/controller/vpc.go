@@ -55,8 +55,13 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		return
 	}
 
-	if !newVpc.DeletionTimestamp.IsZero() ||
-		!slices.Equal(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
+	if !newVpc.DeletionTimestamp.IsZero() {
+		klog.Infof("enqueue delete vpc %s", newVpc.Name)
+		c.delVpcQueue.Add(newVpc.DeepCopy())
+		return
+	}
+
+	if !slices.Equal(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
 		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
@@ -106,19 +111,17 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpc.Name) }()
 	klog.Infof("handle delete vpc %s", vpc.Name)
 
-	// should delete vpc subnets first
-	var err error
-	for _, subnet := range vpc.Status.Subnets {
-		if _, err = c.subnetsLister.Get(subnet); err != nil {
-			if k8serrors.IsNotFound(err) {
-				continue
-			}
-			err = fmt.Errorf("failed to get subnet %s for vpc %s: %w", subnet, vpc.Name, err)
-		} else {
-			err = fmt.Errorf("failed to delete vpc %s, please delete subnet %s first", vpc.Name, subnet)
-		}
-		klog.Error(err)
+	// Status.Subnets is a running-state view and excludes terminating subnets.
+	// A terminating child still blocks deletion until its DeleteFunc notifies us.
+	if hasSubnets, err := c.hasVpcSubnets(vpc.Name); err != nil {
 		return err
+	} else if hasSubnets {
+		return nil
+	}
+	if referenced, err := c.vpcHasNatRules(vpc.Name); err != nil {
+		return err
+	} else if referenced {
+		return nil
 	}
 
 	// clean up vpc last policies cached
@@ -147,7 +150,80 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
+	if len(vpc.GetFinalizers()) != 0 {
+		newVpc := vpc.DeepCopy()
+		controllerutil.RemoveFinalizer(newVpc, util.DeprecatedFinalizerName)
+		controllerutil.RemoveFinalizer(newVpc, util.KubeOVNControllerFinalizer)
+		patch, err := util.GenerateMergePatchPayload(vpc, newVpc)
+		if err != nil {
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name,
+			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil && !k8serrors.IsNotFound(err) {
+			return err
+		}
+	}
 	return nil
+}
+
+func (c *Controller) vpcHasNatRules(vpcName string) (bool, error) {
+	rules, err := c.ovnDnatRulesLister.List(labels.Everything())
+	if err != nil {
+		return false, err
+	}
+	for _, rule := range rules {
+		referencedVpc := rule.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = rule.Spec.Vpc
+		}
+		if referencedVpc == vpcName {
+			klog.Infof("wait to delete vpc %s: ovn dnat rule %s still exists", vpcName, rule.Name)
+			return true, nil
+		}
+	}
+	snatRules, err := c.ovnSnatRulesLister.List(labels.Everything())
+	if err != nil {
+		return false, err
+	}
+	for _, rule := range snatRules {
+		referencedVpc := rule.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = rule.Spec.Vpc
+		}
+		if referencedVpc == vpcName {
+			klog.Infof("wait to delete vpc %s: ovn snat rule %s still exists", vpcName, rule.Name)
+			return true, nil
+		}
+	}
+	fipRules, err := c.ovnFipsLister.List(labels.Everything())
+	if err != nil {
+		return false, err
+	}
+	for _, rule := range fipRules {
+		referencedVpc := rule.Status.Vpc
+		if referencedVpc == "" {
+			referencedVpc = rule.Spec.Vpc
+		}
+		if referencedVpc == vpcName {
+			klog.Infof("wait to delete vpc %s: ovn fip rule %s still exists", vpcName, rule.Name)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (c *Controller) hasVpcSubnets(vpcName string) (bool, error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return false, fmt.Errorf("failed to list subnets for vpc %s: %w", vpcName, err)
+	}
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc == vpcName {
+			klog.Infof("wait to delete vpc %s: subnet %s still exists", vpcName, subnet.Name)
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (c *Controller) handleUpdateVpcStatus(key string) error {
@@ -1185,11 +1261,6 @@ func (c *Controller) formatVpc(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 
 	if vpc.DeletionTimestamp.IsZero() && !slices.Contains(vpc.GetFinalizers(), util.KubeOVNControllerFinalizer) {
 		controllerutil.AddFinalizer(vpc, util.KubeOVNControllerFinalizer)
-		changed = true
-	}
-
-	if !vpc.DeletionTimestamp.IsZero() && len(vpc.Status.Subnets) == 0 {
-		controllerutil.RemoveFinalizer(vpc, util.KubeOVNControllerFinalizer)
 		changed = true
 	}
 

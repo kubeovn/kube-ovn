@@ -127,6 +127,29 @@ func (c *Controller) enqueueDelIP(obj any) {
 	c.delIPQueue.Add(ipObj)
 }
 
+func (c *Controller) notifyDeletedIPParents(ip *kubeovnv1.IP) {
+	c.enqueueSubnetAfterIPDeletion(ip.Spec.Subnet)
+	for _, subnet := range ip.Spec.AttachSubnets {
+		c.enqueueSubnetAfterIPDeletion(subnet)
+	}
+}
+
+func (c *Controller) enqueueSubnetAfterIPDeletion(name string) {
+	if name == "" {
+		return
+	}
+	subnet, err := c.subnetsLister.Get(name)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get parent subnet %s after deleting ip: %v", name, err)
+		}
+		return
+	}
+	if !subnet.DeletionTimestamp.IsZero() {
+		c.deleteSubnetQueue.Add(subnet)
+	}
+}
+
 func (c *Controller) handleAddReservedIP(key string) error {
 	ip, err := c.ipsLister.Get(key)
 	if err != nil {
@@ -291,6 +314,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
+		c.notifyDeletedIPParents(cachedIP)
 		c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
 	}
 	return nil
@@ -298,6 +322,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 
 func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 	klog.Infof("deleting ip %s enqueue update status subnet %s", ip.Name, ip.Spec.Subnet)
+	c.notifyDeletedIPParents(ip)
 	c.updateSubnetStatusQueue.Add(ip.Spec.Subnet)
 	for _, as := range ip.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
