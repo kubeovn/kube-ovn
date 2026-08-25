@@ -365,12 +365,32 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return nil
 		}
 
+		// Migrate workloads created before the VpcNatGateway controller reference was introduced
+		patch, needed, err := vpcNatGatewayControllerReferencePatch(oldDeploy, newDeploy, gw)
+		if err != nil {
+			return err
+		}
+		if needed {
+			if oldDeploy, err = c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).Patch(context.Background(),
+				oldDeploy.Name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+				return fmt.Errorf("failed to migrate deployment %s controller reference: %w", oldDeploy.Name, err)
+			}
+		}
+
 		hashChanged := oldDeploy.Annotations[util.GenerateHashAnnotation] != newDeploy.Annotations[util.GenerateHashAnnotation]
 		parametersChanged := isVpcNatGwChanged(gw)
 
 		if hashChanged || parametersChanged {
+			// Update the stored workload in place: this controller owns the spec and its own
+			// annotations, while owner references and metadata set by third parties are kept.
+			updatedDeploy := oldDeploy.DeepCopy()
+			updatedDeploy.Spec = newDeploy.Spec
+			if updatedDeploy.Annotations == nil {
+				updatedDeploy.Annotations = make(map[string]string, len(newDeploy.Annotations))
+			}
+			maps.Copy(updatedDeploy.Annotations, newDeploy.Annotations)
 			if _, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
-				Update(context.Background(), newDeploy, metav1.UpdateOptions{}); err != nil {
+				Update(context.Background(), updatedDeploy, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update deployment '%s', err: %w", newDeploy.Name, err)
 				klog.Error(err)
 				return err
@@ -412,12 +432,28 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 			return nil
 		}
 
+		// Migrate workloads created before the VpcNatGateway controller reference was introduced
+		patch, needed, err := vpcNatGatewayControllerReferencePatch(oldSts, newSts, gw)
+		if err != nil {
+			return err
+		}
+		if needed {
+			if oldSts, err = c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).Patch(context.Background(),
+				oldSts.Name, types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+				return fmt.Errorf("failed to migrate statefulset %s controller reference: %w", oldSts.Name, err)
+			}
+		}
+
 		// Handle StatefulSet update if needed
 		// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
 		// TODO: support hot update of runtime Pod annotations directly via patch
 		if gwChanged || needRestartRecovery {
+			// Update the stored workload in place so that owner references and metadata set
+			// by third parties survive; only the spec is owned by this controller.
+			updatedSts := oldSts.DeepCopy()
+			updatedSts.Spec = newSts.Spec
 			if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
-				Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
+				Update(context.Background(), updatedSts, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update statefulset '%s', err: %w", newSts.Name, err)
 				klog.Error(err)
 				return err
@@ -1322,7 +1358,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	}
 
 	// Set owner reference so that the workload will be deleted automatically when the VPC NAT gateway is deleted
-	if err := util.SetOwnerReference(gw, sts); err != nil {
+	if err := util.SetControllerReference(gw, sts); err != nil {
 		return nil, err
 	}
 
@@ -1482,7 +1518,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 	}
 
 	// Set owner reference so that the workload will be deleted automatically when the VPC NAT gateway is deleted
-	if err = util.SetOwnerReference(gw, deploy); err != nil {
+	if err = util.SetControllerReference(gw, deploy); err != nil {
 		return nil, err
 	}
 
