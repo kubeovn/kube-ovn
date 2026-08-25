@@ -7604,6 +7604,7 @@ rules:
       - vpcs/status
       - vpc-nat-gateways
       - vpc-nat-gateways/status
+      - vpc-nat-gateways/finalizers
       - vpc-egress-gateways
       - vpc-egress-gateways/status
       - subnets
@@ -7745,6 +7746,7 @@ rules:
       - watch
       - create
       - update
+      - patch
       - delete
   - apiGroups:
       - ""
@@ -7792,9 +7794,11 @@ rules:
     verbs:
       - get
       - list
+      - watch
       - create
       - delete
       - update
+      - patch
   - apiGroups:
       - ""
     resources:

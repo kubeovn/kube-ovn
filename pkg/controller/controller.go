@@ -13,7 +13,6 @@ import (
 	netAttachv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/listers/k8s.cni.cncf.io/v1"
 	"github.com/puzpuzpuz/xsync/v4"
 	"golang.org/x/time/rate"
-	appsv1api "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -265,8 +264,10 @@ type Controller struct {
 	serviceL2StatusSynced         cache.InformerSynced
 	serviceL2StatusStarted        bool
 
-	deploymentsLister appsv1.DeploymentLister
-	deploymentsSynced cache.InformerSynced
+	deploymentsLister  appsv1.DeploymentLister
+	deploymentsSynced  cache.InformerSynced
+	statefulSetsLister appsv1.StatefulSetLister
+	statefulSetsSynced cache.InformerSynced
 
 	npsLister        netv1.NetworkPolicyLister
 	npsSynced        cache.InformerSynced
@@ -361,6 +362,11 @@ func dbStatusFailureExceeded(failures int) bool {
 	return failures >= dbStatusMaxFailures
 }
 
+func natGatewayWorkloadListOptions(listOption *metav1.ListOptions) {
+	listOption.AllowWatchBookmarks = true
+	listOption.LabelSelector = labels.Set{util.VpcNatGatewayLabel: "true"}.String()
+}
+
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
 	if rateLimiter == nil {
 		rateLimiter = workqueue.DefaultTypedControllerRateLimiter[T]()
@@ -421,12 +427,16 @@ func Run(ctx context.Context, config *Configuration) {
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	// deployment informer used to list/watch vpc egress gateway and nat gateway workloads
+	// Deployment informer is shared by VPC egress gateway and NAT gateway workloads.
 	deployInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
 		kubeinformers.WithTransform(util.TrimManagedFields),
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
+	// StatefulSets are only needed to resolve NAT gateway Pod owners and workload status.
+	natGatewayWorkloadInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
+		kubeinformers.WithTransform(util.TrimManagedFields),
+		kubeinformers.WithTweakListOptions(natGatewayWorkloadListOptions))
 	kubeovnInformerFactory := kubeovninformer.NewSharedInformerFactoryWithOptions(config.KubeOvnFactoryClient, 0,
 		kubeovninformer.WithTransform(util.TrimManagedFields),
 		kubeovninformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
@@ -475,6 +485,7 @@ func Run(ctx context.Context, config *Configuration) {
 	serviceInformer := informerFactory.Core().V1().Services()
 	endpointSliceInformer := informerFactory.Discovery().V1().EndpointSlices()
 	deploymentInformer := deployInformerFactory.Apps().V1().Deployments()
+	statefulSetInformer := natGatewayWorkloadInformerFactory.Apps().V1().StatefulSets()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	configMapInformer := cmInformerFactory.Core().V1().ConfigMaps()
 	npInformer := informerFactory.Networking().V1().NetworkPolicies()
@@ -629,8 +640,10 @@ func Run(ctx context.Context, config *Configuration) {
 		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 		epKeyMutex:                    keymutex.NewHashed(numKeyLocks),
 
-		deploymentsLister: deploymentInformer.Lister(),
-		deploymentsSynced: deploymentInformer.Informer().HasSynced,
+		deploymentsLister:  deploymentInformer.Lister(),
+		deploymentsSynced:  deploymentInformer.Informer().HasSynced,
+		statefulSetsLister: statefulSetInformer.Lister(),
+		statefulSetsSynced: statefulSetInformer.Informer().HasSynced,
 
 		qosPoliciesLister:    qosPolicyInformer.Lister(),
 		qosPolicySynced:      qosPolicyInformer.Informer().HasSynced,
@@ -842,6 +855,7 @@ func Run(ctx context.Context, config *Configuration) {
 	controller.informerFactory.Start(ctx.Done())
 	controller.cmInformerFactory.Start(ctx.Done())
 	controller.deployInformerFactory.Start(ctx.Done())
+	natGatewayWorkloadInformerFactory.Start(ctx.Done())
 	controller.kubeovnInformerFactory.Start(ctx.Done())
 	controller.anpInformerFactory.Start(ctx.Done())
 	controller.StartKubevirtInformerFactory(ctx, kubevirtInformerFactory)
@@ -853,7 +867,8 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
 		controller.vlanSynced, controller.podsSynced, controller.namespacesSynced, controller.nodesSynced,
-		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced, controller.configMapsSynced,
+		controller.serviceSynced, controller.endpointSlicesSynced, controller.deploymentsSynced,
+		controller.statefulSetsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
@@ -881,7 +896,6 @@ func Run(ctx context.Context, config *Configuration) {
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add pod event handler")
 	}
-
 	if _, err = namespaceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddNamespace,
 		UpdateFunc: controller.enqueueUpdateNamespace,
@@ -913,20 +927,18 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add endpoint slice event handler")
 	}
 
-	if _, err = deploymentInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		FilterFunc: func(obj any) bool {
-			if deploy, ok := obj.(*appsv1api.Deployment); ok {
-				// Only watch deployments with VpcEgressGatewayLabel or VpcNatGatewayLabel
-				_, hasNatGwLabel := deploy.Labels[util.VpcNatGatewayLabel]
-				_, hasEgressGwLabel := deploy.Labels[util.VpcEgressGatewayLabel]
-				return hasNatGwLabel || hasEgressGwLabel
-			}
-			return false
-		},
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddDeployment,
-			UpdateFunc: controller.enqueueUpdateDeployment,
-		},
+	if _, err = statefulSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueVpcNatGatewayForWorkload,
+		UpdateFunc: controller.enqueueUpdateVpcNatGatewayForWorkload,
+		DeleteFunc: controller.enqueueVpcNatGatewayForWorkload,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc nat gateway statefulset event handler")
+	}
+
+	if _, err = deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueDeploymentEvent,
+		UpdateFunc: controller.enqueueUpdateDeployment,
+		DeleteFunc: controller.enqueueDeploymentEvent,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add deployment event handler")
 	}
