@@ -30,6 +30,9 @@ class E2ESelectorTest(unittest.TestCase):
             baseSHA="b" * 40,
         )
 
+    def expectedRunnerJobs(self):
+        return self.catalog["expectedRunnerJobs"]
+
     def testCatalogCoversCurrentX86TestJobs(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         e2eSelector.validateWorkflow(self.catalog, workflow)
@@ -139,7 +142,7 @@ class E2ESelectorTest(unittest.TestCase):
         executionPlan = e2eSelector.executionPlan(self.catalog, plan, "pull_request")
 
         self.assertTrue(executionPlan["full"])
-        self.assertEqual(len(executionPlan["matrix"]), 84)
+        self.assertEqual(len(executionPlan["matrix"]), self.expectedRunnerJobs())
 
     def testTrustedDispatchExecutesRecommendedAndRequestedCoverage(self):
         plan = self.select(
@@ -153,13 +156,13 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertEqual(executionPlan["recommendedGroups"], [])
         self.assertFalse(executionPlan["approvalRequired"])
         self.assertEqual(executionPlan["executionMode"], "approved")
-        self.assertEqual(len(executionPlan["matrix"]), 21)
+        self.assertEqual(len(executionPlan["matrix"]), 22)
         summary = e2eSelector.renderSummary(
             executionPlan,
             ["test/e2e/cnp-domain/e2e_test.go"],
         )
         self.assertIn("Approval required: `no`", summary)
-        self.assertIn("Authorized coverage: approved selection &#40;21 runner jobs&#41;", summary)
+        self.assertIn("Authorized coverage: approved selection &#40;22 runner jobs&#41;", summary)
         self.assertIn("Authorized coverage is executing for this HEAD", summary)
         self.assertNotIn("deferred groups wait", summary)
         self.assertNotIn("Waiting for:", summary)
@@ -170,7 +173,7 @@ class E2ESelectorTest(unittest.TestCase):
         executionPlan = e2eSelector.executionPlan(self.catalog, plan, "push")
 
         self.assertTrue(executionPlan["full"])
-        self.assertEqual(len(executionPlan["matrix"]), 84)
+        self.assertEqual(len(executionPlan["matrix"]), self.expectedRunnerJobs())
 
     def testExplicitForceFullReasonOverridesAVisibleSafeFileList(self):
         plan = e2eSelector.select(
@@ -183,7 +186,7 @@ class E2ESelectorTest(unittest.TestCase):
         )
 
         self.assertTrue(plan["full"])
-        self.assertEqual(len(plan["matrix"]), 84)
+        self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
         self.assertIn("file list is incomplete", plan["fullReason"])
 
     def testPathsLabelsAndRequestsAreUnioned(self):
@@ -202,7 +205,7 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertEqual(plan["recommendedGroups"], ["multi-cni", "policy"])
         self.assertEqual(plan["requestedGroups"], ["nat-egress"])
         self.assertTrue(plan["approvalRequired"])
-        self.assertEqual(len(plan["matrix"]), 3 + 6 + 5 + 15)
+        self.assertEqual(len(plan["matrix"]), 3 + 6 + 5 + 16)
         self.assertTrue(any(reason["source"] == "path" for reason in plan["reasons"]))
         self.assertTrue(any(reason["source"] == "label" for reason in plan["reasons"]))
         self.assertTrue(any(reason["source"] == "request" for reason in plan["reasons"]))
@@ -217,14 +220,14 @@ class E2ESelectorTest(unittest.TestCase):
         )
 
         self.assertTrue(plan["full"])
-        self.assertEqual(len(plan["matrix"]), 84)
+        self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
         self.assertIn("matched 3 test groups", plan["fullReason"])
 
     def testUnknownProductionPathPromotesToFull(self):
         plan = self.select(["pkg/new-component/new_feature.go"])
 
         self.assertTrue(plan["full"])
-        self.assertEqual(len(plan["matrix"]), 84)
+        self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
         self.assertIn("unclassified production path", plan["fullReason"])
 
     def testCommonPathPromotesToFull(self):
@@ -247,7 +250,7 @@ class E2ESelectorTest(unittest.TestCase):
             with self.subTest(path=path):
                 plan = self.select([path])
                 self.assertTrue(plan["full"])
-                self.assertEqual(len(plan["matrix"]), 84)
+                self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
                 self.assertIn("shared path", plan["fullReason"])
 
     def testInstallationBuildAndCodegenPathsPromoteToFull(self):
@@ -262,7 +265,7 @@ class E2ESelectorTest(unittest.TestCase):
             with self.subTest(path=path):
                 plan = self.select([path])
                 self.assertTrue(plan["full"])
-                self.assertEqual(len(plan["matrix"]), 84)
+                self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
                 self.assertIn("shared path", plan["fullReason"])
 
     def testSharedE2ESourcesSelectEveryExecutingGroup(self):
@@ -325,7 +328,7 @@ class E2ESelectorTest(unittest.TestCase):
             with self.subTest(script=script):
                 plan = self.select([script])
                 self.assertTrue(plan["full"])
-                self.assertEqual(len(plan["matrix"]), 84)
+                self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
 
     def testSharedE2EMakeScriptsPromoteToFull(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
@@ -352,13 +355,13 @@ class E2ESelectorTest(unittest.TestCase):
             with self.subTest(script=script):
                 plan = self.select([script])
                 self.assertTrue(plan["full"])
-                self.assertEqual(len(plan["matrix"]), 84)
+                self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
 
     def testForceFullLabelPromotesToFull(self):
         plan = self.select(["docs/design.md"], labels=["e2e:full"])
 
         self.assertTrue(plan["full"])
-        self.assertEqual(len(plan["matrix"]), 84)
+        self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
         self.assertEqual(plan["fullReason"], "label e2e:full requested the full suite")
 
     def testRequestedFullIsNotReportedAsAutomaticCoverage(self):
@@ -375,7 +378,7 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertTrue(plan["requestedFull"])
         self.assertEqual(plan["automaticGroups"], [])
         self.assertEqual(plan["selectedGroups"], sorted(self.catalog["groups"]))
-        self.assertEqual(len(plan["matrix"]), 84)
+        self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
         self.assertEqual(plan["fullReason"], "authorized request selected the full suite")
         executionPlan = e2eSelector.executionPlan(
             self.catalog,
@@ -386,9 +389,15 @@ class E2ESelectorTest(unittest.TestCase):
             executionPlan,
             ["test/e2e/cnp-domain/e2e_test.go"],
         )
-        self.assertIn("Authorized coverage: full suite &#40;84 runner jobs&#41;", summary)
+        self.assertIn(
+            f"Authorized coverage: full suite &#40;{self.expectedRunnerJobs()} runner jobs&#41;",
+            summary,
+        )
         self.assertNotIn("Automatic coverage: mandatory smoke", summary)
-        self.assertIn("Runner jobs in this run: 84", summary)
+        self.assertIn(
+            f"Runner jobs in this run: {self.expectedRunnerJobs()}",
+            summary,
+        )
 
     def testInvalidRequestedGroupFails(self):
         with self.assertRaisesRegex(ValueError, "unknown requested group"):
@@ -449,7 +458,7 @@ class E2ESelectorTest(unittest.TestCase):
                     )
                     result = json.loads(plan.read_text())
                     self.assertTrue(result["full"])
-                    self.assertEqual(len(result["matrix"]), 84)
+                    self.assertEqual(len(result["matrix"]), self.expectedRunnerJobs())
                     self.assertIn("selection error", result["fullReason"])
 
     def testPlanIsJsonSerializableAndBoundToHead(self):
@@ -572,7 +581,7 @@ class E2ESelectorTest(unittest.TestCase):
                     result = json.loads(plan.read_text())
                     self.assertTrue(result["full"])
                     self.assertEqual(result["headSHA"], "0123456789abcdef")
-                    self.assertEqual(len(result["matrix"]), 84)
+                    self.assertEqual(len(result["matrix"]), self.expectedRunnerJobs())
                     self.assertIn("catalog error", result["fullReason"])
                     self.assertIn("Full suite: `yes`", summary.read_text())
 
@@ -596,11 +605,14 @@ class E2ESelectorTest(unittest.TestCase):
             inlineWorkflow,
             "catalog",
         )
-        self.assertEqual(len(plan["matrix"]), 84)
+        self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
         executionPlan = e2eSelector.executionPlan(None, plan, "pull_request")
         self.assertEqual(executionPlan, {**plan, "executionMode": "automatic"})
         summary = e2eSelector.renderSummary(executionPlan, [])
-        self.assertIn("Automatic coverage: full suite &#40;84 runner jobs&#41;", summary)
+        self.assertIn(
+            f"Automatic coverage: full suite &#40;{self.expectedRunnerJobs()} runner jobs&#41;",
+            summary,
+        )
         self.assertIn("Groups executing in this run: full suite", summary)
         self.assertNotIn("Groups executing in this run: smoke only", summary)
 
@@ -645,7 +657,7 @@ class E2ESelectorTest(unittest.TestCase):
                     )
                     result = json.loads(plan.read_text())
                     self.assertTrue(result["full"])
-                    self.assertEqual(len(result["matrix"]), 84)
+                    self.assertEqual(len(result["matrix"]), self.expectedRunnerJobs())
                     self.assertIn("selection error", result["fullReason"])
 
     def testSelectorFilesHaveCodeOwners(self):
@@ -674,6 +686,7 @@ class E2ESelectorTest(unittest.TestCase):
             ("test/e2e/connectivity/e2e_test.go", "core"),
             ("test/e2e/cnp-domain/e2e_test.go", "policy"),
             ("pkg/controller/network_policy.go", "policy"),
+            ("pkg/aclsampling/config.go", "policy"),
             ("test/e2e/bgp/e2e_test.go", "bgp-routing"),
             ("test/e2e/multus/e2e_test.go", "multi-cni"),
             ("test/e2e/lb-svc/e2e_test.go", "service-lb-underlay"),
@@ -721,7 +734,7 @@ class E2ESelectorTest(unittest.TestCase):
         plan = self.select(["test/e2e/framework/pod.go"])
 
         self.assertTrue(plan["full"])
-        self.assertEqual(len(plan["matrix"]), 84)
+        self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
 
 
 if __name__ == "__main__":
