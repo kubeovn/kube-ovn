@@ -14,11 +14,13 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -177,6 +179,33 @@ func TestGetVMLsps(t *testing.T) {
 			ovs.PodNameToPortName("vm-nad", "ns3", nadProvider),
 		}, lsps)
 	})
+}
+
+func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return(nil, nil)
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.Equal(t, 1, ctrl.addNodeQueue.Len())
+
+	item, shutdown := ctrl.addNodeQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "node-1", item)
+	ctrl.addNodeQueue.Done(item)
 }
 
 func TestGcNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
