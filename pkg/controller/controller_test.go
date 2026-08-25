@@ -364,6 +364,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		qosPolicySynced:         alwaysReady,
 		iptablesEipsLister:      iptablesEipInformer.Lister(),
 		vpcNatGwKeyMutex:        keymutex.NewHashed(0),
+		vpcKeyMutex:             keymutex.NewHashed(0),
 		OVNNbClient:             mockOvnClient,
 		OVNSbClient:             mockOvnSbClient,
 		ipam:                    ovnipam.NewIPAM(),

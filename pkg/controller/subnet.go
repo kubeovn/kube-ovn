@@ -58,10 +58,10 @@ func (c *Controller) enqueueDeleteSubnet(obj any) {
 	}
 
 	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
-	if len(subnet.GetFinalizers()) == 0 {
-		// Legacy objects without a finalizer still need the idempotent cleanup path.
-		c.deleteSubnetQueue.Add(subnet)
-	}
+	// Re-run the idempotent cleanup for both normal and legacy objects. Normal objects
+	// may have just lost this controller's finalizer; legacy objects need the fallback.
+	// The cleanup handler notifies the parent only after this pass succeeds.
+	c.deleteSubnetQueue.Add(subnet)
 }
 
 func u2oOverlayOnlyRoutingEnabled(subnet *kubeovnv1.Subnet) bool {
@@ -302,12 +302,14 @@ func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
 	})
 }
 
-func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, bool, error) {
+func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	// Terminating subnets never reach this path (enqueue* routes them to deleteSubnetQueue);
+	// their finalizer is removed by handleDelSubnetFinalizer once cleanup is done.
 	if !subnet.DeletionTimestamp.IsZero() {
-		return subnet, false, nil
+		return subnet, nil
 	}
 	if slices.Contains(subnet.GetFinalizers(), util.KubeOVNControllerFinalizer) {
-		return subnet, false, nil
+		return subnet, nil
 	}
 	newSubnet := subnet.DeepCopy()
 	controllerutil.RemoveFinalizer(newSubnet, util.DeprecatedFinalizerName)
@@ -315,14 +317,14 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	patch, err := util.GenerateMergePatchPayload(subnet, newSubnet)
 	if err != nil {
 		klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
-		return newSubnet, false, err
+		return newSubnet, err
 	}
 	patchSubnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 	if err != nil {
 		klog.Errorf("failed to add finalizer to subnet %s, %v", subnet.Name, err)
-		return patchSubnet, false, err
+		return patchSubnet, err
 	}
-	return patchSubnet, false, nil
+	return patchSubnet, nil
 }
 
 func (c *Controller) handleDelSubnetFinalizer(subnet *kubeovnv1.Subnet) error {
@@ -534,6 +536,14 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return err
 	}
 	klog.V(3).Infof("handle add or update subnet %s", cachedSubnet.Name)
+	// Terminating subnets belong to deleteSubnetQueue only. Several producers (node, vlan,
+	// service-cidr, vpc) enqueue by name without checking, so guard here: reconciling one
+	// would recreate the logical switch, router port and IPAM entry that handleDeleteSubnet
+	// is tearing down.
+	if !cachedSubnet.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("subnet %s is being deleted, skip add/update", key)
+		return nil
+	}
 	subnet, err := c.formatSubnet(cachedSubnet)
 	if err != nil {
 		err := fmt.Errorf("failed to format subnet %s, %w", key, err)
@@ -595,13 +605,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		klog.Infof("registered mac-only subnet %s in IPAM (no cidrBlock, BYO-DHCP / external DHCP)", subnet.Name)
 	}
 
-	subnet, deleted, err := c.handleSubnetFinalizer(subnet)
+	subnet, err = c.handleSubnetFinalizer(subnet)
 	if err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
 		return err
-	}
-	if deleted {
-		return nil
 	}
 
 	if !isOvnSubnet(subnet) {
@@ -859,8 +866,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 			continue
 		}
 		if ip.Spec.Subnet == subnet.Name || slices.Contains(ip.Spec.AttachSubnets, subnet.Name) {
-			klog.Infof("wait for ip %s to be deleted before deleting subnet %s", ip.Name, subnet.Name)
-			return nil
+			return fmt.Errorf("subnet %s still has ip %s", subnet.Name, ip.Name)
 		}
 	}
 
@@ -947,20 +953,10 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		klog.Errorf("failed to remove finalizer from subnet %s: %v", subnet.Name, err)
 		return err
 	}
-	c.notifyDeletedSubnetParent(subnet)
+	// The DeleteFunc has already established that the child is absent; notify only after
+	// this idempotent cleanup pass succeeds.
+	c.notifyDeletedVpcChild(subnet.Spec.Vpc, "subnet "+subnet.Name)
 	return nil
-}
-
-func (c *Controller) notifyDeletedSubnetParent(subnet *kubeovnv1.Subnet) {
-	if subnet.Spec.Vpc == "" {
-		return
-	}
-	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
-	if err == nil && !vpc.DeletionTimestamp.IsZero() {
-		c.delVpcQueue.Add(vpc)
-	} else if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to get parent vpc %s after deleting subnet %s: %v", subnet.Spec.Vpc, subnet.Name, err)
-	}
 }
 
 func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, subnet string) error {

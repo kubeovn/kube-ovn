@@ -314,7 +314,6 @@ func (c *Controller) handleUpdateIP(key string) error {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
-		c.notifyDeletedIPParents(cachedIP)
 		c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
 	}
 	return nil
