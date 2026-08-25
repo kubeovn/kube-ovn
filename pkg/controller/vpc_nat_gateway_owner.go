@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"slices"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
@@ -27,8 +29,20 @@ import (
 //	VpcNatGateway event          -> VpcNatGateway
 //	StatefulSet/Deployment event -> VpcNatGateway
 //
-// Workloads are watched so that a change made to them, including the removal of the
-// controller reference, is reconciled back to the desired state.
+// Pods are not watched here, keeping this controller off the Pod event stream. Pod
+// creation, readiness and deletion all move the workload's replica counts, and the
+// workload controller writes that status only after the Pod change is durable, so those
+// transitions still yield an event here. Pod data must therefore be read live (see
+// Controller.listNatGwPods) rather than from the Pod informer cache, which is fed by a
+// different watch and may lag behind the event.
+//
+// The blind spot of that scheme is Pod churn that nets back to the same replica counts,
+// because the workload status is only a snapshot of those counts: nothing distinguishes
+// "unchanged" from "restarted" or "deleted and recreated". A container restart always
+// falls in that class, and it must be recovered because the container loses the state the
+// gateway script keeps in its writable layer, so gateways are also enqueued from the Pod
+// handler in pod.go. A delete plus recreate does so only in theory, since it spans
+// termination, scheduling and startup, which no workload sync can span.
 func objectFromEvent(obj any) metav1.Object {
 	switch t := obj.(type) {
 	case metav1.Object:
@@ -101,6 +115,8 @@ func vpcNatGatewayControllerReferencePatch(current, desired metav1.Object, gw *k
 // v1.18, i.e. once no workload can still carry a plain (non-controller) owner
 // reference. vpcNatGatewayControllerReferencePatch below can then go as well,
 // together with the statefulsets/deployments `patch` RBAC verbs it requires.
+// The explicit workload deletion in handleDelVpcNatGw belongs to the same cleanup,
+// see the TODO there.
 func vpcNatGatewayOwnerRef(object metav1.Object) *metav1.OwnerReference {
 	if ref := metav1.GetControllerOf(object); ref != nil &&
 		ref.APIVersion == kubeovnv1.SchemeGroupVersion.String() && ref.Kind == util.KindVpcNatGateway {
@@ -151,4 +167,51 @@ func (c *Controller) enqueueVpcNatGatewayForWorkload(obj any) {
 // the same owning gateway for its whole life, so the old object resolves to the same key.
 func (c *Controller) enqueueUpdateVpcNatGatewayForWorkload(_, newObj any) {
 	c.enqueueVpcNatGatewayForWorkload(newObj)
+}
+
+func validateImmediateOwner(ref *metav1.OwnerReference, apiVersion, kind string) error {
+	if ref == nil {
+		return errors.New("controller owner is missing")
+	}
+	if ref.APIVersion != apiVersion || ref.Kind != kind {
+		return fmt.Errorf("unexpected controller owner %s %s", ref.APIVersion, ref.Kind)
+	}
+	return nil
+}
+
+func validateOwnerUID(ref *metav1.OwnerReference, object metav1.Object) error {
+	if ref.UID != "" && object.GetUID() != "" && ref.UID != object.GetUID() {
+		return fmt.Errorf("owner UID %s does not match object UID %s", ref.UID, object.GetUID())
+	}
+	return nil
+}
+
+// vpcNatGatewayStatefulSetOwner attributes an observed Pod to its VpcNatGateway through
+// the Pod -> StatefulSet -> VpcNatGateway owner chain, validating UIDs so that a Pod left
+// over from an earlier gateway of the same name is not counted.
+//
+// Only the non-HA StatefulSet mode needs this: its observed address is persisted into the
+// immutable spec.lanIp, so a wrong attribution cannot be undone. HA replicas are matched by
+// label alone, like getNatGwNextHops already does, because their addresses only feed
+// status.lanIp and are re-derived on every reconcile.
+func (c *Controller) vpcNatGatewayStatefulSetOwner(pod *corev1.Pod) (*metav1.OwnerReference, error) {
+	podOwner := metav1.GetControllerOf(pod)
+	if err := validateImmediateOwner(podOwner, appsv1.SchemeGroupVersion.String(), util.KindStatefulSet); err != nil {
+		return nil, err
+	}
+	if c.statefulSetsLister == nil {
+		return nil, errors.New("statefulset lister is not initialized")
+	}
+	sts, err := c.statefulSetsLister.StatefulSets(pod.Namespace).Get(podOwner.Name)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateOwnerUID(podOwner, sts); err != nil {
+		return nil, err
+	}
+	ref := vpcNatGatewayOwnerRef(sts)
+	if ref == nil {
+		return nil, errors.New("statefulset has no vpc nat gateway owner")
+	}
+	return ref, nil
 }
