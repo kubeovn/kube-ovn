@@ -1,11 +1,15 @@
 package controller
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -135,6 +139,77 @@ func TestIsVpcNatGwChanged(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestHandleAddOrUpdateVpcNatGwUpdatesStatefulSetLanIP(t *testing.T) {
+	const (
+		gwName       = "persisted-gw"
+		subnetName   = "nat-subnet"
+		externalName = "ovn-vpc-external-network"
+		lanIP        = "10.20.0.10"
+	)
+	namespace := metav1.NamespaceSystem
+	stsName := util.GenNatGwName(gwName)
+	gwLabels := util.GenNatGwLabels(gwName)
+	gw := &kubeovnv1.VpcNatGateway{
+		Name: gwName, UID: "gw-uid",
+		Spec: kubeovnv1.VpcNatGatewaySpec{
+			Vpc:      util.DefaultVpc,
+			Subnet:   subnetName,
+			Replicas: 1,
+			// spec.lanIp has just been persisted from the observed Pod address.
+			LanIP: lanIP,
+		},
+		Status: kubeovnv1.VpcNatGatewayStatus{Replicas: 1},
+	}
+	// The existing StatefulSet still carries the template generated while the LAN IP
+	// was allocated dynamically, i.e. without an IP address annotation.
+	sts := &appsv1.StatefulSet{
+		Name: stsName, Namespace: namespace, UID: "sts-uid", Labels: gwLabels,
+		Annotations: map[string]string{"example.com/managed-by": "gitops"},
+		OwnerReferences: []metav1.OwnerReference{
+			controllerOwnerReference(kubeovnv1.SchemeGroupVersion.String(), util.KindVpcNatGateway, gwName, gw.UID),
+			{APIVersion: "example.com/v1", Kind: "Other", Name: "other", UID: "other-uid"},
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: gwLabels},
+			Template: corev1.PodTemplateSpec{Labels: gwLabels, Annotations: map[string]string{util.VpcNatGatewayAnnotation: gwName}},
+		},
+	}
+
+	// A Running Pod holding the persisted address: it keeps the reconcile on the
+	// normal path instead of the 5s back-off getNatGwPods applies when no Pod is active.
+	pod := &corev1.Pod{
+		Name: stsName + "-0", Namespace: namespace, Labels: gwLabels,
+		Annotations:     map[string]string{util.IPAddressAnnotation: lanIP},
+		OwnerReferences: []metav1.OwnerReference{controllerOwnerReference(appsv1.SchemeGroupVersion.String(), util.KindStatefulSet, stsName, sts.UID)},
+		Status:          corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:           []*kubeovnv1.Vpc{{Name: util.DefaultVpc}},
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
+		Subnets: []*kubeovnv1.Subnet{
+			{Name: subnetName, Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Protocol: kubeovnv1.ProtocolIPv4, Gateway: "10.20.0.1"}},
+			{Name: externalName, Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Protocol: kubeovnv1.ProtocolIPv4, Gateway: "192.168.0.1"}},
+		},
+		StatefulSets: []*appsv1.StatefulSet{sts},
+		Pods:         []*corev1.Pod{pod},
+	})
+	require.NoError(t, err)
+	controller := fakeController.fakeController
+
+	vpcNatEnabled = "true"
+	t.Cleanup(func() { vpcNatEnabled = "unknown" })
+	controller.serviceCIDRStore = util.NewServiceCIDRStore("10.96.0.0/12")
+	require.NoError(t, controller.handleAddOrUpdateVpcNatGw(gwName))
+
+	updated, err := controller.config.KubeClient.AppsV1().StatefulSets(namespace).Get(context.Background(), stsName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, lanIP, updated.Spec.Template.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider)],
+		"persisted spec.lanIp must be propagated to the existing StatefulSet template")
+	require.Len(t, updated.OwnerReferences, 2, "unrelated owner references must survive the update")
+	require.Equal(t, "gitops", updated.Annotations["example.com/managed-by"], "third-party metadata must survive the update")
 }
 
 func TestGetSubnetProvider(t *testing.T) {

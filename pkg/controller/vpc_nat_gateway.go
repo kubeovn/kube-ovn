@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net"
 	"os"
 	"reflect"
 	"regexp"
@@ -219,7 +220,12 @@ func (c *Controller) handleDelVpcNatGw(key string) (retErr error) {
 	workloadName := util.GenNatGwName(gwName)
 	klog.Infof("delete vpc nat gw %s in namespace %s", workloadName, stsNamespace)
 
-	// STS are legacy NAT gateways, which might not have the finalizer yet.
+	// Workloads created since v1.17 carry an owner reference, so Kubernetes garbage collects
+	// them once this gateway is gone, which is why HA Deployments are not deleted here: they
+	// were introduced together with that owner reference. This explicit deletion only still
+	// covers StatefulSets created before v1.17, which have no owner reference at all.
+	// TODO: drop it once no gateway created before v1.17 can still exist, leaving deletion
+	// entirely to garbage collection.
 	if err := c.config.KubeClient.AppsV1().StatefulSets(stsNamespace).Delete(context.Background(),
 		workloadName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Error(err)
@@ -243,7 +249,8 @@ func (c *Controller) handleDelVpcNatGw(key string) (retErr error) {
 	eventGateway = gw
 
 	// Reconcile the routes to clean up everything (policies, BFD, ...)
-	if err := c.reconcileVpcNatGatewayOVNRoutes(gw); err != nil {
+	// The gateway is being deleted, so no next hop is derived from its Pods and none is needed.
+	if err := c.reconcileVpcNatGatewayOVNRoutes(gw, nil); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -284,6 +291,14 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 		return true
 	}
 	return false
+}
+
+func natGwLanIPAnnotationKey(subnet *kubeovnv1.Subnet) string {
+	provider := subnet.Spec.Provider
+	if provider == "" {
+		provider = util.OvnProvider
+	}
+	return fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)
 }
 
 // handleAddOrUpdateVpcNatGw is called when a VPC NAT gateway is added or updated.
@@ -329,25 +344,25 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		klog.Error(err)
 		return err
 	}
-	if _, err := c.subnetsLister.Get(gw.Spec.Subnet); err != nil {
+	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
+	if err != nil {
 		err = fmt.Errorf("failed to get subnet '%s', err: %w", gw.Spec.Subnet, err)
 		klog.Error(err)
 		return err
 	}
 
+	// Read the Pods live: this gateway is reconciled on workload events only, and the Pod
+	// informer cache may still lag behind such an event (see listNatGwPods).
+	pods, err := c.listNatGwPods(gw)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
 	var natGwPodContainerRestartCount int32
-	pod, err := c.getNatGwPod(key, c.natGwNamespace(gw))
-	if err == nil {
-		if !util.IsNatGwHAMode(gw) {
-			if err = c.backfillVpcNatGwLanIPFromPod(pod, key); err != nil {
-				klog.Errorf("failed to backfill lanIP for vpc nat gateway %s: %v", key, err)
-				return err
-			}
-		}
+	for _, pod := range pods {
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.Name == "vpc-nat-gw" {
-				natGwPodContainerRestartCount = containerStatus.RestartCount
-				break
+				natGwPodContainerRestartCount = max(natGwPodContainerRestartCount, containerStatus.RestartCount)
 			}
 		}
 	}
@@ -381,7 +396,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 				klog.Error(err)
 				return err
 			}
-			if err = c.patchNatGwStatus(key); err != nil {
+			if err = c.patchNatGwStatus(gw, pods); err != nil {
 				klog.Errorf("failed to patch nat gw deployment status for nat gw %s, %v", key, err)
 				statusUpdateFailed = true
 				_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
@@ -436,7 +451,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 			needToCreate, oldSts = true, nil
 		}
 		gwChanged := isVpcNatGwChanged(gw)
-		needPatchStatus := gwChanged
 
 		newSts, err := c.genNatGwStatefulSet(gw, oldSts, natGwPodContainerRestartCount)
 		if err != nil {
@@ -452,7 +466,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 				klog.Error(err)
 				return err
 			}
-			if err = c.patchNatGwStatus(key); err != nil {
+			if err = c.patchNatGwStatus(gw, pods); err != nil {
 				klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
 				statusUpdateFailed = true
 				_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
@@ -475,10 +489,13 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 			}
 		}
 
-		// Handle StatefulSet update if needed
+		// Handle StatefulSet update if needed. Persisting the dynamically allocated LAN IP adds
+		// the IP annotation to the generated template after status has already been synchronized.
+		ipAnnotation := natGwLanIPAnnotationKey(subnet)
+		templateChanged := oldSts.Spec.Template.Annotations[ipAnnotation] != newSts.Spec.Template.Annotations[ipAnnotation]
 		// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
 		// TODO: support hot update of runtime Pod annotations directly via patch
-		if gwChanged || needRestartRecovery {
+		if gwChanged || templateChanged || needRestartRecovery {
 			// Update the stored workload in place so that owner references and metadata set
 			// by third parties survive; only the spec is owned by this controller.
 			updatedSts := oldSts.DeepCopy()
@@ -490,19 +507,12 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 				return err
 			}
 		}
-
-		if needPatchStatus {
-			if err = c.patchNatGwStatus(key); err != nil {
-				klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
-				return err
-			}
-		}
 	}
 
 	// Reconcile BFD sessions and OVN routes for HA mode
 	if util.IsNatGwHAMode(gw) {
 		// Reconcile routes to the NAT gateways so that the traffic from internal subnets is routed to it
-		if err = c.reconcileVpcNatGatewayOVNRoutes(gw); err != nil {
+		if err = c.reconcileVpcNatGatewayOVNRoutes(gw, pods); err != nil {
 			klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
 			return err
 		}
@@ -535,7 +545,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		}
 	}
 
-	if err = c.patchNatGwStatus(key); err != nil {
+	if err = c.patchNatGwStatus(gw, pods); err != nil {
 		klog.Errorf("failed to patch nat gw status for nat gw %s, %v", key, err)
 		statusUpdateFailed = true
 		_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
@@ -547,6 +557,25 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 	return nil
 }
 
+// handleInitVpcNatGw initializes a gateway in two stages, both triggered by the same event:
+// a gateway Pod has just been given its addresses.
+//
+//	stage 1, declarative, on the CR:  reconcile the status and, while doing so, pin a
+//	                                  dynamically allocated address into spec.lanIp. The
+//	                                  address is readable from the Pod annotations right away,
+//	                                  so this does not wait for the Pod to run.
+//	stage 2, imperative, in the Pod:  exec the gateway script and mark the Pod as initialized.
+//	                                  Needs a running Pod, so it retries until then.
+//
+// The order matters: stage 1 closes the window in which a Pod recreation could pick a
+// different address, and it must not be held up by stage 2, which legitimately fails on its
+// first attempts. Both stages are idempotent, stage 1 through the preconditions of its JSON
+// patch and stage 2 through the init annotation it sets on each Pod.
+//
+// This is a separate work queue rather than a step of handleAddOrUpdateVpcNatGw because the
+// exec takes seconds and its unit of work is a Pod instance rather than the gateway
+// generation, so it needs its own back-off, and a flapping exec must not block the gateway
+// reconcile. The two never interleave for one gateway because both take vpcNatGwKeyMutex.
 func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
@@ -573,6 +602,25 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle init vpc nat gateway %s", key)
 
+	// Stage 1: reconcile the status, which pins the allocated address. patchNatGwStatus is
+	// reused as a whole rather than reduced to the pinning: persistNatGwLanIP is guarded by a
+	// JSON patch test on status.lanIp, so the status has to be published first anyway, and
+	// splitting it would duplicate that publication. It runs under the key mutex like the rest
+	// of this handler: moving it out would gain nothing, since a concurrent init of the same
+	// gateway has already pinned the address before starting its own exec, and it would turn
+	// the guarded patch into an optimistic one that fails and retries whenever two reconciles
+	// overlap.
+	livePods, err := c.listNatGwPods(gw)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.patchNatGwStatus(gw, livePods); err != nil {
+		klog.Errorf("failed to patch nat gw status for nat gw %s, %v", key, err)
+		return err
+	}
+
+	// Stage 2: configure the Pods themselves.
 	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
 
 	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw), true)
@@ -1793,16 +1841,132 @@ func (c *Controller) patchNatGwQoSStatus(key, qos string) error {
 	return nil
 }
 
-func (c *Controller) patchNatGwStatus(key string) error {
-	var changed bool
-	oriGw, err := c.vpcNatGatewayLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
+// selectNatGwLanIP picks the address matching the subnet protocol from a
+// comma-separated dual-stack annotation value.
+func selectNatGwLanIP(ip, protocol string) string {
+	v4IP, v6IP := util.SplitStringIP(ip)
+	switch protocol {
+	case kubeovnv1.ProtocolIPv6:
+		return v6IP
+	case kubeovnv1.ProtocolDual:
+		if v4IP != "" {
+			return v4IP
 		}
-		klog.Errorf("failed to get vpc nat gw %s, %v", key, err)
+		return v6IP
+	default:
+		return v4IP
+	}
+}
+
+// listNatGwPods reads the gateway Pods straight from the API server.
+//
+// This must not be replaced by podsLister: the gateway is reconciled on workload
+// events, and the workload controller writes its status only after the Pod change is
+// durable, so a live read is guaranteed to observe that Pod. The Pod informer is fed
+// by a different watch and may still lag behind the workload event, which would make
+// the gateway observe a stale state that no later event would ever reconcile.
+func (c *Controller) listNatGwPods(gw *kubeovnv1.VpcNatGateway) ([]*corev1.Pod, error) {
+	selector := labels.Set{"app": util.GenNatGwName(gw.Name), util.VpcNatGatewayLabel: "true"}.String()
+	podList, err := c.config.KubeClient.CoreV1().Pods(c.natGwNamespace(gw)).List(context.Background(),
+		metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods of vpc nat gateway %s: %w", gw.Name, err)
+	}
+	pods := make([]*corev1.Pod, 0, len(podList.Items))
+	for i := range podList.Items {
+		pods = append(pods, &podList.Items[i])
+	}
+	return pods, nil
+}
+
+// getNatGwObservedLanIPs returns the LAN IPs observed on the gateway Pods owned by gw,
+// whatever their phase: an address is annotated on the Pod as soon as it is allocated.
+func (c *Controller) getNatGwObservedLanIPs(gw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) ([]string, error) {
+	subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subnet %s: %w", gw.Spec.Subnet, err)
+	}
+	ipAnnotation := natGwLanIPAnnotationKey(subnet)
+
+	lanIPSet := set.New[string]()
+	// A Pod carries its address annotation as soon as the address is allocated, which is well
+	// before it runs, so the observation is not gated on the Pod phase: waiting for Running
+	// would delay pinning the address for as long as scheduling and startup take. Terminating
+	// Pods are skipped because their address is about to be handed to the replacement Pod.
+	// The address of a non-HA gateway ends up in the immutable spec.lanIp, so its Pod has to
+	// be attributed through the owner chain. HA replicas only feed status.lanIp, for which the
+	// label selector above is as precise as the one getNatGwNextHops already relies on.
+	strictOwnership := !util.IsNatGwHAMode(gw)
+	for _, pod := range pods {
+		if pod.DeletionTimestamp != nil {
+			continue
+		}
+		if strictOwnership {
+			owner, err := c.vpcNatGatewayStatefulSetOwner(pod)
+			if err != nil {
+				// A missing owner is a transient informer-cache miss: retry instead of publishing an
+				// observation that silently omits this Pod, which would skip LAN IP persistence and init.
+				if k8serrors.IsNotFound(err) {
+					return nil, fmt.Errorf("failed to resolve owner of nat gateway pod %s/%s: %w", pod.Namespace, pod.Name, err)
+				}
+				// A structurally foreign Pod (unexpected owner kind, stale UID) never becomes valid,
+				// so skip it instead of blocking the gateway forever.
+				klog.Warningf("skip nat gateway pod %s/%s: %v", pod.Namespace, pod.Name, err)
+				continue
+			}
+			if owner.Name != gw.Name || (owner.UID != "" && gw.UID != "" && owner.UID != gw.UID) {
+				continue
+			}
+		}
+		podLANIP := pod.Annotations[ipAnnotation]
+		if !util.IsNatGwHAMode(gw) {
+			podLANIP = selectNatGwLanIP(podLANIP, subnet.Spec.Protocol)
+		}
+		for lanIP := range strings.SplitSeq(podLANIP, ",") {
+			if lanIP != "" && net.ParseIP(lanIP) != nil {
+				lanIPSet.Insert(lanIP)
+			}
+		}
+	}
+	lanIPs := lanIPSet.UnsortedList()
+	slices.Sort(lanIPs)
+	if !util.IsNatGwHAMode(gw) && len(lanIPs) > 1 {
+		return nil, fmt.Errorf("non-HA vpc nat gateway %s has multiple observed LAN IPs: %s", gw.Name, strings.Join(lanIPs, ","))
+	}
+	return lanIPs, nil
+}
+
+// persistNatGwLanIP is the declarative half of a gateway's initialization: it pins the
+// dynamically allocated address into spec.lanIp once, so that a recreated Pod asks for the
+// same address. Unlike the Pod side init it survives Pod recreation, hence it is stored on
+// the CR instead of a Pod annotation. An address already present in the spec is left alone:
+// the field is immutable, and a mismatch is reported by the caller.
+func (c *Controller) persistNatGwLanIP(gw *kubeovnv1.VpcNatGateway, observedLanIP string) error {
+	if observedLanIP == "" || util.IsNatGwHAMode(gw) || gw.Spec.LanIP != "" {
+		return nil
+	}
+
+	patch := []map[string]any{
+		{"op": "test", "path": "/spec/lanIp", "value": ""},
+		{"op": "test", "path": "/status/lanIp", "value": observedLanIP},
+		{"op": "replace", "path": "/spec/lanIp", "value": observedLanIP},
+	}
+	raw, err := json.Marshal(patch)
+	if err != nil {
 		return err
 	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name,
+		types.JSONPatchType, raw, metav1.PatchOptions{}); err != nil {
+		return fmt.Errorf("failed to persist observed LAN IP %s for vpc nat gateway %s: %w", observedLanIP, gw.Name, err)
+	}
+	klog.Infof("persisted observed LAN IP %s for vpc nat gateway %s", observedLanIP, gw.Name)
+	return nil
+}
+
+// patchNatGwStatus publishes the observed gateway state and pins a dynamically allocated
+// address into spec.lanIp. pods must be the freshly read gateway Pods, see listNatGwPods.
+func (c *Controller) patchNatGwStatus(oriGw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) error {
+	var changed bool
 	gw := oriGw.DeepCopy()
 
 	if !slices.Equal(gw.Spec.ExternalSubnets, gw.Status.ExternalSubnets) {
@@ -1833,56 +1997,49 @@ func (c *Controller) patchNatGwStatus(key string) error {
 		gw.Status.Replicas = gw.Spec.Replicas
 		changed = true
 	}
-	var lanIPs []string
-	if !util.IsNatGwHAMode(gw) {
-		lanIPs = []string{gw.Spec.LanIP}
-	} else {
-		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw), false)
-		if err != nil {
-			klog.Errorf("failed to get nat gw pods, %v", err)
-			return err
-		}
-		subnet, err := c.subnetsLister.Get(gw.Spec.Subnet)
-		if err != nil {
-			klog.Errorf("failed to get subnet %s, %v", gw.Spec.Subnet, err)
-			return err
-		}
-		for _, pod := range pods {
-			provider := subnet.Spec.Provider
-			if provider == "" {
-				provider = util.OvnProvider
-			}
-			podIP := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
-			if podIP != "" {
-				lanIPs = append(lanIPs, podIP)
-			}
-		}
-		slices.Sort(lanIPs)
+
+	lanIPs, err := c.getNatGwObservedLanIPs(gw, pods)
+	if err != nil {
+		return err
 	}
 	lanIP := strings.Join(lanIPs, ",")
+	if !util.IsNatGwHAMode(gw) && gw.Spec.LanIP != "" && gw.Spec.LanIP != lanIP {
+		if lanIP != "" {
+			err := fmt.Errorf("observed pod LAN IP %s conflicts with spec.lanIp %s of vpc nat gateway %s", lanIP, gw.Spec.LanIP, gw.Name)
+			if c.recorder != nil {
+				c.recorder.Eventf(gw, corev1.EventTypeWarning, "VpcNatGatewayLanIPConflict", "%v", err)
+			}
+			return err
+		}
+		// No Pod carries an address yet, e.g. while it is being recreated. Keep publishing the
+		// configured address, which is what a static gateway has always reported.
+		lanIP = gw.Spec.LanIP
+	}
 	if gw.Status.LanIP != lanIP {
 		gw.Status.LanIP = lanIP
 		changed = true
 	}
-
-	if updateNatGwWorkloadStatus(gw, c.podsLister, c.deploymentsLister, c.config.KubeClient, c.natGwNamespace(gw)) {
+	if updateNatGwWorkloadStatus(gw, pods, c.deploymentsLister, c.statefulSetsLister, c.natGwNamespace(gw)) {
 		changed = true
 	}
 
+	updatedGw := gw
 	if changed {
 		bytes, err := gw.Status.Bytes()
 		if err != nil {
-			klog.Error(err)
 			return err
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name, types.MergePatchType,
-			bytes, metav1.PatchOptions{}, "status"); err != nil {
+		updatedGw, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name,
+			types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				return nil
 			}
-			klog.Errorf("failed to patch gw %s, %v", gw.Name, err)
-			return err
+			return fmt.Errorf("failed to patch gw %s status: %w", gw.Name, err)
 		}
+	}
+	if err := c.persistNatGwLanIP(updatedGw, lanIP); err != nil {
+		return err
 	}
 	return nil
 }
@@ -1989,7 +2146,10 @@ func (c *Controller) initVpcNatGw() error {
 	}
 
 	for _, gw := range gws {
-		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw), false)
+		// Pods that are not running yet are included: a Pod that received its address while the
+		// controller was down gets no allocation event, and the init it still needs would
+		// otherwise never be triggered.
+		pods, err := c.getNatGwPods(gw.Name, c.natGwNamespace(gw), true)
 		if err != nil {
 			// the nat gw maybe deleted
 			err := fmt.Errorf("failed to get nat gw %s pods: %w", gw.Name, err)
@@ -2013,7 +2173,8 @@ func (c *Controller) initVpcNatGw() error {
 // It creates policy-based routes for traffic from specified internal CIDRs,
 // directing them to NAT gateway instances (with BFD-based automatic failover if enabled).
 // Stale routes (and stale BFD entries) are removed during the reconciliation process.
-func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway) error {
+// pods must be the freshly read gateway Pods, see Controller.listNatGwPods.
+func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) error {
 	// Resolve internal CIDRs from subnet names and direct CIDRs. We'll inject routes to redirect traffic coming from those CIDRs into the VPC NAT gateway.
 	internalCIDRs := resolveInternalCIDRs(c.subnetsLister, gw.Spec.InternalSubnets, gw.Spec.InternalCIDRs)
 
@@ -2035,7 +2196,7 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutes(gw *kubeovnv1.VpcNatGateway
 	bfdIPs := map[int]string{4: bfdIPv4, 6: bfdIPv6}
 
 	// Collect nexthop IPs from running gateway pods
-	nextHops, err := c.getNatGwNextHops(gw)
+	nextHops, err := getNatGwNextHops(gw, pods)
 	if err != nil {
 		klog.Errorf("failed to collect next hops for nat gw %s: %v", gw.Name, err)
 		return err
@@ -2098,30 +2259,12 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGatew
 }
 
 // getNatGwNextHops collects the IP addresses of the running NAT gateway pods to be used as next hops in OVN routes.
-func (c *Controller) getNatGwNextHops(gw *kubeovnv1.VpcNatGateway) (map[string]string, error) {
+// pods must be the freshly read gateway Pods, see Controller.listNatGwPods.
+func getNatGwNextHops(gw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) (map[string]string, error) {
 	// The gateway is getting deleted, do not return any next hop as we don't want to send the
 	// traffic to the gateway pods anymore.
 	if !gw.DeletionTimestamp.IsZero() {
 		return nil, nil
-	}
-
-	deploy, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
-		Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
-	if err != nil {
-		klog.Errorf("failed to get deployment %s: %v", util.GenNatGwName(gw.Name), err)
-		return nil, err
-	}
-
-	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
-	if err != nil {
-		klog.Errorf("failed to get pod selector: %v", err)
-		return nil, err
-	}
-
-	pods, err := c.podsLister.Pods(c.natGwNamespace(gw)).List(podSelector)
-	if err != nil {
-		klog.Errorf("failed to list pods: %v", err)
-		return nil, err
 	}
 
 	nextHops := make(map[string]string)
