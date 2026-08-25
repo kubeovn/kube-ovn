@@ -210,6 +210,33 @@ func TestGetVMLsps(t *testing.T) {
 	})
 }
 
+func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return(nil, nil)
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.Equal(t, 1, ctrl.addNodeQueue.Len())
+
+	item, shutdown := ctrl.addNodeQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "node-1", item)
+	ctrl.addNodeQueue.Done(item)
+}
+
 func TestGcNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
 	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Nodes: []*corev1.Node{{Name: "node1"}},

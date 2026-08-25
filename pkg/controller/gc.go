@@ -453,9 +453,12 @@ func (c *Controller) markAndCleanLSP() error {
 			ipMap.Add(ovs.PodNameToPortName(podName, pod.Namespace, providerName))
 		}
 	}
+	nodeLspMap := strset.NewWithSize(len(nodes))
 	for _, node := range nodes {
 		if node.Annotations[util.AllocatedAnnotation] == "true" {
-			ipMap.Add(util.NodeLspName(node.Name))
+			portName := util.NodeLspName(node.Name)
+			nodeLspMap.Add(portName)
+			ipMap.Add(portName)
 		}
 
 		if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
@@ -555,10 +558,26 @@ func (c *Controller) markAndCleanLSP() error {
 			klog.Infof("gc skip reserved ip %s", ipCR.Name)
 		}
 	}
+	for _, node := range nodes {
+		if node.Annotations[util.AllocatedAnnotation] != "true" {
+			continue
+		}
+
+		portName := util.NodeLspName(node.Name)
+		if lspMap.Has(portName) {
+			continue
+		}
+
+		klog.Warningf("node logical switch port %s is missing, enqueue node %s for reconciliation", portName, node.Name)
+		c.addNodeQueue.Add(node.Name)
+	}
 	lastNoPodLSP = noPodLSP
 
 	ipMap.Each(func(ipName string) bool {
 		if !lspMap.Has(ipName) {
+			if nodeLspMap.Has(ipName) {
+				return true
+			}
 			klog.Errorf("lsp lost for pod %s, please delete the pod and retry", ipName)
 		}
 		return true
