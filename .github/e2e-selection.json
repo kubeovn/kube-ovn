@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedRunnerJobs": 84,
+  "expectedRunnerJobs": 85,
   "forceFull": false,
   "fullThreshold": 3,
   "productionPrefixes": ["cmd/", "fastpath/", "pkg/", "versions/"],
@@ -78,6 +78,12 @@
       "groups": ["policy"],
       "owner": "networking-e2e",
       "reason": "network policy reconciliation"
+    },
+    {
+      "patterns": ["pkg/aclsampling/**", "cmd/acl_sample/**", "hack/acl-sampling-e2e.sh", "dist/images/install.sh", "dist/images/kubectl-ko"],
+      "groups": ["policy"],
+      "owner": "networking-e2e",
+      "reason": "ACL sampling controller, node delivery, debug commands, and end-to-end coverage"
     },
     {
       "patterns": ["test/e2e/bgp/**", "pkg/speaker/**", "cmd/speaker/**"],
@@ -170,6 +176,7 @@
       "jobs": [
         {"id": "k8s-netpol-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "np-enforcement": ["standard", "lax"]}},
         {"id": "cyclonus-netpol-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "np-enforcement": ["standard", "lax"]}},
+        {"id": "acl-sampling-e2e"},
         {"id": "no-np-test"},
         {"id": "kube-ovn-cnp-domain-e2e", "matrix": {"ip-family": ["ipv4"], "mode": ["overlay"]}},
         {"id": "kube-ovn-anp-domain-e2e", "matrix": {"ip-family": ["ipv4"], "mode": ["overlay"]}}
