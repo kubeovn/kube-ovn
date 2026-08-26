@@ -73,7 +73,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 			if err != nil {
 				return false, err
 			}
-			for _, name := range strings.Fields(string(output)) {
+			for name := range strings.FieldsSeq(string(output)) {
 				if name == portName {
 					return true, nil
 				}
