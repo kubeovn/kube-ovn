@@ -73,6 +73,7 @@ type fakeControllerInformers struct {
 	subnetInformer    kubeovninformer.SubnetInformer
 	ipInformer        kubeovninformer.IPInformer
 	vlanInformer      kubeovninformer.VlanInformer
+	configMapInformer coreinformers.ConfigMapInformer
 	serviceInformer   coreinformers.ServiceInformer
 	namespaceInformer coreinformers.NamespaceInformer
 	nodeInformer      coreinformers.NodeInformer
@@ -133,7 +134,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}}
 	}
 
-	// Create fake Kubernetes client with namespaces, pods, nodes, services, and workloads.
+	// Create fake Kubernetes client with namespaces, pods, nodes, services, workloads and config maps.
 	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods)+len(opts.Nodes)+len(opts.Services)+
 		len(opts.StatefulSets)+len(opts.Deployments)+len(opts.ConfigMaps))
 	for _, ns := range namespaces {
@@ -331,6 +332,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
+	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -342,6 +344,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		namespaceInformer: namespaceInformer,
 		nodeInformer:      nodeInformer,
 		podInformer:       podInformer,
+		configMapInformer: configMapInformer,
 	}
 
 	// Create mock OVN clients
@@ -398,6 +401,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		updateSubnetStatusQueue:       newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcNatGateway", nil),
 		initVpcNatGatewayQueue:        newTypedRateLimitingQueue[string]("InitVpcNatGateway", nil),
+		configMapsLister:              configMapInformer.Lister(),
+		configMapsSynced:              alwaysReady,
+		serviceCIDRStore:              util.NewServiceCIDRStore("10.96.0.0/12"),
 	}
 
 	ctrl.config = &Configuration{
