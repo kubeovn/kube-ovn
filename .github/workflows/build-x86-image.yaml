@@ -101,7 +101,7 @@ env:
   # The trusted selector validates inputs.headSHA against the live pull request before dispatch.
   E2E_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.repository.default_branch }}
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
-  KIND_VERSION: v0.32.0
+  KIND_VERSION: v0.33.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
   GOLANGCI_LINT_VERSION: v2.13.1
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
