@@ -283,3 +283,16 @@ func GroupInternalCIDRsAndNextHops(internalCIDRs []string, nextHops map[string]s
 
 	return cidrsByAF, nextHopsByAF
 }
+
+// GetImagePullSecrets returns a list of image pull secrets for a given secret name
+func GetImagePullSecrets(secretName string) []corev1.LocalObjectReference {
+	if secretName == "" {
+		return nil
+	}
+
+	return []corev1.LocalObjectReference{
+		{
+			Name: secretName,
+		},
+	}
+}

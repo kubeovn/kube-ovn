@@ -13,6 +13,7 @@ var (
 	vpcNatImage             = ""
 	vpcNatGwBgpSpeakerImage = ""
 	vpcNatAPINadProvider    = ""
+	vpcNatImagePullSecret   = ""
 )
 
 func (c *Controller) resyncVpcNatConfig() {
@@ -42,6 +43,9 @@ func (c *Controller) resyncVpcNatConfig() {
 		return
 	}
 	vpcNatImage = image
+
+	//image pull secret for images in private registeries, optional
+	vpcNatImagePullSecret = cm.Data["imagePullSecret"]
 
 	// Image for the BGP sidecar of the gateway (optional)
 	vpcNatGwBgpSpeakerImage = cm.Data["bgpSpeakerImage"]

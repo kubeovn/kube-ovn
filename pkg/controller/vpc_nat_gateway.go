@@ -1264,6 +1264,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 				Annotations: templateAnnotations,
 				Spec: corev1.PodSpec{
 					TerminationGracePeriodSeconds: ptr.To[int64](0),
+					ImagePullSecrets:              util.GetImagePullSecrets(vpcNatImagePullSecret),
 					Containers: []corev1.Container{
 						{
 							Name:    "vpc-nat-gw",
@@ -1436,6 +1437,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 				Annotations: templateAnnotations,
 				Spec: corev1.PodSpec{
 					TerminationGracePeriodSeconds: ptr.To[int64](0),
+					ImagePullSecrets:              util.GetImagePullSecrets(vpcNatImagePullSecret),
 					Containers: []corev1.Container{
 						{
 							Name:    "vpc-nat-gw",
