@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	aclsampling "github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovs "github.com/kubeovn/kube-ovn/pkg/ovs"
 	ovnnb "github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -2458,6 +2459,44 @@ func (m *MockACL) UpdateSgACL(sg *v1.SecurityGroup, direction string) error {
 func (mr *MockACLMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSgACL", reflect.TypeOf((*MockACL)(nil).UpdateSgACL), sg, direction)
+}
+
+// MockACLSampling is a mock of ACLSampling interface.
+type MockACLSampling struct {
+	ctrl     *gomock.Controller
+	recorder *MockACLSamplingMockRecorder
+	isgomock struct{}
+}
+
+// MockACLSamplingMockRecorder is the mock recorder for MockACLSampling.
+type MockACLSamplingMockRecorder struct {
+	mock *MockACLSampling
+}
+
+// NewMockACLSampling creates a new mock instance.
+func NewMockACLSampling(ctrl *gomock.Controller) *MockACLSampling {
+	mock := &MockACLSampling{ctrl: ctrl}
+	mock.recorder = &MockACLSamplingMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockACLSampling) EXPECT() *MockACLSamplingMockRecorder {
+	return m.recorder
+}
+
+// ReconcileACLSampling mocks base method.
+func (m *MockACLSampling) ReconcileACLSampling(config aclsampling.ControllerConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileACLSampling", config)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileACLSampling indicates an expected call of ReconcileACLSampling.
+func (mr *MockACLSamplingMockRecorder) ReconcileACLSampling(config any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSampling", reflect.TypeOf((*MockACLSampling)(nil).ReconcileACLSampling), config)
 }
 
 // MockAddressSet is a mock of AddressSet interface.
@@ -5420,10 +5459,24 @@ func (m *MockNbClient) ReconcileGatewayChassises(lrpName string, chassises []str
 	return ret0
 }
 
+// ReconcileACLSampling mocks base method.
+func (m *MockNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileACLSampling", config)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
 // ReconcileGatewayChassises indicates an expected call of ReconcileGatewayChassises.
 func (mr *MockNbClientMockRecorder) ReconcileGatewayChassises(lrpName, chassises any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).ReconcileGatewayChassises), lrpName, chassises)
+}
+
+// ReconcileACLSampling indicates an expected call of ReconcileACLSampling.
+func (mr *MockNbClientMockRecorder) ReconcileACLSampling(config any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSampling", reflect.TypeOf((*MockNbClient)(nil).ReconcileACLSampling), config)
 }
 
 // ReconcilePortDHCPOptions mocks base method.
