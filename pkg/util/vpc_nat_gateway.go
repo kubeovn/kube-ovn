@@ -124,9 +124,20 @@ func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.Vpc
 	result[VpcNatGatewayAnnotation] = gw.Name
 	result[fmt.Sprintf(LogicalSwitchAnnotationTemplate, p)] = gw.Spec.Subnet
 
-	// Don't set a static IP for HA gateways
-	if !IsNatGwHAMode(gw) {
+	// An empty LAN IP requests dynamic allocation. HA gateways always allocate
+	// one address per replica dynamically: a single-valued annotation in a shared Pod
+	// template would make every replica request the very same address.
+	//
+	// TODO: support pinned addresses in HA mode. It needs a list field carrying one address
+	// per replica, applied through the ip_pool annotation like VpcEgressGateway does, plus a
+	// spare address once the rolling update strategy allows surge. Stability is not required
+	// for correctness today, since the controller re-derives the OVN policy route next hops
+	// and BFD sessions from the running Pods on every reconcile, but pinning would keep
+	// failover purely BFD-driven instead of waiting for that reconcile.
+	if !IsNatGwHAMode(gw) && gw.Spec.LanIP != "" {
 		result[fmt.Sprintf(IPAddressAnnotationTemplate, p)] = gw.Spec.LanIP
+	} else {
+		delete(result, fmt.Sprintf(IPAddressAnnotationTemplate, p))
 	}
 
 	// Validate the custom provider string whenever it isn't the built-in ovn one, regardless of

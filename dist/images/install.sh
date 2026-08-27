@@ -5053,7 +5053,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          VpcNatGateway represents a NAT gateway for a VPC, implemented as a StatefulSet Pod.
+          VpcNatGateway represents a NAT gateway for a VPC, implemented by a StatefulSet in non-HA mode or a Deployment in HA mode.
 
           Architecture note:
           The NAT gateway Pod does NOT support hot updates. Any changes to Spec fields (ExternalSubnets,
@@ -5063,7 +5063,9 @@ spec:
            2. Runtime state (vpc_cidrs, init status) is managed by separate handlers and will be
               automatically restored after Pod recreation through the normal reconciliation flow
 
-          The only exception is QoSPolicy, which can be updated without Pod restart.
+          QoSPolicy updates are applied without restarting the Pod. Every other Spec change,
+          including the one-time persistence of a dynamically allocated LanIP, updates the
+          workload template and therefore recreates the Pod.
         properties:
           apiVersion:
             description: |-
@@ -6103,8 +6105,12 @@ spec:
                 type: array
               lanIp:
                 description: |-
-                  LAN IP address for the NAT gateway. This field is immutable after creation.
-                  Used only when Replicas = 1 (non-HA mode).
+                  LAN IP address for the NAT gateway. Used only when Replicas = 1 (non-HA mode).
+                  If empty, an address is allocated dynamically and persisted here after it is observed on the Pod.
+                  Once set, this field is immutable.
+                  In HA mode (Replicas > 1) this field is ignored and cannot be used to pin addresses: every
+                  replica allocates its own address dynamically, and the controller re-points the OVN policy
+                  routes and BFD sessions whenever a replica is replaced.
                 type: string
               namespace:
                 description: |-
@@ -7122,9 +7128,9 @@ spec:
                 type: array
               lanIp:
                 description: |-
-                  LAN IP address(es) for the NAT gateway.
-                  For non-HA, this is the single LanIP from spec.
-                  For HA, this is a comma-separated list of all IPs within the NAT gateway pods.
+                  LAN IP address(es) observed on the NAT gateway Pods.
+                  For non-HA, this is the single address persisted to spec.lanIp.
+                  For HA, this is a comma-separated, sorted list of all observed addresses.
                 type: string
               qosPolicy:
                 description: QoS policy applied to the NAT gateway
@@ -7583,6 +7589,7 @@ rules:
       - vpcs/status
       - vpc-nat-gateways
       - vpc-nat-gateways/status
+      - vpc-nat-gateways/finalizers
       - vpc-egress-gateways
       - vpc-egress-gateways/status
       - subnets
@@ -7724,6 +7731,7 @@ rules:
       - watch
       - create
       - update
+      - patch
       - delete
   - apiGroups:
       - ""
@@ -7771,9 +7779,11 @@ rules:
     verbs:
       - get
       - list
+      - watch
       - create
       - delete
       - update
+      - patch
   - apiGroups:
       - ""
     resources:
