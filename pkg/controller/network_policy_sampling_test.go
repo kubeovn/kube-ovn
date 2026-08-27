@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	netv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	netlisters "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
@@ -134,7 +133,7 @@ func TestDeleteNetworkPolicySamplingStateMatchesLegacyPortGroupName(t *testing.T
 
 func TestNetworkPolicyPortGroupInUseMatchesNormalizedName(t *testing.T) {
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	require.NoError(t, indexer.Add(&netv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "1test"}}))
+	require.NoError(t, indexer.Add(&netv1.NetworkPolicy{Namespace: "default", Name: "1test"}))
 	controller := &Controller{npsLister: netlisters.NewNetworkPolicyLister(indexer)}
 
 	inUse, err := controller.networkPolicyPortGroupInUse("default", "np1test.default")
@@ -210,11 +209,11 @@ func newNetworkPolicySamplingTestController(t *testing.T) (*Controller, *mockovs
 }
 
 func networkPolicySamplingTestPolicy() *netv1.NetworkPolicy {
-	return &netv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{
+	return &netv1.NetworkPolicy{
 		Namespace: "default",
 		Name:      "test",
 		UID:       types.UID("uid"),
-	}}
+	}
 }
 
 func TestReconcileACLSamplingRecordsAvailability(t *testing.T) {
