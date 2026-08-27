@@ -76,48 +76,42 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		})
 		deploymentClient.PatchSync(originalDeployment, modifiedDeployment)
 
-		hasNodeLSP := func() (bool, error) {
+		nodeLSPUUID := func() (string, error) {
 			output, _, err := framework.NBExec("ovn-nbctl --bare --no-heading lsp-list " + nodeSwitch)
 			if err != nil {
-				return false, err
+				return "", err
 			}
 			for line := range strings.SplitSeq(string(output), "\n") {
-				if strings.HasSuffix(strings.TrimSpace(line), " ("+portName+")") {
-					return true, nil
+				uuid, name, ok := strings.Cut(strings.TrimSpace(line), " (")
+				if ok && name == portName+")" {
+					return uuid, nil
 				}
 			}
-			return false, nil
+			return "", nil
 		}
 
 		ginkgo.By("Verifying the node logical switch port exists before deletion")
+		var originalUUID string
 		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			present, err := hasNodeLSP()
+			var err error
+			originalUUID, err = nodeLSPUUID()
 			if err != nil {
 				return false, nil
 			}
-			return present, nil
+			return originalUUID != "", nil
 		}, "node logical switch port should exist before deletion")
 
 		ginkgo.By("Deleting node logical switch port " + portName)
 		_, _, err = framework.NBExec(fmt.Sprintf("ovn-nbctl --if-exists lsp-del %s", portName))
 		framework.ExpectNoError(err)
 
-		ginkgo.By("Verifying that the node logical switch port was deleted")
-		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
-			present, err := hasNodeLSP()
-			if err != nil {
-				return false, nil
-			}
-			return !present, nil
-		}, "node logical switch port should be absent after deletion")
-
 		ginkgo.By("Waiting for the controller to recreate the node logical switch port")
 		framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
-			present, err := hasNodeLSP()
+			recreatedUUID, err := nodeLSPUUID()
 			if err != nil {
 				return false, nil
 			}
-			return present, nil
+			return recreatedUUID != "" && recreatedUUID != originalUUID, nil
 		}, "controller should recreate the missing node logical switch port")
 	})
 })
