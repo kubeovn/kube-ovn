@@ -30,8 +30,15 @@ func TestSampleKeyCanonicalHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	keyHash, err := validAllowSampleKey().KeyHash()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	const wantKeyHash = "cbef9de432159cede19e36ee3748e823a814fa28805569c45977be4ace46181d"
+	if keyHash != wantKeyHash {
+		t.Fatalf("KeyHash() = %q, want %q", keyHash, wantKeyHash)
+	}
 	if allocation.KeyHash != wantKeyHash {
 		t.Fatalf("key hash = %q, want %q", allocation.KeyHash, wantKeyHash)
 	}
