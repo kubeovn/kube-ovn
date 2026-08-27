@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -14,6 +16,14 @@ var (
 	ErrACLSampleNotFound  = errors.New("ACL sample event was not found")
 	ErrACLSampleAmbiguous = errors.New("ACL sample event is ambiguous")
 )
+
+func networkPolicyResourceName(name string) string {
+	first, _ := utf8.DecodeRuneInString(name)
+	if !unicode.IsLetter(first) {
+		return "np" + name
+	}
+	return name
+}
 
 // ResolveNetworkPolicyACLSample resolves a local psample cookie or metadata
 // value to the single Kube-OVN NetworkPolicy ACL that owns the sample. The
@@ -259,7 +269,7 @@ func validateNetworkPolicyACLIdentity(candidate eligibleNetworkPolicyACL) error 
 	}
 	switch candidate.role {
 	case aclsampling.RoleRuleAllow:
-		if !strings.HasPrefix(aclName, "np/"+policyName+"."+policyNamespace+"/") {
+		if !strings.HasPrefix(aclName, "np/"+networkPolicyResourceName(policyName)+"."+policyNamespace+"/") {
 			return errors.New("rule-allow ACL name does not match the NetworkPolicy identity")
 		}
 	case aclsampling.RoleDefaultDeny:
