@@ -194,7 +194,7 @@ func TestValidateNetworkPolicyACLIdentityAcceptsTruncatedOVNName(t *testing.T) {
 
 func TestValidateNetworkPolicyACLIdentityAcceptsNumericPolicyName(t *testing.T) {
 	const policyName = "123-policy"
-	aclName := "np/" + policyName + ".default/ingress/IPv4/3"
+	aclName := "np/" + networkPolicyResourceName(policyName) + ".default/ingress/IPv4/3"
 	priority, err := strconv.Atoi(util.IngressAllowPriority)
 	require.NoError(t, err)
 	acl := ovnnb.ACL{
