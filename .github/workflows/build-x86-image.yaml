@@ -5431,6 +5431,7 @@ jobs:
     needs:
       - e2e-selection
       - e2e-control-validation
+      - acl-sampling-e2e
       - bgp-speaker-e2e
       - chart-test
       - cilium-chaining-e2e
