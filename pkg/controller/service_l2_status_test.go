@@ -2,13 +2,139 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	metallbv1beta1 "go.universe.tf/metallb/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/kubernetes"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 )
+
+// overrideDiscovery overrides ServerResourcesForGroupVersion of an embedded
+// discovery client to simulate API discovery failures or custom API surfaces.
+type overrideDiscovery struct {
+	discovery.DiscoveryInterface
+	resources map[string]*metav1.APIResourceList
+	err       error
+}
+
+func (d *overrideDiscovery) ServerResourcesForGroupVersion(groupVersion string) (*metav1.APIResourceList, error) {
+	if d.err != nil {
+		return nil, d.err
+	}
+	if list, ok := d.resources[groupVersion]; ok {
+		return list, nil
+	}
+	return d.DiscoveryInterface.ServerResourcesForGroupVersion(groupVersion)
+}
+
+// overrideKubeClient returns a discovery client different from the embedded one.
+type overrideKubeClient struct {
+	kubernetes.Interface
+	discovery discovery.DiscoveryInterface
+}
+
+func (c *overrideKubeClient) Discovery() discovery.DiscoveryInterface {
+	return c.discovery
+}
+
+func TestTryStartServiceL2StatusInformer(t *testing.T) {
+	t.Run("already started short-circuits", func(t *testing.T) {
+		controller := &Controller{serviceL2StatusStarted: true}
+		require.True(t, controller.tryStartServiceL2StatusInformer(context.Background()))
+	})
+
+	t.Run("discovery error degrades to false", func(t *testing.T) {
+		controller := &Controller{config: &Configuration{
+			KubeClient: &overrideKubeClient{
+				Interface: k8sfake.NewSimpleClientset(),
+				discovery: &overrideDiscovery{err: errors.New("discovery unavailable")},
+			},
+		}}
+		require.False(t, controller.tryStartServiceL2StatusInformer(context.Background()))
+		require.False(t, controller.serviceL2StatusStarted)
+	})
+
+	t.Run("ServiceL2Status API not found degrades to false", func(t *testing.T) {
+		// the fake discovery client returns NotFound for the metallb group version
+		controller := &Controller{config: &Configuration{
+			KubeClient: k8sfake.NewSimpleClientset(),
+		}}
+		require.False(t, controller.tryStartServiceL2StatusInformer(context.Background()))
+		require.False(t, controller.serviceL2StatusStarted)
+	})
+
+	t.Run("nil REST config degrades to false", func(t *testing.T) {
+		controller := &Controller{config: &Configuration{
+			KubeClient: &overrideKubeClient{
+				Interface: k8sfake.NewSimpleClientset(),
+				discovery: &overrideDiscovery{resources: map[string]*metav1.APIResourceList{
+					metallbv1beta1.GroupVersion.String(): {
+						APIResources: []metav1.APIResource{{Kind: "ServiceL2Status"}},
+					},
+				}},
+			},
+		}}
+		require.False(t, controller.tryStartServiceL2StatusInformer(context.Background()))
+		require.False(t, controller.serviceL2StatusStarted)
+	})
+
+	t.Run("informer starts when the API is available", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			list := metallbv1beta1.ServiceL2StatusList{
+				APIVersion: metallbv1beta1.GroupVersion.String(), Kind: "ServiceL2StatusList",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			require.NoError(t, json.NewEncoder(w).Encode(list))
+		}))
+		defer server.Close()
+
+		controller := &Controller{config: &Configuration{
+			KubeClient: &overrideKubeClient{
+				Interface: k8sfake.NewSimpleClientset(),
+				discovery: &overrideDiscovery{resources: map[string]*metav1.APIResourceList{
+					metallbv1beta1.GroupVersion.String(): {
+						APIResources: []metav1.APIResource{{Kind: "ServiceL2Status"}},
+					},
+				}},
+			},
+			KubeRestConfig: &rest.Config{Host: server.URL},
+		}}
+
+		ctx := t.Context()
+
+		require.True(t, controller.tryStartServiceL2StatusInformer(ctx))
+		// a second call must short-circuit instead of starting a second informer
+		require.True(t, controller.tryStartServiceL2StatusInformer(ctx))
+		require.True(t, controller.serviceL2StatusStarted)
+		require.NotNil(t, controller.serviceL2StatusIndexer)
+		require.NotNil(t, controller.serviceL2StatusSynced)
+	})
+}
+
+func TestGetServiceL2StatusNodeIndexerError(t *testing.T) {
+	// an indexer that lacks the service index makes ByIndex fail; the error
+	// must propagate so the endpointSlice handler retries the key
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	controller := &Controller{
+		serviceL2StatusIndexer: indexer,
+		serviceL2StatusStarted: true,
+		serviceL2StatusSynced:  func() bool { return true },
+	}
+
+	_, ready, err := controller.getServiceL2StatusNode("test-ns", "test-svc")
+	require.ErrorContains(t, err, "failed to list ServiceL2Statuses")
+	require.True(t, ready)
+}
 
 func TestStartServiceL2StatusInformerDisabled(t *testing.T) {
 	tests := []struct {
