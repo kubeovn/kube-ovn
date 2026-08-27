@@ -154,7 +154,7 @@ func TestResolveNetworkPolicyACLSampleRejectsUnknownValues(t *testing.T) {
 	require.NoError(t, client.ReconcileACLSampling(validACLSamplingConfig()))
 	waitForACLSamplingObjects(t, client)
 
-	_, err := client.ResolveNetworkPolicyACLSample(aclsampling.SampleReference{SampleObservation: aclsampling.SampleObservation{Metadata: 999}})
+	_, err := client.ResolveNetworkPolicyACLSample(aclsampling.SampleReference{Metadata: 999})
 	require.ErrorIs(t, err, ErrACLSampleNotFound)
 
 	reference, parseErr := aclsampling.ParseSampleReference(aclSampleCookieForTest(200, 1, 999))
