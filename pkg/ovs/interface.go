@@ -21,6 +21,7 @@ type Vswitch interface {
 	ListBridge(needVendorFilter bool, filter func(sw *vswitch.Bridge) bool) ([]vswitch.Bridge, error)
 	ListPort(filter func(sp *vswitch.Port) bool) ([]vswitch.Port, error)
 	ListInterface(filter func(si *vswitch.Interface) bool) ([]vswitch.Interface, error)
+	ReconcileACLSamplingCollectorSet(config aclsampling.NodeConfig) error
 }
 
 type NBGlobal interface {
