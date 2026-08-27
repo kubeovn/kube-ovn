@@ -1,0 +1,94 @@
+suite: ACL sampling configuration (v2)
+templates:
+  - controller/controller-deployment.yaml
+  - agent/agent-daemonset.yaml
+tests:
+  - it: keeps ACL sampling disabled by default
+    template: controller/controller-deployment.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-acl-sampling=false
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-allow-probability-percent=1
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-default-deny-probability-percent=100
+
+  - it: omits agent ACL sampling flags by default
+    template: agent/agent-daemonset.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-acl-sampling=false
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-set-id=142
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-local-group-id=142
+
+  - it: renders controller ACL sampling overrides
+    template: controller/controller-deployment.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      aclSampling.enabled: true
+      aclSampling.setID: 240
+      aclSampling.appIDNew: 104
+      aclSampling.appIDEstablished: 105
+      aclSampling.collectorIDAllow: 3
+      aclSampling.collectorIDDefaultDeny: 4
+      aclSampling.allowProbabilityPercent: 0.5
+      aclSampling.defaultDenyProbabilityPercent: 75
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-acl-sampling=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-set-id=240
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-app-id-new=104
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-app-id-established=105
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-collector-id-allow=3
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-collector-id-default-deny=4
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-allow-probability-percent=0.5
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-default-deny-probability-percent=75
+
+  - it: renders agent local ACL sampling overrides
+    template: agent/agent-daemonset.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      aclSampling.enabled: true
+      aclSampling.setID: 240
+      aclSampling.localGroupID: 241
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-acl-sampling=true
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-set-id=240
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --acl-sampling-local-group-id=241
