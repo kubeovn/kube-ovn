@@ -89,25 +89,27 @@ func alwaysReady() bool { return true }
 
 // FakeControllerOptions holds optional parameters for creating a fake controller
 type FakeControllerOptions struct {
-	Subnets            []*kubeovnv1.Subnet
-	IPPools            []*kubeovnv1.IPPool
-	VpcNatGateways     []*kubeovnv1.VpcNatGateway
-	IPs                []*kubeovnv1.IP
-	Vlans              []*kubeovnv1.Vlan
-	ProviderNetworks   []*kubeovnv1.ProviderNetwork
-	NetworkAttachments []*nadv1.NetworkAttachmentDefinition
-	Pods               []*corev1.Pod
-	Nodes              []*corev1.Node
-	Namespaces         []*corev1.Namespace
-	Services           []*corev1.Service
-	Vpcs               []*kubeovnv1.Vpc
-	RouterLBRules      []*kubeovnv1.RouterLBRule
-	OvnEips            []*kubeovnv1.OvnEip
-	OvnDnatRules       []*kubeovnv1.OvnDnatRule
-	OvnFipRules        []*kubeovnv1.OvnFip
-	OvnSnatRules       []*kubeovnv1.OvnSnatRule
-	QoSPolicies        []*kubeovnv1.QoSPolicy
-	IptablesEips       []*kubeovnv1.IptablesEIP
+	EnableANP             bool
+	EnableDNSNameResolver bool
+	Subnets               []*kubeovnv1.Subnet
+	IPPools               []*kubeovnv1.IPPool
+	VpcNatGateways        []*kubeovnv1.VpcNatGateway
+	IPs                   []*kubeovnv1.IP
+	Vlans                 []*kubeovnv1.Vlan
+	ProviderNetworks      []*kubeovnv1.ProviderNetwork
+	NetworkAttachments    []*nadv1.NetworkAttachmentDefinition
+	Pods                  []*corev1.Pod
+	Nodes                 []*corev1.Node
+	Namespaces            []*corev1.Namespace
+	Services              []*corev1.Service
+	Vpcs                  []*kubeovnv1.Vpc
+	RouterLBRules         []*kubeovnv1.RouterLBRule
+	OvnEips               []*kubeovnv1.OvnEip
+	OvnDnatRules          []*kubeovnv1.OvnDnatRule
+	OvnFipRules           []*kubeovnv1.OvnFip
+	OvnSnatRules          []*kubeovnv1.OvnSnatRule
+	QoSPolicies           []*kubeovnv1.QoSPolicy
+	IptablesEips          []*kubeovnv1.IptablesEIP
 }
 
 // newFakeControllerWithOptions creates a fake controller with optional pre-populated objects
@@ -377,13 +379,15 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 
 	ctrl.config = &Configuration{
-		ClusterRouter:        util.DefaultVpc,
-		DefaultLogicalSwitch: util.DefaultSubnet,
-		NodeSwitch:           "join",
-		KubeOvnClient:        kubeovnClient,
-		KubeClient:           kubeClient,
-		PodNamespace:         metav1.NamespaceSystem,
-		AttachNetClient:      nadClient,
+		ClusterRouter:         util.DefaultVpc,
+		DefaultLogicalSwitch:  util.DefaultSubnet,
+		NodeSwitch:            "join",
+		KubeOvnClient:         kubeovnClient,
+		KubeClient:            kubeClient,
+		PodNamespace:          metav1.NamespaceSystem,
+		AttachNetClient:       nadClient,
+		EnableANP:             opts.EnableANP,
+		EnableDNSNameResolver: opts.EnableDNSNameResolver,
 	}
 
 	if err := ctrl.setupIndexers(vpcInformer.Informer(), podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
