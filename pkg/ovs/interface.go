@@ -200,6 +200,8 @@ type ACL interface {
 
 type ACLSampling interface {
 	ReconcileACLSampling(config aclsampling.ControllerConfig) error
+	PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*NetworkPolicySamplingRequest, error)
+	ApplyNetworkPolicyACLSampling(config aclsampling.ControllerConfig, request *NetworkPolicySamplingRequest) error
 }
 
 type AddressSet interface {
