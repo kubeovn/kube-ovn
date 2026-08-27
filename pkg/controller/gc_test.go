@@ -14,10 +14,10 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/utils/keymutex"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	netlisters "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/utils/keymutex"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -337,7 +337,6 @@ func TestHandleDeleteNpReturnsMeterError(t *testing.T) {
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
 	ctrl.npKeyMutex = keymutex.NewHashed(1)
-	ctrl.npsLister = netlisters.NewNetworkPolicyLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
 	meterErr := errors.New("meter delete failed")
 
 	mockOvnClient.EXPECT().DeleteMeter("allow.default_to-lport_meter").Return(meterErr)
@@ -350,9 +349,6 @@ func TestHandleDeleteNpReturnsMeterError(t *testing.T) {
 		networkPolicyKey: "default/allow/egress",
 	}).Return(nil)
 
-	err := ctrl.handleDeleteNp(networkPolicyDeleteRequest{
-		key:           "default/allow",
-		portGroupName: "allow.default",
-	})
+	err := ctrl.handleDeleteNp("default/allow")
 	require.ErrorIs(t, err, meterErr)
 }
