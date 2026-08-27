@@ -203,6 +203,7 @@ type ACLSampling interface {
 	ReconcileACLSampling(config aclsampling.ControllerConfig) error
 	PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*NetworkPolicySamplingRequest, error)
 	ApplyNetworkPolicyACLSampling(config aclsampling.ControllerConfig, request *NetworkPolicySamplingRequest) error
+	ResolveNetworkPolicyACLSample(reference aclsampling.SampleReference) (*aclsampling.Event, error)
 }
 
 type AddressSet interface {
