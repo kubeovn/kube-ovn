@@ -11,13 +11,11 @@ import (
 
 func TestSampleDetailsJSONFlattensObservation(t *testing.T) {
 	details := SampleDetails{
-		App: ApplicationACLNew,
-		SampleObservation: SampleObservation{
-			ObservationDomain: new(uint32(0x640abcde)),
-			ApplicationID:     new(uint32(100)),
-			DatapathKey:       new(uint32(0x0abcde)),
-			Metadata:          200,
-		},
+		App:               ApplicationACLNew,
+		ObservationDomain: new(uint32(0x640abcde)),
+		ApplicationID:     new(uint32(100)),
+		DatapathKey:       new(uint32(0x0abcde)),
+		Metadata:          200,
 	}
 	data, err := json.Marshal(details)
 	require.NoError(t, err)
