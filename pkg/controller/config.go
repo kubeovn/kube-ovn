@@ -143,6 +143,7 @@ type Configuration struct {
 	EnableEcmp                  bool
 	EnableKeepVMIP              bool
 	EnableLbSvc                 bool
+	EnableNftableLbSvc          bool
 	EnableOVNLBPreferLocal      bool
 	EnableMetrics               bool
 	EnableANP                   bool
@@ -252,6 +253,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
+		argEnableNftableLbSvc          = pflag.Bool("enable-nftable-lb-svc", false, "Whether to support loadbalancer service backed by vpc nat gateway nftable share DNAT")
 		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
@@ -364,6 +366,7 @@ func ParseFlags() (*Configuration, error) {
 		GCInterval:                     *argGCInterval,
 		InspectInterval:                *argInspectInterval,
 		EnableLbSvc:                    *argEnableLbSvc,
+		EnableNftableLbSvc:             *argEnableNftableLbSvc,
 		EnableOVNLBPreferLocal:         *argEnableOVNLBPreferLocal,
 		EnableMetrics:                  *argEnableMetrics,
 		EnableOVNIPSec:                 *argEnableOVNIPSec,
@@ -397,6 +400,10 @@ func ParseFlags() (*Configuration, error) {
 
 	if config.EnableLbSvc && !config.EnableLb {
 		klog.Warning("--enable-lb-svc requires --enable-lb, the loadbalancer service feature will not work")
+	}
+
+	if config.EnableNftableLbSvc && !config.EnableLb {
+		klog.Warning("--enable-nftable-lb-svc requires --enable-lb, the nftable loadbalancer service feature will not work")
 	}
 
 	if config.DefaultGateway == "" {

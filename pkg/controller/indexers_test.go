@@ -202,6 +202,33 @@ func TestIndexersLookup(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("expected 3 ips for subnet-a (incl. attach), got %d", len(got))
 	}
+
+	svcIdx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexServiceByNftableLbEip: indexServiceByNftableLbEip})
+	lb := func(name, ns, eip string) *v1.Service {
+		s := &v1.Service{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns}, Spec: v1.ServiceSpec{Type: v1.ServiceTypeLoadBalancer}}
+		if eip != "" {
+			s.Annotations = map[string]string{util.EipAnnotation: eip}
+		}
+		return s
+	}
+	for _, svc := range []*v1.Service{
+		lb("a", "ns", "eip0"),
+		lb("b", "other", "eip0"),
+		lb("c", "ns", "eip1"),
+		lb("d", "ns", ""), // LB without eip annotation: not indexed
+		{ObjectMeta: metav1.ObjectMeta{Name: "e", Namespace: "ns", Annotations: map[string]string{util.EipAnnotation: "eip0"}}, Spec: v1.ServiceSpec{Type: v1.ServiceTypeClusterIP}}, // not LB: not indexed
+	} {
+		if err := svcIdx.Add(svc); err != nil {
+			t.Fatalf("add svc: %v", err)
+		}
+	}
+	got, err = svcIdx.ByIndex(IndexServiceByNftableLbEip, "eip0")
+	if err != nil {
+		t.Fatalf("ByIndex: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 lb services for eip0 (cross-namespace), got %d", len(got))
+	}
 }
 
 func TestIndexVpcByBFDPort(t *testing.T) {

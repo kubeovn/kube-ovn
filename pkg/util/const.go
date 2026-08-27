@@ -129,6 +129,8 @@ const (
 	VpcNatGatewayLabel                 = "ovn.kubernetes.io/vpc-nat-gw"
 	IPReservedLabel                    = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel             = "ovn.kubernetes.io/vpc-nat-gw-name"
+	NftableLbSvcNsLabel                = "ovn.kubernetes.io/nftable-lb-svc-ns"
+	NftableLbSvcNameLabel              = "ovn.kubernetes.io/nftable-lb-svc-name"
 	VpcLbLabel                         = "ovn.kubernetes.io/vpc_lb"
 	VpcDNSNameLabel                    = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                           = "ovn.kubernetes.io/qos"

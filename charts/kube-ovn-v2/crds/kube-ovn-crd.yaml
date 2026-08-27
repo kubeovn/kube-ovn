@@ -682,6 +682,26 @@ spec:
               protocol:
                 description: Protocol type (TCP or UDP)
                 type: string
+              sessionAffinity:
+                description: |-
+                  SessionAffinity controls client-IP session affinity for share type DNAT. Only "" (none,
+                  default) and "ClientIP" are supported, and it is ignored for exclusive type. When set to
+                  "ClientIP", connections from the same client IP are pinned to the same backend for
+                  SessionAffinityTimeoutSeconds, implemented with per-backend nftables affinity sets
+                  (kube-proxy nftables pattern).
+                enum:
+                - ""
+                - ClientIP
+                type: string
+              sessionAffinityTimeoutSeconds:
+                description: |-
+                  SessionAffinityTimeoutSeconds is the sticky window, in seconds, for ClientIP affinity.
+                  It is only used when SessionAffinity is "ClientIP"; when unset (0) the controller applies
+                  the default of 10800 (3h). Must be in the range 1-86400 when set.
+                format: int32
+                maximum: 86400
+                minimum: 0
+                type: integer
               type:
                 default: exclusive
                 description: |-
