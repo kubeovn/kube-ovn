@@ -81,8 +81,8 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 			if err != nil {
 				return false, err
 			}
-			for name := range strings.FieldsSeq(string(output)) {
-				if name == portName {
+			for line := range strings.SplitSeq(string(output), "\n") {
+				if strings.HasSuffix(strings.TrimSpace(line), " ("+portName+")") {
 					return true, nil
 				}
 			}
