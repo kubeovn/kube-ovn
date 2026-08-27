@@ -260,11 +260,14 @@ type Controller struct {
 	deploymentsLister appsv1.DeploymentLister
 	deploymentsSynced cache.InformerSynced
 
-	npsLister     netv1.NetworkPolicyLister
-	npsSynced     cache.InformerSynced
-	updateNpQueue workqueue.TypedRateLimitingInterface[string]
-	deleteNpQueue workqueue.TypedRateLimitingInterface[string]
-	npKeyMutex    keymutex.KeyMutex
+	npsLister        netv1.NetworkPolicyLister
+	npsSynced        cache.InformerSynced
+	npIndexer        cache.Indexer
+	updateNpQueue    workqueue.TypedRateLimitingInterface[string]
+	deleteNpQueue    workqueue.TypedRateLimitingInterface[networkPolicyDeleteRequest]
+	npSamplingQueue  workqueue.TypedRateLimitingInterface[string]
+	npSamplingStates *xsync.Map[string, *networkPolicySamplingState]
+	npKeyMutex       keymutex.KeyMutex
 
 	sgsLister          kubeovnlister.SecurityGroupLister
 	sgSynced           cache.InformerSynced
@@ -691,7 +694,11 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.npsLister = npInformer.Lister()
 		controller.npsSynced = npInformer.Informer().HasSynced
 		controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
-		controller.deleteNpQueue = newTypedRateLimitingQueue[string]("DeleteNetworkPolicy", nil)
+		controller.deleteNpQueue = newTypedRateLimitingQueue[networkPolicyDeleteRequest]("DeleteNetworkPolicy", nil)
+		if config.ACLSampling.Enabled {
+			controller.npSamplingQueue = newTypedRateLimitingQueue[string]("SampleNetworkPolicyACL", nil)
+			controller.npSamplingStates = xsync.NewMap[string, *networkPolicySamplingState]()
+		}
 		controller.npKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
@@ -1278,6 +1285,9 @@ func (c *Controller) shutdown() {
 	if c.config.EnableNP {
 		c.updateNpQueue.ShutDown()
 		c.deleteNpQueue.ShutDown()
+		if c.npSamplingQueue != nil {
+			c.npSamplingQueue.ShutDown()
+		}
 	}
 	if c.config.EnableANP {
 		c.addAnpQueue.ShutDown()
@@ -1408,6 +1418,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		if c.config.EnableNP {
 			go wait.Until(runWorker("update network policy", c.updateNpQueue, c.handleUpdateNp), time.Second, ctx.Done())
 			go wait.Until(runWorker("delete network policy", c.deleteNpQueue, c.handleDeleteNp), time.Second, ctx.Done())
+			if c.npSamplingQueue != nil {
+				go wait.Until(runWorker("sample network policy ACL", c.npSamplingQueue, c.handleNetworkPolicyACLSampling), time.Second, ctx.Done())
+			}
 		}
 
 		go wait.Until(runWorker("delete vlan", c.delVlanQueue, c.handleDelVlan), time.Second, ctx.Done())
@@ -1616,6 +1629,8 @@ func getWorkItemKey(obj any) string {
 		return v.key
 	case *SlrInfo:
 		return v.Name
+	case networkPolicyDeleteRequest:
+		return v.key
 	default:
 		key, err := cache.MetaNamespaceKeyFunc(obj)
 		if err != nil {

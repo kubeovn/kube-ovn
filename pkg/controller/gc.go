@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -16,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
@@ -889,13 +889,10 @@ func (c *Controller) gcNetworkPolicy() error {
 		}
 
 		for _, np := range nps {
-			npName := np.Name
-			nameArray := []rune(np.Name)
-			if !unicode.IsLetter(nameArray[0]) {
-				npName = "np" + np.Name
-			}
-
-			npNames.Add(fmt.Sprintf("%s/%s", np.Namespace, npName))
+			npNames.Add(cache.MetaObjectToName(np).String())
+			// Keep port groups written by older controllers, which stored the
+			// normalized OVN resource name instead of the Kubernetes object name.
+			npNames.Add(fmt.Sprintf("%s/%s", np.Namespace, networkPolicyResourceName(np.Name)))
 		}
 	}
 
@@ -941,9 +938,13 @@ func (c *Controller) gcNetworkPolicy() error {
 		}
 		if !npNames.Has(pg.ExternalIDs[networkPolicyKey]) {
 			klog.Infof("gc port group '%s' network policy '%s'", pg.Name, pg.ExternalIDs[networkPolicyKey])
-			delPgNames.Add(pg.Name)
 			if c.config.EnableNP {
-				c.deleteNpQueue.Add(pg.ExternalIDs[networkPolicyKey])
+				c.deleteNpQueue.Add(networkPolicyDeleteRequest{
+					key:           pg.ExternalIDs[networkPolicyKey],
+					portGroupName: pg.Name,
+				})
+			} else {
+				delPgNames.Add(pg.Name)
 			}
 		}
 	}

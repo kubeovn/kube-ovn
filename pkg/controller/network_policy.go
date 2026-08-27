@@ -7,13 +7,16 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/scylladb/go-set/strset"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -29,6 +32,31 @@ const (
 	NetworkPolicyEnforcementStandard = "standard"
 	NetworkPolicyEnforcementLax      = "lax"
 )
+
+func networkPolicyResourceName(name string) string {
+	first, _ := utf8.DecodeRuneInString(name)
+	if !unicode.IsLetter(first) {
+		return "np" + name
+	}
+	return name
+}
+
+func networkPolicyPortGroupName(namespace, name string) string {
+	return strings.ReplaceAll(fmt.Sprintf("%s.%s", networkPolicyResourceName(name), namespace), "-", ".")
+}
+
+func (c *Controller) networkPolicyPortGroupInUse(namespace, portGroupName string) (bool, error) {
+	policies, err := c.npsLister.NetworkPolicies(namespace).List(labels.Everything())
+	if err != nil {
+		return false, err
+	}
+	for _, policy := range policies {
+		if networkPolicyPortGroupName(policy.Namespace, policy.Name) == portGroupName {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 func (c *Controller) enqueueAddNp(obj any) {
 	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
@@ -55,7 +83,11 @@ func (c *Controller) enqueueDeleteNp(obj any) {
 
 	key := cache.MetaObjectToName(np).String()
 	klog.V(3).Infof("enqueue delete network policy %s", key)
-	c.deleteNpQueue.Add(key)
+	c.deleteNpQueue.Add(networkPolicyDeleteRequest{
+		key:           key,
+		policyUID:     np.UID,
+		portGroupName: networkPolicyPortGroupName(np.Namespace, np.Name),
+	})
 }
 
 func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
@@ -92,8 +124,9 @@ func (c *Controller) handleUpdateNp(key string) error {
 		return nil
 	}
 
-	c.npKeyMutex.LockKey(key)
-	defer func() { _ = c.npKeyMutex.UnlockKey(key) }()
+	lockKey := networkPolicyPortGroupName(namespace, name)
+	c.npKeyMutex.LockKey(lockKey)
+	defer func() { _ = c.npKeyMutex.UnlockKey(lockKey) }()
 	klog.Infof("handle add/update network policy %s", key)
 
 	np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
@@ -123,22 +156,18 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	providers := parsePolicyFor(np)
 
-	npName := np.Name
-	nameArray := []rune(np.Name)
-	if !unicode.IsLetter(nameArray[0]) {
-		npName = "np" + np.Name
-	}
+	npName := networkPolicyResourceName(np.Name)
 
 	// TODO: ovn acl doesn't support address_set name with '-', now we replace '-' by '.'.
 	// This may cause conflict if two np with name test-np and test.np. Maybe hash is a better solution,
 	// but we do not want to lost the readability now.
-	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, np.Namespace), "-", ".")
+	pgName := networkPolicyPortGroupName(np.Namespace, np.Name)
 	ingressAllowAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.ingress.allow", npName, np.Namespace), "-", ".")
 	ingressExceptAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.ingress.except", npName, np.Namespace), "-", ".")
 	egressAllowAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.allow", npName, np.Namespace), "-", ".")
 	egressExceptAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.except", npName, np.Namespace), "-", ".")
 
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: np.Namespace + "/" + npName}); err != nil {
+	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: key}); err != nil {
 		klog.Errorf("create port group for np %s: %v", key, err)
 		return err
 	}
@@ -170,6 +199,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 		klog.Errorf("failed to set ports of port group %s to %v: %v", pgName, ports, err)
 		return err
 	}
+
+	samplingState := c.prepareNetworkPolicyACLSampling(key, pgName, np)
 
 	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
 	if err != nil {
@@ -290,9 +321,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return fmt.Errorf("add ingress acls to %s: %w", pgName, err)
 		}
 
-		if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, true); err != nil {
-			// just log and do not return err here
-			klog.Errorf("failed to set ingress acl log for np %s, %v", key, err)
+		if !c.setNetworkPolicyACLLog(pgName, key, logEnable, true) {
+			samplingState = nil
 		}
 
 		ass, err := c.OVNNbClient.ListAddressSets(map[string]string{
@@ -453,9 +483,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return fmt.Errorf("add egress acls to %s: %w", pgName, err)
 		}
 
-		if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, false); err != nil {
-			// just log and do not return err here
-			klog.Errorf("failed to set egress acl log for np %s, %v", key, err)
+		if !c.setNetworkPolicyACLLog(pgName, key, logEnable, false) {
+			samplingState = nil
 		}
 
 		ass, err := c.OVNNbClient.ListAddressSets(map[string]string{
@@ -505,36 +534,151 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 	}
+	c.queueNetworkPolicyACLSampling(key, samplingState)
 	return nil
 }
 
-func (c *Controller) handleDeleteNp(key string) error {
+type networkPolicySamplingState struct {
+	// Access is serialized with the policy's npKeyMutex lock.
+	request       *ovs.NetworkPolicySamplingRequest
+	policyUID     types.UID
+	portGroupName string
+	ready         bool
+}
+
+type networkPolicyDeleteRequest struct {
+	key           string
+	policyUID     types.UID
+	portGroupName string
+}
+
+func (c *Controller) prepareNetworkPolicyACLSampling(key, pgName string, np *netv1.NetworkPolicy) *networkPolicySamplingState {
+	if !c.config.ACLSampling.Enabled {
+		return nil
+	}
+	if state, ok := c.npSamplingStates.Load(key); ok {
+		if state.policyUID == np.UID {
+			state.ready = false
+			return state
+		}
+		c.npSamplingStates.Delete(key)
+	}
+
+	request, err := c.OVNNbClient.PrepareNetworkPolicyACLSampling(pgName, np.Namespace, np.Name, string(np.UID))
+	if err != nil {
+		// Sampling is best-effort and must never block NetworkPolicy enforcement.
+		klog.Warningf("failed to prepare ACL sampling for network policy %s: %v", key, err)
+		return nil
+	}
+	state := &networkPolicySamplingState{request: request, policyUID: np.UID, portGroupName: pgName}
+	c.npSamplingStates.Store(key, state)
+	return state
+}
+
+func (c *Controller) queueNetworkPolicyACLSampling(key string, state *networkPolicySamplingState) {
+	if state == nil {
+		return
+	}
+	state.ready = true
+	c.npSamplingQueue.Add(key)
+}
+
+func (c *Controller) setNetworkPolicyACLLog(pgName, key string, logEnable, isIngress bool) bool {
+	if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, isIngress); err != nil {
+		// Logging is best-effort for enforcement, but sampling waits for the
+		// complete enforcement path to succeed.
+		klog.Errorf("failed to set network policy %s ACL log: %v", key, err)
+		return false
+	}
+	return true
+}
+
+func (c *Controller) deleteNetworkPolicySamplingState(key, portGroupName string, policyUID types.UID) {
+	if c.npSamplingStates == nil {
+		return
+	}
+	if policyUID == "" {
+		c.npSamplingStates.Range(func(candidateKey string, state *networkPolicySamplingState) bool {
+			if state.portGroupName == portGroupName {
+				c.npSamplingStates.Delete(candidateKey)
+			}
+			return true
+		})
+		return
+	}
+	c.npSamplingStates.Compute(key, func(state *networkPolicySamplingState, loaded bool) (*networkPolicySamplingState, xsync.ComputeOp) {
+		if loaded && state.policyUID == policyUID {
+			return nil, xsync.DeleteOp
+		}
+		return state, xsync.CancelOp
+	})
+}
+
+func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+	lockKey := networkPolicyPortGroupName(namespace, name)
+	c.npKeyMutex.LockKey(lockKey)
+	defer func() {
+		if err := c.npKeyMutex.UnlockKey(lockKey); err != nil {
+			klog.Errorf("failed to unlock network policy %s after ACL sampling: %v", key, err)
+		}
+	}()
+
+	state, ok := c.npSamplingStates.Load(key)
+	if !ok || !state.ready {
+		return nil
+	}
+	if err := c.OVNNbClient.ApplyNetworkPolicyACLSampling(c.config.ACLSampling, state.request); err != nil {
+		return err
+	}
+	c.npSamplingStates.Compute(key, func(current *networkPolicySamplingState, loaded bool) (*networkPolicySamplingState, xsync.ComputeOp) {
+		if loaded && current == state {
+			return nil, xsync.DeleteOp
+		}
+		return current, xsync.CancelOp
+	})
+	return nil
+}
+
+func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
+	key := request.key
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
 
-	c.npKeyMutex.LockKey(key)
-	defer func() { _ = c.npKeyMutex.UnlockKey(key) }()
+	lockKey := request.portGroupName
+	if lockKey == "" {
+		lockKey = networkPolicyPortGroupName(namespace, name)
+	}
+	c.npKeyMutex.LockKey(lockKey)
+	defer func() { _ = c.npKeyMutex.UnlockKey(lockKey) }()
 	klog.Infof("handle delete network policy %s", key)
-
-	npName := name
-	nameArray := []rune(name)
-	if !unicode.IsLetter(nameArray[0]) {
-		npName = "np" + name
+	inUse, err := c.networkPolicyPortGroupInUse(namespace, lockKey)
+	if err != nil {
+		return err
 	}
-
-	pgName := strings.ReplaceAll(fmt.Sprintf("%s.%s", npName, namespace), "-", ".")
-	ingressMeterName := fmt.Sprintf("%s_to-lport_meter", pgName)
-	egressMeterName := fmt.Sprintf("%s_from-lport_meter", pgName)
-
-	if err := c.OVNNbClient.DeleteMeter(ingressMeterName); err != nil {
-		klog.Errorf("delete ingress meter %s for np %s: %v", ingressMeterName, key, err)
+	if inUse {
+		klog.V(3).Infof("ignore stale delete for network policy %s", key)
+		return nil
 	}
+	c.deleteNetworkPolicySamplingState(key, lockKey, request.policyUID)
 
-	if err := c.OVNNbClient.DeleteMeter(egressMeterName); err != nil {
-		klog.Errorf("delete egress meter %s for np %s: %v", egressMeterName, key, err)
+	npName := networkPolicyResourceName(name)
+	pgName := lockKey
+	var firstErr error
+	for _, meterName := range networkPolicyMeterNames(pgName) {
+		if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+			klog.Errorf("delete meter %s for np %s: %v", meterName, key, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 
 	if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
