@@ -33,6 +33,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		var originalControllerArgs []string
 		modifiedDeployment := originalDeployment.DeepCopy()
 		foundController := false
+		nodeSwitch := "join"
 		for i := range modifiedDeployment.Spec.Template.Spec.Containers {
 			container := &modifiedDeployment.Spec.Template.Spec.Containers[i]
 			if container.Name != "kube-ovn-controller" {
@@ -40,6 +41,13 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 			}
 			foundController = true
 			originalControllerArgs = append([]string(nil), container.Args...)
+			for j, arg := range container.Args {
+				if value, ok := strings.CutPrefix(arg, "--node-switch="); ok {
+					nodeSwitch = value
+				} else if arg == "--node-switch" && j+1 < len(container.Args) {
+					nodeSwitch = container.Args[j+1]
+				}
+			}
 			foundGCInterval := false
 			for j, arg := range container.Args {
 				if strings.HasPrefix(arg, "--gc-interval=") {
@@ -69,7 +77,7 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		deploymentClient.PatchSync(originalDeployment, modifiedDeployment)
 
 		hasNodeLSP := func() (bool, error) {
-			output, _, err := framework.NBExec("ovn-nbctl --bare --no-heading lsp-list join")
+			output, _, err := framework.NBExec("ovn-nbctl --bare --no-heading lsp-list " + nodeSwitch)
 			if err != nil {
 				return false, err
 			}
