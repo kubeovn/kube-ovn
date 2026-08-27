@@ -96,3 +96,17 @@ func TestParseSampleReferenceRejectsInvalidInput(t *testing.T) {
 		})
 	}
 }
+
+func TestSampleReferenceCookie(t *testing.T) {
+	reference, err := ParseSampleReference("0x640abcde000000c8")
+	require.NoError(t, err)
+
+	cookie, err := reference.Cookie()
+	require.NoError(t, err)
+	require.Equal(t, uint64(0x640abcde000000c8), cookie)
+
+	metadataOnly, err := ParseSampleReference("200")
+	require.NoError(t, err)
+	_, err = metadataOnly.Cookie()
+	require.ErrorContains(t, err, "observation domain")
+}
