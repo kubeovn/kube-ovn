@@ -76,7 +76,8 @@ var (
 		prometheus.GaugeOpts{
 			Name: "acl_sampling_controller_available",
 			Help: "Whether the controller ACL sampling path is enabled and its latest operation succeeded.",
-		})
+		},
+	)
 
 	metricACLSamplingControllerFailures = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -84,7 +85,7 @@ var (
 			Help: "The number of best-effort controller ACL sampling failures by operation.",
 		},
 		[]string{"operation"},
-		)
+	)
 )
 
 func registerMetrics() {
