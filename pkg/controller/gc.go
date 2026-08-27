@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -53,6 +54,7 @@ func (c *Controller) gc() error {
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
 		c.gcRouterLBRules,
+		c.gcVtepBinding,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -1150,6 +1152,10 @@ func (c *Controller) gcChassis() error {
 	}
 	chassisNodes := make(map[string]string, len(*chassises))
 	for _, chassis := range *chassises {
+		if ovs.IsVTEPChassis(&chassis) {
+			klog.V(3).Infof("skip gc of hardware VTEP chassis %s", chassis.Name)
+			continue
+		}
 		chassisNodes[chassis.Name] = chassis.Hostname
 	}
 	nodes, err := c.nodesLister.List(labels.Everything())
@@ -1430,6 +1436,79 @@ func (c *Controller) gcRouterLBRules() error {
 
 	klog.Infof("finish to gc router lb rules")
 	return nil
+}
+
+func (c *Controller) gcVtepBinding() error {
+	klog.Infof("start to gc hardware vtep state")
+	liveByName, live, err := c.liveVtepBindingsForGC()
+	if err != nil {
+		klog.Errorf("failed to list live vtep bindings for gc: %v", err)
+		return err
+	}
+
+	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(true, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return lsp.Type == "vtep"
+	})
+	if err != nil {
+		klog.Errorf("failed to list vtep logical switch ports for gc: %v", err)
+		return err
+	}
+	for _, lsp := range lsps {
+		owner := lsp.ExternalIDs[ovs.VtepBindingKey]
+		ownerUID := lsp.ExternalIDs[ovs.VtepBindingUIDKey]
+		if owner == "" {
+			continue
+		}
+		liveBinding, ok := liveByName[owner]
+		if ok && (ownerUID == "" || ownerUID == string(liveBinding.UID)) {
+			continue
+		}
+		klog.Infof("gc orphaned vtep logical switch port %s owned by %s/%s", lsp.Name, owner, ownerUID)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+			klog.Errorf("failed to gc vtep logical switch port %s: %v", lsp.Name, err)
+			return err
+		}
+	}
+
+	if vtepClient := c.getVtepClient(); vtepClient != nil {
+		if err := vtepClient.GCOrphanedVtepState(live); err != nil {
+			klog.Errorf("failed to gc hardware VTEP DB state: %v", err)
+			return err
+		}
+	}
+
+	klog.Infof("finish to gc hardware vtep state")
+	return nil
+}
+
+func (c *Controller) liveVtepBindingsForGC() (map[string]*kubeovnv1.VtepBinding, []ovs.VtepLiveBinding, error) {
+	if !c.hardwareVtepEnabled() {
+		return nil, nil, nil
+	}
+	if c.vtepBindingsLister == nil {
+		return nil, nil, errors.New("vtep binding lister is not ready")
+	}
+	bindings, err := c.vtepBindingsLister.List(labels.Everything())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	liveByName := make(map[string]*kubeovnv1.VtepBinding, len(bindings))
+	live := make([]ovs.VtepLiveBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		if !binding.DeletionTimestamp.IsZero() {
+			continue
+		}
+		liveByName[binding.Name] = binding
+		live = append(live, ovs.VtepLiveBinding{
+			Name:           binding.Name,
+			PhysicalSwitch: binding.Spec.PhysicalSwitch,
+			PhysicalPort:   binding.Spec.PhysicalPort,
+			LogicalSwitch:  binding.VtepLogicalSwitchName(),
+			VlanID:         binding.Spec.VlanID,
+		})
+	}
+	return liveByName, live, nil
 }
 
 func logicalRouterPortFilter(exceptPeerPorts *strset.Set) func(lrp *ovnnb.LogicalRouterPort) bool {

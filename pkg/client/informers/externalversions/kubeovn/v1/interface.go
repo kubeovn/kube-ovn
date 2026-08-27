@@ -74,6 +74,8 @@ type Interface interface {
 	VpcEgressGateways() VpcEgressGatewayInformer
 	// VpcNatGateways returns a VpcNatGatewayInformer.
 	VpcNatGateways() VpcNatGatewayInformer
+	// VtepBindings returns a VtepBindingInformer.
+	VtepBindings() VtepBindingInformer
 }
 
 type version struct {
@@ -210,4 +212,9 @@ func (v *version) VpcEgressGateways() VpcEgressGatewayInformer {
 // VpcNatGateways returns a VpcNatGatewayInformer.
 func (v *version) VpcNatGateways() VpcNatGatewayInformer {
 	return &vpcNatGatewayInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VtepBindings returns a VtepBindingInformer.
+func (v *version) VtepBindings() VtepBindingInformer {
+	return &vtepBindingInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

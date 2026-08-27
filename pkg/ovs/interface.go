@@ -104,6 +104,7 @@ type LogicalSwitchPort interface {
 	CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error
 	CreateBareLogicalSwitchPort(lsName, lspName, ip, mac string) error
 	CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock string, vlanID int) error
+	CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch string, externalIDs map[string]string) error
 	CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error
 	// create virtual type logical switch port for allowed-address-pair
 	CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error
@@ -292,7 +293,31 @@ type NbClient interface {
 
 type SbClient interface {
 	Chassis
+	PortBinding
 	Common
+}
+
+type PortBinding interface {
+	GetPortBindingByLogicalPort(logicalPort string, ignoreNotFound bool) (*ovnsb.PortBinding, error)
+	GetChassisNameByUUID(uuid string) (string, error)
+}
+
+// VtepDBClient writes Hardware VTEP Logical_Switch and vlan_bindings.
+type VtepDBClient interface {
+	EnsureVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName string, vlanID int) error
+	RemoveVtepBinding(physicalSwitch, physicalPort, logicalSwitch, bindingName string, vlanID int) error
+	GCOrphanedVtepState(live []VtepLiveBinding) error
+	Common
+}
+
+// VtepLiveBinding is the subset of a VtepBinding used to garbage-collect
+// Hardware VTEP Logical_Switch rows and Physical_Port.vlan_bindings.
+type VtepLiveBinding struct {
+	Name           string
+	PhysicalSwitch string
+	PhysicalPort   string
+	LogicalSwitch  string
+	VlanID         int
 }
 
 type Common interface {

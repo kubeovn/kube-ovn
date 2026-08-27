@@ -74,6 +74,8 @@ func (config LeaderElectionConfiguration) validate() error {
 type Configuration struct {
 	OvnNbAddr              string
 	OvnSbAddr              string
+	VtepDbAddr             string
+	EnableHardwareVtep     bool
 	OvnTimeout             int
 	OvsDbConnectTimeout    int
 	OvsDbConnectMaxRetry   int
@@ -198,6 +200,8 @@ func ParseFlags() (*Configuration, error) {
 	var (
 		argOvnNbAddr              = pflag.String("ovn-nb-addr", "", "ovn-nb address")
 		argOvnSbAddr              = pflag.String("ovn-sb-addr", "", "ovn-sb address")
+		argVtepDbAddr             = pflag.String("vtep-db-addr", "", "Hardware VTEP OVSDB address (optional; enables Logical_Switch and vlan_bindings writes when hardware VTEP is enabled)")
+		argEnableHardwareVtep     = pflag.Bool("enable-hardware-vtep", false, "Enable Hardware VTEP VtepBinding reconciliation. Default disabled: the informer, worker, and NB type=vtep path stay inactive.")
 		argOvnTimeout             = pflag.Int("ovn-timeout", 60, "The seconds to wait ovn command timeout")
 		argOvsDbConTimeout        = pflag.Int("ovsdb-con-timeout", 3, "The seconds to wait ovsdb connect timeout")
 		argOvsDbConnectMaxRetry   = pflag.Int("ovsdb-con-maxretry", 60, "The maximum number of retries for connecting to ovsdb")
@@ -309,6 +313,8 @@ func ParseFlags() (*Configuration, error) {
 	config := &Configuration{
 		OvnNbAddr:                      *argOvnNbAddr,
 		OvnSbAddr:                      *argOvnSbAddr,
+		VtepDbAddr:                     *argVtepDbAddr,
+		EnableHardwareVtep:             *argEnableHardwareVtep,
 		OvnTimeout:                     *argOvnTimeout,
 		OvsDbConnectTimeout:            *argOvsDbConTimeout,
 		OvsDbConnectMaxRetry:           *argOvsDbConnectMaxRetry,

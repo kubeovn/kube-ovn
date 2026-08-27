@@ -194,7 +194,7 @@ RUN mkdir /packages/ && \
     cp /usr/src/python3-openvswitch*deb /packages && \
     cp /usr/src/ovn-*deb /packages && \
     cp /usr/src/ovs/tutorial/ovs-sandbox /packages && \
-    cd /packages && rm -f *source* *doc* *datapath* *docker* *vtep* *test* *dev*
+    cd /packages && rm -f *source* *doc* *datapath* *docker* *test* *dev*
 
 FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
@@ -244,7 +244,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt install ca-certificates netbase ethtool iproute2 ncat libunbound8 \
         kmod iptables python3-netifaces python3-sortedcontainers tcpdump ipvsadm ipset curl \
         uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
-        gzip logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
+        gzip logrotate dnsutils net-tools lsb-release strongswan strongswan-pki libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
         -y --no-install-recommends --auto-remove && \
     apt remove -y --allow-remove-essential --auto-remove login && \

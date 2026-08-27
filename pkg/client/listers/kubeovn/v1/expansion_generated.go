@@ -121,3 +121,7 @@ type VpcEgressGatewayNamespaceListerExpansion interface{}
 // VpcNatGatewayListerExpansion allows custom methods to be added to
 // VpcNatGatewayLister.
 type VpcNatGatewayListerExpansion interface{}
+
+// VtepBindingListerExpansion allows custom methods to be added to
+// VtepBindingLister.
+type VtepBindingListerExpansion interface{}

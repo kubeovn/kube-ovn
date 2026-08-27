@@ -54,6 +54,9 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	createHooks[vipGVK] = v.VipCreateHook
 	updateHooks[vipGVK] = v.VipUpdateHook
 
+	createHooks[vtepBindingGVK] = v.VtepBindingCreateHook
+	updateHooks[vtepBindingGVK] = v.VtepBindingUpdateHook
+
 	createHooks[vpcNatGatewayGVK] = v.VpcNatGwCreateOrUpdateHook
 	updateHooks[vpcNatGatewayGVK] = v.VpcNatGwCreateOrUpdateHook
 	deleteHooks[vpcNatGatewayGVK] = v.VpcNatGwDeleteHook

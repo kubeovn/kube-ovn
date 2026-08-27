@@ -201,6 +201,131 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider,
 	return nil
 }
 
+// CreateVtepLogicalSwitchPort creates or updates a Logical Switch Port of type "vtep".
+// physicalSwitch maps to options:vtep-physical-switch and vtepLogicalSwitch maps to
+// options:vtep-logical-switch. externalIDs must include ownership markers
+// (vtep-binding and vtep-binding-uid). An existing same-name port is updated only
+// when those markers match; an owned port attached to another Logical Switch is
+// moved in a single transaction.
+func (c *OVNNbClient) CreateVtepLogicalSwitchPort(lsName, lspName, physicalSwitch, vtepLogicalSwitch string, externalIDs map[string]string) error {
+	if lsName == "" || lspName == "" {
+		return errors.New("logical switch name and logical switch port name must be set")
+	}
+	if physicalSwitch == "" || vtepLogicalSwitch == "" {
+		return errors.New("vtep physical switch and vtep logical switch must be set")
+	}
+
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	finalExternalIDs := make(map[string]string, len(externalIDs)+2)
+	maps.Copy(finalExternalIDs, externalIDs)
+	finalExternalIDs[LogicalSwitchKey] = lsName
+	finalExternalIDs["vendor"] = util.CniTypeName
+
+	options := map[string]string{
+		"vtep-physical-switch": physicalSwitch,
+		"vtep-logical-switch":  vtepLogicalSwitch,
+	}
+
+	if lsp != nil {
+		if err = assertVtepLSPWritableBy(lsp, finalExternalIDs[VtepBindingKey], finalExternalIDs[VtepBindingUIDKey]); err != nil {
+			return err
+		}
+
+		currentLS := lsp.ExternalIDs[LogicalSwitchKey]
+		if lsp.Type == "vtep" && currentLS == lsName && maps.Equal(lsp.ExternalIDs, finalExternalIDs) && maps.Equal(lsp.Options, options) {
+			return nil
+		}
+
+		lsp.Type = "vtep"
+		lsp.Addresses = []string{"unknown"}
+		lsp.ExternalIDs = finalExternalIDs
+		lsp.Options = options
+
+		if currentLS == lsName || currentLS == "" {
+			if err = c.UpdateLogicalSwitchPort(lsp, &lsp.Type, &lsp.Addresses, &lsp.ExternalIDs, &lsp.Options); err != nil {
+				klog.Error(err)
+				return fmt.Errorf("failed to update vtep logical switch port %s: %w", lspName, err)
+			}
+			return nil
+		}
+
+		var ops []ovsdb.Operation
+		delOps, err := c.LogicalSwitchUpdatePortOp(currentLS, lsp.UUID, ovsdb.MutateOperationDelete)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to detach vtep logical switch port %s from %s: %w", lspName, currentLS, err)
+		}
+		updateOps, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Type, &lsp.Addresses, &lsp.ExternalIDs, &lsp.Options)
+		if err != nil {
+			return err
+		}
+		addOps, err := c.LogicalSwitchUpdatePortOp(lsName, lsp.UUID, ovsdb.MutateOperationInsert)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to attach vtep logical switch port %s to %s: %w", lspName, lsName, err)
+		}
+		ops = append(ops, delOps...)
+		ops = append(ops, updateOps...)
+		ops = append(ops, addOps...)
+		if err = c.Transact("lsp-vtep-move", ops); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("move vtep logical switch port %s from %s to %s: %w", lspName, currentLS, lsName, err)
+		}
+		return nil
+	}
+
+	lsp = &ovnnb.LogicalSwitchPort{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lspName,
+		Type:        "vtep",
+		Addresses:   []string{"unknown"},
+		Options:     options,
+		ExternalIDs: finalExternalIDs,
+	}
+
+	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	if err = c.Transact("lsp-add", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("create vtep logical switch port %s: %w", lspName, err)
+	}
+
+	return nil
+}
+
+func assertVtepLSPWritableBy(lsp *ovnnb.LogicalSwitchPort, bindingName, bindingUID string) error {
+	if lsp == nil {
+		return nil
+	}
+	owner := lsp.ExternalIDs[VtepBindingKey]
+	ownerUID := lsp.ExternalIDs[VtepBindingUIDKey]
+	if owner == "" || ownerUID == "" {
+		return fmt.Errorf("logical switch port %s exists without exact vtep-binding ownership", lsp.Name)
+	}
+	if owner != bindingName || ownerUID != bindingUID {
+		return fmt.Errorf("logical switch port %s is owned by vtep binding %s/%s, not %s/%s",
+			lsp.Name, owner, ownerUID, bindingName, bindingUID)
+	}
+	return nil
+}
+
+// VtepLSPOwnedBy reports whether lsp is exclusively owned by the given VtepBinding.
+func VtepLSPOwnedBy(lsp *ovnnb.LogicalSwitchPort, bindingName, bindingUID string) bool {
+	if lsp == nil || bindingName == "" || bindingUID == "" {
+		return false
+	}
+	return lsp.ExternalIDs[VtepBindingKey] == bindingName && lsp.ExternalIDs[VtepBindingUIDKey] == bindingUID
+}
+
 // CreateVirtualLogicalSwitchPorts create several virtual type logical switch port once
 func (c *OVNNbClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
 	ops := make([]ovsdb.Operation, 0, len(ips))

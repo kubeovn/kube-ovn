@@ -81,6 +81,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&VpcEgressGatewayList{},
 		&VpcNatGateway{},
 		&VpcNatGatewayList{},
+		&VtepBinding{},
+		&VtepBindingList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

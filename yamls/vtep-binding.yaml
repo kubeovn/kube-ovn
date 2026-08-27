@@ -1,0 +1,14 @@
+apiVersion: kubeovn.io/v1
+kind: VtepBinding
+metadata:
+  name: tenant-a-rack1
+spec:
+  # Kube-OVN Subnet / OVN Logical Switch to extend
+  subnet: tenant-a-backend
+  # Hardware VTEP Physical_Switch.name
+  physicalSwitch: nexus01
+  # Hardware VTEP Logical_Switch.name (defaults to subnet when omitted)
+  vtepLogicalSwitch: tenant-a-backend
+  # Ops metadata: must match switch-side Physical_Port.vlan_bindings
+  physicalPort: Ethernet1/20
+  vlanID: 120

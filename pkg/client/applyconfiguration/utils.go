@@ -254,6 +254,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.VpcSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcStatus"):
 		return &kubeovnv1.VpcStatusApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VtepBinding"):
+		return &kubeovnv1.VtepBindingApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VtepBindingSpec"):
+		return &kubeovnv1.VtepBindingSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VtepBindingStatus"):
+		return &kubeovnv1.VtepBindingStatusApplyConfiguration{}
 
 	}
 	return nil

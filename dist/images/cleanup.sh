@@ -67,6 +67,18 @@ for vlan in $(kubectl get vlans.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $vlan
 done
 
+# Delete VtepBindings while kube-ovn-controller can still run finalizers
+# and clean NB / Hardware VTEP state.
+for vb in $(kubectl get vtep-bindings.kubeovn.io -o name 2>/dev/null); do
+  kubectl delete --ignore-not-found $vb
+done
+for _ in $(seq 1 30); do
+  if [ $(kubectl get vtep-bindings.kubeovn.io -o name 2>/dev/null | wc -l) -eq 0 ]; then
+    break
+  fi
+  sleep 1
+done
+
 for pn in $(kubectl get provider-networks.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $pn
 done
@@ -77,6 +89,7 @@ kubectl delete --ignore-not-found -n kube-system cm ovn-config ovn-ic-config \
   ovn-external-gw-config ovn-vpc-nat-config ovn-vpc-nat-gw-config
 kubectl delete --ignore-not-found -n kube-system svc kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-controller
+kubectl delete --ignore-not-found -n kube-system deploy ovn-controller-vtep
 kubectl delete --ignore-not-found -n kube-system deploy ovn-ic-controller
 kubectl delete --ignore-not-found -n kube-system deploy ovn-ic-server
 
@@ -109,8 +122,8 @@ kubectl delete --ignore-not-found clusterrolebinding vpc-dns
 kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
 # remove finalizers
-for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io; do
-  for resource in $(kubectl get "$resource_type" -o name); do
+for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io vtep-bindings.kubeovn.io; do
+  for resource in $(kubectl get "$resource_type" -o name 2>/dev/null); do
     kubectl patch "$resource" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
   done
 done
@@ -135,6 +148,7 @@ kubectl delete --ignore-not-found crd \
   ovn-fips.kubeovn.io \
   ovn-eips.kubeovn.io \
   qos-policies.kubeovn.io \
+  vtep-bindings.kubeovn.io \
   subnets.kubeovn.io \
   vpcs.kubeovn.io \
   ips.kubeovn.io

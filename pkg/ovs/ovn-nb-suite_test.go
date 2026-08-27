@@ -24,12 +24,14 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vtep"
 )
 
 type OvnClientTestSuite struct {
 	suite.Suite
 	ovnNBClient *OVNNbClient
 	ovnSBClient *OVNSbClient
+	vtepClient  *VtepClient
 
 	failedOvnNBClient *OVNNbClient
 	ovnLegacyClient   *LegacyClient
@@ -84,6 +86,19 @@ func (suite *OvnClientTestSuite) SetupSuite() {
 	ovnSBClient, err := newOvnSbClient(suite.T(), sbEndpoint, 10)
 	require.NoError(suite.T(), err)
 	suite.ovnSBClient = ovnSBClient
+
+	// setup hardware VTEP client
+	vtepClientSchema := vtep.Schema()
+	vtepClientDBModel, err := vtep.FullDatabaseModel()
+	require.NoError(suite.T(), err)
+
+	_, vtepSock := newOVSDBServer(suite.T(), "vtep", vtepClientDBModel, vtepClientSchema)
+	vtepEndpoint := "unix:" + vtepSock
+	require.FileExists(suite.T(), vtepSock)
+
+	vtepClient, err := newVtepClient(suite.T(), vtepEndpoint, 10)
+	require.NoError(suite.T(), err)
+	suite.vtepClient = vtepClient
 
 	// setup ovn legacy client
 	suite.ovnLegacyClient = newLegacyClient(10)
@@ -207,6 +222,10 @@ func (suite *OvnClientTestSuite) Test_CreateLogicalSwitchPort() {
 
 func (suite *OvnClientTestSuite) Test_CreateLocalnetLogicalSwitchPort() {
 	suite.testCreateLocalnetLogicalSwitchPort()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateVtepLogicalSwitchPort() {
+	suite.testCreateVtepLogicalSwitchPort()
 }
 
 func (suite *OvnClientTestSuite) Test_CreateVirtualLogicalSwitchPorts() {
@@ -1491,6 +1510,64 @@ func newOvnSbClient(t *testing.T, ovnSbAddr string, ovnSbTimeout int) (*OVNSbCli
 	}, nil
 }
 
+func newVtepClient(t *testing.T, addr string, timeout int) (*VtepClient, error) {
+	c, err := newHardwareVtepClient(addr, timeout)
+	require.NoError(t, err)
+	return &VtepClient{
+		ovsDbClient: ovsDbClient{
+			Client:  c,
+			Timeout: time.Duration(timeout) * time.Second,
+		},
+	}, nil
+}
+
+func newHardwareVtepClient(addr string, timeout int) (client.Client, error) {
+	dbModel, err := vtep.FullDatabaseModel()
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	logger := stdr.New(log.New(os.Stderr, "", log.LstdFlags)).
+		WithName("libovsdb").
+		WithValues("database", dbModel.Name())
+	stdr.SetVerbosity(1)
+
+	options := []client.Option{
+		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
+		client.WithLeaderOnly(false),
+		client.WithLogger(&logger),
+	}
+
+	for ep := range strings.SplitSeq(addr, ",") {
+		options = append(options, client.WithEndpoint(ep))
+	}
+
+	c, err := client.NewOVSDBClient(dbModel, options...)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	if err = c.Connect(context.TODO()); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	monitorOpts := []client.MonitorOption{
+		client.WithTable(&vtep.LogicalSwitch{}),
+		client.WithTable(&vtep.PhysicalPort{}),
+		client.WithTable(&vtep.PhysicalSwitch{}),
+		client.WithTable(&vtep.Global{}),
+	}
+	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	return c, nil
+}
+
 func newSbClient(addr string, timeout int) (client.Client, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
@@ -1526,6 +1603,7 @@ func newSbClient(addr string, timeout int) (client.Client, error) {
 
 	monitorOpts := []client.MonitorOption{
 		client.WithTable(&ovnsb.Chassis{}),
+		client.WithTable(&ovnsb.PortBinding{}),
 	}
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
 		klog.Error(err)

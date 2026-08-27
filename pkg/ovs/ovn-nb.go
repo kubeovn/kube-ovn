@@ -21,6 +21,8 @@ const (
 	sgsKey                = "security_groups"
 	sgKey                 = "sg"
 	PortKey               = "port"
+	VtepBindingKey        = "vtep-binding"
+	VtepBindingUIDKey     = "vtep-binding-uid"
 )
 
 // CreateGatewayLogicalSwitch create gateway switch connect external networks

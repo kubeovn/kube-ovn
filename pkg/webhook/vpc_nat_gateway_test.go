@@ -50,7 +50,16 @@ func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Obje
 	return nil
 }
 
-func (m *mockCache) List(_ context.Context, _ client.ObjectList, _ ...client.ListOption) error {
+func (m *mockCache) List(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
+	bindings, ok := list.(*ovnv1.VtepBindingList)
+	if !ok {
+		return nil
+	}
+	for _, o := range m.objects {
+		if binding, ok := o.(*ovnv1.VtepBinding); ok {
+			bindings.Items = append(bindings.Items, *binding)
+		}
+	}
 	return nil
 }
 
