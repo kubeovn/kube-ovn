@@ -5541,7 +5541,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     permissions:
       actions: read
-      checks: write
+      statuses: write
       contents: read
     needs:
       - e2e-selection
@@ -5589,11 +5589,6 @@ jobs:
           ]
           infraTitles = e2eControl.visibleInfrastructureTitles(blocks)
 
-          def gh_json(*args):
-              return json.loads(
-                  subprocess.check_output(["gh", "api", *args], text=True)
-              )
-
           def load_jobs():
               pages = json.loads(
                   subprocess.check_output(
@@ -5623,63 +5618,28 @@ jobs:
                   detailsURL=f"https://github.com/{repository}/actions/runs/{runId}",
                   infraTitles=infraTitles,
               ):
-                  fingerprint = (
-                      payload["status"],
-                      payload.get("conclusion"),
-                      payload.get("details_url"),
-                  )
-                  externalId = payload["external_id"]
-                  if published.get(externalId) == fingerprint:
+                  statusPayload = e2eControl.prCommitStatusFromCheckRun(payload)
+                  context = statusPayload["context"]
+                  fingerprint = tuple(statusPayload.items())
+                  if published.get(context) == fingerprint:
                       continue
-                  existing = gh_json(
-                      "-H",
-                      "Accept: application/vnd.github+json",
-                      f"repos/{repository}/commits/{headSHA}/check-runs?per_page=100",
+                  subprocess.run(
+                      [
+                          "gh",
+                          "api",
+                          "--method",
+                          "POST",
+                          f"repos/{repository}/statuses/{headSHA}",
+                          "--input",
+                          "-",
+                      ],
+                      input=json.dumps(statusPayload),
+                      text=True,
+                      check=True,
                   )
-                  checkId = next(
-                      (
-                          check.get("id")
-                          for check in existing.get("check_runs") or []
-                          if check.get("external_id") == externalId
-                      ),
-                      None,
-                  )
-                  if checkId is None:
-                      subprocess.run(
-                          [
-                              "gh",
-                              "api",
-                              "--method",
-                              "POST",
-                              f"repos/{repository}/check-runs",
-                              "--input",
-                              "-",
-                          ],
-                          input=json.dumps(payload),
-                          text=True,
-                          check=True,
-                      )
-                  else:
-                      update = dict(payload)
-                      update.pop("name", None)
-                      update.pop("head_sha", None)
-                      subprocess.run(
-                          [
-                              "gh",
-                              "api",
-                              "--method",
-                              "PATCH",
-                              f"repos/{repository}/check-runs/{checkId}",
-                              "--input",
-                              "-",
-                          ],
-                          input=json.dumps(update),
-                          text=True,
-                          check=True,
-                      )
-                  published[externalId] = fingerprint
+                  published[context] = fingerprint
                   print(
-                      f"{payload['status']} {payload.get('conclusion') or '-'} {payload['name']}",
+                      f"{statusPayload['state']} {statusPayload['context']}",
                       flush=True,
                   )
               if e2eControl.selectedExecutorJobsAreTerminal(jobs, selectedTitles):

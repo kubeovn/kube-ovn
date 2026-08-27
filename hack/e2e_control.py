@@ -833,6 +833,29 @@ def prCheckRunFromExecutorJob(job, headSHA, prNumber):
     return payload
 
 
+def prCommitStatusFromCheckRun(checkRun):
+    """Convert a mirrored check payload to a commit status with a stable URL."""
+    status = checkRun.get("status") or ""
+    conclusion = checkRun.get("conclusion") or ""
+    if status != "completed":
+        state = "pending"
+    elif conclusion == "success":
+        state = "success"
+    elif conclusion in {"skipped", "neutral"}:
+        state = "success"
+    elif conclusion in {"cancelled", "timed_out"}:
+        state = "error"
+    else:
+        state = "failure"
+    summary = (checkRun.get("output") or {}).get("summary") or checkRun["name"]
+    return {
+        "state": state,
+        "target_url": checkRun.get("details_url") or "",
+        "description": summary[:140],
+        "context": checkRun["name"],
+    }
+
+
 def placeholderCheckRun(name, headSHA, prNumber, *, queued, detailsURL, summary):
     if not re.fullmatch(headPattern, headSHA or ""):
         raise ValueError("invalid pull request HEAD for E2E check")
