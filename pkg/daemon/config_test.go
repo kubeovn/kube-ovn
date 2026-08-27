@@ -239,6 +239,11 @@ func TestSelectEncapIP(t *testing.T) {
 		srcIPs:   []string{"192.168.1.10"},
 		expected: "",
 	}, {
+		name:     "full mask address is not a vip when the other address is not a route source",
+		addrs:    addrs("10.0.0.10/32", "10.0.0.11/24"),
+		srcIPs:   []string{"10.0.0.10"},
+		expected: "10.0.0.10",
+	}, {
 		name:     "loopback and link local addresses are ignored",
 		addrs:    addrs("127.0.0.1/8", "169.254.1.1/16", "10.198.0.140/32"),
 		expected: "10.198.0.140",

@@ -402,10 +402,12 @@ func (config *Configuration) getEncapIP(node *corev1.Node) string {
 //     interface. Note a real loopback address such as 127.0.0.1 is always excluded.
 //
 // srcIPs holds the source addresses of the link scope routes on the interface: when it
-// is not empty, the encap IP must be one of them.
+// is not empty, the encap IP must be one of them. Addresses excluded by srcIPs do not
+// count towards the same family check below, otherwise an unusable address could make a
+// usable full-mask one look like a vip.
 func selectEncapIP(addrs []net.Addr, srcIPs []string, hostTunnelSrc bool, nodeIPs ...string) string {
-	// gather the usable unicast addresses, excluding link-local and loopback ones,
-	// and count them per address family
+	// gather the selectable unicast addresses, excluding link-local, loopback and non
+	// route source ones, and count them per address family
 	candidates := make([]net.IPNet, 0, len(addrs))
 	var n4, n6 int
 	for _, addr := range addrs {
@@ -415,6 +417,9 @@ func selectEncapIP(addrs []net.Addr, srcIPs []string, hostTunnelSrc bool, nodeIP
 			continue
 		}
 		if ip.IsLinkLocalUnicast() || ip.IsLoopback() {
+			continue
+		}
+		if len(srcIPs) != 0 && !slices.Contains(srcIPs, ip.String()) {
 			continue
 		}
 		candidates = append(candidates, net.IPNet{IP: ip, Mask: ipNet.Mask})
@@ -437,9 +442,7 @@ func selectEncapIP(addrs []net.Addr, srcIPs []string, hostTunnelSrc bool, nodeIP
 				ipStr, sameFamily)
 			continue
 		}
-		if len(srcIPs) == 0 || slices.Contains(srcIPs, ipStr) {
-			return ipStr
-		}
+		return ipStr
 	}
 	return ""
 }
