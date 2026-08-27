@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
@@ -161,6 +163,28 @@ func TestSetNetworkPolicyACLLogReportsSamplingReadiness(t *testing.T) {
 	require.True(t, controller.setNetworkPolicyACLLog("pg", "default/test", true, true))
 	nbClient.EXPECT().SetNetPolACLLog("pg", true, false).Return(errors.New("injected logging failure"))
 	require.False(t, controller.setNetworkPolicyACLLog("pg", "default/test", true, false))
+}
+
+func TestRunDisabledACLSamplingCleanupRetries(t *testing.T) {
+	controller, nbClient, config := newNetworkPolicySamplingTestController(t)
+	config.Enabled = false
+	controller.config.ACLSampling = config
+	nbClient.EXPECT().ReconcileACLSampling(config).Return(errors.New("injected cleanup failure"))
+	nbClient.EXPECT().ReconcileACLSampling(config).Return(nil)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		controller.runDisabledACLSamplingCleanup(ctx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for disabled ACL sampling cleanup retry")
+	}
 }
 
 func newNetworkPolicySamplingTestController(t *testing.T) (*Controller, *mockovs.MockNbClient, aclsampling.ControllerConfig) {
