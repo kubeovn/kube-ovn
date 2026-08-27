@@ -134,6 +134,9 @@ spec:
           - --set-vxlan-tx-off={{- .Values.func.SET_VXLAN_TX_OFF }}
           - --host-tunnel-src={{- .Values.func.HOST_TUNNEL_SRC | default false }}
           - --non-primary-cni-mode={{- .Values.cni_conf.NON_PRIMARY_CNI }}
+          - --enable-acl-sampling={{- .Values.aclSampling.enabled }}
+          - --acl-sampling-set-id={{- .Values.aclSampling.setID }}
+          - --acl-sampling-local-group-id={{- .Values.aclSampling.localGroupID }}
         securityContext:
           runAsUser: 0
           privileged: false
