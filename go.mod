@@ -67,6 +67,7 @@ require (
 	kubevirt.io/api v1.8.1
 	kubevirt.io/client-go v1.8.1
 	sigs.k8s.io/controller-runtime v0.23.3
+	sigs.k8s.io/yaml v1.6.0
 	sigs.k8s.io/network-policy-api v0.1.8-0.20251209142732-3910463a5686
 )
 
@@ -223,7 +224,6 @@ require (
 	sigs.k8s.io/knftables v0.0.21 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
 replace (
