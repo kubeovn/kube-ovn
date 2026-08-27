@@ -3,6 +3,7 @@ package kubevirt
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -231,58 +232,94 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		}
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("Delete service")
+		// each cleanup step is best-effort: a failure is logged but does not
+		// prevent the remaining steps from running, so one stuck resource
+		// cannot leak all the others.
+		cleanup := func(step string, fn func() error) {
+			ginkgo.By(step)
+			if err := fn(); err != nil {
+				framework.Logf("cleanup step %q failed, continuing: %v", step, err)
+			}
+		}
+
 		if serviceName != "" {
-			f.ServiceClient().DeleteSync(serviceName)
+			cleanup("Delete service "+serviceName, func() error {
+				f.ServiceClient().DeleteSync(serviceName)
+				return nil
+			})
 		}
 
 		if serviceName2 != "" {
-			f.ServiceClient().DeleteSync(serviceName2)
+			cleanup("Delete service "+serviceName2, func() error {
+				f.ServiceClient().DeleteSync(serviceName2)
+				return nil
+			})
 		}
 		if externalServiceName != "" {
-			f.ServiceClient().DeleteSync(externalServiceName)
+			cleanup("Delete service "+externalServiceName, func() error {
+				f.ServiceClient().DeleteSync(externalServiceName)
+				return nil
+			})
 		}
 
-		ginkgo.By("Deleting the IPAddressPool for metallb")
-		f.MetallbClientSet.DeleteIPAddressPool(metallbIPPoolName) // nolint:errcheck
+		cleanup("Deleting the IPAddressPool for metallb", func() error {
+			return f.MetallbClientSet.DeleteIPAddressPool(metallbIPPoolName)
+		})
 
-		ginkgo.By("Deleting the l2 advertisement for metallb")
-		f.MetallbClientSet.DeleteL2Advertisement(metallbIPPoolName) // nolint:errcheck
+		cleanup("Deleting the l2 advertisement for metallb", func() error {
+			return f.MetallbClientSet.DeleteL2Advertisement(metallbIPPoolName)
+		})
 
-		ginkgo.By("Deleting the deployment " + deployName)
-		deployClient.DeleteSync(deployName)
-		deployClient.DeleteSync(internalDeployName)
+		cleanup("Deleting the deployments "+deployName+" and "+internalDeployName, func() error {
+			deployClient.DeleteSync(deployName)
+			deployClient.DeleteSync(internalDeployName)
+			return nil
+		})
 
-		ginkgo.By("Deleting subnet " + subnetName)
-		subnetClient.DeleteSync(subnetName)
+		cleanup("Deleting subnet "+subnetName, func() error {
+			subnetClient.DeleteSync(subnetName)
+			return nil
+		})
 
-		ginkgo.By("Deleting vlan " + vlanName)
-		vlanClient.Delete(vlanName)
+		cleanup("Deleting vlan "+vlanName, func() error {
+			vlanClient.Delete(vlanName)
+			return nil
+		})
 
-		ginkgo.By("Deleting provider network " + providerNetworkName)
-		providerNetworkClient.DeleteSync(providerNetworkName)
+		cleanup("Deleting provider network "+providerNetworkName, func() error {
+			providerNetworkClient.DeleteSync(providerNetworkName)
+			return nil
+		})
 
-		ginkgo.By("Getting nodes")
-		nodes, err := kind.ListNodes(clusterName, "")
-		framework.ExpectNoError(err, "getting nodes in cluster")
-
-		ginkgo.By("Waiting for ovs bridge to disappear")
-		deadline := time.Now().Add(time.Minute)
-		for _, node := range nodes {
-			err = node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline)
-			framework.ExpectNoError(err, "timed out waiting for ovs bridge to disappear in node %s", node.Name())
-		}
+		cleanup("Waiting for ovs bridges to disappear", func() error {
+			nodes, err := kind.ListNodes(clusterName, "")
+			if err != nil {
+				return fmt.Errorf("getting nodes in cluster: %w", err)
+			}
+			deadline := time.Now().Add(time.Minute)
+			var errs []error
+			for _, node := range nodes {
+				if err := node.WaitLinkToDisappear(util.ExternalBridgeName(providerNetworkName), time.Second, deadline); err != nil {
+					errs = append(errs, fmt.Errorf("node %s: %w", node.Name(), err))
+				}
+			}
+			return errors.Join(errs...)
+		})
 
 		if dockerNetwork != nil {
-			ginkgo.By("Disconnecting nodes from the docker network")
-			err = kind.NetworkDisconnect(dockerNetwork.ID, nodes)
-			framework.ExpectNoError(err, "disconnecting nodes from network "+dockerNetworkName)
+			cleanup("Disconnecting nodes from the docker network", func() error {
+				nodes, err := kind.ListNodes(clusterName, "")
+				if err != nil {
+					return fmt.Errorf("getting nodes in cluster: %w", err)
+				}
+				return kind.NetworkDisconnect(dockerNetwork.ID, nodes)
+			})
 		}
 
 		if containerID != "" {
-			ginkgo.By("Deleting the client container")
-			err = docker.ContainerRemove(containerID)
-			framework.ExpectNoError(err, "removing container "+containerID)
+			cleanup("Deleting the client container", func() error {
+				return docker.ContainerRemove(containerID)
+			})
 		}
 	})
 
@@ -720,6 +757,17 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			waitUnderlayVIPBypassLFlowCleaned(ingress.IP, curlListenPort, 30*time.Second)
 			waitUnderlayVIPNodeLFlowCleaned(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
 		}
+		ginkgo.By("Verifying backend L2 lookup lflows are cleaned up for externalTrafficPolicy=Cluster")
+		clusterBackendPods, err := cs.CoreV1().Pods(f.Namespace.Name).List(context.Background(), metav1.ListOptions{
+			LabelSelector: "app=nginx",
+		})
+		framework.ExpectNoError(err, "listing backends of the first service")
+		for _, ingress := range service.Status.LoadBalancer.Ingress {
+			if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
+				continue
+			}
+			waitUnderlayVIPBackendLFlowAbsent(clusterBackendPods.Items, vipNodes[ingress.IP], 30*time.Second)
+		}
 		waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
 
 		ginkgo.By("Checking the first service remains reachable with externalTrafficPolicy=Cluster")
@@ -938,6 +986,151 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		moveInternalVIPNode(env, env.nonVIPBackendNode, tcpSessionLoadBalancer, false)
 		waitUnderlayVIPAffinityLFlowCleaned(env.vip, oldVIPNodeLSP, 30*time.Second)
 		waitUnderlayVIPAffinityLFlow(env.vip, util.NodeLspName(env.vipNode), 30*time.Second)
+		checkInternalPodVIPBackend(f, client, env.vip, env.vipNode)
+	})
+
+	framework.ConformanceIt("should move the internal underlay VIP when no backend is left on the announcing node", func() {
+		env := setupInternalVIPEnvironment()
+		oldVIPNode := env.vipNode
+
+		tcpLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
+		framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
+
+		ginkgo.By("Recreating the backends so that none of them runs on the announcing node")
+		deployClient.DeleteSync(internalDeployName)
+		internalPodLabels := map[string]string{"app": "nginx-internal"}
+		internalDeploy := framework.MakeDeployment(internalDeployName, 2, internalPodLabels, env.annotations, "nginx", framework.AgnhostImage, "")
+		internalDeploy.Spec.Template.Spec.Containers[0].Args = []string{"netexec", "--http-port", strconv.Itoa(curlListenPort)}
+		internalDeploy.Spec.Template.Spec.Affinity = &corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+						MatchExpressions: []corev1.NodeSelectorRequirement{{
+							Key:      "kubernetes.io/hostname",
+							Operator: corev1.NodeSelectorOpNotIn,
+							Values:   []string{oldVIPNode},
+						}},
+					}},
+				},
+			},
+			PodAntiAffinity: &corev1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+					LabelSelector: &metav1.LabelSelector{MatchLabels: internalPodLabels},
+					TopologyKey:   "kubernetes.io/hostname",
+				}},
+			},
+		}
+		_ = deployClient.CreateSync(internalDeploy)
+
+		ginkgo.By("Waiting for the VIP to move to a node with backends")
+		newVIPNode := waitVIPNodeChangedFromService(f, env.service.Name, oldVIPNode, 2*time.Minute)
+		framework.ExpectNotEqual(newVIPNode, oldVIPNode)
+
+		ginkgo.By("Verifying the VIP rules moved to the new announcing node")
+		waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, env.vip, util.NodeLspName(newVIPNode), 30*time.Second)
+		waitUnderlayVIPBypassLFlow(env.vip, curlListenPort, 30*time.Second)
+		waitUnderlayVIPNodeLFlowCleaned(env.vip, util.NodeLspName(oldVIPNode), curlListenPort, 30*time.Second)
+		waitUnderlayVIPNodeLFlow(env.vip, util.NodeLspName(newVIPNode), curlListenPort, 30*time.Second)
+
+		env.vipNode = newVIPNode
+		runInternalVIPTopologyCase(env, internalVIPClientOnVIPNode)
+	})
+
+	framework.ConformanceIt("should allow an overlay client to access an underlay VIP", func() {
+		env := setupInternalVIPEnvironment()
+
+		ginkgo.By("Creating an overlay client on the node without backends")
+		client := framework.MakePod(
+			f.Namespace.Name,
+			"overlay-client-"+framework.RandomSuffix(),
+			map[string]string{"app": "metallb-overlay-client"},
+			nil,
+			framework.AgnhostImage,
+			[]string{"sleep", "infinity"},
+			nil,
+		)
+		client.Spec.NodeName = env.nonVIPNode
+		client = f.PodClient().CreateSync(client)
+		defer f.PodClient().DeleteSync(client.Name)
+
+		ginkgo.By("Checking the overlay client reaches a backend on the VIP announcing node")
+		hostnameCommand := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/hostname", net.JoinHostPort(env.vip, "80"))
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
+			output, _, err := framework.ExecShellInPod(context.Background(), f, client.Namespace, client.Name, hostnameCommand)
+			if err != nil {
+				return false, nil
+			}
+
+			backend, err := f.PodClient().Get(ctx, strings.TrimSpace(output), metav1.GetOptions{})
+			if err != nil {
+				return false, nil
+			}
+			return backend.Spec.NodeName == env.vipNode, nil
+		}, "overlay pod traffic to the underlay VIP should be served by a backend on the VIP announcing node")
+	})
+
+	framework.ConformanceIt("should move the internal underlay VIP to another node when the announcing node fails", func() {
+		env := setupInternalVIPEnvironment()
+
+		// keep the client away from the node that will be taken down
+		client := createInternalVIPClient(env, internalVIPClientOnNonBackendNode)
+		defer f.PodClient().DeleteSync(client.Name)
+
+		tcpLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
+		framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
+
+		ginkgo.By("Making sure the VIP is not announced from the control-plane node")
+		controlPlaneNodes, err := kind.ListNodes(clusterName, "control-plane")
+		framework.ExpectNoError(err, "listing control-plane nodes")
+		framework.ExpectNotEmpty(controlPlaneNodes, "no control-plane node found")
+		controlPlaneNode := controlPlaneNodes[0].Name()
+		oldVIPNode := env.vipNode
+		if env.vipNode == controlPlaneNode {
+			moveInternalVIPNode(env, env.nonVIPBackendNode, tcpLoadBalancer, true)
+		}
+
+		failedNode := env.vipNode
+		newVIPNode := env.nonVIPBackendNode
+		if newVIPNode == failedNode {
+			// the VIP was moved away from the control-plane node, which still
+			// hosts a backend and can take the announcement back
+			newVIPNode = oldVIPNode
+		}
+		framework.ExpectNotEqual(newVIPNode, failedNode)
+		framework.Logf("failed node: %s, expected new VIP node: %s", failedNode, newVIPNode)
+
+		failedNodeExec := nodeExecMap[failedNode]
+		framework.ExpectNotNil(failedNodeExec, "kind node %s not found", failedNode)
+
+		defer func() {
+			ginkgo.By("Restarting kubelet on the failed node " + failedNode)
+			_, _, err := failedNodeExec.Exec("systemctl", "start", "kubelet")
+			framework.ExpectNoError(err)
+			waitNodeReady(f, failedNode, 5*time.Minute)
+		}()
+
+		// Stop only kubelet to make the node NotReady while keeping its OVS
+		// state intact, so later cases are not affected by a broken OVS.
+		ginkgo.By("Stopping kubelet on the announcing node " + failedNode)
+		_, _, err = failedNodeExec.Exec("systemctl", "stop", "kubelet")
+		framework.ExpectNoError(err)
+
+		ginkgo.By("Waiting for the failed node to become NotReady")
+		waitNodeNotReady(f, failedNode, 5*time.Minute)
+
+		ginkgo.By("Waiting for the VIP to move to another node")
+		waitVIPNodeFromService(f, env.service.Name, newVIPNode, 5*time.Minute)
+
+		ginkgo.By("Waiting for the backends on the failed node to be removed from the load balancer")
+		waitLoadBalancerVIPBackendCount(tcpLoadBalancer, env.vip, curlListenPort, 1, 5*time.Minute)
+
+		ginkgo.By("Verifying the VIP rules moved to the new announcing node")
+		waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, env.vip, util.NodeLspName(newVIPNode), 2*time.Minute)
+		waitUnderlayVIPBypassLFlow(env.vip, curlListenPort, time.Minute)
+		waitUnderlayVIPNodeLFlowCleaned(env.vip, util.NodeLspName(failedNode), curlListenPort, 2*time.Minute)
+		waitUnderlayVIPNodeLFlow(env.vip, util.NodeLspName(newVIPNode), curlListenPort, 2*time.Minute)
+
+		env.vipNode = newVIPNode
 		checkInternalPodVIPBackend(f, client, env.vip, env.vipNode)
 	})
 })
@@ -1198,19 +1391,59 @@ func podIPv4(pod corev1.Pod) string {
 func waitLogicalFlowCount(expectedCount int, timeout time.Duration, description string, match func(logicalFlow) bool) {
 	ginkgo.GinkgoHelper()
 
-	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
-		flows, err := listLogicalFlows()
-		if err != nil {
-			return false, nil
-		}
-		count := 0
-		for _, flow := range flows {
-			if match(flow) {
-				count++
+	matched := 0
+	err := func() error {
+		deadline := time.Now().Add(timeout)
+		for {
+			flows, err := listLogicalFlows()
+			if err == nil {
+				matched = 0
+				for _, flow := range flows {
+					if match(flow) {
+						matched++
+					}
+				}
+				if matched == expectedCount {
+					return nil
+				}
 			}
+			if time.Now().After(deadline) {
+				if err != nil {
+					return err
+				}
+				framework.Logf("timed out waiting for %s: matched %d flows, expected %d; related logical flows:\n%s",
+					description, matched, expectedCount, dumpUnderlayVIPRelatedLFlows(flows))
+				return fmt.Errorf("timed out waiting for %s", description)
+			}
+			time.Sleep(time.Second)
 		}
-		return count == expectedCount, nil
-	}, description)
+	}()
+	framework.ExpectNoError(err)
+}
+
+// dumpUnderlayVIPRelatedLFlows prints the logical flows related to underlay VIP
+// load balancing (ingress LB table 13 with priority >= 130 and L2 lookup table 28
+// with priority 55) to ease diagnosis when a flow assertion times out.
+func dumpUnderlayVIPRelatedLFlows(flows []logicalFlow) string {
+	const maxDump = 100
+	var builder strings.Builder
+	count := 0
+	for _, flow := range flows {
+		related := (flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority >= 130) ||
+			(flow.pipeline == "ingress" && flow.tableID == 28 && flow.priority == 55)
+		if !related {
+			continue
+		}
+		if count++; count > maxDump {
+			fmt.Fprintf(&builder, "... and more\n")
+			break
+		}
+		fmt.Fprintf(&builder, "table=%d priority=%d match=%q actions=%q\n", flow.tableID, flow.priority, flow.match, flow.actions)
+	}
+	if count == 0 {
+		return "(none found)\n"
+	}
+	return builder.String()
 }
 
 func listLogicalFlows() ([]logicalFlow, error) {
@@ -1369,6 +1602,67 @@ func waitVIPNodeFromService(f *framework.Framework, serviceName, expectedNode st
 		}
 		return false, nil
 	}, fmt.Sprintf("MetalLB service %s should be announced from node %s", serviceName, expectedNode))
+}
+
+func waitVIPNodeChangedFromService(f *framework.Framework, serviceName, oldNode string, timeout time.Duration) string {
+	ginkgo.GinkgoHelper()
+
+	var vipNode string
+	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
+		statuses, err := f.MetallbClientSet.ListServiceL2Statuses()
+		if err != nil {
+			return false, nil
+		}
+		for _, status := range statuses.Items {
+			if status.Status.ServiceNamespace == f.Namespace.Name &&
+				status.Status.ServiceName == serviceName &&
+				status.Status.Node != "" &&
+				status.Status.Node != oldNode {
+				vipNode = status.Status.Node
+				return true, nil
+			}
+		}
+		return false, nil
+	}, "MetalLB service "+serviceName+" should be announced from a node other than "+oldNode)
+	framework.Logf("VIP node for service %s moved from %s to %s", serviceName, oldNode, vipNode)
+	return vipNode
+}
+
+func waitNodeCondition(f *framework.Framework, nodeName string, expectReady bool, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	description := "node " + nodeName + " should become Ready"
+	if !expectReady {
+		description = "node " + nodeName + " should become NotReady"
+	}
+	framework.WaitUntil(2*time.Second, timeout, func(ctx context.Context) (bool, error) {
+		node, err := f.ClientSet.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+		if err != nil {
+			return false, nil
+		}
+		for _, cond := range node.Status.Conditions {
+			if cond.Type != corev1.NodeReady {
+				continue
+			}
+			if expectReady {
+				return cond.Status == corev1.ConditionTrue, nil
+			}
+			return cond.Status != corev1.ConditionTrue, nil
+		}
+		return false, nil
+	}, description)
+}
+
+func waitNodeReady(f *framework.Framework, nodeName string, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	waitNodeCondition(f, nodeName, true, timeout)
+}
+
+func waitNodeNotReady(f *framework.Framework, nodeName string, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	waitNodeCondition(f, nodeName, false, timeout)
 }
 
 func getVIPNode(containerID, targetIP, clusterName string) string {
