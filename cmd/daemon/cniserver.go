@@ -35,6 +35,9 @@ func main() {
 		}
 		return
 	}
+	if err := config.ACLSampling.Validate(); err != nil {
+		util.LogFatalAndExit(err, "invalid ACL sampling configuration")
+	}
 	perm, err := strconv.ParseUint(config.LogPerm, 8, 32)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to parse log-perm")

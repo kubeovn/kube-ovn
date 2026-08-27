@@ -20,6 +20,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	anpclientset "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
 
+	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -184,6 +185,7 @@ type Configuration struct {
 
 	// Enforcement level of network policies (standard, lax)
 	NetworkPolicyEnforcement string
+	ACLSampling              aclsampling.ControllerConfig
 
 	// Skip conntrack for specific destination IP CIDRs
 	SkipConntrackDstCidrs string
@@ -246,7 +248,15 @@ func ParseFlags() (*Configuration, error) {
 		argPodNicType                  = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
 		argEnableLb                    = pflag.Bool("enable-lb", true, "Enable load balancer")
 		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
-		argNPEnforcement               = pflag.String("np-enforcement", "standard", "Network policy enforcement (standard, lax), default is standard")
+		argNPEnforcement               = pflag.String("np-enforcement", "standard", "Network policy enforcement mode: standard or lax")
+		argEnableACLSampling           = pflag.Bool("enable-acl-sampling", false, "Enable experimental ACL sampling for NetworkPolicy events")
+		argACLSamplingSetID            = pflag.Uint32("acl-sampling-set-id", aclsampling.DefaultSetID, "Observation domain ID used by ACL sample collectors")
+		argACLSamplingAppIDNew         = pflag.Uint32("acl-sampling-app-id-new", aclsampling.DefaultAppIDNew, "Observation point ID for new ACL sessions")
+		argACLSamplingAppIDEstablished = pflag.Uint32("acl-sampling-app-id-established", aclsampling.DefaultAppIDEstablished, "Observation point ID for established ACL sessions")
+		argACLSamplingCollectorIDAllow = pflag.Uint32("acl-sampling-collector-id-allow", aclsampling.DefaultCollectorIDAllow, "Collector ID for allowed ACL decisions")
+		argACLSamplingCollectorIDDeny  = pflag.Uint32("acl-sampling-collector-id-default-deny", aclsampling.DefaultCollectorIDDefaultDeny, "Collector ID for default-deny ACL decisions")
+		argACLSamplingAllowProbability = pflag.Float64("acl-sampling-allow-probability-percent", aclsampling.DefaultAllowProbabilityPercent, "Sampling probability percentage for allowed ACL decisions")
+		argACLSamplingDenyProbability  = pflag.Float64("acl-sampling-default-deny-probability-percent", aclsampling.DefaultDefaultDenyProbabilityPercent, "Sampling probability percentage for default-deny ACL decisions")
 		argEnableEipSnat               = pflag.Bool("enable-eip-snat", true, "Enable EIP and SNAT")
 		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", false, "Enable external vpc support")
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
@@ -352,37 +362,47 @@ func ParseFlags() (*Configuration, error) {
 		LeaderElection:                 leaderElectionConfig,
 		EnableLb:                       *argEnableLb,
 		EnableNP:                       *argEnableNP,
-		EnableEipSnat:                  *argEnableEipSnat,
-		EnableExternalVpc:              *argEnableExternalVpc,
-		ExternalGatewayConfigNS:        *argExternalGatewayConfigNS,
-		ExternalGatewaySwitch:          *argExternalGatewaySwitch,
-		ExternalGatewayNet:             *argExternalGatewayNet,
-		ExternalGatewayVlanID:          *argExternalGatewayVlanID,
-		EnableEcmp:                     *argEnableEcmp,
-		EnableKeepVMIP:                 *argKeepVMIP,
-		NodePgProbeTime:                *argNodePgProbeTime,
-		GCInterval:                     *argGCInterval,
-		InspectInterval:                *argInspectInterval,
-		EnableLbSvc:                    *argEnableLbSvc,
-		EnableOVNLBPreferLocal:         *argEnableOVNLBPreferLocal,
-		EnableMetrics:                  *argEnableMetrics,
-		EnableOVNIPSec:                 *argEnableOVNIPSec,
-		CertManagerIPSecCert:           *argCertManagerIPSecCert,
-		EnableLiveMigrationOptimize:    *argEnableLiveMigrationOptimize,
-		BfdMinTx:                       *argBfdMinTx,
-		BfdMinRx:                       *argBfdMinRx,
-		BfdDetectMult:                  *argBfdDetectMult,
-		EnableANP:                      *argEnableANP,
-		EnableDNSNameResolver:          *argEnableDNSNameResolver,
-		Image:                          *argImage,
-		FRRImage:                       *argFRRImage,
-		LogPerm:                        *argLogPerm,
-		TLSMinVersion:                  *argTLSMinVersion,
-		TLSMaxVersion:                  *argTLSMaxVersion,
-		TLSCipherSuites:                *argTLSCipherSuites,
-		EnableNonPrimaryCNI:            *argNonPrimaryCNI,
-		NetworkPolicyEnforcement:       *argNPEnforcement,
-		SkipConntrackDstCidrs:          *argSkipConntrackDstCidrs,
+		ACLSampling: aclsampling.ControllerConfig{
+			Enabled:                       *argEnableACLSampling,
+			SetID:                         *argACLSamplingSetID,
+			AppIDNew:                      *argACLSamplingAppIDNew,
+			AppIDEstablished:              *argACLSamplingAppIDEstablished,
+			CollectorIDAllow:              *argACLSamplingCollectorIDAllow,
+			CollectorIDDefaultDeny:        *argACLSamplingCollectorIDDeny,
+			AllowProbabilityPercent:       *argACLSamplingAllowProbability,
+			DefaultDenyProbabilityPercent: *argACLSamplingDenyProbability,
+		},
+		EnableEipSnat:               *argEnableEipSnat,
+		EnableExternalVpc:           *argEnableExternalVpc,
+		ExternalGatewayConfigNS:     *argExternalGatewayConfigNS,
+		ExternalGatewaySwitch:       *argExternalGatewaySwitch,
+		ExternalGatewayNet:          *argExternalGatewayNet,
+		ExternalGatewayVlanID:       *argExternalGatewayVlanID,
+		EnableEcmp:                  *argEnableEcmp,
+		EnableKeepVMIP:              *argKeepVMIP,
+		NodePgProbeTime:             *argNodePgProbeTime,
+		GCInterval:                  *argGCInterval,
+		InspectInterval:             *argInspectInterval,
+		EnableLbSvc:                 *argEnableLbSvc,
+		EnableOVNLBPreferLocal:      *argEnableOVNLBPreferLocal,
+		EnableMetrics:               *argEnableMetrics,
+		EnableOVNIPSec:              *argEnableOVNIPSec,
+		CertManagerIPSecCert:        *argCertManagerIPSecCert,
+		EnableLiveMigrationOptimize: *argEnableLiveMigrationOptimize,
+		BfdMinTx:                    *argBfdMinTx,
+		BfdMinRx:                    *argBfdMinRx,
+		BfdDetectMult:               *argBfdDetectMult,
+		EnableANP:                   *argEnableANP,
+		EnableDNSNameResolver:       *argEnableDNSNameResolver,
+		Image:                       *argImage,
+		FRRImage:                    *argFRRImage,
+		LogPerm:                     *argLogPerm,
+		TLSMinVersion:               *argTLSMinVersion,
+		TLSMaxVersion:               *argTLSMaxVersion,
+		TLSCipherSuites:             *argTLSCipherSuites,
+		EnableNonPrimaryCNI:         *argNonPrimaryCNI,
+		NetworkPolicyEnforcement:    *argNPEnforcement,
+		SkipConntrackDstCidrs:       *argSkipConntrackDstCidrs,
 	}
 	if err := config.LeaderElection.validate(); err != nil {
 		return nil, err
@@ -397,6 +417,9 @@ func ParseFlags() (*Configuration, error) {
 
 	if config.EnableLbSvc && !config.EnableLb {
 		klog.Warning("--enable-lb-svc requires --enable-lb, the loadbalancer service feature will not work")
+	}
+	if err := config.ACLSampling.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid ACL sampling configuration: %w", err)
 	}
 
 	if config.DefaultGateway == "" {
