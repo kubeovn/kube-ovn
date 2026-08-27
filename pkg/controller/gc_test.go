@@ -239,6 +239,8 @@ func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
 }
 
 func TestKeepNodeLSPsKeepsExternalGatewayLSP(t *testing.T) {
+	nodeEip := &kubeovnv1.OvnEip{}
+	nodeEip.Name = "node-2"
 	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Nodes: []*corev1.Node{
 			{
@@ -249,7 +251,7 @@ func TestKeepNodeLSPsKeepsExternalGatewayLSP(t *testing.T) {
 			},
 			{Name: "node-2"},
 		},
-		OvnEips: []*kubeovnv1.OvnEip{{ObjectMeta: metav1.ObjectMeta{Name: "node-2"}}},
+		OvnEips: []*kubeovnv1.OvnEip{nodeEip},
 	})
 	require.NoError(t, err)
 
