@@ -714,6 +714,11 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
+	if config.ACLSampling.Enabled {
+		controller.reconcileACLSampling()
+	} else {
+		go controller.runDisabledACLSamplingCleanup(ctx)
+	}
 	if config.EnableLb {
 		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
 		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
@@ -1428,11 +1433,9 @@ func (c *Controller) runDisabledACLSamplingCleanup(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
-		err := c.OVNNbClient.ReconcileACLSampling(c.config.ACLSampling)
-		if err == nil {
+		if c.reconcileACLSampling() {
 			return
 		}
-		klog.Warningf("failed to clean up disabled ACL sampling state: %v", err)
 		select {
 		case <-ctx.Done():
 			return
@@ -1443,9 +1446,6 @@ func (c *Controller) runDisabledACLSamplingCleanup(ctx context.Context) {
 
 func (c *Controller) startWorkers(ctx context.Context) {
 	klog.Info("Starting workers")
-	if !c.config.ACLSampling.Enabled {
-		go c.runDisabledACLSamplingCleanup(ctx)
-	}
 
 	go wait.Until(runWorker("add/update vpc", c.addOrUpdateVpcQueue, c.handleAddOrUpdateVpc), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc", c.delVpcQueue, c.handleDelVpc), time.Second, ctx.Done())
