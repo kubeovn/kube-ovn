@@ -81,7 +81,7 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 	}
 
 	options := func(acl *ovnnb.ACL) {
-		setACLName(acl, npName)
+		setNetworkPolicyACLName(acl, npName)
 		if loggingEnabled {
 			acl.Log = true
 			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
@@ -204,7 +204,7 @@ func (c *OVNNbClient) UpdateIngressACLOps(pgName, asIngressName, asExceptName, p
 	matches := newNetworkPolicyACLMatch(pgName, asIngressName, asExceptName, protocol, ovnnb.ACLDirectionToLport, npp, namedPortMap)
 	for _, m := range matches {
 		options := func(acl *ovnnb.ACL) {
-			setACLName(acl, aclName)
+			setNetworkPolicyACLName(acl, aclName)
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
 				acl.Log = true
 				if logEnable && logRate > 0 {
@@ -249,7 +249,7 @@ func (c *OVNNbClient) UpdateEgressACLOps(pgName, asEgressName, asExceptName, pro
 	matches := newNetworkPolicyACLMatch(pgName, asEgressName, asExceptName, protocol, ovnnb.ACLDirectionFromLport, npp, namedPortMap)
 	for _, m := range matches {
 		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, func(acl *ovnnb.ACL) {
-			setACLName(acl, aclName)
+			setNetworkPolicyACLName(acl, aclName)
 			if acl.Options == nil {
 				acl.Options = make(map[string]string)
 			}
@@ -1391,7 +1391,7 @@ func (c *OVNNbClient) UpdateIngressIPBlockACLOps(pgName, protocol, aclName strin
 	acls := make([]*ovnnb.ACL, 0, len(matches))
 	for _, m := range matches {
 		options := func(acl *ovnnb.ACL) {
-			setACLName(acl, aclName)
+			setNetworkPolicyACLName(acl, aclName)
 			if logEnable && slices.Contains(logACLActions, ovnnb.ACLActionAllow) {
 				acl.Log = true
 				if logRate > 0 {
@@ -1421,7 +1421,7 @@ func (c *OVNNbClient) UpdateEgressIPBlockACLOps(pgName, protocol, aclName string
 	acls := make([]*ovnnb.ACL, 0, len(matches))
 	for _, m := range matches {
 		allowACL, err := c.newACLWithoutCheck(pgName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, m, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, func(acl *ovnnb.ACL) {
-			setACLName(acl, aclName)
+			setNetworkPolicyACLName(acl, aclName)
 			if acl.Options == nil {
 				acl.Options = make(map[string]string)
 			}

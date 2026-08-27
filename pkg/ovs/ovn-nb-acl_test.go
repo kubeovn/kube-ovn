@@ -160,6 +160,9 @@ func (suite *OvnClientTestSuite) testUpdateDefaultBlockACLOps() {
 		require.Len(t, ops, 2)
 
 		expect(ops[0].Row, "drop", ovnnb.ACLDirectionToLport, fmt.Sprintf("outport == @%s && ip", pgName), util.IngressDefaultDrop)
+		externalIDs, ok := ops[0].Row["external_ids"].(ovsdb.OvsMap)
+		require.True(t, ok)
+		require.Equal(t, netpol, externalIDs.GoMap[networkPolicyACLNameExternalID])
 	})
 
 	t.Run("default block egress", func(t *testing.T) {
