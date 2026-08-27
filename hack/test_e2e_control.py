@@ -182,6 +182,44 @@ class E2EControlTest(unittest.TestCase):
             )
         )
 
+    def testMirroredCheckPayloadsUseDirectJobURLsInCommitStatuses(self):
+        check = {
+            "name": "Build kube-ovn",
+            "status": "completed",
+            "conclusion": "failure",
+            "details_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/2",
+            "output": {
+                "summary": "Trusted x86 E2E result for pull request HEAD `abc`.",
+            },
+        }
+        self.assertEqual(
+            e2eControl.prCommitStatusFromCheckRun(check),
+            {
+                "state": "failure",
+                "target_url": "https://github.com/kubeovn/kube-ovn/actions/runs/1/job/2",
+                "description": "Trusted x86 E2E result for pull request HEAD `abc`.",
+                "context": "Build kube-ovn",
+            },
+        )
+        self.assertEqual(
+            e2eControl.prCommitStatusFromCheckRun(
+                {"name": "Queued", "status": "queued", "details_url": "https://example/run"}
+            )["state"],
+            "pending",
+        )
+        self.assertEqual(
+            e2eControl.prCommitStatusFromCheckRun(
+                {"name": "Skipped", "status": "completed", "conclusion": "skipped"}
+            )["state"],
+            "success",
+        )
+        self.assertEqual(
+            e2eControl.prCommitStatusFromCheckRun(
+                {"name": "Cancelled", "status": "completed", "conclusion": "cancelled"}
+            )["state"],
+            "error",
+        )
+
     def testUnstartedSelectedJobsArePublishedAsQueuedPlaceholders(self):
         jobs = [
             {
@@ -1661,7 +1699,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("allowed=('TAG','GO_VERSION','E2E_DIR','VERSION','DEBUG_WRAPPER')", workflow)
         self.assertIn("name: Notify x86 E2E gate of executor completion", workflow)
         self.assertIn("actions: write", workflow)
-        self.assertEqual(workflow.count("checks: write"), 1)
+        self.assertEqual(workflow.count("statuses: write"), 1)
         self.assertIn("name: Publish x86 E2E checks on the pull request", workflow)
         self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
         self.assertIn(
@@ -1778,12 +1816,14 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("permissions: {}", resultBlock)
         publish = blocks["publish-pr-e2e-checks"]
         self.assertIn("if: github.event_name == 'workflow_dispatch'", publish)
-        self.assertIn("checks: write", publish)
+        self.assertIn("statuses: write", publish)
         self.assertIn("prCheckRunsToPublish", publish)
         self.assertIn("visibleInfrastructureTitles", publish)
         self.assertIn("selectedExecutorJobsAreTerminal", publish)
         self.assertIn("subprocess.run(", publish)
-        self.assertIn("input=json.dumps(payload)", publish)
+        self.assertIn("input=json.dumps(statusPayload)", publish)
+        self.assertIn('repos/{repository}/statuses/{headSHA}', publish)
+        self.assertNotIn('repos/{repository}/check-runs', publish)
         self.assertIn("check=True", publish)
         self.assertNotIn("subprocess.check_call", publish)
         self.assertIn("time.sleep(20)", publish)

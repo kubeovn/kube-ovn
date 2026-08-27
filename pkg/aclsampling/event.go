@@ -130,7 +130,7 @@ func sampleReferenceFromUint64(raw uint64) (SampleReference, error) {
 		return SampleReference{}, errors.New("ACL sample metadata must be greater than zero")
 	}
 	if raw <= math.MaxUint32 {
-		return SampleReference{SampleObservation: SampleObservation{Metadata: uint32(raw)}}, nil
+		return SampleReference{Metadata: uint32(raw)}, nil
 	}
 
 	observationDomain := uint32(raw >> 32)
@@ -144,12 +144,10 @@ func sampleReferenceFromUint64(raw uint64) (SampleReference, error) {
 		return SampleReference{}, errors.New("ACL sample cookie metadata must be greater than zero")
 	}
 	return SampleReference{
-		SampleObservation: SampleObservation{
-			ObservationDomain: &observationDomain,
-			ApplicationID:     &applicationID,
-			DatapathKey:       &datapathKey,
-			Metadata:          metadata,
-		},
+		ObservationDomain: &observationDomain,
+		ApplicationID:     &applicationID,
+		DatapathKey:       &datapathKey,
+		Metadata:          metadata,
 	}, nil
 }
 

@@ -219,18 +219,12 @@ func TestGcNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
 	mockOvnClient := fakeController.mockOvnClient
 	ctrl.config.EnableNP = false
 
-	npPG := ovnnb.PortGroup{
-		Name: "allow.default",
-		ExternalIDs: map[string]string{
-			networkPolicyKey: "default/allow",
-		},
-	}
-	nodePG := ovnnb.PortGroup{
-		Name: "node.node1",
-		ExternalIDs: map[string]string{
-			networkPolicyKey: "node/node1",
-		},
-	}
+	npPG := ovnnb.PortGroup{}
+	npPG.Name = "allow.default"
+	npPG.ExternalIDs = map[string]string{networkPolicyKey: "default/allow"}
+	nodePG := ovnnb.PortGroup{}
+	nodePG.Name = "node.node1"
+	nodePG.ExternalIDs = map[string]string{networkPolicyKey: "node/node1"}
 
 	mockOvnClient.EXPECT().ListPortGroups(map[string]string{networkPolicyKey: ""}).Return([]ovnnb.PortGroup{npPG, nodePG}, nil)
 	mockOvnClient.EXPECT().DeletePortGroup(npPG.Name).Return(nil)
@@ -261,18 +255,12 @@ func TestGcAdminNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
 	mockOvnClient := fakeController.mockOvnClient
 	ctrl.config.EnableANP = false
 
-	anpPG := ovnnb.PortGroup{
-		Name: "anp.foo",
-		ExternalIDs: map[string]string{
-			adminNetworkPolicyKey: "anp.foo",
-		},
-	}
-	banpPG := ovnnb.PortGroup{
-		Name: "banp.bar",
-		ExternalIDs: map[string]string{
-			baselineAdminNetworkPolicyKey: "banp.bar",
-		},
-	}
+	anpPG := ovnnb.PortGroup{}
+	anpPG.Name = "anp.foo"
+	anpPG.ExternalIDs = map[string]string{adminNetworkPolicyKey: "anp.foo"}
+	banpPG := ovnnb.PortGroup{}
+	banpPG.Name = "banp.bar"
+	banpPG.ExternalIDs = map[string]string{baselineAdminNetworkPolicyKey: "banp.bar"}
 
 	mockOvnClient.EXPECT().ListPortGroups(map[string]string{adminNetworkPolicyKey: ""}).Return([]ovnnb.PortGroup{anpPG}, nil)
 	mockOvnClient.EXPECT().DeletePortGroup(anpPG.Name).Return(nil)
