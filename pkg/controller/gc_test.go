@@ -238,6 +238,37 @@ func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
 	ctrl.addNodeQueue.Done(item)
 }
 
+func TestMarkAndCleanLSPKeepsExistingNodeLSP(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	previousLastNoPodLSP := lastNoPodLSP
+	lastNoPodLSP = strset.New()
+	t.Cleanup(func() { lastNoPodLSP = previousLastNoPodLSP })
+
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return([]ovnnb.LogicalSwitchPort{
+		{Name: util.NodeLspName("node-1")},
+		{Name: "orphan"},
+	}, nil)
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.Equal(t, 0, ctrl.addNodeQueue.Len())
+	require.True(t, lastNoPodLSP.Has("orphan"))
+}
+
 func TestKeepNodeLSPsKeepsExternalGatewayLSP(t *testing.T) {
 	nodeEip := &kubeovnv1.OvnEip{}
 	nodeEip.Name = "node-2"
