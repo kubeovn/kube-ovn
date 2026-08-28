@@ -239,6 +239,7 @@ function is_clustered {
 
 if [[ -n "${NODE_IPS:-}" ]]; then
     normalize_raft_addrs
+    export POD_IP NODE_IPS DB_CLUSTER_ADDR
 fi
 
 function archive_recovery_file {
