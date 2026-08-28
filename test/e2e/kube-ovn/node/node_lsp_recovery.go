@@ -26,6 +26,8 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		framework.ExpectNotEmpty(nodeList.Items)
 		node := nodeList.Items[0]
 		portName := util.NodeLspName(node.Name)
+		nodeSwitch := node.Annotations[util.LogicalSwitchAnnotation]
+		framework.ExpectNotEmpty(nodeSwitch, "node logical switch annotation should be set")
 
 		ginkgo.By("Temporarily shortening the controller GC interval")
 		deploymentClient := framework.NewDeploymentClient(f.ClientSet, framework.KubeOvnNamespace)
@@ -33,7 +35,6 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 		var originalControllerArgs []string
 		modifiedDeployment := originalDeployment.DeepCopy()
 		foundController := false
-		nodeSwitch := "join"
 		for i := range modifiedDeployment.Spec.Template.Spec.Containers {
 			container := &modifiedDeployment.Spec.Template.Spec.Containers[i]
 			if container.Name != "kube-ovn-controller" {
@@ -41,13 +42,6 @@ var _ = framework.SerialDescribe("[group:node]", func() {
 			}
 			foundController = true
 			originalControllerArgs = append([]string(nil), container.Args...)
-			for j, arg := range container.Args {
-				if value, ok := strings.CutPrefix(arg, "--node-switch="); ok {
-					nodeSwitch = value
-				} else if arg == "--node-switch" && j+1 < len(container.Args) {
-					nodeSwitch = container.Args[j+1]
-				}
-			}
 			foundGCInterval := false
 			for j, arg := range container.Args {
 				if strings.HasPrefix(arg, "--gc-interval=") {
