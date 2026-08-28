@@ -244,18 +244,15 @@ func TestGcNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
 }
 
 func TestGcAdminNetworkPolicySkipsWhenEnabled(t *testing.T) {
-	fakeController := newFakeController(t)
-	ctrl := fakeController.fakeController
-	ctrl.config.EnableANP = true
-
-	require.NoError(t, ctrl.gcAdminNetworkPolicy())
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{EnableANP: true})
+	require.NoError(t, err)
+	require.NoError(t, fakeController.fakeController.gcAdminNetworkPolicy())
 }
 
 func TestGcAdminNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
 	fakeController := newFakeController(t)
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
-	ctrl.config.EnableANP = false
 
 	anpPG := ovnnb.PortGroup{
 		Name:        "anp.foo",
@@ -295,10 +292,12 @@ func TestGcDisabledDNSNameResolvers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fakeController := newFakeController(t)
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				EnableANP:             tt.enableANP,
+				EnableDNSNameResolver: tt.enableDNSNameResolver,
+			})
+			require.NoError(t, err)
 			ctrl := fakeController.fakeController
-			ctrl.config.EnableANP = tt.enableANP
-			ctrl.config.EnableDNSNameResolver = tt.enableDNSNameResolver
 
 			resolver := &kubeovnv1.DNSNameResolver{
 				Name:   "anp-example-resolver",
@@ -306,7 +305,7 @@ func TestGcDisabledDNSNameResolvers(t *testing.T) {
 			}
 			unmanaged := &kubeovnv1.DNSNameResolver{Name: "unmanaged-resolver"}
 			client := ctrl.config.KubeOvnClient.KubeovnV1().DNSNameResolvers()
-			_, err := client.Create(context.Background(), resolver, metav1.CreateOptions{})
+			_, err = client.Create(context.Background(), resolver, metav1.CreateOptions{})
 			require.NoError(t, err)
 			_, err = client.Create(context.Background(), unmanaged, metav1.CreateOptions{})
 			require.NoError(t, err)

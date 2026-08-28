@@ -309,28 +309,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		if err != nil {
 			return fmt.Errorf("failed to get iface addr. %w", err)
 		}
-		for _, addr := range addrs {
-			_, ipCidr, err := net.ParseCIDR(addr.String())
-			if err != nil {
-				klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
-				continue
-			}
-			// exclude the vip as encap ip unless host-tunnel-src is true
-			if ones, bits := ipCidr.Mask.Size(); ones == bits && !config.HostTunnelSrc {
-				klog.Infof("Skip address %s", ipCidr.String())
-				continue
-			}
-
-			// exclude link-local and loopback addresses
-			ipStr, _, _ := strings.Cut(addr.String(), "/")
-			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
-				continue
-			}
-			if len(srcIPs) == 0 || slices.Contains(srcIPs, ipStr) {
-				encapIP = ipStr
-				break
-			}
-		}
+		encapIP = selectEncapIP(addrs, srcIPs, config.HostTunnelSrc, config.NodeIPv4, config.NodeIPv6)
 		if len(encapIP) == 0 {
 			return fmt.Errorf("iface %s has no valid IP address", tunnelNic)
 		}
@@ -404,6 +383,68 @@ func (config *Configuration) getEncapIP(node *corev1.Node) string {
 		return ipv4
 	}
 	return ipv6
+}
+
+// selectEncapIP picks the tunnel source address among the addresses of the tunnel
+// interface. It returns an empty string if no address is usable.
+//
+// A full-mask address (/32, /128) sharing the interface with other usable addresses of
+// the same family is most likely a VIP, e.g. one managed by keepalived: using it as the
+// encap IP would break all tunnels once the VIP drifts to another node, so it is
+// skipped. Three exceptions:
+//   - it is the only usable, i.e. neither loopback nor link-local, address of its family
+//     on the interface: a VIP never lives alone on the tunnel NIC, so this is the node
+//     address itself, typically a /32 assigned by a cloud DHCP server;
+//   - it is one of the node internal IPs: kube-apiserver already accepts it as this
+//     node's own address, so it is not a floating VIP;
+//   - hostTunnelSrc is set: the operator deliberately sources tunnels from a full-mask
+//     address, typically a /32 advertised via BGP and assigned to lo or a dummy
+//     interface. Note a real loopback address such as 127.0.0.1 is always excluded.
+//
+// srcIPs holds the source addresses of the link scope routes on the interface: when it
+// is not empty, the encap IP must be one of them. Addresses excluded by srcIPs do not
+// count towards the same family check below, otherwise an unusable address could make a
+// usable full-mask one look like a vip.
+func selectEncapIP(addrs []net.Addr, srcIPs []string, hostTunnelSrc bool, nodeIPs ...string) string {
+	// gather the selectable unicast addresses, excluding link-local, loopback and non
+	// route source ones, and count them per address family
+	candidates := make([]net.IPNet, 0, len(addrs))
+	var n4, n6 int
+	for _, addr := range addrs {
+		ip, ipNet, err := net.ParseCIDR(addr.String())
+		if err != nil {
+			klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
+			continue
+		}
+		if ip.IsLinkLocalUnicast() || ip.IsLoopback() {
+			continue
+		}
+		if len(srcIPs) != 0 && !slices.Contains(srcIPs, ip.String()) {
+			continue
+		}
+		candidates = append(candidates, net.IPNet{IP: ip, Mask: ipNet.Mask})
+		if ip.To4() != nil {
+			n4++
+		} else {
+			n6++
+		}
+	}
+
+	for _, c := range candidates {
+		ipStr := c.IP.String()
+		sameFamily := n4
+		if c.IP.To4() == nil {
+			sameFamily = n6
+		}
+		if ones, bits := c.Mask.Size(); ones == bits && sameFamily > 1 && !hostTunnelSrc &&
+			!slices.Contains(nodeIPs, ipStr) {
+			klog.Infof("Skip address %s: it looks like a vip, the interface has %d usable addresses of the same family",
+				ipStr, sameFamily)
+			continue
+		}
+		return ipStr
+	}
+	return ""
 }
 
 func findInterface(ifaceStr string) (*net.Interface, error) {
