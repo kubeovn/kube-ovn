@@ -33,7 +33,7 @@ require (
 	github.com/moby/moby/client v0.5.1
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/ginkgo/v2 v2.32.1
-	github.com/onsi/gomega v1.42.1
+	github.com/onsi/gomega v1.43.0
 	github.com/osrg/gobgp/v4 v4.8.0
 	github.com/ovn-kubernetes/libovsdb v0.8.1
 	github.com/parnurzeal/gorequest v0.3.0
