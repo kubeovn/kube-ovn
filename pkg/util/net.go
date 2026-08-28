@@ -214,8 +214,23 @@ func CheckProtocol(address string) string {
 	address = strings.Split(address, "/")[0]
 	ip := net.ParseIP(address)
 	if ip == nil {
-		klog.Errorf("failed to parse address %q", address)
-		return ""
+		addrs, err := net.LookupIP(address)
+		if err != nil || len(addrs) == 0 {
+			klog.Errorf("failed to parse or resolve address %q: %v", address, err)
+			return ""
+		}
+		// A DNS name may resolve to both address families; pick one
+		// deterministically so repeated calls return a stable protocol.
+		slices.SortFunc(addrs, func(i, j net.IP) int {
+			if (i.To4() != nil) != (j.To4() != nil) {
+				if i.To4() != nil {
+					return -1
+				}
+				return 1
+			}
+			return 0
+		})
+		ip = addrs[0]
 	}
 	if ip.To4() != nil {
 		return kubeovnv1.ProtocolIPv4
