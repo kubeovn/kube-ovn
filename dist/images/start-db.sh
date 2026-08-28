@@ -255,6 +255,7 @@ function set_nb_version_compatibility() {
 
 if [[ -n "${NODE_IPS:-}" ]]; then
     normalize_raft_addrs
+    export POD_IP NODE_IPS DB_CLUSTER_ADDR
 fi
 
 function archive_recovery_file {
