@@ -394,7 +394,9 @@ func (config *Configuration) getEncapIP(node *corev1.Node) string {
 // skipped. Three exceptions:
 //   - it is the only usable, i.e. neither loopback nor link-local, address of its family
 //     on the interface: a VIP never lives alone on the tunnel NIC, so this is the node
-//     address itself, typically a /32 assigned by a cloud DHCP server;
+//     address itself, typically a /32 assigned by a cloud DHCP server. This case is
+//     indistinguishable from a vip pinned alone on the tunnel interface, so it is logged
+//     at warning level unless the address is a node internal IP;
 //   - it is one of the node internal IPs: kube-apiserver already accepts it as this
 //     node's own address, so it is not a floating VIP;
 //   - hostTunnelSrc is set: the operator deliberately sources tunnels from a full-mask
@@ -436,11 +438,16 @@ func selectEncapIP(addrs []net.Addr, srcIPs []string, hostTunnelSrc bool, nodeIP
 		if c.IP.To4() == nil {
 			sameFamily = n6
 		}
-		if ones, bits := c.Mask.Size(); ones == bits && sameFamily > 1 && !hostTunnelSrc &&
-			!slices.Contains(nodeIPs, ipStr) {
+		ones, bits := c.Mask.Size()
+		mayBeVip := ones == bits && !hostTunnelSrc && !slices.Contains(nodeIPs, ipStr)
+		if mayBeVip && sameFamily > 1 {
 			klog.Infof("Skip address %s: it looks like a vip, the interface has %d usable addresses of the same family",
 				ipStr, sameFamily)
 			continue
+		}
+		if mayBeVip {
+			klog.Warningf("Using full-mask address %s as the encap IP: it is the only usable address of its family on the interface but does not match any node internal IP. "+
+				"If it is a floating vip, e.g. managed by keepalived, tunnels will break once it drifts to another node", ipStr)
 		}
 		return ipStr
 	}
