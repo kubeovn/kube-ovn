@@ -73,11 +73,11 @@ func TestHandleUpdatePodValidationFailureEmitsOnlyValidationEvent(t *testing.T) 
 
 func TestHandleUpdatePodBandwidthFailureEmitsQoSFailureEvent(t *testing.T) {
 	failErr := errors.New("default bandwidth failure")
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+	pod := &v1.Pod{
 		Name:        "pod",
 		Namespace:   metav1.NamespaceDefault,
 		Annotations: map[string]string{},
-	}}
+	}
 	controller, recorder := newPodQoSTestController(t, pod)
 	stubPodQoSOperations(controller, "bandwidth", "pod.default", failErr)
 
