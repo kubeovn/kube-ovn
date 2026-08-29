@@ -365,13 +365,18 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 		}
 
 		ginkgo.By("Changing the worker route source address without restarting the speaker")
+		sourceAddressAdded := make(map[string]bool, len(bgpFamilies(f)))
 		for _, family := range bgpFamilies(f) {
 			ginkgo.DeferCleanup(func() {
+				if !sourceAddressAdded[family.name] {
+					return
+				}
 				if err := removeWorkerSourceAddress(family); err != nil {
 					framework.Logf("failed to remove temporary %s worker source address: %v", family.name, err)
 				}
 			})
 			framework.ExpectNoError(addWorkerSourceAddress(family))
+			sourceAddressAdded[family.name] = true
 			framework.ExpectNoError(updateWorkerRoute(family))
 		}
 
@@ -388,6 +393,7 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 		ginkgo.By("Restoring the worker route source address and reconciling the original route")
 		for _, family := range bgpFamilies(f) {
 			framework.ExpectNoError(removeWorkerSourceAddress(family))
+			sourceAddressAdded[family.name] = false
 		}
 		restoreTriggerName := "source-refresh-restore-trigger-" + framework.RandomSuffix()
 		createPodOnNode(f, restoreTriggerName, workerNode)
