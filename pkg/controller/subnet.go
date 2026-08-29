@@ -796,7 +796,7 @@ func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router st
 			}
 			return lrpErr
 		}
-		if routedErr := c.OVNNbClient.SetLogicalSwitchRouted(subnet.Name, subnet.Spec.CIDRBlock, gateway, lrp.MAC, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets, subnet.Spec.Private); routedErr != nil {
+		if routedErr := c.OVNNbClient.SetLogicalSwitchRouted(subnet.Name, router, subnet.Spec.CIDRBlock, gateway, lrp.MAC, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets, subnet.Spec.Private); routedErr != nil {
 			klog.Error(routedErr)
 			if patchErr := c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchFailed", routedErr.Error()); patchErr != nil {
 				klog.Error(patchErr)

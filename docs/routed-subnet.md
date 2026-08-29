@@ -15,7 +15,8 @@ ip route add default via 10.0.0.1
 Same-subnet east-west traffic is hairpinned through the OVN logical router. OVN ACLs use an allow-list / default-deny policy:
 
 - Allow ARP/ND only for the gateway
-- Allow IP frames whose Ethernet source or destination is the logical router port MAC (both ACL directions), so pod→router and router→pod hairpin traffic is permitted while direct L2 pod→pod is denied
+- Allow IP frames to the logical router port MAC (`eth.dst`) on both ACL directions (pod→router)
+- Allow IP frames from the logical router port MAC (`eth.src`) on `to-lport`, and on `from-lport` only when `inport` is the router LSP (so pods cannot spoof the LRP MAC; port security is off by default)
 - Drop all other IP/ARP/ND (both directions)
 
 When `private: true`, ingress via the router is further limited to hairpin (own CIDR), node join CIDR, and `allowSubnets`.

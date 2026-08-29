@@ -795,9 +795,17 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 // router port MAC. Same-subnet traffic is hairpinned through the OVN logical
 // router. When private is true, ingress via the router is further limited to
 // the subnet CIDR (hairpin), node join CIDR, and allowSubnets.
-func (c *OVNNbClient) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
+//
+// router is the logical router name used to derive the router LSP on the
+// switch; from-lport allows that use eth.src == LRP MAC are constrained to
+// that inport so pods cannot spoof the router MAC (port security is off by
+// default).
+func (c *OVNNbClient) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
 	if lsName == "" {
 		return errors.New("logical switch name is required")
+	}
+	if router == "" {
+		return fmt.Errorf("router is required for routed subnet %s", lsName)
 	}
 	if gatewayMAC == "" {
 		return fmt.Errorf("gateway MAC is required for routed subnet %s", lsName)
@@ -808,7 +816,7 @@ func (c *OVNNbClient) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gateway
 		return fmt.Errorf("clear logical switch %s acls: %w", lsName, err)
 	}
 
-	acls, err := c.buildRoutedLogicalSwitchACLs(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	acls, err := c.buildRoutedLogicalSwitchACLs(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
 	if err != nil {
 		return err
 	}
@@ -819,7 +827,7 @@ func (c *OVNNbClient) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gateway
 	return nil
 }
 
-func (c *OVNNbClient) buildRoutedLogicalSwitchACLs(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) ([]*ovnnb.ACL, error) {
+func (c *OVNNbClient) buildRoutedLogicalSwitchACLs(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) ([]*ovnnb.ACL, error) {
 	options := func(acl *ovnnb.ACL) { setACLName(acl, lsName) }
 	acls := make([]*ovnnb.ACL, 0)
 
@@ -829,7 +837,7 @@ func (c *OVNNbClient) buildRoutedLogicalSwitchACLs(lsName, cidrBlock, gateway, g
 	}
 	acls = append(acls, discoveryACLs...)
 
-	ipACLs, err := c.buildRoutedIPAllowACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR, allowSubnets, private, options)
+	ipACLs, err := c.buildRoutedIPAllowACLs(lsName, router, cidrBlock, gatewayMAC, nodeSwitchCIDR, allowSubnets, private, options)
 	if err != nil {
 		return nil, err
 	}
@@ -880,31 +888,44 @@ func (c *OVNNbClient) buildRoutedGatewayDiscoveryACLs(lsName, gateway string, op
 	return acls, nil
 }
 
-func (c *OVNNbClient) buildRoutedIPAllowACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool, options func(*ovnnb.ACL)) ([]*ovnnb.ACL, error) {
+func (c *OVNNbClient) buildRoutedIPAllowACLs(lsName, router, cidrBlock, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool, options func(*ovnnb.ACL)) ([]*ovnnb.ACL, error) {
 	acls := make([]*ovnnb.ACL, 0)
+	routerLSP := LogicalSwitchPortName(router, lsName)
 
-	// from-lport is evaluated on inport and to-lport on outport. Pod->router
-	// frames still have eth.src=<pod> and eth.dst=<LRP>, so both ACL directions
-	// must allow eth.dst==LRP (to the router) and eth.src==LRP (from the router).
-	// Direct L2 pod->pod has neither and hits default-deny.
+	// Pod -> router: eth.dst == LRP on both ACL directions. from-lport is
+	// evaluated on the pod inport; to-lport is evaluated when delivering to
+	// the router LSP. Direct L2 pod->pod has eth.dst != LRP and is denied.
+	toRouter := NewAndACLMatch(NewACLMatch("ip", "", "", ""), NewACLMatch("eth.dst", "==", gatewayMAC, ""))
 	for _, direction := range []string{ovnnb.ACLDirectionFromLport, ovnnb.ACLDirectionToLport} {
-		for _, ethField := range []string{"eth.src", "eth.dst"} {
-			// Private mode replaces the blanket to-lport eth.src allow with
-			// CIDR-constrained ingress rules below.
-			if private && direction == ovnnb.ACLDirectionToLport && ethField == "eth.src" {
-				continue
-			}
-			match := NewAndACLMatch(NewACLMatch("ip", "", "", ""), NewACLMatch(ethField, "==", gatewayMAC, ""))
-			acl, err := c.newACL(lsName, direction, util.RoutedAllowPriority, match.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
-			if err != nil {
-				return nil, fmt.Errorf("new routed %s %s acl for logical switch %s: %w", direction, ethField, lsName, err)
-			}
-			acls = append(acls, acl)
+		acl, err := c.newACL(lsName, direction, util.RoutedAllowPriority, toRouter.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+		if err != nil {
+			return nil, fmt.Errorf("new routed to-router %s acl for logical switch %s: %w", direction, lsName, err)
 		}
+		acls = append(acls, acl)
 	}
 
+	// Router -> switch: allow eth.src == LRP only when the packet actually
+	// enters from the router LSP. A bare from-lport eth.src==LRP allow would
+	// let pods spoof the router MAC (port security is disabled by default).
+	fromRouter := NewAndACLMatch(
+		NewACLMatch("ip", "", "", ""),
+		NewACLMatch("inport", "==", fmt.Sprintf(`"%s"`, routerLSP), ""),
+		NewACLMatch("eth.src", "==", gatewayMAC, ""),
+	)
+	fromRouterACL, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, fromRouter.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+	if err != nil {
+		return nil, fmt.Errorf("new routed from-router acl for logical switch %s: %w", lsName, err)
+	}
+	acls = append(acls, fromRouterACL)
+
 	if !private {
-		return acls, nil
+		// Router -> pods: delivery to pod ports has eth.src == LRP.
+		fromGW := NewAndACLMatch(NewACLMatch("ip", "", "", ""), NewACLMatch("eth.src", "==", gatewayMAC, ""))
+		ingressACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, fromGW.String(), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
+		if err != nil {
+			return nil, fmt.Errorf("new routed ingress-from-gateway acl for logical switch %s: %w", lsName, err)
+		}
+		return append(acls, ingressACL), nil
 	}
 
 	privateIngress, err := c.buildRoutedPrivateIngressACLs(lsName, cidrBlock, gatewayMAC, nodeSwitchCIDR, allowSubnets, options)

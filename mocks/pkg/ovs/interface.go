@@ -2313,17 +2313,17 @@ func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSw
 }
 
 // SetLogicalSwitchRouted mocks base method.
-func (m *MockACL) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
+func (m *MockACL) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLogicalSwitchRouted", lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	ret := m.ctrl.Call(m, "SetLogicalSwitchRouted", lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetLogicalSwitchRouted indicates an expected call of SetLogicalSwitchRouted.
-func (mr *MockACLMockRecorder) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private any) *gomock.Call {
+func (mr *MockACLMockRecorder) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchRouted", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchRouted), lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchRouted", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchRouted), lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
 }
 
 // SetNetPolACLLog mocks base method.
@@ -5776,17 +5776,17 @@ func (mr *MockNbClientMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, n
 }
 
 // SetLogicalSwitchRouted mocks base method.
-func (m *MockNbClient) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
+func (m *MockNbClient) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLogicalSwitchRouted", lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	ret := m.ctrl.Call(m, "SetLogicalSwitchRouted", lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetLogicalSwitchRouted indicates an expected call of SetLogicalSwitchRouted.
-func (mr *MockNbClientMockRecorder) SetLogicalSwitchRouted(lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private any) *gomock.Call {
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchRouted", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchRouted), lsName, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchRouted", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchRouted), lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
 }
 
 // SetLsCtSkipDstLportIPs mocks base method.
