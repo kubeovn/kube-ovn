@@ -1722,15 +1722,16 @@ func TestHandleDeletePodRetriesOrphanedVMPortIPLookupFailure(t *testing.T) {
 	mockKubevirt.EXPECT().VirtualMachineInstance(metav1.NamespaceDefault).Return(mockVMIs).Times(2)
 	mockVMIs.EXPECT().Get(gomock.Any(), "test-vm", gomock.Any()).Return(&kubevirtv1.VirtualMachineInstance{}, nil).Times(2)
 	mockKubevirt.EXPECT().VirtualMachine(metav1.NamespaceDefault).Return(mockVMs).Times(4)
-	vm := &kubevirtv1.VirtualMachine{Spec: kubevirtv1.VirtualMachineSpec{Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
-		ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{util.LogicalSwitchAnnotation: subnet.Name}},
+	vmTemplate := &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 		Spec: kubevirtv1.VirtualMachineInstanceSpec{Networks: []kubevirtv1.Network{{
 			Name: "net1",
 			Multus: &kubevirtv1.MultusNetwork{
 				NetworkName: "default/net1",
 			},
 		}}},
-	}}}
+	}
+	vmTemplate.ObjectMeta.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnet.Name}
+	vm := &kubevirtv1.VirtualMachine{Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate}}
 	mockVMs.EXPECT().Get(gomock.Any(), "test-vm", gomock.Any()).Return(vm, nil).Times(4)
 	fc.fakeController.config.KubevirtClient = mockKubevirt
 
