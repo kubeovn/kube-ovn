@@ -1691,6 +1691,53 @@ func TestHandleDeletePodRecordsFailure(t *testing.T) {
 	assertPodEvent(t, fc.fakeController, "Warning PodNetworkReleaseFailed", "stage=deleteLogicalSwitchPort", "delete lsp failed")
 }
 
+func TestHandleDeletePodReportsVIPListerFailure(t *testing.T) {
+	pod, subnet := podEventFixture()
+	pod.Annotations[util.VipAnnotation] = "test-vip"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	failure := errors.New("get vip failed")
+	fc.fakeController.virtualIpsLister = &errorVipLister{err: failure}
+	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, map[string]string{"pod": "default/test-pod"}).Return(nil, nil)
+	storeDeletingPod(fc.fakeController, pod)
+
+	err = fc.fakeController.handleDeletePod("default/test-pod")
+
+	require.ErrorIs(t, err, failure)
+	assertPodEvent(t, fc.fakeController, "Warning PodNetworkReleaseFailed", "stage=releaseVIP", failure.Error())
+	_, retained := fc.fakeController.deletingPodObjMap.Load("default/test-pod")
+	assert.True(t, retained, "deleting pod must remain queued for retry")
+}
+
+func TestReleaseVipReportsLabelChange(t *testing.T) {
+	tests := []struct {
+		name          string
+		labels        map[string]string
+		expectChanged bool
+	}{
+		{name: "reserved label", labels: map[string]string{util.IPReservedLabel: "test-pod.default"}, expectChanged: true},
+		{name: "no reserved label", labels: map[string]string{}, expectChanged: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fc, err := newFakeControllerWithOptions(t, nil)
+			require.NoError(t, err)
+			vip := &kubeovnv1.Vip{Name: "test-vip", Labels: tt.labels}
+			_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{})
+			require.NoError(t, err)
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			require.NoError(t, indexer.Add(vip))
+			fc.fakeController.virtualIpsLister = kubeovnlister.NewVipLister(indexer)
+
+			changed, err := fc.fakeController.releaseVip(vip.Name)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectChanged, changed)
+		})
+	}
+}
+
 func TestHandleDeletePodRetriesOrphanedVMPortIPLookupFailure(t *testing.T) {
 	pod, subnet := podEventFixture()
 	now := metav1.Now()
@@ -2253,6 +2300,18 @@ type errorOnceIPLister struct {
 	ip    *kubeovnv1.IP
 	err   error
 	calls int
+}
+
+type errorVipLister struct {
+	err error
+}
+
+func (l *errorVipLister) List(labels.Selector) ([]*kubeovnv1.Vip, error) {
+	return nil, l.err
+}
+
+func (l *errorVipLister) Get(string) (*kubeovnv1.Vip, error) {
+	return nil, l.err
 }
 
 func (l *errorOnceIPLister) List(labels.Selector) ([]*kubeovnv1.IP, error) {

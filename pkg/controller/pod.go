@@ -1459,14 +1459,13 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			}
 		}
 		if pod.Annotations[util.VipAnnotation] != "" {
-			vip, vipErr := c.virtualIpsLister.Get(pod.Annotations[util.VipAnnotation])
-			vipWillChange := vipErr == nil && vip.Labels[util.IPReservedLabel] != ""
 			stage = "releaseVIP"
-			if err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
+			var vipReleased bool
+			if vipReleased, err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
 				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
 				return err
 			}
-			if vipWillChange {
+			if vipReleased {
 				changed = true
 				released = append(released, "vip="+pod.Annotations[util.VipAnnotation])
 			}
