@@ -73,13 +73,13 @@ func TestHandleUpdatePodValidationFailureEmitsOnlyValidationEvent(t *testing.T) 
 
 func TestHandleUpdatePodBandwidthFailureEmitsQoSFailureEvent(t *testing.T) {
 	failErr := errors.New("default bandwidth failure")
-	stubPodQoSFunctions(t, "bandwidth", "pod.default", failErr)
 	pod := &v1.Pod{
 		Name:        "pod",
 		Namespace:   metav1.NamespaceDefault,
 		Annotations: map[string]string{},
 	}
 	controller, recorder := newPodQoSTestController(t, pod)
+	stubPodQoSOperations(controller, "bandwidth", "pod.default", failErr)
 
 	require.ErrorIs(t, controller.handleUpdatePod("default/pod"), failErr)
 	requirePodEvent(t, recorder,
@@ -88,39 +88,37 @@ func TestHandleUpdatePodBandwidthFailureEmitsQoSFailureEvent(t *testing.T) {
 	requireNoPodEvent(t, recorder)
 }
 
-func stubPodQoSFunctions(t *testing.T, failStage, failInterface string, failErr error) map[string][]string {
-	t.Helper()
+type fakePodQoSOperations struct {
+	calls         map[string][]string
+	failStage     string
+	failInterface string
+	failErr       error
+}
 
-	originalBandwidth := setInterfaceBandwidth
-	originalMirror := configInterfaceMirror
-	originalNetem := setNetemQos
-	t.Cleanup(func() {
-		setInterfaceBandwidth = originalBandwidth
-		configInterfaceMirror = originalMirror
-		setNetemQos = originalNetem
-	})
+func (o *fakePodQoSOperations) result(stage, iface string) error {
+	o.calls[stage] = append(o.calls[stage], iface)
+	if o.failStage == stage && o.failInterface == iface {
+		return o.failErr
+	}
+	return nil
+}
 
+func (o *fakePodQoSOperations) setInterfaceBandwidth(_, _, iface, _, _, _, _ string) error {
+	return o.result("bandwidth", iface)
+}
+
+func (o *fakePodQoSOperations) configInterfaceMirror(_ bool, _, iface string) error {
+	return o.result("mirror", iface)
+}
+
+func (o *fakePodQoSOperations) setNetemQoS(_, _, iface, _, _, _, _ string) error {
+	return o.result("netem", iface)
+}
+
+func stubPodQoSOperations(controller *Controller, failStage, failInterface string, failErr error) map[string][]string {
 	calls := map[string][]string{}
-	setInterfaceBandwidth = func(_, _, iface, _, _, _, _ string) error {
-		calls["bandwidth"] = append(calls["bandwidth"], iface)
-		if failStage == "bandwidth" && iface == failInterface {
-			return failErr
-		}
-		return nil
-	}
-	configInterfaceMirror = func(_ bool, _, iface string) error {
-		calls["mirror"] = append(calls["mirror"], iface)
-		if failStage == "mirror" && iface == failInterface {
-			return failErr
-		}
-		return nil
-	}
-	setNetemQos = func(_, _, iface, _, _, _, _ string) error {
-		calls["netem"] = append(calls["netem"], iface)
-		if failStage == "netem" && iface == failInterface {
-			return failErr
-		}
-		return nil
+	controller.podQoSOps = &fakePodQoSOperations{
+		calls: calls, failStage: failStage, failInterface: failInterface, failErr: failErr,
 	}
 	return calls
 }
@@ -144,8 +142,8 @@ func TestHandleUpdatePodQoSCallFailuresEmitOneEvent(t *testing.T) {
 
 	for _, stage := range []string{"bandwidth", "mirror", "netem"} {
 		t.Run(stage, func(t *testing.T) {
-			calls := stubPodQoSFunctions(t, stage, multusInterface, failErr)
 			controller, recorder := newPodQoSTestController(t, newPodQoSTestPod("default/net1"))
+			calls := stubPodQoSOperations(controller, stage, multusInterface, failErr)
 
 			require.ErrorIs(t, controller.handleUpdatePod("default/pod"), failErr)
 			require.Contains(t, calls[stage], multusInterface)
@@ -159,8 +157,8 @@ func TestHandleUpdatePodQoSCallFailuresEmitOneEvent(t *testing.T) {
 }
 
 func TestHandleUpdatePodSuccessEmitsOneEventWithProcessedInterfaces(t *testing.T) {
-	calls := stubPodQoSFunctions(t, "", "", nil)
 	controller, recorder := newPodQoSTestController(t, newPodQoSTestPod("default/net1"))
+	calls := stubPodQoSOperations(controller, "", "", nil)
 
 	require.NoError(t, controller.handleUpdatePod("default/pod"))
 	require.Equal(t, []string{"pod.default", "pod.default.net1.default.ovn"}, calls["netem"])
@@ -175,8 +173,8 @@ func TestHandleUpdatePodKeepsMultusPodNamesIndependent(t *testing.T) {
 	pod := newPodQoSTestPod("default/net1,default/net2")
 	pod.Annotations["net1.default.ovn.kubernetes.io/virtualmachine"] = "vm-one"
 	pod.Annotations["net2.default.ovn.kubernetes.io/allocated"] = "true"
-	calls := stubPodQoSFunctions(t, "", "", nil)
 	controller, recorder := newPodQoSTestController(t, pod)
+	calls := stubPodQoSOperations(controller, "", "", nil)
 
 	require.NoError(t, controller.handleUpdatePod("default/pod"))
 	expectedInterfaces := []string{
@@ -195,9 +193,9 @@ func TestHandleUpdatePodKeepsMultusPodNamesIndependent(t *testing.T) {
 }
 
 func TestHandleUpdatePodNetworkAttachmentParseFailureEmitsOneEvent(t *testing.T) {
-	stubPodQoSFunctions(t, "", "", nil)
 	pod := newPodQoSTestPod("[")
 	controller, recorder := newPodQoSTestController(t, pod)
+	stubPodQoSOperations(controller, "", "", nil)
 
 	err := controller.handleUpdatePod("default/pod")
 	require.Error(t, err)
@@ -208,8 +206,8 @@ func TestHandleUpdatePodNetworkAttachmentParseFailureEmitsOneEvent(t *testing.T)
 }
 
 func TestHandleUpdatePodWithoutMultusEmitsDefaultInterfaceSuccess(t *testing.T) {
-	stubPodQoSFunctions(t, "", "", nil)
 	controller, recorder := newPodQoSTestController(t, newPodQoSTestPod(""))
+	stubPodQoSOperations(controller, "", "", nil)
 
 	require.NoError(t, controller.handleUpdatePod("default/pod"))
 	requirePodEvent(t, recorder,
