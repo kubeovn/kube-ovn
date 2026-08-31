@@ -6,7 +6,11 @@ import (
 	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 
+	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -68,4 +72,81 @@ func TestGcSecurityGroupSkipsVpcEgressGatewayPortGroup(t *testing.T) {
 	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Times(0)
 
 	require.NoError(t, ctrl.gcSecurityGroup())
+}
+
+func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	require.NoError(t, fakeController.fakeInformers.nodeInformer.Informer().GetStore().Add(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
+			},
+		},
+	}))
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	ctrl.ovnEipsLister = kubeovnlisters.NewOvnEipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return(nil, nil)
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.Equal(t, 1, ctrl.addNodeQueue.Len())
+}
+
+func TestMarkAndCleanLSPKeepsExistingNodeLSP(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	require.NoError(t, fakeController.fakeInformers.nodeInformer.Informer().GetStore().Add(&corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
+			},
+		},
+	}))
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	ctrl.ovnEipsLister = kubeovnlisters.NewOvnEipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	previousLastNoPodLSP := lastNoPodLSP
+	lastNoPodLSP = strset.New()
+	t.Cleanup(func() { lastNoPodLSP = previousLastNoPodLSP })
+
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return([]ovnnb.LogicalSwitchPort{
+		{Name: util.NodeLspName("node-1")},
+		{Name: "orphan"},
+	}, nil)
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.Equal(t, 0, ctrl.addNodeQueue.Len())
+	require.True(t, lastNoPodLSP.Has("orphan"))
+}
+
+func TestEnqueueMissingNodeLSPsSkipsExistingLSP(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+
+	ctrl.enqueueMissingNodeLSPs(
+		map[string]string{
+			util.NodeLspName("node-1"): "node-1",
+			util.NodeLspName("node-2"): "node-2",
+		},
+		strset.New(util.NodeLspName("node-1")),
+	)
+
+	require.Equal(t, 1, ctrl.addNodeQueue.Len())
+	item, shutdown := ctrl.addNodeQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "node-2", item)
+	ctrl.addNodeQueue.Done(item)
 }
