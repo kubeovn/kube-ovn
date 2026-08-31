@@ -144,6 +144,8 @@ const (
 
 	ServiceExternalIPFromSubnetAnnotation = "ovn.kubernetes.io/service_external_ip_from_subnet"
 	ServiceHealthCheck                    = "ovn.kubernetes.io/service_health_check"
+	ServiceHTTPHealthCheckPort            = "ovn.kubernetes.io/http_health_check_port"
+	ServiceHTTPHealthCheckPath            = "ovn.kubernetes.io/http_health_check_path"
 
 	ProtocolTCP  = "tcp"
 	ProtocolUDP  = "udp"
