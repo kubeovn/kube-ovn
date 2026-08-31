@@ -418,6 +418,34 @@ func (c *Controller) gcIP() error {
 	return nil
 }
 
+func (c *Controller) keepNodeLSPs(nodes []*corev1.Node, ipMap *strset.Set) map[string]string {
+	result := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		if node.Annotations[util.AllocatedAnnotation] == "true" {
+			portName := util.NodeLspName(node.Name)
+			result[portName] = node.Name
+			ipMap.Add(portName)
+		}
+
+		if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
+			// node external gw lsp is managed by ovn eip cr, skip gc its lsp
+			ipMap.Add(node.Name)
+		}
+	}
+	return result
+}
+
+func (c *Controller) enqueueMissingNodeLSPs(nodes map[string]string, existing *strset.Set) {
+	for portName, nodeName := range nodes {
+		if existing.Has(portName) {
+			continue
+		}
+
+		klog.Warningf("node logical switch port %s is missing, enqueue node %s for reconciliation", portName, nodeName)
+		c.addNodeQueue.Add(nodeName)
+	}
+}
+
 func (c *Controller) markAndCleanLSP() error {
 	klog.V(4).Infof("start to gc logical switch ports")
 	pods, err := c.podsLister.List(labels.Everything())
@@ -456,16 +484,7 @@ func (c *Controller) markAndCleanLSP() error {
 			ipMap.Add(ovs.PodNameToPortName(podName, pod.Namespace, providerName))
 		}
 	}
-	for _, node := range nodes {
-		if node.Annotations[util.AllocatedAnnotation] == "true" {
-			ipMap.Add(util.NodeLspName(node.Name))
-		}
-
-		if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
-			// node external gw lsp is managed by ovn eip cr, skip gc its lsp
-			ipMap.Add(node.Name)
-		}
-	}
+	nodeLspMap := c.keepNodeLSPs(nodes, ipMap)
 
 	// The lsp for vm pod should not be deleted if vm still exists
 	ipMap.Add(c.getVMLsps()...)
@@ -552,10 +571,14 @@ func (c *Controller) markAndCleanLSP() error {
 			klog.Infof("gc skip reserved ip %s", ipCR.Name)
 		}
 	}
+	c.enqueueMissingNodeLSPs(nodeLspMap, lspMap)
 	lastNoPodLSP = noPodLSP
 
 	ipMap.Each(func(ipName string) bool {
 		if !lspMap.Has(ipName) {
+			if _, ok := nodeLspMap[ipName]; ok {
+				return true
+			}
 			klog.Errorf("lsp lost for pod %s, please delete the pod and retry", ipName)
 		}
 		return true
