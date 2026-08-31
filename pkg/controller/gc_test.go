@@ -8,6 +8,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func newLogicalRouterPort(lrName, lrpName, mac string, networks []string) *ovnnb.LogicalRouterPort {
@@ -65,4 +66,21 @@ func TestGcSecurityGroupSkipsVpcEgressGatewayPortGroup(t *testing.T) {
 	mockOvnClient.EXPECT().DeletePortGroup(gomock.Any()).Times(0)
 
 	require.NoError(t, ctrl.gcSecurityGroup())
+}
+
+func TestEnqueueMissingNodeLSPs(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+
+	ctrl.enqueueMissingNodeLSPs(
+		map[string]string{util.NodeLspName("node-1"): "node-1"},
+		strset.New(),
+	)
+
+	require.Equal(t, 1, ctrl.addNodeQueue.Len())
+	item, shutdown := ctrl.addNodeQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "node-1", item)
+	ctrl.addNodeQueue.Done(item)
 }
