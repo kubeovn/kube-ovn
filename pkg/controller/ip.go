@@ -25,6 +25,17 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	reasonAddIPFailed    = "AddIPFailed"
+	reasonUpdateIPFailed = "UpdateIPFailed"
+)
+
+func (c *Controller) recordIPError(ip *kubeovnv1.IP, reason string, err error) {
+	if c.recorder != nil {
+		c.recorder.Eventf(ip, corev1.EventTypeWarning, reason, "%s", err.Error())
+	}
+}
+
 func (c *Controller) enqueueAddIP(obj any) {
 	ipObj := obj.(*kubeovnv1.IP)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) ||
@@ -54,23 +65,33 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 		return
 	}
 	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
-		klog.Errorf("ip %s namespace can not change", newIP.Name)
+		err := fmt.Errorf("ip %s namespace can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.PodName != "" && newIP.Spec.PodName != oldIP.Spec.PodName {
-		klog.Errorf("ip %s podName can not change", newIP.Name)
+		err := fmt.Errorf("ip %s podName can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.PodType != "" && newIP.Spec.PodType != oldIP.Spec.PodType {
-		klog.Errorf("ip %s podType can not change", newIP.Name)
+		err := fmt.Errorf("ip %s podType can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.MacAddress != "" && newIP.Spec.MacAddress != oldIP.Spec.MacAddress {
-		klog.Errorf("ip %s macAddress can not change", newIP.Name)
+		err := fmt.Errorf("ip %s macAddress can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.V4IPAddress != "" && newIP.Spec.V4IPAddress != oldIP.Spec.V4IPAddress {
-		klog.Errorf("ip %s v4IPAddress can not change", newIP.Name)
+		err := fmt.Errorf("ip %s v4IPAddress can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.V6IPAddress != "" {
@@ -78,10 +99,13 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 		if util.ContainsUppercase(newIP.Spec.V6IPAddress) {
 			err := fmt.Errorf("ip %s v6 ip address %s can not contain upper case", newIP.Name, newIP.Spec.V6IPAddress)
 			klog.Error(err)
+			c.recordIPError(newIP, reasonUpdateIPFailed, err)
 			return
 		}
 		if newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
-			klog.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+			err := fmt.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+			klog.Error(err)
+			c.recordIPError(newIP, reasonUpdateIPFailed, err)
 			return
 		}
 	}
@@ -127,7 +151,7 @@ func (c *Controller) enqueueDelIP(obj any) {
 	c.delIPQueue.Add(ipObj)
 }
 
-func (c *Controller) handleAddReservedIP(key string) error {
+func (c *Controller) handleAddReservedIP(key string) (err error) {
 	ip, err := c.ipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -136,6 +160,11 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	defer func() {
+		if err != nil {
+			c.recordIPError(ip, reasonAddIPFailed, err)
+		}
+	}()
 	if !ip.DeletionTimestamp.IsZero() {
 		klog.Infof("handle add process stop for deleting ip %s", ip.Name)
 		return nil
@@ -229,7 +258,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateIP(key string) error {
+func (c *Controller) handleUpdateIP(key string) (err error) {
 	cachedIP, err := c.ipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -238,6 +267,11 @@ func (c *Controller) handleUpdateIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	defer func() {
+		if err != nil {
+			c.recordIPError(cachedIP, reasonUpdateIPFailed, err)
+		}
+	}()
 	if !cachedIP.DeletionTimestamp.IsZero() {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
