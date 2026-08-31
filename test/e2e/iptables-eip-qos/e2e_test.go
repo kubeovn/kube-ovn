@@ -1531,6 +1531,8 @@ var _ = framework.OrderedDescribe("[group:qos-policy]", func() {
 	})
 
 	framework.ConformanceIt("eip qos policy finalizer is released after the bound eip is deleted", func() {
+		f.SkipVersionPriorTo(1, 17, "QoS policy finalizer release requires the v1.17 controller implementation")
+
 		// Regression: deleting an EIP without first unbinding its QoS policy must still let
 		// the QoS policy (already marked for deletion) drop its finalizer.
 		setupQosNatGwEnvironment(f, dockerExtNetNetwork, vpcQosParams, net1NicName, "")
@@ -1548,6 +1550,8 @@ var _ = framework.OrderedDescribe("[group:qos-policy]", func() {
 	})
 
 	framework.ConformanceIt("eip qos policy finalizer is released after the qos policy is unbound", func() {
+		f.SkipVersionPriorTo(1, 17, "QoS policy finalizer release requires the v1.17 controller implementation")
+
 		// Regression: unbinding the QoS policy from an EIP must re-trigger the QoS reconcile
 		// so a policy already marked for deletion can drop its finalizer.
 		setupQosNatGwEnvironment(f, dockerExtNetNetwork, vpcQosParams, net1NicName, "")
@@ -1565,6 +1569,8 @@ var _ = framework.OrderedDescribe("[group:qos-policy]", func() {
 	})
 
 	framework.ConformanceIt("natgw qos policy finalizer is released after the qos policy is unbound", func() {
+		f.SkipVersionPriorTo(1, 17, "QoS policy finalizer release requires the v1.17 controller implementation")
+
 		// Regression: unbinding a NatGw-level QoS must re-trigger the QoS reconcile (keyed on the
 		// QoSLabel) so a policy already marked for deletion can drop its finalizer.
 		setupQosNatGwEnvironment(f, dockerExtNetNetwork, vpcQosParams, net1NicName, "")
