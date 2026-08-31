@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	netlisters "k8s.io/client-go/listers/networking/v1"
@@ -208,6 +209,112 @@ func TestGetVMLsps(t *testing.T) {
 			ovs.PodNameToPortName("vm-nad", "ns3", nadProvider),
 		}, lsps)
 	})
+}
+
+func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return(nil, nil)
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.Equal(t, 1, ctrl.addNodeQueue.Len())
+
+	item, shutdown := ctrl.addNodeQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "node-1", item)
+	ctrl.addNodeQueue.Done(item)
+}
+
+func TestMarkAndCleanLSPKeepsExistingNodeLSP(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	previousLastNoPodLSP := lastNoPodLSP
+	lastNoPodLSP = strset.New()
+	t.Cleanup(func() { lastNoPodLSP = previousLastNoPodLSP })
+
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return([]ovnnb.LogicalSwitchPort{
+		{Name: util.NodeLspName("node-1")},
+		{Name: "orphan"},
+	}, nil)
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.Equal(t, 0, ctrl.addNodeQueue.Len())
+	require.True(t, lastNoPodLSP.Has("orphan"))
+}
+
+func TestKeepNodeLSPsKeepsExternalGatewayLSP(t *testing.T) {
+	nodeEip := &kubeovnv1.OvnEip{}
+	nodeEip.Name = "node-2"
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{
+			{
+				Name: "node-1",
+				Annotations: map[string]string{
+					util.AllocatedAnnotation: "true",
+				},
+			},
+			{Name: "node-2"},
+		},
+		OvnEips: []*kubeovnv1.OvnEip{nodeEip},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	nodes, err := ctrl.nodesLister.List(labels.Everything())
+	require.NoError(t, err)
+	ipMap := strset.New()
+	nodeLSPs := ctrl.keepNodeLSPs(nodes, ipMap)
+
+	require.Equal(t, map[string]string{util.NodeLspName("node-1"): "node-1"}, nodeLSPs)
+	require.True(t, ipMap.Has(util.NodeLspName("node-1")))
+	require.True(t, ipMap.Has("node-2"))
+}
+
+func TestEnqueueMissingNodeLSPsSkipsExistingLSP(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+
+	ctrl.enqueueMissingNodeLSPs(
+		map[string]string{
+			util.NodeLspName("node-1"): "node-1",
+			util.NodeLspName("node-2"): "node-2",
+		},
+		strset.New(util.NodeLspName("node-1")),
+	)
+
+	require.Equal(t, 1, ctrl.addNodeQueue.Len())
+	item, shutdown := ctrl.addNodeQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "node-2", item)
+	ctrl.addNodeQueue.Done(item)
 }
 
 func TestGcNetworkPolicyDeletesLeftoversWhenDisabled(t *testing.T) {
