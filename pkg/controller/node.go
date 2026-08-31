@@ -42,6 +42,24 @@ func (c *Controller) enqueueAddNode(obj any) {
 	c.enqueueVpcBFDPortByNodeChange(nil, node)
 }
 
+// enqueueExternalVpcsForReconcile re-queues all custom VPCs that use external subnets
+// so their LRP gateway-chassis lists are kept in sync with external-gateway nodes.
+func (c *Controller) enqueueExternalVpcsForReconcile() {
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpcs for external reconcile: %v", err)
+		return
+	}
+	for _, vpc := range vpcs {
+		if _, ok := vpc.Labels[util.VpcExternalLabel]; ok {
+			continue
+		}
+		if vpc.Spec.EnableExternal || vpc.Status.EnableExternal {
+			c.addOrUpdateVpcQueue.Add(vpc.Name)
+		}
+	}
+}
+
 func nodeReady(node *v1.Node) bool {
 	var ready, networkUnavailable bool
 	for _, c := range node.Status.Conditions {
@@ -145,6 +163,9 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	}
 	if nodeReadyChanged || nodeLabelsChanged {
 		c.enqueueVpcBFDPortByNodeChange(oldNode, newNode)
+	}
+	if oldNode.Labels[util.ExGatewayLabel] != newNode.Labels[util.ExGatewayLabel] {
+		c.enqueueExternalVpcsForReconcile()
 	}
 }
 
@@ -355,6 +376,9 @@ func (c *Controller) handleAddNode(key string) error {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
 	}
+	if _, ok := node.Labels[util.ExGatewayLabel]; ok {
+		c.enqueueExternalVpcsForReconcile()
+	}
 	return nil
 }
 
@@ -465,7 +489,13 @@ func (c *Controller) handleDeleteNode(key string) (err error) {
 		klog.Warningf("Node %s is adding, skip the node delete handler, but it may leave some gc resources behind", key)
 		return nil
 	}
-	return c.deleteNode(key)
+	if err = c.deleteNode(key); err != nil {
+		return err
+	}
+	if _, ok := node.Labels[util.ExGatewayLabel]; ok {
+		c.enqueueExternalVpcsForReconcile()
+	}
+	return nil
 }
 
 func (c *Controller) deleteNode(key string) error {

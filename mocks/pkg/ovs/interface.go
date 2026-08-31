@@ -522,6 +522,25 @@ func (m *MockLogicalRouterPort) EXPECT() *MockLogicalRouterPortMockRecorder {
 	return m.recorder
 }
 
+// CreateGatewayChassises mocks base method.
+func (m *MockLogicalRouterPort) CreateGatewayChassises(lrpName string, chassises ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lrpName}
+	for _, a := range chassises {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateGatewayChassises", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateGatewayChassises indicates an expected call of CreateGatewayChassises.
+func (mr *MockLogicalRouterPortMockRecorder) CreateGatewayChassises(lrpName any, chassises ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lrpName}, chassises...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateGatewayChassises", reflect.TypeOf((*MockLogicalRouterPort)(nil).CreateGatewayChassises), varargs...)
+}
+
 // CreateLogicalRouterPort mocks base method.
 func (m *MockLogicalRouterPort) CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error {
 	m.ctrl.T.Helper()
@@ -548,6 +567,20 @@ func (m *MockLogicalRouterPort) CreatePeerRouterPort(localRouter, remoteRouter, 
 func (mr *MockLogicalRouterPortMockRecorder) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreatePeerRouterPort", reflect.TypeOf((*MockLogicalRouterPort)(nil).CreatePeerRouterPort), localRouter, remoteRouter, localRouterPortIP)
+}
+
+// DeleteGatewayChassises mocks base method.
+func (m *MockLogicalRouterPort) DeleteGatewayChassises(lrpName string, chassises []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteGatewayChassises", lrpName, chassises)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteGatewayChassises indicates an expected call of DeleteGatewayChassises.
+func (mr *MockLogicalRouterPortMockRecorder) DeleteGatewayChassises(lrpName, chassises any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGatewayChassises", reflect.TypeOf((*MockLogicalRouterPort)(nil).DeleteGatewayChassises), lrpName, chassises)
 }
 
 // DeleteLogicalRouterPort mocks base method.
