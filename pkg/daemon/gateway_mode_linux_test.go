@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -106,8 +105,8 @@ func TestDetectorColdStartWaitsForProxyMode(t *testing.T) {
 
 func TestDetectKubeProxyModeFromConfig(t *testing.T) {
 	client := fake.NewSimpleClientset(&corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "kube-proxy", Namespace: "kube-system"},
-		Data:       map[string]string{"config.conf": "mode: nftables\n"},
+		Name: "kube-proxy", Namespace: "kube-system",
+		Data: map[string]string{"config.conf": "mode: nftables\n"},
 	})
 	controller := &Controller{config: &Configuration{KubeClient: client}}
 

@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/knftables"
@@ -16,7 +15,7 @@ import (
 
 func TestBuildNFTServiceSnapshot(t *testing.T) {
 	service := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "default"},
+		Name: "web", Namespace: "default",
 		Spec: corev1.ServiceSpec{
 			ClusterIPs:            []string{"10.96.0.10", "fd00:10:96::10"},
 			ExternalIPs:           []string{"192.0.2.10"},
@@ -51,7 +50,7 @@ func TestBuildNFTServiceSnapshot(t *testing.T) {
 
 func TestBuildNFTGatewaySnapshot(t *testing.T) {
 	distributed := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "distributed", UID: types.UID("uid-distributed")},
+		Name: "distributed", UID: types.UID("uid-distributed"),
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:         util.DefaultVpc,
 			Protocol:    kubeovnv1.ProtocolDual,
@@ -61,14 +60,12 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 		},
 		Status: kubeovnv1.SubnetStatus{NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRuleStatus{{
 			RuleID: "rule-1",
-			NatOutgoingPolicyRule: kubeovnv1.NatOutgoingPolicyRule{
-				Match:  kubeovnv1.NatOutGoingPolicyMatch{SrcIPs: "10.16.0.10,fd00:10:16::10", DstIPs: "0.0.0.0/0,::/0"},
-				Action: "nat",
-			},
+			Match:  kubeovnv1.NatOutGoingPolicyMatch{SrcIPs: "10.16.0.10,fd00:10:16::10", DstIPs: "0.0.0.0/0,::/0"},
+			Action: "nat",
 		}}},
 	}
 	centralized := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "centralized", UID: types.UID("uid-centralized")},
+		Name: "centralized", UID: types.UID("uid-centralized"),
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:         util.DefaultVpc,
 			Protocol:    kubeovnv1.ProtocolIPv4,
@@ -81,14 +78,14 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 	}
 	nodes := []*corev1.Node{
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "node-a"},
+			Name: "node-a",
 			Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{
 				{Type: corev1.NodeInternalIP, Address: "192.168.1.10"},
 				{Type: corev1.NodeInternalIP, Address: "fd00::10"},
 			}},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "node-b"},
+			Name: "node-b",
 			Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{
 				{Type: corev1.NodeInternalIP, Address: "192.168.1.11"},
 				{Type: corev1.NodeInternalIP, Address: "fd00::11"},
@@ -96,11 +93,11 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 		},
 	}
 	tproxyPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: "probe", Namespace: "default"},
+		Name: "probe", Namespace: "default",
 		Spec: corev1.PodSpec{Containers: []corev1.Container{{
-			LivenessProbe: &corev1.Probe{ProbeHandler: corev1.ProbeHandler{
+			LivenessProbe: &corev1.Probe{
 				TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(8080)},
-			}},
+			},
 		}}},
 		Status: corev1.PodStatus{PodIPs: []corev1.PodIP{{IP: "10.30.0.2"}, {IP: "fd00:30::2"}}},
 	}
@@ -144,7 +141,7 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 
 func TestBuildNFTGatewaySnapshotPreservesNATPolicyOrder(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "ordered", UID: types.UID("uid-ordered")},
+		Name: "ordered", UID: types.UID("uid-ordered"),
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:         util.DefaultVpc,
 			CIDRBlock:   "10.18.0.0/24",
@@ -154,17 +151,13 @@ func TestBuildNFTGatewaySnapshotPreservesNATPolicyOrder(t *testing.T) {
 		Status: kubeovnv1.SubnetStatus{NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRuleStatus{
 			{
 				RuleID: "z-rule",
-				NatOutgoingPolicyRule: kubeovnv1.NatOutgoingPolicyRule{
-					Match:  kubeovnv1.NatOutGoingPolicyMatch{DstIPs: "192.0.2.0/24"},
-					Action: "forward",
-				},
+				Match:  kubeovnv1.NatOutGoingPolicyMatch{DstIPs: "192.0.2.0/24"},
+				Action: "forward",
 			},
 			{
 				RuleID: "a-rule",
-				NatOutgoingPolicyRule: kubeovnv1.NatOutgoingPolicyRule{
-					Match:  kubeovnv1.NatOutGoingPolicyMatch{DstIPs: "0.0.0.0/0"},
-					Action: "nat",
-				},
+				Match:  kubeovnv1.NatOutGoingPolicyMatch{DstIPs: "0.0.0.0/0"},
+				Action: "nat",
 			},
 		}},
 	}
@@ -182,7 +175,7 @@ func TestBuildNFTGatewaySnapshotPreservesNATPolicyOrder(t *testing.T) {
 
 func TestBuildNFTGatewaySnapshotSkipsEmptyNATPolicyMatch(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "empty-match", UID: types.UID("uid-empty-match")},
+		Name: "empty-match", UID: types.UID("uid-empty-match"),
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:         util.DefaultVpc,
 			CIDRBlock:   "10.19.0.0/24",
@@ -191,9 +184,7 @@ func TestBuildNFTGatewaySnapshotSkipsEmptyNATPolicyMatch(t *testing.T) {
 		},
 		Status: kubeovnv1.SubnetStatus{NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRuleStatus{{
 			RuleID: "empty",
-			NatOutgoingPolicyRule: kubeovnv1.NatOutgoingPolicyRule{
-				Action: "nat",
-			},
+			Action: "nat",
 		}}},
 	}
 
@@ -210,7 +201,7 @@ func TestBuildNFTGatewaySnapshotSkipsEmptyNATPolicyMatch(t *testing.T) {
 
 func TestBuildNFTGatewaySnapshotCompactsOverlappingNATPolicyAddresses(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "overlap", UID: types.UID("uid-overlap")},
+		Name: "overlap", UID: types.UID("uid-overlap"),
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:         util.DefaultVpc,
 			CIDRBlock:   "10.18.0.0/24",
@@ -219,12 +210,10 @@ func TestBuildNFTGatewaySnapshotCompactsOverlappingNATPolicyAddresses(t *testing
 		},
 		Status: kubeovnv1.SubnetStatus{NatOutgoingPolicyRules: []kubeovnv1.NatOutgoingPolicyRuleStatus{{
 			RuleID: "rule-overlap",
-			NatOutgoingPolicyRule: kubeovnv1.NatOutgoingPolicyRule{
-				Match: kubeovnv1.NatOutGoingPolicyMatch{
-					SrcIPs: "10.0.0.0/8,10.1.0.0/16,10.1.2.3",
-				},
-				Action: util.NatPolicyRuleActionNat,
+			Match: kubeovnv1.NatOutGoingPolicyMatch{
+				SrcIPs: "10.0.0.0/8,10.1.0.0/16,10.1.2.3",
 			},
+			Action: util.NatPolicyRuleActionNat,
 		}}},
 	}
 

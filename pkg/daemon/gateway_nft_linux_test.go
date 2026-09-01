@@ -541,8 +541,10 @@ func (f *failingNFTInterface) Run(ctx context.Context, tx *knftables.Transaction
 }
 
 func BenchmarkNFTSnapshotDiff(b *testing.B) {
-	oldFamily := nftFamilySnapshot{Family: knftables.IPv4Family, Table: nftGatewayTable}
-	oldFamily.ClusterIPPorts = make([]nftAddressPort, 10_000)
+	oldFamily := nftFamilySnapshot{
+		Family: knftables.IPv4Family, Table: nftGatewayTable,
+		ClusterIPPorts: make([]nftAddressPort, 10_000),
+	}
 	for i := range oldFamily.ClusterIPPorts {
 		oldFamily.ClusterIPPorts[i] = nftAddressPort{
 			Address:  net.IPv4(10, byte(i>>16), byte(i>>8), byte(i)).String(),

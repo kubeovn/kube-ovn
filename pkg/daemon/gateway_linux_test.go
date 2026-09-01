@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -101,7 +100,7 @@ func TestFindRulePositionsInList(t *testing.T) {
 func TestGenerateHostServiceSNATRules(t *testing.T) {
 	services := []*corev1.Service{
 		{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web"},
+			Namespace: "default", Name: "web",
 			Spec: corev1.ServiceSpec{
 				ClusterIPs: []string{"10.96.0.10", "fd00:10:96::10"},
 				Ports: []corev1.ServicePort{
@@ -112,7 +111,7 @@ func TestGenerateHostServiceSNATRules(t *testing.T) {
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "headless"},
+			Namespace: "default", Name: "headless",
 			Spec: corev1.ServiceSpec{
 				ClusterIP: corev1.ClusterIPNone,
 				Ports:     []corev1.ServicePort{{Protocol: corev1.ProtocolTCP, Port: 80}},
@@ -140,7 +139,7 @@ func TestGenerateHostServiceSNATRules(t *testing.T) {
 func TestGenerateServiceNodePortLocalRules(t *testing.T) {
 	services := []*corev1.Service{
 		{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "remote"},
+			Namespace: "default", Name: "remote",
 			Spec: corev1.ServiceSpec{
 				ClusterIPs:            []string{"10.96.0.10", "fd00:10:96::10"},
 				ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
@@ -152,7 +151,7 @@ func TestGenerateServiceNodePortLocalRules(t *testing.T) {
 			},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "cluster"},
+			Namespace: "default", Name: "cluster",
 			Spec: corev1.ServiceSpec{
 				ClusterIPs: []string{"10.96.0.11"},
 				Ports:      []corev1.ServicePort{{Protocol: corev1.ProtocolTCP, NodePort: 30081}},
