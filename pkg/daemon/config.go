@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -408,6 +409,51 @@ func (config *Configuration) getEncapIP(node *corev1.Node) string {
 		return ipv4
 	}
 	return ipv6
+}
+
+// selectEncapIP picks the tunnel source address among the addresses of the tunnel
+// interface. It returns an empty string if no address is usable.
+//
+// Full-mask addresses sharing an interface with another usable address of the same
+// family are treated as VIPs unless they are node addresses or hostTunnelSrc is set.
+func selectEncapIP(addrs []net.Addr, srcIPs []string, hostTunnelSrc bool, nodeIPs ...string) string {
+	candidates := make([]net.IPNet, 0, len(addrs))
+	var n4, n6 int
+	for _, addr := range addrs {
+		ip, ipNet, err := net.ParseCIDR(addr.String())
+		if err != nil {
+			klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
+			continue
+		}
+		if ip.IsLinkLocalUnicast() || ip.IsLoopback() {
+			continue
+		}
+		if len(srcIPs) != 0 && !slices.Contains(srcIPs, ip.String()) {
+			continue
+		}
+		candidates = append(candidates, net.IPNet{IP: ip, Mask: ipNet.Mask})
+		if ip.To4() != nil {
+			n4++
+		} else {
+			n6++
+		}
+	}
+
+	for _, candidate := range candidates {
+		ipStr := candidate.IP.String()
+		sameFamily := n4
+		if candidate.IP.To4() == nil {
+			sameFamily = n6
+		}
+		if ones, bits := candidate.Mask.Size(); ones == bits && sameFamily > 1 && !hostTunnelSrc &&
+			!slices.Contains(nodeIPs, ipStr) {
+			klog.Infof("Skip address %s: it looks like a vip, the interface has %d usable addresses of the same family",
+				ipStr, sameFamily)
+			continue
+		}
+		return ipStr
+	}
+	return ""
 }
 
 func findInterface(ifaceStr string) (*net.Interface, error) {
