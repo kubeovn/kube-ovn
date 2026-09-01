@@ -721,7 +721,8 @@ func generateServiceNodePortLocalRules(services []*v1.Service, protocol string, 
 				continue
 			}
 			protoMatch := "-m " + proto + " --dport " + strconv.FormatInt(int64(port.NodePort), 10)
-			rules = append(rules,
+			rules = append(
+				rules,
 				util.IPTableRule{
 					Table: NAT,
 					Chain: OvnPrerouting,
