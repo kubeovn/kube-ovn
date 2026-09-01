@@ -704,7 +704,7 @@ func generateHostServiceSNATRules(services []*v1.Service, protocol, matchset, no
 	return rules
 }
 
-func generateServiceNodePortLocalRules(services []*v1.Service, protocol string, nodeMatchSet string) []util.IPTableRule {
+func generateServiceNodePortLocalRules(services []*v1.Service, protocol, nodeMatchSet string) []util.IPTableRule {
 	rules := make([]util.IPTableRule, 0)
 	for _, service := range sortedServices(services) {
 		if service.Spec.ExternalTrafficPolicy != v1.ServiceExternalTrafficPolicyLocal ||
