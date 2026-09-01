@@ -300,7 +300,7 @@ spec:
   nodeName: $NODE_NAME
   containers:
     - name: agnhost
-      image: ghcr.io/kubeovn/agnhost:2.47
+      image: ghcr.io/kubeovn/agnhost:2.61
       args: ["netexec", "--http-port=8080"]
 ---
 apiVersion: v1
@@ -314,7 +314,7 @@ spec:
   nodeName: $NODE_NAME
   containers:
     - name: agnhost
-      image: ghcr.io/kubeovn/agnhost:2.47
+      image: ghcr.io/kubeovn/agnhost:2.61
       args: ["pause"]
 ---
 apiVersion: v1
@@ -328,7 +328,7 @@ spec:
   nodeName: $NODE_NAME
   containers:
     - name: agnhost
-      image: ghcr.io/kubeovn/agnhost:2.47
+      image: ghcr.io/kubeovn/agnhost:2.61
       args: ["pause"]
 ---
 apiVersion: networking.k8s.io/v1
@@ -386,7 +386,7 @@ spec:
   nodeName: $NODE_NAME
   containers:
     - name: agnhost
-      image: ghcr.io/kubeovn/agnhost:2.47
+      image: ghcr.io/kubeovn/agnhost:2.61
       args: ["netexec", "--http-port=8080"]
 ---
 apiVersion: networking.k8s.io/v1
