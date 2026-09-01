@@ -3403,7 +3403,6 @@ jobs:
       - multus-conformance-e2e
       - vpc-egress-gateway-e2e
       - ovn-vpc-nat-gw-conformance-e2e
-      - iptables-vpc-nat-gw-conformance-e2e
       - webhook-e2e
       - lb-svc-e2e
       - underlay-logical-gateway-installation-test
