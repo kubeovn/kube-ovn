@@ -9,8 +9,8 @@ E2E_IP_FAMILY := $(shell echo $${E2E_IP_FAMILY:-ipv4})
 E2E_NETWORK_MODE := $(shell echo $${E2E_NETWORK_MODE:-overlay})
 E2E_CILIUM_CHAINING = $(shell echo $${E2E_CILIUM_CHAINING:-false})
 
-PAUSE_IMAGE = ghcr.io/kubeovn/pause:3.9
-AGNHOST_IMAGE = ghcr.io/kubeovn/agnhost:2.47
+PAUSE_IMAGE = ghcr.io/kubeovn/pause:3.10.2
+AGNHOST_IMAGE = ghcr.io/kubeovn/agnhost:2.61
 
 K8S_CONFORMANCE_E2E_FOCUS = "sig-network.*Conformance" "sig-network.*Feature:NoSNAT"
 K8S_CONFORMANCE_E2E_SKIP =
