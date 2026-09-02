@@ -25,27 +25,21 @@ func TestGetCnpPortGroupName(t *testing.T) {
 		{
 			name: "basic",
 			cnp: &v1alpha2.ClusterNetworkPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test",
-				},
+				Name: "test",
 			},
 			result: "test",
 		},
 		{
 			name: "dash",
 			cnp: &v1alpha2.ClusterNetworkPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-123",
-				},
+				Name: "test-123",
 			},
 			result: "test.123",
 		},
 		{
 			name: "starts with integer and has dash",
 			cnp: &v1alpha2.ClusterNetworkPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "123-test",
-				},
+				Name: "123-test",
 			},
 			result: "cnp123.test",
 		},
@@ -418,17 +412,13 @@ func TestShouldRecreateCnpACLs(t *testing.T) {
 		{
 			name: "logging changed",
 			oldCnp: &v1alpha2.ClusterNetworkPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.ACLActionsLogAnnotation: "true",
-					},
+				Annotations: map[string]string{
+					util.ACLActionsLogAnnotation: "true",
 				},
 			},
 			newCnp: &v1alpha2.ClusterNetworkPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.ACLActionsLogAnnotation: "false",
-					},
+				Annotations: map[string]string{
+					util.ACLActionsLogAnnotation: "false",
 				},
 			},
 			result: true,
@@ -671,7 +661,7 @@ func TestDeleteCnpPriorityMapEntries(t *testing.T) {
 	ctrl.bnpNamePrioMap = map[string]int32{"test2": 1002}
 
 	cnpAdmin := &v1alpha2.ClusterNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "test1"},
+		Name: "test1",
 		Spec: v1alpha2.ClusterNetworkPolicySpec{
 			Tier:     v1alpha2.AdminTier,
 			Priority: 1001,
@@ -679,7 +669,7 @@ func TestDeleteCnpPriorityMapEntries(t *testing.T) {
 	}
 
 	cnpBase := &v1alpha2.ClusterNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "test2"},
+		Name: "test2",
 		Spec: v1alpha2.ClusterNetworkPolicySpec{
 			Tier:     v1alpha2.BaselineTier,
 			Priority: 1002,
@@ -1259,9 +1249,7 @@ func TestUpdateCnpPriorityMapEntries(t *testing.T) {
 
 	t.Run("no change", func(t *testing.T) {
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
+			Name: "test1",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Tier:     v1alpha2.AdminTier,
 				Priority: 1001,
@@ -1276,9 +1264,7 @@ func TestUpdateCnpPriorityMapEntries(t *testing.T) {
 
 	t.Run("priority changed within same tier", func(t *testing.T) {
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
+			Name: "test1",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Tier:     v1alpha2.AdminTier,
 				Priority: 1002,
@@ -1294,9 +1280,7 @@ func TestUpdateCnpPriorityMapEntries(t *testing.T) {
 
 	t.Run("tier changed", func(t *testing.T) {
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test2",
-			},
+			Name: "test2",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Tier:     v1alpha2.BaselineTier,
 				Priority: 1002,
@@ -1316,9 +1300,7 @@ func TestUpdateCnpPriorityMapEntries(t *testing.T) {
 
 	t.Run("tier and priority changed", func(t *testing.T) {
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test3",
-			},
+			Name: "test3",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Tier:     v1alpha2.BaselineTier,
 				Priority: 1004,
@@ -1343,9 +1325,7 @@ func TestUpdateCnpPriorityMapEntries(t *testing.T) {
 		ctrl.bnpNamePrioMap = map[string]int32{"baseline-zero": 0}
 
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "newcomer",
-			},
+			Name: "newcomer",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Tier:     v1alpha2.AdminTier,
 				Priority: 5,
@@ -1375,9 +1355,7 @@ func TestWipeCnpPriorityMapEntries(t *testing.T) {
 
 	t.Run("present in admin maps", func(t *testing.T) {
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test1",
-			},
+			Name: "test1",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Priority: 1001,
 			},
@@ -1391,9 +1369,7 @@ func TestWipeCnpPriorityMapEntries(t *testing.T) {
 
 	t.Run("present in base maps", func(t *testing.T) {
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test2",
-			},
+			Name: "test2",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Priority: 1002,
 			},
@@ -1407,9 +1383,7 @@ func TestWipeCnpPriorityMapEntries(t *testing.T) {
 
 	t.Run("present in both maps", func(t *testing.T) {
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test3",
-			},
+			Name: "test3",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Priority: 1003,
 			},
@@ -1430,9 +1404,7 @@ func TestWipeCnpPriorityMapEntries(t *testing.T) {
 		ctrl.bnpNamePrioMap = map[string]int32{"baseline-zero": 0}
 
 		cnp := &v1alpha2.ClusterNetworkPolicy{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "newcomer",
-			},
+			Name: "newcomer",
 			Spec: v1alpha2.ClusterNetworkPolicySpec{
 				Tier:     v1alpha2.AdminTier,
 				Priority: 5,

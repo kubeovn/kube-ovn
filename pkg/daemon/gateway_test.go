@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -78,11 +77,11 @@ func TestGetCidrByProtocol(t *testing.T) {
 
 func TestProviderExistsRequiresSubnetForNamedOvnProvider(t *testing.T) {
 	subnets := []*kubeovnv1.Subnet{{
-		ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
-		Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+		Name: util.DefaultSubnet,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
 	}, {
-		ObjectMeta: metav1.ObjectMeta{Name: "attach-subnet"},
-		Spec:       kubeovnv1.SubnetSpec{Provider: "attachnet-a.default.ovn"},
+		Name: "attach-subnet",
+		Spec: kubeovnv1.SubnetSpec{Provider: "attachnet-a.default.ovn"},
 	}}
 
 	kubeovnClient := kubeovnfake.NewSimpleClientset()

@@ -7,7 +7,6 @@ import (
 	"github.com/osrg/gobgp/v4/api"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -21,8 +20,8 @@ func TestCollectPodExpectedPrefixes(t *testing.T) {
 
 	newSubnet := func(name, cidr, bgpPolicy string) *kubeovnv1.Subnet {
 		s := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
-			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: cidr},
+			Name: name,
+			Spec: kubeovnv1.SubnetSpec{CIDRBlock: cidr},
 		}
 		s.Status.SetCondition(kubeovnv1.ConditionType(kubeovnv1.Ready), "Init", "")
 		if bgpPolicy != "" {
@@ -35,10 +34,8 @@ func TestCollectPodExpectedPrefixes(t *testing.T) {
 
 	newPod := func(name, nodeName string, annotations map[string]string) *corev1.Pod {
 		return &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:        name,
-				Annotations: annotations,
-			},
+			Name:        name,
+			Annotations: annotations,
 			Spec: corev1.PodSpec{
 				NodeName: nodeName,
 			},
@@ -183,12 +180,10 @@ func TestCollectPodExpectedPrefixes(t *testing.T) {
 			},
 			pods: []*corev1.Pod{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "dead-pod",
-						Annotations: map[string]string{
-							fmt.Sprintf(util.IPAddressAnnotationTemplate, "ovn"):     "10.16.0.5",
-							fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "ovn"): "ovn-default",
-						},
+					Name: "dead-pod",
+					Annotations: map[string]string{
+						fmt.Sprintf(util.IPAddressAnnotationTemplate, "ovn"):     "10.16.0.5",
+						fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "ovn"): "ovn-default",
 					},
 					Spec: corev1.PodSpec{
 						NodeName:      localNode,

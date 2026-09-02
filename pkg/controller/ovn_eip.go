@@ -301,15 +301,13 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		if k8serrors.IsNotFound(err) {
 			// Create CR with finalizer, labels and status all at once
 			_, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Create(context.Background(), &kubeovnv1.OvnEip{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       key,
-					Finalizers: []string{util.KubeOVNControllerFinalizer},
-					Labels: map[string]string{
-						util.SubnetNameLabel: subnet,
-						util.OvnEipTypeLabel: usageType,
-						util.EipV4IpLabel:    v4ip,
-						util.EipV6IpLabel:    v6ip,
-					},
+				Name:       key,
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
+				Labels: map[string]string{
+					util.SubnetNameLabel: subnet,
+					util.OvnEipTypeLabel: usageType,
+					util.EipV4IpLabel:    v4ip,
+					util.EipV6IpLabel:    v6ip,
 				},
 				Spec: kubeovnv1.OvnEipSpec{
 					ExternalSubnet: subnet,

@@ -211,11 +211,9 @@ func (c *Controller) createOrUpdateDNSNameResolver(anpName, domainName string) e
 
 	klog.Infof("Creating or updating DNSNameResolver %s for domain %s in ANP %s", dnsNameResolverName, domainName, anpName)
 	dnsNameResolver := &kubeovnv1.DNSNameResolver{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: dnsNameResolverName,
-			Labels: map[string]string{
-				adminNetworkPolicyKey: anpName,
-			},
+		Name: dnsNameResolverName,
+		Labels: map[string]string{
+			adminNetworkPolicyKey: anpName,
 		},
 		Spec: kubeovnv1.DNSNameResolverSpec{
 			Name: kubeovnv1.DNSName(domainName),

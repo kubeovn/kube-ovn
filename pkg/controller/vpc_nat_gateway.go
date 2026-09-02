@@ -1056,10 +1056,8 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 	labels := util.GenNatGwLabels(gw.Name)
 
 	sts := &v1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   util.GenNatGwName(gw.Name),
-			Labels: labels,
-		},
+		Name:   util.GenNatGwName(gw.Name),
+		Labels: labels,
 		Spec: v1.StatefulSetSpec{
 			Replicas: new(int32(1)),
 			Selector: &metav1.LabelSelector{

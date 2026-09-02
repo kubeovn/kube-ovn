@@ -22,10 +22,8 @@ func Test_getVipIps(t *testing.T) {
 		{
 			name: "annotation with single IPv4",
 			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.SwitchLBRuleVipsAnnotation: "10.0.0.1",
-					},
+				Annotations: map[string]string{
+					util.SwitchLBRuleVipsAnnotation: "10.0.0.1",
 				},
 			},
 			expected: []string{"10.0.0.1"},
@@ -33,10 +31,8 @@ func Test_getVipIps(t *testing.T) {
 		{
 			name: "annotation with dual-stack IPs",
 			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.SwitchLBRuleVipsAnnotation: "10.0.0.1,fd00::1",
-					},
+				Annotations: map[string]string{
+					util.SwitchLBRuleVipsAnnotation: "10.0.0.1,fd00::1",
 				},
 			},
 			expected: []string{"10.0.0.1", "fd00::1"},
@@ -44,10 +40,8 @@ func Test_getVipIps(t *testing.T) {
 		{
 			name: "annotation with empty value should return no IPs",
 			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.SwitchLBRuleVipsAnnotation: "",
-					},
+				Annotations: map[string]string{
+					util.SwitchLBRuleVipsAnnotation: "",
 				},
 			},
 			expected: nil,
@@ -55,10 +49,8 @@ func Test_getVipIps(t *testing.T) {
 		{
 			name: "annotation with trailing comma should filter empty elements",
 			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.SwitchLBRuleVipsAnnotation: "10.0.0.1,",
-					},
+				Annotations: map[string]string{
+					util.SwitchLBRuleVipsAnnotation: "10.0.0.1,",
 				},
 			},
 			expected: []string{"10.0.0.1"},
@@ -66,10 +58,8 @@ func Test_getVipIps(t *testing.T) {
 		{
 			name: "annotation with leading comma should filter empty elements",
 			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.SwitchLBRuleVipsAnnotation: ",10.0.0.1",
-					},
+				Annotations: map[string]string{
+					util.SwitchLBRuleVipsAnnotation: ",10.0.0.1",
 				},
 			},
 			expected: []string{"10.0.0.1"},
@@ -77,9 +67,7 @@ func Test_getVipIps(t *testing.T) {
 		{
 			name: "no annotation falls back to ClusterIPs",
 			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{},
-				},
+				Annotations: map[string]string{},
 				Spec: v1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
 					ClusterIPs: []string{"10.96.0.1"},
@@ -90,10 +78,8 @@ func Test_getVipIps(t *testing.T) {
 		{
 			name: "no annotation with external IP from subnet",
 			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.ServiceExternalIPFromSubnetAnnotation: "external-subnet",
-					},
+				Annotations: map[string]string{
+					util.ServiceExternalIPFromSubnetAnnotation: "external-subnet",
 				},
 				Spec: v1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
@@ -112,10 +98,8 @@ func Test_getVipIps(t *testing.T) {
 		{
 			name: "no annotation with empty ingress IP should be filtered",
 			svc: &v1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						util.ServiceExternalIPFromSubnetAnnotation: "external-subnet",
-					},
+				Annotations: map[string]string{
+					util.ServiceExternalIPFromSubnetAnnotation: "external-subnet",
 				},
 				Spec: v1.ServiceSpec{
 					ClusterIP:  "10.96.0.1",
@@ -161,10 +145,8 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 	}
 
 	svc := &v1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "svc",
-			Namespace: metav1.NamespaceDefault,
-		},
+		Name:      "svc",
+		Namespace: metav1.NamespaceDefault,
 		Spec: v1.ServiceSpec{
 			ClusterIP:  "10.96.0.10",
 			ClusterIPs: []string{"10.96.0.10"},
@@ -176,11 +158,9 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 	updatedSvc.Spec.Ports[0].Port = 8080
 
 	eps := &discoveryv1.EndpointSlice{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "svc-abc12",
-			Namespace: metav1.NamespaceDefault,
-			Labels:    map[string]string{discoveryv1.LabelServiceName: "svc"},
-		},
+		Name:      "svc-abc12",
+		Namespace: metav1.NamespaceDefault,
+		Labels:    map[string]string{discoveryv1.LabelServiceName: "svc"},
 		Endpoints: []discoveryv1.Endpoint{{Addresses: []string{"10.16.0.2"}}},
 	}
 	updatedEps := eps.DeepCopy()
@@ -236,11 +216,9 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 
 func TestEnqueueUpdateServiceReconcilesEndpointSliceOnExternalTrafficPolicyChange(t *testing.T) {
 	oldSvc := &v1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "svc",
-			Namespace:       metav1.NamespaceDefault,
-			ResourceVersion: "1",
-		},
+		Name:            "svc",
+		Namespace:       metav1.NamespaceDefault,
+		ResourceVersion: "1",
 		Spec: v1.ServiceSpec{
 			Type:                  v1.ServiceTypeLoadBalancer,
 			ClusterIP:             "10.96.0.10",

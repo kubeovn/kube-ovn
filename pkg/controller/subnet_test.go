@@ -39,39 +39,39 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 		{
 			name: "deleted with no IPs in use",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
-				Status:     kubeovnv1.SubnetStatus{},
+				DeletionTimestamp: &now,
+				Status:            kubeovnv1.SubnetStatus{},
 			},
 			want: true,
 		},
 		{
 			name: "deleted with V4 IPs in use",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
-				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: internal.NewBigInt(2), V6UsingIPs: internal.BigInt{}},
+				DeletionTimestamp: &now,
+				Status:            kubeovnv1.SubnetStatus{V4UsingIPs: internal.NewBigInt(2), V6UsingIPs: internal.BigInt{}},
 			},
 			want: false,
 		},
 		{
 			name: "deleted dual-stack with only V6 IPs in use",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
-				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: internal.BigInt{}, V6UsingIPs: internal.NewBigInt(3)},
+				DeletionTimestamp: &now,
+				Status:            kubeovnv1.SubnetStatus{V4UsingIPs: internal.BigInt{}, V6UsingIPs: internal.NewBigInt(3)},
 			},
 			want: false,
 		},
 		{
 			name: "deleted dual-stack with both V4 and V6 IPs in use",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
-				Status:     kubeovnv1.SubnetStatus{V4UsingIPs: internal.NewBigInt(1), V6UsingIPs: internal.NewBigInt(1)},
+				DeletionTimestamp: &now,
+				Status:            kubeovnv1.SubnetStatus{V4UsingIPs: internal.NewBigInt(1), V6UsingIPs: internal.NewBigInt(1)},
 			},
 			want: false,
 		},
 		{
 			name: "deleted with only U2O interconnection IPv4 IP remaining",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				DeletionTimestamp: &now,
 				Status: kubeovnv1.SubnetStatus{
 					V4UsingIPs: internal.NewBigInt(1), V6UsingIPs: internal.BigInt{},
 					U2OInterconnectionIP: "10.0.0.1",
@@ -82,7 +82,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 		{
 			name: "deleted dual-stack with only U2O interconnection IPs remaining",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				DeletionTimestamp: &now,
 				Status: kubeovnv1.SubnetStatus{
 					V4UsingIPs: internal.NewBigInt(1), V6UsingIPs: internal.NewBigInt(1),
 					U2OInterconnectionIP: "10.0.0.1,fd00::1",
@@ -93,7 +93,7 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 		{
 			name: "deleted with U2O IP but extra IPs still in use",
 			subnet: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &now},
+				DeletionTimestamp: &now,
 				Status: kubeovnv1.SubnetStatus{
 					V4UsingIPs: internal.NewBigInt(2), V6UsingIPs: internal.NewBigInt(1),
 					U2OInterconnectionIP: "10.0.0.1,fd00::1",
@@ -123,7 +123,7 @@ func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 	)
 
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Name: subnetName,
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:                util.DefaultVpc,
 			Vlan:               vlanName,
@@ -139,7 +139,7 @@ func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 		},
 	}
 	overlaySubnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: overlayName},
+		Name: overlayName,
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:       util.DefaultVpc,
 			CIDRBlock: overlayCIDR,
@@ -205,9 +205,9 @@ func TestSyncU2OOverlayCIDRsAddressSet_UpdatesAfterOverlaySubnetDeletion(t *test
 		underlayVlan = "vlan1"
 	)
 
-	overlayA := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: overlayAName}, Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, CIDRBlock: overlayAV4 + "," + overlayAV6}}
-	overlayB := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: overlayBName}, Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, CIDRBlock: overlayBV4 + "," + overlayBV6}}
-	underlay := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: underlayName}, Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, Vlan: underlayVlan, CIDRBlock: underlayCIDR}}
+	overlayA := &kubeovnv1.Subnet{Name: overlayAName, Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, CIDRBlock: overlayAV4 + "," + overlayAV6}}
+	overlayB := &kubeovnv1.Subnet{Name: overlayBName, Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, CIDRBlock: overlayBV4 + "," + overlayBV6}}
+	underlay := &kubeovnv1.Subnet{Name: underlayName, Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, Vlan: underlayVlan, CIDRBlock: underlayCIDR}}
 
 	fc := newFakeController(t)
 	ctrl := fc.fakeController
@@ -254,9 +254,7 @@ func Test_reconcileVips(t *testing.T) {
 	lspNamePrefix := "reconcile-vip-lsp"
 
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "ovn-test",
-		},
+		Name: "ovn-test",
 		Spec: kubeovnv1.SubnetSpec{
 			Vips: []string{"192.168.123.10", "192.168.123.11", "192.168.123.12", "192.168.123.13"},
 		},
@@ -300,9 +298,7 @@ func Test_reconcileVips(t *testing.T) {
 
 	t.Run("new vips is empty", func(t *testing.T) {
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "ovn-test",
-			},
+			Name: "ovn-test",
 		}
 
 		mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return(lsps, nil)
@@ -327,9 +323,7 @@ func Test_syncVirtualPort(t *testing.T) {
 	lspNamePrefix := "sync-virt-lsp"
 
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "ovn-test",
-		},
+		Name: "ovn-test",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "192.168.123.0/24",
 			Vips:      []string{"192.168.123.10", "192.168.123.11", "192.168.123.12", "192.168.123.13"},
@@ -372,9 +366,7 @@ func Test_syncVirtualPort_noSubstringMatch(t *testing.T) {
 	mockOvnClient := fakeController.mockOvnClient
 
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "ovn-test",
-		},
+		Name: "ovn-test",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "10.0.0.0/24",
 			Vips:      []string{"10.0.0.1"},
@@ -423,17 +415,13 @@ func Test_formatSubnet(t *testing.T) {
 	}{
 		"simple subnet with cidr block only": {
 			input: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "simple",
-				},
+				Name: "simple",
 				Spec: kubeovnv1.SubnetSpec{
 					CIDRBlock: "192.168.0.1/24",
 				},
 			},
 			output: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "simple",
-				},
+				Name: "simple",
 				Spec: kubeovnv1.SubnetSpec{
 					CIDRBlock:   "192.168.0.0/24",
 					Protocol:    kubeovnv1.ProtocolIPv4,
@@ -448,9 +436,7 @@ func Test_formatSubnet(t *testing.T) {
 		},
 		"complete subnet that do not need to be formatted": {
 			input: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "complete",
-				},
+				Name: "complete",
 				Spec: kubeovnv1.SubnetSpec{
 					CIDRBlock:   "192.168.0.0/24",
 					Protocol:    kubeovnv1.ProtocolIPv4,
@@ -463,9 +449,7 @@ func Test_formatSubnet(t *testing.T) {
 				},
 			},
 			output: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "complete",
-				},
+				Name: "complete",
 				Spec: kubeovnv1.SubnetSpec{
 					CIDRBlock:   "192.168.0.0/24",
 					Protocol:    kubeovnv1.ProtocolIPv4,
@@ -480,9 +464,7 @@ func Test_formatSubnet(t *testing.T) {
 		},
 		"do not format gatewayType for custom VPC subnet": {
 			input: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "custom-vpc",
-				},
+				Name: "custom-vpc",
 				Spec: kubeovnv1.SubnetSpec{
 					CIDRBlock:  "192.168.0.0/24",
 					Protocol:   kubeovnv1.ProtocolIPv4,
@@ -494,9 +476,7 @@ func Test_formatSubnet(t *testing.T) {
 				},
 			},
 			output: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "custom-vpc",
-				},
+				Name: "custom-vpc",
 				Spec: kubeovnv1.SubnetSpec{
 					CIDRBlock:  "192.168.0.0/24",
 					Protocol:   kubeovnv1.ProtocolIPv4,
@@ -510,9 +490,7 @@ func Test_formatSubnet(t *testing.T) {
 		},
 		"do not format gatewayType for non ovn subnet": {
 			input: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "external",
-				},
+				Name: "external",
 				Spec: kubeovnv1.SubnetSpec{
 					CIDRBlock:  "192.168.0.0/24",
 					Protocol:   kubeovnv1.ProtocolIPv4,
@@ -523,9 +501,7 @@ func Test_formatSubnet(t *testing.T) {
 				},
 			},
 			output: &kubeovnv1.Subnet{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "external",
-				},
+				Name: "external",
 				Spec: kubeovnv1.SubnetSpec{
 					CIDRBlock:  "192.168.0.0/24",
 					Protocol:   kubeovnv1.ProtocolIPv4,
@@ -557,9 +533,7 @@ func Test_handleAddOrUpdateSubnet_vlanValidationError(t *testing.T) {
 
 	// Create a subnet that references a non-existent vlan
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-underlay",
-		},
+		Name: "test-underlay",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "10.0.0.0/24",
 			Gateway:   "10.0.0.1",
@@ -627,9 +601,7 @@ func Test_checkSubnetConflict(t *testing.T) {
 	t.Parallel()
 
 	existingSubnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "existing-subnet",
-		},
+		Name: "existing-subnet",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "10.0.0.0/24",
 			Vpc:       util.DefaultVpc,
@@ -638,9 +610,7 @@ func Test_checkSubnetConflict(t *testing.T) {
 
 	t.Run("CIDR overlap should return error", func(t *testing.T) {
 		newSubnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "new-subnet",
-			},
+			Name: "new-subnet",
 			Spec: kubeovnv1.SubnetSpec{
 				CIDRBlock: "10.0.0.0/16",
 				Vpc:       util.DefaultVpc,
@@ -659,9 +629,7 @@ func Test_checkSubnetConflict(t *testing.T) {
 
 	t.Run("PolicyRoutingTableID conflict should return error", func(t *testing.T) {
 		existingWithEgress := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "existing-egress",
-			},
+			Name: "existing-egress",
 			Spec: kubeovnv1.SubnetSpec{
 				CIDRBlock:             "10.1.0.0/24",
 				Vpc:                   util.DefaultVpc,
@@ -670,9 +638,7 @@ func Test_checkSubnetConflict(t *testing.T) {
 			},
 		}
 		newWithEgress := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "new-egress",
-			},
+			Name: "new-egress",
 			Spec: kubeovnv1.SubnetSpec{
 				CIDRBlock:             "10.2.0.0/24",
 				Vpc:                   util.DefaultVpc,
@@ -693,9 +659,7 @@ func Test_checkSubnetConflict(t *testing.T) {
 
 	t.Run("node address conflict should return error", func(t *testing.T) {
 		nodeSubnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "node-conflict-subnet",
-			},
+			Name: "node-conflict-subnet",
 			Spec: kubeovnv1.SubnetSpec{
 				CIDRBlock: "192.168.1.0/24",
 				Vpc:       util.DefaultVpc,
@@ -705,7 +669,7 @@ func Test_checkSubnetConflict(t *testing.T) {
 		fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			Subnets: []*kubeovnv1.Subnet{nodeSubnet},
 			Nodes: []*corev1.Node{{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-node"},
+				Name: "test-node",
 				Status: corev1.NodeStatus{
 					Addresses: []corev1.NodeAddress{{
 						Type:    corev1.NodeInternalIP,
@@ -723,9 +687,7 @@ func Test_checkSubnetConflict(t *testing.T) {
 
 	t.Run("no conflict should return nil", func(t *testing.T) {
 		noConflictSubnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "no-conflict",
-			},
+			Name: "no-conflict",
 			Spec: kubeovnv1.SubnetSpec{
 				CIDRBlock: "172.16.0.0/24",
 				Vpc:       util.DefaultVpc,
@@ -746,29 +708,29 @@ func Test_validateSubnetVlan(t *testing.T) {
 	t.Parallel()
 
 	pn := &kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-pn"},
+		Name: "test-pn",
 		Status: kubeovnv1.ProviderNetworkStatus{
 			Vlans: []string{"ready-vlan"},
 		},
 	}
 	conflictVlan := &kubeovnv1.Vlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "conflict-vlan"},
-		Spec:       kubeovnv1.VlanSpec{ID: 100, Provider: "test-pn"},
-		Status:     kubeovnv1.VlanStatus{Conflict: true},
+		Name:   "conflict-vlan",
+		Spec:   kubeovnv1.VlanSpec{ID: 100, Provider: "test-pn"},
+		Status: kubeovnv1.VlanStatus{Conflict: true},
 	}
 	readyVlan := &kubeovnv1.Vlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "ready-vlan"},
-		Spec:       kubeovnv1.VlanSpec{ID: 200, Provider: "test-pn"},
-		Status:     kubeovnv1.VlanStatus{Conflict: false},
+		Name:   "ready-vlan",
+		Spec:   kubeovnv1.VlanSpec{ID: 200, Provider: "test-pn"},
+		Status: kubeovnv1.VlanStatus{Conflict: false},
 	}
 	unprocessedVlan := &kubeovnv1.Vlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "unprocessed-vlan"},
-		Spec:       kubeovnv1.VlanSpec{ID: 300, Provider: "test-pn"},
-		Status:     kubeovnv1.VlanStatus{Conflict: false}, // same as ready, but NOT in pn.Status.Vlans
+		Name:   "unprocessed-vlan",
+		Spec:   kubeovnv1.VlanSpec{ID: 300, Provider: "test-pn"},
+		Status: kubeovnv1.VlanStatus{Conflict: false}, // same as ready, but NOT in pn.Status.Vlans
 	}
 	emptyProviderVlan := &kubeovnv1.Vlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "empty-provider-vlan"},
-		Spec:       kubeovnv1.VlanSpec{ID: 400, Provider: ""}, // not yet defaulted by vlan handler
+		Name: "empty-provider-vlan",
+		Spec: kubeovnv1.VlanSpec{ID: 400, Provider: ""}, // not yet defaulted by vlan handler
 	}
 
 	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
@@ -780,8 +742,8 @@ func Test_validateSubnetVlan(t *testing.T) {
 
 	t.Run("conflict vlan is rejected", func(t *testing.T) {
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{Vlan: "conflict-vlan"},
+			Name: "test-subnet",
+			Spec: kubeovnv1.SubnetSpec{Vlan: "conflict-vlan"},
 		}
 		err := ctrl.validateSubnetVlan(subnet)
 		require.Error(t, err)
@@ -790,8 +752,8 @@ func Test_validateSubnetVlan(t *testing.T) {
 
 	t.Run("ready vlan passes validation", func(t *testing.T) {
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{Vlan: "ready-vlan"},
+			Name: "test-subnet",
+			Spec: kubeovnv1.SubnetSpec{Vlan: "ready-vlan"},
 		}
 		err := ctrl.validateSubnetVlan(subnet)
 		require.NoError(t, err)
@@ -799,8 +761,8 @@ func Test_validateSubnetVlan(t *testing.T) {
 
 	t.Run("unprocessed vlan defers subnet processing", func(t *testing.T) {
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{Vlan: "unprocessed-vlan"},
+			Name: "test-subnet",
+			Spec: kubeovnv1.SubnetSpec{Vlan: "unprocessed-vlan"},
 		}
 		err := ctrl.validateSubnetVlan(subnet)
 		require.Error(t, err)
@@ -809,8 +771,8 @@ func Test_validateSubnetVlan(t *testing.T) {
 
 	t.Run("empty provider vlan is not ready", func(t *testing.T) {
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{Vlan: "empty-provider-vlan"},
+			Name: "test-subnet",
+			Spec: kubeovnv1.SubnetSpec{Vlan: "empty-provider-vlan"},
 		}
 		err := ctrl.validateSubnetVlan(subnet)
 		require.Error(t, err)
@@ -819,8 +781,8 @@ func Test_validateSubnetVlan(t *testing.T) {
 
 	t.Run("missing vlan returns error", func(t *testing.T) {
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{Vlan: "nonexistent-vlan"},
+			Name: "test-subnet",
+			Spec: kubeovnv1.SubnetSpec{Vlan: "nonexistent-vlan"},
 		}
 		err := ctrl.validateSubnetVlan(subnet)
 		require.Error(t, err)
@@ -828,8 +790,8 @@ func Test_validateSubnetVlan(t *testing.T) {
 
 	t.Run("empty vlan passes validation", func(t *testing.T) {
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{Vlan: ""},
+			Name: "test-subnet",
+			Spec: kubeovnv1.SubnetSpec{Vlan: ""},
 		}
 		err := ctrl.validateSubnetVlan(subnet)
 		require.NoError(t, err)
@@ -850,9 +812,9 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient := fakeController.mockOvnClient
 
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
-			Status:     kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
+			Name:   subnetName,
+			Spec:   kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
+			Status: kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
 		}
 
 		mockOvnClient.EXPECT().CreateLogicalSwitchPort(subnetName, lspName, querierIP, querierMAC, lspName, metav1.NamespaceDefault, false, "", "", false, nil, "").Return(nil)
@@ -868,9 +830,9 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient := fakeController.mockOvnClient
 
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
-			Status:     kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
+			Name:   subnetName,
+			Spec:   kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
+			Status: kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
 		}
 
 		mockOvnClient.EXPECT().CreateLogicalSwitchPort(subnetName, lspName, querierIP, querierMAC, lspName, metav1.NamespaceDefault, false, "", "", false, nil, "").Return(errors.New("create lsp failed"))
@@ -886,9 +848,9 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient := fakeController.mockOvnClient
 
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
-			Status:     kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
+			Name:   subnetName,
+			Spec:   kubeovnv1.SubnetSpec{EnableMulticastSnoop: true},
+			Status: kubeovnv1.SubnetStatus{McastQuerierIP: querierIP, McastQuerierMAC: querierMAC},
 		}
 
 		mockOvnClient.EXPECT().CreateLogicalSwitchPort(subnetName, lspName, querierIP, querierMAC, lspName, metav1.NamespaceDefault, false, "", "", false, nil, "").Return(nil)
@@ -905,8 +867,8 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient := fakeController.mockOvnClient
 
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
 		}
 
 		lss := []ovnnb.LogicalSwitch{{
@@ -933,8 +895,8 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient := fakeController.mockOvnClient
 
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
 		}
 
 		mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).Return(nil, errors.New("list failed"))
@@ -951,8 +913,8 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient := fakeController.mockOvnClient
 
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
 		}
 
 		mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil)
@@ -967,8 +929,8 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient := fakeController.mockOvnClient
 
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
 		}
 
 		lss := []ovnnb.LogicalSwitch{{
@@ -990,8 +952,8 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		mockOvnClient := fakeController.mockOvnClient
 
 		subnet := &kubeovnv1.Subnet{
-			ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-			Spec:       kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{EnableMulticastSnoop: false},
 		}
 
 		lss := []ovnnb.LogicalSwitch{{

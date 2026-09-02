@@ -49,9 +49,7 @@ func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchCl
 	}
 
 	return &VswitchClient{
-		ovsDbClient: ovsDbClient{
-			Client:  c,
-			Timeout: time.Duration(transactTimeout) * time.Second,
-		},
+		Client:  c,
+		Timeout: time.Duration(transactTimeout) * time.Second,
 	}, nil
 }

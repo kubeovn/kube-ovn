@@ -89,8 +89,8 @@ func TestReconcileVpcEgressGatewayObservabilityCreatesPerGatewayResources(t *tes
 	}
 	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
 	gw := &kubeovnv1.VpcEgressGateway{
-		TypeMeta:   metav1.TypeMeta{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway"},
-		ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1},
+		APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway",
+		Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1,
 		Spec: kubeovnv1.VpcEgressGatewaySpec{Observability: &kubeovnv1.VpcEgressGatewayObservability{
 			InterfaceMetrics: kubeovnv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
 			ServiceMonitor:   kubeovnv1.VpcEgressGatewayServiceMonitor{Labels: map[string]string{"team": "network", "app": "must-not-override"}},
@@ -130,7 +130,7 @@ func TestReconcileVpcEgressGatewayObservabilityDoesNotInjectWhenSidecarsUnsuppor
 		reason:     "UnsupportedKubernetesVersion",
 		message:    "restartable init containers require Kubernetes 1.29 or later",
 	}
-	gw := &kubeovnv1.VpcEgressGateway{ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "ns", Generation: 1}, Spec: kubeovnv1.VpcEgressGatewaySpec{
+	gw := &kubeovnv1.VpcEgressGateway{Name: "gateway", Namespace: "ns", Generation: 1, Spec: kubeovnv1.VpcEgressGatewaySpec{
 		Observability: &kubeovnv1.VpcEgressGatewayObservability{Conntrack: kubeovnv1.VpcEgressGatewayConntrackObservability{Log: kubeovnv1.VpcEgressGatewayConntrackLog{Enabled: true}}},
 	}}
 	state := controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", vegWorkloadLabels(gw.Name))
@@ -153,8 +153,8 @@ func TestReconcileVpcEgressGatewayObservabilitySoftFailsWithoutServiceMonitorCRD
 	}
 	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
 	gw := &kubeovnv1.VpcEgressGateway{
-		TypeMeta:   metav1.TypeMeta{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway"},
-		ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1},
+		APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway",
+		Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1,
 		Spec: kubeovnv1.VpcEgressGatewaySpec{Observability: &kubeovnv1.VpcEgressGatewayObservability{
 			InterfaceMetrics: kubeovnv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
 		}},
@@ -170,7 +170,7 @@ func TestReconcileVpcEgressGatewayObservabilitySoftFailsWithoutServiceMonitorCRD
 func TestReconcileVpcEgressGatewayObservabilityPreservesExistingObserverOnConfigMapFailure(t *testing.T) {
 	gw := observabilityTestGateway()
 	name := vpcEgressObserverResourceName(gw)
-	configMap := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gw.Namespace}}
+	configMap := &corev1.ConfigMap{Name: name, Namespace: gw.Namespace}
 	require.NoError(t, setVpcEgressGatewayControllerReference(gw, configMap))
 	kubeClient := k8sfake.NewSimpleClientset(configMap)
 	kubeClient.PrependReactor("update", "configmaps", func(k8stesting.Action) (bool, runtime.Object, error) {
@@ -205,8 +205,8 @@ func TestReconcileVpcEgressGatewayObservabilityPreservesExistingObserverOnCapabi
 func TestReconcileVpcEgressGatewayObservabilityPreservesResourcesOnServiceFailure(t *testing.T) {
 	gw := observabilityTestGateway()
 	name := vpcEgressObserverResourceName(gw)
-	configMap := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gw.Namespace}}
-	service := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: gw.Namespace}, Spec: corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone}}
+	configMap := &corev1.ConfigMap{Name: name, Namespace: gw.Namespace}
+	service := &corev1.Service{Name: name, Namespace: gw.Namespace, Spec: corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone}}
 	require.NoError(t, setVpcEgressGatewayControllerReference(gw, configMap))
 	require.NoError(t, setVpcEgressGatewayControllerReference(gw, service))
 	kubeClient := k8sfake.NewSimpleClientset(configMap, service)
@@ -248,8 +248,8 @@ func requirePreservedObserverState(t *testing.T, state vpcEgressObserverState) {
 
 func observabilityTestGateway() *kubeovnv1.VpcEgressGateway {
 	return &kubeovnv1.VpcEgressGateway{
-		TypeMeta:   metav1.TypeMeta{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway"},
-		ObjectMeta: metav1.ObjectMeta{Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1},
+		APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway",
+		Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1,
 		Spec: kubeovnv1.VpcEgressGatewaySpec{Observability: &kubeovnv1.VpcEgressGatewayObservability{
 			InterfaceMetrics: kubeovnv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
 		}},
@@ -261,8 +261,8 @@ func observabilityTestController(t *testing.T, kubeClient *k8sfake.Clientset, gw
 	podSpec := corev1.PodSpec{}
 	addVpcEgressGatewayObserver(&podSpec, "kubeovn/kube-ovn:existing", gw.Spec.Observability, vpcEgressObserverState{enabled: true, configName: vpcEgressObserverResourceName(gw)})
 	deployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: gw.Spec.Prefix + gw.Name, Namespace: gw.Namespace},
-		Spec:       appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: podSpec}},
+		Name: gw.Spec.Prefix + gw.Name, Namespace: gw.Namespace,
+		Spec: appsv1.DeploymentSpec{Template: corev1.PodTemplateSpec{Spec: podSpec}},
 	}
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	require.NoError(t, indexer.Add(deployment))

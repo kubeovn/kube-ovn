@@ -454,16 +454,14 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	v4IP, v6IP := util.SplitStringIP(ip)
 	if ipCR == nil {
 		ipCR = &kubeovnv1.IP{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: ipName,
-				Labels: map[string]string{
-					util.SubnetNameLabel: subnetName,
-					util.NodeNameLabel:   nodeName,
-					subnetName:           "",
-					util.IPReservedLabel: "false", // ip create with pod or node, ip not reserved
-				},
-				Finalizers: []string{util.KubeOVNControllerFinalizer},
+			Name: ipName,
+			Labels: map[string]string{
+				util.SubnetNameLabel: subnetName,
+				util.NodeNameLabel:   nodeName,
+				subnetName:           "",
+				util.IPReservedLabel: "false", // ip create with pod or node, ip not reserved
 			},
+			Finalizers: []string{util.KubeOVNControllerFinalizer},
 			Spec: kubeovnv1.IPSpec{
 				PodName:       key,
 				Subnet:        subnetName,

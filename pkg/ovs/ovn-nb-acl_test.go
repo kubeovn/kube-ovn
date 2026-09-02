@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
@@ -1040,9 +1039,7 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 	pgName := GetSgPortGroupName(sgName)
 
 	sg := &kubeovnv1.SecurityGroup{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: sgName,
-		},
+		Name: sgName,
 		Spec: kubeovnv1.SecurityGroupSpec{
 			AllowSameGroupTraffic: true,
 			Tier:                  1,
@@ -1189,9 +1186,7 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 
 	t.Run("should print log err when sg name is empty", func(t *testing.T) {
 		sg := &kubeovnv1.SecurityGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "",
-			},
+			Name: "",
 		}
 		err = nbClient.UpdateSgACL(sg, ovnnb.ACLDirectionToLport)
 		require.ErrorContains(t, err, "the port group name or logical switch name is required")
@@ -2656,9 +2651,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 	t.Run("no lost ACLs", func(t *testing.T) {
 		t.Parallel()
 		sg := &kubeovnv1.SecurityGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-sg-no-lost-acl",
-			},
+			Name: "test-sg-no-lost-acl",
 			Spec: kubeovnv1.SecurityGroupSpec{
 				IngressRules: []kubeovnv1.SecurityGroupRule{
 					{
@@ -2709,9 +2702,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 	t.Run("lost ingress ACL", func(t *testing.T) {
 		t.Parallel()
 		sg := &kubeovnv1.SecurityGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-sg-lost-ingress-acl",
-			},
+			Name: "test-sg-lost-ingress-acl",
 			Spec: kubeovnv1.SecurityGroupSpec{
 				IngressRules: []kubeovnv1.SecurityGroupRule{
 					{
@@ -2757,9 +2748,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 	t.Run("lost egress ACL", func(t *testing.T) {
 		t.Parallel()
 		sg := &kubeovnv1.SecurityGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-sg-lost-egress-acl",
-			},
+			Name: "test-sg-lost-egress-acl",
 			Spec: kubeovnv1.SecurityGroupSpec{
 				IngressRules: []kubeovnv1.SecurityGroupRule{
 					{
@@ -2805,9 +2794,7 @@ func (suite *OvnClientTestSuite) testSGLostACL() {
 	t.Run("empty security group", func(t *testing.T) {
 		t.Parallel()
 		sg := &kubeovnv1.SecurityGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "test-sg-empty",
-			},
+			Name: "test-sg-empty",
 		}
 
 		pgName := GetSgPortGroupName(sg.Name)

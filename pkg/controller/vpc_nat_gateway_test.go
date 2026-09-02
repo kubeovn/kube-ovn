@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -116,18 +115,14 @@ func TestGetSubnetProvider(t *testing.T) {
 			subnetName: "ovn-default",
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "ovn-default",
-					},
+					Name: "ovn-default",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "10.244.0.0/24",
 						Provider:  util.OvnProvider,
 					},
 				},
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "net1-subnet",
-					},
+					Name: "net1-subnet",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "192.168.1.0/24",
 						Provider:  "net1.default.ovn",
@@ -143,9 +138,7 @@ func TestGetSubnetProvider(t *testing.T) {
 			subnetName: "non-existent",
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "ovn-default",
-					},
+					Name: "ovn-default",
 					Spec: kubeovnv1.SubnetSpec{
 						CIDRBlock: "10.244.0.0/24",
 						Provider:  util.OvnProvider,
@@ -185,12 +178,12 @@ func TestGetSubnetProvider(t *testing.T) {
 	t.Run("Multiple provider scenarios", func(t *testing.T) {
 		subnets := []*kubeovnv1.Subnet{
 			{
-				ObjectMeta: metav1.ObjectMeta{Name: "default-subnet"},
-				Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+				Name: "default-subnet",
+				Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
 			},
 			{
-				ObjectMeta: metav1.ObjectMeta{Name: "custom-subnet"},
-				Spec:       kubeovnv1.SubnetSpec{Provider: "custom.provider.ovn"},
+				Name: "custom-subnet",
+				Spec: kubeovnv1.SubnetSpec{Provider: "custom.provider.ovn"},
 			},
 		}
 
@@ -228,13 +221,13 @@ func TestGetExternalSubnetNad(t *testing.T) {
 		{
 			name: "provider with 3 parts (name.namespace.ovn)",
 			gw: &kubeovnv1.VpcNatGateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"external-subnet"}},
+				Name: "test-gw",
+				Spec: kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"external-subnet"}},
 			},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "external-subnet"},
-					Spec:       kubeovnv1.SubnetSpec{Provider: "real-eip.kube-system.ovn"},
+					Name: "external-subnet",
+					Spec: kubeovnv1.SubnetSpec{Provider: "real-eip.kube-system.ovn"},
 				},
 			},
 			podNamespace:      "kube-system",
@@ -245,13 +238,13 @@ func TestGetExternalSubnetNad(t *testing.T) {
 		{
 			name: "provider with 2 parts (name.namespace)",
 			gw: &kubeovnv1.VpcNatGateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"external-subnet"}},
+				Name: "test-gw",
+				Spec: kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"external-subnet"}},
 			},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "external-subnet"},
-					Spec:       kubeovnv1.SubnetSpec{Provider: "my-nad.default"},
+					Name: "external-subnet",
+					Spec: kubeovnv1.SubnetSpec{Provider: "my-nad.default"},
 				},
 			},
 			podNamespace:      "kube-system",
@@ -262,13 +255,13 @@ func TestGetExternalSubnetNad(t *testing.T) {
 		{
 			name: "provider is ovn (fallback to subnet name)",
 			gw: &kubeovnv1.VpcNatGateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"ovn-vpc-external-network"}},
+				Name: "test-gw",
+				Spec: kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"ovn-vpc-external-network"}},
 			},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "ovn-vpc-external-network"},
-					Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+					Name: "ovn-vpc-external-network",
+					Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
 				},
 			},
 			podNamespace:      "kube-system",
@@ -279,13 +272,13 @@ func TestGetExternalSubnetNad(t *testing.T) {
 		{
 			name: "empty provider (fallback to subnet name)",
 			gw: &kubeovnv1.VpcNatGateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"my-external-subnet"}},
+				Name: "test-gw",
+				Spec: kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"my-external-subnet"}},
 			},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "my-external-subnet"},
-					Spec:       kubeovnv1.SubnetSpec{Provider: ""},
+					Name: "my-external-subnet",
+					Spec: kubeovnv1.SubnetSpec{Provider: ""},
 				},
 			},
 			podNamespace:      "kube-system",
@@ -296,13 +289,13 @@ func TestGetExternalSubnetNad(t *testing.T) {
 		{
 			name: "empty ExternalSubnets (use default)",
 			gw: &kubeovnv1.VpcNatGateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{}},
+				Name: "test-gw",
+				Spec: kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{}},
 			},
 			subnets: []*kubeovnv1.Subnet{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "ovn-vpc-external-network"},
-					Spec:       kubeovnv1.SubnetSpec{Provider: "external.default.ovn"},
+					Name: "ovn-vpc-external-network",
+					Spec: kubeovnv1.SubnetSpec{Provider: "external.default.ovn"},
 				},
 			},
 			podNamespace:      "kube-system",
@@ -313,8 +306,8 @@ func TestGetExternalSubnetNad(t *testing.T) {
 		{
 			name: "subnet not found",
 			gw: &kubeovnv1.VpcNatGateway{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-gw"},
-				Spec:       kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"non-existent-subnet"}},
+				Name: "test-gw",
+				Spec: kubeovnv1.VpcNatGatewaySpec{ExternalSubnets: []string{"non-existent-subnet"}},
 			},
 			subnets:      []*kubeovnv1.Subnet{},
 			podNamespace: "kube-system",

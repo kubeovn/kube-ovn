@@ -536,7 +536,7 @@ func (c *OVNNbClient) batchListLogicalRouterPoliciesByFilter(lrName string, poli
 		}
 	}
 
-	elapsed := float64((time.Since(start)) / time.Millisecond)
+	elapsed := float64(time.Since(start) / time.Millisecond)
 	if elapsed > 500 {
 		klog.Infof("take to %vms batch list logical router policy %s policies %d query result policies %d nb policies len %d", elapsed, lrName, len(policies), len(policyList), len(policyListMap))
 	}

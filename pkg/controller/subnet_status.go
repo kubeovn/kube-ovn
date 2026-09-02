@@ -153,7 +153,8 @@ func (c *Controller) calculateUsingIPs(subnet *kubeovnv1.Subnet, podUsedIPs []*k
 	usingIPNums += len(vips)
 
 	eips, err := c.iptablesEipsLister.List(
-		labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}))
+		labels.SelectorFromSet(labels.Set{util.SubnetNameLabel: subnet.Name}),
+	)
 	if err != nil {
 		return internal.BigInt{}, err
 	}

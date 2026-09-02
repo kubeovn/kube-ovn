@@ -19,9 +19,7 @@ func TestValidateAnpConfig(t *testing.T) {
 	ctrl := fakeController.fakeController
 
 	anp := &v1alpha1.AdminNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "anp-prio",
-		},
+		Name: "anp-prio",
 		Spec: v1alpha1.AdminNetworkPolicySpec{
 			Priority: util.AnpMaxPriority,
 			Subject:  v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},

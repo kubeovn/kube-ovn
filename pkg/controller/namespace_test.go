@@ -22,12 +22,12 @@ import (
 func Test_handleAddNamespace_orphanedSubnet(t *testing.T) {
 	const nsName = "test-ns"
 	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{Name: nsName},
+		Name: nsName,
 	}
 	// A broken subnet whose referenced VPC does not exist - it must not stop the
 	// loop from reaching the valid subnet below.
 	orphanSubnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "orphan-subnet"},
+		Name: "orphan-subnet",
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:       "ghost-vpc",
 			CIDRBlock: "10.16.0.0/16",
@@ -35,7 +35,7 @@ func Test_handleAddNamespace_orphanedSubnet(t *testing.T) {
 	}
 	// A valid subnet that binds the namespace via Spec.Namespaces.
 	validSubnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "valid-subnet"},
+		Name: "valid-subnet",
 		Spec: kubeovnv1.SubnetSpec{
 			Namespaces: []string{nsName},
 			CIDRBlock:  "10.17.0.0/16",

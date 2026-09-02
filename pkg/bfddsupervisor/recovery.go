@@ -180,11 +180,11 @@ func NewSupervisor(config SupervisorConfig, control ControlAdapter, child ChildC
 
 	episodes := make(map[string]*recoveryEpisode, len(expected))
 	for _, pair := range expected {
-		episodes[pairKey(pair)] = &recoveryEpisode{SessionRecoveryStatus: SessionRecoveryStatus{
+		episodes[pairKey(pair)] = &recoveryEpisode{
 			Pair:       pair,
 			Phase:      RecoveryGrace,
 			LastAction: RecoveryNone,
-		}}
+		}
 	}
 	supervisor := &Supervisor{config: config, control: control, child: child, clock: clock, expected: expected, episodes: episodes}
 	if err := supervisor.loadState(); err != nil {
