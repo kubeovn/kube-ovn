@@ -57,10 +57,15 @@ nodeAffinity:
 {{- end -}}
 
 {{/*
-Number of master nodes
+Number of nodes used for component replicas. Data-plane-only installs count
+Kubernetes nodes directly because they do not require master node labels.
 */}}
 {{- define "kubeovn.nodeCount" -}}
+  {{- if eq .Values.installMode "dataPlaneOnly" -}}
+    {{- include "kubeovn.k8sNodeCount" . -}}
+  {{- else -}}
   {{- len (split "," (.Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .))) }}
+  {{- end -}}
 {{- end -}}
 
 {{/*
@@ -68,10 +73,12 @@ Number of Kubernetes nodes, falling back to MASTER_NODES for offline rendering.
 */}}
 {{- define "kubeovn.k8sNodeCount" -}}
 {{- $nodes := lookup "v1" "Node" "" "" -}}
-{{- if and $nodes $nodes.items -}}
+{{- if and $nodes (hasKey $nodes "items") (gt (len $nodes.items) 0) -}}
 {{- len $nodes.items -}}
+{{- else if .Values.MASTER_NODES -}}
+{{- len (split "," .Values.MASTER_NODES) -}}
 {{- else -}}
-{{- include "kubeovn.nodeCount" . -}}
+1
 {{- end -}}
 {{- end -}}
 
