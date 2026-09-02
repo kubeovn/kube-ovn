@@ -189,8 +189,6 @@ spec:
               value: "{{ .Values.networking.OVN_NORTHD_N_THREADS }}"
             - name: ENABLE_COMPACT
               value: "{{ .Values.networking.ENABLE_COMPACT }}"
-            - name: OVN_VERSION_COMPATIBILITY
-              value: '{{ include "kubeovn.ovn.versionCompatibility" . }}'
           resources:
             requests:
               cpu: {{ index .Values "ovn-central" "requests" "cpu" }}

@@ -272,7 +272,7 @@ true
 Render gate for components that only make sense in a single-cluster install:
 - ovn-dpdk DaemonSet (start-ovs-dpdk-v2.sh still talks to OVN_SB_SERVICE_HOST,
   no externalOvnCentral support yet)
-- pre-upgrade-ovs-ovn / upgrade-ovs-ovn hooks (upgrade-ovs.sh waits on a local
+- pre-upgrade-ovs-ovn / upgrade-ovs-ovn hooks (upgrade-ovs.sh checks a local
   deploy/ovn-central, so it fails on tenant-only installs)
 Use `kubeovn.renderFullOnly` when the resource is not yet ready for the
 split-cluster hosted ovn-central deployment.
@@ -334,25 +334,13 @@ Otherwise, auto-detect based on the currently deployed DaemonSet.
   {{- end -}}
 {{- end -}}
 
-{{- define "kubeovn.ovn.versionCompatibility" -}}
+{{- define "kubeovn.ovn.upgradeNeeded" -}}
   {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}
   {{- if $ds -}}
     {{- $chartVersion := index $ds.metadata.annotations "chart-version" }}
     {{- $newChartVersion := printf "%s-%s" .Chart.Name .Chart.Version }}
-    {{- $imageVersion := (index $ds.spec.template.spec.containers 0).image | splitList ":" | last | trimPrefix "v" -}}
-    {{- $versionRegex := `^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)` -}}
-    {{- if and (ne $newChartVersion $chartVersion) (regexMatch $versionRegex $imageVersion) -}}
-      {{- if regexFind $versionRegex $imageVersion | semverCompare ">= 1.15.0" -}}
-        25.03
-      {{- else if regexFind $versionRegex $imageVersion | semverCompare ">= 1.13.0" -}}
-        24.03
-      {{- else if regexFind $versionRegex $imageVersion | semverCompare ">= 1.12.0" -}}
-        22.12
-      {{- else if regexFind $versionRegex $imageVersion | semverCompare ">= 1.11.0" -}}
-        22.03
-      {{- else -}}
-        21.06
-      {{- end -}}
+    {{- if ne $newChartVersion $chartVersion -}}
+      true
     {{- end -}}
   {{- end -}}
 {{- end -}}
