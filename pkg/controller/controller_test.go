@@ -110,11 +110,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	if len(namespaces) == 0 {
 		// Create default namespace if none provided
 		namespaces = []*corev1.Namespace{{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: metav1.NamespaceDefault,
-				Annotations: map[string]string{
-					util.LogicalSwitchAnnotation: util.DefaultSubnet,
-				},
+			Name: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				util.LogicalSwitchAnnotation: util.DefaultSubnet,
 			},
 		}}
 	}
@@ -136,7 +134,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	nadClient := nadfake.NewSimpleClientset()
 	for _, nad := range opts.NetworkAttachments {
 		_, err := nadClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(nad.Namespace).Create(
-			context.Background(), nad, metav1.CreateOptions{})
+			context.Background(), nad, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -146,35 +145,40 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeovnClient := kubeovnfake.NewSimpleClientset()
 	for _, subnet := range opts.Subnets {
 		_, err := kubeovnClient.KubeovnV1().Subnets().Create(
-			context.Background(), subnet, metav1.CreateOptions{})
+			context.Background(), subnet, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, gw := range opts.VpcNatGateways {
 		_, err := kubeovnClient.KubeovnV1().VpcNatGateways().Create(
-			context.Background(), gw, metav1.CreateOptions{})
+			context.Background(), gw, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, ip := range opts.IPs {
 		_, err := kubeovnClient.KubeovnV1().IPs().Create(
-			context.Background(), ip, metav1.CreateOptions{})
+			context.Background(), ip, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, vlan := range opts.Vlans {
 		_, err := kubeovnClient.KubeovnV1().Vlans().Create(
-			context.Background(), vlan, metav1.CreateOptions{})
+			context.Background(), vlan, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, pn := range opts.ProviderNetworks {
 		_, err := kubeovnClient.KubeovnV1().ProviderNetworks().Create(
-			context.Background(), pn, metav1.CreateOptions{})
+			context.Background(), pn, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -305,9 +309,9 @@ func newFakeController(t *testing.T) *fakeController {
 func Test_allSubnetReady(t *testing.T) {
 	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Subnets: []*kubeovnv1.Subnet{{
-			ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
+			Name: util.DefaultSubnet,
 		}, {
-			ObjectMeta: metav1.ObjectMeta{Name: "join"},
+			Name: "join",
 		}},
 	})
 	require.NoError(t, err)
@@ -339,25 +343,21 @@ func TestFakeControllerWithOptions(t *testing.T) {
 	// Example: creating a fake controller with NADs, subnets, and pods
 	opts := &FakeControllerOptions{
 		Subnets: []*kubeovnv1.Subnet{{
-			ObjectMeta: metav1.ObjectMeta{Name: "net1-subnet"},
-			Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "192.168.1.0/24"},
+			Name: "net1-subnet",
+			Spec: kubeovnv1.SubnetSpec{CIDRBlock: "192.168.1.0/24"},
 		}},
 		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "net1",
-				Namespace: metav1.NamespaceDefault,
-			},
+			Name:      "net1",
+			Namespace: metav1.NamespaceDefault,
 			Spec: nadv1.NetworkAttachmentDefinitionSpec{
 				Config: `{"cniVersion": "0.3.1", "name": "net1", "type": "kube-ovn"}`,
 			},
 		}},
 		Pods: []*corev1.Pod{{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "test-pod",
-				Namespace: metav1.NamespaceDefault,
-				Annotations: map[string]string{
-					nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
-				},
+			Name:      "test-pod",
+			Namespace: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				nadv1.NetworkAttachmentAnnot: `[{"name": "net1"}]`,
 			},
 		}},
 	}

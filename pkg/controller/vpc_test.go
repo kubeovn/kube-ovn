@@ -60,9 +60,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes: []*kubeovnv1.StaticRoute{
 					{
@@ -128,9 +126,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes: []*kubeovnv1.StaticRoute{
 					{
@@ -188,9 +184,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpcEmpty := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes:   []*kubeovnv1.StaticRoute{},
 				EnableExternal: false,
@@ -242,9 +236,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes: []*kubeovnv1.StaticRoute{
 					{
@@ -311,9 +303,7 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes:   []*kubeovnv1.StaticRoute{},
 				EnableExternal: false,
@@ -375,9 +365,7 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 		ctrl.vpcKeyMutex = keymutex.NewHashed(500)
 
 		vpc := &kubeovnv1.Vpc{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: vpcName,
-			},
+			Name: vpcName,
 			Spec: kubeovnv1.VpcSpec{
 				StaticRoutes:   []*kubeovnv1.StaticRoute{},
 				EnableExternal: false,
@@ -483,7 +471,7 @@ func TestReconcileVpcBfdLRPClearsHAChassisGroupWhenSelectorMatchesNoNodes(t *tes
 	mockOvnClient := fakeController.mockOvnClient
 
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-vpc-bfd"},
+		Name: "test-vpc-bfd",
 		Spec: kubeovnv1.VpcSpec{
 			BFDPort: &kubeovnv1.BFDPort{
 				Enabled: true,
@@ -517,19 +505,19 @@ func TestReconcileVpcBfdLRPUsesReadyNodesInStableOrder(t *testing.T) {
 
 	for _, node := range []*corev1.Node{
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "node-b", Labels: map[string]string{"egress": "true"}},
+			Name: "node-b", Labels: map[string]string{"egress": "true"},
 			Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{
 				Type: corev1.NodeReady, Status: corev1.ConditionTrue,
 			}}},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "node-c", Labels: map[string]string{"egress": "true"}},
+			Name: "node-c", Labels: map[string]string{"egress": "true"},
 			Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{
 				Type: corev1.NodeReady, Status: corev1.ConditionFalse,
 			}}},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "node-a", Labels: map[string]string{"egress": "true"}},
+			Name: "node-a", Labels: map[string]string{"egress": "true"},
 			Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{
 				Type: corev1.NodeReady, Status: corev1.ConditionTrue,
 			}}},
@@ -539,7 +527,7 @@ func TestReconcileVpcBfdLRPUsesReadyNodesInStableOrder(t *testing.T) {
 	}
 
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-vpc-bfd"},
+		Name: "test-vpc-bfd",
 		Spec: kubeovnv1.VpcSpec{
 			BFDPort: &kubeovnv1.BFDPort{
 				Enabled: true,
@@ -573,14 +561,14 @@ func TestReconcileVpcBfdLRPClearsHAChassisGroupWhenSelectorMatchesNoReadyNodes(t
 	mockOvnClient := fakeController.mockOvnClient
 
 	require.NoError(t, fakeController.fakeInformers.nodeInformer.Informer().GetStore().Add(&corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: "node-a", Labels: map[string]string{"egress": "true"}},
+		Name: "node-a", Labels: map[string]string{"egress": "true"},
 		Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{
 			Type: corev1.NodeReady, Status: corev1.ConditionFalse,
 		}}},
 	}))
 
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-vpc-bfd"},
+		Name: "test-vpc-bfd",
 		Spec: kubeovnv1.VpcSpec{
 			BFDPort: &kubeovnv1.BFDPort{
 				Enabled: true,

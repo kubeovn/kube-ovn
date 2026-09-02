@@ -90,7 +90,7 @@ func (c *Controller) needNewCert(p *pkiFiles) (bool, error) {
 	// get a new certificate if we're over half way through this certificates validity
 	now := time.Now()
 	if now.Before(cert.NotBefore) ||
-		time.Since(cert.NotBefore) > (cert.NotAfter.Sub(cert.NotBefore))/2 {
+		time.Since(cert.NotBefore) > cert.NotAfter.Sub(cert.NotBefore)/2 {
 		klog.Infof("ipsec cert near expiry")
 		return true, nil
 	}
@@ -110,7 +110,8 @@ func (c *Controller) needNewCert(p *pkiFiles) (bool, error) {
 		x509.VerifyOptions{
 			Roots:     caCertPool,
 			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
-		})
+		},
+	)
 	if err != nil {
 		klog.Infof("certificate failed to validate: %v", err)
 		return true, nil
@@ -141,7 +142,7 @@ func (c *Controller) untilCertRefresh(certPath string) (time.Duration, error) {
 	}
 
 	// get a new certificate if we're over half way through this certificates validity
-	refreshTime := cert.NotBefore.Add((cert.NotAfter.Sub(cert.NotBefore)) / 2)
+	refreshTime := cert.NotBefore.Add(cert.NotAfter.Sub(cert.NotBefore) / 2)
 	return time.Until(refreshTime), nil
 }
 
@@ -242,10 +243,8 @@ func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
 	namespace := os.Getenv(util.EnvPodNamespace)
 	newCR := &certmanagerv1.CertificateRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
-			Namespace: namespace,
-		},
+		Name:      "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
+		Namespace: namespace,
 		Spec: certmanagerv1.CertificateRequestSpec{
 			Request: csrBytes,
 			IssuerRef: cmmeta.IssuerReference{
@@ -302,9 +301,7 @@ func (c *Controller) getCertManagerSignedCert(ctx context.Context, csrBytes []by
 
 func (c *Controller) getSignedCert(ctx context.Context, csrBytes []byte) ([]byte, error) {
 	csr := &v1.CertificateSigningRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
-		},
+		Name: "ovn-ipsec-" + os.Getenv(util.EnvNodeName),
 		Spec: v1.CertificateSigningRequestSpec{
 			Request:    csrBytes,
 			SignerName: util.SignerName,

@@ -49,9 +49,7 @@ func TestPatchAnnotations(t *testing.T) {
 	for _, tt := range tests {
 		// create a node
 		node, err := client.CoreV1().Nodes().Create(context.Background(), &v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tt.node,
-			},
+			Name: tt.node,
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, node)
@@ -96,9 +94,7 @@ func TestPatchLabels(t *testing.T) {
 	for _, tt := range tests {
 		// create a node
 		node, err := client.CoreV1().Namespaces().Create(context.Background(), &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tt.namespace,
-			},
+			Name: tt.namespace,
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 		require.NotNil(t, node)
@@ -134,41 +130,41 @@ func TestGenerateStrategicMergePatchPayload(t *testing.T) {
 		{
 			name: "base",
 			args: args{
-				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
-				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
+				original: &v1.Pod{Annotations: map[string]string{}},
+				modified: &v1.Pod{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}},
+				remote:   &v1.Pod{Annotations: map[string]string{}},
 			},
-			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
+			want:    &v1.Pod{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}},
 			wantErr: false,
 		},
 		{
 			name: "baseWithRemote",
 			args: args{
-				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
-				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
+				original: &v1.Pod{Annotations: map[string]string{}},
+				modified: &v1.Pod{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}},
+				remote:   &v1.Pod{Annotations: map[string]string{"calico1": "1"}},
 			},
-			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1", "ovn1": "1", "ovn2": "2"}}},
+			want:    &v1.Pod{Annotations: map[string]string{"calico1": "1", "ovn1": "1", "ovn2": "2"}},
 			wantErr: false,
 		},
 		{
 			name: "baseWithoutAll",
 			args: args{
-				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
+				original: &v1.Pod{Annotations: map[string]string{}},
+				modified: &v1.Pod{Annotations: map[string]string{}},
+				remote:   &v1.Pod{Annotations: map[string]string{}},
 			},
-			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
+			want:    &v1.Pod{Annotations: nil},
 			wantErr: false,
 		},
 		{
 			name: "baseWithoutModified",
 			args: args{
-				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
-				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
+				original: &v1.Pod{Annotations: map[string]string{"calico1": "1"}},
+				modified: &v1.Pod{Annotations: map[string]string{}},
+				remote:   &v1.Pod{Annotations: map[string]string{"calico1": "1"}},
 			},
-			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
+			want:    &v1.Pod{Annotations: nil},
 			wantErr: false,
 		},
 		{
@@ -235,41 +231,41 @@ func TestGenerateMergePatchPayload(t *testing.T) {
 		{
 			name: "base",
 			args: args{
-				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
-				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
+				original: &v1.Pod{Annotations: map[string]string{}},
+				modified: &v1.Pod{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}},
+				remote:   &v1.Pod{Annotations: map[string]string{}},
 			},
-			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
+			want:    &v1.Pod{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}},
 			wantErr: false,
 		},
 		{
 			name: "baseWithRemote",
 			args: args{
-				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}}},
-				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
+				original: &v1.Pod{Annotations: map[string]string{}},
+				modified: &v1.Pod{Annotations: map[string]string{"ovn1": "1", "ovn2": "2"}},
+				remote:   &v1.Pod{Annotations: map[string]string{"calico1": "1"}},
 			},
-			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1", "ovn1": "1", "ovn2": "2"}}},
+			want:    &v1.Pod{Annotations: map[string]string{"calico1": "1", "ovn1": "1", "ovn2": "2"}},
 			wantErr: false,
 		},
 		{
 			name: "baseWithoutAll",
 			args: args{
-				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
+				original: &v1.Pod{Annotations: map[string]string{}},
+				modified: &v1.Pod{Annotations: map[string]string{}},
+				remote:   &v1.Pod{Annotations: map[string]string{}},
 			},
-			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
+			want:    &v1.Pod{Annotations: nil},
 			wantErr: false,
 		},
 		{
 			name: "baseWithoutModified",
 			args: args{
-				original: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
-				modified: &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{}}},
-				remote:   &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{"calico1": "1"}}},
+				original: &v1.Pod{Annotations: map[string]string{"calico1": "1"}},
+				modified: &v1.Pod{Annotations: map[string]string{}},
+				remote:   &v1.Pod{Annotations: map[string]string{"calico1": "1"}},
 			},
-			want:    &v1.Pod{ObjectMeta: metav1.ObjectMeta{Annotations: nil}},
+			want:    &v1.Pod{Annotations: nil},
 			wantErr: false,
 		},
 		{

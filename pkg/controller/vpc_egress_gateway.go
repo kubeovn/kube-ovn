@@ -175,7 +175,7 @@ func (c *Controller) recordVpcEgressGatewayError(gw *kubeovnv1.VpcEgressGateway,
 }
 
 func (c *Controller) recordVpcEgressGatewayKeyError(namespace, name, reason string, err error) error {
-	gw := &kubeovnv1.VpcEgressGateway{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name}}
+	gw := &kubeovnv1.VpcEgressGateway{Namespace: namespace, Name: name}
 	return c.recordVpcEgressGatewayError(gw, reason, err)
 }
 
@@ -690,11 +690,9 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	labels := vegWorkloadLabels(gw.Name)
 	observerState := c.reconcileVpcEgressGatewayObservability(gw, attachmentNetworkName, labels)
 	deploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      gw.Spec.Prefix + gw.Name,
-			Namespace: gw.Namespace,
-			Labels:    labels,
-		},
+		Name:      gw.Spec.Prefix + gw.Name,
+		Namespace: gw.Namespace,
+		Labels:    labels,
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
@@ -779,10 +777,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 					},
 					Tolerations: slices.Clone(gw.Spec.Tolerations),
 					Volumes: []corev1.Volume{{
-						Name: "usr-local-sbin",
-						VolumeSource: corev1.VolumeSource{
-							EmptyDir: &corev1.EmptyDirVolumeSource{},
-						},
+						Name:     "usr-local-sbin",
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					}},
 					TerminationGracePeriodSeconds: ptr.To[int64](0),
 				},
@@ -834,10 +830,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, frrContainer)
 
 		frrVolume := corev1.Volume{
-			Name: "frr-config",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
-			},
+			Name:     "frr-config",
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
 		}
 		deploy.Spec.Template.Spec.Volumes = append(deploy.Spec.Template.Spec.Volumes, frrVolume)
 	}
@@ -1393,10 +1387,8 @@ func configureVpcEgressGatewayBFDWorkload(deploy *appsv1.Deployment, container c
 		MountPath: vegBFDDStateDir,
 	})
 	podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{
-		Name: vegBFDDStateVolume,
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		},
+		Name:     vegBFDDStateVolume,
+		EmptyDir: &corev1.EmptyDirVolumeSource{},
 	})
 	deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To[int64](30)
 	return nil

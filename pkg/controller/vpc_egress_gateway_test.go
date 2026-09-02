@@ -17,7 +17,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
@@ -47,10 +46,8 @@ func TestRecordVpcEgressGatewayEvent(t *testing.T) {
 	recorder := record.NewFakeRecorder(1)
 	c := &Controller{recorder: recorder}
 	gw := &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "egress-gw",
-			Namespace: "default",
-		},
+		Name:      "egress-gw",
+		Namespace: "default",
 	}
 
 	c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "ReconcileWorkloadFailed", "boom")
@@ -127,10 +124,8 @@ func TestFailVpcEgressGatewayReconcilePreservesErrors(t *testing.T) {
 	reconcileErr := errors.New("route failed")
 	statusErr := errors.New("status update failed")
 	gw := &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "egress-gw",
-			Namespace: "default",
-		},
+		Name:      "egress-gw",
+		Namespace: "default",
 		Status: kubeovnv1.VpcEgressGatewayStatus{
 			Ready: true,
 			Phase: kubeovnv1.PhaseCompleted,
@@ -156,11 +151,9 @@ func TestFailVpcEgressGatewayReconcilePreservesErrors(t *testing.T) {
 func TestFailVpcEgressGatewayReconcileRecordsRepeatedFailure(t *testing.T) {
 	reconcileErr := errors.New("route failed")
 	gw := &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       "egress-gw",
-			Namespace:  "default",
-			Generation: 2,
-		},
+		Name:       "egress-gw",
+		Namespace:  "default",
+		Generation: 2,
 	}
 	gw.Status.Conditions.SetCondition(kubeovnv1.Ready, corev1.ConditionFalse, "ReconcileOVNRoutesFailed", reconcileErr.Error(), gw.Generation)
 	client := kubeovnfake.NewSimpleClientset(gw)
@@ -212,11 +205,9 @@ func newVpcEgressGatewayDeleteController(t *testing.T, gw *kubeovnv1.VpcEgressGa
 func TestHandleDelVpcEgressGatewayReturnsFinalizerUpdateError(t *testing.T) {
 	updateErr := errors.New("update failed")
 	gw := &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       "egress-gw",
-			Namespace:  "default",
-			Finalizers: []string{util.KubeOVNControllerFinalizer},
-		},
+		Name:       "egress-gw",
+		Namespace:  "default",
+		Finalizers: []string{util.KubeOVNControllerFinalizer},
 	}
 	c, kubeOvnClient, recorder := newVpcEgressGatewayDeleteController(t, gw)
 	kubeOvnClient.PrependReactor("update", "vpc-egress-gateways", func(ktesting.Action) (bool, runtime.Object, error) {
@@ -230,10 +221,8 @@ func TestHandleDelVpcEgressGatewayReturnsFinalizerUpdateError(t *testing.T) {
 
 func TestHandleDelVpcEgressGatewayDoesNotRecordSuccessWithoutFinalizer(t *testing.T) {
 	gw := &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "egress-gw",
-			Namespace: "default",
-		},
+		Name:      "egress-gw",
+		Namespace: "default",
 	}
 	c, _, recorder := newVpcEgressGatewayDeleteController(t, gw)
 
@@ -247,11 +236,9 @@ func TestHandleDelVpcEgressGatewayDoesNotRecordSuccessWithoutFinalizer(t *testin
 
 func TestHandleDelVpcEgressGatewayRecordsSuccessAfterFinalizerUpdate(t *testing.T) {
 	gw := &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       "egress-gw",
-			Namespace:  "default",
-			Finalizers: []string{util.KubeOVNControllerFinalizer},
-		},
+		Name:       "egress-gw",
+		Namespace:  "default",
+		Finalizers: []string{util.KubeOVNControllerFinalizer},
 	}
 	c, _, recorder := newVpcEgressGatewayDeleteController(t, gw)
 
@@ -324,10 +311,8 @@ func TestConfigureVpcEgressGatewayBFDWorkload(t *testing.T) {
 	require.Contains(t, deploy.Spec.Template.Spec.InitContainers[1].VolumeMounts,
 		corev1.VolumeMount{Name: vegBFDDStateVolume, MountPath: vegBFDDStateDir})
 	require.Contains(t, deploy.Spec.Template.Spec.Volumes, corev1.Volume{
-		Name: vegBFDDStateVolume,
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		},
+		Name:     vegBFDDStateVolume,
+		EmptyDir: &corev1.EmptyDirVolumeSource{},
 	})
 	require.EqualValues(t, 30, *deploy.Spec.Template.Spec.TerminationGracePeriodSeconds)
 	resources := corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")}}
@@ -485,11 +470,9 @@ func newVegWorkloadPod(name, node, podIP, attachment string) *corev1.Pod {
 	}
 
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        name,
-			Namespace:   "default",
-			Annotations: annotations,
-		},
+		Name:        name,
+		Namespace:   "default",
+		Annotations: annotations,
 		Spec: corev1.PodSpec{
 			NodeName: node,
 		},
@@ -590,14 +573,14 @@ func TestCollectVpcEgressGatewayWorkloadStatusRetainsNetworkedNotReadyPod(t *tes
 func newVpcEgressGatewayWorkloadTestController(t *testing.T, ippools []*kubeovnv1.IPPool) (*Controller, *kubeovnv1.Subnet, *kubeovnv1.Subnet) {
 	t.Helper()
 	intSubnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "int-subnet"},
+		Name: "int-subnet",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "10.16.0.0/16",
 			Gateway:   "10.16.0.1",
 		},
 	}
 	extSubnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "ext-subnet"},
+		Name: "ext-subnet",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "172.20.0.0/16",
 			Gateway:   "172.20.0.1",
@@ -605,7 +588,7 @@ func newVpcEgressGatewayWorkloadTestController(t *testing.T, ippools []*kubeovnv
 		},
 	}
 	nad := &nadv1.NetworkAttachmentDefinition{
-		ObjectMeta: metav1.ObjectMeta{Name: "eth1", Namespace: "default"},
+		Name: "eth1", Namespace: "default",
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
@@ -623,7 +606,7 @@ func newVpcEgressGatewayWorkloadTestController(t *testing.T, ippools []*kubeovnv
 
 func newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet *kubeovnv1.Subnet) *kubeovnv1.VpcEgressGateway {
 	return &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "veg"},
+		Namespace: "default", Name: "veg",
 		Spec: kubeovnv1.VpcEgressGatewaySpec{
 			Image:          "test-image",
 			InternalSubnet: intSubnet.Name,
@@ -634,8 +617,8 @@ func newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet *kubeovnv1.Subnet) 
 
 func TestReconcileVpcEgressGatewayWorkloadIPPoolAnnotations(t *testing.T) {
 	ippools := []*kubeovnv1.IPPool{
-		{ObjectMeta: metav1.ObjectMeta{Name: "int-pool"}, Spec: kubeovnv1.IPPoolSpec{Subnet: "int-subnet"}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "ext-pool"}, Spec: kubeovnv1.IPPoolSpec{Subnet: "ext-subnet"}},
+		{Name: "int-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "int-subnet"}},
+		{Name: "ext-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "ext-subnet"}},
 	}
 	c, intSubnet, extSubnet := newVpcEgressGatewayWorkloadTestController(t, ippools)
 
@@ -658,7 +641,7 @@ func TestReconcileVpcEgressGatewayWorkloadIPPoolSubnetMismatch(t *testing.T) {
 	}{
 		{
 			name: "internal pool subnet mismatch",
-			pool: &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: "int-pool"}, Spec: kubeovnv1.IPPoolSpec{Subnet: "other-subnet"}},
+			pool: &kubeovnv1.IPPool{Name: "int-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "other-subnet"}},
 			setSpec: func(spec *kubeovnv1.VpcEgressGatewaySpec, poolName string) {
 				spec.InternalIPPool = poolName
 			},
@@ -666,7 +649,7 @@ func TestReconcileVpcEgressGatewayWorkloadIPPoolSubnetMismatch(t *testing.T) {
 		},
 		{
 			name: "external pool subnet mismatch",
-			pool: &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: "ext-pool"}, Spec: kubeovnv1.IPPoolSpec{Subnet: "other-subnet"}},
+			pool: &kubeovnv1.IPPool{Name: "ext-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "other-subnet"}},
 			setSpec: func(spec *kubeovnv1.VpcEgressGatewaySpec, poolName string) {
 				spec.ExternalIPPool = poolName
 			},

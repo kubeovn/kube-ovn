@@ -51,11 +51,9 @@ func podForCNIEvent(pod *v1.Pod, podRequest *request.CniRequest) *v1.Pod {
 		return pod
 	}
 	return &v1.Pod{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: podRequest.PodNamespace,
-			Name:      podRequest.PodName,
-		},
+		APIVersion: "v1", Kind: "Pod",
+		Namespace: podRequest.PodNamespace,
+		Name:      podRequest.PodName,
 	}
 }
 

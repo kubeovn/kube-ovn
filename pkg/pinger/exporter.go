@@ -31,8 +31,9 @@ type Exporter struct {
 
 // NewExporter returns an initialized Exporter.
 func NewExporter(cfg *Configuration) *Exporter {
-	e := Exporter{}
-	e.Client = ovsdb.NewOvsClient()
+	e := Exporter{
+		Client: ovsdb.NewOvsClient(),
+	}
 	e.initParas(cfg)
 
 	if err := e.Client.GetSystemID(); err != nil {

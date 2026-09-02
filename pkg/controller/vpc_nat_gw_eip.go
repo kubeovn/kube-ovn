@@ -455,7 +455,8 @@ func (c *Controller) addEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 	}
 	if !qosPolicy.Status.Shared {
 		eips, err := c.iptablesEipsLister.List(
-			labels.SelectorFromSet(labels.Set{util.QoSLabel: qosPolicy.Name}))
+			labels.SelectorFromSet(labels.Set{util.QoSLabel: qosPolicy.Name}),
+		)
 		if err != nil {
 			klog.Errorf("failed to get eip list, %v", err)
 			return err
@@ -639,14 +640,12 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 		klog.V(3).Infof("create eip cr %s", key)
 		// Create CR with finalizer, labels and status all at once
 		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Create(context.Background(), &kubeovnv1.IptablesEIP{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       key,
-				Finalizers: []string{util.KubeOVNControllerFinalizer},
-				Labels: map[string]string{
-					util.SubnetNameLabel:        externalNet,
-					util.EipV4IpLabel:           v4ip,
-					util.VpcNatGatewayNameLabel: natGwDp,
-				},
+			Name:       key,
+			Finalizers: []string{util.KubeOVNControllerFinalizer},
+			Labels: map[string]string{
+				util.SubnetNameLabel:        externalNet,
+				util.EipV4IpLabel:           v4ip,
+				util.VpcNatGatewayNameLabel: natGwDp,
 			},
 			Spec: kubeovnv1.IptablesEIPSpec{
 				V4ip:       v4ip,

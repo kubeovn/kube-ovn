@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -82,7 +81,7 @@ func Test_validateSgRule(t *testing.T) {
 	ctrl := &Controller{}
 	baseSG := func(rules ...kubeovnv1.SecurityGroupRule) *kubeovnv1.SecurityGroup {
 		return &kubeovnv1.SecurityGroup{
-			ObjectMeta: metav1.ObjectMeta{Name: "test-sg"},
+			Name: "test-sg",
 			Spec: kubeovnv1.SecurityGroupSpec{
 				Tier:         util.SecurityGroupAPITierMinimum,
 				IngressRules: rules,

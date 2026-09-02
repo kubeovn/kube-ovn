@@ -96,7 +96,8 @@ func TestClusterNetworkPolicyConformance(t *testing.T) {
 				TimeoutConfig:        netpolv1config.TimeoutConfig{GetTimeout: 300 * time.Second},
 			},
 			ConformanceProfiles: profiles,
-		})
+		},
+	)
 	if err != nil {
 		t.Fatalf("error creating conformance test suite: %v", err)
 	}

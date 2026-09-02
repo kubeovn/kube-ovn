@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
 	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -77,11 +76,9 @@ func TestGcSecurityGroupSkipsVpcEgressGatewayPortGroup(t *testing.T) {
 func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
 	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Nodes: []*corev1.Node{{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "node-1",
-				Annotations: map[string]string{
-					util.AllocatedAnnotation: "true",
-				},
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
 			},
 		}},
 	})
@@ -102,11 +99,9 @@ func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
 func TestMarkAndCleanLSPKeepsExistingNodeLSP(t *testing.T) {
 	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Nodes: []*corev1.Node{{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "node-1",
-				Annotations: map[string]string{
-					util.AllocatedAnnotation: "true",
-				},
+			Name: "node-1",
+			Annotations: map[string]string{
+				util.AllocatedAnnotation: "true",
 			},
 		}},
 	})

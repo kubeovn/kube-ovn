@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -61,7 +60,7 @@ func TestReconcileVpcEgressGatewayOVNRoutesKeepsCompatibilityMatchWithoutSelecto
 	controller := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
 	gw := &kubeovnv1.VpcEgressGateway{
-		ObjectMeta: metav1.ObjectMeta{Name: "veg", Namespace: "default"},
+		Name: "veg", Namespace: "default",
 		Spec: kubeovnv1.VpcEgressGatewaySpec{
 			BFD: kubeovnv1.VpcEgressGatewayBFDConfig{Enabled: true},
 		},

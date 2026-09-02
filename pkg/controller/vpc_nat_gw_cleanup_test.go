@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 
@@ -26,7 +25,7 @@ func newNatGwCleanupController(t *testing.T, dp string, gwExists bool) *Controll
 	kubeOvnFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeOvnClient, 0)
 	gwInformer := kubeOvnFactory.Kubeovn().V1().VpcNatGateways()
 	if gwExists {
-		gw := &kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: dp}}
+		gw := &kubeovnv1.VpcNatGateway{Name: dp}
 		require.NoError(t, gwInformer.Informer().GetIndexer().Add(gw))
 	}
 

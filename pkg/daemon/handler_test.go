@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	listerv1 "k8s.io/client-go/listers/core/v1"
@@ -51,7 +50,7 @@ func (r *cniEventRecorder) AnnotatedEventf(object runtime.Object, _ map[string]s
 
 func TestPodForCNIEvent(t *testing.T) {
 	t.Run("real pod", func(t *testing.T) {
-		pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod", Namespace: "ns", UID: types.UID("uid")}}
+		pod := &v1.Pod{Name: "pod", Namespace: "ns", UID: types.UID("uid")}
 		require.Same(t, pod, podForCNIEvent(pod, &request.CniRequest{}))
 		require.Equal(t, types.UID("uid"), podForCNIEvent(pod, &request.CniRequest{}).UID)
 	})
@@ -125,7 +124,7 @@ func TestHandleAddSuccessEvent(t *testing.T) {
 		ip       = "10.0.0.2"
 		mac      = "00:00:00:00:00:02"
 	)
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+	pod := &v1.Pod{
 		Name: "pod", Namespace: "ns", UID: types.UID("real-uid"),
 		Annotations: map[string]string{
 			fmt.Sprintf(util.IPAddressAnnotationTemplate, provider):     ip,
@@ -133,14 +132,14 @@ func TestHandleAddSuccessEvent(t *testing.T) {
 			fmt.Sprintf(util.MacAddressAnnotationTemplate, provider):    mac,
 			fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnet,
 		},
-	}}
-	podSubnet := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: subnet}, Spec: kubeovnv1.SubnetSpec{Provider: provider}}
+	}
+	podSubnet := &kubeovnv1.Subnet{Name: subnet, Spec: kubeovnv1.SubnetSpec{Provider: provider}}
 	recorder := &cniEventRecorder{}
 	handler := cniEventTestHandler(t, pod, podSubnet, recorder)
 	ipCRName := ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
 	handler.KubeOvnClient = kubeovnfake.NewSimpleClientset(&kubeovnv1.IP{
-		ObjectMeta: metav1.ObjectMeta{Name: ipCRName},
-		Spec:       kubeovnv1.IPSpec{NodeName: "node-a"},
+		Name: ipCRName,
+		Spec: kubeovnv1.IPSpec{NodeName: "node-a"},
 	})
 
 	response := serveCNIRequest(t, handler, "/api/v1/add", request.CniRequest{
@@ -178,12 +177,12 @@ func TestHandleAddFailureEvent(t *testing.T) {
 
 func TestHandleDelSuccessEventPreservesPodReference(t *testing.T) {
 	useFakeOVSVsctl(t, true)
-	pod := &v1.Pod{ObjectMeta: metav1.ObjectMeta{
+	pod := &v1.Pod{
 		Name: "virt-launcher", Namespace: "ns", UID: types.UID("real-uid"),
 		Annotations: map[string]string{
 			fmt.Sprintf(util.VMAnnotationTemplate, util.OvnProvider): "vm-name",
 		},
-	}}
+	}
 	recorder := &cniEventRecorder{}
 	handler := cniEventTestHandler(t, pod, nil, recorder)
 

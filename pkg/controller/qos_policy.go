@@ -394,7 +394,8 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		var inUse bool
 		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeEIP {
 			eips, err := c.iptablesEipsLister.List(
-				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
+				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}),
+			)
 			// when eip is not found, we should delete finalizer
 			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to get eip list, %v", err)
@@ -405,7 +406,8 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 
 		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw {
 			gws, err := c.vpcNatGatewayLister.List(
-				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
+				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}),
+			)
 			// when nat gw is not found, we should delete finalizer
 			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to get gw list, %v", err)
@@ -452,7 +454,8 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 	if bandwidthRulesChanged {
 		klog.V(3).Infof(
 			"bandwidth limit rules is changed for qos %s, added: %s, deleted: %s, updated: %s",
-			key, added.Strings(), deleted.Strings(), updated.Strings())
+			key, added.Strings(), deleted.Strings(), updated.Strings(),
+		)
 		if cachedQos.Status.Shared {
 			err := fmt.Errorf("not support shared qos %s change rule", key)
 			klog.Error(err)
@@ -462,7 +465,8 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 		if cachedQos.Status.BindingType == kubeovnv1.QoSBindingTypeEIP {
 			// filter to eip
 			eips, err := c.iptablesEipsLister.List(
-				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}))
+				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}),
+			)
 			if err != nil {
 				klog.Errorf("failed to get eip list, %v", err)
 				return err

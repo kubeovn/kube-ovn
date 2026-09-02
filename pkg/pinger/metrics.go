@@ -13,7 +13,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	ovsDownGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_ovs_down",
@@ -21,7 +22,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	ovnControllerUpGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_ovn_controller_up",
@@ -29,7 +31,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	ovnControllerDownGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_ovn_controller_down",
@@ -37,7 +40,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	inconsistentPortBindingGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_inconsistent_port_binding",
@@ -45,7 +49,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	apiserverHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_apiserver_healthy",
@@ -53,7 +58,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	apiserverUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_apiserver_unhealthy",
@@ -61,7 +67,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	apiserverRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_apiserver_latency_ms",
@@ -70,7 +77,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	internalDNSHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_internal_dns_healthy",
@@ -78,7 +86,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	internalDNSUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_internal_dns_unhealthy",
@@ -86,7 +95,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	internalDNSRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_internal_dns_latency_ms",
@@ -95,7 +105,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	externalDNSHealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_external_dns_healthy",
@@ -103,7 +114,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	externalDNSUnhealthyGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "pinger_external_dns_unhealthy",
@@ -111,7 +123,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	externalDNSRequestLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_external_dns_latency_ms",
@@ -120,7 +133,8 @@ var (
 		},
 		[]string{
 			"nodeName",
-		})
+		},
+	)
 	podPingLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_pod_ping_latency_ms",
@@ -134,7 +148,8 @@ var (
 			"target_node_name",
 			"target_node_ip",
 			"target_pod_ip",
-		})
+		},
+	)
 	podPingLostCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pinger_pod_ping_lost_total",
@@ -146,7 +161,8 @@ var (
 			"target_node_name",
 			"target_node_ip",
 			"target_pod_ip",
-		})
+		},
+	)
 	podPingTotalCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pinger_pod_ping_count_total",
@@ -158,7 +174,8 @@ var (
 			"target_node_name",
 			"target_node_ip",
 			"target_pod_ip",
-		})
+		},
+	)
 	nodePingLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_node_ping_latency_ms",
@@ -171,7 +188,8 @@ var (
 			"src_pod_ip",
 			"target_node_name",
 			"target_node_ip",
-		})
+		},
+	)
 	nodePingLostCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pinger_node_ping_lost_total",
@@ -182,7 +200,8 @@ var (
 			"src_pod_ip",
 			"target_node_name",
 			"target_node_ip",
-		})
+		},
+	)
 	nodePingTotalCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pinger_node_ping_count_total",
@@ -193,7 +212,8 @@ var (
 			"src_pod_ip",
 			"target_node_name",
 			"target_node_ip",
-		})
+		},
+	)
 	externalPingLatencyHistogram = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "pinger_external_ping_latency_ms",
@@ -205,7 +225,8 @@ var (
 			"src_node_ip",
 			"src_pod_ip",
 			"target_address",
-		})
+		},
+	)
 	externalPingLostCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "pinger_external_ping_lost_total",
@@ -215,7 +236,8 @@ var (
 			"src_node_ip",
 			"src_pod_ip",
 			"target_address",
-		})
+		},
+	)
 
 	// OVS basic info
 	metricOvsHealthyStatus = prometheus.NewGaugeVec(
@@ -227,7 +249,8 @@ var (
 		[]string{
 			"hostname",
 			"component",
-		})
+		},
+	)
 
 	metricOvsInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -243,7 +266,8 @@ var (
 			"system_version",
 			"ovs_version",
 			"db_version",
-		})
+		},
+	)
 
 	metricRequestErrorNums = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -253,7 +277,8 @@ var (
 		},
 		[]string{
 			"hostname",
-		})
+		},
+	)
 
 	metricLogFileSize = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -265,7 +290,8 @@ var (
 			"hostname",
 			"component",
 			"filename",
-		})
+		},
+	)
 
 	metricDbFileSize = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -276,7 +302,8 @@ var (
 		[]string{
 			"hostname",
 			"db_name",
-		})
+		},
+	)
 
 	// OVS datapath metrics
 	metricOvsDp = prometheus.NewGaugeVec(
@@ -289,7 +316,8 @@ var (
 			"hostname",
 			"datapath",
 			"type",
-		})
+		},
+	)
 
 	metricOvsDpTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -299,7 +327,8 @@ var (
 		},
 		[]string{
 			"hostname",
-		})
+		},
+	)
 
 	metricOvsDpIf = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -313,7 +342,8 @@ var (
 			"port",
 			"type",
 			"ofPort",
-		})
+		},
+	)
 
 	metricOvsDpIfTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -324,7 +354,8 @@ var (
 		[]string{
 			"hostname",
 			"datapath",
-		})
+		},
+	)
 
 	metricOvsDpFlowsTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -335,7 +366,8 @@ var (
 		[]string{
 			"hostname",
 			"datapath",
-		})
+		},
+	)
 
 	metricOvsDpFlowsLookupHit = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -346,7 +378,8 @@ var (
 		[]string{
 			"hostname",
 			"datapath",
-		})
+		},
+	)
 
 	metricOvsDpFlowsLookupMissed = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -357,7 +390,8 @@ var (
 		[]string{
 			"hostname",
 			"datapath",
-		})
+		},
+	)
 
 	metricOvsDpFlowsLookupLost = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -368,7 +402,8 @@ var (
 		[]string{
 			"hostname",
 			"datapath",
-		})
+		},
+	)
 
 	metricOvsDpMasksHit = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -379,7 +414,8 @@ var (
 		[]string{
 			"hostname",
 			"datapath",
-		})
+		},
+	)
 
 	metricOvsDpMasksTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -390,7 +426,8 @@ var (
 		[]string{
 			"hostname",
 			"datapath",
-		})
+		},
+	)
 
 	metricOvsDpMasksHitRatio = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -401,7 +438,8 @@ var (
 		[]string{
 			"hostname",
 			"datapath",
-		})
+		},
+	)
 
 	// OVS Interface basic info metrics
 	interfaceMain = prometheus.NewGaugeVec(
@@ -414,7 +452,8 @@ var (
 			"hostname",
 			"uuid",
 			"interfaceName",
-		})
+		},
+	)
 
 	interfaceAdminState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -425,7 +464,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
-		})
+		},
+	)
 
 	interfaceLinkState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -436,7 +476,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
-		})
+		},
+	)
 
 	interfaceMacInUse = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -448,7 +489,8 @@ var (
 			"hostname",
 			"interfaceName",
 			"mac_address",
-		})
+		},
+	)
 
 	interfaceMtu = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -459,7 +501,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
-		})
+		},
+	)
 
 	interfaceOfPort = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -470,7 +513,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
-		})
+		},
+	)
 
 	interfaceIfIndex = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -481,7 +525,8 @@ var (
 		[]string{
 			"hostname",
 			"interfaceName",
-		})
+		},
+	)
 
 	// OVS Interface Statistics: Successful transmit and receive counters
 	interfaceStatTxPackets = prometheus.NewGaugeVec(
@@ -495,7 +540,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatTxBytes = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -508,7 +554,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatRxPackets = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -521,7 +568,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatRxBytes = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -534,7 +582,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	// OVS Interface Statistics: Receive errors
 	interfaceStatRxCrcError = prometheus.NewGaugeVec(
@@ -548,7 +597,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatRxDropped = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -561,7 +611,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatRxErrorsTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -574,7 +625,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatRxFrameError = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -587,7 +639,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatRxMissedError = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -600,7 +653,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatRxOverrunError = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -613,7 +667,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	// OVS Interface Statistics: Transmit errors
 	interfaceStatTxDropped = prometheus.NewGaugeVec(
@@ -627,7 +682,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatTxErrorsTotal = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -640,7 +696,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatCollisions = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -653,7 +710,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 
 	interfaceStatRxMulticastPackets = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -666,7 +724,8 @@ var (
 			"interfaceName",
 			"pod_name",
 			"pod_namespace",
-		})
+		},
+	)
 )
 
 func InitPingerMetrics() {

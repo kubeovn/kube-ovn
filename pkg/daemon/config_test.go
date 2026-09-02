@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -25,87 +24,71 @@ func TestParseNodeNetworks(t *testing.T) {
 		{
 			name: "node without annotations",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-node"},
+				Name: "test-node",
 			},
 			expected: map[string]string{},
 		},
 		{
 			name: "node with empty annotation",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "test-node",
-					Annotations: map[string]string{util.NodeNetworksAnnotation: ""},
-				},
+				Name:        "test-node",
+				Annotations: map[string]string{util.NodeNetworksAnnotation: ""},
 			},
 			expected: map[string]string{},
 		},
 		{
 			name: "node with valid single network",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "test-node",
-					Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "192.168.1.3"}`},
-				},
+				Name:        "test-node",
+				Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "192.168.1.3"}`},
 			},
 			expected: map[string]string{"storage": "192.168.1.3"},
 		},
 		{
 			name: "node with valid multiple networks",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "test-node",
-					Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "192.168.1.3", "app": "172.10.0.10"}`},
-				},
+				Name:        "test-node",
+				Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "192.168.1.3", "app": "172.10.0.10"}`},
 			},
 			expected: map[string]string{"storage": "192.168.1.3", "app": "172.10.0.10"},
 		},
 		{
 			name: "node with IPv6 address",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "test-node",
-					Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "fd00::1"}`},
-				},
+				Name:        "test-node",
+				Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "fd00::1"}`},
 			},
 			expected: map[string]string{"storage": "fd00::1"},
 		},
 		{
 			name: "invalid JSON format",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "test-node",
-					Annotations: map[string]string{util.NodeNetworksAnnotation: `invalid json`},
-				},
+				Name:        "test-node",
+				Annotations: map[string]string{util.NodeNetworksAnnotation: `invalid json`},
 			},
 			expectError: true,
 		},
 		{
 			name: "invalid IP address",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "test-node",
-					Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "invalid-ip"}`},
-				},
+				Name:        "test-node",
+				Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "invalid-ip"}`},
 			},
 			expectError: true,
 		},
 		{
 			name: "IP with CIDR notation (invalid)",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "test-node",
-					Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "192.168.1.3/24"}`},
-				},
+				Name:        "test-node",
+				Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": "192.168.1.3/24"}`},
 			},
 			expectError: true,
 		},
 		{
 			name: "empty IP value",
 			node: &corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        "test-node",
-					Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": ""}`},
-				},
+				Name:        "test-node",
+				Annotations: map[string]string{util.NodeNetworksAnnotation: `{"storage": ""}`},
 			},
 			expectError: true,
 		},

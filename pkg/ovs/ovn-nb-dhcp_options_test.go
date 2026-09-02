@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -14,9 +13,7 @@ import (
 
 func mockSubnet(name string, enableDHCP bool) *kubeovnv1.Subnet {
 	return &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock:  "10.244.0.0/16,fc00::af4:0/112",
 			Gateway:    "10.244.0.1,fc00::0af4:01",
