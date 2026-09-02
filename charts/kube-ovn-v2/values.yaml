@@ -461,9 +461,6 @@ ovsOvn:
   upgrade:
     # -- Enable post-upgrade hooks to run upgrade logic of OVS/OVN.
     enabled: true
-    # -- Value propagated to ovn-central to handle OVS/OVN compatibility with Kube-OVN.
-    # This value must be updated for each new OVN version.
-    versionCompatibility: "25.03"
 
   # @section -- OVS/OVN daemons configuration.
   ovnRemoteProbeInterval: 10000
