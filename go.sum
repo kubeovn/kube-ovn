@@ -381,8 +381,8 @@ github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92 h1:6x4
 github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92/go.mod h1:/SGJYGjOEAz+rw8JvkkbpcAyjQF1v4XPgpn1HqRg1fs=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20260427030114-71d35a2bb8b2 h1:9r0zbCgxavpZ3DhNhiKA7wWWC6fpIAP2wTYKGyPrOD8=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20260427030114-71d35a2bb8b2/go.mod h1:OB5Eqq9BM+N+L0nhSxTe8NuMLryhxxGQW21rSaImHjo=
-github.com/kubeovn/libovsdb v0.0.0-20260822122319-7d52ac1264ec h1:IFNe5ONoOLikvvk/NeT6lDlFSzjkWCRoNRvW8k+TqJg=
-github.com/kubeovn/libovsdb v0.0.0-20260822122319-7d52ac1264ec/go.mod h1:X8p5JMPYK5iKCyZ/RxFxvjl1sHfN7H9mo5UbtS5uImo=
+github.com/kubeovn/libovsdb v0.0.0-20260902074400-457a5d8cc172 h1:e8XTmu6psCshewB2CJau1bzLAJQ3czL3nNI4UFUEfyE=
+github.com/kubeovn/libovsdb v0.0.0-20260902074400-457a5d8cc172/go.mod h1:X8p5JMPYK5iKCyZ/RxFxvjl1sHfN7H9mo5UbtS5uImo=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475/go.mod h1:LAd0qoeAAm/QyZcpxN2BnpndM2/dhZt+/kokPvcxKcE=
 github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 h1:nHHjmvjitIiyPlUHk/ofpgvBcNcawJLtf4PYHORLjAA=
@@ -528,8 +528,6 @@ github.com/orcaman/concurrent-map/v2 v2.0.1/go.mod h1:9Eq3TG2oBe5FirmYWQfYO5iH1q
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/osrg/gobgp/v4 v4.9.0 h1:pKOw914kwQ4I/lWNVTfEDosEN3FuqPGytMEInXxpTyQ=
 github.com/osrg/gobgp/v4 v4.9.0/go.mod h1:bJbFm7T2nRANggShfl3I9h0UpPCzu4uAY5J/6dTdRvs=
-github.com/ovn-kubernetes/libovsdb v0.8.2-0.20260710115425-adb4e0375fb5 h1:YYN1tnlbI1WHmslGDQd+HZw2F6dnWieRGCGcHhdG/Vs=
-github.com/ovn-kubernetes/libovsdb v0.8.2-0.20260710115425-adb4e0375fb5/go.mod h1:FE+0C838CfGFOuoCbsR3tcEAIY4Xxicu+Nhv19LA900=
 github.com/parnurzeal/gorequest v0.3.0 h1:SoFyqCDC9COr1xuS6VA8fC8RU7XyrJZN2ona1kEX7FI=
 github.com/parnurzeal/gorequest v0.3.0/go.mod h1:3Kh2QUMJoqw3icWAecsyzkpY7UzRfDhbRdTjtNwNiUE=
 github.com/pelletier/go-toml/v2 v2.4.2 h1:M2fKKbmyvI+hGId/D0W64qDBMVhJnNR10O5gIbMc//Q=
