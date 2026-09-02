@@ -8,27 +8,37 @@ const ServiceMonitorTable = "Service_Monitor"
 type (
 	ServiceMonitorProtocol = string
 	ServiceMonitorStatus   = string
+	ServiceMonitorType     = string
 )
 
 const (
-	ServiceMonitorProtocolTCP   ServiceMonitorProtocol = "tcp"
-	ServiceMonitorProtocolUDP   ServiceMonitorProtocol = "udp"
-	ServiceMonitorStatusOnline  ServiceMonitorStatus   = "online"
-	ServiceMonitorStatusOffline ServiceMonitorStatus   = "offline"
-	ServiceMonitorStatusError   ServiceMonitorStatus   = "error"
+	ServiceMonitorProtocolTCP           ServiceMonitorProtocol = "tcp"
+	ServiceMonitorProtocolUDP           ServiceMonitorProtocol = "udp"
+	ServiceMonitorProtocolICMP          ServiceMonitorProtocol = "icmp"
+	ServiceMonitorStatusOnline          ServiceMonitorStatus   = "online"
+	ServiceMonitorStatusOffline         ServiceMonitorStatus   = "offline"
+	ServiceMonitorStatusError           ServiceMonitorStatus   = "error"
+	ServiceMonitorTypeLoadBalancer      ServiceMonitorType     = "load-balancer"
+	ServiceMonitorTypeNetworkFunction   ServiceMonitorType     = "network-function"
+	ServiceMonitorTypeLogicalSwitchPort ServiceMonitorType     = "logical-switch-port"
 )
 
 // ServiceMonitor defines an object in Service_Monitor table
 type ServiceMonitor struct {
-	UUID        string                  `ovsdb:"_uuid"`
-	ChassisName string                  `ovsdb:"chassis_name"`
-	ExternalIDs map[string]string       `ovsdb:"external_ids"`
-	IP          string                  `ovsdb:"ip"`
-	LogicalPort string                  `ovsdb:"logical_port"`
-	Options     map[string]string       `ovsdb:"options"`
-	Port        int                     `ovsdb:"port" validate:"min=0,max=65535"`
-	Protocol    *ServiceMonitorProtocol `ovsdb:"protocol" validate:"omitempty,oneof='tcp' 'udp'"`
-	SrcIP       string                  `ovsdb:"src_ip"`
-	SrcMAC      string                  `ovsdb:"src_mac"`
-	Status      *ServiceMonitorStatus   `ovsdb:"status" validate:"omitempty,oneof='online' 'offline' 'error'"`
+	UUID             string                  `ovsdb:"_uuid"`
+	ChassisName      string                  `ovsdb:"chassis_name"`
+	ExternalIDs      map[string]string       `ovsdb:"external_ids"`
+	IcLearned        bool                    `ovsdb:"ic_learned"`
+	IP               string                  `ovsdb:"ip"`
+	LogicalInputPort string                  `ovsdb:"logical_input_port"`
+	LogicalPort      string                  `ovsdb:"logical_port"`
+	MAC              string                  `ovsdb:"mac"`
+	Options          map[string]string       `ovsdb:"options"`
+	Port             int                     `ovsdb:"port" validate:"min=0,max=65535"`
+	Protocol         *ServiceMonitorProtocol `ovsdb:"protocol" validate:"omitempty,oneof='tcp' 'udp' 'icmp'"`
+	Remote           bool                    `ovsdb:"remote"`
+	SrcIP            string                  `ovsdb:"src_ip"`
+	SrcMAC           string                  `ovsdb:"src_mac"`
+	Status           *ServiceMonitorStatus   `ovsdb:"status" validate:"omitempty,oneof='online' 'offline' 'error'"`
+	Type             *ServiceMonitorType     `ovsdb:"type" validate:"omitempty,oneof='load-balancer' 'network-function' 'logical-switch-port'"`
 }
