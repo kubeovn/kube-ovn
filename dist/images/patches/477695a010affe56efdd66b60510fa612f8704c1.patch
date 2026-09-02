@@ -1,22 +1,8 @@
-From 477695a010affe56efdd66b60510fa612f8704c1 Mon Sep 17 00:00:00 2001
-From: zhangzujian <zhangzujian.7@gmail.com>
-Date: Fri, 23 May 2025 06:09:31 +0000
-Subject: [PATCH] northd: skip arp/nd request for lrp addresses from localnet
- ports
-
-Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
----
- northd/northd.c | 52 +++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 52 insertions(+)
-
 diff --git a/northd/northd.c b/northd/northd.c
-index 6f521f382d..e5fb3ab896 100644
+index d674518a1..ad858258d 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -9919,6 +9919,58 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
-             return;
-         }
- 
+@@ -10673,0 +10674,52 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
 +        struct ovn_port *lrp = op->peer;
 +        if (lrp && lrp->nbrp && !lrp->primary_port &&
 +            !lrp->nbrp->n_gateway_chassis && !lrp->nbrp->ha_chassis_group &&
@@ -69,6 +55,3 @@ index 6f521f382d..e5fb3ab896 100644
 +            }
 +        }
 +
-         for (size_t i = 0; i < op->n_lsp_addrs; i++) {
-             for (size_t j = 0; j < op->lsp_addrs[i].n_ipv4_addrs; j++) {
-                 ds_clear(match);
