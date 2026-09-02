@@ -482,7 +482,9 @@ func (c *OVNNbClient) listLogicalRouterPoliciesByFilter(lrName string, filter fu
 	}
 
 	policyList := make([]*ovnnb.LogicalRouterPolicy, 0, len(lr.Policies))
-	if err = c.WhereCache(predicate).List(context.Background(), &policyList); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	if err := c.WhereCache(predicate).List(ctx, &policyList); err != nil {
 		klog.Error(err)
 		return nil, err
 	}

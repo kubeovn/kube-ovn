@@ -33,7 +33,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.29.0
 	github.com/onsi/gomega v1.41.0
 	github.com/osrg/gobgp/v4 v4.7.0
-	github.com/ovn-kubernetes/libovsdb v0.8.1
+	github.com/ovn-kubernetes/libovsdb v0.8.2-0.20260710115425-adb4e0375fb5
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.8.0
 	github.com/prometheus/client_golang v1.23.2
@@ -98,7 +98,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.11 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/gaissmai/bart v0.26.1 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
@@ -118,7 +118,7 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.26.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.28.0 // indirect
+	github.com/go-playground/validator/v10 v10.30.3 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.0 // indirect
@@ -228,7 +228,7 @@ replace (
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20240218024213-d9612a263f68
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
-	github.com/ovn-kubernetes/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20251212071713-cb1c2bc5d43e
+	github.com/ovn-kubernetes/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20260902074400-457a5d8cc172
 	k8s.io/api => k8s.io/api v0.34.11
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.34.11
 	k8s.io/apimachinery => k8s.io/apimachinery v0.34.11
