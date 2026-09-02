@@ -1,8 +1,12 @@
 {{- if .Values.validatingWebhook.enabled }}
+{{- $webhookName := include "kubeovn.webhookName" . -}}
+{{- $webhookCertificateName := include "kubeovn.resourceName" (dict "context" . "suffix" "webhook-serving-cert") -}}
+{{- $webhookIssuerName := include "kubeovn.resourceName" (dict "context" . "suffix" "webhook-selfsigned-issuer") -}}
+{{- $webhookSecretName := include "kubeovn.resourceName" (dict "context" . "suffix" "webhook-secret") -}}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: kube-ovn-webhook-serving-cert
+  name: {{ $webhookCertificateName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.validatingWebhook.annotations }}
   annotations:
@@ -14,19 +18,19 @@ metadata:
   {{- end }}
 spec:
   dnsNames:
-    - kube-ovn-webhook.{{ .Values.namespace }}
-    - kube-ovn-webhook.{{ .Values.namespace }}.svc
-    - kube-ovn-webhook.{{ .Values.namespace }}.svc.{{ .Values.clusterDomain }}
+    - {{ $webhookName }}.{{ .Values.namespace }}
+    - {{ $webhookName }}.{{ .Values.namespace }}.svc
+    - {{ $webhookName }}.{{ .Values.namespace }}.svc.{{ .Values.clusterDomain }}
   issuerRef:
     kind: Issuer
-    name: kube-ovn-webhook-selfsigned-issuer
+    name: {{ $webhookIssuerName }}
     group: cert-manager.io
-  secretName: kube-ovn-webhook-secret
+  secretName: {{ $webhookSecretName }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: kube-ovn-webhook-selfsigned-issuer
+  name: {{ $webhookIssuerName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.validatingWebhook.annotations }}
   annotations:

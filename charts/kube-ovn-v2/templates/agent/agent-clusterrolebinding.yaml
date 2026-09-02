@@ -1,8 +1,12 @@
+{{- $agentName := include "kubeovn.agentName" . -}}
+{{- $agentServiceAccountName := include "kubeovn.agentServiceAccountName" . -}}
+{{- $agentClusterRoleName := include "kubeovn.agentClusterRoleName" . -}}
+{{- $agentSecretReaderRoleName := include "kubeovn.resourceName" (dict "context" . "suffix" "secret-reader-ovn-ipsec") -}}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kube-ovn-cni
+  name: {{ $agentName }}
   {{- with .Values.agent.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -12,24 +16,24 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 roleRef:
-  name: system:kube-ovn-cni
+  name: {{ $agentClusterRoleName }}
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
-    name: kube-ovn-cni
+    name: {{ $agentServiceAccountName }}
     namespace: {{ .Values.namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: kube-ovn-cni-secret-reader
+  name: {{ include "kubeovn.resourceName" (dict "context" . "suffix" "cni-secret-reader") }}
   namespace: {{ .Values.namespace }}
 subjects:
 - kind: ServiceAccount
-  name: kube-ovn-cni
+  name: {{ $agentServiceAccountName }}
   namespace: {{ .Values.namespace }}
 roleRef:
   kind: Role
-  name: secret-reader-ovn-ipsec
+  name: {{ $agentSecretReaderRoleName }}
   apiGroup: rbac.authorization.k8s.io
