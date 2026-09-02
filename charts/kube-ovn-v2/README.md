@@ -2055,8 +2055,7 @@ false
 			<td>object</td>
 			<td><pre lang="json">
 {
-  "enabled": true,
-  "versionCompatibility": "25.03"
+  "enabled": true
 }
 </pre>
 </td>
@@ -2458,15 +2457,6 @@ true
 </pre>
 </td>
 		<td>Enable post-upgrade hooks to run upgrade logic of OVS/OVN.</td>
-	</tr>
-	<tr>
-		<td>ovsOvn.upgrade.versionCompatibility</td>
-		<td>string</td>
-		<td><pre lang="json">
-"25.03"
-</pre>
-</td>
-		<td>Value propagated to ovn-central to handle OVS/OVN compatibility with Kube-OVN. This value must be updated for each new OVN version.</td>
 	</tr>
 	</tbody>
 </table>
