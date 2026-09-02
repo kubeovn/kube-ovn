@@ -18,6 +18,7 @@ type PortBinding struct {
 	HaChassisGroup             *string           `ovsdb:"ha_chassis_group"`
 	LogicalPort                string            `ovsdb:"logical_port"`
 	MAC                        []string          `ovsdb:"mac"`
+	MirrorPort                 *string           `ovsdb:"mirror_port"`
 	MirrorRules                []string          `ovsdb:"mirror_rules"`
 	NatAddresses               []string          `ovsdb:"nat_addresses"`
 	Options                    map[string]string `ovsdb:"options"`

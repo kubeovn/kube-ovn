@@ -26,6 +26,6 @@ type LogicalFlow struct {
 	Match           string              `ovsdb:"match"`
 	Pipeline        LogicalFlowPipeline `ovsdb:"pipeline" validate:"oneof='ingress' 'egress'"`
 	Priority        int                 `ovsdb:"priority" validate:"min=0,max=65535"`
-	TableID         int                 `ovsdb:"table_id" validate:"min=0,max=32"`
+	TableID         int                 `ovsdb:"table_id" validate:"min=0,max=33"`
 	Tags            map[string]string   `ovsdb:"tags"`
 }
