@@ -37,18 +37,85 @@ FROM ubuntu:26.04 AS ovs-builder
 ARG ARCH
 ARG LEGACY
 ARG DEBIAN_FRONTEND=noninteractive
+ARG SRC_DIR='/usr/src'
+
+ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
+ADD patches/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch $SRC_DIR
+ADD patches/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch $SRC_DIR
+ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
+ADD patches/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch $SRC_DIR
+ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
+ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
+ADD patches/53b9837f7fe89cd63af735b039b8c26107d6579d.patch $SRC_DIR
+ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
+ADD patches/d088c5d8c263552a31d87813991aee30ab74de.patch $SRC_DIR
+ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
+ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
+ADD patches/ovs-3.7-compat.patch $SRC_DIR
+ADD patches/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch $SRC_DIR
+ADD patches/e889d46924085ca0fe38a2847da973dfe6ea100e.patch $SRC_DIR
+ADD patches/78cade01874292e2c101c39b975290ef6c812a50.patch $SRC_DIR
+ADD patches/85aa6263ad5b3648eb7ceec90c812328dbb7c6c0.patch $SRC_DIR
+ADD patches/34dc3e3fcfacec6597293765ecd6e20fe15581f1.patch $SRC_DIR
+ADD patches/a297b840c2c9f118c7ce6133077087b5999f12dd.patch $SRC_DIR
+ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
+ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
+ADD patches/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch $SRC_DIR
+ADD patches/e5916eb53abc3b7d28c407c3c47566c46116090a.patch $SRC_DIR
+ADD patches/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch $SRC_DIR
+ADD patches/e76880e792af56b2a3836098105079f5f8f1ff26.patch $SRC_DIR
+ADD patches/477695a010affe56efdd66b60510fa612f8704c1.patch $SRC_DIR
+ADD patches/737d9f932edada5a91f315b5f382daada8dee952.patch $SRC_DIR
+ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
+ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
+ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
+ADD patches/ovn-26.03-revert-select-local-lb.patch $SRC_DIR
+ADD patches/ovn-26.03-api-adaptation.patch $SRC_DIR
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt update && apt install -y git curl
 
 RUN cd /usr/src/ && \
-    git clone -b kube-ovn-3.7 --depth=1 https://github.com/kubeovn/ovs.git && \
+    git clone -b branch-3.7 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
+    git apply --unidiff-zero $SRC_DIR/4228eab1d722087ba795e310eadc9e25c4513ec1.patch && \
+    git apply --unidiff-zero $SRC_DIR/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch && \
+    git apply --unidiff-zero $SRC_DIR/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch && \
+    git apply --unidiff-zero $SRC_DIR/f627b7721ec282f2edaf798913b1559b939687f0.patch && \
+    git apply --unidiff-zero $SRC_DIR/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch && \
+    git apply --unidiff-zero $SRC_DIR/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch && \
+    git apply --unidiff-zero $SRC_DIR/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch && \
+    git apply --unidiff-zero $SRC_DIR/53b9837f7fe89cd63af735b039b8c26107d6579d.patch && \
+    git apply --unidiff-zero $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
+    git apply --unidiff-zero $SRC_DIR/d088c5d8c263552a31d87813991aee30ab74de.patch && \
+    git apply --unidiff-zero $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
+    git apply --unidiff-zero $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch && \
+    git apply --unidiff-zero $SRC_DIR/ovs-3.7-compat.patch && \
     ovs_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?openvswitch\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovs_commit}\2\3/" configure.ac
 
-RUN cd /usr/src/ && git clone -b kube-ovn-26.03 --depth=1 https://github.com/kubeovn/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
+    git apply --unidiff-zero $SRC_DIR/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch && \
+    git apply --unidiff-zero $SRC_DIR/e889d46924085ca0fe38a2847da973dfe6ea100e.patch && \
+    git apply --unidiff-zero $SRC_DIR/78cade01874292e2c101c39b975290ef6c812a50.patch && \
+    git apply --unidiff-zero $SRC_DIR/85aa6263ad5b3648eb7ceec90c812328dbb7c6c0.patch && \
+    git apply --unidiff-zero $SRC_DIR/34dc3e3fcfacec6597293765ecd6e20fe15581f1.patch && \
+    git apply --unidiff-zero $SRC_DIR/a297b840c2c9f118c7ce6133077087b5999f12dd.patch && \
+    git apply --unidiff-zero $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
+    git apply --unidiff-zero $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
+    git apply --unidiff-zero $SRC_DIR/9286e1fd578fdb8f565a0f4aa9066b538295e1ac.patch && \
+    git apply --unidiff-zero $SRC_DIR/e5916eb53abc3b7d28c407c3c47566c46116090a.patch && \
+    git apply --unidiff-zero $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \
+    git apply --unidiff-zero $SRC_DIR/e76880e792af56b2a3836098105079f5f8f1ff26.patch && \
+    git apply --unidiff-zero $SRC_DIR/477695a010affe56efdd66b60510fa612f8704c1.patch && \
+    git apply --unidiff-zero $SRC_DIR/737d9f932edada5a91f315b5f382daada8dee952.patch && \
+    git apply --unidiff-zero $SRC_DIR/52b727b3315463668669ff423ce8bfa129861162.patch && \
+    git apply --unidiff-zero $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
+    git apply --unidiff-zero $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
+    git apply --unidiff-zero $SRC_DIR/ovn-26.03-revert-select-local-lb.patch && \
+    git apply --unidiff-zero $SRC_DIR/ovn-26.03-api-adaptation.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 
