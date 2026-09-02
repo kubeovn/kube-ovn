@@ -767,6 +767,10 @@ func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPrivate() {
 	suite.testSetLogicalSwitchPrivate()
 }
 
+func (suite *OvnClientTestSuite) Test_SetLogicalSwitchRouted() {
+	suite.testSetLogicalSwitchRouted()
+}
+
 func (suite *OvnClientTestSuite) Test_newSgRuleACL() {
 	suite.testNewSgRuleACL()
 }

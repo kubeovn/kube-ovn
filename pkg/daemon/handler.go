@@ -197,7 +197,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var gatewayCheckMode int
 	var macAddr, ip, ipAddr, cidr, gw, subnet, ingress, egress, ingressBurst, egressBurst, providerNetwork, ifName, nicType, podNicName, vmName, latency, limit, loss, jitter, u2oInterconnectionIP, oldPodName string
 	var routes []request.Route
-	var isDefaultRoute, noIPAM, macOnly bool
+	var isDefaultRoute, noIPAM, macOnly, routedSubnet bool
 	var pod *v1.Pod
 	var err error
 
@@ -257,7 +257,8 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		jitter = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.NetemQosJitterAnnotationTemplate, appendIfName)
 		providerNetwork = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.ProviderNetworkTemplate, appendIfName)
 		vmName = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.VMAnnotationTemplate, appendIfName)
-		ipAddr, noIPAM, err = util.GetIPAddrWithMaskForCNI(ip, cidr)
+		routedSubnet = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.RoutedSubnetAnnotationTemplate, appendIfName) == "true"
+		ipAddr, noIPAM, err = util.GetIPAddrWithMaskForCNIHostMask(ip, cidr, routedSubnet)
 		if err != nil {
 			errMsg := fmt.Errorf("failed to get ip address with mask, %w", err)
 			klog.Error(errMsg)
@@ -483,10 +484,28 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 		switch nicType {
 		case util.DpdkType:
+			if routedSubnet {
+				errMsg := fmt.Errorf("routed subnet mode is not supported with DPDK/vhost-user NICs for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
+				klog.Error(errMsg)
+				recordFailure("configure-nic", errMsg)
+				if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
+					klog.Errorf("failed to write response, %v", err)
+				}
+				return
+			}
+			if len(routes) > 0 {
+				errMsg := fmt.Errorf("route annotations are not supported with DPDK/vhost-user NICs for pod %s/%s", podRequest.PodNamespace, podRequest.PodName)
+				klog.Error(errMsg)
+				recordFailure("configure-nic", errMsg)
+				if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
+					klog.Errorf("failed to write response, %v", err)
+				}
+				return
+			}
 			err = csh.configureDpdkNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, ifName, macAddr, mtu, ipAddr, gw, ingress, egress, ingressBurst, egressBurst, getShortSharedDir(pod.UID, podRequest.VhostUserSocketVolumeName), podRequest.VhostUserSocketName, podRequest.VhostUserSocketConsumption)
 			routes = nil
 		default:
-			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, ingressBurst, egressBurst, podRequest.DeviceID, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet, appendIfName)
+			routes, err = csh.configureNic(podRequest.PodName, podRequest.PodNamespace, podRequest.Provider, podRequest.NetNs, podRequest.ContainerID, podRequest.VfDriver, ifName, macAddr, mtu, ipAddr, gw, isDefaultRoute, vmMigration, routes, podRequest.DNS.Nameservers, podRequest.DNS.Search, ingress, egress, ingressBurst, egressBurst, podRequest.DeviceID, latency, limit, loss, jitter, gatewayCheckMode, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet, appendIfName, routedSubnet)
 		}
 		if err != nil {
 			errMsg := fmt.Errorf("configure nic %s for pod %s/%s failed: %w", ifName, podRequest.PodName, podRequest.PodNamespace, err)
@@ -543,6 +562,16 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 
 	v4IP, v6IP := util.SplitStringIP(ip)
 	v4CIDR, v6CIDR := util.SplitStringIP(cidr)
+	if routedSubnet && ipAddr != "" {
+		// Report host masks (/32|/128) so the CNI result matches the container interface.
+		v4Addr, v6Addr := util.SplitStringIP(ipAddr)
+		if v4Addr != "" {
+			v4CIDR = v4Addr
+		}
+		if v6Addr != "" {
+			v6CIDR = v6Addr
+		}
+	}
 	v4GW, v6GW := util.SplitStringIP(gw)
 
 	var ips []request.IPConfig

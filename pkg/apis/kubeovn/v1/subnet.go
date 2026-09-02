@@ -101,6 +101,12 @@ type SubnetSpec struct {
 
 	// Whether the subnet is private.
 	Private bool `json:"private"`
+	// Routed configures pods with /32 (IPv4) or /128 (IPv6) addresses and
+	// on-link routes to the gateway. Same-subnet traffic is forced through the
+	// OVN logical router instead of direct L2. Requires an OVN logical router
+	// port (overlay, or underlay with logicalGateway / u2oInterconnection).
+	// Existing pods must be recreated after enabling or disabling this field.
+	Routed bool `json:"routed,omitempty"`
 	// Allowed subnets for east-west traffic.
 	AllowSubnets []string `json:"allowSubnets,omitempty"`
 

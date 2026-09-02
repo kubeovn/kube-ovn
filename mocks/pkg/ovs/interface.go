@@ -2327,6 +2327,20 @@ func (mr *MockACLMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSw
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
 }
 
+// SetLogicalSwitchRouted mocks base method.
+func (m *MockACL) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchRouted", lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchRouted indicates an expected call of SetLogicalSwitchRouted.
+func (mr *MockACLMockRecorder) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchRouted", reflect.TypeOf((*MockACL)(nil).SetLogicalSwitchRouted), lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+}
+
 // SetNetPolACLLog mocks base method.
 func (m *MockACL) SetNetPolACLLog(pgName string, logEnable, isIngress bool) error {
 	m.ctrl.T.Helper()
@@ -5914,6 +5928,20 @@ func (m *MockNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR
 func (mr *MockNbClientMockRecorder) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPrivate", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPrivate), lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
+}
+
+// SetLogicalSwitchRouted mocks base method.
+func (m *MockNbClient) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchRouted", lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchRouted indicates an expected call of SetLogicalSwitchRouted.
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchRouted", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchRouted), lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
 }
 
 // SetLsCtSkipDstLportIPs mocks base method.
