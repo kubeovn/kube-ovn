@@ -17,6 +17,7 @@ const (
 	MirrorTypeGre         MirrorType   = "gre"
 	MirrorTypeErspan      MirrorType   = "erspan"
 	MirrorTypeLocal       MirrorType   = "local"
+	MirrorTypeLport       MirrorType   = "lport"
 )
 
 // Mirror defines an object in Mirror table
@@ -27,5 +28,5 @@ type Mirror struct {
 	Index       int               `ovsdb:"index"`
 	Name        string            `ovsdb:"name"`
 	Sink        string            `ovsdb:"sink"`
-	Type        MirrorType        `ovsdb:"type" validate:"oneof='gre' 'erspan' 'local'"`
+	Type        MirrorType        `ovsdb:"type" validate:"oneof='gre' 'erspan' 'local' 'lport'"`
 }
