@@ -30,7 +30,6 @@ ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
 ADD patches/e5916eb53abc3b7d28c407c3c47566c46116090a.patch $SRC_DIR
 ADD patches/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch $SRC_DIR
-ADD patches/e76880e792af56b2a3836098105079f5f8f1ff26.patch $SRC_DIR
 ADD patches/477695a010affe56efdd66b60510fa612f8704c1.patch $SRC_DIR
 ADD patches/737d9f932edada5a91f315b5f382daada8dee952.patch $SRC_DIR
 ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
@@ -71,7 +70,6 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     git apply --unidiff-zero $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
     git apply --unidiff-zero $SRC_DIR/e5916eb53abc3b7d28c407c3c47566c46116090a.patch && \
     git apply --unidiff-zero $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \
-    git apply --unidiff-zero $SRC_DIR/e76880e792af56b2a3836098105079f5f8f1ff26.patch && \
     git apply --unidiff-zero $SRC_DIR/477695a010affe56efdd66b60510fa612f8704c1.patch && \
     git apply --unidiff-zero $SRC_DIR/737d9f932edada5a91f315b5f382daada8dee952.patch && \
     git apply --unidiff-zero $SRC_DIR/52b727b3315463668669ff423ce8bfa129861162.patch && \
