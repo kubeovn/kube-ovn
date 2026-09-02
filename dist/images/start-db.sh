@@ -6,7 +6,6 @@ ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 PROBE_INTERVAL=${PROBE_INTERVAL:-180000}
 OVN_NORTHD_N_THREADS=${OVN_NORTHD_N_THREADS:-1}
 OVN_NORTHD_PROBE_INTERVAL=${OVN_NORTHD_PROBE_INTERVAL:-5000}
-OVN_VERSION_COMPATIBILITY=${OVN_VERSION_COMPATIBILITY:-}
 readonly UUID_RE='[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
 DEBUG_OPT="--ovn-northd-wrapper=$DEBUG_WRAPPER --ovsdb-nb-wrapper=$DEBUG_WRAPPER --ovsdb-sb-wrapper=$DEBUG_WRAPPER"
 
@@ -236,21 +235,6 @@ function is_clustered {
       fi
     done
   return 1
-}
-
-function set_nb_version_compatibility() {
-    if [ -n "$OVN_VERSION_COMPATIBILITY" ]; then
-        if ! ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options | grep -q version_compatibility=; then
-            echo "setting ovn NB_Global option version_compatibility to ${OVN_VERSION_COMPATIBILITY}"
-            ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility="${OVN_VERSION_COMPATIBILITY}"
-            return
-        fi
-        value=$(ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS get NB_Global . options:version_compatibility | sed -e 's/^"//' -e 's/"$//')
-        echo "ovn nb global option version_compatibility is set to $value"
-        if [ "$value" != "_$OVN_VERSION_COMPATIBILITY" ]; then
-            ovn-nbctl --db=$(gen_conn_str 6641) $SSL_OPTIONS set NB_Global . options:version_compatibility=${OVN_VERSION_COMPATIBILITY}
-        fi
-    fi
 }
 
 if [[ -n "${NODE_IPS:-}" ]]; then
@@ -551,7 +535,6 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 start_sb_ovsdb -- \
                 --remote=db:Local_Config,Config,connections \
                 /etc/ovn/ovnsb_local_config.db
-            set_nb_version_compatibility
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
                 --ovn-manage-ovsdb=no --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" start_northd
             ovn-nbctl --no-leader-only set NB_Global . options:inactivity_probe=${PROBE_INTERVAL}
@@ -616,7 +599,6 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
                 -- \
                 --remote=db:Local_Config,Config,connections \
                 /etc/ovn/ovnsb_local_config.db
-            set_nb_version_compatibility
             /usr/share/ovn/scripts/ovn-ctl \
                 $ovn_ctl_args \
                 --ovn-manage-ovsdb=no \
@@ -739,7 +721,6 @@ else
                 start_sb_ovsdb -- \
                 --remote=db:Local_Config,Config,connections \
                 /etc/ovn/ovnsb_local_config.db
-            set_nb_version_compatibility
             /usr/share/ovn/scripts/ovn-ctl $ovn_ctl_args \
                 --ovn-manage-ovsdb=no --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" start_northd
         fi
