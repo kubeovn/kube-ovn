@@ -74,7 +74,7 @@ EOF
   assert_contains "$out" "--extra-flag"
 }
 
-test_upgrade_ovs_uses_explicit_ovn_nb_address() {
+test_upgrade_ovs_rolls_out_ovn_components() {
   local tmp out
   tmp="$(mktemp -d)"
   out="$tmp/args"
@@ -84,34 +84,24 @@ test_upgrade_ovs_uses_explicit_ovn_nb_address() {
   mkdir -p "$tmp/bin"
   cat > "$tmp/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$OUT"
 if [[ "$*" == *"jsonpath={.spec.updateStrategy.type}"* ]]; then
   printf 'RollingUpdate'
 fi
 EOF
-  cat > "$tmp/bin/ovn-nbctl" <<'EOF'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$OUT"
-if [[ "$*" == *"options:version_compatibility"* ]]; then
-  printf '_25.03\n'
-elif [[ "$*" == *"get NB_Global . options"* ]]; then
-  printf 'version_compatibility='
-fi
-EOF
-  chmod +x "$tmp/bin/kubectl" "$tmp/bin/ovn-nbctl"
+  chmod +x "$tmp/bin/kubectl"
 
   (
     cd "$tmp"
     PATH="$tmp/bin:$PATH" \
     OUT="$out" \
-    ENABLE_SSL=false \
-    OVN_NB_ADDR=tcp:nb.example.com:30641 \
-    OVN_VERSION_COMPATIBILITY=25.03 \
     bash ./upgrade-ovs.sh
   )
 
-  assert_contains "$out" "--db=tcp:nb.example.com:30641"
+  assert_contains "$out" "rollout status deploy ovn-central --timeout=120s"
+  assert_contains "$out" "rollout status ds/ovs-ovn"
 }
 
 test_start_controller_uses_explicit_ovn_addresses
 test_start_ic_controller_uses_explicit_ovn_addresses
-test_upgrade_ovs_uses_explicit_ovn_nb_address
+test_upgrade_ovs_rolls_out_ovn_components

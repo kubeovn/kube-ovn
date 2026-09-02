@@ -2,49 +2,9 @@
 
 set -ex
 
-OVN_DB_IPS=${OVN_DB_IPS:-}
-OVN_NB_ADDR=${OVN_NB_ADDR:-}
-ENABLE_SSL=${ENABLE_SSL:-false}
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
-OVN_VERSION_COMPATIBILITY=${OVN_VERSION_COMPATIBILITY:-}
 
 UPDATE_STRATEGY=`kubectl -n $POD_NAMESPACE get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
-
-SSL_OPTIONS=
-if [ "$ENABLE_SSL" != "false" ]; then
-    SSL_OPTIONS="-p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert"
-fi
-
-function gen_conn_str {
-  if [[ -z "${OVN_DB_IPS}" ]]; then
-    if [[ "$ENABLE_SSL" == "false" ]]; then
-      x="tcp:[${OVN_NB_SERVICE_HOST}]:${OVN_NB_SERVICE_PORT}"
-    else
-      x="ssl:[${OVN_NB_SERVICE_HOST}]:${OVN_NB_SERVICE_PORT}"
-    fi
-  else
-    t=$(echo -n "${OVN_DB_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
-    if [[ "$ENABLE_SSL" == "false" ]]; then
-      x=$(for i in ${t}; do echo -n "tcp:[$i]:$1,"; done | sed 's/,$//')
-    else
-      x=$(for i in ${t}; do echo -n "ssl:[$i]:$1,"; done | sed 's/,$//')
-    fi
-  fi
-  echo "$x"
-}
-
-nb_addr="${OVN_NB_ADDR:-$(gen_conn_str 6641)}"
-while true; do
-  if [ x`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options | grep -o 'version_compatibility='` != "x" ]; then
-    value=`ovn-nbctl --db=$nb_addr $SSL_OPTIONS get NB_Global . options:version_compatibility | sed -e 's/^"//' -e 's/"$//'`
-    echo "ovn NB_Global option version_compatibility is already set to $value"
-    if [ "$value" = "$OVN_VERSION_COMPATIBILITY" -o "$value" = "_$OVN_VERSION_COMPATIBILITY" ]; then
-      break
-    fi
-  fi
-  echo "waiting for ovn NB_Global option version_compatibility to be set..."
-  sleep 3
-done
 
 kubectl -n $POD_NAMESPACE rollout status deploy ovn-central --timeout=120s
 
@@ -76,5 +36,3 @@ if [ $UPDATE_STRATEGY = OnDelete ]; then
 else
   kubectl -n $POD_NAMESPACE rollout status ds/ovs-ovn
 fi
-
-ovn-nbctl --db=$nb_addr $SSL_OPTIONS set NB_Global . options:version_compatibility=_$OVN_VERSION_COMPATIBILITY
