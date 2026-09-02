@@ -44,7 +44,6 @@ const (
 	MaxFailCount                   = 3
 	maxDuplicateLeaderObservations = 3
 	northdDialTimeout              = 3 * time.Second
-	serverDatabaseName             = "_Server"
 )
 
 var failCount int
@@ -232,7 +231,7 @@ func isDBLeader(address, database string) (bool, error) {
 		return false, fmt.Errorf("unsupported database %s", database)
 	}
 
-	result, err := ovs.Query(dbAddr, serverDatabaseName, 1, ovsdb.Operation{
+	result, err := ovs.Query(dbAddr, serverdb.DatabaseName, 1, ovsdb.Operation{
 		Op:    ovsdb.OperationSelect,
 		Table: serverdb.DatabaseTable,
 		Where: []ovsdb.Condition{{
