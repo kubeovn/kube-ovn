@@ -150,9 +150,3 @@ index 30fe27787..51d32968e 100644
 +            for (size_t i = 0; i < vector_len(&op->od->localnet_ports); i++) {
 +                struct ovn_port *localnet_port = vector_get(
 +                    &op->od->localnet_ports, i, struct ovn_port *);
-@@ -11074,2 +11077,3 @@ build_lswitch_arp_nd_forward_for_unknown_ips(struct ovn_port *op,
--    for (size_t i = 0; i < op->od->n_localnet_ports; i++) {
--        struct ovn_port *localnet_port = op->od->localnet_ports[i];
-+    for (size_t i = 0; i < vector_len(&op->od->localnet_ports); i++) {
-+        struct ovn_port *localnet_port = vector_get(
-+            &op->od->localnet_ports, i, struct ovn_port *);

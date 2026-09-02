@@ -91,14 +91,11 @@ index 4d2fbfaa7..186438210 100644
 +
 @@ -12128,0 +12142 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
 +
-@@ -13724 +13738 @@ build_lswitch_flows_for_lb(struct ovn_lb_datapaths *lb_dps,
--                           struct hmap *ls_ports,
-+                           const struct hmap *ls_ports,
 @@ -14657,0 +14672,3 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
 +    char *redirect_name = ovn_chassis_redirect_name(op->nbrp->name);
 +    char *actions = xasprintf("outport = \"%s\"; output;", redirect_name);
 +    bool bfd_only = smap_get_bool(&op->nbrp->options, "bfd-only", false);
-@@ -14674,0 +14692,15 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+@@ -14674,0 +14692,14 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
 +        if ((op->nbrp->ha_chassis_group || op->nbrp->n_gateway_chassis) &&
 +            bfd_only) {
 +            ds_clear(&match);
@@ -113,8 +110,7 @@ index 4d2fbfaa7..186438210 100644
 +                                      &op->nbrp->header_,
 +                                      lflow_ref);
 +        }
-+>>>>>>> 9eddb71bf ([PATCH] support dedicated bfd lrp)
-@@ -14694,0 +14727,15 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+@@ -14694,0 +14727,14 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
 +        if ((op->nbrp->ha_chassis_group || op->nbrp->n_gateway_chassis) &&
 +            bfd_only) {
 +            ds_clear(&match);
@@ -129,7 +125,6 @@ index 4d2fbfaa7..186438210 100644
 +                                      &op->nbrp->header_,
 +                                      lflow_ref);
 +        }
-+>>>>>>> 9eddb71bf ([PATCH] support dedicated bfd lrp)
 @@ -14698,0 +14746,2 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
 +    free(redirect_name);
 +    free(actions);
