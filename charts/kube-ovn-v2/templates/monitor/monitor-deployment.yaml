@@ -1,8 +1,11 @@
 {{- $monitorImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.monitor.image) | fromYaml -}}
+{{- $monitorName := include "kubeovn.monitorName" . -}}
+{{- $appServiceAccountName := include "kubeovn.appServiceAccountName" . -}}
+{{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
 kind: Deployment
 apiVersion: apps/v1
 metadata:
-  name: kube-ovn-monitor
+  name: {{ $monitorName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.monitor.annotations }}
   annotations:
@@ -21,7 +24,7 @@ spec:
     type: RollingUpdate
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-monitor
+      app.kubernetes.io/name: {{ $monitorName }}
       app.kubernetes.io/part-of: kube-ovn
   template:
     metadata:
@@ -30,13 +33,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-monitor
+        app.kubernetes.io/name: {{ $monitorName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.monitor.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: kube-ovn-monitor
+        app: {{ $monitorName }}
         component: network
         type: infra
     spec:
@@ -51,10 +54,10 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app.kubernetes.io/name: kube-ovn-monitor
+                  app.kubernetes.io/name: {{ $monitorName }}
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: kube-ovn-app
+      serviceAccountName: {{ $appServiceAccountName }}
       automountServiceAccountToken: true
       hostNetwork: true
       securityContext:
@@ -143,7 +146,7 @@ spec:
               name: localtime
               readOnly: true
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: {{ $tlsSecretName }}
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
           livenessProbe:
@@ -181,10 +184,10 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
+        - name: {{ $tlsSecretName }}
           secret:
             optional: true
-            secretName: kube-ovn-tls
+            secretName: {{ $tlsSecretName }}
         - name: kube-ovn-log
           hostPath:
             path: {{ .Values.logging.directory }}/kube-ovn

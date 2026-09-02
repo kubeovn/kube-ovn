@@ -1,8 +1,11 @@
 {{- $ovsOvnImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.ovsOvn.image) | fromYaml -}}
+{{- $ovsOvnName := include "kubeovn.ovsOvnName" . -}}
+{{- $ovsServiceAccountName := include "kubeovn.ovsServiceAccountName" . -}}
+{{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: ovs-ovn
+  name: {{ $ovsOvnName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.ovsOvn.annotations }}
   annotations:
@@ -16,7 +19,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-ovs
+      app.kubernetes.io/name: {{ $ovsOvnName }}
       app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
     type: {{ include "kubeovn.ovs-ovn.updateStrategy" . }}
@@ -33,13 +36,13 @@ spec:
       {{- end }}
       labels:
         {{- include "kubeovn.labels" . | nindent 8 }}
-        app.kubernetes.io/name: kube-ovn-ovs
+        app.kubernetes.io/name: {{ $ovsOvnName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.ovsOvn.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: ovs
+        app: {{ $ovsOvnName }}
         component: network
         type: infra
     spec:
@@ -55,7 +58,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       priorityClassName: system-node-critical
-      serviceAccountName: ovn-ovs
+      serviceAccountName: {{ $ovsServiceAccountName }}
       automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
@@ -175,7 +178,7 @@ spec:
               name: localtime
               readOnly: true
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: {{ $tlsSecretName }}
             - mountPath: /var/run/containerd
               name: cruntime
               readOnly: true
@@ -228,10 +231,10 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
+        - name: {{ $tlsSecretName }}
           secret:
             optional: true
-            secretName: kube-ovn-tls
+            secretName: {{ $tlsSecretName }}
         - hostPath:
             path: /var/run/containerd
           name: cruntime

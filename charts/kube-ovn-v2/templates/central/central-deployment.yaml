@@ -1,8 +1,10 @@
 {{- $centralImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.central.image) | fromYaml -}}
+{{- $centralName := include "kubeovn.centralName" . -}}
+{{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
 kind: {{ ternary "StatefulSet" "Deployment" .Values.central.hcp.enabled }}
 apiVersion: apps/v1
 metadata:
-  name: ovn-central
+  name: {{ $centralName }}
   namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
@@ -15,7 +17,7 @@ metadata:
 spec:
   replicas: {{ include "kubeovn.centralReplicas" . }}
   {{- if .Values.central.hcp.enabled }}
-  serviceName: ovn-central
+  serviceName: {{ $centralName }}
   podManagementPolicy: Parallel
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete
@@ -30,7 +32,7 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: ovn-central
+      app.kubernetes.io/name: {{ $centralName }}
       app.kubernetes.io/part-of: kube-ovn
   template:
     metadata:
@@ -39,13 +41,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: ovn-central
+        app.kubernetes.io/name: {{ $centralName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.central.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: ovn-central
+        app: {{ $centralName }}
         component: network
         type: infra
     spec:
@@ -62,10 +64,10 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app.kubernetes.io/name: ovn-central
+                  app.kubernetes.io/name: {{ $centralName }}
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" .Values.central.hcp.enabled }}
+      serviceAccountName: {{ ternary (include "kubeovn.centralServiceAccountName" .) (include "kubeovn.ovsServiceAccountName" .) .Values.central.hcp.enabled }}
       automountServiceAccountToken: true
       hostNetwork: {{ ternary "false" "true" .Values.central.hcp.enabled }}
       securityContext:
@@ -98,7 +100,7 @@ spec:
             - mountPath: /var/log/ovn
               name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.hcp.enabled }}
       containers:
-        - name: ovn-central
+        - name: {{ $centralName }}
           image: {{ $centralImage.prefix }}{{ $centralImage.repository }}:{{ $centralImage.tag }}
           imagePullPolicy: {{ $centralImage.pullPolicy }}
           command: 
@@ -127,7 +129,7 @@ spec:
               value: "{{ ternary (include "kubeovn.centralRaftAddresses" .) (include "kubeovn.ovnDbAddresses" .) .Values.central.hcp.enabled }}"
             {{- if .Values.central.hcp.enabled }}
             - name: DB_CLUSTER_ADDR
-              value: "$(POD_NAME).ovn-central.$(POD_NAMESPACE).svc"
+              value: "$(POD_NAME).{{ $centralName }}.$(POD_NAMESPACE).svc"
             {{- end }}
             - name: POD_IP
               {{- if .Values.central.hcp.enabled }}
@@ -183,7 +185,7 @@ spec:
               readOnly: true
             {{- end }}
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: {{ $tlsSecretName }}
           readinessProbe:
             exec:
               command:
@@ -225,18 +227,18 @@ spec:
           hostPath:
             path: /etc/localtime
         {{- end }}
-        - name: kube-ovn-tls
+        - name: {{ $tlsSecretName }}
           secret:
             optional: true
-            secretName: kube-ovn-tls
+            secretName: {{ $tlsSecretName }}
   {{- if .Values.central.hcp.enabled }}
   volumeClaimTemplates:
     - metadata:
         name: ovn-data
         labels:
-          app.kubernetes.io/name: ovn-central
+          app.kubernetes.io/name: {{ $centralName }}
           app.kubernetes.io/part-of: kube-ovn
-          app: ovn-central
+          app: {{ $centralName }}
       spec:
         accessModes:
           - ReadWriteOnce

@@ -1,7 +1,9 @@
+{{- $centralName := include "kubeovn.centralName" . -}}
+{{- $serviceName := include "kubeovn.centralSBName" . -}}
 kind: Service
 apiVersion: v1
 metadata:
-  name: ovn-sb
+  name: {{ $serviceName }}
   namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
@@ -13,7 +15,7 @@ metadata:
   {{- end }}
 spec:
   ports:
-    - name: ovn-sb
+    - name: {{ $serviceName }}
       protocol: TCP
       port: 6642
       targetPort: 6642
@@ -25,7 +27,7 @@ spec:
   ipFamilyPolicy: PreferDualStack
   {{- end }}
   selector:
-    app.kubernetes.io/name: ovn-central
+    app.kubernetes.io/name: {{ $centralName }}
     app.kubernetes.io/part-of: kube-ovn
     ovn-sb-leader: "true"
   sessionAffinity: None

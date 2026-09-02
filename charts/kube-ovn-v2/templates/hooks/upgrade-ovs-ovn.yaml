@@ -1,9 +1,14 @@
 {{- if .Values.ovsOvn.upgrade.enabled -}}
+{{- $hookName := include "kubeovn.resourceName" (dict "context" . "suffix" "ovs-ovn-upgrade") -}}
+{{- $hookRoleName := include "kubeovn.resourceName" (dict "context" . "suffix" "system-ovs-ovn-upgrade") -}}
+{{- $ovsOvnName := include "kubeovn.ovsOvnName" . -}}
+{{- $centralName := include "kubeovn.centralName" . -}}
+{{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ovs-ovn-upgrade
+  name: {{ $hookName }}
   namespace: {{ .Values.namespace }}
   annotations:
     # This is what defines this resource as a hook. Without this line, the
@@ -23,7 +28,7 @@ metadata:
     "helm.sh/hook": post-upgrade
     "helm.sh/hook-weight": "2"
     "helm.sh/hook-delete-policy": hook-succeeded
-  name: system:ovs-ovn-upgrade
+  name: {{ $hookRoleName }}
 rules:
   - apiGroups:
       - apps
@@ -38,7 +43,7 @@ rules:
     resources:
       - daemonsets
     resourceNames:
-      - ovs-ovn
+      - {{ $ovsOvnName }}
     verbs:
       - get
   - apiGroups:
@@ -46,7 +51,7 @@ rules:
     resources:
       - deployments
     resourceNames:
-      - ovn-central
+      - {{ $centralName }}
     verbs:
       - get
       - list
@@ -70,7 +75,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: ovs-ovn-upgrade
+  name: {{ $hookName }}
   annotations:
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
@@ -78,18 +83,18 @@ metadata:
     "helm.sh/hook-weight": "3"
     "helm.sh/hook-delete-policy": hook-succeeded
 roleRef:
-  name: system:ovs-ovn-upgrade
+  name: {{ $hookRoleName }}
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
-    name: ovs-ovn-upgrade
+    name: {{ $hookName }}
     namespace: {{ .Values.namespace }}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Chart.Name }}-post-upgrade-hook"
+  name: {{ $hookName }}
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
@@ -136,13 +141,13 @@ spec:
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: "linux"
-      serviceAccountName: ovs-ovn-upgrade
+      serviceAccountName: {{ $hookName }}
       automountServiceAccountToken: true
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: ovs-ovn-upgrade
+        - name: {{ $hookName }}
           image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"
           env:
             - name: POD_NAMESPACE
@@ -162,13 +167,13 @@ spec:
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: {{ $tlsSecretName }}
       volumes:
         - name: kube-ovn-log
           hostPath:
             path: {{ .Values.logging.directory }}/kube-ovn
-        - name: kube-ovn-tls
+        - name: {{ $tlsSecretName }}
           secret:
             optional: true
-            secretName: kube-ovn-tls
+            secretName: {{ $tlsSecretName }}
 {{- end -}}

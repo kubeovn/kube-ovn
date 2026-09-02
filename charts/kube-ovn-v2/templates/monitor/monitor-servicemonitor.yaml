@@ -1,15 +1,16 @@
 {{- if .Values.monitor.serviceMonitor.enabled }}
+{{- $monitorName := include "kubeovn.monitorName" . -}}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: kube-ovn-monitor
+  name: {{ $monitorName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.monitor.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
-    app.kubernetes.io/name: kube-ovn-monitor
+    app.kubernetes.io/name: {{ $monitorName }}
     app.kubernetes.io/part-of: kube-ovn
     {{- with .Values.monitor.labels }}
     {{- toYaml . | nindent 4 }}
@@ -24,5 +25,5 @@ spec:
       - {{ .Values.namespace }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-monitor
+      app.kubernetes.io/name: {{ $monitorName }}
 {{- end }}
