@@ -18,6 +18,7 @@ import (
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
@@ -42,6 +43,7 @@ type OVNSbClient struct {
 type ovsDbClient struct {
 	client.Client
 	Timeout time.Duration
+	call    *compat.Client
 }
 
 const (
@@ -135,6 +137,7 @@ func NewDynamicOvnNbClient(
 	c := &OVNNbClient{
 		Client:  nbClient,
 		Timeout: time.Duration(ovnNbTimeout) * time.Second,
+		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
 	}
 	return c, models, nil
 }
@@ -204,6 +207,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	c := &OVNNbClient{
 		Client:  nbClient,
 		Timeout: time.Duration(ovnNbTimeout) * time.Second,
+		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
 	}
 	return c, nil
 }
@@ -244,6 +248,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 	c := &OVNSbClient{
 		Client:  sbClient,
 		Timeout: time.Duration(ovnSbTimeout) * time.Second,
+		call:    compat.New(sbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
 	}
 	return c, nil
 }
@@ -273,11 +278,8 @@ func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) erro
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
 	start := time.Now()
-	results, err := c.Client.Transact(ctx, operations...)
+	err := c.callLayer().Transact(context.Background(), method, operations)
 	elapsed := float64(time.Since(start) / time.Millisecond)
 
 	var dbType string
@@ -303,13 +305,14 @@ func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) erro
 		klog.Warningf("%s operations took too long: %+v in %vms", dbType, operations, elapsed)
 	}
 
-	errors, err := ovsdb.CheckOperationResults(results, operations)
-	if err != nil {
-		klog.Errorf("error occurred in transact with operations %+v with operation errors %+v: %v", operations, errors, err)
-		return err
-	}
-
 	return nil
+}
+
+func (c *ovsDbClient) callLayer() *compat.Client {
+	if c.call == nil {
+		c.call = compat.New(c.Client, c.Timeout, compat.RetryPolicy{Attempts: 2})
+	}
+	return c.call
 }
 
 // GetEntityInfo get entity info by column which is the index,
@@ -324,7 +327,7 @@ func (c *ovsDbClient) GetEntityInfo(entity any) error {
 		return errors.New("entity must be pointer")
 	}
 
-	err := c.Get(ctx, entity)
+	err := c.callLayer().Get(ctx, entity)
 	if err != nil {
 		klog.Error(err)
 		return err
