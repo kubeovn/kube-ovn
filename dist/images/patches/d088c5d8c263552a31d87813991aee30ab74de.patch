@@ -1,0 +1,12 @@
+diff --git a/lib/ovs-router.c b/lib/ovs-router.c
+index 2566386ea2..fcdc3072a3 100644
+--- a/lib/ovs-router.c
++++ b/lib/ovs-router.c
+@@ -218 +217,0 @@ ovs_router_lookup(uint32_t mark, const struct in6_addr *ip6_dst,
+-
+@@ -335,0 +335,5 @@ ovs_router_get_netdev_source_address(const struct in6_addr *ip6_dst,
++    if (!strcmp(netdev_name, "kube-ipvs0")) {
++        VLOG_DBG_RL(&rl, "skip getting source address for device kube-ipvs0");
++        return 0;
++    }
++
