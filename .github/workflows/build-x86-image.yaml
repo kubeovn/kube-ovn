@@ -684,7 +684,6 @@ jobs:
 
   acl-sampling-e2e:
     name: ACL Sampling E2E
-    if: github.event_name != 'pull_request'
     needs:
       - build-kube-ovn
     runs-on: ubuntu-24.04
