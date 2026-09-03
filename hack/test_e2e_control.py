@@ -1727,10 +1727,7 @@ class E2EControlTest(unittest.TestCase):
             "",
         ))
         self.assertGreaterEqual(workflow.count("ref: ${{ env.EXECUTION_SHA }}"), 31)
-        self.assertIn(
-            '"${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"',
-            workflow,
-        )
+        self.assertIn('git diff --name-only "$BASE_SHA...$HEAD_SHA"', workflow)
 
     def testTrustedExecutorKeepsBaselineBuildWithoutKindImageGate(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
@@ -1761,6 +1758,24 @@ class E2EControlTest(unittest.TestCase):
                 )
                 if "docker load --input kind-node-" in block:
                     self.assertIn("- prepare-kind-node-images", block)
+
+    def testTrustedDispatchDetectsBaseImageChanges(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+
+        for jobId, outputName, path in [
+            ("build-kube-ovn-base", "build-base", "dist/images/Dockerfile.base"),
+            ("build-kube-ovn-dpdk-base", "build-dpdk-base", "dist/images/Dockerfile.base-dpdk"),
+        ]:
+            with self.subTest(jobId=jobId):
+                block = blocks[jobId]
+                self.assertIn("EVENT_NAME: ${{ github.event_name }}", block)
+                self.assertIn("BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.event.pull_request.base.sha }}", block)
+                self.assertIn("HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.pull_request.head.sha }}", block)
+                self.assertIn("if [ \"$EVENT_NAME\" != 'pull_request' ] && [ \"$EVENT_NAME\" != 'workflow_dispatch' ]; then", block)
+                self.assertIn('git diff --name-only "$BASE_SHA...$HEAD_SHA"', block)
+                self.assertIn(path, block)
+                self.assertIn(f"echo {outputName}=1", block)
 
     def testTrustedDispatchIsTheOnlyPullRequestExecutionEntry(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
