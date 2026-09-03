@@ -2,19 +2,29 @@ From e4e6ea9c5f4ba080b719924e470daa8094ff38a7 Mon Sep 17 00:00:00 2001
 From: clyi <clyi@alauda.io>
 Date: Thu, 31 Jul 2025 18:19:14 +0800
 Subject: [PATCH] [PATCH] support dedicated bfd lrp
+
 ---
- controller/physical.c | 31 ++++++++++++++++++++
- controller/pinctrl.c  | 13 +++++----
- northd/northd.c       | 66 ++++++++++++++++++++++++++++++++++++-------
- 3 files changed, 95 insertions(+), 15 deletions(-)
+ controller/physical.c | 32 ++++++++++++++++++++++++++
+ controller/pinctrl.c  | 13 +++++++----
+ northd/northd.c       | 53 +++++++++++++++++++++++++++++++++++++++----
+ 3 files changed, 88 insertions(+), 10 deletions(-)
 
 diff --git a/controller/physical.c b/controller/physical.c
-index 030010c33..effc5f7c9 100644
+index 030010c33..e4e0450ef 100644
 --- a/controller/physical.c
 +++ b/controller/physical.c
-@@ -44,0 +45 @@
+@@ -42,6 +42,7 @@
+ #include "ovn-controller.h"
+ #include "lib/chassis-index.h"
+ #include "lib/mcast-group-index.h"
 +#include "lib/ovn-l7.h"
-@@ -2313,0 +2315,30 @@ consider_port_binding(const struct physical_ctx *ctx,
+ #include "lib/ovn-sb-idl.h"
+ #include "lib/ovn-util.h"
+ #include "ovn/actions.h"
+@@ -2311,6 +2312,37 @@ consider_port_binding(const struct physical_ctx *ctx,
+                         binding->header_.uuid.parts[0],
+                         &match, ofpacts_p, &binding->header_.uuid);
+
 +        if (smap_get_bool(&binding->options, "bfd-only", false)) {
 +            match_set_nw_proto(&match, IPPROTO_UDP);
 +            match_set_tp_dst(&match, htons(BFD_DEST_PORT));
@@ -45,16 +55,25 @@ index 030010c33..effc5f7c9 100644
 +                destroy_lport_addresses(&laddrs);
 +            }
 +        }
++
+         return;
+     }
+
 diff --git a/controller/pinctrl.c b/controller/pinctrl.c
 index 3b7deba48..bafe2b22f 100644
 --- a/controller/pinctrl.c
 +++ b/controller/pinctrl.c
-@@ -7956,0 +7957 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+@@ -7954,15 +7954,18 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+             continue;
+         }
+
 +        bool bfd_only = smap_get_bool(&pb->options, "bfd-only", false);
-@@ -7958 +7959 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+         const char *peer_s = smap_get(&pb->options, "peer");
 -        if (!peer_s) {
 +        if (!peer_s && !bfd_only) {
-@@ -7962,4 +7963,6 @@ bfd_monitor_run(struct ovsdb_idl_txn *ovnsb_idl_txn,
+             continue;
+         }
+
 -        const struct sbrec_port_binding *peer
 -            = lport_lookup_by_name(sbrec_port_binding_by_name, peer_s);
 -        if (!peer) {
@@ -65,47 +84,72 @@ index 3b7deba48..bafe2b22f 100644
 +            if (!peer) {
 +                continue;
 +            }
+         }
+
+         char *redirect_name = xasprintf("cr-%s", pb->logical_port);
 diff --git a/northd/northd.c b/northd/northd.c
-index 4d2fbfaa7..186438210 100644
+index 42f1a4a93..a6f7828d2 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -4099,0 +4100,5 @@ sync_pb_for_lrp(struct ovn_port *op,
+@@ -4088,6 +4088,11 @@ sync_pb_for_lrp(struct ovn_port *op,
+         smap_add(&new, "ipv6_ra_pd_list", ipv6_pd_list);
+     }
+
 +    const bool bfd_only = smap_get_bool(&op->nbrp->options, "bfd-only", false);
 +    if (bfd_only) {
 +        smap_add(&new, "bfd-only", "true");
 +    }
 +
-@@ -9140 +9145 @@ build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
+     sbrec_port_binding_set_options(op->sb, &new);
+     smap_destroy(&new);
+ }
+@@ -9148,7 +9153,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+ static void
+ build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
+                                     struct lflow_table *lflows,
 -                                    const struct hmap *lr_ports,
 +                                    const struct hmap *lr_ports OVS_UNUSED,
-@@ -11954,4 +11959,7 @@ find_policy_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
--static bool check_bfd_state(const struct nbrec_logical_router_policy *rule,
+                                     struct ds *actions,
+                                     struct ds *match)
+ {
+@@ -11916,8 +11921,9 @@ find_policy_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
+ }
+
+ static bool check_bfd_state(const struct nbrec_logical_router_policy *rule,
 -                            struct ovn_port *out_port, const char *nexthop,
--                            const struct hmap *bfd_connections,
--                            struct hmap *bfd_active_connections)
-+static bool check_bfd_state(
-+        const struct nbrec_logical_router_policy *rule,
-+        const struct hmap *lr_ports,
-+        const struct hmap *bfd_connections,
-+        struct ovn_port *out_port,
-+        const char *nexthop,
-+        struct hmap *bfd_active_connections)
-@@ -11979 +11987,5 @@ static bool check_bfd_state(const struct nbrec_logical_router_policy *rule,
++                            const struct hmap *lr_ports,
+                             const struct hmap *bfd_connections,
++                            struct ovn_port *out_port, const char *nexthop,
+                             struct hmap *bfd_active_connections)
+ {
+     struct in6_addr nexthop_v6;
+@@ -11940,7 +11946,11 @@ static bool check_bfd_state(const struct nbrec_logical_router_policy *rule,
+         }
+
+         if (strcmp(nb_bt->logical_port, out_port->key)) {
 -            continue;
 +            struct ovn_port *op = ovn_port_find(lr_ports, nb_bt->logical_port);
 +            if (!op || !op->nbrp ||
 +                !smap_get_bool(&op->nbrp->options, "bfd-only", false)) {
 +                continue;
 +            }
-@@ -12035,0 +12048 @@ build_routing_policy_flow(struct lflow_table *lflows, struct ovn_datapath *od,
-+
-@@ -12128,0 +12142 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
-+
-@@ -14657,0 +14672,3 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+         }
+
+         struct bfd_entry *bfd_e = bfd_port_lookup(bfd_connections,
+@@ -14603,6 +14613,9 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+
+     struct ds ip_list = DS_EMPTY_INITIALIZER;
+     struct ds match = DS_EMPTY_INITIALIZER;
 +    char *redirect_name = ovn_chassis_redirect_name(op->nbrp->name);
 +    char *actions = xasprintf("outport = \"%s\"; output;", redirect_name);
 +    bool bfd_only = smap_get_bool(&op->nbrp->options, "bfd-only", false);
-@@ -14674,0 +14692,14 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+
+     if (op->lrp_networks.n_ipv4_addrs) {
+         op_put_v4_networks(&ip_list, op, false);
+@@ -14620,6 +14633,20 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+                                                      op->od->nbr->copp,
+                                                      meter_groups)),
+                       WITH_HINT(&op->nbrp->header_));
 +        if ((op->nbrp->ha_chassis_group || op->nbrp->n_gateway_chassis) &&
 +            bfd_only) {
 +            ds_clear(&match);
@@ -120,7 +164,13 @@ index 4d2fbfaa7..186438210 100644
 +                                      &op->nbrp->header_,
 +                                      lflow_ref);
 +        }
-@@ -14694,0 +14727,14 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+     }
+     if (op->lrp_networks.n_ipv6_addrs) {
+         ds_clear(&ip_list);
+@@ -14640,10 +14667,26 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+                                                      op->od->nbr->copp,
+                                                      meter_groups)),
+                       WITH_HINT(&op->nbrp->header_));
 +        if ((op->nbrp->ha_chassis_group || op->nbrp->n_gateway_chassis) &&
 +            bfd_only) {
 +            ds_clear(&match);
@@ -135,11 +185,23 @@ index 4d2fbfaa7..186438210 100644
 +                                      &op->nbrp->header_,
 +                                      lflow_ref);
 +        }
-@@ -14698,0 +14746,2 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+     }
+
+     ds_destroy(&ip_list);
+     ds_destroy(&match);
 +    free(redirect_name);
 +    free(actions);
-@@ -15652,2 +15701,2 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
+ }
+
+ /* Logical router ingress Table 0: L2 Admission Control
+@@ -15597,8 +15640,8 @@ build_route_policies(struct ovn_datapath *od, const struct hmap *lr_ports,
+                                          NULL, &out_port)) {
+                     continue;
+                 }
 -                if (!check_bfd_state(rule, out_port, nexthop,
 -                                     bfd_connections,
 +                if (!check_bfd_state(rule, lr_ports, bfd_connections,
 +                                     out_port, nexthop,
+                                      bfd_active_connections)) {
+                     continue;
+                 }
