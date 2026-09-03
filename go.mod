@@ -70,8 +70,8 @@ require (
 	k8s.io/pod-security-admission v0.36.4
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.78
-	kubevirt.io/api v1.8.4
-	kubevirt.io/client-go v1.9.0
+	kubevirt.io/api v1.9.0
+	kubevirt.io/client-go v1.9.0-beta.0.0.20260902025523-eca18b785298
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/network-policy-api v0.1.8-0.20251209142732-3910463a5686
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
@@ -325,7 +325,6 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.36.4
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.36.4
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.36.4
-	kubevirt.io/client-go => github.com/kubeovn/kubevirt-client-go v0.0.0-20260427030114-71d35a2bb8b2
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.24.1
 )
 
