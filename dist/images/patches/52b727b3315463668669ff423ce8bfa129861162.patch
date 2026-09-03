@@ -6,14 +6,14 @@ Subject: [PATCH] set dl_src for packets redirected by router port
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 
 ---
- northd/northd.c | 69 +++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 69 insertions(+)
+ northd/northd.c | 71 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 71 insertions(+)
 
 diff --git a/northd/northd.c b/northd/northd.c
 index a6f7828d2..6ac1a5ae5 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -9202,6 +9202,74 @@ build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
+@@ -9202,6 +9202,76 @@ build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
      }
  }
 
@@ -25,7 +25,8 @@ index a6f7828d2..6ac1a5ae5 100644
 +                               struct ds *match)
 +{
 +    if (!op->nbsp || !op->od || !op->od->nbs ||
-+        !op->od->n_router_ports || !op->od->n_localnet_ports) {
++        vector_is_empty(&op->od->router_ports) ||
++        vector_is_empty(&op->od->localnet_ports)) {
 +        return;
 +    }
 +    if (!lsp_is_enabled(op->nbsp)) {
@@ -50,8 +51,9 @@ index a6f7828d2..6ac1a5ae5 100644
 +                  op->lsp_addrs[0].ea_s,
 +                  ovn_stage_get_table(S_SWITCH_IN_L2_LKUP));
 +
-+    for (size_t i = 0; i < op->od->n_router_ports; i++) {
-+        struct ovn_port *rp = op->od->router_ports[i];
++    for (size_t i = 0; i < vector_len(&op->od->router_ports); i++) {
++        struct ovn_port *rp = vector_get(&op->od->router_ports, i,
++                                         struct ovn_port *);
 +        if (!rp || !rp->nbsp) {
 +            continue;
 +        }
