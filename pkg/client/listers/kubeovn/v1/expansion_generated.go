@@ -121,3 +121,11 @@ type VpcEgressGatewayNamespaceListerExpansion interface{}
 // VpcNatGatewayListerExpansion allows custom methods to be added to
 // VpcNatGatewayLister.
 type VpcNatGatewayListerExpansion interface{}
+
+// VpcWireGuardListerExpansion allows custom methods to be added to
+// VpcWireGuardLister.
+type VpcWireGuardListerExpansion interface{}
+
+// VpcWireGuardPeerListerExpansion allows custom methods to be added to
+// VpcWireGuardPeerLister.
+type VpcWireGuardPeerListerExpansion interface{}

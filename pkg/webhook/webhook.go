@@ -76,6 +76,11 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	updateHooks[ovnSnat] = v.ovnSnatUpdateHook
 	createHooks[ovnDnat] = v.ovnDnatCreateHook
 	updateHooks[ovnDnat] = v.ovnDnatUpdateHook
+	createHooks[vpcWireGuardGVK] = v.VpcWireGuardCreateOrUpdateHook
+	updateHooks[vpcWireGuardGVK] = v.VpcWireGuardCreateOrUpdateHook
+	deleteHooks[vpcWireGuardGVK] = v.VpcWireGuardDeleteHook
+	createHooks[vpcWireGuardPeerGVK] = v.VpcWireGuardPeerCreateOrUpdateHook
+	updateHooks[vpcWireGuardPeerGVK] = v.VpcWireGuardPeerCreateOrUpdateHook
 	return v, nil
 }
 

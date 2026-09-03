@@ -113,6 +113,17 @@ type Controller struct {
 	vpcNatGwKeyMutex              keymutex.KeyMutex
 	vpcNatGwExecKeyMutex          keymutex.KeyMutex
 
+	vpcWireGuardLister               kubeovnlister.VpcWireGuardLister
+	vpcWireGuardSynced               cache.InformerSynced
+	addOrUpdateVpcWireGuardQueue     workqueue.TypedRateLimitingInterface[string]
+	delVpcWireGuardQueue             workqueue.TypedRateLimitingInterface[string]
+	vpcWireGuardKeyMutex             keymutex.KeyMutex
+	vpcWireGuardPeerLister           kubeovnlister.VpcWireGuardPeerLister
+	vpcWireGuardPeerSynced           cache.InformerSynced
+	addOrUpdateVpcWireGuardPeerQueue workqueue.TypedRateLimitingInterface[string]
+	delVpcWireGuardPeerQueue         workqueue.TypedRateLimitingInterface[string]
+	vpcWireGuardPeerKeyMutex         keymutex.KeyMutex
+
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
 	addOrUpdateVpcEgressGatewayQueue workqueue.TypedRateLimitingInterface[string]
@@ -455,6 +466,8 @@ func Run(ctx context.Context, config *Configuration) {
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
+	vpcWireGuardInformer := kubeovnInformerFactory.Kubeovn().V1().VpcWireGuards()
+	vpcWireGuardPeerInformer := kubeovnInformerFactory.Kubeovn().V1().VpcWireGuardPeers()
 	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
 	// BgpConf/EvpnConf informers are started lazily via StartBgpEvpnConfInformerFactory
 	// because their CRDs are optional on clusters that don't use vpc-egress-gateway BGP/EVPN.
@@ -520,6 +533,16 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
 		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
+		vpcWireGuardLister:               vpcWireGuardInformer.Lister(),
+		vpcWireGuardSynced:               vpcWireGuardInformer.Informer().HasSynced,
+		addOrUpdateVpcWireGuardQueue:     newTypedRateLimitingQueue("AddOrUpdateVpcWireGuard", custCrdRateLimiter),
+		delVpcWireGuardQueue:             newTypedRateLimitingQueue("DeleteVpcWireGuard", custCrdRateLimiter),
+		vpcWireGuardKeyMutex:             keymutex.NewHashed(numKeyLocks),
+		vpcWireGuardPeerLister:           vpcWireGuardPeerInformer.Lister(),
+		vpcWireGuardPeerSynced:           vpcWireGuardPeerInformer.Informer().HasSynced,
+		addOrUpdateVpcWireGuardPeerQueue: newTypedRateLimitingQueue("AddOrUpdateVpcWireGuardPeer", custCrdRateLimiter),
+		delVpcWireGuardPeerQueue:         newTypedRateLimitingQueue("DeleteVpcWireGuardPeer", custCrdRateLimiter),
+		vpcWireGuardPeerKeyMutex:         keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
@@ -849,6 +872,7 @@ func Run(ctx context.Context, config *Configuration) {
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
 		controller.vpcNatGatewaySynced, controller.vpcEgressGatewaySynced,
+		controller.vpcWireGuardSynced, controller.vpcWireGuardPeerSynced,
 		controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
@@ -945,6 +969,22 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vpc nat gateway event handler")
+	}
+
+	if _, err = vpcWireGuardInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpcWireGuard,
+		UpdateFunc: controller.enqueueUpdateVpcWireGuard,
+		DeleteFunc: controller.enqueueDeleteVpcWireGuard,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc wireguard event handler")
+	}
+
+	if _, err = vpcWireGuardPeerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpcWireGuardPeer,
+		UpdateFunc: controller.enqueueUpdateVpcWireGuardPeer,
+		DeleteFunc: controller.enqueueDeleteVpcWireGuardPeer,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc wireguard peer event handler")
 	}
 
 	if _, err = vpcEgressGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1329,6 +1369,11 @@ func (c *Controller) shutdown() {
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
 
+	c.addOrUpdateVpcWireGuardQueue.ShutDown()
+	c.delVpcWireGuardQueue.ShutDown()
+	c.addOrUpdateVpcWireGuardPeerQueue.ShutDown()
+	c.delVpcWireGuardPeerQueue.ShutDown()
+
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
 
@@ -1454,6 +1499,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("add/update vpc nat gateway", c.addOrUpdateVpcNatGatewayQueue, c.handleAddOrUpdateVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("init vpc nat gateway", c.initVpcNatGatewayQueue, c.handleInitVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc nat gateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw), time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update vpc wireguard", c.addOrUpdateVpcWireGuardQueue, c.handleAddOrUpdateVpcWireGuard), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete vpc wireguard", c.delVpcWireGuardQueue, c.handleDelVpcWireGuard), time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update vpc wireguard peer", c.addOrUpdateVpcWireGuardPeerQueue, c.handleAddOrUpdateVpcWireGuardPeer), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete vpc wireguard peer", c.delVpcWireGuardPeerQueue, c.handleDelVpcWireGuardPeer), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update vpc egress gateway", c.addOrUpdateVpcEgressGatewayQueue, c.handleAddOrUpdateVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc egress gateway", c.delVpcEgressGatewayQueue, c.handleDelVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())

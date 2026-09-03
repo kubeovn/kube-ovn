@@ -103,6 +103,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcEgressGateways().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("vpc-nat-gateways"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcNatGateways().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("vpc-wireguards"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcWireGuards().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("vpc-wireguard-peers"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().VpcWireGuardPeers().Informer()}, nil
 
 	}
 

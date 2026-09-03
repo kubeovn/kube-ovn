@@ -10,8 +10,9 @@ RUN set -ex \
     nftables \
     iputils \
     tcpdump \
-    conntrack-tools
+    conntrack-tools \
+    wireguard-tools
 
 WORKDIR /kube-ovn
-COPY nat-gateway.sh /kube-ovn/
-COPY lb-svc.sh /kube-ovn/
+COPY nat-gateway.sh lb-svc.sh wireguard.sh /kube-ovn/
+RUN chmod +x /kube-ovn/nat-gateway.sh /kube-ovn/lb-svc.sh /kube-ovn/wireguard.sh

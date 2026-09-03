@@ -254,6 +254,20 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.VpcSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("VpcStatus"):
 		return &kubeovnv1.VpcStatusApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcWireGuard"):
+		return &kubeovnv1.VpcWireGuardApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcWireGuardExposure"):
+		return &kubeovnv1.VpcWireGuardExposureApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcWireGuardPeer"):
+		return &kubeovnv1.VpcWireGuardPeerApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcWireGuardPeerSpec"):
+		return &kubeovnv1.VpcWireGuardPeerSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcWireGuardPeerStatus"):
+		return &kubeovnv1.VpcWireGuardPeerStatusApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcWireGuardSpec"):
+		return &kubeovnv1.VpcWireGuardSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("VpcWireGuardStatus"):
+		return &kubeovnv1.VpcWireGuardStatusApplyConfiguration{}
 
 	}
 	return nil

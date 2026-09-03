@@ -156,6 +156,8 @@ webhooks:
         - vpcs
         - vips
         - vpc-nat-gateways
+        - vpc-wireguards
+        - vpc-wireguard-peers
         - iptables-eips
         - iptables-dnat-rules
         - iptables-snat-rules

@@ -74,6 +74,10 @@ type Interface interface {
 	VpcEgressGateways() VpcEgressGatewayInformer
 	// VpcNatGateways returns a VpcNatGatewayInformer.
 	VpcNatGateways() VpcNatGatewayInformer
+	// VpcWireGuards returns a VpcWireGuardInformer.
+	VpcWireGuards() VpcWireGuardInformer
+	// VpcWireGuardPeers returns a VpcWireGuardPeerInformer.
+	VpcWireGuardPeers() VpcWireGuardPeerInformer
 }
 
 type version struct {
@@ -210,4 +214,14 @@ func (v *version) VpcEgressGateways() VpcEgressGatewayInformer {
 // VpcNatGateways returns a VpcNatGatewayInformer.
 func (v *version) VpcNatGateways() VpcNatGatewayInformer {
 	return &vpcNatGatewayInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VpcWireGuards returns a VpcWireGuardInformer.
+func (v *version) VpcWireGuards() VpcWireGuardInformer {
+	return &vpcWireGuardInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// VpcWireGuardPeers returns a VpcWireGuardPeerInformer.
+func (v *version) VpcWireGuardPeers() VpcWireGuardPeerInformer {
+	return &vpcWireGuardPeerInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }
