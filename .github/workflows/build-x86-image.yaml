@@ -486,8 +486,12 @@ jobs:
           fetch-depth: 0
 
       - id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.pull_request.head.sha }}
         run: |
-          if [ ${{ github.event_name }} != 'pull_request' ]; then
+          if [ "$EVENT_NAME" != 'pull_request' ] && [ "$EVENT_NAME" != 'workflow_dispatch' ]; then
             exit
           fi
           tmp_dir=`mktemp -d`
@@ -498,7 +502,7 @@ jobs:
           dist/images/go-deps/download-go-deps.sh
           dist/images/go-deps/rebuild-go-deps.sh
           EOF
-          if git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" | grep -Ff "$tmp_dir/on_changes.txt"; then
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
           rm -frv "$tmp_dir"
@@ -557,8 +561,12 @@ jobs:
           fetch-depth: 0
 
       - id: check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.pull_request.head.sha }}
         run: |
-          if [ ${{ github.event_name }} != 'pull_request' ]; then
+          if [ "$EVENT_NAME" != 'pull_request' ] && [ "$EVENT_NAME" != 'workflow_dispatch' ]; then
             exit
           fi
           tmp_dir=`mktemp -d`
@@ -566,7 +574,7 @@ jobs:
           dist/images/Dockerfile.base-dpdk
           dist/images/patches/
           EOF
-          if git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" | grep -Ff "$tmp_dir/on_changes.txt"; then
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
           rm -frv "$tmp_dir"
