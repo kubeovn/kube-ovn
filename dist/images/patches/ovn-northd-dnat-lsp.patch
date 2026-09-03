@@ -1,33 +1,49 @@
-From a297b840c2c9f118c7ce6133077087b5999f12dd Mon Sep 17 00:00:00 2001
+From 162235bbf94e084cea4109670d8f8723c658bde6 Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
-Date: Thu, 10 Apr 2025 01:31:33 +0000
-Subject: [PATCH] direct output to lsp for dnat packets in logical switch
- ingress pipelines
+Date: Thu, 3 Sep 2026 10:59:29 +0000
+Subject: [PATCH] northd: direct DNAT output to logical switch ports
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+
 ---
+ northd/en-global-config.c |  5 ++++
+ northd/northd.c           | 57 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 62 insertions(+)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index af66832e4..0878ea391 100644
+index 804396500..98bee3830 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -742,0 +743,5 @@ check_nb_options_out_of_sync(
+@@ -739,6 +739,11 @@ check_nb_options_out_of_sync(
+         return true;
+     }
+ 
 +    if (config_out_of_sync(&nb->options, &config_data->nb_options,
 +                           "ls_dnat_mod_dl_dst", false)) {
 +        return true;
 +    }
 +
+     return false;
+ }
+ 
 diff --git a/northd/northd.c b/northd/northd.c
-index b16198bac..e36777420 100644
+index 9f1ee8397..79f03c7c5 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -113,0 +114,3 @@ static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6
-+static bool ls_ct_skip_dst_lport_ips = false;
-+
+@@ -113,6 +113,8 @@ static struct sset skip_conntrack_dst_cidrs_v6 = SSET_INITIALIZER(&skip_conntrac
+ 
+ static bool ls_ct_skip_dst_lport_ips = false;
+ 
 +static bool ls_dnat_mod_dl_dst = false;
-@@ -8984 +8987,52 @@ static void
--build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
 +
+ #define MAX_OVN_TAGS 4096
+ 
+ #define MAX_OVN_NF_GROUP_IDS 256
+@@ -9141,6 +9143,58 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+     }
+ }
+ 
++static void
 +build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
 +                                    struct lflow_table *lflows,
 +                                    const struct hmap *lr_ports,
@@ -37,19 +53,22 @@ index b16198bac..e36777420 100644
 +    if (!ls_dnat_mod_dl_dst) {
 +        return;
 +    }
-+    if (!op->nbsp || !op->od || !op->od->nbs || op->od->n_router_ports) {
++    if (!op->nbsp || !op->od || !op->od->nbs ||
++        !vector_is_empty(&op->od->router_ports)) {
 +        return;
 +    }
 +    if (!strcmp(op->nbsp->type, "virtual") ||
 +        !strcmp(op->nbsp->type, "localport")) {
 +        return;
 +    }
-+    if (lsp_is_external(op->nbsp) || lsp_is_router(op->nbsp) || op->has_unknown) {
++    if (lsp_is_external(op->nbsp) || lsp_is_router(op->nbsp) ||
++        op->has_unknown) {
 +        return;
 +    }
 +
 +    if (op->n_lsp_addrs != 1 || !strlen(op->lsp_addrs[0].ea_s) ||
-+        (!op->lsp_addrs[0].n_ipv4_addrs && !op->lsp_addrs[0].n_ipv6_addrs)) {
++        (!op->lsp_addrs[0].n_ipv4_addrs &&
++         !op->lsp_addrs[0].n_ipv6_addrs)) {
 +        return;
 +    }
 +
@@ -60,7 +79,7 @@ index b16198bac..e36777420 100644
 +    for (size_t i = 0; i < op->lsp_addrs[0].n_ipv4_addrs; i++) {
 +        ds_clear(match);
 +        ds_put_format(match, REGBIT_CONNTRACK_NAT" != 0 && ip4.dst == %s",
-+                      op->lsp_addrs[0].ipv4_addrs[i].addr_s);
++                       op->lsp_addrs[0].ipv4_addrs[i].addr_s);
 +        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
 +                                ds_cstr(match), ds_cstr(actions),
 +                                &op->nbsp->header_, op->lflow_ref);
@@ -69,22 +88,32 @@ index b16198bac..e36777420 100644
 +    for (size_t i = 0; i < op->lsp_addrs[0].n_ipv6_addrs; i++) {
 +        ds_clear(match);
 +        ds_put_format(match, REGBIT_CONNTRACK_NAT" != 0 && ip6.dst == %s",
-+                        op->lsp_addrs[0].ipv6_addrs[i].addr_s);
++                       op->lsp_addrs[0].ipv6_addrs[i].addr_s);
 +        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
 +                                ds_cstr(match), ds_cstr(actions),
 +                                &op->nbsp->header_, op->lflow_ref);
 +    }
 +}
 +
-+static void
-+build_stateful(struct ovn_datapath *od,
-+               struct lflow_table *lflows,
-@@ -19562,0 +19617 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
+ static void
+ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
+                struct lflow_ref *lflow_ref)
+@@ -19664,6 +19718,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
+     build_lswitch_from_localnet_op(op, lflows, match);
+     build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
+                                              meter_groups, actions, match);
 +    build_lswitch_dnat_mod_dl_dst_rules(op, lflows, lr_ports, actions, match);
-@@ -21094,0 +21150,6 @@ ovnnb_db_run(struct northd_input *input_data,
-+    ls_ct_skip_dst_lport_ips = smap_get_bool(input_data->nb_options,
-+                                             "ls_ct_skip_dst_lport_ips",
-+                                             false);
+     build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
+     build_lswitch_external_port(op, lflows);
+     build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
+@@ -21243,6 +21298,8 @@ ovnnb_db_run(struct northd_input *input_data,
+     ls_ct_skip_dst_lport_ips = smap_get_bool(input_data->nb_options,
+                                              "ls_ct_skip_dst_lport_ips",
+                                              false);
 +    ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,
 +                                       "ls_dnat_mod_dl_dst", false);
-+
+ 
+     /* deprecated, use --event instead */
+     controller_event_en = smap_get_bool(input_data->nb_options,
+-- 
+2.55.0
