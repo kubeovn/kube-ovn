@@ -152,7 +152,8 @@ kubevirt-tcpdump(){
   namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
   vmName=$(echo "$namespacedPod" | cut -d "/" -f2)
   if [ "$vmName" = "$namespacedPod" ]; then
-    namespace="default"
+    namespace=$(kubectl config view --minify -o jsonpath='{..namespace}')
+    namespace=${namespace:-default}
   fi
 
   podName=$(kubectl get pod -l vm.kubevirt.io/name="$vmName" -o jsonpath='{.items[*].metadata.name}')
@@ -199,7 +200,8 @@ tcpdump(){
   namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
   podName=$(echo "$namespacedPod" | cut -d "/" -f2)
   if [ "$podName" = "$namespacedPod" ]; then
-    namespace="default"
+    namespace=$(kubectl config view --minify -o jsonpath='{..namespace}')
+    namespace=${namespace:-default}
   fi
 
   nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
