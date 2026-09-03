@@ -1806,7 +1806,13 @@ class E2EControlTest(unittest.TestCase):
             "matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}",
             blocks["kube-ovn-conformance-e2e"],
         )
-        self.assertIn("if: steps.lookup-go-cache.outputs.cache-hit != 'true' && github.event_name == 'push'", workflow)
+        normalizedWorkflow = " ".join(workflow.split())
+        self.assertIn(
+            "if: >- steps.lookup-go-cache.outputs.cache-hit != 'true' && "
+            "(github.event_name == 'push' || "
+            "(github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'))",
+            normalizedWorkflow,
+        )
         self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)
         self.assertIn("--request-full", workflow)
         self.assertNotIn("args+=(--label e2e:full)", workflow)
