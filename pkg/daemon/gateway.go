@@ -42,7 +42,6 @@ func (c *Controller) runGateway() {
 			klog.Errorf("gateway reconciliation stage %s failed: %v", stage.name, err)
 		}
 	}
-
 }
 
 func (c *Controller) setGatewayBandwidth() error {
