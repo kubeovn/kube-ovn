@@ -22,7 +22,7 @@ import (
 // overrideDiscovery overrides ServerResourcesForGroupVersion of an embedded
 // discovery client to simulate API discovery failures or custom API surfaces.
 type overrideDiscovery struct {
-	discovery.DiscoveryInterface
+	discovery.DiscoveryInterfaces
 	resources map[string]*metav1.APIResourceList
 	err       error
 }
@@ -34,16 +34,16 @@ func (d *overrideDiscovery) ServerResourcesForGroupVersion(groupVersion string) 
 	if list, ok := d.resources[groupVersion]; ok {
 		return list, nil
 	}
-	return d.DiscoveryInterface.ServerResourcesForGroupVersion(groupVersion)
+	return d.DiscoveryInterfaces.ServerResourcesForGroupVersion(groupVersion)
 }
 
 // overrideKubeClient returns a discovery client different from the embedded one.
 type overrideKubeClient struct {
 	kubernetes.Interface
-	discovery discovery.DiscoveryInterface
+	discovery discovery.DiscoveryInterfaces
 }
 
-func (c *overrideKubeClient) Discovery() discovery.DiscoveryInterface {
+func (c *overrideKubeClient) Discovery() discovery.DiscoveryInterfaces {
 	return c.discovery
 }
 
