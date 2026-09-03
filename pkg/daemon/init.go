@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
@@ -50,24 +51,53 @@ func InitOVSBridges() (map[string]string, error) {
 	return mappings, nil
 }
 
+var (
+	configureNodeGateway         = configureNodeNic
+	nodeGatewayInitRetryInterval = 3 * time.Second
+)
+
 // InitNodeGateway init ovn0
-func InitNodeGateway(config *Configuration) error {
+func InitNodeGateway(config *Configuration) (err error) {
 	var portName, ip, joinCIDR, macAddr, gw, ipAddr string
+	var node *corev1.Node
+	annotationFailures := make(map[nodeFailureKey]struct{})
+	defer func() {
+		if err != nil {
+			if eventErr := recordNodeFailureEventSync(config.KubeClient, node, config.NodeName, addNodeFailedReason, "initializeOvn0", err); eventErr != nil {
+				klog.Errorf("failed to record node %s initialization event: %v", config.NodeName, eventErr)
+			}
+		}
+	}()
 	for {
 		nodeName := config.NodeName
-		node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+		node, err = config.KubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 		if err != nil {
 			klog.Errorf("failed to get node %s info %v", nodeName, err)
 			return err
 		}
+		var annotationErr error
 		if node.Annotations[util.IPAddressAnnotation] == "" {
-			klog.Warningf("no %s address for node %s, please check kube-ovn-controller logs", util.NodeNic, nodeName)
-			time.Sleep(3 * time.Second)
-			continue
+			annotationErr = fmt.Errorf("no %s address for node %s, please check kube-ovn-controller logs", util.NodeNic, nodeName)
+		} else {
+			annotationErr = util.ValidatePodNetwork(node.Annotations)
 		}
-		if err := util.ValidatePodNetwork(node.Annotations); err != nil {
-			klog.Errorf("validate node %s address annotation failed, %v", nodeName, err)
-			time.Sleep(3 * time.Second)
+		if annotationErr != nil {
+			klog.Errorf("validate node %s address annotation failed, %v", nodeName, annotationErr)
+			for existingKey := range annotationFailures {
+				if existingKey.nodeName == node.Name && existingKey.nodeUID != node.UID {
+					delete(annotationFailures, existingKey)
+				}
+			}
+			failureKey := nodeFailureKey{nodeName: node.Name, nodeUID: node.UID, reason: addNodeFailedReason, stage: "validateOvn0Annotations", message: annotationErr.Error()}
+			if _, seen := annotationFailures[failureKey]; !seen {
+				if eventErr := recordNodeFailureEventSync(config.KubeClient, node, config.NodeName, addNodeFailedReason, "validateOvn0Annotations", annotationErr); eventErr != nil {
+					klog.Errorf("failed to record node %s annotation validation event: %v", config.NodeName, eventErr)
+				} else {
+					trimNodeFailureSignatures(annotationFailures, failureKey)
+					annotationFailures[failureKey] = struct{}{}
+				}
+			}
+			time.Sleep(nodeGatewayInitRetryInterval)
 			continue
 		}
 		macAddr = node.Annotations[util.MacAddressAnnotation]
@@ -79,7 +109,7 @@ func InitNodeGateway(config *Configuration) error {
 	}
 	mac, err := net.ParseMAC(macAddr)
 	if err != nil {
-		return fmt.Errorf("failed to parse mac %s %w", mac, err)
+		return fmt.Errorf("failed to parse mac %s: %w", macAddr, err)
 	}
 
 	ipAddr, err = util.GetIPAddrWithMask(ip, joinCIDR)
@@ -87,7 +117,7 @@ func InitNodeGateway(config *Configuration) error {
 		klog.Errorf("failed to get ip %s with mask %s, %v", ip, joinCIDR, err)
 		return err
 	}
-	return configureNodeNic(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI)
+	return configureNodeGateway(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI)
 }
 
 func InitMirror(config *Configuration) error {

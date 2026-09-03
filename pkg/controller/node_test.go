@@ -12,6 +12,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovs "github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -190,6 +192,79 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandleAddNodeRecordsFailureEvent(t *testing.T) {
+	t.Parallel()
+
+	node := &corev1.Node{Name: "node-1"}
+	joinSubnet := &kubeovnv1.Subnet{
+		Name: "join",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.1/32",
+			Gateway:   "10.0.0.1",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes:   []*corev1.Node{node},
+		Subnets: []*kubeovnv1.Subnet{joinSubnet},
+	})
+	require.NoError(t, err)
+	fc.fakeController.nodeKeyMutex = keymutex.NewHashed(0)
+	require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(
+		joinSubnet.Name,
+		joinSubnet.Spec.CIDRBlock,
+		joinSubnet.Spec.Gateway,
+		[]string{joinSubnet.Spec.Gateway},
+	))
+
+	err = fc.fakeController.handleAddNode(node.Name)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "NoAvailableAddress")
+	require.Equal(t, "Warning AddNodeFailed "+err.Error(), requireRecorderEvent(t, fc.fakeController.recorder.(*record.FakeRecorder)))
+}
+
+func TestHandleUpdateNodeRecordsFailureEvent(t *testing.T) {
+	t.Parallel()
+
+	node := &corev1.Node{
+		Name: "node-1",
+		Annotations: map[string]string{
+			util.ChassisAnnotation: "chassis-1",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{node},
+	})
+	require.NoError(t, err)
+	fc.fakeController.nodeKeyMutex = keymutex.NewHashed(0)
+	failure := errors.New("get chassis failed")
+	fc.mockOvnSbClient.EXPECT().GetChassis("chassis-1", true).Return(nil, failure)
+
+	err = fc.fakeController.handleUpdateNode(node.Name)
+
+	require.ErrorIs(t, err, failure)
+	require.Equal(t, "Warning UpdateNodeFailed "+failure.Error(), requireRecorderEvent(t, fc.fakeController.recorder.(*record.FakeRecorder)))
+}
+
+func TestHandleDeleteNodeRecordsFailureEvent(t *testing.T) {
+	t.Parallel()
+
+	node := &corev1.Node{Name: "node-1", UID: "node-uid"}
+	fc := newFakeController(t)
+	fc.fakeController.nodeKeyMutex = keymutex.NewHashed(0)
+	fc.fakeController.deletingNodeObjMap = xsync.NewMap[string, *corev1.Node]()
+	fc.fakeController.deletingNodeObjMap.Store(node.Name, node)
+	failure := errors.New("delete logical switch port failed")
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(util.NodeLspName(node.Name)).Return(failure)
+
+	err := fc.fakeController.handleDeleteNode(node.Name)
+
+	require.ErrorIs(t, err, failure)
+	require.Equal(t, "Warning DeleteNodeFailed "+failure.Error(), requireRecorderEvent(t, fc.fakeController.recorder.(*record.FakeRecorder)))
+	_, retained := fc.fakeController.deletingNodeObjMap.Load(node.Name)
+	require.True(t, retained, "deleting node must remain queued for retry")
 }
 
 func newBFDPortVpc(name string, selector map[string]string) *kubeovnv1.Vpc {
