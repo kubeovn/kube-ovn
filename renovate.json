@@ -83,6 +83,13 @@
     },
     {
       "matchPackageNames": [
+        "kubevirt.io/api"
+      ],
+      "enabled": false,
+      "description": "Keep kubevirt.io/api compatible with the Kubernetes 1.36 client-go fork"
+    },
+    {
+      "matchPackageNames": [
         "sigs.k8s.io/network-policy-api"
       ],
       "enabled": false
