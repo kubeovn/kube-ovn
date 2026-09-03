@@ -4,7 +4,6 @@ import (
 	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -29,11 +28,11 @@ func (c *Controller) recordResourceError(object runtime.Object, reason string, e
 }
 
 func (c *Controller) recordSubnetKeyError(name, reason string, err error) error {
-	subnet := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	subnet := &kubeovnv1.Subnet{Name: name}
 	return c.recordResourceError(subnet, reason, err)
 }
 
 func (c *Controller) recordIPPoolKeyError(name, reason string, err error) error {
-	ippool := &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	ippool := &kubeovnv1.IPPool{Name: name}
 	return c.recordResourceError(ippool, reason, err)
 }

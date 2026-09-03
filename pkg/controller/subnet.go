@@ -765,7 +765,7 @@ func (c *Controller) finishOvnSubnetReconcile(subnet *kubeovnv1.Subnet, vpc *kub
 		return c.recordResourceError(subnet, "UpdateNatOutgoingPolicyStatusFailed", err)
 	}
 
-	if err = c.reconcileSubnetBaseACLs(subnet, vpc.Status.Router); err != nil {
+	if err := c.reconcileSubnetBaseACLs(subnet, vpc.Status.Router); err != nil {
 		return err
 	}
 
@@ -817,7 +817,7 @@ func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router st
 			klog.Error(lrpErr)
 			if patchErr := c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchFailed", lrpErr.Error()); patchErr != nil {
 				klog.Error(patchErr)
-				return errors.Join(lrpErr, patchErr)
+				return errors.Join(lrpErr, c.recordResourceError(subnet, "UpdateStatusFailed", patchErr))
 			}
 			return lrpErr
 		}
@@ -825,31 +825,40 @@ func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router st
 			klog.Error(routedErr)
 			if patchErr := c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchFailed", routedErr.Error()); patchErr != nil {
 				klog.Error(patchErr)
-				return errors.Join(routedErr, patchErr)
+				return errors.Join(routedErr, c.recordResourceError(subnet, "UpdateStatusFailed", patchErr))
 			}
 			return routedErr
 		}
-		return c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchSuccess", "")
+		if err := c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchSuccess", ""); err != nil {
+			return c.recordResourceError(subnet, "UpdateStatusFailed", err)
+		}
+		return nil
 	case subnet.Spec.Private:
 		if privErr := c.OVNNbClient.SetLogicalSwitchPrivate(subnet.Name, subnet.Spec.CIDRBlock, c.config.NodeSwitchCIDR, subnet.Spec.AllowSubnets); privErr != nil {
 			klog.Error(privErr)
 			if patchErr := c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchFailed", privErr.Error()); patchErr != nil {
 				klog.Error(patchErr)
-				return errors.Join(privErr, patchErr)
+				return errors.Join(privErr, c.recordResourceError(subnet, "UpdateStatusFailed", patchErr))
 			}
 			return privErr
 		}
-		return c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", "")
+		if err := c.patchSubnetStatus(subnet, "SetPrivateLogicalSwitchSuccess", ""); err != nil {
+			return c.recordResourceError(subnet, "UpdateStatusFailed", err)
+		}
+		return nil
 	default:
 		if aclErr := c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); aclErr != nil {
 			klog.Error(aclErr)
 			if patchErr := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", aclErr.Error()); patchErr != nil {
 				klog.Error(patchErr)
-				return errors.Join(aclErr, patchErr)
+				return errors.Join(aclErr, c.recordResourceError(subnet, "UpdateStatusFailed", patchErr))
 			}
 			return aclErr
 		}
-		return c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", "")
+		if err := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclSuccess", ""); err != nil {
+			return c.recordResourceError(subnet, "UpdateStatusFailed", err)
+		}
+		return nil
 	}
 }
 
@@ -1404,7 +1413,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 		subnet.Status.ActivateGateway = ""
 		if err := c.patchSubnetStatus(subnet, "ChangeToDistributedGw", ""); err != nil {
 			klog.Error(err)
-			return err
+			return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 		}
 	}
 
@@ -1573,7 +1582,7 @@ func (c *Controller) reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet *
 	subnet.Status.ActivateGateway = newActivateNode
 	if err := c.patchSubnetStatus(subnet, "ReconcileCentralizedGatewaySuccess", ""); err != nil {
 		klog.Error(err)
-		return err
+		return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 	}
 
 	klog.Infof("delete old distributed policy route for subnet %s", subnet.Name)
@@ -1730,7 +1739,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 				subnet.Status.NotReady("NoReadyGateway", "")
 				if err := c.patchSubnetStatus(subnet, "NoReadyGateway", ""); err != nil {
 					klog.Error(err)
-					return err
+					return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 				}
 				err := fmt.Errorf("subnet %s Spec.GatewayNode or Spec.GatewayNodeSelectors must be specified for centralized gateway type", subnet.Name)
 				klog.Error(err)

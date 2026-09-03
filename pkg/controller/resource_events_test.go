@@ -31,7 +31,7 @@ func (r *objectCapturingRecorder) Eventf(object runtime.Object, eventType, reaso
 func TestRecordResourceError(t *testing.T) {
 	recorder := record.NewFakeRecorder(1)
 	c := &Controller{recorder: recorder}
-	object := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}}
+	object := &kubeovnv1.Subnet{Name: "subnet-a"}
 	sourceErr := errors.New("boom")
 
 	err := c.recordResourceError(object, "ReconcileSubnetFailed", sourceErr)
@@ -58,8 +58,8 @@ func TestResourceEventHelpersAllowMissingRecorderAndObject(t *testing.T) {
 
 func TestHandleAddOrUpdateSubnetRecordsFormatFailure(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "invalid-subnet"},
-		Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "invalid"},
+		Name: "invalid-subnet",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "invalid"},
 	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
 	require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestHandleAddOrUpdateSubnetRecordsFormatFailure(t *testing.T) {
 
 func TestHandleAddOrUpdateSubnetRecordsStatusCalculationFailure(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"},
+		Name: "subnet-a",
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:       util.DefaultVpc,
 			CIDRBlock: "10.16.0.0/24",
@@ -94,11 +94,9 @@ func TestHandleAddOrUpdateSubnetRecordsStatusCalculationFailure(t *testing.T) {
 
 func TestHandleAddOrUpdateIPPoolRecordsStatusPatchFailure(t *testing.T) {
 	ippool := &kubeovnv1.IPPool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       "pool-a",
-			Finalizers: []string{util.KubeOVNControllerFinalizer},
-		},
-		Spec: kubeovnv1.IPPoolSpec{Subnet: "subnet-a"},
+		Name:       "pool-a",
+		Finalizers: []string{util.KubeOVNControllerFinalizer},
+		Spec:       kubeovnv1.IPPoolSpec{Subnet: "subnet-a"},
 	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPPools: []*kubeovnv1.IPPool{ippool}})
 	require.NoError(t, err)
@@ -125,7 +123,7 @@ func TestHandleAddOrUpdateIPPoolRecordsStatusPatchFailure(t *testing.T) {
 
 func TestHandleAddOrUpdateSubnetDoesNotRecordSuccessWhenStatusPatchFails(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"},
+		Name: "subnet-a",
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:       util.DefaultVpc,
 			CIDRBlock: "10.16.0.0/24",
@@ -157,7 +155,7 @@ func TestHandleAddOrUpdateSubnetDoesNotRecordSuccessWhenStatusPatchFails(t *test
 
 func TestHandleAddOrUpdateSubnetRecordsFinalizerPatchFailure(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"},
+		Name: "subnet-a",
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:      util.DefaultVpc,
 			Provider: "external.provider",
@@ -165,12 +163,12 @@ func TestHandleAddOrUpdateSubnetRecordsFinalizerPatchFailure(t *testing.T) {
 		},
 	}
 	vlan := &kubeovnv1.Vlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "vlan-a"},
-		Spec:       kubeovnv1.VlanSpec{Provider: "provider-a"},
+		Name: "vlan-a",
+		Spec: kubeovnv1.VlanSpec{Provider: "provider-a"},
 	}
 	providerNetwork := &kubeovnv1.ProviderNetwork{
-		ObjectMeta: metav1.ObjectMeta{Name: "provider-a"},
-		Status:     kubeovnv1.ProviderNetworkStatus{Vlans: []string{"vlan-a"}},
+		Name:   "provider-a",
+		Status: kubeovnv1.ProviderNetworkStatus{Vlans: []string{"vlan-a"}},
 	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Subnets:          []*kubeovnv1.Subnet{subnet},
@@ -201,10 +199,8 @@ func TestHandleAddOrUpdateSubnetRecordsFinalizerPatchFailure(t *testing.T) {
 
 func TestHandleAddOrUpdateIPPoolDoesNotRecordSuccessWhenStatusPatchFails(t *testing.T) {
 	ippool := &kubeovnv1.IPPool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       "pool-a",
-			Finalizers: []string{util.KubeOVNControllerFinalizer},
-		},
+		Name:       "pool-a",
+		Finalizers: []string{util.KubeOVNControllerFinalizer},
 		Spec: kubeovnv1.IPPoolSpec{
 			Subnet: "subnet-a",
 			IPs:    []string{"10.16.0.10"},
@@ -239,8 +235,8 @@ func TestHandleAddOrUpdateIPPoolDoesNotRecordSuccessWhenStatusPatchFails(t *test
 func TestRecordResourceSuccessEvents(t *testing.T) {
 	recorder := record.NewFakeRecorder(2)
 	c := &Controller{recorder: recorder}
-	subnet := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}}
-	ippool := &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: "pool-a"}}
+	subnet := &kubeovnv1.Subnet{Name: "subnet-a"}
+	ippool := &kubeovnv1.IPPool{Name: "pool-a"}
 
 	c.recordResourceEvent(subnet, corev1.EventTypeNormal, "ReconcileSuccess", "Subnet subnet-a reconciled successfully")
 	c.recordResourceEvent(ippool, corev1.EventTypeNormal, "DeleteSuccess", "IPPool pool-a deleted successfully")
@@ -269,11 +265,9 @@ func TestHandleDeleteIPPoolRecordsOutcome(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ippool := &kubeovnv1.IPPool{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "pool-a",
-					Finalizers: []string{util.KubeOVNControllerFinalizer},
-				},
-				Spec: kubeovnv1.IPPoolSpec{Subnet: "subnet-a"},
+				Name:       "pool-a",
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
+				Spec:       kubeovnv1.IPPoolSpec{Subnet: "subnet-a"},
 			}
 			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPPools: []*kubeovnv1.IPPool{ippool}})
 			require.NoError(t, err)
