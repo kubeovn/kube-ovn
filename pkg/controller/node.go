@@ -16,7 +16,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -255,7 +254,7 @@ func (c *Controller) recordNodeAddressConflict(node *v1.Node, subnets []*kubeovn
 		}
 		msg := fmt.Sprintf("internal IP address of node %s is in CIDR of subnet %s, this may result in network issues", node.Name, subnet.Name)
 		klog.Warning(msg)
-		c.recorder.Eventf(&v1.Node{ObjectMeta: metav1.ObjectMeta{Name: node.Name, UID: types.UID(node.Name)}}, v1.EventTypeWarning, "NodeAddressConflictWithSubnet", "%s", msg)
+		c.recorder.Eventf(node, v1.EventTypeWarning, "NodeAddressConflictWithSubnet", "%s", msg)
 		return
 	}
 }

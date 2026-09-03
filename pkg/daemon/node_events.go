@@ -25,6 +25,7 @@ type nodeFailureKey struct {
 	nodeUID  types.UID
 	reason   string
 	stage    string
+	message  string
 }
 
 const nodeEventWriteTimeout = 3 * time.Second
@@ -41,22 +42,22 @@ func (c *Controller) recordNodeFailure(node *corev1.Node, reason, stage string, 
 		return
 	}
 
-	key := nodeFailureKey{nodeName: node.Name, nodeUID: node.UID, reason: reason, stage: stage}
 	message := err.Error()
+	key := nodeFailureKey{nodeName: node.Name, nodeUID: node.UID, reason: reason, stage: stage, message: message}
 	c.nodeFailuresMutex.Lock()
 	if c.nodeFailures == nil {
-		c.nodeFailures = make(map[nodeFailureKey]string)
+		c.nodeFailures = make(map[nodeFailureKey]struct{})
 	}
 	for existingKey := range c.nodeFailures {
 		if existingKey.nodeName == node.Name && existingKey.nodeUID != node.UID {
 			delete(c.nodeFailures, existingKey)
 		}
 	}
-	if c.nodeFailures[key] == message {
+	if _, exists := c.nodeFailures[key]; exists {
 		c.nodeFailuresMutex.Unlock()
 		return
 	}
-	c.nodeFailures[key] = message
+	c.nodeFailures[key] = struct{}{}
 	c.nodeFailuresMutex.Unlock()
 
 	recordNodeFailureEvent(c.recorder, node, reason, stage, err)

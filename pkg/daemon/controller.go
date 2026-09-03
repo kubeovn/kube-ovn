@@ -81,7 +81,7 @@ type Controller struct {
 
 	recorder          record.EventRecorder
 	nodeFailuresMutex sync.Mutex
-	nodeFailures      map[nodeFailureKey]string
+	nodeFailures      map[nodeFailureKey]struct{}
 
 	protocol string
 

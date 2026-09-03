@@ -115,6 +115,26 @@ func TestReconcileNodeNetworkStageDeduplicatesFailuresUntilSuccess(t *testing.T)
 	requireNodeEvent(t, recorder, "Warning", "UpdateNodeFailed", "stage=setIptables", failure.Error())
 }
 
+func TestReconcileNodeNetworkStageDeduplicatesEachFailureMessage(t *testing.T) {
+	t.Parallel()
+
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid"}}
+	controller, recorder := newNodeEventTestController(t, node)
+	failureA := errors.New("iptables failed")
+	failureB := errors.New("ipset failed")
+
+	require.ErrorIs(t, controller.reconcileNodeNetworkStage(node, "setGateway", func() error { return failureA }), failureA)
+	requireNodeEvent(t, recorder, failureA.Error())
+	require.ErrorIs(t, controller.reconcileNodeNetworkStage(node, "setGateway", func() error { return failureB }), failureB)
+	requireNodeEvent(t, recorder, failureB.Error())
+	require.ErrorIs(t, controller.reconcileNodeNetworkStage(node, "setGateway", func() error { return failureA }), failureA)
+	requireNoNodeEvent(t, recorder)
+
+	require.NoError(t, controller.reconcileNodeNetworkStage(node, "setGateway", func() error { return nil }))
+	require.ErrorIs(t, controller.reconcileNodeNetworkStage(node, "setGateway", func() error { return failureA }), failureA)
+	requireNodeEvent(t, recorder, failureA.Error())
+}
+
 func TestGatewayIPSetListFailureIsRecordedUntilSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -247,6 +267,54 @@ func TestInitNodeGatewayDeduplicatesInvalidAnnotations(t *testing.T) {
 		require.Contains(t, event.Message, "stage=validateOvn0Annotations")
 	}
 	require.Contains(t, events.Items[0].Message+events.Items[1].Message+events.Items[2].Message, "no ovn0 address")
+}
+
+func TestInitNodeGatewayDeduplicatesEachAnnotationFailureMessage(t *testing.T) {
+	invalidAddressNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "node-1",
+		UID:  "node-uid",
+		Annotations: map[string]string{
+			util.IPAddressAnnotation:  "invalid",
+			util.CidrAnnotation:       "10.0.0.0/24",
+			util.MacAddressAnnotation: "00:00:00:00:00:01",
+			util.PortNameAnnotation:   "node-node-1",
+			util.GatewayAnnotation:    "10.0.0.1",
+		},
+	}}
+	missingAddressNode := invalidAddressNode.DeepCopy()
+	delete(missingAddressNode.Annotations, util.IPAddressAnnotation)
+	validNode := invalidAddressNode.DeepCopy()
+	validNode.Annotations[util.IPAddressAnnotation] = "10.0.0.2"
+	client := fake.NewSimpleClientset(validNode)
+	getCalls := 0
+	client.PrependReactor("get", "nodes", func(k8stesting.Action) (bool, runtime.Object, error) {
+		getCalls++
+		switch getCalls {
+		case 1, 3:
+			return true, invalidAddressNode.DeepCopy(), nil
+		case 2:
+			return true, missingAddressNode.DeepCopy(), nil
+		default:
+			return true, validNode.DeepCopy(), nil
+		}
+	})
+
+	originalConfigureNodeGateway := configureNodeGateway
+	originalRetryInterval := nodeGatewayInitRetryInterval
+	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool) error {
+		return nil
+	}
+	nodeGatewayInitRetryInterval = 0
+	t.Cleanup(func() {
+		configureNodeGateway = originalConfigureNodeGateway
+		nodeGatewayInitRetryInterval = originalRetryInterval
+	})
+
+	require.NoError(t, InitNodeGateway(&Configuration{KubeClient: client, NodeName: validNode.Name}))
+
+	events, err := client.CoreV1().Events(metav1.NamespaceDefault).List(t.Context(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, events.Items, 2)
 }
 
 func TestInitNodeGatewayRetriesFailedAnnotationEventWrite(t *testing.T) {
