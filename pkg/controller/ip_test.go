@@ -10,6 +10,25 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func TestNotifyDeletedIPParents(t *testing.T) {
+	now := metav1.Now()
+	primary := &kubeovnv1.Subnet{Name: "primary", DeletionTimestamp: &now}
+	attach := &kubeovnv1.Subnet{Name: "attach", DeletionTimestamp: &now}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{primary, attach},
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	ctrl.deleteSubnetQueue = newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil)
+	t.Cleanup(ctrl.deleteSubnetQueue.ShutDown)
+
+	ctrl.notifyDeletedIPParents(&kubeovnv1.IP{Spec: kubeovnv1.IPSpec{
+		Subnet:        primary.Name,
+		AttachSubnets: []string{attach.Name},
+	}})
+	require.Equal(t, 2, ctrl.deleteSubnetQueue.Len())
+}
+
 func Test_handleUpdateIP_deletedSubnet(t *testing.T) {
 	t.Parallel()
 

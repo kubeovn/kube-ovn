@@ -31,10 +31,16 @@ import (
 func (c *Controller) enqueueAddVpc(obj any) {
 	vpc := obj.(*kubeovnv1.Vpc)
 	key := cache.MetaObjectToName(vpc).String()
-	if _, ok := vpc.Labels[util.VpcExternalLabel]; !ok {
-		klog.V(3).Infof("enqueue add vpc %s", key)
-		c.addOrUpdateVpcQueue.Add(key)
+	if vpc.Labels[util.VpcExternalLabel] == "true" {
+		return
 	}
+	if !vpc.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("enqueue delete vpc %s", key)
+		c.delVpcQueue.Add(vpc)
+		return
+	}
+	klog.V(3).Infof("enqueue add vpc %s", key)
+	c.addOrUpdateVpcQueue.Add(key)
 }
 
 func vpcBFDPortChanged(oldObj, newObj *kubeovnv1.BFDPort) bool {
@@ -55,8 +61,13 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		return
 	}
 
-	if !newVpc.DeletionTimestamp.IsZero() ||
-		!slices.Equal(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
+	if !newVpc.DeletionTimestamp.IsZero() {
+		klog.Infof("enqueue delete vpc %s", newVpc.Name)
+		c.delVpcQueue.Add(newVpc.DeepCopy())
+		return
+	}
+
+	if !slices.Equal(oldVpc.Spec.Namespaces, newVpc.Spec.Namespaces) ||
 		!reflect.DeepEqual(oldVpc.Spec.StaticRoutes, newVpc.Spec.StaticRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.PolicyRoutes, newVpc.Spec.PolicyRoutes) ||
 		!reflect.DeepEqual(oldVpc.Spec.VpcPeerings, newVpc.Spec.VpcPeerings) ||
@@ -95,10 +106,14 @@ func (c *Controller) enqueueDelVpc(obj any) {
 		return
 	}
 
-	if _, ok := vpc.Labels[util.VpcExternalLabel]; !vpc.Status.Default || !ok {
-		klog.V(3).Infof("enqueue delete vpc %s", vpc.Name)
-		c.delVpcQueue.Add(vpc)
+	// External VPCs mirror logical routers kube-ovn does not own (see syncExternalVpc):
+	// Status.Router points at a foreign router, so they must never reach handleDelVpc.
+	// Matches the check in enqueueAddVpc/enqueueUpdateVpc.
+	if vpc.Labels[util.VpcExternalLabel] == "true" {
+		return
 	}
+	klog.V(3).Infof("enqueue delete vpc %s", vpc.Name)
+	c.delVpcQueue.Add(vpc)
 }
 
 func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
@@ -106,19 +121,33 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpc.Name) }()
 	klog.Infof("handle delete vpc %s", vpc.Name)
 
-	// should delete vpc subnets first
-	var err error
-	for _, subnet := range vpc.Status.Subnets {
-		if _, err = c.subnetsLister.Get(subnet); err != nil {
-			if k8serrors.IsNotFound(err) {
-				continue
-			}
-			err = fmt.Errorf("failed to get subnet %s for vpc %s: %w", subnet, vpc.Name, err)
-		} else {
-			err = fmt.Errorf("failed to delete vpc %s, please delete subnet %s first", vpc.Name, subnet)
-		}
-		klog.Error(err)
+	// Status.Subnets is a running-state view and excludes terminating subnets, so scan the
+	// real children instead. Returning an error requeues with backoff, which is the safety
+	// net: the informers run with resync=0, so a missed notifyDeletedVpcChild would otherwise
+	// leave the VPC Terminating forever. The notifications only make the retry immediate.
+	if hasSubnets, err := c.hasVpcSubnets(vpc.Name); err != nil {
 		return err
+	} else if hasSubnets {
+		return fmt.Errorf("vpc %s still has subnets", vpc.Name)
+	}
+	// Same for NAT gateways: their pods/IPs still live in this VPC's subnets and their
+	// route sync still needs the logical router, so wait until the gateway CR is gone.
+	if hasNatGws, err := c.hasVpcNatGateways(vpc.Name); err != nil {
+		return err
+	} else if hasNatGws {
+		return fmt.Errorf("vpc %s still has NAT gateways", vpc.Name)
+	}
+	if referenced, err := c.vpcHasNatRules(vpc.Name); err != nil {
+		return err
+	} else if referenced {
+		return fmt.Errorf("vpc %s still has NAT rules", vpc.Name)
+	}
+	// RouterLBRule cleanup reads vpc.Status.*LoadBalancer to scope which LBs to detach from
+	// the router, so tearing the VPC down first degrades it to an unscoped deletion.
+	if hasRules, err := c.hasVpcRouterLBRules(vpc.Name); err != nil {
+		return err
+	} else if hasRules {
+		return fmt.Errorf("vpc %s still has router LB rules", vpc.Name)
 	}
 
 	// clean up vpc last policies cached
@@ -147,7 +176,146 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
+	if len(vpc.GetFinalizers()) != 0 {
+		newVpc := vpc.DeepCopy()
+		controllerutil.RemoveFinalizer(newVpc, util.DeprecatedFinalizerName)
+		controllerutil.RemoveFinalizer(newVpc, util.KubeOVNControllerFinalizer)
+		patch, err := util.GenerateMergePatchPayload(vpc, newVpc)
+		if err != nil {
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name,
+			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil && !k8serrors.IsNotFound(err) {
+			return err
+		}
+	}
 	return nil
+}
+
+func (c *Controller) vpcHasNatRules(vpcName string) (bool, error) {
+	dnatRules, err := c.ovnDnatRulesLister.List(labels.Everything())
+	if err != nil {
+		return false, err
+	}
+	snatRules, err := c.ovnSnatRulesLister.List(labels.Everything())
+	if err != nil {
+		return false, err
+	}
+	fipRules, err := c.ovnFipsLister.List(labels.Everything())
+	if err != nil {
+		return false, err
+	}
+
+	for _, rule := range dnatRules {
+		if vpcOfNatRule(rule.Status.Vpc, rule.Spec.Vpc) == vpcName {
+			klog.Infof("wait to delete vpc %s: ovn dnat rule %s still exists", vpcName, rule.Name)
+			return true, nil
+		}
+	}
+	for _, rule := range snatRules {
+		if vpcOfNatRule(rule.Status.Vpc, rule.Spec.Vpc) == vpcName {
+			klog.Infof("wait to delete vpc %s: ovn snat rule %s still exists", vpcName, rule.Name)
+			return true, nil
+		}
+	}
+	for _, rule := range fipRules {
+		if vpcOfNatRule(rule.Status.Vpc, rule.Spec.Vpc) == vpcName {
+			klog.Infof("wait to delete vpc %s: ovn fip rule %s still exists", vpcName, rule.Name)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// vpcOfNatRule prefers Status.Vpc, the authoritative binding once the rule has been
+// reconciled, and falls back to Spec.Vpc for rules that have not been reconciled yet.
+func vpcOfNatRule(statusVpc, specVpc string) string {
+	if statusVpc != "" {
+		return statusVpc
+	}
+	return specVpc
+}
+
+// A child that still exists blocks the VPC teardown: every gate below is reported as an
+// error by handleDelVpc so the workqueue retries with backoff. notifyDeletedVpcChild only
+// shortens the wait; correctness must not depend on it.
+func (c *Controller) hasVpcSubnets(vpcName string) (bool, error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return false, fmt.Errorf("failed to list subnets for vpc %s: %w", vpcName, err)
+	}
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc == vpcName {
+			klog.Infof("wait to delete vpc %s: subnet %s still exists", vpcName, subnet.Name)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (c *Controller) hasVpcNatGateways(vpcName string) (bool, error) {
+	gws, err := c.vpcNatGatewayLister.List(labels.Everything())
+	if err != nil {
+		return false, fmt.Errorf("failed to list vpc nat gateways for vpc %s: %w", vpcName, err)
+	}
+	for _, gw := range gws {
+		if gw.Spec.Vpc == vpcName {
+			klog.Infof("wait to delete vpc %s: vpc nat gateway %s still exists", vpcName, gw.Name)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (c *Controller) hasVpcRouterLBRules(vpcName string) (bool, error) {
+	rules, err := c.routerLBRuleLister.List(labels.Everything())
+	if err != nil {
+		return false, fmt.Errorf("failed to list router lb rules for vpc %s: %w", vpcName, err)
+	}
+	for _, rule := range rules {
+		if rule.Spec.Vpc == vpcName {
+			klog.Infof("wait to delete vpc %s: router lb rule %s still exists", vpcName, rule.Name)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// Parent/child deletion contract, applied to VPC <- Subnet <- IP, VPC <- VpcNatGateway
+// and VPC <- RouterLBRule. Each pair wires up exactly four points, and there is no
+// recursive coordinator: every relationship is a single level.
+//
+//  1. child Add     - reject/skip terminating objects, add the child's finalizer
+//  2. child Update  - on DeletionTimestamp, tear down the child's own resources and
+//     only then drop its finalizer
+//  3. child Delete  - idempotent fallback for legacy objects that carry no finalizer,
+//     and for tombstones; the parent ref comes from the event object
+//     because the child is already out of the lister
+//  4. child -> parent - this function
+//
+// The parent's own delete handler scans the real children (never a Status field, which
+// is a running-state view that hides terminating children) and returns an error while
+// any remain, so the workqueue retries with backoff. That backoff is the correctness
+// guarantee; the informers run with resync=0, so nothing else would retry.
+//
+// notifyDeletedVpcChild must therefore be called from the child's DeleteFunc only: at
+// that point the child is gone from the informer cache and the parent's rescan sees it
+// as absent. Calling it earlier (e.g. right after removing the child's finalizer) still
+// finds the child in the lister and merely burns a reconcile.
+func (c *Controller) notifyDeletedVpcChild(vpcName, child string) {
+	if vpcName == "" {
+		return
+	}
+	vpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get parent vpc %s after deleting %s: %v", vpcName, child, err)
+		}
+		return
+	}
+	if !vpc.DeletionTimestamp.IsZero() {
+		c.delVpcQueue.Add(vpc)
+	}
 }
 
 func (c *Controller) handleUpdateVpcStatus(key string) error {
@@ -281,6 +449,16 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 		klog.Error(err)
 		return err
+	}
+
+	// Terminating VPCs belong to delVpcQueue only. Several producers (node, service-cidr,
+	// subnet, and handleUpdateVpcStatus' "no subnets" retry) enqueue by name without
+	// checking, so guard here: reconciling one would recreate the logical router and load
+	// balancers that handleDelVpc just removed, and nothing would ever collect them again
+	// once the VPC object is gone.
+	if !cachedVpc.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("vpc %s is being deleted, skip add/update", key)
+		return nil
 	}
 
 	vpc, err := c.formatVpc(cachedVpc.DeepCopy())
@@ -1185,11 +1363,6 @@ func (c *Controller) formatVpc(vpc *kubeovnv1.Vpc) (*kubeovnv1.Vpc, error) {
 
 	if vpc.DeletionTimestamp.IsZero() && !slices.Contains(vpc.GetFinalizers(), util.KubeOVNControllerFinalizer) {
 		controllerutil.AddFinalizer(vpc, util.KubeOVNControllerFinalizer)
-		changed = true
-	}
-
-	if !vpc.DeletionTimestamp.IsZero() && len(vpc.Status.Subnets) == 0 {
-		controllerutil.RemoveFinalizer(vpc, util.KubeOVNControllerFinalizer)
 		changed = true
 	}
 

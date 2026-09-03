@@ -74,6 +74,10 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 		return err
 	}
 	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		if k8serrors.IsNotFound(err) {
+			// the subnet is already gone, nothing left to report on
+			return nil
+		}
 		klog.Errorf("failed to patch status for subnet %s, %v", subnet.Name, err)
 		return err
 	}
@@ -85,7 +89,6 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	defer func() { _ = c.subnetKeyMutex.UnlockKey(key) }()
 
 	cachedSubnet, err := c.subnetsLister.Get(key)
-	subnet := cachedSubnet.DeepCopy()
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -93,6 +96,7 @@ func (c *Controller) handleUpdateSubnetStatus(key string) error {
 		klog.Error(err)
 		return err
 	}
+	subnet := cachedSubnet.DeepCopy()
 
 	ippools, err := c.ippoolLister.List(labels.Everything())
 	if err != nil {

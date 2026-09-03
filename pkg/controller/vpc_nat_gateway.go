@@ -169,14 +169,9 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 		return
 	}
 
-	// Use "namespace/gwName" as the queue key so the delete handler knows where the STS lives.
-	natGwNs := gw.Spec.Namespace
-	if natGwNs == "" {
-		natGwNs = c.config.PodNamespace
-	}
-	key := natGwNs + "/" + gw.Name
-	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
-	c.delVpcNatGatewayQueue.Add(key)
+	klog.V(3).Infof("enqueue del vpc-nat-gw %s", gw.Name)
+	// The event snapshot carries Spec.Vpc and route data after the CR has left the lister.
+	c.delVpcNatGatewayQueue.Add(gw.DeepCopy())
 
 	// Trigger QoS Policy reconcile after NatGw is deleted so it can drop its finalizer if no
 	// other NatGw references it. Key on the QoSLabel, matching the QoS in-use check.
@@ -188,43 +183,33 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 // If the finalizer is present, deletions are handled by the update workflow which will detect
 // the new deletionTimestamp set on the resource.
 // This is still useful for legacy NAT gateways which have not been updated with one.
-func (c *Controller) handleDelVpcNatGw(key string) error {
-	// key is "namespace/gwName" as encoded by enqueueDeleteVpcNatGw.
-	// Parse gwName first so we can lock by gwName — consistent with all other handlers
-	// (add/update/init) that lock by gwName alone. Using the composite key here would
-	// allow delete to run concurrently with a reconcile for the same gateway.
-	parts := strings.SplitN(key, "/", 2)
-	var stsNamespace, gwName string
-	if len(parts) == 2 {
-		stsNamespace, gwName = parts[0], parts[1]
-	} else {
-		// Fallback for legacy queue entries without namespace prefix
-		stsNamespace, gwName = c.config.PodNamespace, key
-	}
-
+func (c *Controller) handleDelVpcNatGw(gw *kubeovnv1.VpcNatGateway) error {
+	gwName := gw.Name
 	c.vpcNatGwKeyMutex.LockKey(gwName)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(gwName) }()
 	workloadName := util.GenNatGwName(gwName)
-	klog.Infof("delete vpc nat gw %s in namespace %s", workloadName, stsNamespace)
+	natGwNs := gw.Spec.Namespace
+	if natGwNs == "" {
+		natGwNs = c.config.PodNamespace
+	}
+	klog.Infof("delete vpc nat gw %s in namespace %s", workloadName, natGwNs)
 
 	// STS are legacy NAT gateways, which might not have the finalizer yet.
-	if err := c.config.KubeClient.AppsV1().StatefulSets(stsNamespace).Delete(context.Background(),
+	if err := c.config.KubeClient.AppsV1().StatefulSets(natGwNs).Delete(context.Background(),
 		workloadName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Error(err)
 		return err
 	}
 
-	// Get the gateway to reconcile routes
-	// It might already have been deleted. If so, the finalizer guarantees we cleaned up properly.
-	gw, err := c.vpcNatGatewayLister.Get(gwName)
+	// Prefer the latest lister object, but retain the DeleteFunc snapshot after the CR
+	// leaves the cache so legacy objects without a finalizer still clean routes/BFD.
+	cachedGw, err := c.vpcNatGatewayLister.Get(gwName)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Error(err)
 		return err
 	}
-
-	// Gateway doesn't exist anymore, there's nothing to clean
-	if k8serrors.IsNotFound(err) {
-		return nil
+	if err == nil {
+		gw = cachedGw
 	}
 
 	// Reconcile the routes to clean up everything (policies, BFD, ...)
@@ -233,10 +218,14 @@ func (c *Controller) handleDelVpcNatGw(key string) error {
 		return err
 	}
 
-	// Remove the finalizer on the gateway to let the object get deleted
+	// Remove the finalizer on the gateway to let the object get deleted.
 	if err := c.handleDeleteVpcNatGwFinalizer(gw); err != nil {
 		klog.Errorf("failed to remove finalizer for vpc nat gateway %s: %v", gwName, err)
 		return err
+	}
+	if len(gw.GetFinalizers()) == 0 {
+		// Legacy child was already absent from the API, so no later DeleteFunc can notify.
+		c.notifyDeletedVpcChild(gw.Spec.Vpc, "vpc nat gateway "+gwName)
 	}
 
 	return nil
@@ -284,7 +273,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	}
 
 	if !gw.DeletionTimestamp.IsZero() {
-		return c.handleDelVpcNatGw(key)
+		return c.handleDelVpcNatGw(gw)
 	}
 
 	c.vpcNatGwKeyMutex.LockKey(key)
@@ -1556,11 +1545,7 @@ func (c *Controller) cleanUpVpcNatGw() error {
 		return err
 	}
 	for _, gw := range gws {
-		natGwNs := gw.Spec.Namespace
-		if natGwNs == "" {
-			natGwNs = c.config.PodNamespace
-		}
-		c.delVpcNatGatewayQueue.Add(natGwNs + "/" + gw.Name)
+		c.delVpcNatGatewayQueue.Add(gw.DeepCopy())
 	}
 	return nil
 }

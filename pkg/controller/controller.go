@@ -91,11 +91,18 @@ type Controller struct {
 	updatePodSecurityQueue workqueue.TypedRateLimitingInterface[string]
 	podKeyMutex            keymutex.KeyMutex
 
-	vpcsLister           kubeovnlister.VpcLister
-	vpcSynced            cache.InformerSynced
-	vpcIndexer           cache.Indexer
-	addOrUpdateVpcQueue  workqueue.TypedRateLimitingInterface[string]
-	vpcLastPoliciesMap   *xsync.Map[string, string]
+	vpcsLister          kubeovnlister.VpcLister
+	vpcSynced           cache.InformerSynced
+	vpcIndexer          cache.Indexer
+	addOrUpdateVpcQueue workqueue.TypedRateLimitingInterface[string]
+	vpcLastPoliciesMap  *xsync.Map[string, string]
+	// TODO: this queue holds objects, so workqueue dedupes by pointer identity and
+	// enqueueUpdateVpc's DeepCopy makes every update event a distinct item (a handful of
+	// redundant handleDelVpc runs per deletion, each a few in-memory lister scans, no
+	// correctness impact). Switching to a string key needs a fallback for legacy VPCs
+	// without a finalizer: their DeleteFunc fires once the object is already out of the
+	// lister, and Status.ExtraExternalSubnets cannot be recovered from the name alone,
+	// which would leak the external LRPs. Not worth it until that path has test coverage.
 	delVpcQueue          workqueue.TypedRateLimitingInterface[*kubeovnv1.Vpc]
 	updateVpcStatusQueue workqueue.TypedRateLimitingInterface[string]
 	vpcKeyMutex          keymutex.KeyMutex
@@ -103,7 +110,7 @@ type Controller struct {
 	vpcNatGatewayLister           kubeovnlister.VpcNatGatewayLister
 	vpcNatGatewaySynced           cache.InformerSynced
 	addOrUpdateVpcNatGatewayQueue workqueue.TypedRateLimitingInterface[string]
-	delVpcNatGatewayQueue         workqueue.TypedRateLimitingInterface[string]
+	delVpcNatGatewayQueue         workqueue.TypedRateLimitingInterface[*kubeovnv1.VpcNatGateway]
 	initVpcNatGatewayQueue        workqueue.TypedRateLimitingInterface[string]
 	updateVpcEipQueue             workqueue.TypedRateLimitingInterface[string]
 	updateVpcFloatingIPQueue      workqueue.TypedRateLimitingInterface[string]
@@ -408,6 +415,10 @@ func Run(ctx context.Context, config *Configuration) {
 		workqueue.NewTypedItemExponentialFailureRateLimiter[string](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
 		&workqueue.TypedBucketRateLimiter[string]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 	)
+	natGwCrdRateLimiter := workqueue.NewTypedMaxOfRateLimiter(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[*kubeovnv1.VpcNatGateway](time.Duration(config.CustCrdRetryMinDelay)*time.Second, time.Duration(config.CustCrdRetryMaxDelay)*time.Second),
+		&workqueue.TypedBucketRateLimiter[*kubeovnv1.VpcNatGateway]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+	)
 
 	var err error
 	informerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeFactoryClient, 0,
@@ -512,7 +523,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcNatGatewaySynced:              vpcNatGatewayInformer.Informer().HasSynced,
 		addOrUpdateVpcNatGatewayQueue:    newTypedRateLimitingQueue("AddOrUpdateVpcNatGw", custCrdRateLimiter),
 		initVpcNatGatewayQueue:           newTypedRateLimitingQueue("InitVpcNatGw", custCrdRateLimiter),
-		delVpcNatGatewayQueue:            newTypedRateLimitingQueue("DeleteVpcNatGw", custCrdRateLimiter),
+		delVpcNatGatewayQueue:            newTypedRateLimitingQueue[*kubeovnv1.VpcNatGateway]("DeleteVpcNatGw", natGwCrdRateLimiter),
 		updateVpcEipQueue:                newTypedRateLimitingQueue("UpdateVpcEip", custCrdRateLimiter),
 		updateVpcFloatingIPQueue:         newTypedRateLimitingQueue("UpdateVpcFloatingIp", custCrdRateLimiter),
 		updateVpcDnatQueue:               newTypedRateLimitingQueue("UpdateVpcDnat", custCrdRateLimiter),

@@ -12,10 +12,12 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
@@ -83,7 +85,12 @@ func (c *Controller) requeueRouterLBRulesForEip(eipName string, isRecreate bool)
 }
 
 func (c *Controller) enqueueAddRouterLBRule(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.RouterLBRule)).String()
+	rlr := obj.(*kubeovnv1.RouterLBRule)
+	if !rlr.DeletionTimestamp.IsZero() {
+		c.delRouterLBRuleQueue.Add(newRouterLBRuleInfo(rlr))
+		return
+	}
+	key := cache.MetaObjectToName(rlr).String()
 	klog.Infof("enqueue add RouterLBRule %s", key)
 	c.addRouterLBRuleQueue.Add(key)
 }
@@ -96,6 +103,10 @@ func (c *Controller) enqueueUpdateRouterLBRule(oldObj, newObj any) {
 	)
 
 	if oldRlr.ResourceVersion == newRlr.ResourceVersion {
+		return
+	}
+	if !newRlr.DeletionTimestamp.IsZero() {
+		c.delRouterLBRuleQueue.Add(newRouterLBRuleInfo(newRlr))
 		return
 	}
 
@@ -126,7 +137,13 @@ func (c *Controller) enqueueDeleteRouterLBRule(obj any) {
 	}
 
 	klog.Infof("enqueue del RouterLBRule %s", rlr.Name)
-	c.delRouterLBRuleQueue.Add(newRouterLBRuleInfo(rlr))
+	if len(rlr.GetFinalizers()) == 0 {
+		// Legacy object: cleanup must finish before its parent is notified.
+		c.delRouterLBRuleQueue.Add(newRouterLBRuleInfo(rlr))
+		return
+	}
+	// A finalizer means cleanup completed before the object disappeared.
+	c.notifyDeletedVpcChild(rlr.Spec.Vpc, "router lb rule "+rlr.Name)
 }
 
 // checkEipPortConflict returns an error if eip:portStr is already used by another
@@ -172,6 +189,22 @@ func (c *Controller) handleAddOrUpdateRouterLBRule(key string) error {
 		}
 		klog.Error(err)
 		return err
+	}
+
+	if !rlr.DeletionTimestamp.IsZero() {
+		return nil
+	}
+	if !controllerutil.ContainsFinalizer(rlr, util.KubeOVNControllerFinalizer) {
+		updated := rlr.DeepCopy()
+		controllerutil.AddFinalizer(updated, util.KubeOVNControllerFinalizer)
+		patch, err := util.GenerateMergePatchPayload(rlr, updated)
+		if err != nil {
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().RouterLBRules().Patch(context.Background(), rlr.Name,
+			types.MergePatchType, patch, metav1.PatchOptions{}); err != nil {
+			return err
+		}
 	}
 
 	if rlr.Spec.OvnEip == "" {
@@ -519,6 +552,32 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		}
 	}
 
+	rule, err := c.routerLBRuleLister.Get(info.Name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// Legacy object was already absent, so no later DeleteFunc can notify.
+			c.notifyDeletedVpcChild(info.Vpc, "router lb rule "+info.Name)
+			return nil
+		}
+		return err
+	}
+	// Update-recreate uses this cleanup handler too, but must retain the finalizer until
+	// the actual delete event. Only a terminating rule may remove it and notify its parent.
+	if rule.DeletionTimestamp.IsZero() {
+		return nil
+	}
+	if controllerutil.ContainsFinalizer(rule, util.KubeOVNControllerFinalizer) {
+		updated := rule.DeepCopy()
+		controllerutil.RemoveFinalizer(updated, util.KubeOVNControllerFinalizer)
+		patch, err := util.GenerateMergePatchPayload(rule, updated)
+		if err != nil {
+			return err
+		}
+		_, err = c.config.KubeOvnClient.KubeovnV1().RouterLBRules().Patch(context.Background(), rule.Name,
+			types.MergePatchType, patch, metav1.PatchOptions{})
+		return err
+	}
+	c.notifyDeletedVpcChild(info.Vpc, "router lb rule "+info.Name)
 	return nil
 }
 
