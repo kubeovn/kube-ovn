@@ -31,6 +31,7 @@ showHelp(){
   echo "  dpctl {nodeName} [ovs-dpctl options ...]   invoke ovs-dpctl on the specified node"
   echo "  appctl {nodeName} [ovs-appctl options ...]   invoke ovs-appctl on the specified node"
   echo "  tcpdump {namespace/podname} [tcpdump options ...]     capture pod traffic"
+  echo "  kubevirt-tcpdump {namespace/vmname} [tcpdump options ...]     capture vm traffic"
   echo "  {trace|ovn-trace} ...    trace ovn microflow of specific packet"
   echo "    {trace|ovn-trace} {namespace/podname} {target ip address} [target mac address] {icmp|tcp|udp} [target tcp/udp port]    trace ICMP/TCP/UDP"
   echo "    {trace|ovn-trace} {namespace/podname} {target ip address} [target mac address] arp {request|reply}                     trace ARP request/reply"
@@ -144,6 +145,53 @@ ipIsInCidr(){
   fi
 
   return 1
+}
+
+kubevirt-tcpdump(){
+  namespacedPod="$1"; shift
+  namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
+  vmName=$(echo "$namespacedPod" | cut -d "/" -f2)
+  if [ "$vmName" = "$namespacedPod" ]; then
+    namespace="default"
+  fi
+
+  podName=$(kubectl get pod -l vm.kubevirt.io/name="$vmName" -o jsonpath='{.items[*].metadata.name}')
+  nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
+  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+  if [ -z "$nodeName" ]; then
+    echo "Pod $namespacedPod not exists on any node"
+    exit 1
+  fi
+
+  ovsPod=$(kubectl get pod -n $KUBE_OVN_NS -l app=ovs -o 'jsonpath={.items[?(@.spec.nodeName=="'$nodeName'")].metadata.name}')
+  if [ -z "$ovsPod" ]; then
+    echo "ovs-ovn not exist on node $nodeName"
+    exit 1
+  fi
+
+  if [ "$hostNetwork" = "true" ]; then
+    set -x
+    kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- tcpdump -nn "$@"
+  else
+    nicName=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$vmName"."$namespace" | tr -d '\r')
+    if [ -z "$nicName" ]; then
+      echo "nic doesn't exist on node $nodeName"
+      exit 1
+    fi
+    podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
+    podNetNs=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
+    ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[?(@.spec.nodeName=="'$nodeName'")].metadata.name}')
+    if [ -z "$ovnCni" ]; then
+      echo "kube-ovn-cni not exist on node $nodeName"
+      exit 1
+    fi
+    set -x
+    if [ "$podNicType" = "internal-port" ]; then
+      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i "$nicName" "$@"
+    else
+      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i k6t-eth0 "$@"
+    fi
+  fi
 }
 
 tcpdump(){
@@ -1795,6 +1843,9 @@ case $subcommand in
   nb|sb)
     getOvnCentralPod
     dbtool "$subcommand" "$@"
+    ;;
+  kubevirt-tcpdump)
+    kubevirt-tcpdump "$@"
     ;;
   tcpdump)
     tcpdump "$@"
