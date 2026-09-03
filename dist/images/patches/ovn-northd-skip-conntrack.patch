@@ -66,11 +66,11 @@ index 1ca8dedaf..9f1ee8397 100644
 +        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v4); i++) {
 +            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
 +
-+            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_ACL,
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL,
 +                                    110, match, "next;",
 +                                    &od->nbs->header_, lflow_ref);
 +
-+            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_OUT_PRE_ACL,
++            ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL,
 +                                    110, match, "next;",
 +                                    &od->nbs->header_, lflow_ref);
 +            free(match);
@@ -79,11 +79,11 @@ index 1ca8dedaf..9f1ee8397 100644
 +        array = sset_array(&node_local_dns_ip_v6);
 +        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v6); i++) {
 +            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
-+            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_ACL,
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL,
 +                                    110, match, "next;",
 +                                    &od->nbs->header_, lflow_ref);
 +
-+            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_OUT_PRE_ACL,
++            ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL,
 +                                    110, match, "next;",
 +                                    &od->nbs->header_, lflow_ref);
 +            free(match);
@@ -103,7 +103,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +        const char **array = sset_array(&node_local_dns_ip_v4);
 +        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v4); i++) {
 +            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
-+            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
 +                                             105, match, "next;",
 +                                             &od->nbs->header_, lflow_ref);
 +            free(match);
@@ -112,7 +112,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +        array = sset_array(&node_local_dns_ip_v6);
 +        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v6); i++) {
 +            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
-+            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
 +                                             105, match, "next;",
 +                                             &od->nbs->header_, lflow_ref);
 +            free(match);
@@ -131,7 +131,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +        array = sset_array(&skip_conntrack_dst_cidrs_v4);
 +        for (size_t i = 0; i < sset_count(&skip_conntrack_dst_cidrs_v4); i++) {
 +            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
-+            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
 +                                             105, match, "next;",
 +                                             &od->nbs->header_, lflow_ref);
 +            free(match);
@@ -140,7 +140,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +        array = sset_array(&skip_conntrack_dst_cidrs_v6);
 +        for (size_t i = 0; i < sset_count(&skip_conntrack_dst_cidrs_v6); i++) {
 +            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
-+            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
 +                                             105, match, "next;",
 +                                             &od->nbs->header_, lflow_ref);
 +            free(match);
@@ -179,7 +179,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +                    }
 +                    match = xasprintf("ip4 && ip4.dst == %s/%u",
 +                                      addrs->network_s, addrs->plen);
-+                    ovn_lflow_add_with_kube_ovn_hint(lflows, od,
++                    ovn_lflow_add(lflows, od,
 +                        S_SWITCH_IN_PRE_LB, 105, match, "next;",
 +                        &od->nbs->header_, lflow_ref);
 +                    free(match);
@@ -194,7 +194,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +                    }
 +                    match = xasprintf("ip6 && ip6.dst == %s/%u",
 +                                      addrs->network_s, addrs->plen);
-+                    ovn_lflow_add_with_kube_ovn_hint(lflows, od,
++                    ovn_lflow_add(lflows, od,
 +                        S_SWITCH_IN_PRE_LB, 105, match, "next;",
 +                        &od->nbs->header_, lflow_ref);
 +                    free(match);
@@ -225,7 +225,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +                if (plen && plen != 32) {
 +                    match = xasprintf("ip4 && ip4.dst == "IP_FMT"/%u",
 +                                      IP_ARGS(ipv4), plen);
-+                    ovn_lflow_add_with_kube_ovn_hint(lflows, od,
++                    ovn_lflow_add(lflows, od,
 +                        S_SWITCH_IN_PRE_LB, 105, match, "next;",
 +                        &od->nbs->header_, lflow_ref);
 +                    free(match);
@@ -240,7 +240,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +                if (plen && plen != 128) {
 +                    inet_ntop(AF_INET6, &ipv6, buf, sizeof buf);
 +                    match = xasprintf("ip6 && ip6.dst == %s/%u", buf, plen);
-+                    ovn_lflow_add_with_kube_ovn_hint(lflows, od,
++                    ovn_lflow_add(lflows, od,
 +                        S_SWITCH_IN_PRE_LB, 105, match, "next;",
 +                        &od->nbs->header_, lflow_ref);
 +                    free(match);

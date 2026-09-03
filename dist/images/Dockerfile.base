@@ -51,9 +51,7 @@ ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
 ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
 ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
-ADD patches/ovs-3.7-compat.patch $SRC_DIR
 ADD patches/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch $SRC_DIR
-ADD patches/78cade01874292e2c101c39b975290ef6c812a50.patch $SRC_DIR
 ADD patches/ovn-northd-skip-conntrack.patch $SRC_DIR
 ADD patches/ovn-northd-dnat-lsp.patch $SRC_DIR
 ADD patches/sbrec-delete-null-check.patch $SRC_DIR
@@ -62,7 +60,6 @@ ADD patches/477695a010affe56efdd66b60510fa612f8704c1.patch $SRC_DIR
 ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
 ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
 ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
-ADD patches/ovn-26.03-api-adaptation.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -95,8 +92,6 @@ RUN cd /usr/src/ && \
     git apply --unidiff-zero $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
     # update ovs-sandbox for docker run
     git apply --unidiff-zero $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch && \
-    # OVS 3.7 compatibility adjustments
-    git apply --unidiff-zero $SRC_DIR/ovs-3.7-compat.patch && \
     ovs_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?openvswitch\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovs_commit}\2\3/" configure.ac
 
@@ -104,8 +99,6 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     cd ovn && \
     # modify src route priority
     git apply --unidiff-zero $SRC_DIR/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch && \
-    # add support for conditionally skipping conntrack
-    git apply --unidiff-zero $SRC_DIR/78cade01874292e2c101c39b975290ef6c812a50.patch && \
     # consolidate northd conntrack skip flows
     git apply --unidiff-zero $SRC_DIR/ovn-northd-skip-conntrack.patch && \
     # direct DNAT output to logical switch ports
@@ -122,8 +115,6 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     git apply --unidiff-zero $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
     # change default hash type from dp_hash to hash with field src_ip
     git apply --unidiff-zero $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
-    # OVN 26.03 API adaptation
-    git apply --unidiff-zero $SRC_DIR/ovn-26.03-api-adaptation.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 
