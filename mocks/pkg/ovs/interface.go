@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	aclsampling "github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovs "github.com/kubeovn/kube-ovn/pkg/ovs"
 	ovnnb "github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -133,6 +134,20 @@ func (m *MockVswitch) ListPort(filter func(*vswitch.Port) bool) ([]vswitch.Port,
 func (mr *MockVswitchMockRecorder) ListPort(filter any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPort", reflect.TypeOf((*MockVswitch)(nil).ListPort), filter)
+}
+
+// ReconcileACLSamplingCollectorSet mocks base method.
+func (m *MockVswitch) ReconcileACLSamplingCollectorSet(config aclsampling.NodeConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileACLSamplingCollectorSet", config)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileACLSamplingCollectorSet indicates an expected call of ReconcileACLSamplingCollectorSet.
+func (mr *MockVswitchMockRecorder) ReconcileACLSamplingCollectorSet(config any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSamplingCollectorSet", reflect.TypeOf((*MockVswitch)(nil).ReconcileACLSamplingCollectorSet), config)
 }
 
 // Transact mocks base method.
@@ -2460,6 +2475,88 @@ func (mr *MockACLMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSgACL", reflect.TypeOf((*MockACL)(nil).UpdateSgACL), sg, direction)
 }
 
+// MockACLSampling is a mock of ACLSampling interface.
+type MockACLSampling struct {
+	ctrl     *gomock.Controller
+	recorder *MockACLSamplingMockRecorder
+	isgomock struct{}
+}
+
+// MockACLSamplingMockRecorder is the mock recorder for MockACLSampling.
+type MockACLSamplingMockRecorder struct {
+	mock *MockACLSampling
+}
+
+// NewMockACLSampling creates a new mock instance.
+func NewMockACLSampling(ctrl *gomock.Controller) *MockACLSampling {
+	mock := &MockACLSampling{ctrl: ctrl}
+	mock.recorder = &MockACLSamplingMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockACLSampling) EXPECT() *MockACLSamplingMockRecorder {
+	return m.recorder
+}
+
+// ApplyNetworkPolicyACLSampling mocks base method.
+func (m *MockACLSampling) ApplyNetworkPolicyACLSampling(config aclsampling.ControllerConfig, request *ovs.NetworkPolicySamplingRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyNetworkPolicyACLSampling", config, request)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyNetworkPolicyACLSampling indicates an expected call of ApplyNetworkPolicyACLSampling.
+func (mr *MockACLSamplingMockRecorder) ApplyNetworkPolicyACLSampling(config, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyNetworkPolicyACLSampling", reflect.TypeOf((*MockACLSampling)(nil).ApplyNetworkPolicyACLSampling), config, request)
+}
+
+// PrepareNetworkPolicyACLSampling mocks base method.
+func (m *MockACLSampling) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*ovs.NetworkPolicySamplingRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrepareNetworkPolicyACLSampling", pgName, namespace, name, uid)
+	ret0, _ := ret[0].(*ovs.NetworkPolicySamplingRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrepareNetworkPolicyACLSampling indicates an expected call of PrepareNetworkPolicyACLSampling.
+func (mr *MockACLSamplingMockRecorder) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareNetworkPolicyACLSampling", reflect.TypeOf((*MockACLSampling)(nil).PrepareNetworkPolicyACLSampling), pgName, namespace, name, uid)
+}
+
+// ReconcileACLSampling mocks base method.
+func (m *MockACLSampling) ReconcileACLSampling(config aclsampling.ControllerConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileACLSampling", config)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileACLSampling indicates an expected call of ReconcileACLSampling.
+func (mr *MockACLSamplingMockRecorder) ReconcileACLSampling(config any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSampling", reflect.TypeOf((*MockACLSampling)(nil).ReconcileACLSampling), config)
+}
+
+// ResolveNetworkPolicyACLSample mocks base method.
+func (m *MockACLSampling) ResolveNetworkPolicyACLSample(reference aclsampling.SampleReference) (*aclsampling.Event, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveNetworkPolicyACLSample", reference)
+	ret0, _ := ret[0].(*aclsampling.Event)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveNetworkPolicyACLSample indicates an expected call of ResolveNetworkPolicyACLSample.
+func (mr *MockACLSamplingMockRecorder) ResolveNetworkPolicyACLSample(reference any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNetworkPolicyACLSample", reflect.TypeOf((*MockACLSampling)(nil).ResolveNetworkPolicyACLSample), reference)
+}
+
 // MockAddressSet is a mock of AddressSet interface.
 type MockAddressSet struct {
 	ctrl     *gomock.Controller
@@ -3417,6 +3514,20 @@ func (mr *MockNbClientMockRecorder) AddressSetUpdateAddress(asName any, addresse
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{asName}, addresses...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddressSetUpdateAddress", reflect.TypeOf((*MockNbClient)(nil).AddressSetUpdateAddress), varargs...)
+}
+
+// ApplyNetworkPolicyACLSampling mocks base method.
+func (m *MockNbClient) ApplyNetworkPolicyACLSampling(config aclsampling.ControllerConfig, request *ovs.NetworkPolicySamplingRequest) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyNetworkPolicyACLSampling", config, request)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyNetworkPolicyACLSampling indicates an expected call of ApplyNetworkPolicyACLSampling.
+func (mr *MockNbClientMockRecorder) ApplyNetworkPolicyACLSampling(config, request any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyNetworkPolicyACLSampling", reflect.TypeOf((*MockNbClient)(nil).ApplyNetworkPolicyACLSampling), config, request)
 }
 
 // BatchAddLogicalRouterPolicy mocks base method.
@@ -5420,10 +5531,39 @@ func (m *MockNbClient) ReconcileGatewayChassises(lrpName string, chassises []str
 	return ret0
 }
 
+// PrepareNetworkPolicyACLSampling mocks base method.
+func (m *MockNbClient) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*ovs.NetworkPolicySamplingRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrepareNetworkPolicyACLSampling", pgName, namespace, name, uid)
+	ret0, _ := ret[0].(*ovs.NetworkPolicySamplingRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrepareNetworkPolicyACLSampling indicates an expected call of PrepareNetworkPolicyACLSampling.
+func (mr *MockNbClientMockRecorder) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareNetworkPolicyACLSampling", reflect.TypeOf((*MockNbClient)(nil).PrepareNetworkPolicyACLSampling), pgName, namespace, name, uid)
+}
+
+// ReconcileACLSampling mocks base method.
+func (m *MockNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileACLSampling", config)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
 // ReconcileGatewayChassises indicates an expected call of ReconcileGatewayChassises.
 func (mr *MockNbClientMockRecorder) ReconcileGatewayChassises(lrpName, chassises any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).ReconcileGatewayChassises), lrpName, chassises)
+}
+
+// ReconcileACLSampling indicates an expected call of ReconcileACLSampling.
+func (mr *MockNbClientMockRecorder) ReconcileACLSampling(config any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSampling", reflect.TypeOf((*MockNbClient)(nil).ReconcileACLSampling), config)
 }
 
 // ReconcilePortDHCPOptions mocks base method.
@@ -5487,6 +5627,21 @@ func (m *MockNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName
 func (mr *MockNbClientMockRecorder) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, migratedFail any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLogicalSwitchPortMigrateOptions", reflect.TypeOf((*MockNbClient)(nil).ResetLogicalSwitchPortMigrateOptions), lspName, srcNodeName, targetNodeName, migratedFail)
+}
+
+// ResolveNetworkPolicyACLSample mocks base method.
+func (m *MockNbClient) ResolveNetworkPolicyACLSample(reference aclsampling.SampleReference) (*aclsampling.Event, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveNetworkPolicyACLSample", reference)
+	ret0, _ := ret[0].(*aclsampling.Event)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveNetworkPolicyACLSample indicates an expected call of ResolveNetworkPolicyACLSample.
+func (mr *MockNbClientMockRecorder) ResolveNetworkPolicyACLSample(reference any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNetworkPolicyACLSample", reflect.TypeOf((*MockNbClient)(nil).ResolveNetworkPolicyACLSample), reference)
 }
 
 // SGLostACL mocks base method.

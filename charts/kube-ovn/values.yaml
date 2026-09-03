@@ -122,6 +122,18 @@ func:
   ENABLE_LIVE_MIGRATION_OPTIMIZE: true
   ENABLE_OVN_LB_PREFER_LOCAL: false
 
+# Experimental OVN ACL sampling for NetworkPolicy events.
+aclSampling:
+  enabled: false
+  setID: 142
+  localGroupID: 142
+  appIDNew: 102
+  appIDEstablished: 103
+  collectorIDAllow: 1
+  collectorIDDefaultDeny: 2
+  allowProbabilityPercent: 1
+  defaultDenyProbabilityPercent: 100
+
 ipv4:
   POD_CIDR: "10.16.0.0/16"
   POD_GATEWAY: "10.16.0.1"

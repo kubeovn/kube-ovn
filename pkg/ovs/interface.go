@@ -8,6 +8,7 @@ import (
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 
+	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -20,6 +21,7 @@ type Vswitch interface {
 	ListBridge(needVendorFilter bool, filter func(sw *vswitch.Bridge) bool) ([]vswitch.Bridge, error)
 	ListPort(filter func(sp *vswitch.Port) bool) ([]vswitch.Port, error)
 	ListInterface(filter func(si *vswitch.Interface) bool) ([]vswitch.Interface, error)
+	ReconcileACLSamplingCollectorSet(config aclsampling.NodeConfig) error
 }
 
 type NBGlobal interface {
@@ -197,6 +199,13 @@ type ACL interface {
 	CleanNoParentKeyAcls() error
 }
 
+type ACLSampling interface {
+	ReconcileACLSampling(config aclsampling.ControllerConfig) error
+	PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*NetworkPolicySamplingRequest, error)
+	ApplyNetworkPolicyACLSampling(config aclsampling.ControllerConfig, request *NetworkPolicySamplingRequest) error
+	ResolveNetworkPolicyACLSample(reference aclsampling.SampleReference) (*aclsampling.Event, error)
+}
+
 type AddressSet interface {
 	CreateAddressSet(asName string, externalIDs map[string]string) error
 	AddressSetUpdateAddress(asName string, addresses ...string) error
@@ -264,6 +273,7 @@ type Meter interface {
 
 type NbClient interface {
 	ACL
+	ACLSampling
 	AddressSet
 	BFD
 	DHCPOptions

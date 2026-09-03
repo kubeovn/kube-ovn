@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -84,6 +85,7 @@ type Configuration struct {
 	SetVxlanTxOff             bool
 	LogPerm                   string
 	EnableNonPrimaryCNI       bool
+	ACLSampling               aclsampling.NodeConfig
 
 	// TLS configuration for secure serving
 	TLSMinVersion   string
@@ -143,10 +145,13 @@ func ParseFlags() *Configuration {
 		argSetVxlanTxOff             = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                   = pflag.String("log-perm", "640", "The permission for the log file")
 
-		argTLSMinVersion   = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
-		argTLSMaxVersion   = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
-		argTLSCipherSuites = pflag.StringSlice("tls-cipher-suites", nil, "Comma-separated list of TLS cipher suite names to use for secure serving (e.g., 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'). Names must match Go's crypto/tls package. See Go documentation for available suites. If not set, defaults are used. Users are responsible for selecting secure cipher suites.")
-		argNonPrimaryCNI   = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, skip setting NetworkUnavailable node condition")
+		argTLSMinVersion           = pflag.String("tls-min-version", "", "The minimum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
+		argTLSMaxVersion           = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
+		argTLSCipherSuites         = pflag.StringSlice("tls-cipher-suites", nil, "Comma-separated list of TLS cipher suite names to use for secure serving (e.g., 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'). Names must match Go's crypto/tls package. See Go documentation for available suites. If not set, defaults are used. Users are responsible for selecting secure cipher suites.")
+		argNonPrimaryCNI           = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, skip setting NetworkUnavailable node condition")
+		argEnableACLSampling       = pflag.Bool("enable-acl-sampling", false, "Enable experimental local ACL sample delivery")
+		argACLSamplingSetID        = pflag.Uint32("acl-sampling-set-id", aclsampling.DefaultSetID, "Observation domain ID used by ACL sample collectors")
+		argACLSamplingLocalGroupID = pflag.Uint32("acl-sampling-local-group-id", aclsampling.DefaultLocalGroupID, "Local psample group ID used to deliver ACL samples")
 	)
 
 	// mute info log for ipset lib
@@ -218,12 +223,21 @@ func ParseFlags() *Configuration {
 		CertManagerIssuerName:     *argCertManagerIssuerName,
 		IPSecCertDuration:         *argOVNIPSecCertDuration,
 		EnableNonPrimaryCNI:       *argNonPrimaryCNI,
+		ACLSampling: aclsampling.NodeConfig{
+			Enabled:      *argEnableACLSampling,
+			SetID:        *argACLSamplingSetID,
+			LocalGroupID: *argACLSamplingLocalGroupID,
+		},
 	}
 
 	return config
 }
 
 func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
+	if err := config.ACLSampling.Validate(); err != nil {
+		return fmt.Errorf("invalid ACL sampling configuration: %w", err)
+	}
+
 	if config.NodeName == "" {
 		klog.Info("node name not specified in command line parameters, fall back to the environment variable")
 		if config.NodeName = strings.ToLower(os.Getenv(util.EnvNodeName)); config.NodeName == "" {

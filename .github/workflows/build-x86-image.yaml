@@ -682,6 +682,85 @@ jobs:
             fi;
           done
 
+  acl-sampling-e2e:
+    name: ACL Sampling E2E
+    needs:
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Install kind
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Create kind cluster
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pipx install jinjanator
+          make kind-ghcr-pull kind-init-ipv4
+
+      - name: Install Kube-OVN with deterministic ACL sampling
+        id: install
+        env:
+          ENABLE_ACL_SAMPLING: "true"
+          ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT: "100"
+          ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT: "100"
+        run: make kind-install-ipv4
+
+      - name: Verify sampled NetworkPolicy decisions
+        id: e2e
+        run: bash hack/acl-sampling-e2e.sh
+
+      - name: Collect events
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: kubectl get events -A -o yaml > acl-sampling-e2e-events.yaml
+
+      - name: Collect pod status
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: kubectl get pods -A -o wide > acl-sampling-e2e-pods.txt
+
+      - name: Collect kubectl ko log
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        continue-on-error: true
+        run: make kubectl-ko-log
+
+      - name: Upload diagnostics
+        if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        uses: actions/upload-artifact@v7
+        with:
+          name: acl-sampling-e2e-diagnostics
+          path: |
+            acl-sampling-e2e-events.yaml
+            acl-sampling-e2e-pods.txt
+            acl-sampling-e2e-listener.out
+            acl-sampling-e2e-listener.err
+            kubectl-ko-log/
+
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
     if: |
@@ -4294,6 +4373,7 @@ jobs:
   push:
     name: Push Images
     needs:
+      - acl-sampling-e2e
       - k8s-conformance-e2e
       - k8s-netpol-e2e
       - cyclonus-netpol-e2e
