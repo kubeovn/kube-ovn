@@ -73,7 +73,7 @@ require (
 	kubevirt.io/api v1.9.0
 	kubevirt.io/client-go v1.9.0-beta.0.0.20260902025523-eca18b785298
 	sigs.k8s.io/controller-runtime v0.24.1
-	sigs.k8s.io/knftables v0.0.21
+	sigs.k8s.io/knftables v0.0.22
 	sigs.k8s.io/network-policy-api v0.1.8-0.20251209142732-3910463a5686
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.2
 	sigs.k8s.io/yaml v1.6.0
@@ -160,6 +160,7 @@ require (
 	github.com/google/cel-go v0.29.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/nftables v0.3.0 // indirect
 	github.com/google/pprof v0.0.0-20260507013755-92041b743c96 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
