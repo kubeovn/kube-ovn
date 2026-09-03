@@ -1,3 +1,12 @@
+From 78cade01874292e2c101c39b975290ef6c812a50 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:31:32 +0000
+Subject: [PATCH] add support for conditionally skipping conntrack
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ 6 files changed, 82 insertions(+), 15 deletions(-)
+
 diff --git a/controller/lflow.c b/controller/lflow.c
 index 382c2aecb..0fcde2ab5 100644
 --- a/controller/lflow.c

@@ -1,3 +1,14 @@
+From e5916eb53abc3b7d28c407c3c47566c46116090a Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:31:33 +0000
+Subject: [PATCH] fix lr-lb dnat with multiple distributed gateway ports
+
+Signed-off-by: zcq98 <zhaocongqi_yewu@cmss.chinamobile.com>
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/northd.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
 diff --git a/northd/northd.c b/northd/northd.c
 index 6de9968f9..4d2fbfaa7 100644
 --- a/northd/northd.c

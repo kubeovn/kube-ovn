@@ -1,3 +1,13 @@
+From e4e6ea9c5f4ba080b719924e470daa8094ff38a7 Mon Sep 17 00:00:00 2001
+From: clyi <clyi@alauda.io>
+Date: Thu, 31 Jul 2025 18:19:14 +0800
+Subject: [PATCH] [PATCH] support dedicated bfd lrp
+---
+ controller/physical.c | 31 ++++++++++++++++++++
+ controller/pinctrl.c  | 13 +++++----
+ northd/northd.c       | 66 ++++++++++++++++++++++++++++++++++++-------
+ 3 files changed, 95 insertions(+), 15 deletions(-)
+
 diff --git a/controller/physical.c b/controller/physical.c
 index 030010c33..effc5f7c9 100644
 --- a/controller/physical.c

@@ -1,3 +1,12 @@
+From a297b840c2c9f118c7ce6133077087b5999f12dd Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:31:33 +0000
+Subject: [PATCH] direct output to lsp for dnat packets in logical switch
+ ingress pipelines
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
 index af66832e4..0878ea391 100644
 --- a/northd/en-global-config.c

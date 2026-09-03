@@ -1,3 +1,13 @@
+From 52b727b3315463668669ff423ce8bfa129861162 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 25 Dec 2025 00:25:36 +0000
+Subject: [PATCH] set dl_src for packets redirected by router port
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/northd.c | 69 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+
 diff --git a/northd/northd.c b/northd/northd.c
 index c5121e0b5..764dbd596 100644
 --- a/northd/northd.c

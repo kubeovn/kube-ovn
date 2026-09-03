@@ -1,3 +1,12 @@
+From f9e97031b56ab5747b5d73629198331a6daacdfd Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:29:00 +0000
+Subject: [PATCH] ovn-controller: do not send GARP on localnet for Kube-OVN
+ ports
+---
+ controller/pinctrl.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
 diff --git a/controller/garp_rarp.c b/controller/garp_rarp.c
 index 9de8345c7..2d16b2d6c 100644
 --- a/controller/garp_rarp.c

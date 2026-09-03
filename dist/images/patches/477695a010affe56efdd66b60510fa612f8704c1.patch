@@ -1,3 +1,14 @@
+From 477695a010affe56efdd66b60510fa612f8704c1 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Fri, 23 May 2025 06:09:31 +0000
+Subject: [PATCH] northd: skip arp/nd request for lrp addresses from localnet
+ ports
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/northd.c | 52 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 52 insertions(+)
+
 diff --git a/northd/northd.c b/northd/northd.c
 index d674518a1..ad858258d 100644
 --- a/northd/northd.c

@@ -1,3 +1,13 @@
+From d088c5d8c263552c5a31d87813991aee30ab74de Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Tue, 26 Nov 2024 16:29:08 +0800
+Subject: [PATCH] ovs-router: skip getting source address for kube-ipvs0
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ lib/ovs-router.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
 diff --git a/lib/ovs-router.c b/lib/ovs-router.c
 index 2566386ea2..fcdc3072a3 100644
 --- a/lib/ovs-router.c
