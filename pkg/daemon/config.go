@@ -243,6 +243,10 @@ func ParseFlags() *Configuration {
 }
 
 func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
+	if err := config.ACLSampling.Validate(); err != nil {
+		return fmt.Errorf("invalid ACL sampling configuration: %w", err)
+	}
+
 	if config.NodeName == "" {
 		klog.Info("node name not specified in command line parameters, fall back to the environment variable")
 		if config.NodeName = strings.ToLower(os.Getenv(util.EnvNodeName)); config.NodeName == "" {
@@ -314,28 +318,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 		if err != nil {
 			return fmt.Errorf("failed to get iface addr. %w", err)
 		}
-		for _, addr := range addrs {
-			_, ipCidr, err := net.ParseCIDR(addr.String())
-			if err != nil {
-				klog.Errorf("Failed to parse CIDR address %s: %v, skipping", addr.String(), err)
-				continue
-			}
-			// exclude the vip as encap ip unless host-tunnel-src is true
-			if ones, bits := ipCidr.Mask.Size(); ones == bits && !config.HostTunnelSrc {
-				klog.Infof("Skip address %s", ipCidr.String())
-				continue
-			}
-
-			// exclude link-local and loopback addresses
-			ipStr, _, _ := strings.Cut(addr.String(), "/")
-			if ip := net.ParseIP(ipStr); ip == nil || ip.IsLinkLocalUnicast() || ip.IsLoopback() {
-				continue
-			}
-			if len(srcIPs) == 0 || slices.Contains(srcIPs, ipStr) {
-				encapIP = ipStr
-				break
-			}
-		}
+		encapIP = selectEncapIP(addrs, srcIPs, config.HostTunnelSrc, config.NodeIPv4, config.NodeIPv6)
 		if len(encapIP) == 0 {
 			return fmt.Errorf("iface %s has no valid IP address", tunnelNic)
 		}

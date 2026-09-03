@@ -160,8 +160,8 @@ func TestRenderNFTTProxyAndMangle(t *testing.T) {
 		TProxyTargets: []nftTProxyTarget{{Address: "10.30.0.2", Port: 8080}},
 	})
 
-	require.Contains(t, dump, "tcp dport 8080 meta mark set 0x90003")
-	require.Contains(t, dump, "tcp dport 8080 tproxy ip to 192.168.1.10:8102 meta mark set 0x90004")
+	require.Contains(t, dump, "tcp dport 8080 meta mark set ((meta mark & 0xfff6fffc) | 0x90003)")
+	require.Contains(t, dump, "tcp dport 8080 tproxy ip to 192.168.1.10:8102 meta mark set ((meta mark & 0xfff6fffb) | 0x90004)")
 	require.Contains(t, dump, "udp dport { 6081, 4789 } meta mark set 0")
 	require.Contains(t, dump, "tcp flags & rst == rst ct state invalid drop")
 	require.Contains(t, dump, "ip saddr 10.16.1.0/24 tcp flags & syn == 0 ct state new ip daddr != @subnets drop")
@@ -481,9 +481,11 @@ func TestNFTAuditDoesNotCountHealthyRefreshAsRepair(t *testing.T) {
 
 	require.NoError(t, backend.Reconcile(context.Background()))
 	before := testutil.ToFloat64(metricGatewayNFTRepairs)
+	transactions := testutil.ToFloat64(metricGatewayNFTTransactions)
 	backend.lastAudit = time.Now().Add(-2 * time.Minute)
 	require.NoError(t, backend.Reconcile(context.Background()))
 	require.Equal(t, before, testutil.ToFloat64(metricGatewayNFTRepairs))
+	require.Equal(t, transactions, testutil.ToFloat64(metricGatewayNFTTransactions))
 }
 
 func TestNFTAuditReturnsDefinitionCheckFailure(t *testing.T) {

@@ -159,7 +159,9 @@ func TestKubeOVNIPSetProtocol(t *testing.T) {
 func TestGatewayBackendManagerAutoSwitchesAfterStableDetection(t *testing.T) {
 	proxyMode := "nftables"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, proxyMode)
+		if _, err := io.WriteString(w, proxyMode); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -196,7 +198,9 @@ func TestGatewayBackendManagerResetsStabilityOnDetectionFailure(t *testing.T) {
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		_, _ = io.WriteString(w, "nftables")
+		if _, err := io.WriteString(w, "nftables"); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 

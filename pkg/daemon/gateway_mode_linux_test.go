@@ -45,7 +45,9 @@ func TestProxyModeDetectorHTTP(t *testing.T) {
 
 	for _, tt := range tests {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = io.WriteString(w, tt.body)
+			if _, err := io.WriteString(w, tt.body); err != nil {
+				t.Errorf("write response: %v", err)
+			}
 		}))
 
 		detector := newProxyModeDetector(server.URL, time.Second, nil)
@@ -90,7 +92,9 @@ func TestDetectorColdStartWaitsForProxyMode(t *testing.T) {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
-		_, _ = io.WriteString(w, "nftables\n")
+		if _, err := io.WriteString(w, "nftables\n"); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 

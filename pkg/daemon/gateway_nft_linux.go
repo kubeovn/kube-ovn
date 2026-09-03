@@ -17,6 +17,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/knftables"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -271,9 +272,11 @@ func localNFTAddresses() ([]string, error) {
 		}
 		for _, address := range addresses {
 			ip, _, err := net.ParseCIDR(address.String())
-			if err == nil {
-				result = append(result, ip.String())
+			if err != nil {
+				klog.Errorf("parse address %s on interface %s: %v", address.String(), iface.Name, err)
+				continue
 			}
+			result = append(result, ip.String())
 		}
 	}
 	return sortedUniqueStrings(result), nil
@@ -532,14 +535,18 @@ func (*nftGatewayBackend) renderNFTTProxyRules(tx *knftables.Transaction, snapsh
 		match := knftables.Concat(ipToken+" daddr", target.Address, "tcp dport", target.Port)
 		addNFTRule(tx, family, table, "tproxy-output", knftables.Concat(
 			match,
-			"meta mark set", fmt.Sprintf("%#x", TProxyOutputMark),
+			nftMetaMarkSet(TProxyOutputMark, TProxyOutputMask),
 		), "tproxy-output:"+target.Address+":"+strconv.FormatInt(int64(target.Port), 10))
 		addNFTRule(tx, family, table, "tproxy-prerouting", knftables.Concat(
 			match,
 			"tproxy", tproxyFamily, "to", tproxyAddress,
-			"meta mark set", fmt.Sprintf("%#x", TProxyPreroutingMark),
+			nftMetaMarkSet(TProxyPreroutingMark, TProxyPreroutingMask),
 		), "tproxy-prerouting:"+target.Address+":"+strconv.FormatInt(int64(target.Port), 10))
 	}
+}
+
+func nftMetaMarkSet(value, mask uint32) string {
+	return fmt.Sprintf("meta mark set ((meta mark & %#x) | %#x)", ^mask, value&mask)
 }
 
 func (*nftGatewayBackend) renderNFTFilterAndMangleRules(tx *knftables.Transaction, snapshot nftFamilySnapshot, includeCounterObjects bool) {
@@ -967,6 +974,7 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 	tx := b.writer.NewTransaction()
 	detectedDrift := false
 	for _, family := range desired.Families {
+		familyDrift := false
 		reader := b.readers[family.Family]
 		if reader == nil {
 			b.renderFullFamily(tx, family)
@@ -995,6 +1003,7 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 				return nil, false, fmt.Errorf("audit %s nftables definitions: %w", family.Family, err)
 			}
 			if !match {
+				familyDrift = true
 				detectedDrift = true
 			}
 		}
@@ -1003,6 +1012,7 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 			len(objects["map"]) != 0 ||
 			len(objects["flowtable"]) != 0 ||
 			!sameStringSet(objects["counter"], expectedCounters) {
+			familyDrift = true
 			detectedDrift = true
 		}
 		expectedElements := nftSetElements(family)
@@ -1015,8 +1025,14 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 				return nil, false, fmt.Errorf("audit %s nftables set %s: %w", family.Family, name, err)
 			}
 			if !reflect.DeepEqual(nftElementMap(nftElementsToKeys(actual)), nftElementMap(expectedElements[name])) {
+				familyDrift = true
 				detectedDrift = true
 			}
+		}
+		// A caller without a definition checker has not provided a way to distinguish
+		// healthy rule contents from rule-content drift, so retain the full refresh.
+		if !familyDrift && b.checkDefinitions != nil {
+			continue
 		}
 
 		for _, name := range objects["chain"] {
