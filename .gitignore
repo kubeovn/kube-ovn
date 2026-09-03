@@ -82,3 +82,8 @@ yamls/gen
 /frr/
 
 .claude/*
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
