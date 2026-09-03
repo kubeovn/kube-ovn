@@ -1016,3 +1016,10 @@ func parseACLLogRate(annotations map[string]string) int {
 	}
 	return rate
 }
+
+func networkPolicyMeterNames(pgName string) []string {
+	return []string{
+		fmt.Sprintf("%s_to-lport_meter", pgName),
+		fmt.Sprintf("%s_from-lport_meter", pgName),
+	}
+}

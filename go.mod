@@ -44,7 +44,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/ti-mo/conntrack v0.6.0
 	github.com/ti-mo/netfilter v0.5.3
-	github.com/vishvananda/netlink v1.3.1
+	github.com/vishvananda/netlink v1.3.2-0.20260402033159-af2a3ea580ab
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.27.1
 	go.universe.tf/metallb v0.16.1
@@ -67,8 +67,8 @@ require (
 	kubevirt.io/api v1.8.1
 	kubevirt.io/client-go v1.8.1
 	sigs.k8s.io/controller-runtime v0.23.3
-	sigs.k8s.io/yaml v1.6.0
 	sigs.k8s.io/network-policy-api v0.1.8-0.20251209142732-3910463a5686
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
