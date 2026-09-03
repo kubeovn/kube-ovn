@@ -1,34 +1,123 @@
-From 737d9f932edada5a91f315b5f382daada8dee952 Mon Sep 17 00:00:00 2001
-From: clyi <clyi@alauda.io>
-Date: Thu, 23 Oct 2025 13:15:48 +0800
-Subject: [PATCH] add skip conntrack destination ipcidrs
+From dd65bb574cf91e2412a9f94167fc5448352026c2 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 3 Sep 2026 10:57:28 +0000
+Subject: [PATCH] northd: consolidate custom conntrack skip flows
 
-Signed-off-by: clyi <clyi@alauda.io>
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+
 ---
- northd/en-global-config.c |  5 ++
- northd/northd.c           | 96 +++++++++++++++++++++++++++++++++++++++
- 2 files changed, 101 insertions(+)
+ northd/en-global-config.c |  15 ++
+ northd/northd.c           | 284 ++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 299 insertions(+)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index eb79a975d..07749b281 100644
+index afc559160..804396500 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -742,0 +743,5 @@ check_nb_options_out_of_sync(
+@@ -724,6 +724,21 @@ check_nb_options_out_of_sync(
+         return true;
+     }
+ 
++    if (config_out_of_sync(&nb->options, &config_data->nb_options,
++                           "node_local_dns_ip", false)) {
++        return true;
++    }
++
++    if (config_out_of_sync(&nb->options, &config_data->nb_options,
++                           "ls_ct_skip_dst_lport_ips", false)) {
++        return true;
++    }
++
 +    if (config_out_of_sync(&nb->options, &config_data->nb_options,
 +                           "skip_conntrack_dst_cidrs", false)) {
 +        return true;
 +    }
 +
+     return false;
+ }
+ 
 diff --git a/northd/northd.c b/northd/northd.c
-index ad858258d..c5121e0b5 100644
+index 1ca8dedaf..9f1ee8397 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -113,0 +114,4 @@ static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6
+@@ -104,6 +104,15 @@ static bool default_acl_drop;
+  * and ports tunnel key allocation (12 bits for each instead of default 16). */
+ static bool vxlan_mode;
+ 
++static struct sset node_local_dns_ip_v4 = SSET_INITIALIZER(&node_local_dns_ip_v4);
++static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6);
++
 +/* User-defined destination IP CIDRs that should skip conntrack processing */
 +static struct sset skip_conntrack_dst_cidrs_v4 = SSET_INITIALIZER(&skip_conntrack_dst_cidrs_v4);
 +static struct sset skip_conntrack_dst_cidrs_v6 = SSET_INITIALIZER(&skip_conntrack_dst_cidrs_v6);
 +
-@@ -6808,0 +6813,126 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
++static bool ls_ct_skip_dst_lport_ips = false;
++
+ #define MAX_OVN_TAGS 4096
+ 
+ #define MAX_OVN_NF_GROUP_IDS 256
+@@ -6472,6 +6481,36 @@ build_ls_stateful_rec_pre_acls(
+                           "next;", lflow_ref);
+         }
+ 
++        // skip conntrack when access node local dns ip
++        char *match = NULL;
++        const char **array = sset_array(&node_local_dns_ip_v4);
++        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v4); i++) {
++            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
++
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_ACL,
++                                    110, match, "next;",
++                                    &od->nbs->header_, lflow_ref);
++
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_OUT_PRE_ACL,
++                                    110, match, "next;",
++                                    &od->nbs->header_, lflow_ref);
++            free(match);
++        }
++        free(array);
++        array = sset_array(&node_local_dns_ip_v6);
++        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v6); i++) {
++            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_ACL,
++                                    110, match, "next;",
++                                    &od->nbs->header_, lflow_ref);
++
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_OUT_PRE_ACL,
++                                    110, match, "next;",
++                                    &od->nbs->header_, lflow_ref);
++            free(match);
++        }
++        free(array);
++
+         /* Ingress and Egress Pre-ACL Table (Priority 100).
+          *
+          * Regardless of whether the ACL is "from-lport" or "to-lport",
+@@ -6718,6 +6757,156 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
+         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
+                       100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;",
+                       lflow_ref);
++
++        // skip conntrack when access node local dns ip
++        char *match = NULL;
++        const char **array = sset_array(&node_local_dns_ip_v4);
++        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v4); i++) {
++            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++                                             105, match, "next;",
++                                             &od->nbs->header_, lflow_ref);
++            free(match);
++        }
++        free(array);
++        array = sset_array(&node_local_dns_ip_v6);
++        for (size_t i = 0; i < sset_count(&node_local_dns_ip_v6); i++) {
++            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
++            ovn_lflow_add_with_kube_ovn_hint(lflows, od, S_SWITCH_IN_PRE_LB,
++                                             105, match, "next;",
++                                             &od->nbs->header_, lflow_ref);
++            free(match);
++        }
++        free(array);
 +        /* Skip conntrack for user-defined destination IP CIDRs
 +         *
 +         * Add priority 105 flows to skip conntrack processing for destinations
@@ -61,7 +150,8 @@ index ad858258d..c5121e0b5 100644
 +        if (!ls_ct_skip_dst_lport_ips) {
 +            return;
 +        }
-+        if (od->n_router_ports != 1 && od->n_localnet_ports == 0) {
++        if (vector_len(&od->router_ports) != 1 &&
++            vector_is_empty(&od->localnet_ports)) {
 +            return;
 +        }
 +
@@ -69,14 +159,16 @@ index ad858258d..c5121e0b5 100644
 +        inet_pton(AF_INET, "169.254.0.0", &lla_ip4);
 +        struct ovn_port *op;
 +
-+        if (od->n_router_ports == 1) {
-+            struct ovn_port *peer = od->router_ports[0]->peer;
++        if (vector_len(&od->router_ports) == 1) {
++            struct ovn_port *peer = vector_get(&od->router_ports, 0,
++                                               struct ovn_port *)->peer;
 +            if (!peer || !peer->nbrp) {
 +                return;
 +            }
 +
-+            for (size_t i = 0; i < peer->od->n_router_ports; i++) {
-+                op = peer->od->router_ports[i];
++            for (size_t i = 0; i < vector_len(&peer->od->router_ports); i++) {
++                op = vector_get(&peer->od->router_ports, i,
++                                struct ovn_port *);
 +                for (size_t j = 0; j < op->lrp_networks.n_ipv4_addrs; j++) {
 +                    struct ipv4_netaddr *addrs;
 +                    addrs = &op->lrp_networks.ipv4_addrs[j];
@@ -118,8 +210,8 @@ index ad858258d..c5121e0b5 100644
 +        char *error;
 +        char buf[INET6_ADDRSTRLEN];
 +
-+        for (size_t i = 0; i < od->n_localnet_ports; i++) {
-+            op = od->localnet_ports[i];
++        for (size_t i = 0; i < vector_len(&od->localnet_ports); i++) {
++            op = vector_get(&od->localnet_ports, i, struct ovn_port *);
 +            const char *ipv4_network = smap_get(&op->nbsp->external_ids,
 +                                                "ipv4_network");
 +            const char *ipv6_network = smap_get(&op->nbsp->external_ids,
@@ -155,10 +247,43 @@ index ad858258d..c5121e0b5 100644
 +                }
 +            }
 +        }
-@@ -21412,0 +21543,2 @@ ovnnb_db_run(struct northd_input *input_data,
+     }
+ }
+ 
+@@ -20960,6 +21149,101 @@ ovnnb_db_run(struct northd_input *input_data,
+     acl_ct_translation = smap_get_bool(input_data->nb_options,
+                                        "acl_ct_translation", false);
+ 
++    sset_clear(&node_local_dns_ip_v4);
++    sset_clear(&node_local_dns_ip_v6);
 +    sset_clear(&skip_conntrack_dst_cidrs_v4);
 +    sset_clear(&skip_conntrack_dst_cidrs_v6);
-@@ -21438,0 +21571,61 @@ ovnnb_db_run(struct northd_input *input_data,
++
++    const char *node_local_dns_ip = smap_get(input_data->nb_options,
++                                             "node_local_dns_ip");
++    if (node_local_dns_ip) {
++        ovs_be32 ip4;
++        struct in6_addr ip6;
++        char *cur, *next, *start;
++        next = start = xstrdup(node_local_dns_ip);
++        struct ds s = DS_EMPTY_INITIALIZER;
++        while ((cur = strsep(&next, ",")) && *cur) {
++            if (strchr(cur, ':')) {
++                if (ipv6_parse(cur, &ip6)) {
++                    ds_clear(&s);
++                    ipv6_format_addr(&ip6, &s);
++                    sset_add(&node_local_dns_ip_v6, ds_cstr_ro(&s));
++                }
++            } else if (ip_parse(cur, &ip4)) {
++                ds_clear(&s);
++                ds_put_format(&s, IP_FMT, IP_ARGS(ip4));
++                sset_add(&node_local_dns_ip_v4, ds_cstr_ro(&s));
++            }
++        }
++        ds_destroy(&s);
++        free(start);
++    }
++
 +    /* Parse skip_conntrack_dst_cidrs option
 +     *
 +     * This option allows users to specify destination IP CIDRs that should skip conntrack
@@ -220,3 +345,12 @@ index ad858258d..c5121e0b5 100644
 +        free(start);
 +    }
 +
++    ls_ct_skip_dst_lport_ips = smap_get_bool(input_data->nb_options,
++                                             "ls_ct_skip_dst_lport_ips",
++                                             false);
++
+     /* deprecated, use --event instead */
+     controller_event_en = smap_get_bool(input_data->nb_options,
+                                         "controller_event", false);
+-- 
+2.55.0
