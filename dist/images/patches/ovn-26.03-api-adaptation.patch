@@ -19,12 +19,6 @@ index 542619aee..3c5aa7773 100644
 +        }
 +    }
 +
-diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index 07749b281..98be64676 100644
---- a/northd/en-global-config.c
-+++ b/northd/en-global-config.c
-@@ -724 +723,0 @@ check_nb_options_out_of_sync(
--                           "acl_ct_translation", false)) {
 diff --git a/northd/lflow-mgr.c b/northd/lflow-mgr.c
 index 7e7d0b1bd..f368e7e3e 100644
 --- a/northd/lflow-mgr.c
@@ -113,28 +107,6 @@ diff --git a/northd/northd.c b/northd/northd.c
 index 30fe27787..51d32968e 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -6835 +6835 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
--        if (od->n_router_ports != 1 && od->n_localnet_ports == 0) {
-+        if (vector_len(&od->router_ports) != 1 && vector_len(&od->localnet_ports) == 0) {
-@@ -6843,2 +6843,3 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
--        if (od->n_router_ports == 1) {
--            struct ovn_port *peer = od->router_ports[0]->peer;
-+        if (vector_len(&od->router_ports) == 1) {
-+            struct ovn_port *peer = vector_get(&od->router_ports, 0,
-+                                               struct ovn_port *)->peer;
-@@ -6849,2 +6850,2 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
--            for (size_t i = 0; i < peer->od->n_router_ports; i++) {
--                op = peer->od->router_ports[i];
-+            for (size_t i = 0; i < vector_len(&peer->od->router_ports); i++) {
-+                op = vector_get(&peer->od->router_ports, i, struct ovn_port *);
-@@ -6892,2 +6893,2 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
--        for (size_t i = 0; i < od->n_localnet_ports; i++) {
--            op = od->localnet_ports[i];
-+        for (size_t i = 0; i < vector_len(&od->localnet_ports); i++) {
-+            op = vector_get(&od->localnet_ports, i, struct ovn_port *);
-@@ -9174 +9175 @@ build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
--    if (!op->nbsp || !op->od || !op->od->nbs || op->od->n_router_ports) {
-+    if (!op->nbsp || !op->od || !op->od->nbs || vector_len(&op->od->router_ports)) {
 @@ -9221 +9222 @@ build_lswitch_mod_dl_src_rules(struct ovn_port *op,
 -        !op->od->n_router_ports || !op->od->n_localnet_ports) {
 +        vector_is_empty(&op->od->router_ports) || vector_is_empty(&op->od->localnet_ports)) {
