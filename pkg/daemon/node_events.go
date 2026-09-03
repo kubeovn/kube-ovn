@@ -30,6 +30,22 @@ type nodeFailureKey struct {
 
 const nodeEventWriteTimeout = 3 * time.Second
 
+// Keep changing failure messages from growing the in-memory deduplication set without bound.
+const maxNodeFailureSignatures = 16
+
+func trimNodeFailureSignatures(failures map[nodeFailureKey]struct{}, key nodeFailureKey) {
+	count := 0
+	for existingKey := range failures {
+		if existingKey.nodeName == key.nodeName && existingKey.nodeUID == key.nodeUID && existingKey.reason == key.reason && existingKey.stage == key.stage {
+			count++
+			if count >= maxNodeFailureSignatures {
+				delete(failures, existingKey)
+				return
+			}
+		}
+	}
+}
+
 func recordNodeFailureEvent(recorder record.EventRecorder, node *corev1.Node, reason, stage string, err error) {
 	if recorder == nil || node == nil || err == nil {
 		return
@@ -57,6 +73,7 @@ func (c *Controller) recordNodeFailure(node *corev1.Node, reason, stage string, 
 		c.nodeFailuresMutex.Unlock()
 		return
 	}
+	trimNodeFailureSignatures(c.nodeFailures, key)
 	c.nodeFailures[key] = struct{}{}
 	c.nodeFailuresMutex.Unlock()
 

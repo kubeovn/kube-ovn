@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -133,6 +134,20 @@ func TestReconcileNodeNetworkStageDeduplicatesEachFailureMessage(t *testing.T) {
 	require.NoError(t, controller.reconcileNodeNetworkStage(node, "setGateway", func() error { return nil }))
 	require.ErrorIs(t, controller.reconcileNodeNetworkStage(node, "setGateway", func() error { return failureA }), failureA)
 	requireNodeEvent(t, recorder, failureA.Error())
+}
+
+func TestReconcileNodeNetworkStageBoundsFailureSignatures(t *testing.T) {
+	t.Parallel()
+
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid"}}
+	controller, recorder := newNodeEventTestController(t, node)
+	for i := range maxNodeFailureSignatures + 4 {
+		failure := fmt.Errorf("failure-%d", i)
+		require.ErrorIs(t, controller.reconcileNodeNetworkStage(node, "setGateway", func() error { return failure }), failure)
+		requireNodeEvent(t, recorder, failure.Error())
+	}
+
+	require.Len(t, controller.nodeFailures, maxNodeFailureSignatures)
 }
 
 func TestGatewayIPSetListFailureIsRecordedUntilSuccess(t *testing.T) {

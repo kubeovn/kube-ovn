@@ -83,11 +83,17 @@ func InitNodeGateway(config *Configuration) (err error) {
 		}
 		if annotationErr != nil {
 			klog.Errorf("validate node %s address annotation failed, %v", nodeName, annotationErr)
+			for existingKey := range annotationFailures {
+				if existingKey.nodeName == node.Name && existingKey.nodeUID != node.UID {
+					delete(annotationFailures, existingKey)
+				}
+			}
 			failureKey := nodeFailureKey{nodeName: node.Name, nodeUID: node.UID, reason: addNodeFailedReason, stage: "validateOvn0Annotations", message: annotationErr.Error()}
 			if _, seen := annotationFailures[failureKey]; !seen {
 				if eventErr := recordNodeFailureEventSync(config.KubeClient, node, config.NodeName, addNodeFailedReason, "validateOvn0Annotations", annotationErr); eventErr != nil {
 					klog.Errorf("failed to record node %s annotation validation event: %v", config.NodeName, eventErr)
 				} else {
+					trimNodeFailureSignatures(annotationFailures, failureKey)
 					annotationFailures[failureKey] = struct{}{}
 				}
 			}
