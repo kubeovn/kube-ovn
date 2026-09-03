@@ -1,3 +1,13 @@
+From 9ee66bd91be65605cffb9a490b4dba3bc13358e9 Mon Sep 17 00:00:00 2001
+From: clyi <clyi@alauda.io>
+Date: Tue, 5 Aug 2025 10:30:31 +0800
+Subject: [PATCH] modify src route priority
+
+Signed-off-by: clyi <clyi@alauda.io>
+---
+ northd/northd.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
 diff --git a/northd/northd.c b/northd/northd.c
 index 1ca8dedaf..e6fc96b8b 100644
 --- a/northd/northd.c
