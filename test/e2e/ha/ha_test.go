@@ -12,6 +12,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -66,6 +67,21 @@ var dbNames = map[string]string{
 
 func cmdClusterStatus(db string) string {
 	return fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovn%s_db.ctl cluster/status %s", db, dbNames[db])
+}
+
+func waitForDbRecovery(f *framework.Framework, pods []corev1.Pod) {
+	ginkgo.GinkgoHelper()
+
+	for pod := range slices.Values(pods) {
+		for _, db := range [...]string{"nb", "sb"} {
+			dbFile := dbFilePath(db)
+			ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy")
+			framework.WaitUntil(time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
+				_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, "ovsdb-tool check-cluster "+dbFile)
+				return err == nil, nil
+			}, fmt.Sprintf("db file %s on node %s to be healthy", dbFile, pod.Spec.NodeName))
+		}
+	}
 }
 
 type clusterStatus struct {
@@ -293,15 +309,8 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	newNodes.Clear()
 	for pod := range slices.Values(pods.Items) {
 		newNodes.Insert(pod.Spec.NodeName)
-		for _, db := range [...]string{"nb", "sb"} {
-			dbFileToCheck := dbFilePath(db)
-			ginkgo.By("Waiting for db file " + dbFileToCheck + " on node " + pod.Spec.NodeName + " to be healthy")
-			framework.WaitUntil(time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
-				_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, "ovsdb-tool check-cluster "+dbFileToCheck)
-				return err == nil, nil
-			}, fmt.Sprintf("db file %s on node %s to be healthy", dbFileToCheck, pod.Spec.NodeName))
-		}
 	}
+	waitForDbRecovery(f, pods.Items)
 	framework.ExpectEqual(newNodes, nodes, "the set of nodes hosting ovn-central pods should be the same as before")
 
 	ginkgo.By("Getting birth time of db file " + dbFileHost + " on node " + nodeName + " after corruption recovery")
