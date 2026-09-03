@@ -379,8 +379,6 @@ github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca h1:fTMjoho2et9
 github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca/go.mod h1:jY1XeGzkx8ASNJ+SqQSxTESNXARkjvt+I6IJOTnzIjw=
 github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92 h1:6x474ooEGbRRS5YD6TFH4HOkF9Ag8IepQF1VhT+tbMw=
 github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92/go.mod h1:/SGJYGjOEAz+rw8JvkkbpcAyjQF1v4XPgpn1HqRg1fs=
-github.com/kubeovn/kubevirt-client-go v0.0.0-20260427030114-71d35a2bb8b2 h1:9r0zbCgxavpZ3DhNhiKA7wWWC6fpIAP2wTYKGyPrOD8=
-github.com/kubeovn/kubevirt-client-go v0.0.0-20260427030114-71d35a2bb8b2/go.mod h1:OB5Eqq9BM+N+L0nhSxTe8NuMLryhxxGQW21rSaImHjo=
 github.com/kubeovn/libovsdb v0.0.0-20260902074400-457a5d8cc172 h1:e8XTmu6psCshewB2CJau1bzLAJQ3czL3nNI4UFUEfyE=
 github.com/kubeovn/libovsdb v0.0.0-20260902074400-457a5d8cc172/go.mod h1:X8p5JMPYK5iKCyZ/RxFxvjl1sHfN7H9mo5UbtS5uImo=
 github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475 h1:KZba2Kj9TXCUdUSqOR3eiy4VvkkIyhDVImYmYs6GQWU=
@@ -1233,8 +1231,10 @@ kernel.org/pub/linux/libs/security/libcap/cap v1.2.78 h1:jgqg4gyu2BaYW9L6uzEtGLf
 kernel.org/pub/linux/libs/security/libcap/cap v1.2.78/go.mod h1:VjuVda6m2qGkpCVfrFkpTGyvkdlZ2N5/yfo89tujlg8=
 kernel.org/pub/linux/libs/security/libcap/psx v1.2.78 h1:PC3yNs51cX5LZ7U57a7xielBcoXB3xnV+rXD8V0H0DQ=
 kernel.org/pub/linux/libs/security/libcap/psx v1.2.78/go.mod h1:+l6Ee2F59XiJ2I6WR5ObpC1utCQJZ/VLsEbQCD8RG24=
-kubevirt.io/api v1.8.4 h1:L0mULVzwCvcaw16svfDKseqF/c3gIP+Kjs3F90l4avk=
-kubevirt.io/api v1.8.4/go.mod h1:EUaPeD1GQK4IIEp8TVtk5dsFlYQGzFfcWi4CV4rs0rY=
+kubevirt.io/api v1.9.0 h1:FWqx9yGk/GHUP5o4IthGXZ8FeAlgVNv2It48wD86UUo=
+kubevirt.io/api v1.9.0/go.mod h1:tFKAVaJMm7bXCMLxOoUdAqBprKAXoCa0sp0gBmnfBgY=
+kubevirt.io/client-go v1.9.0-beta.0.0.20260902025523-eca18b785298 h1:HlO2zGtkIkLfIJxoNO9tuWjWAv1xOw/SKGbNGOMYhZo=
+kubevirt.io/client-go v1.9.0-beta.0.0.20260902025523-eca18b785298/go.mod h1:bXmbwFVCJsUnFGg1lgVSB2Jc180N7IzlQRHXJxlrG6U=
 kubevirt.io/containerized-data-importer-api v1.65.0 h1:eU7fX+htMQwMUQbhmoI99MqrpZGcyKQ6pX8t2xhCdkU=
 kubevirt.io/containerized-data-importer-api v1.65.0/go.mod h1:VWE7E1H+RsmCKBULIfvpCz2oThQ4f7JvoED2XpXaGfQ=
 kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 h1:fZYvD3/Vnitfkx6IJxjLAk8ugnZQ7CXVYcRfkSKmuZY=
