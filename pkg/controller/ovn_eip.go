@@ -569,7 +569,7 @@ func (c *Controller) getOvnEipNat(eipV4IP string) (string, error) {
 		klog.Errorf("failed to get ovn dnats, %v", err)
 		return "", err
 	}
-	if len(dnats) != 0 {
+	if hasActiveOvnNat(util.DnatUsingEip, eipV4IP, dnats) {
 		nats = append(nats, util.DnatUsingEip)
 	}
 	fips, err := c.ovnFipsLister.List(selector)
@@ -577,7 +577,7 @@ func (c *Controller) getOvnEipNat(eipV4IP string) (string, error) {
 		klog.Errorf("failed to get ovn fips, %v", err)
 		return "", err
 	}
-	if len(fips) != 0 {
+	if hasActiveOvnNat(util.FipUsingEip, eipV4IP, fips) {
 		nats = append(nats, util.FipUsingEip)
 	}
 	snats, err := c.ovnSnatRulesLister.List(selector)
@@ -585,9 +585,19 @@ func (c *Controller) getOvnEipNat(eipV4IP string) (string, error) {
 		klog.Errorf("failed to get ovn snats, %v", err)
 		return "", err
 	}
-	if len(snats) != 0 {
+	if hasActiveOvnNat(util.SnatUsingEip, eipV4IP, snats) {
 		nats = append(nats, util.SnatUsingEip)
 	}
 	nat := strings.Join(nats, ",")
 	return nat, nil
+}
+
+func hasActiveOvnNat[T metav1.Object](natType, eipV4IP string, nats []T) bool {
+	for _, nat := range nats {
+		if nat.GetDeletionTimestamp().IsZero() {
+			return true
+		}
+		klog.V(3).Infof("ignore deleting ovn %s %s when checking nat usage for eip %s", natType, nat.GetName(), eipV4IP)
+	}
+	return false
 }
