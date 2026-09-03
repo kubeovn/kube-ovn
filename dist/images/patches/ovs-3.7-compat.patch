@@ -1,10 +1,3 @@
-diff --git a/lib/netdev-linux.c b/lib/netdev-linux.c
-index 314a426218..18437e125c 100644
---- a/lib/netdev-linux.c
-+++ b/lib/netdev-linux.c
-@@ -3602 +3602 @@ netdev_linux_get_addr_list(const struct netdev *netdev_,
--    error = get_ifindex(netdev, &ifindex);
-+    error = get_ifindex(netdev_, &ifindex);
 diff --git a/ovsdb/ovsdb-tool.c b/ovsdb/ovsdb-tool.c
 index ea73150c6e..4c8bfcb74e 100644
 --- a/ovsdb/ovsdb-tool.c

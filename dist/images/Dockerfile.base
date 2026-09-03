@@ -48,7 +48,7 @@ ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
 ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
 ADD patches/53b9837f7fe89cd63af735b039b8c26107d6579d.patch $SRC_DIR
 ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
-ADD patches/d088c5d8c263552a31d87813991aee30ab74de.patch $SRC_DIR
+ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
 ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
 ADD patches/ovs-3.7-compat.patch $SRC_DIR
@@ -57,9 +57,8 @@ ADD patches/78cade01874292e2c101c39b975290ef6c812a50.patch $SRC_DIR
 ADD patches/85aa6263ad5b3648eb7ceec90c812328dbb7c6c0.patch $SRC_DIR
 ADD patches/34dc3e3fcfacec6597293765ecd6e20fe15581f1.patch $SRC_DIR
 ADD patches/a297b840c2c9f118c7ce6133077087b5999f12dd.patch $SRC_DIR
-ADD patches/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch $SRC_DIR
 ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
-ADD patches/e5916eb53abc3b7d28c407c3c47566c46116090a.patch $SRC_DIR
+ADD patches/sbrec-delete-null-check.patch $SRC_DIR
 ADD patches/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch $SRC_DIR
 ADD patches/477695a010affe56efdd66b60510fa612f8704c1.patch $SRC_DIR
 ADD patches/737d9f932edada5a91f315b5f382daada8dee952.patch $SRC_DIR
@@ -94,7 +93,7 @@ RUN cd /usr/src/ && \
     # netdev: reduce cpu utilization for getting device addresses
     git apply --unidiff-zero $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
-    git apply --unidiff-zero $SRC_DIR/d088c5d8c263552a31d87813991aee30ab74de.patch && \
+    git apply --unidiff-zero $SRC_DIR/d088c5d8c263552c5a31d87813991aee30ab74de.patch && \
     # increase the default probe interval for large cluster
     git apply --unidiff-zero $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
     # update ovs-sandbox for docker run
@@ -116,12 +115,10 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     git apply --unidiff-zero $SRC_DIR/34dc3e3fcfacec6597293765ecd6e20fe15581f1.patch && \
     # direct output to lsp for dnat packets in logical switch ingress pipelines
     git apply --unidiff-zero $SRC_DIR/a297b840c2c9f118c7ce6133077087b5999f12dd.patch && \
-    # ovn-controller: make activation strategy work for single chassis
-    git apply --unidiff-zero $SRC_DIR/03e35ed9c5b4de0fa8acbc2c057cdd5957a8d605.patch && \
     # skip node local dns ip conntrack when set acl
     git apply --unidiff-zero $SRC_DIR/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch && \
-    # fix lr-lb dnat with multiple distributed gateway ports
-    git apply --unidiff-zero $SRC_DIR/e5916eb53abc3b7d28c407c3c47566c46116090a.patch && \
+    # guard stale load balancer and deleted northd records
+    git apply --unidiff-zero $SRC_DIR/sbrec-delete-null-check.patch && \
     # support dedicated BFD LRP
     git apply --unidiff-zero $SRC_DIR/e4e6ea9c5f4ba080b719924e470daa8094ff38a7.patch && \
     # northd: skip arp/nd request for lrp addresses from localnet ports

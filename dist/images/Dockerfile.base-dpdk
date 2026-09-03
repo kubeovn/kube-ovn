@@ -16,7 +16,7 @@ ADD patches/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch $SRC_DIR
 ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
 ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
 ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
-ADD patches/d088c5d8c263552a31d87813991aee30ab74de.patch $SRC_DIR
+ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
 ADD patches/ovs-3.7-compat.patch $SRC_DIR
 ADD patches/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch $SRC_DIR
@@ -45,7 +45,7 @@ RUN cd /usr/src/ && \
     # netdev: reduce cpu utilization for getting device addresses
     git apply --unidiff-zero $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
-    git apply --unidiff-zero $SRC_DIR/d088c5d8c263552a31d87813991aee30ab74de.patch && \
+    git apply --unidiff-zero $SRC_DIR/d088c5d8c263552c5a31d87813991aee30ab74de.patch && \
     # increase the default probe interval for large cluster
     git apply --unidiff-zero $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
     # OVS 3.7 compatibility adjustments

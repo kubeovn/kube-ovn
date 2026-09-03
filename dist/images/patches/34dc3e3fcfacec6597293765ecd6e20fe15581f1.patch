@@ -5,9 +5,8 @@ Subject: [PATCH] lflow: do not send direct traffic between lports to conntrack
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
- northd/en-global-config.c |   5 ++
- northd/northd.c           | 104 ++++++++++++++++++++++++++++++++++++++
- 2 files changed, 109 insertions(+)
+ northd/en-global-config.c | 5 +++++
+ 1 file changed, 5 insertions(+)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
 index 40f74646c..af66832e4 100644
