@@ -1,3 +1,12 @@
+From e490f5ac0b644101913c2a3db8e03d85e859deff Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Thu, 10 Apr 2025 01:28:59 +0000
+Subject: [PATCH] change default hash type from dp_hash to hash with field
+ src_ip
+---
+ lib/actions.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
 diff --git a/lib/actions.c b/lib/actions.c
 index 26df8e203..3f6572445 100644
 --- a/lib/actions.c

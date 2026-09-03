@@ -1,3 +1,14 @@
+From 34dc3e3fcfacec6597293765ecd6e20fe15581f1 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 10 Apr 2025 01:31:32 +0000
+Subject: [PATCH] lflow: do not send direct traffic between lports to conntrack
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/en-global-config.c |   5 ++
+ northd/northd.c           | 104 ++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 109 insertions(+)
+
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
 index 40f74646c..af66832e4 100644
 --- a/northd/en-global-config.c
