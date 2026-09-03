@@ -893,7 +893,11 @@ jobs:
           swap-storage: false
 
       - name: Go cache
-        if: steps.lookup-go-cache.outputs.cache-hit != 'true' && github.event_name == 'push'
+        # Trusted dispatches use an executor-specific ref, so this cache remains isolated from PRs and branches.
+        if: >-
+          steps.lookup-go-cache.outputs.cache-hit != 'true' &&
+          (github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'))
         uses: actions/cache@v6
         with:
           path: |
