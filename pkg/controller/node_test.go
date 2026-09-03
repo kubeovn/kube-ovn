@@ -197,9 +197,9 @@ func TestKubeOvnAnnotationsChanged(t *testing.T) {
 func TestHandleAddNodeRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	node := &corev1.Node{Name: "node-1"}
 	joinSubnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "join"},
+		Name: "join",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "10.0.0.1/32",
 			Gateway:   "10.0.0.1",
@@ -228,12 +228,12 @@ func TestHandleAddNodeRecordsFailureEvent(t *testing.T) {
 func TestHandleUpdateNodeRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	node := &corev1.Node{
 		Name: "node-1",
 		Annotations: map[string]string{
 			util.ChassisAnnotation: "chassis-1",
 		},
-	}}
+	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Nodes: []*corev1.Node{node},
 	})
@@ -251,7 +251,7 @@ func TestHandleUpdateNodeRecordsFailureEvent(t *testing.T) {
 func TestHandleDeleteNodeRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid"}}
+	node := &corev1.Node{Name: "node-1", UID: "node-uid"}
 	fc := newFakeController(t)
 	fc.fakeController.nodeKeyMutex = keymutex.NewHashed(0)
 	fc.fakeController.deletingNodeObjMap = xsync.NewMap[string, *corev1.Node]()

@@ -75,12 +75,12 @@ func (s *sequenceIPSet) ListSets() ([]string, error) {
 func TestHandleUpdateNodeRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	node := &corev1.Node{
 		Name: "node-1",
 		Annotations: map[string]string{
 			util.NodeNetworksAnnotation: "invalid json",
 		},
-	}}
+	}
 	controller, recorder := newNodeEventTestController(t, node)
 
 	err := controller.handleUpdateNode(node.Name)
@@ -92,7 +92,7 @@ func TestHandleUpdateNodeRecordsFailureEvent(t *testing.T) {
 func TestReconcileNodeNetworkStageDeduplicatesFailuresUntilSuccess(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "old-uid"}}
+	node := &corev1.Node{Name: "node-1", UID: "old-uid"}
 	controller, recorder := newNodeEventTestController(t, node)
 	failure := errors.New("iptables failed")
 
@@ -119,7 +119,7 @@ func TestReconcileNodeNetworkStageDeduplicatesFailuresUntilSuccess(t *testing.T)
 func TestReconcileNodeNetworkStageDeduplicatesEachFailureMessage(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid"}}
+	node := &corev1.Node{Name: "node-1", UID: "node-uid"}
 	controller, recorder := newNodeEventTestController(t, node)
 	failureA := errors.New("iptables failed")
 	failureB := errors.New("ipset failed")
@@ -139,7 +139,7 @@ func TestReconcileNodeNetworkStageDeduplicatesEachFailureMessage(t *testing.T) {
 func TestReconcileNodeNetworkStageBoundsFailureSignatures(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid"}}
+	node := &corev1.Node{Name: "node-1", UID: "node-uid"}
 	controller, recorder := newNodeEventTestController(t, node)
 	for i := range maxNodeFailureSignatures + 4 {
 		failure := fmt.Errorf("failure-%d", i)
@@ -153,7 +153,7 @@ func TestReconcileNodeNetworkStageBoundsFailureSignatures(t *testing.T) {
 func TestGatewayIPSetListFailureIsRecordedUntilSuccess(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid"}}
+	node := &corev1.Node{Name: "node-1", UID: "node-uid"}
 	controller, recorder := newNodeEventTestController(t, node)
 	failure := errors.New("failed to list ipsets")
 	controller.k8sipsets = &sequenceIPSet{errors: []error{failure, failure, nil, failure}}
@@ -174,7 +174,7 @@ func TestGatewayIPSetListFailureIsRecordedUntilSuccess(t *testing.T) {
 func TestRecordLocalNodeFailureSyncFallsBackToAPI(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1", UID: "node-uid"}}
+	node := &corev1.Node{Name: "node-1", UID: "node-uid"}
 	client := fake.NewSimpleClientset(node)
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	controller := &Controller{
@@ -192,7 +192,7 @@ func TestRecordLocalNodeFailureSyncFallsBackToAPI(t *testing.T) {
 }
 
 func TestInitNodeGatewayRecordsFailureEvent(t *testing.T) {
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	node := &corev1.Node{
 		Name: "node-1",
 		Annotations: map[string]string{
 			util.IPAddressAnnotation:  "10.0.0.2",
@@ -201,7 +201,7 @@ func TestInitNodeGatewayRecordsFailureEvent(t *testing.T) {
 			util.PortNameAnnotation:   "node-node-1",
 			util.GatewayAnnotation:    "10.0.0.1",
 		},
-	}}
+	}
 	failure := errors.New("configure ovn0 failed")
 	originalConfigureNodeGateway := configureNodeGateway
 	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool) error {
@@ -226,7 +226,7 @@ func TestInitNodeGatewayRecordsFailureEvent(t *testing.T) {
 }
 
 func TestInitNodeGatewayDeduplicatesInvalidAnnotations(t *testing.T) {
-	invalidNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	invalidNode := &corev1.Node{
 		Name: "node-1",
 		UID:  "node-uid",
 		Annotations: map[string]string{
@@ -236,7 +236,7 @@ func TestInitNodeGatewayDeduplicatesInvalidAnnotations(t *testing.T) {
 			util.PortNameAnnotation:   "node-node-1",
 			util.GatewayAnnotation:    "10.0.0.1",
 		},
-	}}
+	}
 	replacementNode := invalidNode.DeepCopy()
 	replacementNode.UID = "replacement-uid"
 	validNode := replacementNode.DeepCopy()
@@ -285,7 +285,7 @@ func TestInitNodeGatewayDeduplicatesInvalidAnnotations(t *testing.T) {
 }
 
 func TestInitNodeGatewayDeduplicatesEachAnnotationFailureMessage(t *testing.T) {
-	invalidAddressNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	invalidAddressNode := &corev1.Node{
 		Name: "node-1",
 		UID:  "node-uid",
 		Annotations: map[string]string{
@@ -295,7 +295,7 @@ func TestInitNodeGatewayDeduplicatesEachAnnotationFailureMessage(t *testing.T) {
 			util.PortNameAnnotation:   "node-node-1",
 			util.GatewayAnnotation:    "10.0.0.1",
 		},
-	}}
+	}
 	missingAddressNode := invalidAddressNode.DeepCopy()
 	delete(missingAddressNode.Annotations, util.IPAddressAnnotation)
 	validNode := invalidAddressNode.DeepCopy()
@@ -333,7 +333,7 @@ func TestInitNodeGatewayDeduplicatesEachAnnotationFailureMessage(t *testing.T) {
 }
 
 func TestInitNodeGatewayRetriesFailedAnnotationEventWrite(t *testing.T) {
-	invalidNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	invalidNode := &corev1.Node{
 		Name: "node-1",
 		UID:  "node-uid",
 		Annotations: map[string]string{
@@ -343,7 +343,7 @@ func TestInitNodeGatewayRetriesFailedAnnotationEventWrite(t *testing.T) {
 			util.PortNameAnnotation:   "node-node-1",
 			util.GatewayAnnotation:    "10.0.0.1",
 		},
-	}}
+	}
 	validNode := invalidNode.DeepCopy()
 	validNode.Annotations[util.IPAddressAnnotation] = "10.0.0.2"
 	client := fake.NewSimpleClientset(validNode)
@@ -385,7 +385,7 @@ func TestInitNodeGatewayRetriesFailedAnnotationEventWrite(t *testing.T) {
 }
 
 func TestInitNodeGatewayRecordsRouteFailureWhenGatewayIsReady(t *testing.T) {
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	node := &corev1.Node{
 		Name: "node-1",
 		UID:  "node-uid",
 		Annotations: map[string]string{
@@ -395,7 +395,7 @@ func TestInitNodeGatewayRecordsRouteFailureWhenGatewayIsReady(t *testing.T) {
 			util.PortNameAnnotation:   "node-node-1",
 			util.GatewayAnnotation:    "10.0.0.1",
 		},
-	}}
+	}
 	client := fake.NewSimpleClientset(node)
 	routeFailure := errors.New("route replace failed")
 	originalConfigureNodeGateway := configureNodeGateway
@@ -431,7 +431,7 @@ func TestInitNodeGatewayRecordsRouteFailureWhenGatewayIsReady(t *testing.T) {
 func TestUpdateNodeNetworkUnavailableConditionReturnsPatchFailure(t *testing.T) {
 	t.Parallel()
 
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+	node := &corev1.Node{Name: "node-1"}
 	client := fake.NewSimpleClientset(node)
 	failure := errors.New("failed to patch node condition")
 	client.PrependReactor("patch", "nodes", func(k8stesting.Action) (bool, runtime.Object, error) {

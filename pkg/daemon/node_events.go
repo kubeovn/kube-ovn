@@ -106,10 +106,8 @@ func recordNodeFailureEventSync(client kubernetes.Interface, node *corev1.Node, 
 
 	now := metav1.Now()
 	event := &corev1.Event{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      eventutil.GenerateEventName(node.Name, now.UnixNano()),
-			Namespace: metav1.NamespaceDefault,
-		},
+		Name:      eventutil.GenerateEventName(node.Name, now.UnixNano()),
+		Namespace: metav1.NamespaceDefault,
 		InvolvedObject: corev1.ObjectReference{
 			Kind:            "Node",
 			APIVersion:      corev1.SchemeGroupVersion.String(),
