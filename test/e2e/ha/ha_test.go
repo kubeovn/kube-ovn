@@ -293,11 +293,14 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	newNodes.Clear()
 	for pod := range slices.Values(pods.Items) {
 		newNodes.Insert(pod.Spec.NodeName)
-		ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy")
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, checkCmd)
-			return err == nil, nil
-		}, fmt.Sprintf("db file %s on node %s to be healthy", dbFile, pod.Spec.NodeName))
+		for _, db := range [...]string{"nb", "sb"} {
+			dbFileToCheck := dbFilePath(db)
+			ginkgo.By("Waiting for db file " + dbFileToCheck + " on node " + pod.Spec.NodeName + " to be healthy")
+			framework.WaitUntil(time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
+				_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, "ovsdb-tool check-cluster "+dbFileToCheck)
+				return err == nil, nil
+			}, fmt.Sprintf("db file %s on node %s to be healthy", dbFileToCheck, pod.Spec.NodeName))
+		}
 	}
 	framework.ExpectEqual(newNodes, nodes, "the set of nodes hosting ovn-central pods should be the same as before")
 
