@@ -219,8 +219,9 @@ func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
 
 	klog.Infof("ovs system id: %s", cn)
 
+	// Keep the CSR extensions explicit. The distro-provided v3_req section can
+	// add key usages that conflict with cert-manager's UsageIPsecTunnel.
 	cmd := exec.Command("openssl", "req", "-new", "-text",
-		"-extensions", "v3_req",
 		"-addext", "subjectAltName = DNS:"+cn,
 		"-subj", "/C=CN/O=kubeovn/OU=kube-ovn/CN="+cn,
 		"-key", newPrivKeyPath,
