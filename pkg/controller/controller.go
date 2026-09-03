@@ -262,7 +262,6 @@ type Controller struct {
 
 	npsLister        netv1.NetworkPolicyLister
 	npsSynced        cache.InformerSynced
-	npIndexer        cache.Indexer
 	updateNpQueue    workqueue.TypedRateLimitingInterface[string]
 	deleteNpQueue    workqueue.TypedRateLimitingInterface[networkPolicyDeleteRequest]
 	npSamplingQueue  workqueue.TypedRateLimitingInterface[string]
