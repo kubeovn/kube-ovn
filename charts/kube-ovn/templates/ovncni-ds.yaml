@@ -123,6 +123,15 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-cni.log
           - --log_file_max_size=200
           - --enable-metrics={{- .Values.networking.ENABLE_METRICS }}
+          {{- if .Values.networking.GATEWAY_NETFILTER_MODE }}
+          - --gateway-netfilter-mode={{- .Values.networking.GATEWAY_NETFILTER_MODE }}
+          {{- end }}
+          {{- if .Values.networking.KUBE_PROXY_MODE_ENDPOINT }}
+          - --kube-proxy-mode-endpoint={{- .Values.networking.KUBE_PROXY_MODE_ENDPOINT }}
+          {{- end }}
+          {{- if .Values.networking.GATEWAY_NETFILTER_DETECT_TIMEOUT }}
+          - --gateway-netfilter-detect-timeout={{- .Values.networking.GATEWAY_NETFILTER_DETECT_TIMEOUT }}
+          {{- end }}
           - --kubelet-dir={{ .Values.kubelet_conf.KUBELET_DIR }}
           - --enable-tproxy={{ .Values.func.ENABLE_TPROXY }}
           - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}

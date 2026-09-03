@@ -86,6 +86,12 @@ networking:
   NODE_SUBNET: "join"
   ENABLE_ECMP: false
   ENABLE_METRICS: true
+  # Gateway netfilter backend: auto, iptables, or nftables; leave empty to use the daemon default of auto.
+  GATEWAY_NETFILTER_MODE: ""
+  # Local kube-proxy proxyMode endpoint; leave empty to use the daemon default endpoint.
+  KUBE_PROXY_MODE_ENDPOINT: ""
+  # Maximum time to wait for the kube-proxy mode during cold start; leave empty to use the daemon default of 30s.
+  GATEWAY_NETFILTER_DETECT_TIMEOUT: ""
   # comma-separated string of nodelocal DNS ip addresses
   NODE_LOCAL_DNS_IP: ""
   # comma-separated list of destination IP CIDRs that should skip conntrack processing

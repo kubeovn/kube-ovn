@@ -639,6 +639,106 @@ func centralizedNatOutgoingNonSynDropRule(cidr, matchset string) util.IPTableRul
 	}
 }
 
+func serviceIptablesProtocol(protocol v1.Protocol) (string, bool) {
+	switch protocol {
+	case "", v1.ProtocolTCP:
+		return "tcp", true
+	case v1.ProtocolUDP:
+		return "udp", true
+	default:
+		return "", false
+	}
+}
+
+func serviceClusterIPsForProtocol(service *v1.Service, protocol string) []string {
+	clusterIPs := service.Spec.ClusterIPs
+	if len(clusterIPs) == 0 && service.Spec.ClusterIP != "" {
+		clusterIPs = []string{service.Spec.ClusterIP}
+	}
+
+	ips := make([]string, 0, len(clusterIPs))
+	for _, ip := range clusterIPs {
+		if ip == "" || ip == v1.ClusterIPNone || util.CheckProtocol(ip) != protocol {
+			continue
+		}
+		ips = append(ips, ip)
+	}
+	return ips
+}
+
+func sortedServices(services []*v1.Service) []*v1.Service {
+	sorted := slices.Clone(services)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].Namespace != sorted[j].Namespace {
+			return sorted[i].Namespace < sorted[j].Namespace
+		}
+		return sorted[i].Name < sorted[j].Name
+	})
+	return sorted
+}
+
+func generateHostServiceSNATRules(services []*v1.Service, protocol, matchset, nodeIP string) []util.IPTableRule {
+	if nodeIP == "" {
+		return nil
+	}
+
+	rules := make([]util.IPTableRule, 0)
+	for _, service := range sortedServices(services) {
+		for _, clusterIP := range serviceClusterIPsForProtocol(service, protocol) {
+			for _, port := range service.Spec.Ports {
+				proto, ok := serviceIptablesProtocol(port.Protocol)
+				if !ok {
+					continue
+				}
+				rules = append(rules, util.IPTableRule{
+					Table: NAT,
+					Chain: OvnPostrouting,
+					Rule: strings.Fields(fmt.Sprintf(
+						`-p %[1]s -m addrtype --src-type LOCAL -m set --match-set %[2]s dst -m conntrack --ctstate DNAT --ctorigdst %[3]s --ctorigdstport %[4]d -j SNAT --to-source %[5]s`,
+						proto, matchset, clusterIP, port.Port, nodeIP,
+					)),
+				})
+			}
+		}
+	}
+	return rules
+}
+
+func generateServiceNodePortLocalRules(services []*v1.Service, protocol, nodeMatchSet string) []util.IPTableRule {
+	rules := make([]util.IPTableRule, 0)
+	for _, service := range sortedServices(services) {
+		if service.Spec.ExternalTrafficPolicy != v1.ServiceExternalTrafficPolicyLocal ||
+			len(serviceClusterIPsForProtocol(service, protocol)) == 0 {
+			continue
+		}
+
+		for _, port := range service.Spec.Ports {
+			if port.NodePort == 0 {
+				continue
+			}
+			proto, ok := serviceIptablesProtocol(port.Protocol)
+			if !ok {
+				continue
+			}
+			protoMatch := "-m " + proto + " --dport " + strconv.FormatInt(int64(port.NodePort), 10)
+			rules = append(
+				rules,
+				util.IPTableRule{
+					Table: NAT,
+					Chain: OvnPrerouting,
+					Rule:  strings.Fields(fmt.Sprintf(`-p %s -m addrtype --dst-type LOCAL %s -j MARK --set-xmark 0x80000/0x80000`, proto, protoMatch)),
+				},
+				util.IPTableRule{
+					Table: NAT,
+					Chain: OvnPrerouting,
+					Rule:  strings.Fields(fmt.Sprintf(`-p %s -m set --match-set %s src -m addrtype --dst-type LOCAL %s -j MARK --set-xmark 0x4000/0x4000`, proto, nodeMatchSet, protoMatch)),
+				},
+			)
+		}
+	}
+	return rules
+}
+
 func (c *Controller) setIptables() error {
 	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -656,6 +756,11 @@ func (c *Controller) setIptables() error {
 	allSubnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
+		return err
+	}
+	allServices, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services: %v", err)
 		return err
 	}
 
@@ -827,13 +932,23 @@ func (c *Controller) setIptables() error {
 				Rule:  strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -m mark --mark 0x4000/0x4000 -j SNAT --to-source %s`, svcMatchset, matchset, nodeIP)),
 			}
 			iptablesRules = rules
+			hostServiceSNATRules := generateHostServiceSNATRules(allServices, protocol, matchset, nodeIP)
+			if len(hostServiceSNATRules) != 0 {
+				rules := make([]util.IPTableRule, 0, len(iptablesRules)+len(hostServiceSNATRules))
+				rules = append(rules, iptablesRules[:2]...)
+				rules = append(rules, hostServiceSNATRules...)
+				rules = append(rules, iptablesRules[2:]...)
+				iptablesRules = rules
+			}
 
+			hasKubeProxyNodePortLocalSet := false
 			for _, p := range [...]string{"tcp", "udp"} {
 				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
 				if !existingIPSets.Has(ipset) {
 					klog.V(5).Infof("ipset %s does not exist", ipset)
 					continue
 				}
+				hasKubeProxyNodePortLocalSet = true
 				rule := fmt.Sprintf("-p %s -m addrtype --dst-type LOCAL -m set --match-set %s dst -j MARK --set-xmark 0x80000/0x80000", p, ipset)
 				rule2 := fmt.Sprintf("-p %s -m set --match-set %s src -m set --match-set %s dst -j MARK --set-xmark 0x4000/0x4000", p, nodeMatchSet, ipset)
 				obsoleteRules = append(obsoleteRules, util.IPTableRule{Table: NAT, Chain: Prerouting, Rule: strings.Fields(rule)})
@@ -842,6 +957,9 @@ func (c *Controller) setIptables() error {
 					util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule)},
 					util.IPTableRule{Table: NAT, Chain: OvnPrerouting, Rule: strings.Fields(rule2)},
 				)
+			}
+			if !hasKubeProxyNodePortLocalSet {
+				iptablesRules = append(iptablesRules, generateServiceNodePortLocalRules(allServices, protocol, nodeMatchSet)...)
 			}
 		}
 
@@ -982,12 +1100,11 @@ func (c *Controller) setIptables() error {
 	return nil
 }
 
-func (c *Controller) cleanupIptablesInNonPrimaryCNIMode() error {
-	if c.iptables == nil {
-		return nil
-	}
-
+func (c *Controller) cleanupKubeOVNIptablesAndIPSets() error {
 	for _, protocol := range getProtocols(c.protocol) {
+		if c.iptables == nil {
+			break
+		}
 		// Clean up both the default (nft) and legacy iptables backends to handle
 		// environments where kube-ovn previously ran in legacy mode.
 		iptInstances := []*iptables.IPTables{c.iptables[protocol]}
@@ -1049,7 +1166,42 @@ func (c *Controller) cleanupIptablesInNonPrimaryCNIMode() error {
 		}
 	}
 
+	if c.k8sipsets == nil {
+		return nil
+	}
+	sets, err := c.k8sipsets.ListSets()
+	if err != nil {
+		return fmt.Errorf("list Kube-OVN ipsets: %w", err)
+	}
+	for _, name := range sets {
+		protocol, owned := kubeOVNIPSetProtocol(name)
+		if !owned {
+			continue
+		}
+		if manager := c.ipsets[protocol]; manager != nil {
+			manager.RemoveIPSet(formatIPsetUnPrefix(name))
+		}
+	}
+	for _, protocol := range getProtocols(c.protocol) {
+		if manager := c.ipsets[protocol]; manager != nil {
+			manager.QueueResync()
+			manager.ApplyUpdates()
+			manager.ApplyDeletions()
+		}
+	}
+
 	return nil
+}
+
+func kubeOVNIPSetProtocol(name string) (string, bool) {
+	switch {
+	case strings.HasPrefix(name, "ovn40"):
+		return kubeovnv1.ProtocolIPv4, true
+	case strings.HasPrefix(name, "ovn60"):
+		return kubeovnv1.ProtocolIPv6, true
+	default:
+		return "", false
+	}
 }
 
 func getKubeOVNBaseIptablesRulesForCleanup(protocol string) []util.IPTableRule {
