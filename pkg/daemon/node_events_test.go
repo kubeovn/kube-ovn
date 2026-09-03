@@ -402,7 +402,7 @@ func TestInitNodeGatewayRecordsRouteFailureWhenGatewayIsReady(t *testing.T) {
 	originalReplaceNodeRoute := replaceNodeRoute
 	originalCheckNodeGatewayReady := checkNodeGatewayReady
 	configureNodeGateway = func(client kubernetes.Interface, nodeName, _, ip, gateway, _ string, _ net.HardwareAddr, _ int, enableNonPrimaryCNI bool) error {
-		link := &netlink.Dummy{LinkAttrs: netlink.LinkAttrs{Name: util.NodeNic, Index: 1}}
+		link := &netlink.Dummy{Name: util.NodeNic, Index: 1}
 		return finishNodeGatewaySetup(client, nodeName, ip, gateway, link, []netlink.Route{{}}, enableNonPrimaryCNI)
 	}
 	replaceNodeRoute = func(*netlink.Route) error { return routeFailure }
