@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
 const (
