@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/cache"
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/modelgen"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -42,7 +40,7 @@ type OVNSbClient struct {
 }
 
 type ovsDbClient struct {
-	backend client.Client
+	backend compat.Backend
 	Timeout time.Duration
 	call    *compat.Client
 }
@@ -138,7 +136,7 @@ func NewDynamicOvnNbClient(
 	c := &OVNNbClient{
 		backend: nbClient,
 		Timeout: time.Duration(ovnNbTimeout) * time.Second,
-		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
+		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{}),
 	}
 	return c, models, nil
 }
@@ -183,7 +181,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	try := 0
-	var nbClient client.Client
+	var nbClient compat.Backend
 	for {
 		nbClient, err = ovsclient.NewOvsDbClient(
 			ovnnb.DatabaseName,
@@ -208,7 +206,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	c := &OVNNbClient{
 		backend: nbClient,
 		Timeout: time.Duration(ovnNbTimeout) * time.Second,
-		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
+		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{}),
 	}
 	return c, nil
 }
@@ -224,7 +222,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 		compat.WithTable(&ovnsb.Chassis{}),
 	}
 	try := 0
-	var sbClient client.Client
+	var sbClient compat.Backend
 	for {
 		sbClient, err = ovsclient.NewOvsDbClient(
 			ovnsb.DatabaseName,
@@ -249,7 +247,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 	c := &OVNSbClient{
 		backend: sbClient,
 		Timeout: time.Duration(ovnSbTimeout) * time.Second,
-		call:    compat.New(sbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
+		call:    compat.New(sbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{}),
 	}
 	return c, nil
 }
@@ -311,7 +309,7 @@ func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) erro
 
 func (c *ovsDbClient) callLayer() *compat.Client {
 	if c.call == nil {
-		c.call = compat.New(c.backend, c.Timeout, compat.RetryPolicy{Attempts: 2})
+		c.call = compat.New(c.backend, c.Timeout, compat.RetryPolicy{})
 	}
 	return c.call
 }
@@ -352,33 +350,57 @@ func (c *ovsDbClient) Create(models ...model.Model) ([]ovsdb.Operation, error) {
 	return c.callLayer().Create(models...)
 }
 
-func (c *ovsDbClient) Cache() *cache.TableCache {
-	return c.backend.Cache()
+func (c *ovsDbClient) CreateAndTransact(ctx context.Context, method string, models ...model.Model) error {
+	return c.callLayer().CreateAndTransact(ctx, method, models...)
+}
+
+func (c *ovsDbClient) UpdateAndTransact(ctx context.Context, method string, selector, update model.Model, fields ...any) error {
+	return c.callLayer().UpdateAndTransact(ctx, method, selector, update, fields...)
+}
+
+func (c *ovsDbClient) Mutate(selector model.Model, mutations ...model.Mutation) ([]ovsdb.Operation, error) {
+	return c.callLayer().Mutate(selector, mutations...)
+}
+
+func (c *ovsDbClient) DeleteAndTransact(ctx context.Context, method string, selectors ...model.Model) error {
+	return c.callLayer().DeleteAndTransact(ctx, method, selectors...)
+}
+
+func (c *ovsDbClient) ListWhereCache(ctx context.Context, predicate, result any) error {
+	return c.callLayer().ListWhereCache(ctx, predicate, result)
+}
+
+func (c *ovsDbClient) DeleteWhereCacheAndTransact(ctx context.Context, method string, predicate any) error {
+	return c.callLayer().DeleteWhereCacheAndTransact(ctx, method, predicate)
+}
+
+func (c *ovsDbClient) Cache() compat.Cache {
+	return c.callLayer().Cache()
 }
 
 func (c *ovsDbClient) Schema() ovsdb.DatabaseSchema {
-	return c.backend.Schema()
+	return c.callLayer().Schema()
 }
 
 func (c *ovsDbClient) Connected() bool {
-	return c.backend != nil && c.backend.Connected()
+	return c.backend != nil && c.callLayer().Connected()
 }
 
 func (c *ovsDbClient) NewMonitor(options ...compat.MonitorOption) *compat.Monitor {
-	return c.backend.NewMonitor(options...)
+	return c.callLayer().NewMonitor(options...)
 }
 
 func (c *ovsDbClient) Monitor(ctx context.Context, monitor *compat.Monitor) (compat.MonitorCookie, error) {
-	return c.backend.Monitor(ctx, monitor)
+	return c.callLayer().Monitor(ctx, monitor)
 }
 
 func (c *ovsDbClient) Echo(ctx context.Context) error {
-	return c.backend.Echo(ctx)
+	return c.callLayer().Echo(ctx)
 }
 
 func (c *ovsDbClient) Close() {
 	if c.backend != nil {
-		c.backend.Close()
+		c.callLayer().Close()
 	}
 }
 

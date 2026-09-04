@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	libcache "github.com/ovn-kubernetes/libovsdb/cache"
 	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -17,14 +18,21 @@ import (
 type Backend interface {
 	Get(context.Context, model.Model) error
 	List(context.Context, any) error
-	WhereCache(any) client.ConditionalAPI
-	WhereCacheByUUIDs(any, ...string) client.ConditionalAPI
-	Where(...model.Model) client.ConditionalAPI
-	WhereAny(model.Model, ...model.Condition) client.ConditionalAPI
-	WhereAll(model.Model, ...model.Condition) client.ConditionalAPI
+	WhereCache(any) ConditionalAPI
+	WhereCacheByUUIDs(any, ...string) ConditionalAPI
+	Where(...model.Model) ConditionalAPI
+	WhereAny(model.Model, ...model.Condition) ConditionalAPI
+	WhereAll(model.Model, ...model.Condition) ConditionalAPI
 	Select(model.Model, ...any) ([]ovsdb.Operation, error)
 	Create(...model.Model) ([]ovsdb.Operation, error)
 	Transact(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error)
+	Cache() Cache
+	Schema() ovsdb.DatabaseSchema
+	Connected() bool
+	NewMonitor(...MonitorOption) *Monitor
+	Monitor(context.Context, *Monitor) (MonitorCookie, error)
+	Echo(context.Context) error
+	Close()
 }
 
 // ConditionalAPI is the operation-building surface returned by selectors.
@@ -38,19 +46,211 @@ type ConditionalAPI interface {
 	Select(model.Model, ...any) ([]ovsdb.Operation, error)
 }
 
+type conditionalAPI struct {
+	backend ConditionalAPI
+	context func(context.Context) (context.Context, context.CancelFunc)
+}
+
+func (a conditionalAPI) List(ctx context.Context, result any) error {
+	ctx, cancel := a.context(ctx)
+	defer cancel()
+	return a.backend.List(ctx, result)
+}
+
+func (a conditionalAPI) Mutate(m model.Model, mutations ...model.Mutation) ([]ovsdb.Operation, error) {
+	return a.backend.Mutate(m, mutations...)
+}
+
+func (a conditionalAPI) Update(m model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	return a.backend.Update(m, fields...)
+}
+
+func (a conditionalAPI) Delete() ([]ovsdb.Operation, error) {
+	return a.backend.Delete()
+}
+
+func (a conditionalAPI) Wait(condition ovsdb.WaitCondition, timeout *int, m model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	return a.backend.Wait(condition, timeout, m, fields...)
+}
+
+func (a conditionalAPI) Select(m model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	return a.backend.Select(m, fields...)
+}
+
 // ErrNotFound is returned when a model is absent from the monitored cache.
 var ErrNotFound = client.ErrNotFound
 
-// Monitor aliases keep monitor setup behind the compatibility package.
-type (
-	Monitor       = client.Monitor
-	MonitorCookie = client.MonitorCookie
-	MonitorOption = client.MonitorOption
-)
+// ErrNotConnected is returned when the backend is disconnected.
+var ErrNotConnected = client.ErrNotConnected
+
+// Cache exposes only the cache operation used by kube-ovn.
+type Cache interface {
+	AddEventHandler(EventHandler)
+}
+
+// EventHandler receives cache row changes.
+type EventHandler interface {
+	OnAdd(table string, model model.Model)
+	OnUpdate(table string, old, newModel model.Model)
+	OnDelete(table string, model model.Model)
+}
+
+// EventHandlerFuncs adapts callbacks to EventHandler.
+type EventHandlerFuncs struct {
+	AddFunc    func(table string, model model.Model)
+	UpdateFunc func(table string, old, newModel model.Model)
+	DeleteFunc func(table string, model model.Model)
+}
+
+func (e *EventHandlerFuncs) OnAdd(table string, row model.Model) {
+	if e.AddFunc != nil {
+		e.AddFunc(table, row)
+	}
+}
+
+func (e *EventHandlerFuncs) OnUpdate(table string, old, newModel model.Model) {
+	if e.UpdateFunc != nil {
+		e.UpdateFunc(table, old, newModel)
+	}
+}
+
+func (e *EventHandlerFuncs) OnDelete(table string, row model.Model) {
+	if e.DeleteFunc != nil {
+		e.DeleteFunc(table, row)
+	}
+}
+
+// Monitor is the compatibility monitor configuration exposed to callers.
+type Monitor struct {
+	raw    *client.Monitor
+	Method string
+	Errors []error
+}
+
+// MonitorCookie correlates monitor updates with their originating request.
+type MonitorCookie struct {
+	raw client.MonitorCookie
+}
+
+type monitorConfig struct {
+	tables []model.Model
+}
+
+// MonitorOption configures a compatibility monitor.
+type MonitorOption func(*monitorConfig) error
 
 // WithTable creates a monitor option for a model table.
 func WithTable(m model.Model) MonitorOption {
-	return client.WithTable(m)
+	return func(config *monitorConfig) error {
+		config.tables = append(config.tables, m)
+		return nil
+	}
+}
+
+// rawBackend adapts the libovsdb client to the compatibility backend. The raw
+// client is intentionally confined to this adapter and the transport factory.
+type rawBackend struct {
+	client client.Client
+}
+
+type rawCache struct {
+	cache *libcache.TableCache
+}
+
+func (c rawCache) AddEventHandler(handler EventHandler) {
+	c.cache.AddEventHandler(handler)
+}
+
+// Wrap adapts a libovsdb client to Backend.
+func Wrap(raw client.Client) Backend {
+	return &rawBackend{client: raw}
+}
+
+func (b *rawBackend) Get(ctx context.Context, result model.Model) error {
+	return b.client.Get(ctx, result)
+}
+
+func (b *rawBackend) List(ctx context.Context, result any) error {
+	return b.client.List(ctx, result)
+}
+
+func (b *rawBackend) WhereCache(predicate any) ConditionalAPI {
+	return b.client.WhereCache(predicate)
+}
+
+func (b *rawBackend) WhereCacheByUUIDs(predicate any, uuids ...string) ConditionalAPI {
+	return b.client.WhereCacheByUUIDs(predicate, uuids...)
+}
+
+func (b *rawBackend) Where(models ...model.Model) ConditionalAPI {
+	return b.client.Where(models...)
+}
+
+func (b *rawBackend) WhereAny(m model.Model, conditions ...model.Condition) ConditionalAPI {
+	return b.client.WhereAny(m, conditions...)
+}
+
+func (b *rawBackend) WhereAll(m model.Model, conditions ...model.Condition) ConditionalAPI {
+	return b.client.WhereAll(m, conditions...)
+}
+
+func (b *rawBackend) Select(m model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	return b.client.Select(m, fields...)
+}
+
+func (b *rawBackend) Create(models ...model.Model) ([]ovsdb.Operation, error) {
+	return b.client.Create(models...)
+}
+
+func (b *rawBackend) Transact(ctx context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	return b.client.Transact(ctx, operations...)
+}
+
+func (b *rawBackend) Cache() Cache {
+	return rawCache{cache: b.client.Cache()}
+}
+
+func (b *rawBackend) Schema() ovsdb.DatabaseSchema {
+	return b.client.Schema()
+}
+
+func (b *rawBackend) Connected() bool {
+	return b.client.Connected()
+}
+
+func (b *rawBackend) NewMonitor(options ...MonitorOption) *Monitor {
+	config := monitorConfig{}
+	monitor := &Monitor{}
+	for _, option := range options {
+		if err := option(&config); err != nil {
+			monitor.Errors = append(monitor.Errors, err)
+		}
+	}
+	rawOptions := make([]client.MonitorOption, 0, len(config.tables))
+	for _, table := range config.tables {
+		rawOptions = append(rawOptions, client.WithTable(table))
+	}
+	monitor.raw = b.client.NewMonitor(rawOptions...)
+	monitor.Method = monitor.raw.Method
+	monitor.Errors = append(monitor.Errors, monitor.raw.Errors...)
+	return monitor
+}
+
+func (b *rawBackend) Monitor(ctx context.Context, monitor *Monitor) (MonitorCookie, error) {
+	if monitor == nil || monitor.raw == nil {
+		return MonitorCookie{}, errors.New("monitor is nil")
+	}
+	monitor.raw.Method = monitor.Method
+	cookie, err := b.client.Monitor(ctx, monitor.raw)
+	return MonitorCookie{raw: cookie}, err
+}
+
+func (b *rawBackend) Echo(ctx context.Context) error {
+	return b.client.Echo(ctx)
+}
+
+func (b *rawBackend) Close() {
+	b.client.Close()
 }
 
 // RetryPolicy controls retries for transient connection errors.
@@ -104,41 +304,41 @@ func (c *Client) List(ctx context.Context, result any) error {
 
 // ListWhereCache reads rows selected by a cache predicate.
 func (c *Client) ListWhereCache(ctx context.Context, predicate, result any) error {
-	ctx, cancel := c.context(ctx)
-	defer cancel()
-	return c.backend.WhereCache(predicate).List(ctx, result)
+	return c.WhereCache(predicate).List(ctx, result)
 }
 
 // ListWhereCacheByUUIDs reads rows selected by a predicate and UUID allowlist.
 func (c *Client) ListWhereCacheByUUIDs(ctx context.Context, predicate, result any, uuids ...string) error {
-	ctx, cancel := c.context(ctx)
-	defer cancel()
-	return c.backend.WhereCacheByUUIDs(predicate, uuids...).List(ctx, result)
+	return c.WhereCacheByUUIDs(predicate, uuids...).List(ctx, result)
 }
 
 // WhereCacheByUUIDs returns a selector evaluated against a UUID allowlist.
 func (c *Client) WhereCacheByUUIDs(predicate any, uuids ...string) ConditionalAPI {
-	return c.backend.WhereCacheByUUIDs(predicate, uuids...)
+	return c.wrapConditional(c.backend.WhereCacheByUUIDs(predicate, uuids...))
 }
 
 // Where returns a selector based on model indexes.
 func (c *Client) Where(models ...model.Model) ConditionalAPI {
-	return c.backend.Where(models...)
+	return c.wrapConditional(c.backend.Where(models...))
 }
 
 // WhereCache returns a selector evaluated against the local cache.
 func (c *Client) WhereCache(predicate any) ConditionalAPI {
-	return c.backend.WhereCache(predicate)
+	return c.wrapConditional(c.backend.WhereCache(predicate))
 }
 
 // WhereAny returns a selector matching any explicit condition.
 func (c *Client) WhereAny(m model.Model, conditions ...model.Condition) ConditionalAPI {
-	return c.backend.WhereAny(m, conditions...)
+	return c.wrapConditional(c.backend.WhereAny(m, conditions...))
 }
 
 // WhereAll returns a selector matching all explicit conditions.
 func (c *Client) WhereAll(m model.Model, conditions ...model.Condition) ConditionalAPI {
-	return c.backend.WhereAll(m, conditions...)
+	return c.wrapConditional(c.backend.WhereAll(m, conditions...))
+}
+
+func (c *Client) wrapConditional(backend ConditionalAPI) ConditionalAPI {
+	return conditionalAPI{backend: backend, context: c.context}
 }
 
 // Select builds a select operation for a model.
@@ -149,6 +349,45 @@ func (c *Client) Select(m model.Model, fields ...any) ([]ovsdb.Operation, error)
 // Create builds insert operations for models.
 func (c *Client) Create(models ...model.Model) ([]ovsdb.Operation, error) {
 	return c.backend.Create(models...)
+}
+
+// Cache returns the monitored table cache.
+func (c *Client) Cache() Cache {
+	return c.backend.Cache()
+}
+
+// Schema returns the database schema used by the backend.
+func (c *Client) Schema() ovsdb.DatabaseSchema {
+	return c.backend.Schema()
+}
+
+// Connected reports whether the backend is connected.
+func (c *Client) Connected() bool {
+	return c.backend.Connected()
+}
+
+// NewMonitor creates a monitor through the backend.
+func (c *Client) NewMonitor(options ...MonitorOption) *Monitor {
+	return c.backend.NewMonitor(options...)
+}
+
+// Monitor installs a monitor through the backend.
+func (c *Client) Monitor(ctx context.Context, monitor *Monitor) (MonitorCookie, error) {
+	ctx, cancel := c.context(ctx)
+	defer cancel()
+	return c.backend.Monitor(ctx, monitor)
+}
+
+// Echo checks the backend connection.
+func (c *Client) Echo(ctx context.Context) error {
+	ctx, cancel := c.context(ctx)
+	defer cancel()
+	return c.backend.Echo(ctx)
+}
+
+// Close closes the backend connection.
+func (c *Client) Close() {
+	c.backend.Close()
 }
 
 // CreateAndTransact builds insert operations and submits them atomically.
@@ -229,7 +468,7 @@ func (c *Client) TransactResults(ctx context.Context, operations []ovsdb.Operati
 		if err == nil {
 			return results, nil
 		}
-		if !errors.Is(err, client.ErrNotConnected) || attempt >= c.retry.Attempts {
+		if !errors.Is(err, ErrNotConnected) || attempt >= c.retry.Attempts {
 			return nil, err
 		}
 		if err := c.wait(ctx, attempt); err != nil {

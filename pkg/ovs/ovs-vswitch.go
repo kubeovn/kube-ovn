@@ -51,6 +51,6 @@ func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchCl
 	return &VswitchClient{
 		backend: c,
 		Timeout: time.Duration(transactTimeout) * time.Second,
-		call:    compat.New(c, time.Duration(transactTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
+		call:    compat.New(c, time.Duration(transactTimeout)*time.Second, compat.RetryPolicy{}),
 	}, nil
 }
