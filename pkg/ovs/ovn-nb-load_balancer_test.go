@@ -393,6 +393,65 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 	)
 }
 
+func (suite *OvnClientTestSuite) testSetLoadBalancerSelectionFields() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-selection-fields"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerSelectionFields(lbName, []string{"ip_src", "ipv6_src"}))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"ip_src", "ipv6_src"}, lb.SelectionFields)
+	require.NoError(t, nbClient.SetLoadBalancerSelectionFields(lbName, nil))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Empty(t, lb.SelectionFields)
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerDistributed() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-distributed"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerDistributed(lbName, true))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "true", lb.Options["distributed"])
+	lb.Options["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.Options))
+	require.NoError(t, nbClient.SetLoadBalancerDistributed(lbName, false))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "false", lb.Options["distributed"])
+	require.Equal(t, "keep", lb.Options["existing"])
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerExternalIDs() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-external-ids"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	lb.ExternalIDs["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.ExternalIDs))
+	require.NoError(t, nbClient.SetLoadBalancerExternalIDs(lbName, map[string]string{"owner": "service"}))
+
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "kube-ovn", lb.ExternalIDs["vendor"])
+	require.Equal(t, "keep", lb.ExternalIDs["existing"])
+	require.Equal(t, "service", lb.ExternalIDs["owner"])
+}
+
 func (suite *OvnClientTestSuite) testSetLoadBalancerCtFlush() {
 	t := suite.T()
 	t.Parallel()

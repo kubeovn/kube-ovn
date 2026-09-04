@@ -137,6 +137,7 @@ type LogicalSwitchPort interface {
 
 type LoadBalancer interface {
 	CreateLoadBalancer(lbName, protocol string, selectFields ...string) error
+	SetLoadBalancerSelectionFields(lbName string, selectionFields []string) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
 	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
@@ -146,6 +147,8 @@ type LoadBalancer interface {
 	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
+	SetLoadBalancerDistributed(lbName string, distributed bool) error
+	SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
