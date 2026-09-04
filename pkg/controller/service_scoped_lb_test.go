@@ -160,6 +160,15 @@ func TestDeleteServiceScopedLoadBalancers(t *testing.T) {
 	}
 }
 
+func TestDeleteServiceScopedLBTrafficClass(t *testing.T) {
+	fake := newFakeController(t)
+	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-delete-class")}
+	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
+	if err := fake.fakeController.deleteServiceScopedLBTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGetDistributedIPPortMapping(t *testing.T) {
 	pod := &corev1.Pod{
 		Namespace: "default", Name: "backend",

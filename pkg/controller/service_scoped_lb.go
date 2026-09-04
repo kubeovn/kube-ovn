@@ -124,6 +124,20 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 	return nil
 }
 
+func (c *Controller) deleteServiceScopedLBTrafficClass(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass) error {
+	owner := string(svc.UID)
+	if owner == "" {
+		return nil
+	}
+	name := serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass)
+	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return lb.Name == name && lb.ExternalIDs[serviceLBOwnerExternalID] == owner && lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
+	}); err != nil {
+		return fmt.Errorf("delete %s service-scoped load balancer for %s/%s: %w", trafficClass, svc.Namespace, svc.Name, err)
+	}
+	return nil
+}
+
 func serviceScopedLBNames(svc *v1.Service) []string {
 	names := make([]string, 0, len(svc.Spec.Ports)*2)
 	seen := make(map[string]struct{}, len(svc.Spec.Ports))
