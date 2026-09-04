@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -60,10 +61,10 @@ func NewOvsDbClient(
 	db string,
 	addr string,
 	dbModel model.ClientDBModel,
-	monitors []client.MonitorOption,
+	monitors []compat.MonitorOption,
 	ovsDbConTimeout int,
 	ovsDbInactivityTimeout int,
-) (client.Client, error) {
+) (compat.Backend, error) {
 	klog.Infof("creating ovsdb client for %s database at %s", db, addr)
 
 	var ssl bool
@@ -120,19 +121,20 @@ func NewOvsDbClient(
 		klog.Errorf("failed to connect to %s database server %s: %v", db, addr, err)
 		return nil, err
 	}
+	backend := compat.Wrap(c)
 
 	if len(monitors) != 0 {
 		klog.Infof("setting up monitors for %s database on server %s", db, addr)
-		monitor := c.NewMonitor(monitors...)
+		monitor := backend.NewMonitor(monitors...)
 		monitor.Method = ovsdb.ConditionalMonitorRPC
-		if _, err = c.Monitor(context.TODO(), monitor); err != nil {
-			c.Close()
+		if _, err = backend.Monitor(context.TODO(), monitor); err != nil {
+			backend.Close()
 			klog.Errorf("failed to monitor database on %s server %s: %v", db, addr, err)
 			return nil, err
 		}
 	}
 
-	return c, nil
+	return backend, nil
 }
 
 func newKubeOVNTLSConfig() (*tls.Config, error) {

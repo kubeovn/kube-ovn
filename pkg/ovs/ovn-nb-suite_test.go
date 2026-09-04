@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
@@ -1403,7 +1404,7 @@ func newOvnNbClient(t testing.TB, ovnNbAddr string, ovnNbTimeout int) (*OVNNbCli
 	require.NoError(t, err)
 
 	return &OVNNbClient{
-		backend: nbClient, Timeout: time.Duration(ovnNbTimeout) * time.Second,
+		backend: compat.Wrap(nbClient), Timeout: time.Duration(ovnNbTimeout) * time.Second,
 	}, nil
 }
 
@@ -1489,7 +1490,7 @@ func newOvnSbClient(t *testing.T, ovnSbAddr string, ovnSbTimeout int) (*OVNSbCli
 	require.NoError(t, err)
 
 	return &OVNSbClient{
-		backend: nbClient, Timeout: time.Duration(ovnSbTimeout) * time.Second,
+		backend: compat.Wrap(nbClient), Timeout: time.Duration(ovnSbTimeout) * time.Second,
 	}, nil
 }
 

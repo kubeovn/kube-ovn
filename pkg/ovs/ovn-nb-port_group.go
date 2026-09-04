@@ -46,7 +46,7 @@ func (c *OVNNbClient) CreatePortGroup(pgName string, externalIDs map[string]stri
 		ExternalIDs: finalExternalIDs,
 	}
 
-	if err = c.callLayer().CreateAndTransact(context.Background(), "pg-add", pg); err != nil {
+	if err = c.CreateAndTransact(context.Background(), "pg-add", pg); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("create port group %s: %w", pgName, err)
 	}
@@ -112,7 +112,7 @@ func (c *OVNNbClient) PortGroupSetPorts(pgName string, ports []string) error {
 
 // UpdatePortGroup update port group
 func (c *OVNNbClient) UpdatePortGroup(pg *ovnnb.PortGroup, fields ...any) error {
-	if err := c.callLayer().UpdateAndTransact(context.Background(), "pg-update", pg, pg, fields...); err != nil {
+	if err := c.UpdateAndTransact(context.Background(), "pg-update", pg, pg, fields...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("update port group %s: %w", pg.Name, err)
 	}
@@ -177,7 +177,7 @@ func (c *OVNNbClient) DeletePortGroup(pgName ...string) error {
 	for i, pg := range delList {
 		modelList[i] = pg
 	}
-	if err := c.callLayer().DeleteAndTransact(context.Background(), "pg-del", modelList...); err != nil {
+	if err := c.DeleteAndTransact(context.Background(), "pg-del", modelList...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("delete port group %s: %w", pgName, err)
 	}
@@ -194,7 +194,7 @@ func (c *OVNNbClient) GetPortGroup(pgName string, ignoreNotFound bool) (*ovnnb.P
 	defer cancel()
 
 	pg := &ovnnb.PortGroup{Name: pgName}
-	if err := c.callLayer().Get(ctx, pg); err != nil {
+	if err := c.Get(ctx, pg); err != nil {
 		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
@@ -213,7 +213,7 @@ func (c *OVNNbClient) ListPortGroups(externalIDs map[string]string) ([]ovnnb.Por
 	defer cancel()
 
 	var pgs []ovnnb.PortGroup
-	if err := c.callLayer().ListWhereCache(ctx, func(pg *ovnnb.PortGroup) bool {
+	if err := c.ListWhereCache(ctx, func(pg *ovnnb.PortGroup) bool {
 		if len(externalIDs) != 0 && len(pg.ExternalIDs) < len(externalIDs) {
 			return false
 		}
@@ -308,7 +308,7 @@ func (c *OVNNbClient) portGroupOp(pgName string, mutationsFunc ...func(pg *ovnnb
 		}
 	}
 
-	ops, err := c.callLayer().Mutate(pg, mutations...)
+	ops, err := c.Mutate(pg, mutations...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating port group %s: %w", pgName, err)
