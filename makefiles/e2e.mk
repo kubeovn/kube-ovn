@@ -27,11 +27,19 @@ VER_MINOR = 999
 # in the master conformance run. Match both the service and conntrack test
 # naming variants used by the Kubernetes E2E suite. The same suite also keeps
 # topology-aware EndpointSlice hints and Service trafficDistribution coverage
-# outside ConformanceIt, so include those specifications explicitly.
+# outside ConformanceIt. Topology Hints currently has one ClusterIP case, so
+# include that suite directly. Select Traffic Distribution case names
+# explicitly: these upstream Services use the default ClusterIP type, while
+# future NodePort or LoadBalancer cases must not be included automatically.
 ifeq ($(E2E_BRANCH),master)
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*[Ii]nternalTrafficPolicy.*Local"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Topology Hints"
-K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint in the same zone when using PreferClose$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic correctly between pods on multiple nodes when using PreferClose$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint in the same zone when using PreferSameZone$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic correctly between pods on multiple nodes when using PreferSameZone$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint on the same node or fall back to same zone when using PreferSameNode$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint on the same node when using PreferSameNode and fall back when the endpoint becomes unavailable$$"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*session affinity timeout work for service with type clusterIP"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*client IP based session affinity"
 endif
