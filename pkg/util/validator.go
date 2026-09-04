@@ -645,6 +645,9 @@ func ValidateVpc(vpc *kubeovnv1.Vpc) error {
 	}
 
 	for _, item := range vpc.Spec.VpcPeerings {
+		if item.LocalConnectIP == "" {
+			return fmt.Errorf("localConnectIP is required for vpc peering with %s, e.g. 169.254.0.1/30", item.RemoteVpc)
+		}
 		if err := CheckCidrs(item.LocalConnectIP); err != nil {
 			klog.Error(err)
 			return fmt.Errorf("invalid cidr %s", item.LocalConnectIP)

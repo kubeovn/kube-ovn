@@ -334,6 +334,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 
 	var newPeers []string
 	for _, peering := range vpc.Spec.VpcPeerings {
+		if peering.LocalConnectIP == "" {
+			err := fmt.Errorf("localConnectIP is required for vpc peering with %s, e.g. 169.254.0.1/30", peering.RemoteVpc)
+			klog.Error(err)
+			return err
+		}
 		if err = util.CheckCidrs(peering.LocalConnectIP); err != nil {
 			klog.Errorf("invalid cidr %s", peering.LocalConnectIP)
 			return err
