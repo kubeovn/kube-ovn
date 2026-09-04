@@ -25,9 +25,13 @@ VER_MINOR = 999
 # Kubernetes' internalTrafficPolicy=Local network tests. These tests are plain
 # ginkgo.It cases rather than ConformanceIt cases, so include them explicitly
 # in the master conformance run. Match both the service and conntrack test
-# naming variants used by the Kubernetes E2E suite.
+# naming variants used by the Kubernetes E2E suite. The same suite also keeps
+# topology-aware EndpointSlice hints and Service trafficDistribution coverage
+# outside ConformanceIt, so include those specifications explicitly.
 ifeq ($(E2E_BRANCH),master)
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*[Ii]nternalTrafficPolicy.*Local"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Topology Hints"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution"
 endif
 
 ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
