@@ -1010,8 +1010,7 @@ func (c *Controller) setIptables() error {
 		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
 			if rule.Table == NAT {
-				if c.k8siptables[protocol].HasRandomFully() &&
-					(rule.Rule[len(rule.Rule)-1] == "MASQUERADE" || slices.Contains(rule.Rule, "SNAT")) {
+				if rule.Rule[len(rule.Rule)-1] == "MASQUERADE" || slices.Contains(rule.Rule, "SNAT") {
 					rule.Rule = append(rule.Rule, "--random-fully")
 				}
 
@@ -1039,10 +1038,7 @@ func (c *Controller) setIptables() error {
 			}
 		}
 
-		var randomFully string
-		if c.k8siptables[protocol].HasRandomFully() {
-			randomFully = "--random-fully"
-		}
+		const randomFully = "--random-fully"
 
 		// add iptables rule for nat gw with designative ip in centralized subnet
 		for _, cidr := range slices.Sorted(maps.Keys(centralGwNatIPs)) {

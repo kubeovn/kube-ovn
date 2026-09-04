@@ -16,7 +16,7 @@ import (
 	versionutil "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/kubernetes/test/utils/format"
+	"k8s.io/kubernetes/test/utils/ktesting/format"
 	admissionapi "k8s.io/pod-security-admission/api"
 	"kubevirt.io/client-go/kubecli"
 	anpclient "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
