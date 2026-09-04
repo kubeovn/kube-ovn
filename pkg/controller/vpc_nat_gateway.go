@@ -201,13 +201,16 @@ func (c *Controller) handleDelVpcNatGw(key string) (retErr error) {
 		// Fallback for legacy queue entries without namespace prefix
 		stsNamespace, gwName = c.config.PodNamespace, key
 	}
-	eventGateway := &kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: gwName}}
+	eventGateway := &kubeovnv1.VpcNatGateway{Name: gwName}
+	failureRecorded := false
 	defer func() {
 		if retErr != nil {
-			c.recordVpcResourceError(eventGateway, "DeleteFailed", retErr)
+			if !failureRecorded {
+				_ = c.recordResourceError(eventGateway, "DeleteFailed", retErr)
+			}
 			return
 		}
-		c.recordVpcResourceEvent(eventGateway, corev1.EventTypeNormal, "DeleteSuccess",
+		c.recordResourceEvent(eventGateway, corev1.EventTypeNormal, "DeleteSuccess",
 			fmt.Sprintf("VpcNatGateway %s deleted successfully", gwName))
 	}()
 
@@ -228,6 +231,8 @@ func (c *Controller) handleDelVpcNatGw(key string) (retErr error) {
 	gw, err := c.vpcNatGatewayLister.Get(gwName)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Error(err)
+		failureRecorded = true
+		_ = c.recordResourceError(eventGateway, "GetVpcNatGatewayFailed", err)
 		return err
 	}
 
@@ -290,17 +295,18 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 			return nil
 		}
 		klog.Error(err)
-		c.recordVpcResourceError(&kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: key}},
+		_ = c.recordResourceError(&kubeovnv1.VpcNatGateway{Name: key},
 			"GetVpcNatGatewayFailed", err)
 		return err
 	}
 
+	statusUpdateFailed := false
 	if !gw.DeletionTimestamp.IsZero() {
 		return c.handleDelVpcNatGw(key)
 	}
 	defer func() {
-		if retErr != nil {
-			c.recordVpcResourceError(gw, "ReconcileFailed", retErr)
+		if retErr != nil && !statusUpdateFailed {
+			_ = c.recordResourceError(gw, "ReconcileFailed", retErr)
 		}
 	}()
 
@@ -377,9 +383,11 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 			}
 			if err = c.patchNatGwStatus(key); err != nil {
 				klog.Errorf("failed to patch nat gw deployment status for nat gw %s, %v", key, err)
+				statusUpdateFailed = true
+				_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
 				return err
 			}
-			c.recordVpcResourceEvent(gw, corev1.EventTypeNormal, "WorkloadCreated",
+			c.recordResourceEvent(gw, corev1.EventTypeNormal, "WorkloadCreated",
 				fmt.Sprintf("Created VpcNatGateway %s workload", gw.Name))
 			return nil
 		}
@@ -426,9 +434,11 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 			}
 			if err = c.patchNatGwStatus(key); err != nil {
 				klog.Errorf("failed to patch nat gw sts status for nat gw %s, %v", key, err)
+				statusUpdateFailed = true
+				_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
 				return err
 			}
-			c.recordVpcResourceEvent(gw, corev1.EventTypeNormal, "WorkloadCreated",
+			c.recordResourceEvent(gw, corev1.EventTypeNormal, "WorkloadCreated",
 				fmt.Sprintf("Created VpcNatGateway %s workload", gw.Name))
 			return nil
 		}
@@ -483,15 +493,19 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		}
 		if err = c.patchNatGwQoSStatus(key, gw.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to patch nat gw qos status for nat gw %s, %v", key, err)
+			statusUpdateFailed = true
+			_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
 			return err
 		}
 	}
 
 	if err = c.patchNatGwStatus(key); err != nil {
 		klog.Errorf("failed to patch nat gw status for nat gw %s, %v", key, err)
+		statusUpdateFailed = true
+		_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
 		return err
 	}
-	c.recordVpcResourceEvent(gw, corev1.EventTypeNormal, "ReconcileSuccess",
+	c.recordResourceEvent(gw, corev1.EventTypeNormal, "ReconcileSuccess",
 		fmt.Sprintf("VpcNatGateway %s reconciled successfully", gw.Name))
 
 	return nil
@@ -504,13 +518,14 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 			return nil
 		}
 		klog.Error(err)
-		c.recordVpcResourceError(&kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: key}},
+		_ = c.recordResourceError(&kubeovnv1.VpcNatGateway{Name: key},
 			"GetVpcNatGatewayFailed", err)
 		return err
 	}
+	statusUpdateFailed := false
 	defer func() {
-		if retErr != nil {
-			c.recordVpcResourceError(gw, "InitializeFailed", retErr)
+		if retErr != nil && !statusUpdateFailed {
+			_ = c.recordResourceError(gw, "InitializeFailed", retErr)
 		}
 	}()
 
@@ -606,6 +621,8 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 	if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
 		if err = c.patchNatGwQoSStatus(key, gw.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to patch status for nat gw %s, %v", key, err)
+			statusUpdateFailed = true
+			_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
 			return err
 		}
 	}

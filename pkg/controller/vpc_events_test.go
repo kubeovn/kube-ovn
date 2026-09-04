@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
@@ -26,9 +25,9 @@ func TestRecordVpcResourceError(t *testing.T) {
 		name   string
 		object runtime.Object
 	}{
-		{name: "Vpc", object: &kubeovnv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: "vpc-1"}}},
-		{name: "VpcNatGateway", object: &kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: "nat-gw-1"}}},
-		{name: "VpcDns", object: &kubeovnv1.VpcDns{ObjectMeta: metav1.ObjectMeta{Name: "dns-1"}}},
+		{name: "Vpc", object: &kubeovnv1.Vpc{Name: "vpc-1"}},
+		{name: "VpcNatGateway", object: &kubeovnv1.VpcNatGateway{Name: "nat-gw-1"}},
+		{name: "VpcDns", object: &kubeovnv1.VpcDns{Name: "dns-1"}},
 	}
 
 	for _, tt := range tests {
@@ -38,7 +37,7 @@ func TestRecordVpcResourceError(t *testing.T) {
 			controller := &Controller{recorder: recorder}
 			sourceErr := errors.New("boom")
 
-			controller.recordVpcResourceError(tt.object, "ReconcileFailed", sourceErr)
+			_ = controller.recordResourceError(tt.object, "ReconcileFailed", sourceErr)
 
 			require.Equal(t, "Warning ReconcileFailed boom", requireRecorderEvent(t, recorder))
 		})
@@ -49,7 +48,7 @@ func TestHandleAddOrUpdateVpcRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: "vpc-1", Finalizers: []string{util.KubeOVNControllerFinalizer}},
+		Name: "vpc-1", Finalizers: []string{util.KubeOVNControllerFinalizer},
 		Spec: kubeovnv1.VpcSpec{StaticRoutes: []*kubeovnv1.StaticRoute{{
 			CIDR:       "invalid",
 			NextHopIP:  "10.0.0.1",
@@ -72,10 +71,10 @@ func TestHandleDeleteVpcRecordsBlockingSubnetEvent(t *testing.T) {
 	t.Parallel()
 
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: "vpc-1"},
-		Status:     kubeovnv1.VpcStatus{Subnets: []string{"subnet-1"}},
+		Name:   "vpc-1",
+		Status: kubeovnv1.VpcStatus{Subnets: []string{"subnet-1"}},
 	}
-	subnet := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-1"}}
+	subnet := &kubeovnv1.Subnet{Name: "subnet-1"}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Vpcs:    []*kubeovnv1.Vpc{vpc},
 		Subnets: []*kubeovnv1.Subnet{subnet},
@@ -96,7 +95,7 @@ func TestHandleDeleteVpcRecordsBlockingSubnetEvent(t *testing.T) {
 
 func TestHandleAddOrUpdateVpcNatGatewayRecordsFailureEvent(t *testing.T) {
 	gw := &kubeovnv1.VpcNatGateway{
-		ObjectMeta: metav1.ObjectMeta{Name: "nat-gw-1", Finalizers: []string{util.KubeOVNControllerFinalizer}},
+		Name: "nat-gw-1", Finalizers: []string{util.KubeOVNControllerFinalizer},
 	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw}})
 	require.NoError(t, err)
@@ -115,7 +114,7 @@ func TestHandleAddOrUpdateVpcNatGatewayRecordsFailureEvent(t *testing.T) {
 }
 
 func TestHandleInitVpcNatGatewayRecordsFailureEvent(t *testing.T) {
-	gw := &kubeovnv1.VpcNatGateway{ObjectMeta: metav1.ObjectMeta{Name: "nat-gw-1"}}
+	gw := &kubeovnv1.VpcNatGateway{Name: "nat-gw-1"}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw}})
 	require.NoError(t, err)
 	recorder := record.NewFakeRecorder(1)
@@ -133,8 +132,8 @@ func TestHandleInitVpcNatGatewayRecordsFailureEvent(t *testing.T) {
 
 func TestHandleAddOrUpdateVpcDNSRecordsFailureAndInactiveStatus(t *testing.T) {
 	dns := &kubeovnv1.VpcDns{
-		ObjectMeta: metav1.ObjectMeta{Name: "dns-1"},
-		Status:     kubeovnv1.VpcDNSStatus{Active: true},
+		Name:   "dns-1",
+		Status: kubeovnv1.VpcDNSStatus{Active: true},
 	}
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	require.NoError(t, indexer.Add(dns))
@@ -170,6 +169,6 @@ func TestRecordVpcResourceEventAllowsNilRecorder(t *testing.T) {
 
 	controller := &Controller{}
 	require.NotPanics(t, func() {
-		controller.recordVpcResourceEvent(&kubeovnv1.Vpc{}, corev1.EventTypeNormal, "ReconcileSuccess", "done")
+		controller.recordResourceEvent(&kubeovnv1.Vpc{}, corev1.EventTypeNormal, "ReconcileSuccess", "done")
 	})
 }

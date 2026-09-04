@@ -106,10 +106,10 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) (retErr error) {
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpc.Name) }()
 	defer func() {
 		if retErr != nil {
-			c.recordVpcResourceError(vpc, "DeleteFailed", retErr)
+			_ = c.recordResourceError(vpc, "DeleteFailed", retErr)
 			return
 		}
-		c.recordVpcResourceEvent(vpc, v1.EventTypeNormal, "DeleteSuccess",
+		c.recordResourceEvent(vpc, v1.EventTypeNormal, "DeleteSuccess",
 			fmt.Sprintf("Vpc %s deleted successfully", vpc.Name))
 	}()
 	klog.Infof("handle delete vpc %s", vpc.Name)
@@ -169,13 +169,13 @@ func (c *Controller) handleUpdateVpcStatus(key string) (retErr error) {
 			return nil
 		}
 		klog.Error(err)
-		c.recordVpcResourceError(&kubeovnv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: key}}, "GetVpcFailed", err)
+		_ = c.recordResourceError(&kubeovnv1.Vpc{Name: key}, "GetVpcFailed", err)
 		return err
 	}
 	vpc := cachedVpc.DeepCopy()
 	defer func() {
 		if retErr != nil {
-			c.recordVpcResourceError(vpc, "UpdateStatusFailed", retErr)
+			_ = c.recordResourceError(vpc, "UpdateStatusFailed", retErr)
 		}
 	}()
 
@@ -294,12 +294,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 			return nil
 		}
 		klog.Error(err)
-		c.recordVpcResourceError(&kubeovnv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: key}}, "GetVpcFailed", err)
+		_ = c.recordResourceError(&kubeovnv1.Vpc{Name: key}, "GetVpcFailed", err)
 		return err
 	}
 	defer func() {
 		if retErr != nil {
-			c.recordVpcResourceError(cachedVpc, "ReconcileFailed", retErr)
+			_ = c.recordResourceError(cachedVpc, "ReconcileFailed", retErr)
 		}
 	}()
 
@@ -678,7 +678,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 		klog.Error(err)
 		return err
 	}
-	c.recordVpcResourceEvent(vpc, v1.EventTypeNormal, "ReconcileSuccess",
+	c.recordResourceEvent(vpc, v1.EventTypeNormal, "ReconcileSuccess",
 		fmt.Sprintf("Vpc %s reconciled successfully", vpc.Name))
 
 	return nil

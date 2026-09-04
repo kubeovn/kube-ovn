@@ -96,7 +96,7 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) (retErr error) {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		c.recordVpcResourceError(&kubeovnv1.VpcDns{ObjectMeta: metav1.ObjectMeta{Name: key}},
+		_ = c.recordResourceError(&kubeovnv1.VpcDns{Name: key},
 			"GetVpcDNSFailed", err)
 		return err
 	}
@@ -110,7 +110,7 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) (retErr error) {
 			newVPCDNS, metav1.UpdateOptions{}); statusErr != nil {
 			statusErr = fmt.Errorf("failed to update vpc dns status: %w", statusErr)
 			klog.Error(statusErr)
-			c.recordVpcResourceError(vpcDNS, "UpdateStatusFailed", statusErr)
+			_ = c.recordResourceError(vpcDNS, "UpdateStatusFailed", statusErr)
 			if retErr == nil {
 				retErr = statusErr
 			} else {
@@ -118,9 +118,9 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) (retErr error) {
 			}
 		}
 		if reconcileErr != nil {
-			c.recordVpcResourceError(vpcDNS, "ReconcileFailed", reconcileErr)
+			_ = c.recordResourceError(vpcDNS, "ReconcileFailed", reconcileErr)
 		} else if retErr == nil {
-			c.recordVpcResourceEvent(newVPCDNS, corev1.EventTypeNormal, "ReconcileSuccess",
+			c.recordResourceEvent(newVPCDNS, corev1.EventTypeNormal, "ReconcileSuccess",
 				fmt.Sprintf("VpcDns %s reconciled successfully", vpcDNS.Name))
 		}
 	}()
@@ -181,13 +181,13 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) (retErr error) {
 
 func (c *Controller) handleDelVpcDNS(key string) (retErr error) {
 	klog.V(3).Infof("handleDelVpcDNS,%s", key)
-	vpcDNS := &kubeovnv1.VpcDns{ObjectMeta: metav1.ObjectMeta{Name: key}}
+	vpcDNS := &kubeovnv1.VpcDns{Name: key}
 	defer func() {
 		if retErr != nil {
-			c.recordVpcResourceError(vpcDNS, "DeleteFailed", retErr)
+			_ = c.recordResourceError(vpcDNS, "DeleteFailed", retErr)
 			return
 		}
-		c.recordVpcResourceEvent(vpcDNS, corev1.EventTypeNormal, "DeleteSuccess",
+		c.recordResourceEvent(vpcDNS, corev1.EventTypeNormal, "DeleteSuccess",
 			fmt.Sprintf("VpcDns %s deleted successfully", key))
 	}()
 	name := genVpcDNSDpName(key)
