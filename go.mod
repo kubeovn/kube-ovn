@@ -55,14 +55,14 @@ require (
 	golang.org/x/tools v0.49.0
 	google.golang.org/grpc v1.83.2
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.4
-	k8s.io/api v0.35.8
+	k8s.io/api v0.37.0
 	k8s.io/apiextensions-apiserver v0.35.8
-	k8s.io/apimachinery v0.35.8
+	k8s.io/apimachinery v0.37.0
 	k8s.io/apiserver v0.35.8
 	k8s.io/client-go v0.35.8
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubernetes v1.35.8
-	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
+	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.78
 	kubevirt.io/api v1.8.1
 	kubevirt.io/client-go v1.8.1
@@ -221,7 +221,7 @@ require (
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/knftables v0.0.21 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 )
 
 replace (
