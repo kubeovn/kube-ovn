@@ -293,15 +293,12 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			case v1.ProtocolSCTP:
 				lb, oldLb = sctpLb, oldSctpLb
 			}
-			isExternalVIP := lbVipTrafficClasses[lbVip] == serviceLBExternalTraffic
+			isExternalVIP := serviceLBTrafficClassForVIP(lbVipTrafficClasses, lbVip) == serviceLBExternalTraffic
 			isDistributedForVIP := isDistributedLocal && !isExternalVIP
 			if isDistributedLocal && isExternalVIP {
-				lb, err = c.ensureServiceScopedLBForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic)
+				lb, err = c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, subnetName)
 				if err != nil {
 					return err
-				}
-				if err = c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, lb); err != nil {
-					return fmt.Errorf("attach external service-scoped load balancer to subnet %s: %w", subnetName, err)
 				}
 			}
 
@@ -352,21 +349,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
 					return err
 				}
-				legacyLbs := []string{oldLb}
-				if serviceUsesScopedLB(svc) {
-					switch port.Protocol {
-					case v1.ProtocolTCP:
-						legacyLbs = append(legacyLbs, vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer)
-					case v1.ProtocolUDP:
-						legacyLbs = append(legacyLbs, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer)
-					case v1.ProtocolSCTP:
-						legacyLbs = append(legacyLbs, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer)
-					}
-					legacyLbs = append(legacyLbs,
-						serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBInternalTraffic),
-						serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic),
-					)
-				}
+				legacyLbs := serviceLBMigrationCandidates(svc, port.Protocol, oldLb, vpc)
 				seenLegacyLbs := make(map[string]struct{}, len(legacyLbs))
 				for _, legacyLb := range legacyLbs {
 					if legacyLb == "" || legacyLb == lb {
@@ -419,21 +402,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				}
 
 				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, oldLb)
-				legacyLbs := []string{oldLb}
-				if serviceUsesScopedLB(svc) {
-					switch port.Protocol {
-					case v1.ProtocolTCP:
-						legacyLbs = append(legacyLbs, vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer)
-					case v1.ProtocolUDP:
-						legacyLbs = append(legacyLbs, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer)
-					case v1.ProtocolSCTP:
-						legacyLbs = append(legacyLbs, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer)
-					}
-					legacyLbs = append(legacyLbs,
-						serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBInternalTraffic),
-						serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic),
-					)
-				}
+				legacyLbs := serviceLBMigrationCandidates(svc, port.Protocol, oldLb, vpc)
 				seenLegacyLbs := make(map[string]struct{}, len(legacyLbs))
 				for _, legacyLb := range legacyLbs {
 					if legacyLb == "" || legacyLb == lb {
@@ -477,14 +446,8 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			return err
 		}
 	} else if !isDistributedLocal || !hasExternalVIP {
-		protocols := make(map[v1.Protocol]struct{}, len(svc.Spec.Ports))
-		for _, port := range svc.Spec.Ports {
-			protocols[port.Protocol] = struct{}{}
-		}
-		for protocol := range protocols {
-			if err := c.deleteServiceScopedLBTrafficClass(svc, protocol, serviceLBExternalTraffic); err != nil {
-				return err
-			}
+		if err := c.deleteServiceScopedLBExternalTraffic(svc); err != nil {
+			return err
 		}
 	}
 

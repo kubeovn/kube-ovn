@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"slices"
 	"testing"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
@@ -151,6 +153,52 @@ func TestEnsureServiceScopedLBExternalTrafficDoesNotDistribute(t *testing.T) {
 	}
 }
 
+func TestEnsureServiceScopedLBExternalTraffic(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	ctrl.config.EnableOVNLBDistributed = true
+	local := corev1.ServiceInternalTrafficPolicyLocal
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-external-attach"),
+		Spec: corev1.ServiceSpec{
+			InternalTrafficPolicy: &local,
+			Ports:                 []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
+		},
+	}
+	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+	gomock.InOrder(
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc))).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-a", ovsdb.MutateOperationInsert, lbName).Return(nil),
+	)
+	if _, err := ctrl.ensureServiceScopedLBExternalTraffic(svc, corev1.ProtocolTCP, "subnet-a"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServiceLBTrafficClassForVIP(t *testing.T) {
+	classes := map[string]serviceLBTrafficClass{"10.0.0.1": serviceLBExternalTraffic}
+	if got := serviceLBTrafficClassForVIP(classes, "10.0.0.1"); got != serviceLBExternalTraffic {
+		t.Fatalf("external VIP class = %q", got)
+	}
+	if got := serviceLBTrafficClassForVIP(classes, "10.0.0.2"); got != serviceLBInternalTraffic {
+		t.Fatalf("default VIP class = %q", got)
+	}
+}
+
+func TestServiceLBMigrationCandidates(t *testing.T) {
+	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-migrate"), Spec: corev1.ServiceSpec{SessionAffinity: corev1.ServiceAffinityClientIP}}
+	vpc := &kubeovnv1.Vpc{Status: kubeovnv1.VpcStatus{TCPLoadBalancer: "tcp", TCPSessionLoadBalancer: "tcp-session"}}
+	candidates := serviceLBMigrationCandidates(svc, corev1.ProtocolTCP, "old", vpc)
+	for _, want := range []string{"old", "tcp", "tcp-session", serviceScopedLBName(svc, corev1.ProtocolTCP), serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)} {
+		if !slices.Contains(candidates, want) {
+			t.Fatalf("migration candidates %v do not contain %q", candidates, want)
+		}
+	}
+}
+
 func TestDeleteServiceScopedLoadBalancers(t *testing.T) {
 	fake := newFakeController(t)
 	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-delete")}
@@ -165,6 +213,22 @@ func TestDeleteServiceScopedLBTrafficClass(t *testing.T) {
 	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-delete-class")}
 	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
 	if err := fake.fakeController.deleteServiceScopedLBTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeleteServiceScopedLBExternalTraffic(t *testing.T) {
+	fake := newFakeController(t)
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-delete-external"),
+		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
+			{Protocol: corev1.ProtocolTCP},
+			{Protocol: corev1.ProtocolUDP},
+			{Protocol: corev1.ProtocolTCP},
+		}},
+	}
+	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Times(2).Return(nil)
+	if err := fake.fakeController.deleteServiceScopedLBExternalTraffic(svc); err != nil {
 		t.Fatal(err)
 	}
 }
