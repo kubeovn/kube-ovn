@@ -21,6 +21,15 @@ K8S_NETPOL_LEGACY_E2E_FOCUS = "sig-network.*NetworkPolicyLegacy"
 VER_MAJOR = 999
 VER_MINOR = 999
 
+# OVN 26.03 distributed load balancers provide the implementation required by
+# Kubernetes' internalTrafficPolicy=Local network tests. These tests are plain
+# ginkgo.It cases rather than ConformanceIt cases, so include them explicitly
+# in the master conformance run. Match both the service and conntrack test
+# naming variants used by the Kubernetes E2E suite.
+ifeq ($(E2E_BRANCH),master)
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*[Ii]nternalTrafficPolicy.*Local"
+endif
+
 ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
 VERSION_NUM = $(subst release-,,$(E2E_BRANCH))
 VER_MAJOR = $(shell echo $(VERSION_NUM) | cut -f1 -d.)

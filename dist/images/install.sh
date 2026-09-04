@@ -75,6 +75,7 @@ OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
 ENABLE_OVN_LB_PREFER_LOCAL=${ENABLE_OVN_LB_PREFER_LOCAL:-false}
+ENABLE_OVN_LB_DISTRIBUTED=${ENABLE_OVN_LB_DISTRIBUTED:-false}
 LEADER_ELECT_LEASE_DURATION=${LEADER_ELECT_LEASE_DURATION:-30s}
 LEADER_ELECT_RENEW_DEADLINE=${LEADER_ELECT_RENEW_DEADLINE:-20s}
 LEADER_ELECT_RETRY_PERIOD=${LEADER_ELECT_RETRY_PERIOD:-6s}
@@ -252,6 +253,7 @@ fi
 echo "Default Subnet CIDR:  $POD_CIDR"
 echo "Join Subnet CIDR:     $JOIN_CIDR"
 echo "Enable SVC LB:        $ENABLE_LB"
+echo "Enable distributed LB: $ENABLE_OVN_LB_DISTRIBUTED"
 echo "Enable Networkpolicy: $ENABLE_NP"
 echo "Enable ACL Sampling:  $ENABLE_ACL_SAMPLING"
 echo "Enable EIP and SNAT:  $ENABLE_EIP_SNAT"
@@ -8929,6 +8931,7 @@ spec:
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
           - --enable-ovn-lb-prefer-local=$ENABLE_OVN_LB_PREFER_LOCAL
+          - --enable-ovn-lb-distributed=$ENABLE_OVN_LB_DISTRIBUTED
           - --image=$REGISTRY/kube-ovn:$VERSION
           securityContext:
             runAsUser: ${RUN_AS_USER}
