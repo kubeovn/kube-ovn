@@ -103,15 +103,6 @@ index 42f1a4a93..a6f7828d2 100644
      sbrec_port_binding_set_options(op->sb, &new);
      smap_destroy(&new);
  }
-@@ -9148,7 +9153,7 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
- static void
- build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
-                                     struct lflow_table *lflows,
--                                    const struct hmap *lr_ports,
-+                                    const struct hmap *lr_ports OVS_UNUSED,
-                                     struct ds *actions,
-                                     struct ds *match)
- {
 @@ -11916,8 +11921,9 @@ find_policy_outport(struct ovn_datapath *od, const struct hmap *lr_ports,
  }
 
