@@ -7,7 +7,7 @@ require (
 	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/cert-manager/cert-manager v1.21.1
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
-	github.com/containerd/containerd/v2 v2.3.4
+	github.com/containerd/containerd/v2 v2.3.5
 	github.com/containerd/nerdctl/v2 v2.3.5
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.9.1
