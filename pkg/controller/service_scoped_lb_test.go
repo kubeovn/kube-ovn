@@ -170,10 +170,33 @@ func TestEnsureServiceScopedLBExternalTraffic(t *testing.T) {
 		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc))).Return(nil),
+		fake.mockOvnClient.EXPECT().DeleteLoadBalancerAffinityTimeout(lbName).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-a", ovsdb.MutateOperationInsert, lbName).Return(nil),
 	)
 	if _, err := ctrl.ensureServiceScopedLBExternalTraffic(svc, corev1.ProtocolTCP, "subnet-a"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnsureServiceScopedLBClearsAffinityTimeout(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	ctrl.config.EnableOVNLBDistributed = true
+	local := corev1.ServiceInternalTrafficPolicyLocal
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-clear-affinity"),
+		Spec: corev1.ServiceSpec{InternalTrafficPolicy: &local},
+	}
+	lbName := serviceScopedLBName(svc, corev1.ProtocolTCP)
+	gomock.InOrder(
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc))).Return(nil),
+		fake.mockOvnClient.EXPECT().DeleteLoadBalancerAffinityTimeout(lbName).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, true).Return(nil),
+	)
+	if _, err := ctrl.ensureServiceScopedLB(svc, corev1.ProtocolTCP); err != nil {
 		t.Fatal(err)
 	}
 }

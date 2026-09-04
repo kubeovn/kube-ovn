@@ -106,6 +106,8 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		if err := c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, timeout); err != nil {
 			return "", fmt.Errorf("set affinity timeout on service-scoped load balancer %s: %w", name, err)
 		}
+	} else if err := c.OVNNbClient.DeleteLoadBalancerAffinityTimeout(name); err != nil {
+		return "", fmt.Errorf("delete affinity timeout on service-scoped load balancer %s: %w", name, err)
 	}
 	if err := c.OVNNbClient.SetLoadBalancerDistributed(name, distributed); err != nil {
 		return "", fmt.Errorf("set distributed mode on service-scoped load balancer %s: %w", name, err)

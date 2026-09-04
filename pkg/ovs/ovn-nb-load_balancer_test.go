@@ -393,6 +393,24 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 	)
 }
 
+func (suite *OvnClientTestSuite) testDeleteLoadBalancerAffinityTimeout() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-delete-affinity-timeout-lb"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerAffinityTimeout(lbName, 42))
+	require.NoError(t, nbClient.DeleteLoadBalancerAffinityTimeout(lbName))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	_, ok := lb.Options["affinity_timeout"]
+	require.False(t, ok)
+
+	require.NoError(t, nbClient.DeleteLoadBalancerAffinityTimeout(lbName))
+}
+
 func (suite *OvnClientTestSuite) testSetLoadBalancerSelectionFields() {
 	t := suite.T()
 	t.Parallel()

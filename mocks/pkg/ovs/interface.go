@@ -1645,6 +1645,20 @@ func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol any,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), varargs...)
 }
 
+// DeleteLoadBalancerAffinityTimeout mocks base method.
+func (m *MockLoadBalancer) DeleteLoadBalancerAffinityTimeout(lbName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLoadBalancerAffinityTimeout", lbName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLoadBalancerAffinityTimeout indicates an expected call of DeleteLoadBalancerAffinityTimeout.
+func (mr *MockLoadBalancerMockRecorder) DeleteLoadBalancerAffinityTimeout(lbName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLoadBalancerAffinityTimeout", reflect.TypeOf((*MockLoadBalancer)(nil).DeleteLoadBalancerAffinityTimeout), lbName)
+}
+
 // DeleteLoadBalancers mocks base method.
 func (m *MockLoadBalancer) DeleteLoadBalancers(filter func(*ovnnb.LoadBalancer) bool) error {
 	m.ctrl.T.Helper()
@@ -4271,6 +4285,20 @@ func (m *MockNbClient) DeleteHAChassisGroup(name string) error {
 func (mr *MockNbClientMockRecorder) DeleteHAChassisGroup(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHAChassisGroup", reflect.TypeOf((*MockNbClient)(nil).DeleteHAChassisGroup), name)
+}
+
+// DeleteLoadBalancerAffinityTimeout mocks base method.
+func (m *MockNbClient) DeleteLoadBalancerAffinityTimeout(lbName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLoadBalancerAffinityTimeout", lbName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLoadBalancerAffinityTimeout indicates an expected call of DeleteLoadBalancerAffinityTimeout.
+func (mr *MockNbClientMockRecorder) DeleteLoadBalancerAffinityTimeout(lbName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLoadBalancerAffinityTimeout", reflect.TypeOf((*MockNbClient)(nil).DeleteLoadBalancerAffinityTimeout), lbName)
 }
 
 // DeleteLoadBalancerHealthCheck mocks base method.

@@ -307,6 +307,25 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 	return nil
 }
 
+// DeleteLoadBalancerAffinityTimeout removes the LB affinity timeout option.
+func (c *OVNNbClient) DeleteLoadBalancerAffinityTimeout(lbName string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	if _, ok := lb.Options["affinity_timeout"]; !ok {
+		return nil
+	}
+
+	options := maps.Clone(lb.Options)
+	delete(options, "affinity_timeout")
+	lb.Options = options
+	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		return fmt.Errorf("failed to delete affinity timeout of lb %s: %w", lbName, err)
+	}
+	return nil
+}
+
 // SetLoadBalancerDistributed enables or disables OVN's chassis-local backend
 // selection for a load balancer. This option is available in OVN 26.03+.
 func (c *OVNNbClient) SetLoadBalancerDistributed(lbName string, distributed bool) error {
