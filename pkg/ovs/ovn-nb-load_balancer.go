@@ -420,21 +420,23 @@ func (c *OVNNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, 
 		return nil
 	}
 	row := &rows[0]
-	merged := maps.Clone(row.Variables)
-	if merged == nil {
-		merged = make(map[string]string)
-	}
-	for key := range merged {
+	deletes := make(map[string]string)
+	for key, value := range row.Variables {
 		if strings.HasPrefix(key, prefix) {
-			delete(merged, key)
+			deletes[key] = value
 		}
 	}
-	maps.Copy(merged, variables)
-	if maps.Equal(row.Variables, merged) {
+	if len(deletes) == 0 && maps.Equal(row.Variables, variables) {
 		return nil
 	}
-	row.Variables = merged
-	if ops, err := c.ovsDbClient.Where(row).Update(row, &row.Variables); err != nil {
+	mutations := make([]model.Mutation, 0, 2)
+	if len(deletes) != 0 {
+		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes})
+	}
+	if len(variables) != 0 {
+		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationInsert, Value: variables})
+	}
+	if ops, err := c.ovsDbClient.Where(row).Mutate(row, mutations...); err != nil {
 		return fmt.Errorf("generate template variable update for chassis %s: %w", chassis, err)
 	} else if err := c.Transact("chassis-template-var-update", ops); err != nil {
 		return fmt.Errorf("update template variables for chassis %s: %w", chassis, err)
