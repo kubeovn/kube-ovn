@@ -311,6 +311,9 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				if err != nil {
 					return fmt.Errorf("couldn't get distributed ip port mapping for svc %s/%s: %w", svc.Namespace, svc.Name, err)
 				}
+				if !ignoreHealthCheck {
+					decorateDistributedIPPortMapping(ipPortMapping, checkIP)
+				}
 			} else if !ignoreHealthCheck || isPreferLocalBackend {
 				ipPortMapping, err = c.getIPPortMapping(endpointSlices, svc, checkIP)
 				if err != nil {
@@ -973,6 +976,17 @@ func (c *Controller) getDistributedIPPortMapping(endpointSlices []*discoveryv1.E
 		}
 	}
 	return mapping, nil
+}
+
+// decorateDistributedIPPortMapping preserves the health-check source VIP while
+// keeping the logical port prefix required by OVN distributed load balancers.
+func decorateDistributedIPPortMapping(mapping IPPortMapping, sourceIP string) {
+	if sourceIP == "" {
+		return
+	}
+	for backendIP, logicalPort := range mapping {
+		mapping[backendIP] = fmt.Sprintf("%s:%s", logicalPort, sourceIP)
+	}
 }
 
 // getIPPortMappingWithTargets returns the IPPortMapping for endpoints with targets
