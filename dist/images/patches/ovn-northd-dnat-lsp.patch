@@ -39,14 +39,13 @@ index 9f1ee8397..79f03c7c5 100644
  #define MAX_OVN_TAGS 4096
  
  #define MAX_OVN_NF_GROUP_IDS 256
-@@ -9141,6 +9143,58 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+@@ -9141,6 +9143,57 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
      }
  }
  
 +static void
 +build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
 +                                    struct lflow_table *lflows,
-+                                    const struct hmap *lr_ports,
 +                                    struct ds *actions,
 +                                    struct ds *match)
 +{
@@ -102,7 +101,7 @@ index 9f1ee8397..79f03c7c5 100644
      build_lswitch_from_localnet_op(op, lflows, match);
      build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
                                               meter_groups, actions, match);
-+    build_lswitch_dnat_mod_dl_dst_rules(op, lflows, lr_ports, actions, match);
++    build_lswitch_dnat_mod_dl_dst_rules(op, lflows, actions, match);
      build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
      build_lswitch_external_port(op, lflows);
      build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
