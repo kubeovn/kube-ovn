@@ -6,8 +6,10 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
 const (
@@ -111,6 +113,17 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	return name, nil
 }
 
+func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, protocol v1.Protocol, subnetName string) (string, error) {
+	lb, err := c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBExternalTraffic)
+	if err != nil {
+		return "", err
+	}
+	if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, lb); err != nil {
+		return "", fmt.Errorf("attach external service-scoped load balancer to subnet %s: %w", subnetName, err)
+	}
+	return lb, nil
+}
+
 func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 	owner := string(svc.UID)
 	if owner == "" {
@@ -136,6 +149,45 @@ func (c *Controller) deleteServiceScopedLBTrafficClass(svc *v1.Service, protocol
 		return fmt.Errorf("delete %s service-scoped load balancer for %s/%s: %w", trafficClass, svc.Namespace, svc.Name, err)
 	}
 	return nil
+}
+
+func (c *Controller) deleteServiceScopedLBExternalTraffic(svc *v1.Service) error {
+	protocols := make(map[v1.Protocol]struct{}, len(svc.Spec.Ports))
+	for _, port := range svc.Spec.Ports {
+		protocols[port.Protocol] = struct{}{}
+	}
+	for protocol := range protocols {
+		if err := c.deleteServiceScopedLBTrafficClass(svc, protocol, serviceLBExternalTraffic); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func serviceLBTrafficClassForVIP(classes map[string]serviceLBTrafficClass, vip string) serviceLBTrafficClass {
+	if classes[vip] == serviceLBExternalTraffic {
+		return serviceLBExternalTraffic
+	}
+	return serviceLBInternalTraffic
+}
+
+func serviceLBMigrationCandidates(svc *v1.Service, protocol v1.Protocol, oldLB string, vpc *kubeovnv1.Vpc) []string {
+	candidates := []string{oldLB}
+	switch protocol {
+	case v1.ProtocolTCP:
+		candidates = append(candidates, vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer)
+	case v1.ProtocolUDP:
+		candidates = append(candidates, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer)
+	case v1.ProtocolSCTP:
+		candidates = append(candidates, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer)
+	}
+	if serviceUsesScopedLB(svc) {
+		candidates = append(candidates,
+			serviceScopedLBNameForTrafficClass(svc, protocol, serviceLBInternalTraffic),
+			serviceScopedLBNameForTrafficClass(svc, protocol, serviceLBExternalTraffic),
+		)
+	}
+	return candidates
 }
 
 func serviceScopedLBNames(svc *v1.Service) []string {
