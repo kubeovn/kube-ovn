@@ -87,6 +87,34 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 	}
 }
 
+func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
+	if !c.config.EnableLb {
+		return
+	}
+
+	var endpointSlice *discoveryv1.EndpointSlice
+	switch t := obj.(type) {
+	case *discoveryv1.EndpointSlice:
+		endpointSlice = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*discoveryv1.EndpointSlice)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		endpointSlice = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := findServiceKey(endpointSlice)
+	if key != "" {
+		klog.V(3).Infof("enqueue delete endpointSlice for service %s", key)
+		c.addOrUpdateEndpointSliceQueue.Add(key)
+	}
+}
+
 func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -349,19 +377,9 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
 					return err
 				}
-				legacyLbs := serviceLBMigrationCandidates(svc, port.Protocol, oldLb, vpc)
-				seenLegacyLbs := make(map[string]struct{}, len(legacyLbs))
-				for _, legacyLb := range legacyLbs {
-					if legacyLb == "" || legacyLb == lb {
-						continue
-					}
-					if _, seen := seenLegacyLbs[legacyLb]; seen {
-						continue
-					}
-					seenLegacyLbs[legacyLb] = struct{}{}
-					if err = c.OVNNbClient.LoadBalancerDeleteVip(legacyLb, vip, true); err != nil {
-						return fmt.Errorf("migrate vip %s from old load balancer %s: %w", vip, legacyLb, err)
-					}
+				trafficClass := serviceLBTrafficClassForVIP(lbVipTrafficClasses, lbVip)
+				if err = c.deleteServiceLBMigrationVIP(svc, port.Protocol, oldLb, lb, vip, vpc, trafficClass); err != nil {
+					return fmt.Errorf("migrate vip %s: %w", vip, err)
 				}
 				if isPreferLocalBackend &&
 					svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
@@ -402,20 +420,10 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				}
 
 				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, oldLb)
-				legacyLbs := serviceLBMigrationCandidates(svc, port.Protocol, oldLb, vpc)
-				seenLegacyLbs := make(map[string]struct{}, len(legacyLbs))
-				for _, legacyLb := range legacyLbs {
-					if legacyLb == "" || legacyLb == lb {
-						continue
-					}
-					if _, seen := seenLegacyLbs[legacyLb]; seen {
-						continue
-					}
-					seenLegacyLbs[legacyLb] = struct{}{}
-					if err = c.OVNNbClient.LoadBalancerDeleteVip(legacyLb, vip, true); err != nil {
-						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, legacyLb, err)
-						return err
-					}
+				trafficClass := serviceLBTrafficClassForVIP(lbVipTrafficClasses, lbVip)
+				if err = c.deleteServiceLBMigrationVIP(svc, port.Protocol, oldLb, lb, vip, vpc, trafficClass); err != nil {
+					klog.Errorf("failed to delete vip %s from old LB: %v", vip, err)
+					return err
 				}
 
 				if c.config.EnableOVNLBPreferLocal || isDistributedForVIP {

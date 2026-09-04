@@ -175,6 +175,7 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 		c.enqueueDeleteService(svc)
 		c.enqueueAddEndpointSlice(eps)
 		c.enqueueUpdateEndpointSlice(eps, updatedEps)
+		c.enqueueDeleteEndpointSlice(eps)
 	}
 
 	t.Run("EnableLb=false skips enqueueing", func(t *testing.T) {
