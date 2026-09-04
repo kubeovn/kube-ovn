@@ -119,6 +119,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 
 	var (
 		lbVips                   []string
+		lbVipTrafficClasses      = make(map[string]serviceLBTrafficClass)
 		vip, vpcName, subnetName string
 		externalVIPNode          string
 		serviceL2StatusReady     = true
@@ -133,6 +134,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 
 	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok && vip != "" {
 		lbVips = []string{vip}
+		lbVipTrafficClasses[vip] = serviceLBExternalTraffic
 
 		// Health checks can only run against IPv4 endpoints and if the service doesn't specify they must be disabled
 		if util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
@@ -145,12 +147,17 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				continue
 			}
 			lbVips = append(lbVips, ip)
+			lbVipTrafficClasses[ip] = serviceLBExternalTraffic
 			if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
 				ignoreHealthCheck = false
 			}
 		}
 	} else if lbVips = util.ServiceClusterIPs(*svc); len(lbVips) == 0 {
 		return nil
+	} else {
+		for _, clusterIP := range lbVips {
+			lbVipTrafficClasses[clusterIP] = serviceLBInternalTraffic
+		}
 	}
 
 	if c.config.EnableLb && c.config.EnableOVNLBPreferLocal {
@@ -158,6 +165,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			for _, ingress := range svc.Status.LoadBalancer.Ingress {
 				if ingress.IP != "" {
 					lbVips = append(lbVips, ingress.IP)
+					lbVipTrafficClasses[ingress.IP] = serviceLBExternalTraffic
 				}
 			}
 			if svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal {
@@ -282,6 +290,17 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			case v1.ProtocolSCTP:
 				lb, oldLb = sctpLb, oldSctpLb
 			}
+			isExternalVIP := lbVipTrafficClasses[lbVip] == serviceLBExternalTraffic
+			isDistributedForVIP := isDistributedLocal && !isExternalVIP
+			if isDistributedLocal && isExternalVIP {
+				lb, err = c.ensureServiceScopedLBForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic)
+				if err != nil {
+					return err
+				}
+				if err = c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, lb); err != nil {
+					return fmt.Errorf("attach external service-scoped load balancer to subnet %s: %w", subnetName, err)
+				}
+			}
 
 			var (
 				vip, checkIP             string
@@ -306,7 +325,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 
 			backends = c.getEndpointBackend(endpointSlices, port, lbVip)
 
-			if isDistributedLocal {
+			if isDistributedForVIP {
 				ipPortMapping, err = c.getDistributedIPPortMapping(endpointSlices, svc)
 				if err != nil {
 					return fmt.Errorf("couldn't get distributed ip port mapping for svc %s/%s: %w", svc.Namespace, svc.Name, err)
@@ -340,6 +359,10 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					case v1.ProtocolSCTP:
 						legacyLbs = append(legacyLbs, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer)
 					}
+					legacyLbs = append(legacyLbs,
+						serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBInternalTraffic),
+						serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic),
+					)
 				}
 				seenLegacyLbs := make(map[string]struct{}, len(legacyLbs))
 				for _, legacyLb := range legacyLbs {
@@ -370,7 +393,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					}
 				}
 
-				if (isPreferLocalBackend || isDistributedLocal) && len(ipPortMapping) != 0 {
+				if (isPreferLocalBackend || isDistributedForVIP) && len(ipPortMapping) != 0 {
 					if err = c.OVNNbClient.LoadBalancerUpdateIPPortMapping(lb, vip, ipPortMapping); err != nil {
 						klog.Errorf("failed to update ip port mapping %s for vip %s to LB %s: %v", ipPortMapping, vip, lb, err)
 						return err
@@ -403,6 +426,10 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					case v1.ProtocolSCTP:
 						legacyLbs = append(legacyLbs, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer)
 					}
+					legacyLbs = append(legacyLbs,
+						serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBInternalTraffic),
+						serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic),
+					)
 				}
 				seenLegacyLbs := make(map[string]struct{}, len(legacyLbs))
 				for _, legacyLb := range legacyLbs {
@@ -419,7 +446,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					}
 				}
 
-				if c.config.EnableOVNLBPreferLocal || isDistributedLocal {
+				if c.config.EnableOVNLBPreferLocal || isDistributedForVIP {
 					if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
 						klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
 						return err

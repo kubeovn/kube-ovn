@@ -82,8 +82,11 @@ func TestServiceScopedLBIdentityAndPolicy(t *testing.T) {
 	if got := serviceScopedLBName(svc, corev1.ProtocolTCP); got == serviceScopedLBName(svc, corev1.ProtocolUDP) {
 		t.Fatal("protocols must have distinct service-scoped LB names")
 	}
-	if got := len(serviceScopedLBNames(svc)); got != 2 {
-		t.Fatalf("serviceScopedLBNames() returned %d names, want 2", got)
+	if got := len(serviceScopedLBNames(svc)); got != 4 {
+		t.Fatalf("serviceScopedLBNames() returned %d names, want 4", got)
+	}
+	if internal, external := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBInternalTraffic), serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic); internal == external {
+		t.Fatalf("internal and external traffic classes must have distinct LB names: %q", internal)
 	}
 	ids := serviceScopedLBExternalIDs(svc)
 	if ids[serviceLBOwnerExternalID] != string(svc.UID) || ids[serviceLBVersionID] != serviceLBVersion {
@@ -119,6 +122,32 @@ func TestEnsureServiceScopedLB(t *testing.T) {
 	}
 	if got != lbName {
 		t.Fatalf("ensureServiceScopedLB() = %q, want %q", got, lbName)
+	}
+}
+
+func TestEnsureServiceScopedLBExternalTrafficDoesNotDistribute(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	ctrl.config.EnableOVNLBDistributed = true
+	local := corev1.ServiceInternalTrafficPolicyLocal
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-external"),
+		Spec: corev1.ServiceSpec{
+			SessionAffinity:       corev1.ServiceAffinityClientIP,
+			InternalTrafficPolicy: &local,
+		},
+	}
+	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+	selectionFields := []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}
+	gomock.InOrder(
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp", "ip_src", "ipv6_src").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, gomock.Eq(selectionFields)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc))).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerAffinityTimeout(lbName, util.DefaultServiceSessionStickinessTimeout).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
+	)
+	if _, err := ctrl.ensureServiceScopedLBForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic); err != nil {
+		t.Fatal(err)
 	}
 }
 
