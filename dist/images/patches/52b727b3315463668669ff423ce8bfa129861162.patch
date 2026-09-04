@@ -69,9 +69,9 @@ index a6f7828d2..6ac1a5ae5 100644
 +                          "inport == %s && ip4.src == %s && eth.src != %s",
 +                          rp->json_key, op->lsp_addrs[0].ipv4_addrs[j].addr_s,
 +                          op->lsp_addrs[0].ea_s);
-+            ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 60,
-+                                    ds_cstr(match), ds_cstr(actions),
-+                                    &op->nbsp->header_, op->lflow_ref);
++            ovn_lflow_add(lflows, op->od, S_SWITCH_IN_L2_LKUP, 60,
++                          ds_cstr(match), ds_cstr(actions), op->lflow_ref,
++                          WITH_HINT(&op->nbsp->header_));
 +        }
 +
 +        for (size_t j = 0; j < op->lsp_addrs[0].n_ipv6_addrs; j++) {
@@ -80,9 +80,9 @@ index a6f7828d2..6ac1a5ae5 100644
 +                          "inport == %s && ip6.src == %s && eth.src != %s",
 +                          rp->json_key, op->lsp_addrs[0].ipv6_addrs[j].addr_s,
 +                          op->lsp_addrs[0].ea_s);
-+            ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 60,
-+                                    ds_cstr(match), ds_cstr(actions),
-+                                    &op->nbsp->header_, op->lflow_ref);
++            ovn_lflow_add(lflows, op->od, S_SWITCH_IN_L2_LKUP, 60,
++                          ds_cstr(match), ds_cstr(actions), op->lflow_ref,
++                          WITH_HINT(&op->nbsp->header_));
 +        }
 +    }
 +}
