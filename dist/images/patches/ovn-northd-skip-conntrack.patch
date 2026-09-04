@@ -68,11 +68,11 @@ index 1ca8dedaf..9f1ee8397 100644
 +
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL,
 +                                    110, match, "next;",
-+                                    &od->nbs->header_, lflow_ref);
++                                    lflow_ref, WITH_HINT(&od->nbs->header_));
 +
 +            ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL,
 +                                    110, match, "next;",
-+                                    &od->nbs->header_, lflow_ref);
++                                    lflow_ref, WITH_HINT(&od->nbs->header_));
 +            free(match);
 +        }
 +        free(array);
@@ -81,11 +81,11 @@ index 1ca8dedaf..9f1ee8397 100644
 +            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_ACL,
 +                                    110, match, "next;",
-+                                    &od->nbs->header_, lflow_ref);
++                                    lflow_ref, WITH_HINT(&od->nbs->header_));
 +
 +            ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL,
 +                                    110, match, "next;",
-+                                    &od->nbs->header_, lflow_ref);
++                                    lflow_ref, WITH_HINT(&od->nbs->header_));
 +            free(match);
 +        }
 +        free(array);
@@ -105,7 +105,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
 +                                             105, match, "next;",
-+                                             &od->nbs->header_, lflow_ref);
++                                             lflow_ref, WITH_HINT(&od->nbs->header_));
 +            free(match);
 +        }
 +        free(array);
@@ -114,7 +114,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
 +                                             105, match, "next;",
-+                                             &od->nbs->header_, lflow_ref);
++                                             lflow_ref, WITH_HINT(&od->nbs->header_));
 +            free(match);
 +        }
 +        free(array);
@@ -133,7 +133,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +            match = xasprintf("ip4 && ip4.dst == %s", array[i]);
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
 +                                             105, match, "next;",
-+                                             &od->nbs->header_, lflow_ref);
++                                             lflow_ref, WITH_HINT(&od->nbs->header_));
 +            free(match);
 +        }
 +        free(array);
@@ -142,7 +142,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +            match = xasprintf("ip6 && ip6.dst == %s", array[i]);
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_PRE_LB,
 +                                             105, match, "next;",
-+                                             &od->nbs->header_, lflow_ref);
++                                             lflow_ref, WITH_HINT(&od->nbs->header_));
 +            free(match);
 +        }
 +        free(array);
@@ -181,7 +181,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +                                      addrs->network_s, addrs->plen);
 +                    ovn_lflow_add(lflows, od,
 +                        S_SWITCH_IN_PRE_LB, 105, match, "next;",
-+                        &od->nbs->header_, lflow_ref);
++                        lflow_ref, WITH_HINT(&od->nbs->header_));
 +                    free(match);
 +                }
 +
@@ -196,7 +196,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +                                      addrs->network_s, addrs->plen);
 +                    ovn_lflow_add(lflows, od,
 +                        S_SWITCH_IN_PRE_LB, 105, match, "next;",
-+                        &od->nbs->header_, lflow_ref);
++                        lflow_ref, WITH_HINT(&od->nbs->header_));
 +                    free(match);
 +                }
 +            }
@@ -227,7 +227,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +                                      IP_ARGS(ipv4), plen);
 +                    ovn_lflow_add(lflows, od,
 +                        S_SWITCH_IN_PRE_LB, 105, match, "next;",
-+                        &od->nbs->header_, lflow_ref);
++                        lflow_ref, WITH_HINT(&od->nbs->header_));
 +                    free(match);
 +                }
 +            }
@@ -242,7 +242,7 @@ index 1ca8dedaf..9f1ee8397 100644
 +                    match = xasprintf("ip6 && ip6.dst == %s/%u", buf, plen);
 +                    ovn_lflow_add(lflows, od,
 +                        S_SWITCH_IN_PRE_LB, 105, match, "next;",
-+                        &od->nbs->header_, lflow_ref);
++                        lflow_ref, WITH_HINT(&od->nbs->header_));
 +                    free(match);
 +                }
 +            }
