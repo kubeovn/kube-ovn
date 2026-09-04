@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -364,7 +363,7 @@ func (c *Controller) ensureVpcEndpointServiceVIP(eps *kubeovnv1.VpcEndpointServi
 	ipamName := vpcEndpointServiceIPAMName(eps.Name)
 	lspName := vpcEndpointServiceLSPName(eps.Name)
 	if eps.Status.TransitVIP != "" {
-		v4, v6, mac, err := c.ipam.GetStaticAddress(ipamName, lspName, eps.Status.TransitVIP, ptr.To(eps.Status.Mac), c.config.VpcEndpointTransitSwitch, false)
+		v4, v6, mac, err := c.ipam.GetStaticAddress(ipamName, lspName, eps.Status.TransitVIP, &eps.Status.Mac, c.config.VpcEndpointTransitSwitch, false)
 		if err != nil {
 			return "", "", err
 		}
