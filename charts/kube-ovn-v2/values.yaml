@@ -131,15 +131,18 @@ networking:
       v6: "fd00:100:64::/112"
 
   # -- Logical switch used as the unique transit fabric for VPC endpoint services.
+  # Leave empty to use the controller binary defaults (switch "vpc-endpoint-transit",
+  # CIDR "100.65.0.0/16"). Only set these when running an image that supports the
+  # corresponding controller flags.
   # @section -- Network parameters of the CNI
   vpcEndpointTransit:
-    # -- Name of the transit logical switch.
+    # -- Name of the transit logical switch. Empty means use the controller default.
     # @section -- Network parameters of the CNI
-    switchName: "vpc-endpoint-transit"
+    switchName: ""
     # -- CIDR of the transit switch. Must not overlap join/pod/service CIDRs.
-    # Defaults to 100.65.0.0/16 because the join subnet uses 100.64.0.0/16.
+    # Empty means use the controller default (100.65.0.0/16; join uses 100.64.0.0/16).
     # @section -- Network parameters of the CNI
-    cidr: "100.65.0.0/16"
+    cidr: ""
 
   # -- Name of the default VPC once it is generated in the cluster.
   # Pods in the default subnet live in this VPC.
