@@ -84,9 +84,12 @@ networking:
   DEFAULT_SUBNET: "ovn-default"
   DEFAULT_VPC: "ovn-cluster"
   NODE_SUBNET: "join"
-  VPC_ENDPOINT_TRANSIT_SWITCH: "vpc-endpoint-transit"
-  # Must not overlap join/pod/service CIDRs. Join defaults to 100.64.0.0/16.
-  VPC_ENDPOINT_TRANSIT_CIDR: "100.65.0.0/16"
+  # Leave empty to use controller binary defaults. Only set when the image
+  # supports --vpc-endpoint-transit-switch / --vpc-endpoint-transit-cidr.
+  VPC_ENDPOINT_TRANSIT_SWITCH: ""
+  # Must not overlap join/pod/service CIDRs. Empty means controller default
+  # 100.65.0.0/16 (join defaults to 100.64.0.0/16).
+  VPC_ENDPOINT_TRANSIT_CIDR: ""
   ENABLE_ECMP: false
   ENABLE_METRICS: true
   # Gateway netfilter backend: auto, iptables, or nftables; leave empty to use the daemon default of auto.
