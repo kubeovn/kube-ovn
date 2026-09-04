@@ -69,17 +69,35 @@ func cmdClusterStatus(db string) string {
 	return fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovn%s_db.ctl cluster/status %s", db, dbNames[db])
 }
 
+func clusterStatusHasAllServers(output string, expected int) bool {
+	status := ""
+	serverCount := 0
+	for line := range strings.SplitSeq(output, "\n") {
+		fields := strings.Fields(line)
+		switch {
+		case strings.HasPrefix(line, "Status:"):
+			status = strings.TrimSpace(strings.TrimPrefix(line, "Status:"))
+		case slices.Contains(fields, "at"):
+			serverCount++
+		}
+	}
+	return status == "cluster member" && serverCount == expected
+}
+
 func waitForDbRecovery(f *framework.Framework, pods []corev1.Pod) {
 	ginkgo.GinkgoHelper()
 
+	expected := len(pods)
 	for pod := range slices.Values(pods) {
 		for _, db := range [...]string{"nb", "sb"} {
-			dbFile := dbFilePath(db)
-			ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy")
+			ginkgo.By("Waiting for ovn" + db + " db cluster on node " + pod.Spec.NodeName + " to show all servers")
 			framework.WaitUntil(time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
-				_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, "ovsdb-tool check-cluster "+dbFile)
-				return err == nil, nil
-			}, fmt.Sprintf("db file %s on node %s to be healthy", dbFile, pod.Spec.NodeName))
+				stdout, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
+				if err != nil {
+					return false, nil
+				}
+				return clusterStatusHasAllServers(stdout, expected), nil
+			}, fmt.Sprintf("ovn%s db cluster on node %s to show %d servers", db, pod.Spec.NodeName, expected))
 		}
 	}
 }
