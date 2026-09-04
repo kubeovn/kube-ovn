@@ -55,9 +55,9 @@ require (
 	golang.org/x/tools v0.49.0
 	google.golang.org/grpc v1.83.2
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.4
-	k8s.io/api v0.37.0
+	k8s.io/api v0.35.8
 	k8s.io/apiextensions-apiserver v0.35.8
-	k8s.io/apimachinery v0.37.0
+	k8s.io/apimachinery v0.35.8
 	k8s.io/apiserver v0.35.8
 	k8s.io/client-go v0.35.8
 	k8s.io/klog/v2 v2.140.0
