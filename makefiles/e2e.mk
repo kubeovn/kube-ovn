@@ -21,21 +21,23 @@ K8S_NETPOL_LEGACY_E2E_FOCUS = "sig-network.*NetworkPolicyLegacy"
 VER_MAJOR = 999
 VER_MINOR = 999
 
+ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
+VERSION_NUM = $(subst release-,,$(E2E_BRANCH))
+VER_MAJOR = $(shell echo $(VERSION_NUM) | cut -f1 -d.)
+VER_MINOR = $(shell echo $(VERSION_NUM) | cut -f2 -d.)
+endif
+
 # OVN 26.03 distributed load balancers provide the implementation required by
 # Kubernetes' internalTrafficPolicy=Local network tests. These tests are plain
 # ginkgo.It cases rather than ConformanceIt cases, so include them explicitly
-# in the master conformance run. Match both the service and conntrack test
-# naming variants used by the Kubernetes E2E suite. The same suite also keeps
-# topology-aware EndpointSlice hints and Service trafficDistribution coverage
-# outside ConformanceIt. Topology Hints currently has one ClusterIP case, so
-# include that suite directly. Select Traffic Distribution case names
-# explicitly: these upstream Services use the default ClusterIP type, while
-# future NodePort or LoadBalancer cases must not be included automatically.
-ifeq ($(E2E_BRANCH),master)
+# for release-1.17 or newer. Match both the service and conntrack
+# test naming variants used by the Kubernetes E2E suite. Service
+# trafficDistribution coverage is also outside ConformanceIt. Select the
+# non-deprecated case names explicitly: these upstream Services use the default
+# ClusterIP type, while deprecated or future NodePort and LoadBalancer cases
+# must not be included.
+ifeq ($(shell test $(VER_MAJOR) -gt 1 -o \( $(VER_MAJOR) -eq 1 -a $(VER_MINOR) -ge 17 \) && echo true),true)
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*[Ii]nternalTrafficPolicy.*Local"
-K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Topology Hints"
-K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint in the same zone when using PreferClose$$"
-K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic correctly between pods on multiple nodes when using PreferClose$$"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint in the same zone when using PreferSameZone$$"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic correctly between pods on multiple nodes when using PreferSameZone$$"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint on the same node or fall back to same zone when using PreferSameNode$$"
@@ -45,9 +47,6 @@ K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*client IP based session affinity"
 endif
 
 ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
-VERSION_NUM = $(subst release-,,$(E2E_BRANCH))
-VER_MAJOR = $(shell echo $(VERSION_NUM) | cut -f1 -d.)
-VER_MINOR = $(shell echo $(VERSION_NUM) | cut -f2 -d.)
 ifeq ($(shell test $(VER_MAJOR) -lt 1 -o \( $(VER_MAJOR) -eq 1 -a $(VER_MINOR) -lt 14 \) && echo true),true)
 K8S_CONFORMANCE_E2E_SKIP += "sig-network.*EndpointSlice"
 endif
