@@ -8,11 +8,11 @@ import (
 	"net"
 	"strings"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -200,7 +200,7 @@ func (c *OVNNbClient) GetAddressSet(asName string, ignoreNotFound bool) (*ovnnb.
 
 	as := &ovnnb.AddressSet{Name: asName}
 	if err := c.callLayer().Get(ctx, as); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
 		klog.Error(err)

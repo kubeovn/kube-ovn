@@ -18,9 +18,39 @@ type Backend interface {
 	Get(context.Context, model.Model) error
 	List(context.Context, any) error
 	WhereCache(any) client.ConditionalAPI
+	WhereCacheByUUIDs(any, ...string) client.ConditionalAPI
 	Where(...model.Model) client.ConditionalAPI
+	WhereAny(model.Model, ...model.Condition) client.ConditionalAPI
+	WhereAll(model.Model, ...model.Condition) client.ConditionalAPI
+	Select(model.Model, ...any) ([]ovsdb.Operation, error)
 	Create(...model.Model) ([]ovsdb.Operation, error)
 	Transact(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error)
+}
+
+// ConditionalAPI is the operation-building surface returned by selectors.
+// It intentionally mirrors only the stable libovsdb conditional operations.
+type ConditionalAPI interface {
+	List(context.Context, any) error
+	Mutate(model.Model, ...model.Mutation) ([]ovsdb.Operation, error)
+	Update(model.Model, ...any) ([]ovsdb.Operation, error)
+	Delete() ([]ovsdb.Operation, error)
+	Wait(ovsdb.WaitCondition, *int, model.Model, ...any) ([]ovsdb.Operation, error)
+	Select(model.Model, ...any) ([]ovsdb.Operation, error)
+}
+
+// ErrNotFound is returned when a model is absent from the monitored cache.
+var ErrNotFound = client.ErrNotFound
+
+// Monitor aliases keep monitor setup behind the compatibility package.
+type (
+	Monitor       = client.Monitor
+	MonitorCookie = client.MonitorCookie
+	MonitorOption = client.MonitorOption
+)
+
+// WithTable creates a monitor option for a model table.
+func WithTable(m model.Model) MonitorOption {
+	return client.WithTable(m)
 }
 
 // RetryPolicy controls retries for transient connection errors.
@@ -77,6 +107,48 @@ func (c *Client) ListWhereCache(ctx context.Context, predicate, result any) erro
 	ctx, cancel := c.context(ctx)
 	defer cancel()
 	return c.backend.WhereCache(predicate).List(ctx, result)
+}
+
+// ListWhereCacheByUUIDs reads rows selected by a predicate and UUID allowlist.
+func (c *Client) ListWhereCacheByUUIDs(ctx context.Context, predicate, result any, uuids ...string) error {
+	ctx, cancel := c.context(ctx)
+	defer cancel()
+	return c.backend.WhereCacheByUUIDs(predicate, uuids...).List(ctx, result)
+}
+
+// WhereCacheByUUIDs returns a selector evaluated against a UUID allowlist.
+func (c *Client) WhereCacheByUUIDs(predicate any, uuids ...string) ConditionalAPI {
+	return c.backend.WhereCacheByUUIDs(predicate, uuids...)
+}
+
+// Where returns a selector based on model indexes.
+func (c *Client) Where(models ...model.Model) ConditionalAPI {
+	return c.backend.Where(models...)
+}
+
+// WhereCache returns a selector evaluated against the local cache.
+func (c *Client) WhereCache(predicate any) ConditionalAPI {
+	return c.backend.WhereCache(predicate)
+}
+
+// WhereAny returns a selector matching any explicit condition.
+func (c *Client) WhereAny(m model.Model, conditions ...model.Condition) ConditionalAPI {
+	return c.backend.WhereAny(m, conditions...)
+}
+
+// WhereAll returns a selector matching all explicit conditions.
+func (c *Client) WhereAll(m model.Model, conditions ...model.Condition) ConditionalAPI {
+	return c.backend.WhereAll(m, conditions...)
+}
+
+// Select builds a select operation for a model.
+func (c *Client) Select(m model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	return c.backend.Select(m, fields...)
+}
+
+// Create builds insert operations for models.
+func (c *Client) Create(models ...model.Model) ([]ovsdb.Operation, error) {
+	return c.backend.Create(models...)
 }
 
 // CreateAndTransact builds insert operations and submits them atomically.
@@ -136,8 +208,15 @@ func (c *Client) DeleteWhereCacheAndTransact(ctx context.Context, method string,
 // Transact submits operations, retries only transient disconnections, and
 // validates every operation result before returning.
 func (c *Client) Transact(ctx context.Context, _ string, operations []ovsdb.Operation) error {
+	_, err := c.TransactResults(ctx, operations)
+	return err
+}
+
+// TransactResults submits operations, retries transient disconnections, checks
+// operation results, and returns the validated server response.
+func (c *Client) TransactResults(ctx context.Context, operations []ovsdb.Operation) ([]ovsdb.OperationResult, error) {
 	if len(operations) == 0 {
-		return nil
+		return nil, nil
 	}
 	ctx, cancel := c.context(ctx)
 	defer cancel()
@@ -148,13 +227,13 @@ func (c *Client) Transact(ctx context.Context, _ string, operations []ovsdb.Oper
 			_, err = ovsdb.CheckOperationResults(results, operations)
 		}
 		if err == nil {
-			return nil
+			return results, nil
 		}
 		if !errors.Is(err, client.ErrNotConnected) || attempt >= c.retry.Attempts {
-			return err
+			return nil, err
 		}
 		if err := c.wait(ctx, attempt); err != nil {
-			return err
+			return nil, err
 		}
 	}
 }

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -20,7 +20,7 @@ func (c *OVNNbClient) GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, 
 		return nil, errors.New("meter name is empty")
 	}
 
-	if c.Client == nil {
+	if c.backend == nil {
 		return nil, errors.New("underlying libovsdb client is nil")
 	}
 
@@ -30,7 +30,7 @@ func (c *OVNNbClient) GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, 
 	meter := &ovnnb.Meter{Name: name}
 
 	if err := c.Get(ctx, meter); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("get meter %s: %w", name, err)
@@ -144,7 +144,7 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 		ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 		defer cancel()
 		if err := c.Get(ctx, band); err != nil {
-			if !errors.Is(err, client.ErrNotFound) {
+			if !errors.Is(err, compat.ErrNotFound) {
 				return fmt.Errorf("get meter band %s for %s: %w", bandUUID, meter.Name, err)
 			}
 		} else {
@@ -209,7 +209,7 @@ func (c *OVNNbClient) DeleteMeter(name string) error {
 
 	meter := &ovnnb.Meter{Name: name}
 	if err := c.Get(ctx, meter); err != nil {
-		if errors.Is(err, client.ErrNotFound) {
+		if errors.Is(err, compat.ErrNotFound) {
 			return nil
 		}
 		return fmt.Errorf("failed to get meter %s: %w", name, err)
