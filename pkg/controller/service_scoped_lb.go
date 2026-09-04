@@ -19,6 +19,13 @@ const (
 	maxOVNLBSessionTimeout   = 65535
 )
 
+type serviceLBTrafficClass string
+
+const (
+	serviceLBInternalTraffic serviceLBTrafficClass = "internal"
+	serviceLBExternalTraffic serviceLBTrafficClass = "external"
+)
+
 func serviceUsesScopedLB(svc *v1.Service) bool {
 	return svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP || serviceUsesDistributedLB(svc)
 }
@@ -43,9 +50,17 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 }
 
 func serviceScopedLBName(svc *v1.Service, protocol v1.Protocol) string {
+	return serviceScopedLBNameForTrafficClass(svc, protocol, serviceLBInternalTraffic)
+}
+
+func serviceScopedLBNameForTrafficClass(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass) string {
 	identity := fmt.Sprintf("%s/%s/%s", svc.Namespace, svc.Name, svc.UID)
 	identityHash := util.Sha256Hash([]byte(identity))[:12]
-	return fmt.Sprintf("svc-%s-%s", identityHash, strings.ToLower(string(protocol)))
+	name := fmt.Sprintf("svc-%s-%s", identityHash, strings.ToLower(string(protocol)))
+	if trafficClass == serviceLBExternalTraffic {
+		return name + "-external"
+	}
+	return name
 }
 
 func serviceScopedLBExternalIDs(svc *v1.Service) map[string]string {
@@ -59,12 +74,17 @@ func serviceScopedLBExternalIDs(svc *v1.Service) map[string]string {
 }
 
 func (c *Controller) ensureServiceScopedLB(svc *v1.Service, protocol v1.Protocol) (string, error) {
-	name := serviceScopedLBName(svc, protocol)
+	return c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBInternalTraffic)
+}
+
+func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass) (string, error) {
+	name := serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass)
 	timeout, err := serviceSessionAffinityTimeout(svc)
 	if err != nil {
 		return "", err
 	}
-	if serviceUsesDistributedLB(svc) && !c.config.EnableOVNLBDistributed {
+	distributed := trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)
+	if distributed && !c.config.EnableOVNLBDistributed {
 		return "", fmt.Errorf("service %s/%s uses internalTrafficPolicy=Local but OVN distributed load balancers are disabled; enable --enable-ovn-lb-distributed with OVN 26.03+", svc.Namespace, svc.Name)
 	}
 	selectFields := []string(nil)
@@ -85,7 +105,7 @@ func (c *Controller) ensureServiceScopedLB(svc *v1.Service, protocol v1.Protocol
 			return "", fmt.Errorf("set affinity timeout on service-scoped load balancer %s: %w", name, err)
 		}
 	}
-	if err := c.OVNNbClient.SetLoadBalancerDistributed(name, serviceUsesDistributedLB(svc)); err != nil {
+	if err := c.OVNNbClient.SetLoadBalancerDistributed(name, distributed); err != nil {
 		return "", fmt.Errorf("set distributed mode on service-scoped load balancer %s: %w", name, err)
 	}
 	return name, nil
@@ -105,15 +125,21 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 }
 
 func serviceScopedLBNames(svc *v1.Service) []string {
-	names := make([]string, 0, len(svc.Spec.Ports))
+	names := make([]string, 0, len(svc.Spec.Ports)*2)
 	seen := make(map[string]struct{}, len(svc.Spec.Ports))
 	for _, port := range svc.Spec.Ports {
-		name := serviceScopedLBName(svc, port.Protocol)
-		if _, ok := seen[name]; ok {
-			continue
+		trafficClasses := []serviceLBTrafficClass{serviceLBInternalTraffic}
+		if serviceUsesDistributedLB(svc) {
+			trafficClasses = append(trafficClasses, serviceLBExternalTraffic)
 		}
-		seen[name] = struct{}{}
-		names = append(names, name)
+		for _, trafficClass := range trafficClasses {
+			name := serviceScopedLBNameForTrafficClass(svc, port.Protocol, trafficClass)
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			names = append(names, name)
+		}
 	}
 	return names
 }
