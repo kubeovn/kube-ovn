@@ -1033,6 +1033,8 @@ jobs:
 
       - name: Install Kube-OVN
         id: install
+        env:
+          ENABLE_OVN_LB_DISTRIBUTED: ${{ (github.base_ref || github.ref_name) == 'master' && 'true' || 'false' }}
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
