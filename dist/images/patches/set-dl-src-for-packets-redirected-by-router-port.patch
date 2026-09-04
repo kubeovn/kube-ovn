@@ -93,7 +93,7 @@ index a6f7828d2..6ac1a5ae5 100644
 @@ -19772,6 +19840,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
      build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
                                               meter_groups, actions, match);
-     build_lswitch_dnat_mod_dl_dst_rules(op, lflows, lr_ports, actions, match);
+     build_lswitch_dnat_mod_dl_dst_rules(op, lflows, actions, match);
 +    build_lswitch_mod_dl_src_rules(op, lflows, lr_ports, actions, match);
      build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
      build_lswitch_external_port(op, lflows);
