@@ -563,6 +563,10 @@ func (suite *OvnClientTestSuite) Test_SetLoadBalancerAffinityTimeout() {
 	suite.testSetLoadBalancerAffinityTimeout()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerAffinityTimeout() {
+	suite.testDeleteLoadBalancerAffinityTimeout()
+}
+
 func (suite *OvnClientTestSuite) Test_SetLoadBalancerSelectionFields() {
 	suite.testSetLoadBalancerSelectionFields()
 }
