@@ -9,7 +9,7 @@ require (
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
 	github.com/containerd/containerd/v2 v2.3.4
 	github.com/containerd/nerdctl/v2 v2.3.5
-	github.com/containernetworking/cni v1.3.0
+	github.com/containernetworking/cni v1.3.1
 	github.com/containernetworking/plugins v1.9.1
 	github.com/digitalocean/go-openvswitch v0.0.0-20251118231545-85aec29b8ee6
 	github.com/emicklei/go-restful/v3 v3.13.0
