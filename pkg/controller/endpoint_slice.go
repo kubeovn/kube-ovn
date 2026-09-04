@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -301,6 +302,11 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			return fmt.Errorf("attach service-scoped load balancers to subnet %s: %w", subnetName, err)
 		}
 	}
+	if svc.Spec.TrafficDistribution != nil {
+		if err := c.reconcileServiceTrafficDistribution(svc, endpointSlices, lbVips, lbVipTrafficClasses); err != nil {
+			return err
+		}
+	}
 	if c.config.EnableOVNLBPreferLocal {
 		if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, tcpLb, udpLb, sctpLb); err != nil {
 			return err
@@ -323,7 +329,8 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			}
 			isExternalVIP := serviceLBTrafficClassForVIP(lbVipTrafficClasses, lbVip) == serviceLBExternalTraffic
 			isDistributedForVIP := isDistributedLocal && !isExternalVIP
-			if isDistributedLocal && isExternalVIP {
+			isTemplateForVIP := svc.Spec.TrafficDistribution != nil && !isExternalVIP
+			if (isDistributedLocal || svc.Spec.TrafficDistribution != nil) && isExternalVIP {
 				lb, err = c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, subnetName)
 				if err != nil {
 					return err
@@ -352,6 +359,11 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			}
 
 			backends = c.getEndpointBackend(endpointSlices, port, lbVip)
+			if isTemplateForVIP {
+				// The template VIP and per-chassis backend variables were reconciled above.
+				// Do not replace the variable reference with a literal backend list.
+				continue
+			}
 
 			if isDistributedForVIP {
 				ipPortMapping, err = c.getDistributedIPPortMapping(endpointSlices, svc)
@@ -881,6 +893,141 @@ func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSl
 	}
 
 	return backends
+}
+
+type topologyBackend struct {
+	backend string
+	hints   *discoveryv1.EndpointHints
+}
+
+func endpointSlicePort(endpointSlice *discoveryv1.EndpointSlice, servicePort v1.ServicePort) int32 {
+	for _, port := range endpointSlice.Ports {
+		if port.Port == nil {
+			continue
+		}
+		if port.Name != nil && *port.Name == servicePort.Name {
+			return *port.Port
+		}
+		if servicePort.Name == "" && port.Name == nil {
+			return *port.Port
+		}
+	}
+	return 0
+}
+
+func topologyBackends(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP string) []topologyBackend {
+	protocol := util.CheckProtocol(serviceIP)
+	var backends []topologyBackend
+	for _, endpointSlice := range endpointSlices {
+		targetPort := endpointSlicePort(endpointSlice, servicePort)
+		if targetPort == 0 {
+			continue
+		}
+		for _, endpoint := range endpointSlice.Endpoints {
+			if !endpointReady(endpoint) {
+				continue
+			}
+			for _, address := range endpoint.Addresses {
+				if util.CheckProtocol(address) != protocol {
+					continue
+				}
+				backends = append(backends, topologyBackend{
+					backend: util.JoinHostPort(address, targetPort),
+					hints:   endpoint.Hints,
+				})
+			}
+		}
+	}
+	return backends
+}
+
+func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName string) []string {
+	all := make([]string, 0, len(backends))
+	allForNodes, allForZones := true, true
+	for _, backend := range backends {
+		all = append(all, backend.backend)
+		if backend.hints == nil || len(backend.hints.ForNodes) == 0 {
+			allForNodes = false
+		}
+		if backend.hints == nil || len(backend.hints.ForZones) == 0 {
+			allForZones = false
+		}
+	}
+	if allForNodes && nodeName != "" {
+		matched := make([]string, 0, len(backends))
+		for _, backend := range backends {
+			for _, hint := range backend.hints.ForNodes {
+				if hint.Name == nodeName {
+					matched = append(matched, backend.backend)
+					break
+				}
+			}
+		}
+		if len(matched) != 0 {
+			return matched
+		}
+	}
+	if allForZones && zoneName != "" {
+		matched := make([]string, 0, len(backends))
+		for _, backend := range backends {
+			for _, hint := range backend.hints.ForZones {
+				if hint.Name == zoneName {
+					matched = append(matched, backend.backend)
+					break
+				}
+			}
+		}
+		if len(matched) != 0 {
+			return matched
+		}
+	}
+	return all
+}
+
+func serviceTrafficDistributionVariablePrefix(svc *v1.Service) string {
+	return "kube_ovn_svc_" + util.Sha256Hash([]byte(string(svc.UID)))[:12] + "_"
+}
+
+func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpointSlices []*discoveryv1.EndpointSlice, lbVips []string, classes map[string]serviceLBTrafficClass) error {
+	chassises, err := c.OVNSbClient.ListChassis()
+	if err != nil {
+		return fmt.Errorf("list OVN chassis for service %s/%s traffic distribution: %w", svc.Namespace, svc.Name, err)
+	}
+	prefix := serviceTrafficDistributionVariablePrefix(svc)
+	variablesByChassis := make(map[string]map[string]string, len(*chassises))
+	for _, chassis := range *chassises {
+		variablesByChassis[chassis.Name] = make(map[string]string)
+	}
+	for _, port := range svc.Spec.Ports {
+		for _, lbVip := range lbVips {
+			if classes[lbVip] == serviceLBExternalTraffic {
+				continue
+			}
+			lbName := serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBInternalTraffic)
+			vip := util.JoinHostPort(lbVip, port.Port)
+			base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
+			vipVariable, backendVariable := base+"_vip", base+"_backends"
+			if err := c.OVNNbClient.SetLoadBalancerTemplateVIP(lbName, "^"+vipVariable+":"+strconv.Itoa(int(port.Port)), "^"+backendVariable); err != nil {
+				return fmt.Errorf("set traffic distribution template for service %s/%s: %w", svc.Namespace, svc.Name, err)
+			}
+			backends := topologyBackends(endpointSlices, port, lbVip)
+			for _, chassis := range *chassises {
+				nodeName, zoneName := chassis.Hostname, ""
+				if node, getErr := c.nodesLister.Get(chassis.Hostname); getErr == nil {
+					zoneName = node.Labels[v1.LabelTopologyZone]
+				}
+				selected := topologyBackendSubset(backends, nodeName, zoneName)
+				variablesByChassis[chassis.Name][vipVariable] = lbVip
+				variablesByChassis[chassis.Name][backendVariable] = strings.Join(selected, ",")
+			}
+		}
+	}
+	for chassis, variables := range variablesByChassis {
+		if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // endpointReady returns whether an endpoint can receive traffic
