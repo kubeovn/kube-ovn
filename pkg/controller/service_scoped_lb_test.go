@@ -214,10 +214,19 @@ func TestServiceLBTrafficClassForVIP(t *testing.T) {
 func TestServiceLBMigrationCandidates(t *testing.T) {
 	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-migrate"), Spec: corev1.ServiceSpec{SessionAffinity: corev1.ServiceAffinityClientIP}}
 	vpc := &kubeovnv1.Vpc{Status: kubeovnv1.VpcStatus{TCPLoadBalancer: "tcp", TCPSessionLoadBalancer: "tcp-session"}}
-	candidates := serviceLBMigrationCandidates(svc, corev1.ProtocolTCP, "old", vpc)
-	for _, want := range []string{"old", "tcp", "tcp-session", serviceScopedLBName(svc, corev1.ProtocolTCP), serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)} {
-		if !slices.Contains(candidates, want) {
-			t.Fatalf("migration candidates %v do not contain %q", candidates, want)
+	for _, trafficClass := range []serviceLBTrafficClass{serviceLBInternalTraffic, serviceLBExternalTraffic} {
+		candidates := serviceLBMigrationCandidates(svc, corev1.ProtocolTCP, "old", vpc, trafficClass)
+		for _, want := range []string{"old", "tcp", "tcp-session", serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, trafficClass)} {
+			if !slices.Contains(candidates, want) {
+				t.Fatalf("migration candidates %v do not contain %q", candidates, want)
+			}
+		}
+		otherClass := serviceLBInternalTraffic
+		if trafficClass == serviceLBInternalTraffic {
+			otherClass = serviceLBExternalTraffic
+		}
+		if slices.Contains(candidates, serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, otherClass)) {
+			t.Fatalf("%s migration candidates unexpectedly contain %s LB: %v", trafficClass, otherClass, candidates)
 		}
 	}
 }

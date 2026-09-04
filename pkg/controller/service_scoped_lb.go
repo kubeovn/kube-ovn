@@ -173,7 +173,7 @@ func serviceLBTrafficClassForVIP(classes map[string]serviceLBTrafficClass, vip s
 	return serviceLBInternalTraffic
 }
 
-func serviceLBMigrationCandidates(svc *v1.Service, protocol v1.Protocol, oldLB string, vpc *kubeovnv1.Vpc) []string {
+func serviceLBMigrationCandidates(svc *v1.Service, protocol v1.Protocol, oldLB string, vpc *kubeovnv1.Vpc, trafficClass serviceLBTrafficClass) []string {
 	candidates := []string{oldLB}
 	switch protocol {
 	case v1.ProtocolTCP:
@@ -184,12 +184,26 @@ func serviceLBMigrationCandidates(svc *v1.Service, protocol v1.Protocol, oldLB s
 		candidates = append(candidates, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer)
 	}
 	if serviceUsesScopedLB(svc) {
-		candidates = append(candidates,
-			serviceScopedLBNameForTrafficClass(svc, protocol, serviceLBInternalTraffic),
-			serviceScopedLBNameForTrafficClass(svc, protocol, serviceLBExternalTraffic),
-		)
+		candidates = append(candidates, serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass))
 	}
 	return candidates
+}
+
+func (c *Controller) deleteServiceLBMigrationVIP(svc *v1.Service, protocol v1.Protocol, oldLB, currentLB, vip string, vpc *kubeovnv1.Vpc, trafficClass serviceLBTrafficClass) error {
+	seen := make(map[string]struct{})
+	for _, legacyLB := range serviceLBMigrationCandidates(svc, protocol, oldLB, vpc, trafficClass) {
+		if legacyLB == "" || legacyLB == currentLB {
+			continue
+		}
+		if _, ok := seen[legacyLB]; ok {
+			continue
+		}
+		seen[legacyLB] = struct{}{}
+		if err := c.OVNNbClient.LoadBalancerDeleteVip(legacyLB, vip, true); err != nil {
+			return fmt.Errorf("delete vip %s from old load balancer %s: %w", vip, legacyLB, err)
+		}
+	}
+	return nil
 }
 
 func serviceScopedLBNames(svc *v1.Service) []string {
