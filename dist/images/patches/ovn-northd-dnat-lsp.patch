@@ -80,18 +80,18 @@ index 9f1ee8397..79f03c7c5 100644
 +        ds_clear(match);
 +        ds_put_format(match, REGBIT_CONNTRACK_NAT" != 0 && ip4.dst == %s",
 +                       op->lsp_addrs[0].ipv4_addrs[i].addr_s);
-+        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
-+                                ds_cstr(match), ds_cstr(actions),
-+                                &op->nbsp->header_, op->lflow_ref);
++        ovn_lflow_add(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
++                      ds_cstr(match), ds_cstr(actions), op->lflow_ref,
++                      WITH_HINT(&op->nbsp->header_));
 +    }
 +
 +    for (size_t i = 0; i < op->lsp_addrs[0].n_ipv6_addrs; i++) {
 +        ds_clear(match);
 +        ds_put_format(match, REGBIT_CONNTRACK_NAT" != 0 && ip6.dst == %s",
 +                       op->lsp_addrs[0].ipv6_addrs[i].addr_s);
-+        ovn_lflow_add_with_hint(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
-+                                ds_cstr(match), ds_cstr(actions),
-+                                &op->nbsp->header_, op->lflow_ref);
++        ovn_lflow_add(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
++                      ds_cstr(match), ds_cstr(actions), op->lflow_ref,
++                      WITH_HINT(&op->nbsp->header_));
 +    }
 +}
 +
