@@ -146,7 +146,7 @@ index 42f1a4a93..a6f7828d2 100644
 
      if (op->lrp_networks.n_ipv4_addrs) {
          op_put_v4_networks(&ip_list, op, false);
-@@ -14620,6 +14633,20 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+@@ -14620,6 +14633,19 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
                                                       op->od->nbr->copp,
                                                       meter_groups)),
                        WITH_HINT(&op->nbrp->header_));
@@ -156,18 +156,17 @@ index 42f1a4a93..a6f7828d2 100644
 +            ds_put_format(&match, "ip4.dst == %s && udp.dst == 3784 && "
 +                          "!is_chassis_resident(\"%s\")",
 +                          ds_cstr(&ip_list), redirect_name);
-+            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-+                                      115, ds_cstr(&match), actions, NULL,
-+                                      copp_meter_get(COPP_BFD,
-+                                                     op->od->nbr->copp,
-+                                                     meter_groups),
-+                                      &op->nbrp->header_,
-+                                      lflow_ref);
++            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT,
++                          115, ds_cstr(&match), actions, lflow_ref,
++                          WITH_IO_PORT(NULL),
++                          WITH_CTRL_METER(copp_meter_get(
++                              COPP_BFD, op->od->nbr->copp, meter_groups)),
++                          WITH_HINT(&op->nbrp->header_));
 +        }
      }
      if (op->lrp_networks.n_ipv6_addrs) {
          ds_clear(&ip_list);
-@@ -14640,10 +14667,26 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
+@@ -14640,10 +14667,25 @@ build_lrouter_bfd_flows(struct lflow_table *lflows, struct ovn_port *op,
                                                       op->od->nbr->copp,
                                                       meter_groups)),
                        WITH_HINT(&op->nbrp->header_));
@@ -177,13 +176,12 @@ index 42f1a4a93..a6f7828d2 100644
 +            ds_put_format(&match, "ip6.dst == %s && udp.dst == 3784 && "
 +                          "!is_chassis_resident(\"%s\")",
 +                          ds_cstr(&ip_list), redirect_name);
-+            ovn_lflow_add_with_hint__(lflows, op->od, S_ROUTER_IN_IP_INPUT,
-+                                      115, ds_cstr(&match), actions, NULL,
-+                                      copp_meter_get(COPP_BFD,
-+                                                     op->od->nbr->copp,
-+                                                     meter_groups),
-+                                      &op->nbrp->header_,
-+                                      lflow_ref);
++            ovn_lflow_add(lflows, op->od, S_ROUTER_IN_IP_INPUT,
++                          115, ds_cstr(&match), actions, lflow_ref,
++                          WITH_IO_PORT(NULL),
++                          WITH_CTRL_METER(copp_meter_get(
++                              COPP_BFD, op->od->nbr->copp, meter_groups)),
++                          WITH_HINT(&op->nbrp->header_));
 +        }
      }
 
