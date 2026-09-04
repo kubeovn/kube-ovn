@@ -3,9 +3,14 @@ package controller
 import (
 	"testing"
 
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -83,5 +88,78 @@ func TestServiceScopedLBIdentityAndPolicy(t *testing.T) {
 	ids := serviceScopedLBExternalIDs(svc)
 	if ids[serviceLBOwnerExternalID] != string(svc.UID) || ids[serviceLBVersionID] != serviceLBVersion {
 		t.Fatalf("service LB ownership metadata = %v", ids)
+	}
+}
+
+func TestEnsureServiceScopedLB(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	ctrl.config.EnableOVNLBDistributed = true
+	timeout := int32(42)
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-ensure"),
+		Spec: corev1.ServiceSpec{
+			SessionAffinity:       corev1.ServiceAffinityClientIP,
+			SessionAffinityConfig: &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: &timeout}},
+		},
+	}
+	lbName := serviceScopedLBName(svc, corev1.ProtocolTCP)
+	selectionFields := []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}
+	gomock.InOrder(
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp", "ip_src", "ipv6_src").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, gomock.Eq(selectionFields)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc))).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerAffinityTimeout(lbName, 42).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
+	)
+
+	got, err := ctrl.ensureServiceScopedLB(svc, corev1.ProtocolTCP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != lbName {
+		t.Fatalf("ensureServiceScopedLB() = %q, want %q", got, lbName)
+	}
+}
+
+func TestDeleteServiceScopedLoadBalancers(t *testing.T) {
+	fake := newFakeController(t)
+	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-delete")}
+	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
+	if err := fake.fakeController.deleteServiceScopedLoadBalancers(svc); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetDistributedIPPortMapping(t *testing.T) {
+	pod := &corev1.Pod{
+		Namespace: "default", Name: "backend",
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation: util.DefaultSubnet,
+		},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods:    []*corev1.Pod{pod},
+		Subnets: []*kubeovnv1.Subnet{{Name: util.DefaultSubnet}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctrl := fake.fakeController
+	service := &corev1.Service{Namespace: "default", Name: "web", Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "web"}}}
+	endpoint := discoveryv1.Endpoint{Addresses: []string{"10.0.0.2"}, TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: "default", Name: "backend"}}
+	portName := ovs.PodNameToPortName("backend", "default", util.OvnProvider)
+	fake.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(&ovnnb.LogicalSwitchPort{Name: portName}, nil)
+	mapping, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{{Endpoints: []discoveryv1.Endpoint{endpoint}}}, service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mapping["10.0.0.2"] != portName {
+		t.Fatalf("distributed mapping = %v, want backend mapped to %q", mapping, portName)
+	}
+
+	endpoint.TargetRef = nil
+	if _, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{{Endpoints: []discoveryv1.Endpoint{endpoint}}}, service); err == nil {
+		t.Fatal("expected ready endpoint without target to fail")
 	}
 }

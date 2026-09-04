@@ -71,7 +71,7 @@ func (c *Controller) ensureServiceScopedLB(svc *v1.Service, protocol v1.Protocol
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		selectFields = []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}
 	}
-	if err := c.OVNNbClient.CreateLoadBalancer(name, string(protocol), selectFields...); err != nil {
+	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol)), selectFields...); err != nil {
 		return "", fmt.Errorf("create service-scoped load balancer %s: %w", name, err)
 	}
 	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, selectFields); err != nil {
