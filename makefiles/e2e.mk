@@ -32,7 +32,8 @@ ifeq ($(E2E_BRANCH),master)
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*[Ii]nternalTrafficPolicy.*Local"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Topology Hints"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution"
-K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*[Ss]ession.?[Aa]ffinity"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*session affinity timeout work for service with type clusterIP"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*client IP based session affinity"
 endif
 
 ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
