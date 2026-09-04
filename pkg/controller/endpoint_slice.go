@@ -2,15 +2,17 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -98,7 +100,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 
 	endpointSlices, err := c.endpointSlicesLister.EndpointSlices(namespace).List(labels.Set{discoveryv1.LabelServiceName: name}.AsSelector())
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		klog.Error(err)
@@ -107,7 +109,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 
 	cachedService, err := c.servicesLister.Services(namespace).Get(name)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return nil
 		}
 		klog.Error(err)
@@ -123,7 +125,11 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		ok                       bool
 		ignoreHealthCheck        = true
 		isPreferLocalBackend     = false
+		isDistributedLocal       = serviceUsesDistributedLB(svc)
 	)
+	if isDistributedLocal && !c.config.EnableOVNLBDistributed {
+		return fmt.Errorf("service %s/%s uses internalTrafficPolicy=Local but OVN distributed load balancers are disabled; enable --enable-ovn-lb-distributed with OVN 26.03+", svc.Namespace, svc.Name)
+	}
 
 	if vip, ok = svc.Annotations[util.SwitchLBRuleVipsAnnotation]; ok && vip != "" {
 		lbVips = []string{vip}
@@ -202,6 +208,60 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		tcpLb, udpLb, sctpLb, oldTCPLb, oldUDPLb, oldSctpLb = oldTCPLb, oldUDPLb, oldSctpLb, tcpLb, udpLb, sctpLb
 	}
+	if serviceUsesScopedLB(svc) {
+		protocols := make([]v1.Protocol, 0, len(svc.Spec.Ports))
+		seenProtocols := make(map[v1.Protocol]struct{}, len(svc.Spec.Ports))
+		for _, port := range svc.Spec.Ports {
+			if _, seen := seenProtocols[port.Protocol]; seen {
+				continue
+			}
+			seenProtocols[port.Protocol] = struct{}{}
+			protocols = append(protocols, port.Protocol)
+		}
+		for _, protocol := range protocols {
+			lbName, ensureErr := c.ensureServiceScopedLB(svc, protocol)
+			if ensureErr != nil {
+				return ensureErr
+			}
+			switch protocol {
+			case v1.ProtocolTCP:
+				tcpLb = lbName
+				if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+					oldTCPLb = vpc.Status.TCPSessionLoadBalancer
+				} else {
+					oldTCPLb = vpc.Status.TCPLoadBalancer
+				}
+			case v1.ProtocolUDP:
+				udpLb = lbName
+				if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+					oldUDPLb = vpc.Status.UDPSessionLoadBalancer
+				} else {
+					oldUDPLb = vpc.Status.UDPLoadBalancer
+				}
+			case v1.ProtocolSCTP:
+				sctpLb = lbName
+				if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+					oldSctpLb = vpc.Status.SctpSessionLoadBalancer
+				} else {
+					oldSctpLb = vpc.Status.SctpLoadBalancer
+				}
+			}
+		}
+		lbNames := make([]string, 0, len(protocols))
+		for _, protocol := range protocols {
+			switch protocol {
+			case v1.ProtocolTCP:
+				lbNames = append(lbNames, tcpLb)
+			case v1.ProtocolUDP:
+				lbNames = append(lbNames, udpLb)
+			case v1.ProtocolSCTP:
+				lbNames = append(lbNames, sctpLb)
+			}
+		}
+		if err = c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, lbNames...); err != nil {
+			return fmt.Errorf("attach service-scoped load balancers to subnet %s: %w", subnetName, err)
+		}
+	}
 	if c.config.EnableOVNLBPreferLocal {
 		if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, tcpLb, udpLb, sctpLb); err != nil {
 			return err
@@ -246,7 +306,12 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 
 			backends = c.getEndpointBackend(endpointSlices, port, lbVip)
 
-			if !ignoreHealthCheck || isPreferLocalBackend {
+			if isDistributedLocal {
+				ipPortMapping, err = c.getDistributedIPPortMapping(endpointSlices, svc)
+				if err != nil {
+					return fmt.Errorf("couldn't get distributed ip port mapping for svc %s/%s: %w", svc.Namespace, svc.Name, err)
+				}
+			} else if !ignoreHealthCheck || isPreferLocalBackend {
 				ipPortMapping, err = c.getIPPortMapping(endpointSlices, svc, checkIP)
 				if err != nil {
 					err := fmt.Errorf("couldn't get ip port mapping for svc %s/%s: %w", svc.Namespace, svc.Name, err)
@@ -261,6 +326,30 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				if err = c.OVNNbClient.LoadBalancerAddVip(lb, vip, backends...); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
 					return err
+				}
+				legacyLbs := []string{oldLb}
+				if serviceUsesScopedLB(svc) {
+					switch port.Protocol {
+					case v1.ProtocolTCP:
+						legacyLbs = append(legacyLbs, vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer)
+					case v1.ProtocolUDP:
+						legacyLbs = append(legacyLbs, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer)
+					case v1.ProtocolSCTP:
+						legacyLbs = append(legacyLbs, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer)
+					}
+				}
+				seenLegacyLbs := make(map[string]struct{}, len(legacyLbs))
+				for _, legacyLb := range legacyLbs {
+					if legacyLb == "" || legacyLb == lb {
+						continue
+					}
+					if _, seen := seenLegacyLbs[legacyLb]; seen {
+						continue
+					}
+					seenLegacyLbs[legacyLb] = struct{}{}
+					if err = c.OVNNbClient.LoadBalancerDeleteVip(legacyLb, vip, true); err != nil {
+						return fmt.Errorf("migrate vip %s from old load balancer %s: %w", vip, legacyLb, err)
+					}
 				}
 				if isPreferLocalBackend &&
 					svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
@@ -278,7 +367,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					}
 				}
 
-				if isPreferLocalBackend && len(ipPortMapping) != 0 {
+				if (isPreferLocalBackend || isDistributedLocal) && len(ipPortMapping) != 0 {
 					if err = c.OVNNbClient.LoadBalancerUpdateIPPortMapping(lb, vip, ipPortMapping); err != nil {
 						klog.Errorf("failed to update ip port mapping %s for vip %s to LB %s: %v", ipPortMapping, vip, lb, err)
 						return err
@@ -301,19 +390,42 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				}
 
 				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, oldLb)
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(oldLb, vip, true); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oldLb, err)
-					return err
+				legacyLbs := []string{oldLb}
+				if serviceUsesScopedLB(svc) {
+					switch port.Protocol {
+					case v1.ProtocolTCP:
+						legacyLbs = append(legacyLbs, vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer)
+					case v1.ProtocolUDP:
+						legacyLbs = append(legacyLbs, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer)
+					case v1.ProtocolSCTP:
+						legacyLbs = append(legacyLbs, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer)
+					}
+				}
+				seenLegacyLbs := make(map[string]struct{}, len(legacyLbs))
+				for _, legacyLb := range legacyLbs {
+					if legacyLb == "" || legacyLb == lb {
+						continue
+					}
+					if _, seen := seenLegacyLbs[legacyLb]; seen {
+						continue
+					}
+					seenLegacyLbs[legacyLb] = struct{}{}
+					if err = c.OVNNbClient.LoadBalancerDeleteVip(legacyLb, vip, true); err != nil {
+						klog.Errorf("failed to delete vip %s from LB %s: %v", vip, legacyLb, err)
+						return err
+					}
 				}
 
-				if c.config.EnableOVNLBPreferLocal {
+				if c.config.EnableOVNLBPreferLocal || isDistributedLocal {
 					if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
 						klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
 						return err
 					}
-					if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(oldLb, vip); err != nil {
-						klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
-						return err
+					if oldLb != "" {
+						if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(oldLb, vip); err != nil {
+							klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
+							return err
+						}
 					}
 				}
 			}
@@ -324,6 +436,11 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		patch := util.KVPatch{util.VpcAnnotation: vpcName}
 		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Services(namespace), svc.Name, patch); err != nil {
 			klog.Errorf("failed to patch service %s: %v", key, err)
+			return err
+		}
+	}
+	if !serviceUsesScopedLB(svc) {
+		if err := c.deleteServiceScopedLoadBalancers(svc); err != nil {
 			return err
 		}
 	}
@@ -670,7 +787,7 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 	vipName := subnetName
 	checkVip, err = c.virtualIpsLister.Get(vipName)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			needCreateHealthCheckVip = true
 		} else {
 			klog.Errorf("failed to get health check vip %s, %v", vipName, err)
@@ -801,6 +918,61 @@ func (c *Controller) getIPPortMapping(endpointSlices []*discoveryv1.EndpointSlic
 	}
 
 	return c.getIPPortMappingWithNoTargets(endpointSlices, pods, checkVip), nil
+}
+
+// getDistributedIPPortMapping returns backend IP to logical-port mappings
+// required by OVN's distributed load balancer. Strict Local must not infer a
+// logical port for selectorless or manually supplied endpoints, because an
+// incomplete mapping would make traffic unavailable on every chassis.
+func (c *Controller) getDistributedIPPortMapping(endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service) (IPPortMapping, error) {
+	if !serviceHasSelector(service) {
+		return nil, errors.New("service has no selector; EndpointSlice targets are required for distributed load balancing")
+	}
+
+	mapping := make(IPPortMapping)
+	for _, slice := range endpointSlices {
+		for _, endpoint := range slice.Endpoints {
+			if !endpointReady(endpoint) {
+				continue
+			}
+			if endpoint.TargetRef == nil {
+				return nil, fmt.Errorf("ready endpoint %v has no Pod target", endpoint.Addresses)
+			}
+			if endpoint.TargetRef.Kind != "" && endpoint.TargetRef.Kind != util.KindPod {
+				return nil, fmt.Errorf("endpoint target %s/%s is not a Pod", endpoint.TargetRef.Namespace, endpoint.TargetRef.Name)
+			}
+			targetNamespace := endpoint.TargetRef.Namespace
+			if targetNamespace == "" {
+				targetNamespace = service.Namespace
+			}
+			pod, err := c.podsLister.Pods(targetNamespace).Get(endpoint.TargetRef.Name)
+			if err != nil {
+				return nil, fmt.Errorf("get endpoint pod %s/%s: %w", targetNamespace, endpoint.TargetRef.Name, err)
+			}
+			if !pod.DeletionTimestamp.IsZero() {
+				continue
+			}
+			lspName, err := c.getEndpointTargetLSPName(pod, endpoint.Addresses)
+			if err != nil {
+				return nil, fmt.Errorf("get logical port for endpoint pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			}
+			lsp, err := c.OVNNbClient.GetLogicalSwitchPort(lspName, true)
+			if err != nil {
+				return nil, fmt.Errorf("get logical port %s for endpoint pod %s/%s: %w", lspName, pod.Namespace, pod.Name, err)
+			}
+			if lsp == nil {
+				return nil, fmt.Errorf("logical port %s for endpoint pod %s/%s does not exist", lspName, pod.Namespace, pod.Name)
+			}
+			for _, address := range endpoint.Addresses {
+				key := address
+				if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
+					key = fmt.Sprintf("[%s]", address)
+				}
+				mapping[key] = lspName
+			}
+		}
+	}
+	return mapping, nil
 }
 
 // getIPPortMappingWithTargets returns the IPPortMapping for endpoints with targets

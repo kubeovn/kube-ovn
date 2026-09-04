@@ -67,6 +67,22 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields .
 	return nil
 }
 
+// SetLoadBalancerSelectionFields updates the fields OVN uses to select a backend.
+func (c *OVNNbClient) SetLoadBalancerSelectionFields(lbName string, selectionFields []string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	if slices.Equal(lb.SelectionFields, selectionFields) {
+		return nil
+	}
+	lb.SelectionFields = slices.Clone(selectionFields)
+	if err := c.UpdateLoadBalancer(lb, &lb.SelectionFields); err != nil {
+		return fmt.Errorf("failed to set selection fields of lb %s: %w", lbName, err)
+	}
+	return nil
+}
+
 // UpdateLoadBalancer update load balancer
 func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...any) error {
 	var (
@@ -287,6 +303,55 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to set affinity timeout of lb %s to %d: %w", lbName, timeout, err)
+	}
+	return nil
+}
+
+// SetLoadBalancerDistributed enables or disables OVN's chassis-local backend
+// selection for a load balancer. This option is available in OVN 26.03+.
+func (c *OVNNbClient) SetLoadBalancerDistributed(lbName string, distributed bool) error {
+	value := strconv.FormatBool(distributed)
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	if len(lb.Options) != 0 && lb.Options["distributed"] == value {
+		return nil
+	}
+
+	options := maps.Clone(lb.Options)
+	if options == nil {
+		options = make(map[string]string, 1)
+	}
+	options["distributed"] = value
+	lb.Options = options
+	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		return fmt.Errorf("failed to set distributed option of lb %s to %s: %w", lbName, value, err)
+	}
+	return nil
+}
+
+// SetLoadBalancerExternalIDs records ownership metadata on a load balancer.
+func (c *OVNNbClient) SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	ids := maps.Clone(lb.ExternalIDs)
+	if ids == nil {
+		ids = make(map[string]string, len(externalIDs))
+	}
+	desired := maps.Clone(ids)
+	if desired == nil {
+		desired = make(map[string]string, len(externalIDs))
+	}
+	maps.Copy(desired, externalIDs)
+	if maps.Equal(ids, desired) {
+		return nil
+	}
+	lb.ExternalIDs = desired
+	if err := c.UpdateLoadBalancer(lb, &lb.ExternalIDs); err != nil {
+		return fmt.Errorf("failed to set external IDs of lb %s: %w", lbName, err)
 	}
 	return nil
 }

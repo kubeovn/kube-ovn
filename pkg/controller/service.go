@@ -143,6 +143,9 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 		newPorts: newSvc.Spec.Ports,
 	}
 	c.updateServiceQueue.Add(updateSvc)
+	if serviceUsesScopedLB(oldSvc) || serviceUsesScopedLB(newSvc) {
+		c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(newSvc).String())
+	}
 	if c.config.EnableOVNLBPreferLocal &&
 		newSvc.Spec.Type == v1.ServiceTypeLoadBalancer &&
 		oldSvc.Spec.ExternalTrafficPolicy != newSvc.Spec.ExternalTrafficPolicy {
@@ -209,6 +212,9 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 			}
 		}
 	}
+	if err := c.deleteServiceScopedLoadBalancers(service.Svc); err != nil {
+		return err
+	}
 
 	if service.Svc.Spec.Type == v1.ServiceTypeLoadBalancer && c.config.EnableLbSvc {
 		if err := c.deleteLbSvc(service.Svc); err != nil {
@@ -248,6 +254,10 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		}
 		klog.Error(err)
 		return err
+	}
+	if serviceUsesScopedLB(svc) {
+		c.addOrUpdateEndpointSliceQueue.Add(key)
+		return nil
 	}
 
 	ips := getVipIps(svc)

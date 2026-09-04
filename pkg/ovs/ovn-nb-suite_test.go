@@ -563,6 +563,18 @@ func (suite *OvnClientTestSuite) Test_SetLoadBalancerAffinityTimeout() {
 	suite.testSetLoadBalancerAffinityTimeout()
 }
 
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerSelectionFields() {
+	suite.testSetLoadBalancerSelectionFields()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerDistributed() {
+	suite.testSetLoadBalancerDistributed()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerExternalIDs() {
+	suite.testSetLoadBalancerExternalIDs()
+}
+
 func (suite *OvnClientTestSuite) Test_SetLoadBalancerCtFlush() {
 	suite.testSetLoadBalancerCtFlush()
 }
