@@ -111,6 +111,21 @@ func TestEndpointReady(t *testing.T) {
 	}
 }
 
+func TestTopologyBackendSubset(t *testing.T) {
+	backends := []topologyBackend{
+		{backend: "10.0.0.1:80", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-a"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+		{backend: "10.0.0.2:80", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-b"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+		{backend: "10.0.0.3:80", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-c"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-b"}}}},
+	}
+	assert.ElementsMatch(t, []string{"10.0.0.1:80"}, topologyBackendSubset(backends, "node-a", "zone-a"))
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(backends, "node-x", "zone-a"))
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80", "10.0.0.3:80"}, topologyBackendSubset(backends, "node-x", "zone-x"))
+
+	missingNodeHint := append([]topologyBackend(nil), backends...)
+	missingNodeHint[1].hints = &discoveryv1.EndpointHints{ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(missingNodeHint, "node-a", "zone-a"))
+}
+
 func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
 	tests := []struct {
 		name     string

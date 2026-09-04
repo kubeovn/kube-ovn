@@ -29,7 +29,7 @@ const (
 )
 
 func serviceUsesScopedLB(svc *v1.Service) bool {
-	return svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP || serviceUsesDistributedLB(svc)
+	return svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP || serviceUsesDistributedLB(svc) || svc.Spec.TrafficDistribution != nil
 }
 
 func serviceUsesDistributedLB(svc *v1.Service) bool {
@@ -112,6 +112,11 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.SetLoadBalancerDistributed(name, distributed); err != nil {
 		return "", fmt.Errorf("set distributed mode on service-scoped load balancer %s: %w", name, err)
 	}
+	if svc.Spec.TrafficDistribution != nil {
+		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, true); err != nil {
+			return "", fmt.Errorf("set template mode on service-scoped load balancer %s: %w", name, err)
+		}
+	}
 	return name, nil
 }
 
@@ -119,6 +124,11 @@ func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, proto
 	lb, err := c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBExternalTraffic)
 	if err != nil {
 		return "", err
+	}
+	if svc.Spec.TrafficDistribution != nil {
+		if err := c.OVNNbClient.SetLoadBalancerTemplate(lb, false); err != nil {
+			return "", fmt.Errorf("disable template mode on external service-scoped load balancer %s: %w", lb, err)
+		}
 	}
 	if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, lb); err != nil {
 		return "", fmt.Errorf("attach external service-scoped load balancer to subnet %s: %w", subnetName, err)
@@ -135,6 +145,18 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 		return lb.ExternalIDs[serviceLBOwnerExternalID] == owner && lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
 	}); err != nil {
 		return fmt.Errorf("delete service-scoped load balancers for %s/%s: %w", svc.Namespace, svc.Name, err)
+	}
+	if svc.Spec.TrafficDistribution != nil && c.OVNSbClient != nil {
+		chassises, err := c.OVNSbClient.ListChassis()
+		if err != nil {
+			return fmt.Errorf("list OVN chassis while deleting service %s/%s template variables: %w", svc.Namespace, svc.Name, err)
+		}
+		prefix := serviceTrafficDistributionVariablePrefix(svc)
+		for _, chassis := range *chassises {
+			if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis.Name, prefix, nil); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

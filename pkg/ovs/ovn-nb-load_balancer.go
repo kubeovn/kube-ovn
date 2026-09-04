@@ -350,6 +350,98 @@ func (c *OVNNbClient) SetLoadBalancerDistributed(lbName string, distributed bool
 	return nil
 }
 
+// SetLoadBalancerTemplate enables or disables chassis-specific template values.
+func (c *OVNNbClient) SetLoadBalancerTemplate(lbName string, template bool) error {
+	value := strconv.FormatBool(template)
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	if len(lb.Options) != 0 && lb.Options["template"] == value {
+		return nil
+	}
+	options := maps.Clone(lb.Options)
+	if options == nil {
+		options = make(map[string]string, 1)
+	}
+	options["template"] = value
+	lb.Options = options
+	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		return fmt.Errorf("failed to set template option of lb %s to %s: %w", lbName, value, err)
+	}
+	return nil
+}
+
+// SetLoadBalancerTemplateVIP configures a VIP to use a chassis template backend variable.
+func (c *OVNNbClient) SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	vips := maps.Clone(lb.Vips)
+	if vips == nil {
+		vips = make(map[string]string)
+	}
+	vips[vip] = backendVariable
+	if maps.Equal(lb.Vips, vips) {
+		return nil
+	}
+	lb.Vips = vips
+	if err := c.UpdateLoadBalancer(lb, &lb.Vips); err != nil {
+		return fmt.Errorf("failed to set template VIP %s on lb %s: %w", vip, lbName, err)
+	}
+	return nil
+}
+
+// ReconcileChassisTemplateVariables updates only variables owned by prefix.
+func (c *OVNNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	var rows []ovnnb.ChassisTemplateVar
+	if err := c.ovsDbClient.WhereCache(func(row *ovnnb.ChassisTemplateVar) bool {
+		return row.Chassis == chassis
+	}).List(ctx, &rows); err != nil {
+		return fmt.Errorf("list template variables for chassis %s: %w", chassis, err)
+	}
+	if len(rows) == 0 {
+		row := &ovnnb.ChassisTemplateVar{
+			UUID:        ovsclient.NamedUUID(),
+			Chassis:     chassis,
+			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+			Variables:   maps.Clone(variables),
+		}
+		ops, err := c.Create(row)
+		if err != nil {
+			return fmt.Errorf("generate template variable operations for chassis %s: %w", chassis, err)
+		}
+		if err := c.Transact("chassis-template-var-add", ops); err != nil {
+			return fmt.Errorf("create template variables for chassis %s: %w", chassis, err)
+		}
+		return nil
+	}
+	row := &rows[0]
+	merged := maps.Clone(row.Variables)
+	if merged == nil {
+		merged = make(map[string]string)
+	}
+	for key := range merged {
+		if strings.HasPrefix(key, prefix) {
+			delete(merged, key)
+		}
+	}
+	maps.Copy(merged, variables)
+	if maps.Equal(row.Variables, merged) {
+		return nil
+	}
+	row.Variables = merged
+	if ops, err := c.ovsDbClient.Where(row).Update(row, &row.Variables); err != nil {
+		return fmt.Errorf("generate template variable update for chassis %s: %w", chassis, err)
+	} else if err := c.Transact("chassis-template-var-update", ops); err != nil {
+		return fmt.Errorf("update template variables for chassis %s: %w", chassis, err)
+	}
+	return nil
+}
+
 // SetLoadBalancerExternalIDs records ownership metadata on a load balancer.
 func (c *OVNNbClient) SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error {
 	lb, err := c.GetLoadBalancer(lbName, false)

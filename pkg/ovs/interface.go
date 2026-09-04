@@ -149,6 +149,9 @@ type LoadBalancer interface {
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
 	DeleteLoadBalancerAffinityTimeout(lbName string) error
 	SetLoadBalancerDistributed(lbName string, distributed bool) error
+	SetLoadBalancerTemplate(lbName string, template bool) error
+	SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error
+	ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error
 	SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error

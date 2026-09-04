@@ -145,6 +145,18 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	if nodeReadyChanged || nodeLabelsChanged {
 		c.enqueueVpcBFDPortByNodeChange(oldNode, newNode)
 	}
+	if nodeLabelsChanged && c.config.EnableLb {
+		services, err := c.servicesLister.Services(metav1.NamespaceAll).List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list services for traffic distribution update: %v", err)
+			return
+		}
+		for _, svc := range services {
+			if svc.Spec.TrafficDistribution != nil {
+				c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(svc).String())
+			}
+		}
+	}
 }
 
 func (c *Controller) enqueueDeleteNode(obj any) {
