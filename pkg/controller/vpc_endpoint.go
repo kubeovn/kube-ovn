@@ -597,7 +597,7 @@ func (c *Controller) ensureVpcEndpointVip(ep *kubeovnv1.VpcEndpoint) (*kubeovnv1
 	}
 	if k8serrors.IsNotFound(err) {
 		vip := &kubeovnv1.Vip{
-			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Name: name,
 			Spec: kubeovnv1.VipSpec{
 				Namespace: metav1.NamespaceSystem,
 				Subnet:    ep.Spec.Subnet,
