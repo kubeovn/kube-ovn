@@ -163,3 +163,15 @@ func TestGetDistributedIPPortMapping(t *testing.T) {
 		t.Fatal("expected ready endpoint without target to fail")
 	}
 }
+
+func TestDecorateDistributedIPPortMapping(t *testing.T) {
+	mapping := IPPortMapping{"10.0.0.2": "pod-backend"}
+	decorateDistributedIPPortMapping(mapping, "10.0.0.10")
+	if mapping["10.0.0.2"] != "pod-backend:10.0.0.10" {
+		t.Fatalf("decorated mapping = %v", mapping)
+	}
+	decorateDistributedIPPortMapping(mapping, "")
+	if mapping["10.0.0.2"] != "pod-backend:10.0.0.10" {
+		t.Fatalf("empty source IP changed mapping = %v", mapping)
+	}
+}
