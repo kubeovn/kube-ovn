@@ -179,6 +179,9 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			isPreferLocalBackend = true
 		}
 	}
+	hasExternalVIP := slices.ContainsFunc(lbVips, func(vip string) bool {
+		return lbVipTrafficClasses[vip] == serviceLBExternalTraffic
+	})
 
 	// If Kube-OVN is running in secondary CNI mode, the endpoint IPs should be derived from the network attachment definitions
 	// This overwrite can be removed if endpoint construction accounts for network attachment IP address
@@ -472,6 +475,16 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	if !serviceUsesScopedLB(svc) {
 		if err := c.deleteServiceScopedLoadBalancers(svc); err != nil {
 			return err
+		}
+	} else if !isDistributedLocal || !hasExternalVIP {
+		protocols := make(map[v1.Protocol]struct{}, len(svc.Spec.Ports))
+		for _, port := range svc.Spec.Ports {
+			protocols[port.Protocol] = struct{}{}
+		}
+		for protocol := range protocols {
+			if err := c.deleteServiceScopedLBTrafficClass(svc, protocol, serviceLBExternalTraffic); err != nil {
+				return err
+			}
 		}
 	}
 
