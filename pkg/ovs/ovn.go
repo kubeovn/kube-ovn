@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/cache"
 	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/modelgen"
@@ -41,7 +42,7 @@ type OVNSbClient struct {
 }
 
 type ovsDbClient struct {
-	client.Client
+	backend client.Client
 	Timeout time.Duration
 	call    *compat.Client
 }
@@ -93,7 +94,7 @@ func NewDynamicOvnNbClient(
 	nbClient.Close()
 
 	models := make(map[string]model.Model, len(tables))
-	monitors := make([]client.MonitorOption, 0, len(tables))
+	monitors := make([]compat.MonitorOption, 0, len(tables))
 	for name, table := range schemaTables {
 		if len(tables) != 0 && !slices.Contains(tables, name) {
 			continue
@@ -115,7 +116,7 @@ func NewDynamicOvnNbClient(
 		}
 
 		model := reflect.New(reflect.StructOf(fields)).Interface().(model.Model)
-		monitors = append(monitors, client.WithTable(model))
+		monitors = append(monitors, compat.WithTable(model))
 		models[name] = model
 	}
 
@@ -135,7 +136,7 @@ func NewDynamicOvnNbClient(
 	}
 
 	c := &OVNNbClient{
-		Client:  nbClient,
+		backend: nbClient,
 		Timeout: time.Duration(ovnNbTimeout) * time.Second,
 		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
 	}
@@ -158,27 +159,27 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	})
 	klog.Infof("ovn nb table %s client index %#v", ovnnb.LogicalRouterPolicyTable, dbModel.Indexes(ovnnb.LogicalRouterPolicyTable))
 
-	monitors := []client.MonitorOption{
-		client.WithTable(&ovnnb.ACL{}),
-		client.WithTable(&ovnnb.AddressSet{}),
-		client.WithTable(&ovnnb.BFD{}),
-		client.WithTable(&ovnnb.DHCPOptions{}),
-		client.WithTable(&ovnnb.GatewayChassis{}),
-		client.WithTable(&ovnnb.HAChassis{}),
-		client.WithTable(&ovnnb.HAChassisGroup{}),
-		client.WithTable(&ovnnb.LoadBalancer{}),
-		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
-		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
-		client.WithTable(&ovnnb.LogicalRouterPort{}),
-		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		client.WithTable(&ovnnb.LogicalRouter{}),
-		client.WithTable(&ovnnb.LogicalSwitchPort{}),
-		client.WithTable(&ovnnb.LogicalSwitch{}),
-		client.WithTable(&ovnnb.NAT{}),
-		client.WithTable(&ovnnb.NBGlobal{}),
-		client.WithTable(&ovnnb.PortGroup{}),
-		client.WithTable(&ovnnb.Meter{}),
-		client.WithTable(&ovnnb.MeterBand{}),
+	monitors := []compat.MonitorOption{
+		compat.WithTable(&ovnnb.ACL{}),
+		compat.WithTable(&ovnnb.AddressSet{}),
+		compat.WithTable(&ovnnb.BFD{}),
+		compat.WithTable(&ovnnb.DHCPOptions{}),
+		compat.WithTable(&ovnnb.GatewayChassis{}),
+		compat.WithTable(&ovnnb.HAChassis{}),
+		compat.WithTable(&ovnnb.HAChassisGroup{}),
+		compat.WithTable(&ovnnb.LoadBalancer{}),
+		compat.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
+		compat.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		compat.WithTable(&ovnnb.LogicalRouterPort{}),
+		compat.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		compat.WithTable(&ovnnb.LogicalRouter{}),
+		compat.WithTable(&ovnnb.LogicalSwitchPort{}),
+		compat.WithTable(&ovnnb.LogicalSwitch{}),
+		compat.WithTable(&ovnnb.NAT{}),
+		compat.WithTable(&ovnnb.NBGlobal{}),
+		compat.WithTable(&ovnnb.PortGroup{}),
+		compat.WithTable(&ovnnb.Meter{}),
+		compat.WithTable(&ovnnb.MeterBand{}),
 	}
 
 	try := 0
@@ -205,7 +206,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	c := &OVNNbClient{
-		Client:  nbClient,
+		backend: nbClient,
 		Timeout: time.Duration(ovnNbTimeout) * time.Second,
 		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
 	}
@@ -219,8 +220,8 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 		return nil, err
 	}
 
-	monitors := []client.MonitorOption{
-		client.WithTable(&ovnsb.Chassis{}),
+	monitors := []compat.MonitorOption{
+		compat.WithTable(&ovnsb.Chassis{}),
 	}
 	try := 0
 	var sbClient client.Client
@@ -246,7 +247,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	c := &OVNSbClient{
-		Client:  sbClient,
+		backend: sbClient,
 		Timeout: time.Duration(ovnSbTimeout) * time.Second,
 		call:    compat.New(sbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{Attempts: 2}),
 	}
@@ -310,9 +311,79 @@ func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) erro
 
 func (c *ovsDbClient) callLayer() *compat.Client {
 	if c.call == nil {
-		c.call = compat.New(c.Client, c.Timeout, compat.RetryPolicy{Attempts: 2})
+		c.call = compat.New(c.backend, c.Timeout, compat.RetryPolicy{Attempts: 2})
 	}
 	return c.call
+}
+
+func (c *ovsDbClient) Get(ctx context.Context, result model.Model) error {
+	return c.callLayer().Get(ctx, result)
+}
+
+func (c *ovsDbClient) List(ctx context.Context, result any) error {
+	return c.callLayer().List(ctx, result)
+}
+
+func (c *ovsDbClient) Where(models ...model.Model) compat.ConditionalAPI {
+	return c.callLayer().Where(models...)
+}
+
+func (c *ovsDbClient) WhereCache(predicate any) compat.ConditionalAPI {
+	return c.callLayer().WhereCache(predicate)
+}
+
+func (c *ovsDbClient) WhereCacheByUUIDs(predicate any, uuids ...string) compat.ConditionalAPI {
+	return c.callLayer().WhereCacheByUUIDs(predicate, uuids...)
+}
+
+func (c *ovsDbClient) WhereAny(m model.Model, conditions ...model.Condition) compat.ConditionalAPI {
+	return c.callLayer().WhereAny(m, conditions...)
+}
+
+func (c *ovsDbClient) WhereAll(m model.Model, conditions ...model.Condition) compat.ConditionalAPI {
+	return c.callLayer().WhereAll(m, conditions...)
+}
+
+func (c *ovsDbClient) Select(m model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	return c.callLayer().Select(m, fields...)
+}
+
+func (c *ovsDbClient) Create(models ...model.Model) ([]ovsdb.Operation, error) {
+	return c.callLayer().Create(models...)
+}
+
+func (c *ovsDbClient) Cache() *cache.TableCache {
+	return c.backend.Cache()
+}
+
+func (c *ovsDbClient) Schema() ovsdb.DatabaseSchema {
+	return c.backend.Schema()
+}
+
+func (c *ovsDbClient) Connected() bool {
+	return c.backend != nil && c.backend.Connected()
+}
+
+func (c *ovsDbClient) NewMonitor(options ...compat.MonitorOption) *compat.Monitor {
+	return c.backend.NewMonitor(options...)
+}
+
+func (c *ovsDbClient) Monitor(ctx context.Context, monitor *compat.Monitor) (compat.MonitorCookie, error) {
+	return c.backend.Monitor(ctx, monitor)
+}
+
+func (c *ovsDbClient) Echo(ctx context.Context) error {
+	return c.backend.Echo(ctx)
+}
+
+func (c *ovsDbClient) Close() {
+	if c.backend != nil {
+		c.backend.Close()
+	}
+}
+
+func (c *ovsDbClient) TransactResults(ctx context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	return c.callLayer().TransactResults(ctx, operations)
 }
 
 // GetEntityInfo get entity info by column which is the index,
@@ -327,7 +398,7 @@ func (c *ovsDbClient) GetEntityInfo(entity any) error {
 		return errors.New("entity must be pointer")
 	}
 
-	err := c.callLayer().Get(ctx, entity)
+	err := c.Get(ctx, entity)
 	if err != nil {
 		klog.Error(err)
 		return err

@@ -262,9 +262,7 @@ func (c *VswitchClient) cleanupACLSamplingCollectorSets() error {
 }
 
 func (c *VswitchClient) transactVswitchOperations(operations []ovsdb.Operation) ([]ovsdb.OperationResult, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-	results, err := c.Client.Transact(ctx, operations...)
+	results, err := c.TransactResults(context.Background(), operations...)
 	if err != nil {
 		return nil, err
 	}

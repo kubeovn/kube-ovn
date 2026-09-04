@@ -7,12 +7,12 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -141,7 +141,7 @@ func (c *OVNNbClient) GetHAChassisGroup(name string, ignoreNotFound bool) (*ovnn
 
 	group := &ovnnb.HAChassisGroup{Name: name}
 	if err := c.Get(ctx, group); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
 

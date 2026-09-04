@@ -23,7 +23,15 @@ func (f *fakeBackend) List(context.Context, any) error { return nil }
 
 func (f *fakeBackend) WhereCache(any) client.ConditionalAPI { return nil }
 
+func (f *fakeBackend) WhereCacheByUUIDs(any, ...string) client.ConditionalAPI { return nil }
+
 func (f *fakeBackend) Where(...model.Model) client.ConditionalAPI { return nil }
+
+func (f *fakeBackend) WhereAny(model.Model, ...model.Condition) client.ConditionalAPI { return nil }
+
+func (f *fakeBackend) WhereAll(model.Model, ...model.Condition) client.ConditionalAPI { return nil }
+
+func (f *fakeBackend) Select(model.Model, ...any) ([]ovsdb.Operation, error) { return nil, nil }
 
 func (f *fakeBackend) Create(...model.Model) ([]ovsdb.Operation, error) { return nil, nil }
 

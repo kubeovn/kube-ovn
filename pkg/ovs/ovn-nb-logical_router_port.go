@@ -8,12 +8,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -263,7 +263,7 @@ func (c *OVNNbClient) GetLogicalRouterPort(lrpName string, ignoreNotFound bool) 
 
 	lrp := &ovnnb.LogicalRouterPort{Name: lrpName}
 	if err := c.Get(ctx, lrp); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
 		err = fmt.Errorf("get logical router port %s: %w", lrpName, err)

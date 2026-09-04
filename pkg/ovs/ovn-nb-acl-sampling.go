@@ -7,11 +7,11 @@ import (
 	"maps"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -137,9 +137,9 @@ func (c *OVNNbClient) ensureACLSamplingMonitor() error {
 	}
 
 	monitor := c.NewMonitor(
-		client.WithTable(&ovnnb.SamplingApp{}),
-		client.WithTable(&ovnnb.SampleCollector{}),
-		client.WithTable(&ovnnb.Sample{}),
+		compat.WithTable(&ovnnb.SamplingApp{}),
+		compat.WithTable(&ovnnb.SampleCollector{}),
+		compat.WithTable(&ovnnb.Sample{}),
 	)
 	if len(monitor.Errors) != 0 {
 		return fmt.Errorf("build OVN ACL sampling monitor: %w", errors.Join(monitor.Errors...))

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -63,7 +63,7 @@ func (c *OVNSbClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovns
 	}
 	chassis := &ovnsb.Chassis{Name: chassisName}
 	if err := c.Get(ctx, chassis); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
 		klog.Error(err)
