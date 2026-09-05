@@ -81,7 +81,7 @@ func TestReconcileACLSamplingReusesMatchingUnownedApplication(t *testing.T) {
 		ID:          int(aclsampling.DefaultAppIDNew),
 		Type:        ovnnb.SamplingAppTypeACLNew,
 	}
-	ops, err := client.Create(app)
+	ops, err := client.call.Create(app)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("seed-unowned-sampling-app", ops))
 
@@ -100,7 +100,7 @@ func TestReconcileACLSamplingRejectsUnownedConflicts(t *testing.T) {
 			ID:          200,
 			Type:        ovnnb.SamplingAppTypeACLNew,
 		}
-		ops, err := client.Create(app)
+		ops, err := client.call.Create(app)
 		require.NoError(t, err)
 		require.NoError(t, client.Transact("seed-conflicting-sampling-app", ops))
 
@@ -118,7 +118,7 @@ func TestReconcileACLSamplingRejectsUnownedConflicts(t *testing.T) {
 			Probability: 123,
 			SetID:       int(aclsampling.DefaultSetID),
 		}
-		ops, err := client.Create(collector)
+		ops, err := client.call.Create(collector)
 		require.NoError(t, err)
 		require.NoError(t, client.Transact("seed-conflicting-sample-collector", ops))
 
@@ -169,12 +169,12 @@ func TestReconcileACLSamplingUpdatesOwnedObjectsAndSwapsIDs(t *testing.T) {
 
 	operations := make([]ovsdb.Operation, 0, 4)
 	for _, object := range apps {
-		ops, err := client.Create(object)
+		ops, err := client.call.Create(object)
 		require.NoError(t, err)
 		operations = append(operations, ops...)
 	}
 	for _, object := range collectors {
-		ops, err := client.Create(object)
+		ops, err := client.call.Create(object)
 		require.NoError(t, err)
 		operations = append(operations, ops...)
 	}
@@ -222,9 +222,9 @@ func TestReconcileACLSamplingDisabledCleansOwnedState(t *testing.T) {
 		Probability: 100,
 		SetID:       200,
 	}
-	operations, err := client.Create(externalApp)
+	operations, err := client.call.Create(externalApp)
 	require.NoError(t, err)
-	collectorOps, err := client.Create(externalCollector)
+	collectorOps, err := client.call.Create(externalCollector)
 	require.NoError(t, err)
 	operations = append(operations, collectorOps...)
 	require.NoError(t, client.Transact("seed-unowned-sampling-objects", operations))
@@ -271,7 +271,7 @@ func TestReconcileACLSamplingDisabledRetainsReferencedOwnedCollector(t *testing.
 	require.NoError(t, err)
 	externalACL := aclByName(t, acls, "external-reference")
 	externalACL.SampleNew = sampled.SampleNew
-	updateOps, err := client.Where(&externalACL).Update(&externalACL, &externalACL.SampleNew)
+	updateOps, err := client.call.Where(&externalACL).Update(&externalACL, &externalACL.SampleNew)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("seed-external-sample-reference", updateOps))
 	require.Eventually(t, func() bool {

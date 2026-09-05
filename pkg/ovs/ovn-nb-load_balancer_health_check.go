@@ -87,7 +87,7 @@ func (c *OVNNbClient) CreateLoadBalancerHealthCheck(lbName, vipEndpoint string, 
 	models = append(models, lbHcModel)
 	lbhcUUIDs = append(lbhcUUIDs, lbhc.UUID)
 
-	if createLbhcOp, err = c.Create(models...); err != nil {
+	if createLbhcOp, err = c.call.Create(models...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating lbhc: %w", err)
 	}
@@ -116,7 +116,7 @@ func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHeal
 		err error
 	)
 
-	if op, err = c.ovsDbClient.Where(lbhc).Update(lbhc, fields...); err != nil {
+	if op, err = c.call.Where(lbhc).Update(lbhc, fields...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating lb health check %s: %w", lbhc.Vip, err)
 	}
@@ -131,7 +131,7 @@ func (c *OVNNbClient) UpdateLoadBalancerHealthCheck(lbhc *ovnnb.LoadBalancerHeal
 
 // DeleteLoadBalancerHealthChecks delete several lb health checks once
 func (c *OVNNbClient) DeleteLoadBalancerHealthChecks(filter func(lb *ovnnb.LoadBalancerHealthCheck) bool) error {
-	op, err := c.ovsDbClient.WhereCache(
+	op, err := c.call.WhereCache(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 			if filter != nil {
 				return filter(lbhc)
@@ -194,7 +194,7 @@ func (c *OVNNbClient) GetLoadBalancerHealthCheck(lbName, vipEndpoint string, ign
 	}
 
 	healthCheckList := make([]ovnnb.LoadBalancerHealthCheck, 0)
-	if err = c.ovsDbClient.WhereCache(
+	if err = c.call.WhereCache(
 		func(healthCheck *ovnnb.LoadBalancerHealthCheck) bool {
 			return slices.Contains(lb.HealthCheck, healthCheck.UUID) &&
 				healthCheck.Vip == vipEndpoint
@@ -233,7 +233,7 @@ func (c *OVNNbClient) ListLoadBalancerHealthChecks(filter func(lbhc *ovnnb.LoadB
 	)
 	lbhcList = make([]ovnnb.LoadBalancerHealthCheck, 0)
 
-	if err = c.ovsDbClient.WhereCache(
+	if err = c.call.WhereCache(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 			if filter != nil {
 				return filter(lbhc)
@@ -269,7 +269,7 @@ func (c *OVNNbClient) DeleteLoadBalancerHealthCheckOp(lbName, vip string) ([]ovs
 		return nil, nil
 	}
 
-	mutateOps, err := c.Where(lb).Mutate(lb, model.Mutation{
+	mutateOps, err := c.call.Where(lb).Mutate(lb, model.Mutation{
 		Field:   &lb.HealthCheck,
 		Value:   []string{lbhc.UUID},
 		Mutator: ovsdb.MutateOperationDelete,
@@ -278,7 +278,7 @@ func (c *OVNNbClient) DeleteLoadBalancerHealthCheckOp(lbName, vip string) ([]ovs
 		klog.Errorf("failed to generate operations for deleting lb health check: %v", err)
 		return nil, err
 	}
-	deleteOps, err := c.Where(lbhc).Delete()
+	deleteOps, err := c.call.Where(lbhc).Delete()
 	if err != nil {
 		klog.Errorf("failed to generate operations for deleting lb health check: %v", err)
 		return nil, err

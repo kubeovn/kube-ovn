@@ -87,7 +87,7 @@ func (suite *OvnClientTestSuite) testMigrateVendorExternalIDs() {
 			// vendor tag intentionally missing
 		},
 	}
-	ops, err = nbClient.Create(pg)
+	ops, err = nbClient.call.Create(pg)
 	require.NoError(t, err)
 	err = nbClient.Transact("test-pg-add", ops)
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func (suite *OvnClientTestSuite) testMigrateVendorExternalIDs() {
 			// vendor tag intentionally missing
 		},
 	}
-	ops, err = nbClient.Create(as)
+	ops, err = nbClient.call.Create(as)
 	require.NoError(t, err)
 	err = nbClient.Transact("test-as-add", ops)
 	require.NoError(t, err)
@@ -115,7 +115,7 @@ func (suite *OvnClientTestSuite) testMigrateVendorExternalIDs() {
 		Protocol: &[]string{"tcp"}[0],
 		// vendor tag intentionally missing (ExternalIDs is nil)
 	}
-	ops, err = nbClient.Create(lb)
+	ops, err = nbClient.call.Create(lb)
 	require.NoError(t, err)
 	err = nbClient.Transact("test-lb-add", ops)
 	require.NoError(t, err)
@@ -267,7 +267,7 @@ func (suite *OvnClientTestSuite) testMigrateVendorExternalIDsSkipsNonKubeOvn() {
 			"neutron:security_group_id": "123",
 		},
 	}
-	ops, err := nbClient.Create(pg)
+	ops, err := nbClient.call.Create(pg)
 	require.NoError(t, err)
 	err = nbClient.Transact("test-neutron-pg", ops)
 	require.NoError(t, err)

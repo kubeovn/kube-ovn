@@ -189,10 +189,10 @@ func TestNetworkPolicyACLSamplingPreservesUnownedReferences(t *testing.T) {
 	actualACL := aclByName(t, actual, "np/external-sample.default/ingress/IPv4/0")
 	acl = &actualACL
 	externalSample := &ovnnb.Sample{UUID: ovsclient.NamedUUID(), Metadata: 99}
-	createOps, err := client.Create(externalSample)
+	createOps, err := client.call.Create(externalSample)
 	require.NoError(t, err)
 	acl.SampleNew = &externalSample.UUID
-	updateOps, err := client.Where(acl).Update(acl, &acl.SampleNew)
+	updateOps, err := client.call.Where(acl).Update(acl, &acl.SampleNew)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("seed-unowned-acl-sample-reference", append(createOps, updateOps...)))
 	require.Eventually(t, func() bool {

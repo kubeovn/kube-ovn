@@ -151,7 +151,7 @@ func (c *OVNNbClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fiel
 		return errors.New("logical_router_port is nil")
 	}
 
-	op, err := c.Where(lrp).Update(lrp, fields...)
+	op, err := c.call.Where(lrp).Update(lrp, fields...)
 	if err != nil {
 		err := fmt.Errorf("generate operations for updating logical router port %s: %w", lrp.Name, err)
 		klog.Error(err)
@@ -262,7 +262,7 @@ func (c *OVNNbClient) GetLogicalRouterPort(lrpName string, ignoreNotFound bool) 
 	defer cancel()
 
 	lrp := &ovnnb.LogicalRouterPort{Name: lrpName}
-	if err := c.Get(ctx, lrp); err != nil {
+	if err := c.call.Get(ctx, lrp); err != nil {
 		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
@@ -280,7 +280,7 @@ func (c *OVNNbClient) GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRou
 	defer cancel()
 
 	lrp := &ovnnb.LogicalRouterPort{UUID: uuid}
-	if err := c.Get(ctx, lrp); err != nil {
+	if err := c.call.Get(ctx, lrp); err != nil {
 		err := fmt.Errorf("get logical router port by UUID %s: %w", uuid, err)
 		klog.Error(err)
 		return nil, err
@@ -296,7 +296,7 @@ func (c *OVNNbClient) ListLogicalRouterPorts(externalIDs map[string]string, filt
 
 	lrpList := make([]ovnnb.LogicalRouterPort, 0)
 
-	if err := c.WhereCache(logicalRouterPortFilter(externalIDs, filter)).List(ctx, &lrpList); err != nil {
+	if err := c.call.WhereCache(logicalRouterPortFilter(externalIDs, filter)).List(ctx, &lrpList); err != nil {
 		err := fmt.Errorf("list logical router ports: %w", err)
 		klog.Error(err)
 		return nil, err
@@ -349,7 +349,7 @@ func (c *OVNNbClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lr
 	lrp.ExternalIDs["vendor"] = util.CniTypeName
 
 	/* create logical router port */
-	lrpCreateOp, err := c.Create(lrp)
+	lrpCreateOp, err := c.call.Create(lrp)
 	if err != nil {
 		err := fmt.Errorf("generate operations for creating logical router port %s: %w", lrp.Name, err)
 		klog.Error(err)
@@ -409,7 +409,7 @@ func (c *OVNNbClient) LogicalRouterPortOp(lrpName string, mutationsFunc ...func(
 		}
 	}
 
-	ops, err := c.ovsDbClient.Where(lrp).Mutate(lrp, mutations...)
+	ops, err := c.call.Where(lrp).Mutate(lrp, mutations...)
 	if err != nil {
 		err := fmt.Errorf("generate operations for mutating logical router port %s: %w", lrpName, err)
 		klog.Error(err)

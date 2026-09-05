@@ -33,7 +33,7 @@ func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.Create(lr)
+	op, err := c.call.Create(lr)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical router %s: %w", lrName, err)
@@ -76,7 +76,7 @@ func (c *OVNNbClient) DeleteLogicalRouter(lrName string) error {
 		return nil
 	}
 
-	op, err := c.Where(lr).Delete()
+	op, err := c.call.Where(lr).Delete()
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -97,7 +97,7 @@ func (c *OVNNbClient) GetLogicalRouter(lrName string, ignoreNotFound bool) (*ovn
 	defer cancel()
 
 	lrList := make([]ovnnb.LogicalRouter, 0)
-	if err := c.ovsDbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
+	if err := c.call.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
 		return lr.Name == lrName
 	}).List(ctx, &lrList); err != nil {
 		klog.Error(err)
@@ -131,7 +131,7 @@ func (c *OVNNbClient) ListLogicalRouter(needVendorFilter bool, filter func(lr *o
 	defer cancel()
 
 	var lrList []ovnnb.LogicalRouter
-	if err := c.ovsDbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
+	if err := c.call.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
 		if needVendorFilter && (len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
 		}
@@ -215,7 +215,7 @@ func (c *OVNNbClient) UpdateLogicalRouterOp(lr *ovnnb.LogicalRouter, fields ...a
 		return nil, errors.New("logical_router is nil")
 	}
 
-	op, err := c.ovsDbClient.Where(lr).Update(lr, fields...)
+	op, err := c.call.Where(lr).Update(lr, fields...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for updating logical router %s: %w", lr.Name, err)
@@ -347,7 +347,7 @@ func (c *OVNNbClient) LogicalRouterOp(lrName string, mutationsFunc ...func(lr *o
 		}
 	}
 
-	ops, err := c.ovsDbClient.Where(lr).Mutate(lr, mutations...)
+	ops, err := c.call.Where(lr).Mutate(lr, mutations...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating logical router %s: %w", lrName, err)
