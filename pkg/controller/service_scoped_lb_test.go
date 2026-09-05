@@ -101,6 +101,7 @@ func TestServiceScopedLBNamesTrafficDistributionDualStack(t *testing.T) {
 	svc := &corev1.Service{
 		Namespace: "default", Name: "web", UID: types.UID("uid-dual-stack"),
 		Spec: corev1.ServiceSpec{
+			Type:                corev1.ServiceTypeClusterIP,
 			ClusterIPs:          []string{"10.96.0.10", "fd00:10:96::10"},
 			TrafficDistribution: &trafficDistribution,
 			Ports:               []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
@@ -127,11 +128,26 @@ func TestServiceUsesTrafficDistributionExcludesRuleServices(t *testing.T) {
 	for _, annotation := range []string{util.SwitchLBRuleVipsAnnotation, util.RouterLBRuleVipsAnnotation} {
 		svc := &corev1.Service{
 			Annotations: map[string]string{annotation: "10.0.0.10"},
-			Spec:        corev1.ServiceSpec{TrafficDistribution: &trafficDistribution},
+			Spec:        corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, TrafficDistribution: &trafficDistribution},
 		}
 		if serviceUsesTrafficDistribution(svc) || serviceUsesTemplateLB(svc) || serviceUsesScopedLB(svc) {
 			t.Fatalf("service with %s must stay on the existing rule load balancer path", annotation)
 		}
+	}
+}
+
+func TestServiceUsesTrafficDistributionOnlyForClusterIPServices(t *testing.T) {
+	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameZone
+	for _, serviceType := range []corev1.ServiceType{corev1.ServiceTypeNodePort, corev1.ServiceTypeLoadBalancer, corev1.ServiceTypeExternalName} {
+		svc := &corev1.Service{Spec: corev1.ServiceSpec{Type: serviceType, TrafficDistribution: &trafficDistribution}}
+		if serviceUsesTrafficDistribution(svc) || serviceUsesTemplateLB(svc) {
+			t.Fatalf("trafficDistribution must not use scoped template LBs for service type %s", serviceType)
+		}
+	}
+
+	clusterIP := &corev1.Service{Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, TrafficDistribution: &trafficDistribution}}
+	if !serviceUsesTrafficDistribution(clusterIP) || !serviceUsesTemplateLB(clusterIP) {
+		t.Fatal("trafficDistribution must use scoped template LBs for ClusterIP services")
 	}
 }
 
@@ -247,7 +263,7 @@ func TestEnsureServiceScopedLBTrafficDistributionAddressFamily(t *testing.T) {
 	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameNode
 	svc := &corev1.Service{
 		Namespace: "default", Name: "web", UID: types.UID("uid-template-ipv6"),
-		Spec: corev1.ServiceSpec{TrafficDistribution: &trafficDistribution},
+		Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, TrafficDistribution: &trafficDistribution},
 	}
 	lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBInternalTraffic, "ipv6")
 	gomock.InOrder(
@@ -302,6 +318,7 @@ func TestServiceLBMigrationCandidates(t *testing.T) {
 	templateService := &corev1.Service{
 		Namespace: "default", Name: "web", UID: types.UID("uid-template-migrate"),
 		Spec: corev1.ServiceSpec{
+			Type:                corev1.ServiceTypeClusterIP,
 			ClusterIPs:          []string{"10.96.0.10", "fd00:10:96::10"},
 			TrafficDistribution: &trafficDistribution,
 		},
@@ -321,6 +338,7 @@ func TestDeleteServiceLBMigrationVIPSkipsMissingLoadBalancers(t *testing.T) {
 	svc := &corev1.Service{
 		Namespace: "default", Name: "web", UID: types.UID("uid-template-delete"),
 		Spec: corev1.ServiceSpec{
+			Type:                corev1.ServiceTypeClusterIP,
 			ClusterIPs:          []string{"10.96.0.10", "fd00:10:96::10"},
 			TrafficDistribution: &trafficDistribution,
 		},
@@ -408,7 +426,7 @@ func TestCleanupServiceScopedLBVIPs(t *testing.T) {
 func TestGCServiceTrafficDistributionVariables(t *testing.T) {
 	fake := newFakeController(t)
 	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameZone
-	svc := &corev1.Service{UID: types.UID("uid-active"), Spec: corev1.ServiceSpec{TrafficDistribution: &trafficDistribution}}
+	svc := &corev1.Service{UID: types.UID("uid-active"), Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, TrafficDistribution: &trafficDistribution}}
 	activePrefix := serviceTrafficDistributionVariablePrefix(svc)
 	fake.mockOvnClient.EXPECT().DeleteChassisTemplateVariables(gomock.Any()).DoAndReturn(func(filter func(string) bool) error {
 		if filter(activePrefix + "tcp_vip") {

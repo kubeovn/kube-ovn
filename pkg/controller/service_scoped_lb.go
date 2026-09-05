@@ -42,7 +42,7 @@ func serviceUsesTemplateLB(svc *v1.Service) bool {
 }
 
 func serviceUsesTrafficDistribution(svc *v1.Service) bool {
-	return svc.Spec.TrafficDistribution != nil &&
+	return svc.Spec.Type == v1.ServiceTypeClusterIP && svc.Spec.TrafficDistribution != nil &&
 		svc.Annotations[util.SwitchLBRuleVipsAnnotation] == "" &&
 		svc.Annotations[util.RouterLBRuleVipsAnnotation] == ""
 }
