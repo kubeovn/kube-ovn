@@ -215,7 +215,14 @@ func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...compat.T
 	return nil
 }
 
-func IsHtbQos(iface string) (bool, error) {
+func IsHtbQos(iface string, providers ...compat.TableProvider) (bool, error) {
+	if len(providers) != 0 && providers[0] != nil {
+		return isHtbQosTable(providers[0], iface)
+	}
+	return isHtbQosLegacy(iface)
+}
+
+func isHtbQosLegacy(iface string) (bool, error) {
 	qosType, err := ovsFind("qos", "type", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
 	if err != nil {
 		klog.Error(err)
@@ -313,7 +320,10 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 }
 
 // The latency value expressed in us.
-func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
+func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string, providers ...compat.TableProvider) error {
+	if len(providers) != 0 && providers[0] != nil {
+		return setNetemQosTable(providers[0], podName, podNamespace, iface, latency, limit, loss, jitter)
+	}
 	latencyMs, _ := strconv.Atoi(latency)
 	latencyUs := latencyMs * 1000
 	jitterMs, _ := strconv.Atoi(jitter)
@@ -469,7 +479,10 @@ func deleteNetemQosByID(qosID, iface, podName, podNamespace string) error {
 	return nil
 }
 
-func IsUserspaceDataPath() (is bool, err error) {
+func IsUserspaceDataPath(providers ...compat.TableProvider) (is bool, err error) {
+	if len(providers) != 0 && providers[0] != nil {
+		return isUserspaceDataPathTable(providers[0])
+	}
 	dp, err := ovsFind("bridge", "datapath_type", "name=br-int")
 	if err != nil {
 		klog.Error(err)

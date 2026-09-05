@@ -59,8 +59,8 @@ func (ovsPodQoSOperations) configInterfaceMirror(enableMirror bool, mirrorContro
 	return ovs.ConfigInterfaceMirror(enableMirror, mirrorControl, iface)
 }
 
-func (ovsPodQoSOperations) setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
-	return ovs.SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter)
+func (o ovsPodQoSOperations) setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
+	return ovs.SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter, o.provider)
 }
 
 // ControllerRuntime represents runtime specific controller members

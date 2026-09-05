@@ -273,7 +273,7 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterface
 		return nil
 	}
 
-	isUserspaceDP, err := ovs.IsUserspaceDataPath()
+	isUserspaceDP, err := ovs.IsUserspaceDataPath(c.vswitchTables)
 	if err != nil {
 		klog.Error(err)
 		return err
