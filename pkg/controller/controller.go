@@ -1267,17 +1267,17 @@ func (c *Controller) Run(ctx context.Context) {
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
 
-	c.OVNNbClient.Close()
-	c.OVNSbClient.Close()
+	c.closeNB()
+	c.closeSB()
 }
 
 func (c *Controller) dbStatus() {
 	done := make(chan error, 2)
 	go func() {
-		done <- c.OVNNbClient.Echo(context.Background())
+		done <- c.echoNB(context.Background())
 	}()
 	go func() {
-		done <- c.OVNSbClient.Echo(context.Background())
+		done <- c.echoSB(context.Background())
 	}()
 
 	resultsReceived := 0
@@ -1589,7 +1589,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}, time.Second, ctx.Done())
 
 		// maintain l3 ha about the vpc external lrp binding to the gw chassis
-		c.OVNNbClient.MonitorBFD()
+		c.monitorBFD()
 	}
 	// TODO: we should merge these two vpc nat config into one config and resync them together
 	go wait.Until(func() {

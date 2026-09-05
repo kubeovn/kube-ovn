@@ -9,7 +9,9 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -358,6 +360,34 @@ func TestControllerTableProviderRouterPortRA(t *testing.T) {
 	require.NoError(t, controller.updateLogicalRouterPortRA("lrp-1", "", false))
 	require.Equal(t, 2, backend.updateCalls)
 	require.Equal(t, 2, backend.transactCalls)
+}
+
+func TestControllerTableProviderLogicalSwitchAndDHCP(t *testing.T) {
+	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "vpc-1"})
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.createLogicalSwitch("subnet-1", "vpc-1", "10.0.0.0/24", "10.0.0.1", "", false, false))
+	require.Equal(t, 1, backend.createCalls)
+	_, err := controller.updateSubnetDHCPOptionsTable(&kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "subnet-1"},
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24", Gateway: "10.0.0.1", Protocol: kubeovnv1.ProtocolIPv4,
+			EnableDHCP: true, DHCPv4Options: "dns_server=8.8.8.8",
+		},
+	}, 1450)
+	require.NoError(t, err)
+	require.Equal(t, 2, backend.createCalls)
+}
+
+func TestControllerTableProviderLogicalSwitchACL(t *testing.T) {
+	backend := newTableBackend(&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "subnet-1"})
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, controller.updateLogicalSwitchACL("subnet-1", "10.0.0.0/24", []kubeovnv1.ACL{{
+		Direction: ovnnb.ACLDirectionToLport, Priority: 100, Match: "ip4", Action: ovnnb.ACLActionAllow,
+	}}, true))
+	require.Equal(t, 1, backend.createCalls)
+	require.Equal(t, 1, backend.transactCalls)
 }
 
 func TestControllerTableProviderPortDeletes(t *testing.T) {

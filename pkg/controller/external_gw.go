@@ -168,7 +168,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 		lrpMac = config["nic-mac"]
 	}
 
-	if err := c.OVNNbClient.CreateGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIP, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
+	if err := c.createGatewayLogicalSwitch(c.config.ExternalGatewaySwitch, c.config.ClusterRouter, c.config.ExternalGatewayNet, lrpIP, lrpMac, c.config.ExternalGatewayVlanID, chassises...); err != nil {
 		klog.Errorf("failed to create external gateway switch %s: %v", c.config.ExternalGatewaySwitch, err)
 		return err
 	}
