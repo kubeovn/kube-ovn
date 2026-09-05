@@ -281,13 +281,13 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 
 		// ovn delete fip nat
 		if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+			if err = c.deleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 				klog.Errorf("failed to delete v4 fip %s, %v", key, err)
 				return err
 			}
 		}
 		if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
+			if err = c.deleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
 				klog.Errorf("failed to delete v6 fip %s, %v", key, err)
 				return err
 			}
@@ -427,13 +427,13 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	}
 	// ovn delete fip nat
 	if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+		if err = c.deleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 			klog.Errorf("failed to delete v4 fip %s, %v", key, err)
 			return err
 		}
 	}
 	if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
+		if err = c.deleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
 			klog.Errorf("failed to delete v6 fip %s, %v", key, err)
 			return err
 		}

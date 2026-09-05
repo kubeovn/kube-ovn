@@ -1056,7 +1056,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		for _, policy := range policies {
 			nextHops := rules[policy.Match]
 			if nextHops.Len() == 0 {
-				if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+				if err = c.deleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
 					err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
 					klog.Error(err)
 					return err
@@ -1082,7 +1082,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			}
 		}
 	} else {
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs); err != nil {
+		if err = c.deleteLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1108,7 +1108,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			matches.Delete(policy.Match)
 			continue
 		}
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+		if err = c.deleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
 			err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
 			klog.Error(err)
 			return err
@@ -1134,7 +1134,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				matches.Delete(policy.Match)
 				continue
 			}
-			if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+			if err = c.deleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
 				err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
 				klog.Error(err)
 				return err
@@ -1147,7 +1147,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				return err
 			}
 		}
-	} else if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs); err != nil {
+	} else if err = c.deleteLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -1487,7 +1487,7 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 	if lrName == "" {
 		lrName = c.config.ClusterRouter
 	}
-	if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, -1, externalIDs); err != nil {
+	if err = c.deleteLogicalRouterPolicies(lrName, -1, externalIDs); err != nil {
 		klog.Error(err)
 		return err
 	}

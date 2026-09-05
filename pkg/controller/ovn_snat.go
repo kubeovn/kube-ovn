@@ -211,13 +211,13 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 
 		// ovn delete snat
 		if cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
+			if err = c.deleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 				klog.Errorf("failed to delete v4 snat %s, %v", key, err)
 				return err
 			}
 		}
 		if cachedSnat.Status.V6Eip != "" && cachedSnat.Status.V6IpCidr != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
+			if err = c.deleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
 				klog.Errorf("failed to delete v6 snat %s, %v", key, err)
 				return err
 			}
@@ -346,14 +346,14 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 	}
 	// ovn delete snat
 	if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT,
+		if err = c.deleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT,
 			cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 			klog.Errorf("failed to delete v4 snat %s, %v", key, err)
 			return err
 		}
 	}
 	if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V6Eip != "" && cachedSnat.Status.V6IpCidr != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
+		if err = c.deleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
 			klog.Errorf("failed to delete v6 snat, %v", err)
 			return err
 		}
