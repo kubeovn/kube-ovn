@@ -263,7 +263,7 @@ func (c *Controller) gcNode() error {
 			continue
 		}
 		klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
+		if err = c.deleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
 			klog.Errorf("failed to delete logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
 			return err
 		}
@@ -1100,7 +1100,7 @@ func (c *Controller) gcRoutePolicy() error {
 		srcIP := strings.TrimSpace(parts[1])
 		if _, ok := podIPs[srcIP]; !ok {
 			klog.Infof("gc route policy %s", policy.Match)
-			if err := c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
+			if err := c.deleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
 				klog.Errorf("failed to delete route policy %s: %v", policy.Match, err)
 				return err
 			}

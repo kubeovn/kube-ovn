@@ -332,6 +332,32 @@ func TestControllerTableProviderMeterDelete(t *testing.T) {
 	require.NoError(t, controller.deleteMeter("missing-meter"))
 }
 
+func TestControllerTableProviderStaticRoutes(t *testing.T) {
+	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+	backend := newTableBackend(
+		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1", StaticRoutes: []string{"route-1"}},
+		&ovnnb.LogicalRouterStaticRoute{
+			UUID:       "route-1",
+			RouteTable: "main",
+			Policy:     &policy,
+			IPPrefix:   "10.0.0.0/24",
+			Nexthop:    "192.0.2.1",
+		},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.addLogicalRouterStaticRoute("lr-1", "main", "", "10.0.0.0/24", nil, nil, "192.0.2.2"))
+	require.NoError(t, controller.deleteLogicalRouterStaticRoute("lr-1", new("main"), &policy, "10.0.0.0/24", "192.0.2.1"))
+	require.NoError(t, controller.batchDeleteLogicalRouterStaticRoutes("lr-1", []*ovnnb.LogicalRouterStaticRoute{{
+		RouteTable: "main", Policy: &policy, IPPrefix: "10.0.0.0/24", Nexthop: "192.0.2.1",
+	}}))
+
+	require.Equal(t, 1, backend.createCalls)
+	require.Equal(t, 4, backend.mutateCalls)
+	require.Equal(t, 4, backend.transactCalls)
+}
+
 type tableBackend struct {
 	rows          map[reflect.Type][]any
 	createCalls   int

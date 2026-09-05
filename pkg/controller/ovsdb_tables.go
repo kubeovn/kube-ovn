@@ -647,6 +647,167 @@ func (c *Controller) deleteMeter(name string) error {
 	return c.OVNNbTables.Table(&ovnnb.Meter{}).Transact(context.Background(), "meter-del", operations...)
 }
 
+func (c *Controller) logicalRouterStaticRouteMutationOps(lr *ovnnb.LogicalRouter, uuids []string, mutator ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(lr, model.Mutation{
+		Field: &lr.StaticRoutes, Value: uuids, Mutator: mutator,
+	})
+}
+
+func (c *Controller) addLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix string, bfdID *string, externalIDs map[string]string, nexthops ...string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.AddLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, bfdID, externalIDs, nexthops...)
+	}
+	if policy == "" {
+		policy = ovnnb.LogicalRouterStaticRoutePolicyDstIP
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	routes, err := c.listLogicalRouterStaticRoutes(lrName, &routeTable, &policy, ipPrefix, nil)
+	if err != nil {
+		return err
+	}
+	existing := make(map[string]struct{}, len(routes))
+	var toDelete []string
+	for _, route := range routes {
+		if slices.Contains(nexthops, route.Nexthop) {
+			existing[route.Nexthop] = struct{}{}
+			continue
+		}
+		if route.BFD != nil && bfdID != nil && *route.BFD != *bfdID {
+			continue
+		}
+		toDelete = append(toDelete, route.UUID)
+	}
+	slices.Sort(toDelete)
+	if len(toDelete) != 0 {
+		ops, opErr := c.logicalRouterStaticRouteMutationOps(lr, toDelete, ovsdb.MutateOperationDelete)
+		if opErr != nil {
+			return opErr
+		}
+		if err = c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lr-route-del", ops...); err != nil {
+			return fmt.Errorf("failed to delete static routes from logical router %s: %w", lrName, err)
+		}
+	}
+
+	models := make([]model.Model, 0, len(nexthops))
+	uuids := make([]string, 0, len(nexthops))
+	for _, nexthop := range nexthops {
+		if _, ok := existing[nexthop]; ok {
+			continue
+		}
+		routePolicy := policy
+		route := &ovnnb.LogicalRouterStaticRoute{
+			UUID:        ovsclient.NamedUUID(),
+			Policy:      &routePolicy,
+			IPPrefix:    ipPrefix,
+			Nexthop:     nexthop,
+			RouteTable:  routeTable,
+			ExternalIDs: externalIDs,
+		}
+		if bfdID != nil {
+			route.BFD = bfdID
+			route.Options = map[string]string{util.StaticRouteBfdEcmp: "true"}
+		}
+		models = append(models, route)
+		uuids = append(uuids, route.UUID)
+	}
+	if len(models) == 0 {
+		return nil
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouterStaticRoute{}).CreateOps(models...)
+	if err != nil {
+		return fmt.Errorf("generate operations for creating static routes: %w", err)
+	}
+	insertOps, err := c.logicalRouterStaticRouteMutationOps(lr, uuids, ovsdb.MutateOperationInsert)
+	if err != nil {
+		return fmt.Errorf("generate operations for adding static routes to logical router %s: %w", lrName, err)
+	}
+	operations := append(createOps, insertOps...)
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterStaticRoute{}).Transact(context.Background(), "lr-routes-add", operations...)
+}
+
+func (c *Controller) deleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nexthop string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalRouterStaticRoute(lrName, routeTable, policy, ipPrefix, nexthop)
+	}
+	lr, err := c.getLogicalRouter(lrName, true)
+	if err != nil || lr == nil {
+		return err
+	}
+	if policy == nil || *policy == "" {
+		policy = new(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
+	}
+	routes, err := c.listLogicalRouterStaticRoutes(lrName, routeTable, policy, ipPrefix, nil)
+	if err != nil {
+		return err
+	}
+	uuids := make([]string, 0, len(routes))
+	for _, route := range routes {
+		if nexthop == "" || route.Nexthop == nexthop {
+			uuids = append(uuids, route.UUID)
+		}
+	}
+	slices.Sort(uuids)
+	ops, err := c.logicalRouterStaticRouteMutationOps(lr, uuids, ovsdb.MutateOperationDelete)
+	if err != nil {
+		return fmt.Errorf("generate operations for removing static routes from logical router %s: %w", lrName, err)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lr-route-del", ops...)
+}
+
+func (c *Controller) batchDeleteLogicalRouterStaticRoutes(lrName string, requested []*ovnnb.LogicalRouterStaticRoute) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.BatchDeleteLogicalRouterStaticRoute(lrName, requested)
+	}
+	lr, err := c.getLogicalRouter(lrName, true)
+	if err != nil || lr == nil {
+		return err
+	}
+	targets := make(map[string]string, len(requested))
+	for _, route := range requested {
+		if route == nil {
+			continue
+		}
+		policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+		if route.Policy != nil && *route.Policy != "" {
+			policy = *route.Policy
+		}
+		targets[route.RouteTable+"\x00"+policy+"\x00"+route.IPPrefix] = route.Nexthop
+	}
+	routes, err := c.listLogicalRouterStaticRoutes(lrName, nil, nil, "", nil)
+	if err != nil {
+		return err
+	}
+	uuids := make([]string, 0, len(routes))
+	for _, route := range routes {
+		policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+		if route.Policy != nil && *route.Policy != "" {
+			policy = *route.Policy
+		}
+		nexthop, ok := targets[route.RouteTable+"\x00"+policy+"\x00"+route.IPPrefix]
+		if ok && (nexthop == "" || nexthop == route.Nexthop) {
+			uuids = append(uuids, route.UUID)
+		}
+	}
+	slices.Sort(uuids)
+	ops, err := c.logicalRouterStaticRouteMutationOps(lr, uuids, ovsdb.MutateOperationDelete)
+	if err != nil {
+		return err
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lr-route-del", ops...)
+}
+
 func (c *Controller) updatePortGroupPorts(name string, operation ovsdb.Mutator, portNames ...string) error {
 	if c.OVNNbTables == nil {
 		switch operation {
@@ -1027,6 +1188,34 @@ func (c *Controller) updateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy
 	}
 	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPolicy{}).Update(
 		context.Background(), "lr-policy-update", policy, policy, fields...,
+	)
+}
+
+func (c *Controller) deleteLogicalRouterPolicy(lrName string, priority int, match string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalRouterPolicy(lrName, priority, match)
+	}
+	policies, err := c.listLogicalRouterPolicies(lrName, priority, nil, false)
+	if err != nil {
+		return err
+	}
+	uuids := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		if policy.Match == match {
+			uuids = append(uuids, policy.UUID)
+		}
+	}
+	if len(uuids) == 0 {
+		return nil
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	slices.Sort(uuids)
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Mutate(
+		context.Background(), "lr-policy-del", lr,
+		model.Mutation{Field: &lr.Policies, Value: uuids, Mutator: ovsdb.MutateOperationDelete},
 	)
 }
 
