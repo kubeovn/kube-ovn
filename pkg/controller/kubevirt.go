@@ -84,7 +84,7 @@ func (c *Controller) handleDeleteVM(key string) error {
 			c.ipam.ReleaseAddressByNic(vmKey, port.Name, subnetName)
 		}
 
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(port.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
 		}
