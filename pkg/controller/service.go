@@ -30,9 +30,10 @@ type vpcService struct {
 }
 
 type updateSvcObject struct {
-	key      string
-	oldPorts []v1.ServicePort
-	newPorts []v1.ServicePort
+	key                    string
+	oldPorts               []v1.ServicePort
+	newPorts               []v1.ServicePort
+	oldTrafficDistribution bool
 }
 
 func (c *Controller) enqueueAddService(obj any) {
@@ -138,9 +139,10 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	}
 
 	updateSvc := &updateSvcObject{
-		key:      key,
-		oldPorts: oldSvc.Spec.Ports,
-		newPorts: newSvc.Spec.Ports,
+		key:                    key,
+		oldPorts:               oldSvc.Spec.Ports,
+		newPorts:               newSvc.Spec.Ports,
+		oldTrafficDistribution: oldSvc.Spec.TrafficDistribution != nil,
 	}
 	c.updateServiceQueue.Add(updateSvc)
 	if serviceUsesScopedLB(oldSvc) || serviceUsesScopedLB(newSvc) {
@@ -254,6 +256,11 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		}
 		klog.Error(err)
 		return err
+	}
+	if svcObject.oldTrafficDistribution {
+		if err := c.cleanupServiceTrafficDistributionState(svc); err != nil {
+			return err
+		}
 	}
 	if serviceUsesScopedLB(svc) {
 		c.addOrUpdateEndpointSliceQueue.Add(key)

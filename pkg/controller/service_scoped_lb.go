@@ -150,16 +150,9 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 	}); err != nil {
 		return fmt.Errorf("delete service-scoped load balancers for %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
-	if svc.Spec.TrafficDistribution != nil && c.OVNSbClient != nil {
-		chassises, err := c.OVNSbClient.ListChassis()
-		if err != nil {
-			return fmt.Errorf("list OVN chassis while deleting service %s/%s template variables: %w", svc.Namespace, svc.Name, err)
-		}
-		prefix := serviceTrafficDistributionVariablePrefix(svc)
-		for _, chassis := range *chassises {
-			if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis.Name, prefix, nil); err != nil {
-				return err
-			}
+	if svc.Spec.TrafficDistribution != nil {
+		if err := c.cleanupServiceTrafficDistributionState(svc); err != nil {
+			return err
 		}
 	}
 	return nil
