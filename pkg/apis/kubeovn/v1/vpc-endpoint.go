@@ -40,10 +40,13 @@ type VpcEndpointService struct {
 
 type VpcEndpointServiceSpec struct {
 	// Provider VPC that owns the backend Service.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="vpc is immutable"
 	Vpc string `json:"vpc"`
 	// Namespace of the provider Kubernetes Service.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="namespace is immutable"
 	Namespace string `json:"namespace"`
 	// Name of the provider Kubernetes Service.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="service is immutable"
 	Service string `json:"service"`
 	// Consumer VPCs allowed to attach. Empty means any VPC may consume the service.
 	AllowedVpcs []string `json:"allowedVpcs,omitempty"`
@@ -107,12 +110,16 @@ type VpcEndpoint struct {
 
 type VpcEndpointSpec struct {
 	// Consumer VPC.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="vpc is immutable"
 	Vpc string `json:"vpc"`
 	// Consumer subnet used to allocate the local VIP.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="subnet is immutable"
 	Subnet string `json:"subnet"`
 	// Name of the cluster-scoped VpcEndpointService to consume.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="endpointService is immutable"
 	EndpointService string `json:"endpointService"`
 	// Optional static IPv4 address for the local VIP. Allocated from the subnet when empty.
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ip is immutable"
 	IP string `json:"ip,omitempty"`
 }
 

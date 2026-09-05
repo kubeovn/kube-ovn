@@ -4674,12 +4674,21 @@ spec:
               namespace:
                 description: Namespace of the provider Kubernetes Service.
                 type: string
+                x-kubernetes-validations:
+                - message: namespace is immutable
+                  rule: self == oldSelf
               service:
                 description: Name of the provider Kubernetes Service.
                 type: string
+                x-kubernetes-validations:
+                - message: service is immutable
+                  rule: self == oldSelf
               vpc:
                 description: Provider VPC that owns the backend Service.
                 type: string
+                x-kubernetes-validations:
+                - message: vpc is immutable
+                  rule: self == oldSelf
             type: object
           status:
             properties:
@@ -4810,16 +4819,28 @@ spec:
               endpointService:
                 description: Name of the cluster-scoped VpcEndpointService to consume.
                 type: string
+                x-kubernetes-validations:
+                - message: endpointService is immutable
+                  rule: self == oldSelf
               ip:
                 description: Optional static IPv4 address for the local VIP. Allocated
                   from the subnet when empty.
                 type: string
+                x-kubernetes-validations:
+                - message: ip is immutable
+                  rule: self == oldSelf
               subnet:
                 description: Consumer subnet used to allocate the local VIP.
                 type: string
+                x-kubernetes-validations:
+                - message: subnet is immutable
+                  rule: self == oldSelf
               vpc:
                 description: Consumer VPC.
                 type: string
+                x-kubernetes-validations:
+                - message: vpc is immutable
+                  rule: self == oldSelf
             type: object
           status:
             properties:

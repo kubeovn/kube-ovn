@@ -288,6 +288,9 @@ func (c *Controller) handleAddOrUpdateVpcEndpointService(key string) error {
 
 	if err := c.reconcileVpcEndpointService(eps); err != nil {
 		klog.Errorf("failed to reconcile VpcEndpointService %s: %v", key, err)
+		// Always requeue consumers so they can tear down stale LB/SNAT/VIP state
+		// when the provider Service disappears or other reconcile errors occur.
+		c.enqueueVpcEndpointsForService(eps.Name)
 		return c.patchVpcEndpointServiceStatus(eps, false, err.Error())
 	}
 	c.enqueueVpcEndpointsForService(eps.Name)
@@ -297,6 +300,9 @@ func (c *Controller) handleAddOrUpdateVpcEndpointService(key string) error {
 func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointService) error {
 	if eps.Spec.Vpc == "" || eps.Spec.Namespace == "" || eps.Spec.Service == "" {
 		return errors.New("vpc, namespace and service must be set")
+	}
+	if err := validateVpcEndpointServiceImmutability(eps); err != nil {
+		return err
 	}
 	if _, err := c.vpcsLister.Get(eps.Spec.Vpc); err != nil {
 		return fmt.Errorf("get provider vpc %s: %w", eps.Spec.Vpc, err)
@@ -311,14 +317,14 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 	svc, err := c.servicesLister.Services(eps.Spec.Namespace).Get(eps.Spec.Service)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			if clearErr := c.deleteUnusedProtocolLBs(eps.Name, eps.Spec.Vpc, vpcEndpointServiceLBName, nil); clearErr != nil {
-				return clearErr
-			}
-			if clearErr := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, eps.Status.TransitVIP, nil); clearErr != nil {
+			if clearErr := c.deactivateVpcEndpointService(eps); clearErr != nil {
 				return clearErr
 			}
 		}
 		return fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
+	}
+	if svcVpc := vpcEndpointEffectiveServiceVpc(svc, c.config.ClusterRouter); svcVpc != eps.Spec.Vpc {
+		return fmt.Errorf("provider service %s/%s belongs to vpc %s, not %s", eps.Spec.Namespace, eps.Spec.Service, svcVpc, eps.Spec.Vpc)
 	}
 
 	transitVIP, mac, err := c.ensureVpcEndpointServiceVIP(eps)
@@ -343,6 +349,34 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 		return err
 	}
 	return c.patchVpcEndpointServiceStatus(eps, true, "")
+}
+
+func validateVpcEndpointServiceImmutability(eps *kubeovnv1.VpcEndpointService) error {
+	if eps.Labels == nil {
+		return nil
+	}
+	if vpc := eps.Labels[util.VpcEndpointVpcLabel]; vpc != "" && vpc != eps.Spec.Vpc {
+		return fmt.Errorf("vpc is immutable after creation (was %s)", vpc)
+	}
+	if ns := eps.Labels[util.VpcEndpointSvcNsLabel]; ns != "" && ns != eps.Spec.Namespace {
+		return fmt.Errorf("namespace is immutable after creation (was %s)", ns)
+	}
+	if name := eps.Labels[util.VpcEndpointSvcNameLabel]; name != "" && name != eps.Spec.Service {
+		return fmt.Errorf("service is immutable after creation (was %s)", name)
+	}
+	return nil
+}
+
+func vpcEndpointEffectiveServiceVpc(svc *corev1.Service, clusterRouter string) string {
+	if svc.Annotations != nil {
+		if vpc := svc.Annotations[util.VpcAnnotation]; vpc != "" {
+			return vpc
+		}
+		if vpc := svc.Annotations[util.LogicalRouterAnnotation]; vpc != "" {
+			return vpc
+		}
+	}
+	return clusterRouter
 }
 
 func vpcEndpointServicePorts(svc *corev1.Service) string {
@@ -483,6 +517,15 @@ func (c *Controller) deleteUnusedProtocolLBs(name, vpc string, lbNameFn func(str
 }
 
 func (c *Controller) cleanupVpcEndpointService(eps *kubeovnv1.VpcEndpointService) error {
+	if err := c.deactivateVpcEndpointService(eps); err != nil {
+		return err
+	}
+	return c.maybeDetachVpcFromTransit(eps.Spec.Vpc)
+}
+
+// deactivateVpcEndpointService removes provider-side OVN resources while keeping
+// the CR so consumers can be reconciled and cleaned up.
+func (c *Controller) deactivateVpcEndpointService(eps *kubeovnv1.VpcEndpointService) error {
 	for _, protocol := range []string{"tcp", "udp", "sctp"} {
 		lbName := vpcEndpointServiceLBName(eps.Name, protocol)
 		if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(eps.Spec.Vpc, ovsdb.MutateOperationDelete, lbName); err != nil {
@@ -503,7 +546,10 @@ func (c *Controller) cleanupVpcEndpointService(eps *kubeovnv1.VpcEndpointService
 		return err
 	}
 	c.ipam.ReleaseAddressByPod(vpcEndpointServiceIPAMName(eps.Name), c.config.VpcEndpointTransitSwitch)
-	return c.maybeDetachVpcFromTransit(eps.Spec.Vpc)
+	eps.Status.TransitVIP = ""
+	eps.Status.Mac = ""
+	eps.Status.Ports = ""
+	return nil
 }
 
 func (c *Controller) patchVpcEndpointServiceStatus(eps *kubeovnv1.VpcEndpointService, ready bool, errMsg string) error {
@@ -568,6 +614,9 @@ func (c *Controller) reconcileVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 	if ep.Spec.Vpc == "" || ep.Spec.Subnet == "" || ep.Spec.EndpointService == "" {
 		return errors.New("vpc, subnet and endpointService must be set")
 	}
+	if err := validateVpcEndpointImmutability(ep); err != nil {
+		return err
+	}
 	subnet, err := c.subnetsLister.Get(ep.Spec.Subnet)
 	if err != nil {
 		return fmt.Errorf("get subnet %s: %w", ep.Spec.Subnet, err)
@@ -577,17 +626,38 @@ func (c *Controller) reconcileVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 	}
 	eps, err := c.vpcEndpointServiceLister.Get(ep.Spec.EndpointService)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			if cleanErr := c.cleanupVpcEndpoint(ep); cleanErr != nil {
+				return cleanErr
+			}
+		}
 		return fmt.Errorf("get VpcEndpointService %s: %w", ep.Spec.EndpointService, err)
 	}
 	if !vpcEndpointServiceAllowed(eps, ep.Spec.Vpc) {
 		return fmt.Errorf("vpc %s is not allowed to consume endpoint service %s", ep.Spec.Vpc, eps.Name)
 	}
 	if !eps.Status.Ready || eps.Status.TransitVIP == "" {
+		if ep.Status.Ready || ep.Status.LocalVIP != "" || ep.Status.SnatIP != "" {
+			if cleanErr := c.cleanupVpcEndpoint(ep); cleanErr != nil {
+				return cleanErr
+			}
+		}
 		return fmt.Errorf("endpoint service %s is not ready", eps.Name)
 	}
 	svc, err := c.servicesLister.Services(eps.Spec.Namespace).Get(eps.Spec.Service)
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			if cleanErr := c.cleanupVpcEndpoint(ep); cleanErr != nil {
+				return cleanErr
+			}
+		}
 		return fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
+	}
+	if svcVpc := vpcEndpointEffectiveServiceVpc(svc, c.config.ClusterRouter); svcVpc != eps.Spec.Vpc {
+		if cleanErr := c.cleanupVpcEndpoint(ep); cleanErr != nil {
+			return cleanErr
+		}
+		return fmt.Errorf("provider service %s/%s belongs to vpc %s, not %s", eps.Spec.Namespace, eps.Spec.Service, svcVpc, eps.Spec.Vpc)
 	}
 
 	snatIP, err := c.ensureVpcTransitAttachment(ep.Spec.Vpc)
@@ -616,6 +686,19 @@ func (c *Controller) reconcileVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 		return err
 	}
 	return c.patchVpcEndpointStatus(ep, true, "")
+}
+
+func validateVpcEndpointImmutability(ep *kubeovnv1.VpcEndpoint) error {
+	if ep.Labels == nil {
+		return nil
+	}
+	if vpc := ep.Labels[util.VpcEndpointVpcLabel]; vpc != "" && vpc != ep.Spec.Vpc {
+		return fmt.Errorf("vpc is immutable after creation (was %s)", vpc)
+	}
+	if svc := ep.Labels[util.VpcEndpointServiceLabel]; svc != "" && svc != ep.Spec.EndpointService {
+		return fmt.Errorf("endpointService is immutable after creation (was %s)", svc)
+	}
+	return nil
 }
 
 func (c *Controller) ensureVpcEndpointLabels(ep *kubeovnv1.VpcEndpoint) error {
@@ -705,6 +788,9 @@ func (c *Controller) cleanupVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 	if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vipName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return err
 	}
+	ep.Status.LocalVIP = ""
+	ep.Status.TransitVIP = ""
+	ep.Status.SnatIP = ""
 	return c.maybeDetachVpcFromTransit(ep.Spec.Vpc)
 }
 
