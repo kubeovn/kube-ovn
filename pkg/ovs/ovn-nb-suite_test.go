@@ -759,6 +759,10 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchAcl() {
 	suite.testUpdateLogicalSwitchACL()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateVpcEndpointServiceACLs() {
+	suite.testUpdateVpcEndpointServiceACLs()
+}
+
 func (suite *OvnClientTestSuite) Test_SetNetPolACLLog() {
 	suite.testSetNetPolACLLog()
 }

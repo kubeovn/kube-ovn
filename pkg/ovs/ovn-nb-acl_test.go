@@ -1196,6 +1196,59 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testUpdateVpcEndpointServiceACLs() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-vpc-endpoint-acl-ls"
+	epsName := "db"
+	transitVIP := "100.65.1.20"
+	allowedLSP := "vpc-endpoint-transit-consumer"
+
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(lsName))
+
+	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, nil))
+	acls, err := nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
+	require.NoError(t, err)
+	require.Empty(t, acls)
+
+	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, []string{allowedLSP}))
+	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
+	require.NoError(t, err)
+	require.Len(t, acls, 2)
+
+	var sawAllow, sawDrop bool
+	for _, acl := range acls {
+		require.Equal(t, ovnnb.ACLDirectionFromLport, acl.Direction)
+		require.Equal(t, epsName, acl.ExternalIDs[util.VpcEndpointServiceACLExternalID])
+		switch acl.Action {
+		case ovnnb.ACLActionAllowRelated:
+			sawAllow = true
+			require.Contains(t, acl.Match, allowedLSP)
+			require.Contains(t, acl.Match, transitVIP)
+		case ovnnb.ACLActionDrop:
+			sawDrop = true
+			require.Equal(t, "ip4.dst == "+transitVIP, acl.Match)
+		}
+	}
+	require.True(t, sawAllow)
+	require.True(t, sawDrop)
+
+	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, "", []string{allowedLSP}))
+	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
+	require.NoError(t, err)
+	require.Empty(t, acls)
+
+	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, "fd00:65::20", []string{allowedLSP}))
+	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
+	require.NoError(t, err)
+	require.Len(t, acls, 2)
+	for _, acl := range acls {
+		require.Contains(t, acl.Match, "ip6.dst == fd00:65::20")
+	}
+}
+
 func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 	t := suite.T()
 	t.Parallel()
