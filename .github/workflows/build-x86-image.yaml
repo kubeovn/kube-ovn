@@ -929,7 +929,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.e2e-selection.outputs.k8sConformanceMatrix) }}
@@ -1029,11 +1029,16 @@ jobs:
       - name: Create kind cluster
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          n_worker=6 make kind-init-${{ matrix.ip-family }}
+          zones=(zone-a zone-b zone-c)
+          mapfile -t nodes < <(kubectl get nodes -o name | sort)
+          for i in "${!nodes[@]}"; do
+            kubectl label --overwrite "${nodes[$i]}" topology.kubernetes.io/zone="${zones[$((i % ${#zones[@]}))]}"
+          done
 
       - name: Install Kube-OVN
         id: install
-        run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
+        run: ENABLE_OVN_LB_DISTRIBUTED=true make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
         id: e2e

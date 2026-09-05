@@ -2,11 +2,13 @@ package ovs
 
 import (
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -393,6 +395,201 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 	)
 }
 
+func (suite *OvnClientTestSuite) testDeleteLoadBalancerAffinityTimeout() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-delete-affinity-timeout-lb"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerAffinityTimeout(lbName, 42))
+	require.NoError(t, nbClient.DeleteLoadBalancerAffinityTimeout(lbName))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	_, ok := lb.Options["affinity_timeout"]
+	require.False(t, ok)
+
+	require.NoError(t, nbClient.DeleteLoadBalancerAffinityTimeout(lbName))
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerSelectionFields() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-selection-fields"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerSelectionFields(lbName, []string{"ip_src", "ipv6_src"}))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"ip_src", "ipv6_src"}, lb.SelectionFields)
+	require.NoError(t, nbClient.SetLoadBalancerSelectionFields(lbName, nil))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Empty(t, lb.SelectionFields)
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerDistributed() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-distributed"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerDistributed(lbName, true))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "true", lb.Options["distributed"])
+	lb.Options["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.Options))
+	require.NoError(t, nbClient.SetLoadBalancerDistributed(lbName, false))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "false", lb.Options["distributed"])
+	require.Equal(t, "keep", lb.Options["existing"])
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerAddressFamily() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-address-family"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerAddressFamily(lbName, "ipv6"))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "ipv6", lb.Options["address-family"])
+	lb.Options["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.Options))
+	require.NoError(t, nbClient.SetLoadBalancerAddressFamily(lbName, "ipv4"))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "ipv4", lb.Options["address-family"])
+	require.Equal(t, "keep", lb.Options["existing"])
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerExternalIDs() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-external-ids"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	lb.ExternalIDs["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.ExternalIDs))
+	require.NoError(t, nbClient.SetLoadBalancerExternalIDs(lbName, map[string]string{"owner": "service"}))
+
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "kube-ovn", lb.ExternalIDs["vendor"])
+	require.Equal(t, "keep", lb.ExternalIDs["existing"])
+	require.Equal(t, "service", lb.ExternalIDs["owner"])
+}
+
+func (suite *OvnClientTestSuite) testReconcileChassisTemplateVariables() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	chassis := "test-chassis-template-reconcile"
+	prefix := "kube_ovn_svc_test_"
+	variables := map[string]string{prefix + "vip": "10.96.0.10"}
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables))
+
+	var rows []ovnnb.ChassisTemplateVar
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, variables)
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, util.CniTypeName, rows[0].ExternalIDs["vendor"])
+
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, "other_", map[string]string{"other_keep": "value"}))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && rows[0].Variables["other_keep"] == "value"
+	}, time.Second, 10*time.Millisecond)
+
+	variables = map[string]string{
+		prefix + "vip":      "10.96.0.11",
+		prefix + "backends": "10.0.0.2:8080",
+	}
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
+			prefix + "vip":      "10.96.0.11",
+			prefix + "backends": "10.0.0.2:8080",
+			"other_keep":        "value",
+		})
+	}, time.Second, 10*time.Millisecond)
+
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, nil))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{"other_keep": "value"})
+	}, time.Second, 10*time.Millisecond)
+}
+
+func (suite *OvnClientTestSuite) testDeleteChassisTemplateVariables() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	row := &ovnnb.ChassisTemplateVar{
+		UUID:    ovsclient.NamedUUID(),
+		Chassis: "test-chassis-template-cleanup",
+		Variables: map[string]string{
+			"kube_ovn_svc_active_vip":   "10.96.0.10",
+			"kube_ovn_svc_orphan_vip":   "10.96.0.11",
+			"other_controller_variable": "keep",
+		},
+	}
+	ops, err := nbClient.Create(row)
+	require.NoError(t, err)
+	require.NoError(t, nbClient.Transact("chassis-template-var-add", ops))
+	require.Eventually(t, func() bool {
+		var rows []ovnnb.ChassisTemplateVar
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == row.Chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.NoError(t, nbClient.DeleteChassisTemplateVariables(func(name string) bool {
+		return name == "kube_ovn_svc_orphan_vip"
+	}))
+
+	var rows []ovnnb.ChassisTemplateVar
+	require.Eventually(t, func() bool {
+		rows = nil
+		err = nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == row.Chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
+			"kube_ovn_svc_active_vip":   "10.96.0.10",
+			"other_controller_variable": "keep",
+		})
+	}, time.Second, 10*time.Millisecond)
+}
+
 func (suite *OvnClientTestSuite) testSetLoadBalancerCtFlush() {
 	t := suite.T()
 	t.Parallel()
@@ -648,6 +845,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 		err = nbClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
 		require.NoError(t, err)
 	}
+	require.NoError(t, nbClient.LoadBalancerAddIPPortMapping(lbName, markedVIP, map[string]string{"192.168.20.3": "backend.default"}))
 	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, markedVIP, "node-worker-1"))
 
 	deletedVips = []string{
@@ -666,6 +864,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	require.NoError(t, err)
 	require.Equal(t, vips, lb.Vips)
 	require.NotContains(t, lb.ExternalIDs, localExternalVIPKeyPrefix+markedVIP)
+	require.NotContains(t, lb.IPPortMappings, "192.168.20.3")
 
 	err = nbClient.LoadBalancerAddHealthCheck(lbName, "10.107.43.239:8080", false, nil, nil)
 	require.NoError(t, err)
@@ -703,6 +902,36 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 
 	err = nbClient.LoadBalancerDeleteVip(lbName, "10.107.43.239:8080", ignoreHealthCheck)
 	require.ErrorContains(t, err, "more than one load balancer with same name")
+}
+
+func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
+	t := suite.T()
+	t.Parallel()
+
+	const (
+		oldLBName = "test-lb-migrate-vip-old"
+		newLBName = "test-lb-migrate-vip-new"
+		oldVIP    = "10.96.0.20:80"
+		newVIP    = "^service_vip:80"
+		backend   = "10.0.0.2:8080"
+	)
+	nbClient := suite.ovnNBClient
+	require.NoError(t, nbClient.CreateLoadBalancer(oldLBName, "tcp"))
+	require.NoError(t, nbClient.CreateLoadBalancer(newLBName, "tcp"))
+	require.NoError(t, nbClient.LoadBalancerAddVip(oldLBName, oldVIP, backend))
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(oldLBName, oldVIP, false, map[string]string{"10.0.0.2": "backend.default"}, nil))
+
+	require.NoError(t, nbClient.LoadBalancerMigrateVIP(newLBName, newVIP, []string{"^service_backends"}, oldVIP, oldLBName))
+
+	oldLB, err := nbClient.GetLoadBalancer(oldLBName, false)
+	require.NoError(t, err)
+	require.NotContains(t, oldLB.Vips, oldVIP)
+	require.NotContains(t, oldLB.IPPortMappings, "10.0.0.2")
+	require.Empty(t, oldLB.HealthCheck)
+
+	newLB, err := nbClient.GetLoadBalancer(newLBName, false)
+	require.NoError(t, err)
+	require.Equal(t, "^service_backends", newLB.Vips[newVIP])
 }
 
 func (suite *OvnClientTestSuite) testSetLoadBalancerVIPExternalTrafficLocal() {

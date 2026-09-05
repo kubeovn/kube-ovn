@@ -9,6 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
+
+	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -109,6 +113,44 @@ func TestEndpointReady(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetHealthCheckVipHandlesConcurrentCreate(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	vip := &kubeovnv1.Vip{
+		Name:   "ovn-default",
+		Spec:   kubeovnv1.VipSpec{Subnet: "ovn-default"},
+		Status: kubeovnv1.VipStatus{V4ip: "10.16.0.2"},
+	}
+	_, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Create(t.Context(), vip, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	// Keep the informer cache stale to reproduce two workers observing NotFound
+	// before one of them creates the shared health-check VIP.
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	got, err := ctrl.getHealthCheckVip("ovn-default", "10.96.0.10")
+	require.NoError(t, err)
+	require.Equal(t, "10.16.0.2", got)
+}
+
+func TestTopologyBackendSubset(t *testing.T) {
+	backends := []topologyBackend{
+		{backend: "10.0.0.1:80", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-a"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+		{backend: "10.0.0.2:80", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-b"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+		{backend: "10.0.0.3:80", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-c"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-b"}}}},
+	}
+	assert.ElementsMatch(t, []string{"10.0.0.1:80"}, topologyBackendSubset(backends, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(backends, "node-x", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80", "10.0.0.3:80"}, topologyBackendSubset(backends, "node-x", "zone-x", corev1.ServiceTrafficDistributionPreferSameNode))
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(backends, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameZone))
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(backends, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferClose))
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80", "10.0.0.3:80"}, topologyBackendSubset(backends, "node-a", "zone-a", "unknown"))
+
+	missingNodeHint := append([]topologyBackend(nil), backends...)
+	missingNodeHint[1].hints = &discoveryv1.EndpointHints{ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(missingNodeHint, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
 }
 
 func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {

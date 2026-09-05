@@ -1645,6 +1645,34 @@ func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol any,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), varargs...)
 }
 
+// DeleteChassisTemplateVariables mocks base method.
+func (m *MockLoadBalancer) DeleteChassisTemplateVariables(filter func(string) bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVariables", filter)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVariables indicates an expected call of DeleteChassisTemplateVariables.
+func (mr *MockLoadBalancerMockRecorder) DeleteChassisTemplateVariables(filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVariables", reflect.TypeOf((*MockLoadBalancer)(nil).DeleteChassisTemplateVariables), filter)
+}
+
+// DeleteLoadBalancerAffinityTimeout mocks base method.
+func (m *MockLoadBalancer) DeleteLoadBalancerAffinityTimeout(lbName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLoadBalancerAffinityTimeout", lbName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLoadBalancerAffinityTimeout indicates an expected call of DeleteLoadBalancerAffinityTimeout.
+func (mr *MockLoadBalancerMockRecorder) DeleteLoadBalancerAffinityTimeout(lbName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLoadBalancerAffinityTimeout", reflect.TypeOf((*MockLoadBalancer)(nil).DeleteLoadBalancerAffinityTimeout), lbName)
+}
+
 // DeleteLoadBalancers mocks base method.
 func (m *MockLoadBalancer) DeleteLoadBalancers(filter func(*ovnnb.LoadBalancer) bool) error {
 	m.ctrl.T.Helper()
@@ -1793,6 +1821,25 @@ func (mr *MockLoadBalancerMockRecorder) LoadBalancerExists(lbName any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerExists", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerExists), lbName)
 }
 
+// LoadBalancerMigrateVIP mocks base method.
+func (m *MockLoadBalancer) LoadBalancerMigrateVIP(lbName, vip string, backends []string, oldVIP string, oldLBNames ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lbName, vip, backends, oldVIP}
+	for _, a := range oldLBNames {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "LoadBalancerMigrateVIP", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LoadBalancerMigrateVIP indicates an expected call of LoadBalancerMigrateVIP.
+func (mr *MockLoadBalancerMockRecorder) LoadBalancerMigrateVIP(lbName, vip, backends, oldVIP any, oldLBNames ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lbName, vip, backends, oldVIP}, oldLBNames...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerMigrateVIP", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerMigrateVIP), varargs...)
+}
+
 // LoadBalancerUpdateIPPortMapping mocks base method.
 func (m *MockLoadBalancer) LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error {
 	m.ctrl.T.Helper()
@@ -1805,6 +1852,34 @@ func (m *MockLoadBalancer) LoadBalancerUpdateIPPortMapping(lbName, vip string, i
 func (mr *MockLoadBalancerMockRecorder) LoadBalancerUpdateIPPortMapping(lbName, vip, ipPortMappings any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerUpdateIPPortMapping", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerUpdateIPPortMapping), lbName, vip, ipPortMappings)
+}
+
+// ReconcileChassisTemplateVariables mocks base method.
+func (m *MockLoadBalancer) ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileChassisTemplateVariables", chassis, prefix, variables)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileChassisTemplateVariables indicates an expected call of ReconcileChassisTemplateVariables.
+func (mr *MockLoadBalancerMockRecorder) ReconcileChassisTemplateVariables(chassis, prefix, variables any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileChassisTemplateVariables", reflect.TypeOf((*MockLoadBalancer)(nil).ReconcileChassisTemplateVariables), chassis, prefix, variables)
+}
+
+// SetLoadBalancerAddressFamily mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerAddressFamily(lbName, family string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerAddressFamily", lbName, family)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerAddressFamily indicates an expected call of SetLoadBalancerAddressFamily.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerAddressFamily(lbName, family any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAddressFamily", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerAddressFamily), lbName, family)
 }
 
 // SetLoadBalancerAffinityTimeout mocks base method.
@@ -1835,6 +1910,34 @@ func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
+// SetLoadBalancerDistributed mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerDistributed(lbName string, distributed bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerDistributed", lbName, distributed)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerDistributed indicates an expected call of SetLoadBalancerDistributed.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerDistributed(lbName, distributed any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerDistributed", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerDistributed), lbName, distributed)
+}
+
+// SetLoadBalancerExternalIDs mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerExternalIDs", lbName, externalIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerExternalIDs indicates an expected call of SetLoadBalancerExternalIDs.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerExternalIDs(lbName, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerExternalIDs", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerExternalIDs), lbName, externalIDs)
+}
+
 // SetLoadBalancerPreferLocalBackend mocks base method.
 func (m *MockLoadBalancer) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
 	m.ctrl.T.Helper()
@@ -1847,6 +1950,48 @@ func (m *MockLoadBalancer) SetLoadBalancerPreferLocalBackend(lbName string, pref
 func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, preferLocalBackend any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
+}
+
+// SetLoadBalancerSelectionFields mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerSelectionFields(lbName string, selectionFields []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerSelectionFields", lbName, selectionFields)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerSelectionFields indicates an expected call of SetLoadBalancerSelectionFields.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerSelectionFields(lbName, selectionFields any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerSelectionFields", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerSelectionFields), lbName, selectionFields)
+}
+
+// SetLoadBalancerTemplate mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerTemplate(lbName string, template bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerTemplate", lbName, template)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerTemplate indicates an expected call of SetLoadBalancerTemplate.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerTemplate(lbName, template any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerTemplate", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerTemplate), lbName, template)
+}
+
+// SetLoadBalancerTemplateVIP mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerTemplateVIP", lbName, vip, backendVariable)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerTemplateVIP indicates an expected call of SetLoadBalancerTemplateVIP.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerTemplateVIP(lbName, vip, backendVariable any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerTemplateVIP", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerTemplateVIP), lbName, vip, backendVariable)
 }
 
 // SetLoadBalancerVIPExternalTrafficLocal mocks base method.
@@ -4157,6 +4302,20 @@ func (mr *MockNbClientMockRecorder) DeleteBFDByDstIP(lrpName, dstIP any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBFDByDstIP", reflect.TypeOf((*MockNbClient)(nil).DeleteBFDByDstIP), lrpName, dstIP)
 }
 
+// DeleteChassisTemplateVariables mocks base method.
+func (m *MockNbClient) DeleteChassisTemplateVariables(filter func(string) bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVariables", filter)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVariables indicates an expected call of DeleteChassisTemplateVariables.
+func (mr *MockNbClientMockRecorder) DeleteChassisTemplateVariables(filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVariables", reflect.TypeOf((*MockNbClient)(nil).DeleteChassisTemplateVariables), filter)
+}
+
 // DeleteDHCPOptions mocks base method.
 func (m *MockNbClient) DeleteDHCPOptions(lsName, protocol string) error {
 	m.ctrl.T.Helper()
@@ -4229,6 +4388,20 @@ func (m *MockNbClient) DeleteHAChassisGroup(name string) error {
 func (mr *MockNbClientMockRecorder) DeleteHAChassisGroup(name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteHAChassisGroup", reflect.TypeOf((*MockNbClient)(nil).DeleteHAChassisGroup), name)
+}
+
+// DeleteLoadBalancerAffinityTimeout mocks base method.
+func (m *MockNbClient) DeleteLoadBalancerAffinityTimeout(lbName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLoadBalancerAffinityTimeout", lbName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLoadBalancerAffinityTimeout indicates an expected call of DeleteLoadBalancerAffinityTimeout.
+func (mr *MockNbClientMockRecorder) DeleteLoadBalancerAffinityTimeout(lbName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLoadBalancerAffinityTimeout", reflect.TypeOf((*MockNbClient)(nil).DeleteLoadBalancerAffinityTimeout), lbName)
 }
 
 // DeleteLoadBalancerHealthCheck mocks base method.
@@ -5273,6 +5446,25 @@ func (mr *MockNbClientMockRecorder) LoadBalancerHealthCheckExists(lbName, vip an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerHealthCheckExists", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerHealthCheckExists), lbName, vip)
 }
 
+// LoadBalancerMigrateVIP mocks base method.
+func (m *MockNbClient) LoadBalancerMigrateVIP(lbName, vip string, backends []string, oldVIP string, oldLBNames ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lbName, vip, backends, oldVIP}
+	for _, a := range oldLBNames {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "LoadBalancerMigrateVIP", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LoadBalancerMigrateVIP indicates an expected call of LoadBalancerMigrateVIP.
+func (mr *MockNbClientMockRecorder) LoadBalancerMigrateVIP(lbName, vip, backends, oldVIP any, oldLBNames ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lbName, vip, backends, oldVIP}, oldLBNames...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerMigrateVIP", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerMigrateVIP), varargs...)
+}
+
 // LoadBalancerUpdateIPPortMapping mocks base method.
 func (m *MockNbClient) LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error {
 	m.ctrl.T.Helper()
@@ -5551,14 +5743,6 @@ func (mr *MockNbClientMockRecorder) PortGroupSetPorts(pgName, ports any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupSetPorts", reflect.TypeOf((*MockNbClient)(nil).PortGroupSetPorts), pgName, ports)
 }
 
-// ReconcileGatewayChassises mocks base method.
-func (m *MockNbClient) ReconcileGatewayChassises(lrpName string, chassises []string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReconcileGatewayChassises", lrpName, chassises)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
 // PrepareNetworkPolicyACLSampling mocks base method.
 func (m *MockNbClient) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*ovs.NetworkPolicySamplingRequest, error) {
 	m.ctrl.T.Helper()
@@ -5582,16 +5766,38 @@ func (m *MockNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig)
 	return ret0
 }
 
-// ReconcileGatewayChassises indicates an expected call of ReconcileGatewayChassises.
-func (mr *MockNbClientMockRecorder) ReconcileGatewayChassises(lrpName, chassises any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).ReconcileGatewayChassises), lrpName, chassises)
-}
-
 // ReconcileACLSampling indicates an expected call of ReconcileACLSampling.
 func (mr *MockNbClientMockRecorder) ReconcileACLSampling(config any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSampling", reflect.TypeOf((*MockNbClient)(nil).ReconcileACLSampling), config)
+}
+
+// ReconcileChassisTemplateVariables mocks base method.
+func (m *MockNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileChassisTemplateVariables", chassis, prefix, variables)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileChassisTemplateVariables indicates an expected call of ReconcileChassisTemplateVariables.
+func (mr *MockNbClientMockRecorder) ReconcileChassisTemplateVariables(chassis, prefix, variables any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileChassisTemplateVariables", reflect.TypeOf((*MockNbClient)(nil).ReconcileChassisTemplateVariables), chassis, prefix, variables)
+}
+
+// ReconcileGatewayChassises mocks base method.
+func (m *MockNbClient) ReconcileGatewayChassises(lrpName string, chassises []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileGatewayChassises", lrpName, chassises)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileGatewayChassises indicates an expected call of ReconcileGatewayChassises.
+func (mr *MockNbClientMockRecorder) ReconcileGatewayChassises(lrpName, chassises any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).ReconcileGatewayChassises), lrpName, chassises)
 }
 
 // ReconcilePortDHCPOptions mocks base method.
@@ -5715,6 +5921,20 @@ func (mr *MockNbClientMockRecorder) SetICAutoRoute(enable, blackList any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNbClient)(nil).SetICAutoRoute), enable, blackList)
 }
 
+// SetLoadBalancerAddressFamily mocks base method.
+func (m *MockNbClient) SetLoadBalancerAddressFamily(lbName, family string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerAddressFamily", lbName, family)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerAddressFamily indicates an expected call of SetLoadBalancerAddressFamily.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerAddressFamily(lbName, family any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAddressFamily", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerAddressFamily), lbName, family)
+}
+
 // SetLoadBalancerAffinityTimeout mocks base method.
 func (m *MockNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) error {
 	m.ctrl.T.Helper()
@@ -5743,6 +5963,34 @@ func (mr *MockNbClientMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
+// SetLoadBalancerDistributed mocks base method.
+func (m *MockNbClient) SetLoadBalancerDistributed(lbName string, distributed bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerDistributed", lbName, distributed)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerDistributed indicates an expected call of SetLoadBalancerDistributed.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerDistributed(lbName, distributed any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerDistributed", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerDistributed), lbName, distributed)
+}
+
+// SetLoadBalancerExternalIDs mocks base method.
+func (m *MockNbClient) SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerExternalIDs", lbName, externalIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerExternalIDs indicates an expected call of SetLoadBalancerExternalIDs.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerExternalIDs(lbName, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerExternalIDs", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerExternalIDs), lbName, externalIDs)
+}
+
 // SetLoadBalancerPreferLocalBackend mocks base method.
 func (m *MockNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
 	m.ctrl.T.Helper()
@@ -5755,6 +6003,48 @@ func (m *MockNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLo
 func (mr *MockNbClientMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, preferLocalBackend any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
+}
+
+// SetLoadBalancerSelectionFields mocks base method.
+func (m *MockNbClient) SetLoadBalancerSelectionFields(lbName string, selectionFields []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerSelectionFields", lbName, selectionFields)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerSelectionFields indicates an expected call of SetLoadBalancerSelectionFields.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerSelectionFields(lbName, selectionFields any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerSelectionFields", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerSelectionFields), lbName, selectionFields)
+}
+
+// SetLoadBalancerTemplate mocks base method.
+func (m *MockNbClient) SetLoadBalancerTemplate(lbName string, template bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerTemplate", lbName, template)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerTemplate indicates an expected call of SetLoadBalancerTemplate.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerTemplate(lbName, template any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerTemplate", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerTemplate), lbName, template)
+}
+
+// SetLoadBalancerTemplateVIP mocks base method.
+func (m *MockNbClient) SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerTemplateVIP", lbName, vip, backendVariable)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerTemplateVIP indicates an expected call of SetLoadBalancerTemplateVIP.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerTemplateVIP(lbName, vip, backendVariable any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerTemplateVIP", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerTemplateVIP), lbName, vip, backendVariable)
 }
 
 // SetLoadBalancerVIPExternalTrafficLocal mocks base method.
