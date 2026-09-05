@@ -228,7 +228,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		return nil, err
 	}
 
-	if err = ovs.SetNetemQos(podName, podNamespace, ifaceID, latency, limit, loss, jitter); err != nil {
+	if err = ovs.SetNetemQos(podName, podNamespace, ifaceID, latency, limit, loss, jitter, csh.Config.VswitchTables); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -236,7 +236,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	if containerNicName == "" {
 		return nil, nil
 	}
-	isUserspaceDP, err := ovs.IsUserspaceDataPath()
+	isUserspaceDP, err := ovs.IsUserspaceDataPath(csh.Config.VswitchTables)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -1701,7 +1701,7 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 // Add host nic to external bridge
 // Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
 func (c *Controller) configProviderNic(nicName, brName string, trunks []string) (int, error) {
-	isUserspaceDP, err := ovs.IsUserspaceDataPath()
+	isUserspaceDP, err := ovs.IsUserspaceDataPath(c.vswitchTables)
 	if err != nil {
 		klog.Error(err)
 		return 0, err

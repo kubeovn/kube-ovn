@@ -1826,7 +1826,7 @@ func (c *Controller) setExGateway() error {
 		return err
 	}
 	var isUserspaceDP bool
-	isUserspaceDP, err = ovs.IsUserspaceDataPath()
+	isUserspaceDP, err = ovs.IsUserspaceDataPath(c.vswitchTables)
 	if err != nil {
 		klog.Error(err)
 		return err
