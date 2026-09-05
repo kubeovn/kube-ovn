@@ -199,6 +199,10 @@ func (c *Controller) handleUpdateNp(key string) error {
 		klog.Errorf("failed to set ports of port group %s to %v: %v", pgName, ports, err)
 		return err
 	}
+	aclBuilder, err := c.networkPolicyACLBuilder()
+	if err != nil {
+		return err
+	}
 
 	samplingState := c.prepareNetworkPolicyACLSampling(key, pgName, np)
 
@@ -211,7 +215,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	enforcementLax := c.isNetworkPolicyEnforcementLax(np)
 	if hasIngressRule(np) {
 		if protocolSet.Size() > 0 {
-			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax, logRate)
+			blockACLOps, err := aclBuilder.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax, logRate)
 			if err != nil {
 				klog.Errorf("failed to set default ingress block acl: %v", err)
 				return fmt.Errorf("failed to set default ingress block acl: %w", err)
@@ -219,7 +223,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			ingressACLOps = append(ingressACLOps, blockACLOps...)
 
 			if enforcementLax {
-				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionToLport)
+				defaultBlockExceptions, err := aclBuilder.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionToLport)
 				if err != nil {
 					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
 					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
@@ -274,7 +278,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(selectorAllows) != 0 {
-					ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					ops, err := aclBuilder.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, logRate, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 						return err
@@ -285,7 +289,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				// Create separate ACL for ipBlock peers with inline per-CIDR except
 				if len(ipBlocks) != 0 {
 					ipBlockACLName := fmt.Sprintf("np/%s.%s/ingress/%s/%d/ipBlock", npName, np.Namespace, protocol, idx)
-					ops, err := c.OVNNbClient.UpdateIngressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					ops, err := aclBuilder.UpdateIngressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, npr.Ports, logEnable, logActions, logRate, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add ingress ipBlock acls to np %s: %v", key, err)
 						return err
@@ -307,7 +311,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, nil, logEnable, logActions, logRate, namedPortMap)
+				ops, err := aclBuilder.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, nil, logEnable, logActions, logRate, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
 					return err
@@ -373,7 +377,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	if hasEgressRule(np) {
 		if protocolSet.Size() > 0 {
-			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax, logRate)
+			blockACLOps, err := aclBuilder.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax, logRate)
 			if err != nil {
 				klog.Errorf("failed to set default egress block acl: %v", err)
 				return fmt.Errorf("failed to set default egress block acl: %w", err)
@@ -381,7 +385,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			egressACLOps = append(egressACLOps, blockACLOps...)
 
 			if enforcementLax {
-				defaultBlockExceptions, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionFromLport)
+				defaultBlockExceptions, err := aclBuilder.UpdateDefaultBlockExceptionsACLOps(key, pgName, np.Namespace, ovnnb.ACLDirectionFromLport)
 				if err != nil {
 					klog.Errorf("failed to set default block exceptions for ingress acl: %v", err)
 					return fmt.Errorf("failed to set default block exceptions for ingress acl: %w", err)
@@ -436,7 +440,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				if len(selectorAllows) != 0 {
-					ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					ops, err := aclBuilder.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, logRate, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 						return err
@@ -447,7 +451,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				// Create separate ACL for ipBlock peers with inline per-CIDR except
 				if len(ipBlocks) != 0 {
 					ipBlockACLName := fmt.Sprintf("np/%s.%s/egress/%s/%d/ipBlock", npName, np.Namespace, protocol, idx)
-					ops, err := c.OVNNbClient.UpdateEgressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					ops, err := aclBuilder.UpdateEgressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, npr.Ports, logEnable, logActions, logRate, namedPortMap)
 					if err != nil {
 						klog.Errorf("generate operations that add egress ipBlock acls to np %s: %v", key, err)
 						return err
@@ -469,7 +473,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, logRate, namedPortMap)
+				ops, err := aclBuilder.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, logRate, namedPortMap)
 				if err != nil {
 					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err
@@ -529,7 +533,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if !enforcementLax && protocolSet.Has(kubeovnv1.ProtocolIPv6) {
-		if err = c.OVNNbClient.CreateGatewayACL("", pgName); err != nil {
+		if err = c.createGatewayACL("", pgName); err != nil {
 			klog.Errorf("create gateway acl: %v", err)
 			return err
 		}
@@ -564,7 +568,7 @@ func (c *Controller) prepareNetworkPolicyACLSampling(key, pgName string, np *net
 		c.npSamplingStates.Delete(key)
 	}
 
-	request, err := c.OVNNbClient.PrepareNetworkPolicyACLSampling(pgName, np.Namespace, np.Name, string(np.UID))
+	request, err := c.prepareNetworkPolicyACLSamplingBackend(pgName, np.Namespace, np.Name, string(np.UID))
 	if err != nil {
 		// Sampling is best-effort and must never block NetworkPolicy enforcement.
 		recordACLSamplingFailure(aclSamplingOperationPrepare)
@@ -585,7 +589,7 @@ func (c *Controller) queueNetworkPolicyACLSampling(key string, state *networkPol
 }
 
 func (c *Controller) setNetworkPolicyACLLog(pgName, key string, logEnable, isIngress bool) bool {
-	if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, isIngress); err != nil {
+	if err := c.setNetPolACLLog(pgName, logEnable, isIngress); err != nil {
 		// Logging is best-effort for enforcement, but sampling waits for the
 		// complete enforcement path to succeed.
 		klog.Errorf("failed to set network policy %s ACL log: %v", key, err)
@@ -633,7 +637,7 @@ func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
 	if !ok || !state.ready {
 		return nil
 	}
-	if err := c.OVNNbClient.ApplyNetworkPolicyACLSampling(c.config.ACLSampling, state.request); err != nil {
+	if err := c.applyNetworkPolicyACLSamplingBackend(c.config.ACLSampling, state.request); err != nil {
 		recordACLSamplingFailure(aclSamplingOperationAttach)
 		return err
 	}

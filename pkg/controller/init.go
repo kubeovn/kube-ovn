@@ -27,12 +27,51 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+// nbMigrationProvider is an optional capability for upgrade-only operations.
+// These operations coordinate several tables and schema versions, so exposing
+// them as basic TableProvider CRUD would obscure their invariants.
+type nbMigrationProvider interface {
+	MigrateVendorExternalIDs() error
+	MigrateACLTier() error
+	CleanNoParentKeyAcls() error
+}
+
+func (c *Controller) migrateVendorExternalIDs() error {
+	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
+		return provider.MigrateVendorExternalIDs()
+	}
+	if c.OVNNbTables != nil {
+		return errors.New("OVN NB table provider does not support vendor migration")
+	}
+	return c.OVNNbClient.MigrateVendorExternalIDs()
+}
+
+func (c *Controller) migrateACLTier() error {
+	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
+		return provider.MigrateACLTier()
+	}
+	if c.OVNNbTables != nil {
+		return errors.New("OVN NB table provider does not support ACL tier migration")
+	}
+	return c.OVNNbClient.MigrateACLTier()
+}
+
+func (c *Controller) cleanNoParentKeyACLs() error {
+	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
+		return provider.CleanNoParentKeyAcls()
+	}
+	if c.OVNNbTables != nil {
+		return errors.New("OVN NB table provider does not support ACL parent cleanup")
+	}
+	return c.OVNNbClient.CleanNoParentKeyAcls()
+}
+
 func (c *Controller) InitOVN() error {
 	var err error
 
 	// migrate vendor externalIDs to kube-ovn resources created in versions prior to v1.15.0
 	// this must run before ACL cleanup to ensure existing resources are properly tagged
-	if err = c.OVNNbClient.MigrateVendorExternalIDs(); err != nil {
+	if err = c.migrateVendorExternalIDs(); err != nil {
 		klog.Errorf("failed to migrate vendor externalIDs: %v", err)
 		return err
 	}
@@ -40,13 +79,13 @@ func (c *Controller) InitOVN() error {
 	// migrate tier field of ACL rules created in versions prior to v1.13.0
 	// after upgrading, the tier field has a default value of zero, which is not the value used in versions >= v1.13.0
 	// we need to migrate the tier field to the correct value
-	if err = c.OVNNbClient.MigrateACLTier(); err != nil {
+	if err = c.migrateACLTier(); err != nil {
 		klog.Errorf("failed to migrate ACL tier: %v", err)
 		return err
 	}
 
 	// clean all no parent key acls
-	if err = c.OVNNbClient.CleanNoParentKeyAcls(); err != nil {
+	if err = c.cleanNoParentKeyACLs(); err != nil {
 		klog.Errorf("failed to clean all no parent key acls: %v", err)
 		return err
 	}

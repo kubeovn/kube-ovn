@@ -74,7 +74,7 @@ func (c *Controller) setAutoRoute(autoRoute bool) error {
 			blackList = append(blackList, ipv6)
 		}
 	}
-	if err := c.OVNNbClient.SetICAutoRoute(autoRoute, blackList); err != nil {
+	if err := c.setICAutoRouteTable(autoRoute, blackList); err != nil {
 		klog.Errorf("failed to config auto route, %v", err)
 		return err
 	}
@@ -84,7 +84,7 @@ func (c *Controller) setAutoRoute(autoRoute bool) error {
 
 func (c *Controller) DeleteICResources(azName string) error {
 	icTSs := make([]string, 0)
-	if err := c.OVNNbClient.DeleteLogicalSwitchPorts(nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+	if err := c.deleteICLogicalSwitchPorts(func(lsp *ovnnb.LogicalSwitchPort) bool {
 		// add the code below because azName may have multi "-"
 		firstIndex := strings.Index(lsp.Name, "-")
 		if firstIndex != -1 {
@@ -101,7 +101,7 @@ func (c *Controller) DeleteICResources(azName string) error {
 		return err
 	}
 
-	if err := c.OVNNbClient.DeleteLogicalRouterPorts(nil, func(lrp *ovnnb.LogicalRouterPort) bool {
+	if err := c.deleteICLogicalRouterPorts(func(lrp *ovnnb.LogicalRouterPort) bool {
 		lastIndex := strings.LastIndex(lrp.Name, "-")
 		if lastIndex != -1 {
 			firstPart := lrp.Name[:lastIndex]
@@ -114,7 +114,7 @@ func (c *Controller) DeleteICResources(azName string) error {
 	}
 
 	for _, icTS := range icTSs {
-		if err := c.OVNNbClient.DeleteLogicalSwitch(icTS); err != nil {
+		if err := c.deleteICLogicalSwitch(icTS); err != nil {
 			return err
 		}
 	}
@@ -285,7 +285,7 @@ func (c *Controller) removeInterConnection(azName string) error {
 }
 
 func (c *Controller) establishInterConnection(config map[string]string) error {
-	if err := c.OVNNbClient.SetAzName(config["az-name"]); err != nil {
+	if err := c.setICAzNameTable(config["az-name"]); err != nil {
 		klog.Errorf("failed to set az name: %v", err)
 		return err
 	}
@@ -311,7 +311,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 	for i, tsName := range tsNames {
 		tsPort := fmt.Sprintf("%s-%s", tsName, config["az-name"])
 		lrpName := fmt.Sprintf("%s-%s", config["az-name"], tsName)
-		exist, err := c.OVNNbClient.LogicalSwitchPortExists(tsPort)
+		exist, err := c.logicalSwitchPortExistsTable(tsPort)
 		if err != nil {
 			klog.Errorf("failed to check logical switch port %q: %v", tsPort, err)
 			return err
@@ -355,7 +355,7 @@ func (c *Controller) gatewayChassisNames(gwNodes []string, order int) ([]string,
 	ordered := generateNewOrderGwNodes(gwNodes, order)
 	chassises := make([]string, len(ordered))
 	for i, gw := range ordered {
-		chassis, err := c.OVNSbClient.GetChassisByHost(gw)
+		chassis, err := c.getICChassisByHost(gw)
 		if err != nil {
 			klog.Errorf("failed to get gw %q chassis: %v", gw, err)
 			return nil, err
@@ -448,13 +448,19 @@ func (c *Controller) stopOVNIC() error {
 }
 
 func (c *Controller) delLearnedRoute() error {
-	lrList, err := c.OVNNbClient.ListLogicalRouter(false, nil)
+	lrList, err := c.listICLogicalRouters()
 	if err != nil {
 		klog.Errorf("failed to list logical routers: %v", err)
 		return err
 	}
 	for _, lr := range lrList {
-		if err = c.OVNNbClient.DeleteLogicalRouterStaticRouteByExternalIDs(lr.Name, map[string]string{"ic-learned-route": ""}); err != nil {
+		routes, routeErr := c.listICRoutes(&lr, func(route *ovnnb.LogicalRouterStaticRoute) bool {
+			return route.ExternalIDs["ic-learned-route"] != ""
+		})
+		if routeErr != nil {
+			return routeErr
+		}
+		if err = c.deleteICRoutes(&lr, routes); err != nil {
 			klog.Errorf("failed to delete learned static routes on logical router %s: %v", lr.Name, err)
 			return err
 		}
@@ -551,18 +557,22 @@ func stripPrefix(policyMatch string) (string, error) {
 }
 
 func (c *Controller) syncOneRouteToPolicy(key, value string) {
-	lr, err := c.OVNNbClient.GetLogicalRouter(c.config.ClusterRouter, false)
+	lr, err := c.getICLogicalRouter(c.config.ClusterRouter)
 	if err != nil {
 		klog.Infof("logical router %s is not ready at %v", util.DefaultVpc, time.Now())
 		return
 	}
-	lrRouteList, err := c.OVNNbClient.ListLogicalRouterStaticRoutesByOption(lr.Name, util.MainRouteTable, key, value)
+	lrRouteList, err := c.listICRoutes(lr, func(route *ovnnb.LogicalRouterStaticRoute) bool {
+		return route.RouteTable == util.MainRouteTable && route.Options[key] == value
+	})
 	if err != nil {
 		klog.Errorf("failed to list lr ovn-ic route %v", err)
 		return
 	}
 
-	lrPolicyList, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(lr.Name, key, value)
+	lrPolicyList, err := c.listICPolicies(lr, func(policy *ovnnb.LogicalRouterPolicy) bool {
+		return policy.ExternalIDs[key] == value
+	})
 	if err != nil {
 		klog.Errorf("failed to list ovn-ic lr policy: %v", err)
 		return
@@ -570,7 +580,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 
 	if len(lrRouteList) == 0 {
 		klog.V(5).Info("lr ovn-ic route does not exist")
-		err := c.OVNNbClient.DeleteLogicalRouterPolicies(lr.Name, util.OvnICPolicyPriority, map[string]string{key: value})
+		err := c.deleteICPolicies(lr, util.OvnICPolicyPriority, key, value)
 		if err != nil {
 			klog.Errorf("failed to delete ovn-ic lr policy: %v", err)
 			return
@@ -603,23 +613,21 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 			match = util.MatchV6Dst + " == " + prefix
 		}
 
-		if err = c.OVNNbClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, match, ovnnb.LogicalRouterPolicyActionAllow, nil, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+		if err = c.addICPolicy(lr, &ovnnb.LogicalRouterPolicy{Priority: util.OvnICPolicyPriority, Match: match, Action: ovnnb.LogicalRouterPolicyActionAllow, ExternalIDs: map[string]string{key: value, "vendor": util.CniTypeName}}); err != nil {
 			klog.Errorf("failed to add router policy: %v", err)
 		}
 
 		return true
 	})
 	for _, uuid := range policyMap {
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lr.Name, uuid); err != nil {
+		if err := c.deleteICPolicyUUID(lr, uuid); err != nil {
 			klog.Errorf("deleting router policy failed %v", err)
 		}
 	}
 }
 
 func (c *Controller) listRemoteLogicalSwitchPortAddress() (*strset.Set, error) {
-	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(true, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
-		return lsp.Type == "remote"
-	})
+	lsps, err := c.listICRemoteLogicalSwitchPortAddresses()
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("list remote logical switch ports: %w", err)
@@ -674,7 +682,7 @@ func (c *Controller) refreshConflictCIDRs() error {
 		return err
 	}
 
-	lrList, err := c.OVNNbClient.ListLogicalRouter(false, nil)
+	lrList, err := c.listICLogicalRouters()
 	if err != nil {
 		klog.Errorf("failed to list logical routers: %v", err)
 		return err
@@ -688,7 +696,9 @@ func (c *Controller) refreshConflictCIDRs() error {
 	}
 	var learned []learnedRoute
 	for _, lr := range lrList {
-		routeList, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(lr.Name, nil, nil, "", map[string]string{"ic-learned-route": ""})
+		routeList, err := c.listICRoutes(&lr, func(route *ovnnb.LogicalRouterStaticRoute) bool {
+			return route.ExternalIDs["ic-learned-route"] != ""
+		})
 		if err != nil {
 			klog.Errorf("failed to list learned static routes on logical router %s: %v", lr.Name, err)
 			return err
@@ -724,7 +734,11 @@ func (c *Controller) refreshConflictCIDRs() error {
 				continue
 			}
 		}
-		if err = c.OVNNbClient.DeleteLogicalRouterStaticRouteByUUID(route.lrName, route.uuid); err != nil {
+		lr, getErr := c.getICLogicalRouter(route.lrName)
+		if getErr != nil {
+			return getErr
+		}
+		if err := c.deleteICRoutes(lr, []*ovnnb.LogicalRouterStaticRoute{{UUID: route.uuid}}); err != nil {
 			klog.Errorf("failed to delete conflicting learned route %s on logical router %s: %v", route.prefix, route.lrName, err)
 			return err
 		}
@@ -734,7 +748,7 @@ func (c *Controller) refreshConflictCIDRs() error {
 }
 
 func (c *Controller) persistedConflictCIDRs(localCIDRs []string) ([]string, error) {
-	nbGlobal, err := c.OVNNbClient.GetNbGlobal()
+	nbGlobal, err := c.getNBGlobalTable()
 	if err != nil {
 		klog.Errorf("failed to get NB_Global while restoring IC conflicts: %v", err)
 		return nil, err

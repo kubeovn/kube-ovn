@@ -346,7 +346,7 @@ func genericACL(parent, direction string, priority any, match string, action any
 		Direction:   direction,
 		Priority:    priorityValue,
 		Match:       match,
-		Action:      ovnnb.ACLAction(fmt.Sprint(action)),
+		Action:      fmt.Sprint(action),
 		Tier:        tier,
 		ExternalIDs: ids,
 	}
@@ -465,6 +465,10 @@ func (c *Controller) deletePortGroupACLs(pgName, direction string, externalIDs m
 }
 
 func (c *Controller) transactNB(method string, operations ...ovsdb.Operation) error {
+	// NetworkPolicy/ANP/CNP builders remain domain capabilities on the OVN
+	// client: they resolve address-set semantics, meters, ACL names, and policy
+	// tiers before returning operations. The generic table facade owns the final
+	// transaction so those builders do not bypass provider transaction policy.
 	if len(operations) == 0 {
 		return nil
 	}
@@ -493,6 +497,281 @@ func (c *Controller) createLogicalSwitchACLTable(ls *ovnnb.LogicalSwitch, acls .
 		return nil, err
 	}
 	return append(createOps, insertOps...), nil
+}
+
+// createPortGroupACLTable builds ACL insert and parent-reference operations
+// for a port group. Keeping the parent mutation in the same operation list
+// avoids leaving an orphan ACL when a reconcile creates both rows together.
+func (c *Controller) createPortGroupACLTable(pg *ovnnb.PortGroup, acls ...*ovnnb.ACL) ([]ovsdb.Operation, error) {
+	if pg == nil {
+		return nil, errors.New("port group is nil")
+	}
+	nonNil := make([]model.Model, 0, len(acls))
+	for _, acl := range acls {
+		if acl != nil {
+			nonNil = append(nonNil, acl)
+		}
+	}
+	if len(nonNil) == 0 {
+		return nil, nil
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.ACL{}).CreateOps(nonNil...)
+	if err != nil {
+		return nil, err
+	}
+	uuidValues := make([]string, 0, len(nonNil))
+	for _, row := range nonNil {
+		uuidValues = append(uuidValues, row.(*ovnnb.ACL).UUID)
+	}
+	insertOps, err := c.OVNNbTables.Table(&ovnnb.PortGroup{}).MutateOps(pg, model.Mutation{
+		Field: &pg.ACLs, Value: uuidValues, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return append(createOps, insertOps...), nil
+}
+
+func (c *Controller) createPortGroupACLs(pgName string, acls ...*ovnnb.ACL) error {
+	pg, err := c.getPortGroup(pgName, false)
+	if err != nil {
+		return err
+	}
+	operations, err := c.createPortGroupACLTable(pg, acls...)
+	if err != nil {
+		return err
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.PortGroup{}).Transact(context.Background(), "pg-acls-add", operations...)
+}
+
+func (c *Controller) createGatewayACL(lsName, pgName string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateGatewayACL(lsName, pgName)
+	}
+	parentName, parentType := pgName, "pg"
+	if parentName == "" {
+		parentName, parentType = lsName, ovs.LogicalSwitchKey
+	}
+	if parentName == "" {
+		return errors.New("one of port group name and logical switch name must be specified")
+	}
+	egressOptions := func(acl *ovnnb.ACL) {
+		if acl.Options == nil {
+			acl.Options = make(map[string]string, 1)
+		}
+		acl.Options["apply-after-lb"] = "true"
+	}
+	acls := []*ovnnb.ACL{
+		genericACL(parentName, ovnnb.ACLDirectionFromLport, util.EgressAllowPriority, "icmp6", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, nil, egressOptions),
+		genericACL(parentName, ovnnb.ACLDirectionToLport, util.IngressAllowPriority, "icmp6", ovnnb.ACLActionAllowStateless, util.NetpolACLTier, nil),
+	}
+	if parentType == "pg" {
+		return c.createMissingACLsForPortGroup(parentName, acls...)
+	}
+	ls, err := c.getLogicalSwitch(parentName, false)
+	if err != nil {
+		return err
+	}
+	return c.createMissingACLsForLogicalSwitch(ls, acls...)
+}
+
+func (c *Controller) createMissingACLsForPortGroup(pgName string, desired ...*ovnnb.ACL) error {
+	pg, err := c.getPortGroup(pgName, false)
+	if err != nil {
+		return err
+	}
+	return c.createMissingACLs(pgName, pg.ACLs, desired, func(rows []*ovnnb.ACL) ([]ovsdb.Operation, error) {
+		return c.createPortGroupACLTable(pg, rows...)
+	})
+}
+
+func (c *Controller) createMissingACLsForLogicalSwitch(ls *ovnnb.LogicalSwitch, desired ...*ovnnb.ACL) error {
+	return c.createMissingACLs(ls.Name, ls.ACLs, desired, func(rows []*ovnnb.ACL) ([]ovsdb.Operation, error) {
+		return c.createLogicalSwitchACLTable(ls, rows...)
+	})
+}
+
+func (c *Controller) createMissingACLs(parent string, attached []string, desired []*ovnnb.ACL, build func([]*ovnnb.ACL) ([]ovsdb.Operation, error)) error {
+	allowed := make(map[string]struct{}, len(attached))
+	for _, uuid := range attached {
+		allowed[uuid] = struct{}{}
+	}
+	var existing []ovnnb.ACL
+	if err := c.OVNNbTables.Table(&ovnnb.ACL{}).Filter(context.Background(), func(row *ovnnb.ACL) bool {
+		_, attached := allowed[row.UUID]
+		return attached && row.ExternalIDs["parent"] == parent
+	}, &existing); err != nil {
+		return err
+	}
+	has := make(map[string]struct{}, len(existing))
+	for _, row := range existing {
+		has[aclIdentity(&row)] = struct{}{}
+	}
+	missing := make([]*ovnnb.ACL, 0, len(desired))
+	for _, row := range desired {
+		if row == nil {
+			continue
+		}
+		key := aclIdentity(row)
+		if _, ok := has[key]; ok {
+			continue
+		}
+		has[key] = struct{}{}
+		missing = append(missing, row)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	operations, err := build(missing)
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.ACL{}).Transact(context.Background(), "acls-add", operations...)
+}
+
+// aclIdentity matches the fields used by OVN's ACL lookup semantics. Action is
+// intentionally excluded: direction, priority, match, and tier identify one
+// ACL under a given parent in the legacy client as well.
+func aclIdentity(row *ovnnb.ACL) string {
+	return fmt.Sprintf("%s|%d|%s|%d", row.Direction, row.Priority, row.Match, row.Tier)
+}
+
+func (c *Controller) createNodeACL(pgName, nodeIPStr, joinIPStr string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateNodeACL(pgName, nodeIPStr, joinIPStr)
+	}
+	pg, err := c.getPortGroup(pgName, false)
+	if err != nil {
+		return err
+	}
+	nodeIPs := strings.Split(nodeIPStr, ",")
+	desired := make([]*ovnnb.ACL, 0, len(nodeIPs)*2)
+	for _, nodeIP := range nodeIPs {
+		if nodeIP == "" {
+			continue
+		}
+		ipSuffix := "ip4"
+		if util.CheckProtocol(nodeIP) == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+		desired = append(desired,
+			genericACL(pgName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil),
+			genericACL(pgName, ovnnb.ACLDirectionFromLport, util.NodeAllowPriority, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, nodeIP, ipSuffix, pgAs), ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil, func(acl *ovnnb.ACL) {
+				acl.Options = map[string]string{"apply-after-lb": "true"}
+			}),
+		)
+	}
+	allowed := make(map[string]struct{}, len(pg.ACLs))
+	for _, uuid := range pg.ACLs {
+		allowed[uuid] = struct{}{}
+	}
+	var existing []ovnnb.ACL
+	if err := c.OVNNbTables.Table(&ovnnb.ACL{}).Filter(context.Background(), func(row *ovnnb.ACL) bool {
+		_, attached := allowed[row.UUID]
+		return attached && row.ExternalIDs["parent"] == pgName
+	}, &existing); err != nil {
+		return err
+	}
+	var operations []ovsdb.Operation
+	var stale []string
+	for joinIP := range strings.SplitSeq(joinIPStr, ",") {
+		if joinIP == "" || slices.Contains(nodeIPs, joinIP) {
+			continue
+		}
+		ipSuffix := "ip4"
+		if util.CheckProtocol(joinIP) == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+		matches := []struct {
+			direction ovnnb.ACLDirection
+			match     string
+		}{
+			{ovnnb.ACLDirectionToLport, fmt.Sprintf("%s.src == %s && %s.dst == $%s", ipSuffix, joinIP, ipSuffix, pgAs)},
+			{ovnnb.ACLDirectionFromLport, fmt.Sprintf("%s.dst == %s && %s.src == $%s", ipSuffix, joinIP, ipSuffix, pgAs)},
+		}
+		for _, candidate := range matches {
+			for _, row := range existing {
+				if row.Direction == candidate.direction && row.Priority == parseACLInt(util.NodeAllowPriority) && row.Match == candidate.match && row.Tier == util.NetpolACLTier {
+					stale = append(stale, row.UUID)
+				}
+			}
+		}
+	}
+	if len(stale) != 0 {
+		operations, err = c.OVNNbTables.Table(&ovnnb.PortGroup{}).MutateOps(pg, model.Mutation{
+			Field: &pg.ACLs, Value: stale, Mutator: ovsdb.MutateOperationDelete,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	seen := make(map[string]struct{}, len(existing))
+	for _, row := range existing {
+		seen[aclIdentity(&row)] = struct{}{}
+	}
+	missing := make([]*ovnnb.ACL, 0, len(desired))
+	for _, row := range desired {
+		key := aclIdentity(row)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		missing = append(missing, row)
+	}
+	if len(missing) != 0 {
+		createOps, createErr := c.createPortGroupACLTable(pg, missing...)
+		if createErr != nil {
+			return createErr
+		}
+		operations = append(operations, createOps...)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.PortGroup{}).Transact(context.Background(), "node-acls-update", operations...)
+}
+
+func parseACLInt(value string) int {
+	parsed, _ := strconv.Atoi(value)
+	return parsed
+}
+
+func (c *Controller) setNetPolACLLog(pgName string, logEnable, isIngress bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, isIngress)
+	}
+	pg, err := c.getPortGroup(pgName, false)
+	if err != nil {
+		return err
+	}
+	direction, portDirection := ovnnb.ACLDirectionToLport, "outport"
+	priority := parseACLInt(util.IngressDefaultDrop)
+	if !isIngress {
+		direction, portDirection = ovnnb.ACLDirectionFromLport, "inport"
+		priority = parseACLInt(util.EgressDefaultDrop)
+	}
+	match := ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch("ip", "", "", "")).String()
+	allowed := make(map[string]struct{}, len(pg.ACLs))
+	for _, uuid := range pg.ACLs {
+		allowed[uuid] = struct{}{}
+	}
+	var rows []ovnnb.ACL
+	if err := c.OVNNbTables.Table(&ovnnb.ACL{}).Filter(context.Background(), func(row *ovnnb.ACL) bool {
+		_, attached := allowed[row.UUID]
+		return attached && row.ExternalIDs["parent"] == pgName && row.Direction == direction && row.Priority == priority && row.Match == match && row.Tier == util.NetpolACLTier
+	}, &rows); err != nil {
+		return err
+	}
+	if len(rows) == 0 || rows[0].Log == logEnable {
+		return nil
+	}
+	rows[0].Log = logEnable
+	return c.OVNNbTables.Table(&ovnnb.ACL{}).Update(context.Background(), "acl-log-update", &rows[0], &rows[0], &rows[0].Log)
 }
 
 func (c *Controller) createGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
@@ -605,7 +884,7 @@ func (c *Controller) setLogicalSwitchPrivateTable(lsName, cidrBlock, nodeSwitchC
 	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-private", append(removeOps, createOps...)...)
 }
 
-func (c *Controller) setLogicalSwitchRoutedTable(lsName, router, cidrBlock, gateway, gatewayMAC string, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
+func (c *Controller) setLogicalSwitchRoutedTable(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
 	if lsName == "" || router == "" || gatewayMAC == "" {
 		return errors.New("logical switch, router and gateway MAC are required for routed mode")
 	}
@@ -1240,28 +1519,6 @@ func (c *Controller) deleteLogicalSwitchPort(name string) error {
 		return fmt.Errorf("generate operations for deleting logical switch port %s: %w", name, err)
 	}
 	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "lsp-del", ops...)
-}
-
-func (c *Controller) deleteLogicalSwitchPorts(externalIDs map[string]string, filter func(*ovnnb.LogicalSwitchPort) bool) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalSwitchPorts(externalIDs, filter)
-	}
-	rows, err := c.listLogicalSwitchPorts(false, externalIDs, filter)
-	if err != nil {
-		return fmt.Errorf("list switch ports: %w", err)
-	}
-	var operations []ovsdb.Operation
-	for i := range rows {
-		ops, opErr := c.logicalSwitchPortDeleteOps(&rows[i])
-		if opErr != nil {
-			return fmt.Errorf("generate operations for deleting logical switch port %s: %w", rows[i].Name, opErr)
-		}
-		operations = append(operations, ops...)
-	}
-	if len(operations) == 0 {
-		return nil
-	}
-	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "lsps-del", operations...)
 }
 
 func (c *Controller) deleteLogicalRouterPort(name string) error {
@@ -3121,11 +3378,11 @@ func (c *Controller) getNBGlobal() (*ovnnb.NBGlobal, error) {
 	}
 	switch len(rows) {
 	case 0:
-		return nil, fmt.Errorf("not found NB_Global")
+		return nil, errors.New("not found NB_Global")
 	case 1:
 		return &rows[0], nil
 	default:
-		return nil, fmt.Errorf("more than one NB_Global row")
+		return nil, errors.New("more than one NB_Global row")
 	}
 }
 

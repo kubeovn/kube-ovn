@@ -149,6 +149,10 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 	cnpName := getCnpName(cnp.Name)
 	pgName := getCnpPortGroupName(cnp)
 	cnpACLTier := getCnpACLTier(cnp.Spec.Tier)
+	aclBuilder, err := c.clusterNetworkPolicyACLBuilder()
+	if err != nil {
+		return err
+	}
 
 	curIngressAddrSet, curEgressAddrSet, err := c.getCnpCurrentAddrSetByName(cnpName)
 	if err != nil {
@@ -185,7 +189,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		if as4len != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "ingress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
+			ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v4 ingress acls for cnp %s: %v", key, err)
 				return err
@@ -195,7 +199,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		if as6len != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "ingress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
+			ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v6 ingress acls for cnp %s: %v", cnp.Name, err)
 				return err
@@ -249,7 +253,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		// Domain names may not be resolved initially but will be updated later
 		if as4len != 0 || hasDomainNames {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "egress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
+			ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v4 egress acls for cnp %s: %v", key, err)
 				return err
@@ -259,7 +263,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		if as6len != 0 || hasDomainNames {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "egress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
+			ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v6 egress acls for cnp %s: %v", key, err)
 				return err

@@ -655,18 +655,10 @@ func (c *Controller) reconcilePodDHCPOptions(pod *v1.Pod, podNets []*kubeovnNet)
 			}
 		}
 
-		var err error
-		if c.OVNNbTables == nil {
-			_, _, err = c.OVNNbClient.ReconcilePortDHCPOptions(
-				subnet.Name, portName, dhcpOptions,
-				subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
-			)
-		} else {
-			_, _, err = c.updatePortDHCPOptionsTable(
-				subnet.Name, portName, dhcpOptions,
-				subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
-			)
-		}
+		_, _, err := c.reconcilePortDHCPOptionsBackend(
+			subnet.Name, portName, dhcpOptions,
+			subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
+		)
 		if err != nil {
 			klog.Errorf("failed to reconcile DHCP options for port %s: %v", portName, err)
 			return err
@@ -788,19 +780,10 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				}
 			}
 
-			var dhcpOptions *ovs.DHCPOptionsUUIDs
-			var hasPerPortDHCP bool
-			if c.OVNNbTables == nil {
-				dhcpOptions, hasPerPortDHCP, err = c.OVNNbClient.ReconcilePortDHCPOptions(
-					subnet.Name, portName, subnetDHCP,
-					subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
-				)
-			} else {
-				dhcpOptions, hasPerPortDHCP, err = c.updatePortDHCPOptionsTable(
-					subnet.Name, portName, subnetDHCP,
-					subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
-				)
-			}
+			dhcpOptions, hasPerPortDHCP, err := c.reconcilePortDHCPOptionsBackend(
+				subnet.Name, portName, subnetDHCP,
+				subnet.Spec.CIDRBlock, gateway, dhcpV4, dhcpV6, mtu,
+			)
 			if err != nil {
 				klog.Errorf("failed to reconcile DHCP options for port %s: %v", portName, err)
 				recordFailure("reconcilePortDHCPOptions", err)
