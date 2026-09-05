@@ -198,14 +198,14 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			}
 			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 			klog.Infof("delete vip lsp %s", portName)
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+			if err := c.deleteLogicalSwitchPort(portName); err != nil {
 				err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
 				klog.Error(err)
 				return err
 			}
 		}
 		// delete virtual ports
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(vip.Name); err != nil {
 			klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
 			return err
 		}

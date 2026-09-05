@@ -274,7 +274,7 @@ func (c *Controller) ensureNodeJoinNetwork(node *v1.Node) (*nodeJoinNetwork, err
 	} else {
 		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, nil, c.config.NodeSwitch, "", nil, true)
 		if err == nil {
-			err = c.OVNNbClient.DeleteLogicalSwitchPort(portName)
+			err = c.deleteLogicalSwitchPort(portName)
 			if err == nil {
 				klog.Infof("deleted stale logical switch port %s", portName)
 			}
@@ -490,7 +490,7 @@ func (c *Controller) handleDeleteNode(key string) (err error) {
 func (c *Controller) deleteNode(key string) error {
 	portName := util.NodeLspName(key)
 	klog.Infof("delete logical switch port %s", portName)
-	if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+	if err := c.deleteLogicalSwitchPort(portName); err != nil {
 		klog.Errorf("failed to delete node switch port %s: %v", portName, err)
 		return err
 	}

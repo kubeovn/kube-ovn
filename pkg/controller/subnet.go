@@ -1101,7 +1101,7 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 
 	// delete old virtual ports
 	for _, lspName := range existVips {
-		if err = c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
+		if err = c.deleteLogicalSwitchPort(lspName); err != nil {
 			klog.Errorf("delete virtual port %s lspName from logical switch %s: %v", lspName, subnet.Name, err)
 			return err
 		}
@@ -1679,13 +1679,13 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 		if !subnet.Spec.LogicalGateway && subnet.Name != c.config.ExternalGatewaySwitch && !subnet.Spec.U2OInterconnection {
 			lspName := fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)
 			klog.Infof("delete logical switch port %s", lspName)
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
+			if err := c.deleteLogicalSwitchPort(lspName); err != nil {
 				klog.Errorf("failed to delete lsp %s-%s, %v", subnet.Name, c.config.ClusterRouter, err)
 				return err
 			}
 			lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, subnet.Name)
 			klog.Infof("delete logical router port %s", lrpName)
-			if err := c.OVNNbClient.DeleteLogicalRouterPort(lrpName); err != nil {
+			if err := c.deleteLogicalRouterPort(lrpName); err != nil {
 				klog.Errorf("failed to delete lrp %s: %v", lrpName, err)
 				return err
 			}
@@ -2948,12 +2948,12 @@ func (c *Controller) clearOldU2OResource(subnet *kubeovnv1.Subnet) error {
 		lspName := fmt.Sprintf("%s-%s", subnet.Name, subnet.Status.U2OInterconnectionVPC)
 		lrpName := fmt.Sprintf("%s-%s", subnet.Status.U2OInterconnectionVPC, subnet.Name)
 		klog.Infof("clean subnet %s old u2o resource with lsp %s lrp %s", subnet.Name, lspName, lrpName)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
+		if err := c.deleteLogicalSwitchPort(lspName); err != nil {
 			klog.Errorf("failed to delete u2o logical switch port %s: %v", lspName, err)
 			return err
 		}
 
-		if err := c.OVNNbClient.DeleteLogicalRouterPort(lrpName); err != nil {
+		if err := c.deleteLogicalRouterPort(lrpName); err != nil {
 			klog.Errorf("failed to delete u2o logical router port %s: %v", lrpName, err)
 			return err
 		}
@@ -3253,7 +3253,7 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(mcastQuerierLspName); err != nil {
+		if err := c.deleteLogicalSwitchPort(mcastQuerierLspName); err != nil {
 			err = fmt.Errorf("failed to delete mcast querier lsp %s: %w", mcastQuerierLspName, err)
 			klog.Error(err)
 			return err

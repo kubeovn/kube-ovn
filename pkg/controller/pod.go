@@ -1321,7 +1321,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				}
 				klog.Infof("delete orphaned vm attachment lsp %s", port.Name)
 				stage = "deleteLogicalSwitchPort"
-				if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+				if err := c.deleteLogicalSwitchPort(port.Name); err != nil {
 					klog.Errorf("failed to delete orphaned lsp %s: %v", port.Name, err)
 					return err
 				}
@@ -1416,7 +1416,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			// when lsp is deleted, the port of pod is deleted from any port-group automatically.
 			klog.Infof("delete logical switch port %s", port.Name)
 			stage = "deleteLogicalSwitchPort"
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+			if err := c.deleteLogicalSwitchPort(port.Name); err != nil {
 				klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 				return err
 			}
@@ -1674,7 +1674,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	for _, portNeedDel := range staleState.ports {
 		klog.Infof("release port %s for pod %s", portNeedDel, podName)
 		c.ipam.ReleaseAddressByNic(key, portNeedDel, staleState.subnetsByPort[portNeedDel])
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(portNeedDel); err != nil {
+		if err := c.deleteLogicalSwitchPort(portNeedDel); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", portNeedDel, err)
 			return nil, "", err
 		}
@@ -3006,7 +3006,7 @@ func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 			continue
 		}
 		klog.Infof("cleaning stale vm attachment lsp %s (not in current pod networks)", port.Name)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(port.Name); err != nil {
 			klog.Errorf("failed to delete stale lsp %s, skipping IP cleanup to avoid inconsistency: %v", port.Name, err)
 			continue
 		}

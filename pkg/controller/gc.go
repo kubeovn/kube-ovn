@@ -78,7 +78,7 @@ func (c *Controller) gcLogicalRouterPort() error {
 		}
 	}
 
-	if err = c.OVNNbClient.DeleteLogicalRouterPorts(
+	if err = c.deleteLogicalRouterPorts(
 		map[string]string{"vendor": util.CniTypeName},
 		logicalRouterPortFilter(exceptPeerPorts),
 	); err != nil {
@@ -539,7 +539,7 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 
 		klog.Infof("gc logical switch port %s", lsp.Name)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(lsp.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
 			return err
 		}

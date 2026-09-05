@@ -267,6 +267,34 @@ func TestControllerTableProviderParentReferenceDeletes(t *testing.T) {
 	require.Equal(t, 5, backend.transactCalls)
 }
 
+func TestControllerTableProviderPortDeletes(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1", Ports: []string{"lsp-1"}},
+		&ovnnb.LogicalSwitchPort{
+			UUID:        "lsp-1",
+			Name:        "lsp-1",
+			ExternalIDs: map[string]string{"ls": "ls-1"},
+		},
+		&ovnnb.DHCPOptions{
+			UUID:        "dhcp-1",
+			ExternalIDs: map[string]string{"port": "lsp-1"},
+		},
+		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1", Ports: []string{"lrp-1"}},
+		&ovnnb.LogicalRouterPort{
+			UUID:        "lrp-1",
+			Name:        "lrp-1",
+			ExternalIDs: map[string]string{"lr": "lr-1"},
+		},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.deleteLogicalSwitchPort("lsp-1"))
+	require.NoError(t, controller.deleteLogicalRouterPort("lrp-1"))
+	require.Equal(t, 2, backend.mutateCalls)
+	require.Equal(t, 2, backend.transactCalls)
+}
+
 type tableBackend struct {
 	rows          map[reflect.Type][]any
 	createCalls   int

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
@@ -302,6 +303,178 @@ func (c *Controller) updateLogicalRouterPortOptions(name string, options map[str
 	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Update(
 		context.Background(), "lrp-update", lrp, lrp, &lrp.Options,
 	)
+}
+
+// deleteDHCPOptionsForPort removes per-port DHCP rows before the port is
+// detached from its logical switch. The cleanup is best-effort for the same
+// reason as the legacy client path: an orphaned DHCP row must not prevent the
+// LSP reference from being removed.
+func (c *Controller) deleteDHCPOptionsForPort(portName string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteDHCPOptionsForPort(portName)
+	}
+	if portName == "" {
+		return errors.New("the port name is required")
+	}
+	return c.OVNNbTables.Table(&ovnnb.DHCPOptions{}).DeleteFilter(
+		context.Background(), "dhcp-port-options-del", func(row *ovnnb.DHCPOptions) bool {
+			return row.ExternalIDs[ovs.PortKey] == portName
+		},
+	)
+}
+
+// logicalSwitchPortParent returns the unique logical switch that owns an LSP
+// reference. The external ID is preferred; the UUID scan handles legacy rows
+// without a parent external ID and preserves the old client's validation.
+func (c *Controller) logicalSwitchPortParent(lsp *ovnnb.LogicalSwitchPort) (*ovnnb.LogicalSwitch, error) {
+	if lsp == nil {
+		return nil, errors.New("logical switch port is nil")
+	}
+	if lsName := lsp.ExternalIDs[ovs.LogicalSwitchKey]; lsName != "" {
+		return c.getLogicalSwitch(lsName, false)
+	}
+	rows, err := c.listLogicalSwitches(false, func(row *ovnnb.LogicalSwitch) bool {
+		return slices.Contains(row.Ports, lsp.UUID)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list logical switches by LSP UUID %s: %w", lsp.UUID, err)
+	}
+	switch len(rows) {
+	case 0:
+		return nil, fmt.Errorf("no logical switch found for LSP %s", lsp.UUID)
+	case 1:
+		return &rows[0], nil
+	default:
+		names := make([]string, len(rows))
+		for i := range rows {
+			names[i] = rows[i].Name
+		}
+		return nil, fmt.Errorf("multiple logical switches found for LSP %s: %s", lsp.UUID, strings.Join(names, ", "))
+	}
+}
+
+func (c *Controller) logicalRouterPortParent(lrp *ovnnb.LogicalRouterPort) (*ovnnb.LogicalRouter, error) {
+	if lrp == nil {
+		return nil, errors.New("logical router port is nil")
+	}
+	if lrName := lrp.ExternalIDs["lr"]; lrName != "" {
+		return c.getLogicalRouter(lrName, false)
+	}
+	rows, err := c.listLogicalRouters(false, func(row *ovnnb.LogicalRouter) bool {
+		return slices.Contains(row.Ports, lrp.UUID)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list logical routers by LRP UUID %s: %w", lrp.UUID, err)
+	}
+	switch len(rows) {
+	case 0:
+		return nil, fmt.Errorf("no logical router found for LRP %s", lrp.UUID)
+	case 1:
+		return &rows[0], nil
+	default:
+		names := make([]string, len(rows))
+		for i := range rows {
+			names[i] = rows[i].Name
+		}
+		return nil, fmt.Errorf("multiple logical routers found for LRP %s: %s", lrp.UUID, strings.Join(names, ", "))
+	}
+}
+
+func (c *Controller) logicalSwitchPortDeleteOps(lsp *ovnnb.LogicalSwitchPort) ([]ovsdb.Operation, error) {
+	parent, err := c.logicalSwitchPortParent(lsp)
+	if err != nil {
+		return nil, err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(parent, model.Mutation{
+		Field: &parent.Ports, Value: []string{lsp.UUID}, Mutator: ovsdb.MutateOperationDelete,
+	})
+}
+
+func (c *Controller) logicalRouterPortDeleteOps(lrp *ovnnb.LogicalRouterPort) ([]ovsdb.Operation, error) {
+	parent, err := c.logicalRouterPortParent(lrp)
+	if err != nil {
+		return nil, err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(parent, model.Mutation{
+		Field: &parent.Ports, Value: []string{lrp.UUID}, Mutator: ovsdb.MutateOperationDelete,
+	})
+}
+
+func (c *Controller) deleteLogicalSwitchPort(name string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalSwitchPort(name)
+	}
+	lsp, err := c.getLogicalSwitchPort(name, true)
+	if err != nil || lsp == nil {
+		return err
+	}
+	if err = c.deleteDHCPOptionsForPort(name); err != nil {
+		klog.Warningf("failed to delete per-port dhcp options for %s during LSP deletion: %v", name, err)
+	}
+	ops, err := c.logicalSwitchPortDeleteOps(lsp)
+	if err != nil {
+		return fmt.Errorf("generate operations for deleting logical switch port %s: %w", name, err)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "lsp-del", ops...)
+}
+
+func (c *Controller) deleteLogicalSwitchPorts(externalIDs map[string]string, filter func(*ovnnb.LogicalSwitchPort) bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalSwitchPorts(externalIDs, filter)
+	}
+	rows, err := c.listLogicalSwitchPorts(false, externalIDs, filter)
+	if err != nil {
+		return fmt.Errorf("list switch ports: %w", err)
+	}
+	var operations []ovsdb.Operation
+	for i := range rows {
+		ops, opErr := c.logicalSwitchPortDeleteOps(&rows[i])
+		if opErr != nil {
+			return fmt.Errorf("generate operations for deleting logical switch port %s: %w", rows[i].Name, opErr)
+		}
+		operations = append(operations, ops...)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "lsps-del", operations...)
+}
+
+func (c *Controller) deleteLogicalRouterPort(name string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalRouterPort(name)
+	}
+	lrp, err := c.getLogicalRouterPort(name, true)
+	if err != nil || lrp == nil {
+		return err
+	}
+	ops, err := c.logicalRouterPortDeleteOps(lrp)
+	if err != nil {
+		return fmt.Errorf("generate operations for deleting logical router port %s: %w", name, err)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lrp-del", ops...)
+}
+
+func (c *Controller) deleteLogicalRouterPorts(externalIDs map[string]string, filter func(*ovnnb.LogicalRouterPort) bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalRouterPorts(externalIDs, filter)
+	}
+	rows, err := c.listLogicalRouterPorts(externalIDs, filter)
+	if err != nil {
+		return fmt.Errorf("list logical router ports: %w", err)
+	}
+	var operations []ovsdb.Operation
+	for i := range rows {
+		ops, opErr := c.logicalRouterPortDeleteOps(&rows[i])
+		if opErr != nil {
+			return fmt.Errorf("generate operations for deleting logical router port %s: %w", rows[i].Name, opErr)
+		}
+		operations = append(operations, ops...)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lrps-del", operations...)
 }
 
 func (c *Controller) updatePortGroupPorts(name string, operation ovsdb.Mutator, portNames ...string) error {
@@ -1371,6 +1544,17 @@ func (c *Controller) listLogicalSwitchPorts(needVendorFilter bool, externalIDs m
 		if needVendorFilter && row.ExternalIDs["vendor"] != util.CniTypeName {
 			return false
 		}
+		return matchesExternalIDs(row.ExternalIDs, externalIDs) && (filter == nil || filter(row))
+	}, &rows)
+	return rows, err
+}
+
+func (c *Controller) listLogicalRouterPorts(externalIDs map[string]string, filter func(*ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.ListLogicalRouterPorts(externalIDs, filter)
+	}
+	var rows []ovnnb.LogicalRouterPort
+	err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Filter(context.Background(), func(row *ovnnb.LogicalRouterPort) bool {
 		return matchesExternalIDs(row.ExternalIDs, externalIDs) && (filter == nil || filter(row))
 	}, &rows)
 	return rows, err

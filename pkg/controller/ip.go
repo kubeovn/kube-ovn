@@ -267,7 +267,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 			}
 			if port != nil {
 				klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
-				if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+				if err := c.deleteLogicalSwitchPort(portName); err != nil {
 					klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
 					return err
 				}

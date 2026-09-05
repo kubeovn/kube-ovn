@@ -352,7 +352,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	}
 	for _, oldPeer := range vpc.Status.VpcPeerings {
 		if !slices.Contains(newPeers, oldPeer) {
-			if err = c.OVNNbClient.DeleteLogicalRouterPort(fmt.Sprintf("%s-%s", vpc.Name, oldPeer)); err != nil {
+			if err = c.deleteLogicalRouterPort(fmt.Sprintf("%s-%s", vpc.Name, oldPeer)); err != nil {
 				klog.Errorf("delete peer router port for vpc %s, %v", vpc.Name, err)
 				return err
 			}
@@ -814,7 +814,7 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, error) {
 	portName := "bfd@" + vpc.Name
 	if vpc.Spec.BFDPort == nil || !vpc.Spec.BFDPort.Enabled {
-		if err := c.OVNNbClient.DeleteLogicalRouterPort(portName); err != nil {
+		if err := c.deleteLogicalRouterPort(portName); err != nil {
 			err = fmt.Errorf("failed to delete BFD LRP %s: %w", portName, err)
 			klog.Error(err)
 			return portName, nil, err

@@ -183,13 +183,13 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 
 		// Clean up resources before removing finalizer
 		if cachedEip.Spec.Type == util.OvnEipTypeLSP {
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(cachedEip.Name); err != nil {
+			if err := c.deleteLogicalSwitchPort(cachedEip.Name); err != nil {
 				klog.Errorf("failed to delete lsp %s, %v", cachedEip.Name, err)
 				return err
 			}
 		}
 		if cachedEip.Spec.Type == util.OvnEipTypeLRP {
-			if err := c.OVNNbClient.DeleteLogicalRouterPort(cachedEip.Name); err != nil {
+			if err := c.deleteLogicalRouterPort(cachedEip.Name); err != nil {
 				klog.Errorf("failed to delete lrp %s, %v", cachedEip.Name, err)
 				return err
 			}
@@ -275,13 +275,13 @@ func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
 
 	// Clean up resources if they still exist
 	if eip.Spec.Type == util.OvnEipTypeLSP {
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
 			return err
 		}
 	}
 	if eip.Spec.Type == util.OvnEipTypeLRP {
-		if err := c.OVNNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
+		if err := c.deleteLogicalRouterPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
 			return err
 		}
