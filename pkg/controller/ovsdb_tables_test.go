@@ -319,6 +319,19 @@ func TestControllerTableProviderHAChassisGroup(t *testing.T) {
 	require.Equal(t, 2, backend.transactCalls)
 }
 
+func TestControllerTableProviderMeterDelete(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.Meter{UUID: "meter-1", Name: "meter-1", Bands: []string{"band-1", "band-2"}},
+		&ovnnb.MeterBand{UUID: "band-1"},
+		&ovnnb.MeterBand{UUID: "band-2"},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.deleteMeter("meter-1"))
+	require.NoError(t, controller.deleteMeter("missing-meter"))
+}
+
 type tableBackend struct {
 	rows          map[reflect.Type][]any
 	createCalls   int

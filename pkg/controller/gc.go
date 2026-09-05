@@ -991,7 +991,7 @@ func (c *Controller) gcDisabledNetworkPolicyResources(pgNames []string) error {
 	}
 	for _, pgName := range meterPGs.List() {
 		for _, meterName := range networkPolicyMeterNames(pgName) {
-			if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+			if err := c.deleteMeter(meterName); err != nil {
 				klog.Errorf("failed to gc network policy meter %s: %v", meterName, err)
 				return err
 			}

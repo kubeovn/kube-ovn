@@ -622,6 +622,31 @@ func (c *Controller) setLogicalRouterPortHAChassisGroup(lrpName, groupName strin
 	)
 }
 
+func (c *Controller) deleteMeter(name string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteMeter(name)
+	}
+	meter := &ovnnb.Meter{Name: name}
+	if err := c.OVNNbTables.Table(&ovnnb.Meter{}).Get(context.Background(), meter); err != nil {
+		if errors.Is(err, compat.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("failed to get meter %s: %w", name, err)
+	}
+	operations, err := c.OVNNbTables.Table(&ovnnb.Meter{}).DeleteOps(meter)
+	if err != nil {
+		return fmt.Errorf("failed to build delete operations for meter %s: %w", name, err)
+	}
+	for _, bandUUID := range meter.Bands {
+		bandOps, bandErr := c.OVNNbTables.Table(&ovnnb.MeterBand{}).DeleteOps(&ovnnb.MeterBand{UUID: bandUUID})
+		if bandErr != nil {
+			return fmt.Errorf("failed to remove meter band %s for %s: %w", bandUUID, name, bandErr)
+		}
+		operations = append(operations, bandOps...)
+	}
+	return c.OVNNbTables.Table(&ovnnb.Meter{}).Transact(context.Background(), "meter-del", operations...)
+}
+
 func (c *Controller) updatePortGroupPorts(name string, operation ovsdb.Mutator, portNames ...string) error {
 	if c.OVNNbTables == nil {
 		switch operation {
