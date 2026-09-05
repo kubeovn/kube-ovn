@@ -119,9 +119,9 @@ func TestGetHealthCheckVipHandlesConcurrentCreate(t *testing.T) {
 	fake := newFakeController(t)
 	ctrl := fake.fakeController
 	vip := &kubeovnv1.Vip{
-		ObjectMeta: metav1.ObjectMeta{Name: "ovn-default"},
-		Spec:       kubeovnv1.VipSpec{Subnet: "ovn-default"},
-		Status:     kubeovnv1.VipStatus{V4ip: "10.16.0.2"},
+		Name:   "ovn-default",
+		Spec:   kubeovnv1.VipSpec{Subnet: "ovn-default"},
+		Status: kubeovnv1.VipStatus{V4ip: "10.16.0.2"},
 	}
 	_, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Create(t.Context(), vip, metav1.CreateOptions{})
 	require.NoError(t, err)
