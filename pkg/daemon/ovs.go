@@ -257,36 +257,6 @@ func setOvnMappings(name string, mappings map[string]string) error {
 	return nil
 }
 
-func addOvnMapping(name, key, value string, overwrite bool) error {
-	mappings, err := getOvnMappings(name)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	if mappings[key] == value || (mappings[key] != "" && !overwrite) {
-		return nil
-	}
-
-	mappings[key] = value
-	return setOvnMappings(name, mappings)
-}
-
-func removeOvnMapping(name, key string) error {
-	mappings, err := getOvnMappings(name)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	length := len(mappings)
-	delete(mappings, key)
-	if len(mappings) == length {
-		return nil
-	}
-	return setOvnMappings(name, mappings)
-}
-
 func (c *Controller) configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool, vlanInterfaceMap map[string]int) error {
 	// check if nic exists before configuring external bridge
 	nicExists, err := linkExists(nic)
@@ -299,7 +269,7 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 
 	klog.Infof("Configuring external bridge %s for provider %s, nic %s, and vlan interfaces %v", bridge, provider, nic, vlanInterfaceMap)
 
-	brExists, err := ovs.BridgeExists(bridge)
+	brExists, err := c.vswitchBridgeExists(bridge)
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %w", err)
 	}
@@ -330,10 +300,11 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		}
 	}
 
-	if output, err = ovs.Exec("list-ports", bridge); err != nil {
-		return fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", bridge, err, output)
+	bridgePorts, err := c.listVswitchBridgePorts(bridge)
+	if err != nil {
+		return fmt.Errorf("failed to list ports of OVS bridge %s: %w", bridge, err)
 	}
-	if output != "" {
+	if len(bridgePorts) != 0 {
 		providerNic := nic
 		if exchangeLinkName {
 			providerNic = bridge
@@ -343,13 +314,14 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 			vlanInterfaces = append(vlanInterfaces, vlanInterface)
 		}
 
-		for port := range strings.SplitSeq(output, "\n") {
+		for _, portRow := range bridgePorts {
+			port := portRow.Name
 			// Skip the main NIC or VLAN subinterfaces belonging to it
 			if port == nic {
 				klog.Infof("Skipping main NIC port %s on bridge %s", port, bridge)
 				continue
 			}
-			owned, err := ovs.ValidatePortVendor(port)
+			owned, err := c.validateVswitchPortVendor(port)
 			if err != nil {
 				return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
 			}
@@ -378,7 +350,7 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		}
 	}
 
-	if err = addOvnMapping("ovn-bridge-mappings", provider, bridge, true); err != nil {
+	if err = c.config.addOvnMapping("ovn-bridge-mappings", provider, bridge, true); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -397,8 +369,8 @@ func (c *Controller) waitForBridgeInterface(bridge string, timeout time.Duration
 	return fmt.Errorf("timed out waiting for OVS bridge %s kernel interface", bridge)
 }
 
-func initProviderChassisMac(provider string) error {
-	if err := addOvnMapping("ovn-chassis-mac-mappings", provider, util.GenerateMac(), false); err != nil {
+func (c *Controller) initProviderChassisMac(provider string) error {
+	if err := c.config.addOvnMapping("ovn-chassis-mac-mappings", provider, util.GenerateMac(), false); err != nil {
 		klog.Error(err)
 		return err
 	}

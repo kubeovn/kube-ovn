@@ -27,12 +27,51 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+// nbMigrationProvider is an optional capability for upgrade-only operations.
+// These operations coordinate several tables and schema versions, so exposing
+// them as basic TableProvider CRUD would obscure their invariants.
+type nbMigrationProvider interface {
+	MigrateVendorExternalIDs() error
+	MigrateACLTier() error
+	CleanNoParentKeyAcls() error
+}
+
+func (c *Controller) migrateVendorExternalIDs() error {
+	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
+		return provider.MigrateVendorExternalIDs()
+	}
+	if c.OVNNbTables != nil {
+		return errors.New("OVN NB table provider does not support vendor migration")
+	}
+	return c.OVNNbClient.MigrateVendorExternalIDs()
+}
+
+func (c *Controller) migrateACLTier() error {
+	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
+		return provider.MigrateACLTier()
+	}
+	if c.OVNNbTables != nil {
+		return errors.New("OVN NB table provider does not support ACL tier migration")
+	}
+	return c.OVNNbClient.MigrateACLTier()
+}
+
+func (c *Controller) cleanNoParentKeyACLs() error {
+	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
+		return provider.CleanNoParentKeyAcls()
+	}
+	if c.OVNNbTables != nil {
+		return errors.New("OVN NB table provider does not support ACL parent cleanup")
+	}
+	return c.OVNNbClient.CleanNoParentKeyAcls()
+}
+
 func (c *Controller) InitOVN() error {
 	var err error
 
 	// migrate vendor externalIDs to kube-ovn resources created in versions prior to v1.15.0
 	// this must run before ACL cleanup to ensure existing resources are properly tagged
-	if err = c.OVNNbClient.MigrateVendorExternalIDs(); err != nil {
+	if err = c.migrateVendorExternalIDs(); err != nil {
 		klog.Errorf("failed to migrate vendor externalIDs: %v", err)
 		return err
 	}
@@ -40,13 +79,13 @@ func (c *Controller) InitOVN() error {
 	// migrate tier field of ACL rules created in versions prior to v1.13.0
 	// after upgrading, the tier field has a default value of zero, which is not the value used in versions >= v1.13.0
 	// we need to migrate the tier field to the correct value
-	if err = c.OVNNbClient.MigrateACLTier(); err != nil {
+	if err = c.migrateACLTier(); err != nil {
 		klog.Errorf("failed to migrate ACL tier: %v", err)
 		return err
 	}
 
 	// clean all no parent key acls
-	if err = c.OVNNbClient.CleanNoParentKeyAcls(); err != nil {
+	if err = c.cleanNoParentKeyACLs(); err != nil {
 		klog.Errorf("failed to clean all no parent key acls: %v", err)
 		return err
 	}
@@ -228,12 +267,12 @@ func (c *Controller) initNodeSwitch() error {
 
 // InitClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
-	if err := c.OVNNbClient.CreateLogicalRouter(c.config.ClusterRouter); err != nil {
+	if err := c.createLogicalRouter(c.config.ClusterRouter); err != nil {
 		klog.Errorf("create logical router %s failed: %v", c.config.ClusterRouter, err)
 		return err
 	}
 
-	lr, err := c.OVNNbClient.GetLogicalRouter(c.config.ClusterRouter, false)
+	lr, err := c.getLogicalRouter(c.config.ClusterRouter, false)
 	if err != nil {
 		klog.Errorf("get logical router %s failed: %v", c.config.ClusterRouter, err)
 		return err
@@ -245,7 +284,7 @@ func (c *Controller) initClusterRouter() error {
 	lrOptions["dynamic_neigh_routers"] = "true"
 	if !maps.Equal(lr.Options, lrOptions) {
 		lr.Options = lrOptions
-		if err = c.OVNNbClient.UpdateLogicalRouter(lr, &lr.Options); err != nil {
+		if err = c.updateLogicalRouter(lr, &lr.Options); err != nil {
 			klog.Errorf("update logical router %s failed: %v", c.config.ClusterRouter, err)
 			return err
 		}
@@ -269,19 +308,19 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 		}
 	}
 
-	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields...); err != nil {
+	if err = c.createLoadBalancer(name, protocol, selectFields...); err != nil {
 		klog.Errorf("create load balancer %s: %v", name, err)
 		return err
 	}
 
 	if sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		if err = c.setLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
 			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
 			return err
 		}
 	}
 
-	err = c.OVNNbClient.SetLoadBalancerPreferLocalBackend(name, c.config.EnableOVNLBPreferLocal)
+	err = c.setLoadBalancerPreferLocalBackend(name, c.config.EnableOVNLBPreferLocal)
 	if err != nil {
 		klog.Errorf("failed to set prefer local backend for load balancer %s: %v", name, err)
 		return err
@@ -293,7 +332,7 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	// those LBs lets an unrelated service's backend change invalidate another
 	// service's active affinity. Only enable ct_flush on non-session UDP LBs.
 	if protocol == "udp" && !sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerCtFlush(name, true); err != nil {
+		if err = c.setLoadBalancerCtFlush(name, true); err != nil {
 			klog.Errorf("failed to set ct_flush for load balancer %s: %v", name, err)
 			return err
 		}
@@ -409,7 +448,7 @@ func (c *Controller) InitIPAM() error {
 			if subnet.Status.U2OInterconnectionMAC != "" {
 				mac = new(subnet.Status.U2OInterconnectionMAC)
 			} else {
-				lrp, err := c.OVNNbClient.GetLogicalRouterPort(u2oInterconnLrpName, true)
+				lrp, err := c.getLogicalRouterPort(u2oInterconnLrpName, true)
 				if err != nil {
 					klog.Errorf("failed to get logical router port %s: %v", u2oInterconnLrpName, err)
 					return err
@@ -914,7 +953,7 @@ func (c *Controller) batchMigrateNodeRoute(nodes []*v1.Node) error {
 		klog.Errorf("failed to batch delete obsolete logical router policy for lr %s nodes %d: %v", c.config.ClusterRouter, len(nodes), err)
 		return err
 	}
-	if err := c.OVNNbClient.BatchDeleteAddressSetByNames(delAsNames); err != nil {
+	if err := c.deleteAddressSets(delAsNames...); err != nil {
 		klog.Errorf("failed to batch delete obsolete address set for asNames %v nodes %d: %v", delAsNames, len(nodes), err)
 		return err
 	}
@@ -976,13 +1015,13 @@ func (c *Controller) initNodeChassis() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	chassises, err := c.OVNSbClient.GetKubeOvnChassises()
+	chassises, err := c.listKubeOvnChassises()
 	if err != nil {
 		klog.Errorf("failed to get chassis nodes: %v", err)
 		return err
 	}
-	chassisNodes := make(map[string]string, len(*chassises))
-	for _, chassis := range *chassises {
+	chassisNodes := make(map[string]string, len(chassises))
+	for _, chassis := range chassises {
 		chassisNodes[chassis.Name] = chassis.Hostname
 	}
 	for _, node := range nodes {

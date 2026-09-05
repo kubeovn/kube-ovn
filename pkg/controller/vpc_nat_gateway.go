@@ -2027,15 +2027,10 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGatew
 	}
 
 	// Reconcile BFD sessions for this address family
-	bfdIDs, err := reconcileGatewayBFDWithCleanup(
-		c.OVNNbClient,
-		bfdIP,
-		bfdLrp,
+	bfdIDs, err := c.reconcileGatewayBFDWithCleanupBackend(
+		bfdIP, bfdLrp,
 		set.New(slices.Collect(maps.Values(nextHopsAF))...),
-		gw.Spec.BFD.MinTX,
-		gw.Spec.BFD.MinRX,
-		gw.Spec.BFD.Multiplier,
-		externalIDs,
+		gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier, externalIDs,
 	)
 	if err != nil {
 		klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
@@ -2043,16 +2038,8 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGatew
 	}
 
 	// Reconcile the OVN policy routes for this address family
-	if err := reconcileNatGatewayPolicies(
-		c.OVNNbClient,
-		gw.Name,
-		gw.Spec.Vpc,
-		af,
-		gw.Spec.BFD.Enabled,
-		bfdIDs,
-		internalCIDRsAF,
-		nextHopsAF,
-		externalIDs,
+	if err := c.reconcileNatGatewayPolicies(
+		gw.Name, gw.Spec.Vpc, af, gw.Spec.BFD.Enabled, bfdIDs, internalCIDRsAF, nextHopsAF, externalIDs,
 	); err != nil {
 		klog.Errorf("failed to reconcile policies for nat gw %s af %d: %v", gw.Name, af, err)
 		return err

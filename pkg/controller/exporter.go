@@ -83,7 +83,7 @@ func (c *Controller) exportSubnetUsedIPsGauge(subnet *kubeovnv1.Subnet) {
 }
 
 func (c *Controller) exportCentralizedSubnetInfo(subnet *kubeovnv1.Subnet) {
-	lrPolicyList, err := c.OVNNbClient.GetLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "subnet", subnet.Name)
+	lrPolicyList, err := c.getLogicalRouterPoliciesByExtID(c.config.ClusterRouter, "subnet", subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to list lr policy for subnet %s: %v", subnet.Name, err)
 		return

@@ -1861,7 +1861,7 @@ func (c *Controller) setExGateway() error {
 
 		externalBrReady := false
 		// if external nic already attached into another bridge
-		if existBr, err := ovs.Exec("port-to-br", linkName); err == nil {
+		if existBr, err := c.vswitchPortToBridge(linkName); err == nil {
 			if existBr == externalBridge {
 				externalBrReady = true
 			} else {
@@ -1885,12 +1885,12 @@ func (c *Controller) setExGateway() error {
 				return err
 			}
 		}
-		if err = addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
+		if err = c.config.addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
 			klog.Error(err)
 			return err
 		}
 	} else {
-		brExists, err := ovs.BridgeExists(externalBridge)
+		brExists, err := c.vswitchBridgeExists(externalBridge)
 		if err != nil {
 			return fmt.Errorf("failed to check OVS bridge existence: %w", err)
 		}

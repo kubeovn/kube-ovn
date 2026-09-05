@@ -20,6 +20,7 @@ import (
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -44,6 +45,14 @@ type Controller struct {
 	ovnLegacyClient *ovs.LegacyClient
 	OVNNbClient     ovs.NbClient
 	OVNSbClient     ovs.SbClient
+	OVNNbTables     compat.TableProvider
+	OVNSbTables     compat.TableProvider
+	ICNbTables      compat.TableProvider
+	ICSbTables      compat.TableProvider
+	icNbClient      *ovs.OVNICNbClient
+	icSbClient      *ovs.OVNICSbClient
+	icNbAddress     string
+	icSbAddress     string
 
 	icConflictCIDRs *strset.Set
 }
@@ -93,7 +102,8 @@ func NewController(config *Configuration) *Controller {
 	}
 
 	var err error
-	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
+	var nbClient *ovs.OVNNbClient
+	if nbClient, err = ovs.NewOvnNbClient(
 		config.OvnNbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
@@ -102,7 +112,10 @@ func NewController(config *Configuration) *Controller {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if controller.OVNSbClient, err = ovs.NewOvnSbClient(
+	controller.OVNNbClient = nbClient
+
+	var sbClient *ovs.OVNSbClient
+	if sbClient, err = ovs.NewOvnSbClient(
 		config.OvnSbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
@@ -111,12 +124,16 @@ func NewController(config *Configuration) *Controller {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
+	controller.OVNSbClient = sbClient
+	controller.OVNNbTables = nbClient
+	controller.OVNSbTables = sbClient
 
 	return controller
 }
 
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
+	defer c.closeICClients()
 	c.informerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 

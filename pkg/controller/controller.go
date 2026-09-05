@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,6 +45,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/informer"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -77,6 +79,10 @@ type Controller struct {
 
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
+	// OVNNbTables and OVNSbTables expose the generic table seam to reconcile
+	// code while the legacy client interfaces remain unchanged.
+	OVNNbTables compat.TableProvider
+	OVNSbTables compat.TableProvider
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -696,7 +702,8 @@ func Run(ctx context.Context, config *Configuration) {
 		anpInformerFactory:     anpInformerFactory,
 	}
 
-	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
+	var nbClient *ovs.OVNNbClient
+	if nbClient, err = ovs.NewOvnNbClient(
 		config.OvnNbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
@@ -705,7 +712,11 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if controller.OVNSbClient, err = ovs.NewOvnSbClient(
+	controller.OVNNbClient = nbClient
+	controller.OVNNbTables = nbClient
+
+	var sbClient *ovs.OVNSbClient
+	if sbClient, err = ovs.NewOvnSbClient(
 		config.OvnSbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
@@ -714,6 +725,8 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
+	controller.OVNSbClient = sbClient
+	controller.OVNSbTables = sbClient
 	if config.ACLSampling.Enabled {
 		controller.reconcileACLSampling()
 	} else {
@@ -1173,27 +1186,40 @@ func Run(ctx context.Context, config *Configuration) {
 func (c *Controller) Run(ctx context.Context) {
 	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
 	// Otherwise, the init process should be placed after all workers have already started working
-	if err := c.OVNNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
+	if err := c.setNBGlobalOption("ls_dnat_mod_dl_dst", strconv.FormatBool(c.config.LsDnatModDlDst), true, func() error {
+		return c.OVNNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst)
+	}); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_dnat_mod_dl_dst")
 	}
 
-	if err := c.OVNNbClient.SetUseCtInvMatch(); err != nil {
+	if err := c.setNBGlobalOption("use_ct_inv_match", "false", true, func() error {
+		return c.OVNNbClient.SetUseCtInvMatch()
+	}); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
 	}
 
-	if err := c.OVNNbClient.SetLsCtSkipDstLportIPs(c.config.LsCtSkipDstLportIPs); err != nil {
+	if err := c.setNBGlobalOption("ls_ct_skip_dst_lport_ips", strconv.FormatBool(c.config.LsCtSkipDstLportIPs), true, func() error {
+		return c.OVNNbClient.SetLsCtSkipDstLportIPs(c.config.LsCtSkipDstLportIPs)
+	}); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_ct_skip_dst_lport_ips")
 	}
 
-	if err := c.OVNNbClient.SetNodeLocalDNSIP(strings.Join(c.config.NodeLocalDNSIPs, ",")); err != nil {
+	nodeLocalDNSIP := strings.Join(c.config.NodeLocalDNSIPs, ",")
+	if err := c.setNBGlobalOption("node_local_dns_ip", nodeLocalDNSIP, nodeLocalDNSIP != "", func() error {
+		return c.OVNNbClient.SetNodeLocalDNSIP(nodeLocalDNSIP)
+	}); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
 	}
 
-	if err := c.OVNNbClient.SetSkipConntrackCidrs(c.config.SkipConntrackDstCidrs); err != nil {
+	if err := c.setNBGlobalOption("skip_conntrack_dst_cidrs", c.config.SkipConntrackDstCidrs, c.config.SkipConntrackDstCidrs != "", func() error {
+		return c.OVNNbClient.SetSkipConntrackCidrs(c.config.SkipConntrackDstCidrs)
+	}); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
-	if err := c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec); err != nil {
+	if err := c.setNBGlobalIPSec(c.config.EnableOVNIPSec, func() error {
+		return c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec)
+	}); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global ipsec")
 	}
 
@@ -1241,17 +1267,17 @@ func (c *Controller) Run(ctx context.Context) {
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
 
-	c.OVNNbClient.Close()
-	c.OVNSbClient.Close()
+	c.closeNB()
+	c.closeSB()
 }
 
 func (c *Controller) dbStatus() {
 	done := make(chan error, 2)
 	go func() {
-		done <- c.OVNNbClient.Echo(context.Background())
+		done <- c.echoNB(context.Background())
 	}()
 	go func() {
-		done <- c.OVNSbClient.Echo(context.Background())
+		done <- c.echoSB(context.Background())
 	}()
 
 	resultsReceived := 0
@@ -1563,7 +1589,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}, time.Second, ctx.Done())
 
 		// maintain l3 ha about the vpc external lrp binding to the gw chassis
-		c.OVNNbClient.MonitorBFD()
+		c.monitorBFD()
 	}
 	// TODO: we should merge these two vpc nat config into one config and resync them together
 	go wait.Until(func() {
@@ -1678,7 +1704,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
 	for _, lsName := range subnets {
-		exist, err := c.OVNNbClient.LogicalSwitchExists(lsName)
+		exist, err := c.logicalSwitchExists(lsName)
 		if err != nil {
 			klog.Error(err)
 			return false, fmt.Errorf("check logical switch %s exist: %w", lsName, err)

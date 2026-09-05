@@ -78,7 +78,7 @@ func (c *Controller) gcLogicalRouterPort() error {
 		}
 	}
 
-	if err = c.OVNNbClient.DeleteLogicalRouterPorts(
+	if err = c.deleteLogicalRouterPorts(
 		map[string]string{"vendor": util.CniTypeName},
 		logicalRouterPortFilter(exceptPeerPorts),
 	); err != nil {
@@ -141,7 +141,7 @@ func (c *Controller) gcLogicalSwitch() error {
 		return err
 	}
 
-	lss, err := c.OVNNbClient.ListLogicalSwitchNames(c.config.EnableExternalVpc, nil)
+	lss, err := c.listLogicalSwitchNames(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch: %v", err)
 		return err
@@ -185,7 +185,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 		return err
 	}
 
-	lrs, err := c.OVNNbClient.ListLogicalRouterNames(c.config.EnableExternalVpc, nil)
+	lrs, err := c.listLogicalRouterNames(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical router, %v", err)
 		return err
@@ -243,12 +243,12 @@ func (c *Controller) gcNode() error {
 		}
 	}
 
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NodeRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, util.NodeRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies on lr %s: %v", c.config.ClusterRouter, err)
 		return err
 	}
-	gatewayRouterPolicies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
+	gatewayRouterPolicies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies priority %d on lr %s: %v", util.GatewayRouterPolicyPriority, c.config.ClusterRouter, err)
 		return err
@@ -263,7 +263,7 @@ func (c *Controller) gcNode() error {
 			continue
 		}
 		klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
+		if err = c.deleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
 			klog.Errorf("failed to delete logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
 			return err
 		}
@@ -516,7 +516,7 @@ func (c *Controller) markAndCleanLSP() error {
 			vipsMap.Add(portName)
 		}
 	}
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
+	lsps, err := c.listNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
@@ -539,7 +539,7 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 
 		klog.Infof("gc logical switch port %s", lsp.Name)
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(lsp.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)
 			return err
 		}
@@ -627,7 +627,7 @@ func (c *Controller) gcLoadBalancer() error {
 					continue
 				}
 				lbs := []string{vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
-				if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationDelete, lbs...); err != nil {
+				if err := c.updateLogicalSwitchLoadBalancers(subnetName, ovsdb.MutateOperationDelete, lbs...); err != nil {
 					klog.Error(err)
 					return err
 				}
@@ -653,7 +653,7 @@ func (c *Controller) gcLoadBalancer() error {
 		// lbs will remove from logical switch automatically when delete lbs
 		// Only delete load balancers that belong to kube-ovn (vendor=kube-ovn)
 		// This prevents deleting load balancers managed by external systems like OpenStack Neutron
-		if err = c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		if err = c.deleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
 			if lb.ExternalIDs["vendor"] != util.CniTypeName {
 				return false
 			}
@@ -730,7 +730,7 @@ func (c *Controller) gcLoadBalancer() error {
 			err error
 		)
 
-		if lb, err = c.OVNNbClient.GetLoadBalancer(lbName, true); err != nil {
+		if lb, err = c.getLoadBalancer(lbName, true); err != nil {
 			klog.Errorf("get LB %s: %v", lbName, err)
 			return err
 		}
@@ -742,7 +742,7 @@ func (c *Controller) gcLoadBalancer() error {
 
 		for vip := range lb.Vips {
 			if !svcVips.Has(vip) {
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
+				if err = c.deleteLoadBalancerVIP(lbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 					return err
 				}
@@ -785,7 +785,7 @@ func (c *Controller) gcLoadBalancer() error {
 	}
 
 	// delete lbs
-	if err = c.OVNNbClient.DeleteLoadBalancers(
+	if err = c.deleteLoadBalancers(
 		func(lb *ovnnb.LoadBalancer) bool {
 			return !vpcLbs.Has(lb.Name)
 		},
@@ -801,7 +801,7 @@ func (c *Controller) gcAddressSet() error {
 	klog.Infof("start to gc address set")
 	// Only list address sets that belong to kube-ovn (vendor=kube-ovn)
 	// This prevents deleting address sets managed by external systems like OpenStack Neutron
-	addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{"vendor": util.CniTypeName})
+	addressSets, err := c.listAddressSets(map[string]string{"vendor": util.CniTypeName})
 	if err != nil {
 		klog.Errorf("failed to list address set,%v", err)
 		return err
@@ -814,7 +814,7 @@ func (c *Controller) gcAddressSet() error {
 			continue
 		}
 		// if address set not found associated port group, delete it
-		if pg, err := c.OVNNbClient.GetPortGroup(ovs.GetSgPortGroupName(sg), true); err == nil && pg == nil {
+		if pg, err := c.getPortGroup(ovs.GetSgPortGroupName(sg), true); err == nil && pg == nil {
 			klog.Infof("ready to gc address set %s", as.Name)
 			asList = append(asList, as.Name)
 		}
@@ -824,7 +824,7 @@ func (c *Controller) gcAddressSet() error {
 		return nil
 	}
 
-	if err = c.OVNNbClient.DeleteAddressSet(asList...); err != nil {
+	if err = c.deleteAddressSets(asList...); err != nil {
 		klog.Errorf("failed to delete address set %v: %v", asList, err)
 		return err
 	}
@@ -848,7 +848,7 @@ func (c *Controller) gcSecurityGroup() error {
 
 	// Only list port groups that belong to kube-ovn (vendor=kube-ovn)
 	// This prevents deleting port groups managed by external systems like OpenStack Neutron
-	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{"vendor": util.CniTypeName})
+	pgs, err := c.listPortGroups(map[string]string{"vendor": util.CniTypeName})
 	if err != nil {
 		klog.Errorf("failed to list port group,%v", err)
 		return err
@@ -875,7 +875,7 @@ func (c *Controller) gcSecurityGroup() error {
 		klog.Infof("finish to gc security group residual port groups")
 		return nil
 	}
-	if err = c.OVNNbClient.DeletePortGroup(needToDelPgs...); err != nil {
+	if err = c.deletePortGroups(needToDelPgs...); err != nil {
 		klog.Errorf("failed to gc port group list,%v", err)
 		return err
 	}
@@ -932,7 +932,7 @@ func (c *Controller) gcNetworkPolicy() error {
 	}
 
 	// list all np port groups which externalIDs[np]!=""
-	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{networkPolicyKey: ""})
+	pgs, err := c.listPortGroups(map[string]string{networkPolicyKey: ""})
 	if err != nil {
 		klog.Errorf("list np port group: %v", err)
 		return err
@@ -960,7 +960,7 @@ func (c *Controller) gcNetworkPolicy() error {
 	// the pgName in the network policy is generated differently from the node/subnet pgName
 	// so processes port group gc separately
 	// ensure that the port group can be correctly gc
-	if err := c.OVNNbClient.DeletePortGroup(delPgNames.List()...); err != nil {
+	if err := c.deletePortGroups(delPgNames.List()...); err != nil {
 		klog.Errorf("failed to gc port group %v: %v", delPgNames.List(), err)
 		return err
 	}
@@ -977,7 +977,7 @@ func (c *Controller) gcNetworkPolicy() error {
 
 func (c *Controller) gcDisabledNetworkPolicyResources(pgNames []string) error {
 	meterPGs := strset.New(pgNames...)
-	addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{networkPolicyKey: ""})
+	addressSets, err := c.listAddressSets(map[string]string{networkPolicyKey: ""})
 	if err != nil {
 		klog.Errorf("failed to list network policy address sets: %v", err)
 		return err
@@ -991,13 +991,13 @@ func (c *Controller) gcDisabledNetworkPolicyResources(pgNames []string) error {
 	}
 	for _, pgName := range meterPGs.List() {
 		for _, meterName := range networkPolicyMeterNames(pgName) {
-			if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+			if err := c.deleteMeter(meterName); err != nil {
 				klog.Errorf("failed to gc network policy meter %s: %v", meterName, err)
 				return err
 			}
 		}
 	}
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{networkPolicyKey: ""}); err != nil {
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{networkPolicyKey: ""}); err != nil {
 		klog.Errorf("failed to gc network policy address sets: %v", err)
 		return err
 	}
@@ -1048,7 +1048,7 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 }
 
 func (c *Controller) gcPortGroupsAndAddressSetsByExternalID(externalIDKey string) error {
-	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{externalIDKey: ""})
+	pgs, err := c.listPortGroups(map[string]string{externalIDKey: ""})
 	if err != nil {
 		klog.Errorf("list port groups with external id %s: %v", externalIDKey, err)
 		return err
@@ -1058,11 +1058,11 @@ func (c *Controller) gcPortGroupsAndAddressSetsByExternalID(externalIDKey string
 		klog.Infof("gc port group %s with external id %s=%s", pg.Name, externalIDKey, pg.ExternalIDs[externalIDKey])
 		pgNames = append(pgNames, pg.Name)
 	}
-	if err := c.OVNNbClient.DeletePortGroup(pgNames...); err != nil {
+	if err := c.deletePortGroups(pgNames...); err != nil {
 		klog.Errorf("failed to gc port groups %v: %v", pgNames, err)
 		return err
 	}
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{externalIDKey: ""}); err != nil {
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{externalIDKey: ""}); err != nil {
 		klog.Errorf("failed to gc address sets with external id %s: %v", externalIDKey, err)
 		return err
 	}
@@ -1072,7 +1072,7 @@ func (c *Controller) gcPortGroupsAndAddressSetsByExternalID(externalIDKey string
 func (c *Controller) gcRoutePolicy() error {
 	klog.Infof("start to gc route policy")
 
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NorthGatewayRoutePolicyPriority, nil, true)
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, util.NorthGatewayRoutePolicyPriority, nil, true)
 	if err != nil {
 		klog.Errorf("failed to list route policy, %v", err)
 		return err
@@ -1100,7 +1100,7 @@ func (c *Controller) gcRoutePolicy() error {
 		srcIP := strings.TrimSpace(parts[1])
 		if _, ok := podIPs[srcIP]; !ok {
 			klog.Infof("gc route policy %s", policy.Match)
-			if err := c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
+			if err := c.deleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
 				klog.Errorf("failed to delete route policy %s: %v", policy.Match, err)
 				return err
 			}
@@ -1113,7 +1113,7 @@ func (c *Controller) gcRoutePolicy() error {
 
 func (c *Controller) gcStaticRoute() error {
 	klog.Infof("start to gc static routes")
-	routes, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
+	routes, err := c.listLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
 	if err != nil {
 		klog.Errorf("failed to list static route %v", err)
 		return err
@@ -1136,7 +1136,7 @@ func (c *Controller) gcStaticRoute() error {
 			continue
 		}
 		if route.IPPrefix != "0.0.0.0/0" && route.IPPrefix != "::/0" && c.ipam.ContainAddress(route.IPPrefix) {
-			exist, err := c.OVNNbClient.NatExists(c.config.ClusterRouter, "", "", route.IPPrefix)
+			exist, err := c.natExists(c.config.ClusterRouter, "", "", route.IPPrefix)
 			if err != nil {
 				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.IPPrefix, err)
 				continue
@@ -1167,13 +1167,13 @@ func (c *Controller) gcStaticRoute() error {
 
 func (c *Controller) gcChassis() error {
 	klog.Infof("start to gc chassis")
-	chassises, err := c.OVNSbClient.ListChassis()
+	chassises, err := c.listChassis()
 	if err != nil {
 		klog.Errorf("failed to get all chassis, %v", err)
 		return err
 	}
-	chassisNodes := make(map[string]string, len(*chassises))
-	for _, chassis := range *chassises {
+	chassisNodes := make(map[string]string, len(chassises))
+	for _, chassis := range chassises {
 		chassisNodes[chassis.Name] = chassis.Hostname
 	}
 	nodes, err := c.nodesLister.List(labels.Everything())
@@ -1195,7 +1195,7 @@ func (c *Controller) gcChassis() error {
 			}
 			// maybe node name changed, delete chassis
 			klog.Infof("gc node %s chassis %s", node.Name, chassisName)
-			if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
+			if err := c.deleteChassis(chassisName); err != nil {
 				klog.Errorf("failed to delete node %s chassis %s %v", node.Name, chassisName, err)
 				return err
 			}
@@ -1204,7 +1204,7 @@ func (c *Controller) gcChassis() error {
 
 	for chassisName, hostname := range chassisNodes {
 		klog.Infof("gc node %s chassis %s", hostname, chassisName)
-		if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
+		if err := c.deleteChassis(chassisName); err != nil {
 			klog.Errorf("failed to delete node %s chassis %s %v", hostname, chassisName, err)
 			return err
 		}

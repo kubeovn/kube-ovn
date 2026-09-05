@@ -271,7 +271,7 @@ func TestReconcileACLSamplingDisabledRetainsReferencedOwnedCollector(t *testing.
 	require.NoError(t, err)
 	externalACL := aclByName(t, acls, "external-reference")
 	externalACL.SampleNew = sampled.SampleNew
-	updateOps, err := client.Where(&externalACL).Update(&externalACL, &externalACL.SampleNew)
+	updateOps, err := client.Database.Where(&externalACL).Update(&externalACL, &externalACL.SampleNew)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("seed-external-sample-reference", updateOps))
 	require.Eventually(t, func() bool {
