@@ -587,6 +587,10 @@ func (suite *OvnClientTestSuite) Test_SetLoadBalancerExternalIDs() {
 	suite.testSetLoadBalancerExternalIDs()
 }
 
+func (suite *OvnClientTestSuite) Test_ReconcileChassisTemplateVariables() {
+	suite.testReconcileChassisTemplateVariables()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteChassisTemplateVariables() {
 	suite.testDeleteChassisTemplateVariables()
 }

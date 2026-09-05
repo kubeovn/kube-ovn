@@ -493,6 +493,62 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerExternalIDs() {
 	require.Equal(t, "service", lb.ExternalIDs["owner"])
 }
 
+func (suite *OvnClientTestSuite) testReconcileChassisTemplateVariables() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	chassis := "test-chassis-template-reconcile"
+	prefix := "kube_ovn_svc_test_"
+	variables := map[string]string{prefix + "vip": "10.96.0.10"}
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables))
+
+	var rows []ovnnb.ChassisTemplateVar
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, variables)
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, util.CniTypeName, rows[0].ExternalIDs["vendor"])
+
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, "other_", map[string]string{"other_keep": "value"}))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && rows[0].Variables["other_keep"] == "value"
+	}, time.Second, 10*time.Millisecond)
+
+	variables = map[string]string{
+		prefix + "vip":      "10.96.0.11",
+		prefix + "backends": "10.0.0.2:8080",
+	}
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
+			prefix + "vip":      "10.96.0.11",
+			prefix + "backends": "10.0.0.2:8080",
+			"other_keep":        "value",
+		})
+	}, time.Second, 10*time.Millisecond)
+
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, nil))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{"other_keep": "value"})
+	}, time.Second, 10*time.Millisecond)
+}
+
 func (suite *OvnClientTestSuite) testDeleteChassisTemplateVariables() {
 	t := suite.T()
 	t.Parallel()

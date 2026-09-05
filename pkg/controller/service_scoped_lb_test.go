@@ -13,6 +13,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -294,6 +295,106 @@ func TestEnsureServiceScopedLBTrafficDistributionAddressFamily(t *testing.T) {
 	}
 	if got != lbName {
 		t.Fatalf("ensureServiceScopedLB() = %q, want %q", got, lbName)
+	}
+}
+
+func trafficDistributionEndpoint(address, node, zone string) discoveryv1.Endpoint {
+	return discoveryv1.Endpoint{
+		Addresses: []string{address},
+		Hints: &discoveryv1.EndpointHints{
+			ForNodes: []discoveryv1.ForNode{{Name: node}},
+			ForZones: []discoveryv1.ForZone{{Name: zone}},
+		},
+	}
+}
+
+func TestReconcileServiceTrafficDistribution(t *testing.T) {
+	nodes := []*corev1.Node{
+		{Name: "node-a", Labels: map[string]string{corev1.LabelTopologyZone: "zone-a"}},
+		{Name: "node-x", Labels: map[string]string{corev1.LabelTopologyZone: "zone-a"}},
+		{Name: "node-y", Labels: map[string]string{corev1.LabelTopologyZone: "zone-c"}},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: nodes})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameNode
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-template-reconcile"),
+		Spec: corev1.ServiceSpec{
+			Type:                corev1.ServiceTypeClusterIP,
+			ClusterIPs:          []string{"10.96.0.10"},
+			TrafficDistribution: &trafficDistribution,
+			Ports:               []corev1.ServicePort{{Name: "http", Protocol: corev1.ProtocolTCP, Port: 80}},
+		},
+	}
+	endpointSlices := []*discoveryv1.EndpointSlice{{
+		Ports: []discoveryv1.EndpointPort{{Name: new("http"), Port: new(int32(8080))}},
+		Endpoints: []discoveryv1.Endpoint{
+			trafficDistributionEndpoint("10.0.0.2", "node-a", "zone-a"),
+			trafficDistributionEndpoint("10.0.0.3", "node-b", "zone-a"),
+			trafficDistributionEndpoint("10.0.0.4", "node-c", "zone-b"),
+		},
+	}}
+	vpc := &kubeovnv1.Vpc{Status: kubeovnv1.VpcStatus{
+		TCPLoadBalancer:        "tcp",
+		TCPSessionLoadBalancer: "tcp-session",
+	}}
+	chassises := []ovnsb.Chassis{
+		{Name: "chassis-a", Hostname: "node-a"},
+		{Name: "chassis-x", Hostname: "node-x"},
+		{Name: "chassis-y", Hostname: "node-y"},
+	}
+	prefix := serviceTrafficDistributionVariablePrefix(svc)
+	base := prefix + "tcp_" + util.Sha256Hash([]byte("10.96.0.10:80"))[:8]
+	vipVariable, backendVariable := base+"_vip", base+"_backends"
+	templateVIP := "^" + vipVariable + ":80"
+	lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBInternalTraffic, "ipv4")
+	staleVIP := "^" + prefix + "stale_vip:81"
+
+	fake.mockOvnSbClient.EXPECT().ListChassis().Return(&chassises, nil)
+	fake.mockOvnClient.EXPECT().LoadBalancerMigrateVIP(
+		lbName,
+		templateVIP,
+		[]string{"^" + backendVariable},
+		"10.96.0.10:80",
+		"tcp-session",
+		"tcp",
+		"tcp-session",
+		serviceScopedLBName(svc, corev1.ProtocolTCP),
+		lbName,
+	).Return(nil)
+	fake.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{
+		Name:        lbName,
+		ExternalIDs: map[string]string{serviceLBOwnerExternalID: string(svc.UID)},
+		Vips: map[string]string{
+			templateVIP: "^" + backendVariable,
+			staleVIP:    "^old_backends",
+		},
+	}}, nil)
+	fake.mockOvnClient.EXPECT().LoadBalancerDeleteVip(lbName, staleVIP, true).Return(nil)
+	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-a", prefix, gomock.Eq(map[string]string{
+		vipVariable:     "10.96.0.10",
+		backendVariable: "10.0.0.2:8080",
+	})).Return(nil)
+	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-x", prefix, gomock.Eq(map[string]string{
+		vipVariable:     "10.96.0.10",
+		backendVariable: "10.0.0.2:8080,10.0.0.3:8080",
+	})).Return(nil)
+	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-y", prefix, gomock.Eq(map[string]string{
+		vipVariable:     "10.96.0.10",
+		backendVariable: "10.0.0.2:8080,10.0.0.3:8080,10.0.0.4:8080",
+	})).Return(nil)
+
+	if err := fake.fakeController.reconcileServiceTrafficDistribution(
+		svc,
+		endpointSlices,
+		vpc,
+		[]string{"10.96.0.10"},
+		map[string]serviceLBTrafficClass{"10.96.0.10": serviceLBInternalTraffic},
+	); err != nil {
+		t.Fatal(err)
 	}
 }
 
