@@ -119,6 +119,8 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	if newSvc.Spec.Type != v1.ServiceTypeLoadBalancer &&
 		oldSvc.DeletionTimestamp.Equal(newSvc.DeletionTimestamp) &&
 		oldSvc.Annotations[util.VpcAnnotation] == newSvc.Annotations[util.VpcAnnotation] &&
+		oldSvc.Annotations[util.LogicalRouterAnnotation] == newSvc.Annotations[util.LogicalRouterAnnotation] &&
+		oldSvc.Annotations[util.LogicalSwitchAnnotation] == newSvc.Annotations[util.LogicalSwitchAnnotation] &&
 		slices.Equal(oldClusterIps, newClusterIps) &&
 		reflect.DeepEqual(oldSvc.Spec, newSvc.Spec) {
 		return
@@ -147,7 +149,10 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	c.updateServiceQueue.Add(updateSvc)
 	oldSpec, newSpec := oldSvc.Spec, newSvc.Spec
 	oldSpec.ExternalTrafficPolicy, newSpec.ExternalTrafficPolicy = "", ""
-	endpointReconcile := !reflect.DeepEqual(oldSpec, newSpec) || oldSvc.Annotations[util.VpcAnnotation] != newSvc.Annotations[util.VpcAnnotation]
+	endpointReconcile := !reflect.DeepEqual(oldSpec, newSpec) ||
+		oldSvc.Annotations[util.VpcAnnotation] != newSvc.Annotations[util.VpcAnnotation] ||
+		oldSvc.Annotations[util.LogicalRouterAnnotation] != newSvc.Annotations[util.LogicalRouterAnnotation] ||
+		oldSvc.Annotations[util.LogicalSwitchAnnotation] != newSvc.Annotations[util.LogicalSwitchAnnotation]
 	if endpointReconcile && (serviceUsesScopedLB(oldSvc) || serviceUsesScopedLB(newSvc)) && c.addOrUpdateEndpointSliceQueue != nil {
 		c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(newSvc).String())
 	}

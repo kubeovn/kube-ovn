@@ -320,11 +320,25 @@ func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSli
 	for _, port := range svc.Spec.Ports {
 		protocols[port.Protocol] = struct{}{}
 	}
+	owner := serviceScopedLBOwner(svc)
+	if owner.kind == switchLBRuleLBOwnerKind || owner.kind == routerLBRuleLBOwnerKind {
+		lbNames := make([]string, 0, len(protocols))
+		for protocol := range protocols {
+			lbName, err := c.ensureServiceScopedLBExternalTraffic(svc, protocol)
+			if err != nil {
+				return err
+			}
+			lbNames = append(lbNames, lbName)
+			reconcileCtx.loadBalancers.current[protocol] = lbName
+		}
+		return c.reconcileResourceScopedLoadBalancerAttachments(svc, reconcileCtx.vpcName, reconcileCtx.subnetName, lbNames...)
+	}
+
 	families := []string{""}
 	if serviceUsesTemplateLB(svc) {
 		families = serviceTemplateLBAddressFamilies(svc)
 	}
-	lbNames := make([]string, 0, len(protocols)*len(families))
+	lbNames := make([]string, 0, len(protocols)*len(families)*2)
 	for protocol := range protocols {
 		for _, family := range families {
 			lbName, err := c.ensureServiceScopedLB(svc, protocol, family)
@@ -347,12 +361,14 @@ func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSli
 				continue
 			}
 			externalProtocols[port.Protocol] = struct{}{}
-			if _, err := c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, reconcileCtx.vpcName); err != nil {
+			lbName, err := c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol)
+			if err != nil {
 				return err
 			}
+			lbNames = append(lbNames, lbName)
 		}
 	}
-	if err := c.reconcileServiceScopedLoadBalancerAttachments(reconcileCtx.vpcName, lbNames...); err != nil {
+	if err := c.reconcileResourceScopedLoadBalancerAttachments(svc, reconcileCtx.vpcName, reconcileCtx.subnetName, lbNames...); err != nil {
 		return err
 	}
 	return nil
@@ -482,7 +498,7 @@ func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcil
 func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, state *serviceEndpointVIPState) error {
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
 	klog.Infof("add vip endpoint %s, backends %v to LB %s", state.vip, state.backends, state.lb)
-	candidates := serviceLBMigrationCandidates(svc, state.port.Protocol, state.oldLB, reconcileCtx.vpc, state.trafficClass)
+	candidates := c.serviceLBMigrationCandidates(svc, state.port.Protocol, reconcileCtx.vpc, state.trafficClass)
 	if err := c.OVNNbClient.LoadBalancerMigrateVIP(state.lb, state.vip, state.backends, state.vip, candidates...); err != nil {
 		return fmt.Errorf("migrate vip %s: %w", state.vip, err)
 	}
@@ -520,7 +536,7 @@ func (c *Controller) deleteServiceEndpointVIP(reconcileCtx *endpointSliceReconci
 	if err := c.OVNNbClient.LoadBalancerDeleteVip(state.lb, state.vip, true); err != nil {
 		return fmt.Errorf("delete vip %s from load balancer %s: %w", state.vip, state.lb, err)
 	}
-	if err := c.deleteServiceLBMigrationVIP(reconcileCtx.service, state.port.Protocol, state.oldLB, state.lb, state.vip, reconcileCtx.vpc, state.trafficClass); err != nil {
+	if err := c.deleteServiceLBMigrationVIP(reconcileCtx.service, state.port.Protocol, state.lb, state.vip, reconcileCtx.vpc, state.trafficClass); err != nil {
 		return fmt.Errorf("delete migrated vip %s: %w", state.vip, err)
 	}
 	if c.config.EnableOVNLBPreferLocal || state.distributed {
@@ -550,12 +566,14 @@ func (c *Controller) finishServiceEndpointSliceReconcile(reconcileCtx *endpointS
 	if err := c.cleanupServiceScopedLBVIPs(svc, reconcileCtx.desiredScopedVIPs); err != nil {
 		return err
 	}
-	if !reconcileCtx.profile.distributedLocal || !slices.ContainsFunc(reconcileCtx.profile.lbVips, func(vip string) bool {
+	if !slices.ContainsFunc(reconcileCtx.profile.lbVips, func(vip string) bool {
 		return reconcileCtx.profile.trafficClasses[vip] == serviceLBExternalTraffic
 	}) {
-		return c.deleteServiceScopedLBExternalTraffic(svc)
+		if err := c.deleteServiceScopedLBExternalTraffic(svc); err != nil {
+			return err
+		}
 	}
-	return nil
+	return c.cleanupLegacyVpcLoadBalancers(reconcileCtx.vpc)
 }
 
 // Update the endpoint IP address with the secondary IP address of the pod using the network attachment definition annotation
@@ -1143,8 +1161,7 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 				base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
 				vipVariable, backendVariable := base+"_vip", base+"_backends"
 				templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.Port))
-				shared := serviceLoadBalancers(vpc, svc.Spec.SessionAffinity)
-				candidates := serviceLBMigrationCandidates(svc, port.Protocol, shared.previous[port.Protocol], vpc, serviceLBInternalTraffic)
+				candidates := c.serviceLBMigrationCandidates(svc, port.Protocol, vpc, serviceLBInternalTraffic)
 				if err := c.OVNNbClient.LoadBalancerMigrateVIP(lbName, templateVIP, []string{"^" + backendVariable}, vip, candidates...); err != nil {
 					return fmt.Errorf("set traffic distribution template for service %s/%s: %w", svc.Namespace, svc.Name, err)
 				}

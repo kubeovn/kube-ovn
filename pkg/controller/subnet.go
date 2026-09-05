@@ -723,19 +723,10 @@ func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *ku
 	if !c.config.EnableLb || subnet.Name == c.config.NodeSwitch {
 		return nil
 	}
-	lbs := []string{
-		vpc.Status.TCPLoadBalancer,
-		vpc.Status.TCPSessionLoadBalancer,
-		vpc.Status.UDPLoadBalancer,
-		vpc.Status.UDPSessionLoadBalancer,
-		vpc.Status.SctpLoadBalancer,
-		vpc.Status.SctpSessionLoadBalancer,
-	}
-	serviceLBs, err := c.serviceScopedLoadBalancerNamesForVPC(vpc.Name)
+	lbs, err := c.serviceScopedLoadBalancerNamesForVPC(vpc.Name)
 	if err != nil {
 		return c.recordResourceError(subnet, "ListServiceLoadBalancersFailed", err)
 	}
-	lbs = append(lbs, serviceLBs...)
 	if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
 		if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
 			klog.Error(lbErr)

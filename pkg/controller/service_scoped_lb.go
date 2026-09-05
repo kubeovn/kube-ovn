@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"maps"
 	"slices"
@@ -8,7 +10,10 @@ import (
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -16,14 +21,31 @@ import (
 )
 
 const (
-	serviceLBOwnerExternalID = "kube-ovn.io/service-uid"
-	serviceLBNamespaceID     = "kube-ovn.io/service-namespace"
-	serviceLBNameExternalID  = "kube-ovn.io/service-name"
+	serviceLBOwnerExternalID = "kube-ovn.io/lb-owner-uid"
+	serviceLBOwnerKindID     = "kube-ovn.io/lb-owner-kind"
+	serviceLBNamespaceID     = "kube-ovn.io/lb-owner-namespace"
+	serviceLBNameExternalID  = "kube-ovn.io/lb-owner-name"
+	serviceLBVPCExternalID   = "kube-ovn.io/lb-vpc"
+	serviceLBScopeExternalID = "kube-ovn.io/lb-attachment-scope"
 	serviceLBVersionID       = "kube-ovn.io/service-lb-version"
 	serviceLBVersion         = "v1"
 	maxOVNLBSessionTimeout   = 65535
 	serviceTemplateVarRoot   = "kube_ovn_svc_"
+
+	serviceLBOwnerKindAnnotation = "kube-ovn.io/lb-owner-kind"
+	serviceLBOwnerNameAnnotation = "kube-ovn.io/lb-owner-name"
+	serviceLBOwnerUIDAnnotation  = "kube-ovn.io/lb-owner-uid"
+	serviceLBOwnerKind           = "service"
+	switchLBRuleLBOwnerKind      = "switchlbrule"
+	routerLBRuleLBOwnerKind      = "routerlbrule"
 )
+
+type serviceLBOwner struct {
+	kind      string
+	namespace string
+	name      string
+	uid       string
+}
 
 type serviceLBTrafficClass string
 
@@ -34,9 +56,46 @@ const (
 
 func serviceUsesScopedLB(svc *v1.Service) bool {
 	if svc.Annotations[util.SwitchLBRuleVipsAnnotation] != "" || svc.Annotations[util.RouterLBRuleVipsAnnotation] != "" {
-		return false
+		return true
 	}
 	return svc.Spec.Type != v1.ServiceTypeExternalName && svc.Spec.ClusterIP != v1.ClusterIPNone
+}
+
+func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
+	owner := serviceLBOwner{
+		kind:      serviceLBOwnerKind,
+		namespace: svc.Namespace,
+		name:      svc.Name,
+		uid:       string(svc.UID),
+	}
+	if kind := svc.Annotations[serviceLBOwnerKindAnnotation]; kind != "" {
+		owner.kind = kind
+	}
+	if name := svc.Annotations[serviceLBOwnerNameAnnotation]; name != "" {
+		owner.name = name
+	}
+	if uid := svc.Annotations[serviceLBOwnerUIDAnnotation]; uid != "" {
+		owner.uid = uid
+	}
+	return owner
+}
+
+func setServiceScopedLBOwner(svc *v1.Service, kind, name, uid string) {
+	if svc.Annotations == nil {
+		svc.Annotations = make(map[string]string)
+	}
+	svc.Annotations[serviceLBOwnerKindAnnotation] = kind
+	svc.Annotations[serviceLBOwnerNameAnnotation] = name
+	svc.Annotations[serviceLBOwnerUIDAnnotation] = uid
+}
+
+func serviceOwnsScopedLB(svc *v1.Service, lb *ovnnb.LoadBalancer) bool {
+	owner := serviceScopedLBOwner(svc)
+	return owner.uid != "" && lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
+		lb.ExternalIDs[serviceLBOwnerKindID] == owner.kind &&
+		lb.ExternalIDs[serviceLBNamespaceID] == owner.namespace &&
+		lb.ExternalIDs[serviceLBNameExternalID] == owner.name &&
+		lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
 }
 
 func serviceUsesDistributedLB(svc *v1.Service) bool {
@@ -73,7 +132,8 @@ func serviceScopedLBName(svc *v1.Service, protocol v1.Protocol) string {
 }
 
 func serviceScopedLBNameForTrafficClass(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass) string {
-	name := fmt.Sprintf("service:%s/%s:%s", svc.Namespace, svc.Name, strings.ToLower(string(protocol)))
+	owner := serviceScopedLBOwner(svc)
+	name := fmt.Sprintf("%s:%s/%s:%s", owner.kind, owner.namespace, owner.name, strings.ToLower(string(protocol)))
 	return name + ":" + string(trafficClass)
 }
 
@@ -102,13 +162,28 @@ func serviceTemplateLBAddressFamilies(svc *v1.Service) []string {
 	return families
 }
 
-func serviceScopedLBExternalIDs(svc *v1.Service) map[string]string {
+func serviceScopedLBExternalIDs(svc *v1.Service, vpcName string, trafficClass serviceLBTrafficClass) map[string]string {
+	owner := serviceScopedLBOwner(svc)
 	return map[string]string{
 		"vendor":                 util.CniTypeName,
-		serviceLBOwnerExternalID: string(svc.UID),
-		serviceLBNamespaceID:     svc.Namespace,
-		serviceLBNameExternalID:  svc.Name,
+		serviceLBOwnerExternalID: owner.uid,
+		serviceLBOwnerKindID:     owner.kind,
+		serviceLBNamespaceID:     owner.namespace,
+		serviceLBNameExternalID:  owner.name,
+		serviceLBVPCExternalID:   vpcName,
+		serviceLBScopeExternalID: serviceScopedLBAttachmentScope(svc, trafficClass),
 		serviceLBVersionID:       serviceLBVersion,
+	}
+}
+
+func serviceScopedLBAttachmentScope(svc *v1.Service, trafficClass serviceLBTrafficClass) string {
+	switch serviceScopedLBOwner(svc).kind {
+	case switchLBRuleLBOwnerKind:
+		return "logical-switch/external"
+	case routerLBRuleLBOwnerKind:
+		return "logical-router/external"
+	default:
+		return "logical-switch/" + string(trafficClass)
 	}
 }
 
@@ -126,12 +201,39 @@ func vpcLoadBalancerNames(vpc *kubeovnv1.Vpc) (map[v1.Protocol]string, map[v1.Pr
 	return regular, session
 }
 
+func (c *Controller) legacyVpcLoadBalancerNames(vpc *kubeovnv1.Vpc) (map[v1.Protocol]string, map[v1.Protocol]string) {
+	regular, session := vpcLoadBalancerNames(vpc)
+	expected := c.GenVpcLoadBalancer(vpc.Name)
+	expectedRegular := map[v1.Protocol]string{
+		v1.ProtocolTCP:  expected.TCPLoadBalancer,
+		v1.ProtocolUDP:  expected.UDPLoadBalancer,
+		v1.ProtocolSCTP: expected.SctpLoadBalancer,
+	}
+	expectedSession := map[v1.Protocol]string{
+		v1.ProtocolTCP:  expected.TCPSessLoadBalancer,
+		v1.ProtocolUDP:  expected.UDPSessLoadBalancer,
+		v1.ProtocolSCTP: expected.SctpSessLoadBalancer,
+	}
+	for protocol, name := range regular {
+		if name != expectedRegular[protocol] {
+			regular[protocol] = ""
+		}
+	}
+	for protocol, name := range session {
+		if name != expectedSession[protocol] {
+			session[protocol] = ""
+		}
+	}
+	return regular, session
+}
+
 func (c *Controller) ensureServiceScopedLB(svc *v1.Service, protocol v1.Protocol, family string) (string, error) {
 	return c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBInternalTraffic, family)
 }
 
 func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass, family string) (string, error) {
 	name := serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family)
+	vpcName := serviceVPCName(svc, c.config.ClusterRouter)
 	timeout, err := serviceSessionAffinityTimeout(svc)
 	if err != nil {
 		return "", err
@@ -150,7 +252,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, selectFields); err != nil {
 		return "", fmt.Errorf("set selection fields on service-scoped load balancer %s: %w", name, err)
 	}
-	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc)); err != nil {
+	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, vpcName, trafficClass)); err != nil {
 		return "", fmt.Errorf("set ownership metadata on service-scoped load balancer %s: %w", name, err)
 	}
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
@@ -178,7 +280,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	return name, nil
 }
 
-func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, protocol v1.Protocol, vpcName string) (string, error) {
+func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, protocol v1.Protocol) (string, error) {
 	lb, err := c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBExternalTraffic, "")
 	if err != nil {
 		return "", err
@@ -187,9 +289,6 @@ func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, proto
 		if err := c.OVNNbClient.SetLoadBalancerTemplate(lb, false); err != nil {
 			return "", fmt.Errorf("disable template mode on external service-scoped load balancer %s: %w", lb, err)
 		}
-	}
-	if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lb); err != nil {
-		return "", err
 	}
 	return lb, nil
 }
@@ -211,7 +310,8 @@ func (c *Controller) serviceScopedLoadBalancerNamesForVPC(vpcName string) ([]str
 	}
 	names := make(map[string]struct{})
 	for _, svc := range services {
-		if serviceUsesScopedLB(svc) && serviceVPCName(svc, c.config.ClusterRouter) == vpcName {
+		if serviceUsesScopedLB(svc) && serviceScopedLBOwner(svc).kind == serviceLBOwnerKind &&
+			serviceVPCName(svc, c.config.ClusterRouter) == vpcName {
 			for _, name := range serviceScopedLBNames(svc) {
 				names[name] = struct{}{}
 			}
@@ -252,13 +352,66 @@ func (c *Controller) reconcileServiceScopedLoadBalancerAttachments(vpcName strin
 	return nil
 }
 
+func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Service, vpcName, subnetName string, lbNames ...string) error {
+	switch serviceScopedLBOwner(svc).kind {
+	case switchLBRuleLBOwnerKind:
+		logicalSwitch := svc.Annotations[util.LogicalSwitchAnnotation]
+		if logicalSwitch == "" {
+			logicalSwitch = subnetName
+		}
+		if logicalSwitch == "" {
+			return fmt.Errorf("switch load balancer rule service %s/%s has no logical switch annotation", svc.Namespace, svc.Name)
+		}
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(logicalSwitch, ovsdb.MutateOperationInsert, lbNames...); err != nil {
+			return fmt.Errorf("attach resource-scoped load balancers to logical switch %s: %w", logicalSwitch, err)
+		}
+		subnets, err := c.subnetsLister.List(labels.Everything())
+		if err != nil {
+			return fmt.Errorf("list logical switches for resource-scoped load balancer attachment: %w", err)
+		}
+		for _, subnet := range subnets {
+			if subnet.Name == logicalSwitch || !isOvnSubnet(subnet) {
+				continue
+			}
+			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbNames...); err != nil {
+				return fmt.Errorf("detach resource-scoped load balancers from logical switch %s: %w", subnet.Name, err)
+			}
+		}
+		return nil
+	case routerLBRuleLBOwnerKind:
+		if vpcName == "" {
+			return fmt.Errorf("router load balancer rule service %s/%s has no logical router annotation", svc.Namespace, svc.Name)
+		}
+		if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcName, ovsdb.MutateOperationInsert, lbNames...); err != nil {
+			return fmt.Errorf("attach resource-scoped load balancers to logical router %s: %w", vpcName, err)
+		}
+		vpcs, err := c.vpcsLister.List(labels.Everything())
+		if err != nil {
+			return fmt.Errorf("list logical routers for resource-scoped load balancer attachment: %w", err)
+		}
+		for _, vpc := range vpcs {
+			if vpc.Name == vpcName {
+				continue
+			}
+			if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpc.Name, ovsdb.MutateOperationDelete, lbNames...); err != nil {
+				return fmt.Errorf("detach resource-scoped load balancers from logical router %s: %w", vpc.Name, err)
+			}
+		}
+		return nil
+	default:
+		return c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...)
+	}
+}
+
 func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
-	owner := string(svc.UID)
-	if owner == "" {
+	owner := serviceScopedLBOwner(svc)
+	if owner.uid == "" {
 		return nil
 	}
 	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.ExternalIDs[serviceLBOwnerExternalID] == owner && lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
+		return lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
+			lb.ExternalIDs[serviceLBOwnerKindID] == owner.kind &&
+			lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
 	}); err != nil {
 		return fmt.Errorf("delete service-scoped load balancers for %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
@@ -271,13 +424,15 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 }
 
 func (c *Controller) deleteServiceScopedLBTrafficClass(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass) error {
-	owner := string(svc.UID)
-	if owner == "" {
+	owner := serviceScopedLBOwner(svc)
+	if owner.uid == "" {
 		return nil
 	}
 	name := serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass)
 	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.Name == name && lb.ExternalIDs[serviceLBOwnerExternalID] == owner && lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
+		return lb.Name == name && lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
+			lb.ExternalIDs[serviceLBOwnerKindID] == owner.kind &&
+			lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
 	}); err != nil {
 		return fmt.Errorf("delete %s service-scoped load balancer for %s/%s: %w", trafficClass, svc.Namespace, svc.Name, err)
 	}
@@ -304,24 +459,114 @@ func serviceLBTrafficClassForVIP(classes map[string]serviceLBTrafficClass, vip s
 	return serviceLBInternalTraffic
 }
 
-func serviceLBMigrationCandidates(svc *v1.Service, protocol v1.Protocol, oldLB string, vpc *kubeovnv1.Vpc, trafficClass serviceLBTrafficClass) []string {
-	candidates := []string{oldLB}
-	regular, session := vpcLoadBalancerNames(vpc)
-	candidates = append(candidates, regular[protocol], session[protocol])
+func (c *Controller) serviceLBMigrationCandidates(svc *v1.Service, protocol v1.Protocol, vpc *kubeovnv1.Vpc, trafficClass serviceLBTrafficClass) []string {
+	candidates := make([]string, 0, 6)
+	seen := make(map[string]struct{}, 6)
+	add := func(name string) {
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		candidates = append(candidates, name)
+	}
+	regular, session := c.legacyVpcLoadBalancerNames(vpc)
+	add(regular[protocol])
+	add(session[protocol])
 	if serviceUsesScopedLB(svc) {
-		candidates = append(candidates, serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass))
+		add(serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass))
 		if trafficClass == serviceLBInternalTraffic && serviceUsesTemplateLB(svc) {
 			for _, family := range serviceTemplateLBAddressFamilies(svc) {
-				candidates = append(candidates, serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family))
+				add(serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family))
 			}
 		}
 	}
 	return candidates
 }
 
+func (c *Controller) cleanupLegacyVpcLoadBalancers(vpc *kubeovnv1.Vpc) error {
+	regular, session := c.legacyVpcLoadBalancerNames(vpc)
+	statusFields := map[string]string{
+		"tcpLoadBalancer":         regular[v1.ProtocolTCP],
+		"udpLoadBalancer":         regular[v1.ProtocolUDP],
+		"sctpLoadBalancer":        regular[v1.ProtocolSCTP],
+		"tcpSessionLoadBalancer":  session[v1.ProtocolTCP],
+		"udpSessionLoadBalancer":  session[v1.ProtocolUDP],
+		"sctpSessionLoadBalancer": session[v1.ProtocolSCTP],
+	}
+	cleared := make(map[string]string)
+	for field, name := range statusFields {
+		if name == "" {
+			continue
+		}
+		lb, err := c.OVNNbClient.GetLoadBalancer(name, true)
+		if err != nil {
+			return fmt.Errorf("get legacy vpc load balancer %s: %w", name, err)
+		}
+		if lb != nil && len(lb.Vips) != 0 {
+			continue
+		}
+		if lb != nil {
+			if err := c.OVNNbClient.DeleteLoadBalancers(func(candidate *ovnnb.LoadBalancer) bool {
+				return candidate.Name == name
+			}); err != nil {
+				return fmt.Errorf("delete empty legacy vpc load balancer %s: %w", name, err)
+			}
+		}
+		cleared[field] = ""
+	}
+	if len(cleared) == 0 {
+		return nil
+	}
+	body, err := jsonv2.Marshal(map[string]any{"status": cleared})
+	if err != nil {
+		return fmt.Errorf("marshal legacy load balancer status patch for vpc %s: %w", vpc.Name, err)
+	}
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, body, metav1.PatchOptions{}, "status"); err != nil {
+		return fmt.Errorf("clear legacy load balancer status for vpc %s: %w", vpc.Name, err)
+	}
+	return nil
+}
+
+func (c *Controller) deleteLegacyVpcVIPs(vpcName string, vips []string) error {
+	if vpcName == "" || len(vips) == 0 {
+		return nil
+	}
+	vpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("get vpc %s for legacy load balancer cleanup: %w", vpcName, err)
+	}
+	regular, session := c.legacyVpcLoadBalancerNames(vpc)
+	seen := make(map[string]struct{}, len(regular)+len(session))
+	for _, loadBalancers := range []map[v1.Protocol]string{regular, session} {
+		for _, name := range loadBalancers {
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			for _, vip := range vips {
+				if err := c.OVNNbClient.LoadBalancerDeleteVip(name, vip, true); err != nil && !k8serrors.IsNotFound(err) {
+					return fmt.Errorf("delete vip %s from legacy vpc load balancer %s: %w", vip, name, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (c *Controller) cleanupServiceScopedLBVIPs(svc *v1.Service, desired map[string]map[string]struct{}) error {
+	owner := serviceScopedLBOwner(svc)
 	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID) &&
+		return lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
+			lb.ExternalIDs[serviceLBOwnerKindID] == owner.kind &&
 			lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
 	})
 	if err != nil {
@@ -369,9 +614,9 @@ func (c *Controller) gcServiceTrafficDistributionVariables(services []*v1.Servic
 	return nil
 }
 
-func (c *Controller) deleteServiceLBMigrationVIP(svc *v1.Service, protocol v1.Protocol, oldLB, currentLB, vip string, vpc *kubeovnv1.Vpc, trafficClass serviceLBTrafficClass) error {
+func (c *Controller) deleteServiceLBMigrationVIP(svc *v1.Service, protocol v1.Protocol, currentLB, vip string, vpc *kubeovnv1.Vpc, trafficClass serviceLBTrafficClass) error {
 	seen := make(map[string]struct{})
-	for _, legacyLB := range serviceLBMigrationCandidates(svc, protocol, oldLB, vpc, trafficClass) {
+	for _, legacyLB := range c.serviceLBMigrationCandidates(svc, protocol, vpc, trafficClass) {
 		if legacyLB == "" || legacyLB == currentLB {
 			continue
 		}
@@ -396,9 +641,12 @@ func (c *Controller) deleteServiceLBMigrationVIP(svc *v1.Service, protocol v1.Pr
 func serviceScopedLBNames(svc *v1.Service) []string {
 	names := make([]string, 0, len(svc.Spec.Ports)*2)
 	seen := make(map[string]struct{}, len(svc.Spec.Ports))
+	ownerKind := serviceScopedLBOwner(svc).kind
 	for _, port := range svc.Spec.Ports {
 		trafficClasses := []serviceLBTrafficClass{serviceLBInternalTraffic}
-		if svc.Spec.Type == v1.ServiceTypeLoadBalancer || serviceUsesDistributedLB(svc) {
+		if ownerKind == switchLBRuleLBOwnerKind || ownerKind == routerLBRuleLBOwnerKind {
+			trafficClasses = []serviceLBTrafficClass{serviceLBExternalTraffic}
+		} else if svc.Spec.Type == v1.ServiceTypeLoadBalancer || serviceUsesDistributedLB(svc) {
 			trafficClasses = append(trafficClasses, serviceLBExternalTraffic)
 		}
 		for _, trafficClass := range trafficClasses {

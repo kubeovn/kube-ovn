@@ -11,8 +11,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/ovn-kubernetes/libovsdb/ovsdb"
-
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -137,6 +135,7 @@ func Test_generateRlrHeadlessService(t *testing.T) {
 			}
 			if tt.wantRouter != "" {
 				assert.Equal(t, tt.wantRouter, svc.Annotations[util.LogicalRouterAnnotation])
+				assert.Equal(t, tt.wantRouter, svc.Annotations[util.VpcAnnotation])
 			}
 			if len(tt.wantFamilies) > 0 {
 				assert.Equal(t, tt.wantFamilies, svc.Spec.IPFamilies)
@@ -583,7 +582,7 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
 	})
 
-	t.Run("happy path creates service and attaches LBs", func(t *testing.T) {
+	t.Run("happy path creates resource-owned service", func(t *testing.T) {
 		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{
 			{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"},
 		})
@@ -597,10 +596,6 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		fc.mockOvnClient.EXPECT().
-			LogicalRouterUpdateLoadBalancers(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil)
-
 		require.NoError(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
 
 		// Service must exist with the correct VIP and router annotations.
@@ -610,6 +605,8 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "192.168.1.100", svc.Annotations[util.RouterLBRuleVipsAnnotation])
 		assert.Equal(t, "vpc1", svc.Annotations[util.LogicalRouterAnnotation])
+		assert.Equal(t, routerLBRuleLBOwnerKind, svc.Annotations[serviceLBOwnerKindAnnotation])
+		assert.Equal(t, "rlr1", svc.Annotations[serviceLBOwnerNameAnnotation])
 		assert.Equal(t, corev1.ClusterIPNone, svc.Spec.ClusterIP)
 
 		// Status must be updated with service reference.
@@ -629,7 +626,7 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 func Test_handleDelRouterLBRule(t *testing.T) {
 	const (
 		testVpc   = "test-vpc"
-		testTCPLB = "test-tcp-lb"
+		testTCPLB = "vpc-test-vpc-tcp-load"
 		testEIP   = "192.168.1.100"
 		testPort  = int32(80)
 		testVip   = "192.168.1.100:80"
@@ -684,9 +681,6 @@ func Test_handleDelRouterLBRule(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		fc.mockOvnClient.EXPECT().
-			LogicalRouterUpdateLoadBalancers(testVpc, ovsdb.MutateOperationDelete, testTCPLB).
-			Return(nil)
 		fc.mockOvnClient.EXPECT().
 			LoadBalancerDeleteVip(testTCPLB, testVip, true).
 			Return(nil)
@@ -765,14 +759,14 @@ func Test_enqueueUpdateRouterLBRule_isRecreate(t *testing.T) {
 			wantIsRecreate: true,
 		},
 		{
-			name: "Vpc change triggers recreate",
+			name: "Vpc change updates the existing load balancer",
 			mutate: func(r *kubeovnv1.RouterLBRule) *kubeovnv1.RouterLBRule {
 				n := r.DeepCopy()
 				n.ResourceVersion = "2"
 				n.Spec.Vpc = "vpc2"
 				return n
 			},
-			wantIsRecreate: true,
+			wantIsRecreate: false,
 		},
 		{
 			name: "Namespace change triggers recreate",

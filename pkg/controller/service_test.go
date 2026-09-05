@@ -270,6 +270,20 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 			enqueued: true,
 		},
 		{
+			name: "logical router annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.LogicalRouterAnnotation: "custom-vpc"}
+			},
+			enqueued: true,
+		},
+		{
+			name: "logical switch annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.LogicalSwitchAnnotation: "custom-subnet"}
+			},
+			enqueued: true,
+		},
+		{
 			name: "switch lb rule vip annotation change is enqueued",
 			mutate: func(svc *v1.Service) {
 				svc.Annotations = map[string]string{util.SwitchLBRuleVipsAnnotation: "10.0.0.1"}
@@ -323,6 +337,38 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 			} else {
 				require.Zero(t, c.updateServiceQueue.Len())
 			}
+		})
+	}
+}
+
+func TestEnqueueUpdateRuleServiceReconcilesEndpointSliceOnAttachmentChange(t *testing.T) {
+	for _, annotation := range []string{util.VpcAnnotation, util.LogicalRouterAnnotation, util.LogicalSwitchAnnotation} {
+		t.Run(annotation, func(t *testing.T) {
+			oldSvc := &v1.Service{
+				Name:            "slr-rule",
+				Namespace:       metav1.NamespaceDefault,
+				ResourceVersion: "1",
+				Annotations: map[string]string{
+					util.SwitchLBRuleVipsAnnotation: "10.0.0.10",
+					annotation:                      "old",
+				},
+				Spec: v1.ServiceSpec{ClusterIP: v1.ClusterIPNone},
+			}
+			newSvc := oldSvc.DeepCopy()
+			newSvc.ResourceVersion = "2"
+			newSvc.Annotations[annotation] = "new"
+			controller := &Controller{
+				config:                        &Configuration{EnableLb: true},
+				updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
+				addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+			}
+			t.Cleanup(controller.updateServiceQueue.ShutDown)
+			t.Cleanup(controller.addOrUpdateEndpointSliceQueue.ShutDown)
+
+			controller.enqueueUpdateService(oldSvc, newSvc)
+
+			require.Equal(t, 1, controller.updateServiceQueue.Len())
+			require.Equal(t, 1, controller.addOrUpdateEndpointSliceQueue.Len())
 		})
 	}
 }

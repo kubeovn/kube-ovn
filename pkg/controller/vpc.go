@@ -259,30 +259,6 @@ func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 	}
 }
 
-func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
-	vpcLbConfig := c.GenVpcLoadBalancer(vpc)
-	if err := c.initLB(vpcLbConfig.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
-		return nil, err
-	}
-
-	return vpcLbConfig, nil
-}
-
 func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	c.vpcKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(key) }()
@@ -604,19 +580,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	vpc.Status.Router = key
 	vpc.Status.Standby = true
 	vpc.Status.VpcPeerings = newPeers
-	if c.config.EnableLb {
-		vpcLb, err := c.addLoadBalancer(key)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
-		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
-		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
-		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
-	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
 		klog.Error(err)
