@@ -22,6 +22,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -329,7 +330,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			}
 			isExternalVIP := serviceLBTrafficClassForVIP(lbVipTrafficClasses, lbVip) == serviceLBExternalTraffic
 			isDistributedForVIP := isDistributedLocal && !isExternalVIP
-			isTemplateForVIP := svc.Spec.TrafficDistribution != nil && !isExternalVIP
+			isTemplateForVIP := svc.Spec.TrafficDistribution != nil && !isDistributedForVIP && !isExternalVIP
 			if (isDistributedLocal || svc.Spec.TrafficDistribution != nil) && isExternalVIP {
 				lb, err = c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, subnetName)
 				if err != nil {
@@ -995,30 +996,60 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 	}
 	prefix := serviceTrafficDistributionVariablePrefix(svc)
 	variablesByChassis := make(map[string]map[string]string, len(*chassises))
+	desiredTemplateVIPs := make(map[string]map[string]string)
 	for _, chassis := range *chassises {
 		variablesByChassis[chassis.Name] = make(map[string]string)
 	}
-	for _, port := range svc.Spec.Ports {
-		for _, lbVip := range lbVips {
-			if classes[lbVip] == serviceLBExternalTraffic {
+	if !serviceUsesDistributedLB(svc) {
+		for _, port := range svc.Spec.Ports {
+			for _, lbVip := range lbVips {
+				if classes[lbVip] == serviceLBExternalTraffic {
+					continue
+				}
+				lbName := serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBInternalTraffic)
+				vip := util.JoinHostPort(lbVip, port.Port)
+				base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
+				vipVariable, backendVariable := base+"_vip", base+"_backends"
+				templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.Port))
+				if err := c.OVNNbClient.SetLoadBalancerTemplateVIP(lbName, templateVIP, "^"+backendVariable); err != nil {
+					return fmt.Errorf("set traffic distribution template for service %s/%s: %w", svc.Namespace, svc.Name, err)
+				}
+				if desiredTemplateVIPs[lbName] == nil {
+					desiredTemplateVIPs[lbName] = make(map[string]string)
+				}
+				desiredTemplateVIPs[lbName][templateVIP] = "^" + backendVariable
+				backends := topologyBackends(endpointSlices, port, lbVip)
+				for _, chassis := range *chassises {
+					nodeName, zoneName := chassis.Hostname, ""
+					if node, getErr := c.nodesLister.Get(chassis.Hostname); getErr == nil {
+						zoneName = node.Labels[v1.LabelTopologyZone]
+					} else if !k8serrors.IsNotFound(getErr) {
+						return fmt.Errorf("get node %s for service %s/%s traffic distribution: %w", chassis.Hostname, svc.Namespace, svc.Name, getErr)
+					}
+					selected := topologyBackendSubset(backends, nodeName, zoneName)
+					variablesByChassis[chassis.Name][vipVariable] = lbVip
+					variablesByChassis[chassis.Name][backendVariable] = strings.Join(selected, ",")
+				}
+			}
+		}
+	}
+	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
+	})
+	if err != nil {
+		return fmt.Errorf("list traffic distribution load balancers for service %s/%s: %w", svc.Namespace, svc.Name, err)
+	}
+	for _, lb := range lbs {
+		desired := desiredTemplateVIPs[lb.Name]
+		for templateVIP := range lb.Vips {
+			if !strings.HasPrefix(templateVIP, "^"+prefix) {
 				continue
 			}
-			lbName := serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBInternalTraffic)
-			vip := util.JoinHostPort(lbVip, port.Port)
-			base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
-			vipVariable, backendVariable := base+"_vip", base+"_backends"
-			if err := c.OVNNbClient.SetLoadBalancerTemplateVIP(lbName, "^"+vipVariable+":"+strconv.Itoa(int(port.Port)), "^"+backendVariable); err != nil {
-				return fmt.Errorf("set traffic distribution template for service %s/%s: %w", svc.Namespace, svc.Name, err)
+			if _, ok := desired[templateVIP]; ok {
+				continue
 			}
-			backends := topologyBackends(endpointSlices, port, lbVip)
-			for _, chassis := range *chassises {
-				nodeName, zoneName := chassis.Hostname, ""
-				if node, getErr := c.nodesLister.Get(chassis.Hostname); getErr == nil {
-					zoneName = node.Labels[v1.LabelTopologyZone]
-				}
-				selected := topologyBackendSubset(backends, nodeName, zoneName)
-				variablesByChassis[chassis.Name][vipVariable] = lbVip
-				variablesByChassis[chassis.Name][backendVariable] = strings.Join(selected, ",")
+			if err := c.OVNNbClient.LoadBalancerDeleteVip(lb.Name, templateVIP, true); err != nil {
+				return fmt.Errorf("delete stale traffic distribution VIP %s from load balancer %s: %w", templateVIP, lb.Name, err)
 			}
 		}
 	}

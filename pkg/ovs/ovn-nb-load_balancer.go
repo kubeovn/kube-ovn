@@ -374,20 +374,28 @@ func (c *OVNNbClient) SetLoadBalancerTemplate(lbName string, template bool) erro
 
 // SetLoadBalancerTemplateVIP configures a VIP to use a chassis template backend variable.
 func (c *OVNNbClient) SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error {
-	lb, err := c.GetLoadBalancer(lbName, false)
+	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		if lb.Vips[vip] == backendVariable {
+			return nil
+		}
+		mutations := make([]model.Mutation, 0, 2)
+		if oldValue, ok := lb.Vips[vip]; ok {
+			mutations = append(mutations, model.Mutation{
+				Field: &lb.Vips, Value: map[string]string{vip: oldValue}, Mutator: ovsdb.MutateOperationDelete,
+			})
+		}
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.Vips, Value: map[string]string{vip: backendVariable}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		return mutations
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to generate operations when setting template VIP %s on lb %s: %w", vip, lbName, err)
 	}
-	vips := maps.Clone(lb.Vips)
-	if vips == nil {
-		vips = make(map[string]string)
-	}
-	vips[vip] = backendVariable
-	if maps.Equal(lb.Vips, vips) {
+	if len(ops) == 0 {
 		return nil
 	}
-	lb.Vips = vips
-	if err := c.UpdateLoadBalancer(lb, &lb.Vips); err != nil {
+	if err := c.Transact("lb-template-vip", ops); err != nil {
 		return fmt.Errorf("failed to set template VIP %s on lb %s: %w", vip, lbName, err)
 	}
 	return nil

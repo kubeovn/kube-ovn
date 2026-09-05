@@ -38,6 +38,9 @@ endif
 # must not be included.
 ifeq ($(shell test $(VER_MAJOR) -gt 1 -o \( $(VER_MAJOR) -eq 1 -a $(VER_MINOR) -ge 17 \) && echo true),true)
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*[Ii]nternalTrafficPolicy.*Local"
+# Host-network endpoints do not have Kube-OVN logical switch ports and cannot
+# be represented by the distributed LB backend mappings.
+K8S_CONFORMANCE_E2E_SKIP += "sig-network.*[Ii]nternalTrafficPolicy.*Local.*hostNetwork: true"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint in the same zone when using PreferSameZone$$"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic correctly between pods on multiple nodes when using PreferSameZone$$"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint on the same node or fall back to same zone when using PreferSameNode$$"
