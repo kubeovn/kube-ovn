@@ -301,10 +301,6 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 	if _, err := c.vpcsLister.Get(eps.Spec.Vpc); err != nil {
 		return fmt.Errorf("get provider vpc %s: %w", eps.Spec.Vpc, err)
 	}
-	svc, err := c.servicesLister.Services(eps.Spec.Namespace).Get(eps.Spec.Service)
-	if err != nil {
-		return fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
-	}
 
 	snatIP, err := c.ensureVpcTransitAttachment(eps.Spec.Vpc)
 	if err != nil {
@@ -312,14 +308,31 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 	}
 	klog.V(5).Infof("provider vpc %s attached to transit with snat ip %s", eps.Spec.Vpc, snatIP)
 
+	svc, err := c.servicesLister.Services(eps.Spec.Namespace).Get(eps.Spec.Service)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			if clearErr := c.deleteUnusedProtocolLBs(eps.Name, eps.Spec.Vpc, vpcEndpointServiceLBName, nil); clearErr != nil {
+				return clearErr
+			}
+			if clearErr := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, eps.Status.TransitVIP, nil); clearErr != nil {
+				return clearErr
+			}
+		}
+		return fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
+	}
+
 	transitVIP, mac, err := c.ensureVpcEndpointServiceVIP(eps)
 	if err != nil {
 		return err
 	}
-	if err := c.ensureVpcEndpointServiceLSP(eps.Name, transitVIP, mac); err != nil {
+	mac, err = c.ensureVpcEndpointServiceLSP(eps, transitVIP, mac)
+	if err != nil {
 		return err
 	}
 	if err := c.ensureVpcEndpointServiceLoadBalancers(eps, svc, transitVIP); err != nil {
+		return err
+	}
+	if err := c.ensureVpcEndpointServiceACLs(eps, transitVIP); err != nil {
 		return err
 	}
 
@@ -376,14 +389,43 @@ func (c *Controller) ensureVpcEndpointServiceVIP(eps *kubeovnv1.VpcEndpointServi
 	return vpcEndpointPreferIP(v4, v6), mac, nil
 }
 
-func (c *Controller) ensureVpcEndpointServiceLSP(name, ip, mac string) error {
-	lspName := vpcEndpointServiceLSPName(name)
-	if err := c.OVNNbClient.CreateLogicalSwitchPort(c.config.VpcEndpointTransitSwitch, lspName, ip, mac, name, metav1.NamespaceSystem, false, "", "", false, nil, ""); err != nil {
+func (c *Controller) ensureVpcEndpointServiceLSP(eps *kubeovnv1.VpcEndpointService, ip, mac string) (string, error) {
+	lspName := vpcEndpointServiceLSPName(eps.Name)
+	// Match SwitchLB VIP: use the provider transit LRP MAC so ARP replies steer
+	// traffic into the provider router where the OVN LB is attached.
+	lrpName := vpcEndpointTransitLrpName(eps.Spec.Vpc, c.config.VpcEndpointTransitSwitch)
+	if lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true); err != nil {
+		klog.Warningf("failed to get transit lrp %s for mac: %v", lrpName, err)
+	} else if lrp != nil && lrp.MAC != "" {
+		mac = lrp.MAC
+	}
+	if err := c.OVNNbClient.CreateLogicalSwitchPort(c.config.VpcEndpointTransitSwitch, lspName, ip, mac, eps.Name, metav1.NamespaceSystem, false, "", "", false, nil, ""); err != nil {
 		klog.Errorf("failed to create transit lsp %s: %v", lspName, err)
-		return err
+		return "", err
 	}
 	if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(lspName, true); err != nil {
 		klog.Errorf("failed to enable arp proxy on transit lsp %s: %v", lspName, err)
+		return "", err
+	}
+	return mac, nil
+}
+
+func (c *Controller) ensureVpcEndpointServiceACLs(eps *kubeovnv1.VpcEndpointService, transitVIP string) error {
+	var allowedLSPs []string
+	if len(eps.Spec.AllowedVpcs) > 0 {
+		allowed := make(map[string]struct{}, len(eps.Spec.AllowedVpcs)+1)
+		for _, vpc := range eps.Spec.AllowedVpcs {
+			allowed[vpc] = struct{}{}
+		}
+		allowed[eps.Spec.Vpc] = struct{}{}
+		allowedLSPs = make([]string, 0, len(allowed))
+		for vpc := range allowed {
+			allowedLSPs = append(allowedLSPs, vpcEndpointTransitLspName(vpc, c.config.VpcEndpointTransitSwitch))
+		}
+		slices.Sort(allowedLSPs)
+	}
+	if err := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, transitVIP, allowedLSPs); err != nil {
+		klog.Errorf("failed to update ACLs for VpcEndpointService %s: %v", eps.Name, err)
 		return err
 	}
 	return nil
@@ -451,6 +493,10 @@ func (c *Controller) cleanupVpcEndpointService(eps *kubeovnv1.VpcEndpointService
 			klog.Errorf("failed to delete lb %s: %v", lbName, err)
 			return err
 		}
+	}
+	if err := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, "", nil); err != nil {
+		klog.Errorf("failed to delete ACLs for VpcEndpointService %s: %v", eps.Name, err)
+		return err
 	}
 	if err := c.OVNNbClient.DeleteLogicalSwitchPort(vpcEndpointServiceLSPName(eps.Name)); err != nil {
 		klog.Errorf("failed to delete transit lsp for %s: %v", eps.Name, err)

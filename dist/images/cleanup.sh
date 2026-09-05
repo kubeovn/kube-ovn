@@ -130,6 +130,8 @@ kubectl delete --ignore-not-found crd \
   vips.kubeovn.io \
   switch-lb-rules.kubeovn.io \
   vpc-dnses.kubeovn.io \
+  vpc-endpoint-services.kubeovn.io \
+  vpc-endpoints.kubeovn.io \
   ovn-dnat-rules.kubeovn.io \
   ovn-snat-rules.kubeovn.io \
   ovn-fips.kubeovn.io \

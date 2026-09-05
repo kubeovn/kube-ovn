@@ -917,6 +917,10 @@ func (suite *OvnClientTestSuite) Test_EnsureSnat() {
 	suite.testEnsureSnat()
 }
 
+func (suite *OvnClientTestSuite) Test_AddSnatWithMatch() {
+	suite.testAddSnatWithMatch()
+}
+
 func (suite *OvnClientTestSuite) Test_UpdateDnatAndSnat() {
 	suite.testUpdateDnatAndSnat()
 }

@@ -2503,6 +2503,20 @@ func (mr *MockACLMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSgACL", reflect.TypeOf((*MockACL)(nil).UpdateSgACL), sg, direction)
 }
 
+// UpdateVpcEndpointServiceACLs mocks base method.
+func (m *MockACL) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP string, allowedLSPNames []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateVpcEndpointServiceACLs", lsName, epsName, transitVIP, allowedLSPNames)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateVpcEndpointServiceACLs indicates an expected call of UpdateVpcEndpointServiceACLs.
+func (mr *MockACLMockRecorder) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, allowedLSPNames any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVpcEndpointServiceACLs", reflect.TypeOf((*MockACL)(nil).UpdateVpcEndpointServiceACLs), lsName, epsName, transitVIP, allowedLSPNames)
+}
+
 // MockACLSampling is a mock of ACLSampling interface.
 type MockACLSampling struct {
 	ctrl     *gomock.Controller
@@ -5607,14 +5621,6 @@ func (mr *MockNbClientMockRecorder) PortGroupSetPorts(pgName, ports any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PortGroupSetPorts", reflect.TypeOf((*MockNbClient)(nil).PortGroupSetPorts), pgName, ports)
 }
 
-// ReconcileGatewayChassises mocks base method.
-func (m *MockNbClient) ReconcileGatewayChassises(lrpName string, chassises []string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReconcileGatewayChassises", lrpName, chassises)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
 // PrepareNetworkPolicyACLSampling mocks base method.
 func (m *MockNbClient) PrepareNetworkPolicyACLSampling(pgName, namespace, name, uid string) (*ovs.NetworkPolicySamplingRequest, error) {
 	m.ctrl.T.Helper()
@@ -5638,16 +5644,24 @@ func (m *MockNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig)
 	return ret0
 }
 
-// ReconcileGatewayChassises indicates an expected call of ReconcileGatewayChassises.
-func (mr *MockNbClientMockRecorder) ReconcileGatewayChassises(lrpName, chassises any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).ReconcileGatewayChassises), lrpName, chassises)
-}
-
 // ReconcileACLSampling indicates an expected call of ReconcileACLSampling.
 func (mr *MockNbClientMockRecorder) ReconcileACLSampling(config any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileACLSampling", reflect.TypeOf((*MockNbClient)(nil).ReconcileACLSampling), config)
+}
+
+// ReconcileGatewayChassises mocks base method.
+func (m *MockNbClient) ReconcileGatewayChassises(lrpName string, chassises []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileGatewayChassises", lrpName, chassises)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileGatewayChassises indicates an expected call of ReconcileGatewayChassises.
+func (mr *MockNbClientMockRecorder) ReconcileGatewayChassises(lrpName, chassises any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileGatewayChassises", reflect.TypeOf((*MockNbClient)(nil).ReconcileGatewayChassises), lrpName, chassises)
 }
 
 // ReconcilePortDHCPOptions mocks base method.
@@ -6472,6 +6486,20 @@ func (m *MockNbClient) UpdateSgACL(sg *v1.SecurityGroup, direction string) error
 func (mr *MockNbClientMockRecorder) UpdateSgACL(sg, direction any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSgACL", reflect.TypeOf((*MockNbClient)(nil).UpdateSgACL), sg, direction)
+}
+
+// UpdateVpcEndpointServiceACLs mocks base method.
+func (m *MockNbClient) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP string, allowedLSPNames []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateVpcEndpointServiceACLs", lsName, epsName, transitVIP, allowedLSPNames)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateVpcEndpointServiceACLs indicates an expected call of UpdateVpcEndpointServiceACLs.
+func (mr *MockNbClientMockRecorder) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, allowedLSPNames any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVpcEndpointServiceACLs", reflect.TypeOf((*MockNbClient)(nil).UpdateVpcEndpointServiceACLs), lsName, epsName, transitVIP, allowedLSPNames)
 }
 
 // MockSbClient is a mock of SbClient interface.

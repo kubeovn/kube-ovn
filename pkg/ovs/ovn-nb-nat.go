@@ -131,8 +131,10 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 	return nil
 }
 
-// AddSnatWithMatch creates or updates an SNAT rule that only matches traffic
-// selected by match (for example `ip4.dst == <transitVIP>`).
+// AddSnatWithMatch creates an SNAT rule that only matches traffic selected by
+// match (for example `ip4.dst == <transitVIP>`). Multiple rules may share the
+// same externalIP/logicalIP pair when their matches differ; an existing rule is
+// never overwritten.
 func (c *OVNNbClient) AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
 	if match == "" {
 		return c.EnsureSnat(lrName, externalIP, logicalIP)
@@ -154,14 +156,9 @@ func (c *OVNNbClient) AddSnatWithMatch(lrName, externalIP, logicalIP, match stri
 		return err
 	}
 	for _, nat := range nats {
-		if nat.ExternalIP != externalIP {
-			continue
-		}
-		if nat.Match == match {
+		if nat.ExternalIP == externalIP && nat.Match == match {
 			return nil
 		}
-		nat.Match = match
-		return c.UpdateNat(nat, &nat.Match)
 	}
 
 	nat, err := c.newNat(lrName, ovnnb.NATTypeSNAT, externalIP, logicalIP, "", "", func(n *ovnnb.NAT) {

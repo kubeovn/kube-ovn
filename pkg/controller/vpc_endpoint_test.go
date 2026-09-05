@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -41,4 +43,23 @@ func TestVpcEndpointIPFromNetworks(t *testing.T) {
 	require.Equal(t, "100.65.0.10", vpcEndpointIPFromNetworks([]string{"100.65.0.10/16"}))
 	require.Equal(t, "100.65.0.10", vpcEndpointIPFromNetworks([]string{"100.65.0.10/16", "fd00:65::10/112"}))
 	require.Empty(t, vpcEndpointIPFromNetworks(nil))
+}
+
+func TestEndpointSlicePortMatchesServicePort(t *testing.T) {
+	tcp := corev1.ProtocolTCP
+	udp := corev1.ProtocolUDP
+	http := "http"
+	port80 := int32(80)
+
+	unnamedSvc := corev1.ServicePort{Protocol: tcp, Port: 80}
+	emptyName := ""
+	require.True(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp}, unnamedSvc))
+	require.True(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp, Name: &emptyName}, unnamedSvc))
+	require.False(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp, Name: &http}, unnamedSvc))
+	require.False(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Protocol: &tcp}, unnamedSvc))
+	require.False(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &udp}, unnamedSvc))
+
+	namedSvc := corev1.ServicePort{Name: "http", Protocol: tcp, Port: 80}
+	require.True(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp, Name: &http}, namedSvc))
+	require.False(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp}, namedSvc))
 }
