@@ -238,6 +238,8 @@ func TestEnsureServiceScopedLBExternalTraffic(t *testing.T) {
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-a", ovsdb.MutateOperationInsert, lbName).Return(nil),
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-b", ovsdb.MutateOperationInsert, lbName).Return(nil),
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("disabled", ovsdb.MutateOperationDelete, lbName).Return(nil),
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("other-vpc", ovsdb.MutateOperationDelete, lbName).Return(nil),
 	)
 	if _, err := ctrl.ensureServiceScopedLBExternalTraffic(svc, corev1.ProtocolTCP, util.DefaultVpc); err != nil {
 		t.Fatal(err)
@@ -496,14 +498,14 @@ func TestGetDistributedIPPortMapping(t *testing.T) {
 
 func TestServiceEndpointCandidatesTerminatingFallback(t *testing.T) {
 	ready, notReady := true, false
-	serving, terminating := true, true
+	terminating := true
 	httpName, otherName := "http", "other"
 	servicePort := corev1.ServicePort{Name: httpName, Port: 80}
 	endpointSlices := []*discoveryv1.EndpointSlice{
 		{
 			Ports: []discoveryv1.EndpointPort{{Name: &httpName, Port: new(int32(8080))}},
 			Endpoints: []discoveryv1.Endpoint{
-				{Addresses: []string{"10.0.0.2", "fd00::2"}, Conditions: discoveryv1.EndpointConditions{Ready: &notReady, Serving: &serving, Terminating: &terminating}},
+				{Addresses: []string{"10.0.0.2", "fd00::2"}, Conditions: discoveryv1.EndpointConditions{Ready: &notReady, Terminating: &terminating}},
 				{Addresses: []string{"10.0.0.3"}, Conditions: discoveryv1.EndpointConditions{Ready: &ready}},
 			},
 		},

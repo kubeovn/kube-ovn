@@ -334,7 +334,7 @@ func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSli
 			}
 		}
 	}
-	if err := c.attachServiceScopedLoadBalancers(reconcileCtx.vpcName, lbNames...); err != nil {
+	if err := c.reconcileServiceScopedLoadBalancerAttachments(reconcileCtx.vpcName, lbNames...); err != nil {
 		return err
 	}
 	return nil
@@ -1161,7 +1161,7 @@ func endpointReady(endpoint discoveryv1.Endpoint) bool {
 }
 
 func endpointServingAndTerminating(endpoint discoveryv1.Endpoint) bool {
-	return endpoint.Conditions.Serving != nil && *endpoint.Conditions.Serving &&
+	return (endpoint.Conditions.Serving == nil || *endpoint.Conditions.Serving) &&
 		endpoint.Conditions.Terminating != nil && *endpoint.Conditions.Terminating
 }
 
