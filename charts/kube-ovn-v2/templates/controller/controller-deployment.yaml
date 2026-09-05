@@ -1,8 +1,11 @@
 {{- $controllerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.controller.image) | fromYaml -}}
+{{- $controllerName := include "kubeovn.controllerName" . -}}
+{{- $ovnServiceAccountName := include "kubeovn.ovnServiceAccountName" . -}}
+{{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kube-ovn-controller
+  name: {{ $controllerName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.controller.annotations }}
   annotations:
@@ -16,7 +19,7 @@ spec:
   replicas: {{ include "kubeovn.nodeCount" . }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-controller
+      app.kubernetes.io/name: {{ $controllerName }}
       app.kubernetes.io/part-of: kube-ovn
   strategy:
     rollingUpdate:
@@ -30,13 +33,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-controller
+        app.kubernetes.io/name: {{ $controllerName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.controller.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: kube-ovn-controller
+        app: {{ $controllerName }}
         component: network
         type: infra
     spec:
@@ -52,10 +55,10 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app.kubernetes.io/name: kube-ovn-controller
+                  app.kubernetes.io/name: {{ $controllerName }}
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn
+      serviceAccountName: {{ $ovnServiceAccountName }}
       automountServiceAccountToken: true
       hostNetwork: true
       securityContext:
@@ -244,7 +247,7 @@ spec:
             - mountPath: /var/log/ovn
               name: ovn-log
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: {{ $tlsSecretName }}
           readinessProbe:
             httpGet:
               port: 10660
@@ -277,7 +280,7 @@ spec:
         - name: ovn-log
           hostPath:
             path: {{ .Values.logging.directory }}/ovn
-        - name: kube-ovn-tls
+        - name: {{ $tlsSecretName }}
           secret:
             optional: true
-            secretName: kube-ovn-tls
+            secretName: {{ $tlsSecretName }}

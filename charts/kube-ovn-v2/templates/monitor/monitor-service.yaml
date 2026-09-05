@@ -1,14 +1,15 @@
+{{- $monitorName := include "kubeovn.monitorName" . -}}
 kind: Service
 apiVersion: v1
 metadata:
-  name: kube-ovn-monitor
+  name: {{ $monitorName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.monitor.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
-    app.kubernetes.io/name: kube-ovn-monitor
+    app.kubernetes.io/name: {{ $monitorName }}
     app.kubernetes.io/part-of: kube-ovn
     {{- with .Values.monitor.labels }}
     {{- toYaml . | nindent 4 }}
@@ -19,7 +20,7 @@ spec:
       port: {{ .Values.monitor.metrics.port }}
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: kube-ovn-monitor
+    app.kubernetes.io/name: {{ $monitorName }}
     app.kubernetes.io/part-of: kube-ovn
   sessionAffinity: None
   {{- if eq .Values.networking.stack "Dual" }}

@@ -1,7 +1,9 @@
+{{- $hookName := include "kubeovn.resourceName" (dict "context" . "suffix" "post-delete-hook") -}}
+{{- $hookRoleName := include "kubeovn.resourceName" (dict "context" . "suffix" "system-post-delete-hook") -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kube-ovn-post-delete-hook
+  name: {{ $hookName }}
   namespace: {{ .Values.namespace }}
   annotations:
     # This is what defines this resource as a hook. Without this line, the
@@ -21,7 +23,7 @@ metadata:
     "helm.sh/hook": post-delete
     "helm.sh/hook-weight": "2"
     "helm.sh/hook-delete-policy": hook-succeeded
-  name: system:kube-ovn-post-delete-hook
+  name: {{ $hookRoleName }}
 rules:
   - apiGroups:
       - kubeovn.io
@@ -37,7 +39,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kube-ovn-post-delete-hook
+  name: {{ $hookName }}
   annotations:
     # This is what defines this resource as a hook. Without this line, the
     # job is considered part of the release.
@@ -45,18 +47,18 @@ metadata:
     "helm.sh/hook-weight": "3"
     "helm.sh/hook-delete-policy": hook-succeeded
 roleRef:
-  name: system:kube-ovn-post-delete-hook
+  name: {{ $hookRoleName }}
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
-    name: kube-ovn-post-delete-hook
+    name: {{ $hookName }}
     namespace: {{ .Values.namespace }}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Chart.Name }}-post-delete-hook"
+  name: {{ $hookName }}
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
@@ -78,7 +80,7 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         app.kubernetes.io/instance: {{ .Release.Name | quote }}
         helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
-        app: kube-ovn-post-delete-hook
+        app: {{ $hookName }}
         component: job
     spec:
       tolerations:
@@ -94,7 +96,7 @@ spec:
                   - key: app
                     operator: In
                     values:
-                      - kube-ovn-post-delete-hook
+                      - {{ $hookName }}
                   - key: component
                     operator: In
                     values:
@@ -103,7 +105,7 @@ spec:
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: "linux"
-      serviceAccountName: kube-ovn-post-delete-hook
+      serviceAccountName: {{ $hookName }}
       automountServiceAccountToken: true
       securityContext:
         seccompProfile:
