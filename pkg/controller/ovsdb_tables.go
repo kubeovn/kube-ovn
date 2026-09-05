@@ -6,6 +6,7 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func matchesExternalIDs(actual, expected map[string]string) bool {
@@ -82,6 +83,105 @@ func (c *Controller) listChassis() ([]ovnsb.Chassis, error) {
 	var rows []ovnsb.Chassis
 	err := c.OVNSbTables.Table(&ovnsb.Chassis{}).List(context.Background(), &rows)
 	return rows, err
+}
+
+func (c *Controller) listLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string, filter func(*ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.ListLogicalSwitchPorts(needVendorFilter, externalIDs, filter)
+	}
+	var rows []ovnnb.LogicalSwitchPort
+	err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Filter(context.Background(), func(row *ovnnb.LogicalSwitchPort) bool {
+		if needVendorFilter && row.ExternalIDs["vendor"] != util.CniTypeName {
+			return false
+		}
+		return matchesExternalIDs(row.ExternalIDs, externalIDs) && (filter == nil || filter(row))
+	}, &rows)
+	return rows, err
+}
+
+func (c *Controller) getLogicalSwitchPort(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.GetLogicalSwitchPort(name, ignoreNotFound)
+	}
+	var rows []ovnnb.LogicalSwitchPort
+	err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Filter(context.Background(), func(row *ovnnb.LogicalSwitchPort) bool {
+		return row.Name == name
+	}, &rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		if ignoreNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("not found logical switch port %q", name)
+	}
+	if len(rows) > 1 {
+		return nil, fmt.Errorf("more than one logical switch port with same name %q", name)
+	}
+	return &rows[0], nil
+}
+
+func (c *Controller) listLogicalRouters(needVendorFilter bool, filter func(*ovnnb.LogicalRouter) bool) ([]ovnnb.LogicalRouter, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.ListLogicalRouter(needVendorFilter, filter)
+	}
+	var rows []ovnnb.LogicalRouter
+	err := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Filter(context.Background(), func(row *ovnnb.LogicalRouter) bool {
+		if needVendorFilter && row.ExternalIDs["vendor"] != util.CniTypeName {
+			return false
+		}
+		return filter == nil || filter(row)
+	}, &rows)
+	return rows, err
+}
+
+func (c *Controller) listLogicalSwitches(needVendorFilter bool, filter func(*ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.ListLogicalSwitch(needVendorFilter, filter)
+	}
+	var rows []ovnnb.LogicalSwitch
+	err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Filter(context.Background(), func(row *ovnnb.LogicalSwitch) bool {
+		if needVendorFilter && row.ExternalIDs["vendor"] != util.CniTypeName {
+			return false
+		}
+		return filter == nil || filter(row)
+	}, &rows)
+	return rows, err
+}
+
+func (c *Controller) getLogicalRouter(name string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.GetLogicalRouter(name, ignoreNotFound)
+	}
+	var rows []ovnnb.LogicalRouter
+	err := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Filter(context.Background(), func(row *ovnnb.LogicalRouter) bool {
+		return row.Name == name
+	}, &rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		if ignoreNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("not found logical router %q", name)
+	}
+	if len(rows) > 1 {
+		return nil, fmt.Errorf("more than one logical router with same name %q", name)
+	}
+	return &rows[0], nil
+}
+
+func (c *Controller) getLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.GetLogicalRouterPortByUUID(uuid)
+	}
+	row := &ovnnb.LogicalRouterPort{UUID: uuid}
+	if err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Get(context.Background(), row); err != nil {
+		return nil, err
+	}
+	return row, nil
 }
 
 // logicalSwitchExists uses the generic table seam when controller wiring has

@@ -105,7 +105,7 @@ func (c *Controller) syncSecurityGroup() error {
 // updateDenyAllSgPorts set lsp to deny which security_groups is not empty
 func (c *Controller) updateDenyAllSgPorts() error {
 	// list all lsp which security_groups is not empty
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{sgsKey: ""})
+	lsps, err := c.listLogicalSwitchPorts(true, map[string]string{sgsKey: ""}, func(lsp *ovnnb.LogicalSwitchPort) bool { return lsp.Type == "" })
 	if err != nil {
 		klog.Errorf("list logical switch ports with security_groups is not empty: %v", err)
 		return err
@@ -363,7 +363,7 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("sync lsp for security group %s", key)
 
-	sgPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{"associated_sg_" + key: "true"}, nil)
+	sgPorts, err := c.listLogicalSwitchPorts(false, map[string]string{"associated_sg_" + key: "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
@@ -438,7 +438,7 @@ func (c *Controller) getPortSg(port *ovnnb.LogicalSwitchPort) ([]string, error) 
 }
 
 func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
-	port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, false)
+	port, err := c.getLogicalSwitchPort(portName, false)
 	if err != nil {
 		klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 		return err
