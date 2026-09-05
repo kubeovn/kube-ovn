@@ -272,7 +272,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		}
 	}
 
-	if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
+	if lbhcs, err = c.listLoadBalancerHealthChecks(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 			return slices.Contains(info.Vips, lbhc.Vip)
 		},
@@ -287,7 +287,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	for _, lbhc := range lbhcs {
 		var lbs []ovnnb.LoadBalancer
 
-		if lbs, err = c.OVNNbClient.ListLoadBalancers(
+		if lbs, err = c.listLoadBalancers(
 			func(lb *ovnnb.LoadBalancer) bool {
 				return slices.Contains(lb.HealthCheck, lbhc.UUID)
 			},
@@ -360,7 +360,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	}
 
 	for vip := range vips {
-		if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
+		if lbhcs, err = c.listLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 				return lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == vip
 			},

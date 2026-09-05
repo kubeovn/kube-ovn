@@ -914,7 +914,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		return err
 	}
 
-	portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{"node": "", networkPolicyKey: ""})
+	portGroups, err := c.listPortGroups(map[string]string{"node": "", networkPolicyKey: ""})
 	if err != nil {
 		klog.Errorf("failed to list port groups: %v", err)
 		return err
@@ -945,7 +945,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			return fmt.Errorf("NodeSwitch subnet %s is unavailable for pod", subnet.Name)
 		}
 
-		if portGroups, err = c.OVNNbClient.ListPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""}); err != nil {
+		if portGroups, err = c.listPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""}); err != nil {
 			klog.Errorf("failed to list port groups: %v", err)
 			return err
 		}

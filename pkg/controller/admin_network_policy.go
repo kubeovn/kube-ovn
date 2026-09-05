@@ -437,7 +437,7 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	// The port-group for anp should be updated
 	if changed.field == ChangedSubject {
 		// The port-group must exist when update anp, this check should never be matched.
-		if ok, err := c.OVNNbClient.PortGroupExists(pgName); !ok || err != nil {
+		if ok, err := c.portGroupExists(pgName); !ok || err != nil {
 			klog.Errorf("port-group for anp %s does not exist when update anp", desiredAnp.Name)
 			return err
 		}
@@ -779,11 +779,11 @@ func (c *Controller) getCurrentAddrSetByName(anpName string, isBanp bool) (*strs
 
 	// anp and banp can use same name, so depends on the external_ids key field to distinguish
 	if isBanp {
-		ass, err = c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err = c.listAddressSets(map[string]string{
 			baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "ingress"),
 		})
 	} else {
-		ass, err = c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err = c.listAddressSets(map[string]string{
 			adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "ingress"),
 		})
 	}
@@ -796,11 +796,11 @@ func (c *Controller) getCurrentAddrSetByName(anpName string, isBanp bool) (*strs
 	}
 
 	if isBanp {
-		ass, err = c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err = c.listAddressSets(map[string]string{
 			baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "egress"),
 		})
 	} else {
-		ass, err = c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err = c.listAddressSets(map[string]string{
 			adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "egress"),
 		})
 	}

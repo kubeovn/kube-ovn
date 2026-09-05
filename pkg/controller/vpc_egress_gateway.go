@@ -1047,7 +1047,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				rules[match] = nodeNextHops
 			}
 		}
-		policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
+		policies, err := c.listLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -1087,7 +1087,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			return err
 		}
 	}
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayPolicyPriority, externalIDs, false)
+	policies, err := c.listLogicalRouterPolicies(lrName, util.EgressGatewayPolicyPriority, externalIDs, false)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1124,7 +1124,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 
 	if gw.Spec.BFD.Enabled {
 		// drop traffic if no nexthop is available
-		if policies, err = c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs, false); err != nil {
+		if policies, err = c.listLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs, false); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1472,7 +1472,7 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 		ovs.ExternalIDVpcEgressGateway: key,
 	}
 
-	bfdList, err := c.OVNNbClient.FindBFD(externalIDs)
+	bfdList, err := c.findBFD(externalIDs)
 	if err != nil {
 		klog.Error(err)
 		return err

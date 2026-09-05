@@ -361,7 +361,7 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 	// The port-group for anp should be updated
 	if changed.field == ChangedSubject {
 		// The port-group must exist when update anp, this check should never be matched.
-		if ok, err := c.OVNNbClient.PortGroupExists(pgName); !ok || err != nil {
+		if ok, err := c.portGroupExists(pgName); !ok || err != nil {
 			klog.Errorf("port-group for banp %s does not exist when update banp", desiredBanp.Name)
 			return err
 		}

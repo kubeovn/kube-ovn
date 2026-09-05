@@ -431,7 +431,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 			}
 		}
 
-		lbhcs, err := c.OVNNbClient.ListLoadBalancerHealthChecks(
+		lbhcs, err := c.listLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 				return slices.Contains(vips, lbhc.Vip)
 			},
@@ -444,7 +444,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		vipSubnets := make(map[string]struct{})
 		lbhcUUIDsToDelete := set.New[string]()
 		for _, lbhc := range lbhcs {
-			lbs, e := c.OVNNbClient.ListLoadBalancers(
+			lbs, e := c.listLoadBalancers(
 				func(lb *ovnnb.LoadBalancer) bool {
 					return slices.Contains(lb.HealthCheck, lbhc.UUID)
 				},
@@ -495,7 +495,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		}
 
 		for vip := range vipSubnets {
-			remaining, e := c.OVNNbClient.ListLoadBalancerHealthChecks(
+			remaining, e := c.listLoadBalancerHealthChecks(
 				func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 					return lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == vip
 				},
