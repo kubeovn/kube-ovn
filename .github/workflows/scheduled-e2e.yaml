@@ -101,12 +101,10 @@ jobs:
 
       - name: Install Kube-OVN
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
-        env:
-          ENABLE_OVN_LB_DISTRIBUTED: true
         run: |
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
           docker pull kubeovn/kube-ovn:$version
-          VERSION=$version make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
+          ENABLE_OVN_LB_DISTRIBUTED=true VERSION=$version make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
         env:
