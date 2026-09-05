@@ -45,7 +45,7 @@ func (c *OVNNbClient) CreateLogicalRouterStaticRoutes(lrName string, routes ...*
 		}
 	}
 
-	createRoutesOp, err := c.Create(models...)
+	createRoutesOp, err := c.Database.Table(&ovnnb.LogicalRouterStaticRoute{}).CreateOps(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating static routes: %w", err)
@@ -129,7 +129,7 @@ func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterS
 		return errors.New("route is nil")
 	}
 
-	op, err := c.Database.Where(route).Update(route, fields...)
+	op, err := c.Database.WhereTable(route).Update(route, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating logical router static route 'policy %s ip_prefix %s': %w", *route.Policy, route.IPPrefix, err)
@@ -478,7 +478,7 @@ func (c *OVNNbClient) listLogicalRouterStaticRoutesByFilter(lrName string, filte
 	routeList := make([]*ovnnb.LogicalRouterStaticRoute, 0, len(lr.StaticRoutes))
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
-	if err := c.Database.WhereCache(predicate).List(ctx, &routeList); err != nil {
+	if err := c.Database.Table(&ovnnb.LogicalRouterStaticRoute{}).Filter(ctx, predicate, &routeList); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -507,7 +507,7 @@ func (c *OVNNbClient) batchListLogicalRouterStaticRoutesForDelete(staticRoutes m
 	defer cancel()
 
 	routeList := make([]*ovnnb.LogicalRouterStaticRoute, 0)
-	if err := c.Database.WhereCache(fnFilter).List(ctx, &routeList); err != nil {
+	if err := c.Database.Table(&ovnnb.LogicalRouterStaticRoute{}).Filter(ctx, fnFilter, &routeList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("batch list logical static router %v lr static route %v route: %w", staticRoutes, lrStaticRoute, err)
 	}

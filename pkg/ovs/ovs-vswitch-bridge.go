@@ -16,7 +16,7 @@ func (c *VswitchClient) ListBridge(needVendorFilter bool, filter func(bridge *vs
 	defer cancel()
 
 	var bridgeList []vswitch.Bridge
-	if err := c.Database.WhereCache(func(bridge *vswitch.Bridge) bool {
+	if err := c.Database.Table(&vswitch.Bridge{}).Filter(ctx, func(bridge *vswitch.Bridge) bool {
 		if needVendorFilter && (len(bridge.ExternalIDs) == 0 || bridge.ExternalIDs[ExternalIDVendor] != util.CniTypeName) {
 			return false
 		}
@@ -24,7 +24,7 @@ func (c *VswitchClient) ListBridge(needVendorFilter bool, filter func(bridge *vs
 			return filter(bridge)
 		}
 		return true
-	}).List(ctx, &bridgeList); err != nil {
+	}, &bridgeList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to list bridge: %w", err)
 	}

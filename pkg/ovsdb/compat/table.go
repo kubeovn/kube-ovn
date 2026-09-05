@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
 // Table is a reconcile-oriented resource handle. It keeps table access
@@ -35,6 +36,16 @@ var _ TableProvider = (*Database)(nil)
 //	err = table.Update(ctx, "resource-update", selector, desired, &desired.Field)
 func (d *Database) Table(prototype model.Model) *Table {
 	return &Table{db: d, prototype: prototype}
+}
+
+// WhereTable returns an indexed operation builder scoped to the selector's
+// model. It is a convenience for callers composing multi-table transactions;
+// regular reconcile code should prefer Table(prototype).Update/Mutate/Delete.
+func (d *Database) WhereTable(selectors ...model.Model) ConditionalAPI {
+	if len(selectors) == 0 {
+		return nil
+	}
+	return d.Table(selectors[0]).Where(selectors...)
 }
 
 func (t *Table) ensure() error {
@@ -100,6 +111,69 @@ func (t *Table) FilterByUUIDs(ctx context.Context, predicate, result any, uuids 
 		return err
 	}
 	return t.db.WhereCacheByUUIDs(predicate, uuids...).List(ctx, result)
+}
+
+// Where returns an indexed operation builder scoped to this table.
+// Callers can use it to compose a larger transaction while keeping the table
+// selection behind the generic facade.
+func (t *Table) Where(selectors ...model.Model) ConditionalAPI {
+	if t == nil || t.db == nil {
+		return nil
+	}
+	return t.db.Where(selectors...)
+}
+
+// WhereCache returns a cache-backed operation builder scoped to this table.
+func (t *Table) WhereCache(predicate any) ConditionalAPI {
+	if t == nil || t.db == nil {
+		return nil
+	}
+	return t.db.WhereCache(predicate)
+}
+
+// CreateOps builds insert operations without submitting a transaction.
+func (t *Table) CreateOps(rows ...model.Model) ([]ovsdb.Operation, error) {
+	if err := t.ensure(); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if err := t.ensureModel(row); err != nil {
+			return nil, err
+		}
+	}
+	return t.db.Create(rows...)
+}
+
+// UpdateOps builds update operations without submitting a transaction.
+func (t *Table) UpdateOps(selector, update model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	if err := t.ensureModel(selector); err != nil {
+		return nil, err
+	}
+	if err := t.ensureModel(update); err != nil {
+		return nil, err
+	}
+	return t.Where(selector).Update(update, fields...)
+}
+
+// MutateOps builds mutation operations without submitting a transaction.
+func (t *Table) MutateOps(selector model.Model, mutations ...model.Mutation) ([]ovsdb.Operation, error) {
+	if err := t.ensureModel(selector); err != nil {
+		return nil, err
+	}
+	return t.Where(selector).Mutate(selector, mutations...)
+}
+
+// DeleteOps builds delete operations without submitting a transaction.
+func (t *Table) DeleteOps(selectors ...model.Model) ([]ovsdb.Operation, error) {
+	if err := t.ensure(); err != nil {
+		return nil, err
+	}
+	for _, selector := range selectors {
+		if err := t.ensureModel(selector); err != nil {
+			return nil, err
+		}
+	}
+	return t.Where(selectors...).Delete()
 }
 
 // Create inserts rows and submits the transaction with the supplied method

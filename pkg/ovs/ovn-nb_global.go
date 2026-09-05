@@ -19,7 +19,7 @@ func (c *OVNNbClient) CreateNbGlobal(nbGlobal *ovnnb.NBGlobal) error {
 		return err
 	}
 
-	op, err := c.Create(nbGlobal)
+	op, err := c.Database.Table(&ovnnb.NBGlobal{}).CreateOps(nbGlobal)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to generate operations for creating nb global: %w", err)
@@ -35,7 +35,7 @@ func (c *OVNNbClient) DeleteNbGlobal() error {
 		return err
 	}
 
-	op, err := c.Database.Where(nbGlobal).Delete()
+	op, err := c.Database.WhereTable(nbGlobal).Delete()
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -51,9 +51,9 @@ func (c *OVNNbClient) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	nbGlobalList := make([]ovnnb.NBGlobal, 0, 1)
 
 	// there is only one nb_global in OVN_Northbound, so return true and it will work
-	err := c.Database.WhereCache(func(_ *ovnnb.NBGlobal) bool {
+	err := c.Database.Table(&ovnnb.NBGlobal{}).Filter(ctx, func(_ *ovnnb.NBGlobal) bool {
 		return true
-	}).List(ctx, &nbGlobalList)
+	}, &nbGlobalList)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to list NB_Global: %w", err)
@@ -73,7 +73,7 @@ func (c *OVNNbClient) UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...any) er
 		return err
 	}
 
-	op, err := c.Database.Where(nbGlobal).Update(nbGlobal, fields...)
+	op, err := c.Database.WhereTable(nbGlobal).Update(nbGlobal, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to generate operations for updating nb global: %w", err)

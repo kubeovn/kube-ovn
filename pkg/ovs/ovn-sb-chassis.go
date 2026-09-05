@@ -16,7 +16,7 @@ import (
 var ErrOneNodeMultiChassis = errors.New("OneNodeMultiChassis")
 
 func (c *OVNSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error {
-	op, err := c.Database.Where(chassis).Update(chassis, fields...)
+	op, err := c.Database.WhereTable(chassis).Update(chassis, fields...)
 	if err != nil {
 		err := fmt.Errorf("failed to generate update operations for chassis: %w", err)
 		klog.Error(err)
@@ -40,7 +40,7 @@ func (c *OVNSbClient) DeleteChassis(chassisName string) error {
 	if chassis == nil {
 		return nil
 	}
-	ops, err := c.Database.Where(chassis).Delete()
+	ops, err := c.Database.WhereTable(chassis).Delete()
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to generate delete chassis operations for node %s: %w", chassis.Hostname, err)
@@ -62,7 +62,7 @@ func (c *OVNSbClient) GetChassis(chassisName string, ignoreNotFound bool) (*ovns
 		return nil, err
 	}
 	chassis := &ovnsb.Chassis{Name: chassisName}
-	if err := c.Get(ctx, chassis); err != nil {
+	if err := c.Database.Table(&ovnsb.Chassis{}).Get(ctx, chassis); err != nil {
 		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
@@ -79,7 +79,7 @@ func (c *OVNSbClient) ListChassis() (*[]ovnsb.Chassis, error) {
 	defer cancel()
 
 	css := []ovnsb.Chassis{}
-	if err := c.List(ctx, &css); err != nil {
+	if err := c.Database.Table(&ovnsb.Chassis{}).List(ctx, &css); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to list Chassis: %w", err)
 	}
@@ -96,9 +96,9 @@ func (c *OVNSbClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) 
 	defer cancel()
 
 	chassisList := make([]ovnsb.Chassis, 0)
-	if err := c.Database.WhereCache(func(chassis *ovnsb.Chassis) bool {
+	if err := c.Database.Table(&ovnsb.Chassis{}).Filter(ctx, func(chassis *ovnsb.Chassis) bool {
 		return chassis.Hostname == nodeName
-	}).List(ctx, &chassisList); err != nil {
+	}, &chassisList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to list Chassis with hostname=%s: %w", nodeName, err)
 	}
@@ -123,9 +123,9 @@ func (c *OVNSbClient) DeleteChassisByHost(nodeName string) error {
 	defer cancel()
 
 	chassisList := make([]ovnsb.Chassis, 0)
-	if err := c.Database.WhereCache(func(chassis *ovnsb.Chassis) bool {
+	if err := c.Database.Table(&ovnsb.Chassis{}).Filter(ctx, func(chassis *ovnsb.Chassis) bool {
 		return chassis.Hostname == nodeName || (chassis.ExternalIDs != nil && chassis.ExternalIDs["node"] == nodeName)
-	}).List(ctx, &chassisList); err != nil {
+	}, &chassisList); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to list Chassis with hostname=%s: %w", nodeName, err)
 	}
@@ -174,12 +174,12 @@ func (c *OVNSbClient) GetKubeOvnChassises() (*[]ovnsb.Chassis, error) {
 	defer cancel()
 
 	chassisList := make([]ovnsb.Chassis, 0)
-	if err := c.Database.WhereCache(func(chassis *ovnsb.Chassis) bool {
+	if err := c.Database.Table(&ovnsb.Chassis{}).Filter(ctx, func(chassis *ovnsb.Chassis) bool {
 		if chassis.ExternalIDs != nil && chassis.ExternalIDs["vendor"] == util.CniTypeName {
 			return true
 		}
 		return false
-	}).List(ctx, &chassisList); err != nil {
+	}, &chassisList); err != nil {
 		return nil, fmt.Errorf("failed to list Chassis with vendor=%s: %w", util.CniTypeName, err)
 	}
 	return &chassisList, nil
