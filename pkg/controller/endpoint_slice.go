@@ -466,7 +466,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 		if err := c.deleteServiceScopedLoadBalancers(svc); err != nil {
 			return err
 		}
-	} else if !isDistributedLocal || !hasExternalVIP {
+	} else if (!isDistributedLocal && svc.Spec.TrafficDistribution == nil) || !hasExternalVIP {
 		if err := c.deleteServiceScopedLBExternalTraffic(svc); err != nil {
 			return err
 		}
