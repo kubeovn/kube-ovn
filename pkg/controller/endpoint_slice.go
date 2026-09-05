@@ -989,6 +989,39 @@ func serviceTrafficDistributionVariablePrefix(svc *v1.Service) string {
 	return "kube_ovn_svc_" + util.Sha256Hash([]byte(string(svc.UID)))[:12] + "_"
 }
 
+func (c *Controller) cleanupServiceTrafficDistributionState(svc *v1.Service) error {
+	prefix := serviceTrafficDistributionVariablePrefix(svc)
+	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
+	})
+	if err != nil {
+		return fmt.Errorf("list traffic distribution load balancers for service %s/%s cleanup: %w", svc.Namespace, svc.Name, err)
+	}
+	for _, lb := range lbs {
+		for templateVIP := range lb.Vips {
+			if !strings.HasPrefix(templateVIP, "^"+prefix) {
+				continue
+			}
+			if err := c.OVNNbClient.LoadBalancerDeleteVip(lb.Name, templateVIP, true); err != nil {
+				return fmt.Errorf("delete traffic distribution VIP %s from load balancer %s: %w", templateVIP, lb.Name, err)
+			}
+		}
+	}
+	if c.OVNSbClient == nil {
+		return nil
+	}
+	chassises, err := c.OVNSbClient.ListChassis()
+	if err != nil {
+		return fmt.Errorf("list OVN chassis while cleaning service %s/%s template variables: %w", svc.Namespace, svc.Name, err)
+	}
+	for _, chassis := range *chassises {
+		if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis.Name, prefix, nil); err != nil {
+			return fmt.Errorf("clean template variables for chassis %s: %w", chassis.Name, err)
+		}
+	}
+	return nil
+}
+
 func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpointSlices []*discoveryv1.EndpointSlice, lbVips []string, classes map[string]serviceLBTrafficClass) error {
 	chassises, err := c.OVNSbClient.ListChassis()
 	if err != nil {

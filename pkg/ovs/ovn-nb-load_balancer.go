@@ -412,6 +412,9 @@ func (c *OVNNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, 
 		return fmt.Errorf("list template variables for chassis %s: %w", chassis, err)
 	}
 	if len(rows) == 0 {
+		if len(variables) == 0 {
+			return nil
+		}
 		row := &ovnnb.ChassisTemplateVar{
 			UUID:        ovsclient.NamedUUID(),
 			Chassis:     chassis,
