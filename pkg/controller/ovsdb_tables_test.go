@@ -358,6 +358,25 @@ func TestControllerTableProviderStaticRoutes(t *testing.T) {
 	require.Equal(t, 4, backend.transactCalls)
 }
 
+func TestControllerTableProviderPortCreates(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1"},
+		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.createBareLogicalSwitchPort("ls-1", "bare-1", "10.0.0.2", "00:00:00:00:00:02"))
+	require.NoError(t, controller.createVirtualLogicalSwitchPort("virtual-1", "ls-1", "10.0.0.3"))
+	require.NoError(t, controller.createVirtualLogicalSwitchPorts("ls-1", "10.0.0.4", "10.0.0.5"))
+	require.NoError(t, controller.createLocalnetLogicalSwitchPort("ls-1", "localnet-1", "provider", "10.0.0.0/24", 100))
+	require.NoError(t, controller.createLogicalRouterPort("lr-1", "lrp-1", "00:00:00:00:00:03", []string{"10.0.0.1/24"}))
+
+	require.Equal(t, 6, backend.createCalls)
+	require.Equal(t, 6, backend.mutateCalls)
+	require.Equal(t, 5, backend.transactCalls)
+}
+
 type tableBackend struct {
 	rows          map[reflect.Type][]any
 	createCalls   int

@@ -864,7 +864,7 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 	}
 
 	networks := util.SplitTrimmed(vpc.Spec.BFDPort.IP, ",")
-	if err = c.OVNNbClient.CreateLogicalRouterPort(vpc.Name, portName, "", networks); err != nil {
+	if err = c.createLogicalRouterPort(vpc.Name, portName, "", networks); err != nil {
 		klog.Error(err)
 		return portName, nil, err
 	}
