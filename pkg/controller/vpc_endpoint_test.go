@@ -43,7 +43,24 @@ func TestVpcEndpointServiceAllowed(t *testing.T) {
 func TestVpcEndpointIPFromNetworks(t *testing.T) {
 	require.Equal(t, "100.65.0.10", vpcEndpointIPFromNetworks([]string{"100.65.0.10/16"}))
 	require.Equal(t, "100.65.0.10", vpcEndpointIPFromNetworks([]string{"100.65.0.10/16", "fd00:65::10/112"}))
+	require.Equal(t, "fd00:65::10", vpcEndpointIPFromNetworks([]string{"fd00:65::10/112"}))
+	require.Equal(t, "not-a-cidr", vpcEndpointIPFromNetworks([]string{"not-a-cidr"}))
 	require.Empty(t, vpcEndpointIPFromNetworks(nil))
+}
+
+func TestVpcEndpointPreferIP(t *testing.T) {
+	require.Equal(t, "10.0.0.1", vpcEndpointPreferIP("10.0.0.1", "fd00::1"))
+	require.Equal(t, "fd00::1", vpcEndpointPreferIP("", "fd00::1"))
+	require.Empty(t, vpcEndpointPreferIP("", ""))
+}
+
+func TestVpcEndpointServicePorts(t *testing.T) {
+	require.Empty(t, vpcEndpointServicePorts(&corev1.Service{}))
+	svc := &corev1.Service{Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{
+		{Protocol: corev1.ProtocolTCP, Port: 80},
+		{Protocol: corev1.ProtocolUDP, Port: 53},
+	}}}
+	require.Equal(t, "tcp/80,udp/53", vpcEndpointServicePorts(svc))
 }
 
 func TestVpcEndpointEffectiveServiceVpc(t *testing.T) {
@@ -59,6 +76,8 @@ func TestVpcEndpointEffectiveServiceVpc(t *testing.T) {
 }
 
 func TestValidateVpcEndpointServiceImmutability(t *testing.T) {
+	require.NoError(t, validateVpcEndpointServiceImmutability(&kubeovnv1.VpcEndpointService{}))
+
 	eps := &kubeovnv1.VpcEndpointService{
 		Labels: map[string]string{
 			util.VpcEndpointVpcLabel:     "vpc-a",
@@ -69,7 +88,85 @@ func TestValidateVpcEndpointServiceImmutability(t *testing.T) {
 	}
 	require.NoError(t, validateVpcEndpointServiceImmutability(eps))
 	eps.Spec.Vpc = "vpc-b"
-	require.Error(t, validateVpcEndpointServiceImmutability(eps))
+	require.ErrorContains(t, validateVpcEndpointServiceImmutability(eps), "vpc is immutable")
+	eps.Spec.Vpc = "vpc-a"
+	eps.Spec.Namespace = "ns-b"
+	require.ErrorContains(t, validateVpcEndpointServiceImmutability(eps), "namespace is immutable")
+	eps.Spec.Namespace = "ns-a"
+	eps.Spec.Service = "svc-b"
+	require.ErrorContains(t, validateVpcEndpointServiceImmutability(eps), "service is immutable")
+}
+
+func TestValidateVpcEndpointImmutability(t *testing.T) {
+	require.NoError(t, validateVpcEndpointImmutability(&kubeovnv1.VpcEndpoint{}))
+
+	ep := &kubeovnv1.VpcEndpoint{
+		Labels: map[string]string{
+			util.VpcEndpointVpcLabel:     "vpc-a",
+			util.VpcEndpointServiceLabel: "eps-a",
+		},
+		Spec: kubeovnv1.VpcEndpointSpec{Vpc: "vpc-a", EndpointService: "eps-a"},
+	}
+	require.NoError(t, validateVpcEndpointImmutability(ep))
+	ep.Spec.Vpc = "vpc-b"
+	require.ErrorContains(t, validateVpcEndpointImmutability(ep), "vpc is immutable")
+	ep.Spec.Vpc = "vpc-a"
+	ep.Spec.EndpointService = "eps-b"
+	require.ErrorContains(t, validateVpcEndpointImmutability(ep), "endpointService is immutable")
+}
+
+func TestEnqueueVpcEndpointServiceHandlers(t *testing.T) {
+	c := &Controller{
+		addOrUpdateVpcEndpointServiceQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcEndpointService", nil),
+	}
+	t.Cleanup(c.addOrUpdateVpcEndpointServiceQueue.ShutDown)
+
+	eps := &kubeovnv1.VpcEndpointService{Name: "db"}
+	c.enqueueAddVpcEndpointService(eps)
+	require.Equal(t, 1, c.addOrUpdateVpcEndpointServiceQueue.Len())
+	key, _ := c.addOrUpdateVpcEndpointServiceQueue.Get()
+	c.addOrUpdateVpcEndpointServiceQueue.Done(key)
+	require.Equal(t, "db", key)
+
+	updated := eps.DeepCopy()
+	updated.ResourceVersion = "2"
+	c.enqueueUpdateVpcEndpointService(eps, updated)
+	require.Equal(t, 1, c.addOrUpdateVpcEndpointServiceQueue.Len())
+	key, _ = c.addOrUpdateVpcEndpointServiceQueue.Get()
+	c.addOrUpdateVpcEndpointServiceQueue.Done(key)
+
+	c.enqueueUpdateVpcEndpointService(eps, eps)
+	require.Zero(t, c.addOrUpdateVpcEndpointServiceQueue.Len())
+
+	c.enqueueDeleteVpcEndpointService(eps)
+	require.Equal(t, 1, c.addOrUpdateVpcEndpointServiceQueue.Len())
+}
+
+func TestEnqueueVpcEndpointHandlers(t *testing.T) {
+	c := &Controller{
+		addOrUpdateVpcEndpointQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcEndpoint", nil),
+	}
+	t.Cleanup(c.addOrUpdateVpcEndpointQueue.ShutDown)
+
+	ep := &kubeovnv1.VpcEndpoint{Name: "client"}
+	c.enqueueAddVpcEndpoint(ep)
+	require.Equal(t, 1, c.addOrUpdateVpcEndpointQueue.Len())
+	key, _ := c.addOrUpdateVpcEndpointQueue.Get()
+	c.addOrUpdateVpcEndpointQueue.Done(key)
+	require.Equal(t, "client", key)
+
+	updated := ep.DeepCopy()
+	updated.ResourceVersion = "2"
+	c.enqueueUpdateVpcEndpoint(ep, updated)
+	require.Equal(t, 1, c.addOrUpdateVpcEndpointQueue.Len())
+	key, _ = c.addOrUpdateVpcEndpointQueue.Get()
+	c.addOrUpdateVpcEndpointQueue.Done(key)
+
+	c.enqueueUpdateVpcEndpoint(ep, ep)
+	require.Zero(t, c.addOrUpdateVpcEndpointQueue.Len())
+
+	c.enqueueDeleteVpcEndpoint(ep)
+	require.Equal(t, 1, c.addOrUpdateVpcEndpointQueue.Len())
 }
 
 func TestEndpointSlicePortMatchesServicePort(t *testing.T) {
