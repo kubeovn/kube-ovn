@@ -437,7 +437,10 @@ func (c *OVNNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, 
 			deletes[key] = value
 		}
 	}
-	if len(deletes) == 0 && maps.Equal(row.Variables, variables) {
+	if len(deletes) == 0 && len(variables) == 0 {
+		return nil
+	}
+	if maps.Equal(row.Variables, variables) {
 		return nil
 	}
 	mutations := make([]model.Mutation, 0, 2)
