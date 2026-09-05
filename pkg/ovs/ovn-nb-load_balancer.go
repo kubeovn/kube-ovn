@@ -67,6 +67,28 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields .
 	return nil
 }
 
+// SetLoadBalancerNeighborResponder enables OVN LB ARP/ND neighbor responder for VIPs
+// that are not also logical router/switch port addresses.
+func (c *OVNNbClient) SetLoadBalancerNeighborResponder(lbName, mode string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if lb.Options == nil {
+		lb.Options = make(map[string]string, 1)
+	}
+	if lb.Options["neighbor_responder"] == mode {
+		return nil
+	}
+	lb.Options["neighbor_responder"] = mode
+	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("set load balancer %s neighbor_responder=%s: %w", lbName, mode, err)
+	}
+	return nil
+}
+
 // UpdateLoadBalancer update load balancer
 func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...any) error {
 	var (

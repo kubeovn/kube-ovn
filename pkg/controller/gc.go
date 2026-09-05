@@ -160,7 +160,8 @@ func (c *Controller) gcLogicalSwitch() error {
 	for _, ls := range lss {
 		if ls == util.InterconnectionSwitch ||
 			ls == util.ExternalGatewaySwitch ||
-			ls == c.config.ExternalGatewaySwitch {
+			ls == c.config.ExternalGatewaySwitch ||
+			(c.config.VpcEndpointTransitSwitch != "" && ls == c.config.VpcEndpointTransitSwitch) {
 			continue
 		}
 		if s := subnetMap[ls]; s != nil && isOvnSubnet(s) {
@@ -1495,7 +1496,6 @@ func (c *Controller) gcVpcEndpoint() error {
 	}
 
 	expectedLBs := map[string]struct{}{}
-	expectedProviderLSPs := map[string]struct{}{}
 	expectedACLServices := map[string]struct{}{}
 	expectedVPCs := map[string]struct{}{}
 	expectedVipCRs := map[string]struct{}{}
@@ -1503,7 +1503,6 @@ func (c *Controller) gcVpcEndpoint() error {
 
 	for _, eps := range services {
 		expectedACLServices[eps.Name] = struct{}{}
-		expectedProviderLSPs[vpcEndpointServiceLSPName(eps.Name)] = struct{}{}
 		expectedVPCs[eps.Spec.Vpc] = struct{}{}
 		for _, protocol := range []string{"tcp", "udp", "sctp"} {
 			expectedLBs[vpcEndpointServiceLBName(eps.Name, protocol)] = struct{}{}
@@ -1547,17 +1546,15 @@ func (c *Controller) gcVpcEndpoint() error {
 		return err
 	}
 	for _, lsp := range lsps {
-		if _, ok := expectedProviderLSPs[lsp.Name]; ok {
-			continue
-		}
+		// TransitVIP LSPs are no longer created; clean up any leftover ports.
 		klog.Infof("gc orphaned vpc endpoint logical switch port %s", lsp.Name)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
 			klog.Errorf("failed to gc logical switch port %s: %v", lsp.Name, err)
 			return err
 		}
 		epsName := strings.TrimPrefix(lsp.Name, "vpc-eps-")
-		c.ipam.ReleaseAddressByPod(vpcEndpointServiceIPAMName(epsName), c.config.VpcEndpointTransitSwitch)
 		if _, known := expectedACLServices[epsName]; !known {
+			c.ipam.ReleaseAddressByPod(vpcEndpointServiceIPAMName(epsName), c.config.VpcEndpointTransitSwitch)
 			if err := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, epsName, "", nil); err != nil {
 				klog.Errorf("failed to gc ACLs for vpc endpoint service %s: %v", epsName, err)
 				return err
@@ -1567,6 +1564,7 @@ func (c *Controller) gcVpcEndpoint() error {
 
 	transitSuffix := "-" + c.config.VpcEndpointTransitSwitch
 	transitPrefix := c.config.VpcEndpointTransitSwitch + "-"
+	transitVpcName := c.config.VpcEndpointTransitSwitch + "-vpc"
 	lrps, err := c.OVNNbClient.ListLogicalRouterPorts(nil, func(lrp *ovnnb.LogicalRouterPort) bool {
 		return strings.HasSuffix(lrp.Name, transitSuffix)
 	})
@@ -1576,6 +1574,10 @@ func (c *Controller) gcVpcEndpoint() error {
 	}
 	for _, lrp := range lrps {
 		vpcName := strings.TrimSuffix(lrp.Name, transitSuffix)
+		if vpcName == transitVpcName {
+			// Subnet gateway LRP for the transit fabric itself — never GC.
+			continue
+		}
 		if _, ok := expectedVPCs[vpcName]; ok {
 			continue
 		}

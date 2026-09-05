@@ -127,6 +127,7 @@ type LogicalSwitchPort interface {
 	ListNormalLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error)
 	ListLogicalSwitchPortsWithLegacyExternalIDs() ([]ovnnb.LogicalSwitchPort, error)
 	GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error)
+	UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...any) error
 	LogicalSwitchPortExists(name string) (bool, error)
 	SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error
 	// vm live migrate
@@ -148,6 +149,7 @@ type LoadBalancer interface {
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
+	SetLoadBalancerNeighborResponder(lbName, mode string) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
 	GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error)
 	ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error)

@@ -74,7 +74,7 @@ done
 # Delete Kube-OVN components
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-monitor
 kubectl delete --ignore-not-found -n kube-system cm ovn-config ovn-ic-config \
-  ovn-external-gw-config ovn-vpc-nat-config ovn-vpc-nat-gw-config
+  ovn-external-gw-config ovn-vpc-nat-config ovn-vpc-nat-gw-config vpc-endpoint-stitcher
 kubectl delete --ignore-not-found -n kube-system svc kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-controller
 kubectl delete --ignore-not-found -n kube-system deploy ovn-ic-controller
