@@ -8,6 +8,10 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+type databaseLifecycle interface {
+	Close()
+}
+
 func (c *Controller) listVswitchBridges(needVendorFilter bool, filter func(*vswitch.Bridge) bool) ([]vswitch.Bridge, error) {
 	if c.vswitchTables == nil {
 		return c.vswitchClient.ListBridge(needVendorFilter, filter)
@@ -42,4 +46,14 @@ func (c *Controller) listVswitchInterfaces(filter func(*vswitch.Interface) bool)
 		return filter == nil || filter(row)
 	}, &rows)
 	return rows, err
+}
+
+func (c *Controller) closeVswitch() {
+	if lifecycle, ok := c.vswitchTables.(databaseLifecycle); ok {
+		lifecycle.Close()
+		return
+	}
+	if c.vswitchClient != nil {
+		c.vswitchClient.Close()
+	}
 }

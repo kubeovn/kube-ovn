@@ -14,6 +14,35 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
+type icCapabilityProvider struct {
+	gatewayCalls int
+	patchCalls   int
+}
+
+func (p *icCapabilityProvider) Table(model.Model) *compat.Table { return nil }
+
+func (p *icCapabilityProvider) ReconcileGatewayChassises(string, []string) error {
+	p.gatewayCalls++
+	return nil
+}
+
+func (p *icCapabilityProvider) CreateLogicalPatchPort(string, string, string, string, string, string, ...string) error {
+	p.patchCalls++
+	return nil
+}
+
+var _ compat.TableProvider = (*icCapabilityProvider)(nil)
+
+func TestICOperationsUseTableProviderCapabilities(t *testing.T) {
+	provider := &icCapabilityProvider{}
+	controller := &Controller{OVNNbTables: provider}
+
+	require.NoError(t, controller.reconcileICGatewayChassises("lrp", []string{"chassis"}))
+	require.NoError(t, controller.createICLogicalPatchPort("ls", "lr", "lsp", "lrp", "10.0.0.1", "00:00:00:00:00:01"))
+	require.Equal(t, 1, provider.gatewayCalls)
+	require.Equal(t, 1, provider.patchCalls)
+}
+
 func TestICTableProviderNBGlobalAndPortParentCleanup(t *testing.T) {
 	backend := newICTableBackend(
 		&ovnnb.NBGlobal{UUID: "global-1", Options: map[string]string{"stale": "value"}},

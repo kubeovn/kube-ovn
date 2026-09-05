@@ -665,7 +665,7 @@ func reconcileNatGatewayPolicies(
 // compatibility with existing callers and tests.
 func (c *Controller) reconcileNatGatewayPolicies(
 	gwName, lrName string, af int, bfdEnabled bool, bfdIDs set.Set[string],
-	internalCIDRs []string, nextHops map[string]string, externalIDs map[string]string,
+	internalCIDRs []string, nextHops, externalIDs map[string]string,
 ) error {
 	if c.OVNNbTables == nil {
 		return reconcileNatGatewayPolicies(c.OVNNbClient, gwName, lrName, af, bfdEnabled, bfdIDs, internalCIDRs, nextHops, externalIDs)
