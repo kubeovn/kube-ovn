@@ -371,6 +371,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		ipam:                    ovnipam.NewIPAM(),
 		recorder:                record.NewFakeRecorder(100),
 		podKeyMutex:             keymutex.NewHashed(0),
+		vpcKeyMutex:             keymutex.NewHashed(0),
 		subnetKeyMutex:          keymutex.NewHashed(0),
 		nsKeyMutex:              keymutex.NewHashed(0),
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
