@@ -1064,7 +1064,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			} else {
 				bfdSessions := localGatewayPolicyBFDSessions(bfdMap, nextHops)
 				if updateVpcEgressGatewayPolicyNexthops(policy, nextHops, bfdSessions) {
-					if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
+					if err = c.updateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
 						err = fmt.Errorf("failed to update logical router policy %s: %w", policy.UUID, err)
 						klog.Error(err)
 						return err
@@ -1099,7 +1099,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	for _, policy := range policies {
 		if matches.Has(policy.Match) {
 			if updateVpcEgressGatewayPolicyNexthops(policy, nextHops, bfdIDs) {
-				if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
+				if err = c.updateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
 					err = fmt.Errorf("failed to update bfd sessions of logical router policy %s: %w", policy.UUID, err)
 					klog.Error(err)
 					return err

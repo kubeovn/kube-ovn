@@ -794,7 +794,7 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 
 	if !vpc.Spec.EnableBfd && vpc.Status.EnableBfd {
 		lrpEipName := fmt.Sprintf("%s-%s", vpc.Name, c.config.ExternalGatewaySwitch)
-		if err := c.OVNNbClient.DeleteBFDByDstIP(lrpEipName, ""); err != nil {
+		if err := c.deleteBFDByDestination(lrpEipName, ""); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1475,7 +1475,7 @@ func (c *Controller) handleDelVpcExternalSubnet(key, subnet string) error {
 			return err
 		}
 	}
-	if err := c.OVNNbClient.DeleteBFDByDstIP(lrpName, ""); err != nil {
+	if err := c.deleteBFDByDestination(lrpName, ""); err != nil {
 		klog.Error(err)
 		return err
 	}
