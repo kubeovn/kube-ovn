@@ -13,41 +13,82 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // InitOVSBridges initializes OVS bridges
-func InitOVSBridges() (map[string]string, error) {
+func InitOVSBridges(providers ...compat.TableProvider) (map[string]string, error) {
+	var provider compat.TableProvider
+	if len(providers) != 0 {
+		provider = providers[0]
+	}
+
+	if provider == nil {
+		return initOVSBridgesLegacy()
+	}
+
+	ctx := context.Background()
+	var bridges []vswitch.Bridge
+	if err := provider.Table(&vswitch.Bridge{}).Filter(ctx, func(bridge *vswitch.Bridge) bool {
+		return bridge.ExternalIDs[ovs.ExternalIDVendor] == util.CniTypeName
+	}, &bridges); err != nil {
+		return nil, fmt.Errorf("list kube-ovn OVS bridges: %w", err)
+	}
+	var ports []vswitch.Port
+	if err := provider.Table(&vswitch.Port{}).List(ctx, &ports); err != nil {
+		return nil, fmt.Errorf("list OVS ports: %w", err)
+	}
+
+	mappings := make(map[string]string)
+	for _, bridge := range bridges {
+		if err := util.SetLinkUp(bridge.Name); err != nil {
+			klog.Error(err)
+			return nil, err
+		}
+
+		for _, port := range ports {
+			if !slices.Contains(bridge.Ports, port.UUID) {
+				continue
+			}
+			if port.ExternalIDs[ovs.ExternalIDVendor] == util.CniTypeName {
+				mappings[port.Name] = bridge.Name
+			}
+		}
+	}
+
+	return mappings, nil
+}
+
+func initOVSBridgesLegacy() (map[string]string, error) {
 	bridges, err := ovs.Bridges()
 	if err != nil {
 		return nil, err
 	}
-
 	mappings := make(map[string]string)
 	for _, brName := range bridges {
 		if err = util.SetLinkUp(brName); err != nil {
 			klog.Error(err)
 			return nil, err
 		}
-
 		output, err := ovs.Exec("list-ports", brName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", brName, err, output)
 		}
-
-		if output != "" {
-			for port := range strings.SplitSeq(output, "\n") {
-				ok, err := ovs.ValidatePortVendor(port)
-				if err != nil {
-					return nil, fmt.Errorf("failed to check vendor of port %s: %w", port, err)
-				}
-				if ok {
-					mappings[port] = brName
-				}
+		for port := range strings.SplitSeq(output, "\n") {
+			if port == "" {
+				continue
+			}
+			ok, err := ovs.ValidatePortVendor(port)
+			if err != nil {
+				return nil, fmt.Errorf("failed to check vendor of port %s: %w", port, err)
+			}
+			if ok {
+				mappings[port] = brName
 			}
 		}
 	}
-
 	return mappings, nil
 }
 
@@ -116,6 +157,9 @@ func InitNodeGateway(config *Configuration) (err error) {
 	if err != nil {
 		klog.Errorf("failed to get ip %s with mask %s, %v", ip, joinCIDR, err)
 		return err
+	}
+	if config.VswitchTables != nil {
+		return configureNodeNicWithProvider(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI, config.VswitchTables)
 	}
 	return configureNodeGateway(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI)
 }
@@ -195,13 +239,20 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterface
 		klog.Infof("no ovn-bridge-mappings entry for provider %s, trying default bridge name %s", provider, brName)
 	}
 
-	output, err := ovs.Exec("list-br")
-	if err != nil {
-		return fmt.Errorf("failed to list OVS bridges: %w, %q", err, output)
+	var bridgeExists bool
+	if c.vswitchTables != nil {
+		bridgeExists, err = c.vswitchBridgeExists(brName)
+	} else {
+		output, listErr := ovs.Exec("list-br")
+		err = listErr
+		if err == nil {
+			bridgeExists = slices.Contains(strings.Split(output, "\n"), brName)
+		}
 	}
-
-	bridges := strings.Split(output, "\n")
-	if !slices.Contains(bridges, brName) {
+	if err != nil {
+		return fmt.Errorf("failed to list OVS bridges: %w", err)
+	}
+	if !bridgeExists {
 		klog.V(3).Infof("ovs bridge %s not found", brName)
 		// Even if no OVS bridge exists, check if a NIC was renamed to br-<provider>
 		// and needs to be restored (e.g., exchangeLinkName was used but bridge setup failed).
@@ -236,9 +287,10 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterface
 
 		// remove OVS bridge
 		klog.Infof("delete external bridge %s", brName)
-		if output, err = ovs.Exec(ovs.IfExists, "del-br", brName); err != nil {
-			klog.Errorf("failed to remove OVS bridge %s, %v: %q", brName, err, output)
-			return err
+		output, delErr := ovs.Exec(ovs.IfExists, "del-br", brName)
+		if delErr != nil {
+			klog.Errorf("failed to remove OVS bridge %s, %v: %q", brName, delErr, output)
+			return delErr
 		}
 		klog.Infof("ovs bridge %s has been deleted", brName)
 
@@ -258,12 +310,12 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterface
 }
 
 func (c *Controller) cleanProviderBridgePorts(ctx providerVlanRestoreContext) error {
-	output, err := ovs.Exec("list-ports", ctx.bridge)
+	ports, err := c.listVswitchBridgePorts(ctx.bridge)
 	if err != nil {
-		return fmt.Errorf("failed to list ports of OVS bridge %s: %w: %q", ctx.bridge, err, output)
+		return fmt.Errorf("failed to list ports of OVS bridge %s: %w", ctx.bridge, err)
 	}
-	for _, port := range providerBridgePorts(output) {
-		if err := c.cleanProviderBridgePort(port, ctx); err != nil {
+	for _, port := range ports {
+		if err := c.cleanProviderBridgePort(port.Name, ctx); err != nil {
 			return err
 		}
 	}
@@ -277,18 +329,7 @@ func providerBridgePorts(output string) []string {
 	return slices.Collect(strings.SplitSeq(output, "\n"))
 }
 
-func (c *Controller) cleanProviderBridgePort(port string, ctx providerVlanRestoreContext) error {
-	output, err := ovs.Exec("--data=bare", "--no-heading", "--columns=_uuid", "find", "port", "name="+port, `external-ids:ovn-localnet-port!=""`)
-	if err != nil {
-		return fmt.Errorf("failed to find OVS port %s: %w: %q", port, err, output)
-	}
-	if output != "" {
-		return nil
-	}
-	owned, err := ovs.ValidatePortVendor(port)
-	if err != nil {
-		return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
-	}
+func (c *Controller) cleanupProviderBridgePort(port string, ctx providerVlanRestoreContext, owned bool) error {
 	switch providerBridgePortCleanupAction(port, ctx.bridge, owned) {
 	case providerBridgePortReject:
 		return fmt.Errorf("refusing to remove OVS bridge %s: VLAN-shaped port %s has different vendor", ctx.bridge, port)
@@ -306,4 +347,35 @@ func (c *Controller) cleanProviderBridgePort(port string, ctx providerVlanRestor
 	}
 	klog.Infof("ovs port %s has been removed from bridge %s", port, ctx.bridge)
 	return nil
+}
+
+func (c *Controller) cleanProviderBridgePort(port string, ctx providerVlanRestoreContext) error {
+	if c.vswitchTables != nil {
+		ports, err := c.listVswitchPorts(func(row *vswitch.Port) bool {
+			return row.Name == port
+		})
+		if err != nil {
+			return fmt.Errorf("failed to find OVS port %s: %w", port, err)
+		}
+		if len(ports) == 0 || ports[0].ExternalIDs["ovn-localnet-port"] != "" {
+			return nil
+		}
+		owned, err := c.validateVswitchPortVendor(port)
+		if err != nil {
+			return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
+		}
+		return c.cleanupProviderBridgePort(port, ctx, owned)
+	}
+	output, err := ovs.Exec("--data=bare", "--no-heading", "--columns=_uuid", "find", "port", "name="+port, `external-ids:ovn-localnet-port!=""`)
+	if err != nil {
+		return fmt.Errorf("failed to find OVS port %s: %w: %q", port, err, output)
+	}
+	if output != "" {
+		return nil
+	}
+	owned, err := c.validateVswitchPortVendor(port)
+	if err != nil {
+		return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
+	}
+	return c.cleanupProviderBridgePort(port, ctx, owned)
 }

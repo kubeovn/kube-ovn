@@ -14,6 +14,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -226,7 +227,10 @@ func GetQosList(podName, podNamespace, ifaceID string) ([]string, error) {
 }
 
 // ClearPodBandwidth remove qos related to this pod.
-func ClearPodBandwidth(podName, podNamespace, ifaceID string) error {
+func ClearPodBandwidth(podName, podNamespace, ifaceID string, providers ...compat.TableProvider) error {
+	if len(providers) != 0 && providers[0] != nil {
+		return clearPodBandwidthTable(providers[0], podName, podNamespace, ifaceID)
+	}
 	qosList, err := GetQosList(podName, podNamespace, ifaceID)
 	if err != nil {
 		klog.Error(err)

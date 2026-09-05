@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,7 +20,6 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	goTProxy "github.com/kubeovn/kube-ovn/pkg/tproxy"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -146,18 +144,7 @@ func (c *Controller) getInterfacePodNs(ifaceID string) (string, error) {
 	if c.vswitchTables == nil {
 		return ovs.GetInterfacePodNs(ifaceID)
 	}
-
-	var interfaces []vswitch.Interface
-	err := c.vswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
-		return row.ExternalIDs["iface-id"] == ifaceID
-	}, &interfaces)
-	if err != nil {
-		return "", fmt.Errorf("failed to find interface %s: %w", ifaceID, err)
-	}
-	if len(interfaces) == 0 {
-		return "", nil
-	}
-	return interfaces[0].ExternalIDs["pod_netns"], nil
+	return getVswitchInterfacePodNs(c.vswitchTables, ifaceID)
 }
 
 func (c *Controller) runTProxyConfigWorker() {
