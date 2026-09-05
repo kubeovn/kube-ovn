@@ -662,6 +662,9 @@ func (c *Controller) gcLoadBalancer() error {
 			klog.Errorf("delete all load balancers: %v", err)
 			return err
 		}
+		if err := c.gcServiceTrafficDistributionVariables(nil); err != nil {
+			return err
+		}
 		klog.Infof("finish to gc load balancers")
 		return nil
 	}
@@ -669,6 +672,9 @@ func (c *Controller) gcLoadBalancer() error {
 	svcs, err := c.servicesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list svc, %v", err)
+		return err
+	}
+	if err := c.gcServiceTrafficDistributionVariables(svcs); err != nil {
 		return err
 	}
 

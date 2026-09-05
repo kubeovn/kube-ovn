@@ -117,6 +117,22 @@ func TestServiceScopedLBNamesTrafficDistributionDualStack(t *testing.T) {
 	if slices.Contains(names, serviceScopedLBName(svc, corev1.ProtocolTCP)) {
 		t.Fatalf("dual-stack template load balancers must be split by address family: %v", names)
 	}
+	if slices.Contains(names, serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)) {
+		t.Fatalf("traffic distribution must not create a scoped external load balancer: %v", names)
+	}
+}
+
+func TestServiceUsesTrafficDistributionExcludesRuleServices(t *testing.T) {
+	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameZone
+	for _, annotation := range []string{util.SwitchLBRuleVipsAnnotation, util.RouterLBRuleVipsAnnotation} {
+		svc := &corev1.Service{
+			Annotations: map[string]string{annotation: "10.0.0.10"},
+			Spec:        corev1.ServiceSpec{TrafficDistribution: &trafficDistribution},
+		}
+		if serviceUsesTrafficDistribution(svc) || serviceUsesTemplateLB(svc) || serviceUsesScopedLB(svc) {
+			t.Fatalf("service with %s must stay on the existing rule load balancer path", annotation)
+		}
+	}
 }
 
 func TestEnsureServiceScopedLB(t *testing.T) {
@@ -360,6 +376,53 @@ func TestDeleteServiceScopedLBExternalTraffic(t *testing.T) {
 	}
 	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Times(2).Return(nil)
 	if err := fake.fakeController.deleteServiceScopedLBExternalTraffic(svc); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCleanupServiceScopedLBVIPs(t *testing.T) {
+	fake := newFakeController(t)
+	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-clean-vips")}
+	lbName := serviceScopedLBName(svc, corev1.ProtocolTCP)
+	templateVIP := "^" + serviceTrafficDistributionVariablePrefix(svc) + "tcp_vip:80"
+	fake.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{
+		Name: lbName,
+		ExternalIDs: map[string]string{
+			serviceLBOwnerExternalID: string(svc.UID),
+			serviceLBVersionID:       serviceLBVersion,
+		},
+		Vips: map[string]string{
+			"10.96.0.10:80": "10.0.0.2:8080",
+			"10.96.0.10:81": "10.0.0.2:8081",
+			templateVIP:     "^backends",
+		},
+	}}, nil)
+	fake.mockOvnClient.EXPECT().LoadBalancerDeleteVip(lbName, "10.96.0.10:81", true).Return(nil)
+	fake.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping(lbName, "10.96.0.10:81").Return(nil)
+	desired := map[string]map[string]struct{}{lbName: {"10.96.0.10:80": {}}}
+	if err := fake.fakeController.cleanupServiceScopedLBVIPs(svc, desired); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGCServiceTrafficDistributionVariables(t *testing.T) {
+	fake := newFakeController(t)
+	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameZone
+	svc := &corev1.Service{UID: types.UID("uid-active"), Spec: corev1.ServiceSpec{TrafficDistribution: &trafficDistribution}}
+	activePrefix := serviceTrafficDistributionVariablePrefix(svc)
+	fake.mockOvnClient.EXPECT().DeleteChassisTemplateVariables(gomock.Any()).DoAndReturn(func(filter func(string) bool) error {
+		if filter(activePrefix + "tcp_vip") {
+			t.Fatal("active service variable selected for garbage collection")
+		}
+		if !filter(serviceTemplateVarRoot + "orphan_tcp_vip") {
+			t.Fatal("orphan service variable not selected for garbage collection")
+		}
+		if filter("other_controller_variable") {
+			t.Fatal("unmanaged variable selected for garbage collection")
+		}
+		return nil
+	})
+	if err := fake.fakeController.gcServiceTrafficDistributionVariables([]*corev1.Service{svc}); err != nil {
 		t.Fatal(err)
 	}
 }

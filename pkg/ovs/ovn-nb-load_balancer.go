@@ -479,6 +479,43 @@ func (c *OVNNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, 
 	return nil
 }
 
+// DeleteChassisTemplateVariables removes matching variable keys without affecting other owners.
+func (c *OVNNbClient) DeleteChassisTemplateVariables(filter func(name string) bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	var rows []ovnnb.ChassisTemplateVar
+	if err := c.ovsDbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(ctx, &rows); err != nil {
+		return fmt.Errorf("list chassis template variables: %w", err)
+	}
+	var ops []ovsdb.Operation
+	for i := range rows {
+		row := &rows[i]
+		deletes := make(map[string]string)
+		for name, value := range row.Variables {
+			if filter == nil || filter(name) {
+				deletes[name] = value
+			}
+		}
+		if len(deletes) == 0 {
+			continue
+		}
+		rowOps, err := c.ovsDbClient.Where(row).Mutate(row, model.Mutation{
+			Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes,
+		})
+		if err != nil {
+			return fmt.Errorf("generate chassis template variable cleanup for chassis %s: %w", row.Chassis, err)
+		}
+		ops = append(ops, rowOps...)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	if err := c.Transact("chassis-template-var-cleanup", ops); err != nil {
+		return fmt.Errorf("delete chassis template variables: %w", err)
+	}
+	return nil
+}
+
 // SetLoadBalancerExternalIDs records ownership metadata on a load balancer.
 func (c *OVNNbClient) SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error {
 	lb, err := c.GetLoadBalancer(lbName, false)

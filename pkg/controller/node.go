@@ -52,7 +52,7 @@ func (c *Controller) enqueueTrafficDistributionServices() {
 		return
 	}
 	for _, svc := range services {
-		if svc.Spec.TrafficDistribution != nil {
+		if serviceUsesTrafficDistribution(svc) {
 			c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(svc).String())
 		}
 	}

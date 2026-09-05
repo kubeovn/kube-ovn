@@ -153,6 +153,7 @@ type LoadBalancer interface {
 	SetLoadBalancerAddressFamily(lbName, family string) error
 	SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error
 	ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error
+	DeleteChassisTemplateVariables(filter func(name string) bool) error
 	SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
