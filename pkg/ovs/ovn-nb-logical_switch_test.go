@@ -18,7 +18,7 @@ import (
 )
 
 func createLogicalSwitch(c *OVNNbClient, ls *ovnnb.LogicalSwitch) error {
-	op, err := c.Create(ls)
+	op, err := c.call.Create(ls)
 	if err != nil {
 		klog.Error(err)
 		return err

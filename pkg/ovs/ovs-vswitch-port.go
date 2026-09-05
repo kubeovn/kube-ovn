@@ -15,7 +15,7 @@ func (c *VswitchClient) ListPort(filter func(sw *vswitch.Port) bool) ([]vswitch.
 	defer cancel()
 
 	var portList []vswitch.Port
-	if err := c.ovsDbClient.WhereCache(func(port *vswitch.Port) bool {
+	if err := c.call.WhereCache(func(port *vswitch.Port) bool {
 		if filter != nil {
 			return filter(port)
 		}

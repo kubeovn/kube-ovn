@@ -447,13 +447,13 @@ func (c *Client) DeleteWhereCacheAndTransact(ctx context.Context, method string,
 // Transact submits operations, retries only transient disconnections, and
 // validates every operation result before returning.
 func (c *Client) Transact(ctx context.Context, _ string, operations []ovsdb.Operation) error {
-	_, err := c.TransactResults(ctx, operations)
+	_, err := c.TransactResults(ctx, operations...)
 	return err
 }
 
 // TransactResults submits operations, retries transient disconnections, checks
 // operation results, and returns the validated server response.
-func (c *Client) TransactResults(ctx context.Context, operations []ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+func (c *Client) TransactResults(ctx context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
 	if len(operations) == 0 {
 		return nil, nil
 	}

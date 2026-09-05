@@ -132,11 +132,11 @@ func (c *OVNNbClient) ensureACLSamplingMonitor() error {
 	if c.aclSamplingMonitored {
 		return nil
 	}
-	if err := validateACLSamplingSchema(c.Schema()); err != nil {
+	if err := validateACLSamplingSchema(c.call.Schema()); err != nil {
 		return err
 	}
 
-	monitor := c.NewMonitor(
+	monitor := c.call.NewMonitor(
 		compat.WithTable(&ovnnb.SamplingApp{}),
 		compat.WithTable(&ovnnb.SampleCollector{}),
 		compat.WithTable(&ovnnb.Sample{}),
@@ -146,7 +146,7 @@ func (c *OVNNbClient) ensureACLSamplingMonitor() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
-	if _, err := c.Monitor(ctx, monitor); err != nil {
+	if _, err := c.call.Monitor(ctx, monitor); err != nil {
 		return fmt.Errorf("monitor OVN ACL sampling tables: %w", err)
 	}
 	c.aclSamplingMonitored = true
@@ -179,7 +179,7 @@ func (c *OVNNbClient) listSamplingApps() ([]ovnnb.SamplingApp, error) {
 	defer cancel()
 
 	apps := make([]ovnnb.SamplingApp, 0)
-	if err := c.WhereCache(func(*ovnnb.SamplingApp) bool { return true }).List(ctx, &apps); err != nil {
+	if err := c.call.WhereCache(func(*ovnnb.SamplingApp) bool { return true }).List(ctx, &apps); err != nil {
 		return nil, fmt.Errorf("list OVN sampling applications: %w", err)
 	}
 	return apps, nil
@@ -190,7 +190,7 @@ func (c *OVNNbClient) listSampleCollectors() ([]ovnnb.SampleCollector, error) {
 	defer cancel()
 
 	collectors := make([]ovnnb.SampleCollector, 0)
-	if err := c.WhereCache(func(*ovnnb.SampleCollector) bool { return true }).List(ctx, &collectors); err != nil {
+	if err := c.call.WhereCache(func(*ovnnb.SampleCollector) bool { return true }).List(ctx, &collectors); err != nil {
 		return nil, fmt.Errorf("list OVN sample collectors: %w", err)
 	}
 	return collectors, nil
@@ -219,7 +219,7 @@ func (c *OVNNbClient) reconcileSamplingApp(apps []ovnnb.SamplingApp, desired des
 			ID:          int(desired.id),
 			Type:        desired.appType,
 		}
-		ops, err := c.Create(app)
+		ops, err := c.call.Create(app)
 		if err != nil {
 			return nil, fmt.Errorf("build create operation for sampling application %s: %w", desired.appType, err)
 		}
@@ -238,7 +238,7 @@ func (c *OVNNbClient) reconcileSamplingApp(apps []ovnnb.SamplingApp, desired des
 
 	current.ID = int(desired.id)
 	current.ExternalIDs = desiredExternalIDs
-	ops, err := c.Where(current).Update(current, &current.ID, &current.ExternalIDs)
+	ops, err := c.call.Where(current).Update(current, &current.ID, &current.ExternalIDs)
 	if err != nil {
 		return nil, fmt.Errorf("build update operation for sampling application %s: %w", desired.appType, err)
 	}
@@ -274,7 +274,7 @@ func (c *OVNNbClient) reconcileSampleCollector(collectors []ovnnb.SampleCollecto
 			Probability: desired.probability,
 			SetID:       int(setID),
 		}
-		ops, err := c.Create(collector)
+		ops, err := c.call.Create(collector)
 		if err != nil {
 			return nil, fmt.Errorf("build create operation for %s sample collector: %w", desired.role, err)
 		}
@@ -292,7 +292,7 @@ func (c *OVNNbClient) reconcileSampleCollector(collectors []ovnnb.SampleCollecto
 	current.Probability = desired.probability
 	current.SetID = int(setID)
 	current.ExternalIDs = desiredExternalIDs
-	ops, err := c.Where(current).Update(current,
+	ops, err := c.call.Where(current).Update(current,
 		&current.ID,
 		&current.Name,
 		&current.Probability,
@@ -320,7 +320,7 @@ func isOwnedACLSamplingObject(externalIDs map[string]string) bool {
 }
 
 func (c *OVNNbClient) cleanupACLSampling() error {
-	if err := validateACLSamplingSchema(c.Schema()); err != nil {
+	if err := validateACLSamplingSchema(c.call.Schema()); err != nil {
 		if errors.Is(err, ErrACLSamplingUnsupported) {
 			return nil
 		}
@@ -440,7 +440,7 @@ func (c *OVNNbClient) deleteUnreferencedACLSamplingCollectors(collectors []ovnnb
 		if _, ok := retained[collector.UUID]; ok {
 			continue
 		}
-		ops, err := c.Where(collector).Delete()
+		ops, err := c.call.Where(collector).Delete()
 		if err != nil {
 			return fmt.Errorf("build delete operation for owned sample collector %s: %w", collector.UUID, err)
 		}
@@ -466,7 +466,7 @@ func (c *OVNNbClient) deleteOwnedACLSamplingApps() error {
 		if !isOwnedACLSamplingObject(app.ExternalIDs) {
 			continue
 		}
-		ops, err := c.Where(app).Delete()
+		ops, err := c.call.Where(app).Delete()
 		if err != nil {
 			return fmt.Errorf("build delete operation for owned sampling application %s: %w", app.UUID, err)
 		}

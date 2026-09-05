@@ -29,7 +29,7 @@ func (suite *OvnClientTestSuite) testCreateHAChassisGroup() {
 	require.Len(t, group.HaChassis, len(chassises))
 	for _, uuid := range group.HaChassis {
 		chassis := &ovnnb.HAChassis{UUID: uuid}
-		err = nbClient.Get(context.Background(), chassis)
+		err = nbClient.call.Get(context.Background(), chassis)
 		require.NoError(t, err)
 		require.Contains(t, chassises, chassis.ChassisName)
 		require.Equal(t, chassis.Priority, 100-slices.Index(chassises, chassis.ChassisName))
@@ -49,7 +49,7 @@ func (suite *OvnClientTestSuite) testCreateHAChassisGroup() {
 	staleHAChassisUUIDs := slices.Clone(group.HaChassis)
 	for _, uuid := range group.HaChassis {
 		chassis := &ovnnb.HAChassis{UUID: uuid}
-		err = nbClient.Get(context.Background(), chassis)
+		err = nbClient.call.Get(context.Background(), chassis)
 		require.NoError(t, err)
 		require.Contains(t, chassises, chassis.ChassisName)
 		require.Equal(t, chassis.Priority, 100-slices.Index(chassises, chassis.ChassisName))
@@ -66,7 +66,7 @@ func (suite *OvnClientTestSuite) testCreateHAChassisGroup() {
 	require.Empty(t, group.HaChassis)
 	for _, uuid := range staleHAChassisUUIDs {
 		chassis := &ovnnb.HAChassis{UUID: uuid}
-		err = nbClient.Get(context.Background(), chassis)
+		err = nbClient.call.Get(context.Background(), chassis)
 		require.Error(t, err)
 	}
 }

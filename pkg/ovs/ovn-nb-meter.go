@@ -20,8 +20,8 @@ func (c *OVNNbClient) GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, 
 		return nil, errors.New("meter name is empty")
 	}
 
-	if c.backend == nil {
-		return nil, errors.New("underlying libovsdb client is nil")
+	if c.call == nil {
+		return nil, errors.New("underlying ovsdb call layer is nil")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -29,7 +29,7 @@ func (c *OVNNbClient) GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, 
 
 	meter := &ovnnb.Meter{Name: name}
 
-	if err := c.Get(ctx, meter); err != nil {
+	if err := c.call.Get(ctx, meter); err != nil {
 		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
@@ -48,7 +48,7 @@ func (c *OVNNbClient) ListAllMeters() ([]*ovnnb.Meter, error) {
 
 	// Use cached listing to retrieve all meters
 	meterList := make([]ovnnb.Meter, 0)
-	if err := c.ovsDbClient.WhereCache(func(_ *ovnnb.Meter) bool {
+	if err := c.call.WhereCache(func(_ *ovnnb.Meter) bool {
 		return true
 	}).List(ctx, &meterList); err != nil {
 		return nil, fmt.Errorf("failed to list meters: %w", err)
@@ -107,13 +107,13 @@ func (c *OVNNbClient) createMeterWithBand(name string, unit ovnnb.MeterUnit, rat
 	}
 
 	ops := make([]ovsdb.Operation, 0, 2)
-	bandOps, err := c.Create(band)
+	bandOps, err := c.call.Create(band)
 	if err != nil {
 		return fmt.Errorf("build meter band ops %s: %w", name, err)
 	}
 	ops = append(ops, bandOps...)
 
-	meterOps, err := c.Create(meter)
+	meterOps, err := c.call.Create(meter)
 	if err != nil {
 		return fmt.Errorf("build meter ops %s: %w", name, err)
 	}
@@ -143,14 +143,14 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 		band := &ovnnb.MeterBand{UUID: bandUUID}
 		ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 		defer cancel()
-		if err := c.Get(ctx, band); err != nil {
+		if err := c.call.Get(ctx, band); err != nil {
 			if !errors.Is(err, compat.ErrNotFound) {
 				return fmt.Errorf("get meter band %s for %s: %w", bandUUID, meter.Name, err)
 			}
 		} else {
 			band.Rate = rate
 			band.BurstSize = burst
-			bandUpdateOps, err = c.Where(band).Update(band, &band.Rate, &band.BurstSize)
+			bandUpdateOps, err = c.call.Where(band).Update(band, &band.Rate, &band.BurstSize)
 			if err != nil {
 				return fmt.Errorf("update meter band %s for %s: %w", bandUUID, meter.Name, err)
 			}
@@ -167,13 +167,13 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 			BurstSize:   burst,
 			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 		}
-		createBandOps, err := c.Create(band)
+		createBandOps, err := c.call.Create(band)
 		if err != nil {
 			return fmt.Errorf("build meter band ops %s: %w", meter.Name, err)
 		}
 		ops = append(ops, createBandOps...)
 
-		mutateOps, err := c.Where(meter).Mutate(meter, model.Mutation{
+		mutateOps, err := c.call.Where(meter).Mutate(meter, model.Mutation{
 			Field:   &meter.Bands,
 			Value:   []string{bandUUID},
 			Mutator: ovsdb.MutateOperationInsert,
@@ -185,7 +185,7 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 	}
 
 	meter.Unit = unit
-	updateMeterOps, err := c.Where(meter).Update(meter, &meter.Unit)
+	updateMeterOps, err := c.call.Where(meter).Update(meter, &meter.Unit)
 	if err != nil {
 		return fmt.Errorf("update meter %s: %w", meter.Name, err)
 	}
@@ -208,21 +208,21 @@ func (c *OVNNbClient) DeleteMeter(name string) error {
 	defer cancel()
 
 	meter := &ovnnb.Meter{Name: name}
-	if err := c.Get(ctx, meter); err != nil {
+	if err := c.call.Get(ctx, meter); err != nil {
 		if errors.Is(err, compat.ErrNotFound) {
 			return nil
 		}
 		return fmt.Errorf("failed to get meter %s: %w", name, err)
 	}
 
-	ops, err := c.Where(meter).Delete()
+	ops, err := c.call.Where(meter).Delete()
 	if err != nil {
 		return fmt.Errorf("failed to build delete operations for meter %s: %w", name, err)
 	}
 
 	for _, bandUUID := range meter.Bands {
 		band := &ovnnb.MeterBand{UUID: bandUUID}
-		bandOps, err := c.Where(band).Delete()
+		bandOps, err := c.call.Where(band).Delete()
 		if err != nil {
 			return fmt.Errorf("failed to remove meter band %s for %s: %w", bandUUID, name, err)
 		}

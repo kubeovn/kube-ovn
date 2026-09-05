@@ -284,7 +284,7 @@ func (c *OVNNbClient) listSamples() ([]ovnnb.Sample, error) {
 	defer cancel()
 
 	samples := make([]ovnnb.Sample, 0)
-	if err := c.WhereCache(func(*ovnnb.Sample) bool { return true }).List(ctx, &samples); err != nil {
+	if err := c.call.WhereCache(func(*ovnnb.Sample) bool { return true }).List(ctx, &samples); err != nil {
 		return nil, fmt.Errorf("list OVN samples: %w", err)
 	}
 	return samples, nil
@@ -516,7 +516,7 @@ func (c *OVNNbClient) ensureNetworkPolicySample(metadata uint32, collector *ovnn
 		Collectors: []string{collector.UUID},
 		Metadata:   int(metadata),
 	}
-	ops, err := c.Create(model.Model(sample))
+	ops, err := c.call.Create(model.Model(sample))
 	if err != nil {
 		return "", nil, fmt.Errorf("build create operation for sample metadata %d: %w", metadata, err)
 	}
@@ -555,7 +555,7 @@ func (c *OVNNbClient) setNetworkPolicySamplingOps(acl *ovnnb.ACL, request *Netwo
 	} else {
 		acl.SampleEst = nil
 	}
-	ops, err := c.Where(acl).Update(acl, &acl.ExternalIDs, &acl.SampleNew, &acl.SampleEst)
+	ops, err := c.call.Where(acl).Update(acl, &acl.ExternalIDs, &acl.SampleNew, &acl.SampleEst)
 	if err != nil {
 		return nil, fmt.Errorf("build sample attachment operation for ACL %s: %w", acl.UUID, err)
 	}
@@ -573,7 +573,7 @@ func (c *OVNNbClient) clearNetworkPolicySamplingOps(acl *ovnnb.ACL) ([]ovsdb.Ope
 	acl.ExternalIDs = externalIDs
 	acl.SampleNew = nil
 	acl.SampleEst = nil
-	ops, err := c.Where(acl).Update(acl, &acl.ExternalIDs, &acl.SampleNew, &acl.SampleEst)
+	ops, err := c.call.Where(acl).Update(acl, &acl.ExternalIDs, &acl.SampleNew, &acl.SampleEst)
 	if err != nil {
 		return nil, fmt.Errorf("build sample cleanup operation for ACL %s: %w", acl.UUID, err)
 	}

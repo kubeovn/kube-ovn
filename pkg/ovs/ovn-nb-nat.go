@@ -106,7 +106,7 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 		}
 	}
 
-	createNatsOp, err := c.Create(models...)
+	createNatsOp, err := c.call.Create(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating nats: %w", err)
@@ -233,7 +233,7 @@ func (c *OVNNbClient) UpdateNat(nat *ovnnb.NAT, fields ...any) error {
 		return errors.New("nat is nil")
 	}
 
-	op, err := c.ovsDbClient.Where(nat).Update(nat, fields...)
+	op, err := c.call.Where(nat).Update(nat, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating nat 'type %s external ip %s logical ip %s': %w", nat.Type, nat.ExternalIP, nat.LogicalIP, err)
@@ -308,7 +308,7 @@ func (c *OVNNbClient) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
 	defer cancel()
 
 	nat := &ovnnb.NAT{UUID: uuid}
-	if err := c.Get(ctx, nat); err != nil {
+	if err := c.call.Get(ctx, nat); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -548,7 +548,7 @@ func (c *OVNNbClient) listLogicalRouterNatByFilter(lrName string, filter func(ro
 	natList := make([]*ovnnb.NAT, 0, len(lr.Nat))
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
-	if err := c.WhereCache(predicate).List(ctx, &natList); err != nil {
+	if err := c.call.WhereCache(predicate).List(ctx, &natList); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
