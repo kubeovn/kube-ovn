@@ -378,6 +378,11 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	isExternalVIP := state.trafficClass == serviceLBExternalTraffic
 	state.distributed = profile.distributedLocal && !isExternalVIP
 	state.template = serviceUsesTemplateLB(svc) && !isExternalVIP
+	if isExternalVIP && serviceUsesTemplateLB(svc) {
+		shared := serviceLoadBalancers(reconcileCtx.vpc, svc.Spec.SessionAffinity)
+		state.lb = shared.current[port.Protocol]
+		state.oldLB = shared.previous[port.Protocol]
+	}
 	if profile.distributedLocal && isExternalVIP {
 		var err error
 		state.lb, err = c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, reconcileCtx.subnetName)
