@@ -23,7 +23,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -43,13 +43,13 @@ type pkiFiles struct {
 	caCertPath      string
 }
 
-func getOVSSystemID() (string, error) {
-	id, err := ovs.Get("Open_vSwitch", ".", "external_ids", "system-id", true)
+func (c *Controller) getOVSSystemID() (string, error) {
+	row, err := c.openVSwitchRow()
 	if err != nil {
 		klog.Errorf("failed to get ovs system-id: %v", err)
 		return "", err
 	}
-	id = strings.Trim(id, `"`)
+	id := row.ExternalIDs["system-id"]
 	if id == "" {
 		return "", errors.New("ovs system-id is not set or is empty")
 	}
@@ -210,8 +210,8 @@ func generateNewPrivateKey(path string) error {
 	return nil
 }
 
-func generateCSRCode(newPrivKeyPath string) ([]byte, error) {
-	cn, err := getOVSSystemID()
+func (c *Controller) generateCSRCode(newPrivKeyPath string) ([]byte, error) {
+	cn, err := c.getOVSSystemID()
 	if err != nil {
 		klog.Errorf("failed to get ovs system-id: %v", err)
 		return nil, err
@@ -364,43 +364,40 @@ func (c *Controller) storeCertificate(cert []byte, certPath string) error {
 	return nil
 }
 
-func configureOVSWithIPSecKeys(p *pkiFiles) error {
-	if err := ovs.Set("Open_vSwitch", ".",
-		fmt.Sprintf("other_config:certificate=%s", p.certificatePath),
-		fmt.Sprintf("other_config:private_key=%s", p.privateKeyPath),
-		fmt.Sprintf("other_config:ca_cert=%s", p.caCertPath),
-	); err != nil {
-		return fmt.Errorf("failed to configure OVS with IPSec keys: %w", err)
-	}
-	return nil
+func (c *Controller) configureOVSWithIPSecKeys(p *pkiFiles) error {
+	return c.config.updateOpenVSwitchOtherConfig("daemon-ipsec-configure", map[string]*string{
+		"certificate": new(p.certificatePath),
+		"private_key": new(p.privateKeyPath),
+		"ca_cert":     new(p.caCertPath),
+	})
 }
 
-func getOvsIPSecKeys() (*pkiFiles, error) {
-	certificate, err := ovs.Get("Open_vSwitch", ".", "other_config", "certificate", true)
+func (c *Controller) getOvsIPSecKeys() (*pkiFiles, error) {
+	row, err := c.openVSwitchRow()
 	if err != nil {
-		return nil, fmt.Errorf("reading OVS certificate config; %w", err)
-	}
-	privateKey, err := ovs.Get("Open_vSwitch", ".", "other_config", "private_key", true)
-	if err != nil {
-		return nil, fmt.Errorf("reading OVS private key config; %w", err)
-	}
-	caCert, err := ovs.Get("Open_vSwitch", ".", "other_config", "ca_cert", true)
-	if err != nil {
-		return nil, fmt.Errorf("reading OVS CA certificate config; %w", err)
+		return nil, err
 	}
 
 	return &pkiFiles{
-		certificatePath: strings.Trim(certificate, `"`),
-		privateKeyPath:  strings.Trim(privateKey, `"`),
-		caCertPath:      strings.Trim(caCert, `"`),
+		certificatePath: row.OtherConfig["certificate"],
+		privateKeyPath:  row.OtherConfig["private_key"],
+		caCertPath:      row.OtherConfig["ca_cert"],
 	}, nil
 }
 
-func clearOVSIPSecConfig() error {
-	if err := ovs.Remove("Open_vSwitch", ".", "other_config", "ca_cert", "private_key", "certificate"); err != nil {
-		return fmt.Errorf("failed to remove OVS ipsec configuration: %w", err)
+func (c *Controller) clearOVSIPSecConfig() error {
+	return c.config.updateOpenVSwitchOtherConfig("daemon-ipsec-clear", map[string]*string{
+		"ca_cert":     nil,
+		"private_key": nil,
+		"certificate": nil,
+	})
+}
+
+func (c *Controller) openVSwitchRow() (*vswitch.OpenvSwitch, error) {
+	if c == nil || c.config == nil {
+		return nil, errors.New("daemon configuration is not configured")
 	}
-	return nil
+	return c.config.openVSwitchRow()
 }
 
 func linkCACertToIPSecDir(ca []byte) error {
@@ -538,7 +535,7 @@ func (c *Controller) SyncIPSecKeys(key string) error {
 		return err
 	}
 
-	pkiFiles, err := getOvsIPSecKeys()
+	pkiFiles, err := c.getOvsIPSecKeys()
 	if err != nil {
 		klog.Errorf("reading OVS ipsec config: %v", err)
 		return err
@@ -573,7 +570,7 @@ func (c *Controller) SyncIPSecKeys(key string) error {
 	// Always configure OVS with IPSec keys to ensure the OVSDB has
 	// the correct certificate paths, even when the certificate was
 	// not regenerated (e.g., after an OVS restart that cleared OVSDB).
-	if err := configureOVSWithIPSecKeys(pkiFiles); err != nil {
+	if err := c.configureOVSWithIPSecKeys(pkiFiles); err != nil {
 		klog.Errorf("configure ovs with ipsec keys error: %v", err)
 		return err
 	}
@@ -612,7 +609,7 @@ func (c *Controller) CreateIPSecKeys(p *pkiFiles) error {
 		return err
 	}
 
-	csr64, err := generateCSRCode(p.privateKeyPath)
+	csr64, err := c.generateCSRCode(p.privateKeyPath)
 	if err != nil {
 		klog.Errorf("generate csr code error: %v", err)
 		return err
@@ -649,7 +646,7 @@ func (c *Controller) RemoveIPSecKeys() error {
 		return err
 	}
 
-	if err = clearOVSIPSecConfig(); err != nil {
+	if err = c.clearOVSIPSecConfig(); err != nil {
 		klog.Errorf("clear OVS IPSec configuration error: %v", err)
 		return err
 	}

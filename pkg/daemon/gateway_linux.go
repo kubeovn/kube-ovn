@@ -1885,7 +1885,7 @@ func (c *Controller) setExGateway() error {
 				return err
 			}
 		}
-		if err = addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
+		if err = c.config.addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
 			klog.Error(err)
 			return err
 		}

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	goTProxy "github.com/kubeovn/kube-ovn/pkg/tproxy"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -120,7 +122,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 			podName = vmName
 		}
 		iface := ovs.PodNameToPortName(podName, pod.Namespace, provider)
-		nsName, err := ovs.GetInterfacePodNs(iface)
+		nsName, err := c.getInterfacePodNs(iface)
 		if err != nil {
 			klog.Errorf("failed to get netns for pod %s/%s: %v", pod.Namespace, pod.Name, err)
 			continue
@@ -138,6 +140,24 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 			}
 		}
 	}
+}
+
+func (c *Controller) getInterfacePodNs(ifaceID string) (string, error) {
+	if c.vswitchTables == nil {
+		return ovs.GetInterfacePodNs(ifaceID)
+	}
+
+	var interfaces []vswitch.Interface
+	err := c.vswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+		return row.ExternalIDs["iface-id"] == ifaceID
+	}, &interfaces)
+	if err != nil {
+		return "", fmt.Errorf("failed to find interface %s: %w", ifaceID, err)
+	}
+	if len(interfaces) == 0 {
+		return "", nil
+	}
+	return interfaces[0].ExternalIDs["pod_netns"], nil
 }
 
 func (c *Controller) runTProxyConfigWorker() {
