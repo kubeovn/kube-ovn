@@ -887,7 +887,7 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 		return err
 	}
 
-	if err = c.OVNNbClient.DeleteLogicalSwitch(key); err != nil {
+	if err = c.deleteLogicalSwitch(key); err != nil {
 		klog.Errorf("delete logical switch %s: %v", key, err)
 		return err
 	}

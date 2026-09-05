@@ -260,6 +260,60 @@ func (c *Controller) deleteBFD(uuid string) error {
 	)
 }
 
+func (c *Controller) deleteBFDByDestination(logicalPort, destination string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteBFDByDstIP(logicalPort, destination)
+	}
+	var rows []ovnnb.BFD
+	if err := c.OVNNbTables.Table(&ovnnb.BFD{}).Filter(
+		context.Background(),
+		func(row *ovnnb.BFD) bool {
+			return row.LogicalPort == logicalPort && (destination == "" || row.DstIP == destination)
+		},
+		&rows,
+	); err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	selectors := make([]model.Model, len(rows))
+	for i := range rows {
+		selectors[i] = &rows[i]
+	}
+	return c.OVNNbTables.Table(&ovnnb.BFD{}).Delete(context.Background(), "bfd-del", selectors...)
+}
+
+func (c *Controller) deleteLogicalSwitch(name string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalSwitch(name)
+	}
+	var rows []ovnnb.LogicalSwitch
+	if err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Filter(
+		context.Background(),
+		func(row *ovnnb.LogicalSwitch) bool { return row.Name == name },
+		&rows,
+	); err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	if len(rows) > 1 {
+		return fmt.Errorf("more than one logical switch with same name %q", name)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Delete(context.Background(), "ls-del", &rows[0])
+}
+
+func (c *Controller) updateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.UpdateLogicalRouterPolicy(policy, fields...)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPolicy{}).Update(
+		context.Background(), "lr-policy-update", policy, policy, fields...,
+	)
+}
+
 func (c *Controller) deleteChassis(name string) error {
 	if c.OVNSbTables == nil {
 		return c.OVNSbClient.DeleteChassis(name)
