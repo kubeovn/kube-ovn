@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -216,7 +215,7 @@ func (c *Controller) reconcileServiceEndpointSlices(svc *v1.Service, endpointSli
 		return err
 	}
 	if serviceUsesTrafficDistribution(svc) {
-		if err := c.reconcileServiceTrafficDistribution(svc, endpointSlices, profile.lbVips, profile.trafficClasses); err != nil {
+		if err := c.reconcileServiceTrafficDistribution(svc, endpointSlices, vpc, profile.lbVips, profile.trafficClasses); err != nil {
 			return err
 		}
 	}
@@ -335,8 +334,8 @@ func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSli
 			}
 		}
 	}
-	if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(reconcileCtx.subnetName, ovsdb.MutateOperationInsert, lbNames...); err != nil {
-		return fmt.Errorf("attach service-scoped load balancers to subnet %s: %w", reconcileCtx.subnetName, err)
+	if err := c.attachServiceScopedLoadBalancers(reconcileCtx.vpcName, lbNames...); err != nil {
+		return err
 	}
 	return nil
 }
@@ -385,7 +384,7 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	}
 	if profile.distributedLocal && isExternalVIP {
 		var err error
-		state.lb, err = c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, reconcileCtx.subnetName)
+		state.lb, err = c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, reconcileCtx.vpcName)
 		if err != nil {
 			return err
 		}
@@ -393,9 +392,6 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 
 	if state.template {
 		state.lb = serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBInternalTraffic, strings.ToLower(util.CheckProtocol(lbVip)))
-		if err := c.deleteServiceLBMigrationVIP(svc, port.Protocol, state.oldLB, state.lb, state.vip, reconcileCtx.vpc, state.trafficClass); err != nil {
-			return fmt.Errorf("migrate template vip %s: %w", state.vip, err)
-		}
 		return nil
 	}
 
@@ -404,11 +400,11 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	if err != nil {
 		return err
 	}
-	state.mapping, err = c.serviceVIPIPPortMapping(reconcileCtx, state.distributed, state.checkIP)
+	state.mapping, err = c.serviceVIPIPPortMapping(reconcileCtx, port, lbVip, state.distributed, state.checkIP)
 	if err != nil {
 		return err
 	}
-	state.backends = c.getEndpointBackend(reconcileCtx.endpointSlices, port, lbVip)
+	state.backends = c.getEndpointBackend(reconcileCtx.endpointSlices, port, lbVip, state.distributed)
 	if len(state.backends) == 0 {
 		return c.deleteServiceEndpointVIP(reconcileCtx, state)
 	}
@@ -432,9 +428,9 @@ func (c *Controller) serviceVIPHealthCheck(reconcileCtx *endpointSliceReconcileC
 	return checkIP, externals, nil
 }
 
-func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcileContext, distributed bool, checkIP string) (IPPortMapping, error) {
+func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcileContext, servicePort v1.ServicePort, serviceIP string, distributed bool, checkIP string) (IPPortMapping, error) {
 	if distributed {
-		mapping, err := c.getDistributedIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service)
+		mapping, err := c.getDistributedIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service, servicePort, serviceIP)
 		if err != nil {
 			return nil, fmt.Errorf("get distributed ip port mapping for service %s/%s: %w", reconcileCtx.service.Namespace, reconcileCtx.service.Name, err)
 		}
@@ -456,10 +452,8 @@ func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcil
 func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, state *serviceEndpointVIPState) error {
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
 	klog.Infof("add vip endpoint %s, backends %v to LB %s", state.vip, state.backends, state.lb)
-	if err := c.OVNNbClient.LoadBalancerAddVip(state.lb, state.vip, state.backends...); err != nil {
-		return fmt.Errorf("add vip %s with backends %v to load balancer %s: %w", state.lbVip, state.backends, state.lb, err)
-	}
-	if err := c.deleteServiceLBMigrationVIP(svc, state.port.Protocol, state.oldLB, state.lb, state.vip, reconcileCtx.vpc, state.trafficClass); err != nil {
+	candidates := serviceLBMigrationCandidates(svc, state.port.Protocol, state.oldLB, reconcileCtx.vpc, state.trafficClass)
+	if err := c.OVNNbClient.LoadBalancerMigrateVIP(state.lb, state.vip, state.backends, state.vip, candidates...); err != nil {
 		return fmt.Errorf("migrate vip %s: %w", state.vip, err)
 	}
 	if profile.preferLocalBackend && svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
@@ -924,35 +918,19 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 }
 
 // getEndpointBackend returns the LB backend for a service
-func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP string) (backends []string) {
-	protocol := util.CheckProtocol(serviceIP)
-
-	for _, endpointSlice := range endpointSlices {
-		var targetPort int32
-		for _, port := range endpointSlice.Ports {
-			if port.Name != nil && *port.Name == servicePort.Name {
-				targetPort = *port.Port
-				break
-			}
-		}
-		if targetPort == 0 {
-			continue
-		}
-
-		for _, endpoint := range endpointSlice.Endpoints {
-			if !endpointReady(endpoint) {
-				continue
-			}
-
-			for _, address := range endpoint.Addresses {
-				if util.CheckProtocol(address) == protocol {
-					backends = append(backends, util.JoinHostPort(address, targetPort))
-				}
-			}
+func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP string, allowTerminatingFallback bool) (backends []string) {
+	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, allowTerminatingFallback) {
+		for _, address := range candidate.addresses {
+			backends = append(backends, util.JoinHostPort(address, candidate.targetPort))
 		}
 	}
-
 	return backends
+}
+
+type serviceEndpointCandidate struct {
+	endpoint   discoveryv1.Endpoint
+	addresses  []string
+	targetPort int32
 }
 
 type topologyBackend struct {
@@ -976,29 +954,48 @@ func endpointSlicePort(endpointSlice *discoveryv1.EndpointSlice, servicePort v1.
 }
 
 func topologyBackends(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP string) []topologyBackend {
-	protocol := util.CheckProtocol(serviceIP)
 	var backends []topologyBackend
+	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, false) {
+		for _, address := range candidate.addresses {
+			backends = append(backends, topologyBackend{
+				backend: util.JoinHostPort(address, candidate.targetPort),
+				hints:   candidate.endpoint.Hints,
+			})
+		}
+	}
+	return backends
+}
+
+func serviceEndpointCandidates(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP string, allowTerminatingFallback bool) []serviceEndpointCandidate {
+	protocol := util.CheckProtocol(serviceIP)
+	var ready, terminating []serviceEndpointCandidate
 	for _, endpointSlice := range endpointSlices {
 		targetPort := endpointSlicePort(endpointSlice, servicePort)
 		if targetPort == 0 {
 			continue
 		}
 		for _, endpoint := range endpointSlice.Endpoints {
-			if !endpointReady(endpoint) {
+			addresses := make([]string, 0, len(endpoint.Addresses))
+			for _, address := range endpoint.Addresses {
+				if util.CheckProtocol(address) == protocol {
+					addresses = append(addresses, address)
+				}
+			}
+			if len(addresses) == 0 {
 				continue
 			}
-			for _, address := range endpoint.Addresses {
-				if util.CheckProtocol(address) != protocol {
-					continue
-				}
-				backends = append(backends, topologyBackend{
-					backend: util.JoinHostPort(address, targetPort),
-					hints:   endpoint.Hints,
-				})
+			candidate := serviceEndpointCandidate{endpoint: endpoint, addresses: addresses, targetPort: targetPort}
+			if endpointReady(endpoint) {
+				ready = append(ready, candidate)
+			} else if endpointServingAndTerminating(endpoint) {
+				terminating = append(terminating, candidate)
 			}
 		}
 	}
-	return backends
+	if len(ready) != 0 || !allowTerminatingFallback {
+		return ready
+	}
+	return terminating
 }
 
 func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName, trafficDistribution string) []string {
@@ -1083,7 +1080,7 @@ func (c *Controller) cleanupServiceTrafficDistributionState(svc *v1.Service) err
 	return nil
 }
 
-func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpointSlices []*discoveryv1.EndpointSlice, lbVips []string, classes map[string]serviceLBTrafficClass) error {
+func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpointSlices []*discoveryv1.EndpointSlice, vpc *kubeovnv1.Vpc, lbVips []string, classes map[string]serviceLBTrafficClass) error {
 	chassises, err := c.OVNSbClient.ListChassis()
 	if err != nil {
 		return fmt.Errorf("list OVN chassis for service %s/%s traffic distribution: %w", svc.Namespace, svc.Name, err)
@@ -1106,7 +1103,9 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 				base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
 				vipVariable, backendVariable := base+"_vip", base+"_backends"
 				templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.Port))
-				if err := c.OVNNbClient.SetLoadBalancerTemplateVIP(lbName, templateVIP, "^"+backendVariable); err != nil {
+				shared := serviceLoadBalancers(vpc, svc.Spec.SessionAffinity)
+				candidates := serviceLBMigrationCandidates(svc, port.Protocol, shared.previous[port.Protocol], vpc, serviceLBInternalTraffic)
+				if err := c.OVNNbClient.LoadBalancerMigrateVIP(lbName, templateVIP, []string{"^" + backendVariable}, vip, candidates...); err != nil {
 					return fmt.Errorf("set traffic distribution template for service %s/%s: %w", svc.Namespace, svc.Name, err)
 				}
 				if desiredTemplateVIPs[lbName] == nil {
@@ -1161,6 +1160,11 @@ func endpointReady(endpoint discoveryv1.Endpoint) bool {
 	return endpoint.Conditions.Ready == nil || *endpoint.Conditions.Ready
 }
 
+func endpointServingAndTerminating(endpoint discoveryv1.Endpoint) bool {
+	return endpoint.Conditions.Serving != nil && *endpoint.Conditions.Serving &&
+		endpoint.Conditions.Terminating != nil && *endpoint.Conditions.Terminating
+}
+
 // addIPPortMappingEntry adds a new entry to an IPPortMapping for a given target, the addresses on that target and the
 // VIP used to run the health checks
 func (c *Controller) addIPPortMappingEntry(pod *v1.Pod, addresses []string, checkVip string, mapping IPPortMapping) error {
@@ -1211,52 +1215,45 @@ func (c *Controller) getIPPortMapping(endpointSlices []*discoveryv1.EndpointSlic
 // required by OVN's distributed load balancer. Strict Local must not infer a
 // logical port for selectorless or manually supplied endpoints, because an
 // incomplete mapping would make traffic unavailable on every chassis.
-func (c *Controller) getDistributedIPPortMapping(endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service) (IPPortMapping, error) {
+func (c *Controller) getDistributedIPPortMapping(endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service, servicePort v1.ServicePort, serviceIP string) (IPPortMapping, error) {
 	if !serviceHasSelector(service) {
 		return nil, errors.New("service has no selector; EndpointSlice targets are required for distributed load balancing")
 	}
 
 	mapping := make(IPPortMapping)
-	for _, slice := range endpointSlices {
-		for _, endpoint := range slice.Endpoints {
-			if !endpointReady(endpoint) {
-				continue
+	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, true) {
+		endpoint := candidate.endpoint
+		if endpoint.TargetRef == nil {
+			return nil, fmt.Errorf("eligible endpoint %v has no Pod target", candidate.addresses)
+		}
+		if endpoint.TargetRef.Kind != "" && endpoint.TargetRef.Kind != util.KindPod {
+			return nil, fmt.Errorf("endpoint target %s/%s is not a Pod", endpoint.TargetRef.Namespace, endpoint.TargetRef.Name)
+		}
+		targetNamespace := endpoint.TargetRef.Namespace
+		if targetNamespace == "" {
+			targetNamespace = service.Namespace
+		}
+		pod, err := c.podsLister.Pods(targetNamespace).Get(endpoint.TargetRef.Name)
+		if err != nil {
+			return nil, fmt.Errorf("get endpoint pod %s/%s: %w", targetNamespace, endpoint.TargetRef.Name, err)
+		}
+		lspName, err := c.getEndpointTargetLSPName(pod, candidate.addresses)
+		if err != nil {
+			return nil, fmt.Errorf("get logical port for endpoint pod %s/%s: %w", pod.Namespace, pod.Name, err)
+		}
+		lsp, err := c.OVNNbClient.GetLogicalSwitchPort(lspName, true)
+		if err != nil {
+			return nil, fmt.Errorf("get logical port %s for endpoint pod %s/%s: %w", lspName, pod.Namespace, pod.Name, err)
+		}
+		if lsp == nil {
+			return nil, fmt.Errorf("logical port %s for endpoint pod %s/%s does not exist", lspName, pod.Namespace, pod.Name)
+		}
+		for _, address := range candidate.addresses {
+			key := address
+			if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
+				key = fmt.Sprintf("[%s]", address)
 			}
-			if endpoint.TargetRef == nil {
-				return nil, fmt.Errorf("ready endpoint %v has no Pod target", endpoint.Addresses)
-			}
-			if endpoint.TargetRef.Kind != "" && endpoint.TargetRef.Kind != util.KindPod {
-				return nil, fmt.Errorf("endpoint target %s/%s is not a Pod", endpoint.TargetRef.Namespace, endpoint.TargetRef.Name)
-			}
-			targetNamespace := endpoint.TargetRef.Namespace
-			if targetNamespace == "" {
-				targetNamespace = service.Namespace
-			}
-			pod, err := c.podsLister.Pods(targetNamespace).Get(endpoint.TargetRef.Name)
-			if err != nil {
-				return nil, fmt.Errorf("get endpoint pod %s/%s: %w", targetNamespace, endpoint.TargetRef.Name, err)
-			}
-			if !pod.DeletionTimestamp.IsZero() {
-				continue
-			}
-			lspName, err := c.getEndpointTargetLSPName(pod, endpoint.Addresses)
-			if err != nil {
-				return nil, fmt.Errorf("get logical port for endpoint pod %s/%s: %w", pod.Namespace, pod.Name, err)
-			}
-			lsp, err := c.OVNNbClient.GetLogicalSwitchPort(lspName, true)
-			if err != nil {
-				return nil, fmt.Errorf("get logical port %s for endpoint pod %s/%s: %w", lspName, pod.Namespace, pod.Name, err)
-			}
-			if lsp == nil {
-				return nil, fmt.Errorf("logical port %s for endpoint pod %s/%s does not exist", lspName, pod.Namespace, pod.Name)
-			}
-			for _, address := range endpoint.Addresses {
-				key := address
-				if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
-					key = fmt.Sprintf("[%s]", address)
-				}
-				mapping[key] = lspName
-			}
+			mapping[key] = lspName
 		}
 	}
 	return mapping, nil

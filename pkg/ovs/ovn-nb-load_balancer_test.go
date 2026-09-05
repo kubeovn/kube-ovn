@@ -789,6 +789,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 		err = nbClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
 		require.NoError(t, err)
 	}
+	require.NoError(t, nbClient.LoadBalancerAddIPPortMapping(lbName, markedVIP, map[string]string{"192.168.20.3": "backend.default"}))
 	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, markedVIP, "node-worker-1"))
 
 	deletedVips = []string{
@@ -807,6 +808,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	require.NoError(t, err)
 	require.Equal(t, vips, lb.Vips)
 	require.NotContains(t, lb.ExternalIDs, localExternalVIPKeyPrefix+markedVIP)
+	require.NotContains(t, lb.IPPortMappings, "192.168.20.3")
 
 	err = nbClient.LoadBalancerAddHealthCheck(lbName, "10.107.43.239:8080", false, nil, nil)
 	require.NoError(t, err)
@@ -844,6 +846,36 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 
 	err = nbClient.LoadBalancerDeleteVip(lbName, "10.107.43.239:8080", ignoreHealthCheck)
 	require.ErrorContains(t, err, "more than one load balancer with same name")
+}
+
+func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
+	t := suite.T()
+	t.Parallel()
+
+	const (
+		oldLBName = "test-lb-migrate-vip-old"
+		newLBName = "test-lb-migrate-vip-new"
+		oldVIP    = "10.96.0.20:80"
+		newVIP    = "^service_vip:80"
+		backend   = "10.0.0.2:8080"
+	)
+	nbClient := suite.ovnNBClient
+	require.NoError(t, nbClient.CreateLoadBalancer(oldLBName, "tcp"))
+	require.NoError(t, nbClient.CreateLoadBalancer(newLBName, "tcp"))
+	require.NoError(t, nbClient.LoadBalancerAddVip(oldLBName, oldVIP, backend))
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(oldLBName, oldVIP, false, map[string]string{"10.0.0.2": "backend.default"}, nil))
+
+	require.NoError(t, nbClient.LoadBalancerMigrateVIP(newLBName, newVIP, []string{"^service_backends"}, oldVIP, oldLBName))
+
+	oldLB, err := nbClient.GetLoadBalancer(oldLBName, false)
+	require.NoError(t, err)
+	require.NotContains(t, oldLB.Vips, oldVIP)
+	require.NotContains(t, oldLB.IPPortMappings, "10.0.0.2")
+	require.Empty(t, oldLB.HealthCheck)
+
+	newLB, err := nbClient.GetLoadBalancer(newLBName, false)
+	require.NoError(t, err)
+	require.Equal(t, "^service_backends", newLB.Vips[newVIP])
 }
 
 func (suite *OvnClientTestSuite) testSetLoadBalancerVIPExternalTrafficLocal() {

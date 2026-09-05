@@ -93,11 +93,27 @@ jobs:
 
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
+        env:
+          E2E_BRANCH: ${{ matrix.branch }}
         run: |
           sudo pip3 install jinjanator j2cli
-          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          workers=1
+          if [[ "$E2E_BRANCH" == "master" ]]; then
+            workers=6
+          elif [[ "$E2E_BRANCH" =~ ^release-([0-9]+)\.([0-9]+)$ ]] &&
+            ((BASH_REMATCH[1] > 1 || (BASH_REMATCH[1] == 1 && BASH_REMATCH[2] >= 17))); then
+            workers=6
+          fi
+          sudo env "PATH=$HOME/.local/bin:$PATH" n_worker="$workers" make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chown -R $(id -un). ~/.kube/
+          sudo chown -R "$(id -un)." ~/.kube/
+          if ((workers >= 6)); then
+            zones=(zone-a zone-b zone-c)
+            mapfile -t nodes < <(kubectl get nodes -o name | sort)
+            for i in "${!nodes[@]}"; do
+              kubectl label --overwrite "${nodes[$i]}" topology.kubernetes.io/zone="${zones[$((i % ${#zones[@]}))]}"
+            done
+          fi
 
       - name: Install Kube-OVN
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
