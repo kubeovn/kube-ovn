@@ -560,18 +560,30 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 		var interfaces []string
 		if c.config.EnableNonPrimaryCNI {
 			// extract external nad interface name
-			externalNadNs, externalNadName, nadErr := c.getExternalSubnetNad(gw)
+			externalNads, nadErr := c.getExternalSubnetNads(gw)
 			if nadErr != nil {
 				klog.Errorf("failed to get external subnet NAD for gateway %s: %v", gw.Name, nadErr)
 				return nadErr
 			}
 			networkStatusAnnotations := pod.Annotations[nadv1.NetworkStatusAnnot]
-			externalNadFullName := fmt.Sprintf("%s/%s", externalNadNs, externalNadName)
-			externalNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(networkStatusAnnotations, externalNadFullName)
-			if err != nil {
-				klog.Errorf("failed to extract external nad interface name from runtime Pod annotation network-status, %v", err)
-				return err
+
+			externalNadIfNames := make([]string, 0, len(externalNads))
+			for _, externalNad := range externalNads {
+				externalNadFullName := fmt.Sprintf("%s/%s", externalNad.Namespace, externalNad.Name)
+
+				externalNadIfName, err := util.GetNadInterfaceFromNetworkStatusAnnotation(
+					networkStatusAnnotations,
+					externalNadFullName,
+				)
+				if err != nil {
+					klog.Errorf("failed to extract external nad interface name from runtime Pod annotation network-status for %s, %v",
+						externalNadFullName, err)
+					return err
+				}
+
+				externalNadIfNames = append(externalNadIfNames, externalNadIfName)
 			}
+
 			// extract vpc nad interface name
 			providers, err := c.getPodProviders(pod)
 			if err != nil {
@@ -598,10 +610,19 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 				return err
 			}
 
-			klog.Infof("nat gw pod %s/%s internal nad interface %s, external nad interface %s", pod.Namespace, pod.Name, vpcNadIfName, externalNadIfName)
-			interfaces = []string{
-				strings.Join([]string{vpcNadIfName, externalNadIfName}, ","),
-			}
+			klog.Infof("nat gw pod %s/%s internal nad interface %s, external nad interfaces %s", pod.Namespace, pod.Name, vpcNadIfName, externalNadIfNames)
+			interfaces := make([]string, 0, len(externalNadIfNames)+1)
+			interfaces = append(interfaces, vpcNadIfName)
+			interfaces = append(interfaces, externalNadIfNames...)
+
+			interfacesArg := strings.Join(interfaces, ",")
+
+			klog.Infof(
+				"nat gw pod %s/%s interfaces %s",
+				pod.Namespace,
+				pod.Name,
+				interfacesArg,
+			)
 		}
 		if err = c.execNatGwRules(pod, natGwInit, interfaces); err != nil {
 			// Check if this is a transient initialization error (e.g., first attempt before iptables chains are created)
@@ -1207,7 +1228,7 @@ func (c *Controller) generateNatGwRoutes(
 }
 
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (*v1.StatefulSet, error) {
-	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
+	externalNads, err := c.getExternalSubnetNads(gw)
 	if err != nil {
 		klog.Errorf("failed to get gw external subnet nad: %v", err)
 		return nil, err
@@ -1229,7 +1250,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 
 	// Generate StatefulSet Pod template annotations.
 	// User-defined annotations (gw.Spec.Annotations) are used as base, system annotations are set on top.
-	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks, c.config.EnableNonPrimaryCNI)
+	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNads, eth0SubnetProvider, additionalNetworks, c.config.EnableNonPrimaryCNI)
 	if err != nil {
 		klog.Errorf("vpc nat gateway annotation generation failed: %s", err.Error())
 		return nil, err
@@ -1258,8 +1279,10 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		return nil, err
 	}
 
+	//Get only the first external subnet for default routes, as the NAT gateway can only have one default route
+	firstExtSubnet := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)[0]
 	// Get the external subnet for default routes
-	net1Subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
+	net1Subnet, err := c.subnetsLister.Get(firstExtSubnet)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -1380,7 +1403,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 // It reuses most of the logic from genNatGwStatefulSet but creates a Deployment instead.
 func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deployment, error) {
 	// Reuse all the annotation and routing logic from StatefulSet generation
-	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
+	externalNads, err := c.getExternalSubnetNads(gw)
 	if err != nil {
 		klog.Errorf("failed to get gw external subnet nad: %v", err)
 		return nil, err
@@ -1397,7 +1420,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 		additionalNetworks = gw.Annotations[nadv1.NetworkAttachmentAnnot]
 	}
 
-	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNadNamespace, externalNadName, eth0SubnetProvider, additionalNetworks, c.config.EnableNonPrimaryCNI)
+	templateAnnotations, err := util.GenNatGwPodAnnotations(gw.Spec.Annotations, gw, externalNads, eth0SubnetProvider, additionalNetworks, c.config.EnableNonPrimaryCNI)
 	if err != nil {
 		klog.Errorf("vpc nat gateway annotation generation failed: %s", err.Error())
 		return nil, err
@@ -1428,8 +1451,11 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 		return nil, err
 	}
 
+	// Get only the first external subnet for default routes, as the NAT gateway can only have one default route
+	firstExtSubnet := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)[0]
+
 	// Get the external subnet for default routes
-	net1Subnet, err := c.subnetsLister.Get(util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets))
+	net1Subnet, err := c.subnetsLister.Get(firstExtSubnet)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -1570,30 +1596,45 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 	return deploy, nil
 }
 
-// getExternalSubnetNad returns the namespace and name of the NetworkAttachmentDefinition associated with
-// an external network attached to a NAT gateway
-func (c *Controller) getExternalSubnetNad(gw *kubeovnv1.VpcNatGateway) (string, string, error) {
+// getExternalSubnetNads returns the namespace and name of the NetworkAttachmentDefinition(s)
+// associated with external networks attached to a NAT gateway
+func (c *Controller) getExternalSubnetNads(gw *kubeovnv1.VpcNatGateway) ([]util.ExternalSubnetNad, error) {
 	externalNadNamespace := c.config.PodNamespace
-	// GetNatGwExternalNetwork returns the subnet name from ExternalSubnets, or "ovn-vpc-external-network" if empty
-	externalSubnetName := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
 
-	externalSubnet, err := c.subnetsLister.Get(externalSubnetName)
-	if err != nil {
-		err = fmt.Errorf("failed to get external subnet %s for NAT gateway %s: %w", externalSubnetName, gw.Name, err)
-		klog.Error(err)
-		return "", "", err
+	externalSubnetNames := util.GetNatGwExternalNetwork(gw.Spec.ExternalSubnets)
+
+	externalNads := make([]util.ExternalSubnetNad, 0, len(externalSubnetNames))
+
+	for _, externalSubnetName := range externalSubnetNames {
+		externalSubnet, err := c.subnetsLister.Get(externalSubnetName)
+		if err != nil {
+			err = fmt.Errorf("failed to get external subnet %s for NAT gateway %s: %w",
+				externalSubnetName, gw.Name, err)
+			klog.Error(err)
+			return nil, err
+		}
+
+		// Try to parse NAD info from subnet's provider
+		if name, namespace, ok := util.GetNadBySubnetProvider(externalSubnet.Spec.Provider); ok {
+			externalNads = append(externalNads, util.ExternalSubnetNad{
+				Namespace: namespace,
+				Name:      name,
+			})
+			continue
+		}
+
+		// Provider cannot be parsed to NAD info (e.g., provider is "ovn" or empty)
+		// Fall back to default NAD name which is the same as subnet name for external subnets
+		klog.Warningf("subnet %s provider %q cannot be parsed to NAD info, using default NAD %s/%s",
+			externalSubnetName, externalSubnet.Spec.Provider, externalNadNamespace, externalSubnetName)
+
+		externalNads = append(externalNads, util.ExternalSubnetNad{
+			Namespace: externalNadNamespace,
+			Name:      externalSubnetName,
+		})
 	}
 
-	// Try to parse NAD info from subnet's provider
-	if name, namespace, ok := util.GetNadBySubnetProvider(externalSubnet.Spec.Provider); ok {
-		return namespace, name, nil
-	}
-
-	// Provider cannot be parsed to NAD info (e.g., provider is "ovn" or empty)
-	// Fall back to default NAD name which is the same as subnet name for external subnets
-	klog.Warningf("subnet %s provider %q cannot be parsed to NAD info, using default NAD %s/%s",
-		externalSubnetName, externalSubnet.Spec.Provider, externalNadNamespace, externalSubnetName)
-	return externalNadNamespace, externalSubnetName, nil
+	return externalNads, nil
 }
 
 func (c *Controller) cleanUpVpcNatGw() error {

@@ -14,6 +14,11 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
+type ExternalSubnetNad struct {
+	Namespace string
+	Name      string
+}
+
 // VpcNatGwNameDefaultPrefix is the default prefix appended to the name of the NAT gateways
 const VpcNatGwNameDefaultPrefix = "vpc-nat-gw"
 
@@ -68,11 +73,11 @@ func ValidateNatGwStatefulSetNameLength(prefix, gwName string) error {
 }
 
 // GetNatGwExternalNetwork returns the external network attached to a NAT gateway
-func GetNatGwExternalNetwork(externalNets []string) string {
+func GetNatGwExternalNetwork(externalNets []string) []string {
 	if len(externalNets) == 0 {
-		return vpcExternalNet
+		return []string{vpcExternalNet}
 	}
-	return externalNets[0]
+	return externalNets
 }
 
 // GenNatGwLabels returns the labels to set on a NAT gateway
@@ -104,13 +109,21 @@ func GenNatGwSelectors(selectors []string) map[string]string {
 // running as a non-primary CNI; in that mode eth0 must stay on the cluster's primary CNI pod
 // network (e.g. Calico) so the gateway pod can reach the Kubernetes control plane, so the
 // v1.multus-cni.io/default-network override is skipped.
-func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.VpcNatGateway, externalNadNamespace, externalNadName, provider, additionalNetworks string, enableNonPrimaryCNI bool) (map[string]string, error) {
+func GenNatGwPodAnnotations(userAnnotations map[string]string, gw *kubeovnv1.VpcNatGateway, externalNads []ExternalSubnetNad, provider, additionalNetworks string, enableNonPrimaryCNI bool) (map[string]string, error) {
 	p := provider
 	if p == "" {
 		p = OvnProvider
 	}
 
-	attachedNetworks := fmt.Sprintf("%s/%s", externalNadNamespace, externalNadName)
+	var networkNames []string
+	for _, externalNad := range externalNads {
+		if externalNad.Namespace == "" || externalNad.Name == "" {
+			return nil, fmt.Errorf("invalid external NAD info: namespace=%q, name=%q", externalNad.Namespace, externalNad.Name)
+		}
+		networkNames = append(networkNames, fmt.Sprintf("%s/%s", externalNad.Namespace, externalNad.Name))
+	}
+
+	attachedNetworks := strings.Join(networkNames, ",")
 	if additionalNetworks != "" {
 		attachedNetworks = additionalNetworks + ", " + attachedNetworks
 	}
