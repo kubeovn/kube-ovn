@@ -531,7 +531,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	for _, item := range routeNeedDel {
 		klog.Infof("vpc %s del static route: %+v", vpc.Name, item)
 		policy := convertPolicy(item.Policy)
-		if err = c.OVNNbClient.DeleteLogicalRouterStaticRoute(vpc.Name, &item.RouteTable, &policy, item.CIDR, item.NextHopIP); err != nil {
+		if err = c.deleteLogicalRouterStaticRoute(vpc.Name, &item.RouteTable, &policy, item.CIDR, item.NextHopIP); err != nil {
 			klog.Errorf("del vpc %s static route failed, %v", vpc.Name, err)
 			return err
 		}
@@ -540,7 +540,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	for _, item := range routeNeedAdd {
 		if item.BfdID != "" {
 			klog.Infof("vpc %s add static ecmp route: %+v", vpc.Name, item)
-			if err = c.OVNNbClient.AddLogicalRouterStaticRoute(
+			if err = c.addLogicalRouterStaticRoute(
 				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, &item.BfdID, externalIDs, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add bfd static route to vpc %s , %v", vpc.Name, err)
@@ -548,7 +548,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 			}
 		} else {
 			klog.Infof("vpc %s add static route: %+v", vpc.Name, item)
-			if err = c.OVNNbClient.AddLogicalRouterStaticRoute(
+			if err = c.addLogicalRouterStaticRoute(
 				vpc.Name, item.RouteTable, convertPolicy(item.Policy), item.CIDR, nil, externalIDs, item.NextHopIP,
 			); err != nil {
 				klog.Errorf("failed to add normal static route to vpc %s , %v", vpc.Name, err)
@@ -580,7 +580,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	// delete policies non-exist
 	for _, item := range policyRouteNeedDel {
 		klog.Infof("delete policy route for router: %s, priority: %d, match %s", vpc.Name, item.Priority, item.Match)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(vpc.Name, item.Priority, item.Match); err != nil {
+		if err = c.deleteLogicalRouterPolicy(vpc.Name, item.Priority, item.Match); err != nil {
 			klog.Errorf("del vpc %s policy route failed, %v", vpc.Name, err)
 			return err
 		}
@@ -938,7 +938,7 @@ func (c *Controller) batchAddPolicyRouteToVpc(name string, policies []*kubeovnv1
 }
 
 func (c *Controller) deletePolicyRouteFromVpc(vpcName string, priority int, match string) error {
-	if err := c.OVNNbClient.DeleteLogicalRouterPolicy(vpcName, priority, match); err != nil {
+	if err := c.deleteLogicalRouterPolicy(vpcName, priority, match); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -966,7 +966,7 @@ func (c *Controller) addStaticRouteToVpc(name string, route *kubeovnv1.StaticRou
 	externalIDs := map[string]string{"vendor": util.CniTypeName}
 	if route.BfdID != "" {
 		klog.Infof("vpc %s add static ecmp route: %+v", name, route)
-		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
+		if err := c.addLogicalRouterStaticRoute(
 			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, &route.BfdID, externalIDs, route.NextHopIP,
 		); err != nil {
 			klog.Errorf("failed to add bfd static route to vpc %s , %v", name, err)
@@ -974,7 +974,7 @@ func (c *Controller) addStaticRouteToVpc(name string, route *kubeovnv1.StaticRou
 		}
 	} else {
 		klog.Infof("vpc %s add static route: %+v", name, route)
-		if err := c.OVNNbClient.AddLogicalRouterStaticRoute(
+		if err := c.addLogicalRouterStaticRoute(
 			name, route.RouteTable, convertPolicy(route.Policy), route.CIDR, nil, externalIDs, route.NextHopIP,
 		); err != nil {
 			klog.Errorf("failed to add normal static route to vpc %s , %v", name, err)
@@ -991,7 +991,7 @@ func (c *Controller) deleteStaticRouteFromVpc(name, table, cidr, nextHop string,
 	)
 
 	policyStr = convertPolicy(policy)
-	if err = c.OVNNbClient.DeleteLogicalRouterStaticRoute(name, &table, &policyStr, cidr, nextHop); err != nil {
+	if err = c.deleteLogicalRouterStaticRoute(name, &table, &policyStr, cidr, nextHop); err != nil {
 		klog.Errorf("del vpc %s static route failed, %v", name, err)
 		return err
 	}
@@ -1013,7 +1013,7 @@ func (c *Controller) batchDeleteStaticRouteFromVpc(name string, staticRoutes []*
 		}
 		delRoutes = append(delRoutes, newRoute)
 	}
-	if err := c.OVNNbClient.BatchDeleteLogicalRouterStaticRoute(name, delRoutes); err != nil {
+	if err := c.batchDeleteLogicalRouterStaticRoutes(name, delRoutes); err != nil {
 		klog.Errorf("batch del vpc %s static route %d failed, %v", name, routeCount, err)
 		return err
 	}
