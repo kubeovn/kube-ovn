@@ -56,6 +56,16 @@ func main() {
 		util.LogFatalAndExit(err, "failed to initialize OVS bridges")
 	}
 
+	ovsDBAddr := config.OvsSocket
+	if ovsDBAddr == "" {
+		ovsDBAddr = "unix:/var/run/openvswitch/db.sock"
+	}
+	vswitchClient, err := ovs.NewVswitchClient(ovsDBAddr, 1, 3)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to create vswitch client")
+	}
+	config.VswitchTables = vswitchClient
+
 	if err = config.Init(nicBridgeMappings); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize config")
 	}

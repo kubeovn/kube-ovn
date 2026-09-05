@@ -3,18 +3,21 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	certmanagerclientset "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +30,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -38,20 +43,23 @@ type Configuration struct {
 	CniConfName      string
 
 	// interface being used for tunnel
-	tunnelIface                   string
-	Iface                         string
-	HostTunnelSrc                 bool
-	DPDKTunnelIface               string
-	MTU                           int
-	MSS                           int
-	EnableMirror                  bool
-	MirrorNic                     string
-	BindSocket                    string
-	OvsSocket                     string
-	KubeConfigFile                string
-	KubeClient                    kubernetes.Interface
-	KubeOvnClient                 clientset.Interface
-	CertManagerClient             certmanagerclientset.Interface
+	tunnelIface       string
+	Iface             string
+	HostTunnelSrc     bool
+	DPDKTunnelIface   string
+	MTU               int
+	MSS               int
+	EnableMirror      bool
+	MirrorNic         string
+	BindSocket        string
+	OvsSocket         string
+	KubeConfigFile    string
+	KubeClient        kubernetes.Interface
+	KubeOvnClient     clientset.Interface
+	CertManagerClient certmanagerclientset.Interface
+	// VswitchTables is injected before Init so startup OVSDB writes use the
+	// same generic database handle as the daemon controller.
+	VswitchTables                 compat.TableProvider
 	PodName                       string
 	PodNamespace                  string
 	NodeName                      string
@@ -363,7 +371,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 
 	config.MSS = config.MTU - util.TCPIPHeaderLength
 
-	if err := setChecksum(config.EncapChecksum); err != nil {
+	if err := config.setChecksum(config.EncapChecksum); err != nil {
 		klog.Errorf("failed to set checksum offload, %v", err)
 	}
 
@@ -558,20 +566,14 @@ func (config *Configuration) setEncapIPs() error {
 	slices.Sort(ips[1:])
 
 	encapIPStr := strings.Join(ips, ",")
-	// #nosec G204
-	raw, err := exec.Command(
-		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip="+encapIPStr,
-	).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to set ovn-encap-ip, %s", string(raw))
-	}
-
-	// #nosec G204
-	raw, err = exec.Command(
-		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip-default="+defaultIP,
-	).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to set ovn-encap-ip-default, %s", string(raw))
+	if err := config.updateOpenVSwitchExternalIDs(
+		"daemon-encap-ip-update",
+		map[string]*string{
+			"ovn-encap-ip":         new(encapIPStr),
+			"ovn-encap-ip-default": new(defaultIP),
+		},
+	); err != nil {
+		return err
 	}
 
 	klog.Infof("set ovn-encap-ip=%s, ovn-encap-ip-default=%s", encapIPStr, defaultIP)
@@ -614,12 +616,122 @@ func (config *Configuration) GetEncapIPByNetwork(networkName string) (string, er
 	return "", fmt.Errorf("network %s not found in node networks", networkName)
 }
 
-func setChecksum(encapChecksum bool) error {
-	// #nosec G204
-	raw, err := exec.Command("ovs-vsctl", "set", "open", ".", fmt.Sprintf("external-ids:ovn-encap-csum=%v", encapChecksum)).CombinedOutput()
+func (config *Configuration) setChecksum(encapChecksum bool) error {
+	value := strconv.FormatBool(encapChecksum)
+	return config.updateOpenVSwitchExternalIDs(
+		"daemon-encap-checksum-update",
+		map[string]*string{"ovn-encap-csum": new(value)},
+	)
+}
+
+func (config *Configuration) updateOpenVSwitchExternalIDs(method string, updates map[string]*string) error {
+	if config == nil || config.VswitchTables == nil {
+		return errors.New("vswitch table provider is not configured")
+	}
+
+	row, err := config.openVSwitchRow()
 	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to set ovn-encap-csum to %v: %s", encapChecksum, string(raw))
+		return err
+	}
+	return config.updateOpenVSwitchMap(method, row, row.ExternalIDs, &row.ExternalIDs, updates)
+}
+
+func (config *Configuration) updateOpenVSwitchOtherConfig(method string, updates map[string]*string) error {
+	row, err := config.openVSwitchRow()
+	if err != nil {
+		return err
+	}
+	return config.updateOpenVSwitchMap(method, row, row.OtherConfig, &row.OtherConfig, updates)
+}
+
+func (config *Configuration) updateOpenVSwitchMap(method string, row *vswitch.OpenvSwitch, current map[string]string, field any, updates map[string]*string) error {
+	deleted := make(map[string]string, len(updates))
+	inserted := make(map[string]string, len(updates))
+	for key, value := range updates {
+		old, exists := current[key]
+		if exists && (value == nil || old != *value) {
+			deleted[key] = old
+		}
+		if value != nil && (!exists || old != *value) {
+			inserted[key] = *value
+		}
+	}
+
+	mutations := make([]model.Mutation, 0, 2)
+	if len(deleted) != 0 {
+		mutations = append(mutations, model.Mutation{Field: field, Mutator: ovsdb.MutateOperationDelete, Value: deleted})
+	}
+	if len(inserted) != 0 {
+		mutations = append(mutations, model.Mutation{Field: field, Mutator: ovsdb.MutateOperationInsert, Value: inserted})
+	}
+	if len(mutations) == 0 {
+		return nil
+	}
+	return config.VswitchTables.Table(&vswitch.OpenvSwitch{}).Mutate(context.Background(), method, row, mutations...)
+}
+
+func (config *Configuration) getOvnMappings(name string) (map[string]string, error) {
+	if config == nil || config.VswitchTables == nil {
+		return getOvnMappings(name)
+	}
+
+	row, err := config.openVSwitchRow()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get %s: %w", name, err)
+	}
+	return decodeOvnMappings(row.ExternalIDs[name]), nil
+}
+
+func (config *Configuration) setOvnMappings(name string, mappings map[string]string) error {
+	if config == nil || config.VswitchTables == nil {
+		return setOvnMappings(name, mappings)
+	}
+
+	value := encodeOvnMappings(mappings)
+	var update *string
+	if value != "" {
+		update = new(value)
+	}
+	if err := config.updateOpenVSwitchExternalIDs("daemon-ovn-mapping-update", map[string]*string{name: update}); err != nil {
+		return fmt.Errorf("failed to set %s: %w", name, err)
 	}
 	return nil
+}
+
+func (config *Configuration) addOvnMapping(name, key, value string, overwrite bool) error {
+	mappings, err := config.getOvnMappings(name)
+	if err != nil {
+		return err
+	}
+	if mappings[key] == value || (mappings[key] != "" && !overwrite) {
+		return nil
+	}
+	mappings[key] = value
+	return config.setOvnMappings(name, mappings)
+}
+
+func (config *Configuration) removeOvnMapping(name, key string) error {
+	mappings, err := config.getOvnMappings(name)
+	if err != nil {
+		return err
+	}
+	if _, ok := mappings[key]; !ok {
+		return nil
+	}
+	delete(mappings, key)
+	return config.setOvnMappings(name, mappings)
+}
+
+func (config *Configuration) openVSwitchRow() (*vswitch.OpenvSwitch, error) {
+	if config == nil || config.VswitchTables == nil {
+		return nil, errors.New("vswitch table provider is not configured")
+	}
+	var rows []vswitch.OpenvSwitch
+	if err := config.VswitchTables.Table(&vswitch.OpenvSwitch{}).List(context.Background(), &rows); err != nil {
+		return nil, fmt.Errorf("list Open_vSwitch: %w", err)
+	}
+	if len(rows) != 1 {
+		return nil, fmt.Errorf("expected one Open_vSwitch row, found %d", len(rows))
+	}
+	return &rows[0], nil
 }
