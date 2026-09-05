@@ -485,7 +485,7 @@ func (c *Controller) securityGroupAllNotExist(sgs []string) (bool, error) {
 	notExistsCount := 0
 	// sgs format: sg1/sg2/sg3
 	for _, sg := range sgs {
-		ok, err := c.OVNNbClient.PortGroupExists(ovs.GetSgPortGroupName(sg))
+		ok, err := c.portGroupExists(ovs.GetSgPortGroupName(sg))
 		if err != nil {
 			klog.Error(err)
 			return true, err

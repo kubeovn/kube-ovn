@@ -976,13 +976,13 @@ func (c *Controller) initNodeChassis() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	chassises, err := c.OVNSbClient.GetKubeOvnChassises()
+	chassises, err := c.listKubeOvnChassises()
 	if err != nil {
 		klog.Errorf("failed to get chassis nodes: %v", err)
 		return err
 	}
-	chassisNodes := make(map[string]string, len(*chassises))
-	for _, chassis := range *chassises {
+	chassisNodes := make(map[string]string, len(chassises))
+	for _, chassis := range chassises {
 		chassisNodes[chassis.Name] = chassis.Hostname
 	}
 	for _, node := range nodes {

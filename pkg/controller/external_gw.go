@@ -263,7 +263,7 @@ func (c *Controller) getGatewayChassis(config map[string]string) ([]string, erro
 			return nil, err
 		}
 		klog.Infof("get node %s chassis: %s", gw, annoChassisName)
-		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, false)
+		chassis, err := c.getChassis(annoChassisName, false)
 		if err != nil {
 			klog.Errorf("failed to get node %s chassis: %s, %v", node.Name, annoChassisName, err)
 			return nil, err

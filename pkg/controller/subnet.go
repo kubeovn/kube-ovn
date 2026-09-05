@@ -865,7 +865,7 @@ func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router st
 func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 	c.ipam.DeleteSubnet(key)
 
-	exist, err := c.OVNNbClient.LogicalSwitchExists(key)
+	exist, err := c.logicalSwitchExists(key)
 	if err != nil {
 		klog.Errorf("check logical switch %s exist: %v", key, err)
 		return err
@@ -1444,7 +1444,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 		}
 	}
 
-	portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""})
+	portGroups, err := c.listPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""})
 	if err != nil {
 		klog.Errorf("failed to list port groups for subnet %s: %v", subnet.Name, err)
 		return err
@@ -1484,7 +1484,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 		pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
 		portsToAdd := make([]string, 0, len(podPorts))
 		for _, port := range podPorts {
-			exist, err := c.OVNNbClient.LogicalSwitchPortExists(port)
+			exist, err := c.logicalSwitchPortExists(port)
 			if err != nil {
 				klog.Error(err)
 				return err
@@ -2748,7 +2748,7 @@ func (c *Controller) deleteStaleU2ORoutePolicies(subnet *kubeovnv1.Subnet, desir
 		return nil
 	}
 
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lr, -1, map[string]string{
+	policies, err := c.listLogicalRouterPolicies(lr, -1, map[string]string{
 		"isU2ORoutePolicy": "true",
 		"vendor":           util.CniTypeName,
 		"subnet":           subnet.Name,
@@ -2780,7 +2780,7 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 	if !c.logicalRouterExists(subnet.Spec.Vpc) {
 		return nil
 	}
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
+	policies, err := c.listLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
 		"isU2ORoutePolicy": "true",
 		"vendor":           util.CniTypeName,
 		"subnet":           subnet.Name,
@@ -2983,7 +2983,7 @@ func (c *Controller) reconcilePolicyRouteForCidrChangedSubnet(subnet *kubeovnv1.
 		priority = util.GatewayRouterPolicyPriority
 	}
 
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(subnet.Spec.Vpc, priority, map[string]string{
+	policies, err := c.listLogicalRouterPolicies(subnet.Spec.Vpc, priority, map[string]string{
 		"vendor": util.CniTypeName,
 		"subnet": subnet.Name,
 	}, true)
@@ -3136,7 +3136,7 @@ func (c *Controller) deletePolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Sub
 	if !c.logicalRouterExists(subnet.Spec.Vpc) {
 		return nil
 	}
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
+	policies, err := c.listLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
 		"isU2ONoLBRoutePolicy": "true",
 		"vendor":               util.CniTypeName,
 		"subnet":               subnet.Name,
@@ -3160,7 +3160,7 @@ func (c *Controller) deletePolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Sub
 		}
 	}
 
-	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"})
+	pgs, err := c.listPortGroups(map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"})
 	if err != nil {
 		klog.Errorf("failed to list u2o port groups with u2oKey is true for subnet %s: %v", subnet.Name, err)
 		return err

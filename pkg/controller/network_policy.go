@@ -325,7 +325,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			samplingState = nil
 		}
 
-		ass, err := c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err := c.listAddressSets(map[string]string{
 			networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, npName, "ingress"),
 		})
 		if err != nil {
@@ -487,7 +487,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			samplingState = nil
 		}
 
-		ass, err := c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err := c.listAddressSets(map[string]string{
 			networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, npName, "egress"),
 		})
 		if err != nil {

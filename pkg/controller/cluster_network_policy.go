@@ -416,7 +416,7 @@ func (c *Controller) getCnpCurrentAddrSetByName(cnpName string) (*strset.Set, *s
 
 	operations := []string{"ingress", "egress"}
 	for _, operation := range operations {
-		addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{
+		addressSets, err := c.listAddressSets(map[string]string{
 			clusterNetworkPolicyKey: fmt.Sprintf("%s/%s", cnpName, operation),
 		})
 		if err != nil {

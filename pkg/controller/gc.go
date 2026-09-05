@@ -141,7 +141,7 @@ func (c *Controller) gcLogicalSwitch() error {
 		return err
 	}
 
-	lss, err := c.OVNNbClient.ListLogicalSwitchNames(c.config.EnableExternalVpc, nil)
+	lss, err := c.listLogicalSwitchNames(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch: %v", err)
 		return err
@@ -185,7 +185,7 @@ func (c *Controller) gcCustomLogicalRouter() error {
 		return err
 	}
 
-	lrs, err := c.OVNNbClient.ListLogicalRouterNames(c.config.EnableExternalVpc, nil)
+	lrs, err := c.listLogicalRouterNames(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical router, %v", err)
 		return err
@@ -243,12 +243,12 @@ func (c *Controller) gcNode() error {
 		}
 	}
 
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NodeRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, util.NodeRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies on lr %s: %v", c.config.ClusterRouter, err)
 		return err
 	}
-	gatewayRouterPolicies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
+	gatewayRouterPolicies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies priority %d on lr %s: %v", util.GatewayRouterPolicyPriority, c.config.ClusterRouter, err)
 		return err
@@ -730,7 +730,7 @@ func (c *Controller) gcLoadBalancer() error {
 			err error
 		)
 
-		if lb, err = c.OVNNbClient.GetLoadBalancer(lbName, true); err != nil {
+		if lb, err = c.getLoadBalancer(lbName, true); err != nil {
 			klog.Errorf("get LB %s: %v", lbName, err)
 			return err
 		}
@@ -932,7 +932,7 @@ func (c *Controller) gcNetworkPolicy() error {
 	}
 
 	// list all np port groups which externalIDs[np]!=""
-	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{networkPolicyKey: ""})
+	pgs, err := c.listPortGroups(map[string]string{networkPolicyKey: ""})
 	if err != nil {
 		klog.Errorf("list np port group: %v", err)
 		return err
@@ -977,7 +977,7 @@ func (c *Controller) gcNetworkPolicy() error {
 
 func (c *Controller) gcDisabledNetworkPolicyResources(pgNames []string) error {
 	meterPGs := strset.New(pgNames...)
-	addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{networkPolicyKey: ""})
+	addressSets, err := c.listAddressSets(map[string]string{networkPolicyKey: ""})
 	if err != nil {
 		klog.Errorf("failed to list network policy address sets: %v", err)
 		return err
@@ -1048,7 +1048,7 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 }
 
 func (c *Controller) gcPortGroupsAndAddressSetsByExternalID(externalIDKey string) error {
-	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{externalIDKey: ""})
+	pgs, err := c.listPortGroups(map[string]string{externalIDKey: ""})
 	if err != nil {
 		klog.Errorf("list port groups with external id %s: %v", externalIDKey, err)
 		return err
@@ -1072,7 +1072,7 @@ func (c *Controller) gcPortGroupsAndAddressSetsByExternalID(externalIDKey string
 func (c *Controller) gcRoutePolicy() error {
 	klog.Infof("start to gc route policy")
 
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NorthGatewayRoutePolicyPriority, nil, true)
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, util.NorthGatewayRoutePolicyPriority, nil, true)
 	if err != nil {
 		klog.Errorf("failed to list route policy, %v", err)
 		return err
@@ -1113,7 +1113,7 @@ func (c *Controller) gcRoutePolicy() error {
 
 func (c *Controller) gcStaticRoute() error {
 	klog.Infof("start to gc static routes")
-	routes, err := c.OVNNbClient.ListLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
+	routes, err := c.listLogicalRouterStaticRoutes(c.config.ClusterRouter, nil, nil, "", nil)
 	if err != nil {
 		klog.Errorf("failed to list static route %v", err)
 		return err
@@ -1136,7 +1136,7 @@ func (c *Controller) gcStaticRoute() error {
 			continue
 		}
 		if route.IPPrefix != "0.0.0.0/0" && route.IPPrefix != "::/0" && c.ipam.ContainAddress(route.IPPrefix) {
-			exist, err := c.OVNNbClient.NatExists(c.config.ClusterRouter, "", "", route.IPPrefix)
+			exist, err := c.natExists(c.config.ClusterRouter, "", "", route.IPPrefix)
 			if err != nil {
 				klog.Errorf("failed to get NatRule by LogicalIP %s, %v", route.IPPrefix, err)
 				continue

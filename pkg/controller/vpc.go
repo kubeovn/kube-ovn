@@ -368,7 +368,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	)
 
 	// only manage static routes which are kube-ovn managed, by filtering for vendor util.CniTypeName
-	staticExistedRoutes, err = c.OVNNbClient.ListLogicalRouterStaticRoutes(vpc.Name, nil, nil, "", externalIDs)
+	staticExistedRoutes, err = c.listLogicalRouterStaticRoutes(vpc.Name, nil, nil, "", externalIDs)
 	if err != nil {
 		klog.Errorf("failed to get vpc %s static route list, %v", vpc.Name, err)
 		return err
@@ -411,7 +411,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 
 		// Ensure the join subnet's OVN Logical Switch (and its LRP) has been created
 		// before adding default routes. Otherwise, OVN northd will warn about unreachable next hops.
-		if exist, err := c.OVNNbClient.LogicalSwitchExists(c.config.NodeSwitch); err != nil {
+		if exist, err := c.logicalSwitchExists(c.config.NodeSwitch); err != nil {
 			klog.Errorf("failed to check logical switch %s existence: %v", c.config.NodeSwitch, err)
 			return err
 		} else if !exist {
@@ -474,7 +474,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 				}
 
 				for _, nat := range lr.Nat {
-					info, err := c.OVNNbClient.GetNATByUUID(nat)
+					info, err := c.getNATByUUID(nat)
 					if err != nil {
 						klog.Errorf("failed to get nat ip info for vpc %s, %v", vpc.Name, err)
 						return err
@@ -569,7 +569,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 		// diff list
 		policyRouteNeedDel, policyRouteNeedAdd = diffPolicyRouteWithExisted(policyRouteExisted, vpc.Spec.PolicyRoutes)
 	} else {
-		policyRouteLogical, err = c.OVNNbClient.ListLogicalRouterPolicies(vpc.Name, -1, nil, true)
+		policyRouteLogical, err = c.listLogicalRouterPolicies(vpc.Name, -1, nil, true)
 		if err != nil {
 			klog.Errorf("failed to get vpc %s policy route list, %v", vpc.Name, err)
 			return err
@@ -853,7 +853,7 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 	chassisCount = min(chassisCount, len(nodes))
 	chassisNames := make([]string, 0, chassisCount)
 	for _, node := range nodes[:chassisCount] {
-		chassis, err := c.OVNSbClient.GetChassisByHost(node.Name)
+		chassis, err := c.getChassisByHost(node.Name)
 		if err != nil {
 			err = fmt.Errorf("failed to get chassis of node %s: %w", node.Name, err)
 			klog.Error(err)
@@ -1394,7 +1394,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 			return err
 		}
 		klog.Infof("get node %s chassis: %s", gwNode.Name, annoChassisName)
-		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, false)
+		chassis, err := c.getChassis(annoChassisName, false)
 		if err != nil {
 			klog.Errorf("failed to get node %s chassis: %s, %v", gwNode.Name, annoChassisName, err)
 			return err

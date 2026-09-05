@@ -293,7 +293,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			return nil
 		}
 
-		lb, err := c.OVNNbClient.GetLoadBalancer(lbName, false)
+		lb, err := c.getLoadBalancer(lbName, false)
 		if err != nil {
 			klog.Errorf("failed to get LB %s: %v", lbName, err)
 			return err
@@ -325,7 +325,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			return nil
 		}
 
-		oLb, err := c.OVNNbClient.GetLoadBalancer(oLbName, false)
+		oLb, err := c.getLoadBalancer(oLbName, false)
 		if err != nil {
 			klog.Errorf("failed to get LB %s: %v", oLbName, err)
 			return err

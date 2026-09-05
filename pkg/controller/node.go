@@ -840,7 +840,7 @@ func (c *Controller) checkSubnetGatewayNode() error {
 
 func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	// if multi chassis has the same node name, delete all of them
-	_, err := c.OVNSbClient.GetChassisByHost(node.Name)
+	_, err := c.getChassisByHost(node.Name)
 	if err == nil {
 		return nil
 	}
@@ -996,7 +996,7 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 		// kube-ovn-cni not ready to set chassis
 		return nil
 	}
-	chassis, err := c.OVNSbClient.GetChassis(annoChassisName, true)
+	chassis, err := c.getChassis(annoChassisName, true)
 	if err != nil {
 		klog.Errorf("failed to get chassis %s for node %s: %v", annoChassisName, node.Name, err)
 		return err
@@ -1030,7 +1030,7 @@ func (c *Controller) getPolicyRouteParams(cidr string, priority int) (*strset.Se
 		ipSuffix = "ip6"
 	}
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
-	policyList, err := c.OVNNbClient.GetLogicalRouterPolicy(c.config.ClusterRouter, priority, match, true)
+	policyList, err := c.getLogicalRouterPolicy(c.config.ClusterRouter, priority, match, true)
 	if err != nil {
 		klog.Errorf("failed to get logical router policy: %v", err)
 		return nil, nil, err
@@ -1220,7 +1220,7 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 		matches.Add(fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, ip))
 	}
 
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies for node %q af %d: %v", nodeName, af, err)
 		return err
@@ -1260,7 +1260,7 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 }
 
 func (c *Controller) deletePolicyRouteForLocalDNSCacheOnNode(nodeName string, af int) error {
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, map[string]string{
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, -1, map[string]string{
 		"vendor":          util.CniTypeName,
 		"node":            nodeName,
 		"address-family":  strconv.Itoa(af),
