@@ -647,7 +647,7 @@ func (c *OVNNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fiel
 		return err
 	}
 
-	op, err := c.call.Where(lsp).Update(lsp, fields...)
+	op, err := c.Database.Where(lsp).Update(lsp, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating logical switch port %s: %w", lsp.Name, err)
@@ -872,7 +872,7 @@ func (c *OVNNbClient) GetLogicalSwitchPort(lspName string, ignoreNotFound bool) 
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 	lsp := &ovnnb.LogicalSwitchPort{Name: lspName}
-	if err := c.call.Get(ctx, lsp); err != nil {
+	if err := c.Get(ctx, lsp); err != nil {
 		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
@@ -902,7 +902,7 @@ func (c *OVNNbClient) ListLogicalSwitchPortsWithLegacyExternalIDs() ([]ovnnb.Log
 	defer cancel()
 
 	lspList := make([]ovnnb.LogicalSwitchPort, 0)
-	if err := c.call.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
+	if err := c.Database.WhereCache(func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return len(lsp.ExternalIDs) == 0 || lsp.ExternalIDs[LogicalSwitchKey] == "" || lsp.ExternalIDs["vendor"] == ""
 	}).List(ctx, &lspList); err != nil {
 		klog.Error(err)
@@ -919,7 +919,7 @@ func (c *OVNNbClient) ListLogicalSwitchPorts(needVendorFilter bool, externalIDs 
 
 	lspList := make([]ovnnb.LogicalSwitchPort, 0)
 
-	if err := c.call.WhereCache(logicalSwitchPortFilter(needVendorFilter, externalIDs, filter)).List(ctx, &lspList); err != nil {
+	if err := c.Database.WhereCache(logicalSwitchPortFilter(needVendorFilter, externalIDs, filter)).List(ctx, &lspList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("list logical switch ports: %w", err)
 	}
@@ -948,7 +948,7 @@ func (c *OVNNbClient) CreateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, ls
 
 	/* create logical switch port */
 	klog.V(3).Infof("create logical switch port %s in logical switch %s", lsp.Name, lsName)
-	lspCreateOp, err := c.call.Create(lsp)
+	lspCreateOp, err := c.Create(lsp)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for creating logical switch port %s: %w", lsp.Name, err)
@@ -996,7 +996,7 @@ func (c *OVNNbClient) UpdateLogicalSwitchPortOp(lsp *ovnnb.LogicalSwitchPort, fi
 		return nil, nil
 	}
 
-	op, err := c.call.Where(lsp).Update(lsp, fields...)
+	op, err := c.Database.Where(lsp).Update(lsp, fields...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for updating logical switch port %s: %w", lsp.Name, err)

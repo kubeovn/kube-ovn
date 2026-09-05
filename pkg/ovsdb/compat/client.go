@@ -4,6 +4,7 @@ package compat
 import (
 	"context"
 	"errors"
+	"reflect"
 	"time"
 
 	libcache "github.com/ovn-kubernetes/libovsdb/cache"
@@ -257,6 +258,214 @@ func (b *rawBackend) Close() {
 type RetryPolicy struct {
 	Attempts int
 	Delay    time.Duration
+}
+
+// TransactionEvent describes one database transaction handled by Database.
+// Operations are retained so observers can include enough context in metrics
+// or logs without coupling this package to a particular database schema.
+type TransactionEvent struct {
+	Database   string
+	Method     string
+	Operations []ovsdb.Operation
+	Duration   time.Duration
+	Err        error
+}
+
+// TransactionObserver receives transaction lifecycle events. It is optional;
+// Database remains useful as a policy-only call layer when no observer is set.
+type TransactionObserver interface {
+	ObserveTransaction(TransactionEvent)
+}
+
+// TransactionObserverFunc adapts a function to TransactionObserver.
+type TransactionObserverFunc func(TransactionEvent)
+
+func (f TransactionObserverFunc) ObserveTransaction(event TransactionEvent) {
+	if f != nil {
+		f(event)
+	}
+}
+
+type databaseConfig struct {
+	name     string
+	observer TransactionObserver
+}
+
+// DatabaseOption configures the generic database handle.
+type DatabaseOption func(*databaseConfig)
+
+// WithDatabaseName associates a logical name with transaction events.
+func WithDatabaseName(name string) DatabaseOption {
+	return func(config *databaseConfig) {
+		config.name = name
+	}
+}
+
+// WithTransactionObserver installs an optional transaction observer.
+func WithTransactionObserver(observer TransactionObserver) DatabaseOption {
+	return func(config *databaseConfig) {
+		config.observer = observer
+	}
+}
+
+// Database is the schema-independent handle used by database-specific
+// clients. It owns call policy, transaction observation, lifecycle operations,
+// and the generic cache/model helpers exposed by Client.
+type Database struct {
+	*Client
+	Timeout time.Duration
+
+	name     string
+	observer TransactionObserver
+}
+
+// NewDatabase creates a generic database handle over a libovsdb backend.
+func NewDatabase(backend Backend, timeout time.Duration, retry RetryPolicy, options ...DatabaseOption) *Database {
+	config := databaseConfig{}
+	for _, option := range options {
+		if option != nil {
+			option(&config)
+		}
+	}
+	return &Database{
+		Client:   New(backend, timeout, retry),
+		Timeout:  timeout,
+		name:     config.name,
+		observer: config.observer,
+	}
+}
+
+// Transact submits operations with the database's timeout and policy, then
+// publishes one optional observer event for the complete call.
+func (d *Database) Transact(method string, operations []ovsdb.Operation) error {
+	if len(operations) == 0 {
+		return nil
+	}
+	if d == nil || d.Client == nil {
+		return errors.New("ovsdb database is nil")
+	}
+
+	_, err := d.transact(context.Background(), method, operations...)
+	return err
+}
+
+func (d *Database) transact(ctx context.Context, method string, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	start := time.Now()
+	results, err := d.Client.TransactResults(ctx, operations...)
+	if d.observer != nil {
+		d.observer.ObserveTransaction(TransactionEvent{
+			Database:   d.name,
+			Method:     method,
+			Operations: operations,
+			Duration:   time.Since(start),
+			Err:        err,
+		})
+	}
+	return results, err
+}
+
+// TransactResults submits operations while preserving observer coverage for
+// callers that need the validated server response.
+func (d *Database) TransactResults(ctx context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	if len(operations) == 0 {
+		return nil, nil
+	}
+	if d == nil || d.Client == nil {
+		return nil, errors.New("ovsdb database is nil")
+	}
+	return d.transact(ctx, "", operations...)
+}
+
+// CreateAndTransact builds and submits insert operations through the generic
+// observer path.
+func (d *Database) CreateAndTransact(ctx context.Context, method string, models ...model.Model) error {
+	operations, err := d.Create(models...)
+	if err != nil {
+		return err
+	}
+	_, err = d.transact(ctx, method, operations...)
+	return err
+}
+
+// UpdateAndTransact builds and submits update operations through the generic
+// observer path.
+func (d *Database) UpdateAndTransact(ctx context.Context, method string, selector, update model.Model, fields ...any) error {
+	operations, err := d.Where(selector).Update(update, fields...)
+	if err != nil {
+		return err
+	}
+	_, err = d.transact(ctx, method, operations...)
+	return err
+}
+
+// MutateAndTransact builds and submits mutation operations through the generic
+// observer path.
+func (d *Database) MutateAndTransact(ctx context.Context, method string, selector model.Model, mutations ...model.Mutation) error {
+	operations, err := d.Mutate(selector, mutations...)
+	if err != nil {
+		return err
+	}
+	_, err = d.transact(ctx, method, operations...)
+	return err
+}
+
+// DeleteAndTransact builds and submits delete operations through the generic
+// observer path.
+func (d *Database) DeleteAndTransact(ctx context.Context, method string, selectors ...model.Model) error {
+	if len(selectors) == 0 {
+		return nil
+	}
+	operations, err := d.Where(selectors...).Delete()
+	if err != nil {
+		return err
+	}
+	_, err = d.transact(ctx, method, operations...)
+	return err
+}
+
+// DeleteWhereCacheAndTransact builds and submits cache-selected delete
+// operations through the generic observer path.
+func (d *Database) DeleteWhereCacheAndTransact(ctx context.Context, method string, predicate any) error {
+	operations, err := d.WhereCache(predicate).Delete()
+	if err != nil {
+		return err
+	}
+	_, err = d.transact(ctx, method, operations...)
+	return err
+}
+
+// Connected reports whether the underlying backend is connected.
+func (d *Database) Connected() bool {
+	return d != nil && d.Client != nil && d.Client.Connected()
+}
+
+// Echo checks the backend connection.
+func (d *Database) Echo(ctx context.Context) error {
+	if d == nil || d.Client == nil {
+		return errors.New("ovsdb database is nil")
+	}
+	return d.Client.Echo(ctx)
+}
+
+// Close closes the backend connection.
+func (d *Database) Close() {
+	if d != nil && d.Client != nil {
+		d.Client.Close()
+	}
+}
+
+// GetEntityInfo reads a model from the monitored cache. The method is kept on
+// the generic handle because pointer validation and timeout policy are schema
+// independent.
+func (d *Database) GetEntityInfo(entity any) error {
+	if d == nil || d.Client == nil {
+		return errors.New("ovsdb database is nil")
+	}
+	entityValue := reflect.ValueOf(entity)
+	if !entityValue.IsValid() || entityValue.Kind() != reflect.Pointer {
+		return errors.New("entity must be pointer")
+	}
+	return d.Get(context.Background(), entity)
 }
 
 // Client centralizes timeout, retry, operation construction, and result

@@ -37,7 +37,7 @@ func (c *VswitchClient) ReconcileACLSamplingCollectorSet(config aclsampling.Node
 	if err := config.Validate(); err != nil {
 		return fmt.Errorf("invalid node ACL sampling configuration: %w", err)
 	}
-	if err := validateNodeACLSamplingSchema(c.call.Schema()); err != nil {
+	if err := validateNodeACLSamplingSchema(c.Schema()); err != nil {
 		return err
 	}
 
@@ -76,7 +76,7 @@ func (c *VswitchClient) ReconcileACLSamplingCollectorSet(config aclsampling.Node
 			ID:           int(config.SetID),
 			LocalGroupID: &localGroupID,
 		}
-		row, err := newVswitchRow(c.call.Schema(), vswitch.FlowSampleCollectorSetTable, desired)
+		row, err := newVswitchRow(c.Schema(), vswitch.FlowSampleCollectorSetTable, desired)
 		if err != nil {
 			return fmt.Errorf("build local ACL sampling collector set: %w", err)
 		}
@@ -90,7 +90,7 @@ func (c *VswitchClient) ReconcileACLSamplingCollectorSet(config aclsampling.Node
 		desired.IPFIX = nil
 		desired.LocalGroupID = &localGroupID
 		desired.ExternalIDs = desiredExternalIDs
-		row, err := newVswitchRow(c.call.Schema(), vswitch.FlowSampleCollectorSetTable, desired,
+		row, err := newVswitchRow(c.Schema(), vswitch.FlowSampleCollectorSetTable, desired,
 			&desired.IPFIX, &desired.LocalGroupID, &desired.ExternalIDs)
 		if err != nil {
 			return fmt.Errorf("build local ACL sampling collector set update: %w", err)
@@ -173,7 +173,7 @@ func (c *VswitchClient) readNodeACLSamplingState() (*vswitch.Bridge, []vswitch.F
 		return nil, nil, fmt.Errorf("read local ACL sampling state: %w", err)
 	}
 
-	bridges, err := decodeVswitchRows[vswitch.Bridge](c.call.Schema(), vswitch.BridgeTable, results[0].Rows)
+	bridges, err := decodeVswitchRows[vswitch.Bridge](c.Schema(), vswitch.BridgeTable, results[0].Rows)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -189,7 +189,7 @@ func (c *VswitchClient) readNodeACLSamplingState() (*vswitch.Bridge, []vswitch.F
 		return nil, nil, fmt.Errorf("%w: bridge %s uses datapath type %s", ErrACLSamplingNodeUnsupported, bridge.Name, datapathType)
 	}
 
-	openVSwitchRows, err := decodeVswitchRows[vswitch.OpenvSwitch](c.call.Schema(), vswitch.OpenvSwitchTable, results[1].Rows)
+	openVSwitchRows, err := decodeVswitchRows[vswitch.OpenvSwitch](c.Schema(), vswitch.OpenvSwitchTable, results[1].Rows)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -201,7 +201,7 @@ func (c *VswitchClient) readNodeACLSamplingState() (*vswitch.Bridge, []vswitch.F
 		return nil, nil, fmt.Errorf("%w: datapath type %s is not active", ErrACLSamplingNodeUnsupported, datapathType)
 	}
 
-	datapaths, err := decodeVswitchRows[vswitch.Datapath](c.call.Schema(), vswitch.DatapathTable, results[2].Rows)
+	datapaths, err := decodeVswitchRows[vswitch.Datapath](c.Schema(), vswitch.DatapathTable, results[2].Rows)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -220,7 +220,7 @@ func (c *VswitchClient) readNodeACLSamplingState() (*vswitch.Bridge, []vswitch.F
 		return nil, nil, fmt.Errorf("%w: active datapath %s was not found", ErrACLSamplingNodeUnsupported, datapathUUID)
 	}
 
-	collectorSets, err := decodeVswitchRows[vswitch.FlowSampleCollectorSet](c.call.Schema(), vswitch.FlowSampleCollectorSetTable, results[3].Rows)
+	collectorSets, err := decodeVswitchRows[vswitch.FlowSampleCollectorSet](c.Schema(), vswitch.FlowSampleCollectorSetTable, results[3].Rows)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -228,7 +228,7 @@ func (c *VswitchClient) readNodeACLSamplingState() (*vswitch.Bridge, []vswitch.F
 }
 
 func (c *VswitchClient) cleanupACLSamplingCollectorSets() error {
-	if err := validateNodeACLSamplingCleanupSchema(c.call.Schema()); err != nil {
+	if err := validateNodeACLSamplingCleanupSchema(c.Schema()); err != nil {
 		if errors.Is(err, ErrACLSamplingNodeUnsupported) {
 			return nil
 		}
@@ -244,7 +244,7 @@ func (c *VswitchClient) cleanupACLSamplingCollectorSets() error {
 	if err != nil {
 		return fmt.Errorf("list local ACL sampling collector sets for cleanup: %w", err)
 	}
-	collectorSets, err := decodeVswitchRows[aclSamplingCollectorSetOwnership](c.call.Schema(), vswitch.FlowSampleCollectorSetTable, results[0].Rows)
+	collectorSets, err := decodeVswitchRows[aclSamplingCollectorSetOwnership](c.Schema(), vswitch.FlowSampleCollectorSetTable, results[0].Rows)
 	if err != nil {
 		return err
 	}
@@ -262,7 +262,7 @@ func (c *VswitchClient) cleanupACLSamplingCollectorSets() error {
 }
 
 func (c *VswitchClient) transactVswitchOperations(operations []ovsdb.Operation) ([]ovsdb.OperationResult, error) {
-	results, err := c.call.TransactResults(context.Background(), operations...)
+	results, err := c.TransactResults(context.Background(), operations...)
 	if err != nil {
 		return nil, err
 	}

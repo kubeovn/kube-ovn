@@ -199,7 +199,7 @@ func (c *OVNNbClient) getKubeOvnRouterNames() (map[string]bool, error) {
 	defer cancel()
 
 	var lrList []ovnnb.LogicalRouter
-	if err := c.call.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
+	if err := c.Database.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
 		// Include routers that already have vendor=kube-ovn
 		if len(lr.ExternalIDs) > 0 && lr.ExternalIDs["vendor"] == util.CniTypeName {
 			return true
@@ -222,7 +222,7 @@ func (c *OVNNbClient) getKubeOvnSwitchNames() (map[string]bool, error) {
 	defer cancel()
 
 	var lsList []ovnnb.LogicalSwitch
-	if err := c.call.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
+	if err := c.Database.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
 		// Include switches that already have vendor=kube-ovn
 		if len(ls.ExternalIDs) > 0 && ls.ExternalIDs["vendor"] == util.CniTypeName {
 			return true
@@ -245,7 +245,7 @@ func (c *OVNNbClient) migrateLogicalRouterPorts(kubeOvnRouters map[string]bool) 
 	defer cancel()
 
 	var lrpList []ovnnb.LogicalRouterPort
-	if err := c.call.WhereCache(func(lrp *ovnnb.LogicalRouterPort) bool {
+	if err := c.Database.WhereCache(func(lrp *ovnnb.LogicalRouterPort) bool {
 		// Skip if already has vendor tag
 		if len(lrp.ExternalIDs) > 0 && lrp.ExternalIDs["vendor"] == util.CniTypeName {
 			return false
@@ -276,7 +276,7 @@ func (c *OVNNbClient) migrateLogicalRouterPorts(kubeOvnRouters map[string]bool) 
 		}
 		lrp.ExternalIDs["vendor"] = util.CniTypeName
 
-		op, err := c.call.Where(lrp).Update(lrp, &lrp.ExternalIDs)
+		op, err := c.Database.Where(lrp).Update(lrp, &lrp.ExternalIDs)
 		if err != nil {
 			klog.Errorf("failed to generate update operation for LRP %s: %v", lrp.Name, err)
 			continue
@@ -302,7 +302,7 @@ func (c *OVNNbClient) migratePortGroups() error {
 	defer cancel()
 
 	var pgList []ovnnb.PortGroup
-	if err := c.call.WhereCache(func(pg *ovnnb.PortGroup) bool {
+	if err := c.Database.WhereCache(func(pg *ovnnb.PortGroup) bool {
 		// Skip if already has vendor tag
 		if len(pg.ExternalIDs) > 0 && pg.ExternalIDs["vendor"] == util.CniTypeName {
 			return false
@@ -347,7 +347,7 @@ func (c *OVNNbClient) migratePortGroups() error {
 		}
 		pg.ExternalIDs["vendor"] = util.CniTypeName
 
-		op, err := c.call.Where(pg).Update(pg, &pg.ExternalIDs)
+		op, err := c.Database.Where(pg).Update(pg, &pg.ExternalIDs)
 		if err != nil {
 			klog.Errorf("failed to generate update operation for PortGroup %s: %v", pg.Name, err)
 			continue
@@ -373,7 +373,7 @@ func (c *OVNNbClient) migrateAddressSets() error {
 	defer cancel()
 
 	var asList []ovnnb.AddressSet
-	if err := c.call.WhereCache(func(as *ovnnb.AddressSet) bool {
+	if err := c.Database.WhereCache(func(as *ovnnb.AddressSet) bool {
 		// Skip if already has vendor tag
 		if len(as.ExternalIDs) > 0 && as.ExternalIDs["vendor"] == util.CniTypeName {
 			return false
@@ -416,7 +416,7 @@ func (c *OVNNbClient) migrateAddressSets() error {
 		}
 		as.ExternalIDs["vendor"] = util.CniTypeName
 
-		op, err := c.call.Where(as).Update(as, &as.ExternalIDs)
+		op, err := c.Database.Where(as).Update(as, &as.ExternalIDs)
 		if err != nil {
 			klog.Errorf("failed to generate update operation for AddressSet %s: %v", as.Name, err)
 			continue
@@ -442,7 +442,7 @@ func (c *OVNNbClient) migrateLoadBalancers() error {
 	defer cancel()
 
 	var lbList []ovnnb.LoadBalancer
-	if err := c.call.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
+	if err := c.Database.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
 		// Skip if already has vendor tag
 		if len(lb.ExternalIDs) > 0 && lb.ExternalIDs["vendor"] == util.CniTypeName {
 			return false
@@ -478,7 +478,7 @@ func (c *OVNNbClient) migrateLoadBalancers() error {
 		}
 		lb.ExternalIDs["vendor"] = util.CniTypeName
 
-		op, err := c.call.Where(lb).Update(lb, &lb.ExternalIDs)
+		op, err := c.Database.Where(lb).Update(lb, &lb.ExternalIDs)
 		if err != nil {
 			klog.Errorf("failed to generate update operation for LoadBalancer %s: %v", lb.Name, err)
 			continue
@@ -506,7 +506,7 @@ func (c *OVNNbClient) migrateACLs(kubeOvnSwitches map[string]bool) error {
 	// First, get all port groups that belong to kube-ovn (either already tagged or matching patterns)
 	kubeOvnPortGroups := make(map[string]bool)
 	var pgList []ovnnb.PortGroup
-	if err := c.call.WhereCache(func(pg *ovnnb.PortGroup) bool {
+	if err := c.Database.WhereCache(func(pg *ovnnb.PortGroup) bool {
 		// Include port groups with vendor tag
 		if len(pg.ExternalIDs) > 0 && pg.ExternalIDs["vendor"] == util.CniTypeName {
 			return true
@@ -535,7 +535,7 @@ func (c *OVNNbClient) migrateACLs(kubeOvnSwitches map[string]bool) error {
 	}
 
 	var aclList []ovnnb.ACL
-	if err := c.call.WhereCache(func(acl *ovnnb.ACL) bool {
+	if err := c.Database.WhereCache(func(acl *ovnnb.ACL) bool {
 		// Skip if already has vendor tag
 		if len(acl.ExternalIDs) > 0 && acl.ExternalIDs["vendor"] == util.CniTypeName {
 			return false
@@ -574,7 +574,7 @@ func (c *OVNNbClient) migrateACLs(kubeOvnSwitches map[string]bool) error {
 		}
 		acl.ExternalIDs["vendor"] = util.CniTypeName
 
-		op, err := c.call.Where(acl).Update(acl, &acl.ExternalIDs)
+		op, err := c.Database.Where(acl).Update(acl, &acl.ExternalIDs)
 		if err != nil {
 			klog.Errorf("failed to generate update operation for ACL %s: %v", acl.UUID, err)
 			continue

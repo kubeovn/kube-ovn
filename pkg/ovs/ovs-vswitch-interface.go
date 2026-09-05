@@ -15,7 +15,7 @@ func (c *VswitchClient) ListInterface(filter func(sw *vswitch.Interface) bool) (
 	defer cancel()
 
 	var ifaceList []vswitch.Interface
-	if err := c.call.WhereCache(func(iface *vswitch.Interface) bool {
+	if err := c.Database.WhereCache(func(iface *vswitch.Interface) bool {
 		if filter != nil {
 			return filter(iface)
 		}

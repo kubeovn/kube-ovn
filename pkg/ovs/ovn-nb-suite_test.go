@@ -1398,8 +1398,7 @@ func newOvnNbClient(t testing.TB, ovnNbAddr string, ovnNbTimeout int) (*OVNNbCli
 	require.NoError(t, err)
 
 	return &OVNNbClient{
-		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{}),
-		Timeout: time.Duration(ovnNbTimeout) * time.Second,
+		Database: compat.NewDatabase(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{}, compat.WithDatabaseName("ovn-nb")),
 	}, nil
 }
 
@@ -1453,8 +1452,7 @@ func newOvnSbClient(t *testing.T, ovnSbAddr string, ovnSbTimeout int) (*OVNSbCli
 	require.NoError(t, err)
 
 	return &OVNSbClient{
-		call:    compat.New(nbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{}),
-		Timeout: time.Duration(ovnSbTimeout) * time.Second,
+		Database: compat.NewDatabase(nbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{}, compat.WithDatabaseName("ovn-sb")),
 	}, nil
 }
 

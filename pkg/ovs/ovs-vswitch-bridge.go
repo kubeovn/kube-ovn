@@ -16,7 +16,7 @@ func (c *VswitchClient) ListBridge(needVendorFilter bool, filter func(bridge *vs
 	defer cancel()
 
 	var bridgeList []vswitch.Bridge
-	if err := c.call.WhereCache(func(bridge *vswitch.Bridge) bool {
+	if err := c.Database.WhereCache(func(bridge *vswitch.Bridge) bool {
 		if needVendorFilter && (len(bridge.ExternalIDs) == 0 || bridge.ExternalIDs[ExternalIDVendor] != util.CniTypeName) {
 			return false
 		}

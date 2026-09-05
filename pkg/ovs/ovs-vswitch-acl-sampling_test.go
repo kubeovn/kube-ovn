@@ -148,11 +148,11 @@ func newACLSamplingVswitchTestClient(t *testing.T, datapathType string, capabili
 		Bridges:   []string{"acl-sampling-bridge"},
 		Datapaths: map[string]string{activeDatapathType: "acl-sampling-datapath"},
 	}
-	datapathRow, err := newVswitchRow(client.call.Schema(), vswitch.DatapathTable, datapath)
+	datapathRow, err := newVswitchRow(client.Schema(), vswitch.DatapathTable, datapath)
 	require.NoError(t, err)
-	bridgeRow, err := newVswitchRow(client.call.Schema(), vswitch.BridgeTable, bridge)
+	bridgeRow, err := newVswitchRow(client.Schema(), vswitch.BridgeTable, bridge)
 	require.NoError(t, err)
-	openVSwitchRow, err := newVswitchRow(client.call.Schema(), vswitch.OpenvSwitchTable, openVSwitch)
+	openVSwitchRow, err := newVswitchRow(client.Schema(), vswitch.OpenvSwitchTable, openVSwitch)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("seed-acl-sampling-vswitch", []ovsdb.Operation{
 		{Op: ovsdb.OperationInsert, Table: vswitch.DatapathTable, Row: datapathRow, UUIDName: "acl-sampling-datapath"},
@@ -172,7 +172,7 @@ func getACLSamplingIntegrationBridge(t *testing.T, client *VswitchClient) vswitc
 	}}
 	results, err := client.transactVswitchOperations(operations)
 	require.NoError(t, err)
-	bridges, err := decodeVswitchRows[vswitch.Bridge](client.call.Schema(), vswitch.BridgeTable, results[0].Rows)
+	bridges, err := decodeVswitchRows[vswitch.Bridge](client.Schema(), vswitch.BridgeTable, results[0].Rows)
 	require.NoError(t, err)
 	require.Len(t, bridges, 1)
 	return bridges[0]
@@ -180,7 +180,7 @@ func getACLSamplingIntegrationBridge(t *testing.T, client *VswitchClient) vswitc
 
 func seedACLSamplingCollectorSet(t *testing.T, client *VswitchClient, collectorSet *vswitch.FlowSampleCollectorSet) {
 	t.Helper()
-	row, err := newVswitchRow(client.call.Schema(), vswitch.FlowSampleCollectorSetTable, collectorSet)
+	row, err := newVswitchRow(client.Schema(), vswitch.FlowSampleCollectorSetTable, collectorSet)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("seed-acl-sampling-collector-set", []ovsdb.Operation{{
 		Op: ovsdb.OperationInsert, Table: vswitch.FlowSampleCollectorSetTable, Row: row,
@@ -190,11 +190,11 @@ func seedACLSamplingCollectorSet(t *testing.T, client *VswitchClient, collectorS
 func attachIPFIXToACLSamplingCollectorSet(t *testing.T, client *VswitchClient, collectorSet *vswitch.FlowSampleCollectorSet) {
 	t.Helper()
 	ipfix := &vswitch.IPFIX{Targets: []string{"127.0.0.1:4739"}}
-	ipfixRow, err := newVswitchRow(client.call.Schema(), vswitch.IPFIXTable, ipfix)
+	ipfixRow, err := newVswitchRow(client.Schema(), vswitch.IPFIXTable, ipfix)
 	require.NoError(t, err)
 	ipfixUUID := "acl-sampling-ipfix"
 	collectorSet.IPFIX = &ipfixUUID
-	collectorSetRow, err := newVswitchRow(client.call.Schema(), vswitch.FlowSampleCollectorSetTable, collectorSet, &collectorSet.IPFIX)
+	collectorSetRow, err := newVswitchRow(client.Schema(), vswitch.FlowSampleCollectorSetTable, collectorSet, &collectorSet.IPFIX)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("attach-ipfix-to-acl-sampling-collector-set", []ovsdb.Operation{
 		{Op: ovsdb.OperationInsert, Table: vswitch.IPFIXTable, Row: ipfixRow, UUIDName: ipfixUUID},
@@ -212,7 +212,7 @@ func listACLSamplingCollectorSets(t *testing.T, client *VswitchClient) []vswitch
 	}}
 	results, err := client.transactVswitchOperations(operations)
 	require.NoError(t, err)
-	collectorSets, err := decodeVswitchRows[vswitch.FlowSampleCollectorSet](client.call.Schema(), vswitch.FlowSampleCollectorSetTable, results[0].Rows)
+	collectorSets, err := decodeVswitchRows[vswitch.FlowSampleCollectorSet](client.Schema(), vswitch.FlowSampleCollectorSetTable, results[0].Rows)
 	require.NoError(t, err)
 	return collectorSets
 }

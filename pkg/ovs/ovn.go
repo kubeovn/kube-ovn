@@ -30,13 +30,13 @@ type LegacyClient struct {
 }
 
 type OVNNbClient struct {
-	ovsDbClient
+	*compat.Database
 	aclSamplingMonitorMu sync.Mutex
 	aclSamplingMonitored bool
 }
 
 type OVNSbClient struct {
-	ovsDbClient
+	*compat.Database
 }
 
 var (
@@ -44,9 +44,18 @@ var (
 	_ SbClient = (*OVNSbClient)(nil)
 )
 
-type ovsDbClient struct {
-	call    *compat.Client
-	Timeout time.Duration
+type ovsTransactionObserver struct{}
+
+func (ovsTransactionObserver) ObserveTransaction(event compat.TransactionEvent) {
+	elapsed := float64(event.Duration / time.Millisecond)
+	code := "0"
+	if event.Err != nil {
+		code = "1"
+		klog.Errorf("error occurred in transact with %s operations: %+v in %vms", event.Database, event.Operations, elapsed)
+	} else if elapsed > 500 {
+		klog.Warningf("%s operations took too long: %+v in %vms", event.Database, event.Operations, elapsed)
+	}
+	ovsClientRequestLatency.WithLabelValues(event.Database, event.Method, code).Observe(elapsed)
 }
 
 const (
@@ -138,8 +147,8 @@ func NewDynamicOvnNbClient(
 	}
 
 	c := &OVNNbClient{
-		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{}),
-		Timeout: time.Duration(ovnNbTimeout) * time.Second,
+		Database: compat.NewDatabase(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{},
+			compat.WithDatabaseName("ovn-nb"), compat.WithTransactionObserver(ovsTransactionObserver{})),
 	}
 	return c, models, nil
 }
@@ -207,8 +216,8 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	c := &OVNNbClient{
-		call:    compat.New(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{}),
-		Timeout: time.Duration(ovnNbTimeout) * time.Second,
+		Database: compat.NewDatabase(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{},
+			compat.WithDatabaseName("ovn-nb"), compat.WithTransactionObserver(ovsTransactionObserver{})),
 	}
 	return c, nil
 }
@@ -247,8 +256,8 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 	}
 
 	c := &OVNSbClient{
-		call:    compat.New(sbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{}),
-		Timeout: time.Duration(ovnSbTimeout) * time.Second,
+		Database: compat.NewDatabase(sbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{},
+			compat.WithDatabaseName("ovn-sb"), compat.WithTransactionObserver(ovsTransactionObserver{})),
 	}
 	return c, nil
 }
@@ -272,91 +281,11 @@ func ConstructWaitForUniqueOperation(table, column string, value any) ovsdb.Oper
 	}
 }
 
-func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) error {
-	if len(operations) == 0 {
-		klog.V(6).Info("operations should not be empty")
-		return nil
-	}
-	if c.call == nil {
-		return errors.New("ovsdb call layer is nil")
-	}
-
-	start := time.Now()
-	err := c.call.Transact(context.Background(), method, operations)
-	elapsed := float64(time.Since(start) / time.Millisecond)
-
-	var dbType string
-	switch c.call.Schema().Name {
-	case ovnnb.DatabaseName:
-		dbType = "ovn-nb"
-	case ovnsb.DatabaseName:
-		dbType = "ovn-sb"
-	}
-
-	code := "0"
-	defer func() {
-		ovsClientRequestLatency.WithLabelValues(dbType, method, code).Observe(elapsed)
-	}()
-
-	if err != nil {
-		code = "1"
-		klog.Errorf("error occurred in transact with %s operations: %+v in %vms", dbType, operations, elapsed)
-		return err
-	}
-
-	if elapsed > 500 {
-		klog.Warningf("%s operations took too long: %+v in %vms", dbType, operations, elapsed)
-	}
-
-	return nil
-}
-
-func (c *ovsDbClient) Connected() bool {
-	return c.call != nil && c.call.Connected()
-}
-
-func (c *ovsDbClient) Echo(ctx context.Context) error {
-	if c.call == nil {
-		return errors.New("ovsdb call layer is nil")
-	}
-	return c.call.Echo(ctx)
-}
-
 // ListDynamic lists rows using the runtime model returned by the dynamic NB
 // client. It is intended for schema-aware tooling, not regular resource code.
 func (c *OVNNbClient) ListDynamic(ctx context.Context, result any) error {
-	if c.call == nil {
-		return errors.New("ovsdb call layer is nil")
+	if c.Database == nil {
+		return errors.New("ovsdb database is nil")
 	}
-	return c.call.List(ctx, result)
-}
-
-func (c *ovsDbClient) Close() {
-	if c.call != nil {
-		c.call.Close()
-	}
-}
-
-// GetEntityInfo get entity info by column which is the index,
-// reference to ovn-nb.ovsschema(ovsdb-client get-schema unix:/var/run/ovn/ovnnb_db.sock OVN_Northbound) for more information,
-// UUID is index
-func (c *ovsDbClient) GetEntityInfo(entity any) error {
-	if c.call == nil {
-		return errors.New("ovsdb call layer is nil")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	entityPtr := reflect.ValueOf(entity)
-	if entityPtr.Kind() != reflect.Pointer {
-		return errors.New("entity must be pointer")
-	}
-
-	err := c.call.Get(ctx, entity)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	return nil
+	return c.List(ctx, result)
 }
