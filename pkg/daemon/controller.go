@@ -1062,7 +1062,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updatePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
 	defer c.updateNodeQueue.ShutDown()
-	defer c.vswitchClient.Close()
+	defer c.closeVswitch()
 
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(c.reconcileACLSamplingCollectorSet, time.Minute, stopCh)

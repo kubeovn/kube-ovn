@@ -322,7 +322,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 			if err != nil {
 				return err
 			}
-			if err := c.OVNNbClient.ReconcileGatewayChassises(lrpName, chassises); err != nil {
+			if err := c.reconcileICGatewayChassises(lrpName, chassises); err != nil {
 				klog.Errorf("failed to reconcile gateway chassis for ic lrp %q: %v", lrpName, err)
 				return err
 			}
@@ -342,7 +342,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		if err != nil {
 			return err
 		}
-		if err := c.OVNNbClient.CreateLogicalPatchPort(tsName, c.config.ClusterRouter, tsPort, lrpName, lrpAddr, util.GenerateMac(), chassises...); err != nil {
+		if err := c.createICLogicalPatchPort(tsName, c.config.ClusterRouter, tsPort, lrpName, lrpAddr, util.GenerateMac(), chassises...); err != nil {
 			klog.Errorf("failed to create ovn-ic lrp %q: %v", lrpName, err)
 			return err
 		}

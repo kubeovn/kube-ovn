@@ -17,6 +17,40 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+type icGatewayChassisProvider interface {
+	ReconcileGatewayChassises(lrpName string, chassises []string) error
+}
+
+type icLogicalPatchPortProvider interface {
+	CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error
+}
+
+func (c *Controller) reconcileICGatewayChassises(lrpName string, chassises []string) error {
+	if provider, ok := c.OVNNbTables.(icGatewayChassisProvider); ok {
+		return provider.ReconcileGatewayChassises(lrpName, chassises)
+	}
+	if c.OVNNbTables != nil {
+		return errors.New("OVN NB table provider does not support gateway chassis reconciliation")
+	}
+	if c.OVNNbClient == nil {
+		return errors.New("OVN NB client is nil")
+	}
+	return c.OVNNbClient.ReconcileGatewayChassises(lrpName, chassises)
+}
+
+func (c *Controller) createICLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error {
+	if provider, ok := c.OVNNbTables.(icLogicalPatchPortProvider); ok {
+		return provider.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac, chassises...)
+	}
+	if c.OVNNbTables != nil {
+		return errors.New("OVN NB table provider does not support logical patch port creation")
+	}
+	if c.OVNNbClient == nil {
+		return errors.New("OVN NB client is nil")
+	}
+	return c.OVNNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac, chassises...)
+}
+
 func (c *Controller) setICAutoRouteTable(enable bool, blacklist []string) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.SetICAutoRoute(enable, blacklist)
