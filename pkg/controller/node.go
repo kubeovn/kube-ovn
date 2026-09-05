@@ -976,7 +976,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 
 		if networkPolicyExists {
-			if err := c.OVNNbClient.CreateNodeACL(pgName, nodeIP, joinIP); err != nil {
+			if err := c.createNodeACL(pgName, nodeIP, joinIP); err != nil {
 				klog.Errorf("create node acl for node pg %s: %v", pgName, err)
 			}
 		} else {

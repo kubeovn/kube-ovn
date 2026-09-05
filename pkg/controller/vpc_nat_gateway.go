@@ -2027,21 +2027,11 @@ func (c *Controller) reconcileVpcNatGatewayOVNRoutesAF(gw *kubeovnv1.VpcNatGatew
 	}
 
 	// Reconcile BFD sessions for this address family
-	var bfdIDs set.Set[string]
-	var err error
-	if c.OVNNbTables == nil {
-		bfdIDs, err = reconcileGatewayBFDWithCleanup(
-			c.OVNNbClient, bfdIP, bfdLrp,
-			set.New(slices.Collect(maps.Values(nextHopsAF))...),
-			gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier, externalIDs,
-		)
-	} else {
-		bfdIDs, err = c.reconcileGatewayBFDWithCleanupTable(
-			bfdIP, bfdLrp,
-			set.New(slices.Collect(maps.Values(nextHopsAF))...),
-			gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier, externalIDs,
-		)
-	}
+	bfdIDs, err := c.reconcileGatewayBFDWithCleanupBackend(
+		bfdIP, bfdLrp,
+		set.New(slices.Collect(maps.Values(nextHopsAF))...),
+		gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier, externalIDs,
+	)
 	if err != nil {
 		klog.Errorf("failed to reconcile BFD for nat gw %s af %d: %v", gw.Name, af, err)
 		return err

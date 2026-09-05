@@ -9,12 +9,13 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestMatchesExternalIDs(t *testing.T) {
@@ -370,7 +371,7 @@ func TestControllerTableProviderLogicalSwitchAndDHCP(t *testing.T) {
 	require.NoError(t, controller.createLogicalSwitch("subnet-1", "vpc-1", "10.0.0.0/24", "10.0.0.1", "", false, false))
 	require.Equal(t, 1, backend.createCalls)
 	_, err := controller.updateSubnetDHCPOptionsTable(&kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "subnet-1"},
+		Name: "subnet-1",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "10.0.0.0/24", Gateway: "10.0.0.1", Protocol: kubeovnv1.ProtocolIPv4,
 			EnableDHCP: true, DHCPv4Options: "dns_server=8.8.8.8",
@@ -534,6 +535,51 @@ func TestControllerTableProviderLoadBalancerOperations(t *testing.T) {
 	// transaction while preserving the provider boundary.
 	require.Equal(t, 7, backend.mutateCalls)
 	require.Equal(t, 7, backend.transactCalls)
+}
+
+func TestControllerTableProviderSecurityGroupACLs(t *testing.T) {
+	pgName := ovs.GetSgPortGroupName("sg-1")
+	backend := newTableBackend(&ovnnb.PortGroup{UUID: "pg-1", Name: pgName})
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+
+	require.NoError(t, controller.createSgDenyAllACL("sg-1"))
+	require.NoError(t, controller.createSgBaseACL("sg-1", ovnnb.ACLDirectionToLport))
+	require.Equal(t, 2, backend.createCalls)
+	require.Equal(t, 2, backend.mutateCalls)
+	require.Equal(t, 2, backend.transactCalls)
+
+	rule := kubeovnv1.SecurityGroupRule{
+		IPVersion:     "ipv4",
+		Priority:      1,
+		RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+		RemoteAddress: "10.0.0.0/8",
+		Protocol:      kubeovnv1.SgProtocolTCP,
+		Policy:        kubeovnv1.SgPolicyAllow,
+		PortRangeMin:  80,
+		PortRangeMax:  80,
+	}
+	sg := &kubeovnv1.SecurityGroup{Name: "sg-1", Spec: kubeovnv1.SecurityGroupSpec{Tier: util.SecurityGroupAPITierMinimum, IngressRules: []kubeovnv1.SecurityGroupRule{rule}}}
+	require.NoError(t, controller.updateSgACL(sg, ovnnb.ACLDirectionToLport))
+	require.Equal(t, 3, backend.createCalls)
+	require.Equal(t, 3, backend.transactCalls)
+}
+
+func TestControllerTableProviderACLHelpers(t *testing.T) {
+	pgName := "node-pg"
+	logMatch := "inport == @" + pgName + " && ip"
+	backend := newTableBackend(
+		&ovnnb.PortGroup{UUID: "pg-1", Name: pgName, ACLs: []string{"acl-1"}},
+		&ovnnb.ACL{UUID: "acl-1", ExternalIDs: map[string]string{"parent": pgName}, Direction: ovnnb.ACLDirectionFromLport, Priority: 2000, Match: logMatch, Tier: util.NetpolACLTier},
+	)
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+
+	require.NoError(t, controller.createGatewayACL("", pgName))
+	require.NoError(t, controller.createNodeACL(pgName, "10.0.0.2", "10.0.0.1"))
+	require.NoError(t, controller.setNetPolACLLog(pgName, true, false))
+	require.GreaterOrEqual(t, backend.createCalls, 2)
+	require.GreaterOrEqual(t, backend.mutateCalls, 2)
+	require.GreaterOrEqual(t, backend.updateCalls, 1)
+	require.GreaterOrEqual(t, backend.transactCalls, 3)
 }
 
 type tableBackend struct {

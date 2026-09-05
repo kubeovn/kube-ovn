@@ -1010,20 +1010,10 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 
 	// reconcile OVN BFD entries
-	var bfdIDs set.Set[string]
-	var bfdMap map[string]string
-	var staleBFDIDs set.Set[string]
-	if c.OVNNbTables == nil {
-		bfdIDs, bfdMap, staleBFDIDs, err = reconcileGatewayBFD(
-			c.OVNNbClient, bfdIP, lrpName, nextHops,
-			gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier, externalIDs,
-		)
-	} else {
-		bfdIDs, bfdMap, staleBFDIDs, err = c.reconcileGatewayBFDTable(
-			bfdIP, lrpName, nextHops,
-			gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier, externalIDs,
-		)
-	}
+	bfdIDs, bfdMap, staleBFDIDs, err := c.reconcileGatewayBFDBackend(
+		bfdIP, lrpName, nextHops,
+		gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier, externalIDs,
+	)
 	if err != nil {
 		return err
 	}
@@ -1157,11 +1147,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 
 	// Cleanup stale BFD sessions
-	if c.OVNNbTables == nil {
-		err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs)
-	} else {
-		err = c.cleanupStaleBFDTable(staleBFDIDs)
-	}
+	err = c.cleanupStaleBFDBackend(staleBFDIDs)
 	if err != nil {
 		return err
 	}

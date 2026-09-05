@@ -161,6 +161,10 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 		return err
 	}
+	aclBuilder, err := c.adminNetworkPolicyACLBuilder()
+	if err != nil {
+		return err
+	}
 
 	ingressACLOps, err := c.deletePortGroupACLOps(pgName, "to-lport", nil)
 	if err != nil {
@@ -213,7 +217,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 
 		if len(v4Addrs) != 0 {
 			aclName := fmt.Sprintf("banp/%s/ingress/%s/%d", banpName, kubeovnv1.ProtocolIPv4, index)
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, true, true)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, true, true)
 			if err != nil {
 				klog.Errorf("failed to add v4 ingress acls for banp %s: %v", key, err)
 				return err
@@ -223,7 +227,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 
 		if len(v6Addrs) != 0 {
 			aclName := fmt.Sprintf("banp/%s/ingress/%s/%d", banpName, kubeovnv1.ProtocolIPv6, index)
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, true, true)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, true, true)
 			if err != nil {
 				klog.Errorf("failed to add v6 ingress acls for banp %s: %v", key, err)
 				return err
@@ -280,7 +284,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 
 		if len(v4Addrs) != 0 {
 			aclName := fmt.Sprintf("banp/%s/egress/%s/%d", banpName, kubeovnv1.ProtocolIPv4, index)
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, false, true)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, false, true)
 			if err != nil {
 				klog.Errorf("failed to add v4 egress acls for banp %s: %v", key, err)
 				return err
@@ -290,7 +294,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 
 		if len(v6Addrs) != 0 {
 			aclName := fmt.Sprintf("banp/%s/egress/%s/%d", banpName, kubeovnv1.ProtocolIPv6, index)
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, false, true)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, false, true)
 			if err != nil {
 				klog.Errorf("failed to add v6 egress acls for banp %s: %v", key, err)
 				return err

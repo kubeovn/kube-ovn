@@ -492,12 +492,7 @@ func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter
 		return err
 	}
 
-	var dhcpOptionsUUIDs *ovs.DHCPOptionsUUIDs
-	if c.OVNNbTables == nil {
-		dhcpOptionsUUIDs, err = c.OVNNbClient.UpdateDHCPOptions(subnet, mtu)
-	} else {
-		dhcpOptionsUUIDs, err = c.updateSubnetDHCPOptionsTable(subnet, mtu)
-	}
+	dhcpOptionsUUIDs, err := c.updateSubnetDHCPOptionsBackend(subnet, mtu)
 	if err != nil {
 		klog.Errorf("failed to update dhcp options for switch %s, %v", subnet.Name, err)
 		return err

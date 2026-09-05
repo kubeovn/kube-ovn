@@ -36,6 +36,7 @@ import (
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -96,6 +97,7 @@ type Controller struct {
 	fdbSyncChan   chan struct{}
 	fdbSyncMutex  sync.Mutex
 	vswitchClient ovs.Vswitch
+	vswitchTables compat.TableProvider
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -271,9 +273,12 @@ func NewController(config *Configuration,
 		return nil, err
 	}
 
-	if controller.vswitchClient, err = ovs.NewVswitchClient("unix:/var/run/openvswitch/db.sock", 1, 3); err != nil {
+	var vswitchClient *ovs.VswitchClient
+	if vswitchClient, err = ovs.NewVswitchClient("unix:/var/run/openvswitch/db.sock", 1, 3); err != nil {
 		return nil, fmt.Errorf("failed to create vswitch client: %w", err)
 	}
+	controller.vswitchClient = vswitchClient
+	controller.vswitchTables = vswitchClient
 
 	return controller, nil
 }
