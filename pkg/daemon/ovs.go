@@ -269,7 +269,7 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 
 	klog.Infof("Configuring external bridge %s for provider %s, nic %s, and vlan interfaces %v", bridge, provider, nic, vlanInterfaceMap)
 
-	brExists, err := ovs.BridgeExists(bridge)
+	brExists, err := c.vswitchBridgeExists(bridge)
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %w", err)
 	}
@@ -300,10 +300,11 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		}
 	}
 
-	if output, err = ovs.Exec("list-ports", bridge); err != nil {
-		return fmt.Errorf("failed to list ports of OVS bridge %s, %w: %q", bridge, err, output)
+	bridgePorts, err := c.listVswitchBridgePorts(bridge)
+	if err != nil {
+		return fmt.Errorf("failed to list ports of OVS bridge %s: %w", bridge, err)
 	}
-	if output != "" {
+	if len(bridgePorts) != 0 {
 		providerNic := nic
 		if exchangeLinkName {
 			providerNic = bridge
@@ -313,13 +314,14 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 			vlanInterfaces = append(vlanInterfaces, vlanInterface)
 		}
 
-		for port := range strings.SplitSeq(output, "\n") {
+		for _, portRow := range bridgePorts {
+			port := portRow.Name
 			// Skip the main NIC or VLAN subinterfaces belonging to it
 			if port == nic {
 				klog.Infof("Skipping main NIC port %s on bridge %s", port, bridge)
 				continue
 			}
-			owned, err := ovs.ValidatePortVendor(port)
+			owned, err := c.validateVswitchPortVendor(port)
 			if err != nil {
 				return fmt.Errorf("failed to check vendor of port %s: %w", port, err)
 			}

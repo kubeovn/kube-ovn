@@ -32,6 +32,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -46,10 +47,12 @@ type podQoSOperations interface {
 	setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error
 }
 
-type ovsPodQoSOperations struct{}
+type ovsPodQoSOperations struct {
+	provider compat.TableProvider
+}
 
-func (ovsPodQoSOperations) setInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
-	return ovs.SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
+func (o ovsPodQoSOperations) setInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
+	return ovs.SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst, o.provider)
 }
 
 func (ovsPodQoSOperations) configInterfaceMirror(enableMirror bool, mirrorControl, iface string) error {
@@ -115,7 +118,7 @@ func isLegacyIptablesMode() (bool, error) {
 
 func (c *Controller) initRuntime() error {
 	if c.podQoSOps == nil {
-		c.podQoSOps = ovsPodQoSOperations{}
+		c.podQoSOps = ovsPodQoSOperations{provider: c.vswitchTables}
 	}
 	ok, err := isLegacyIptablesMode()
 	if err != nil {
@@ -885,7 +888,7 @@ func (c *Controller) applyPodQoS(pod *v1.Pod, podName, provider string) (string,
 	}
 	ops := c.podQoSOps
 	if ops == nil {
-		ops = ovsPodQoSOperations{}
+		ops = ovsPodQoSOperations{provider: c.vswitchTables}
 	}
 	recordFailure := func(stage string, err error) {
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=%s provider=%s interface=%s node=%s: %v", stage, provider, ifaceID, c.config.NodeName, err)
