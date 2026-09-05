@@ -210,6 +210,27 @@ func TestControllerTableProviderRelationUpdates(t *testing.T) {
 	require.Equal(t, 5, backend.transactCalls)
 }
 
+func TestControllerTableProviderNBGlobalUpdates(t *testing.T) {
+	backend := newTableBackend(&ovnnb.NBGlobal{
+		UUID:    "nb-global-1",
+		Options: map[string]string{"stale": "value"},
+	})
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	legacyCalled := false
+	legacy := func() error {
+		legacyCalled = true
+		return nil
+	}
+	require.NoError(t, controller.setNBGlobalOption("node_local_dns_ip", "10.96.0.10", true, legacy))
+	require.NoError(t, controller.setNBGlobalOption("stale", "", false, legacy))
+	require.NoError(t, controller.setNBGlobalIPSec(true, legacy))
+	require.False(t, legacyCalled)
+	require.Equal(t, 3, backend.updateCalls)
+	require.Equal(t, 3, backend.transactCalls)
+}
+
 type tableBackend struct {
 	rows          map[reflect.Type][]any
 	createCalls   int
