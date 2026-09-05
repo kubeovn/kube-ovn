@@ -258,7 +258,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			if len(backends) != 0 {
 				vip = util.JoinHostPort(lbVip, port.Port)
 				klog.Infof("add vip endpoint %s, backends %v to LB %s", vip, backends, lb)
-				if err = c.OVNNbClient.LoadBalancerAddVip(lb, vip, backends...); err != nil {
+				if err = c.addLoadBalancerVIP(lb, vip, backends...); err != nil {
 					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
 					return err
 				}
@@ -279,7 +279,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 				}
 
 				if isPreferLocalBackend && len(ipPortMapping) != 0 {
-					if err = c.OVNNbClient.LoadBalancerUpdateIPPortMapping(lb, vip, ipPortMapping); err != nil {
+					if err = c.updateLoadBalancerIPPortMapping(lb, vip, ipPortMapping); err != nil {
 						klog.Errorf("failed to update ip port mapping %s for vip %s to LB %s: %v", ipPortMapping, vip, lb, err)
 						return err
 					}
@@ -287,7 +287,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 
 				if !ignoreHealthCheck {
 					klog.Infof("add health check ip port mapping %v to LB %s", ipPortMapping, lb)
-					if err = c.OVNNbClient.LoadBalancerAddHealthCheck(lb, vip, ignoreHealthCheck, ipPortMapping, externals); err != nil {
+					if err = c.addLoadBalancerHealthCheck(lb, vip, ignoreHealthCheck, ipPortMapping, externals); err != nil {
 						klog.Errorf("failed to add health check for vip %s with ip port mapping %s to LB %s: %v", lbVip, ipPortMapping, lb, err)
 						return err
 					}
@@ -295,23 +295,23 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			} else {
 				vip = util.JoinHostPort(lbVip, port.Port)
 				klog.V(3).Infof("delete vip endpoint %s from LB %s", vip, lb)
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, true); err != nil {
+				if err = c.deleteLoadBalancerVIP(lb, vip, true); err != nil {
 					klog.Errorf("failed to delete vip endpoint %s from LB %s: %v", vip, lb, err)
 					return err
 				}
 
 				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, oldLb)
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(oldLb, vip, true); err != nil {
+				if err = c.deleteLoadBalancerVIP(oldLb, vip, true); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oldLb, err)
 					return err
 				}
 
 				if c.config.EnableOVNLBPreferLocal {
-					if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
+					if err := c.deleteLoadBalancerIPPortMapping(lb, vip); err != nil {
 						klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
 						return err
 					}
-					if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(oldLb, vip); err != nil {
+					if err := c.deleteLoadBalancerIPPortMapping(oldLb, vip); err != nil {
 						klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
 						return err
 					}
@@ -433,7 +433,7 @@ func (c *Controller) clearLoadBalancerVIPExternalTrafficLocal(svc *v1.Service, t
 			if err := c.setLoadBalancerExternalTrafficLocal(lb, vip, ""); err != nil {
 				return fmt.Errorf("couldn't clear external local vip marker %s on LB %s: %w", vip, lb, err)
 			}
-			if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
+			if err := c.deleteLoadBalancerIPPortMapping(lb, vip); err != nil {
 				return fmt.Errorf("couldn't clear external local vip ip port mapping %s on LB %s: %w", vip, lb, err)
 			}
 		}

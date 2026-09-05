@@ -153,13 +153,13 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	}
 	// about conflicts: if multi vpc snat use the same eip, if only one gw node exist, it may should work
 	if v4IpCidr != "" && v4Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, v4Eip, v4IpCidr, "", "", nil); err != nil {
+		if err = c.addNat(vpcName, ovnnb.NATTypeSNAT, v4Eip, v4IpCidr, "", "", nil); err != nil {
 			klog.Errorf("failed to create v4 snat, %v", err)
 			return err
 		}
 	}
 	if v6IpCidr != "" && v6Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, v6Eip, v6IpCidr, "", "", nil); err != nil {
+		if err = c.addNat(vpcName, ovnnb.NATTypeSNAT, v6Eip, v6IpCidr, "", "", nil); err != nil {
 			klog.Errorf("failed to create v6 snat, %v", err)
 			return err
 		}

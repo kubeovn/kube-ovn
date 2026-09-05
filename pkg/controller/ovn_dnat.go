@@ -595,7 +595,7 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIP, internalIP, exte
 		}
 	}
 
-	if err = c.OVNNbClient.LoadBalancerAddVip(dnatName, externalEndpoint, internalEndpoint); err != nil {
+	if err = c.addLoadBalancerVIP(dnatName, externalEndpoint, internalEndpoint); err != nil {
 		klog.Errorf("add vip %s with backends %s to LB %s: %v", externalEndpoint, internalEndpoint, dnatName, err)
 		return err
 	}
@@ -614,7 +614,7 @@ func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort str
 		err               error
 	)
 	externalEndpoint = net.JoinHostPort(externalIP, externalPort)
-	if err = c.OVNNbClient.LoadBalancerDeleteVip(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
+	if err = c.deleteLoadBalancerVIP(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
 		klog.Errorf("delete loadBalancer vips %s: %v", externalEndpoint, err)
 		return err
 	}

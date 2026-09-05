@@ -197,13 +197,13 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 
 		for _, lb := range vpcLB {
 			if c.config.EnableOVNLBPreferLocal {
-				if err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
+				if err = c.deleteLoadBalancerIPPortMapping(lb, vip); err != nil {
 					klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
 					return err
 				}
 			}
 
-			if err = c.OVNNbClient.LoadBalancerDeleteVip(lb, vip, ignoreHealthCheck); err != nil {
+			if err = c.deleteLoadBalancerVIP(lb, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lb, err)
 				return err
 			}
@@ -301,7 +301,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		lbVIPs := maps.Clone(lb.Vips)
 		klog.V(3).Infof("existing vips of LB %s: %v", lbName, lbVIPs)
 		for _, vip := range svcVips {
-			if err := c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
+			if err := c.deleteLoadBalancerVIP(oLbName, vip, ignoreHealthCheck); err != nil {
 				klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 				return err
 			}
@@ -314,7 +314,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		for vip := range lbVIPs {
 			if ip := parseVipAddr(vip); (slices.Contains(ips, ip) && !slices.Contains(svcVips, vip)) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, lbName)
-				if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
+				if err := c.deleteLoadBalancerVIP(lbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
 					return err
 				}
@@ -335,7 +335,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		for vip := range oLbVIPs {
 			if ip := parseVipAddr(vip); slices.Contains(ips, ip) || slices.Contains(ipsToDel, ip) {
 				klog.Infof("remove stale vip %s from LB %s", vip, oLbName)
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(oLbName, vip, ignoreHealthCheck); err != nil {
+				if err = c.deleteLoadBalancerVIP(oLbName, vip, ignoreHealthCheck); err != nil {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oLbName, err)
 					return err
 				}

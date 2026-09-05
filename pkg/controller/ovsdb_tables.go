@@ -1590,6 +1590,70 @@ func (c *Controller) deleteNat(lrName, natType, externalIP, logicalIP string) er
 	)
 }
 
+// addNat creates a NAT row and adds it to the owning logical router. The
+// dnat_and_snat path deliberately replaces an existing EIP rule to preserve
+// the swap behavior of the legacy client.
+func (c *Controller) addNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port, options)
+	}
+	if lrName == "" {
+		return errors.New("the logical router name is required")
+	}
+	if natType != ovnnb.NATTypeSNAT && natType != ovnnb.NATTypeDNATAndSNAT {
+		return errors.New("nat type must be one of [ snat, dnat_and_snat ]")
+	}
+	if natType == ovnnb.NATTypeSNAT && (externalIP == "" || logicalIP == "") {
+		return fmt.Errorf("external ip and logical ip are required when nat type is %s", natType)
+	}
+	if natType == ovnnb.NATTypeDNATAndSNAT && externalIP == "" {
+		return fmt.Errorf("external ip is required when nat type is %s", natType)
+	}
+	if natType == ovnnb.NATTypeDNATAndSNAT {
+		if err := c.deleteNat(lrName, natType, externalIP, ""); err != nil {
+			return err
+		}
+	} else {
+		exists, err := c.natExists(lrName, natType, externalIP, logicalIP)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	row := &ovnnb.NAT{
+		UUID:       ovsclient.NamedUUID(),
+		Type:       natType,
+		ExternalIP: externalIP,
+		LogicalIP:  logicalIP,
+		Options:    maps.Clone(options),
+	}
+	if logicalMac != "" {
+		row.ExternalMAC = new(logicalMac)
+	}
+	if port != "" {
+		row.LogicalPort = new(port)
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.NAT{}).CreateOps(row)
+	if err != nil {
+		return fmt.Errorf("generate operations for creating nat: %w", err)
+	}
+	parentOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(lr, model.Mutation{
+		Field: &lr.Nat, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return fmt.Errorf("generate operations for adding nat to logical router %s: %w", lrName, err)
+	}
+	return c.OVNNbTables.Table(&ovnnb.NAT{}).Transact(
+		context.Background(), "lr-nats-add", append(createOps, parentOps...)...,
+	)
+}
+
 // setLoadBalancerOption updates one option on a load balancer without
 // replacing options managed by another reconcile path. The legacy callback is
 // retained for callers that have not wired a TableProvider yet.
@@ -2068,6 +2132,289 @@ func (c *Controller) deleteLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalan
 		context.Background(), "lbhc-del", func(row *ovnnb.LoadBalancerHealthCheck) bool {
 			return filter == nil || filter(row)
 		},
+	)
+}
+
+// addLoadBalancerVIP adds or replaces one VIP entry on a load balancer.
+func (c *Controller) addLoadBalancerVIP(lbName, vip string, backends ...string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.LoadBalancerAddVip(lbName, vip, backends...)
+	}
+	lb, err := c.getLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	slices.Sort(backends)
+	value := strings.Join(backends, ",")
+	if lb.Vips[vip] == value {
+		return nil
+	}
+	mutations := make([]model.Mutation, 0, 2)
+	if oldValue, ok := lb.Vips[vip]; ok {
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.Vips, Value: map[string]string{vip: oldValue}, Mutator: ovsdb.MutateOperationDelete,
+		})
+	}
+	mutations = append(mutations, model.Mutation{
+		Field: &lb.Vips, Value: map[string]string{vip: value}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Mutate(
+		context.Background(), "lb-add", lb, mutations...,
+	)
+}
+
+// updateLoadBalancerIPPortMapping reconciles the backend-to-LSP map for one VIP.
+// Entries still referenced by another VIP are retained.
+func (c *Controller) updateLoadBalancerIPPortMapping(lbName, vip string, mappings map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.LoadBalancerUpdateIPPortMapping(lbName, vip, mappings)
+	}
+	lb, err := c.getLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	newBackendIPs := make(map[string]bool, len(mappings))
+	for ip := range mappings {
+		newBackendIPs[strings.Trim(ip, "[]")] = true
+	}
+	toDelete := make(map[string]string)
+	toInsert := make(map[string]string)
+	for mappingKey, mappingValue := range lb.IPPortMappings {
+		cleanKey := strings.Trim(mappingKey, "[]")
+		if newBackendIPs[cleanKey] {
+			continue
+		}
+		stillUsed := false
+		for otherVIP, backends := range lb.Vips {
+			if otherVIP == vip {
+				continue
+			}
+			for backend := range strings.SplitSeq(backends, ",") {
+				backendIP, _, splitErr := net.SplitHostPort(backend)
+				if splitErr == nil && backendIP == cleanKey {
+					stillUsed = true
+					break
+				}
+			}
+			if stillUsed {
+				break
+			}
+		}
+		if !stillUsed {
+			toDelete[mappingKey] = mappingValue
+		}
+	}
+	for ip, lsp := range mappings {
+		cleanIP := strings.Trim(ip, "[]")
+		existingKey, existingLSP, found := "", "", false
+		if value, ok := lb.IPPortMappings[ip]; ok {
+			existingKey, existingLSP, found = ip, value, true
+		} else {
+			for key, value := range lb.IPPortMappings {
+				if strings.Trim(key, "[]") == cleanIP {
+					existingKey, existingLSP, found = key, value, true
+					break
+				}
+			}
+		}
+		if found {
+			if existingLSP == lsp {
+				continue
+			}
+			toDelete[existingKey] = existingLSP
+		}
+		toInsert[ip] = lsp
+	}
+	mutations := make([]model.Mutation, 0, 2)
+	if len(toDelete) != 0 {
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.IPPortMappings, Value: toDelete, Mutator: ovsdb.MutateOperationDelete,
+		})
+	}
+	if len(toInsert) != 0 {
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.IPPortMappings, Value: toInsert, Mutator: ovsdb.MutateOperationInsert,
+		})
+	}
+	if len(mutations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Mutate(
+		context.Background(), "lb-update", lb, mutations...,
+	)
+}
+
+// deleteLoadBalancerIPPortMapping removes mappings whose backend IP is no
+// longer referenced by another VIP on the same load balancer.
+func (c *Controller) deleteLoadBalancerIPPortMapping(lbName, vip string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lbName, vip)
+	}
+	lb, err := c.getLoadBalancer(lbName, true)
+	if err != nil || lb == nil || len(lb.IPPortMappings) == 0 {
+		return err
+	}
+	backends, ok := lb.Vips[vip]
+	if !ok {
+		return nil
+	}
+	targets := make(map[string]struct{})
+	for backend := range strings.SplitSeq(backends, ",") {
+		ip, _, splitErr := net.SplitHostPort(backend)
+		if splitErr == nil {
+			targets[ip] = struct{}{}
+		}
+	}
+	toDelete := make(map[string]string)
+	for target := range targets {
+		used := false
+		for otherVIP, otherBackends := range lb.Vips {
+			if otherVIP == vip {
+				continue
+			}
+			for backend := range strings.SplitSeq(otherBackends, ",") {
+				ip, _, splitErr := net.SplitHostPort(backend)
+				if splitErr == nil && ip == target {
+					used = true
+					break
+				}
+			}
+			if used {
+				break
+			}
+		}
+		if !used {
+			for key, value := range lb.IPPortMappings {
+				if strings.Trim(key, "[]") == target {
+					toDelete[key] = value
+				}
+			}
+		}
+	}
+	if len(toDelete) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Mutate(
+		context.Background(), "lb-del", lb,
+		model.Mutation{Field: &lb.IPPortMappings, Value: toDelete, Mutator: ovsdb.MutateOperationDelete},
+	)
+}
+
+// addLoadBalancerHealthCheck creates a health-check row and atomically adds its
+// UUID to the parent load balancer. The mapping update retains legacy behavior.
+func (c *Controller) addLoadBalancerHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.LoadBalancerAddHealthCheck(lbName, vip, ignoreHealthCheck, ipPortMapping, externalIDs)
+	}
+	if err := c.updateLoadBalancerIPPortMapping(lbName, vip, ipPortMapping); err != nil {
+		return err
+	}
+	if ignoreHealthCheck {
+		return nil
+	}
+	lb, err := c.getLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	var checks []ovnnb.LoadBalancerHealthCheck
+	if err := c.OVNNbTables.Table(&ovnnb.LoadBalancerHealthCheck{}).Filter(
+		context.Background(), func(row *ovnnb.LoadBalancerHealthCheck) bool {
+			return slices.Contains(lb.HealthCheck, row.UUID) && row.Vip == vip
+		}, &checks,
+	); err != nil {
+		return err
+	}
+	if len(checks) != 0 {
+		return nil
+	}
+	row := &ovnnb.LoadBalancerHealthCheck{
+		UUID:        ovsclient.NamedUUID(),
+		ExternalIDs: maps.Clone(externalIDs),
+		Options: map[string]string{
+			"timeout": "20", "interval": "5", "success_count": "3", "failure_count": "3",
+		},
+		Vip: vip,
+	}
+	childOps, err := c.OVNNbTables.Table(&ovnnb.LoadBalancerHealthCheck{}).CreateOps(row)
+	if err != nil {
+		return err
+	}
+	parentOps, err := c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).MutateOps(lb, model.Mutation{
+		Field: &lb.HealthCheck, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Transact(
+		context.Background(), "lbhc-add", append(childOps, parentOps...)...,
+	)
+}
+
+// deleteLoadBalancerHealthCheck removes a health-check UUID from its parent.
+func (c *Controller) deleteLoadBalancerHealthCheck(lbName, uuid string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.LoadBalancerDeleteHealthCheck(lbName, uuid)
+	}
+	lb, err := c.getLoadBalancer(lbName, false)
+	if err != nil || !slices.Contains(lb.HealthCheck, uuid) {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Mutate(
+		context.Background(), "lb-hc-del", lb,
+		model.Mutation{Field: &lb.HealthCheck, Value: []string{uuid}, Mutator: ovsdb.MutateOperationDelete},
+	)
+}
+
+// deleteLoadBalancerVIP removes a VIP and, when requested, its health-check
+// and now-unused IP-port mappings.
+func (c *Controller) deleteLoadBalancerVIP(lbName, vip string, ignoreHealthCheck bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck)
+	}
+	lb, err := c.getLoadBalancer(lbName, true)
+	if err != nil || lb == nil {
+		return err
+	}
+	var checkUUID string
+	var checks []ovnnb.LoadBalancerHealthCheck
+	if err := c.OVNNbTables.Table(&ovnnb.LoadBalancerHealthCheck{}).Filter(
+		context.Background(), func(row *ovnnb.LoadBalancerHealthCheck) bool {
+			return slices.Contains(lb.HealthCheck, row.UUID) && row.Vip == vip
+		}, &checks,
+	); err != nil {
+		return err
+	}
+	if len(checks) > 1 {
+		return fmt.Errorf("load balancer %s has more than one health check with vip %s", lbName, vip)
+	}
+	if len(checks) == 1 {
+		checkUUID = checks[0].UUID
+	}
+	if len(lb.IPPortMappings) != 0 {
+		ignoreHealthCheck = false
+	}
+	if !ignoreHealthCheck && checkUUID != "" {
+		if err := c.deleteLoadBalancerIPPortMapping(lbName, vip); err != nil {
+			return err
+		}
+		if err := c.deleteLoadBalancerHealthCheck(lbName, checkUUID); err != nil {
+			return err
+		}
+	}
+	if _, ok := lb.Vips[vip]; !ok {
+		return nil
+	}
+	mutations := []model.Mutation{{
+		Field: &lb.Vips, Value: map[string]string{vip: lb.Vips[vip]}, Mutator: ovsdb.MutateOperationDelete,
+	}}
+	key := localExternalVIPKeyPrefix + vip
+	if value, ok := lb.ExternalIDs[key]; ok {
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.ExternalIDs, Value: map[string]string{key: value}, Mutator: ovsdb.MutateOperationDelete,
+		})
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Mutate(
+		context.Background(), "lb-del", lb, mutations...,
 	)
 }
 

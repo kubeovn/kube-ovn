@@ -267,6 +267,25 @@ func TestControllerTableProviderParentReferenceDeletes(t *testing.T) {
 	require.Equal(t, 5, backend.transactCalls)
 }
 
+func TestControllerTableProviderNatCreate(t *testing.T) {
+	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+
+	require.NoError(t, controller.addNat("lr-1", ovnnb.NATTypeSNAT, "192.0.2.10", "10.0.0.10", "", "", nil))
+	require.Equal(t, 1, backend.createCalls)
+	require.Equal(t, 1, backend.mutateCalls)
+	require.Equal(t, 1, backend.transactCalls)
+
+	duplicateBackend := newTableBackend(
+		&ovnnb.LogicalRouter{UUID: "lr-2", Name: "lr-2", Nat: []string{"nat-1"}},
+		&ovnnb.NAT{UUID: "nat-1", Type: ovnnb.NATTypeSNAT, ExternalIP: "192.0.2.10", LogicalIP: "10.0.0.10"},
+	)
+	duplicateController := &Controller{OVNNbTables: compat.NewDatabase(duplicateBackend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, duplicateController.addNat("lr-2", ovnnb.NATTypeSNAT, "192.0.2.10", "10.0.0.10", "", "", nil))
+	require.Equal(t, 0, duplicateBackend.createCalls)
+	require.Equal(t, 0, duplicateBackend.transactCalls)
+}
+
 func TestControllerTableProviderPortDeletes(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1", Ports: []string{"lsp-1"}},
@@ -375,6 +394,42 @@ func TestControllerTableProviderPortCreates(t *testing.T) {
 	require.Equal(t, 6, backend.createCalls)
 	require.Equal(t, 6, backend.mutateCalls)
 	require.Equal(t, 5, backend.transactCalls)
+}
+
+func TestControllerTableProviderLoadBalancerOperations(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LoadBalancer{
+			UUID:           "lb-1",
+			Name:           "lb-1",
+			Vips:           map[string]string{"10.0.0.1:80": "10.0.0.2:8080"},
+			IPPortMappings: map[string]string{"10.0.0.2": "lsp-old"},
+			ExternalIDs:    map[string]string{"owner": "test"},
+			HealthCheck:    []string{"lbhc-1"},
+		},
+		&ovnnb.LoadBalancerHealthCheck{UUID: "lbhc-1", Vip: "10.0.0.1:80"},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.addLoadBalancerVIP("lb-1", "10.0.0.1:80", "10.0.0.3:8080"))
+	require.NoError(t, controller.updateLoadBalancerIPPortMapping("lb-1", "10.0.0.1:80", map[string]string{"10.0.0.3": "lsp-new"}))
+	require.NoError(t, controller.deleteLoadBalancerIPPortMapping("lb-1", "10.0.0.1:80"))
+	require.NoError(t, controller.deleteLoadBalancerHealthCheck("lb-1", "lbhc-1"))
+	require.NoError(t, controller.deleteLoadBalancerVIP("lb-1", "10.0.0.1:80", true))
+
+	healthCheckBackend := newTableBackend(&ovnnb.LoadBalancer{UUID: "lb-2", Name: "lb-2"})
+	healthCheckController := &Controller{OVNNbTables: compat.NewDatabase(healthCheckBackend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, healthCheckController.addLoadBalancerHealthCheck(
+		"lb-2", "10.0.0.2:80", false, nil, map[string]string{"owner": "test"},
+	))
+	require.Equal(t, 1, healthCheckBackend.createCalls)
+	require.Equal(t, 1, healthCheckBackend.mutateCalls)
+	require.Equal(t, 1, healthCheckBackend.transactCalls)
+
+	// The fake backend records operation construction; each helper submits one
+	// transaction while preserving the provider boundary.
+	require.Equal(t, 7, backend.mutateCalls)
+	require.Equal(t, 7, backend.transactCalls)
 }
 
 type tableBackend struct {

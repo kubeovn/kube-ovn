@@ -423,7 +423,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		if vpcLBNames != nil {
 			for _, lbName := range vpcLBNames.UnsortedList() {
 				for _, vip := range vips {
-					if e := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, true); e != nil && !k8serrors.IsNotFound(e) {
+					if e := c.deleteLoadBalancerVIP(lbName, vip, true); e != nil && !k8serrors.IsNotFound(e) {
 						klog.Errorf("failed to delete vip %s from LB %s for RLR %s: %v", vip, lbName, info.Name, e)
 						return e
 					}
@@ -463,11 +463,11 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 				}
 				belongsToThisVpc = true
 
-				if e = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID); e != nil && !k8serrors.IsNotFound(e) {
+				if e = c.deleteLoadBalancerHealthCheck(lb.Name, lbhc.UUID); e != nil && !k8serrors.IsNotFound(e) {
 					klog.Errorf("failed to delete LBHC %s from LB %s: %v", lbhc.Vip, lb.Name, e)
 					return e
 				}
-				if e = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip); e != nil && !k8serrors.IsNotFound(e) {
+				if e = c.deleteLoadBalancerIPPortMapping(lb.Name, lbhc.Vip); e != nil && !k8serrors.IsNotFound(e) {
 					klog.Errorf("failed to delete IP port mapping %s from LB %s: %v", lbhc.Vip, lb.Name, e)
 					return e
 				}
