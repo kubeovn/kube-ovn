@@ -17,7 +17,10 @@ type VswitchClient struct {
 	*compat.Database
 }
 
-var _ Vswitch = (*VswitchClient)(nil)
+var (
+	_ Vswitch              = (*VswitchClient)(nil)
+	_ compat.TableProvider = (*VswitchClient)(nil)
+)
 
 // NewVswitchClient creates a new vswitch client
 func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchClient, error) {

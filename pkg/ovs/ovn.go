@@ -40,8 +40,10 @@ type OVNSbClient struct {
 }
 
 var (
-	_ NbClient = (*OVNNbClient)(nil)
-	_ SbClient = (*OVNSbClient)(nil)
+	_ NbClient             = (*OVNNbClient)(nil)
+	_ SbClient             = (*OVNSbClient)(nil)
+	_ compat.TableProvider = (*OVNNbClient)(nil)
+	_ compat.TableProvider = (*OVNSbClient)(nil)
 )
 
 type ovsTransactionObserver struct{}
