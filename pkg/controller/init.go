@@ -233,7 +233,7 @@ func (c *Controller) initClusterRouter() error {
 		return err
 	}
 
-	lr, err := c.OVNNbClient.GetLogicalRouter(c.config.ClusterRouter, false)
+	lr, err := c.getLogicalRouter(c.config.ClusterRouter, false)
 	if err != nil {
 		klog.Errorf("get logical router %s failed: %v", c.config.ClusterRouter, err)
 		return err
@@ -409,7 +409,7 @@ func (c *Controller) InitIPAM() error {
 			if subnet.Status.U2OInterconnectionMAC != "" {
 				mac = new(subnet.Status.U2OInterconnectionMAC)
 			} else {
-				lrp, err := c.OVNNbClient.GetLogicalRouterPort(u2oInterconnLrpName, true)
+				lrp, err := c.getLogicalRouterPort(u2oInterconnLrpName, true)
 				if err != nil {
 					klog.Errorf("failed to get logical router port %s: %v", u2oInterconnLrpName, err)
 					return err

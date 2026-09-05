@@ -692,7 +692,7 @@ func (c *Controller) prepareOvnSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc,
 	// Record the gateway MAC in ipam if router port exists
 	if needRouter {
 		routerPortName := ovs.LogicalRouterPortName(vpc.Status.Router, subnet.Name)
-		if lrp, err := c.OVNNbClient.GetLogicalRouterPort(routerPortName, true); err == nil && lrp != nil && lrp.MAC != "" {
+		if lrp, err := c.getLogicalRouterPort(routerPortName, true); err == nil && lrp != nil && lrp.MAC != "" {
 			if err := c.ipam.RecordGatewayMAC(subnet.Name, lrp.MAC); err != nil {
 				klog.Warningf("failed to record gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
 			}
@@ -812,7 +812,7 @@ func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router st
 			gateway = subnet.Status.U2OInterconnectionIP
 		}
 		routerPortName := ovs.LogicalRouterPortName(router, subnet.Name)
-		lrp, lrpErr := c.OVNNbClient.GetLogicalRouterPort(routerPortName, false)
+		lrp, lrpErr := c.getLogicalRouterPort(routerPortName, false)
 		if lrpErr != nil {
 			klog.Error(lrpErr)
 			if patchErr := c.patchSubnetStatus(subnet, "SetRoutedLogicalSwitchFailed", lrpErr.Error()); patchErr != nil {
@@ -1064,7 +1064,7 @@ func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
 
 func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 	/* get all virtual port belongs to this logical switch */
-	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+	lsps, err := c.listLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "virtual"
 	})
 	if err != nil {
@@ -1135,7 +1135,7 @@ func (c *Controller) syncVirtualPort(key string) error {
 		"attach-vips":    "true",
 	}
 
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, externalIDs)
+	lsps, err := c.listNormalLogicalSwitchPorts(true, externalIDs)
 	if err != nil {
 		klog.Errorf("list logical switch %s ports: %v", subnet.Name, err)
 		return err
@@ -2224,7 +2224,7 @@ func buildPolicyRouteExternalIDs(subnetName string, extraIDs map[string]string) 
 }
 
 func (c *Controller) logicalRouterExists(vpcName string) bool {
-	lr, err := c.OVNNbClient.GetLogicalRouter(vpcName, true)
+	lr, err := c.getLogicalRouter(vpcName, true)
 	if err == nil && lr == nil {
 		klog.Infof("logical router %s already deleted", vpcName)
 		return false
@@ -2902,7 +2902,7 @@ func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) erro
 	}
 
 	routerPortName := ovs.LogicalRouterPortName(subnet.Spec.Vpc, subnet.Name)
-	lrp, err := c.OVNNbClient.GetLogicalRouterPort(routerPortName, false)
+	lrp, err := c.getLogicalRouterPort(routerPortName, false)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -3109,7 +3109,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 			}
 		}
 	}
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name})
+	lsps, err := c.listNormalLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name})
 	if err != nil {
 		klog.Errorf("failed to list normal lsps for subnet %s: %v", subnet.Name, err)
 		return err
@@ -3229,7 +3229,7 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 	} else {
-		lss, err := c.OVNNbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
+		lss, err := c.listLogicalSwitches(false, func(ls *ovnnb.LogicalSwitch) bool {
 			return ls.Name == subnet.Name
 		})
 		if err != nil {

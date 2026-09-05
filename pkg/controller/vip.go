@@ -121,7 +121,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		// create a lsp use subnet gw mac, and set it option as arp_proxy
 		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		klog.Infof("get logical router port %s", lrpName)
-		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, false)
+		lrp, err := c.getLogicalRouterPort(lrpName, false)
 		if err != nil {
 			klog.Errorf("failed to get lrp %s: %v", lrpName, err)
 			return err

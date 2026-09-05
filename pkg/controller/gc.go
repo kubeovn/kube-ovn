@@ -516,7 +516,7 @@ func (c *Controller) markAndCleanLSP() error {
 			vipsMap.Add(portName)
 		}
 	}
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
+	lsps, err := c.listNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
 		return err
