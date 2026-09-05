@@ -819,7 +819,7 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 			klog.Error(err)
 			return portName, nil, err
 		}
-		if err := c.OVNNbClient.DeleteHAChassisGroup(portName); err != nil {
+		if err := c.deleteHAChassisGroup(portName); err != nil {
 			err = fmt.Errorf("failed to delete HA chassis group %s: %w", portName, err)
 			klog.Error(err)
 			return portName, nil, err
@@ -876,11 +876,11 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 		klog.Error(err)
 		return portName, nil, err
 	}
-	if err = c.OVNNbClient.CreateHAChassisGroup(portName, chassisNames, map[string]string{"lrp": portName}); err != nil {
+	if err = c.createHAChassisGroup(portName, chassisNames, map[string]string{"lrp": portName}); err != nil {
 		klog.Error(err)
 		return portName, nil, err
 	}
-	if err = c.OVNNbClient.SetLogicalRouterPortHAChassisGroup(portName, portName); err != nil {
+	if err = c.setLogicalRouterPortHAChassisGroup(portName, portName); err != nil {
 		klog.Error(err)
 		return portName, nil, err
 	}

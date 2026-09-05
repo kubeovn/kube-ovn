@@ -295,6 +295,30 @@ func TestControllerTableProviderPortDeletes(t *testing.T) {
 	require.Equal(t, 2, backend.transactCalls)
 }
 
+func TestControllerTableProviderHAChassisGroup(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.HAChassisGroup{
+			UUID:        "group-1",
+			Name:        "bfd-vpc-1",
+			HaChassis:   []string{"ha-1"},
+			ExternalIDs: map[string]string{"vendor": "kube-ovn"},
+		},
+		&ovnnb.HAChassis{UUID: "ha-1", ChassisName: "node-old", Priority: 100},
+		&ovnnb.LogicalRouterPort{UUID: "lrp-1", Name: "bfd-vpc-1"},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.createHAChassisGroup("bfd-vpc-1", []string{"node-new"}, map[string]string{"lrp": "bfd-vpc-1"}))
+	require.NoError(t, controller.setLogicalRouterPortHAChassisGroup("bfd-vpc-1", "bfd-vpc-1"))
+	require.NoError(t, controller.deleteHAChassisGroup("bfd-vpc-1"))
+
+	require.Equal(t, 1, backend.createCalls)
+	require.Equal(t, 2, backend.updateCalls)
+	require.Equal(t, 2, backend.mutateCalls)
+	require.Equal(t, 2, backend.transactCalls)
+}
+
 type tableBackend struct {
 	rows          map[reflect.Type][]any
 	createCalls   int
@@ -373,9 +397,9 @@ func (b *tableBackend) Create(...model.Model) ([]ovsdb.Operation, error) {
 	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}, nil
 }
 
-func (b *tableBackend) Transact(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+func (b *tableBackend) Transact(_ context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
 	b.transactCalls++
-	return []ovsdb.OperationResult{{}}, nil
+	return make([]ovsdb.OperationResult, len(operations)), nil
 }
 
 func (*tableBackend) Cache() compat.Cache { return tableCache{} }

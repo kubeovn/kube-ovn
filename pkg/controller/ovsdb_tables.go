@@ -15,6 +15,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -475,6 +476,150 @@ func (c *Controller) deleteLogicalRouterPorts(externalIDs map[string]string, fil
 		return nil
 	}
 	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lrps-del", operations...)
+}
+
+func (c *Controller) getHAChassisGroup(name string, ignoreNotFound bool) (*ovnnb.HAChassisGroup, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.GetHAChassisGroup(name, ignoreNotFound)
+	}
+	group := &ovnnb.HAChassisGroup{Name: name}
+	if err := c.OVNNbTables.Table(&ovnnb.HAChassisGroup{}).Get(context.Background(), group); err != nil {
+		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get HA chassis group %q: %w", name, err)
+	}
+	return group, nil
+}
+
+// createHAChassisGroup reconciles both the group row and its HA_Chassis child
+// rows in one transaction. The operation order intentionally mirrors the
+// legacy helper so a controller retry remains idempotent.
+func (c *Controller) createHAChassisGroup(name string, chassises []string, externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateHAChassisGroup(name, chassises, externalIDs)
+	}
+	group, err := c.getHAChassisGroup(name, true)
+	if err != nil {
+		return err
+	}
+	var operations []ovsdb.Operation
+	if group == nil {
+		group = &ovnnb.HAChassisGroup{
+			UUID:        ovsclient.NamedUUID(),
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+		}
+		maps.Insert(group.ExternalIDs, maps.All(externalIDs))
+		createOps, createErr := c.OVNNbTables.Table(&ovnnb.HAChassisGroup{}).CreateOps(group)
+		if createErr != nil {
+			return createErr
+		}
+		operations = append(operations, createOps...)
+	} else {
+		group.ExternalIDs = map[string]string{"vendor": util.CniTypeName}
+		maps.Insert(group.ExternalIDs, maps.All(externalIDs))
+		updateOps, updateErr := c.OVNNbTables.Table(&ovnnb.HAChassisGroup{}).UpdateOps(group, group, &group.ExternalIDs)
+		if updateErr != nil {
+			return updateErr
+		}
+		operations = append(operations, updateOps...)
+	}
+
+	var existing []*ovnnb.HAChassis
+	if len(group.HaChassis) != 0 {
+		if err = c.OVNNbTables.Table(&ovnnb.HAChassis{}).Filter(context.Background(), func(row *ovnnb.HAChassis) bool {
+			return slices.Contains(group.HaChassis, row.UUID)
+		}, &existing); err != nil {
+			return err
+		}
+	}
+	priorityMap := make(map[string]int, len(chassises))
+	for i, chassis := range chassises {
+		priorityMap[chassis] = 100 - i
+	}
+	var removed []string
+	for _, chassis := range existing {
+		if priority, ok := priorityMap[chassis.ChassisName]; ok {
+			delete(priorityMap, chassis.ChassisName)
+			if chassis.Priority != priority {
+				chassis.Priority = priority
+				updateOps, updateErr := c.OVNNbTables.Table(&ovnnb.HAChassis{}).UpdateOps(chassis, chassis, &chassis.Priority)
+				if updateErr != nil {
+					return updateErr
+				}
+				operations = append(operations, updateOps...)
+			}
+			continue
+		}
+		removed = append(removed, chassis.UUID)
+	}
+	if len(removed) != 0 {
+		deleteOps, deleteErr := c.OVNNbTables.Table(&ovnnb.HAChassisGroup{}).MutateOps(group, model.Mutation{
+			Field: &group.HaChassis, Value: removed, Mutator: ovsdb.MutateOperationDelete,
+		})
+		if deleteErr != nil {
+			return deleteErr
+		}
+		operations = append(operations, deleteOps...)
+	}
+	for chassis, priority := range priorityMap {
+		row := &ovnnb.HAChassis{
+			UUID:        ovsclient.NamedUUID(),
+			ChassisName: chassis,
+			Priority:    priority,
+			ExternalIDs: map[string]string{"group": name, "vendor": util.CniTypeName},
+		}
+		createOps, createErr := c.OVNNbTables.Table(&ovnnb.HAChassis{}).CreateOps(row)
+		if createErr != nil {
+			return createErr
+		}
+		insertOps, insertErr := c.OVNNbTables.Table(&ovnnb.HAChassisGroup{}).MutateOps(group, model.Mutation{
+			Field: &group.HaChassis, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		if insertErr != nil {
+			return insertErr
+		}
+		operations = append(operations, createOps...)
+		operations = append(operations, insertOps...)
+	}
+	return c.OVNNbTables.Table(&ovnnb.HAChassisGroup{}).Transact(context.Background(), "ha-chassis-group-add", operations...)
+}
+
+func (c *Controller) deleteHAChassisGroup(name string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteHAChassisGroup(name)
+	}
+	group, err := c.getHAChassisGroup(name, true)
+	if err != nil || group == nil {
+		return err
+	}
+	ops, err := c.OVNNbTables.Table(&ovnnb.HAChassisGroup{}).DeleteOps(group)
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.HAChassisGroup{}).Transact(context.Background(), "ha-chassis-group-del", ops...)
+}
+
+func (c *Controller) setLogicalRouterPortHAChassisGroup(lrpName, groupName string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.SetLogicalRouterPortHAChassisGroup(lrpName, groupName)
+	}
+	lrp, err := c.getLogicalRouterPort(lrpName, false)
+	if err != nil {
+		return err
+	}
+	group, err := c.getHAChassisGroup(groupName, false)
+	if err != nil {
+		return err
+	}
+	if lrp.HaChassisGroup != nil && *lrp.HaChassisGroup == group.UUID {
+		return nil
+	}
+	lrp.HaChassisGroup = &group.UUID
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Update(
+		context.Background(), "lrp-update", lrp, lrp, &lrp.HaChassisGroup,
+	)
 }
 
 func (c *Controller) updatePortGroupPorts(name string, operation ovsdb.Mutator, portNames ...string) error {
