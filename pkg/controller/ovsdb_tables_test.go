@@ -349,6 +349,17 @@ func TestControllerTableProviderPolicyReconcile(t *testing.T) {
 	require.Equal(t, 1, deleteBackend.transactCalls)
 }
 
+func TestControllerTableProviderRouterPortRA(t *testing.T) {
+	backend := newTableBackend(&ovnnb.LogicalRouterPort{
+		UUID: "lrp-1", Name: "lrp-1", Networks: []string{"10.0.0.1/24", "fd00::1/64"},
+	})
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, controller.updateLogicalRouterPortRA("lrp-1", "", true))
+	require.NoError(t, controller.updateLogicalRouterPortRA("lrp-1", "", false))
+	require.Equal(t, 2, backend.updateCalls)
+	require.Equal(t, 2, backend.transactCalls)
+}
+
 func TestControllerTableProviderPortDeletes(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1", Ports: []string{"lsp-1"}},

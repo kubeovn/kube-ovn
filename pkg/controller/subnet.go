@@ -506,7 +506,7 @@ func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter
 
 	if needRouter {
 		lrpName := fmt.Sprintf("%s-%s", vpc.Status.Router, subnet.Name)
-		if err := c.OVNNbClient.UpdateLogicalRouterPortRA(lrpName, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
+		if err := c.updateLogicalRouterPortRA(lrpName, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
 			klog.Errorf("update ipv6 ra configs for logical router port %s, %v", lrpName, err)
 			return err
 		}

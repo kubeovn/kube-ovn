@@ -306,6 +306,59 @@ func (c *Controller) updateLogicalRouterPortOptions(name string, options map[str
 	)
 }
 
+func parseIPv6RAConfigs(raw string) map[string]string {
+	if raw == "" {
+		return map[string]string{
+			"address_mode": "dhcpv6_stateful", "max_interval": "30", "min_interval": "5", "send_periodic": "true",
+		}
+	}
+	configs := make(map[string]string)
+	for option := range strings.SplitSeq(strings.ReplaceAll(raw, " ", ""), ",") {
+		key, value, ok := strings.Cut(option, "=")
+		if ok && key != "" && value != "" {
+			configs[key] = value
+		}
+	}
+	return configs
+}
+
+func ipv6Prefixes(networks []string) []string {
+	prefixes := make([]string, 0, len(networks))
+	for _, network := range networks {
+		address, prefix, ok := strings.Cut(network, "/")
+		if ok {
+			ip := net.ParseIP(address)
+			if ip != nil && ip.To4() == nil {
+				prefixes = append(prefixes, prefix)
+			}
+		}
+	}
+	return prefixes
+}
+
+func (c *Controller) updateLogicalRouterPortRA(name, configs string, enabled bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.UpdateLogicalRouterPortRA(name, configs, enabled)
+	}
+	lrp, err := c.getLogicalRouterPort(name, false)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		lrp.Ipv6Prefix = nil
+		lrp.Ipv6RaConfigs = nil
+	} else {
+		lrp.Ipv6Prefix = ipv6Prefixes(lrp.Networks)
+		lrp.Ipv6RaConfigs = parseIPv6RAConfigs(configs)
+		if len(lrp.Ipv6Prefix) == 0 || len(lrp.Ipv6RaConfigs) == 0 {
+			return nil
+		}
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Update(
+		context.Background(), "lrp-update", lrp, lrp, &lrp.Ipv6Prefix, &lrp.Ipv6RaConfigs,
+	)
+}
+
 // deleteDHCPOptionsForPort removes per-port DHCP rows before the port is
 // detached from its logical switch. The cleanup is best-effort for the same
 // reason as the legacy client path: an orphaned DHCP row must not prevent the
@@ -1729,6 +1782,38 @@ func (c *Controller) deleteLogicalSwitch(name string) error {
 		return fmt.Errorf("more than one logical switch with same name %q", name)
 	}
 	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Delete(context.Background(), "ls-del", &rows[0])
+}
+
+func (c *Controller) deleteLogicalGatewaySwitch(lsName, lrName string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalGatewaySwitch(lsName, lrName)
+	}
+	var operations []ovsdb.Operation
+	if ls, err := c.getLogicalSwitch(lsName, true); err != nil {
+		return err
+	} else if ls != nil {
+		ops, opErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).DeleteOps(ls)
+		if opErr != nil {
+			return opErr
+		}
+		operations = append(operations, ops...)
+	}
+	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
+	if lrp, err := c.getLogicalRouterPort(lrpName, true); err != nil {
+		return err
+	} else if lrp != nil {
+		ops, opErr := c.logicalRouterPortDeleteOps(lrp)
+		if opErr != nil {
+			return opErr
+		}
+		operations = append(operations, ops...)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(
+		context.Background(), "gw-ls-del", operations...,
+	)
 }
 
 func (c *Controller) updateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error {
