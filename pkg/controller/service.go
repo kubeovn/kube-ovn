@@ -257,7 +257,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		klog.Error(err)
 		return err
 	}
-	if svcObject.oldTrafficDistribution {
+	if svcObject.oldTrafficDistribution && (svc.Spec.TrafficDistribution == nil || serviceUsesDistributedLB(svc)) {
 		if err := c.cleanupServiceTrafficDistributionState(svc); err != nil {
 			return err
 		}
