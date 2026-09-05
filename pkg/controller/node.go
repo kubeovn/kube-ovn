@@ -286,7 +286,7 @@ func (c *Controller) ensureNodeJoinNetwork(node *v1.Node) (*nodeJoinNetwork, err
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err = c.OVNNbClient.CreateBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
+	if err = c.createBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
 		klog.Errorf("failed to create logical switch port %s: %v", portName, err)
 		return nil, err
 	}
@@ -494,7 +494,7 @@ func (c *Controller) deleteNode(key string) error {
 		klog.Errorf("failed to delete node switch port %s: %v", portName, err)
 		return err
 	}
-	if err := c.OVNSbClient.DeleteChassisByHost(key); err != nil {
+	if err := c.deleteChassisByHost(key); err != nil {
 		klog.Errorf("failed to delete chassis for node %s: %v", key, err)
 		return err
 	}
@@ -851,7 +851,7 @@ func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	}
 
 	klog.Warningf("node %s has multiple chassis, deleting all", node.Name)
-	if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
+	if err := c.deleteChassisByHost(node.Name); err != nil {
 		klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
 		return err
 	}

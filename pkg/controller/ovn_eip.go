@@ -126,7 +126,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		klog.Infof("create lsp type ovn eip %s", key)
 		mergedIP := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
+		if err := c.createBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
 			klog.Errorf("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}

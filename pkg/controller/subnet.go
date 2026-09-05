@@ -1108,7 +1108,7 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 	}
 
 	// add new virtual port
-	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPorts(subnet.Name, newVips...); err != nil {
+	if err = c.createVirtualLogicalSwitchPorts(subnet.Name, newVips...); err != nil {
 		klog.Errorf("create virtual port with vips %v from logical switch %s: %v", newVips, subnet.Name, err)
 		return err
 	}
@@ -1855,7 +1855,7 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	}
 
 	localnetPort := ovs.GetLocalnetName(subnet.Name)
-	if err := c.OVNNbClient.CreateLocalnetLogicalSwitchPort(subnet.Name, localnetPort, vlan.Spec.Provider, subnet.Spec.CIDRBlock, vlan.Spec.ID); err != nil {
+	if err := c.createLocalnetLogicalSwitchPort(subnet.Name, localnetPort, vlan.Spec.Provider, subnet.Spec.CIDRBlock, vlan.Spec.ID); err != nil {
 		klog.Errorf("create localnet port for subnet %s: %v", subnet.Name, err)
 		return err
 	}

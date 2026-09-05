@@ -808,6 +808,210 @@ func (c *Controller) batchDeleteLogicalRouterStaticRoutes(lrName string, request
 	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lr-route-del", ops...)
 }
 
+func (c *Controller) createLogicalRouterPort(lrName, lrpName, mac string, networks []string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateLogicalRouterPort(lrName, lrpName, mac, networks)
+	}
+	if existing, err := c.getLogicalRouterPort(lrpName, true); err != nil {
+		return err
+	} else if existing != nil {
+		return nil
+	}
+	if mac == "" {
+		mac = util.GenerateMac()
+	}
+	row := &ovnnb.LogicalRouterPort{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lrpName,
+		MAC:         mac,
+		Networks:    networks,
+		ExternalIDs: map[string]string{"lr": lrName, "vendor": util.CniTypeName},
+	}
+	parent, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).CreateOps(row)
+	if err != nil {
+		return fmt.Errorf("generate operations for creating logical router port %s: %w", lrpName, err)
+	}
+	insertOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(parent, model.Mutation{
+		Field: &parent.Ports, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return fmt.Errorf("generate operations for adding logical router port %s to logical router %s: %w", lrpName, lrName, err)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Transact(context.Background(), "lrp-add", append(createOps, insertOps...)...)
+}
+
+func (c *Controller) createBareLogicalSwitchPort(lsName, lspName, ip, mac string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateBareLogicalSwitchPort(lsName, lspName, ip, mac)
+	}
+	if existing, err := c.getLogicalSwitchPort(lspName, true); err != nil {
+		return err
+	} else if existing != nil {
+		return nil
+	}
+	ipList := strings.Split(ip, ",")
+	addresses := make([]string, 0, len(ipList)+1)
+	addresses = append(addresses, mac)
+	addresses = append(addresses, ipList...)
+	row := &ovnnb.LogicalSwitchPort{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lspName,
+		Addresses:   []string{strings.TrimSpace(strings.Join(addresses, " "))},
+		ExternalIDs: map[string]string{ovs.LogicalSwitchKey: lsName, "vendor": util.CniTypeName},
+	}
+	parent, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return err
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(row)
+	if err != nil {
+		return fmt.Errorf("generate operations for creating logical switch port %s: %w", lspName, err)
+	}
+	insertOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(parent, model.Mutation{
+		Field: &parent.Ports, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return fmt.Errorf("generate operations for adding logical switch port %s to logical switch %s: %w", lspName, lsName, err)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Transact(context.Background(), "lsp-add", append(createOps, insertOps...)...)
+}
+
+func (c *Controller) createVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, ip)
+	}
+	if existing, err := c.getLogicalSwitchPort(lspName, true); err != nil {
+		return err
+	} else if existing != nil {
+		return nil
+	}
+	parent, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return err
+	}
+	row := &ovnnb.LogicalSwitchPort{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lspName,
+		Type:        "virtual",
+		Options:     map[string]string{"virtual-ip": ip},
+		ExternalIDs: map[string]string{ovs.LogicalSwitchKey: lsName, "vendor": util.CniTypeName},
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(row)
+	if err != nil {
+		return err
+	}
+	insertOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(parent, model.Mutation{
+		Field: &parent.Ports, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Transact(context.Background(), "lsp-add", append(createOps, insertOps...)...)
+}
+
+func (c *Controller) createVirtualLogicalSwitchPorts(lsName string, ips ...string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateVirtualLogicalSwitchPorts(lsName, ips...)
+	}
+	parent, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return err
+	}
+	var createOps, insertOps []ovsdb.Operation
+	for _, ip := range ips {
+		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
+		if existing, getErr := c.getLogicalSwitchPort(lspName, true); getErr != nil {
+			return getErr
+		} else if existing != nil {
+			continue
+		}
+		row := &ovnnb.LogicalSwitchPort{
+			UUID:        ovsclient.NamedUUID(),
+			Name:        lspName,
+			Type:        "virtual",
+			Options:     map[string]string{"virtual-ip": ip},
+			ExternalIDs: map[string]string{ovs.LogicalSwitchKey: lsName, "vendor": util.CniTypeName},
+		}
+		ops, createErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(row)
+		if createErr != nil {
+			return createErr
+		}
+		refOps, refErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(parent, model.Mutation{
+			Field: &parent.Ports, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		if refErr != nil {
+			return refErr
+		}
+		createOps = append(createOps, ops...)
+		insertOps = append(insertOps, refOps...)
+	}
+	if len(createOps) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Transact(context.Background(), "lsp-add", append(createOps, insertOps...)...)
+}
+
+func (c *Controller) createLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock string, vlanID int) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock, vlanID)
+	}
+	externalIDs := make(map[string]string)
+	if cidrBlock != "" {
+		ipv4CIDR, ipv6CIDR := util.SplitStringIP(cidrBlock)
+		if ipv4CIDR != "" {
+			externalIDs["ipv4_network"] = ipv4CIDR
+		}
+		if ipv6CIDR != "" {
+			externalIDs["ipv6_network"] = ipv6CIDR
+		}
+	}
+	externalIDs[ovs.LogicalSwitchKey] = lsName
+	externalIDs["vendor"] = util.CniTypeName
+	options := map[string]string{"network_name": provider}
+	if existing, err := c.getLogicalSwitchPort(lspName, true); err != nil {
+		return err
+	} else if existing != nil {
+		if maps.Equal(existing.ExternalIDs, externalIDs) && maps.Equal(existing.Options, options) {
+			return nil
+		}
+		existing.ExternalIDs = externalIDs
+		existing.Options = options
+		return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Update(
+			context.Background(), "lsp-update", existing, existing, &existing.ExternalIDs, &existing.Options,
+		)
+	}
+	parent, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return err
+	}
+	row := &ovnnb.LogicalSwitchPort{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lspName,
+		Type:        "localnet",
+		Addresses:   []string{"unknown"},
+		Options:     options,
+		ExternalIDs: externalIDs,
+	}
+	if vlanID > 0 && vlanID < 4096 {
+		row.Tag = new(vlanID)
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(row)
+	if err != nil {
+		return err
+	}
+	insertOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(parent, model.Mutation{
+		Field: &parent.Ports, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Transact(context.Background(), "lsp-add", append(createOps, insertOps...)...)
+}
+
 func (c *Controller) updatePortGroupPorts(name string, operation ovsdb.Mutator, portNames ...string) error {
 	if c.OVNNbTables == nil {
 		switch operation {
@@ -1736,6 +1940,26 @@ func (c *Controller) deleteChassis(name string) error {
 		return nil
 	}
 	return c.OVNSbTables.Table(&ovnsb.Chassis{}).Delete(context.Background(), "chassis-del", chassis)
+}
+
+func (c *Controller) deleteChassisByHost(hostname string) error {
+	if c.OVNSbTables == nil {
+		return c.OVNSbClient.DeleteChassisByHost(hostname)
+	}
+	var rows []ovnsb.Chassis
+	if err := c.OVNSbTables.Table(&ovnsb.Chassis{}).Filter(context.Background(), func(row *ovnsb.Chassis) bool {
+		return row.Hostname == hostname || row.ExternalIDs["node"] == hostname
+	}, &rows); err != nil {
+		return fmt.Errorf("failed to list Chassis with hostname=%s: %w", hostname, err)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	selectors := make([]model.Model, len(rows))
+	for i := range rows {
+		selectors[i] = &rows[i]
+	}
+	return c.OVNSbTables.Table(&ovnsb.Chassis{}).Delete(context.Background(), "chassis-del", selectors...)
 }
 
 func (c *Controller) updateChassisTag(name, nodeName string) error {

@@ -292,7 +292,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 
 	// add new virtual port if not exist
 	ipStr := util.GetStringIP(cachedVip.Status.V4ip, cachedVip.Status.V6ip)
-	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, ipStr); err != nil {
+	if err = c.createVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, ipStr); err != nil {
 		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", cachedVip.Name, cachedVip.Spec.Subnet, err)
 		return err
 	}
