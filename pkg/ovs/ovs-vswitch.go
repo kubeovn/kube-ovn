@@ -14,7 +14,7 @@ import (
 
 // VswitchClient is a client for interacting with the vswitch database
 type VswitchClient struct {
-	ovsDbClient
+	*compat.Database
 }
 
 var _ Vswitch = (*VswitchClient)(nil)
@@ -51,7 +51,7 @@ func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchCl
 	}
 
 	return &VswitchClient{
-		call:    compat.New(c, time.Duration(transactTimeout)*time.Second, compat.RetryPolicy{}),
-		Timeout: time.Duration(transactTimeout) * time.Second,
+		Database: compat.NewDatabase(c, time.Duration(transactTimeout)*time.Second, compat.RetryPolicy{},
+			compat.WithDatabaseName("vswitchd"), compat.WithTransactionObserver(ovsTransactionObserver{})),
 	}, nil
 }

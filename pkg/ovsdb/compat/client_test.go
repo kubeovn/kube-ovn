@@ -180,4 +180,33 @@ func TestTransactChecksOperationResults(t *testing.T) {
 	require.Contains(t, err.Error(), "operations failed")
 }
 
+func TestDatabaseObservesTransactions(t *testing.T) {
+	operation := ovsdb.Operation{Op: ovsdb.OperationComment, Comment: new("ok")}
+	fake := &fakeBackend{transact: func(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+		return []ovsdb.OperationResult{{}}, nil
+	}}
+	var event TransactionEvent
+	database := NewDatabase(fake, time.Second, RetryPolicy{},
+		WithDatabaseName("test-db"),
+		WithTransactionObserver(TransactionObserverFunc(func(observed TransactionEvent) {
+			event = observed
+		})),
+	)
+
+	require.NoError(t, database.Transact("insert-row", []ovsdb.Operation{operation}))
+	require.Equal(t, "test-db", event.Database)
+	require.Equal(t, "insert-row", event.Method)
+	require.Equal(t, []ovsdb.Operation{operation}, event.Operations)
+	require.NoError(t, event.Err)
+	require.GreaterOrEqual(t, event.Duration, time.Duration(0))
+}
+
+func TestDatabaseGetEntityInfoRequiresPointer(t *testing.T) {
+	fake := &fakeBackend{}
+	database := NewDatabase(fake, time.Second, RetryPolicy{})
+
+	require.Error(t, database.GetEntityInfo(struct{}{}))
+	require.NoError(t, database.GetEntityInfo(&struct{}{}))
+}
+
 var _ model.Model = (*struct{})(nil)

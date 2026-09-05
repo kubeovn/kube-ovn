@@ -224,7 +224,7 @@ func (c *OVNNbClient) updateDHCPOptions(dhcpOpt *ovnnb.DHCPOptions, fields ...an
 		return errors.New("dhcp_options is nil")
 	}
 
-	op, err := c.call.Where(dhcpOpt).Update(dhcpOpt, fields...)
+	op, err := c.Database.Where(dhcpOpt).Update(dhcpOpt, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating dhcp options %s: %w", dhcpOpt.UUID, err)
@@ -246,7 +246,7 @@ func (c *OVNNbClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
 			UUID: uuid,
 		}
 
-		op, err := c.call.Where(dhcpOptions).Delete()
+		op, err := c.Database.Where(dhcpOptions).Delete()
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -272,7 +272,7 @@ func (c *OVNNbClient) DeleteDHCPOptions(lsName, protocol string) error {
 		"protocol":       protocol, // list all protocol dhcp options when protocol is ""
 	}
 
-	op, err := c.call.WhereCache(dhcpOptionsFilter(true, externalIDs)).Delete()
+	op, err := c.Database.WhereCache(dhcpOptionsFilter(true, externalIDs)).Delete()
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operation for deleting dhcp options: %w", err)
@@ -292,7 +292,7 @@ func (c *OVNNbClient) DeleteDHCPOptionsForPort(portName string) error {
 		return errors.New("the port name is required")
 	}
 
-	op, err := c.call.WhereCache(dhcpOptionsFilter(true, map[string]string{
+	op, err := c.Database.WhereCache(dhcpOptionsFilter(true, map[string]string{
 		PortKey: portName,
 	})).Delete()
 	if err != nil {
@@ -383,7 +383,7 @@ func (c *OVNNbClient) ListDHCPOptions(needVendorFilter bool, externalIDs map[str
 
 	dhcpOptList := make([]ovnnb.DHCPOptions, 0)
 
-	if err := c.call.WhereCache(dhcpOptionsFilter(needVendorFilter, externalIDs)).List(ctx, &dhcpOptList); err != nil {
+	if err := c.Database.WhereCache(dhcpOptionsFilter(needVendorFilter, externalIDs)).List(ctx, &dhcpOptList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("list dhcp options with external IDs %v: %w", externalIDs, err)
 	}
@@ -400,7 +400,7 @@ func (c *OVNNbClient) createDHCPEntry(lsName, portName, cidr, options string) er
 		return err
 	}
 
-	op, err := c.call.Create(dhcpOpt)
+	op, err := c.Create(dhcpOpt)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating dhcp options 'cidr %s options %s': %w", cidr, options, err)

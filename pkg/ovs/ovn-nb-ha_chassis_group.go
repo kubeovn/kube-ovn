@@ -33,7 +33,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 		}
 		maps.Insert(group.ExternalIDs, maps.All(externalIDs))
-		createOps, err := c.call.Create(group)
+		createOps, err := c.Create(group)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -42,7 +42,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 	} else {
 		group.ExternalIDs = map[string]string{"vendor": util.CniTypeName}
 		maps.Insert(group.ExternalIDs, maps.All(externalIDs))
-		updateOps, err := c.call.Where(group).Update(group, &group.ExternalIDs)
+		updateOps, err := c.Database.Where(group).Update(group, &group.ExternalIDs)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -55,7 +55,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 
 	haChassises := make([]*ovnnb.HAChassis, 0, max(len(group.HaChassis), len(chassises)))
 	if len(group.HaChassis) != 0 {
-		if err = c.call.WhereCache(func(c *ovnnb.HAChassis) bool {
+		if err = c.Database.WhereCache(func(c *ovnnb.HAChassis) bool {
 			return slices.Contains(group.HaChassis, c.UUID)
 		}).List(ctx, &haChassises); err != nil {
 			klog.Error(err)
@@ -75,7 +75,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 			if chassis.Priority != priority {
 				// update ha chassis priority
 				chassis.Priority = priority
-				updateOps, err := c.call.Where(chassis).Update(chassis, &chassis.Priority)
+				updateOps, err := c.Database.Where(chassis).Update(chassis, &chassis.Priority)
 				if err != nil {
 					klog.Error(err)
 					return err
@@ -88,7 +88,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 	}
 	if len(uuids) != 0 {
 		// delete ha chassis from the group
-		deleteOps, err := c.call.Where(group).Mutate(group, model.Mutation{
+		deleteOps, err := c.Database.Where(group).Mutate(group, model.Mutation{
 			Field:   &group.HaChassis,
 			Value:   uuids,
 			Mutator: ovsdb.MutateOperationDelete,
@@ -108,12 +108,12 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 			Priority:    priority,
 			ExternalIDs: map[string]string{"group": name, "vendor": util.CniTypeName},
 		}
-		createOps, err := c.call.Create(haChassis)
+		createOps, err := c.Create(haChassis)
 		if err != nil {
 			klog.Error(err)
 			return err
 		}
-		insertOps, err := c.call.Where(group).Mutate(group, model.Mutation{
+		insertOps, err := c.Database.Where(group).Mutate(group, model.Mutation{
 			Field:   &group.HaChassis,
 			Value:   []string{haChassis.UUID},
 			Mutator: ovsdb.MutateOperationInsert,
@@ -140,7 +140,7 @@ func (c *OVNNbClient) GetHAChassisGroup(name string, ignoreNotFound bool) (*ovnn
 	defer cancel()
 
 	group := &ovnnb.HAChassisGroup{Name: name}
-	if err := c.call.Get(ctx, group); err != nil {
+	if err := c.Get(ctx, group); err != nil {
 		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
@@ -162,7 +162,7 @@ func (c *OVNNbClient) DeleteHAChassisGroup(name string) error {
 		return nil
 	}
 
-	ops, err := c.call.Where(group).Delete()
+	ops, err := c.Database.Where(group).Delete()
 	if err != nil {
 		klog.Error(err)
 		return err
