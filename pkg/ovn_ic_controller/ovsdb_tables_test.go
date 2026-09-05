@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicsb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -57,6 +59,32 @@ func TestICTableProviderNBGlobalAndPortParentCleanup(t *testing.T) {
 		return row.Name == "ts-region1-region2"
 	}))
 	require.Equal(t, 2, backend.transacts)
+}
+
+func TestICTableProviderICDatabaseOperations(t *testing.T) {
+	backend := newICTableBackend(
+		&ovnicnb.TransitSwitch{UUID: "ts-1", Name: "ts-region1", ExternalIDs: map[string]string{
+			"vendor": "kube-ovn", "subnet": "10.1.0.0/16",
+		}},
+		&ovnicnb.TransitSwitch{UUID: "ts-2", Name: "other", ExternalIDs: map[string]string{"vendor": "other"}},
+		&ovnicsb.AvailabilityZone{UUID: "az-1", Name: "region1"},
+		&ovnicsb.Gateway{UUID: "gw-1", AvailabilityZone: "az-1"},
+		&ovnicsb.Route{UUID: "route-1", AvailabilityZone: "az-1"},
+		&ovnicsb.PortBinding{UUID: "pb-1", AvailabilityZone: "az-1"},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{ICNbTables: database, ICSbTables: database}
+
+	names, err := controller.listICTransitSwitches()
+	require.NoError(t, err)
+	require.Equal(t, []string{"ts-region1"}, names)
+
+	subnet, err := controller.getICTransitSwitchSubnet("ts-region1")
+	require.NoError(t, err)
+	require.Equal(t, "10.1.0.0/16", subnet)
+
+	require.NoError(t, controller.removeOldICChassisInSbDB("region1"))
+	require.Equal(t, 1, backend.transacts)
 }
 
 type icTableBackend struct {
@@ -141,9 +169,9 @@ func (b *icTableBackend) Create(...model.Model) ([]ovsdb.Operation, error) {
 	return icTableOperation(), nil
 }
 
-func (b *icTableBackend) Transact(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+func (b *icTableBackend) Transact(_ context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
 	b.transacts++
-	return []ovsdb.OperationResult{{}}, nil
+	return make([]ovsdb.OperationResult, len(operations)), nil
 }
 func (b *icTableBackend) Cache() compat.Cache                                { return nil }
 func (b *icTableBackend) Schema() ovsdb.DatabaseSchema                       { return ovsdb.DatabaseSchema{} }

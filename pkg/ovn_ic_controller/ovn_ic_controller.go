@@ -127,9 +127,12 @@ func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
 		return state
 	}
 
-	c.ovnLegacyClient.OvnICNbAddress = genHostAddress(cmData["ic-db-host"], cmData["ic-nb-port"])
+	if err := c.ensureICNbClient(cmData["ic-db-host"], cmData["ic-nb-port"]); err != nil {
+		klog.Errorf("failed to connect to IC NB, %v", err)
+		return icNoAction
+	}
 	var err error
-	curTSs, err = c.ovnLegacyClient.GetTs()
+	curTSs, err = c.listICTransitSwitches()
 	if err != nil {
 		klog.Errorf("failed to get Transit_Switch, %v", err)
 		return icNoAction
@@ -167,8 +170,14 @@ func (c *Controller) disableInterConnection(config map[string]string) {
 		config = lastIcCm
 	}
 	if config != nil && config["ic-db-host"] != "" {
-		c.ovnLegacyClient.OvnICSbAddress = genHostAddress(config["ic-db-host"], config["ic-sb-port"])
-		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(config["ic-db-host"], config["ic-nb-port"])
+		if err := c.ensureICNbClient(config["ic-db-host"], config["ic-nb-port"]); err != nil {
+			klog.Errorf("failed to connect to IC NB: %v", err)
+			return
+		}
+		if err := c.ensureICSbClient(config["ic-db-host"], config["ic-sb-port"]); err != nil {
+			klog.Errorf("failed to connect to IC SB: %v", err)
+			return
+		}
 	}
 	if err := c.setAutoRoute(false); err != nil {
 		klog.Errorf("failed to disable auto route: %v", err)
@@ -184,6 +193,7 @@ func (c *Controller) disableInterConnection(config map[string]string) {
 	}
 	icEnabled = "false"
 	lastIcCm = nil
+	c.closeICClients()
 	klog.Info("finish removing ovn-ic")
 }
 
@@ -204,13 +214,12 @@ func (c *Controller) reconcileInterConnection(config map[string]string) {
 	case icNoAction:
 		return
 	case icFirstEstablish:
-		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(config["ic-db-host"], config["ic-nb-port"])
 		klog.Info("start to establish ovn-ic")
 		if err := c.establishInterConnection(config); err != nil {
 			klog.Errorf("failed to establish ovn-ic, %v", err)
 			return
 		}
-		curTSs, err := c.ovnLegacyClient.GetTs()
+		curTSs, err := c.listICTransitSwitches()
 		if err != nil {
 			klog.Errorf("failed to get Transit_Switch, %v", err)
 			return
@@ -285,6 +294,9 @@ func (c *Controller) removeInterConnection(azName string) error {
 }
 
 func (c *Controller) establishInterConnection(config map[string]string) error {
+	if err := c.ensureICNbClient(config["ic-db-host"], config["ic-nb-port"]); err != nil {
+		return err
+	}
 	if err := c.setICAzNameTable(config["az-name"]); err != nil {
 		klog.Errorf("failed to set az name: %v", err)
 		return err
@@ -295,7 +307,7 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return err
 	}
 
-	tsNames, err := c.ovnLegacyClient.GetTs()
+	tsNames, err := c.listICTransitSwitches()
 	if err != nil {
 		klog.Errorf("failed to list ic logical switch: %v", err)
 		return err
@@ -380,7 +392,7 @@ func (c *Controller) gatewayChassisNames(gwNodes []string, order int) ([]string,
 }
 
 func (c *Controller) acquireLrpAddress(ts string) (string, error) {
-	cidr, err := c.ovnLegacyClient.GetTsSubnet(ts)
+	cidr, err := c.getICTransitSwitchSubnet(ts)
 	if err != nil {
 		klog.Errorf("failed to get ts subnet %s: %v", ts, err)
 		return "", err
@@ -498,49 +510,11 @@ func (c *Controller) RemoveOldChassisInSbDB(azName string) error {
 	if azName == "" {
 		return nil
 	}
-
-	azUUID, err := c.ovnLegacyClient.GetAzUUID(azName)
-	if err != nil {
-		klog.Errorf("failed to get UUID of AZ %s: %v", lastIcCm["az-name"], err)
+	if err := c.removeOldICChassisInSbDB(azName); err != nil {
+		klog.Errorf("failed to remove IC SB resources for AZ %s: %v", azName, err)
 		return err
 	}
-
-	if azUUID == "" {
-		klog.Infof("%s have already been deleted", azName)
-		return nil
-	}
-
-	gateways, err := c.ovnLegacyClient.GetGatewayUUIDsInOneAZ(azUUID)
-	if err != nil {
-		klog.Errorf("failed to get gateway UUIDs in AZ %s: %v", azUUID, err)
-		return err
-	}
-
-	routes, err := c.ovnLegacyClient.GetRouteUUIDsInOneAZ(azUUID)
-	if err != nil {
-		klog.Errorf("failed to get route UUIDs in AZ %s: %v", azUUID, err)
-		return err
-	}
-
-	portBindings, err := c.ovnLegacyClient.GetPortBindingUUIDsInOneAZ(azUUID)
-	if err != nil {
-		klog.Errorf("failed to get Port_Binding UUIDs in AZ %s: %v", azUUID, err)
-		return err
-	}
-
-	if err := c.ovnLegacyClient.DestroyPortBindings(portBindings); err != nil {
-		return err
-	}
-
-	if err := c.ovnLegacyClient.DestroyGateways(gateways); err != nil {
-		return err
-	}
-
-	if err := c.ovnLegacyClient.DestroyRoutes(routes); err != nil {
-		return err
-	}
-
-	return c.ovnLegacyClient.DestroyChassis(azUUID)
+	return nil
 }
 
 func stripPrefix(policyMatch string) (string, error) {
