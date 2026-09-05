@@ -195,6 +195,7 @@ func TestEnsureServiceScopedLBClearsAffinityTimeout(t *testing.T) {
 		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc))).Return(nil),
 		fake.mockOvnClient.EXPECT().DeleteLoadBalancerAffinityTimeout(lbName).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, true).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerTemplate(lbName, false).Return(nil),
 	)
 	if _, err := ctrl.ensureServiceScopedLB(svc, corev1.ProtocolTCP); err != nil {
 		t.Fatal(err)

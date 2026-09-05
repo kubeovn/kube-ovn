@@ -112,9 +112,13 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.SetLoadBalancerDistributed(name, distributed); err != nil {
 		return "", fmt.Errorf("set distributed mode on service-scoped load balancer %s: %w", name, err)
 	}
-	if svc.Spec.TrafficDistribution != nil {
+	if svc.Spec.TrafficDistribution != nil && !distributed {
 		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, true); err != nil {
 			return "", fmt.Errorf("set template mode on service-scoped load balancer %s: %w", name, err)
+		}
+	} else if distributed {
+		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, false); err != nil {
+			return "", fmt.Errorf("clear template mode on distributed service-scoped load balancer %s: %w", name, err)
 		}
 	}
 	return name, nil
@@ -233,7 +237,7 @@ func serviceScopedLBNames(svc *v1.Service) []string {
 	seen := make(map[string]struct{}, len(svc.Spec.Ports))
 	for _, port := range svc.Spec.Ports {
 		trafficClasses := []serviceLBTrafficClass{serviceLBInternalTraffic}
-		if serviceUsesDistributedLB(svc) {
+		if serviceUsesDistributedLB(svc) || svc.Spec.TrafficDistribution != nil {
 			trafficClasses = append(trafficClasses, serviceLBExternalTraffic)
 		}
 		for _, trafficClass := range trafficClasses {
