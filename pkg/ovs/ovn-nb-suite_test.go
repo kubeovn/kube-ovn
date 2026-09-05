@@ -575,6 +575,10 @@ func (suite *OvnClientTestSuite) Test_SetLoadBalancerDistributed() {
 	suite.testSetLoadBalancerDistributed()
 }
 
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerAddressFamily() {
+	suite.testSetLoadBalancerAddressFamily()
+}
+
 func (suite *OvnClientTestSuite) Test_SetLoadBalancerExternalIDs() {
 	suite.testSetLoadBalancerExternalIDs()
 }

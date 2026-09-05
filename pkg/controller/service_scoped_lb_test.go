@@ -96,6 +96,29 @@ func TestServiceScopedLBIdentityAndPolicy(t *testing.T) {
 	}
 }
 
+func TestServiceScopedLBNamesTrafficDistributionDualStack(t *testing.T) {
+	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameZone
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-dual-stack"),
+		Spec: corev1.ServiceSpec{
+			ClusterIPs:          []string{"10.96.0.10", "fd00:10:96::10"},
+			TrafficDistribution: &trafficDistribution,
+			Ports:               []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
+		},
+	}
+
+	names := serviceScopedLBNames(svc)
+	for _, family := range []string{"ipv4", "ipv6"} {
+		want := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBInternalTraffic, family)
+		if !slices.Contains(names, want) {
+			t.Fatalf("serviceScopedLBNames() = %v, want %q", names, want)
+		}
+	}
+	if slices.Contains(names, serviceScopedLBName(svc, corev1.ProtocolTCP)) {
+		t.Fatalf("dual-stack template load balancers must be split by address family: %v", names)
+	}
+}
+
 func TestEnsureServiceScopedLB(t *testing.T) {
 	fake := newFakeController(t)
 	ctrl := fake.fakeController
@@ -118,7 +141,7 @@ func TestEnsureServiceScopedLB(t *testing.T) {
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
 	)
 
-	got, err := ctrl.ensureServiceScopedLB(svc, corev1.ProtocolTCP)
+	got, err := ctrl.ensureServiceScopedLB(svc, corev1.ProtocolTCP, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +171,7 @@ func TestEnsureServiceScopedLBExternalTrafficDoesNotDistribute(t *testing.T) {
 		fake.mockOvnClient.EXPECT().SetLoadBalancerAffinityTimeout(lbName, util.DefaultServiceSessionStickinessTimeout).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
 	)
-	if _, err := ctrl.ensureServiceScopedLBForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic); err != nil {
+	if _, err := ctrl.ensureServiceScopedLBForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -197,8 +220,36 @@ func TestEnsureServiceScopedLBClearsAffinityTimeout(t *testing.T) {
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, true).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerTemplate(lbName, false).Return(nil),
 	)
-	if _, err := ctrl.ensureServiceScopedLB(svc, corev1.ProtocolTCP); err != nil {
+	if _, err := ctrl.ensureServiceScopedLB(svc, corev1.ProtocolTCP, ""); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEnsureServiceScopedLBTrafficDistributionAddressFamily(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameNode
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-template-ipv6"),
+		Spec: corev1.ServiceSpec{TrafficDistribution: &trafficDistribution},
+	}
+	lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBInternalTraffic, "ipv6")
+	gomock.InOrder(
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc))).Return(nil),
+		fake.mockOvnClient.EXPECT().DeleteLoadBalancerAffinityTimeout(lbName).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerTemplate(lbName, true).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerAddressFamily(lbName, "ipv6").Return(nil),
+	)
+
+	got, err := ctrl.ensureServiceScopedLB(svc, corev1.ProtocolTCP, "ipv6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != lbName {
+		t.Fatalf("ensureServiceScopedLB() = %q, want %q", got, lbName)
 	}
 }
 
@@ -229,6 +280,53 @@ func TestServiceLBMigrationCandidates(t *testing.T) {
 		if slices.Contains(candidates, serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, otherClass)) {
 			t.Fatalf("%s migration candidates unexpectedly contain %s LB: %v", trafficClass, otherClass, candidates)
 		}
+	}
+
+	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameZone
+	templateService := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-template-migrate"),
+		Spec: corev1.ServiceSpec{
+			ClusterIPs:          []string{"10.96.0.10", "fd00:10:96::10"},
+			TrafficDistribution: &trafficDistribution,
+		},
+	}
+	candidates := serviceLBMigrationCandidates(templateService, corev1.ProtocolTCP, "old", vpc, serviceLBInternalTraffic)
+	for _, family := range []string{"ipv4", "ipv6"} {
+		want := serviceScopedLBNameForTrafficClassAndFamily(templateService, corev1.ProtocolTCP, serviceLBInternalTraffic, family)
+		if !slices.Contains(candidates, want) {
+			t.Fatalf("template migration candidates %v do not contain %q", candidates, want)
+		}
+	}
+}
+
+func TestDeleteServiceLBMigrationVIPSkipsMissingLoadBalancers(t *testing.T) {
+	fake := newFakeController(t)
+	trafficDistribution := corev1.ServiceTrafficDistributionPreferSameZone
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-template-delete"),
+		Spec: corev1.ServiceSpec{
+			ClusterIPs:          []string{"10.96.0.10", "fd00:10:96::10"},
+			TrafficDistribution: &trafficDistribution,
+		},
+	}
+	vpc := &kubeovnv1.Vpc{Status: kubeovnv1.VpcStatus{
+		TCPLoadBalancer:        "tcp",
+		TCPSessionLoadBalancer: "tcp-session",
+	}}
+	current := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBInternalTraffic, "ipv4")
+	base := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBInternalTraffic)
+	ipv6 := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBInternalTraffic, "ipv6")
+	gomock.InOrder(
+		fake.mockOvnClient.EXPECT().LoadBalancerExists("old").Return(false, nil),
+		fake.mockOvnClient.EXPECT().LoadBalancerExists("tcp").Return(true, nil),
+		fake.mockOvnClient.EXPECT().LoadBalancerDeleteVip("tcp", "10.96.0.10:80", true).Return(nil),
+		fake.mockOvnClient.EXPECT().LoadBalancerExists("tcp-session").Return(false, nil),
+		fake.mockOvnClient.EXPECT().LoadBalancerExists(base).Return(false, nil),
+		fake.mockOvnClient.EXPECT().LoadBalancerExists(ipv6).Return(false, nil),
+	)
+
+	if err := fake.fakeController.deleteServiceLBMigrationVIP(svc, corev1.ProtocolTCP, "old", current, "10.96.0.10:80", vpc, serviceLBInternalTraffic); err != nil {
+		t.Fatal(err)
 	}
 }
 

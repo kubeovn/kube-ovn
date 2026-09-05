@@ -259,44 +259,44 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			seenProtocols[port.Protocol] = struct{}{}
 			protocols = append(protocols, port.Protocol)
 		}
-		for _, protocol := range protocols {
-			lbName, ensureErr := c.ensureServiceScopedLB(svc, protocol)
-			if ensureErr != nil {
-				return ensureErr
-			}
-			switch protocol {
-			case v1.ProtocolTCP:
-				tcpLb = lbName
-				if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-					oldTCPLb = vpc.Status.TCPSessionLoadBalancer
-				} else {
-					oldTCPLb = vpc.Status.TCPLoadBalancer
-				}
-			case v1.ProtocolUDP:
-				udpLb = lbName
-				if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-					oldUDPLb = vpc.Status.UDPSessionLoadBalancer
-				} else {
-					oldUDPLb = vpc.Status.UDPLoadBalancer
-				}
-			case v1.ProtocolSCTP:
-				sctpLb = lbName
-				if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-					oldSctpLb = vpc.Status.SctpSessionLoadBalancer
-				} else {
-					oldSctpLb = vpc.Status.SctpLoadBalancer
-				}
-			}
+		families := []string{""}
+		if serviceUsesTemplateLB(svc) {
+			families = serviceTemplateLBAddressFamilies(svc)
 		}
-		lbNames := make([]string, 0, len(protocols))
+		lbNames := make([]string, 0, len(protocols)*len(families))
 		for _, protocol := range protocols {
-			switch protocol {
-			case v1.ProtocolTCP:
-				lbNames = append(lbNames, tcpLb)
-			case v1.ProtocolUDP:
-				lbNames = append(lbNames, udpLb)
-			case v1.ProtocolSCTP:
-				lbNames = append(lbNames, sctpLb)
+			for _, family := range families {
+				lbName, ensureErr := c.ensureServiceScopedLB(svc, protocol, family)
+				if ensureErr != nil {
+					return ensureErr
+				}
+				lbNames = append(lbNames, lbName)
+				if family != "" {
+					continue
+				}
+				switch protocol {
+				case v1.ProtocolTCP:
+					tcpLb = lbName
+					if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+						oldTCPLb = vpc.Status.TCPSessionLoadBalancer
+					} else {
+						oldTCPLb = vpc.Status.TCPLoadBalancer
+					}
+				case v1.ProtocolUDP:
+					udpLb = lbName
+					if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+						oldUDPLb = vpc.Status.UDPSessionLoadBalancer
+					} else {
+						oldUDPLb = vpc.Status.UDPLoadBalancer
+					}
+				case v1.ProtocolSCTP:
+					sctpLb = lbName
+					if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+						oldSctpLb = vpc.Status.SctpSessionLoadBalancer
+					} else {
+						oldSctpLb = vpc.Status.SctpLoadBalancer
+					}
+				}
 			}
 		}
 		if err = c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, lbNames...); err != nil {
@@ -363,6 +363,11 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 			if isTemplateForVIP {
 				// The template VIP and per-chassis backend variables were reconciled above.
 				// Do not replace the variable reference with a literal backend list.
+				vip = util.JoinHostPort(lbVip, port.Port)
+				lb = serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBInternalTraffic, strings.ToLower(util.CheckProtocol(lbVip)))
+				if err = c.deleteServiceLBMigrationVIP(svc, port.Protocol, oldLb, lb, vip, vpc, serviceLBInternalTraffic); err != nil {
+					return fmt.Errorf("migrate template vip %s: %w", vip, err)
+				}
 				continue
 			}
 
@@ -1039,7 +1044,8 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 				if classes[lbVip] == serviceLBExternalTraffic {
 					continue
 				}
-				lbName := serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBInternalTraffic)
+				family := strings.ToLower(util.CheckProtocol(lbVip))
+				lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBInternalTraffic, family)
 				vip := util.JoinHostPort(lbVip, port.Port)
 				base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
 				vipVariable, backendVariable := base+"_vip", base+"_backends"

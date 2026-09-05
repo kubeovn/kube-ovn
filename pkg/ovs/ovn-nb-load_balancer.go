@@ -372,6 +372,27 @@ func (c *OVNNbClient) SetLoadBalancerTemplate(lbName string, template bool) erro
 	return nil
 }
 
+// SetLoadBalancerAddressFamily sets the address family used to expand a template load balancer.
+func (c *OVNNbClient) SetLoadBalancerAddressFamily(lbName, family string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	if lb.Options["address-family"] == family {
+		return nil
+	}
+	options := maps.Clone(lb.Options)
+	if options == nil {
+		options = make(map[string]string, 1)
+	}
+	options["address-family"] = family
+	lb.Options = options
+	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		return fmt.Errorf("failed to set address family of lb %s to %s: %w", lbName, family, err)
+	}
+	return nil
+}
+
 // SetLoadBalancerTemplateVIP configures a VIP to use a chassis template backend variable.
 func (c *OVNNbClient) SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error {
 	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
