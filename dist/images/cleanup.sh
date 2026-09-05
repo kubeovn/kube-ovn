@@ -109,9 +109,10 @@ kubectl delete --ignore-not-found clusterrolebinding vpc-dns
 kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
 # remove finalizers
-for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io; do
-  for resource in $(kubectl get "$resource_type" -o name); do
-    kubectl patch "$resource" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
+for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io vpc-endpoint-services.kubeovn.io vpc-endpoints.kubeovn.io; do
+  for resource in $(kubectl get "$resource_type" -o name 2>/dev/null); do
+    # Clear finalizers even when the list is already empty/null so CRD deletion is not blocked.
+    kubectl patch "$resource" --type=merge -p '{"metadata":{"finalizers":null}}' >/dev/null 2>&1 || true
   done
 done
 
