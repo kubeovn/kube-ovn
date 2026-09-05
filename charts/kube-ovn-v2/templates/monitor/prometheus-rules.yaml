@@ -1,11 +1,12 @@
 {{- if .Values.prometheusRule.enabled }}
+{{- $fullname := include "kubeovn.fullname" . -}}
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: kube-ovn
+  name: {{ $fullname }}
   namespace: {{ default .Values.namespace .Values.prometheusRule.namespace }}
   labels:
-    app.kubernetes.io/name: kube-ovn
+    app.kubernetes.io/name: {{ $fullname }}
     app.kubernetes.io/part-of: kube-ovn
     {{- with .Values.prometheusRule.labels }}
     {{- toYaml . | nindent 4 }}

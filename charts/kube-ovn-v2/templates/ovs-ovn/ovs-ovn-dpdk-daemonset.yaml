@@ -1,9 +1,12 @@
 {{- if .Values.ovsOvn.dpdkHybrid.enabled }}
 {{- $ovsOvnDpdkImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.ovsOvn.dpdkHybrid.image "defaultRepository" .Values.global.images.kubeovn.repository "defaultTag" .Values.ovsOvn.dpdkHybrid.tag) | fromYaml -}}
+{{- $ovsOvnDpdkName := include "kubeovn.ovsOvnDpdkName" . -}}
+{{- $ovsServiceAccountName := include "kubeovn.ovsServiceAccountName" . -}}
+{{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: ovs-ovn-dpdk
+  name: {{ $ovsOvnDpdkName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.ovsOvn.annotations }}
   annotations:
@@ -16,7 +19,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-ovs-dpdk
+      app.kubernetes.io/name: {{ $ovsOvnDpdkName }}
       app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
     type: {{ .Values.ovsOvn.updateStrategy.type }}
@@ -32,13 +35,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-ovs-dpdk
+        app.kubernetes.io/name: {{ $ovsOvnDpdkName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.ovsOvn.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: ovs-dpdk
+        app: {{ $ovsOvnDpdkName }}
         component: network
         type: infra
     spec:
@@ -49,7 +52,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       priorityClassName: system-node-critical
-      serviceAccountName: ovn-ovs
+      serviceAccountName: {{ $ovsServiceAccountName }}
       automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
@@ -121,7 +124,7 @@ spec:
               name: localtime
               readOnly: true
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: {{ $tlsSecretName }}
           readinessProbe:
             exec:
               command:
@@ -185,8 +188,8 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
+        - name: {{ $tlsSecretName }}
           secret:
             optional: true
-            secretName: kube-ovn-tls
+            secretName: {{ $tlsSecretName }}
 {{- end }}

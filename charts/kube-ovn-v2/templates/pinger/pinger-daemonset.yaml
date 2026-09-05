@@ -1,8 +1,11 @@
 {{- $pingerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.pinger.image) | fromYaml -}}
+{{- $pingerName := include "kubeovn.pingerName" . -}}
+{{- $appServiceAccountName := include "kubeovn.appServiceAccountName" . -}}
+{{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: kube-ovn-pinger
+  name: {{ $pingerName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.pinger.annotations }}
   annotations:
@@ -15,7 +18,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-pinger
+      app.kubernetes.io/name: {{ $pingerName }}
       app.kubernetes.io/part-of: kube-ovn
   updateStrategy:
     type: RollingUpdate
@@ -26,13 +29,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-pinger
+        app.kubernetes.io/name: {{ $pingerName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.pinger.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: kube-ovn-pinger
+        app: {{ $pingerName }}
         component: network
         type: infra
     spec:
@@ -44,7 +47,7 @@ spec:
           operator: Exists
         - key: CriticalAddonsOnly
           operator: Exists
-      serviceAccountName: kube-ovn-app
+      serviceAccountName: {{ $appServiceAccountName }}
       automountServiceAccountToken: true
       hostPID: false
       securityContext:
@@ -134,7 +137,7 @@ spec:
               name: localtime
               readOnly: true
             - mountPath: /var/run/tls
-              name: kube-ovn-tls
+              name: {{ $tlsSecretName }}
           {{- with .Values.pinger.resources }}
           resources:
             {{- toYaml . | trim | nindent 12 }}
@@ -175,7 +178,7 @@ spec:
         - name: localtime
           hostPath:
             path: /etc/localtime
-        - name: kube-ovn-tls
+        - name: {{ $tlsSecretName }}
           secret:
             optional: true
-            secretName: kube-ovn-tls
+            secretName: {{ $tlsSecretName }}

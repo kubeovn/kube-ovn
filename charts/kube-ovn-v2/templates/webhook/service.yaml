@@ -1,8 +1,9 @@
 {{- if .Values.validatingWebhook.enabled }}
+{{- $webhookName := include "kubeovn.webhookName" . -}}
 kind: Service
 apiVersion: v1
 metadata:
-  name: kube-ovn-webhook
+  name: {{ $webhookName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.validatingWebhook.annotations }}
   annotations:
@@ -20,7 +21,7 @@ spec:
       targetPort: 8443
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: kube-ovn-webhook
+    app.kubernetes.io/name: {{ $webhookName }}
     app.kubernetes.io/part-of: kube-ovn
   sessionAffinity: None
 {{- end }}

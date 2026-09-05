@@ -1,10 +1,14 @@
+{{- $ovnClusterRoleName := include "kubeovn.ovnClusterRoleName" . -}}
+{{- $ovsClusterRoleName := include "kubeovn.ovsClusterRoleName" . -}}
+{{- $appClusterRoleName := include "kubeovn.appClusterRoleName" . -}}
+{{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   annotations:
     rbac.authorization.k8s.io/system-only: "true"
-  name: system:ovn
+  name: {{ $ovnClusterRoleName }}
 rules:
   - apiGroups:
       - "kubeovn.io"
@@ -281,7 +285,7 @@ rules:
     resources:
       - secrets
     resourceNames:
-      - kube-ovn-tls
+      - {{ $tlsSecretName }}
     verbs:
       - update
   - apiGroups:
@@ -313,7 +317,7 @@ kind: ClusterRole
 metadata:
   annotations:
     rbac.authorization.k8s.io/system-only: "true"
-  name: system:ovn-ovs
+  name: {{ $ovsClusterRoleName }}
 rules:
   - apiGroups:
       - ""
@@ -348,7 +352,7 @@ kind: ClusterRole
 metadata:
   annotations:
     rbac.authorization.k8s.io/system-only: "true"
-  name: system:kube-ovn-app
+  name: {{ $appClusterRoleName }}
 rules:
   - apiGroups:
       - ""
