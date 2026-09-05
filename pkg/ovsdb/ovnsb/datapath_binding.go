@@ -5,10 +5,21 @@ package ovnsb
 
 const DatapathBindingTable = "Datapath_Binding"
 
+type (
+	DatapathBindingType = string
+)
+
+const (
+	DatapathBindingTypeLogicalSwitch DatapathBindingType = "logical-switch"
+	DatapathBindingTypeLogicalRouter DatapathBindingType = "logical-router"
+)
+
 // DatapathBinding defines an object in Datapath_Binding table
 type DatapathBinding struct {
-	UUID          string            `ovsdb:"_uuid"`
-	ExternalIDs   map[string]string `ovsdb:"external_ids"`
-	LoadBalancers []string          `ovsdb:"load_balancers"`
-	TunnelKey     int               `ovsdb:"tunnel_key" validate:"min=1,max=16777215"`
+	UUID          string               `ovsdb:"_uuid"`
+	ExternalIDs   map[string]string    `ovsdb:"external_ids"`
+	LoadBalancers []string             `ovsdb:"load_balancers"`
+	NbUUID        *string              `ovsdb:"nb_uuid"`
+	TunnelKey     int                  `ovsdb:"tunnel_key" validate:"min=1,max=16777215"`
+	Type          *DatapathBindingType `ovsdb:"type" validate:"omitempty,oneof='logical-switch' 'logical-router'"`
 }

@@ -4,8 +4,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-OVS_VERSION="3.5"
-OVN_VERSION="25.03"
+OVS_VERSION="3.7"
+OVN_VERSION="26.03"
 
 # download vswitch/nb/sb schema files
 curl -sSf -L --retry 5 -o vswitch.ovsschema \

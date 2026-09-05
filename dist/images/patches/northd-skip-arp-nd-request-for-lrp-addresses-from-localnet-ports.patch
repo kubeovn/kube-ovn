@@ -6,25 +6,23 @@ Subject: [PATCH] northd: skip arp/nd request for lrp addresses from localnet
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
- northd/northd.c | 52 +++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 52 insertions(+)
+ northd/northd.c | 53 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 53 insertions(+)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index 6f521f382d..e5fb3ab896 100644
+index d674518a1..ad858258d 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -9919,6 +9919,58 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
-             return;
-         }
- 
+@@ -10673,0 +10674,53 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
 +        struct ovn_port *lrp = op->peer;
 +        if (lrp && lrp->nbrp && !lrp->primary_port &&
 +            !lrp->nbrp->n_gateway_chassis && !lrp->nbrp->ha_chassis_group &&
 +            lsp_is_router(op->nbsp)) {
 +            ovs_be32 lla_ip4;
 +            inet_pton(AF_INET, "169.254.0.0", &lla_ip4);
-+            for (size_t i = 0; i < op->od->n_localnet_ports; i++) {
-+                struct ovn_port *localnet_port = op->od->localnet_ports[i];
++            for (size_t i = 0; i < vector_len(&op->od->localnet_ports); i++) {
++                struct ovn_port *localnet_port = vector_get(
++                    &op->od->localnet_ports, i, struct ovn_port *);
 +                for (size_t j = 0; j < lrp->lrp_networks.n_ipv4_addrs; j++) {
 +                    struct ipv4_netaddr *addrs;
 +                    addrs = &lrp->lrp_networks.ipv4_addrs[j];
@@ -69,6 +67,3 @@ index 6f521f382d..e5fb3ab896 100644
 +            }
 +        }
 +
-         for (size_t i = 0; i < op->n_lsp_addrs; i++) {
-             for (size_t j = 0; j < op->lsp_addrs[i].n_ipv4_addrs; j++) {
-                 ds_clear(match);
