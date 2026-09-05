@@ -455,7 +455,7 @@ func (c *Controller) setupCnpPortGroup(cnp *v1alpha2.ClusterNetworkPolicy) error
 	}
 
 	// Assign the logical ports to the port group
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+	if err = c.setPortGroupPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 		return err
 	}
@@ -574,7 +574,7 @@ func (c *Controller) createCnpAddressSet(cnpName, ruleName, direction, asName st
 		return err
 	}
 
-	if err := c.OVNNbClient.AddressSetUpdateAddress(asName, addresses...); err != nil {
+	if err := c.updateAddressSetAddresses(asName, addresses...); err != nil {
 		klog.Errorf("failed to set addresses %q to address set %s: %v", strings.Join(addresses, ","), asName, err)
 		return err
 	}

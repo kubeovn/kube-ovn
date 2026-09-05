@@ -138,9 +138,83 @@ func TestControllerTableProviderWrites(t *testing.T) {
 	require.Equal(t, 4, backend.transactCalls)
 }
 
+func TestControllerTableProviderFieldUpdates(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LoadBalancer{
+			UUID:    "lb-1",
+			Name:    "lb-1",
+			Options: map[string]string{"owner": "test"},
+		},
+		&ovnnb.LogicalSwitchPort{
+			UUID:        "lsp-1",
+			Name:        "port-1",
+			ExternalIDs: map[string]string{"owner": "test"},
+		},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.setLoadBalancerAffinityTimeout("lb-1", 30))
+	require.NoError(t, controller.setLoadBalancerPreferLocalBackend("lb-1", true))
+	require.NoError(t, controller.setLoadBalancerCtFlush("lb-1", true))
+	require.NoError(t, controller.setLogicalSwitchPortExternalIDs("port-1", map[string]string{"managed": "true"}))
+	require.NoError(t, controller.setLogicalSwitchPortVlanTag("port-1", 100))
+	require.Equal(t, 5, backend.updateCalls)
+	require.Equal(t, 5, backend.transactCalls)
+
+	require.Error(t, controller.setLogicalSwitchPortVlanTag("port-1", 4096))
+	require.Equal(t, 5, backend.updateCalls)
+	require.Equal(t, 5, backend.transactCalls)
+}
+
+func TestControllerTableProviderCollectionUpdates(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.AddressSet{UUID: "as-1", Name: "as-1", Addresses: []string{"10.0.0.0/24"}},
+		&ovnnb.PortGroup{UUID: "pg-1", Name: "pg-1", Ports: []string{"lsp-old"}},
+		&ovnnb.LogicalSwitchPort{UUID: "lsp-1", Name: "port-1"},
+		&ovnnb.LogicalSwitchPort{UUID: "lsp-2", Name: "port-2"},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	// Equivalent CIDRs are normalized and do not result in a transaction.
+	require.NoError(t, controller.updateAddressSetAddresses("as-1", "10.0.0.1/24", "10.0.0.0/24"))
+	require.Equal(t, 0, backend.updateCalls)
+	require.NoError(t, controller.updateAddressSetAddresses("as-1", "10.0.0.0/24", "10.0.1.0/24"))
+	require.Equal(t, 1, backend.updateCalls)
+
+	require.NoError(t, controller.setPortGroupPorts("pg-1", []string{"port-1"}))
+	require.NoError(t, controller.updatePortGroupPorts("pg-1", ovsdb.MutateOperationInsert, "port-2"))
+	require.Equal(t, 2, backend.mutateCalls)
+	require.Equal(t, 3, backend.transactCalls)
+}
+
+func TestControllerTableProviderRelationUpdates(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1"},
+		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"},
+		&ovnnb.LoadBalancer{UUID: "lb-1", Name: "lb-1", ExternalIDs: map[string]string{"owner": "test"}},
+		&ovnnb.LogicalSwitchPort{UUID: "lsp-1", Name: "port-1"},
+		&ovnnb.PortGroup{UUID: "pg-1", Name: "pg-1", Ports: []string{"lsp-1"}},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.updateLogicalSwitchLoadBalancers("ls-1", ovsdb.MutateOperationInsert, "lb-1"))
+	require.NoError(t, controller.updateLogicalRouterLoadBalancers("lr-1", ovsdb.MutateOperationInsert, "lb-1"))
+	require.NoError(t, controller.updateLogicalSwitchOtherConfig("ls-1", ovsdb.MutateOperationInsert, map[string]string{"mcast_snoop": "true"}))
+	require.NoError(t, controller.setLoadBalancerExternalTrafficLocal("lb-1", "10.0.0.10:80", "node-worker-1"))
+	require.NoError(t, controller.removePortFromPortGroups("port-1"))
+
+	require.Equal(t, 5, backend.mutateCalls)
+	require.Equal(t, 5, backend.transactCalls)
+}
+
 type tableBackend struct {
 	rows          map[reflect.Type][]any
 	createCalls   int
+	mutateCalls   int
+	updateCalls   int
 	transactCalls int
 }
 
@@ -277,12 +351,14 @@ func appendTableRow(destination, candidate reflect.Value) {
 	}
 }
 
-func (tableConditional) Mutate(model.Model, ...model.Mutation) ([]ovsdb.Operation, error) {
-	return nil, nil
+func (c tableConditional) Mutate(model.Model, ...model.Mutation) ([]ovsdb.Operation, error) {
+	c.backend.mutateCalls++
+	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}, nil
 }
 
-func (tableConditional) Update(model.Model, ...any) ([]ovsdb.Operation, error) {
-	return nil, nil
+func (c tableConditional) Update(model.Model, ...any) ([]ovsdb.Operation, error) {
+	c.backend.updateCalls++
+	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}, nil
 }
 
 func (tableConditional) Delete() ([]ovsdb.Operation, error) { return nil, nil }

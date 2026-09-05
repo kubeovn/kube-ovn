@@ -138,7 +138,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 			klog.Error(err)
 			return err
 		}
-		if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
+		if err := c.setLogicalSwitchPortArpProxy(portName, true); err != nil {
 			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %w", portName, err)
 			klog.Error(err)
 			return err
@@ -355,7 +355,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	}
 
 	parents := strings.Join(virtualParents, ",")
-	if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
+	if err = c.setVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
 		klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, parents, err)
 		return err
 	}

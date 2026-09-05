@@ -109,7 +109,7 @@ func (c *Controller) createAsForNetpol(ns, name, direction, asName string, addre
 		return err
 	}
 
-	if err := c.OVNNbClient.AddressSetUpdateAddress(asName, addresses...); err != nil {
+	if err := c.updateAddressSetAddresses(asName, addresses...); err != nil {
 		klog.Errorf("failed to set addresses %q to address set %s: %v", strings.Join(addresses, ","), asName, err)
 		return err
 	}
@@ -195,7 +195,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 	klog.Infof("UpdateNp, related subnets protocols %s", protocolSet.String())
 
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+	if err = c.setPortGroupPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports of port group %s to %v: %v", pgName, ports, err)
 		return err
 	}

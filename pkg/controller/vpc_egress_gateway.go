@@ -968,7 +968,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			klog.Error(err)
 			return err
 		}
-		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
+		if err = c.setPortGroupPorts(pgName, ports.UnsortedList()); err != nil {
 			err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
 			klog.Error(err)
 			return err
@@ -986,7 +986,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		klog.Error(err)
 		return err
 	}
-	if err = c.OVNNbClient.AddressSetUpdateAddress(asName, sources.SortedList()...); err != nil {
+	if err = c.updateAddressSetAddresses(asName, sources.SortedList()...); err != nil {
 		err = fmt.Errorf("failed to update address set %s: %w", asName, err)
 		klog.Error(err)
 		return err
@@ -998,7 +998,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			klog.Error(err)
 			return err
 		}
-		if err = c.OVNNbClient.AddressSetUpdateAddress(compatAsName); err != nil {
+		if err = c.updateAddressSetAddresses(compatAsName); err != nil {
 			err = fmt.Errorf("failed to clear compatibility address set %s: %w", compatAsName, err)
 			klog.Error(err)
 			return err

@@ -191,7 +191,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		return err
 	}
 
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+	if err = c.setPortGroupPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 		return err
 	}
@@ -448,7 +448,7 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 			return err
 		}
 
-		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+		if err = c.setPortGroupPorts(pgName, ports); err != nil {
 			klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 			return err
 		}
@@ -763,7 +763,7 @@ func (c *Controller) createAsForAnpRule(anpName, ruleName, direction, asName str
 		return err
 	}
 
-	if err := c.OVNNbClient.AddressSetUpdateAddress(asName, addresses...); err != nil {
+	if err := c.updateAddressSetAddresses(asName, addresses...); err != nil {
 		klog.Errorf("failed to set addresses %q to address set %s: %v", strings.Join(addresses, ","), asName, err)
 		return err
 	}

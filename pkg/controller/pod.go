@@ -15,6 +15,7 @@ import (
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	multustypes "gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	appsv1 "k8s.io/api/apps/v1"
@@ -813,7 +814,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			}
 
 			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
-				if err := c.OVNNbClient.EnablePortLayer2forward(portName); err != nil {
+				if err := c.enableLogicalSwitchPortLayer2Forward(portName); err != nil {
 					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", "stage=setLogicalSwitchPortLayer2Forward error=%v", err)
 					klog.Errorf("%v", err)
 					return nil, err
@@ -966,12 +967,12 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			!subnet.Spec.LogicalGateway {
 			// remove lsp from other port groups
 			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
+			if err = c.removePortFromPortGroups(portName, subnetPortGroups...); err != nil {
 				klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
 				return err
 			}
 			// add lsp to the port group
-			if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
+			if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, portName); err != nil {
 				klog.Errorf("failed to add port to u2o port group %s: %v", pgName, err)
 				return err
 			}
@@ -980,12 +981,12 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
 			// remove lsp from other port groups
 			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, nodePortGroups...); err != nil {
+			if err = c.removePortFromPortGroups(portName, nodePortGroups...); err != nil {
 				klog.Errorf("failed to remove port %s from port groups %v: %v", portName, nodePortGroups, err)
 				return err
 			}
 			// add lsp to the port group
-			if err = c.OVNNbClient.PortGroupAddPorts(nodePortGroup, portName); err != nil {
+			if err = c.updatePortGroupPorts(nodePortGroup, ovsdb.MutateOperationInsert, portName); err != nil {
 				klog.Errorf("failed to add port %s to port group %s: %v", portName, nodePortGroup, err)
 				return err
 			}
@@ -1031,7 +1032,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				}
 
 				// remove lsp from port group to make EIP/SNAT work
-				if err = c.OVNNbClient.PortGroupRemovePorts(pgName, portName); err != nil {
+				if err = c.updatePortGroupPorts(pgName, ovsdb.MutateOperationDelete, portName); err != nil {
 					klog.Error(err)
 					return err
 				}
@@ -1052,11 +1053,11 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 
 							// remove lsp from other port groups
 							// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-							if err = c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
+							if err = c.removePortFromPortGroups(portName, subnetPortGroups...); err != nil {
 								klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
 								return err
 							}
-							if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
+							if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, portName); err != nil {
 								klog.Errorf("failed to add port %s to port group %s: %v", portName, pgName, err)
 								return err
 							}
@@ -1138,7 +1139,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		}
 
 		if pod.Annotations[fmt.Sprintf(util.ActivationStrategyTemplate, podNet.ProviderName)] != "" {
-			if err := c.OVNNbClient.SetLogicalSwitchPortActivationStrategy(portName, pod.Spec.NodeName); err != nil {
+			if err := c.setLogicalSwitchPortActivationStrategy(portName, pod.Spec.NodeName); err != nil {
 				klog.Errorf("failed to set activation strategy for lsp %s: %v", portName, err)
 				return err
 			}
@@ -1253,7 +1254,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	if isVMPod && c.config.EnableKeepVMIP {
 		for _, port := range ports {
 			stage = "cleanLogicalSwitchPortMigrateOptions"
-			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
+			if err := c.cleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
 				klog.Error(err)
 				return err
@@ -1356,7 +1357,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			default:
 				klog.Infof("remove lsp %s from all port groups", port.Name)
 				stage = "removeLogicalSwitchPortFromPortGroups"
-				if err = c.OVNNbClient.RemovePortFromPortGroups(port.Name); err != nil {
+				if err = c.removePortFromPortGroups(port.Name); err != nil {
 					klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
 					return err
 				}
@@ -1549,7 +1550,7 @@ func (c *Controller) handleUpdatePodSecurity(key string) error {
 		ipStr := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
 		vips := vipsMap[fmt.Sprintf("%s.%s", podNet.Subnet.Name, podNet.ProviderName)]
 		portName := ovs.PodNameToPortName(podName, namespace, podNet.ProviderName)
-		if err = c.OVNNbClient.SetLogicalSwitchPortSecurity(portSecurity, portName, mac, ipStr, vips); err != nil {
+		if err = c.setLogicalSwitchPortSecurity(portSecurity, portName, mac, ipStr, vips); err != nil {
 			klog.Errorf("failed to set security for logical switch port %s: %v", portName, err)
 			c.recorder.Eventf(pod, v1.EventTypeWarning, "PodSecurityUpdateFailed", "stage=setLogicalSwitchPortSecurity error=%v", err)
 			return err

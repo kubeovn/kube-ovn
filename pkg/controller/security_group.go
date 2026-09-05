@@ -131,7 +131,7 @@ func (c *Controller) updateDenyAllSgPorts() error {
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
 
 	klog.V(6).Infof("setting ports of port group %s to %v", pgName, addPorts)
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, addPorts); err != nil {
+	if err = c.setPortGroupPorts(pgName, addPorts); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -405,19 +405,19 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return err
 	}
 
-	if err = c.OVNNbClient.PortGroupSetPorts(sg.Status.PortGroup, ports); err != nil {
+	if err = c.setPortGroupPorts(sg.Status.PortGroup, ports); err != nil {
 		klog.Errorf("add ports to port group %s: %v", sg.Status.PortGroup, err)
 		return err
 	}
 
 	v4AsName := ovs.GetSgV4AssociatedName(key)
-	if err := c.OVNNbClient.AddressSetUpdateAddress(v4AsName, v4s...); err != nil {
+	if err := c.updateAddressSetAddresses(v4AsName, v4s...); err != nil {
 		klog.Errorf("set ips to address set %s: %v", v4AsName, err)
 		return err
 	}
 
 	v6AsName := ovs.GetSgV6AssociatedName(key)
-	if err := c.OVNNbClient.AddressSetUpdateAddress(v6AsName, v6s...); err != nil {
+	if err := c.updateAddressSetAddresses(v6AsName, v6s...); err != nil {
 		klog.Errorf("set ips to address set %s: %v", v6AsName, err)
 		return err
 	}
@@ -461,14 +461,14 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 			needAssociated = "true"
 		}
 
-		if err = c.OVNNbClient.SetLogicalSwitchPortExternalIDs(portName, map[string]string{"associated_sg_" + sgName: needAssociated}); err != nil {
+		if err = c.setLogicalSwitchPortExternalIDs(portName, map[string]string{"associated_sg_" + sgName: needAssociated}); err != nil {
 			klog.Errorf("set logical switch port %s external_ids: %v", portName, err)
 			return err
 		}
 		c.syncSgPortsQueue.Add(sgName)
 	}
 
-	if err = c.OVNNbClient.SetLogicalSwitchPortExternalIDs(portName, map[string]string{"security_groups": strings.ReplaceAll(securityGroups, ",", "/")}); err != nil {
+	if err = c.setLogicalSwitchPortExternalIDs(portName, map[string]string{"security_groups": strings.ReplaceAll(securityGroups, ",", "/")}); err != nil {
 		klog.Errorf("set logical switch port %s external_ids: %v", portName, err)
 		return err
 	}

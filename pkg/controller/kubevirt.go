@@ -202,7 +202,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 				targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
 
 			for _, portName := range portNames {
-				if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
+				if err := c.setLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
 					err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
 					klog.Error(err)
 					return err
@@ -217,7 +217,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	case kubevirtv1.MigrationSucceeded:
 		for _, portName := range portNames {
 			klog.Infof("migrate end reset options for lsp %s from %s to %s, migration succeeded", portName, srcNodeName, targetNodeName)
-			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
+			if err := c.resetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 				klog.Error(err)
 				return err
@@ -226,7 +226,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	case kubevirtv1.MigrationFailed:
 		for _, portName := range portNames {
 			klog.Infof("migrate end reset options for lsp %s from %s to %s, migration failed", portName, srcNodeName, targetNodeName)
-			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
+			if err := c.resetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 				klog.Error(err)
 				return err
