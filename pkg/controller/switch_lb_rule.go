@@ -314,13 +314,13 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 			}
 			belongsToThisVpc = true
 
-			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
+			err = c.deleteLoadBalancerHealthCheck(lb.Name, lbhc.UUID)
 			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
 				return err
 			}
 
-			err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
+			err = c.deleteLoadBalancerIPPortMapping(lb.Name, lbhc.Vip)
 			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
 				return err
