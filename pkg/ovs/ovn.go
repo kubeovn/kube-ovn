@@ -56,6 +56,7 @@ const (
 	ExternalIDVendor           = "vendor"
 	ExternalIDVpcEgressGateway = "vpc-egress-gateway"
 	ExternalIDVpcNatGateway    = "vpc-nat-gateway"
+	ExternalIDVpcIPsecGateway  = "vpc-ipsec-gateway"
 )
 
 // NewLegacyClient init a legacy ovn client

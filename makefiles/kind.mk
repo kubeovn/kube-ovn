@@ -4,6 +4,7 @@ UNTAINT_CONTROL_PLANE ?= true
 TENANT_CONTROL_PLANE_REPLICAS ?= 1
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
+VPC_IPSEC_GW_IMG = $(REGISTRY)/vpc-ipsec-gateway:$(VERSION)
 
 # Cilium configuration variables (fallback if not defined in main Makefile)
 CILIUM_VERSION ?= v1.18.5
@@ -258,6 +259,10 @@ kind-load-image:
 .PHONY: kind-load-image-vpc-nat-gateway
 kind-load-image-vpc-nat-gateway:
 	$(call kind_load_image,kube-ovn,$(VPC_NAT_GW_IMG))
+
+.PHONY: kind-load-image-vpc-ipsec-gateway
+kind-load-image-vpc-ipsec-gateway:
+	$(call kind_load_image,kube-ovn,$(VPC_IPSEC_GW_IMG))
 
 .PHONY: kind-install-chart
 kind-install-chart: kind-load-image untaint-control-plane install-chart

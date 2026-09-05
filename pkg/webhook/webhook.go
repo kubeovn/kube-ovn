@@ -57,6 +57,10 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	createHooks[vpcNatGatewayGVK] = v.VpcNatGwCreateOrUpdateHook
 	updateHooks[vpcNatGatewayGVK] = v.VpcNatGwCreateOrUpdateHook
 	deleteHooks[vpcNatGatewayGVK] = v.VpcNatGwDeleteHook
+
+	createHooks[vpcIPsecGatewayGVK] = v.VpcIPsecGwCreateOrUpdateHook
+	updateHooks[vpcIPsecGatewayGVK] = v.VpcIPsecGwCreateOrUpdateHook
+	deleteHooks[vpcIPsecGatewayGVK] = v.VpcIPsecGwDeleteHook
 	createHooks[iptablesEIPGVK] = v.iptablesEIPCreateHook
 	updateHooks[iptablesEIPGVK] = v.iptablesEIPUpdateHook
 	deleteHooks[iptablesEIPGVK] = v.iptablesEIPDeleteHook

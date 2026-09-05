@@ -113,6 +113,13 @@ type Controller struct {
 	vpcNatGwKeyMutex              keymutex.KeyMutex
 	vpcNatGwExecKeyMutex          keymutex.KeyMutex
 
+	vpcIPsecGatewayLister           kubeovnlister.VpcIPsecGatewayLister
+	vpcIPsecGatewaySynced           cache.InformerSynced
+	addOrUpdateVpcIPsecGatewayQueue workqueue.TypedRateLimitingInterface[string]
+	delVpcIPsecGatewayQueue         workqueue.TypedRateLimitingInterface[string]
+	initVpcIPsecGatewayQueue        workqueue.TypedRateLimitingInterface[string]
+	vpcIPsecGwKeyMutex              keymutex.KeyMutex
+
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
 	addOrUpdateVpcEgressGatewayQueue workqueue.TypedRateLimitingInterface[string]
@@ -455,6 +462,7 @@ func Run(ctx context.Context, config *Configuration) {
 
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	vpcNatGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
+	vpcIPsecGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcIPsecGateways()
 	vpcEgressGatewayInformer := kubeovnInformerFactory.Kubeovn().V1().VpcEgressGateways()
 	// BgpConf/EvpnConf informers are started lazily via StartBgpEvpnConfInformerFactory
 	// because their CRDs are optional on clusters that don't use vpc-egress-gateway BGP/EVPN.
@@ -520,6 +528,14 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
 		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
+
+		vpcIPsecGatewayLister:           vpcIPsecGatewayInformer.Lister(),
+		vpcIPsecGatewaySynced:           vpcIPsecGatewayInformer.Informer().HasSynced,
+		addOrUpdateVpcIPsecGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcIPsecGw", custCrdRateLimiter),
+		initVpcIPsecGatewayQueue:        newTypedRateLimitingQueue("InitVpcIPsecGw", custCrdRateLimiter),
+		delVpcIPsecGatewayQueue:         newTypedRateLimitingQueue("DeleteVpcIPsecGw", custCrdRateLimiter),
+		vpcIPsecGwKeyMutex:              keymutex.NewHashed(numKeyLocks),
+
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
@@ -848,7 +864,7 @@ func Run(ctx context.Context, config *Configuration) {
 
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
-		controller.vpcNatGatewaySynced, controller.vpcEgressGatewaySynced,
+		controller.vpcNatGatewaySynced, controller.vpcIPsecGatewaySynced, controller.vpcEgressGatewaySynced,
 		controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
@@ -945,6 +961,14 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDeleteVpcNatGw,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add vpc nat gateway event handler")
+	}
+
+	if _, err = vpcIPsecGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddVpcIPsecGw,
+		UpdateFunc: controller.enqueueUpdateVpcIPsecGw,
+		DeleteFunc: controller.enqueueDeleteVpcIPsecGw,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add vpc ipsec gateway event handler")
 	}
 
 	if _, err = vpcEgressGatewayInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1329,6 +1353,10 @@ func (c *Controller) shutdown() {
 	c.updateVpcSnatQueue.ShutDown()
 	c.updateVpcSubnetQueue.ShutDown()
 
+	c.addOrUpdateVpcIPsecGatewayQueue.ShutDown()
+	c.initVpcIPsecGatewayQueue.ShutDown()
+	c.delVpcIPsecGatewayQueue.ShutDown()
+
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
 
@@ -1454,6 +1482,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("add/update vpc nat gateway", c.addOrUpdateVpcNatGatewayQueue, c.handleAddOrUpdateVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("init vpc nat gateway", c.initVpcNatGatewayQueue, c.handleInitVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc nat gateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw), time.Second, ctx.Done())
+	go wait.Until(runWorker("add/update vpc ipsec gateway", c.addOrUpdateVpcIPsecGatewayQueue, c.handleAddOrUpdateVpcIPsecGw), time.Second, ctx.Done())
+	go wait.Until(runWorker("init vpc ipsec gateway", c.initVpcIPsecGatewayQueue, c.handleInitVpcIPsecGw), time.Second, ctx.Done())
+	go wait.Until(runWorker("delete vpc ipsec gateway", c.delVpcIPsecGatewayQueue, c.handleDelVpcIPsecGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update vpc egress gateway", c.addOrUpdateVpcEgressGatewayQueue, c.handleAddOrUpdateVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc egress gateway", c.delVpcEgressGatewayQueue, c.handleDelVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("update fip for vpc nat gateway", c.updateVpcFloatingIPQueue, c.handleUpdateVpcFloatingIP), time.Second, ctx.Done())
@@ -1572,6 +1603,14 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 	go wait.Until(func() {
 		c.resyncVpcNatConfig()
+	}, time.Second, ctx.Done())
+
+	go wait.Until(func() {
+		c.resyncVpcIPsecGwConfig()
+	}, time.Second, ctx.Done())
+
+	go wait.Until(func() {
+		c.resyncVpcIPsecConfig()
 	}, time.Second, ctx.Done())
 
 	if c.config.GCInterval != 0 {
@@ -1708,6 +1747,10 @@ func (c *Controller) initResourceOnce() {
 
 	if err := c.syncVpcNatGatewayCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vpc nat gateways")
+	}
+
+	if err := c.initVpcIPsecGw(); err != nil {
+		util.LogFatalAndExit(err, "failed to init vpc ipsec gateways")
 	}
 
 	if err := c.initVpcNatGw(); err != nil {
