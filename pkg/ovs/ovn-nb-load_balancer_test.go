@@ -2,11 +2,13 @@ package ovs
 
 import (
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -489,6 +491,47 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerExternalIDs() {
 	require.Equal(t, "kube-ovn", lb.ExternalIDs["vendor"])
 	require.Equal(t, "keep", lb.ExternalIDs["existing"])
 	require.Equal(t, "service", lb.ExternalIDs["owner"])
+}
+
+func (suite *OvnClientTestSuite) testDeleteChassisTemplateVariables() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	row := &ovnnb.ChassisTemplateVar{
+		UUID:    ovsclient.NamedUUID(),
+		Chassis: "test-chassis-template-cleanup",
+		Variables: map[string]string{
+			"kube_ovn_svc_active_vip":   "10.96.0.10",
+			"kube_ovn_svc_orphan_vip":   "10.96.0.11",
+			"other_controller_variable": "keep",
+		},
+	}
+	ops, err := nbClient.Create(row)
+	require.NoError(t, err)
+	require.NoError(t, nbClient.Transact("chassis-template-var-add", ops))
+	require.Eventually(t, func() bool {
+		var rows []ovnnb.ChassisTemplateVar
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == row.Chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.NoError(t, nbClient.DeleteChassisTemplateVariables(func(name string) bool {
+		return name == "kube_ovn_svc_orphan_vip"
+	}))
+
+	var rows []ovnnb.ChassisTemplateVar
+	require.Eventually(t, func() bool {
+		rows = nil
+		err = nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == row.Chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
+			"kube_ovn_svc_active_vip":   "10.96.0.10",
+			"other_controller_variable": "keep",
+		})
+	}, time.Second, 10*time.Millisecond)
 }
 
 func (suite *OvnClientTestSuite) testSetLoadBalancerCtFlush() {

@@ -583,6 +583,10 @@ func (suite *OvnClientTestSuite) Test_SetLoadBalancerExternalIDs() {
 	suite.testSetLoadBalancerExternalIDs()
 }
 
+func (suite *OvnClientTestSuite) Test_DeleteChassisTemplateVariables() {
+	suite.testDeleteChassisTemplateVariables()
+}
+
 func (suite *OvnClientTestSuite) Test_SetLoadBalancerCtFlush() {
 	suite.testSetLoadBalancerCtFlush()
 }
@@ -1479,6 +1483,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.ACL{}),
 		client.WithTable(&ovnnb.AddressSet{}),
 		client.WithTable(&ovnnb.BFD{}),
+		client.WithTable(&ovnnb.ChassisTemplateVar{}),
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 		client.WithTable(&ovnnb.HAChassis{}),

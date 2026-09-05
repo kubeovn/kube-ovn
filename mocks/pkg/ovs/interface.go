@@ -1645,6 +1645,20 @@ func (mr *MockLoadBalancerMockRecorder) CreateLoadBalancer(lbName, protocol any,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLoadBalancer", reflect.TypeOf((*MockLoadBalancer)(nil).CreateLoadBalancer), varargs...)
 }
 
+// DeleteChassisTemplateVariables mocks base method.
+func (m *MockLoadBalancer) DeleteChassisTemplateVariables(filter func(string) bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVariables", filter)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVariables indicates an expected call of DeleteChassisTemplateVariables.
+func (mr *MockLoadBalancerMockRecorder) DeleteChassisTemplateVariables(filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVariables", reflect.TypeOf((*MockLoadBalancer)(nil).DeleteChassisTemplateVariables), filter)
+}
+
 // DeleteLoadBalancerAffinityTimeout mocks base method.
 func (m *MockLoadBalancer) DeleteLoadBalancerAffinityTimeout(lbName string) error {
 	m.ctrl.T.Helper()
@@ -4267,6 +4281,20 @@ func (m *MockNbClient) DeleteBFDByDstIP(lrpName, dstIP string) error {
 func (mr *MockNbClientMockRecorder) DeleteBFDByDstIP(lrpName, dstIP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBFDByDstIP", reflect.TypeOf((*MockNbClient)(nil).DeleteBFDByDstIP), lrpName, dstIP)
+}
+
+// DeleteChassisTemplateVariables mocks base method.
+func (m *MockNbClient) DeleteChassisTemplateVariables(filter func(string) bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteChassisTemplateVariables", filter)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteChassisTemplateVariables indicates an expected call of DeleteChassisTemplateVariables.
+func (mr *MockNbClientMockRecorder) DeleteChassisTemplateVariables(filter any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteChassisTemplateVariables", reflect.TypeOf((*MockNbClient)(nil).DeleteChassisTemplateVariables), filter)
 }
 
 // DeleteDHCPOptions mocks base method.

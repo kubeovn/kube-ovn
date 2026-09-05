@@ -142,7 +142,7 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 		key:                    key,
 		oldPorts:               oldSvc.Spec.Ports,
 		newPorts:               newSvc.Spec.Ports,
-		oldTrafficDistribution: oldSvc.Spec.TrafficDistribution != nil,
+		oldTrafficDistribution: serviceUsesTrafficDistribution(oldSvc),
 	}
 	c.updateServiceQueue.Add(updateSvc)
 	if serviceUsesScopedLB(oldSvc) || serviceUsesScopedLB(newSvc) {
@@ -257,14 +257,13 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		klog.Error(err)
 		return err
 	}
-	if svcObject.oldTrafficDistribution && (svc.Spec.TrafficDistribution == nil || serviceUsesDistributedLB(svc)) {
+	if svcObject.oldTrafficDistribution && (!serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc)) {
 		if err := c.cleanupServiceTrafficDistributionState(svc); err != nil {
 			return err
 		}
 	}
 	if serviceUsesScopedLB(svc) {
 		c.addOrUpdateEndpointSliceQueue.Add(key)
-		return nil
 	}
 
 	ips := getVipIps(svc)
