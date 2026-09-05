@@ -19,6 +19,28 @@ type databaseLifecycle interface {
 	Close()
 }
 
+func ensureVswitchPort(provider compat.TableProvider, config ovs.VswitchPortConfig, legacyArgs ...string) error {
+	if provider != nil {
+		return ovs.EnsureVswitchPort(context.Background(), provider, config)
+	}
+	output, err := ovs.Exec(legacyArgs...)
+	if err != nil {
+		return fmt.Errorf("legacy ovs-vsctl port ensure failed: %w: %s", err, output)
+	}
+	return nil
+}
+
+func deleteVswitchPort(provider compat.TableProvider, bridgeName, portName string) error {
+	if provider != nil {
+		return ovs.DeleteVswitchPort(context.Background(), provider, portName)
+	}
+	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", bridgeName, portName)
+	if err != nil {
+		return fmt.Errorf("legacy ovs-vsctl port delete failed: %w: %s", err, output)
+	}
+	return nil
+}
+
 func (c *Controller) listVswitchBridges(needVendorFilter bool, filter func(*vswitch.Bridge) bool) ([]vswitch.Bridge, error) {
 	if c.vswitchTables == nil {
 		return c.vswitchClient.ListBridge(needVendorFilter, filter)
