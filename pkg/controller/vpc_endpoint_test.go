@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -50,9 +49,9 @@ func TestVpcEndpointIPFromNetworks(t *testing.T) {
 func TestVpcEndpointEffectiveServiceVpc(t *testing.T) {
 	require.Equal(t, "ovn-cluster", vpcEndpointEffectiveServiceVpc(&corev1.Service{}, "ovn-cluster"))
 
-	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+	svc := &corev1.Service{Annotations: map[string]string{
 		util.LogicalRouterAnnotation: "from-router",
-	}}}
+	}}
 	require.Equal(t, "from-router", vpcEndpointEffectiveServiceVpc(svc, "ovn-cluster"))
 
 	svc.Annotations[util.VpcAnnotation] = "from-vpc"
@@ -61,11 +60,11 @@ func TestVpcEndpointEffectiveServiceVpc(t *testing.T) {
 
 func TestValidateVpcEndpointServiceImmutability(t *testing.T) {
 	eps := &kubeovnv1.VpcEndpointService{
-		ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
+		Labels: map[string]string{
 			util.VpcEndpointVpcLabel:     "vpc-a",
 			util.VpcEndpointSvcNsLabel:   "ns-a",
 			util.VpcEndpointSvcNameLabel: "svc-a",
-		}},
+		},
 		Spec: kubeovnv1.VpcEndpointServiceSpec{Vpc: "vpc-a", Namespace: "ns-a", Service: "svc-a"},
 	}
 	require.NoError(t, validateVpcEndpointServiceImmutability(eps))
