@@ -122,6 +122,7 @@ func TestTopologyBackendSubset(t *testing.T) {
 	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80", "10.0.0.3:80"}, topologyBackendSubset(backends, "node-x", "zone-x", corev1.ServiceTrafficDistributionPreferSameNode))
 	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(backends, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameZone))
 	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(backends, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferClose))
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80", "10.0.0.3:80"}, topologyBackendSubset(backends, "node-a", "zone-a", "unknown"))
 
 	missingNodeHint := append([]topologyBackend(nil), backends...)
 	missingNodeHint[1].hints = &discoveryv1.EndpointHints{ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}
