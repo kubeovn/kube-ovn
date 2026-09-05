@@ -1001,7 +1001,7 @@ func topologyBackends(endpointSlices []*discoveryv1.EndpointSlice, servicePort v
 	return backends
 }
 
-func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName string) []string {
+func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName, trafficDistribution string) []string {
 	all := make([]string, 0, len(backends))
 	allForNodes, allForZones := true, true
 	for _, backend := range backends {
@@ -1013,7 +1013,7 @@ func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName string
 			allForZones = false
 		}
 	}
-	if allForNodes && nodeName != "" {
+	if trafficDistribution == v1.ServiceTrafficDistributionPreferSameNode && allForNodes && nodeName != "" {
 		matched := make([]string, 0, len(backends))
 		for _, backend := range backends {
 			for _, hint := range backend.hints.ForNodes {
@@ -1119,7 +1119,7 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 					} else if !k8serrors.IsNotFound(getErr) {
 						return fmt.Errorf("get node %s for service %s/%s traffic distribution: %w", chassis.Hostname, svc.Namespace, svc.Name, getErr)
 					}
-					selected := topologyBackendSubset(backends, nodeName, zoneName)
+					selected := topologyBackendSubset(backends, nodeName, zoneName, *svc.Spec.TrafficDistribution)
 					variablesByChassis[chassis.Name][vipVariable] = lbVip
 					variablesByChassis[chassis.Name][backendVariable] = strings.Join(selected, ",")
 				}
