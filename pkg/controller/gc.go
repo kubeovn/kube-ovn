@@ -801,7 +801,7 @@ func (c *Controller) gcAddressSet() error {
 	klog.Infof("start to gc address set")
 	// Only list address sets that belong to kube-ovn (vendor=kube-ovn)
 	// This prevents deleting address sets managed by external systems like OpenStack Neutron
-	addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{"vendor": util.CniTypeName})
+	addressSets, err := c.listAddressSets(map[string]string{"vendor": util.CniTypeName})
 	if err != nil {
 		klog.Errorf("failed to list address set,%v", err)
 		return err
@@ -814,7 +814,7 @@ func (c *Controller) gcAddressSet() error {
 			continue
 		}
 		// if address set not found associated port group, delete it
-		if pg, err := c.OVNNbClient.GetPortGroup(ovs.GetSgPortGroupName(sg), true); err == nil && pg == nil {
+		if pg, err := c.getPortGroup(ovs.GetSgPortGroupName(sg), true); err == nil && pg == nil {
 			klog.Infof("ready to gc address set %s", as.Name)
 			asList = append(asList, as.Name)
 		}
@@ -848,7 +848,7 @@ func (c *Controller) gcSecurityGroup() error {
 
 	// Only list port groups that belong to kube-ovn (vendor=kube-ovn)
 	// This prevents deleting port groups managed by external systems like OpenStack Neutron
-	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{"vendor": util.CniTypeName})
+	pgs, err := c.listPortGroups(map[string]string{"vendor": util.CniTypeName})
 	if err != nil {
 		klog.Errorf("failed to list port group,%v", err)
 		return err
@@ -1167,13 +1167,13 @@ func (c *Controller) gcStaticRoute() error {
 
 func (c *Controller) gcChassis() error {
 	klog.Infof("start to gc chassis")
-	chassises, err := c.OVNSbClient.ListChassis()
+	chassises, err := c.listChassis()
 	if err != nil {
 		klog.Errorf("failed to get all chassis, %v", err)
 		return err
 	}
-	chassisNodes := make(map[string]string, len(*chassises))
-	for _, chassis := range *chassises {
+	chassisNodes := make(map[string]string, len(chassises))
+	for _, chassis := range chassises {
 		chassisNodes[chassis.Name] = chassis.Hostname
 	}
 	nodes, err := c.nodesLister.List(labels.Everything())
