@@ -970,7 +970,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 			return err
 		}
 
-		if err = c.OVNNbClient.PortGroupSetPorts(pgName, nodePorts); err != nil {
+		if err = c.setPortGroupPorts(pgName, nodePorts); err != nil {
 			klog.Errorf("failed to set ports of port group %s: %v", pgName, err)
 			return err
 		}

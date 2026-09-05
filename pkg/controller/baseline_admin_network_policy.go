@@ -157,7 +157,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		return err
 	}
 
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+	if err = c.setPortGroupPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 		return err
 	}
@@ -372,7 +372,7 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 			return err
 		}
 
-		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+		if err = c.setPortGroupPorts(pgName, ports); err != nil {
 			klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 			return err
 		}

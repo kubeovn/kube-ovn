@@ -229,3 +229,14 @@ func (t *Table) DeleteFilter(ctx context.Context, method string, predicate any) 
 	}
 	return t.db.DeleteWhereCacheAndTransact(ctx, method, predicate)
 }
+
+// Transact submits operations built by one or more table handles as a single
+// transaction. It keeps transaction policy behind the same database facade
+// while allowing callers to preserve atomic multi-row updates.
+func (t *Table) Transact(ctx context.Context, method string, operations ...ovsdb.Operation) error {
+	if err := t.ensure(); err != nil {
+		return err
+	}
+	_, err := t.db.transact(ctx, method, operations...)
+	return err
+}

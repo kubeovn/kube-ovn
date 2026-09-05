@@ -627,7 +627,7 @@ func (c *Controller) gcLoadBalancer() error {
 					continue
 				}
 				lbs := []string{vpc.Status.TCPLoadBalancer, vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
-				if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationDelete, lbs...); err != nil {
+				if err := c.updateLogicalSwitchLoadBalancers(subnetName, ovsdb.MutateOperationDelete, lbs...); err != nil {
 					klog.Error(err)
 					return err
 				}

@@ -275,13 +275,13 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	}
 
 	if sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
+		if err = c.setLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
 			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
 			return err
 		}
 	}
 
-	err = c.OVNNbClient.SetLoadBalancerPreferLocalBackend(name, c.config.EnableOVNLBPreferLocal)
+	err = c.setLoadBalancerPreferLocalBackend(name, c.config.EnableOVNLBPreferLocal)
 	if err != nil {
 		klog.Errorf("failed to set prefer local backend for load balancer %s: %v", name, err)
 		return err
@@ -293,7 +293,7 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 	// those LBs lets an unrelated service's backend change invalidate another
 	// service's active affinity. Only enable ct_flush on non-session UDP LBs.
 	if protocol == "udp" && !sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerCtFlush(name, true); err != nil {
+		if err = c.setLoadBalancerCtFlush(name, true); err != nil {
 			klog.Errorf("failed to set ct_flush for load balancer %s: %v", name, err)
 			return err
 		}
@@ -914,7 +914,7 @@ func (c *Controller) batchMigrateNodeRoute(nodes []*v1.Node) error {
 		klog.Errorf("failed to batch delete obsolete logical router policy for lr %s nodes %d: %v", c.config.ClusterRouter, len(nodes), err)
 		return err
 	}
-	if err := c.OVNNbClient.BatchDeleteAddressSetByNames(delAsNames); err != nil {
+	if err := c.deleteAddressSets(delAsNames...); err != nil {
 		klog.Errorf("failed to batch delete obsolete address set for asNames %v nodes %d: %v", delAsNames, len(nodes), err)
 		return err
 	}

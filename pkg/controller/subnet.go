@@ -732,7 +732,7 @@ func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *ku
 		vpc.Status.SctpSessionLoadBalancer,
 	}
 	if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
-		if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
+		if lbErr := c.updateLogicalSwitchLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
 			klog.Error(lbErr)
 			if patchErr := c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", lbErr.Error()); patchErr != nil {
 				klog.Error(patchErr)
@@ -742,7 +742,7 @@ func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *ku
 		}
 		return nil
 	}
-	if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
+	if err := c.updateLogicalSwitchLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbs...); err != nil {
 		klog.Errorf("remove load-balancer from subnet %s failed: %v", subnet.Name, err)
 		return c.recordResourceError(subnet, "RemoveLbFromLogicalSwitchFailed", err)
 	}
@@ -1164,7 +1164,7 @@ func (c *Controller) syncVirtualPort(key string) error {
 			continue
 		}
 
-		if err = c.OVNNbClient.SetLogicalSwitchPortVirtualParents(subnet.Name, strings.Join(virtualParents, ","), vip); err != nil {
+		if err = c.setLogicalSwitchPortVirtualParents(subnet.Name, strings.Join(virtualParents, ","), vip); err != nil {
 			klog.Errorf("set vip %s virtual parents %v: %v", vip, virtualParents, err)
 			return err
 		}
@@ -1504,13 +1504,13 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 			if pg.Name == pgName {
 				continue
 			}
-			if err = c.OVNNbClient.PortGroupRemovePorts(pg.Name, podPorts...); err != nil {
+			if err = c.updatePortGroupPorts(pg.Name, ovsdb.MutateOperationDelete, podPorts...); err != nil {
 				klog.Errorf("remove ports from port group %s: %v", pg.Name, err)
 				return err
 			}
 		}
 		// add ports to the port group
-		if err = c.OVNNbClient.PortGroupAddPorts(pgName, portsToAdd...); err != nil {
+		if err = c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, portsToAdd...); err != nil {
 			klog.Errorf("add ports to port group %s: %v", pgName, err)
 			return err
 		}
@@ -2509,14 +2509,14 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 	}
 
 	if len(nodesIPv4) > 0 {
-		if err := c.OVNNbClient.AddressSetUpdateAddress(u2oExcludeIP4Ag, nodesIPv4...); err != nil {
+		if err := c.updateAddressSetAddresses(u2oExcludeIP4Ag, nodesIPv4...); err != nil {
 			klog.Errorf("set v4 address set %s with address %v: %v", u2oExcludeIP4Ag, nodesIPv4, err)
 			return err
 		}
 	}
 
 	if len(nodesIPv6) > 0 {
-		if err := c.OVNNbClient.AddressSetUpdateAddress(u2oExcludeIP6Ag, nodesIPv6...); err != nil {
+		if err := c.updateAddressSetAddresses(u2oExcludeIP6Ag, nodesIPv6...); err != nil {
 			klog.Errorf("set v6 address set %s with address %v: %v", u2oExcludeIP6Ag, nodesIPv6, err)
 			return err
 		}
@@ -2705,11 +2705,11 @@ func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string
 		klog.Errorf("create address set %s: %v", v6Name, err)
 		return nil, nil, err
 	}
-	if err := c.OVNNbClient.AddressSetUpdateAddress(v4Name, v4CIDRs...); err != nil {
+	if err := c.updateAddressSetAddresses(v4Name, v4CIDRs...); err != nil {
 		klog.Errorf("set v4 address set %s with address %v: %v", v4Name, v4CIDRs, err)
 		return nil, nil, err
 	}
-	if err := c.OVNNbClient.AddressSetUpdateAddress(v6Name, v6CIDRs...); err != nil {
+	if err := c.updateAddressSetAddresses(v6Name, v6CIDRs...); err != nil {
 		klog.Errorf("set v6 address set %s with address %v: %v", v6Name, v6CIDRs, err)
 		return nil, nil, err
 	}
@@ -3124,7 +3124,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 			return err
 		}
 		pgName := getOverlaySubnetsPortGroupName(subnet.Name, ip.Spec.NodeName)
-		if err = c.OVNNbClient.PortGroupAddPorts(pgName, lsp.Name); err != nil {
+		if err = c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, lsp.Name); err != nil {
 			klog.Errorf("failed to add port to u2o port group %s: %v", pgName, err)
 			return err
 		}
@@ -3224,7 +3224,7 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			return err
 		}
 
-		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
+		if err := c.updateLogicalSwitchOtherConfig(subnet.Name, ovsdb.MutateOperationInsert, multicastSnoopFlag); err != nil {
 			klog.Errorf("enable logical switch multicast snoop %s: %v", subnet.Name, err)
 			return err
 		}
@@ -3248,7 +3248,7 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			"mcast_eth_src": lss[0].OtherConfig["mcast_eth_src"],
 		}
 		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
-		if err := c.OVNNbClient.LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationDelete, multicastSnoopFlag); err != nil {
+		if err := c.updateLogicalSwitchOtherConfig(subnet.Name, ovsdb.MutateOperationDelete, multicastSnoopFlag); err != nil {
 			klog.Errorf("disable logical switch multicast snoop %s: %v", subnet.Name, err)
 			return err
 		}

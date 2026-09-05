@@ -315,7 +315,7 @@ func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
 		return err
 	}
 
-	if err := c.OVNNbClient.AddressSetUpdateAddress(asName, addresses...); err != nil {
+	if err := c.updateAddressSetAddresses(asName, addresses...); err != nil {
 		err = fmt.Errorf("failed to update address set for ippool %s: %w", ippool.Name, err)
 		klog.Error(err)
 		return err

@@ -273,7 +273,7 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					if externalVIPNode != "" {
 						vipNodeLSP = util.NodeLspName(externalVIPNode)
 					}
-					if err = c.OVNNbClient.SetLoadBalancerVIPExternalTrafficLocal(lb, vip, vipNodeLSP); err != nil {
+					if err = c.setLoadBalancerExternalTrafficLocal(lb, vip, vipNodeLSP); err != nil {
 						return fmt.Errorf("couldn't mark external local vip %s on LB %s: %w", vip, lb, err)
 					}
 				}
@@ -430,7 +430,7 @@ func (c *Controller) clearLoadBalancerVIPExternalTrafficLocal(svc *v1.Service, t
 				continue
 			}
 			vip := util.JoinHostPort(ingress.IP, port.Port)
-			if err := c.OVNNbClient.SetLoadBalancerVIPExternalTrafficLocal(lb, vip, ""); err != nil {
+			if err := c.setLoadBalancerExternalTrafficLocal(lb, vip, ""); err != nil {
 				return fmt.Errorf("couldn't clear external local vip marker %s on LB %s: %w", vip, lb, err)
 			}
 			if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {

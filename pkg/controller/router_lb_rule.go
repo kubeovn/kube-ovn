@@ -324,7 +324,7 @@ func (c *Controller) handleAddOrUpdateRouterLBRule(key string) error {
 		}
 	}
 	if len(nonEmptyVpcLBs) > 0 {
-		if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(rlr.Spec.Vpc, ovsdb.MutateOperationInsert, nonEmptyVpcLBs...); err != nil {
+		if err = c.updateLogicalRouterLoadBalancers(rlr.Spec.Vpc, ovsdb.MutateOperationInsert, nonEmptyVpcLBs...); err != nil {
 			klog.Errorf("failed to attach LBs to router %s: %v", rlr.Spec.Vpc, err)
 			return err
 		}
@@ -408,7 +408,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 			return r.Spec.Vpc == vpcForRlr && r.Name != info.Name
 		}) {
 			lbs := vpcLBNames.UnsortedList()
-			if err = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpcForRlr, ovsdb.MutateOperationDelete, lbs...); err != nil {
+			if err = c.updateLogicalRouterLoadBalancers(vpcForRlr, ovsdb.MutateOperationDelete, lbs...); err != nil {
 				klog.Errorf("failed to detach LBs from router %s: %v", vpcForRlr, err)
 				return err
 			}

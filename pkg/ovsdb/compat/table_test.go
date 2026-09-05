@@ -73,7 +73,8 @@ func TestTableCRUDDelegatesToDatabase(t *testing.T) {
 	require.NoError(t, table.Mutate(context.Background(), "mutate-row", row))
 	require.NoError(t, table.Delete(context.Background(), "delete-row", row))
 	require.NoError(t, table.DeleteFilter(context.Background(), "delete-filtered", func(*struct{}) bool { return true }))
-	require.Equal(t, 5, fake.transacts)
+	require.NoError(t, table.Transact(context.Background(), "composed", tableOperation()...))
+	require.Equal(t, 6, fake.transacts)
 }
 
 func TestTableOperationBuilders(t *testing.T) {
