@@ -133,6 +133,7 @@ func NewController(config *Configuration) *Controller {
 
 func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
+	defer c.closeICClients()
 	c.informerFactory.Start(stopCh)
 	c.kubeovnInformerFactory.Start(stopCh)
 
