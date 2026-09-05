@@ -2291,7 +2291,7 @@ func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *
 		"vendor":         util.CniTypeName,
 		networkPolicyKey: subnet.Name + "/" + node.Name,
 	}
-	if err := c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
+	if err := c.createPortGroup(pgName, externalIDs); err != nil {
 		klog.Errorf("create port group for subnet %s and node %s: %v", subnet.Name, node.Name, err)
 		return err
 	}
@@ -2448,7 +2448,7 @@ func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, ga
 		}
 		for _, node := range nodes {
 			pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
-			if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+			if err = c.deletePortGroups(pgName); err != nil {
 				klog.Errorf("delete port group for subnet %s and node %s: %v", subnet.Name, node.Name, err)
 				return err
 			}
@@ -2498,12 +2498,12 @@ func (c *Controller) addPolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) err
 		}
 	}
 
-	if err := c.OVNNbClient.CreateAddressSet(u2oExcludeIP4Ag, externalIDs); err != nil {
+	if err := c.createAddressSet(u2oExcludeIP4Ag, externalIDs); err != nil {
 		klog.Errorf("create address set %s: %v", u2oExcludeIP4Ag, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.CreateAddressSet(u2oExcludeIP6Ag, externalIDs); err != nil {
+	if err := c.createAddressSet(u2oExcludeIP6Ag, externalIDs); err != nil {
 		klog.Errorf("create address set %s: %v", u2oExcludeIP6Ag, err)
 		return err
 	}
@@ -2697,11 +2697,11 @@ func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string
 	if v4CIDRs, v6CIDRs, err = c.buildU2OOverlayCIDRs(vpcName, excludeSubnet); err != nil {
 		return nil, nil, err
 	}
-	if err := c.OVNNbClient.CreateAddressSet(v4Name, externalIDs); err != nil {
+	if err := c.createAddressSet(v4Name, externalIDs); err != nil {
 		klog.Errorf("create address set %s: %v", v4Name, err)
 		return nil, nil, err
 	}
-	if err := c.OVNNbClient.CreateAddressSet(v6Name, externalIDs); err != nil {
+	if err := c.createAddressSet(v6Name, externalIDs); err != nil {
 		klog.Errorf("create address set %s: %v", v6Name, err)
 		return nil, nil, err
 	}
@@ -2810,12 +2810,12 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 	u2oExcludeIP4Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip4"), "-", ".")
 	u2oExcludeIP6Ag := strings.ReplaceAll(fmt.Sprintf(util.U2OExcludeIPAg, subnet.Name, "ip6"), "-", ".")
 
-	if err := c.OVNNbClient.DeleteAddressSet(u2oExcludeIP4Ag); err != nil {
+	if err := c.deleteAddressSets(u2oExcludeIP4Ag); err != nil {
 		klog.Errorf("delete address set %s: %v", u2oExcludeIP4Ag, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSet(u2oExcludeIP6Ag); err != nil {
+	if err := c.deleteAddressSets(u2oExcludeIP6Ag); err != nil {
 		klog.Errorf("delete address set %s: %v", u2oExcludeIP6Ag, err)
 		return err
 	}
@@ -2917,7 +2917,7 @@ func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) erro
 
 	klog.Infof("reconcile route table %q for subnet %s", subnet.Spec.RouteTable, subnet.Name)
 	opt := map[string]string{"route_table": subnet.Spec.RouteTable}
-	if err = c.OVNNbClient.UpdateLogicalRouterPortOptions(routerPortName, opt); err != nil {
+	if err = c.updateLogicalRouterPortOptions(routerPortName, opt); err != nil {
 		klog.Errorf("failed to set route table of logical router port %s to %s: %v", routerPortName, subnet.Spec.RouteTable, err)
 		return err
 	}
@@ -3056,7 +3056,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 	v6Svcs := c.serviceCIDRStore.V6CIDRs()
 	for _, node := range nodes {
 		pgName := getOverlaySubnetsPortGroupName(subnet.Name, node.Name)
-		if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"}); err != nil {
+		if err := c.createPortGroup(pgName, map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"}); err != nil {
 			klog.Errorf("failed to create u2o port group for subnet %s and node %s: %v", subnet.Name, node.Name, err)
 			return err
 		}
@@ -3167,7 +3167,7 @@ func (c *Controller) deletePolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Sub
 	}
 	for _, pg := range pgs {
 		klog.Infof("delete u2o port group %s for subnet %s", pg.Name, subnet.Name)
-		if err = c.OVNNbClient.DeletePortGroup(pg.Name); err != nil {
+		if err = c.deletePortGroups(pg.Name); err != nil {
 			klog.Errorf("failed to delete u2o port group for subnet %s: %v", subnet.Name, err)
 			return err
 		}

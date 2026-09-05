@@ -124,8 +124,24 @@ func TestControllerTableProviderReadsAssociatedRows(t *testing.T) {
 	require.Len(t, kubeOvnChassises, 1)
 }
 
+func TestControllerTableProviderWrites(t *testing.T) {
+	backend := newTableBackend()
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.createAddressSet("as-1", map[string]string{"owner": "test"}))
+	require.NoError(t, controller.createPortGroup("pg-1", map[string]string{"owner": "test"}))
+	require.NoError(t, controller.createLogicalRouter("lr-1"))
+	require.NoError(t, controller.createLoadBalancer("lb-1", ovnnb.LoadBalancerProtocolTCP))
+
+	require.Equal(t, 4, backend.createCalls)
+	require.Equal(t, 4, backend.transactCalls)
+}
+
 type tableBackend struct {
-	rows map[reflect.Type][]any
+	rows          map[reflect.Type][]any
+	createCalls   int
+	transactCalls int
 }
 
 func newTableBackend(rows ...any) *tableBackend {
@@ -193,10 +209,14 @@ func (*tableBackend) Select(model.Model, ...any) ([]ovsdb.Operation, error) {
 	return nil, nil
 }
 
-func (*tableBackend) Create(...model.Model) ([]ovsdb.Operation, error) { return nil, nil }
+func (b *tableBackend) Create(...model.Model) ([]ovsdb.Operation, error) {
+	b.createCalls++
+	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}, nil
+}
 
-func (*tableBackend) Transact(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
-	return nil, nil
+func (b *tableBackend) Transact(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	b.transactCalls++
+	return []ovsdb.OperationResult{{}}, nil
 }
 
 func (*tableBackend) Cache() compat.Cache { return tableCache{} }

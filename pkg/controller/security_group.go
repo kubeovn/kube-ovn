@@ -63,7 +63,7 @@ func (c *Controller) enqueueDeleteSg(obj any) {
 
 func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{
+	if err := c.createPortGroup(pgName, map[string]string{
 		"type": "security_group",
 		sgKey:  util.DenyAllSecurityGroup,
 	}); err != nil {
@@ -168,7 +168,7 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	}
 
 	pgName := ovs.GetSgPortGroupName(sg.Name)
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{
+	if err := c.createPortGroup(pgName, map[string]string{
 		"type": "security_group",
 		sgKey:  sg.Name,
 	}); err != nil {
@@ -182,12 +182,12 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 		sgKey: sg.Name,
 	}
 
-	if err = c.OVNNbClient.CreateAddressSet(v4AsName, externalIDs); err != nil {
+	if err = c.createAddressSet(v4AsName, externalIDs); err != nil {
 		klog.Errorf("create address set %s for sg %s: %v", v4AsName, key, err)
 		return err
 	}
 
-	if err = c.OVNNbClient.CreateAddressSet(v6AsName, externalIDs); err != nil {
+	if err = c.createAddressSet(v6AsName, externalIDs); err != nil {
 		klog.Errorf("create address set %s for sg %s: %v", v6AsName, key, err)
 		return err
 	}

@@ -653,7 +653,7 @@ func (c *Controller) gcLoadBalancer() error {
 		// lbs will remove from logical switch automatically when delete lbs
 		// Only delete load balancers that belong to kube-ovn (vendor=kube-ovn)
 		// This prevents deleting load balancers managed by external systems like OpenStack Neutron
-		if err = c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		if err = c.deleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
 			if lb.ExternalIDs["vendor"] != util.CniTypeName {
 				return false
 			}
@@ -785,7 +785,7 @@ func (c *Controller) gcLoadBalancer() error {
 	}
 
 	// delete lbs
-	if err = c.OVNNbClient.DeleteLoadBalancers(
+	if err = c.deleteLoadBalancers(
 		func(lb *ovnnb.LoadBalancer) bool {
 			return !vpcLbs.Has(lb.Name)
 		},
@@ -824,7 +824,7 @@ func (c *Controller) gcAddressSet() error {
 		return nil
 	}
 
-	if err = c.OVNNbClient.DeleteAddressSet(asList...); err != nil {
+	if err = c.deleteAddressSets(asList...); err != nil {
 		klog.Errorf("failed to delete address set %v: %v", asList, err)
 		return err
 	}
@@ -875,7 +875,7 @@ func (c *Controller) gcSecurityGroup() error {
 		klog.Infof("finish to gc security group residual port groups")
 		return nil
 	}
-	if err = c.OVNNbClient.DeletePortGroup(needToDelPgs...); err != nil {
+	if err = c.deletePortGroups(needToDelPgs...); err != nil {
 		klog.Errorf("failed to gc port group list,%v", err)
 		return err
 	}
@@ -960,7 +960,7 @@ func (c *Controller) gcNetworkPolicy() error {
 	// the pgName in the network policy is generated differently from the node/subnet pgName
 	// so processes port group gc separately
 	// ensure that the port group can be correctly gc
-	if err := c.OVNNbClient.DeletePortGroup(delPgNames.List()...); err != nil {
+	if err := c.deletePortGroups(delPgNames.List()...); err != nil {
 		klog.Errorf("failed to gc port group %v: %v", delPgNames.List(), err)
 		return err
 	}
@@ -997,7 +997,7 @@ func (c *Controller) gcDisabledNetworkPolicyResources(pgNames []string) error {
 			}
 		}
 	}
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{networkPolicyKey: ""}); err != nil {
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{networkPolicyKey: ""}); err != nil {
 		klog.Errorf("failed to gc network policy address sets: %v", err)
 		return err
 	}
@@ -1058,11 +1058,11 @@ func (c *Controller) gcPortGroupsAndAddressSetsByExternalID(externalIDKey string
 		klog.Infof("gc port group %s with external id %s=%s", pg.Name, externalIDKey, pg.ExternalIDs[externalIDKey])
 		pgNames = append(pgNames, pg.Name)
 	}
-	if err := c.OVNNbClient.DeletePortGroup(pgNames...); err != nil {
+	if err := c.deletePortGroups(pgNames...); err != nil {
 		klog.Errorf("failed to gc port groups %v: %v", pgNames, err)
 		return err
 	}
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{externalIDKey: ""}); err != nil {
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{externalIDKey: ""}); err != nil {
 		klog.Errorf("failed to gc address sets with external id %s: %v", externalIDKey, err)
 		return err
 	}
@@ -1195,7 +1195,7 @@ func (c *Controller) gcChassis() error {
 			}
 			// maybe node name changed, delete chassis
 			klog.Infof("gc node %s chassis %s", node.Name, chassisName)
-			if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
+			if err := c.deleteChassis(chassisName); err != nil {
 				klog.Errorf("failed to delete node %s chassis %s %v", node.Name, chassisName, err)
 				return err
 			}
@@ -1204,7 +1204,7 @@ func (c *Controller) gcChassis() error {
 
 	for chassisName, hostname := range chassisNodes {
 		klog.Infof("gc node %s chassis %s", hostname, chassisName)
-		if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
+		if err := c.deleteChassis(chassisName); err != nil {
 			klog.Errorf("failed to delete node %s chassis %s %v", hostname, chassisName, err)
 			return err
 		}

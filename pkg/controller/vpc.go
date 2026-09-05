@@ -868,11 +868,11 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 		klog.Error(err)
 		return portName, nil, err
 	}
-	if err = c.OVNNbClient.UpdateLogicalRouterPortNetworks(portName, networks); err != nil {
+	if err = c.updateLogicalRouterPortNetworks(portName, networks); err != nil {
 		klog.Error(err)
 		return portName, nil, err
 	}
-	if err = c.OVNNbClient.UpdateLogicalRouterPortOptions(portName, map[string]string{"bfd-only": "true"}); err != nil {
+	if err = c.updateLogicalRouterPortOptions(portName, map[string]string{"bfd-only": "true"}); err != nil {
 		klog.Error(err)
 		return portName, nil, err
 	}
@@ -1308,7 +1308,7 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 
 // createVpcRouter create router to connect logical switches in vpc
 func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error {
-	if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
+	if err := c.createLogicalRouter(lr); err != nil {
 		klog.Errorf("create logical router %s failed: %v", lr, err)
 		return err
 	}
@@ -1328,7 +1328,7 @@ func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error 
 	}
 	if !maps.Equal(vpcRouter.Options, lrOptions) {
 		vpcRouter.Options = lrOptions
-		if err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options); err != nil {
+		if err = c.updateLogicalRouter(vpcRouter, &vpcRouter.Options); err != nil {
 			klog.Errorf("failed to update options of logical router %s: %v", lr, err)
 			return err
 		}
@@ -1339,7 +1339,7 @@ func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error 
 
 // deleteVpcRouter delete router to connect logical switches in vpc
 func (c *Controller) deleteVpcRouter(lr string) error {
-	return c.OVNNbClient.DeleteLogicalRouter(lr)
+	return c.deleteLogicalRouter(lr)
 }
 
 func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {

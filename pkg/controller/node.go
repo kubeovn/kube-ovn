@@ -365,7 +365,7 @@ func (c *Controller) ensureNodePortGroups(node *v1.Node, subnets []*kubeovnv1.Su
 	c.distributedSubnetNeedSync.Store(true)
 
 	pgName := strings.ReplaceAll(joinNetwork.portName, "-", ".")
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{"node": node.Name, networkPolicyKey: "node" + "/" + node.Name}); err != nil {
+	if err := c.createPortGroup(pgName, map[string]string{"node": node.Name, networkPolicyKey: "node" + "/" + node.Name}); err != nil {
 		klog.Errorf("create port group %s for node %s: %v", pgName, node.Name, err)
 		return err
 	}
@@ -508,7 +508,7 @@ func (c *Controller) deleteNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.ReplaceAll(portName, "-", ".")
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		klog.Errorf("delete port group %s for node: %v", portName, err)
 		return err
 	}
@@ -518,11 +518,11 @@ func (c *Controller) deleteNode(key string) error {
 		return err
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
+	if err := c.deleteAddressSets(nodeUnderlayAddressSetName(key, 4)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
 	}
-	if err := c.OVNNbClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 6)); err != nil {
+	if err := c.deleteAddressSets(nodeUnderlayAddressSetName(key, 6)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
 	}
@@ -1015,7 +1015,7 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName {
 		klog.Infof("init tag %s for node %s chassis %s", util.CniTypeName, node.Name, chassis.Name)
-		if err = c.OVNSbClient.UpdateChassisTag(chassis.Name, node.Name); err != nil {
+		if err = c.updateChassisTag(chassis.Name, node.Name); err != nil {
 			err := fmt.Errorf("failed to init chassis tag, %w", err)
 			klog.Error(err)
 			return err
@@ -1067,7 +1067,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 			pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
-			if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+			if err = c.deletePortGroups(pgName); err != nil {
 				klog.Errorf("delete port group for subnet %s and node %s: %v", subnet.Name, nodeName, err)
 				return err
 			}

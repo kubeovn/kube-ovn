@@ -180,7 +180,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	// This may cause conflict if two anp with name test-anp and test.anp, maybe hash is a better solution, but we do not want to lost the readability now.
 	// Make sure all create operations are reentrant.
 	pgName := strings.ReplaceAll(anpName, "-", ".")
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{adminNetworkPolicyKey: anpName}); err != nil {
+	if err = c.createPortGroup(pgName, map[string]string{adminNetworkPolicyKey: anpName}); err != nil {
 		klog.Errorf("failed to create port group for anp %s: %v", key, err)
 		return err
 	}
@@ -383,18 +383,18 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 
 	// ACLs related to port_group will be deleted automatically when port_group is deleted
 	pgName := strings.ReplaceAll(anpName, "-", ".")
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		klog.Errorf("failed to delete port group for anp %s: %v", anpName, err)
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "ingress"),
 	}); err != nil {
 		klog.Errorf("failed to delete ingress address set for anp %s: %v", anpName, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "egress"),
 	}); err != nil {
 		klog.Errorf("failed to delete egress address set for anp %s: %v", anpName, err)
@@ -750,11 +750,11 @@ func (c *Controller) resolveDomainNames(domainNames []v1alpha1.DomainName) ([]st
 func (c *Controller) createAsForAnpRule(anpName, ruleName, direction, asName string, addresses []string, isBanp bool) error {
 	var err error
 	if isBanp {
-		err = c.OVNNbClient.CreateAddressSet(asName, map[string]string{
+		err = c.createAddressSet(asName, map[string]string{
 			baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, direction),
 		})
 	} else {
-		err = c.OVNNbClient.CreateAddressSet(asName, map[string]string{
+		err = c.createAddressSet(asName, map[string]string{
 			adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, direction),
 		})
 	}
@@ -819,7 +819,7 @@ func (c *Controller) deleteUnusedAddrSetForAnp(curAddrSet, desiredAddrSet *strse
 	toDel := strset.Difference(curAddrSet, desiredAddrSet).List()
 
 	for _, asName := range toDel {
-		if err := c.OVNNbClient.DeleteAddressSet(asName); err != nil {
+		if err := c.deleteAddressSets(asName); err != nil {
 			klog.Errorf("failed to delete address set %s, %v", asName, err)
 			return err
 		}

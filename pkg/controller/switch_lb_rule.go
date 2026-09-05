@@ -349,7 +349,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	}
 
 	if lbhcUUIDsToDelete.Len() > 0 {
-		if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
+		if err = c.deleteLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 				return lbhcUUIDsToDelete.Has(lbhc.UUID)
 			},

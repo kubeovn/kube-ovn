@@ -133,7 +133,7 @@ func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) (err error) {
 
 	klog.Infof("handle delete ippool %s", ippool.Name)
 	c.ipam.RemoveIPPool(ippool.Spec.Subnet, ippool.Name)
-	if err = c.OVNNbClient.DeleteAddressSet(util.IPPoolAddressSetName(ippool.Name)); err != nil {
+	if err = c.deleteAddressSets(util.IPPoolAddressSetName(ippool.Name)); err != nil {
 		klog.Errorf("failed to delete address set for ippool %s: %v", ippool.Name, err)
 		return err
 	}
@@ -294,7 +294,7 @@ func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
 	asName := util.IPPoolAddressSetName(ippool.Name)
 
 	if !ippool.Spec.EnableAddressSet {
-		if err := c.OVNNbClient.DeleteAddressSet(asName); err != nil {
+		if err := c.deleteAddressSets(asName); err != nil {
 			err = fmt.Errorf("failed to delete address set %s: %w", asName, err)
 			klog.Error(err)
 			return err
@@ -309,7 +309,7 @@ func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
 		return err
 	}
 
-	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{ippoolKey: ippool.Name}); err != nil {
+	if err := c.createAddressSet(asName, map[string]string{ippoolKey: ippool.Name}); err != nil {
 		err = fmt.Errorf("failed to create address set for ippool %s: %w", ippool.Name, err)
 		klog.Error(err)
 		return err
