@@ -450,6 +450,27 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerDistributed() {
 	require.Equal(t, "keep", lb.Options["existing"])
 }
 
+func (suite *OvnClientTestSuite) testSetLoadBalancerAddressFamily() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-address-family"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerAddressFamily(lbName, "ipv6"))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "ipv6", lb.Options["address-family"])
+	lb.Options["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.Options))
+	require.NoError(t, nbClient.SetLoadBalancerAddressFamily(lbName, "ipv4"))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "ipv4", lb.Options["address-family"])
+	require.Equal(t, "keep", lb.Options["existing"])
+}
+
 func (suite *OvnClientTestSuite) testSetLoadBalancerExternalIDs() {
 	t := suite.T()
 	t.Parallel()

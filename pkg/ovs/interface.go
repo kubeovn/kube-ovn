@@ -150,6 +150,7 @@ type LoadBalancer interface {
 	DeleteLoadBalancerAffinityTimeout(lbName string) error
 	SetLoadBalancerDistributed(lbName string, distributed bool) error
 	SetLoadBalancerTemplate(lbName string, template bool) error
+	SetLoadBalancerAddressFamily(lbName, family string) error
 	SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error
 	ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error
 	SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error

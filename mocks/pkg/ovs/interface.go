@@ -1835,6 +1835,20 @@ func (mr *MockLoadBalancerMockRecorder) ReconcileChassisTemplateVariables(chassi
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileChassisTemplateVariables", reflect.TypeOf((*MockLoadBalancer)(nil).ReconcileChassisTemplateVariables), chassis, prefix, variables)
 }
 
+// SetLoadBalancerAddressFamily mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerAddressFamily(lbName, family string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerAddressFamily", lbName, family)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerAddressFamily indicates an expected call of SetLoadBalancerAddressFamily.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerAddressFamily(lbName, family any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAddressFamily", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerAddressFamily), lbName, family)
+}
+
 // SetLoadBalancerAffinityTimeout mocks base method.
 func (m *MockLoadBalancer) SetLoadBalancerAffinityTimeout(lbName string, timeout int) error {
 	m.ctrl.T.Helper()
@@ -5839,6 +5853,20 @@ func (m *MockNbClient) SetICAutoRoute(enable bool, blackList []string) error {
 func (mr *MockNbClientMockRecorder) SetICAutoRoute(enable, blackList any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetICAutoRoute", reflect.TypeOf((*MockNbClient)(nil).SetICAutoRoute), enable, blackList)
+}
+
+// SetLoadBalancerAddressFamily mocks base method.
+func (m *MockNbClient) SetLoadBalancerAddressFamily(lbName, family string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerAddressFamily", lbName, family)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerAddressFamily indicates an expected call of SetLoadBalancerAddressFamily.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerAddressFamily(lbName, family any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAddressFamily", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerAddressFamily), lbName, family)
 }
 
 // SetLoadBalancerAffinityTimeout mocks base method.
