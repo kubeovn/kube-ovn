@@ -13,6 +13,7 @@ import (
 
 type fakeBackend struct {
 	transact    func(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error)
+	create      func(...model.Model) ([]ovsdb.Operation, error)
 	conditional ConditionalAPI
 	cache       Cache
 	transacts   int
@@ -34,7 +35,12 @@ func (f *fakeBackend) WhereAll(model.Model, ...model.Condition) ConditionalAPI {
 
 func (f *fakeBackend) Select(model.Model, ...any) ([]ovsdb.Operation, error) { return nil, nil }
 
-func (f *fakeBackend) Create(...model.Model) ([]ovsdb.Operation, error) { return nil, nil }
+func (f *fakeBackend) Create(models ...model.Model) ([]ovsdb.Operation, error) {
+	if f.create != nil {
+		return f.create(models...)
+	}
+	return nil, nil
+}
 
 func (f *fakeBackend) Cache() Cache { return f.cache }
 
