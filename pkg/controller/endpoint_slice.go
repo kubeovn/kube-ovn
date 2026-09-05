@@ -1013,7 +1013,9 @@ func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName, traff
 			allForZones = false
 		}
 	}
-	if trafficDistribution == v1.ServiceTrafficDistributionPreferSameNode && allForNodes && nodeName != "" {
+	preferNode := trafficDistribution == v1.ServiceTrafficDistributionPreferSameNode
+	preferZone := preferNode || trafficDistribution == v1.ServiceTrafficDistributionPreferSameZone || trafficDistribution == v1.ServiceTrafficDistributionPreferClose
+	if preferNode && allForNodes && nodeName != "" {
 		matched := make([]string, 0, len(backends))
 		for _, backend := range backends {
 			for _, hint := range backend.hints.ForNodes {
@@ -1027,7 +1029,7 @@ func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName, traff
 			return matched
 		}
 	}
-	if allForZones && zoneName != "" {
+	if preferZone && allForZones && zoneName != "" {
 		matched := make([]string, 0, len(backends))
 		for _, backend := range backends {
 			for _, hint := range backend.hints.ForZones {
