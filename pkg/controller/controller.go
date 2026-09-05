@@ -44,6 +44,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/informer"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -77,6 +78,10 @@ type Controller struct {
 
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
+	// OVNNbTables and OVNSbTables expose the generic table seam to reconcile
+	// code while the legacy client interfaces remain unchanged.
+	OVNNbTables compat.TableProvider
+	OVNSbTables compat.TableProvider
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -696,7 +701,8 @@ func Run(ctx context.Context, config *Configuration) {
 		anpInformerFactory:     anpInformerFactory,
 	}
 
-	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
+	var nbClient *ovs.OVNNbClient
+	if nbClient, err = ovs.NewOvnNbClient(
 		config.OvnNbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
@@ -705,7 +711,11 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if controller.OVNSbClient, err = ovs.NewOvnSbClient(
+	controller.OVNNbClient = nbClient
+	controller.OVNNbTables = nbClient
+
+	var sbClient *ovs.OVNSbClient
+	if sbClient, err = ovs.NewOvnSbClient(
 		config.OvnSbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
@@ -714,6 +724,8 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
+	controller.OVNSbClient = sbClient
+	controller.OVNSbTables = sbClient
 	if config.ACLSampling.Enabled {
 		controller.reconcileACLSampling()
 	} else {
@@ -1678,7 +1690,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
 	for _, lsName := range subnets {
-		exist, err := c.OVNNbClient.LogicalSwitchExists(lsName)
+		exist, err := c.logicalSwitchExists(lsName)
 		if err != nil {
 			klog.Error(err)
 			return false, fmt.Errorf("check logical switch %s exist: %w", lsName, err)

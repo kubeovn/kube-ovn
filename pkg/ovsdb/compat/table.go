@@ -15,6 +15,15 @@ type Table struct {
 	prototype model.Model
 }
 
+// TableProvider supplies generic table handles for a database schema.
+// Database implements this interface, and database-specific clients can
+// expose it through embedding without expanding their legacy client APIs.
+type TableProvider interface {
+	Table(model.Model) *Table
+}
+
+var _ TableProvider = (*Database)(nil)
+
 // Table returns a resource handle for a model table. The prototype is used by
 // Query when the caller omits an indexed selector and also documents the row
 // type owned by the handle.
