@@ -18,6 +18,8 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicsb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
@@ -39,11 +41,23 @@ type OVNSbClient struct {
 	*compat.Database
 }
 
+// OVNICNbClient is the generic IC northbound database client.
+type OVNICNbClient struct {
+	*compat.Database
+}
+
+// OVNICSbClient is the generic IC southbound database client.
+type OVNICSbClient struct {
+	*compat.Database
+}
+
 var (
 	_ NbClient             = (*OVNNbClient)(nil)
 	_ SbClient             = (*OVNSbClient)(nil)
 	_ compat.TableProvider = (*OVNNbClient)(nil)
 	_ compat.TableProvider = (*OVNSbClient)(nil)
+	_ compat.TableProvider = (*OVNICNbClient)(nil)
+	_ compat.TableProvider = (*OVNICSbClient)(nil)
 )
 
 type ovsTransactionObserver struct{}
@@ -264,7 +278,76 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 	return c, nil
 }
 
-// TODO: support ic-nb ic-sb client
+func NewOvnICNbClient(ovnICNbAddr string, timeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int) (*OVNICNbClient, error) {
+	dbModel, err := ovnicnb.FullDatabaseModel()
+	if err != nil {
+		return nil, err
+	}
+	monitors := []compat.MonitorOption{
+		compat.WithTable(&ovnicnb.TransitSwitch{}),
+	}
+	var backend compat.Backend
+	for try := 0; ; try++ {
+		backend, err = ovsclient.NewOvsDbClient(
+			ovnicnb.DatabaseName,
+			ovnICNbAddr,
+			dbModel,
+			monitors,
+			ovsDbConTimeout,
+			ovsDbInactivityTimeout,
+		)
+		if err == nil {
+			break
+		}
+		klog.Errorf("failed to create OVN IC NB client: %v", err)
+		if try >= maxRetry {
+			return nil, err
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	return &OVNICNbClient{
+		Database: compat.NewDatabase(backend, time.Duration(timeout)*time.Second, compat.RetryPolicy{},
+			compat.WithDatabaseName("ovn-ic-nb"), compat.WithTransactionObserver(ovsTransactionObserver{})),
+	}, nil
+}
+
+func NewOvnICSbClient(ovnICSbAddr string, timeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int) (*OVNICSbClient, error) {
+	dbModel, err := ovnicsb.FullDatabaseModel()
+	if err != nil {
+		return nil, err
+	}
+	monitors := []compat.MonitorOption{
+		compat.WithTable(&ovnicsb.AvailabilityZone{}),
+		compat.WithTable(&ovnicsb.Gateway{}),
+		compat.WithTable(&ovnicsb.Route{}),
+		compat.WithTable(&ovnicsb.PortBinding{}),
+	}
+	var backend compat.Backend
+	for try := 0; ; try++ {
+		backend, err = ovsclient.NewOvsDbClient(
+			ovnicsb.DatabaseName,
+			ovnICSbAddr,
+			dbModel,
+			monitors,
+			ovsDbConTimeout,
+			ovsDbInactivityTimeout,
+		)
+		if err == nil {
+			break
+		}
+		klog.Errorf("failed to create OVN IC SB client: %v", err)
+		if try >= maxRetry {
+			return nil, err
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	return &OVNICSbClient{
+		Database: compat.NewDatabase(backend, time.Duration(timeout)*time.Second, compat.RetryPolicy{},
+			compat.WithDatabaseName("ovn-ic-sb"), compat.WithTransactionObserver(ovsTransactionObserver{})),
+	}, nil
+}
 
 func ConstructWaitForNameNotExistsOperation(name, table string) ovsdb.Operation {
 	return ConstructWaitForUniqueOperation(table, "name", name)

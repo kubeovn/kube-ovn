@@ -12,6 +12,8 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicsb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -23,6 +25,151 @@ type icGatewayChassisProvider interface {
 
 type icLogicalPatchPortProvider interface {
 	CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error
+}
+
+func (c *Controller) listICTransitSwitches() ([]string, error) {
+	if c.ICNbTables == nil {
+		if c.ovnLegacyClient == nil {
+			return nil, errors.New("IC NB table provider and legacy client are nil")
+		}
+		return c.ovnLegacyClient.GetTs()
+	}
+	var rows []ovnicnb.TransitSwitch
+	err := c.ICNbTables.Table(&ovnicnb.TransitSwitch{}).Filter(context.Background(), func(row *ovnicnb.TransitSwitch) bool {
+		return row.ExternalIDs["vendor"] == util.CniTypeName
+	}, &rows)
+	if err != nil {
+		return nil, fmt.Errorf("list IC transit switches: %w", err)
+	}
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Name)
+	}
+	return names, nil
+}
+
+func (c *Controller) getICTransitSwitchSubnet(name string) (string, error) {
+	if c.ICNbTables == nil {
+		if c.ovnLegacyClient == nil {
+			return "", errors.New("IC NB table provider and legacy client are nil")
+		}
+		return c.ovnLegacyClient.GetTsSubnet(name)
+	}
+	var rows []ovnicnb.TransitSwitch
+	err := c.ICNbTables.Table(&ovnicnb.TransitSwitch{}).Filter(context.Background(), func(row *ovnicnb.TransitSwitch) bool {
+		return row.Name == name
+	}, &rows)
+	if err != nil {
+		return "", fmt.Errorf("get IC transit switch %q: %w", name, err)
+	}
+	if len(rows) == 0 {
+		return "", fmt.Errorf("IC transit switch %q not found", name)
+	}
+	if len(rows) > 1 {
+		return "", fmt.Errorf("more than one IC transit switch named %q", name)
+	}
+	return rows[0].ExternalIDs["subnet"], nil
+}
+
+func (c *Controller) removeOldICChassisInSbDB(azName string) error {
+	if c.ICSbTables == nil {
+		if c.ovnLegacyClient == nil {
+			return errors.New("IC SB table provider and legacy client are nil")
+		}
+		return c.removeOldICChassisInSbDBLegacy(azName)
+	}
+	var zones []ovnicsb.AvailabilityZone
+	if err := c.ICSbTables.Table(&ovnicsb.AvailabilityZone{}).Filter(context.Background(), func(row *ovnicsb.AvailabilityZone) bool {
+		return row.Name == azName
+	}, &zones); err != nil {
+		return fmt.Errorf("find IC availability zone %q: %w", azName, err)
+	}
+	if len(zones) == 0 {
+		return nil
+	}
+	if len(zones) > 1 {
+		return fmt.Errorf("more than one IC availability zone named %q", azName)
+	}
+	zoneUUID := zones[0].UUID
+	var gateways []ovnicsb.Gateway
+	var routes []ovnicsb.Route
+	var portBindings []ovnicsb.PortBinding
+	if err := c.ICSbTables.Table(&ovnicsb.Gateway{}).Filter(context.Background(), func(row *ovnicsb.Gateway) bool {
+		return row.AvailabilityZone == zoneUUID
+	}, &gateways); err != nil {
+		return fmt.Errorf("list IC gateways for availability zone %q: %w", zoneUUID, err)
+	}
+	if err := c.ICSbTables.Table(&ovnicsb.Route{}).Filter(context.Background(), func(row *ovnicsb.Route) bool {
+		return row.AvailabilityZone == zoneUUID
+	}, &routes); err != nil {
+		return fmt.Errorf("list IC routes for availability zone %q: %w", zoneUUID, err)
+	}
+	if err := c.ICSbTables.Table(&ovnicsb.PortBinding{}).Filter(context.Background(), func(row *ovnicsb.PortBinding) bool {
+		return row.AvailabilityZone == zoneUUID
+	}, &portBindings); err != nil {
+		return fmt.Errorf("list IC port bindings for availability zone %q: %w", zoneUUID, err)
+	}
+
+	var operations []ovsdb.Operation
+	for i := range portBindings {
+		ops, err := c.ICSbTables.Table(&ovnicsb.PortBinding{}).DeleteOps(&portBindings[i])
+		if err != nil {
+			return err
+		}
+		operations = append(operations, ops...)
+	}
+	for i := range gateways {
+		ops, err := c.ICSbTables.Table(&ovnicsb.Gateway{}).DeleteOps(&gateways[i])
+		if err != nil {
+			return err
+		}
+		operations = append(operations, ops...)
+	}
+	for i := range routes {
+		ops, err := c.ICSbTables.Table(&ovnicsb.Route{}).DeleteOps(&routes[i])
+		if err != nil {
+			return err
+		}
+		operations = append(operations, ops...)
+	}
+	ops, err := c.ICSbTables.Table(&ovnicsb.AvailabilityZone{}).DeleteOps(&zones[0])
+	if err != nil {
+		return err
+	}
+	operations = append(operations, ops...)
+	return c.ICSbTables.Table(&ovnicsb.AvailabilityZone{}).Transact(context.Background(), "ic-sb-az-cleanup", operations...)
+}
+
+func (c *Controller) removeOldICChassisInSbDBLegacy(azName string) error {
+	azUUID, err := c.ovnLegacyClient.GetAzUUID(azName)
+	if err != nil {
+		return err
+	}
+	if azUUID == "" {
+		return nil
+	}
+	gateways, err := c.ovnLegacyClient.GetGatewayUUIDsInOneAZ(azUUID)
+	if err != nil {
+		return err
+	}
+	routes, err := c.ovnLegacyClient.GetRouteUUIDsInOneAZ(azUUID)
+	if err != nil {
+		return err
+	}
+	portBindings, err := c.ovnLegacyClient.GetPortBindingUUIDsInOneAZ(azUUID)
+	if err != nil {
+		return err
+	}
+	if err := c.ovnLegacyClient.DestroyPortBindings(portBindings); err != nil {
+		return err
+	}
+	if err := c.ovnLegacyClient.DestroyGateways(gateways); err != nil {
+		return err
+	}
+	if err := c.ovnLegacyClient.DestroyRoutes(routes); err != nil {
+		return err
+	}
+	return c.ovnLegacyClient.DestroyChassis(azUUID)
 }
 
 func (c *Controller) reconcileICGatewayChassises(lrpName string, chassises []string) error {

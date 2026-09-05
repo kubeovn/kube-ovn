@@ -47,6 +47,12 @@ type Controller struct {
 	OVNSbClient     ovs.SbClient
 	OVNNbTables     compat.TableProvider
 	OVNSbTables     compat.TableProvider
+	ICNbTables      compat.TableProvider
+	ICSbTables      compat.TableProvider
+	icNbClient      *ovs.OVNICNbClient
+	icSbClient      *ovs.OVNICSbClient
+	icNbAddress     string
+	icSbAddress     string
 
 	icConflictCIDRs *strset.Set
 }

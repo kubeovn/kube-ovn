@@ -32,6 +32,8 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/fileutil"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -61,6 +63,8 @@ type Configuration struct {
 	remoteAddresses             []string
 	singleReplica               bool
 	duplicateLeaderObservations map[string]int
+	icNbClient                  *ovs.OVNICNbClient
+	icNbTables                  compat.TableProvider
 }
 
 func (c *Configuration) observeDuplicateLeader(database string, duplicate bool) (int, bool) {
@@ -532,7 +536,7 @@ func doICDBLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 	}
 
 	if icNbLeader {
-		if err := updateTS(); err != nil {
+		if err := updateTS(cfg); err != nil {
 			klog.Errorf("update ts num failed err: %v", err)
 			return
 		}
@@ -677,19 +681,34 @@ func getTSCidr(index int) (string, error) {
 	return "", fmt.Errorf("unsupported protocol %s", proto)
 }
 
-func updateTS() error {
-	cmd := exec.Command("ovn-ic-nbctl", "show")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("ovn-ic-nbctl show output: %s, err: %w", output, err)
+func updateTS(cfg *Configuration) error {
+	if cfg == nil {
+		return errors.New("leader checker configuration is nil")
 	}
-	var existTSCount int
-	if lines := strings.TrimSpace(string(output)); lines != "" {
-		existTSCount = len(strings.Split(lines, "\n"))
+	if cfg.icNbTables == nil && cfg.icNbClient == nil {
+		address := ovs.OvsdbServerAddress(cfg.localAddress, intstr.FromInt32(util.ICNBDatabasePort))
+		client, err := ovs.NewOvnICNbClient(address, 3, 3, 0, 0)
+		if err != nil {
+			return fmt.Errorf("create IC NB client: %w", err)
+		}
+		cfg.icNbClient = client
+		cfg.icNbTables = client
+	} else if cfg.icNbTables == nil {
+		cfg.icNbTables = cfg.icNbClient
 	}
+
+	var transitSwitches []ovnicnb.TransitSwitch
+	if err := cfg.icNbTables.Table(&ovnicnb.TransitSwitch{}).List(context.Background(), &transitSwitches); err != nil {
+		return fmt.Errorf("list IC transit switches: %w", err)
+	}
+	existing := make(map[string]struct{}, len(transitSwitches))
+	for _, transitSwitch := range transitSwitches {
+		existing[transitSwitch.Name] = struct{}{}
+	}
+	existTSCount := len(transitSwitches)
 	expectTSCount, err := strconv.Atoi(os.Getenv("TS_NUM"))
 	if err != nil {
-		return fmt.Errorf("expectTSCount atoi failed output: %s, err: %w", output, err)
+		return fmt.Errorf("expectTSCount atoi failed: %w", err)
 	}
 	if expectTSCount == existTSCount {
 		klog.V(3).Infof("expectTSCount %d no changes required.", expectTSCount)
@@ -703,41 +722,27 @@ func updateTS() error {
 			if err != nil {
 				return err
 			}
-			args := []string{}
-			if os.Getenv(util.EnvSSLEnabled) == "true" {
-				args = append(args,
-					"--private-key=/var/run/tls/key",
-					"--certificate=/var/run/tls/cert",
-					"--ca-cert=/var/run/tls/cacert",
-				)
+			if _, ok := existing[tsName]; ok {
+				continue
 			}
-			args = append(args,
-				ovs.MayExist, "ts-add", tsName,
-				"--", "set", "Transit_Switch", tsName,
-				fmt.Sprintf(`external_ids:subnet="%s"`, subnet),
-				fmt.Sprintf(`external_ids:vendor="%s"`, util.CniTypeName),
-			)
-			cmd = exec.Command("ovn-ic-nbctl", args...) // #nosec G204 G702
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("output: %s, err: %w", output, err)
+			if err := cfg.icNbTables.Table(&ovnicnb.TransitSwitch{}).Create(context.Background(), "ic-transit-switch-create", &ovnicnb.TransitSwitch{
+				Name: tsName,
+				ExternalIDs: map[string]string{
+					"subnet": subnet,
+					"vendor": util.CniTypeName,
+				},
+			}); err != nil {
+				return fmt.Errorf("create transit switch %s: %w", tsName, err)
 			}
 		}
 	} else {
 		for i := existTSCount - 1; i >= expectTSCount; i-- {
 			tsName := getTSName(i)
-			cmd := exec.Command("ovn-ic-nbctl", "ts-del", tsName) // #nosec G204
-			if os.Getenv(util.EnvSSLEnabled) == "true" {
-				// #nosec G204
-				cmd = exec.Command("ovn-ic-nbctl",
-					"--private-key=/var/run/tls/key",
-					"--certificate=/var/run/tls/cert",
-					"--ca-cert=/var/run/tls/cacert",
-					"ts-del", tsName)
+			if _, ok := existing[tsName]; !ok {
+				continue
 			}
-			output, err := cmd.CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("output: %s, err: %w", output, err)
+			if err := cfg.icNbTables.Table(&ovnicnb.TransitSwitch{}).Delete(context.Background(), "ic-transit-switch-delete", &ovnicnb.TransitSwitch{Name: tsName}); err != nil {
+				return fmt.Errorf("delete transit switch %s: %w", tsName, err)
 			}
 		}
 	}
