@@ -231,6 +231,42 @@ func TestControllerTableProviderNBGlobalUpdates(t *testing.T) {
 	require.Equal(t, 3, backend.transactCalls)
 }
 
+func TestControllerTableProviderParentReferenceDeletes(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalRouter{
+			UUID:     "lr-1",
+			Name:     "lr-1",
+			Policies: []string{"policy-1", "policy-2"},
+			Nat:      []string{"nat-1", "nat-2"},
+		},
+		&ovnnb.LogicalRouterPolicy{
+			UUID:        "policy-1",
+			Priority:    100,
+			Nexthop:     new("10.0.0.1"),
+			ExternalIDs: map[string]string{"owner": "test"},
+		},
+		&ovnnb.LogicalRouterPolicy{
+			UUID:        "policy-2",
+			Priority:    200,
+			Nexthops:    []string{"10.0.0.2"},
+			ExternalIDs: map[string]string{"owner": "test"},
+		},
+		&ovnnb.NAT{UUID: "nat-1", Type: ovnnb.NATTypeSNAT, ExternalIP: "192.0.2.1", LogicalIP: "10.0.0.1"},
+		&ovnnb.NAT{UUID: "nat-2", Type: ovnnb.NATTypeSNAT, ExternalIP: "192.0.2.2", LogicalIP: "10.0.0.2"},
+	)
+	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	controller := &Controller{OVNNbTables: database}
+
+	require.NoError(t, controller.deleteLogicalRouterPolicyByUUID("lr-1", "policy-1"))
+	require.NoError(t, controller.deleteLogicalRouterPolicies("lr-1", 200, map[string]string{"owner": "test"}))
+	require.NoError(t, controller.deleteLogicalRouterPolicyByNexthop("lr-1", 100, "10.0.0.1"))
+	require.NoError(t, controller.deleteNats("lr-1", ovnnb.NATTypeSNAT, "10.0.0.1"))
+	require.NoError(t, controller.deleteNat("lr-1", ovnnb.NATTypeSNAT, "192.0.2.2", "10.0.0.2"))
+
+	require.Equal(t, 5, backend.mutateCalls)
+	require.Equal(t, 5, backend.transactCalls)
+}
+
 type tableBackend struct {
 	rows          map[reflect.Type][]any
 	createCalls   int

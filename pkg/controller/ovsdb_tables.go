@@ -687,6 +687,136 @@ func (c *Controller) updateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy
 	)
 }
 
+func (c *Controller) deleteLogicalRouterPolicyByUUID(lrName, uuid string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, uuid)
+	}
+	if uuid == "" {
+		return nil
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(lr.Policies, uuid) {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Mutate(
+		context.Background(), "lr-policy-del", lr,
+		model.Mutation{Field: &lr.Policies, Value: []string{uuid}, Mutator: ovsdb.MutateOperationDelete},
+	)
+}
+
+func (c *Controller) deleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, priority, externalIDs)
+	}
+	policies, err := c.listLogicalRouterPolicies(lrName, priority, externalIDs, false)
+	if err != nil {
+		return err
+	}
+	if len(policies) == 0 {
+		return nil
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	uuids := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		uuids = append(uuids, policy.UUID)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Mutate(
+		context.Background(), "lr-policies-del", lr,
+		model.Mutation{Field: &lr.Policies, Value: uuids, Mutator: ovsdb.MutateOperationDelete},
+	)
+}
+
+func (c *Controller) deleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalRouterPolicyByNexthop(lrName, priority, nexthop)
+	}
+	policies, err := c.listLogicalRouterPoliciesWithFilter(lrName, func(policy *ovnnb.LogicalRouterPolicy) bool {
+		if policy.Priority != priority {
+			return false
+		}
+		return (policy.Nexthop != nil && *policy.Nexthop == nexthop) || slices.Contains(policy.Nexthops, nexthop)
+	})
+	if err != nil {
+		return err
+	}
+	if len(policies) == 0 {
+		return nil
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	uuids := make([]string, 0, len(policies))
+	for _, policy := range policies {
+		uuids = append(uuids, policy.UUID)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Mutate(
+		context.Background(), "lr-policy-del", lr,
+		model.Mutation{Field: &lr.Policies, Value: uuids, Mutator: ovsdb.MutateOperationDelete},
+	)
+}
+
+func (c *Controller) deleteNats(lrName, natType, logicalIP string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteNats(lrName, natType, logicalIP)
+	}
+	nats, err := c.listNATs(lrName, natType, logicalIP, nil)
+	if err != nil {
+		return err
+	}
+	if len(nats) == 0 {
+		return nil
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	uuids := make([]string, 0, len(nats))
+	for _, nat := range nats {
+		uuids = append(uuids, nat.UUID)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Mutate(
+		context.Background(), "nats-del", lr,
+		model.Mutation{Field: &lr.Nat, Value: uuids, Mutator: ovsdb.MutateOperationDelete},
+	)
+}
+
+func (c *Controller) deleteNat(lrName, natType, externalIP, logicalIP string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteNat(lrName, natType, externalIP, logicalIP)
+	}
+	nats, err := c.listNATs(lrName, natType, logicalIP, nil)
+	if err != nil {
+		return err
+	}
+	matched := make([]*ovnnb.NAT, 0, len(nats))
+	for _, nat := range nats {
+		if nat.ExternalIP == externalIP {
+			matched = append(matched, nat)
+		}
+	}
+	if len(matched) == 0 {
+		return nil
+	}
+	if len(matched) > 1 {
+		return fmt.Errorf("more than one nat type %s external ip %s logical ip %s in logical router %s", natType, externalIP, logicalIP, lrName)
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Mutate(
+		context.Background(), "lr-nat-del", lr,
+		model.Mutation{Field: &lr.Nat, Value: []string{matched[0].UUID}, Mutator: ovsdb.MutateOperationDelete},
+	)
+}
+
 // setLoadBalancerOption updates one option on a load balancer without
 // replacing options managed by another reconcile path. The legacy callback is
 // retained for callers that have not wired a TableProvider yet.
@@ -1580,6 +1710,34 @@ func (c *Controller) getNATByUUID(uuid string) (*ovnnb.NAT, error) {
 		return nil, err
 	}
 	return row, nil
+}
+
+func (c *Controller) listNATs(lrName, natType, logicalIP string, externalIDs map[string]string) ([]*ovnnb.NAT, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.ListNats(lrName, natType, logicalIP, externalIDs)
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return nil, err
+	}
+	natUUIDs := make(map[string]struct{}, len(lr.Nat))
+	for _, uuid := range lr.Nat {
+		natUUIDs[uuid] = struct{}{}
+	}
+	var rows []*ovnnb.NAT
+	err = c.OVNNbTables.Table(&ovnnb.NAT{}).Filter(context.Background(), func(row *ovnnb.NAT) bool {
+		if _, ok := natUUIDs[row.UUID]; !ok {
+			return false
+		}
+		if !matchesExternalIDsWithEmptyValue(row.ExternalIDs, externalIDs, true) {
+			return false
+		}
+		if natType != "" && row.Type != natType {
+			return false
+		}
+		return logicalIP == "" || row.LogicalIP == logicalIP
+	}, &rows)
+	return rows, err
 }
 
 func (c *Controller) findBFD(externalIDs map[string]string) ([]ovnnb.BFD, error) {

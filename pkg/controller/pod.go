@@ -1115,7 +1115,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			if c.config.EnableEipSnat {
 				for ipStr := range strings.SplitSeq(podIP, ",") {
 					if eip := pod.Annotations[util.EipAnnotation]; eip == "" {
-						if err = c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, ipStr); err != nil {
+						if err = c.deleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
@@ -1125,7 +1125,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 						}
 					}
 					if eip := pod.Annotations[util.SnatAnnotation]; eip == "" {
-						if err = c.OVNNbClient.DeleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
+						if err = c.deleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
@@ -1400,12 +1400,12 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 
 				if c.config.EnableEipSnat {
 					if pod.Annotations[util.EipAnnotation] != "" {
-						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
+						if err = c.deleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					}
 					if snatEip := pod.Annotations[util.SnatAnnotation]; snatEip != "" {
-						if err = c.OVNNbClient.DeleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, snatEip, address.IP); err != nil {
+						if err = c.deleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, snatEip, address.IP); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					}

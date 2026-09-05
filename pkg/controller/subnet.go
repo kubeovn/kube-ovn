@@ -2768,7 +2768,7 @@ func (c *Controller) deleteStaleU2ORoutePolicies(subnet *kubeovnv1.Subnet, desir
 			continue
 		}
 		klog.Infof("delete stale u2o policy for router %s with match %s priority %d", lr, policy.Match, policy.Priority)
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lr, policy.UUID); err != nil {
+		if err := c.deleteLogicalRouterPolicyByUUID(lr, policy.UUID); err != nil {
 			klog.Errorf("failed to delete stale u2o policy for subnet %s: %v", subnet.Name, err)
 			return err
 		}
@@ -2801,7 +2801,7 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 
 	for _, policy := range policies {
 		klog.Infof("delete u2o interconnection policy for router %s with match %s priority %d", lr, policy.Match, policy.Priority)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lr, policy.UUID); err != nil {
+		if err = c.deleteLogicalRouterPolicyByUUID(lr, policy.UUID); err != nil {
 			klog.Errorf("failed to delete u2o interconnection policy for subnet %s: %v", subnet.Name, err)
 			return err
 		}
@@ -3023,7 +3023,7 @@ func (c *Controller) reconcilePolicyRouteForCidrChangedSubnet(subnet *kubeovnv1.
 
 			if policy.Match != match {
 				klog.Infof("delete old policy route for subnet %s with match %s priority %d, new match %v", subnet.Name, policy.Match, policy.Priority, match)
-				if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(subnet.Spec.Vpc, policy.UUID); err != nil {
+				if err = c.deleteLogicalRouterPolicyByUUID(subnet.Spec.Vpc, policy.UUID); err != nil {
 					klog.Errorf("failed to delete policy route for subnet %s: %v", subnet.Name, err)
 					return err
 				}
@@ -3043,7 +3043,7 @@ func (c *Controller) addPolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Subnet
 	// shrinking the merged set (e.g. ServiceCIDR object deleted) does not
 	// leave stale OVN entries behind. Port groups are reused, not touched.
 	if c.logicalRouterExists(subnet.Spec.Vpc) {
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
+		if err := c.deleteLogicalRouterPolicies(subnet.Spec.Vpc, -1, map[string]string{
 			"isU2ONoLBRoutePolicy": "true",
 			"vendor":               util.CniTypeName,
 			"subnet":               subnet.Name,
@@ -3154,7 +3154,7 @@ func (c *Controller) deletePolicyRouteForU2ONoLoadBalancer(subnet *kubeovnv1.Sub
 
 	for _, policy := range policies {
 		klog.Infof("delete u2o interconnection policy without enabling loadbalancer for router %s with match %s priority %d", lr, policy.Match, policy.Priority)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lr, policy.UUID); err != nil {
+		if err = c.deleteLogicalRouterPolicyByUUID(lr, policy.UUID); err != nil {
 			klog.Errorf("failed to delete u2o interconnection policy for subnet %s: %v", subnet.Name, err)
 			return err
 		}
