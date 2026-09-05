@@ -101,7 +101,7 @@ func (c *OVNNbClient) CreateBareLogicalSwitch(lsName string) error {
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.Create(ls)
+	op, err := c.Database.Table(&ovnnb.LogicalSwitch{}).CreateOps(ls)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical switch %s: %w", lsName, err)
@@ -246,9 +246,9 @@ func (c *OVNNbClient) GetLogicalSwitch(lsName string, ignoreNotFound bool) (*ovn
 	defer cancel()
 
 	lsList := make([]ovnnb.LogicalSwitch, 0)
-	if err := c.Database.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
+	if err := c.Database.Table(&ovnnb.LogicalSwitch{}).Filter(ctx, func(ls *ovnnb.LogicalSwitch) bool {
 		return ls.Name == lsName
-	}).List(ctx, &lsList); err != nil {
+	}, &lsList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("list logical switch %q: %w", lsName, err)
 	}
@@ -281,7 +281,7 @@ func (c *OVNNbClient) ListLogicalSwitch(needVendorFilter bool, filter func(ls *o
 
 	lsList := make([]ovnnb.LogicalSwitch, 0)
 
-	if err := c.Database.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
+	if err := c.Database.Table(&ovnnb.LogicalSwitch{}).Filter(ctx, func(ls *ovnnb.LogicalSwitch) bool {
 		if needVendorFilter && (len(ls.ExternalIDs) == 0 || ls.ExternalIDs["vendor"] != util.CniTypeName) {
 			return false
 		}
@@ -291,7 +291,7 @@ func (c *OVNNbClient) ListLogicalSwitch(needVendorFilter bool, filter func(ls *o
 		}
 
 		return true
-	}).List(ctx, &lsList); err != nil {
+	}, &lsList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("list logical switch: %w", err)
 	}
@@ -437,7 +437,7 @@ func (c *OVNNbClient) LogicalSwitchOp(lsName string, mutationsFunc ...func(ls *o
 		}
 	}
 
-	ops, err := c.Database.Where(ls).Mutate(ls, mutations...)
+	ops, err := c.Database.WhereTable(ls).Mutate(ls, mutations...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating logical switch %s: %w", lsName, err)
@@ -459,7 +459,7 @@ func (c *OVNNbClient) DeleteLogicalSwitchOp(lsName string) ([]ovsdb.Operation, e
 		return nil, nil
 	}
 
-	op, err := c.Database.Where(ls).Delete()
+	op, err := c.Database.WhereTable(ls).Delete()
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for deleting logical switch %s: %w", lsName, err)

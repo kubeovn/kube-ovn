@@ -655,7 +655,7 @@ func (c *OVNNbClient) UpdateACL(acl *ovnnb.ACL, fields ...any) error {
 		return errors.New("address_set is nil")
 	}
 
-	op, err := c.Database.Where(acl).Update(acl, fields...)
+	op, err := c.Database.WhereTable(acl).Update(acl, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating acl with 'direction %s priority %d match %s': %w", acl.Direction, acl.Priority, acl.Match, err)
@@ -1081,7 +1081,7 @@ func (c *OVNNbClient) CreateBareACL(parentName, direction, priority, match, acti
 		return fmt.Errorf("new acl direction %s priority %s match %s action %s: %w", direction, priority, match, action, err)
 	}
 
-	op, err := c.Create(acl)
+	op, err := c.Database.Table(&ovnnb.ACL{}).CreateOps(acl)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating acl direction %s priority %s match %s action %s: %w", direction, priority, match, action, err)
@@ -1162,9 +1162,9 @@ func (c *OVNNbClient) GetACL(parent, direction, priority, match string, tier int
 	intPriority, _ := strconv.Atoi(priority)
 
 	aclList := make([]ovnnb.ACL, 0)
-	if err := c.Database.WhereCache(func(acl *ovnnb.ACL) bool {
+	if err := c.Database.Table(&ovnnb.ACL{}).Filter(ctx, func(acl *ovnnb.ACL) bool {
 		return len(acl.ExternalIDs) != 0 && acl.ExternalIDs[aclParentKey] == parent && acl.Direction == direction && acl.Priority == intPriority && acl.Match == match && tier == acl.Tier
-	}).List(ctx, &aclList); err != nil {
+	}, &aclList); err != nil {
 		klog.Error(err)
 		return nil, NewACLError(ACLErrorDatabase, fmt.Sprintf("get acl with 'parent %s direction %s priority %s match %s tier %d': %v", parent, direction, priority, match, tier, err))
 	}
@@ -1196,7 +1196,7 @@ func (c *OVNNbClient) ListAcls(direction string, externalIDs map[string]string) 
 
 	aclList := make([]ovnnb.ACL, 0)
 
-	if err := c.Database.WhereCache(aclFilter(direction, externalIDs)).List(ctx, &aclList); err != nil {
+	if err := c.Database.Table(&ovnnb.ACL{}).Filter(ctx, aclFilter(direction, externalIDs), &aclList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("list acls: %w", err)
 	}
@@ -1727,7 +1727,7 @@ func (c *OVNNbClient) CreateAclsOps(parentName, parentType string, acls ...*ovnn
 		}
 	}
 
-	createAclsOp, err := c.Create(models...)
+	createAclsOp, err := c.Database.Table(&ovnnb.ACL{}).CreateOps(models...)
 	if err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for creating acls: %w", err)
@@ -2165,7 +2165,7 @@ func (c *OVNNbClient) MigrateACLTier() error {
 	defer cancel()
 
 	var aclList []ovnnb.ACL
-	if err := c.Database.WhereCache(func(acl *ovnnb.ACL) bool { return acl.Tier == 0 }).List(ctx, &aclList); err != nil {
+	if err := c.Database.Table(&ovnnb.ACL{}).Filter(ctx, func(acl *ovnnb.ACL) bool { return acl.Tier == 0 }, &aclList); err != nil {
 		err = fmt.Errorf("failed to list acls with tier 0: %w", err)
 		klog.Error(err)
 		return err
@@ -2174,7 +2174,7 @@ func (c *OVNNbClient) MigrateACLTier() error {
 	ops := make([]ovsdb.Operation, 0, len(aclList))
 	for _, acl := range aclList {
 		acl.Tier = util.NetpolACLTier
-		op, err := c.Database.Where(&acl).Update(&acl, &acl.Tier)
+		op, err := c.Database.WhereTable(&acl).Update(&acl, &acl.Tier)
 		if err != nil {
 			klog.Error(err)
 			return fmt.Errorf("failed to generate operations for updating acl %s tier: %w", acl.UUID, err)
@@ -2198,7 +2198,7 @@ func (c *OVNNbClient) CleanNoParentKeyAcls() error {
 	defer cancel()
 
 	var aclList []ovnnb.ACL
-	if err := c.Database.WhereCache(func(acl *ovnnb.ACL) bool {
+	if err := c.Database.Table(&ovnnb.ACL{}).Filter(ctx, func(acl *ovnnb.ACL) bool {
 		// Only clean ACLs that belong to kube-ovn (vendor=kube-ovn) but are missing the parent key.
 		// This ensures we never touch ACLs created by external systems like OpenStack Neutron.
 		// ACLs without vendor tag or with a different vendor are left untouched.
@@ -2212,7 +2212,7 @@ func (c *OVNNbClient) CleanNoParentKeyAcls() error {
 		// Only target kube-ovn ACLs that are missing the parent key
 		_, hasParent := acl.ExternalIDs[aclParentKey]
 		return !hasParent
-	}).List(ctx, &aclList); err != nil {
+	}, &aclList); err != nil {
 		err = fmt.Errorf("failed to list kube-ovn acls without parent: %w", err)
 		klog.Error(err)
 		return err
@@ -2221,9 +2221,9 @@ func (c *OVNNbClient) CleanNoParentKeyAcls() error {
 	ops := make([]ovsdb.Operation, 0, len(aclList))
 	for _, acl := range aclList {
 		var portGroups []ovnnb.PortGroup
-		if err := c.Database.WhereCache(func(pg *ovnnb.PortGroup) bool {
+		if err := c.Database.Table(&ovnnb.PortGroup{}).Filter(ctx, func(pg *ovnnb.PortGroup) bool {
 			return slices.Contains(pg.ACLs, acl.UUID)
-		}).List(ctx, &portGroups); err == nil {
+		}, &portGroups); err == nil {
 			for _, pg := range portGroups {
 				op, err := c.portGroupUpdateACLOp(pg.Name, []string{acl.UUID}, ovsdb.MutateOperationDelete)
 				if err == nil {
@@ -2232,9 +2232,9 @@ func (c *OVNNbClient) CleanNoParentKeyAcls() error {
 			}
 		}
 		var logicalSwitches []ovnnb.LogicalSwitch
-		if err := c.Database.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
+		if err := c.Database.Table(&ovnnb.LogicalSwitch{}).Filter(ctx, func(ls *ovnnb.LogicalSwitch) bool {
 			return slices.Contains(ls.ACLs, acl.UUID)
-		}).List(ctx, &logicalSwitches); err == nil {
+		}, &logicalSwitches); err == nil {
 			for _, ls := range logicalSwitches {
 				op, err := c.logicalSwitchUpdateACLOp(ls.Name, []string{acl.UUID}, ovsdb.MutateOperationDelete)
 				if err == nil {
@@ -2242,7 +2242,7 @@ func (c *OVNNbClient) CleanNoParentKeyAcls() error {
 				}
 			}
 		}
-		delOp, err := c.Database.Where(&acl).Delete()
+		delOp, err := c.Database.WhereTable(&acl).Delete()
 		if err == nil {
 			ops = append(ops, delOp...)
 		}

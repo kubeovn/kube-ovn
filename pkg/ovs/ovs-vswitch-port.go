@@ -15,12 +15,12 @@ func (c *VswitchClient) ListPort(filter func(sw *vswitch.Port) bool) ([]vswitch.
 	defer cancel()
 
 	var portList []vswitch.Port
-	if err := c.Database.WhereCache(func(port *vswitch.Port) bool {
+	if err := c.Database.Table(&vswitch.Port{}).Filter(ctx, func(port *vswitch.Port) bool {
 		if filter != nil {
 			return filter(port)
 		}
 		return true
-	}).List(ctx, &portList); err != nil {
+	}, &portList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to list port: %w", err)
 	}

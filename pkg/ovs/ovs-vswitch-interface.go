@@ -15,12 +15,12 @@ func (c *VswitchClient) ListInterface(filter func(sw *vswitch.Interface) bool) (
 	defer cancel()
 
 	var ifaceList []vswitch.Interface
-	if err := c.Database.WhereCache(func(iface *vswitch.Interface) bool {
+	if err := c.Database.Table(&vswitch.Interface{}).Filter(ctx, func(iface *vswitch.Interface) bool {
 		if filter != nil {
 			return filter(iface)
 		}
 		return true
-	}).List(ctx, &ifaceList); err != nil {
+	}, &ifaceList); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("failed to list interface: %w", err)
 	}

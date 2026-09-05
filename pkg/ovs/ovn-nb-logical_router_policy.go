@@ -66,7 +66,7 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 	} else if !maps.Equal(policyFound.ExternalIDs, externalIDs) {
 		policy := new(*policyFound)
 		policy.ExternalIDs = externalIDs
-		ops, err := c.Database.Where(policy).Update(policy, &policy.ExternalIDs)
+		ops, err := c.Database.WhereTable(policy).Update(policy, &policy.ExternalIDs)
 		if err != nil {
 			err := fmt.Errorf("failed to generate operations for updating logical router policy: %w", err)
 			klog.Error(err)
@@ -150,7 +150,7 @@ func (c *OVNNbClient) CreateLogicalRouterPolicies(lrName string, policies ...*ov
 		}
 	}
 
-	createPoliciesOp, err := c.Create(models...)
+	createPoliciesOp, err := c.Database.Table(&ovnnb.LogicalRouterPolicy{}).CreateOps(models...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating policies: %w", err)
@@ -371,7 +371,7 @@ func (c *OVNNbClient) GetLogicalRouterPolicyByUUID(uuid string) (*ovnnb.LogicalR
 	defer cancel()
 
 	policy := &ovnnb.LogicalRouterPolicy{UUID: uuid}
-	if err := c.Get(ctx, policy); err != nil {
+	if err := c.Database.Table(&ovnnb.LogicalRouterPolicy{}).Get(ctx, policy); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -443,7 +443,7 @@ func policyFilter(priority int, externalIDs map[string]string, ignoreExtIDEmptyV
 }
 
 func (c *OVNNbClient) UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy, fields ...any) error {
-	ops, err := c.Database.Where(policy).Update(policy, fields...)
+	ops, err := c.Database.WhereTable(policy).Update(policy, fields...)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to generate update operations for logical router policy %s: %w", policy.UUID, err)
@@ -456,7 +456,7 @@ func (c *OVNNbClient) UpdateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolic
 }
 
 func (c *OVNNbClient) DeleteRouterPolicy(lr *ovnnb.LogicalRouter, uuid string) error {
-	ops, err := c.Database.Where(lr).Mutate(lr, model.Mutation{
+	ops, err := c.Database.WhereTable(lr).Mutate(lr, model.Mutation{
 		Field:   &lr.Policies,
 		Mutator: ovsdb.MutateOperationDelete,
 		Value:   []string{uuid},
@@ -490,7 +490,7 @@ func (c *OVNNbClient) listLogicalRouterPoliciesByFilter(lrName string, filter fu
 	policyList := make([]*ovnnb.LogicalRouterPolicy, 0, len(lr.Policies))
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
-	if err := c.Database.WhereCache(predicate).List(ctx, &policyList); err != nil {
+	if err := c.Database.Table(&ovnnb.LogicalRouterPolicy{}).Filter(ctx, predicate, &policyList); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -516,7 +516,7 @@ func (c *OVNNbClient) batchListLogicalRouterPoliciesByFilter(lrName string, poli
 
 	var policyList []*ovnnb.LogicalRouterPolicy
 	indexStart := time.Now()
-	if err := c.Database.Where(policyIndex...).List(ctx, &policyList); err != nil {
+	if err := c.Database.WhereTable(policyIndex...).List(ctx, &policyList); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -594,7 +594,7 @@ func (c *OVNNbClient) batchUpdateLogicalRouterPolicies(updateMap map[*ovnnb.Logi
 	for policyNew, policyFound := range updateMap {
 		policy := new(*policyFound)
 		policy.ExternalIDs = policyNew.ExternalIDs
-		ops, err := c.Database.Where(policy).Update(policy, &policy.ExternalIDs)
+		ops, err := c.Database.WhereTable(policy).Update(policy, &policy.ExternalIDs)
 		if err != nil {
 			return fmt.Errorf("failed to generate operations for updating logical router policy: %w", err)
 		}

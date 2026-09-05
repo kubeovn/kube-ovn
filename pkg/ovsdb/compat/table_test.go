@@ -76,6 +76,26 @@ func TestTableCRUDDelegatesToDatabase(t *testing.T) {
 	require.Equal(t, 5, fake.transacts)
 }
 
+func TestTableOperationBuilders(t *testing.T) {
+	fake := &fakeBackend{
+		create:      func(...model.Model) ([]ovsdb.Operation, error) { return tableOperation(), nil },
+		conditional: crudConditional{},
+	}
+	table := NewDatabase(fake, time.Second, RetryPolicy{}).Table(&struct{}{})
+	row := &struct{}{}
+
+	for _, build := range []func() ([]ovsdb.Operation, error){
+		func() ([]ovsdb.Operation, error) { return table.CreateOps(row) },
+		func() ([]ovsdb.Operation, error) { return table.UpdateOps(row, row) },
+		func() ([]ovsdb.Operation, error) { return table.MutateOps(row) },
+		func() ([]ovsdb.Operation, error) { return table.DeleteOps(row) },
+	} {
+		operations, err := build()
+		require.NoError(t, err)
+		require.NotEmpty(t, operations)
+	}
+}
+
 func tableOperation() []ovsdb.Operation {
 	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}
 }
