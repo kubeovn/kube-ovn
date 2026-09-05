@@ -98,6 +98,92 @@ func TestVswitchClientCleanInterface(t *testing.T) {
 	require.Empty(t, bridges[0].Ports)
 }
 
+func TestEnsureAndDeleteVswitchPort(t *testing.T) {
+	dbModel, err := model.NewClientDBModel(vswitch.DatabaseName, map[string]model.Model{
+		vswitch.BridgeTable:      &vswitch.Bridge{},
+		vswitch.InterfaceTable:   &vswitch.Interface{},
+		vswitch.OpenvSwitchTable: &vswitch.OpenvSwitch{},
+		vswitch.PortTable:        &vswitch.Port{},
+		vswitch.QoSTable:         &vswitch.QoS{},
+	})
+	require.NoError(t, err)
+
+	_, sock := newOVSDBServer(t, "ensure-vswitch-port", dbModel, vswitch.Schema())
+	client, err := NewVswitchClient("unix:"+sock, 1, 1)
+	require.NoError(t, err)
+	t.Cleanup(client.Close)
+
+	bridge := &vswitch.Bridge{UUID: "bridge", Name: "br-int"}
+	open := &vswitch.OpenvSwitch{UUID: "open", Bridges: []string{"bridge"}}
+	bridgeOps, err := client.Table(&vswitch.Bridge{}).CreateOps(bridge)
+	require.NoError(t, err)
+	openOps, err := client.Table(&vswitch.OpenvSwitch{}).CreateOps(open)
+	require.NoError(t, err)
+	require.NoError(t, client.Table(&vswitch.Bridge{}).Transact(t.Context(), "seed-vswitch-port", append(bridgeOps, openOps...)...))
+	require.Eventually(t, func() bool {
+		var rows []vswitch.Bridge
+		return client.Table(&vswitch.Bridge{}).List(t.Context(), &rows) == nil && len(rows) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	port := &vswitch.Port{Name: "veth0", ExternalIDs: map[string]string{ExternalIDVendor: util.CniTypeName}}
+	iface := &vswitch.Interface{
+		Name:        "veth0",
+		Type:        "internal",
+		ExternalIDs: map[string]string{"iface-id": "pod.ns"},
+	}
+	require.NoError(t, EnsureVswitchPort(t.Context(), client, VswitchPortConfig{
+		BridgeName: "br-int",
+		Port:       port,
+		Interface:  iface,
+	}))
+
+	var ports []vswitch.Port
+	var interfaces []vswitch.Interface
+	require.Eventually(t, func() bool {
+		if client.Table(&vswitch.Port{}).List(t.Context(), &ports) != nil ||
+			client.Table(&vswitch.Interface{}).List(t.Context(), &interfaces) != nil {
+			return false
+		}
+		return len(ports) == 1 && len(interfaces) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, []string{interfaces[0].UUID}, ports[0].Interfaces)
+	require.Equal(t, "pod.ns", interfaces[0].ExternalIDs["iface-id"])
+
+	port.Trunks = []int{10, 20}
+	iface.Type = "dpdk"
+	iface.Options = map[string]string{"dpdk-devargs": "0000:01:00.0"}
+	require.NoError(t, EnsureVswitchPort(t.Context(), client, VswitchPortConfig{
+		BridgeName:      "br-int",
+		Port:            port,
+		Interface:       iface,
+		PortFields:      []any{&port.Trunks},
+		InterfaceFields: []any{&iface.Type, &iface.Options},
+	}))
+	require.Eventually(t, func() bool {
+		ports = nil
+		interfaces = nil
+		if client.Table(&vswitch.Port{}).List(t.Context(), &ports) != nil ||
+			client.Table(&vswitch.Interface{}).List(t.Context(), &interfaces) != nil {
+			return false
+		}
+		return len(ports) == 1 && len(ports[0].Trunks) == 2 && len(interfaces) == 1 && interfaces[0].Type == "dpdk"
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, "0000:01:00.0", interfaces[0].Options["dpdk-devargs"])
+
+	require.NoError(t, DeleteVswitchPort(t.Context(), client, "veth0"))
+	require.Eventually(t, func() bool {
+		ports = nil
+		interfaces = nil
+		var bridges []vswitch.Bridge
+		if client.Table(&vswitch.Port{}).List(t.Context(), &ports) != nil ||
+			client.Table(&vswitch.Interface{}).List(t.Context(), &interfaces) != nil ||
+			client.Table(&vswitch.Bridge{}).List(t.Context(), &bridges) != nil {
+			return false
+		}
+		return len(ports) == 0 && len(interfaces) == 0 && len(bridges) == 1 && len(bridges[0].Ports) == 0
+	}, time.Second, 10*time.Millisecond)
+}
+
 func TestSetInterfaceBandwidthUsesTableProvider(t *testing.T) {
 	dbModel, err := model.NewClientDBModel(vswitch.DatabaseName, map[string]model.Model{
 		vswitch.OpenvSwitchTable: &vswitch.OpenvSwitch{},
