@@ -1365,6 +1365,43 @@ func (c *Controller) deleteBFDByDestination(logicalPort, destination string) err
 	return c.OVNNbTables.Table(&ovnnb.BFD{}).Delete(context.Background(), "bfd-del", selectors...)
 }
 
+func (c *Controller) createBFD(logicalPort, destination string, minRx, minTx, detectMult int, externalIDs map[string]string) (*ovnnb.BFD, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateBFD(logicalPort, destination, minRx, minTx, detectMult, externalIDs)
+	}
+	var rows []ovnnb.BFD
+	table := c.OVNNbTables.Table(&ovnnb.BFD{})
+	if err := table.Filter(context.Background(), func(row *ovnnb.BFD) bool {
+		return row.LogicalPort == logicalPort && row.DstIP == destination
+	}, &rows); err != nil {
+		return nil, fmt.Errorf("failed to list BFD with logical_port=%s and dst_ip=%s: %w", logicalPort, destination, err)
+	}
+	if len(rows) != 0 {
+		return &rows[0], nil
+	}
+	row := &ovnnb.BFD{
+		LogicalPort: logicalPort,
+		DstIP:       destination,
+		MinRx:       new(minRx),
+		MinTx:       new(minTx),
+		DetectMult:  new(detectMult),
+		ExternalIDs: externalIDs,
+	}
+	if err := table.Create(context.Background(), "bfd-add", row); err != nil {
+		return nil, fmt.Errorf("failed to create BFD with logical_port=%s and dst_ip=%s: %w", logicalPort, destination, err)
+	}
+	rows = rows[:0]
+	if err := table.Filter(context.Background(), func(candidate *ovnnb.BFD) bool {
+		return candidate.LogicalPort == logicalPort && candidate.DstIP == destination
+	}, &rows); err != nil {
+		return nil, fmt.Errorf("failed to list BFD after creation: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("BFD with logical_port=%s and dst_ip=%s not found after creation", logicalPort, destination)
+	}
+	return &rows[0], nil
+}
+
 func (c *Controller) deleteLogicalSwitch(name string) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.DeleteLogicalSwitch(name)
