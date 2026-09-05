@@ -190,7 +190,7 @@ func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, proto
 			return "", fmt.Errorf("disable template mode on external service-scoped load balancer %s: %w", lb, err)
 		}
 	}
-	if err := c.attachServiceScopedLoadBalancers(vpcName, lb); err != nil {
+	if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lb); err != nil {
 		return "", err
 	}
 	return lb, nil
@@ -222,30 +222,33 @@ func (c *Controller) serviceScopedLoadBalancerNamesForVPC(vpcName string) ([]str
 	return slices.Sorted(maps.Keys(names)), nil
 }
 
-func (c *Controller) serviceScopedLoadBalancerSwitches(vpcName string) ([]string, error) {
+func (c *Controller) reconcileServiceScopedLoadBalancerAttachments(vpcName string, lbNames ...string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
-		return nil, fmt.Errorf("list subnets for service-scoped load balancers in vpc %s: %w", vpcName, err)
+		return fmt.Errorf("list subnets for service-scoped load balancers in vpc %s: %w", vpcName, err)
 	}
-	switches := make([]string, 0, len(subnets))
+	insertSwitches := make([]string, 0, len(subnets))
+	deleteSwitches := make([]string, 0, len(subnets))
 	for _, subnet := range subnets {
-		if subnet.Name == c.config.NodeSwitch || subnet.Spec.Vpc != vpcName || !isOvnSubnet(subnet) || subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb {
+		if subnet.Name == c.config.NodeSwitch || !isOvnSubnet(subnet) {
 			continue
 		}
-		switches = append(switches, subnet.Name)
+		if subnet.Spec.Vpc == vpcName && subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
+			insertSwitches = append(insertSwitches, subnet.Name)
+		} else {
+			deleteSwitches = append(deleteSwitches, subnet.Name)
+		}
 	}
-	slices.Sort(switches)
-	return switches, nil
-}
-
-func (c *Controller) attachServiceScopedLoadBalancers(vpcName string, lbNames ...string) error {
-	switches, err := c.serviceScopedLoadBalancerSwitches(vpcName)
-	if err != nil {
-		return err
-	}
-	for _, logicalSwitch := range switches {
+	slices.Sort(insertSwitches)
+	slices.Sort(deleteSwitches)
+	for _, logicalSwitch := range insertSwitches {
 		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(logicalSwitch, ovsdb.MutateOperationInsert, lbNames...); err != nil {
 			return fmt.Errorf("attach service-scoped load balancers to subnet %s: %w", logicalSwitch, err)
+		}
+	}
+	for _, logicalSwitch := range deleteSwitches {
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(logicalSwitch, ovsdb.MutateOperationDelete, lbNames...); err != nil {
+			return fmt.Errorf("detach service-scoped load balancers from subnet %s: %w", logicalSwitch, err)
 		}
 	}
 	return nil

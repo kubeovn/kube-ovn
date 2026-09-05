@@ -348,66 +348,35 @@ func (c *OVNNbClient) DeleteLoadBalancerAffinityTimeout(lbName string) error {
 // SetLoadBalancerDistributed enables or disables OVN's chassis-local backend
 // selection for a load balancer. This option is available in OVN 26.03+.
 func (c *OVNNbClient) SetLoadBalancerDistributed(lbName string, distributed bool) error {
-	value := strconv.FormatBool(distributed)
-	lb, err := c.GetLoadBalancer(lbName, false)
-	if err != nil {
-		return err
-	}
-	if len(lb.Options) != 0 && lb.Options["distributed"] == value {
-		return nil
-	}
-
-	options := maps.Clone(lb.Options)
-	if options == nil {
-		options = make(map[string]string, 1)
-	}
-	options["distributed"] = value
-	lb.Options = options
-	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
-		return fmt.Errorf("failed to set distributed option of lb %s to %s: %w", lbName, value, err)
-	}
-	return nil
+	return c.setLoadBalancerOption(lbName, "distributed", strconv.FormatBool(distributed))
 }
 
 // SetLoadBalancerTemplate enables or disables chassis-specific template values.
 func (c *OVNNbClient) SetLoadBalancerTemplate(lbName string, template bool) error {
-	value := strconv.FormatBool(template)
-	lb, err := c.GetLoadBalancer(lbName, false)
-	if err != nil {
-		return err
-	}
-	if len(lb.Options) != 0 && lb.Options["template"] == value {
-		return nil
-	}
-	options := maps.Clone(lb.Options)
-	if options == nil {
-		options = make(map[string]string, 1)
-	}
-	options["template"] = value
-	lb.Options = options
-	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
-		return fmt.Errorf("failed to set template option of lb %s to %s: %w", lbName, value, err)
-	}
-	return nil
+	return c.setLoadBalancerOption(lbName, "template", strconv.FormatBool(template))
 }
 
 // SetLoadBalancerAddressFamily sets the address family used to expand a template load balancer.
 func (c *OVNNbClient) SetLoadBalancerAddressFamily(lbName, family string) error {
+	return c.setLoadBalancerOption(lbName, "address-family", family)
+}
+
+func (c *OVNNbClient) setLoadBalancerOption(lbName, option, value string) error {
 	lb, err := c.GetLoadBalancer(lbName, false)
 	if err != nil {
 		return err
 	}
-	if lb.Options["address-family"] == family {
+	if lb.Options[option] == value {
 		return nil
 	}
 	options := maps.Clone(lb.Options)
 	if options == nil {
 		options = make(map[string]string, 1)
 	}
-	options["address-family"] = family
+	options[option] = value
 	lb.Options = options
 	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
-		return fmt.Errorf("failed to set address family of lb %s to %s: %w", lbName, family, err)
+		return fmt.Errorf("failed to set %s option of lb %s to %s: %w", option, lbName, value, err)
 	}
 	return nil
 }
