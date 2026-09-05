@@ -152,7 +152,7 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, trunks []strin
 	}
 
 	// init provider chassis mac
-	if err := initProviderChassisMac(provider); err != nil {
+	if err := c.initProviderChassisMac(provider); err != nil {
 		errMsg := fmt.Errorf("failed to init chassis mac for provider %s, %w", provider, err)
 		klog.Error(errMsg)
 		return 0, errMsg
@@ -180,7 +180,7 @@ func (c *Controller) ovsInitProviderNetwork(provider, nic string, trunks []strin
 }
 
 func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterfaces []string) error {
-	mappings, err := getOvnMappings("ovn-bridge-mappings")
+	mappings, err := c.config.getOvnMappings("ovn-bridge-mappings")
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -250,11 +250,11 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterface
 		}
 	}
 
-	if err := removeOvnMapping("ovn-chassis-mac-mappings", provider); err != nil {
+	if err := c.config.removeOvnMapping("ovn-chassis-mac-mappings", provider); err != nil {
 		klog.Error(err)
 		return err
 	}
-	return removeOvnMapping("ovn-bridge-mappings", provider)
+	return c.config.removeOvnMapping("ovn-bridge-mappings", provider)
 }
 
 func (c *Controller) cleanProviderBridgePorts(ctx providerVlanRestoreContext) error {

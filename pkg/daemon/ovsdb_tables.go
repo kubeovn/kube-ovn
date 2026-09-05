@@ -48,6 +48,19 @@ func (c *Controller) listVswitchInterfaces(filter func(*vswitch.Interface) bool)
 	return rows, err
 }
 
+func (c *Controller) getVswitchPortExternalID(name, key string) (string, error) {
+	ports, err := c.listVswitchPorts(func(row *vswitch.Port) bool {
+		return row.Name == name
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(ports) == 0 {
+		return "", nil
+	}
+	return ports[0].ExternalIDs[key], nil
+}
+
 func (c *Controller) closeVswitch() {
 	if lifecycle, ok := c.vswitchTables.(databaseLifecycle); ok {
 		lifecycle.Close()

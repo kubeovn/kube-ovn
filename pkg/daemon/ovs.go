@@ -257,36 +257,6 @@ func setOvnMappings(name string, mappings map[string]string) error {
 	return nil
 }
 
-func addOvnMapping(name, key, value string, overwrite bool) error {
-	mappings, err := getOvnMappings(name)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	if mappings[key] == value || (mappings[key] != "" && !overwrite) {
-		return nil
-	}
-
-	mappings[key] = value
-	return setOvnMappings(name, mappings)
-}
-
-func removeOvnMapping(name, key string) error {
-	mappings, err := getOvnMappings(name)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	length := len(mappings)
-	delete(mappings, key)
-	if len(mappings) == length {
-		return nil
-	}
-	return setOvnMappings(name, mappings)
-}
-
 func (c *Controller) configExternalBridge(provider, bridge, nic string, exchangeLinkName, macLearningFallback bool, vlanInterfaceMap map[string]int) error {
 	// check if nic exists before configuring external bridge
 	nicExists, err := linkExists(nic)
@@ -378,7 +348,7 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		}
 	}
 
-	if err = addOvnMapping("ovn-bridge-mappings", provider, bridge, true); err != nil {
+	if err = c.config.addOvnMapping("ovn-bridge-mappings", provider, bridge, true); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -397,8 +367,8 @@ func (c *Controller) waitForBridgeInterface(bridge string, timeout time.Duration
 	return fmt.Errorf("timed out waiting for OVS bridge %s kernel interface", bridge)
 }
 
-func initProviderChassisMac(provider string) error {
-	if err := addOvnMapping("ovn-chassis-mac-mappings", provider, util.GenerateMac(), false); err != nil {
+func (c *Controller) initProviderChassisMac(provider string) error {
+	if err := c.config.addOvnMapping("ovn-chassis-mac-mappings", provider, util.GenerateMac(), false); err != nil {
 		klog.Error(err)
 		return err
 	}

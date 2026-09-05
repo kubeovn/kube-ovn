@@ -2269,7 +2269,7 @@ func (c *Controller) configProviderVlanInterfaces(vlanInterfaceMap map[string]in
 			if err != nil {
 				return fmt.Errorf("failed to check vendor of OVS port %s: %w", internalPortName, err)
 			}
-			state.recorded, err = ovs.Get("Port", internalPortName, "external_ids", providerVlanInterfaceExternalID, true)
+			state.recorded, err = c.getVswitchPortExternalID(internalPortName, providerVlanInterfaceExternalID)
 			if err != nil {
 				return fmt.Errorf("failed to get source VLAN interface for OVS port %s: %w", internalPortName, err)
 			}
@@ -2656,7 +2656,7 @@ func (c *Controller) removeProviderVlanInterface(internalPortName string, ctx pr
 	}
 
 	if len(addrs) > 0 || len(routes) > 0 {
-		recordedVlanInterface, err := ovs.Get("Port", internalPortName, "external_ids", providerVlanInterfaceExternalID, true)
+		recordedVlanInterface, err := c.getVswitchPortExternalID(internalPortName, providerVlanInterfaceExternalID)
 		if err != nil {
 			return fmt.Errorf("failed to get source VLAN interface for OVS port %s: %w", internalPortName, err)
 		}
