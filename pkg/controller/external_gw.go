@@ -121,7 +121,7 @@ func (c *Controller) removeExternalGateway() error {
 
 	if !keepExternalSubnet {
 		klog.Infof("delete external gateway switch %s", c.config.ExternalGatewaySwitch)
-		if err := c.OVNNbClient.DeleteLogicalGatewaySwitch(util.ExternalGatewaySwitch, c.config.ClusterRouter); err != nil {
+		if err := c.deleteLogicalGatewaySwitch(util.ExternalGatewaySwitch, c.config.ClusterRouter); err != nil {
 			klog.Errorf("delete external gateway switch %s: %v", util.ExternalGatewaySwitch, err)
 			return err
 		}

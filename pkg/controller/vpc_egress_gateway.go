@@ -1075,7 +1075,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		}
 		// create new policies
 		for match, nextHops := range rules {
-			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayLocalPolicyPriority, match,
+			if err = c.addLogicalRouterPolicy(lrName, util.EgressGatewayLocalPolicyPriority, match,
 				ovnnb.LogicalRouterPolicyActionReroute, nextHops.UnsortedList(), localGatewayPolicyBFDSessions(bfdMap, nextHops).UnsortedList(), externalIDs); err != nil {
 				klog.Error(err)
 				return err
@@ -1115,7 +1115,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		}
 	}
 	for _, match := range matches.UnsortedList() {
-		if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayPolicyPriority, match,
+		if err = c.addLogicalRouterPolicy(lrName, util.EgressGatewayPolicyPriority, match,
 			ovnnb.LogicalRouterPolicyActionReroute, nextHops.UnsortedList(), bfdIDs.UnsortedList(), externalIDs); err != nil {
 			klog.Error(err)
 			return err
@@ -1141,7 +1141,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			}
 		}
 		for _, match := range matches.UnsortedList() {
-			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayDropPolicyPriority, match,
+			if err = c.addLogicalRouterPolicy(lrName, util.EgressGatewayDropPolicyPriority, match,
 				ovnnb.LogicalRouterPolicyActionDrop, nil, nil, externalIDs); err != nil {
 				klog.Error(err)
 				return err
