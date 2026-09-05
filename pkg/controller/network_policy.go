@@ -676,7 +676,7 @@ func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
 	pgName := lockKey
 	var firstErr error
 	for _, meterName := range networkPolicyMeterNames(pgName) {
-		if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+		if err := c.deleteMeter(meterName); err != nil {
 			klog.Errorf("delete meter %s for np %s: %v", meterName, key, err)
 			if firstErr == nil {
 				firstErr = err
