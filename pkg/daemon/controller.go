@@ -280,6 +280,7 @@ func NewController(config *Configuration,
 			controller.vswitchClient = vswitchClient
 		}
 		controller.vswitchTables = config.VswitchTables
+		controller.podQoSOps = ovsPodQoSOperations{provider: controller.vswitchTables}
 		return controller, nil
 	}
 
@@ -293,6 +294,7 @@ func NewController(config *Configuration,
 	}
 	controller.vswitchClient = vswitchClient
 	controller.vswitchTables = vswitchClient
+	controller.podQoSOps = ovsPodQoSOperations{provider: controller.vswitchTables}
 
 	return controller, nil
 }

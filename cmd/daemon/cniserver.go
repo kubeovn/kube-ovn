@@ -51,11 +51,6 @@ func main() {
 
 	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)
 
-	nicBridgeMappings, err := daemon.InitOVSBridges()
-	if err != nil {
-		util.LogFatalAndExit(err, "failed to initialize OVS bridges")
-	}
-
 	ovsDBAddr := config.OvsSocket
 	if ovsDBAddr == "" {
 		ovsDBAddr = "unix:/var/run/openvswitch/db.sock"
@@ -65,6 +60,11 @@ func main() {
 		util.LogFatalAndExit(err, "failed to create vswitch client")
 	}
 	config.VswitchTables = vswitchClient
+
+	nicBridgeMappings, err := daemon.InitOVSBridges(config.VswitchTables)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to initialize OVS bridges")
+	}
 
 	if err = config.Init(nicBridgeMappings); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize config")

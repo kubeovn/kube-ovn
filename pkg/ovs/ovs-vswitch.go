@@ -30,6 +30,7 @@ func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchCl
 		vswitch.OpenvSwitchTable: &vswitch.OpenvSwitch{},
 		vswitch.PortTable:        &vswitch.Port{},
 		vswitch.QoSTable:         &vswitch.QoS{},
+		vswitch.QueueTable:       &vswitch.Queue{},
 	})
 	if err != nil {
 		klog.Error(err)
@@ -42,6 +43,7 @@ func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchCl
 		compat.WithTable(&vswitch.OpenvSwitch{}),
 		compat.WithTable(&vswitch.Port{}),
 		compat.WithTable(&vswitch.QoS{}),
+		compat.WithTable(&vswitch.Queue{}),
 	}
 	c, err := ovsclient.NewOvsDbClient(
 		vswitch.DatabaseName,

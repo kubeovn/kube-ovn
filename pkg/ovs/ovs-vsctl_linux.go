@@ -9,6 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -80,7 +81,10 @@ func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
 // ingress and egress are rate values in Mbps; ingressBurst and egressBurst are burst
 // values in Mbit. An empty burst falls back to 80% of the corresponding rate; an
 // explicit "0" is passed through verbatim.
-func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
+func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string, providers ...compat.TableProvider) error {
+	if len(providers) != 0 && providers[0] != nil {
+		return setInterfaceBandwidthTable(providers[0], podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
+	}
 	ingressKPS, err := parseAndScaleBandwidthRate(ingress, 1000)
 	if err != nil {
 		return fmt.Errorf("invalid ingress bandwidth: %w", err)
@@ -164,7 +168,10 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingres
 	return nil
 }
 
-func ClearHtbQosQueue(podName, podNamespace, iface string) error {
+func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...compat.TableProvider) error {
+	if len(providers) != 0 && providers[0] != nil {
+		return clearHtbQosQueueTable(providers[0], podName, podNamespace, iface)
+	}
 	var queueList []string
 	var err error
 	if iface != "" {
