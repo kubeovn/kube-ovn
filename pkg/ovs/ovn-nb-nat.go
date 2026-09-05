@@ -134,10 +134,16 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 // AddSnatWithMatch creates an SNAT rule that only matches traffic selected by
 // match (for example `ip4.dst == <transitVIP>`). Multiple rules may share the
 // same externalIP/logicalIP pair when their matches differ; an existing rule is
-// never overwritten.
+// never overwritten. Construction bypasses newNat, which treats
+// (externalIP, logicalIP) as a unique SNAT key without considering Match.
 func (c *OVNNbClient) AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
 	if match == "" {
 		return c.EnsureSnat(lrName, externalIP, logicalIP)
+	}
+	if len(lrName) == 0 {
+		err := errors.New("the logical router name is required")
+		klog.Error(err)
+		return err
 	}
 	if externalIP == "" {
 		err := errors.New("snat external ip is required")
@@ -161,19 +167,15 @@ func (c *OVNNbClient) AddSnatWithMatch(lrName, externalIP, logicalIP, match stri
 		}
 	}
 
-	nat, err := c.newNat(lrName, ovnnb.NATTypeSNAT, externalIP, logicalIP, "", "", func(n *ovnnb.NAT) {
-		n.Match = match
-		if n.ExternalIDs == nil {
-			n.ExternalIDs = make(map[string]string, 1)
-		}
-		n.ExternalIDs["vendor"] = util.CniTypeName
-	})
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if nat == nil {
-		return nil
+	nat := &ovnnb.NAT{
+		UUID:       ovsclient.NamedUUID(),
+		Type:       ovnnb.NATTypeSNAT,
+		ExternalIP: externalIP,
+		LogicalIP:  logicalIP,
+		Match:      match,
+		ExternalIDs: map[string]string{
+			"vendor": util.CniTypeName,
+		},
 	}
 	return c.CreateNats(lrName, nat)
 }
