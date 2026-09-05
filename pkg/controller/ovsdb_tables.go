@@ -122,6 +122,15 @@ func (c *Controller) getLogicalSwitchPort(name string, ignoreNotFound bool) (*ov
 	return &rows[0], nil
 }
 
+func (c *Controller) listNormalLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.ListNormalLogicalSwitchPorts(needVendorFilter, externalIDs)
+	}
+	return c.listLogicalSwitchPorts(needVendorFilter, externalIDs, func(row *ovnnb.LogicalSwitchPort) bool {
+		return row.Type == ""
+	})
+}
+
 func (c *Controller) listLogicalRouters(needVendorFilter bool, filter func(*ovnnb.LogicalRouter) bool) ([]ovnnb.LogicalRouter, error) {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.ListLogicalRouter(needVendorFilter, filter)
@@ -169,6 +178,29 @@ func (c *Controller) getLogicalRouter(name string, ignoreNotFound bool) (*ovnnb.
 	}
 	if len(rows) > 1 {
 		return nil, fmt.Errorf("more than one logical router with same name %q", name)
+	}
+	return &rows[0], nil
+}
+
+func (c *Controller) getLogicalRouterPort(name string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.GetLogicalRouterPort(name, ignoreNotFound)
+	}
+	var rows []ovnnb.LogicalRouterPort
+	err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Filter(context.Background(), func(row *ovnnb.LogicalRouterPort) bool {
+		return row.Name == name
+	}, &rows)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		if ignoreNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("not found logical router port %q", name)
+	}
+	if len(rows) > 1 {
+		return nil, fmt.Errorf("more than one logical router port with same name %q", name)
 	}
 	return &rows[0], nil
 }

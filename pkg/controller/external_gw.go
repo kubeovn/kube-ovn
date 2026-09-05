@@ -147,7 +147,7 @@ func (c *Controller) establishExternalGateway(config map[string]string) error {
 	}
 	var lrpIP, lrpMac string
 	lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
-	lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true)
+	lrp, err := c.getLogicalRouterPort(lrpName, true)
 	if err != nil {
 		klog.Errorf("failed to get lrp %s, %v", lrpName, err)
 		return err

@@ -467,7 +467,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				lr, err := c.OVNNbClient.GetLogicalRouter(vpc.Name, false)
+				lr, err := c.getLogicalRouter(vpc.Name, false)
 				if err != nil {
 					klog.Errorf("failed to get logical router %s: %v", vpc.Name, err)
 					return err
@@ -1313,7 +1313,7 @@ func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error 
 		return err
 	}
 
-	vpcRouter, err := c.OVNNbClient.GetLogicalRouter(lr, false)
+	vpcRouter, err := c.getLogicalRouter(lr, false)
 	if err != nil {
 		klog.Errorf("get logical router %s failed: %v", lr, err)
 		return err

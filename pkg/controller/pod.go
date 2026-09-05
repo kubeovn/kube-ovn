@@ -793,7 +793,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 
 			var oldSgList []string
 			if vmKey != "" {
-				existingLsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+				existingLsp, err := c.getLogicalSwitchPort(portName, true)
 				if err != nil {
 					klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 					recordFailure("getLogicalSwitchPort", err)
@@ -1241,7 +1241,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		}
 	}
 	stage = "listLogicalSwitchPorts"
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	ports, err := c.listNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod %s: %v", podKey, err)
 		return err
@@ -1659,7 +1659,7 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 		}
 	}
 
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
+	ports, err := c.listNormalLogicalSwitchPorts(true, map[string]string{"pod": key})
 	if err != nil {
 		klog.Errorf("failed to list lsps of pod '%s', %v", pod.Name, err)
 		return nil, "", err
@@ -2979,7 +2979,7 @@ func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 	podKey := fmt.Sprintf("%s/%s", pod.Namespace, podName)
 
 	// List existing LSPs first (cheap OVN query) to bail out early if none exist
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
+	ports, err := c.listNormalLogicalSwitchPorts(true, map[string]string{"pod": podKey})
 	if err != nil {
 		klog.Errorf("failed to list lsps of vm %s for stale cleanup: %v", podKey, err)
 		return

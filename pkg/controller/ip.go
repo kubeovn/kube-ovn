@@ -176,7 +176,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 	}
 
 	// not handle add the ip, which created in pod process, lsp created before ip
-	lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+	lsp, err := c.getLogicalSwitchPort(portName, true)
 	if err != nil {
 		klog.Errorf("failed to list logical switch ports %s, %v", portName, err)
 		return err
@@ -260,7 +260,7 @@ func (c *Controller) handleUpdateIP(key string) error {
 		}
 		portName := cachedIP.Name
 		if isOvnSubnet(subnet) {
-			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+			port, err := c.getLogicalSwitchPort(portName, true)
 			if err != nil {
 				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 				return err
