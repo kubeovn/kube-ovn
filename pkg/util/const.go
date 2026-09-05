@@ -265,6 +265,9 @@ const (
 	VpcEndpointSvcNsLabel   = "ovn.kubernetes.io/vpc-endpoint-svc-ns"
 	VpcEndpointSvcNameLabel = "ovn.kubernetes.io/vpc-endpoint-svc-name"
 
+	// VpcEndpointServiceACLExternalID tags ACLs that isolate a VpcEndpointService transit VIP.
+	VpcEndpointServiceACLExternalID = "vpc-endpoint-service"
+
 	NormalRouteType    = "normal"
 	EcmpRouteType      = "ecmp"
 	StaticRouteBfdEcmp = "ecmp_symmetric_reply"

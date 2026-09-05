@@ -53,6 +53,7 @@ func (c *Controller) gc() error {
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
 		c.gcRouterLBRules,
+		c.gcVpcEndpoint,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -1470,4 +1471,89 @@ func logicalRouterPortFilter(exceptPeerPorts *strset.Set) func(lrp *ovnnb.Logica
 
 		return lrp.Peer != nil && len(*lrp.Peer) != 0
 	}
+}
+
+func (c *Controller) gcVpcEndpoint() error {
+	if !c.config.EnableLb || c.config.VpcEndpointTransitSwitch == "" {
+		return nil
+	}
+	if c.vpcEndpointServiceLister == nil || c.vpcEndpointLister == nil {
+		return nil
+	}
+
+	klog.Infof("start to gc vpc endpoints")
+
+	services, err := c.vpcEndpointServiceLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list VpcEndpointServices for gc: %v", err)
+		return err
+	}
+	endpoints, err := c.vpcEndpointLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list VpcEndpoints for gc: %v", err)
+		return err
+	}
+
+	expectedLBs := map[string]struct{}{}
+	expectedLSPs := map[string]struct{}{}
+	expectedACLServices := map[string]struct{}{}
+	for _, eps := range services {
+		expectedACLServices[eps.Name] = struct{}{}
+		expectedLSPs[vpcEndpointServiceLSPName(eps.Name)] = struct{}{}
+		for _, protocol := range []string{"tcp", "udp", "sctp"} {
+			expectedLBs[vpcEndpointServiceLBName(eps.Name, protocol)] = struct{}{}
+		}
+	}
+	for _, ep := range endpoints {
+		for _, protocol := range []string{"tcp", "udp", "sctp"} {
+			expectedLBs[vpcEndpointLBName(ep.Name, protocol)] = struct{}{}
+		}
+	}
+
+	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return strings.HasPrefix(lb.Name, "vpc-eps-") || strings.HasPrefix(lb.Name, "vpc-ep-")
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc endpoint load balancers: %v", err)
+		return err
+	}
+	for _, lb := range lbs {
+		if _, ok := expectedLBs[lb.Name]; ok {
+			continue
+		}
+		klog.Infof("gc orphaned vpc endpoint load balancer %s", lb.Name)
+		if err := c.OVNNbClient.DeleteLoadBalancers(func(item *ovnnb.LoadBalancer) bool { return item.Name == lb.Name }); err != nil {
+			klog.Errorf("failed to gc load balancer %s: %v", lb.Name, err)
+			return err
+		}
+	}
+
+	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return strings.HasPrefix(lsp.Name, "vpc-eps-")
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc endpoint logical switch ports: %v", err)
+		return err
+	}
+	for _, lsp := range lsps {
+		if _, ok := expectedLSPs[lsp.Name]; ok {
+			continue
+		}
+		klog.Infof("gc orphaned vpc endpoint logical switch port %s", lsp.Name)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+			klog.Errorf("failed to gc logical switch port %s: %v", lsp.Name, err)
+			return err
+		}
+		// Best-effort: clear ACLs keyed by the VES name derived from the LSP.
+		epsName := strings.TrimPrefix(lsp.Name, "vpc-eps-")
+		if _, known := expectedACLServices[epsName]; !known {
+			if err := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, epsName, "", nil); err != nil {
+				klog.Errorf("failed to gc ACLs for vpc endpoint service %s: %v", epsName, err)
+				return err
+			}
+		}
+	}
+
+	klog.Infof("finish to gc vpc endpoints")
+	return nil
 }
