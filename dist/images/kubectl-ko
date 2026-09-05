@@ -149,14 +149,26 @@ ipIsInCidr(){
 tcpdump(){
   namespacedPod="$1"; shift
   namespace=$(echo "$namespacedPod" | cut -d "/" -f1)
+
   podName=$(echo "$namespacedPod" | cut -d "/" -f2)
   if [ "$podName" = "$namespacedPod" ]; then
-    namespace="default"
+    namespace=$(kubectl config view --minify -o jsonpath='{..namespace}')
+    namespace=${namespace:-default}
   fi
 
-  nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
-  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
+  isVm=$([[ "$(kubectl get vmi "$podName" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachine")].kind}' 2>/dev/null)" == "VirtualMachine" ]] && echo true || echo false)
+  if [ "$isVm" = "true" ]; then
+    vmName=$(echo "$podName")
+    podName=$(kubectl get pod -l vm.kubevirt.io/name="$vmName" -o jsonpath='{.items[*].metadata.name}')
+  fi
 
+  isVmi=$([[ "$(kubectl get pod "$podName" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachineInstance")].kind}' 2>/dev/null)" == "VirtualMachineInstance" ]] && echo true || echo false)
+  if [ "$isVmi" = "true" ]; then
+    vmName=$(kubectl get pod "$podName" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachineInstance")].name}')
+    isVm=true
+  fi
+  
+  nodeName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.nodeName})
   if [ -z "$nodeName" ]; then
     echo "Pod $namespacedPod not exists on any node"
     exit 1
@@ -168,28 +180,29 @@ tcpdump(){
     exit 1
   fi
 
+  hostNetwork=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.spec.hostNetwork})
   if [ "$hostNetwork" = "true" ]; then
     set -x
-    kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- tcpdump -nn "$@"
+    kubectl exec "$ovsPod" -n $KUBE_OVN_NS -c openvswitch -- tcpdump -nn "$@"
   else
-    nicName=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
+    if [ "$isVm" = "true" ]; then
+      nicName=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -c openvswitch -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$vmName"."$namespace" | tr -d '\r')
+    else
+      nicName=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -c openvswitch -- ovs-vsctl --data=bare --no-heading --columns=name find interface external-ids:iface-id="$podName"."$namespace" | tr -d '\r')
+    fi
+
     if [ -z "$nicName" ]; then
       echo "nic doesn't exist on node $nodeName"
       exit 1
     fi
-    podNicType=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath={.metadata.annotations.ovn\\.kubernetes\\.io/pod_nic_type})
-    podNetNs=$(kubectl exec "$ovsPod" -n $KUBE_OVN_NS -- ovs-vsctl --data=bare --no-heading get interface "$nicName" external-ids:pod_netns | tr -d '\r' | sed -e 's/^"//' -e 's/"$//')
+
     ovnCni=$(kubectl get pod -n $KUBE_OVN_NS -l app=kube-ovn-cni -o 'jsonpath={.items[?(@.spec.nodeName=="'$nodeName'")].metadata.name}')
     if [ -z "$ovnCni" ]; then
       echo "kube-ovn-cni not exist on node $nodeName"
       exit 1
     fi
     set -x
-    if [ "$podNicType" = "internal-port" ]; then
-      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i "$nicName" "$@"
-    else
-      kubectl exec "$ovnCni" -n $KUBE_OVN_NS -- nsenter --net="$podNetNs" tcpdump -nn -i eth0 "$@"
-    fi
+    kubectl exec "$ovnCni" -n $KUBE_OVN_NS -c cni-server -- tcpdump -nn -i "$nicName" "$@"
   fi
 }
 
