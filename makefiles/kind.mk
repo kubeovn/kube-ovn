@@ -2,6 +2,10 @@
 
 UNTAINT_CONTROL_PLANE ?= true
 TENANT_CONTROL_PLANE_REPLICAS ?= 1
+# Trusted PR jobs load workflow YAML from the base branch but run Make targets
+# from the PR head, so keep the conformance cluster requirements here as well.
+KIND_WORKER_COUNT ?= $(if $(filter k8s-conformance-e2e,$(GITHUB_JOB)),6,1)
+ENABLE_OVN_LB_DISTRIBUTED ?= $(if $(filter true,$(CI)),true,false)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
@@ -155,8 +159,15 @@ kind-init: kind-init-ipv4
 
 .PHONY: kind-init-%
 kind-init-%: kind-clean
-	@auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
+	@n_worker=$(if $(n_worker),$(n_worker),$(KIND_WORKER_COUNT)) auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
 	@$(MAKE) kind-create
+	@if [ "$(GITHUB_JOB)" = "k8s-conformance-e2e" ]; then \
+		zones=(zone-a zone-b zone-c); \
+		mapfile -t nodes < <(kubectl get nodes -o name | sort); \
+		for i in "$${!nodes[@]}"; do \
+			kubectl label --overwrite "$${nodes[$$i]}" topology.kubernetes.io/zone="$${zones[$$((i % $${#zones[@]}))]}"; \
+		done; \
+	fi
 
 .PHONY: kind-init-ovn-ic
 kind-init-ovn-ic: kind-init-ovn-ic-ipv4
@@ -284,7 +295,7 @@ kind-install: kind-load-image
 	@echo "Generating CRDs with controller-gen and syncing static CRD bundles..."
 	$(MAKE) gen-crd
 	@echo "Installing kube-ovn with synced generated CRDs..."
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) bash
 	kubectl describe no
 
 .PHONY: kind-install-ipv4
