@@ -844,6 +844,314 @@ func (c *Controller) createLogicalRouterPort(lrName, lrpName, mac string, networ
 	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Transact(context.Background(), "lrp-add", append(createOps, insertOps...)...)
 }
 
+func (c *Controller) createPeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP)
+	}
+	lrpName := fmt.Sprintf("%s-%s", localRouter, remoteRouter)
+	if existing, err := c.getLogicalRouterPort(lrpName, true); err != nil {
+		return err
+	} else if existing != nil {
+		networks := strings.Split(localRouterPortIP, ",")
+		if slices.Equal(existing.Networks, networks) {
+			return nil
+		}
+		existing.Networks = networks
+		return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Update(
+			context.Background(), "lrp-update", existing, existing, &existing.Networks,
+		)
+	}
+	parent, err := c.getLogicalRouter(localRouter, false)
+	if err != nil {
+		return err
+	}
+	peerName := fmt.Sprintf("%s-%s", remoteRouter, localRouter)
+	row := &ovnnb.LogicalRouterPort{
+		UUID:     ovsclient.NamedUUID(),
+		Name:     lrpName,
+		MAC:      util.GenerateMac(),
+		Networks: strings.Split(localRouterPortIP, ","),
+		Peer:     &peerName,
+		ExternalIDs: map[string]string{
+			"lr": localRouter, "vendor": util.CniTypeName,
+		},
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).CreateOps(row)
+	if err != nil {
+		return err
+	}
+	parentOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(parent, model.Mutation{
+		Field: &parent.Ports, Value: []string{row.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Transact(
+		context.Background(), "lrp-add", append(createOps, parentOps...)...,
+	)
+}
+
+func (c *Controller) createGatewayChassisesOps(lrp *ovnnb.LogicalRouterPort, chassises []string) ([]ovsdb.Operation, error) {
+	if lrp == nil || len(chassises) == 0 {
+		return nil, nil
+	}
+	var operations []ovsdb.Operation
+	uuids := make([]string, 0, len(chassises))
+	for index, chassisName := range chassises {
+		name := lrp.Name + "-" + chassisName
+		existing := &ovnnb.GatewayChassis{Name: name}
+		if err := c.OVNNbTables.Table(&ovnnb.GatewayChassis{}).Get(context.Background(), existing); err != nil {
+			if !errors.Is(err, compat.ErrNotFound) {
+				return nil, err
+			}
+			row := &ovnnb.GatewayChassis{
+				UUID:        ovsclient.NamedUUID(),
+				Name:        name,
+				ChassisName: chassisName,
+				Priority:    100 - index,
+				ExternalIDs: map[string]string{"lrp": lrp.Name},
+			}
+			createOps, createErr := c.OVNNbTables.Table(&ovnnb.GatewayChassis{}).CreateOps(row)
+			if createErr != nil {
+				return nil, createErr
+			}
+			operations = append(operations, createOps...)
+			uuids = append(uuids, row.UUID)
+			continue
+		}
+		uuids = append(uuids, existing.UUID)
+	}
+	if len(uuids) == 0 {
+		return operations, nil
+	}
+	parentOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).MutateOps(lrp, model.Mutation{
+		Field: &lrp.GatewayChassis, Value: slices.Clip(uuids), Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return append(operations, parentOps...), nil
+}
+
+func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac, chassises...)
+	}
+	if ip != "" {
+		if err := util.CheckCidrs(ip); err != nil {
+			return fmt.Errorf("invalid ip %s: %w", ip, err)
+		}
+	}
+	if mac == "" {
+		mac = util.GenerateMac()
+	}
+	lsp, err := c.getLogicalSwitchPort(lspName, true)
+	if err != nil {
+		return err
+	}
+	lrp, err := c.getLogicalRouterPort(lrpName, true)
+	if err != nil {
+		return err
+	}
+	var operations []ovsdb.Operation
+	if lsp == nil && lrp == nil {
+		ls, getErr := c.getLogicalSwitch(lsName, false)
+		if getErr != nil {
+			return getErr
+		}
+		lr, getErr := c.getLogicalRouter(lrName, false)
+		if getErr != nil {
+			return getErr
+		}
+		lsp = &ovnnb.LogicalSwitchPort{
+			UUID:        ovsclient.NamedUUID(),
+			Name:        lspName,
+			Addresses:   []string{"router"},
+			Type:        "router",
+			Options:     map[string]string{"router-port": lrpName},
+			ExternalIDs: map[string]string{ovs.LogicalSwitchKey: lsName, "vendor": util.CniTypeName},
+		}
+		lrp = &ovnnb.LogicalRouterPort{
+			UUID:        ovsclient.NamedUUID(),
+			Name:        lrpName,
+			Networks:    strings.Split(ip, ","),
+			MAC:         mac,
+			ExternalIDs: map[string]string{"lr": lrName, "vendor": util.CniTypeName},
+		}
+		lspOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(lsp)
+		if opErr != nil {
+			return opErr
+		}
+		lrpOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).CreateOps(lrp)
+		if opErr != nil {
+			return opErr
+		}
+		lsOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(ls, model.Mutation{
+			Field: &ls.Ports, Value: []string{lsp.UUID}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		if opErr != nil {
+			return opErr
+		}
+		lrOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(lr, model.Mutation{
+			Field: &lr.Ports, Value: []string{lrp.UUID}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		if opErr != nil {
+			return opErr
+		}
+		operations = append(operations, lspOps...)
+		operations = append(operations, lrpOps...)
+		operations = append(operations, lsOps...)
+		operations = append(operations, lrOps...)
+	} else if lrp == nil || lsp == nil {
+		return fmt.Errorf("patch port %s/%s is partially present", lspName, lrpName)
+	}
+	gatewayOps, err := c.createGatewayChassisesOps(lrp, chassises)
+	if err != nil {
+		return err
+	}
+	operations = append(operations, gatewayOps...)
+	if len(operations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Transact(
+		context.Background(), "lrp-lsp-add", operations...,
+	)
+}
+
+func (c *Controller) removeLogicalPatchPort(lspName, lrpName string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName)
+	}
+	var operations []ovsdb.Operation
+	if lsp, err := c.getLogicalSwitchPort(lspName, true); err != nil {
+		return err
+	} else if lsp != nil {
+		ops, opErr := c.logicalSwitchPortDeleteOps(lsp)
+		if opErr != nil {
+			return opErr
+		}
+		operations = append(operations, ops...)
+	}
+	if lrp, err := c.getLogicalRouterPort(lrpName, true); err != nil {
+		return err
+	} else if lrp != nil {
+		ops, opErr := c.logicalRouterPortDeleteOps(lrp)
+		if opErr != nil {
+			return opErr
+		}
+		operations = append(operations, ops...)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Transact(
+		context.Background(), "lrp-lsp-del", operations...,
+	)
+}
+
+// buildLogicalSwitchPortModel constructs the normal LSP row without coupling
+// controller reconcile code to the legacy ovs client implementation.
+func buildLogicalSwitchPortModel(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *ovs.DHCPOptionsUUIDs, vpc string) *ovnnb.LogicalSwitchPort {
+	row := &ovnnb.LogicalSwitchPort{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lspName,
+		ExternalIDs: make(map[string]string),
+	}
+	ipList := strings.Split(ip, ",")
+	vipList := strings.Split(vips, ",")
+	addresses := make([]string, 0, len(ipList)+len(vipList)+1)
+	addresses = append(addresses, mac)
+	addresses = append(addresses, ipList...)
+	if ip == "" {
+		row.Addresses = []string{mac}
+	} else {
+		row.Addresses = []string{strings.TrimSpace(strings.Join(addresses, " "))}
+		if portSecurity {
+			if vips != "" {
+				addresses = append(addresses, vipList...)
+			}
+			row.PortSecurity = []string{strings.TrimSpace(strings.Join(addresses, " "))}
+		}
+	}
+	row.ExternalIDs["vendor"] = util.CniTypeName
+	if securityGroups != "" {
+		row.ExternalIDs[sgsKey] = strings.ReplaceAll(securityGroups, ",", "/")
+		for sg := range strings.SplitSeq(securityGroups, ",") {
+			row.ExternalIDs["associated_sg_"+sg] = "true"
+		}
+	}
+	if vpc != "" && vpc != util.DefaultVpc && !strings.Contains(securityGroups, util.DefaultSecurityGroupName) {
+		row.ExternalIDs["associated_sg_"+util.DefaultSecurityGroupName] = "false"
+	}
+	if vips != "" {
+		row.ExternalIDs["vips"] = vips
+		row.ExternalIDs["attach-vips"] = "true"
+	}
+	if podName != "" && namespace != "" {
+		row.ExternalIDs["pod"] = namespace + "/" + podName
+	}
+	row.ExternalIDs[ovs.LogicalSwitchKey] = lsName
+	if enableDHCP && dhcpOptions != nil {
+		if dhcpOptions.DHCPv4OptionsUUID != "" {
+			row.Dhcpv4Options = &dhcpOptions.DHCPv4OptionsUUID
+		}
+		if dhcpOptions.DHCPv6OptionsUUID != "" {
+			row.Dhcpv6Options = &dhcpOptions.DHCPv6OptionsUUID
+		}
+	}
+	return row
+}
+
+func equalOptionalString(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
+}
+
+// createLogicalSwitchPort reconciles a normal LSP row and its parent switch
+// reference. Complex DHCP reconciliation remains in the OVS compatibility
+// fallback when no TableProvider is installed.
+func (c *Controller) createLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *ovs.DHCPOptionsUUIDs, vpc string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
+	}
+	existing, err := c.getLogicalSwitchPort(lspName, true)
+	if err != nil {
+		return err
+	}
+	desired := buildLogicalSwitchPortModel(lsName, lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
+	if existing != nil && existing.ExternalIDs[ovs.LogicalSwitchKey] == lsName {
+		desired.UUID = existing.UUID
+		if maps.Equal(existing.ExternalIDs, desired.ExternalIDs) && slices.Equal(existing.Addresses, desired.Addresses) &&
+			slices.Equal(existing.PortSecurity, desired.PortSecurity) && equalOptionalString(existing.Dhcpv4Options, desired.Dhcpv4Options) &&
+			equalOptionalString(existing.Dhcpv6Options, desired.Dhcpv6Options) {
+			return nil
+		}
+		return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Update(
+			context.Background(), "lsp-update", existing, desired,
+			&desired.Addresses, &desired.Dhcpv4Options, &desired.Dhcpv6Options, &desired.PortSecurity, &desired.ExternalIDs,
+		)
+	}
+	parent, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return err
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(desired)
+	if err != nil {
+		return fmt.Errorf("generate operations for creating logical switch port %s: %w", lspName, err)
+	}
+	parentOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(parent, model.Mutation{
+		Field: &parent.Ports, Value: []string{desired.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return fmt.Errorf("generate operations for adding logical switch port %s to logical switch %s: %w", lspName, lsName, err)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Transact(
+		context.Background(), "lsp-add", append(createOps, parentOps...)...,
+	)
+}
+
 func (c *Controller) createBareLogicalSwitchPort(lsName, lspName, ip, mac string) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.CreateBareLogicalSwitchPort(lsName, lspName, ip, mac)
@@ -1432,6 +1740,157 @@ func (c *Controller) updateLogicalRouterPolicy(policy *ovnnb.LogicalRouterPolicy
 	)
 }
 
+func equalStringSet(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	seen := make(map[string]struct{}, len(left))
+	for _, value := range left {
+		seen[value] = struct{}{}
+	}
+	for _, value := range right {
+		if _, ok := seen[value]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func logicalRouterPolicyMatches(existing, desired *ovnnb.LogicalRouterPolicy) bool {
+	if existing.Priority != desired.Priority || existing.Match != desired.Match || existing.Action != desired.Action {
+		return false
+	}
+	return existing.Action != ovnnb.LogicalRouterPolicyActionReroute || equalStringSet(existing.Nexthops, desired.Nexthops)
+}
+
+// addLogicalRouterPolicy reconciles one policy and its parent router reference.
+func (c *Controller) addLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops, bfdSessions []string, externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, bfdSessions, externalIDs)
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	existing, err := c.listLogicalRouterPoliciesWithFilter(lrName, func(row *ovnnb.LogicalRouterPolicy) bool {
+		return row.Priority == priority && row.Match == match
+	})
+	if err != nil {
+		return err
+	}
+	desired := &ovnnb.LogicalRouterPolicy{
+		Priority:    priority,
+		Match:       match,
+		Action:      action,
+		Nexthops:    nextHops,
+		BFDSessions: bfdSessions,
+		ExternalIDs: maps.Clone(externalIDs),
+	}
+	var found *ovnnb.LogicalRouterPolicy
+	deleteUUIDs := make([]string, 0, len(existing))
+	for _, row := range existing {
+		if found == nil && logicalRouterPolicyMatches(row, desired) {
+			found = row
+			continue
+		}
+		deleteUUIDs = append(deleteUUIDs, row.UUID)
+	}
+	mutations := make([]model.Mutation, 0, 2)
+	if len(deleteUUIDs) != 0 {
+		mutations = append(mutations, model.Mutation{
+			Field: &lr.Policies, Value: slices.Clip(deleteUUIDs), Mutator: ovsdb.MutateOperationDelete,
+		})
+	}
+	var operations []ovsdb.Operation
+	if found == nil {
+		desired.UUID = ovsclient.NamedUUID()
+		createOps, createErr := c.OVNNbTables.Table(&ovnnb.LogicalRouterPolicy{}).CreateOps(desired)
+		if createErr != nil {
+			return createErr
+		}
+		operations = append(operations, createOps...)
+		mutations = append(mutations, model.Mutation{
+			Field: &lr.Policies, Value: []string{desired.UUID}, Mutator: ovsdb.MutateOperationInsert,
+		})
+	} else if !maps.Equal(found.ExternalIDs, externalIDs) {
+		updated := *found
+		updated.ExternalIDs = maps.Clone(externalIDs)
+		updateOps, updateErr := c.OVNNbTables.Table(&ovnnb.LogicalRouterPolicy{}).UpdateOps(found, &updated, &updated.ExternalIDs)
+		if updateErr != nil {
+			return updateErr
+		}
+		operations = append(operations, updateOps...)
+	}
+	if len(mutations) != 0 {
+		parentOps, parentErr := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(lr, mutations...)
+		if parentErr != nil {
+			return parentErr
+		}
+		operations = append(operations, parentOps...)
+	}
+	if len(operations) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPolicy{}).Transact(
+		context.Background(), "lr-policy-reconcile", operations...,
+	)
+}
+
+func (c *Controller) batchAddLogicalRouterPolicies(lrName string, policies []*ovnnb.LogicalRouterPolicy) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.BatchAddLogicalRouterPolicy(lrName, policies...)
+	}
+	if len(policies) == 0 {
+		return nil
+	}
+	for _, policy := range policies {
+		if policy == nil {
+			continue
+		}
+		if err := c.addLogicalRouterPolicy(lrName, policy.Priority, policy.Match, policy.Action, policy.Nexthops, policy.BFDSessions, policy.ExternalIDs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) batchDeleteLogicalRouterPolicies(lrName string, policies []*ovnnb.LogicalRouterPolicy) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.BatchDeleteLogicalRouterPolicy(lrName, policies)
+	}
+	if len(policies) == 0 {
+		return nil
+	}
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return err
+	}
+	wanted := make(map[string]struct{}, len(policies))
+	for _, policy := range policies {
+		if policy != nil {
+			wanted[fmt.Sprintf("%d\x00%s", policy.Priority, policy.Match)] = struct{}{}
+		}
+	}
+	rows, err := c.listLogicalRouterPoliciesWithFilter(lrName, func(row *ovnnb.LogicalRouterPolicy) bool {
+		_, ok := wanted[fmt.Sprintf("%d\x00%s", row.Priority, row.Match)]
+		return ok
+	})
+	if err != nil {
+		return err
+	}
+	uuids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		uuids = append(uuids, row.UUID)
+	}
+	if len(uuids) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Mutate(
+		context.Background(), "lr-policies-del", lr,
+		model.Mutation{Field: &lr.Policies, Value: slices.Clip(uuids), Mutator: ovsdb.MutateOperationDelete},
+	)
+}
+
 func (c *Controller) deleteLogicalRouterPolicy(lrName string, priority int, match string) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.DeleteLogicalRouterPolicy(lrName, priority, match)
@@ -1652,6 +2111,58 @@ func (c *Controller) addNat(lrName, natType, externalIP, logicalIP, logicalMac, 
 	return c.OVNNbTables.Table(&ovnnb.NAT{}).Transact(
 		context.Background(), "lr-nats-add", append(createOps, parentOps...)...,
 	)
+}
+
+func (c *Controller) ensureSnat(lrName, externalIP, logicalIP string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.EnsureSnat(lrName, externalIP, logicalIP)
+	}
+	if externalIP == "" {
+		return errors.New("snat external ip is required")
+	}
+	if logicalIP == "" {
+		return errors.New("snat logical ip is required")
+	}
+	return c.addNat(lrName, ovnnb.NATTypeSNAT, externalIP, logicalIP, "", "", nil)
+}
+
+func (c *Controller) updateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType)
+	}
+	if externalIP == "" || logicalIP == "" {
+		return errors.New("nat external ip and logical ip are required")
+	}
+	nats, err := c.listNATs(lrName, ovnnb.NATTypeDNATAndSNAT, "", nil)
+	if err != nil {
+		return err
+	}
+	var nat *ovnnb.NAT
+	for _, candidate := range nats {
+		if candidate.ExternalIP == externalIP {
+			nat = candidate
+			break
+		}
+	}
+	distributed := gatewayType == "distributed"
+	if nat != nil {
+		if !distributed {
+			return nil
+		}
+		if equalOptionalString(nat.LogicalPort, &lspName) && equalOptionalString(nat.ExternalMAC, &externalMac) {
+			return nil
+		}
+		nat.LogicalPort = new(lspName)
+		nat.ExternalMAC = new(externalMac)
+		return c.OVNNbTables.Table(&ovnnb.NAT{}).Update(
+			context.Background(), "nat-update", nat, nat, &nat.LogicalPort, &nat.ExternalMAC,
+		)
+	}
+	options := map[string]string(nil)
+	if distributed {
+		options = map[string]string{"stateless": "true"}
+	}
+	return c.addNat(lrName, ovnnb.NATTypeDNATAndSNAT, externalIP, logicalIP, externalMac, lspName, options)
 }
 
 // setLoadBalancerOption updates one option on a load balancer without

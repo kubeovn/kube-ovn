@@ -983,7 +983,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) (err error) {
 
 	lspName := fmt.Sprintf("%s-%s", subnet.Name, router)
 	lrpName := fmt.Sprintf("%s-%s", router, subnet.Name)
-	if err = c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+	if err = c.removeLogicalPatchPort(lspName, lrpName); err != nil {
 		klog.Errorf("delete router port %s and %s:%v", lspName, lrpName, err)
 		return err
 	}
@@ -3218,7 +3218,7 @@ func (c *Controller) handleMcastQuerierChange(subnet *kubeovnv1.Subnet) error {
 			"mcast_eth_src": subnet.Status.McastQuerierMAC,
 		}
 		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, mcastQuerierLspName, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC, mcastQuerierLspName, metav1.NamespaceDefault, false, "", "", false, nil, ""); err != nil {
+		if err := c.createLogicalSwitchPort(subnet.Name, mcastQuerierLspName, subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC, mcastQuerierLspName, metav1.NamespaceDefault, false, "", "", false, nil, ""); err != nil {
 			err = fmt.Errorf("failed to create mcast querier lsp %s: %w", mcastQuerierLspName, err)
 			klog.Error(err)
 			return err

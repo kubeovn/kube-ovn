@@ -806,7 +806,7 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			}
 
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
-			if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
+			if err := c.createLogicalSwitchPort(subnet.Name, portName, ipStr, mac, podName, pod.Namespace,
 				portSecurity, securityGroupAnnotation, vips, enableDHCP, dhcpOptions, subnet.Spec.Vpc); err != nil {
 				c.recorder.Eventf(pod, v1.EventTypeWarning, "CreateOVNPortFailed", "stage=createLogicalSwitchPort error=%v", err)
 				klog.Errorf("%v", err)
@@ -1119,7 +1119,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
-						if err = c.OVNNbClient.UpdateDnatAndSnat(c.config.ClusterRouter, eip, ipStr, fmt.Sprintf("%s.%s", podName, pod.Namespace), pod.Annotations[util.MacAddressAnnotation], c.ExternalGatewayType); err != nil {
+						if err = c.updateDnatAndSnat(c.config.ClusterRouter, eip, ipStr, fmt.Sprintf("%s.%s", podName, pod.Namespace), pod.Annotations[util.MacAddressAnnotation], c.ExternalGatewayType); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err
 						}
@@ -1129,7 +1129,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 							klog.Errorf("failed to delete nat rules: %v", err)
 						}
 					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
-						if err = c.OVNNbClient.EnsureSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
+						if err = c.ensureSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err
 						}

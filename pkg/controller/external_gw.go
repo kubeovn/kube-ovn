@@ -131,7 +131,7 @@ func (c *Controller) removeExternalGateway() error {
 		lrpName := fmt.Sprintf("%s-%s", c.config.ClusterRouter, c.config.ExternalGatewaySwitch)
 		lspName := fmt.Sprintf("%s-%s", c.config.ExternalGatewaySwitch, c.config.ClusterRouter)
 		klog.Infof("delete logical patch port lsp %s lrp %s", lspName, lrpName)
-		if err := c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+		if err := c.removeLogicalPatchPort(lspName, lrpName); err != nil {
 			klog.Errorf("failed to remove logical patch port %s/%s, %v", lspName, lrpName, err)
 			return err
 		}

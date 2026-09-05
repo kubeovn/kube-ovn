@@ -345,7 +345,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 		}
 
 		newPeers = append(newPeers, peering.RemoteVpc)
-		if err := c.OVNNbClient.CreatePeerRouterPort(vpc.Name, peering.RemoteVpc, peering.LocalConnectIP); err != nil {
+		if err := c.createPeerRouterPort(vpc.Name, peering.RemoteVpc, peering.LocalConnectIP); err != nil {
 			klog.Errorf("create peer router port for vpc %s, %v", vpc.Name, err)
 			return err
 		}
@@ -898,7 +898,7 @@ func (c *Controller) addPolicyRouteToVpc(vpcName string, policy *kubeovnv1.Polic
 		nextHops = util.SplitTrimmed(policy.NextHopIP, ",")
 	}
 
-	if err = c.OVNNbClient.AddLogicalRouterPolicy(vpcName, policy.Priority, policy.Match, string(policy.Action), nextHops, nil, externalIDs); err != nil {
+	if err = c.addLogicalRouterPolicy(vpcName, policy.Priority, policy.Match, string(policy.Action), nextHops, nil, externalIDs); err != nil {
 		klog.Errorf("add policy route to vpc %s failed, %v", vpcName, err)
 		return err
 	}
@@ -929,7 +929,7 @@ func (c *Controller) batchAddPolicyRouteToVpc(name string, policies []*kubeovnv1
 		})
 	}
 
-	if err := c.OVNNbClient.BatchAddLogicalRouterPolicy(name, routerPolicies...); err != nil {
+	if err := c.batchAddLogicalRouterPolicies(name, routerPolicies); err != nil {
 		klog.Errorf("batch add policy route to vpc %s failed, %v", name, err)
 		return err
 	}
@@ -955,7 +955,7 @@ func (c *Controller) batchDeletePolicyRouteFromVpc(name string, policies []*kube
 		})
 	}
 
-	if err := c.OVNNbClient.BatchDeleteLogicalRouterPolicy(name, routerPolicies); err != nil {
+	if err := c.batchDeleteLogicalRouterPolicies(name, routerPolicies); err != nil {
 		return err
 	}
 	klog.V(3).Infof("take to %v batch delete policy route from vpc %s policies %d", time.Since(start), name, len(policies))
@@ -1421,7 +1421,7 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	lspName := fmt.Sprintf("%s-%s", subnet, key)
 	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 
-	if err := c.OVNNbClient.CreateLogicalPatchPort(subnet, key, lspName, lrpName, ipCidr, mac, chassises...); err != nil {
+	if err := c.createLogicalPatchPort(subnet, key, lspName, lrpName, ipCidr, mac, chassises...); err != nil {
 		klog.Errorf("failed to connect router '%s' to external: %v", key, err)
 		return err
 	}
@@ -1465,7 +1465,7 @@ func (c *Controller) handleDelVpcExternalSubnet(key, subnet string) error {
 	lspName := fmt.Sprintf("%s-%s", subnet, key)
 	lrpName := fmt.Sprintf("%s-%s", key, subnet)
 	klog.Infof("delete vpc lrp %s", lrpName)
-	if err := c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+	if err := c.removeLogicalPatchPort(lspName, lrpName); err != nil {
 		klog.Errorf("failed to disconnect router '%s' to external, %v", key, err)
 		return err
 	}
