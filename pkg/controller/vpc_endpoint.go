@@ -324,6 +324,9 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 		return fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
 	}
 	if svcVpc := vpcEndpointEffectiveServiceVpc(svc, c.config.ClusterRouter); svcVpc != eps.Spec.Vpc {
+		if clearErr := c.deactivateVpcEndpointService(eps); clearErr != nil {
+			return clearErr
+		}
 		return fmt.Errorf("provider service %s/%s belongs to vpc %s, not %s", eps.Spec.Namespace, eps.Spec.Service, svcVpc, eps.Spec.Vpc)
 	}
 
