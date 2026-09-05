@@ -202,7 +202,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 	samplingState := c.prepareNetworkPolicyACLSampling(key, pgName, np)
 
-	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
+	ingressACLOps, err := c.deletePortGroupACLOps(pgName, "to-lport", nil)
 	if err != nil {
 		klog.Errorf("generate operations that clear np %s ingress acls: %v", key, err)
 		return err
@@ -317,7 +317,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 
-		if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
+		if err := c.transactNB("add-ingress-acls", ingressACLOps...); err != nil {
 			return fmt.Errorf("add ingress acls to %s: %w", pgName, err)
 		}
 
@@ -352,7 +352,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "to-lport", nil); err != nil {
+		if err = c.deletePortGroupACLs(pgName, "to-lport", nil); err != nil {
 			klog.Errorf("delete np %s ingress acls: %v", key, err)
 			return err
 		}
@@ -365,7 +365,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 
-	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
+	egressACLOps, err := c.deletePortGroupACLOps(pgName, "from-lport", nil)
 	if err != nil {
 		klog.Errorf("generate operations that clear np %s egress acls: %v", key, err)
 		return err
@@ -479,7 +479,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 
-		if err := c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
+		if err := c.transactNB("add-egress-acls", egressACLOps...); err != nil {
 			return fmt.Errorf("add egress acls to %s: %w", pgName, err)
 		}
 
@@ -515,7 +515,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 		}
 	} else {
-		if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "from-lport", nil); err != nil {
+		if err = c.deletePortGroupACLs(pgName, "from-lport", nil); err != nil {
 			klog.Errorf("delete np %s egress acls: %v", key, err)
 			return err
 		}

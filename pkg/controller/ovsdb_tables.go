@@ -14,6 +14,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
@@ -237,6 +238,466 @@ func (c *Controller) createLogicalRouter(name string) error {
 	)
 }
 
+// createBareLogicalSwitch creates a vendor-owned logical switch when it is
+// absent. The helper intentionally only manages the switch row; ports and
+// router references are reconciled by their respective helpers.
+func (c *Controller) createBareLogicalSwitch(name string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateBareLogicalSwitch(name)
+	}
+	if name == "" {
+		return errors.New("the logical switch name is required")
+	}
+	if existing, err := c.getLogicalSwitch(name, true); err != nil {
+		return err
+	} else if existing != nil {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Create(
+		context.Background(), "ls-add", &ovnnb.LogicalSwitch{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+		},
+	)
+}
+
+// createLogicalSwitch reconciles the logical switch and its optional router
+// patch port without depending on the legacy domain client implementation.
+func (c *Controller) createLogicalSwitch(lsName, lrName, cidrBlock, gateway, gatewayMAC string, needRouter, randomAllocateGW bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, gatewayMAC, needRouter, randomAllocateGW)
+	}
+	if lsName == "" {
+		return errors.New("the logical switch name is required")
+	}
+
+	var switchNetworks string
+	if cidrBlock != "" {
+		networks, err := util.GetIPAddrWithMask(gateway, cidrBlock)
+		if err != nil {
+			return fmt.Errorf("get gateway networks for logical switch %s: %w", lsName, err)
+		}
+		switchNetworks = networks
+	}
+
+	existing, err := c.getLogicalSwitch(lsName, true)
+	if err != nil {
+		return err
+	}
+	if existing != nil && switchNetworks != "" {
+		if randomAllocateGW {
+			return nil
+		}
+		lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
+		if err := c.updateLogicalRouterPortNetworks(lrpName, strings.Split(switchNetworks, ",")); err != nil {
+			return fmt.Errorf("update logical router port %s: %w", lrpName, err)
+		}
+		if gatewayMAC != "" {
+			lrp, getErr := c.getLogicalRouterPort(lrpName, false)
+			if getErr != nil {
+				return getErr
+			}
+			if lrp.MAC != gatewayMAC {
+				lrp.MAC = gatewayMAC
+				if err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Update(
+					context.Background(), "lrp-update", lrp, lrp, &lrp.MAC,
+				); err != nil {
+					return fmt.Errorf("update logical router port %s MAC: %w", lrpName, err)
+				}
+			}
+		}
+	} else if err := c.createBareLogicalSwitch(lsName); err != nil {
+		return fmt.Errorf("create logical switch %s: %w", lsName, err)
+	}
+
+	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
+	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
+	if needRouter && switchNetworks != "" {
+		if err := c.createLogicalPatchPort(lsName, lrName, lspName, lrpName, switchNetworks, gatewayMAC); err != nil {
+			return err
+		}
+		return nil
+	}
+	if randomAllocateGW {
+		return nil
+	}
+	if err := c.removeLogicalPatchPort(lspName, lrpName); err != nil {
+		return fmt.Errorf("remove router type port %s and %s: %w", lspName, lrpName, err)
+	}
+	return nil
+}
+
+func genericACL(parent, direction string, priority any, match string, action any, tier int, externalIDs map[string]string, configure ...func(*ovnnb.ACL)) *ovnnb.ACL {
+	priorityValue := 0
+	switch value := priority.(type) {
+	case int:
+		priorityValue = value
+	case string:
+		priorityValue, _ = strconv.Atoi(value)
+	}
+	ids := maps.Clone(externalIDs)
+	if ids == nil {
+		ids = make(map[string]string, 2)
+	}
+	ids["parent"] = parent
+	ids["vendor"] = util.CniTypeName
+	acl := &ovnnb.ACL{
+		UUID:        ovsclient.NamedUUID(),
+		Direction:   direction,
+		Priority:    priorityValue,
+		Match:       match,
+		Action:      ovnnb.ACLAction(fmt.Sprint(action)),
+		Tier:        tier,
+		ExternalIDs: ids,
+	}
+	for _, option := range configure {
+		option(acl)
+	}
+	return acl
+}
+
+func (c *Controller) logicalSwitchACLOps(ls *ovnnb.LogicalSwitch, acls []*ovnnb.ACL, mutator ovsdb.Mutator) ([]ovsdb.Operation, error) {
+	uuids := make([]string, 0, len(acls))
+	for _, acl := range acls {
+		if acl != nil {
+			uuids = append(uuids, acl.UUID)
+		}
+	}
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(ls, model.Mutation{
+		Field: &ls.ACLs, Value: uuids, Mutator: mutator,
+	})
+}
+
+func (c *Controller) deleteLogicalSwitchACLOps(ls *ovnnb.LogicalSwitch, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
+	if ls == nil {
+		return nil, errors.New("logical switch is nil")
+	}
+	allowed := make(map[string]struct{}, len(ls.ACLs))
+	for _, uuid := range ls.ACLs {
+		allowed[uuid] = struct{}{}
+	}
+	var rows []ovnnb.ACL
+	if err := c.OVNNbTables.Table(&ovnnb.ACL{}).Filter(context.Background(), func(row *ovnnb.ACL) bool {
+		if _, ok := allowed[row.UUID]; !ok {
+			return false
+		}
+		if direction != "" && row.Direction != direction {
+			return false
+		}
+		return matchesExternalIDs(row.ExternalIDs, externalIDs)
+	}, &rows); err != nil {
+		return nil, err
+	}
+	selectors := make([]*ovnnb.ACL, len(rows))
+	for i := range rows {
+		selectors[i] = &rows[i]
+	}
+	return c.logicalSwitchACLOps(ls, selectors, ovsdb.MutateOperationDelete)
+}
+
+func (c *Controller) deleteLogicalSwitchACLs(lsName, direction string, externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteAcls(lsName, ovs.LogicalSwitchKey, direction, externalIDs)
+	}
+	ls, err := c.getLogicalSwitch(lsName, true)
+	if err != nil || ls == nil {
+		return err
+	}
+	ops, err := c.deleteLogicalSwitchACLOps(ls, direction, externalIDs)
+	if err != nil {
+		return err
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-del", ops...)
+}
+
+func (c *Controller) deletePortGroupACLOps(pgName, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
+	pg, err := c.getPortGroup(pgName, false)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]struct{}, len(pg.ACLs))
+	for _, uuid := range pg.ACLs {
+		allowed[uuid] = struct{}{}
+	}
+	var rows []ovnnb.ACL
+	if err := c.OVNNbTables.Table(&ovnnb.ACL{}).Filter(context.Background(), func(row *ovnnb.ACL) bool {
+		if _, ok := allowed[row.UUID]; !ok {
+			return false
+		}
+		if direction != "" && row.Direction != direction {
+			return false
+		}
+		return matchesExternalIDs(row.ExternalIDs, externalIDs)
+	}, &rows); err != nil {
+		return nil, err
+	}
+	uuids := make([]*ovnnb.ACL, len(rows))
+	for i := range rows {
+		uuids[i] = &rows[i]
+	}
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+	ids := make([]string, len(uuids))
+	for i, acl := range uuids {
+		ids[i] = acl.UUID
+	}
+	return c.OVNNbTables.Table(&ovnnb.PortGroup{}).MutateOps(pg, model.Mutation{
+		Field: &pg.ACLs, Value: ids, Mutator: ovsdb.MutateOperationDelete,
+	})
+}
+
+func (c *Controller) deletePortGroupACLs(pgName, direction string, externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteAcls(pgName, "pg", direction, externalIDs)
+	}
+	ops, err := c.deletePortGroupACLOps(pgName, direction, externalIDs)
+	if err != nil || len(ops) == 0 {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.PortGroup{}).Transact(context.Background(), "acls-del", ops...)
+}
+
+func (c *Controller) transactNB(method string, operations ...ovsdb.Operation) error {
+	if len(operations) == 0 {
+		return nil
+	}
+	if c.OVNNbTables != nil {
+		return c.OVNNbTables.Table(&ovnnb.ACL{}).Transact(context.Background(), method, operations...)
+	}
+	return c.OVNNbClient.Transact(method, operations)
+}
+
+func (c *Controller) createLogicalSwitchACLTable(ls *ovnnb.LogicalSwitch, acls ...*ovnnb.ACL) ([]ovsdb.Operation, error) {
+	nonNil := make([]model.Model, 0, len(acls))
+	for _, acl := range acls {
+		if acl != nil {
+			nonNil = append(nonNil, acl)
+		}
+	}
+	if len(nonNil) == 0 {
+		return nil, nil
+	}
+	createOps, err := c.OVNNbTables.Table(&ovnnb.ACL{}).CreateOps(nonNil...)
+	if err != nil {
+		return nil, err
+	}
+	insertOps, err := c.logicalSwitchACLOps(ls, acls, ovsdb.MutateOperationInsert)
+	if err != nil {
+		return nil, err
+	}
+	return append(createOps, insertOps...), nil
+}
+
+func (c *Controller) createGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac, vlanID, chassises...)
+	}
+	oldLocalnet := "ln-" + lsName
+	if err := c.deleteLogicalSwitchPort(oldLocalnet); err != nil {
+		return fmt.Errorf("delete old localnet %s: %w", oldLocalnet, err)
+	}
+	if err := c.createBareLogicalSwitch(lsName); err != nil {
+		return err
+	}
+	if err := c.createLocalnetLogicalSwitchPort(lsName, ovs.GetLocalnetName(lsName), provider, "", vlanID); err != nil {
+		return err
+	}
+	return c.createLogicalPatchPort(
+		lsName, lrName, fmt.Sprintf("%s-%s", lsName, lrName), fmt.Sprintf("%s-%s", lrName, lsName), ip, mac, chassises...,
+	)
+}
+
+func (c *Controller) updateLogicalSwitchACLTable(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error {
+	ls, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return err
+	}
+	removeOps, err := c.deleteLogicalSwitchACLOps(ls, "", map[string]string{"subnet": lsName})
+	if err != nil {
+		return err
+	}
+	if len(subnetAcls) == 0 && !allowEWTraffic {
+		if len(removeOps) == 0 {
+			return nil
+		}
+		return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-update", removeOps...)
+	}
+	acls := make([]*ovnnb.ACL, 0, len(subnetAcls)+4)
+	ids := map[string]string{"subnet": lsName}
+	if allowEWTraffic {
+		for cidr := range strings.SplitSeq(cidrBlock, ",") {
+			protocol := util.CheckProtocol(cidr)
+			ipSuffix := "ip4"
+			if protocol == kubeovnv1.ProtocolIPv6 {
+				ipSuffix = "ip6"
+			}
+			match := ovs.NewAndACLMatch(
+				ovs.NewACLMatch(ipSuffix+".src", "==", cidr, ""),
+				ovs.NewACLMatch(ipSuffix+".dst", "==", cidr, ""),
+			).String()
+			for _, direction := range []string{ovnnb.ACLDirectionToLport, ovnnb.ACLDirectionFromLport} {
+				acls = append(acls, genericACL(lsName, direction, util.AllowEWTrafficPriority, match, ovnnb.ACLActionAllow, util.NetpolACLTier, ids))
+			}
+		}
+	}
+	for _, subnetACL := range subnetAcls {
+		acls = append(acls, genericACL(lsName, subnetACL.Direction, subnetACL.Priority, subnetACL.Match, subnetACL.Action, util.NetpolACLTier, ids))
+	}
+	createOps, err := c.createLogicalSwitchACLTable(ls, acls...)
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-update", append(removeOps, createOps...)...)
+}
+
+func (c *Controller) setLogicalSwitchPrivateTable(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
+	ls, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return err
+	}
+	removeOps, err := c.deleteLogicalSwitchACLOps(ls, "", nil)
+	if err != nil {
+		return err
+	}
+	acls := []*ovnnb.ACL{genericACL(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, "ip", ovnnb.ACLActionDrop, util.NetpolACLTier, nil, func(acl *ovnnb.ACL) {
+		acl.Log = true
+		severity := ovnnb.ACLSeverityWarning
+		acl.Severity = &severity
+	})}
+	for cidr := range strings.SplitSeq(cidrBlock, ",") {
+		protocol := util.CheckProtocol(cidr)
+		ipSuffix := "ip4"
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			ipSuffix = "ip6"
+		}
+		sameSubnet := ovs.NewAndACLMatch(ovs.NewACLMatch(ipSuffix+".src", "==", cidr, ""), ovs.NewACLMatch(ipSuffix+".dst", "==", cidr, "")).String()
+		acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, sameSubnet, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
+		for nodeCidr := range strings.SplitSeq(nodeSwitchCIDR, ",") {
+			if util.CheckProtocol(nodeCidr) != protocol {
+				continue
+			}
+			match := ovs.NewACLMatch(ipSuffix+".src", "==", nodeCidr, "").String()
+			acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
+		}
+		for _, allowed := range allowSubnets {
+			allowed = strings.TrimSpace(allowed)
+			if allowed == "" || util.CheckProtocol(allowed) != protocol {
+				continue
+			}
+			match := ovs.NewOrACLMatch(
+				ovs.NewAndACLMatch(ovs.NewACLMatch(ipSuffix+".src", "==", cidr, ""), ovs.NewACLMatch(ipSuffix+".dst", "==", allowed, "")),
+				ovs.NewAndACLMatch(ovs.NewACLMatch(ipSuffix+".src", "==", allowed, ""), ovs.NewACLMatch(ipSuffix+".dst", "==", cidr, "")),
+			).String()
+			acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
+		}
+	}
+	createOps, err := c.createLogicalSwitchACLTable(ls, acls...)
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-private", append(removeOps, createOps...)...)
+}
+
+func (c *Controller) setLogicalSwitchRoutedTable(lsName, router, cidrBlock, gateway, gatewayMAC string, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
+	if lsName == "" || router == "" || gatewayMAC == "" {
+		return errors.New("logical switch, router and gateway MAC are required for routed mode")
+	}
+	ls, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return err
+	}
+	removeOps, err := c.deleteLogicalSwitchACLOps(ls, "", nil)
+	if err != nil {
+		return err
+	}
+	acls := make([]*ovnnb.ACL, 0, 16)
+	for gw := range strings.SplitSeq(gateway, ",") {
+		gw = strings.TrimSpace(gw)
+		switch util.CheckProtocol(gw) {
+		case kubeovnv1.ProtocolIPv4:
+			acls = append(acls,
+				genericACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, ovs.NewAndACLMatch(ovs.NewACLMatch("arp", "", "", ""), ovs.NewACLMatch("arp.tpa", "==", gw, "")).String(), ovnnb.ACLActionAllow, util.NetpolACLTier, nil),
+				genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ovs.NewAndACLMatch(ovs.NewACLMatch("arp", "", "", ""), ovs.NewACLMatch("arp.spa", "==", gw, "")).String(), ovnnb.ACLActionAllow, util.NetpolACLTier, nil))
+		case kubeovnv1.ProtocolIPv6:
+			acls = append(acls,
+				genericACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, ovs.NewAndACLMatch(ovs.NewACLMatch("nd_ns", "", "", ""), ovs.NewACLMatch("nd.target", "==", gw, "")).String(), ovnnb.ACLActionAllow, util.NetpolACLTier, nil),
+				genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ovs.NewAndACLMatch(ovs.NewACLMatch("nd_na", "", "", ""), ovs.NewACLMatch("ip6.src", "==", gw, "")).String(), ovnnb.ACLActionAllow, util.NetpolACLTier, nil))
+		}
+	}
+	routerLSP := ovs.LogicalSwitchPortName(router, lsName)
+	toRouter := ovs.NewAndACLMatch(ovs.NewACLMatch("ip", "", "", ""), ovs.NewACLMatch("eth.dst", "==", gatewayMAC, "")).String()
+	acls = append(acls,
+		genericACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, toRouter, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil),
+		genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, toRouter, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
+	fromRouter := ovs.NewAndACLMatch(ovs.NewACLMatch("ip", "", "", ""), ovs.NewACLMatch("inport", "==", fmt.Sprintf(`"%s"`, routerLSP), ""), ovs.NewACLMatch("eth.src", "==", gatewayMAC, "")).String()
+	acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, fromRouter, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
+	if !private {
+		fromGateway := ovs.NewAndACLMatch(ovs.NewACLMatch("ip", "", "", ""), ovs.NewACLMatch("eth.src", "==", gatewayMAC, "")).String()
+		acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, fromGateway, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
+	} else {
+		for cidr := range strings.SplitSeq(cidrBlock, ",") {
+			if cidr == "" {
+				continue
+			}
+			protocol := util.CheckProtocol(cidr)
+			ipSuffix := "ip4"
+			if protocol == kubeovnv1.ProtocolIPv6 {
+				ipSuffix = "ip6"
+			}
+			for _, source := range append([]string{cidr}, append(strings.Split(nodeSwitchCIDR, ","), allowSubnets...)...) {
+				source = strings.TrimSpace(source)
+				if source == "" || util.CheckProtocol(source) != protocol {
+					continue
+				}
+				match := ovs.NewAndACLMatch(ovs.NewACLMatch("ip", "", "", ""), ovs.NewACLMatch("eth.src", "==", gatewayMAC, ""), ovs.NewACLMatch(ipSuffix+".src", "==", source, "")).String()
+				acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
+			}
+		}
+	}
+	for _, direction := range []string{ovnnb.ACLDirectionFromLport, ovnnb.ACLDirectionToLport} {
+		for _, match := range []string{"ip", "arp", "nd_ns", "nd_na"} {
+			acls = append(acls, genericACL(lsName, direction, util.RoutedDefaultDropPriority, match, ovnnb.ACLActionDrop, util.NetpolACLTier, nil, func(acl *ovnnb.ACL) {
+				acl.Log = true
+				severity := ovnnb.ACLSeverityWarning
+				acl.Severity = &severity
+			}))
+		}
+	}
+	createOps, err := c.createLogicalSwitchACLTable(ls, acls...)
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-routed", append(removeOps, createOps...)...)
+}
+
+func (c *Controller) updateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.UpdateLogicalSwitchACL(lsName, cidrBlock, subnetAcls, allowEWTraffic)
+	}
+	return c.updateLogicalSwitchACLTable(lsName, cidrBlock, subnetAcls, allowEWTraffic)
+}
+
+func (c *Controller) setLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
+	}
+	return c.setLogicalSwitchPrivateTable(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
+}
+
+func (c *Controller) setLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+	}
+	return c.setLogicalSwitchRoutedTable(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+}
+
 func (c *Controller) updateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.UpdateLogicalRouter(lr, fields...)
@@ -375,6 +836,315 @@ func (c *Controller) deleteDHCPOptionsForPort(portName string) error {
 			return row.ExternalIDs[ovs.PortKey] == portName
 		},
 	)
+}
+
+func (c *Controller) deleteDHCPOptions(lsName, protocol string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteDHCPOptions(lsName, protocol)
+	}
+	if lsName == "" {
+		return errors.New("the logical switch name is required")
+	}
+	if protocol == kubeovnv1.ProtocolDual {
+		protocol = ""
+	}
+	return c.OVNNbTables.Table(&ovnnb.DHCPOptions{}).DeleteFilter(
+		context.Background(), "dhcp-options-del", func(row *ovnnb.DHCPOptions) bool {
+			if row.ExternalIDs["vendor"] != util.CniTypeName || row.ExternalIDs[ovs.LogicalSwitchKey] != lsName || row.ExternalIDs[ovs.PortKey] != "" {
+				return false
+			}
+			return protocol == "" || row.ExternalIDs["protocol"] == protocol
+		},
+	)
+}
+
+func (c *Controller) listDHCPOptionsTable(lsName, portName, protocol string) ([]ovnnb.DHCPOptions, error) {
+	var rows []ovnnb.DHCPOptions
+	err := c.OVNNbTables.Table(&ovnnb.DHCPOptions{}).Filter(
+		context.Background(), func(row *ovnnb.DHCPOptions) bool {
+			if row.ExternalIDs["vendor"] != util.CniTypeName || row.ExternalIDs["protocol"] != protocol {
+				return false
+			}
+			if portName == "" {
+				return row.ExternalIDs[ovs.LogicalSwitchKey] == lsName && row.ExternalIDs[ovs.PortKey] == ""
+			}
+			return row.ExternalIDs[ovs.PortKey] == portName
+		}, &rows,
+	)
+	return rows, err
+}
+
+func (c *Controller) getDHCPOptionsTable(lsName, portName, protocol string, ignoreNotFound bool) (*ovnnb.DHCPOptions, error) {
+	rows, err := c.listDHCPOptionsTable(lsName, portName, protocol)
+	if err != nil {
+		return nil, fmt.Errorf("list %s DHCP options: %w", protocol, err)
+	}
+	switch len(rows) {
+	case 0:
+		if ignoreNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("DHCP options not found for switch %s port %s", lsName, portName)
+	case 1:
+		return &rows[0], nil
+	default:
+		return nil, fmt.Errorf("multiple %s DHCP options for switch %s port %s", protocol, lsName, portName)
+	}
+}
+
+func (c *Controller) updateDHCPOptionTable(lsName, portName, cidr, protocol, gateway, options string, mtu int) (string, error) {
+	if lsName == "" || cidr == "" {
+		return "", errors.New("logical switch name and cidr are required")
+	}
+	current, err := c.getDHCPOptionsTable(lsName, portName, protocol, true)
+	if err != nil {
+		return "", err
+	}
+	var optionMap map[string]string
+	if protocol == kubeovnv1.ProtocolIPv4 {
+		optionMap = ovs.BuildDHCPv4Options(options, gateway, "", mtu, []string{"lease_time", "router", "server_id", "server_mac", "mtu"})
+	} else {
+		optionMap = ovs.BuildDHCPv6Options(options, "", []string{"server_id"})
+	}
+	if current != nil {
+		if protocol == kubeovnv1.ProtocolIPv4 && optionMap["server_mac"] == "" {
+			optionMap["server_mac"] = current.Options["server_mac"]
+		}
+		if protocol == kubeovnv1.ProtocolIPv6 && optionMap["server_id"] == "" {
+			optionMap["server_id"] = current.Options["server_id"]
+		}
+		if current.Cidr == cidr && maps.Equal(current.Options, optionMap) {
+			return current.UUID, nil
+		}
+		current.Cidr = cidr
+		current.Options = optionMap
+		if err := c.OVNNbTables.Table(&ovnnb.DHCPOptions{}).Update(
+			context.Background(), "dhcp-options-update", current, current, &current.Cidr, &current.Options,
+		); err != nil {
+			return "", err
+		}
+		return current.UUID, nil
+	}
+
+	if protocol == kubeovnv1.ProtocolIPv4 && optionMap["server_mac"] == "" {
+		optionMap["server_mac"] = util.GenerateMac()
+	}
+	if protocol == kubeovnv1.ProtocolIPv6 && optionMap["server_id"] == "" {
+		optionMap["server_id"] = util.GenerateMac()
+	}
+	externalIDs := map[string]string{
+		ovs.LogicalSwitchKey: lsName,
+		"protocol":           protocol,
+		"vendor":             util.CniTypeName,
+	}
+	if portName != "" {
+		externalIDs[ovs.PortKey] = portName
+	}
+	created := &ovnnb.DHCPOptions{
+		UUID:        ovsclient.NamedUUID(),
+		Cidr:        cidr,
+		Options:     optionMap,
+		ExternalIDs: externalIDs,
+	}
+	if err := c.OVNNbTables.Table(&ovnnb.DHCPOptions{}).Create(
+		context.Background(), "dhcp-options-create", created,
+	); err != nil {
+		return "", err
+	}
+	if current, err = c.getDHCPOptionsTable(lsName, portName, protocol, true); err != nil {
+		return "", err
+	} else if current != nil {
+		return current.UUID, nil
+	}
+	return created.UUID, nil
+}
+
+func (c *Controller) updateSubnetDHCPOptionsTable(subnet *kubeovnv1.Subnet, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
+	if !subnet.Spec.EnableDHCP {
+		protocol := subnet.Spec.Protocol
+		if protocol == kubeovnv1.ProtocolDual {
+			protocol = ""
+		}
+		return &ovs.DHCPOptionsUUIDs{}, c.OVNNbTables.Table(&ovnnb.DHCPOptions{}).DeleteFilter(
+			context.Background(), "dhcp-options-del", func(row *ovnnb.DHCPOptions) bool {
+				if row.ExternalIDs["vendor"] != util.CniTypeName || row.ExternalIDs[ovs.LogicalSwitchKey] != subnet.Name || row.ExternalIDs[ovs.PortKey] != "" {
+					return false
+				}
+				return protocol == "" || row.ExternalIDs["protocol"] == protocol
+			},
+		)
+	}
+
+	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+	gateways := strings.Split(subnet.Spec.Gateway, ",")
+	if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+		gateways = strings.Split(subnet.Status.U2OInterconnectionIP, ",")
+	}
+	result := &ovs.DHCPOptionsUUIDs{}
+	var err error
+	switch util.CheckProtocol(subnet.Spec.CIDRBlock) {
+	case kubeovnv1.ProtocolIPv4:
+		result.DHCPv4OptionsUUID, err = c.updateDHCPOptionTable(subnet.Name, "", cidrBlocks[0], kubeovnv1.ProtocolIPv4, gateways[0], subnet.Spec.DHCPv4Options, mtu)
+	case kubeovnv1.ProtocolIPv6:
+		result.DHCPv6OptionsUUID, err = c.updateDHCPOptionTable(subnet.Name, "", cidrBlocks[0], kubeovnv1.ProtocolIPv6, "", subnet.Spec.DHCPv6Options, mtu)
+	case kubeovnv1.ProtocolDual:
+		if len(cidrBlocks) < 2 || len(gateways) < 1 {
+			return nil, fmt.Errorf("invalid dual-stack subnet %s", subnet.Name)
+		}
+		result.DHCPv4OptionsUUID, err = c.updateDHCPOptionTable(subnet.Name, "", cidrBlocks[0], kubeovnv1.ProtocolIPv4, gateways[0], subnet.Spec.DHCPv4Options, mtu)
+		if err == nil {
+			result.DHCPv6OptionsUUID, err = c.updateDHCPOptionTable(subnet.Name, "", cidrBlocks[1], kubeovnv1.ProtocolIPv6, "", subnet.Spec.DHCPv6Options, mtu)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported subnet protocol %q", subnet.Spec.Protocol)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Controller) updatePortDHCPOptionsTable(lsName, portName string, subnetDHCP *ovs.DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*ovs.DHCPOptionsUUIDs, bool, error) {
+	if v4Options != "" || v6Options != "" {
+		cidrs := strings.Split(cidrBlock, ",")
+		gws := strings.Split(gateway, ",")
+		result := &ovs.DHCPOptionsUUIDs{}
+		protocol := util.CheckProtocol(cidrBlock)
+		var err error
+		if (protocol == kubeovnv1.ProtocolIPv4 || protocol == kubeovnv1.ProtocolDual) && v4Options != "" {
+			gw := ""
+			if len(gws) > 0 {
+				gw = gws[0]
+			}
+			result.DHCPv4OptionsUUID, err = c.updateDHCPOptionTable(lsName, portName, cidrs[0], kubeovnv1.ProtocolIPv4, gw, v4Options, mtu)
+		}
+		if err == nil && (protocol == kubeovnv1.ProtocolIPv6 || protocol == kubeovnv1.ProtocolDual) && v6Options != "" {
+			index := 0
+			if protocol == kubeovnv1.ProtocolDual {
+				index = 1
+			}
+			result.DHCPv6OptionsUUID, err = c.updateDHCPOptionTable(lsName, portName, cidrs[index], kubeovnv1.ProtocolIPv6, "", v6Options, mtu)
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		if subnetDHCP != nil {
+			if result.DHCPv4OptionsUUID == "" {
+				result.DHCPv4OptionsUUID = subnetDHCP.DHCPv4OptionsUUID
+			}
+			if result.DHCPv6OptionsUUID == "" {
+				result.DHCPv6OptionsUUID = subnetDHCP.DHCPv6OptionsUUID
+			}
+		}
+		lsp, err := c.getLogicalSwitchPort(portName, true)
+		if err != nil {
+			return nil, false, err
+		}
+		if lsp != nil {
+			if err := c.updateLSPDHCPPointersTable(lsp, result); err != nil {
+				return nil, false, err
+			}
+		}
+		return result, true, nil
+	}
+
+	lsp, err := c.getLogicalSwitchPort(portName, true)
+	if err != nil || lsp == nil {
+		return subnetDHCP, false, err
+	}
+	subnetV4, subnetV6 := "", ""
+	if subnetDHCP != nil {
+		subnetV4, subnetV6 = subnetDHCP.DHCPv4OptionsUUID, subnetDHCP.DHCPv6OptionsUUID
+	}
+	if ptrString(lsp.Dhcpv4Options) == subnetV4 && ptrString(lsp.Dhcpv6Options) == subnetV6 {
+		return subnetDHCP, false, nil
+	}
+	if err := c.deleteDHCPOptionsForPort(portName); err != nil {
+		return nil, false, err
+	}
+	if err := c.updateLSPDHCPPointersTable(lsp, subnetDHCP); err != nil {
+		return nil, false, err
+	}
+	return subnetDHCP, false, nil
+}
+
+func (c *Controller) updateLSPDHCPPointersTable(lsp *ovnnb.LogicalSwitchPort, options *ovs.DHCPOptionsUUIDs) error {
+	var v4, v6 *string
+	if options != nil {
+		if options.DHCPv4OptionsUUID != "" {
+			v4 = &options.DHCPv4OptionsUUID
+		}
+		if options.DHCPv6OptionsUUID != "" {
+			v6 = &options.DHCPv6OptionsUUID
+		}
+	}
+	if equalOptionalString(lsp.Dhcpv4Options, v4) && equalOptionalString(lsp.Dhcpv6Options, v6) {
+		return nil
+	}
+	lsp.Dhcpv4Options, lsp.Dhcpv6Options = v4, v6
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Update(
+		context.Background(), "lsp-update", lsp, lsp, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options,
+	)
+}
+
+func ptrString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+type databaseLifecycle interface {
+	Echo(context.Context) error
+	Close()
+}
+
+type bfdMonitor interface {
+	MonitorBFD()
+}
+
+func (c *Controller) echoNB(ctx context.Context) error {
+	if lifecycle, ok := c.OVNNbTables.(databaseLifecycle); ok {
+		return lifecycle.Echo(ctx)
+	}
+	return c.OVNNbClient.Echo(ctx)
+}
+
+func (c *Controller) echoSB(ctx context.Context) error {
+	if lifecycle, ok := c.OVNSbTables.(databaseLifecycle); ok {
+		return lifecycle.Echo(ctx)
+	}
+	return c.OVNSbClient.Echo(ctx)
+}
+
+func (c *Controller) closeNB() {
+	if lifecycle, ok := c.OVNNbTables.(databaseLifecycle); ok {
+		lifecycle.Close()
+		return
+	}
+	if c.OVNNbClient != nil {
+		c.OVNNbClient.Close()
+	}
+}
+
+func (c *Controller) closeSB() {
+	if lifecycle, ok := c.OVNSbTables.(databaseLifecycle); ok {
+		lifecycle.Close()
+		return
+	}
+	if c.OVNSbClient != nil {
+		c.OVNSbClient.Close()
+	}
+}
+
+func (c *Controller) monitorBFD() {
+	if monitor, ok := c.OVNNbTables.(bfdMonitor); ok {
+		monitor.MonitorBFD()
+		return
+	}
+	if c.OVNNbClient != nil {
+		c.OVNNbClient.MonitorBFD()
+	}
 }
 
 // logicalSwitchPortParent returns the unique logical switch that owns an LSP
@@ -1758,7 +2528,10 @@ func (c *Controller) createBFD(logicalPort, destination string, minRx, minTx, de
 		return nil, fmt.Errorf("failed to list BFD after creation: %w", err)
 	}
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("BFD with logical_port=%s and dst_ip=%s not found after creation", logicalPort, destination)
+		// A provider may acknowledge the transaction before its monitor cache
+		// observes the inserted row. The named UUID remains valid for callers
+		// composing the next operation, so return the created model in that case.
+		return row, nil
 	}
 	return &rows[0], nil
 }

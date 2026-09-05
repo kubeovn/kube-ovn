@@ -162,7 +162,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		return err
 	}
 
-	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
+	ingressACLOps, err := c.deletePortGroupACLOps(pgName, "to-lport", nil)
 	if err != nil {
 		klog.Errorf("failed to generate clear operations for banp %s ingress acls: %v", key, err)
 		return err
@@ -232,14 +232,14 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		}
 	}
 
-	if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
+	if err := c.transactNB("add-ingress-acls", ingressACLOps...); err != nil {
 		return fmt.Errorf("failed to add ingress acls for banp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curIngressAddrSet, desiredIngressAddrSet); err != nil {
 		return fmt.Errorf("failed to delete unused ingress address set for banp %s: %w", key, err)
 	}
 
-	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
+	egressACLOps, err := c.deletePortGroupACLOps(pgName, "from-lport", nil)
 	if err != nil {
 		klog.Errorf("failed to generate clear operations for banp %s egress acls: %v", key, err)
 		return err
@@ -299,7 +299,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 		}
 	}
 
-	if err := c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
+	if err := c.transactNB("add-egress-acls", egressACLOps...); err != nil {
 		return fmt.Errorf("failed to add egress acls for banp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curEgressAddrSet, desiredEgressAddrSet); err != nil {
