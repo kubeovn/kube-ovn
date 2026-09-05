@@ -202,13 +202,16 @@ func (c *Controller) reconcileServiceEndpointSlices(svc *v1.Service, endpointSli
 		return fmt.Errorf("get vpc %s: %w", vpcName, err)
 	}
 	reconcileCtx := &endpointSliceReconcileContext{
-		service:           svc,
-		endpointSlices:    endpointSlices,
-		vpc:               vpc,
-		vpcName:           vpcName,
-		subnetName:        subnetName,
-		profile:           profile,
-		loadBalancers:     serviceLoadBalancers(vpc, svc.Spec.SessionAffinity),
+		service:        svc,
+		endpointSlices: endpointSlices,
+		vpc:            vpc,
+		vpcName:        vpcName,
+		subnetName:     subnetName,
+		profile:        profile,
+		loadBalancers: serviceLoadBalancerSet{
+			current:  make(map[v1.Protocol]string),
+			previous: make(map[v1.Protocol]string),
+		},
 		desiredScopedVIPs: make(map[string]map[string]struct{}),
 	}
 	if err := c.prepareServiceScopedLoadBalancers(reconcileCtx); err != nil {
@@ -334,6 +337,21 @@ func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSli
 			}
 		}
 	}
+	externalProtocols := make(map[v1.Protocol]struct{})
+	for _, trafficClass := range reconcileCtx.profile.trafficClasses {
+		if trafficClass != serviceLBExternalTraffic || !serviceUsesScopedLB(svc) {
+			continue
+		}
+		for _, port := range svc.Spec.Ports {
+			if _, ok := externalProtocols[port.Protocol]; ok {
+				continue
+			}
+			externalProtocols[port.Protocol] = struct{}{}
+			if _, err := c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, reconcileCtx.vpcName); err != nil {
+				return err
+			}
+		}
+	}
 	if err := c.reconcileServiceScopedLoadBalancerAttachments(reconcileCtx.vpcName, lbNames...); err != nil {
 		return err
 	}
@@ -347,6 +365,23 @@ func (c *Controller) clearServiceExternalTrafficLocalMarkers(reconcileCtx *endpo
 	svc := reconcileCtx.service
 	for _, lbs := range []map[v1.Protocol]string{reconcileCtx.loadBalancers.current, reconcileCtx.loadBalancers.previous} {
 		if err := c.clearLoadBalancerVIPExternalTrafficLocal(svc, lbs[v1.ProtocolTCP], lbs[v1.ProtocolUDP], lbs[v1.ProtocolSCTP]); err != nil {
+			return err
+		}
+	}
+	if svc.Spec.Type == v1.ServiceTypeLoadBalancer && serviceUsesScopedLB(svc) {
+		var external [3]string
+		for _, port := range svc.Spec.Ports {
+			name := serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic)
+			switch port.Protocol {
+			case v1.ProtocolTCP:
+				external[0] = name
+			case v1.ProtocolUDP:
+				external[1] = name
+			case v1.ProtocolSCTP:
+				external[2] = name
+			}
+		}
+		if err := c.clearLoadBalancerVIPExternalTrafficLocal(svc, external[0], external[1], external[2]); err != nil {
 			return err
 		}
 	}
@@ -377,17 +412,12 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	isExternalVIP := state.trafficClass == serviceLBExternalTraffic
 	state.distributed = profile.distributedLocal && !isExternalVIP
 	state.template = serviceUsesTemplateLB(svc) && !isExternalVIP
-	if isExternalVIP && serviceUsesTemplateLB(svc) {
+	if isExternalVIP && serviceUsesScopedLB(svc) {
+		state.lb = serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic)
+	} else if isExternalVIP {
 		shared := serviceLoadBalancers(reconcileCtx.vpc, svc.Spec.SessionAffinity)
 		state.lb = shared.current[port.Protocol]
 		state.oldLB = shared.previous[port.Protocol]
-	}
-	if profile.distributedLocal && isExternalVIP {
-		var err error
-		state.lb, err = c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol, reconcileCtx.vpcName)
-		if err != nil {
-			return err
-		}
 	}
 
 	if state.template {

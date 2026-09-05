@@ -33,7 +33,10 @@ const (
 )
 
 func serviceUsesScopedLB(svc *v1.Service) bool {
-	return svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP || serviceUsesDistributedLB(svc) || serviceUsesTrafficDistribution(svc)
+	if svc.Annotations[util.SwitchLBRuleVipsAnnotation] != "" || svc.Annotations[util.RouterLBRuleVipsAnnotation] != "" {
+		return false
+	}
+	return svc.Spec.Type != v1.ServiceTypeExternalName && svc.Spec.ClusterIP != v1.ClusterIPNone
 }
 
 func serviceUsesDistributedLB(svc *v1.Service) bool {
@@ -66,17 +69,12 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 }
 
 func serviceScopedLBName(svc *v1.Service, protocol v1.Protocol) string {
-	return serviceScopedLBNameForTrafficClass(svc, protocol, serviceLBInternalTraffic)
+	return serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, serviceLBInternalTraffic, "")
 }
 
 func serviceScopedLBNameForTrafficClass(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass) string {
-	identity := fmt.Sprintf("%s/%s/%s", svc.Namespace, svc.Name, svc.UID)
-	identityHash := util.Sha256Hash([]byte(identity))[:12]
-	name := fmt.Sprintf("svc-%s-%s", identityHash, strings.ToLower(string(protocol)))
-	if trafficClass == serviceLBExternalTraffic {
-		return name + "-external"
-	}
-	return name
+	name := fmt.Sprintf("service:%s/%s:%s", svc.Namespace, svc.Name, strings.ToLower(string(protocol)))
+	return name + ":" + string(trafficClass)
 }
 
 func serviceScopedLBNameForTrafficClassAndFamily(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass, family string) string {
@@ -84,7 +82,7 @@ func serviceScopedLBNameForTrafficClassAndFamily(svc *v1.Service, protocol v1.Pr
 	if family == "" {
 		return name
 	}
-	return name + "-" + strings.ToLower(family)
+	return name + ":" + strings.ToLower(family)
 }
 
 func serviceTemplateLBAddressFamilies(svc *v1.Service) []string {
@@ -400,7 +398,7 @@ func serviceScopedLBNames(svc *v1.Service) []string {
 	seen := make(map[string]struct{}, len(svc.Spec.Ports))
 	for _, port := range svc.Spec.Ports {
 		trafficClasses := []serviceLBTrafficClass{serviceLBInternalTraffic}
-		if serviceUsesDistributedLB(svc) {
+		if svc.Spec.Type == v1.ServiceTypeLoadBalancer || serviceUsesDistributedLB(svc) {
 			trafficClasses = append(trafficClasses, serviceLBExternalTraffic)
 		}
 		for _, trafficClass := range trafficClasses {

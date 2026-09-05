@@ -690,6 +690,7 @@ func (c *Controller) gcLoadBalancer() error {
 	for _, svc := range svcs {
 		if serviceUsesScopedLB(svc) {
 			vpcLbs.Add(serviceScopedLBNames(svc)...)
+			continue
 		}
 		for _, ip := range getVipIps(svc) {
 			for _, port := range svc.Spec.Ports {
