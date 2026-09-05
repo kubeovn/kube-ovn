@@ -377,13 +377,13 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 
 	// ACLs related to port_group will be deleted automatically when port_group is deleted
 	pgName := getCnpPortGroupName(cnp)
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		// Do not exit on errors, try to go as far as possible in the deletion
 		klog.Errorf("failed to delete port group for cnp %s: %v", cnp.Name, err)
 	}
 
 	// Delete all ingress address sets for this CNP
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		clusterNetworkPolicyKey: fmt.Sprintf("%s/%s", cnpName, "ingress"),
 	}); err != nil {
 		// Do not exit on errors, try to go as far as possible in the deletion
@@ -391,7 +391,7 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 	}
 
 	// Delete all egress address sets for this CNP
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		clusterNetworkPolicyKey: fmt.Sprintf("%s/%s", cnpName, "egress"),
 	}); err != nil {
 		// Do not exit on errors, try to go as far as possible in the deletion
@@ -442,7 +442,7 @@ func (c *Controller) setupCnpPortGroup(cnp *v1alpha2.ClusterNetworkPolicy) error
 	pgName := getCnpPortGroupName(cnp)
 
 	// Create port group in OVN databases
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{clusterNetworkPolicyKey: pgName}); err != nil {
+	if err := c.createPortGroup(pgName, map[string]string{clusterNetworkPolicyKey: pgName}); err != nil {
 		klog.Errorf("failed to create port group for cnp %s: %v", cnp.Name, err)
 		return err
 	}
@@ -567,7 +567,7 @@ func (c *Controller) generateCnpEgressAddressSet(cnpName, pgName string, rule v1
 
 // createCnpAddressSet creates an address set in the OVN DBs for a particular rule
 func (c *Controller) createCnpAddressSet(cnpName, ruleName, direction, asName string, addresses []string) error {
-	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{
+	if err := c.createAddressSet(asName, map[string]string{
 		clusterNetworkPolicyKey: fmt.Sprintf("%s/%s", cnpName, direction),
 	}); err != nil {
 		klog.Errorf("failed to create ovn address set %s for cnp rule %s/%s: %v", asName, cnpName, ruleName, err)

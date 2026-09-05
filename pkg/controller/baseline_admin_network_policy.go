@@ -146,7 +146,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 
 	// ovn portGroup/addressSet doesn't support name with '-', so we replace '-' by '.'.
 	pgName := strings.ReplaceAll(banpName, "-", ".")
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{baselineAdminNetworkPolicyKey: banpName}); err != nil {
+	if err = c.createPortGroup(pgName, map[string]string{baselineAdminNetworkPolicyKey: banpName}); err != nil {
 		klog.Errorf("failed to create port group for banp %s: %v", key, err)
 		return err
 	}
@@ -318,18 +318,18 @@ func (c *Controller) handleDeleteBanp(banp *v1alpha1.BaselineAdminNetworkPolicy)
 
 	// ACLs related to port_group will be deleted automatically when port_group is deleted
 	pgName := strings.ReplaceAll(banpName, "-", ".")
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		klog.Errorf("failed to delete port group for banp %s: %v", banpName, err)
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", banpName, "ingress"),
 	}); err != nil {
 		klog.Errorf("failed to delete ingress address set for banp %s: %v", banpName, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", banpName, "egress"),
 	}); err != nil {
 		klog.Errorf("failed to delete egress address set for banp %s: %v", banpName, err)

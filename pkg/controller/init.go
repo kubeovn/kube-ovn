@@ -228,7 +228,7 @@ func (c *Controller) initNodeSwitch() error {
 
 // InitClusterRouter init cluster router to connect different logical switches
 func (c *Controller) initClusterRouter() error {
-	if err := c.OVNNbClient.CreateLogicalRouter(c.config.ClusterRouter); err != nil {
+	if err := c.createLogicalRouter(c.config.ClusterRouter); err != nil {
 		klog.Errorf("create logical router %s failed: %v", c.config.ClusterRouter, err)
 		return err
 	}
@@ -245,7 +245,7 @@ func (c *Controller) initClusterRouter() error {
 	lrOptions["dynamic_neigh_routers"] = "true"
 	if !maps.Equal(lr.Options, lrOptions) {
 		lr.Options = lrOptions
-		if err = c.OVNNbClient.UpdateLogicalRouter(lr, &lr.Options); err != nil {
+		if err = c.updateLogicalRouter(lr, &lr.Options); err != nil {
 			klog.Errorf("update logical router %s failed: %v", c.config.ClusterRouter, err)
 			return err
 		}
@@ -269,7 +269,7 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 		}
 	}
 
-	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields...); err != nil {
+	if err = c.createLoadBalancer(name, protocol, selectFields...); err != nil {
 		klog.Errorf("create load balancer %s: %v", name, err)
 		return err
 	}

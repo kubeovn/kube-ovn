@@ -963,7 +963,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	includePortGroup := true
 	hasSelectors := len(gw.Spec.Selectors) > 0
 	if hasSelectors {
-		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
+		if err = c.createPortGroup(pgName, externalIDs); err != nil {
 			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
 			klog.Error(err)
 			return err
@@ -973,7 +973,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			klog.Error(err)
 			return err
 		}
-	} else if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	} else if err = c.deletePortGroups(pgName); err != nil {
 		err = fmt.Errorf("failed to delete stale port group %s: %w", pgName, err)
 		klog.Error(err)
 		return err
@@ -981,7 +981,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 
 	// reconcile OVN address set
 	asName := vegAddressSetName(key, af)
-	if err = c.OVNNbClient.CreateAddressSet(asName, externalIDs); err != nil {
+	if err = c.createAddressSet(asName, externalIDs); err != nil {
 		err = fmt.Errorf("failed to create address set %s: %w", asName, err)
 		klog.Error(err)
 		return err
@@ -993,7 +993,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	}
 	compatAsName := vegPortGroupAddressSetName(key, af)
 	if !hasSelectors {
-		if err = c.OVNNbClient.CreateAddressSet(compatAsName, externalIDs); err != nil {
+		if err = c.createAddressSet(compatAsName, externalIDs); err != nil {
 			err = fmt.Errorf("failed to create compatibility address set %s: %w", compatAsName, err)
 			klog.Error(err)
 			return err
@@ -1003,7 +1003,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			klog.Error(err)
 			return err
 		}
-	} else if err = c.OVNNbClient.DeleteAddressSet(compatAsName); err != nil {
+	} else if err = c.deleteAddressSets(compatAsName); err != nil {
 		err = fmt.Errorf("failed to delete stale compatibility address set %s: %w", compatAsName, err)
 		klog.Error(err)
 		return err
@@ -1478,7 +1478,7 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 		return err
 	}
 	for _, bfd := range bfdList {
-		if err = c.OVNNbClient.DeleteBFD(bfd.UUID); err != nil {
+		if err = c.deleteBFD(bfd.UUID); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1491,16 +1491,16 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 		klog.Error(err)
 		return err
 	}
-	if err = c.OVNNbClient.DeletePortGroup(vegPortGroupName(key)); err != nil {
+	if err = c.deletePortGroups(vegPortGroupName(key)); err != nil {
 		klog.Error(err)
 		return err
 	}
 	for _, af := range [...]int{4, 6} {
-		if err = c.OVNNbClient.DeleteAddressSet(vegAddressSetName(key, af)); err != nil {
+		if err = c.deleteAddressSets(vegAddressSetName(key, af)); err != nil {
 			klog.Error(err)
 			return err
 		}
-		if err = c.OVNNbClient.DeleteAddressSet(vegPortGroupAddressSetName(key, af)); err != nil {
+		if err = c.deleteAddressSets(vegPortGroupAddressSetName(key, af)); err != nil {
 			klog.Error(err)
 			return err
 		}

@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+
+	"github.com/ovn-kubernetes/libovsdb/model"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
@@ -11,6 +15,336 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+// deleteAddressSets removes address sets selected by their names through the
+// generic table facade. The legacy client remains the compatibility path for
+// tests and callers that have not wired a TableProvider yet.
+func (c *Controller) deleteAddressSets(names ...string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteAddressSet(names...)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+
+	wanted := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		wanted[name] = struct{}{}
+	}
+	var rows []ovnnb.AddressSet
+	if err := c.OVNNbTables.Table(&ovnnb.AddressSet{}).Filter(
+		context.Background(),
+		func(row *ovnnb.AddressSet) bool {
+			_, ok := wanted[row.Name]
+			return ok
+		},
+		&rows,
+	); err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	selectors := make([]model.Model, len(rows))
+	for i := range rows {
+		selectors[i] = &rows[i]
+	}
+	return c.OVNNbTables.Table(&ovnnb.AddressSet{}).Delete(context.Background(), "as-del", selectors...)
+}
+
+// deletePortGroups removes port groups selected by their names through the
+// generic table facade. Port membership is already represented by the row;
+// no separate parent cleanup is needed for this operation.
+func (c *Controller) deletePortGroups(names ...string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeletePortGroup(names...)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+
+	wanted := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		wanted[name] = struct{}{}
+	}
+	var rows []ovnnb.PortGroup
+	if err := c.OVNNbTables.Table(&ovnnb.PortGroup{}).Filter(
+		context.Background(),
+		func(row *ovnnb.PortGroup) bool {
+			_, ok := wanted[row.Name]
+			return ok
+		},
+		&rows,
+	); err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	selectors := make([]model.Model, len(rows))
+	for i := range rows {
+		selectors[i] = &rows[i]
+	}
+	return c.OVNNbTables.Table(&ovnnb.PortGroup{}).Delete(context.Background(), "pg-del", selectors...)
+}
+
+func (c *Controller) deleteAddressSetsByExternalIDs(externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteAddressSets(externalIDs)
+	}
+	// An empty selector is intentionally a no-op. Deleting every address set
+	// from a reconcile path would be unsafe.
+	if len(externalIDs) == 0 {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.AddressSet{}).DeleteFilter(
+		context.Background(), "ass-del", func(row *ovnnb.AddressSet) bool {
+			return matchesExternalIDs(row.ExternalIDs, externalIDs)
+		},
+	)
+}
+
+// createAddressSet creates an address set through the generic table facade.
+// Address-set creation is idempotent, matching the legacy client contract.
+func (c *Controller) createAddressSet(name string, externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateAddressSet(name, externalIDs)
+	}
+	var rows []ovnnb.AddressSet
+	err := c.OVNNbTables.Table(&ovnnb.AddressSet{}).Filter(
+		context.Background(),
+		func(row *ovnnb.AddressSet) bool { return row.Name == name },
+		&rows,
+	)
+	if err != nil {
+		return err
+	}
+	if len(rows) != 0 {
+		return nil
+	}
+	finalExternalIDs := maps.Clone(externalIDs)
+	if finalExternalIDs == nil {
+		finalExternalIDs = make(map[string]string, 1)
+	}
+	finalExternalIDs["vendor"] = util.CniTypeName
+	return c.OVNNbTables.Table(&ovnnb.AddressSet{}).Create(
+		context.Background(), "as-add", &ovnnb.AddressSet{Name: name, ExternalIDs: finalExternalIDs},
+	)
+}
+
+// createPortGroup creates or updates a port group through the generic table
+// facade, preserving the legacy external-ID reconciliation behavior.
+func (c *Controller) createPortGroup(name string, externalIDs map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreatePortGroup(name, externalIDs)
+	}
+	pg, err := c.getPortGroup(name, true)
+	if err != nil {
+		return err
+	}
+	finalExternalIDs := maps.Clone(externalIDs)
+	if finalExternalIDs == nil {
+		finalExternalIDs = make(map[string]string, 1)
+	}
+	finalExternalIDs["vendor"] = util.CniTypeName
+	table := c.OVNNbTables.Table(&ovnnb.PortGroup{})
+	if pg != nil {
+		if maps.Equal(pg.ExternalIDs, finalExternalIDs) {
+			return nil
+		}
+		pg.ExternalIDs = finalExternalIDs
+		return table.Update(context.Background(), "pg-update", pg, pg, &pg.ExternalIDs)
+	}
+	return table.Create(context.Background(), "pg-add", &ovnnb.PortGroup{Name: name, ExternalIDs: finalExternalIDs})
+}
+
+// createLogicalRouter creates a router if it is absent from the monitored
+// cache. The operation is intentionally limited to the Logical_Router row;
+// callers remain responsible for ports, policies, and other references.
+func (c *Controller) createLogicalRouter(name string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateLogicalRouter(name)
+	}
+	lr, err := c.getLogicalRouter(name, true)
+	if err != nil {
+		return err
+	}
+	if lr != nil {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Create(
+		context.Background(), "lr-add", &ovnnb.LogicalRouter{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+		},
+	)
+}
+
+func (c *Controller) updateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.UpdateLogicalRouter(lr, fields...)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Update(context.Background(), "lr-update", lr, lr, fields...)
+}
+
+func (c *Controller) deleteLogicalRouter(name string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLogicalRouter(name)
+	}
+	lr, err := c.getLogicalRouter(name, true)
+	if err != nil {
+		return err
+	}
+	if lr == nil {
+		return nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Delete(context.Background(), "lr-del", lr)
+}
+
+func (c *Controller) updateLogicalRouterPortNetworks(name string, networks []string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.UpdateLogicalRouterPortNetworks(name, networks)
+	}
+	lrp, err := c.getLogicalRouterPort(name, false)
+	if err != nil {
+		return err
+	}
+	if slices.Equal(lrp.Networks, networks) {
+		return nil
+	}
+	lrp.Networks = networks
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Update(
+		context.Background(), "lrp-update", lrp, lrp, &lrp.Networks,
+	)
+}
+
+func (c *Controller) updateLogicalRouterPortOptions(name string, options map[string]string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.UpdateLogicalRouterPortOptions(name, options)
+	}
+	if len(options) == 0 {
+		return nil
+	}
+	lrp, err := c.getLogicalRouterPort(name, false)
+	if err != nil {
+		return err
+	}
+	newOptions := maps.Clone(lrp.Options)
+	for key, value := range options {
+		if value == "" {
+			delete(newOptions, key)
+			continue
+		}
+		if newOptions == nil {
+			newOptions = make(map[string]string)
+		}
+		newOptions[key] = value
+	}
+	if maps.Equal(newOptions, lrp.Options) {
+		return nil
+	}
+	lrp.Options = newOptions
+	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Update(
+		context.Background(), "lrp-update", lrp, lrp, &lrp.Options,
+	)
+}
+
+func (c *Controller) deleteBFD(uuid string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteBFD(uuid)
+	}
+	return c.OVNNbTables.Table(&ovnnb.BFD{}).Delete(
+		context.Background(), "bfd-del", &ovnnb.BFD{UUID: uuid},
+	)
+}
+
+func (c *Controller) deleteChassis(name string) error {
+	if c.OVNSbTables == nil {
+		return c.OVNSbClient.DeleteChassis(name)
+	}
+	chassis, err := c.getChassis(name, true)
+	if err != nil {
+		return err
+	}
+	if chassis == nil {
+		return nil
+	}
+	return c.OVNSbTables.Table(&ovnsb.Chassis{}).Delete(context.Background(), "chassis-del", chassis)
+}
+
+func (c *Controller) updateChassisTag(name, nodeName string) error {
+	if c.OVNSbTables == nil {
+		return c.OVNSbClient.UpdateChassisTag(name, nodeName)
+	}
+	chassis, err := c.getChassis(name, true)
+	if err != nil {
+		return err
+	}
+	if chassis == nil {
+		return fmt.Errorf("fail to get chassis by name=%s", name)
+	}
+	if chassis.ExternalIDs != nil && chassis.ExternalIDs["node"] == nodeName {
+		return nil
+	}
+	externalIDs := maps.Clone(chassis.ExternalIDs)
+	if externalIDs == nil {
+		externalIDs = make(map[string]string, 1)
+	}
+	externalIDs["vendor"] = util.CniTypeName
+	chassis.ExternalIDs = externalIDs
+	return c.OVNSbTables.Table(&ovnsb.Chassis{}).Update(
+		context.Background(), "chassis-update", chassis, chassis, &chassis.ExternalIDs,
+	)
+}
+
+// createLoadBalancer creates a load balancer when absent. Selection fields
+// and protocol are part of the row insert, so later service reconciliation
+// can continue using the existing mutation helpers.
+func (c *Controller) createLoadBalancer(name, protocol string, selectFields ...string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields...)
+	}
+	lb, err := c.getLoadBalancer(name, true)
+	if err != nil {
+		return err
+	}
+	if lb != nil {
+		return nil
+	}
+	row := &ovnnb.LoadBalancer{
+		Name:        name,
+		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+		Protocol:    &protocol,
+	}
+	if len(selectFields) != 0 {
+		row.SelectionFields = selectFields
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Create(context.Background(), "lb-add", row)
+}
+
+func (c *Controller) deleteLoadBalancers(filter func(*ovnnb.LoadBalancer) bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLoadBalancers(filter)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).DeleteFilter(
+		context.Background(), "lb-del", func(row *ovnnb.LoadBalancer) bool {
+			return filter == nil || filter(row)
+		},
+	)
+}
+
+func (c *Controller) deleteLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.DeleteLoadBalancerHealthChecks(filter)
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancerHealthCheck{}).DeleteFilter(
+		context.Background(), "lbhc-del", func(row *ovnnb.LoadBalancerHealthCheck) bool {
+			return filter == nil || filter(row)
+		},
+	)
+}
 
 func matchesExternalIDs(actual, expected map[string]string) bool {
 	if len(actual) < len(expected) {

@@ -583,7 +583,7 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIP, internalIP, exte
 		err              error
 	)
 
-	if err = c.OVNNbClient.CreateLoadBalancer(dnatName, protocol); err != nil {
+	if err = c.createLoadBalancer(dnatName, protocol); err != nil {
 		klog.Errorf("create loadBalancer %s: %v", dnatName, err)
 		return err
 	}

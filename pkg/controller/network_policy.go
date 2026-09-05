@@ -102,7 +102,7 @@ func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
 }
 
 func (c *Controller) createAsForNetpol(ns, name, direction, asName string, addresses []string) error {
-	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{
+	if err := c.createAddressSet(asName, map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", ns, name, direction),
 	}); err != nil {
 		klog.Errorf("failed to create ovn address set %s for np %s/%s: %v", asName, ns, name, err)
@@ -167,7 +167,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	egressAllowAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.allow", npName, np.Namespace), "-", ".")
 	egressExceptAsNamePrefix := strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.except", npName, np.Namespace), "-", ".")
 
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{networkPolicyKey: key}); err != nil {
+	if err = c.createPortGroup(pgName, map[string]string{networkPolicyKey: key}); err != nil {
 		klog.Errorf("create port group for np %s: %v", key, err)
 		return err
 	}
@@ -345,7 +345,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			}
 			idx, _ := strconv.Atoi(idxStr)
 			if idx >= len(np.Spec.Ingress) {
-				if err = c.OVNNbClient.DeleteAddressSet(as.Name); err != nil {
+				if err = c.deleteAddressSets(as.Name); err != nil {
 					klog.Errorf("failed to delete np %s address set, %v", key, err)
 					return err
 				}
@@ -357,7 +357,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+		if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 			networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, npName, "ingress"),
 		}); err != nil {
 			klog.Errorf("delete np %s ingress address set: %v", key, err)
@@ -508,7 +508,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 			idx, _ := strconv.Atoi(idxStr)
 			if idx >= len(np.Spec.Egress) {
-				if err = c.OVNNbClient.DeleteAddressSet(as.Name); err != nil {
+				if err = c.deleteAddressSets(as.Name); err != nil {
 					klog.Errorf("delete np %s address set: %v", key, err)
 					return err
 				}
@@ -520,7 +520,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+		if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 			networkPolicyKey: fmt.Sprintf("%s/%s/%s", np.Namespace, npName, "egress"),
 		}); err != nil {
 			klog.Errorf("delete np %s egress address set: %v", key, err)
@@ -684,14 +684,14 @@ func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
 		}
 	}
 
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		klog.Errorf("delete np %s port group: %v", key, err)
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "ingress"),
 	}); err != nil {
 		klog.Errorf("delete np %s ingress address set: %v", key, err)
@@ -700,7 +700,7 @@ func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
 		}
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "egress"),
 	}); err != nil {
 		klog.Errorf("delete np %s egress address set: %v", key, err)
