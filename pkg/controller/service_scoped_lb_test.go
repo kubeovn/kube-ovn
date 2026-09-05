@@ -85,6 +85,14 @@ func TestServiceScopedLBIdentityAndPolicy(t *testing.T) {
 	if got := serviceScopedLBName(svc, corev1.ProtocolTCP); got == serviceScopedLBName(svc, corev1.ProtocolUDP) {
 		t.Fatal("protocols must have distinct service-scoped LB names")
 	}
+	if got, want := serviceScopedLBName(svc, corev1.ProtocolTCP), "service:default/web:tcp:internal"; got != want {
+		t.Fatalf("serviceScopedLBName() = %q, want %q", got, want)
+	}
+	other := svc.DeepCopy()
+	other.UID = types.UID("different-uid")
+	if serviceScopedLBName(other, corev1.ProtocolTCP) != serviceScopedLBName(svc, corev1.ProtocolTCP) {
+		t.Fatal("service-scoped LB name must not depend on service UID")
+	}
 	if got := len(serviceScopedLBNames(svc)); got != 4 {
 		t.Fatalf("serviceScopedLBNames() returned %d names, want 4", got)
 	}
