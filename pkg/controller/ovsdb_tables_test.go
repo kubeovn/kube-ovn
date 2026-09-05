@@ -286,6 +286,69 @@ func TestControllerTableProviderNatCreate(t *testing.T) {
 	require.Equal(t, 0, duplicateBackend.transactCalls)
 }
 
+func TestControllerTableProviderNatReconcile(t *testing.T) {
+	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, controller.ensureSnat("lr-1", "192.0.2.11", "10.0.0.11"))
+	require.NoError(t, controller.updateDnatAndSnat("lr-1", "192.0.2.12", "10.0.0.12", "pod.ns", "00:00:00:00:00:12", "distributed"))
+	require.Equal(t, 2, backend.createCalls)
+	require.Equal(t, 2, backend.mutateCalls)
+	require.Equal(t, 2, backend.transactCalls)
+
+	existingBackend := newTableBackend(
+		&ovnnb.LogicalRouter{UUID: "lr-2", Name: "lr-2", Nat: []string{"nat-1"}},
+		&ovnnb.NAT{UUID: "nat-1", Type: ovnnb.NATTypeDNATAndSNAT, ExternalIP: "192.0.2.12", LogicalIP: "10.0.0.12"},
+	)
+	existingController := &Controller{OVNNbTables: compat.NewDatabase(existingBackend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, existingController.updateDnatAndSnat("lr-2", "192.0.2.12", "10.0.0.12", "pod.ns", "00:00:00:00:00:13", "distributed"))
+	require.Equal(t, 1, existingBackend.updateCalls)
+	require.Equal(t, 1, existingBackend.transactCalls)
+}
+
+func TestControllerTableProviderPeerAndPatchPorts(t *testing.T) {
+	peerBackend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "local"})
+	peerController := &Controller{OVNNbTables: compat.NewDatabase(peerBackend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, peerController.createPeerRouterPort("local", "remote", "169.254.0.1/30"))
+	require.Equal(t, 1, peerBackend.createCalls)
+	require.Equal(t, 1, peerBackend.mutateCalls)
+	require.Equal(t, 1, peerBackend.transactCalls)
+
+	patchBackend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "switch-1"},
+		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "router-1"},
+	)
+	patchController := &Controller{OVNNbTables: compat.NewDatabase(patchBackend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, patchController.createLogicalPatchPort(
+		"switch-1", "router-1", "lsp-1", "lrp-1", "10.0.0.1/24", "00:00:00:00:00:01", "chassis-1",
+	))
+	require.Equal(t, 3, patchBackend.createCalls)
+	require.Equal(t, 3, patchBackend.mutateCalls)
+	require.Equal(t, 1, patchBackend.transactCalls)
+}
+
+func TestControllerTableProviderPolicyReconcile(t *testing.T) {
+	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, controller.addLogicalRouterPolicy(
+		"lr-1", 100, "ip4.src == 10.0.0.0/24", ovnnb.LogicalRouterPolicyActionReroute,
+		[]string{"10.0.0.1"}, nil, map[string]string{"owner": "test"},
+	))
+	require.Equal(t, 1, backend.createCalls)
+	require.Equal(t, 1, backend.mutateCalls)
+	require.Equal(t, 1, backend.transactCalls)
+
+	deleteBackend := newTableBackend(
+		&ovnnb.LogicalRouter{UUID: "lr-2", Name: "lr-2", Policies: []string{"policy-1"}},
+		&ovnnb.LogicalRouterPolicy{UUID: "policy-1", Priority: 100, Match: "ip4.src == 10.0.0.0/24"},
+	)
+	deleteController := &Controller{OVNNbTables: compat.NewDatabase(deleteBackend, time.Second, compat.RetryPolicy{})}
+	require.NoError(t, deleteController.batchDeleteLogicalRouterPolicies("lr-2", []*ovnnb.LogicalRouterPolicy{{
+		Priority: 100, Match: "ip4.src == 10.0.0.0/24",
+	}}))
+	require.Equal(t, 1, deleteBackend.mutateCalls)
+	require.Equal(t, 1, deleteBackend.transactCalls)
+}
+
 func TestControllerTableProviderPortDeletes(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1", Ports: []string{"lsp-1"}},

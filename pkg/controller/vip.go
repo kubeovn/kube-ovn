@@ -133,7 +133,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		}
 		mac = lrp.MAC
 		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		if err := c.createLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
 			klog.Error(err)
 			return err
@@ -149,7 +149,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		// k8s host network pod vm use vip for its nic ip
 		klog.Infof("create lsp for host network pod vm nic ip %s", vip.Name)
 		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		if err := c.createLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
 			klog.Error(err)
 			return err
