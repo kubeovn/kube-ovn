@@ -39,6 +39,23 @@ func (c *Controller) enqueueAddNode(obj any) {
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(nil, node)
+	c.enqueueTrafficDistributionServices()
+}
+
+func (c *Controller) enqueueTrafficDistributionServices() {
+	if !c.config.EnableLb {
+		return
+	}
+	services, err := c.servicesLister.Services(metav1.NamespaceAll).List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services for traffic distribution update: %v", err)
+		return
+	}
+	for _, svc := range services {
+		if svc.Spec.TrafficDistribution != nil {
+			c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(svc).String())
+		}
+	}
 }
 
 func nodeReady(node *v1.Node) bool {
@@ -145,17 +162,8 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	if nodeReadyChanged || nodeLabelsChanged {
 		c.enqueueVpcBFDPortByNodeChange(oldNode, newNode)
 	}
-	if nodeLabelsChanged && c.config.EnableLb {
-		services, err := c.servicesLister.Services(metav1.NamespaceAll).List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list services for traffic distribution update: %v", err)
-			return
-		}
-		for _, svc := range services {
-			if svc.Spec.TrafficDistribution != nil {
-				c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(svc).String())
-			}
-		}
+	if (nodeReadyChanged || nodeLabelsChanged) && c.config.EnableLb {
+		c.enqueueTrafficDistributionServices()
 	}
 }
 
@@ -181,6 +189,7 @@ func (c *Controller) enqueueDeleteNode(obj any) {
 	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(node, nil)
+	c.enqueueTrafficDistributionServices()
 }
 
 func nodeUnderlayAddressSetName(node string, af int) string {
