@@ -773,6 +773,72 @@ func (c *Controller) getLogicalSwitch(name string, ignoreNotFound bool) (*ovnnb.
 	}
 }
 
+func (c *Controller) getNBGlobal() (*ovnnb.NBGlobal, error) {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.GetNbGlobal()
+	}
+	var rows []ovnnb.NBGlobal
+	if err := c.OVNNbTables.Table(&ovnnb.NBGlobal{}).Filter(
+		context.Background(), func(*ovnnb.NBGlobal) bool { return true }, &rows,
+	); err != nil {
+		return nil, err
+	}
+	switch len(rows) {
+	case 0:
+		return nil, fmt.Errorf("not found NB_Global")
+	case 1:
+		return &rows[0], nil
+	default:
+		return nil, fmt.Errorf("more than one NB_Global row")
+	}
+}
+
+func (c *Controller) setNBGlobalOption(key, value string, present bool, legacy func() error) error {
+	if c.OVNNbTables == nil {
+		return legacy()
+	}
+	nbGlobal, err := c.getNBGlobal()
+	if err != nil {
+		return err
+	}
+	options := maps.Clone(nbGlobal.Options)
+	if present {
+		if options == nil {
+			options = make(map[string]string, 1)
+		}
+		if options[key] == value {
+			return nil
+		}
+		options[key] = value
+	} else {
+		if _, ok := options[key]; !ok {
+			return nil
+		}
+		delete(options, key)
+	}
+	nbGlobal.Options = options
+	return c.OVNNbTables.Table(&ovnnb.NBGlobal{}).Update(
+		context.Background(), "nb-global-update", nbGlobal, nbGlobal, &nbGlobal.Options,
+	)
+}
+
+func (c *Controller) setNBGlobalIPSec(enabled bool, legacy func() error) error {
+	if c.OVNNbTables == nil {
+		return legacy()
+	}
+	nbGlobal, err := c.getNBGlobal()
+	if err != nil {
+		return err
+	}
+	if nbGlobal.Ipsec == enabled {
+		return nil
+	}
+	nbGlobal.Ipsec = enabled
+	return c.OVNNbTables.Table(&ovnnb.NBGlobal{}).Update(
+		context.Background(), "nb-global-update", nbGlobal, nbGlobal, &nbGlobal.Ipsec,
+	)
+}
+
 func (c *Controller) loadBalancerUUIDs(names ...string) ([]string, error) {
 	uuids := make([]string, 0, len(names))
 	seen := make(map[string]struct{}, len(names))
