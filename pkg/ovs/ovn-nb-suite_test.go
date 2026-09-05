@@ -759,6 +759,10 @@ func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchAcl() {
 	suite.testUpdateLogicalSwitchACL()
 }
 
+func (suite *OvnClientTestSuite) Test_UpdateVpcEndpointServiceACLs() {
+	suite.testUpdateVpcEndpointServiceACLs()
+}
+
 func (suite *OvnClientTestSuite) Test_SetNetPolACLLog() {
 	suite.testSetNetPolACLLog()
 }
@@ -915,6 +919,10 @@ func (suite *OvnClientTestSuite) Test_CreateNats() {
 
 func (suite *OvnClientTestSuite) Test_EnsureSnat() {
 	suite.testEnsureSnat()
+}
+
+func (suite *OvnClientTestSuite) Test_AddSnatWithMatch() {
+	suite.testAddSnatWithMatch()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateDnatAndSnat() {

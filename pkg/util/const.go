@@ -253,6 +253,25 @@ const (
 	DefaultVpc    = "ovn-cluster"
 	DefaultSubnet = "ovn-default"
 
+	// DefaultVpcEndpointTransitSwitch is the logical switch used as the unique
+	// address space for PrivateLink-style VPC endpoint services.
+	DefaultVpcEndpointTransitSwitch = "vpc-endpoint-transit"
+	// DefaultVpcEndpointTransitCIDR is distinct from the join subnet default
+	// (100.64.0.0/16 / node-switch-cidr).
+	DefaultVpcEndpointTransitCIDR = "100.65.0.0/16"
+
+	VpcEndpointServiceLabel = "ovn.kubernetes.io/vpc-endpoint-service"
+	VpcEndpointVpcLabel     = "ovn.kubernetes.io/vpc-endpoint-vpc"
+	VpcEndpointSvcNsLabel   = "ovn.kubernetes.io/vpc-endpoint-svc-ns"
+	VpcEndpointSvcNameLabel = "ovn.kubernetes.io/vpc-endpoint-svc-name"
+	// VpcEndpointStitcherLabel marks Deployments owned by VpcEndpoint / VpcEndpointService.
+	VpcEndpointStitcherLabel = "ovn.kubernetes.io/vpc-endpoint-stitcher"
+	// VpcEndpointOwnerLabel is the cluster-scoped CR name that owns a stitcher Deployment.
+	VpcEndpointOwnerLabel = "ovn.kubernetes.io/vpc-endpoint-owner"
+
+	// VpcEndpointServiceACLExternalID tags ACLs that isolate a VpcEndpointService transit VIP.
+	VpcEndpointServiceACLExternalID = "vpc-endpoint-service"
+
 	NormalRouteType    = "normal"
 	EcmpRouteType      = "ecmp"
 	StaticRouteBfdEcmp = "ecmp_symmetric_reply"
@@ -440,20 +459,22 @@ var (
 	KindJob         = ObjectKind[*batchv1.Job]()
 	KindCronJob     = ObjectKind[*batchv1.CronJob]()
 
-	KindIP               = ObjectKind[*kubeovnv1.IP]()
-	KindIptablesEIP      = ObjectKind[*kubeovnv1.IptablesEIP]()
-	KindIptablesDnatRule = ObjectKind[*kubeovnv1.IptablesDnatRule]()
-	KindIptablesSnatRule = ObjectKind[*kubeovnv1.IptablesSnatRule]()
-	KindIptablesFIPRule  = ObjectKind[*kubeovnv1.IptablesFIPRule]()
-	KindOvnEip           = ObjectKind[*kubeovnv1.OvnEip]()
-	KindOvnFip           = ObjectKind[*kubeovnv1.OvnFip]()
-	KindOvnDnatRule      = ObjectKind[*kubeovnv1.OvnDnatRule]()
-	KindOvnSnatRule      = ObjectKind[*kubeovnv1.OvnSnatRule]()
-	KindSubnet           = ObjectKind[*kubeovnv1.Subnet]()
-	KindVip              = ObjectKind[*kubeovnv1.Vip]()
-	KindVpc              = ObjectKind[*kubeovnv1.Vpc]()
-	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
-	KindVpcNatGateway    = ObjectKind[*kubeovnv1.VpcNatGateway]()
+	KindIP                 = ObjectKind[*kubeovnv1.IP]()
+	KindIptablesEIP        = ObjectKind[*kubeovnv1.IptablesEIP]()
+	KindIptablesDnatRule   = ObjectKind[*kubeovnv1.IptablesDnatRule]()
+	KindIptablesSnatRule   = ObjectKind[*kubeovnv1.IptablesSnatRule]()
+	KindIptablesFIPRule    = ObjectKind[*kubeovnv1.IptablesFIPRule]()
+	KindOvnEip             = ObjectKind[*kubeovnv1.OvnEip]()
+	KindOvnFip             = ObjectKind[*kubeovnv1.OvnFip]()
+	KindOvnDnatRule        = ObjectKind[*kubeovnv1.OvnDnatRule]()
+	KindOvnSnatRule        = ObjectKind[*kubeovnv1.OvnSnatRule]()
+	KindSubnet             = ObjectKind[*kubeovnv1.Subnet]()
+	KindVip                = ObjectKind[*kubeovnv1.Vip]()
+	KindVpc                = ObjectKind[*kubeovnv1.Vpc]()
+	KindVpcEgressGateway   = ObjectKind[*kubeovnv1.VpcEgressGateway]()
+	KindVpcNatGateway      = ObjectKind[*kubeovnv1.VpcNatGateway]()
+	KindVpcEndpoint        = ObjectKind[*kubeovnv1.VpcEndpoint]()
+	KindVpcEndpointService = ObjectKind[*kubeovnv1.VpcEndpointService]()
 
 	KindVirtualMachine                  = ObjectKind[*kubevirtv1.VirtualMachine]()
 	KindVirtualMachineInstance          = ObjectKind[*kubevirtv1.VirtualMachineInstance]()

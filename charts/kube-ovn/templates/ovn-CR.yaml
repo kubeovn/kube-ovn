@@ -23,6 +23,10 @@ rules:
       - vpc-nat-gateways/status
       - vpc-egress-gateways
       - vpc-egress-gateways/status
+      - vpc-endpoint-services
+      - vpc-endpoint-services/status
+      - vpc-endpoints
+      - vpc-endpoints/status
       - subnets
       - subnets/status
       - ippools

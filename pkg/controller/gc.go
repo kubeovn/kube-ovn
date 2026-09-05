@@ -53,6 +53,7 @@ func (c *Controller) gc() error {
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
 		c.gcRouterLBRules,
+		c.gcVpcEndpoint,
 	}
 	for _, gcFunc := range gcFunctions {
 		if err := gcFunc(); err != nil {
@@ -159,7 +160,8 @@ func (c *Controller) gcLogicalSwitch() error {
 	for _, ls := range lss {
 		if ls == util.InterconnectionSwitch ||
 			ls == util.ExternalGatewaySwitch ||
-			ls == c.config.ExternalGatewaySwitch {
+			ls == c.config.ExternalGatewaySwitch ||
+			(c.config.VpcEndpointTransitSwitch != "" && ls == c.config.VpcEndpointTransitSwitch) {
 			continue
 		}
 		if s := subnetMap[ls]; s != nil && isOvnSubnet(s) {
@@ -1470,4 +1472,177 @@ func logicalRouterPortFilter(exceptPeerPorts *strset.Set) func(lrp *ovnnb.Logica
 
 		return lrp.Peer != nil && len(*lrp.Peer) != 0
 	}
+}
+
+func (c *Controller) gcVpcEndpoint() error {
+	if !c.config.EnableLb || c.config.VpcEndpointTransitSwitch == "" {
+		return nil
+	}
+	if c.vpcEndpointServiceLister == nil || c.vpcEndpointLister == nil {
+		return nil
+	}
+
+	klog.Infof("start to gc vpc endpoints")
+
+	services, err := c.vpcEndpointServiceLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list VpcEndpointServices for gc: %v", err)
+		return err
+	}
+	endpoints, err := c.vpcEndpointLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list VpcEndpoints for gc: %v", err)
+		return err
+	}
+
+	expectedLBs := map[string]struct{}{}
+	expectedACLServices := map[string]struct{}{}
+	expectedVPCs := map[string]struct{}{}
+	expectedVipCRs := map[string]struct{}{}
+	expectedSnat := map[string]struct{}{} // key: vpc/snatIP/match
+
+	for _, eps := range services {
+		expectedACLServices[eps.Name] = struct{}{}
+		expectedVPCs[eps.Spec.Vpc] = struct{}{}
+		for _, protocol := range []string{"tcp", "udp", "sctp"} {
+			expectedLBs[vpcEndpointServiceLBName(eps.Name, protocol)] = struct{}{}
+		}
+	}
+	for _, ep := range endpoints {
+		expectedVPCs[ep.Spec.Vpc] = struct{}{}
+		expectedVipCRs[vpcEndpointVipCRName(ep.Name)] = struct{}{}
+		for _, protocol := range []string{"tcp", "udp", "sctp"} {
+			expectedLBs[vpcEndpointLBName(ep.Name, protocol)] = struct{}{}
+		}
+		if ep.Status.SnatIP != "" && ep.Status.TransitVIP != "" {
+			key := ep.Spec.Vpc + "/" + ep.Status.SnatIP + "/" + vpcEndpointSnatMatch(ep.Status.TransitVIP)
+			expectedSnat[key] = struct{}{}
+		}
+	}
+
+	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return strings.HasPrefix(lb.Name, "vpc-eps-") || strings.HasPrefix(lb.Name, "vpc-ep-")
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc endpoint load balancers: %v", err)
+		return err
+	}
+	for _, lb := range lbs {
+		if _, ok := expectedLBs[lb.Name]; ok {
+			continue
+		}
+		klog.Infof("gc orphaned vpc endpoint load balancer %s", lb.Name)
+		if err := c.OVNNbClient.DeleteLoadBalancers(func(item *ovnnb.LoadBalancer) bool { return item.Name == lb.Name }); err != nil {
+			klog.Errorf("failed to gc load balancer %s: %v", lb.Name, err)
+			return err
+		}
+	}
+
+	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return strings.HasPrefix(lsp.Name, "vpc-eps-")
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc endpoint logical switch ports: %v", err)
+		return err
+	}
+	for _, lsp := range lsps {
+		// TransitVIP LSPs are no longer created; clean up any leftover ports.
+		klog.Infof("gc orphaned vpc endpoint logical switch port %s", lsp.Name)
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
+			klog.Errorf("failed to gc logical switch port %s: %v", lsp.Name, err)
+			return err
+		}
+		epsName := strings.TrimPrefix(lsp.Name, "vpc-eps-")
+		if _, known := expectedACLServices[epsName]; !known {
+			c.ipam.ReleaseAddressByPod(vpcEndpointServiceIPAMName(epsName), c.config.VpcEndpointTransitSwitch)
+			if err := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, epsName, "", nil); err != nil {
+				klog.Errorf("failed to gc ACLs for vpc endpoint service %s: %v", epsName, err)
+				return err
+			}
+		}
+	}
+
+	transitSuffix := "-" + c.config.VpcEndpointTransitSwitch
+	transitPrefix := c.config.VpcEndpointTransitSwitch + "-"
+	transitVpcName := c.config.VpcEndpointTransitSwitch + "-vpc"
+	lrps, err := c.OVNNbClient.ListLogicalRouterPorts(nil, func(lrp *ovnnb.LogicalRouterPort) bool {
+		return strings.HasSuffix(lrp.Name, transitSuffix)
+	})
+	if err != nil {
+		klog.Errorf("failed to list vpc endpoint transit logical router ports: %v", err)
+		return err
+	}
+	for _, lrp := range lrps {
+		vpcName := strings.TrimSuffix(lrp.Name, transitSuffix)
+		if vpcName == transitVpcName {
+			// Subnet gateway LRP for the transit fabric itself — never GC.
+			continue
+		}
+		if _, ok := expectedVPCs[vpcName]; ok {
+			continue
+		}
+		lspName := transitPrefix + vpcName
+		klog.Infof("gc orphaned vpc endpoint transit attachment for vpc %s", vpcName)
+		if err := c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrp.Name); err != nil {
+			klog.Errorf("failed to gc transit attachment for vpc %s: %v", vpcName, err)
+			return err
+		}
+		c.ipam.ReleaseAddressByPod(vpcEndpointSnatIPAMName(vpcName), c.config.VpcEndpointTransitSwitch)
+	}
+
+	for vpcName := range expectedVPCs {
+		nats, err := c.OVNNbClient.ListNats(vpcName, ovnnb.NATTypeSNAT, "0.0.0.0/0", nil)
+		if err != nil {
+			klog.Errorf("failed to list snat for vpc %s: %v", vpcName, err)
+			return err
+		}
+		nats6, err := c.OVNNbClient.ListNats(vpcName, ovnnb.NATTypeSNAT, "::/0", nil)
+		if err != nil {
+			klog.Errorf("failed to list ipv6 snat for vpc %s: %v", vpcName, err)
+			return err
+		}
+		nats = append(nats, nats6...)
+		for _, nat := range nats {
+			if nat.Match == "" {
+				continue
+			}
+			key := vpcName + "/" + nat.ExternalIP + "/" + nat.Match
+			if _, ok := expectedSnat[key]; ok {
+				continue
+			}
+			// Only GC destination-match SNATs that look like vpc-endpoint rules.
+			if !strings.Contains(nat.Match, ".dst == ") {
+				continue
+			}
+			klog.Infof("gc orphaned vpc endpoint snat on vpc %s match %s", vpcName, nat.Match)
+			if err := c.OVNNbClient.DeleteSnatWithMatch(vpcName, nat.ExternalIP, nat.LogicalIP, nat.Match); err != nil {
+				klog.Errorf("failed to gc snat on vpc %s: %v", vpcName, err)
+				return err
+			}
+		}
+	}
+
+	if c.virtualIpsLister != nil {
+		vips, err := c.virtualIpsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list vips for vpc endpoint gc: %v", err)
+			return err
+		}
+		for _, vip := range vips {
+			if !strings.HasPrefix(vip.Name, "vpc-ep-") {
+				continue
+			}
+			if _, ok := expectedVipCRs[vip.Name]; ok {
+				continue
+			}
+			klog.Infof("gc orphaned vpc endpoint vip %s", vip.Name)
+			if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to gc vip %s: %v", vip.Name, err)
+				return err
+			}
+		}
+	}
+
+	klog.Infof("finish to gc vpc endpoints")
+	return nil
 }

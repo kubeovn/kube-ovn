@@ -74,7 +74,7 @@ done
 # Delete Kube-OVN components
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-monitor
 kubectl delete --ignore-not-found -n kube-system cm ovn-config ovn-ic-config \
-  ovn-external-gw-config ovn-vpc-nat-config ovn-vpc-nat-gw-config
+  ovn-external-gw-config ovn-vpc-nat-config ovn-vpc-nat-gw-config vpc-endpoint-stitcher
 kubectl delete --ignore-not-found -n kube-system svc kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-controller
 kubectl delete --ignore-not-found -n kube-system deploy ovn-ic-controller
@@ -109,9 +109,10 @@ kubectl delete --ignore-not-found clusterrolebinding vpc-dns
 kubectl delete --ignore-not-found sa vpc-dns -n kube-system
 
 # remove finalizers
-for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io; do
-  for resource in $(kubectl get "$resource_type" -o name); do
-    kubectl patch "$resource" --type='json' -p '[{"op": "replace", "path": "/metadata/finalizers", "value": []}]'
+for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io vpc-endpoint-services.kubeovn.io vpc-endpoints.kubeovn.io; do
+  for resource in $(kubectl get "$resource_type" -o name 2>/dev/null); do
+    # Clear finalizers even when the list is already empty/null so CRD deletion is not blocked.
+    kubectl patch "$resource" --type=merge -p '{"metadata":{"finalizers":null}}' >/dev/null 2>&1 || true
   done
 done
 
@@ -130,6 +131,8 @@ kubectl delete --ignore-not-found crd \
   vips.kubeovn.io \
   switch-lb-rules.kubeovn.io \
   vpc-dnses.kubeovn.io \
+  vpc-endpoint-services.kubeovn.io \
+  vpc-endpoints.kubeovn.io \
   ovn-dnat-rules.kubeovn.io \
   ovn-snat-rules.kubeovn.io \
   ovn-fips.kubeovn.io \

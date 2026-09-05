@@ -66,4 +66,8 @@ type VpcDnsExpansion interface{}
 
 type VpcEgressGatewayExpansion interface{}
 
+type VpcEndpointExpansion interface{}
+
+type VpcEndpointServiceExpansion interface{}
+
 type VpcNatGatewayExpansion interface{}
