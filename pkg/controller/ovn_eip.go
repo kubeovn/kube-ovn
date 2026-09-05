@@ -40,6 +40,7 @@ func (c *Controller) enqueueUpdateOvnEip(oldObj, newObj any) {
 	}
 	oldEip := oldObj.(*kubeovnv1.OvnEip)
 	if oldEip.Spec.V4Ip != "" && oldEip.Spec.V4Ip != newEip.Spec.V4Ip ||
+		oldEip.Spec.V6Ip != "" && oldEip.Spec.V6Ip != newEip.Spec.V6Ip ||
 		oldEip.Spec.MacAddress != "" && oldEip.Spec.MacAddress != newEip.Spec.MacAddress {
 		klog.Infof("not support change ip or mac for eip %s", key)
 		c.resetOvnEipQueue.Add(key)
