@@ -255,6 +255,7 @@ func (c *Controller) handleAddNode(key string) (err error) {
 		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
+	c.enqueueTrafficDistributionServices()
 
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
@@ -653,6 +654,7 @@ func (c *Controller) handleUpdateNode(key string) (err error) {
 		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
+	c.enqueueTrafficDistributionServices()
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err

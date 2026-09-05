@@ -209,7 +209,16 @@ func TestEnsureServiceScopedLBExternalTrafficDoesNotDistribute(t *testing.T) {
 }
 
 func TestEnsureServiceScopedLBExternalTraffic(t *testing.T) {
-	fake := newFakeController(t)
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{
+		{Name: "subnet-a", Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, EnableLb: new(true)}},
+		{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, EnableLb: new(true)}},
+		{Name: "join", Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, EnableLb: new(true)}},
+		{Name: "disabled", Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, EnableLb: new(false)}},
+		{Name: "other-vpc", Spec: kubeovnv1.SubnetSpec{Vpc: "other-vpc", EnableLb: new(true)}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctrl := fake.fakeController
 	ctrl.config.EnableOVNLBDistributed = true
 	local := corev1.ServiceInternalTrafficPolicyLocal
@@ -228,8 +237,9 @@ func TestEnsureServiceScopedLBExternalTraffic(t *testing.T) {
 		fake.mockOvnClient.EXPECT().DeleteLoadBalancerAffinityTimeout(lbName).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-a", ovsdb.MutateOperationInsert, lbName).Return(nil),
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-b", ovsdb.MutateOperationInsert, lbName).Return(nil),
 	)
-	if _, err := ctrl.ensureServiceScopedLBExternalTraffic(svc, corev1.ProtocolTCP, "subnet-a"); err != nil {
+	if _, err := ctrl.ensureServiceScopedLBExternalTraffic(svc, corev1.ProtocolTCP, util.DefaultVpc); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -461,10 +471,15 @@ func TestGetDistributedIPPortMapping(t *testing.T) {
 	}
 	ctrl := fake.fakeController
 	service := &corev1.Service{Namespace: "default", Name: "web", Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "web"}}}
+	servicePort := corev1.ServicePort{Port: 80}
 	endpoint := discoveryv1.Endpoint{Addresses: []string{"10.0.0.2"}, TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: "default", Name: "backend"}}
+	endpointSlice := &discoveryv1.EndpointSlice{
+		Ports:     []discoveryv1.EndpointPort{{Port: new(int32(8080))}},
+		Endpoints: []discoveryv1.Endpoint{endpoint},
+	}
 	portName := ovs.PodNameToPortName("backend", "default", util.OvnProvider)
 	fake.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(&ovnnb.LogicalSwitchPort{Name: portName}, nil)
-	mapping, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{{Endpoints: []discoveryv1.Endpoint{endpoint}}}, service)
+	mapping, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, servicePort, "10.96.0.10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,8 +488,82 @@ func TestGetDistributedIPPortMapping(t *testing.T) {
 	}
 
 	endpoint.TargetRef = nil
-	if _, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{{Endpoints: []discoveryv1.Endpoint{endpoint}}}, service); err == nil {
+	endpointSlice.Endpoints = []discoveryv1.Endpoint{endpoint}
+	if _, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, servicePort, "10.96.0.10"); err == nil {
 		t.Fatal("expected ready endpoint without target to fail")
+	}
+}
+
+func TestServiceEndpointCandidatesTerminatingFallback(t *testing.T) {
+	ready, notReady := true, false
+	serving, terminating := true, true
+	httpName, otherName := "http", "other"
+	servicePort := corev1.ServicePort{Name: httpName, Port: 80}
+	endpointSlices := []*discoveryv1.EndpointSlice{
+		{
+			Ports: []discoveryv1.EndpointPort{{Name: &httpName, Port: new(int32(8080))}},
+			Endpoints: []discoveryv1.Endpoint{
+				{Addresses: []string{"10.0.0.2", "fd00::2"}, Conditions: discoveryv1.EndpointConditions{Ready: &notReady, Serving: &serving, Terminating: &terminating}},
+				{Addresses: []string{"10.0.0.3"}, Conditions: discoveryv1.EndpointConditions{Ready: &ready}},
+			},
+		},
+		{
+			Ports:     []discoveryv1.EndpointPort{{Name: &otherName, Port: new(int32(9090))}},
+			Endpoints: []discoveryv1.Endpoint{{Addresses: []string{"10.0.0.4"}, Conditions: discoveryv1.EndpointConditions{Ready: &ready}}},
+		},
+	}
+
+	if got := (&Controller{}).getEndpointBackend(endpointSlices, servicePort, "10.96.0.10", true); !slices.Equal(got, []string{"10.0.0.3:8080"}) {
+		t.Fatalf("backends with a ready endpoint = %v, want ready endpoint only", got)
+	}
+
+	endpointSlices[0].Endpoints[1].Conditions.Ready = &notReady
+	if got := (&Controller{}).getEndpointBackend(endpointSlices, servicePort, "10.96.0.10", true); !slices.Equal(got, []string{"10.0.0.2:8080"}) {
+		t.Fatalf("backends without a ready endpoint = %v, want serving and terminating fallback", got)
+	}
+	if got := (&Controller{}).getEndpointBackend(endpointSlices, servicePort, "10.96.0.10", false); len(got) != 0 {
+		t.Fatalf("non-Local backends = %v, want no terminating fallback", got)
+	}
+}
+
+func TestUpdateSubnetLoadBalancersIncludesScopedLoadBalancers(t *testing.T) {
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-new-subnet"),
+		Spec: corev1.ServiceSpec{
+			SessionAffinity: corev1.ServiceAffinityClientIP,
+			Ports:           []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
+		},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*corev1.Service{svc}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake.fakeController.config.EnableLb = true
+	vpc := &kubeovnv1.Vpc{
+		Name: util.DefaultVpc,
+		Status: kubeovnv1.VpcStatus{
+			TCPLoadBalancer:         "tcp",
+			TCPSessionLoadBalancer:  "tcp-session",
+			UDPLoadBalancer:         "udp",
+			UDPSessionLoadBalancer:  "udp-session",
+			SctpLoadBalancer:        "sctp",
+			SctpSessionLoadBalancer: "sctp-session",
+		},
+	}
+	subnet := &kubeovnv1.Subnet{Name: "new-subnet", Spec: kubeovnv1.SubnetSpec{EnableLb: new(true)}}
+	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers(
+		subnet.Name,
+		ovsdb.MutateOperationInsert,
+		"tcp",
+		"tcp-session",
+		"udp",
+		"udp-session",
+		"sctp",
+		"sctp-session",
+		serviceScopedLBName(svc, corev1.ProtocolTCP),
+	).Return(nil)
+	if err := fake.fakeController.updateSubnetLoadBalancers(subnet, vpc); err != nil {
+		t.Fatal(err)
 	}
 }
 

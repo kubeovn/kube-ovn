@@ -2,10 +2,13 @@ package controller
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -177,7 +180,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	return name, nil
 }
 
-func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, protocol v1.Protocol, subnetName string) (string, error) {
+func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, protocol v1.Protocol, vpcName string) (string, error) {
 	lb, err := c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBExternalTraffic, "")
 	if err != nil {
 		return "", err
@@ -187,10 +190,65 @@ func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, proto
 			return "", fmt.Errorf("disable template mode on external service-scoped load balancer %s: %w", lb, err)
 		}
 	}
-	if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnetName, ovsdb.MutateOperationInsert, lb); err != nil {
-		return "", fmt.Errorf("attach external service-scoped load balancer to subnet %s: %w", subnetName, err)
+	if err := c.attachServiceScopedLoadBalancers(vpcName, lb); err != nil {
+		return "", err
 	}
 	return lb, nil
+}
+
+func serviceVPCName(svc *v1.Service, defaultVPC string) string {
+	if name := svc.Annotations[util.VpcAnnotation]; name != "" {
+		return name
+	}
+	if name := svc.Annotations[util.LogicalRouterAnnotation]; name != "" {
+		return name
+	}
+	return defaultVPC
+}
+
+func (c *Controller) serviceScopedLoadBalancerNamesForVPC(vpcName string) ([]string, error) {
+	services, err := c.servicesLister.Services(v1.NamespaceAll).List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("list services for scoped load balancers in vpc %s: %w", vpcName, err)
+	}
+	names := make(map[string]struct{})
+	for _, svc := range services {
+		if serviceUsesScopedLB(svc) && serviceVPCName(svc, c.config.ClusterRouter) == vpcName {
+			for _, name := range serviceScopedLBNames(svc) {
+				names[name] = struct{}{}
+			}
+		}
+	}
+	return slices.Sorted(maps.Keys(names)), nil
+}
+
+func (c *Controller) serviceScopedLoadBalancerSwitches(vpcName string) ([]string, error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("list subnets for service-scoped load balancers in vpc %s: %w", vpcName, err)
+	}
+	switches := make([]string, 0, len(subnets))
+	for _, subnet := range subnets {
+		if subnet.Name == c.config.NodeSwitch || subnet.Spec.Vpc != vpcName || !isOvnSubnet(subnet) || subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb {
+			continue
+		}
+		switches = append(switches, subnet.Name)
+	}
+	slices.Sort(switches)
+	return switches, nil
+}
+
+func (c *Controller) attachServiceScopedLoadBalancers(vpcName string, lbNames ...string) error {
+	switches, err := c.serviceScopedLoadBalancerSwitches(vpcName)
+	if err != nil {
+		return err
+	}
+	for _, logicalSwitch := range switches {
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(logicalSwitch, ovsdb.MutateOperationInsert, lbNames...); err != nil {
+			return fmt.Errorf("attach service-scoped load balancers to subnet %s: %w", logicalSwitch, err)
+		}
+	}
+	return nil
 }
 
 func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {

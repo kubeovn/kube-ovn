@@ -555,6 +555,10 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerAddVip() {
 	suite.testLoadBalancerAddVip()
 }
 
+func (suite *OvnClientTestSuite) Test_LoadBalancerMigrateVIP() {
+	suite.testLoadBalancerMigrateVIP()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
 	suite.testDeleteLoadBalancerOp()
 }
