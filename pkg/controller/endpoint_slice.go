@@ -882,17 +882,27 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 			},
 		}
 		if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{}); err != nil {
-			klog.Errorf("failed to create health check vip %s, %v", vipName, err)
-			return "", err
-		}
+			if !k8serrors.IsAlreadyExists(err) {
+				klog.Errorf("failed to create health check vip %s, %v", vipName, err)
+				return "", err
+			}
 
-		// wait for vip created
-		// TODO: WATCH VIP
-		time.Sleep(1 * time.Second)
-		checkVip, err = c.virtualIpsLister.Get(vipName)
-		if err != nil {
-			klog.Errorf("failed to get health check vip %s, %v", vipName, err)
-			return "", err
+			// Another worker created the shared VIP after the lister lookup. Read
+			// it from the API so this reconciliation remains idempotent.
+			checkVip, err = c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), vipName, metav1.GetOptions{})
+			if err != nil {
+				klog.Errorf("failed to get existing health check vip %s, %v", vipName, err)
+				return "", err
+			}
+		} else {
+			// wait for vip created
+			// TODO: WATCH VIP
+			time.Sleep(1 * time.Second)
+			checkVip, err = c.virtualIpsLister.Get(vipName)
+			if err != nil {
+				klog.Errorf("failed to get health check vip %s, %v", vipName, err)
+				return "", err
+			}
 		}
 	}
 
