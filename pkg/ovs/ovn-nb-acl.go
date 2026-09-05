@@ -1061,6 +1061,10 @@ func (c *OVNNbClient) SetNetPolACLLog(pgName string, logEnable, isIngress bool) 
 // UpdateVpcEndpointServiceACLs installs from-lport ACLs on the transit switch so
 // only allowed consumer ports may send traffic to the given transit VIP. When
 // allowedLSPNames is empty, existing ACLs for this service are cleared (open access).
+//
+// Only an exclusive drop is installed (dst == VIP && inport != allowed...). A
+// catch-all drop on dst == VIP would also match CT-established LB traffic and
+// break the datapath; allow-related alone does not reliably override that.
 func (c *OVNNbClient) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP string, allowedLSPNames []string) error {
 	extIDs := map[string]string{util.VpcEndpointServiceACLExternalID: epsName}
 	if err := c.DeleteAcls(lsName, LogicalSwitchKey, "", extIDs); err != nil {
@@ -1084,26 +1088,20 @@ func (c *OVNNbClient) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP s
 		acl.ExternalIDs["vendor"] = util.CniTypeName
 	}
 
-	acls := make([]*ovnnb.ACL, 0, len(allowedLSPNames)+1)
-	for _, lspName := range allowedLSPNames {
-		match := fmt.Sprintf(`inport == "%s" && %s.dst == %s`, lspName, ipSuffix, transitVIP)
-		acl, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.SubnetAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, options)
-		if err != nil {
-			klog.Error(err)
-			return fmt.Errorf("new allow acl for vpc endpoint service %s: %w", epsName, err)
-		}
-		acls = append(acls, acl)
-	}
-
 	dropMatch := fmt.Sprintf("%s.dst == %s", ipSuffix, transitVIP)
+	var b strings.Builder
+	b.WriteString(dropMatch)
+	for _, lspName := range allowedLSPNames {
+		fmt.Fprintf(&b, ` && inport != "%s"`, lspName)
+	}
+	dropMatch = b.String()
 	dropACL, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.DefaultDropPriority, dropMatch, ovnnb.ACLActionDrop, util.NetpolACLTier, options)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("new drop acl for vpc endpoint service %s: %w", epsName, err)
 	}
-	acls = append(acls, dropACL)
 
-	if err := c.CreateAcls(lsName, LogicalSwitchKey, acls...); err != nil {
+	if err := c.CreateAcls(lsName, LogicalSwitchKey, dropACL); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("create vpc endpoint service %s acls: %w", epsName, err)
 	}

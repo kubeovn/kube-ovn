@@ -939,16 +939,18 @@ func Run(ctx context.Context, config *Configuration) {
 	if _, err = deploymentInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
 		FilterFunc: func(obj any) bool {
 			if deploy, ok := obj.(*appsv1api.Deployment); ok {
-				// Only watch deployments with VpcEgressGatewayLabel or VpcNatGatewayLabel
+				// Only watch deployments owned by VPC gateway / endpoint stitcher workloads.
 				_, hasNatGwLabel := deploy.Labels[util.VpcNatGatewayLabel]
 				_, hasEgressGwLabel := deploy.Labels[util.VpcEgressGatewayLabel]
-				return hasNatGwLabel || hasEgressGwLabel
+				_, hasEndpointStitcher := deploy.Labels[util.VpcEndpointStitcherLabel]
+				return hasNatGwLabel || hasEgressGwLabel || hasEndpointStitcher
 			}
 			return false
 		},
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddDeployment,
 			UpdateFunc: controller.enqueueUpdateDeployment,
+			DeleteFunc: controller.enqueueDeleteDeployment,
 		},
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add deployment event handler")

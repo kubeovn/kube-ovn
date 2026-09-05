@@ -12,21 +12,18 @@ import (
 )
 
 func TestVpcEndpointNaming(t *testing.T) {
-	require.Equal(t, "tenant-a-vpc-endpoint-transit", vpcEndpointTransitLrpName("tenant-a", "vpc-endpoint-transit"))
-	require.Equal(t, "vpc-endpoint-transit-tenant-a", vpcEndpointTransitLspName("tenant-a", "vpc-endpoint-transit"))
 	require.Equal(t, "vpc-eps-db-tcp", vpcEndpointServiceLBName("db", "TCP"))
 	require.Equal(t, "vpc-ep-client-udp", vpcEndpointLBName("client", "UDP"))
 	require.Equal(t, "vpc-ep-client", vpcEndpointVipCRName("client"))
-	require.Equal(t, "vpc-eps-db", vpcEndpointServiceLSPName("db"))
 	require.Equal(t, "vpc-eps/db", vpcEndpointServiceIPAMName("db"))
 	require.Equal(t, "vpc-ep-snat/tenant-a", vpcEndpointSnatIPAMName("tenant-a"))
+	require.Equal(t, "vpc-eps-db", vpcEndpointServiceDeployName("db"))
+	require.Equal(t, "vpc-ep-client", vpcEndpointDeployName("client"))
 }
 
 func TestVpcEndpointSnatMatch(t *testing.T) {
 	require.Equal(t, "ip4.dst == 100.65.1.20", vpcEndpointSnatMatch("100.65.1.20"))
 	require.Equal(t, "ip6.dst == fd00:65::20", vpcEndpointSnatMatch("fd00:65::20"))
-	require.Equal(t, "0.0.0.0/0", vpcEndpointSnatLogicalIP("100.65.1.20"))
-	require.Equal(t, "::/0", vpcEndpointSnatLogicalIP("fd00:65::20"))
 }
 
 func TestVpcEndpointServiceAllowed(t *testing.T) {
@@ -38,14 +35,6 @@ func TestVpcEndpointServiceAllowed(t *testing.T) {
 	}
 	require.True(t, vpcEndpointServiceAllowed(restricted, "a"))
 	require.False(t, vpcEndpointServiceAllowed(restricted, "c"))
-}
-
-func TestVpcEndpointIPFromNetworks(t *testing.T) {
-	require.Equal(t, "100.65.0.10", vpcEndpointIPFromNetworks([]string{"100.65.0.10/16"}))
-	require.Equal(t, "100.65.0.10", vpcEndpointIPFromNetworks([]string{"100.65.0.10/16", "fd00:65::10/112"}))
-	require.Equal(t, "fd00:65::10", vpcEndpointIPFromNetworks([]string{"fd00:65::10/112"}))
-	require.Equal(t, "not-a-cidr", vpcEndpointIPFromNetworks([]string{"not-a-cidr"}))
-	require.Empty(t, vpcEndpointIPFromNetworks(nil))
 }
 
 func TestVpcEndpointPreferIP(t *testing.T) {
@@ -167,6 +156,26 @@ func TestEnqueueVpcEndpointHandlers(t *testing.T) {
 
 	c.enqueueDeleteVpcEndpoint(ep)
 	require.Equal(t, 1, c.addOrUpdateVpcEndpointQueue.Len())
+}
+
+func TestVpcEndpointProviderPortMappings(t *testing.T) {
+	port := corev1.ServicePort{Protocol: corev1.ProtocolTCP, Port: 80}
+	require.Empty(t, vpcEndpointProviderPortMappings(port, nil))
+
+	got := vpcEndpointProviderPortMappings(port, []string{"10.210.0.3:80", "10.210.0.2:80", "10.210.0.4:80"})
+	require.Equal(t, []string{
+		"tcp:80:10.210.0.2:80",
+		"tcp:80:10.210.0.3:80",
+		"tcp:80:10.210.0.4:80",
+	}, got)
+
+	got = vpcEndpointProviderPortMappings(corev1.ServicePort{Port: 443}, []string{"10.0.0.9:8443"})
+	require.Equal(t, []string{"tcp:443:10.0.0.9:8443"}, got)
+}
+
+func TestVpcEndpointStitcherScriptEmbedded(t *testing.T) {
+	require.Contains(t, vpcEndpointStitcherScriptData, "provider_sync()")
+	require.Contains(t, vpcEndpointStitcherScriptData, "statistic --mode nth")
 }
 
 func TestEndpointSlicePortMatchesServicePort(t *testing.T) {

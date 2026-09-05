@@ -1216,24 +1216,11 @@ func (suite *OvnClientTestSuite) testUpdateVpcEndpointServiceACLs() {
 	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, []string{allowedLSP}))
 	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
 	require.NoError(t, err)
-	require.Len(t, acls, 2)
-
-	var sawAllow, sawDrop bool
-	for _, acl := range acls {
-		require.Equal(t, ovnnb.ACLDirectionFromLport, acl.Direction)
-		require.Equal(t, epsName, acl.ExternalIDs[util.VpcEndpointServiceACLExternalID])
-		switch acl.Action {
-		case ovnnb.ACLActionAllowRelated:
-			sawAllow = true
-			require.Contains(t, acl.Match, allowedLSP)
-			require.Contains(t, acl.Match, transitVIP)
-		case ovnnb.ACLActionDrop:
-			sawDrop = true
-			require.Equal(t, "ip4.dst == "+transitVIP, acl.Match)
-		}
-	}
-	require.True(t, sawAllow)
-	require.True(t, sawDrop)
+	require.Len(t, acls, 1)
+	require.Equal(t, ovnnb.ACLDirectionFromLport, acls[0].Direction)
+	require.Equal(t, ovnnb.ACLActionDrop, acls[0].Action)
+	require.Equal(t, epsName, acls[0].ExternalIDs[util.VpcEndpointServiceACLExternalID])
+	require.Equal(t, fmt.Sprintf(`ip4.dst == %s && inport != "%s"`, transitVIP, allowedLSP), acls[0].Match)
 
 	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, "", []string{allowedLSP}))
 	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
@@ -1243,10 +1230,8 @@ func (suite *OvnClientTestSuite) testUpdateVpcEndpointServiceACLs() {
 	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, "fd00:65::20", []string{allowedLSP}))
 	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
 	require.NoError(t, err)
-	require.Len(t, acls, 2)
-	for _, acl := range acls {
-		require.Contains(t, acl.Match, "ip6.dst == fd00:65::20")
-	}
+	require.Len(t, acls, 1)
+	require.Equal(t, fmt.Sprintf(`ip6.dst == fd00:65::20 && inport != "%s"`, allowedLSP), acls[0].Match)
 }
 
 func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {

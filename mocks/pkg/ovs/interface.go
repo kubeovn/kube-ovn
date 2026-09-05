@@ -1602,6 +1602,25 @@ func (mr *MockLogicalSwitchPortMockRecorder) SetVirtualLogicalSwitchPortVirtualP
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVirtualLogicalSwitchPortVirtualParents", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetVirtualLogicalSwitchPortVirtualParents), lsName, parents)
 }
 
+// UpdateLogicalSwitchPort mocks base method.
+func (m *MockLogicalSwitchPort) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...any) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lsp}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateLogicalSwitchPort", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalSwitchPort indicates an expected call of UpdateLogicalSwitchPort.
+func (mr *MockLogicalSwitchPortMockRecorder) UpdateLogicalSwitchPort(lsp any, fields ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lsp}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).UpdateLogicalSwitchPort), varargs...)
+}
+
 // MockLoadBalancer is a mock of LoadBalancer interface.
 type MockLoadBalancer struct {
 	ctrl     *gomock.Controller
@@ -1833,6 +1852,20 @@ func (m *MockLoadBalancer) SetLoadBalancerCtFlush(lbName string, ctFlush bool) e
 func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
+}
+
+// SetLoadBalancerNeighborResponder mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerNeighborResponder(lbName, mode string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerNeighborResponder", lbName, mode)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerNeighborResponder indicates an expected call of SetLoadBalancerNeighborResponder.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerNeighborResponder(lbName, mode any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerNeighborResponder", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerNeighborResponder), lbName, mode)
 }
 
 // SetLoadBalancerPreferLocalBackend mocks base method.
@@ -5813,6 +5846,20 @@ func (mr *MockNbClientMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
+// SetLoadBalancerNeighborResponder mocks base method.
+func (m *MockNbClient) SetLoadBalancerNeighborResponder(lbName, mode string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerNeighborResponder", lbName, mode)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerNeighborResponder indicates an expected call of SetLoadBalancerNeighborResponder.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerNeighborResponder(lbName, mode any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerNeighborResponder", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerNeighborResponder), lbName, mode)
+}
+
 // SetLoadBalancerPreferLocalBackend mocks base method.
 func (m *MockNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
 	m.ctrl.T.Helper()
@@ -6453,6 +6500,25 @@ func (m *MockNbClient) UpdateLogicalSwitchACL(lsName, cidrBlock string, subnetAc
 func (mr *MockNbClientMockRecorder) UpdateLogicalSwitchACL(lsName, cidrBlock, subnetAcls, allowEWTraffic any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchACL", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalSwitchACL), lsName, cidrBlock, subnetAcls, allowEWTraffic)
+}
+
+// UpdateLogicalSwitchPort mocks base method.
+func (m *MockNbClient) UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...any) error {
+	m.ctrl.T.Helper()
+	varargs := []any{lsp}
+	for _, a := range fields {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "UpdateLogicalSwitchPort", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateLogicalSwitchPort indicates an expected call of UpdateLogicalSwitchPort.
+func (mr *MockNbClientMockRecorder) UpdateLogicalSwitchPort(lsp any, fields ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{lsp}, fields...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).UpdateLogicalSwitchPort), varargs...)
 }
 
 // UpdateNbGlobal mocks base method.
