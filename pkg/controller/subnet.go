@@ -1304,7 +1304,7 @@ func (c *Controller) reconcileCustomVpcBfdStaticRoute(vpcName, subnetName string
 			klog.Error(err)
 			return err
 		}
-		bfd, err := c.OVNNbClient.CreateBFD(lrpEipName, eip.Status.V4Ip, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult, nil)
+		bfd, err := c.createBFD(lrpEipName, eip.Status.V4Ip, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult, nil)
 		if err != nil {
 			klog.Error(err)
 			return err
