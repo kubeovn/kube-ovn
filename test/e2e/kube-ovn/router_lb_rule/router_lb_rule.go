@@ -66,7 +66,7 @@ func curlRLR(f *framework.Framework, clientPodName, eipIP string, port int32) {
 	}, fmt.Sprintf("%s:%d is reachable for %d consecutive requests", eipIP, port, wantConsecutive))
 }
 
-var _ = framework.Describe("[group:rlr]", func() {
+var _ = framework.SerialDescribe("[group:rlr]", func() {
 	f := framework.NewDefaultFramework("rlr")
 
 	var skip bool
