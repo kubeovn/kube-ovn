@@ -77,23 +77,12 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 			"pod_netns":     netns,
 		},
 	}
-	legacyArgs := []string{
-		ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-		"set", "interface", hostNicName,
-		"type=dpdkvhostuserclient",
-		"options:vhost-server-path=" + vhostServerPath,
-		"external_ids:iface-id=" + ifaceID,
-		"external_ids:pod_name=" + podName,
-		"external_ids:pod_namespace=" + podNamespace,
-		"external_ids:ip=" + ipStr,
-		"external_ids:pod_netns=" + netns,
-	}
 	if err := ensureVswitchPort(csh.Config.VswitchTables, ovs.VswitchPortConfig{
 		BridgeName:      "br-int",
 		Port:            &vswitch.Port{Name: hostNicName},
 		Interface:       iface,
 		InterfaceFields: []any{&iface.Type, &iface.Options, &iface.ExternalIDs},
-	}, legacyArgs...); err != nil {
+	}); err != nil {
 		return fmt.Errorf("add nic to OVS: %w", err)
 	}
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst, csh.Config.VswitchTables)
@@ -164,52 +153,19 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 		iface.ExternalIDs["encap-ip"] = encapIP
 	}
 	interfaceFields := []any{&iface.ExternalIDs}
-	var args []string
 	if yusur.IsYusurSmartNic(deviceID) {
 		klog.Infof("add Yusur smartnic vfr %s to ovs", hostNicName)
 		iface.Type = "dpdk"
 		iface.Options = map[string]string{"dpdk-devargs": fmt.Sprintf("%s,representor=[%d]", pfPci, vfID)}
 		iface.MTURequest = new(mtu)
 		interfaceFields = append(interfaceFields, &iface.Type, &iface.Options, &iface.MTURequest)
-		args = []string{
-			ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-			"set", "interface", hostNicName, "type=dpdk",
-			fmt.Sprintf("options:dpdk-devargs=%s,representor=[%d]", pfPci, vfID),
-			fmt.Sprintf("mtu_request=%d", mtu),
-			"external_ids:iface-id=" + ifaceID,
-			"external_ids:vendor=" + util.CniTypeName,
-			"external_ids:pod_name=" + podName,
-			"external_ids:pod_namespace=" + podNamespace,
-			"external_ids:pod_netns=" + netns,
-		}
-		if ip != "" {
-			args = append(args, "external_ids:ip="+ipStr)
-		}
-		if encapIP != "" {
-			args = append(args, "external_ids:encap-ip="+encapIP)
-		}
-	} else {
-		args = []string{
-			ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-			"set", "interface", hostNicName, "external_ids:iface-id=" + ifaceID,
-			"external_ids:vendor=" + util.CniTypeName,
-			"external_ids:pod_name=" + podName,
-			"external_ids:pod_namespace=" + podNamespace,
-			"external_ids:pod_netns=" + netns,
-		}
-		if ip != "" {
-			args = append(args, "external_ids:ip="+ipStr)
-		}
-		if encapIP != "" {
-			args = append(args, "external_ids:encap-ip="+encapIP)
-		}
 	}
 	if err := ensureVswitchPort(csh.Config.VswitchTables, ovs.VswitchPortConfig{
 		BridgeName:      "br-int",
 		Port:            &vswitch.Port{Name: hostNicName},
 		Interface:       iface,
 		InterfaceFields: interfaceFields,
-	}, args...); err != nil {
+	}); err != nil {
 		return nil, fmt.Errorf("add nic to OVS: %w", err)
 	}
 	defer func() {
@@ -807,18 +763,12 @@ func configureNodeNicWithProvider(cs kubernetes.Interface, nodeName, portName, i
 			"ip":       ipStr,
 		},
 	}
-	legacyArgs := []string{
-		ovs.MayExist, "add-port", "br-int", util.NodeNic, "--",
-		"set", "interface", util.NodeNic, "type=internal", "--",
-		"set", "interface", util.NodeNic, "external_ids:iface-id=" + portName,
-		"external_ids:ip=" + ipStr,
-	}
 	if err := ensureVswitchPort(provider, ovs.VswitchPortConfig{
 		BridgeName:      "br-int",
 		Port:            &vswitch.Port{Name: util.NodeNic},
 		Interface:       iface,
 		InterfaceFields: []any{&iface.Type, &iface.ExternalIDs},
-	}, legacyArgs...); err != nil {
+	}); err != nil {
 		return fmt.Errorf("configure node nic %s: %w", portName, err)
 	}
 
@@ -1111,19 +1061,12 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 			"pod_netns": util.NodeGwNsPath,
 		},
 	}
-	legacyArgs := []string{
-		ovs.MayExist, "add-port", "br-int", util.NodeGwNic, "--",
-		"set", "interface", util.NodeGwNic, "type=internal", "--",
-		"set", "interface", util.NodeGwNic, "external_ids:iface-id=" + portName,
-		"external_ids:ip=" + ipStr,
-		"external_ids:pod_netns=" + util.NodeGwNsPath,
-	}
 	if err := ensureVswitchPort(provider, ovs.VswitchPortConfig{
 		BridgeName:      "br-int",
 		Port:            &vswitch.Port{Name: util.NodeGwNic},
 		Interface:       iface,
 		InterfaceFields: []any{&iface.Type, &iface.ExternalIDs},
-	}, legacyArgs...); err != nil {
+	}); err != nil {
 		return fmt.Errorf("configure node external nic %s: %w", portName, err)
 	}
 	var err error

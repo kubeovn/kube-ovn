@@ -3281,8 +3281,7 @@ func (c *Controller) updateDnatAndSnat(lrName, externalIP, logicalIP, lspName, e
 }
 
 // setLoadBalancerOption updates one option on a load balancer without
-// replacing options managed by another reconcile path. The legacy callback is
-// retained for callers that have not wired a TableProvider yet.
+// replacing options managed by another reconcile path.
 func (c *Controller) setLoadBalancerOption(name, key, value string, legacy func() error) error {
 	if c.OVNNbTables == nil {
 		return legacy()
@@ -3328,9 +3327,7 @@ func (c *Controller) setLoadBalancerCtFlush(name string, enabled bool) error {
 
 func (c *Controller) getLogicalSwitch(name string, ignoreNotFound bool) (*ovnnb.LogicalSwitch, error) {
 	if c.OVNNbTables == nil {
-		rows, err := c.OVNNbClient.ListLogicalSwitch(false, func(row *ovnnb.LogicalSwitch) bool {
-			return row.Name == name
-		})
+		rows, err := c.OVNNbClient.ListLogicalSwitch(false, func(row *ovnnb.LogicalSwitch) bool { return row.Name == name })
 		if err != nil {
 			return nil, err
 		}
@@ -4386,10 +4383,10 @@ func (c *Controller) listLogicalRouterPoliciesWithFilter(lrName string, filter f
 		if err != nil {
 			return nil, err
 		}
-		filtered := rows[:0]
-		for _, row := range rows {
-			if filter == nil || filter(row) {
-				filtered = append(filtered, row)
+		filtered := make([]*ovnnb.LogicalRouterPolicy, 0, len(rows))
+		for i := range rows {
+			if filter == nil || filter(rows[i]) {
+				filtered = append(filtered, rows[i])
 			}
 		}
 		return filtered, nil
@@ -4686,9 +4683,6 @@ func matchesExternalIDsExact(actual, expected map[string]string) bool {
 	return true
 }
 
-// logicalSwitchExists uses the generic table seam when controller wiring has
-// supplied it. The legacy client fallback keeps unit fixtures and incremental
-// migrations compatible while callers move away from domain-specific helpers.
 func (c *Controller) logicalSwitchExists(name string) (bool, error) {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.LogicalSwitchExists(name)

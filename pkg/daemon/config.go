@@ -30,7 +30,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -673,7 +672,7 @@ func (config *Configuration) updateOpenVSwitchMap(method string, row *vswitch.Op
 
 func (config *Configuration) getOvnMappings(name string) (map[string]string, error) {
 	if config == nil || config.VswitchTables == nil {
-		return getOvnMappings(name)
+		return nil, errors.New("vswitch table provider is not configured")
 	}
 
 	row, err := config.openVSwitchRow()
@@ -693,7 +692,7 @@ func (config *Configuration) getOpenVSwitchExternalID(key string) (string, error
 
 func (config *Configuration) getVswitchInterfaceExternalID(name, key string) (string, error) {
 	if config == nil || config.VswitchTables == nil {
-		return ovs.Get("interface", name, "external-ids", key, true)
+		return "", errors.New("vswitch table provider is not configured")
 	}
 	var rows []vswitch.Interface
 	if err := config.VswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
@@ -709,8 +708,7 @@ func (config *Configuration) getVswitchInterfaceExternalID(name, key string) (st
 
 func (config *Configuration) updateVswitchBridgeHardwareAddress(name, address string) error {
 	if config == nil || config.VswitchTables == nil {
-		_, err := ovs.Exec("set", "bridge", name, fmt.Sprintf(`other-config:hwaddr="%s"`, address))
-		return err
+		return errors.New("vswitch table provider is not configured")
 	}
 	var rows []vswitch.Bridge
 	if err := config.VswitchTables.Table(&vswitch.Bridge{}).Filter(context.Background(), func(row *vswitch.Bridge) bool {
@@ -735,7 +733,7 @@ func (config *Configuration) updateVswitchBridgeHardwareAddress(name, address st
 
 func (config *Configuration) setOvnMappings(name string, mappings map[string]string) error {
 	if config == nil || config.VswitchTables == nil {
-		return setOvnMappings(name, mappings)
+		return errors.New("vswitch table provider is not configured")
 	}
 
 	value := encodeOvnMappings(mappings)
