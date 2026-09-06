@@ -17,8 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/ovsdb"
-	"github.com/ovn-kubernetes/libovsdb/ovsdb/serverdb"
 	"github.com/spf13/pflag"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -235,34 +233,15 @@ func isDBLeader(address, database string) (bool, error) {
 		return false, fmt.Errorf("unsupported database %s", database)
 	}
 
-	result, err := ovs.Query(dbAddr, serverdb.DatabaseName, 1, ovsdb.Operation{
-		Op:    ovsdb.OperationSelect,
-		Table: serverdb.DatabaseTable,
-		Where: []ovsdb.Condition{{
-			Column:   "name",
-			Function: ovsdb.ConditionEqual,
-			Value:    database,
-		}},
-		Columns: []string{"leader"},
-	})
+	serverClient, err := ovs.NewOvsdbServerClient(dbAddr, 1, 1)
+	if err != nil {
+		return false, fmt.Errorf("failed to connect to ovsdb-server %s for database %s: %w", address, database, err)
+	}
+	defer serverClient.Close()
+	leader, err := serverClient.DatabaseLeader(context.Background(), database)
 	if err != nil {
 		return false, fmt.Errorf("failed to query leader info from ovsdb-server %s for database %s: %w", address, database, err)
 	}
-	if len(result) != 1 {
-		return false, fmt.Errorf("unexpected number of results when querying leader info from ovsdb-server %s for database %s: %d", address, database, len(result))
-	}
-	if len(result[0].Rows) == 0 {
-		return false, fmt.Errorf("no rows returned when querying leader info from ovsdb-server %s for database %s", address, database)
-	}
-	if len(result[0].Rows) != 1 {
-		return false, fmt.Errorf("unexpected number of rows when querying leader info from ovsdb-server %s for database %s: %d", address, database, len(result[0].Rows))
-	}
-
-	leader, ok := result[0].Rows[0]["leader"].(bool)
-	if !ok {
-		return false, fmt.Errorf("unexpected data format for leader info from ovsdb-server %s for database %s: %v", address, database, result[0].Rows[0]["leader"])
-	}
-
 	return leader, nil
 }
 

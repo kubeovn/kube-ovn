@@ -1,22 +1,30 @@
 package pinger
 
 import (
+	"context"
 	"fmt"
-	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 
-	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-var sbServiceAddress string
+var (
+	sbServiceAddress string
+	sbClientMu       sync.Mutex
+	sbClient         *ovs.OVNSbClient
+	vswitchClientMu  sync.Mutex
+	vswitchClient    *ovs.VswitchClient
+)
 
 func init() {
 	sbHost, sbPort := util.InjectedServiceVariables("ovn-sb")
@@ -58,7 +66,7 @@ func checkOvnController(config *Configuration, setMetrics bool) error {
 
 func checkPortBindings(config *Configuration, setMetrics bool) error {
 	klog.Infof("start to check port binding")
-	ovsBindings, err := checkOvsBindings()
+	ovsBindings, err := checkOvsBindings(config)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -88,103 +96,122 @@ func checkPortBindings(config *Configuration, setMetrics bool) error {
 	return nil
 }
 
-func checkOvsBindings() (set.Set[string], error) {
-	output, err := exec.Command(
-		"ovs-vsctl",
-		"--no-heading",
-		"--data=bare",
-		"--format=csv",
-		"--columns=external_ids",
-		"--timeout=10",
-		"find",
-		"interface",
-		"external_ids:iface-id!=\"\"",
-	).CombinedOutput()
+func checkOvsBindings(config *Configuration) (set.Set[string], error) {
+	provider, err := getVswitchProvider(config)
 	if err != nil {
-		klog.Errorf("failed to get ovs interface %v", err)
 		return nil, err
 	}
+	var interfaces []vswitch.Interface
+	if err := provider.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+		return row.ExternalIDs["iface-id"] != ""
+	}, &interfaces); err != nil {
+		return nil, fmt.Errorf("failed to list OVS interfaces: %w", err)
+	}
 	result := set.New[string]()
-	for line := range strings.SplitSeq(string(output), "\n") {
-		// In dual-stack clusters, the output may look like:
-		// "iface-id=kube-ovn-pinger-ljqss.kube-system ip=10.180.160.6,2341::10:180:160:6 ... vendor=kube-ovn"
-		// so we need to trim the quotes and split by space.
-		for id := range strings.FieldsSeq(strings.Trim(line, `"`)) {
-			if after, found := strings.CutPrefix(id, "iface-id="); found {
-				result.Insert(strings.TrimSpace(after))
-				continue
-			}
+	for iface := range slices.Values(interfaces) {
+		if ifaceID := strings.TrimSpace(iface.ExternalIDs["iface-id"]); ifaceID != "" {
+			result.Insert(ifaceID)
 		}
 	}
 	return result, nil
 }
 
-func getChassis(hostname string) (string, error) {
-	result, err := ovs.Query(sbServiceAddress, ovnsb.DatabaseName, 10, ovsdb.Operation{
-		Op:    ovsdb.OperationSelect,
-		Table: ovnsb.ChassisTable,
-		Where: []ovsdb.Condition{{
-			Column:   "hostname",
-			Function: ovsdb.ConditionEqual,
-			Value:    hostname,
-		}},
-		Columns: []string{"_uuid"},
-	})
+func getChassis(hostname string, providers ...compat.TableProvider) (string, error) {
+	provider, err := firstSBProvider(providers...)
 	if err != nil {
-		klog.Errorf("failed to get chassis UUID by hostname %q: %v", hostname, err)
 		return "", err
 	}
-	if len(result) != 1 {
-		return "", fmt.Errorf("unexpected number of results when getting chassis UUID for hostname %q: %d", hostname, len(result))
+	var rows []ovnsb.Chassis
+	if err := provider.Table(&ovnsb.Chassis{}).Filter(context.Background(), func(row *ovnsb.Chassis) bool {
+		return row.Hostname == hostname
+	}, &rows); err != nil {
+		return "", fmt.Errorf("failed to list chassis for hostname %q: %w", hostname, err)
 	}
-	if len(result[0].Rows) == 0 {
+	if len(rows) == 0 {
 		return "", fmt.Errorf("no chassis found for hostname %q", hostname)
 	}
-	if len(result[0].Rows) != 1 {
-		return "", fmt.Errorf("unexpected number of rows when getting chassis UUID for hostname %q: %d", hostname, len(result[0].Rows))
+	if len(rows) != 1 {
+		return "", fmt.Errorf("unexpected number of chassis rows for hostname %q: %d", hostname, len(rows))
 	}
-
-	if uuid, ok := result[0].Rows[0]["_uuid"].(ovsdb.UUID); ok {
-		return uuid.GoUUID, nil
-	}
-
-	return "", fmt.Errorf("unexpected data format for chassis UUID for hostname %q: %v", hostname, result[0].Rows[0]["_uuid"])
+	return rows[0].UUID, nil
 }
 
-func getLogicalPort(chassisUUID string) (set.Set[string], error) {
-	result, err := ovs.Query(sbServiceAddress, ovnsb.DatabaseName, 10, ovsdb.Operation{
-		Op:    ovsdb.OperationSelect,
-		Table: ovnsb.PortBindingTable,
-		Where: []ovsdb.Condition{{
-			Column:   "chassis",
-			Function: ovsdb.ConditionEqual,
-			Value:    ovsdb.UUID{GoUUID: chassisUUID},
-		}},
-		Columns: []string{"logical_port"},
-	})
+func getLogicalPort(chassisUUID string, providers ...compat.TableProvider) (set.Set[string], error) {
+	provider, err := firstSBProvider(providers...)
 	if err != nil {
-		klog.Errorf("failed to get logical ports by chassis UUID %q: %v", chassisUUID, err)
 		return nil, err
 	}
-	if len(result) != 1 {
-		return nil, fmt.Errorf("unexpected number of results when getting logical ports for chassis UUID %q: %d", chassisUUID, len(result))
+	var rows []ovnsb.PortBinding
+	if err := provider.Table(&ovnsb.PortBinding{}).Filter(context.Background(), func(row *ovnsb.PortBinding) bool {
+		return row.Chassis != nil && *row.Chassis == chassisUUID
+	}, &rows); err != nil {
+		return nil, fmt.Errorf("failed to list logical ports for chassis UUID %q: %w", chassisUUID, err)
 	}
 
 	ports := set.New[string]()
-	for row := range slices.Values(result[0].Rows) {
-		if lp, ok := row["logical_port"].(string); ok {
-			ports.Insert(lp)
-		} else {
-			klog.Errorf("unexpected data format for logical_port in row %v", row)
+	for row := range slices.Values(rows) {
+		if row.LogicalPort != "" {
+			ports.Insert(row.LogicalPort)
 		}
 	}
 	return ports, nil
 }
 
 func checkSBBindings(config *Configuration) (set.Set[string], error) {
-	chassisUUID, err := getChassis(config.NodeName)
+	provider, err := getSBProvider()
 	if err != nil {
 		return nil, err
 	}
-	return getLogicalPort(chassisUUID)
+	chassisUUID, err := getChassis(config.NodeName, provider)
+	if err != nil {
+		return nil, err
+	}
+	return getLogicalPort(chassisUUID, provider)
+}
+
+func firstSBProvider(providers ...compat.TableProvider) (compat.TableProvider, error) {
+	if len(providers) != 0 && providers[0] != nil {
+		return providers[0], nil
+	}
+	return getSBProvider()
+}
+
+func getSBProvider() (compat.TableProvider, error) {
+	sbClientMu.Lock()
+	defer sbClientMu.Unlock()
+	if sbClient != nil && sbClient.Connected() {
+		return sbClient, nil
+	}
+	if sbClient != nil {
+		sbClient.Close()
+		sbClient = nil
+	}
+	client, err := ovs.NewOvnSbClient(sbServiceAddress, 10, 10, 0, 0)
+	if err != nil {
+		return nil, fmt.Errorf("connect to OVN SB: %w", err)
+	}
+	sbClient = client
+	return client, nil
+}
+
+func getVswitchProvider(config *Configuration) (compat.TableProvider, error) {
+	vswitchClientMu.Lock()
+	defer vswitchClientMu.Unlock()
+	if vswitchClient != nil && vswitchClient.Connected() {
+		return vswitchClient, nil
+	}
+	if vswitchClient != nil {
+		vswitchClient.Close()
+		vswitchClient = nil
+	}
+	address := config.DatabaseVswitchSocketRemote
+	if address == "" {
+		address = "unix:/var/run/openvswitch/db.sock"
+	}
+	client, err := ovs.NewVswitchClient(address, 10, 10)
+	if err != nil {
+		return nil, fmt.Errorf("connect to OVSDB: %w", err)
+	}
+	vswitchClient = client
+	return client, nil
 }

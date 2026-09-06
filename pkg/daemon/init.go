@@ -166,9 +166,9 @@ func InitNodeGateway(config *Configuration) (err error) {
 
 func InitMirror(config *Configuration) error {
 	if config.EnableMirror {
-		return configureGlobalMirror(config.MirrorNic, config.MTU)
+		return configureGlobalMirror(config.MirrorNic, config.MTU, config.VswitchTables)
 	}
-	return configureEmptyMirror(config.MirrorNic, config.MTU)
+	return configureEmptyMirror(config.MirrorNic, config.MTU, config.VswitchTables)
 }
 
 func (c *Controller) ovsInitProviderNetwork(provider, nic string, trunks []string, exchangeLinkName, macLearningFallback bool, vlanInterfaceMap map[string]int) (int, error) { // create and configure external bridge
@@ -287,10 +287,17 @@ func (c *Controller) ovsCleanProviderNetwork(provider, nic string, vlanInterface
 
 		// remove OVS bridge
 		klog.Infof("delete external bridge %s", brName)
-		output, delErr := ovs.Exec(ovs.IfExists, "del-br", brName)
-		if delErr != nil {
-			klog.Errorf("failed to remove OVS bridge %s, %v: %q", brName, delErr, output)
-			return delErr
+		if c.vswitchTables != nil {
+			if err := ovs.DeleteVswitchBridge(context.Background(), c.vswitchTables, brName); err != nil {
+				klog.Errorf("failed to remove OVS bridge %s, %v", brName, err)
+				return err
+			}
+		} else {
+			output, delErr := ovs.Exec(ovs.IfExists, "del-br", brName)
+			if delErr != nil {
+				klog.Errorf("failed to remove OVS bridge %s, %v: %q", brName, delErr, output)
+				return delErr
+			}
 		}
 		klog.Infof("ovs bridge %s has been deleted", brName)
 

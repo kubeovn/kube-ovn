@@ -1,6 +1,7 @@
 package pinger
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
 
 // IncrementErrorCounter increases the counter of failed queries to OVN server.
@@ -144,6 +146,18 @@ func (e *Exporter) ovsDatapathPortMetrics(line, datapath string) {
 }
 
 func (e *Exporter) getInterfaceInfo() ([]*ovsdb.OvsInterface, error) {
+	if e.VswitchTables != nil {
+		var rows []vswitch.Interface
+		err := e.VswitchTables.Table(&vswitch.Interface{}).List(context.Background(), &rows)
+		if err == nil {
+			return convertVswitchInterfaces(rows), nil
+		}
+		klog.Warningf("list OVS interfaces from generic client failed, falling back to legacy client: %v", err)
+		if closer, ok := e.VswitchTables.(interface{ Close() }); ok {
+			closer.Close()
+		}
+		e.VswitchTables = nil
+	}
 	intfs, err := e.Client.GetDbInterfaces()
 	if err != nil {
 		klog.Errorf("GetDbInterfaces error: %v", err)
@@ -152,6 +166,41 @@ func (e *Exporter) getInterfaceInfo() ([]*ovsdb.OvsInterface, error) {
 	}
 
 	return intfs, nil
+}
+
+func convertVswitchInterfaces(rows []vswitch.Interface) []*ovsdb.OvsInterface {
+	interfaces := make([]*ovsdb.OvsInterface, 0, len(rows))
+	for i := range rows {
+		row := &rows[i]
+		interfaces = append(interfaces, &ovsdb.OvsInterface{
+			UUID:        row.UUID,
+			Name:        row.Name,
+			ExternalIDs: row.ExternalIDs,
+			Options:     row.Options,
+			Statistics:  row.Statistics,
+			AdminState:  stringValue(row.AdminState),
+			LinkState:   stringValue(row.LinkState),
+			MacInUse:    stringValue(row.MACInUse),
+			Mtu:         floatValue(row.MTU),
+			OfPort:      floatValue(row.Ofport),
+			IfIndex:     floatValue(row.Ifindex),
+		})
+	}
+	return interfaces
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func floatValue(value *int) float64 {
+	if value == nil {
+		return 0
+	}
+	return float64(*value)
 }
 
 func (e *Exporter) setOvsInterfaceMetric(intf *ovsdb.OvsInterface) {
