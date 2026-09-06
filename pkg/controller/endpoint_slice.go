@@ -451,6 +451,16 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	if err != nil {
 		return err
 	}
+	if !reconcileCtx.profile.ignoreHealthCheck && !reconcileCtx.profile.preferLocalBackend && len(state.mapping) == 0 {
+		// Host-network or manually managed endpoints do not have an OVN logical
+		// port to probe from the health-check VIP. Keeping a health check with an
+		// empty mapping would mark otherwise reachable backends (for example the
+		// Kubernetes API service) down.
+		klog.Infof("skip health check for service %s/%s vip %s: no OVN backend mapping", svc.Namespace, svc.Name, lbVip)
+		reconcileCtx.profile.ignoreHealthCheck = true
+		state.checkIP = ""
+		state.externals = nil
+	}
 	state.backends = c.getEndpointBackend(reconcileCtx.endpointSlices, port, lbVip, state.distributed)
 	if len(state.backends) == 0 {
 		return c.deleteServiceEndpointVIP(reconcileCtx, state)
