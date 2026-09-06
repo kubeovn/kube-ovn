@@ -12,6 +12,39 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func TestNormalizeVswitchEndpoint(t *testing.T) {
+	tests := map[string]struct {
+		endpoint string
+		expected string
+	}{
+		"default": {
+			expected: defaultVswitchEndpoint,
+		},
+		"unix socket path": {
+			endpoint: "/run/openvswitch/db.sock",
+			expected: "unix:/run/openvswitch/db.sock",
+		},
+		"unix endpoint": {
+			endpoint: "unix:/run/openvswitch/db.sock",
+			expected: "unix:/run/openvswitch/db.sock",
+		},
+		"tcp endpoint": {
+			endpoint: "tcp:127.0.0.1:6640",
+			expected: "tcp:127.0.0.1:6640",
+		},
+		"ssl endpoint": {
+			endpoint: "ssl:127.0.0.1:6640",
+			expected: "ssl:127.0.0.1:6640",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tt.expected, normalizeVswitchEndpoint(tt.endpoint))
+		})
+	}
+}
+
 func TestNewVswitchClientWithLegacySchema(t *testing.T) {
 	schema := vswitch.Schema()
 	delete(schema.Tables[vswitch.MirrorTable].Columns, "filter")
