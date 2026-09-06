@@ -2,6 +2,7 @@ package pinger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -146,26 +147,20 @@ func (e *Exporter) ovsDatapathPortMetrics(line, datapath string) {
 }
 
 func (e *Exporter) getInterfaceInfo() ([]*ovsdb.OvsInterface, error) {
-	if e.VswitchTables != nil {
-		var rows []vswitch.Interface
-		err := e.VswitchTables.Table(&vswitch.Interface{}).List(context.Background(), &rows)
-		if err == nil {
-			return convertVswitchInterfaces(rows), nil
-		}
-		klog.Warningf("list OVS interfaces from generic client failed, falling back to legacy client: %v", err)
-		if closer, ok := e.VswitchTables.(interface{ Close() }); ok {
-			closer.Close()
-		}
-		e.VswitchTables = nil
-	}
-	intfs, err := e.Client.GetDbInterfaces()
-	if err != nil {
-		klog.Errorf("GetDbInterfaces error: %v", err)
+	if e.VswitchTables == nil {
+		err := errors.New("generic OVSDB table provider is unavailable")
+		klog.Errorf("failed to list OVS interfaces: %v", err)
 		e.IncrementErrorCounter()
 		return nil, err
 	}
-
-	return intfs, nil
+	var rows []vswitch.Interface
+	if err := e.VswitchTables.Table(&vswitch.Interface{}).List(context.Background(), &rows); err != nil {
+		err = fmt.Errorf("failed to list OVS interfaces from generic client: %w", err)
+		klog.Errorf("%v", err)
+		e.IncrementErrorCounter()
+		return nil, err
+	}
+	return convertVswitchInterfaces(rows), nil
 }
 
 func convertVswitchInterfaces(rows []vswitch.Interface) []*ovsdb.OvsInterface {

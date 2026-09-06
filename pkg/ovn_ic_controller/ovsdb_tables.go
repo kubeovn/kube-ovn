@@ -67,10 +67,7 @@ func (c *Controller) getICTransitSwitchSubnet(name string) (string, error) {
 
 func (c *Controller) removeOldICChassisInSbDB(azName string) error {
 	if c.ICSbTables == nil {
-		if c.ovnLegacyClient == nil {
-			return errors.New("IC SB table provider and legacy client are nil")
-		}
-		return c.removeOldICChassisInSbDBLegacy(azName)
+		return errors.New("IC SB table provider is nil")
 	}
 	var zones []ovnicsb.AvailabilityZone
 	if err := c.ICSbTables.Table(&ovnicsb.AvailabilityZone{}).Filter(context.Background(), func(row *ovnicsb.AvailabilityZone) bool {
@@ -132,38 +129,6 @@ func (c *Controller) removeOldICChassisInSbDB(azName string) error {
 	}
 	operations = append(operations, ops...)
 	return c.ICSbTables.Table(&ovnicsb.AvailabilityZone{}).Transact(context.Background(), "ic-sb-az-cleanup", operations...)
-}
-
-func (c *Controller) removeOldICChassisInSbDBLegacy(azName string) error {
-	azUUID, err := c.ovnLegacyClient.GetAzUUID(azName)
-	if err != nil {
-		return err
-	}
-	if azUUID == "" {
-		return nil
-	}
-	gateways, err := c.ovnLegacyClient.GetGatewayUUIDsInOneAZ(azUUID)
-	if err != nil {
-		return err
-	}
-	routes, err := c.ovnLegacyClient.GetRouteUUIDsInOneAZ(azUUID)
-	if err != nil {
-		return err
-	}
-	portBindings, err := c.ovnLegacyClient.GetPortBindingUUIDsInOneAZ(azUUID)
-	if err != nil {
-		return err
-	}
-	if err := c.ovnLegacyClient.DestroyPortBindings(portBindings); err != nil {
-		return err
-	}
-	if err := c.ovnLegacyClient.DestroyGateways(gateways); err != nil {
-		return err
-	}
-	if err := c.ovnLegacyClient.DestroyRoutes(routes); err != nil {
-		return err
-	}
-	return c.ovnLegacyClient.DestroyChassis(azUUID)
 }
 
 func (c *Controller) reconcileICGatewayChassises(lrpName string, chassises []string) error {

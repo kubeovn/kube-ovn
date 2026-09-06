@@ -197,7 +197,7 @@ func (e *Exporter) exportOvsDpGauge() {
 func (e *Exporter) exportOvsInterfaceGauge() {
 	intfs, err := e.getInterfaceInfo()
 	if err != nil {
-		klog.Errorf("Failed to get the output of ovs-vsctl list Interface: %v", err)
+		klog.Errorf("Failed to list OVS Interface rows through TableProvider: %v", err)
 		return
 	}
 

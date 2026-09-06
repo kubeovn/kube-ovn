@@ -42,17 +42,16 @@ type Controller struct {
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	recorder               record.EventRecorder
 
-	ovnLegacyClient *ovs.LegacyClient
-	OVNNbClient     ovs.NbClient
-	OVNSbClient     ovs.SbClient
-	OVNNbTables     compat.TableProvider
-	OVNSbTables     compat.TableProvider
-	ICNbTables      compat.TableProvider
-	ICSbTables      compat.TableProvider
-	icNbClient      *ovs.OVNICNbClient
-	icSbClient      *ovs.OVNICSbClient
-	icNbAddress     string
-	icSbAddress     string
+	OVNNbClient ovs.NbClient
+	OVNSbClient ovs.SbClient
+	OVNNbTables compat.TableProvider
+	OVNSbTables compat.TableProvider
+	ICNbTables  compat.TableProvider
+	ICSbTables  compat.TableProvider
+	icNbClient  *ovs.OVNICNbClient
+	icSbClient  *ovs.OVNICSbClient
+	icNbAddress string
+	icSbAddress string
 
 	icConflictCIDRs *strset.Set
 }
@@ -97,7 +96,6 @@ func NewController(config *Configuration) *Controller {
 		kubeovnInformerFactory: kubeovnInformerFactory,
 		recorder:               recorder,
 
-		ovnLegacyClient: ovs.NewLegacyClient(config.OvnTimeout),
 		icConflictCIDRs: strset.New(),
 	}
 
