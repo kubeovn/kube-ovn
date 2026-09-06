@@ -169,3 +169,37 @@ func TestGenericTableHelpersRejectNilProvider(t *testing.T) {
 	_, err := List[exampleRow](context.Background(), nil, &exampleRow{})
 	require.EqualError(t, err, "ovsdb table provider is nil")
 }
+
+func TestWaitForRowsWaitsForCachePropagation(t *testing.T) {
+	handle := &waitRowsHandle{}
+	provider := waitRowsProvider{handle: handle}
+	var rows []exampleRow
+
+	require.NoError(t, WaitForRows(t.Context(), provider, &exampleRow{}, func(*exampleRow) bool {
+		return true
+	}, &rows))
+	require.Len(t, rows, 1)
+	require.Equal(t, 3, handle.calls)
+}
+
+type waitRowsProvider struct {
+	handle TableHandle
+}
+
+func (p waitRowsProvider) Table(model.Model) TableHandle {
+	return p.handle
+}
+
+type waitRowsHandle struct {
+	TableHandle
+	calls int
+}
+
+func (h *waitRowsHandle) Filter(_ context.Context, _, result any) error {
+	h.calls++
+	rows := result.(*[]exampleRow)
+	if h.calls == 3 {
+		*rows = []exampleRow{{Name: "ready"}}
+	}
+	return nil
+}

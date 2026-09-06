@@ -125,7 +125,33 @@ func EnsureVswitchPort(ctx context.Context, provider compat.TableProvider, confi
 		operations = append(operations, mutateOps...)
 	}
 
-	return portTable.Transact(ctx, "vswitch-port-ensure", operations...)
+	if err := portTable.Transact(ctx, "vswitch-port-ensure", operations...); err != nil {
+		return err
+	}
+
+	var interfaces []vswitch.Interface
+	if err := compat.WaitForRows(ctx, provider, &vswitch.Interface{}, func(row *vswitch.Interface) bool {
+		return row.Name == config.Interface.Name
+	}, &interfaces); err != nil {
+		return fmt.Errorf("wait for OVS interface %q cache update: %w", config.Interface.Name, err)
+	}
+	var ports []vswitch.Port
+	if err := compat.WaitForRows(ctx, provider, &vswitch.Port{}, func(row *vswitch.Port) bool {
+		return row.Name == config.Port.Name
+	}, &ports); err != nil {
+		return fmt.Errorf("wait for OVS port %q cache update: %w", config.Port.Name, err)
+	}
+	if len(ports) != 1 {
+		return fmt.Errorf("wait for OVS port %q cache update returned %d rows", config.Port.Name, len(ports))
+	}
+	portUUID := ports[0].UUID
+	var bridges []vswitch.Bridge
+	if err := compat.WaitForRows(ctx, provider, &vswitch.Bridge{}, func(row *vswitch.Bridge) bool {
+		return row.Name == config.BridgeName && slices.Contains(row.Ports, portUUID)
+	}, &bridges); err != nil {
+		return fmt.Errorf("wait for OVS bridge %q cache update: %w", config.BridgeName, err)
+	}
+	return nil
 }
 
 func mergeVswitchInterfaceMaps(current, desired *vswitch.Interface) {

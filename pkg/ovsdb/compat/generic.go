@@ -3,9 +3,16 @@ package compat
 import (
 	"context"
 	"errors"
+	"reflect"
+	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+)
+
+const (
+	cachePollInterval = 10 * time.Millisecond
+	cacheWaitTimeout  = 5 * time.Second
 )
 
 // tableFor resolves a provider once for package-level helpers. Keeping this
@@ -75,6 +82,45 @@ func FilterByUUIDs[T any](ctx context.Context, provider TableProvider, prototype
 		return nil, err
 	}
 	return rows, nil
+}
+
+// WaitForRows waits until a cache predicate returns at least one row. OVSDB
+// transaction replies can arrive before the monitor update has been applied
+// to the local cache, so callers that continue with a cache read immediately
+// after a write should use this helper as the synchronization point.
+func WaitForRows(ctx context.Context, provider TableProvider, prototype model.Model, predicate, result any) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	value := reflect.ValueOf(result)
+	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Slice {
+		return errors.New("ovsdb wait result must be a non-nil pointer to a slice")
+	}
+
+	waitCtx := ctx
+	cancel := func() {}
+	if _, ok := ctx.Deadline(); !ok {
+		waitCtx, cancel = context.WithTimeout(ctx, cacheWaitTimeout)
+	}
+	defer cancel()
+
+	ticker := time.NewTicker(cachePollInterval)
+	defer ticker.Stop()
+	for {
+		value.Elem().Set(reflect.Zero(value.Elem().Type()))
+		if err := table.Filter(waitCtx, predicate, result); err != nil {
+			return err
+		}
+		if value.Elem().Len() != 0 {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return waitCtx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 // Get reads the row identified by result. The result must be a pointer to the
