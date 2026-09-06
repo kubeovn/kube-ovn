@@ -519,8 +519,11 @@ func TestControllerTableProviderLoadBalancerOperations(t *testing.T) {
 	require.NoError(t, controller.addLoadBalancerVIP("lb-1", "10.0.0.1:80", "10.0.0.3:8080"))
 	require.NoError(t, controller.updateLoadBalancerIPPortMapping("lb-1", "10.0.0.1:80", map[string]string{"10.0.0.3": "lsp-new"}))
 	require.NoError(t, controller.deleteLoadBalancerIPPortMapping("lb-1", "10.0.0.1:80"))
+	transactionCount := len(backend.transactionOperationCounts)
 	require.NoError(t, controller.deleteLoadBalancerHealthCheck("lb-1", "lbhc-1"))
+	require.Equal(t, []int{2}, backend.transactionOperationCounts[transactionCount:])
 	require.NoError(t, controller.deleteLoadBalancerVIP("lb-1", "10.0.0.1:80", true))
+	require.GreaterOrEqual(t, backend.deleteCalls, 1)
 
 	healthCheckBackend := newTableBackend(&ovnnb.LoadBalancer{UUID: "lb-2", Name: "lb-2"})
 	healthCheckController := &Controller{OVNNbTables: compat.NewDatabase(healthCheckBackend, time.Second, compat.RetryPolicy{})}
@@ -583,11 +586,13 @@ func TestControllerTableProviderACLHelpers(t *testing.T) {
 }
 
 type tableBackend struct {
-	rows          map[reflect.Type][]any
-	createCalls   int
-	mutateCalls   int
-	updateCalls   int
-	transactCalls int
+	rows                       map[reflect.Type][]any
+	createCalls                int
+	mutateCalls                int
+	updateCalls                int
+	deleteCalls                int
+	transactCalls              int
+	transactionOperationCounts []int
 }
 
 func newTableBackend(rows ...any) *tableBackend {
@@ -639,8 +644,15 @@ func (b *tableBackend) WhereCacheByUUIDs(predicate any, _ ...string) compat.Cond
 	return b.WhereCache(predicate)
 }
 
-func (b *tableBackend) Where(...model.Model) compat.ConditionalAPI {
-	return tableConditional{backend: b}
+func (b *tableBackend) Where(selectors ...model.Model) compat.ConditionalAPI {
+	deleteOperation := false
+	for _, selector := range selectors {
+		if reflect.TypeOf(selector) == reflect.TypeFor[*ovnnb.LoadBalancerHealthCheck]() {
+			deleteOperation = true
+			break
+		}
+	}
+	return tableConditional{backend: b, deleteOperation: deleteOperation}
 }
 
 func (b *tableBackend) WhereAny(model.Model, ...model.Condition) compat.ConditionalAPI {
@@ -662,6 +674,7 @@ func (b *tableBackend) Create(...model.Model) ([]ovsdb.Operation, error) {
 
 func (b *tableBackend) Transact(_ context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
 	b.transactCalls++
+	b.transactionOperationCounts = append(b.transactionOperationCounts, len(operations))
 	return make([]ovsdb.OperationResult, len(operations)), nil
 }
 
@@ -686,8 +699,9 @@ type tableCache struct{}
 func (tableCache) AddEventHandler(compat.EventHandler) {}
 
 type tableConditional struct {
-	backend   *tableBackend
-	predicate any
+	backend         *tableBackend
+	predicate       any
+	deleteOperation bool
 }
 
 func (c tableConditional) List(_ context.Context, result any) error {
@@ -733,7 +747,13 @@ func (c tableConditional) Update(model.Model, ...any) ([]ovsdb.Operation, error)
 	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}, nil
 }
 
-func (tableConditional) Delete() ([]ovsdb.Operation, error) { return nil, nil }
+func (c tableConditional) Delete() ([]ovsdb.Operation, error) {
+	c.backend.deleteCalls++
+	if !c.deleteOperation {
+		return nil, nil
+	}
+	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}, nil
+}
 
 func (tableConditional) Wait(ovsdb.WaitCondition, *int, model.Model, ...any) ([]ovsdb.Operation, error) {
 	return nil, nil
