@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovn-vpc-ipsec-config
+  namespace: kube-system
+data:
+  image: docker.io/kubeovn/vpc-ipsec-gateway:v1.17.0
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovn-vpc-ipsec-gw-config
+  namespace: kube-system
+data:
+  enable-vpc-ipsec-gw: "false"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: example-ipsec-psk
+  namespace: kube-system
+type: Opaque
+stringData:
+  psk: "change-me"
+---
+apiVersion: kubeovn.io/v1
+kind: VpcIPsecGateway
+metadata:
+  name: example-ipsec-gw
+spec:
+  vpc: ovn-cluster
+  subnet: ovn-default
+  externalSubnet: ovn-vpc-external-network
+  lanIp: 10.16.0.250
+  remoteEndpoint: 203.0.113.10
+  remoteCIDRs:
+    - 10.200.0.0/16
+  localCIDRs:
+    - 10.16.0.0/16
+  pskSecretRef:
+    name: example-ipsec-psk
+    namespace: kube-system
+    key: psk

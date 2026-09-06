@@ -2,7 +2,7 @@
 
 COMMIT = git-$(shell git rev-parse --short HEAD)
 DATE = $(shell date +"%Y-%m-%d_%H:%M:%S")
-IMAGE_BUILD_TARGETS = build-kube-ovn build-kube-ovn-dpdk build-dev build-debug base-amd64 base-amd64-dpdk base-arm64 build-kit image-kube-ovn image-kube-ovn-arm64 image-kube-ovn-debug image-kube-ovn-dpdk image-vpc-nat-gateway image-test release release-arm release-arm-debug push-release local-dev
+IMAGE_BUILD_TARGETS = build-kube-ovn build-kube-ovn-dpdk build-dev build-debug base-amd64 base-amd64-dpdk base-arm64 build-kit image-kube-ovn image-kube-ovn-arm64 image-kube-ovn-debug image-kube-ovn-dpdk image-vpc-nat-gateway image-vpc-ipsec-gateway image-test release release-arm release-arm-debug push-release local-dev
 ifneq ($(filter $(IMAGE_BUILD_TARGETS),$(MAKECMDGOALS)),)
 IMAGE_REVISION ?= $(if $(GITHUB_SHA),$(GITHUB_SHA),$(shell git rev-parse HEAD))
 IMAGE_REF_NAME ?= $(if $(GITHUB_HEAD_REF),$(GITHUB_HEAD_REF),$(if $(GITHUB_REF_NAME),$(GITHUB_REF_NAME),$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD)))
@@ -113,16 +113,21 @@ image-kube-ovn-dpdk: gen-crd build-go
 image-vpc-nat-gateway:
 	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
 
+.PHONY: image-vpc-ipsec-gateway
+image-vpc-ipsec-gateway:
+	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 -t $(REGISTRY)/vpc-ipsec-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcipsecgateway/Dockerfile dist/images/vpcipsecgateway
+
 .PHONY: image-test
 image-test: build-go
 	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 -t $(REGISTRY)/test:$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile.test dist/images/
 
 .PHONY: release
-release: lint image-kube-ovn image-vpc-nat-gateway
+release: lint image-kube-ovn image-vpc-nat-gateway image-vpc-ipsec-gateway
 
 .PHONY: release-arm
 release-arm: release-arm-debug image-kube-ovn-arm64
 	docker buildx build $(IMAGE_LABELS) --platform linux/arm64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway
+	docker buildx build $(IMAGE_LABELS) --platform linux/arm64 -t $(REGISTRY)/vpc-ipsec-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcipsecgateway/Dockerfile dist/images/vpcipsecgateway
 
 .PHONY: release-arm-debug
 release-arm-debug:
@@ -149,8 +154,12 @@ tar-kube-ovn-dpdk:
 tar-vpc-nat-gateway:
 	docker save $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o vpc-nat-gateway.tar
 
+.PHONY: tar-vpc-ipsec-gateway
+tar-vpc-ipsec-gateway:
+	docker save $(REGISTRY)/vpc-ipsec-gateway:$(RELEASE_TAG) -o vpc-ipsec-gateway.tar
+
 .PHONY: tar
-tar: tar-kube-ovn tar-vpc-nat-gateway
+tar: tar-kube-ovn tar-vpc-nat-gateway tar-vpc-ipsec-gateway
 
 .PHONY: base-tar-amd64
 base-tar-amd64:
