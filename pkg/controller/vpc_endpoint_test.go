@@ -17,7 +17,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
-	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
@@ -713,9 +712,6 @@ func TestVpcEndpointProviderMappings(t *testing.T) {
 		}},
 		Endpoints: []discoveryv1.Endpoint{{
 			Addresses: []string{"10.210.0.10"},
-			Conditions: discoveryv1.EndpointConditions{
-				Ready: ptr.To(true),
-			},
 		}},
 	}
 	factory := informers.NewSharedInformerFactory(fake.NewSimpleClientset(), 0)
@@ -749,9 +745,10 @@ func TestEnsureVpcEndpointServiceStitcher(t *testing.T) {
 	vpcNatImage = "img:test"
 
 	eps := &kubeovnv1.VpcEndpointService{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kubeovn.io/v1", Kind: "VpcEndpointService"},
-		Name:     "db",
-		Spec:     kubeovnv1.VpcEndpointServiceSpec{Vpc: "provider", Namespace: "ns-a", Service: "svc-a"},
+		APIVersion: "kubeovn.io/v1",
+		Kind:       "VpcEndpointService",
+		Name:       "db",
+		Spec:       kubeovnv1.VpcEndpointServiceSpec{Vpc: "provider", Namespace: "ns-a", Service: "svc-a"},
 	}
 	subnet := &kubeovnv1.Subnet{Name: "provider-subnet"}
 	kube := fake.NewSimpleClientset()
@@ -777,9 +774,10 @@ func TestEnsureVpcEndpointStitcher(t *testing.T) {
 	vpcNatImage = "img:test"
 
 	ep := &kubeovnv1.VpcEndpoint{
-		TypeMeta: metav1.TypeMeta{APIVersion: "kubeovn.io/v1", Kind: "VpcEndpoint"},
-		Name:     "client",
-		Spec:     kubeovnv1.VpcEndpointSpec{Vpc: "consumer", Subnet: "consumer-subnet", EndpointService: "db"},
+		APIVersion: "kubeovn.io/v1",
+		Kind:       "VpcEndpoint",
+		Name:       "client",
+		Spec:       kubeovnv1.VpcEndpointSpec{Vpc: "consumer", Subnet: "consumer-subnet", EndpointService: "db"},
 	}
 	subnet := &kubeovnv1.Subnet{Name: "consumer-subnet"}
 	vpc := &kubeovnv1.Vpc{
