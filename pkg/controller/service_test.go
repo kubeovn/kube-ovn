@@ -6,8 +6,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -187,6 +189,47 @@ func TestHandleDeleteServiceLegacyRuleAnnotationSkipsFixedLoadBalancer(t *testin
 		Svc:      svc,
 	})
 	require.NoError(t, err)
+}
+
+func TestHandleDeleteServiceSkipsMissingFixedLoadBalancer(t *testing.T) {
+	svc := &v1.Service{
+		Name:      "lb-svc",
+		Namespace: metav1.NamespaceDefault,
+		Spec: v1.ServiceSpec{
+			Type:      v1.ServiceTypeLoadBalancer,
+			ClusterIP: "10.96.0.10",
+			Ports:     []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: 80}},
+		},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)
+	fakeController.fakeController.config.EnableLb = true
+	fakeController.fakeController.config.EnableLbSvc = true
+
+	_, err = fakeController.fakeController.config.KubeClient.AppsV1().Deployments(svc.Namespace).Create(
+		context.Background(),
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: genLbSvcDpName(svc.Name), Namespace: svc.Namespace}},
+		metav1.CreateOptions{},
+	)
+	require.NoError(t, err)
+
+	vpcLB := fakeController.fakeController.GenVpcLoadBalancer("vpc1")
+	fakeController.mockOvnClient.EXPECT().LoadBalancerExists(vpcLB.TCPLoadBalancer).Return(false, nil)
+	fakeController.mockOvnClient.EXPECT().LoadBalancerExists(vpcLB.TCPSessLoadBalancer).Return(false, nil)
+
+	err = fakeController.fakeController.handleDeleteService(&vpcService{
+		Protocol: v1.ProtocolTCP,
+		Vpc:      "vpc1",
+		Vips:     []string{"10.96.0.10:80"},
+		Svc:      svc,
+	})
+	require.NoError(t, err)
+	_, err = fakeController.fakeController.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(
+		context.Background(), genLbSvcDpName(svc.Name), metav1.GetOptions{},
+	)
+	require.Error(t, err)
+	require.True(t, k8serrors.IsNotFound(err))
 }
 
 func Test_enqueueServiceGatedByEnableLb(t *testing.T) {

@@ -46,7 +46,7 @@ K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route tr
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint on the same node or fall back to same zone when using PreferSameNode$$"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint on the same node when using PreferSameNode and fall back when the endpoint becomes unavailable$$"
 K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*session affinity timeout work for service with type clusterIP"
-K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*client IP based session affinity"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Networking.*Granular Checks: Services.*client IP based session affinity"
 endif
 
 ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)

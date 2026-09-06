@@ -115,8 +115,10 @@ for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io; do
   done
 done
 
-# delete CRD
-kubectl delete --ignore-not-found crd \
+# Delete CRDs without waiting for every custom resource to finish terminating.
+# The controller is already stopped, so a synchronous wait can block on a
+# remaining resource finalizer and make the whole CI job time out.
+kubectl delete --ignore-not-found --wait=false crd \
   security-groups.kubeovn.io \
   ippools.kubeovn.io \
   vpc-nat-gateways.kubeovn.io \

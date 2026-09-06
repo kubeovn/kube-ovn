@@ -190,6 +190,7 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		vpcLB             [2]string
 		vpcLbConfig       = c.GenVpcLoadBalancer(service.Vpc)
 		ignoreHealthCheck = true
+		existingVpcLBs    = make(map[string]bool, 2)
 	)
 
 	switch service.Protocol {
@@ -219,6 +220,19 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		}
 
 		for _, lb := range vpcLB {
+			exists, checked := existingVpcLBs[lb]
+			if !checked {
+				exists, err = c.OVNNbClient.LoadBalancerExists(lb)
+				if err != nil {
+					klog.Errorf("failed to check load balancer %s before deleting vip %s: %v", lb, vip, err)
+					return err
+				}
+				existingVpcLBs[lb] = exists
+			}
+			if !exists {
+				continue
+			}
+
 			if c.config.EnableOVNLBPreferLocal {
 				if err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
 					klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
