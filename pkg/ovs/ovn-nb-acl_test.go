@@ -1196,6 +1196,44 @@ func (suite *OvnClientTestSuite) testUpdateSgACL() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testUpdateVpcEndpointServiceACLs() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-vpc-endpoint-acl-ls"
+	epsName := "db"
+	transitVIP := "100.65.1.20"
+	allowedLSP := "vpc-endpoint-transit-consumer"
+
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(lsName))
+
+	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, nil))
+	acls, err := nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
+	require.NoError(t, err)
+	require.Empty(t, acls)
+
+	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, []string{allowedLSP}))
+	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
+	require.NoError(t, err)
+	require.Len(t, acls, 1)
+	require.Equal(t, ovnnb.ACLDirectionFromLport, acls[0].Direction)
+	require.Equal(t, ovnnb.ACLActionDrop, acls[0].Action)
+	require.Equal(t, epsName, acls[0].ExternalIDs[util.VpcEndpointServiceACLExternalID])
+	require.Equal(t, fmt.Sprintf(`ip4.dst == %s && inport != "%s"`, transitVIP, allowedLSP), acls[0].Match)
+
+	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, "", []string{allowedLSP}))
+	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
+	require.NoError(t, err)
+	require.Empty(t, acls)
+
+	require.NoError(t, nbClient.UpdateVpcEndpointServiceACLs(lsName, epsName, "fd00:65::20", []string{allowedLSP}))
+	acls, err = nbClient.ListAcls("", map[string]string{util.VpcEndpointServiceACLExternalID: epsName})
+	require.NoError(t, err)
+	require.Len(t, acls, 1)
+	require.Equal(t, fmt.Sprintf(`ip6.dst == fd00:65::20 && inport != "%s"`, allowedLSP), acls[0].Match)
+}
+
 func (suite *OvnClientTestSuite) testUpdateLogicalSwitchACL() {
 	t := suite.T()
 	t.Parallel()

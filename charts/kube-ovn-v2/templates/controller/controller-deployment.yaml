@@ -117,6 +117,12 @@ spec:
           - --default-exclude-ips={{- .Values.networking.excludeIps }}
           - --cluster-router={{ .Values.networking.defaultVpcName }}
           - --node-switch={{ .Values.networking.join.subnetName }}
+          {{- if .Values.networking.vpcEndpointTransit.switchName }}
+          - --vpc-endpoint-transit-switch={{ .Values.networking.vpcEndpointTransit.switchName }}
+          {{- end }}
+          {{- if .Values.networking.vpcEndpointTransit.cidr }}
+          - --vpc-endpoint-transit-cidr={{ .Values.networking.vpcEndpointTransit.cidr }}
+          {{- end }}
           - --node-switch-cidr=
           {{- if eq .Values.networking.stack "Dual" -}}
           {{ .Values.networking.join.cidr.v4 }},{{ .Values.networking.join.cidr.v6 }}

@@ -134,6 +134,8 @@ POD_CIDR="10.16.0.0/16"                     # Do NOT overlap with NODE/SVC/JOIN 
 POD_GATEWAY="10.16.0.1"
 SVC_CIDR="10.96.0.0/12"                     # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"                   # Do NOT overlap with NODE/POD/SVC CIDR
+VPC_ENDPOINT_TRANSIT_SWITCH="vpc-endpoint-transit"
+VPC_ENDPOINT_TRANSIT_CIDR="100.65.0.0/16"   # Do NOT overlap with NODE/POD/SVC/JOIN CIDR
 PINGER_EXTERNAL_ADDRESS="1.1.1.1"           # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="kube-ovn.io."         # Pinger check external domain probe
 SVC_YAML_IPFAMILYPOLICY=""
@@ -142,6 +144,7 @@ if [ "$IPV6" = "true" ]; then
   POD_GATEWAY="fd00:10:16::1"
   SVC_CIDR="fd00:10:96::/108"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/112"             # Do NOT overlap with NODE/POD/SVC CIDR
+  VPC_ENDPOINT_TRANSIT_CIDR="fd00:100:65::/112"
   PINGER_EXTERNAL_ADDRESS="2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN="google.com."
 fi
@@ -150,6 +153,7 @@ if [ "$DUAL_STACK" = "true" ]; then
   POD_GATEWAY="10.16.0.1,fd00:10:16::1"
   SVC_CIDR="10.96.0.0/12,fd00:10:96::/108"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="100.64.0.0/16,fd00:100:64::/112"            # Do NOT overlap with NODE/POD/SVC CIDR
+  VPC_ENDPOINT_TRANSIT_CIDR="100.65.0.0/16,fd00:100:65::/112"
   PINGER_EXTERNAL_ADDRESS="1.1.1.1,2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN="google.com."
   SVC_YAML_IPFAMILYPOLICY="ipFamilyPolicy: PreferDualStack"
@@ -5033,6 +5037,303 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
+  name: vpc-endpoint-services.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    kind: VpcEndpointService
+    listKind: VpcEndpointServiceList
+    plural: vpc-endpoint-services
+    shortNames:
+    - ves
+    singular: vpc-endpoint-service
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.vpc
+      name: Vpc
+      type: string
+    - jsonPath: .spec.service
+      name: Service
+      type: string
+    - jsonPath: .spec.namespace
+      name: Namespace
+      type: string
+    - jsonPath: .status.transitVIP
+      name: TransitVIP
+      type: string
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          VpcEndpointService publishes a Kubernetes Service from a provider VPC onto a
+          unique transit address so consumer VPCs with overlapping CIDRs can reach it.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              allowedVpcs:
+                description: Consumer VPCs allowed to attach. Empty means any VPC
+                  may consume the service.
+                items:
+                  type: string
+                type: array
+              namespace:
+                description: Namespace of the provider Kubernetes Service.
+                type: string
+                x-kubernetes-validations:
+                - message: namespace is immutable
+                  rule: self == oldSelf
+              service:
+                description: Name of the provider Kubernetes Service.
+                type: string
+                x-kubernetes-validations:
+                - message: service is immutable
+                  rule: self == oldSelf
+              vpc:
+                description: Provider VPC that owns the backend Service.
+                type: string
+                x-kubernetes-validations:
+                - message: vpc is immutable
+                  rule: self == oldSelf
+            type: object
+          status:
+            properties:
+              conditions:
+                items:
+                  description: Condition describes the state of an object at a certain
+                    point.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another.
+                      format: date-time
+                      type: string
+                    lastUpdateTime:
+                      description: Last time the condition was probed
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9,
+                        the condition is out of date with respect to the current state of the instance.
+                      format: int64
+                      type: integer
+                    reason:
+                      description: The reason for the condition's last transition.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition.
+                      type: string
+                  type: object
+                type: array
+              mac:
+                description: MAC used by the transit logical switch port that answers
+                  ARP for TransitVIP.
+                type: string
+              ports:
+                description: Human-readable summary of published service ports.
+                type: string
+              ready:
+                description: Indicates whether the endpoint service is ready to be
+                  consumed.
+                type: boolean
+              transitVIP:
+                description: Unique IP allocated from the transit subnet and used
+                  as the provider OVN LB VIP.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: vpc-endpoints.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    kind: VpcEndpoint
+    listKind: VpcEndpointList
+    plural: vpc-endpoints
+    shortNames:
+    - vep
+    singular: vpc-endpoint
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.vpc
+      name: Vpc
+      type: string
+    - jsonPath: .spec.subnet
+      name: Subnet
+      type: string
+    - jsonPath: .spec.endpointService
+      name: EndpointService
+      type: string
+    - jsonPath: .status.localVIP
+      name: LocalVIP
+      type: string
+    - jsonPath: .status.transitVIP
+      name: TransitVIP
+      type: string
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          VpcEndpoint allocates a local VIP in a consumer subnet and DNATs it to a
+          VpcEndpointService transit VIP, with SNAT so overlapping tenant CIDRs stay isolated.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              endpointService:
+                description: Name of the cluster-scoped VpcEndpointService to consume.
+                type: string
+                x-kubernetes-validations:
+                - message: endpointService is immutable
+                  rule: self == oldSelf
+              ip:
+                description: Optional static IPv4 address for the local VIP. Allocated
+                  from the subnet when empty.
+                type: string
+                x-kubernetes-validations:
+                - message: ip is immutable
+                  rule: self == oldSelf
+              subnet:
+                description: Consumer subnet used to allocate the local VIP.
+                type: string
+                x-kubernetes-validations:
+                - message: subnet is immutable
+                  rule: self == oldSelf
+              vpc:
+                description: Consumer VPC.
+                type: string
+                x-kubernetes-validations:
+                - message: vpc is immutable
+                  rule: self == oldSelf
+            type: object
+          status:
+            properties:
+              conditions:
+                items:
+                  description: Condition describes the state of an object at a certain
+                    point.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another.
+                      format: date-time
+                      type: string
+                    lastUpdateTime:
+                      description: Last time the condition was probed
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9,
+                        the condition is out of date with respect to the current state of the instance.
+                      format: int64
+                      type: integer
+                    reason:
+                      description: The reason for the condition's last transition.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition.
+                      type: string
+                  type: object
+                type: array
+              localVIP:
+                description: IP in the consumer subnet that applications dial.
+                type: string
+              ready:
+                description: Indicates whether the endpoint is ready.
+                type: boolean
+              snatIP:
+                description: Shared SNAT IP of the consumer VPC on the transit subnet.
+                type: string
+              transitVIP:
+                description: Provider transit VIP this endpoint maps to.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: vpc-nat-gateways.kubeovn.io
 spec:
   group: kubeovn.io
@@ -7606,6 +7907,10 @@ rules:
       - vpc-nat-gateways/status
       - vpc-egress-gateways
       - vpc-egress-gateways/status
+      - vpc-endpoint-services
+      - vpc-endpoint-services/status
+      - vpc-endpoints
+      - vpc-endpoints/status
       - subnets
       - subnets/status
       - ippools
@@ -8888,6 +9193,8 @@ spec:
           - --default-u2o-interconnection=$U2O_INTERCONNECTION
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
+          - --vpc-endpoint-transit-switch=$VPC_ENDPOINT_TRANSIT_SWITCH
+          - --vpc-endpoint-transit-cidr=$VPC_ENDPOINT_TRANSIT_CIDR
           - --service-cluster-ip-range=$SVC_CIDR
           - --network-type=$NETWORK_TYPE
           - --default-interface-name=$VLAN_INTERFACE_NAME

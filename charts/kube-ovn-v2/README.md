@@ -2019,6 +2019,24 @@ false
 			<td>Name of the join subnet once it gets generated in the cluster.</td>
 		</tr>
 		<tr>
+			<td>networking.vpcEndpointTransit.switchName</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Name of the transit logical switch. Empty means use the controller default.</td>
+		</tr>
+		<tr>
+			<td>networking.vpcEndpointTransit.cidr</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>CIDR of the transit switch. Must not overlap join/pod/service CIDRs. Empty means use the controller default (100.65.0.0/16; join uses 100.64.0.0/16).</td>
+		</tr>
+		<tr>
 			<td>networking.networkType</td>
 			<td>string</td>
 			<td><pre lang="json">

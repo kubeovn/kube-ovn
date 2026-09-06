@@ -13,5 +13,6 @@ RUN set -ex \
     conntrack-tools
 
 WORKDIR /kube-ovn
-COPY nat-gateway.sh /kube-ovn/
-COPY lb-svc.sh /kube-ovn/
+# Keep pkg/controller/vpc-endpoint-stitcher.sh in sync (controller embeds it into the ConfigMap).
+COPY nat-gateway.sh lb-svc.sh vpc-endpoint-stitcher.sh /kube-ovn/
+RUN chmod +x /kube-ovn/nat-gateway.sh /kube-ovn/lb-svc.sh /kube-ovn/vpc-endpoint-stitcher.sh

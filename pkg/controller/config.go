@@ -189,6 +189,10 @@ type Configuration struct {
 
 	// Skip conntrack for specific destination IP CIDRs
 	SkipConntrackDstCidrs string
+
+	// Transit logical switch for VPC endpoint services (PrivateLink-style).
+	VpcEndpointTransitSwitch string
+	VpcEndpointTransitCIDR   string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -296,6 +300,9 @@ func ParseFlags() (*Configuration, error) {
 		argNonPrimaryCNI = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, Kube-OVN will only manage the network for network attachment definitions")
 
 		argSkipConntrackDstCidrs = pflag.String("skip-conntrack-dst-cidrs", "", "Comma-separated list of destination IP CIDRs that should skip conntrack processing")
+
+		argVpcEndpointTransitSwitch = pflag.String("vpc-endpoint-transit-switch", util.DefaultVpcEndpointTransitSwitch, "Logical switch used as the unique transit fabric for VPC endpoint services")
+		argVpcEndpointTransitCIDR   = pflag.String("vpc-endpoint-transit-cidr", util.DefaultVpcEndpointTransitCIDR, "CIDR of the VPC endpoint transit switch. Must not overlap join/pod/service CIDRs. Defaults to 100.65.0.0/16 because join uses 100.64.0.0/16")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -403,6 +410,8 @@ func ParseFlags() (*Configuration, error) {
 		EnableNonPrimaryCNI:         *argNonPrimaryCNI,
 		NetworkPolicyEnforcement:    *argNPEnforcement,
 		SkipConntrackDstCidrs:       *argSkipConntrackDstCidrs,
+		VpcEndpointTransitSwitch:    *argVpcEndpointTransitSwitch,
+		VpcEndpointTransitCIDR:      *argVpcEndpointTransitCIDR,
 	}
 	if err := config.LeaderElection.validate(); err != nil {
 		return nil, err
@@ -454,7 +463,7 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
-	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}); err != nil {
+	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange, config.VpcEndpointTransitCIDR}); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("check system cidr failed, %w", err)
 	}

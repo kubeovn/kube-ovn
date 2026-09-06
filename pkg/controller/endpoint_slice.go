@@ -51,6 +51,7 @@ func (c *Controller) enqueueAddEndpointSlice(obj any) {
 	if key != "" {
 		klog.V(3).Infof("enqueue add endpointSlice %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
+		c.enqueueVpcEndpointServiceFromServiceKey(key)
 	}
 }
 
@@ -82,6 +83,36 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 	if key != "" {
 		klog.V(3).Infof("enqueue update endpointSlice for service %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
+		c.enqueueVpcEndpointServiceFromServiceKey(key)
+	}
+}
+
+func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
+	if !c.config.EnableLb {
+		return
+	}
+
+	var endpointSlice *discoveryv1.EndpointSlice
+	switch t := obj.(type) {
+	case *discoveryv1.EndpointSlice:
+		endpointSlice = t
+	case cache.DeletedFinalStateUnknown:
+		s, ok := t.Obj.(*discoveryv1.EndpointSlice)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+		endpointSlice = s
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	key := findServiceKey(endpointSlice)
+	if key != "" {
+		klog.V(3).Infof("enqueue delete endpointSlice for service %s", key)
+		c.addOrUpdateEndpointSliceQueue.Add(key)
+		c.enqueueVpcEndpointServiceFromServiceKey(key)
 	}
 }
 
@@ -727,10 +758,11 @@ func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSl
 	for _, endpointSlice := range endpointSlices {
 		var targetPort int32
 		for _, port := range endpointSlice.Ports {
-			if port.Name != nil && *port.Name == servicePort.Name {
-				targetPort = *port.Port
-				break
+			if !endpointSlicePortMatchesServicePort(port, servicePort) {
+				continue
 			}
+			targetPort = *port.Port
+			break
 		}
 		if targetPort == 0 {
 			continue
@@ -750,6 +782,23 @@ func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSl
 	}
 
 	return backends
+}
+
+// endpointSlicePortMatchesServicePort matches EndpointSlice ports to a Service
+// port by protocol and name. Unnamed Service ports (empty name) match
+// EndpointSlice ports whose Name is nil or empty; Port must be non-nil.
+func endpointSlicePortMatchesServicePort(port discoveryv1.EndpointPort, servicePort v1.ServicePort) bool {
+	if port.Port == nil {
+		return false
+	}
+	if port.Protocol != nil && *port.Protocol != servicePort.Protocol {
+		return false
+	}
+	portName := ""
+	if port.Name != nil {
+		portName = *port.Name
+	}
+	return portName == servicePort.Name
 }
 
 // endpointReady returns whether an endpoint can receive traffic

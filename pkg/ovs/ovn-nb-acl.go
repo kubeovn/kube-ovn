@@ -1058,6 +1058,56 @@ func (c *OVNNbClient) SetNetPolACLLog(pgName string, logEnable, isIngress bool) 
 	return nil
 }
 
+// UpdateVpcEndpointServiceACLs installs from-lport ACLs on the transit switch so
+// only allowed consumer ports may send traffic to the given transit VIP. When
+// allowedLSPNames is empty, existing ACLs for this service are cleared (open access).
+//
+// Only an exclusive drop is installed (dst == VIP && inport != allowed...). A
+// catch-all drop on dst == VIP would also match CT-established LB traffic and
+// break the datapath; allow-related alone does not reliably override that.
+func (c *OVNNbClient) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP string, allowedLSPNames []string) error {
+	extIDs := map[string]string{util.VpcEndpointServiceACLExternalID: epsName}
+	if err := c.DeleteAcls(lsName, LogicalSwitchKey, "", extIDs); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("clear vpc endpoint service %s acls: %w", epsName, err)
+	}
+	if len(allowedLSPNames) == 0 || transitVIP == "" {
+		return nil
+	}
+
+	ipSuffix := "ip4"
+	if util.CheckProtocol(transitVIP) == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
+
+	options := func(acl *ovnnb.ACL) {
+		if acl.ExternalIDs == nil {
+			acl.ExternalIDs = make(map[string]string, 2)
+		}
+		acl.ExternalIDs[util.VpcEndpointServiceACLExternalID] = epsName
+		acl.ExternalIDs["vendor"] = util.CniTypeName
+	}
+
+	dropMatch := fmt.Sprintf("%s.dst == %s", ipSuffix, transitVIP)
+	var b strings.Builder
+	b.WriteString(dropMatch)
+	for _, lspName := range allowedLSPNames {
+		fmt.Fprintf(&b, ` && inport != "%s"`, lspName)
+	}
+	dropMatch = b.String()
+	dropACL, err := c.newACL(lsName, ovnnb.ACLDirectionFromLport, util.DefaultDropPriority, dropMatch, ovnnb.ACLActionDrop, util.NetpolACLTier, options)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("new drop acl for vpc endpoint service %s: %w", epsName, err)
+	}
+
+	if err := c.CreateAcls(lsName, LogicalSwitchKey, dropACL); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("create vpc endpoint service %s acls: %w", epsName, err)
+	}
+	return nil
+}
+
 // CreateAcls create several acl once
 // parentType is 'ls' or 'pg'
 func (c *OVNNbClient) CreateAcls(parentName, parentType string, acls ...*ovnnb.ACL) error {
