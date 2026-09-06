@@ -299,32 +299,28 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	return finalRoutes, nil
 }
 
-func waitForLocalnetPatchPort(subnetName string, providers ...compat.TableProvider) error {
+func waitForLocalnetPatchPort(subnetName string, provider compat.TableProvider) error {
 	patchPort := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
 	klog.Infof("waiting for localnet patch port %s to be ready", patchPort)
-	if len(providers) != 0 && providers[0] != nil {
-		deadline := time.Now().Add(30 * time.Second)
-		for time.Now().Before(deadline) {
-			var rows []vswitch.Interface
-			err := providers[0].Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
-				return row.Name == patchPort
-			}, &rows)
-			if err != nil {
-				return fmt.Errorf("failed to find localnet patch port %s: %w", patchPort, err)
-			}
-			if len(rows) != 0 {
-				klog.Infof("localnet patch port %s is ready", patchPort)
-				return nil
-			}
-			time.Sleep(500 * time.Millisecond)
+	if provider == nil {
+		return errors.New("vswitch table provider is nil")
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		var rows []vswitch.Interface
+		err := provider.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+			return row.Name == patchPort
+		}, &rows)
+		if err != nil {
+			return fmt.Errorf("failed to find localnet patch port %s: %w", patchPort, err)
 		}
-		return fmt.Errorf("failed waiting for localnet patch port %s: timed out", patchPort)
+		if len(rows) != 0 {
+			klog.Infof("localnet patch port %s is ready", patchPort)
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
-	if _, err := ovs.Exec("wait-until", "interface", patchPort, "name="+patchPort); err != nil {
-		return fmt.Errorf("failed waiting for localnet patch port %s: %w", patchPort, err)
-	}
-	klog.Infof("localnet patch port %s is ready", patchPort)
-	return nil
+	return fmt.Errorf("failed waiting for localnet patch port %s: timed out", patchPort)
 }
 
 func (csh cniServerHandler) releaseVf(podName, podNamespace, podNetns, ifName, nicType, deviceID string) error {
@@ -415,7 +411,7 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 		}
 	}
 	// Remove ovs port
-	if err := deleteVswitchPort(csh.Config.VswitchTables, "br-int", nicName); err != nil {
+	if err := deleteVswitchPort(csh.Config.VswitchTables, nicName); err != nil {
 		return fmt.Errorf("failed to delete OVS port: %w", err)
 	}
 
@@ -462,7 +458,7 @@ func (csh cniServerHandler) deleteNic(podName, podNamespace, containerID, netns,
 }
 
 func (csh cniServerHandler) rollbackOvsPort(hostNicName string) (err error) {
-	if err = deleteVswitchPort(csh.Config.VswitchTables, "br-int", hostNicName); err != nil {
+	if err = deleteVswitchPort(csh.Config.VswitchTables, hostNicName); err != nil {
 		klog.Warningf("failed to delete down OVS port: %v", err)
 	}
 	klog.Infof("rollback OVS port success %s", hostNicName)
@@ -749,11 +745,10 @@ func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxR
 	return nil
 }
 
-func configureNodeNic(cs kubernetes.Interface, nodeName, portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int, enableNonPrimaryCNI bool) error {
-	return configureNodeNicWithProvider(cs, nodeName, portName, ip, gw, joinCIDR, macAddr, mtu, enableNonPrimaryCNI, nil)
-}
-
 func configureNodeNicWithProvider(cs kubernetes.Interface, nodeName, portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int, enableNonPrimaryCNI bool, provider compat.TableProvider) error {
+	if provider == nil {
+		return errors.New("vswitch table provider is nil")
+	}
 	ipStr := util.GetIPWithoutMask(ip)
 	iface := &vswitch.Interface{
 		Name: util.NodeNic,
@@ -1046,10 +1041,9 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 	return err
 }
 
-func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS, providers ...compat.TableProvider) error {
-	var provider compat.TableProvider
-	if len(providers) != 0 {
-		provider = providers[0]
+func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS, provider compat.TableProvider) error {
+	if provider == nil {
+		return errors.New("vswitch table provider is nil")
 	}
 	ipStr := util.GetIPWithoutMask(ip)
 	iface := &vswitch.Interface{
@@ -1081,7 +1075,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
 	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, true, false, false, providers...); err != nil {
+		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, true, false, false, provider); err != nil {
 			klog.Errorf("failed to configure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
 		}
@@ -1147,7 +1141,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 }
 
 func removeNodeGwNic(provider compat.TableProvider) error {
-	if err := deleteVswitchPort(provider, "br-int", util.NodeGwNic); err != nil {
+	if err := deleteVswitchPort(provider, util.NodeGwNic); err != nil {
 		return fmt.Errorf("failed to remove ecmp external port %s from OVS bridge %s: %w", "br-int", util.NodeGwNic, err)
 	}
 	klog.Infof("removed node external gw nic %q", util.NodeGwNic)
@@ -1355,7 +1349,7 @@ func macToLinkLocalIPv6(mac net.HardwareAddr) (net.IP, error) {
 	return linkLocalIPv6, nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, ipv6DAD, setUfoOff, ipv6LinkLocalOn bool, providers ...compat.TableProvider) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, ipv6DAD, setUfoOff, ipv6LinkLocalOn bool, provider compat.TableProvider) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
@@ -1369,22 +1363,21 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 
 	if mtu > 0 {
 		if nodeLink.Type() == "openvswitch" {
-			if len(providers) != 0 && providers[0] != nil {
-				var interfaces []vswitch.Interface
-				err = providers[0].Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
-					return row.Name == link
-				}, &interfaces)
-				if err == nil {
-					if len(interfaces) == 0 {
-						err = fmt.Errorf("interface %q not found", link)
-					} else {
-						value := mtu
-						desired := &vswitch.Interface{UUID: interfaces[0].UUID, MTURequest: &value}
-						err = providers[0].Table(&vswitch.Interface{}).Update(context.Background(), "daemon-interface-mtu-update", &interfaces[0], desired, &desired.MTURequest)
-					}
+			if provider == nil {
+				return errors.New("vswitch table provider is nil")
+			}
+			var interfaces []vswitch.Interface
+			err = provider.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+				return row.Name == link
+			}, &interfaces)
+			if err == nil {
+				if len(interfaces) == 0 {
+					err = fmt.Errorf("interface %q not found", link)
+				} else {
+					value := mtu
+					desired := &vswitch.Interface{UUID: interfaces[0].UUID, MTURequest: &value}
+					err = provider.Table(&vswitch.Interface{}).Update(context.Background(), "daemon-interface-mtu-update", &interfaces[0], desired, &desired.MTURequest)
 				}
-			} else {
-				_, err = ovs.Exec("set", "interface", link, fmt.Sprintf(`mtu_request=%d`, mtu))
 			}
 		} else {
 			err = netlink.LinkSetMTU(nodeLink, mtu)
@@ -1716,6 +1709,9 @@ func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExiste
 // Add host nic to external bridge
 // Mac address, MTU, IP addresses & routes will be copied/transferred to the external bridge
 func (c *Controller) configProviderNic(nicName, brName string, trunks []string) (int, error) {
+	if c.vswitchTables == nil {
+		return 0, errors.New("vswitch table provider is nil")
+	}
 	isUserspaceDP, err := ovs.IsUserspaceDataPath(c.vswitchTables)
 	if err != nil {
 		klog.Error(err)
@@ -1730,33 +1726,27 @@ func (c *Controller) configProviderNic(nicName, brName string, trunks []string) 
 			return 0, err
 		}
 
-		if c.vswitchTables != nil {
-			trunkIDs := make([]int, 0, len(trunks))
-			for _, trunk := range trunks {
-				trunkID, parseErr := strconv.Atoi(trunk)
-				if parseErr != nil {
-					return 0, fmt.Errorf("invalid trunk VLAN %q: %w", trunk, parseErr)
-				}
-				trunkIDs = append(trunkIDs, trunkID)
+		trunkIDs := make([]int, 0, len(trunks))
+		for _, trunk := range trunks {
+			trunkID, parseErr := strconv.Atoi(trunk)
+			if parseErr != nil {
+				return 0, fmt.Errorf("invalid trunk VLAN %q: %w", trunk, parseErr)
 			}
-			port := &vswitch.Port{
-				Name:        nicName,
-				Trunks:      trunkIDs,
-				ExternalIDs: map[string]string{ovs.ExternalIDVendor: util.CniTypeName},
-			}
-			iface := &vswitch.Interface{Name: nicName}
-			if err = ovs.EnsureVswitchPort(context.Background(), c.vswitchTables, ovs.VswitchPortConfig{
-				BridgeName:      brName,
-				Port:            port,
-				Interface:       iface,
-				PortFields:      []any{&port.Trunks, &port.ExternalIDs},
-				InterfaceFields: nil,
-			}); err != nil {
-				klog.Errorf("failed to add %s to OVS bridge %s: %v", nicName, brName, err)
-				return 0, err
-			}
-		} else if _, err = ovs.Exec(ovs.MayExist, "add-port", brName, nicName,
-			"--", "set", "port", nicName, "trunks="+strings.Join(trunks, ","), "external_ids:vendor="+util.CniTypeName); err != nil {
+			trunkIDs = append(trunkIDs, trunkID)
+		}
+		port := &vswitch.Port{
+			Name:        nicName,
+			Trunks:      trunkIDs,
+			ExternalIDs: map[string]string{ovs.ExternalIDVendor: util.CniTypeName},
+		}
+		iface := &vswitch.Interface{Name: nicName}
+		if err = ovs.EnsureVswitchPort(context.Background(), c.vswitchTables, ovs.VswitchPortConfig{
+			BridgeName:      brName,
+			Port:            port,
+			Interface:       iface,
+			PortFields:      []any{&port.Trunks, &port.ExternalIDs},
+			InterfaceFields: nil,
+		}); err != nil {
 			klog.Errorf("failed to add %s to OVS bridge %s: %v", nicName, brName, err)
 			return 0, err
 		}
@@ -1794,6 +1784,9 @@ func linkIsAlbBond(link netlink.Link) (bool, error) {
 // Remove host nic from external bridge
 // IP addresses & routes will be transferred to the host nic
 func (c *Controller) removeProviderNic(nicName, brName string) error {
+	if c.vswitchTables == nil {
+		return errors.New("vswitch table provider is nil")
+	}
 	c.nmSyncer.RemoveDevice(nicName)
 
 	nic, err := netlink.LinkByName(nicName)
@@ -1822,11 +1815,7 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 		return fmt.Errorf("failed to get routes on bridge %s: %w", brName, err)
 	}
 
-	if c.vswitchTables != nil {
-		if err := ovs.DeleteVswitchPort(context.Background(), c.vswitchTables, nicName); err != nil {
-			return fmt.Errorf("failed to remove %s from OVS bridge %s: %w", nicName, brName, err)
-		}
-	} else if _, err = ovs.Exec(ovs.IfExists, "del-port", brName, nicName); err != nil {
+	if err := ovs.DeleteVswitchPort(context.Background(), c.vswitchTables, nicName); err != nil {
 		return fmt.Errorf("failed to remove %s from OVS bridge %s: %w", nicName, brName, err)
 	}
 	klog.V(3).Infof("ovs port %s has been removed from bridge %s", nicName, brName)
@@ -2345,6 +2334,9 @@ func (c *Controller) cleanupAutoCreatedVlanInterfaces(providerName, nic string, 
 }
 
 func (c *Controller) configProviderVlanInterfaces(vlanInterfaceMap map[string]int, brName string) error {
+	if c.vswitchTables == nil {
+		return errors.New("vswitch table provider is nil")
+	}
 	for vlanIfName, vlanID := range vlanInterfaceMap {
 		internalPortName := util.VlanInternalPortName(brName, vlanID)
 		portExists, err := c.vswitchPortExists(internalPortName)
@@ -2376,37 +2368,31 @@ func (c *Controller) configProviderVlanInterfaces(vlanInterfaceMap map[string]in
 	for vlanIfName, vlanID := range vlanInterfaceMap {
 		klog.V(3).Infof("configuring VLAN interface %s (VLAN %d) on bridge %s", vlanIfName, vlanID, brName)
 
-		internalPortName, args := providerVlanPortArgs(brName, vlanIfName, vlanID)
-
-		if c.vswitchTables != nil {
-			tag := vlanID
-			port := &vswitch.Port{
-				Name: internalPortName,
-				Tag:  &tag,
-				ExternalIDs: map[string]string{
-					ovs.ExternalIDVendor:            util.CniTypeName,
-					providerVlanInterfaceExternalID: vlanIfName,
-				},
-			}
-			iface := &vswitch.Interface{
-				Name: internalPortName,
-				Type: "internal",
-				ExternalIDs: map[string]string{
-					ovs.ExternalIDVendor:            util.CniTypeName,
-					providerVlanInterfaceExternalID: vlanIfName,
-				},
-			}
-			if err := ovs.EnsureVswitchPort(context.Background(), c.vswitchTables, ovs.VswitchPortConfig{
-				BridgeName:      brName,
-				Port:            port,
-				Interface:       iface,
-				PortFields:      []any{&port.Tag, &port.ExternalIDs},
-				InterfaceFields: []any{&iface.Type, &iface.ExternalIDs},
-			}); err != nil {
-				klog.Errorf("failed to create OVS internal port %s: %v", internalPortName, err)
-				return err
-			}
-		} else if _, err := ovs.Exec(args...); err != nil {
+		internalPortName := util.VlanInternalPortName(brName, vlanID)
+		tag := vlanID
+		port := &vswitch.Port{
+			Name: internalPortName,
+			Tag:  &tag,
+			ExternalIDs: map[string]string{
+				ovs.ExternalIDVendor:            util.CniTypeName,
+				providerVlanInterfaceExternalID: vlanIfName,
+			},
+		}
+		iface := &vswitch.Interface{
+			Name: internalPortName,
+			Type: "internal",
+			ExternalIDs: map[string]string{
+				ovs.ExternalIDVendor:            util.CniTypeName,
+				providerVlanInterfaceExternalID: vlanIfName,
+			},
+		}
+		if err := ovs.EnsureVswitchPort(context.Background(), c.vswitchTables, ovs.VswitchPortConfig{
+			BridgeName:      brName,
+			Port:            port,
+			Interface:       iface,
+			PortFields:      []any{&port.Tag, &port.ExternalIDs},
+			InterfaceFields: []any{&iface.Type, &iface.ExternalIDs},
+		}); err != nil {
 			klog.Errorf("failed to create OVS internal port %s: %v", internalPortName, err)
 			return err
 		}
@@ -2747,17 +2733,16 @@ func restoreProviderVlanNetworkState(vlanLink netlink.Link, addrs []netlink.Addr
 }
 
 func (c *Controller) removeProviderVlanInterface(internalPortName string, ctx providerVlanRestoreContext, vlanID int) error {
+	if c.vswitchTables == nil {
+		return errors.New("vswitch table provider is nil")
+	}
 	klog.Infof("Cleaning up VLAN internal port %s (VLAN %d) from bridge %s", internalPortName, vlanID, ctx.bridge)
 
 	internalPort, err := netlink.LinkByName(internalPortName)
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
 			klog.Warningf("VLAN internal port %s not found, removing any stale OVS row", internalPortName)
-			if c.vswitchTables != nil {
-				if err := ovs.DeleteVswitchPort(context.Background(), c.vswitchTables, internalPortName); err != nil {
-					return fmt.Errorf("failed to remove stale VLAN internal port %s from OVS bridge %s: %w", internalPortName, ctx.bridge, err)
-				}
-			} else if _, err = ovs.Exec(ovs.IfExists, "del-port", ctx.bridge, internalPortName); err != nil {
+			if err := ovs.DeleteVswitchPort(context.Background(), c.vswitchTables, internalPortName); err != nil {
 				return fmt.Errorf("failed to remove stale VLAN internal port %s from OVS bridge %s: %w", internalPortName, ctx.bridge, err)
 			}
 			return nil
@@ -2797,11 +2782,7 @@ func (c *Controller) removeProviderVlanInterface(internalPortName string, ctx pr
 		}
 	}
 
-	if c.vswitchTables != nil {
-		if err := ovs.DeleteVswitchPort(context.Background(), c.vswitchTables, internalPortName); err != nil {
-			return fmt.Errorf("failed to remove VLAN internal port %s from OVS bridge %s: %w", internalPortName, ctx.bridge, err)
-		}
-	} else if _, err = ovs.Exec(ovs.IfExists, "del-port", ctx.bridge, internalPortName); err != nil {
+	if err := ovs.DeleteVswitchPort(context.Background(), c.vswitchTables, internalPortName); err != nil {
 		return fmt.Errorf("failed to remove VLAN internal port %s from OVS bridge %s: %w", internalPortName, ctx.bridge, err)
 	}
 	klog.Infof("VLAN internal port %s has been removed from bridge %s", internalPortName, ctx.bridge)

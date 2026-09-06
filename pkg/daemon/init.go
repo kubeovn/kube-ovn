@@ -63,7 +63,7 @@ func InitOVSBridges(providers ...compat.TableProvider) (map[string]string, error
 }
 
 var (
-	configureNodeGateway         = configureNodeNic
+	configureNodeGateway         = configureNodeNicWithProvider
 	nodeGatewayInitRetryInterval = 3 * time.Second
 )
 
@@ -128,10 +128,7 @@ func InitNodeGateway(config *Configuration) (err error) {
 		klog.Errorf("failed to get ip %s with mask %s, %v", ip, joinCIDR, err)
 		return err
 	}
-	if config.VswitchTables == nil {
-		return configureNodeGateway(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI)
-	}
-	return configureNodeNicWithProvider(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI, config.VswitchTables)
+	return configureNodeGateway(config.KubeClient, config.NodeName, portName, ipAddr, gw, joinCIDR, mac, config.MTU, config.EnableNonPrimaryCNI, config.VswitchTables)
 }
 
 func InitMirror(config *Configuration) error {

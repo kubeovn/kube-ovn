@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os/exec"
@@ -228,34 +229,10 @@ func GetQosList(podName, podNamespace, ifaceID string) ([]string, error) {
 
 // ClearPodBandwidth remove qos related to this pod.
 func ClearPodBandwidth(podName, podNamespace, ifaceID string, providers ...compat.TableProvider) error {
-	if len(providers) != 0 && providers[0] != nil {
-		return clearPodBandwidthTable(providers[0], podName, podNamespace, ifaceID)
+	if len(providers) == 0 || providers[0] == nil {
+		return errors.New("vswitch table provider is nil")
 	}
-	qosList, err := GetQosList(podName, podNamespace, ifaceID)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	// https://github.com/kubeovn/kube-ovn/issues/1191
-	usedQosList, err := ovsFind("port", "qos", "qos!=[]")
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	for _, qosID := range qosList {
-		found := slices.Contains(usedQosList, qosID)
-		if found {
-			continue
-		}
-
-		if err := ovsDestroy("qos", qosID); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-	return nil
+	return clearPodBandwidthTable(providers[0], podName, podNamespace, ifaceID)
 }
 
 var lastInterfacePodMap map[string]string

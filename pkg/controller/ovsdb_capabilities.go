@@ -44,9 +44,8 @@ func (c *Controller) networkPolicyACLBuilder() (networkPolicyACLBuilder, error) 
 	if provider, ok := c.OVNNbTables.(networkPolicyACLBuilder); ok {
 		return provider, nil
 	}
-	// Network-policy ACL construction is a domain capability rather than table
-	// CRUD. Keep the legacy client as an explicit adapter for old fixtures and
-	// callers that inject only NbClient; production wiring uses OVNNbTables.
+	// Keep the legacy client as an explicit compatibility adapter for callers
+	// that have not wired the generic provider yet.
 	if c.OVNNbTables == nil {
 		if provider, ok := c.OVNNbClient.(networkPolicyACLBuilder); ok {
 			return provider, nil
@@ -79,9 +78,6 @@ func (c *Controller) clusterNetworkPolicyACLBuilder() (clusterNetworkPolicyACLBu
 	return nil, errors.New("OVN NB table provider does not support cluster network policy ACL operations")
 }
 
-// reconcilePortDHCPOptionsBackend keeps the compatibility path in one place.
-// The provider branch uses the controller's table implementation, while the
-// legacy branch is retained for fixtures that only inject NbClient.
 func (c *Controller) reconcilePortDHCPOptionsBackend(
 	lsName, portName string, subnetDHCP *ovs.DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int,
 ) (*ovs.DHCPOptionsUUIDs, bool, error) {
