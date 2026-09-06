@@ -44,8 +44,8 @@ func (c *Controller) networkPolicyACLBuilder() (networkPolicyACLBuilder, error) 
 	if provider, ok := c.OVNNbTables.(networkPolicyACLBuilder); ok {
 		return provider, nil
 	}
-	// Keep the legacy client as an explicit compatibility adapter for callers
-	// that have not wired the generic provider yet.
+	// Legacy clients remain a test and upgrade compatibility adapter. Production
+	// wiring always installs the same concrete client as TableProvider.
 	if c.OVNNbTables == nil {
 		if provider, ok := c.OVNNbClient.(networkPolicyACLBuilder); ok {
 			return provider, nil
