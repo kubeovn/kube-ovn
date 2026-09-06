@@ -10,10 +10,14 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/keymutex"
+	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
@@ -503,4 +507,313 @@ func TestVpcEndpointConsumerNamespace(t *testing.T) {
 
 	_, err = c.vpcEndpointConsumerNamespace("empty")
 	require.ErrorContains(t, err, "has no namespaces")
+}
+
+func TestInitVpcEndpointTransitEarlyReturn(t *testing.T) {
+	c := &Controller{config: &Configuration{EnableLb: false}}
+	require.NoError(t, c.initVpcEndpointTransit())
+
+	c = &Controller{config: &Configuration{EnableLb: true}}
+	require.NoError(t, c.initVpcEndpointTransit())
+
+	c = &Controller{config: &Configuration{
+		EnableLb:                 true,
+		VpcEndpointTransitSwitch: "vpc-endpoint-transit",
+	}}
+	require.NoError(t, c.initVpcEndpointTransit())
+}
+
+func TestEnsureVpcEndpointServiceLabels(t *testing.T) {
+	client := kubeovnfake.NewSimpleClientset()
+	eps, err := client.KubeovnV1().VpcEndpointServices().Create(context.Background(), &kubeovnv1.VpcEndpointService{
+		Name: "db",
+		Spec: kubeovnv1.VpcEndpointServiceSpec{Vpc: "vpc-a", Namespace: "ns-a", Service: "svc-a"},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	c := &Controller{config: &Configuration{KubeOvnClient: client}}
+
+	require.NoError(t, c.ensureVpcEndpointServiceLabels(eps))
+	updated, err := client.KubeovnV1().VpcEndpointServices().Get(context.Background(), "db", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "vpc-a", updated.Labels[util.VpcEndpointVpcLabel])
+	require.Equal(t, "ns-a", updated.Labels[util.VpcEndpointSvcNsLabel])
+	require.Equal(t, "svc-a", updated.Labels[util.VpcEndpointSvcNameLabel])
+
+	// Already correct labels is a no-op.
+	require.NoError(t, c.ensureVpcEndpointServiceLabels(updated))
+}
+
+func TestEnsureVpcEndpointLabels(t *testing.T) {
+	client := kubeovnfake.NewSimpleClientset()
+	ep, err := client.KubeovnV1().VpcEndpoints().Create(context.Background(), &kubeovnv1.VpcEndpoint{
+		Name: "client",
+		Spec: kubeovnv1.VpcEndpointSpec{Vpc: "vpc-a", EndpointService: "db"},
+	}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	c := &Controller{config: &Configuration{KubeOvnClient: client}}
+
+	require.NoError(t, c.ensureVpcEndpointLabels(ep))
+	updated, err := client.KubeovnV1().VpcEndpoints().Get(context.Background(), "client", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "db", updated.Labels[util.VpcEndpointServiceLabel])
+	require.Equal(t, "vpc-a", updated.Labels[util.VpcEndpointVpcLabel])
+	require.NoError(t, c.ensureVpcEndpointLabels(updated))
+}
+
+func TestEnqueueVpcEndpointServiceForK8sService(t *testing.T) {
+	eps := &kubeovnv1.VpcEndpointService{
+		Name: "db",
+		Labels: map[string]string{
+			util.VpcEndpointSvcNsLabel:   "ns-a",
+			util.VpcEndpointSvcNameLabel: "svc-a",
+		},
+	}
+	factory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
+	vesInformer := factory.Kubeovn().V1().VpcEndpointServices()
+	require.NoError(t, vesInformer.Informer().GetStore().Add(eps))
+
+	c := &Controller{
+		vpcEndpointServiceLister:           vesInformer.Lister(),
+		addOrUpdateVpcEndpointServiceQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcEndpointService", nil),
+	}
+	t.Cleanup(c.addOrUpdateVpcEndpointServiceQueue.ShutDown)
+
+	c.enqueueVpcEndpointServiceForK8sService("ns-a", "svc-a")
+	require.Equal(t, 1, c.addOrUpdateVpcEndpointServiceQueue.Len())
+	key, _ := c.addOrUpdateVpcEndpointServiceQueue.Get()
+	c.addOrUpdateVpcEndpointServiceQueue.Done(key)
+	require.Equal(t, "db", key)
+
+	(&Controller{}).enqueueVpcEndpointServiceForK8sService("ns-a", "svc-a")
+}
+
+func TestDeactivateAndCleanupVpcEndpointService(t *testing.T) {
+	deploy := &appsv1.Deployment{Name: "vpc-eps-db", Namespace: "ns-a"}
+	kube := fake.NewSimpleClientset(deploy)
+	eps := &kubeovnv1.VpcEndpointService{
+		Name: "db",
+		Spec: kubeovnv1.VpcEndpointServiceSpec{Namespace: "ns-a"},
+		Status: kubeovnv1.VpcEndpointServiceStatus{
+			TransitVIP: "100.65.0.2",
+			Mac:        "aa:bb:cc:dd:ee:ff",
+			Ports:      "tcp/80",
+			Ready:      true,
+		},
+	}
+	c := &Controller{config: &Configuration{KubeClient: kube, PodNamespace: metav1.NamespaceSystem}}
+	require.NoError(t, c.cleanupVpcEndpointService(eps))
+	require.Empty(t, eps.Status.TransitVIP)
+	require.Empty(t, eps.Status.Mac)
+	require.Empty(t, eps.Status.Ports)
+	require.False(t, eps.Status.Ready)
+	_, err := kube.AppsV1().Deployments("ns-a").Get(context.Background(), "vpc-eps-db", metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
+}
+
+func TestCleanupVpcEndpoint(t *testing.T) {
+	vpc := &kubeovnv1.Vpc{
+		Name: "consumer",
+		Spec: kubeovnv1.VpcSpec{Namespaces: []string{"ep-consumer"}},
+	}
+	deploy := &appsv1.Deployment{Name: "vpc-ep-client", Namespace: "ep-consumer"}
+	kube := fake.NewSimpleClientset(deploy)
+	kubeovnClient := kubeovnfake.NewSimpleClientset(vpc)
+	factory := kubeovninformers.NewSharedInformerFactory(kubeovnClient, 0)
+	vpcInformer := factory.Kubeovn().V1().Vpcs()
+	require.NoError(t, vpcInformer.Informer().GetStore().Add(vpc))
+
+	ep := &kubeovnv1.VpcEndpoint{
+		Name: "client",
+		Spec: kubeovnv1.VpcEndpointSpec{Vpc: "consumer"},
+		Status: kubeovnv1.VpcEndpointStatus{
+			LocalVIP:   "10.210.0.20",
+			TransitVIP: "100.65.0.2",
+			SnatIP:     "100.65.0.3",
+			Ready:      true,
+		},
+	}
+	c := &Controller{
+		config:     &Configuration{KubeClient: kube, KubeOvnClient: kubeovnClient, PodNamespace: metav1.NamespaceSystem},
+		vpcsLister: vpcInformer.Lister(),
+	}
+	require.NoError(t, c.cleanupVpcEndpoint(ep))
+	require.Empty(t, ep.Status.LocalVIP)
+	require.Empty(t, ep.Status.TransitVIP)
+	require.Empty(t, ep.Status.SnatIP)
+	require.False(t, ep.Status.Ready)
+}
+
+func TestPatchVpcEndpointStatuses(t *testing.T) {
+	client := kubeovnfake.NewSimpleClientset()
+	eps, err := client.KubeovnV1().VpcEndpointServices().Create(context.Background(), &kubeovnv1.VpcEndpointService{Name: "db"}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	ep, err := client.KubeovnV1().VpcEndpoints().Create(context.Background(), &kubeovnv1.VpcEndpoint{Name: "client"}, metav1.CreateOptions{})
+	require.NoError(t, err)
+	c := &Controller{config: &Configuration{KubeOvnClient: client}}
+
+	require.NoError(t, c.patchVpcEndpointServiceStatus(eps, true, ""))
+	require.True(t, eps.Status.Ready)
+	require.NoError(t, c.patchVpcEndpointServiceStatus(eps, false, "boom"))
+	require.False(t, eps.Status.Ready)
+
+	require.NoError(t, c.patchVpcEndpointStatus(ep, true, ""))
+	require.True(t, ep.Status.Ready)
+	require.NoError(t, c.patchVpcEndpointStatus(ep, false, "waiting"))
+	require.False(t, ep.Status.Ready)
+}
+
+func TestVpcEndpointProviderSubnet(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{Name: "provider-subnet"}
+	defaultSubnet := &kubeovnv1.Subnet{Name: "default-ls"}
+	vpc := &kubeovnv1.Vpc{
+		Name: "provider",
+		Status: kubeovnv1.VpcStatus{
+			DefaultLogicalSwitch: "default-ls",
+			Subnets:              []string{"provider-subnet"},
+		},
+	}
+	empty := &kubeovnv1.Vpc{Name: "empty"}
+	factory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
+	subnetInformer := factory.Kubeovn().V1().Subnets()
+	vpcInformer := factory.Kubeovn().V1().Vpcs()
+	require.NoError(t, subnetInformer.Informer().GetStore().Add(subnet))
+	require.NoError(t, subnetInformer.Informer().GetStore().Add(defaultSubnet))
+	require.NoError(t, vpcInformer.Informer().GetStore().Add(vpc))
+	require.NoError(t, vpcInformer.Informer().GetStore().Add(empty))
+
+	c := &Controller{
+		subnetsLister: subnetInformer.Lister(),
+		vpcsLister:    vpcInformer.Lister(),
+	}
+
+	got, err := c.vpcEndpointProviderSubnet("provider", &corev1.Service{
+		Annotations: map[string]string{util.LogicalSwitchAnnotation: "provider-subnet"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "provider-subnet", got.Name)
+
+	got, err = c.vpcEndpointProviderSubnet("provider", &corev1.Service{})
+	require.NoError(t, err)
+	require.Equal(t, "default-ls", got.Name)
+
+	_, err = c.vpcEndpointProviderSubnet("empty", &corev1.Service{})
+	require.ErrorContains(t, err, "no subnet found")
+}
+
+func TestVpcEndpointProviderMappings(t *testing.T) {
+	portNum := int32(80)
+	tcp := corev1.ProtocolTCP
+	slice := &discoveryv1.EndpointSlice{
+		Name:      "svc-a-xyz",
+		Namespace: "ns-a",
+		Labels:    map[string]string{discoveryv1.LabelServiceName: "svc-a"},
+		Ports: []discoveryv1.EndpointPort{{
+			Port:     &portNum,
+			Protocol: &tcp,
+		}},
+		Endpoints: []discoveryv1.Endpoint{{
+			Addresses: []string{"10.210.0.10"},
+			Conditions: discoveryv1.EndpointConditions{
+				Ready: ptr.To(true),
+			},
+		}},
+	}
+	factory := informers.NewSharedInformerFactory(fake.NewSimpleClientset(), 0)
+	esInformer := factory.Discovery().V1().EndpointSlices()
+	require.NoError(t, esInformer.Informer().GetStore().Add(slice))
+
+	c := &Controller{endpointSlicesLister: esInformer.Lister()}
+	svc := &corev1.Service{
+		Name:      "svc-a",
+		Namespace: "ns-a",
+		Spec: corev1.ServiceSpec{
+			ClusterIP: corev1.ClusterIPNone,
+			Ports:     []corev1.ServicePort{{Port: 80, TargetPort: intstr.FromInt32(8080), Protocol: corev1.ProtocolTCP}},
+		},
+	}
+	mappings, err := c.vpcEndpointProviderMappings(svc)
+	require.NoError(t, err)
+	require.Equal(t, []string{"tcp:80:10.210.0.10:80"}, mappings)
+
+	_, err = c.vpcEndpointProviderMappings(&corev1.Service{
+		Name:      "missing",
+		Namespace: "ns-a",
+		Spec:      corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 80, Protocol: corev1.ProtocolTCP}}},
+	})
+	require.ErrorContains(t, err, "no ready backends")
+}
+
+func TestEnsureVpcEndpointServiceStitcher(t *testing.T) {
+	oldImage := vpcNatImage
+	t.Cleanup(func() { vpcNatImage = oldImage })
+	vpcNatImage = "img:test"
+
+	eps := &kubeovnv1.VpcEndpointService{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kubeovn.io/v1", Kind: "VpcEndpointService"},
+		Name:     "db",
+		Spec:     kubeovnv1.VpcEndpointServiceSpec{Vpc: "provider", Namespace: "ns-a", Service: "svc-a"},
+	}
+	subnet := &kubeovnv1.Subnet{Name: "provider-subnet"}
+	kube := fake.NewSimpleClientset()
+	c := &Controller{config: &Configuration{
+		KubeClient:               kube,
+		PodNamespace:             metav1.NamespaceSystem,
+		VpcEndpointTransitSwitch: "vpc-endpoint-transit",
+		Image:                    "img:fallback",
+	}}
+
+	deploy, err := c.ensureVpcEndpointServiceStitcher(eps, subnet, "100.65.0.2")
+	require.NoError(t, err)
+	require.Equal(t, "vpc-eps-db", deploy.Name)
+	require.Equal(t, "ns-a", deploy.Namespace)
+	require.Equal(t, "provider", deploy.Spec.Template.Annotations[util.VpcAnnotation])
+	require.Equal(t, "100.65.0.2", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, vpcEndpointTransitProvider())])
+	require.Equal(t, "provider", deploy.Labels[util.VpcEndpointStitcherLabel])
+}
+
+func TestEnsureVpcEndpointStitcher(t *testing.T) {
+	oldImage := vpcNatImage
+	t.Cleanup(func() { vpcNatImage = oldImage })
+	vpcNatImage = "img:test"
+
+	ep := &kubeovnv1.VpcEndpoint{
+		TypeMeta: metav1.TypeMeta{APIVersion: "kubeovn.io/v1", Kind: "VpcEndpoint"},
+		Name:     "client",
+		Spec:     kubeovnv1.VpcEndpointSpec{Vpc: "consumer", Subnet: "consumer-subnet", EndpointService: "db"},
+	}
+	subnet := &kubeovnv1.Subnet{Name: "consumer-subnet"}
+	vpc := &kubeovnv1.Vpc{
+		Name: "consumer",
+		Spec: kubeovnv1.VpcSpec{Namespaces: []string{"ep-consumer"}},
+	}
+	kube := fake.NewSimpleClientset()
+	factory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
+	vpcInformer := factory.Kubeovn().V1().Vpcs()
+	require.NoError(t, vpcInformer.Informer().GetStore().Add(vpc))
+
+	c := &Controller{
+		config: &Configuration{
+			KubeClient:               kube,
+			PodNamespace:             metav1.NamespaceSystem,
+			VpcEndpointTransitSwitch: "vpc-endpoint-transit",
+			Image:                    "img:fallback",
+		},
+		vpcsLister: vpcInformer.Lister(),
+	}
+	deploy, err := c.ensureVpcEndpointStitcher(ep, subnet, "10.210.0.20", "100.65.0.3")
+	require.NoError(t, err)
+	require.Equal(t, "vpc-ep-client", deploy.Name)
+	require.Equal(t, "ep-consumer", deploy.Namespace)
+	require.Equal(t, "consumer", deploy.Labels[util.VpcEndpointStitcherLabel])
+	require.Equal(t, "10.210.0.20", deploy.Spec.Template.Annotations[util.IPAddressAnnotation])
+}
+
+func TestHandleAddOrUpdateVpcEndpointNotFound(t *testing.T) {
+	factory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
+	vepInformer := factory.Kubeovn().V1().VpcEndpoints()
+	c := &Controller{
+		vpcEndpointLister:   vepInformer.Lister(),
+		vpcEndpointKeyMutex: keymutex.NewHashed(0),
+	}
+	require.NoError(t, c.handleAddOrUpdateVpcEndpoint("missing"))
 }
