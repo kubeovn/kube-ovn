@@ -37,15 +37,14 @@ func (c *Controller) deleteAddressSets(names ...string) error {
 	for _, name := range names {
 		wanted[name] = struct{}{}
 	}
-	var rows []ovnnb.AddressSet
-	if err := c.OVNNbTables.Table(&ovnnb.AddressSet{}).Filter(
-		context.Background(),
+	rows, err := compat.Filter[ovnnb.AddressSet](
+		context.Background(), c.OVNNbTables, &ovnnb.AddressSet{},
 		func(row *ovnnb.AddressSet) bool {
 			_, ok := wanted[row.Name]
 			return ok
 		},
-		&rows,
-	); err != nil {
+	)
+	if err != nil {
 		return err
 	}
 	if len(rows) == 0 {
@@ -56,7 +55,7 @@ func (c *Controller) deleteAddressSets(names ...string) error {
 	for i := range rows {
 		selectors[i] = &rows[i]
 	}
-	return c.OVNNbTables.Table(&ovnnb.AddressSet{}).Delete(context.Background(), "as-del", selectors...)
+	return compat.Delete(context.Background(), c.OVNNbTables, &ovnnb.AddressSet{}, "as-del", selectors...)
 }
 
 // deletePortGroups removes port groups selected by their names through the
@@ -74,15 +73,14 @@ func (c *Controller) deletePortGroups(names ...string) error {
 	for _, name := range names {
 		wanted[name] = struct{}{}
 	}
-	var rows []ovnnb.PortGroup
-	if err := c.OVNNbTables.Table(&ovnnb.PortGroup{}).Filter(
-		context.Background(),
+	rows, err := compat.Filter[ovnnb.PortGroup](
+		context.Background(), c.OVNNbTables, &ovnnb.PortGroup{},
 		func(row *ovnnb.PortGroup) bool {
 			_, ok := wanted[row.Name]
 			return ok
 		},
-		&rows,
-	); err != nil {
+	)
+	if err != nil {
 		return err
 	}
 	if len(rows) == 0 {
@@ -93,7 +91,7 @@ func (c *Controller) deletePortGroups(names ...string) error {
 	for i := range rows {
 		selectors[i] = &rows[i]
 	}
-	return c.OVNNbTables.Table(&ovnnb.PortGroup{}).Delete(context.Background(), "pg-del", selectors...)
+	return compat.Delete(context.Background(), c.OVNNbTables, &ovnnb.PortGroup{}, "pg-del", selectors...)
 }
 
 func (c *Controller) deleteAddressSetsByExternalIDs(externalIDs map[string]string) error {
@@ -105,8 +103,9 @@ func (c *Controller) deleteAddressSetsByExternalIDs(externalIDs map[string]strin
 	if len(externalIDs) == 0 {
 		return nil
 	}
-	return c.OVNNbTables.Table(&ovnnb.AddressSet{}).DeleteFilter(
-		context.Background(), "ass-del", func(row *ovnnb.AddressSet) bool {
+	return compat.DeleteFilter(
+		context.Background(), c.OVNNbTables, &ovnnb.AddressSet{}, "ass-del",
+		func(row *ovnnb.AddressSet) bool {
 			return matchesExternalIDs(row.ExternalIDs, externalIDs)
 		},
 	)
@@ -118,11 +117,9 @@ func (c *Controller) createAddressSet(name string, externalIDs map[string]string
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.CreateAddressSet(name, externalIDs)
 	}
-	var rows []ovnnb.AddressSet
-	err := c.OVNNbTables.Table(&ovnnb.AddressSet{}).Filter(
-		context.Background(),
+	rows, err := compat.Filter[ovnnb.AddressSet](
+		context.Background(), c.OVNNbTables, &ovnnb.AddressSet{},
 		func(row *ovnnb.AddressSet) bool { return row.Name == name },
-		&rows,
 	)
 	if err != nil {
 		return err
@@ -135,14 +132,15 @@ func (c *Controller) createAddressSet(name string, externalIDs map[string]string
 		finalExternalIDs = make(map[string]string, 1)
 	}
 	finalExternalIDs["vendor"] = util.CniTypeName
-	return c.OVNNbTables.Table(&ovnnb.AddressSet{}).Create(
-		context.Background(), "as-add", &ovnnb.AddressSet{Name: name, ExternalIDs: finalExternalIDs},
+	return compat.Create(
+		context.Background(), c.OVNNbTables, &ovnnb.AddressSet{}, "as-add",
+		&ovnnb.AddressSet{Name: name, ExternalIDs: finalExternalIDs},
 	)
 }
 
 func (c *Controller) getAddressSet(name string, ignoreNotFound bool) (*ovnnb.AddressSet, error) {
 	row := &ovnnb.AddressSet{Name: name}
-	if err := c.OVNNbTables.Table(&ovnnb.AddressSet{}).Get(context.Background(), row); err != nil {
+	if err := compat.Get(context.Background(), c.OVNNbTables, &ovnnb.AddressSet{}, row); err != nil {
 		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
 			return nil, nil
 		}
@@ -184,8 +182,8 @@ func (c *Controller) updateAddressSetAddresses(name string, addresses ...string)
 		return nil
 	}
 	as.Addresses = normalizeAddressSetAddresses(addresses)
-	return c.OVNNbTables.Table(&ovnnb.AddressSet{}).Update(
-		context.Background(), "as-update", as, as, &as.Addresses,
+	return compat.Update(
+		context.Background(), c.OVNNbTables, &ovnnb.AddressSet{}, "as-update", as, as, &as.Addresses,
 	)
 }
 

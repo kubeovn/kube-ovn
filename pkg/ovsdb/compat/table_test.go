@@ -132,3 +132,40 @@ func TestTableRejectsMissingPrototype(t *testing.T) {
 	require.Error(t, table.List(context.Background(), &[]struct{}{}))
 	require.Error(t, table.Get(context.Background(), &struct{}{}))
 }
+
+func TestGenericTableHelpers(t *testing.T) {
+	fake := &fakeBackend{
+		create: func(...model.Model) ([]ovsdb.Operation, error) {
+			return tableOperation(), nil
+		},
+		conditional: crudConditional{},
+		transact: func(context.Context, ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+			return []ovsdb.OperationResult{{}}, nil
+		},
+	}
+	database := NewDatabase(fake, time.Second, RetryPolicy{})
+	prototype := &exampleRow{}
+	ctx := context.Background()
+
+	_, err := List[exampleRow](ctx, database, prototype)
+	require.NoError(t, err)
+	_, err = Query[exampleRow](ctx, database, prototype, &exampleRow{Name: "key"})
+	require.NoError(t, err)
+	_, err = Filter[exampleRow](ctx, database, prototype, func(*exampleRow) bool { return true })
+	require.NoError(t, err)
+	_, err = FilterByUUIDs[exampleRow](ctx, database, prototype, func(*exampleRow) bool { return true }, "uuid")
+	require.NoError(t, err)
+	require.NoError(t, Get(ctx, database, prototype, &exampleRow{Name: "key"}))
+	require.NoError(t, Create(ctx, database, prototype, "create", &exampleRow{Name: "new"}))
+	require.NoError(t, Update(ctx, database, prototype, "update", &exampleRow{Name: "key"}, &exampleRow{Name: "updated"}, "Name"))
+	require.NoError(t, Mutate(ctx, database, prototype, "mutate", &exampleRow{Name: "key"}))
+	require.NoError(t, Delete(ctx, database, prototype, "delete", &exampleRow{Name: "key"}))
+	require.NoError(t, DeleteFilter(ctx, database, prototype, "delete-filter", func(*exampleRow) bool { return true }))
+	require.NoError(t, Transact(ctx, database, prototype, "transact", tableOperation()...))
+	require.Equal(t, 6, fake.transacts)
+}
+
+func TestGenericTableHelpersRejectNilProvider(t *testing.T) {
+	_, err := List[exampleRow](context.Background(), nil, &exampleRow{})
+	require.EqualError(t, err, "ovsdb table provider is nil")
+}
