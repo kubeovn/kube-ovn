@@ -29,10 +29,7 @@ type icLogicalPatchPortProvider interface {
 
 func (c *Controller) listICTransitSwitches() ([]string, error) {
 	if c.ICNbTables == nil {
-		if c.ovnLegacyClient == nil {
-			return nil, errors.New("IC NB table provider and legacy client are nil")
-		}
-		return c.ovnLegacyClient.GetTs()
+		return nil, errors.New("IC NB table provider is nil")
 	}
 	var rows []ovnicnb.TransitSwitch
 	err := c.ICNbTables.Table(&ovnicnb.TransitSwitch{}).Filter(context.Background(), func(row *ovnicnb.TransitSwitch) bool {
@@ -50,10 +47,7 @@ func (c *Controller) listICTransitSwitches() ([]string, error) {
 
 func (c *Controller) getICTransitSwitchSubnet(name string) (string, error) {
 	if c.ICNbTables == nil {
-		if c.ovnLegacyClient == nil {
-			return "", errors.New("IC NB table provider and legacy client are nil")
-		}
-		return c.ovnLegacyClient.GetTsSubnet(name)
+		return "", errors.New("IC NB table provider is nil")
 	}
 	var rows []ovnicnb.TransitSwitch
 	err := c.ICNbTables.Table(&ovnicnb.TransitSwitch{}).Filter(context.Background(), func(row *ovnicnb.TransitSwitch) bool {
