@@ -1,14 +1,11 @@
 package ovs
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	"k8s.io/klog/v2"
 
@@ -358,45 +355,4 @@ func (m groupACLMatch) Match() (string, error) {
 func (m groupACLMatch) String() string {
 	match, _ := m.Match()
 	return match
-}
-
-type Limiter struct {
-	limit   int32
-	current atomic.Int32
-}
-
-func (l *Limiter) Limit() int32 {
-	return l.limit
-}
-
-func (l *Limiter) Current() int32 {
-	return l.current.Load()
-}
-
-func (l *Limiter) Update(limit int32) {
-	l.limit = limit
-}
-
-func (l *Limiter) Wait(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.New("context canceled by timeout")
-		default:
-			if l.limit == 0 {
-				l.current.Add(1)
-				return nil
-			}
-
-			if l.current.Load() < l.limit {
-				l.current.Add(1)
-				return nil
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-}
-
-func (l *Limiter) Done() {
-	l.current.Add(-1)
 }

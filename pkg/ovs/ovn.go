@@ -77,7 +77,6 @@ func (ovsTransactionObserver) ObserveTransaction(event compat.TransactionEvent) 
 const (
 	OVNIcNbCtl = "ovn-ic-nbctl"
 	OVNIcSbCtl = "ovn-ic-sbctl"
-	OvsVsCtl   = "ovs-vsctl"
 	MayExist   = "--may-exist"
 	IfExists   = "--if-exists"
 

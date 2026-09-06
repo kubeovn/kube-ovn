@@ -49,8 +49,6 @@ func main() {
 	util.InitLogFilePerm("kube-ovn-cni", os.FileMode(perm))
 	printCaps()
 
-	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)
-
 	ovsDBAddr := config.OvsSocket
 	if ovsDBAddr == "" {
 		ovsDBAddr = "unix:/var/run/openvswitch/db.sock"

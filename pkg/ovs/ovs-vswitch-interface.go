@@ -30,7 +30,7 @@ func (c *VswitchClient) ListInterface(filter func(sw *vswitch.Interface) bool) (
 
 // CleanInterface removes an orphaned OVS port and the rows owned by it. The
 // operation is assembled from the monitored tables so callers do not need to
-// shell out to ovs-vsctl for database state changes.
+// invoke a separate OVS command-line client for database state changes.
 func (c *VswitchClient) CleanInterface(name string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()

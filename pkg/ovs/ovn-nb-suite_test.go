@@ -1251,50 +1251,6 @@ func (suite *OvnClientTestSuite) Test_CheckAndUpdateHtbQos() {
 	suite.testCheckAndUpdateHtbQos()
 }
 
-func (suite *OvnClientTestSuite) Test_UpdateOVSVsctlLimiter() {
-	suite.testUpdateOVSVsctlLimiter()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsExec() {
-	suite.testOvsExec()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsCreate() {
-	suite.testOvsCreate()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsDestroy() {
-	suite.testOvsDestroy()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsSet() {
-	suite.testOvsSet()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsAdd() {
-	suite.testOvsAdd()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsFind() {
-	suite.testOvsFind()
-}
-
-func (suite *OvnClientTestSuite) Test_ParseOvsFindOutput() {
-	suite.testParseOvsFindOutput()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsRemove() {
-	suite.testOvsRemove()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsClear() {
-	suite.testOvsClear()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsGet() {
-	suite.testOvsGet()
-}
-
 func (suite *OvnClientTestSuite) Test_OvsFindBridges() {
 	suite.testOvsFindBridges()
 }

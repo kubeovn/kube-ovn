@@ -89,7 +89,6 @@ type Configuration struct {
 	TCPConnCheckPort              int32
 	UDPConnCheckPort              int32
 	EnableTProxy                  bool
-	OVSVsctlConcurrency           int32
 	SetVxlanTxOff                 bool
 	LogPerm                       string
 	EnableNonPrimaryCNI           bool
@@ -148,7 +147,6 @@ func ParseFlags() *Configuration {
 		argTCPConnectivityCheckPort      = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort      = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
-		argOVSVsctlConcurrency           = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
 		argEnableOVNIPSec                = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert          = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argCertManagerIssuerName         = pflag.String("cert-manager-issuer-name", "kube-ovn", "The cert-manager issuer name to request certificates from")
@@ -227,7 +225,6 @@ func ParseFlags() *Configuration {
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 		EnableTProxy:              *argEnableTProxy,
-		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
 		LogPerm:                   *argLogPerm,
 		TLSMinVersion:             *argTLSMinVersion,
