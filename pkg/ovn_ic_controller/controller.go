@@ -42,8 +42,6 @@ type Controller struct {
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	recorder               record.EventRecorder
 
-	OVNNbClient ovs.NbClient
-	OVNSbClient ovs.SbClient
 	OVNNbTables compat.TableProvider
 	OVNSbTables compat.TableProvider
 	ICNbTables  compat.TableProvider
@@ -110,8 +108,6 @@ func NewController(config *Configuration) *Controller {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	controller.OVNNbClient = nbClient
-
 	var sbClient *ovs.OVNSbClient
 	if sbClient, err = ovs.NewOvnSbClient(
 		config.OvnSbAddr,
@@ -122,7 +118,6 @@ func NewController(config *Configuration) *Controller {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
-	controller.OVNSbClient = sbClient
 	controller.OVNNbTables = nbClient
 	controller.OVNSbTables = sbClient
 

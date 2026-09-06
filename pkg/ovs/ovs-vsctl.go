@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"os/exec"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,8 +56,6 @@ func UpdateOVSVsctlLimiter(c int32) {
 
 // Glory belongs to openvswitch/ovn-kubernetes
 // https://github.com/openvswitch/ovn-kubernetes/blob/master/go-controller/pkg/util/ovs.go
-
-var podNetNsRegexp = regexp.MustCompile(`pod_netns="([^"]+)"`)
 
 func Exec(args ...string) (string, error) {
 	var command string
@@ -184,25 +181,30 @@ func Get(table, record, column, key string, ifExists bool) (string, error) {
 	return Exec(args...)
 }
 
+func vswitchProvider(providers ...compat.TableProvider) (compat.TableProvider, error) {
+	if len(providers) == 0 || providers[0] == nil {
+		return nil, errors.New("vswitch table provider is nil")
+	}
+	return providers[0], nil
+}
+
 // Bridges returns bridges created by Kube-OVN.
 func Bridges(providers ...compat.TableProvider) ([]string, error) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return nil, errors.New("vswitch table provider is nil")
-		}
-		var rows []vswitch.Bridge
-		if err := providers[0].Table(&vswitch.Bridge{}).Filter(context.Background(), func(row *vswitch.Bridge) bool {
-			return row.ExternalIDs[ExternalIDVendor] == util.CniTypeName
-		}, &rows); err != nil {
-			return nil, fmt.Errorf("list Kube-OVN OVS bridges: %w", err)
-		}
-		bridges := make([]string, 0, len(rows))
-		for _, row := range rows {
-			bridges = append(bridges, row.Name)
-		}
-		return bridges, nil
+	provider, err := vswitchProvider(providers...)
+	if err != nil {
+		return nil, err
 	}
-	return ovsFind("bridge", "name", "external-ids:vendor="+util.CniTypeName)
+	var rows []vswitch.Bridge
+	if err := provider.Table(&vswitch.Bridge{}).Filter(context.Background(), func(row *vswitch.Bridge) bool {
+		return row.ExternalIDs[ExternalIDVendor] == util.CniTypeName
+	}, &rows); err != nil {
+		return nil, fmt.Errorf("list Kube-OVN OVS bridges: %w", err)
+	}
+	bridges := make([]string, 0, len(rows))
+	for _, row := range rows {
+		bridges = append(bridges, row.Name)
+	}
+	return bridges, nil
 }
 
 // BridgeExists checks whether the bridge already exists
@@ -218,64 +220,38 @@ func BridgeExists(name string, providers ...compat.TableProvider) (bool, error) 
 // PortExists checks whether the port already exists
 
 func PortExists(name string, providers ...compat.TableProvider) (bool, error) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return false, errors.New("vswitch table provider is nil")
-		}
-		var rows []vswitch.Port
-		if err := providers[0].Table(&vswitch.Port{}).Filter(context.Background(), func(row *vswitch.Port) bool {
-			return row.Name == name
-		}, &rows); err != nil {
-			return false, fmt.Errorf("find OVS port %q: %w", name, err)
-		}
-		return len(rows) != 0, nil
-	}
-	result, err := ovsFind("port", "_uuid", "name="+name)
+	provider, err := vswitchProvider(providers...)
 	if err != nil {
-		klog.Errorf("failed to find port with name %s: %v", name, err)
 		return false, err
 	}
-	return len(result) != 0, nil
+	var rows []vswitch.Port
+	if err := provider.Table(&vswitch.Port{}).Filter(context.Background(), func(row *vswitch.Port) bool {
+		return row.Name == name
+	}, &rows); err != nil {
+		return false, fmt.Errorf("find OVS port %q: %w", name, err)
+	}
+	return len(rows) != 0, nil
 }
 
 func GetQosList(podName, podNamespace, ifaceID string, providers ...compat.TableProvider) ([]string, error) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return nil, errors.New("vswitch table provider is nil")
-		}
-		var rows []vswitch.QoS
-		if err := providers[0].Table(&vswitch.QoS{}).Filter(context.Background(), func(row *vswitch.QoS) bool {
-			if ifaceID != "" {
-				return row.ExternalIDs["iface-id"] == ifaceID
-			}
-			return row.ExternalIDs["pod"] == podNamespace+"/"+podName
-		}, &rows); err != nil {
-			return nil, fmt.Errorf("list QoS rows: %w", err)
-		}
-		qosIDs := make([]string, 0, len(rows))
-		for _, row := range rows {
-			qosIDs = append(qosIDs, row.UUID)
-		}
-		return qosIDs, nil
+	provider, err := vswitchProvider(providers...)
+	if err != nil {
+		return nil, err
 	}
-	var qosList []string
-	var err error
-
-	if ifaceID != "" {
-		qosList, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s"`, ifaceID))
-		if err != nil {
-			klog.Error(err)
-			return qosList, err
+	var rows []vswitch.QoS
+	if err := provider.Table(&vswitch.QoS{}).Filter(context.Background(), func(row *vswitch.QoS) bool {
+		if ifaceID != "" {
+			return row.ExternalIDs["iface-id"] == ifaceID
 		}
-	} else {
-		qosList, err = ovsFind("qos", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
-		if err != nil {
-			klog.Error(err)
-			return qosList, err
-		}
+		return row.ExternalIDs["pod"] == podNamespace+"/"+podName
+	}, &rows); err != nil {
+		return nil, fmt.Errorf("list QoS rows: %w", err)
 	}
-
-	return qosList, nil
+	qosIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		qosIDs = append(qosIDs, row.UUID)
+	}
+	return qosIDs, nil
 }
 
 // ClearPodBandwidth remove qos related to this pod.
@@ -289,60 +265,24 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string, providers ...compa
 var lastInterfacePodMap map[string]string
 
 func ListInterfacePodMap(providers ...compat.TableProvider) (map[string]string, error) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return nil, errors.New("vswitch table provider is nil")
-		}
-		var rows []vswitch.Interface
-		if err := providers[0].Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
-			return row.ExternalIDs["pod_name"] != "" && row.ExternalIDs["pod_namespace"] != "" &&
-				(row.LinkState == nil || *row.LinkState != vswitch.InterfaceLinkStateUp)
-		}, &rows); err != nil {
-			return nil, fmt.Errorf("list OVS interfaces: %w", err)
-		}
-		result := make(map[string]string, len(rows))
-		for _, row := range rows {
-			errText := ""
-			if row.Error != nil {
-				errText = *row.Error
-			}
-			result[row.Name] = fmt.Sprintf("%s/%s/%s", row.ExternalIDs["pod_namespace"], row.ExternalIDs["pod_name"], errText)
-		}
-		if !maps.Equal(result, lastInterfacePodMap) {
-			klog.Infof("interface pod map: %v", result)
-			lastInterfacePodMap = maps.Clone(result)
-		}
-		return result, nil
-	}
-	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=name,error,external_ids", "find",
-		"interface", "external_ids:pod_name!=[]", "external_ids:pod_namespace!=[]", "link_state!=up")
+	provider, err := vswitchProvider(providers...)
 	if err != nil {
-		klog.Errorf("failed to list interface, %v", err)
 		return nil, err
 	}
-	lines := strings.Split(output, "\n")
-	result := make(map[string]string, len(lines))
-	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
+	var rows []vswitch.Interface
+	if err := provider.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+		return row.ExternalIDs["pod_name"] != "" && row.ExternalIDs["pod_namespace"] != "" &&
+			(row.LinkState == nil || *row.LinkState != vswitch.InterfaceLinkStateUp)
+	}, &rows); err != nil {
+		return nil, fmt.Errorf("list OVS interfaces: %w", err)
+	}
+	result := make(map[string]string, len(rows))
+	for _, row := range rows {
+		errText := ""
+		if row.Error != nil {
+			errText = *row.Error
 		}
-		parts := strings.SplitN(strings.TrimSpace(l), ",", 3)
-		if len(parts) != 3 {
-			continue
-		}
-		ifaceName := strings.TrimSpace(parts[0])
-		errText := strings.TrimSpace(parts[1])
-		var podNamespace, podName string
-		for externalID := range strings.FieldsSeq(parts[2]) {
-			if strings.Contains(externalID, "pod_name=") {
-				podName = strings.TrimPrefix(strings.TrimSpace(externalID), "pod_name=")
-			}
-
-			if strings.Contains(externalID, "pod_namespace=") {
-				podNamespace = strings.TrimPrefix(strings.TrimSpace(externalID), "pod_namespace=")
-			}
-		}
-		result[ifaceName] = fmt.Sprintf("%s/%s/%s", podNamespace, podName, errText)
+		result[row.Name] = fmt.Sprintf("%s/%s/%s", row.ExternalIDs["pod_namespace"], row.ExternalIDs["pod_name"], errText)
 	}
 	if !maps.Equal(result, lastInterfacePodMap) {
 		klog.Infof("interface pod map: %v", result)
@@ -352,35 +292,11 @@ func ListInterfacePodMap(providers ...compat.TableProvider) (map[string]string, 
 }
 
 func CleanInterface(name string, providers ...compat.TableProvider) error {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return errors.New("vswitch table provider is nil")
-		}
-		return DeleteVswitchPort(context.Background(), providers[0], name)
-	}
-	qosList, err := ovsFind("port", "qos", "name="+name)
+	provider, err := vswitchProvider(providers...)
 	if err != nil {
-		klog.Errorf("failed to find related port %v", err)
 		return err
 	}
-	klog.Infof("delete lost port %s", name)
-	output, err := Exec("--if-exists", "--with-iface", "del-port", name)
-	if err != nil {
-		klog.Errorf("failed to delete ovs port %v, %s", err, output)
-		return err
-	}
-	for _, qos := range qosList {
-		qos = strings.TrimSpace(qos)
-		if qos != "" && qos != "[]" {
-			klog.Infof("delete lost qos %s", qos)
-			err = ovsDestroy("qos", qos)
-			if err != nil {
-				klog.Errorf("failed to delete qos %s, %v", qos, err)
-				return err
-			}
-		}
-	}
-	return nil
+	return DeleteVswitchPort(context.Background(), provider, name)
 }
 
 // Find and remove any existing OVS port with this iface-id. Pods can
@@ -388,86 +304,57 @@ func CleanInterface(name string, providers ...compat.TableProvider) error {
 // but only the latest one should have the iface-id set.
 // See: https://github.com/ovn-org/ovn-kubernetes/pull/869
 func CleanDuplicatePort(ifaceID, portName string, providers ...compat.TableProvider) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			klog.Error("vswitch table provider is nil")
-			return
-		}
-		var interfaces []vswitch.Interface
-		if err := providers[0].Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
-			return row.ExternalIDs["iface-id"] == ifaceID && row.Name != portName
-		}, &interfaces); err != nil {
-			klog.Errorf("failed to list duplicate OVS interfaces for %s: %v", ifaceID, err)
-			return
-		}
-		for i := range interfaces {
-			iface := &interfaces[i]
-			if err := providers[0].Table(&vswitch.Interface{}).Mutate(context.Background(), "interface-duplicate-cleanup", iface,
-				model.Mutation{Field: &iface.ExternalIDs, Mutator: ovsdb.MutateOperationDelete, Value: map[string]string{"iface-id": ifaceID}}); err != nil {
-				klog.Errorf("failed to clear stale OVS interface %q iface-id %q: %v", iface.UUID, ifaceID, err)
-			}
-		}
+	provider, err := vswitchProvider(providers...)
+	if err != nil {
+		klog.Error(err)
 		return
 	}
-	uuids, _ := ovsFind("Interface", "_uuid", "external-ids:iface-id="+ifaceID, "name!="+portName)
-	for _, uuid := range uuids {
-		if out, err := Exec("remove", "Interface", uuid, "external-ids", "iface-id"); err != nil {
-			klog.Errorf("failed to clear stale OVS port %q iface-id %q: %v\n  %q", uuid, ifaceID, err, out)
+	var interfaces []vswitch.Interface
+	if err := provider.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+		return row.ExternalIDs["iface-id"] == ifaceID && row.Name != portName
+	}, &interfaces); err != nil {
+		klog.Errorf("failed to list duplicate OVS interfaces for %s: %v", ifaceID, err)
+		return
+	}
+	for i := range interfaces {
+		iface := &interfaces[i]
+		if err := provider.Table(&vswitch.Interface{}).Mutate(context.Background(), "interface-duplicate-cleanup", iface,
+			model.Mutation{Field: &iface.ExternalIDs, Mutator: ovsdb.MutateOperationDelete, Value: map[string]string{"iface-id": ifaceID}}); err != nil {
+			klog.Errorf("failed to clear stale OVS port %q iface-id %q: %v", iface.UUID, ifaceID, err)
 		}
 	}
 }
 
 // ValidatePortVendor returns true if the port's external_ids:vendor=kube-ovn
 func ValidatePortVendor(port string, providers ...compat.TableProvider) (bool, error) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return false, errors.New("vswitch table provider is nil")
-		}
-		var rows []vswitch.Port
-		if err := providers[0].Table(&vswitch.Port{}).Filter(context.Background(), func(row *vswitch.Port) bool {
-			return row.Name == port && row.ExternalIDs[ExternalIDVendor] == util.CniTypeName
-		}, &rows); err != nil {
-			return false, fmt.Errorf("validate OVS port %q: %w", port, err)
-		}
-		return len(rows) != 0, nil
+	provider, err := vswitchProvider(providers...)
+	if err != nil {
+		return false, err
 	}
-	output, err := ovsFind("Port", "name", "external_ids:vendor="+util.CniTypeName)
-	return slices.Contains(output, port), err
+	var rows []vswitch.Port
+	if err := provider.Table(&vswitch.Port{}).Filter(context.Background(), func(row *vswitch.Port) bool {
+		return row.Name == port && row.ExternalIDs[ExternalIDVendor] == util.CniTypeName
+	}, &rows); err != nil {
+		return false, fmt.Errorf("validate OVS port %q: %w", port, err)
+	}
+	return len(rows) != 0, nil
 }
 
 func GetInterfacePodNs(iface string, providers ...compat.TableProvider) (string, error) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return "", errors.New("vswitch table provider is nil")
-		}
-		var rows []vswitch.Interface
-		if err := providers[0].Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
-			return row.ExternalIDs["iface-id"] == iface
-		}, &rows); err != nil {
-			return "", fmt.Errorf("find OVS interface %q: %w", iface, err)
-		}
-		if len(rows) == 0 {
-			return "", nil
-		}
-		return rows[0].ExternalIDs["pod_netns"], nil
-	}
-	ret, err := ovsFind("interface", "external-ids", "external-ids:iface-id="+iface)
+	provider, err := vswitchProvider(providers...)
 	if err != nil {
-		klog.Error(err)
 		return "", err
 	}
-
-	if len(ret) == 0 {
+	var rows []vswitch.Interface
+	if err := provider.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+		return row.ExternalIDs["iface-id"] == iface
+	}, &rows); err != nil {
+		return "", fmt.Errorf("find OVS interface %q: %w", iface, err)
+	}
+	if len(rows) == 0 {
 		return "", nil
 	}
-
-	podNetNs := ""
-	match := podNetNsRegexp.FindStringSubmatch(ret[0])
-	if len(match) > 1 {
-		podNetNs = match[1]
-	}
-
-	return podNetNs, nil
+	return rows[0].ExternalIDs["pod_netns"], nil
 }
 
 // config mirror for interface by pod annotations and install param
@@ -475,62 +362,11 @@ func ConfigInterfaceMirror(globalMirror bool, open, iface string, providers ...c
 	if globalMirror {
 		return nil
 	}
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return errors.New("vswitch table provider is nil")
-		}
-		return ConfigVswitchInterfaceMirror(context.Background(), providers[0], open == "true", iface)
-	}
-	// find interface name for port
-	interfaceList, err := ovsFind("interface", "name", "external-ids:iface-id="+iface)
+	provider, err := vswitchProvider(providers...)
 	if err != nil {
-		klog.Error(err)
 		return err
 	}
-	for _, ifName := range interfaceList {
-		// ifName example: xxx_h
-		// find port uuid by interface name
-		portUUIDs, err := ovsFind("port", "_uuid", "name="+ifName)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		if len(portUUIDs) != 1 {
-			return fmt.Errorf("find port failed, portName=%s", ifName)
-		}
-		portID := portUUIDs[0]
-		if open == "true" {
-			// add port to mirror
-			err = ovsAdd("mirror", util.MirrorDefaultName, "select_dst_port", portID)
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-		} else {
-			mirrorPorts, err := ovsFind("mirror", "select_dst_port", "name="+util.MirrorDefaultName)
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			if len(mirrorPorts) == 0 {
-				return fmt.Errorf("find mirror failed, mirror name=%s", util.MirrorDefaultName)
-			}
-			if len(mirrorPorts) > 1 {
-				return fmt.Errorf("repeated mirror data, mirror name=%s", util.MirrorDefaultName)
-			}
-			for _, mirrorPortIDs := range mirrorPorts {
-				if strings.Contains(mirrorPortIDs, portID) {
-					// remove port from mirror
-					_, err := Exec("remove", "mirror", util.MirrorDefaultName, "select_dst_port", portID)
-					if err != nil {
-						klog.Error(err)
-						return err
-					}
-				}
-			}
-		}
-	}
-	return nil
+	return ConfigVswitchInterfaceMirror(context.Background(), provider, open == "true", iface)
 }
 
 // remove qos related to this port.
@@ -542,117 +378,65 @@ func ClearPortQosBinding(ifaceID string, providers ...compat.TableProvider) erro
 }
 
 func ListExternalIDs(table string, providers ...compat.TableProvider) (map[string]string, error) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return nil, errors.New("vswitch table provider is nil")
-		}
-		result := make(map[string]string)
-		ctx := context.Background()
-		switch strings.ToLower(table) {
-		case "interface":
-			var rows []vswitch.Interface
-			if err := providers[0].Table(&vswitch.Interface{}).Filter(ctx, func(row *vswitch.Interface) bool { return row.ExternalIDs["iface-id"] != "" }, &rows); err != nil {
-				return nil, err
-			}
-			for _, row := range rows {
-				result[row.ExternalIDs["iface-id"]] = row.UUID
-			}
-		case "port":
-			var rows []vswitch.Port
-			if err := providers[0].Table(&vswitch.Port{}).Filter(ctx, func(row *vswitch.Port) bool { return row.ExternalIDs["iface-id"] != "" }, &rows); err != nil {
-				return nil, err
-			}
-			for _, row := range rows {
-				result[row.ExternalIDs["iface-id"]] = row.UUID
-			}
-		case "qos":
-			var rows []vswitch.QoS
-			if err := providers[0].Table(&vswitch.QoS{}).Filter(ctx, func(row *vswitch.QoS) bool { return row.ExternalIDs["iface-id"] != "" }, &rows); err != nil {
-				return nil, err
-			}
-			for _, row := range rows {
-				result[row.ExternalIDs["iface-id"]] = row.UUID
-			}
-		case "queue":
-			var rows []vswitch.Queue
-			if err := providers[0].Table(&vswitch.Queue{}).Filter(ctx, func(row *vswitch.Queue) bool { return row.ExternalIDs["iface-id"] != "" }, &rows); err != nil {
-				return nil, err
-			}
-			for _, row := range rows {
-				result[row.ExternalIDs["iface-id"]] = row.UUID
-			}
-		default:
-			return nil, fmt.Errorf("unsupported OVS table %q", table)
-		}
-		return result, nil
-	}
-	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,external_ids", "find", table, "external_ids:iface-id!=[]")
+	provider, err := vswitchProvider(providers...)
 	if err != nil {
-		klog.Errorf("failed to list %s, %v", table, err)
 		return nil, err
 	}
-	lines := strings.Split(output, "\n")
-	result := make(map[string]string, len(lines))
-	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
+	result := make(map[string]string)
+	ctx := context.Background()
+	switch strings.ToLower(table) {
+	case "interface":
+		var rows []vswitch.Interface
+		if err := provider.Table(&vswitch.Interface{}).Filter(ctx, func(row *vswitch.Interface) bool { return row.ExternalIDs["iface-id"] != "" }, &rows); err != nil {
+			return nil, err
 		}
-		parts := strings.Split(strings.TrimSpace(l), ",")
-		if len(parts) != 2 {
-			continue
+		for _, row := range rows {
+			result[row.ExternalIDs["iface-id"]] = row.UUID
 		}
-		uuid := strings.TrimSpace(parts[0])
-		for externalID := range strings.FieldsSeq(parts[1]) {
-			if !strings.Contains(externalID, "iface-id=") {
-				continue
-			}
-			iface := strings.TrimPrefix(strings.TrimSpace(externalID), "iface-id=")
-			result[iface] = uuid
-			break
+	case "port":
+		var rows []vswitch.Port
+		if err := provider.Table(&vswitch.Port{}).Filter(ctx, func(row *vswitch.Port) bool { return row.ExternalIDs["iface-id"] != "" }, &rows); err != nil {
+			return nil, err
 		}
+		for _, row := range rows {
+			result[row.ExternalIDs["iface-id"]] = row.UUID
+		}
+	case "qos":
+		var rows []vswitch.QoS
+		if err := provider.Table(&vswitch.QoS{}).Filter(ctx, func(row *vswitch.QoS) bool { return row.ExternalIDs["iface-id"] != "" }, &rows); err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			result[row.ExternalIDs["iface-id"]] = row.UUID
+		}
+	case "queue":
+		var rows []vswitch.Queue
+		if err := provider.Table(&vswitch.Queue{}).Filter(ctx, func(row *vswitch.Queue) bool { return row.ExternalIDs["iface-id"] != "" }, &rows); err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			result[row.ExternalIDs["iface-id"]] = row.UUID
+		}
+	default:
+		return nil, fmt.Errorf("unsupported OVS table %q", table)
 	}
 	return result, nil
 }
 
 func ListQosQueueIDs(providers ...compat.TableProvider) (map[string]string, error) {
-	if len(providers) != 0 {
-		if providers[0] == nil {
-			return nil, errors.New("vswitch table provider is nil")
-		}
-		var rows []vswitch.QoS
-		if err := providers[0].Table(&vswitch.QoS{}).Filter(context.Background(), func(row *vswitch.QoS) bool {
-			_, ok := row.Queues[0]
-			return ok
-		}, &rows); err != nil {
-			return nil, fmt.Errorf("list QoS queue IDs: %w", err)
-		}
-		result := make(map[string]string, len(rows))
-		for _, row := range rows {
-			result[row.UUID] = row.Queues[0]
-		}
-		return result, nil
-	}
-	output, err := Exec("--data=bare", "--format=csv", "--no-heading", "--columns=_uuid,queues", "find", "qos", "queues:0!=[]")
+	provider, err := vswitchProvider(providers...)
 	if err != nil {
-		klog.Errorf("failed to list qos, %v", err)
 		return nil, err
 	}
-	lines := strings.Split(output, "\n")
-	result := make(map[string]string, len(lines))
-	for _, l := range lines {
-		if len(strings.TrimSpace(l)) == 0 {
-			continue
-		}
-		parts := strings.Split(strings.TrimSpace(l), ",")
-		if len(parts) != 2 {
-			continue
-		}
-		qosID := strings.TrimSpace(parts[0])
-		if !strings.Contains(strings.TrimSpace(parts[1]), "0=") {
-			continue
-		}
-		queueID := strings.TrimPrefix(strings.TrimSpace(parts[1]), "0=")
-		result[qosID] = queueID
+	var rows []vswitch.QoS
+	if err := provider.Table(&vswitch.QoS{}).Filter(context.Background(), func(row *vswitch.QoS) bool {
+		return len(row.Queues) > 0
+	}, &rows); err != nil {
+		return nil, fmt.Errorf("list QoS queue IDs: %w", err)
+	}
+	result := make(map[string]string, len(rows))
+	for _, row := range rows {
+		result[row.UUID] = row.Queues[0]
 	}
 	return result, nil
 }

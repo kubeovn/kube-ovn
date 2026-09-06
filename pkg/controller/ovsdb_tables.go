@@ -548,7 +548,7 @@ func (c *Controller) createPortGroupACLs(pgName string, acls ...*ovnnb.ACL) erro
 
 func (c *Controller) createGatewayACL(lsName, pgName string) error {
 	if c.OVNNbTables == nil {
-		return c.OVNNbClient.CreateGatewayACL(lsName, pgName)
+		return errors.New("OVN NB table provider is nil")
 	}
 	parentName, parentType := pgName, "pg"
 	if parentName == "" {
@@ -775,7 +775,7 @@ func (c *Controller) setNetPolACLLog(pgName string, logEnable, isIngress bool) e
 
 func (c *Controller) createGatewayLogicalSwitch(lsName, lrName, provider, ip, mac string, vlanID int, chassises ...string) error {
 	if c.OVNNbTables == nil {
-		return c.OVNNbClient.CreateGatewayLogicalSwitch(lsName, lrName, provider, ip, mac, vlanID, chassises...)
+		return errors.New("OVN NB table provider is nil")
 	}
 	oldLocalnet := "ln-" + lsName
 	if err := c.deleteLogicalSwitchPort(oldLocalnet); err != nil {
@@ -957,21 +957,21 @@ func (c *Controller) setLogicalSwitchRoutedTable(lsName, router, cidrBlock, gate
 
 func (c *Controller) updateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error {
 	if c.OVNNbTables == nil {
-		return c.OVNNbClient.UpdateLogicalSwitchACL(lsName, cidrBlock, subnetAcls, allowEWTraffic)
+		return errors.New("OVN NB table provider is nil")
 	}
 	return c.updateLogicalSwitchACLTable(lsName, cidrBlock, subnetAcls, allowEWTraffic)
 }
 
 func (c *Controller) setLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
 	if c.OVNNbTables == nil {
-		return c.OVNNbClient.SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
+		return errors.New("OVN NB table provider is nil")
 	}
 	return c.setLogicalSwitchPrivateTable(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
 }
 
 func (c *Controller) setLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
 	if c.OVNNbTables == nil {
-		return c.OVNNbClient.SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
+		return errors.New("OVN NB table provider is nil")
 	}
 	return c.setLogicalSwitchRoutedTable(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
 }
@@ -2528,7 +2528,7 @@ func (c *Controller) updateLogicalSwitchPortOptionsWith(name string, legacy func
 
 func (c *Controller) setLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error {
 	if c.OVNNbTables == nil {
-		return c.OVNNbClient.SetLogicalSwitchPortVirtualParents(lsName, parents, ips...)
+		return errors.New("OVN NB table provider is nil")
 	}
 	for _, ip := range ips {
 		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
@@ -2952,7 +2952,7 @@ func (c *Controller) addLogicalRouterPolicy(lrName string, priority int, match, 
 
 func (c *Controller) batchAddLogicalRouterPolicies(lrName string, policies []*ovnnb.LogicalRouterPolicy) error {
 	if c.OVNNbTables == nil {
-		return c.OVNNbClient.BatchAddLogicalRouterPolicy(lrName, policies...)
+		return errors.New("OVN NB table provider is nil")
 	}
 	if len(policies) == 0 {
 		return nil
@@ -3229,7 +3229,7 @@ func (c *Controller) addNat(lrName, natType, externalIP, logicalIP, logicalMac, 
 
 func (c *Controller) ensureSnat(lrName, externalIP, logicalIP string) error {
 	if c.OVNNbTables == nil {
-		return c.OVNNbClient.EnsureSnat(lrName, externalIP, logicalIP)
+		return errors.New("OVN NB table provider is nil")
 	}
 	if externalIP == "" {
 		return errors.New("snat external ip is required")
