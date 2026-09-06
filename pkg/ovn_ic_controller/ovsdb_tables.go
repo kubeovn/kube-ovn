@@ -199,9 +199,6 @@ func (c *Controller) createICLogicalPatchPort(lsName, lrName, lspName, lrpName, 
 }
 
 func (c *Controller) setICAutoRouteTable(enable bool, blacklist []string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.SetICAutoRoute(enable, blacklist)
-	}
 	global, err := c.getNBGlobalTable()
 	if err != nil {
 		return err
@@ -229,9 +226,6 @@ func (c *Controller) setICAutoRouteTable(enable bool, blacklist []string) error 
 }
 
 func (c *Controller) setICAzNameTable(name string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.SetAzName(name)
-	}
 	global, err := c.getNBGlobalTable()
 	if err != nil {
 		return err
@@ -261,9 +255,6 @@ func (c *Controller) getNBGlobalTable() (*ovnnb.NBGlobal, error) {
 }
 
 func (c *Controller) listICLogicalSwitchPorts(filter func(*ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.ListLogicalSwitchPorts(false, nil, filter)
-	}
 	var rows []ovnnb.LogicalSwitchPort
 	err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Filter(
 		context.Background(), filter, &rows,
@@ -272,9 +263,6 @@ func (c *Controller) listICLogicalSwitchPorts(filter func(*ovnnb.LogicalSwitchPo
 }
 
 func (c *Controller) logicalSwitchPortExistsTable(name string) (bool, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.LogicalSwitchPortExists(name)
-	}
 	rows, err := c.listICLogicalSwitchPorts(func(row *ovnnb.LogicalSwitchPort) bool {
 		return row.Name == name
 	})
@@ -282,9 +270,6 @@ func (c *Controller) logicalSwitchPortExistsTable(name string) (bool, error) {
 }
 
 func (c *Controller) listICLogicalRouterPorts(filter func(*ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.ListLogicalRouterPorts(nil, filter)
-	}
 	var rows []ovnnb.LogicalRouterPort
 	err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Filter(
 		context.Background(), filter, &rows,
@@ -293,9 +278,6 @@ func (c *Controller) listICLogicalRouterPorts(filter func(*ovnnb.LogicalRouterPo
 }
 
 func (c *Controller) deleteICLogicalSwitchPorts(filter func(*ovnnb.LogicalSwitchPort) bool) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalSwitchPorts(nil, filter)
-	}
 	ports, err := c.listICLogicalSwitchPorts(filter)
 	if err != nil {
 		return fmt.Errorf("list logical switch ports: %w", err)
@@ -348,9 +330,6 @@ func (c *Controller) deleteICLogicalSwitchPorts(filter func(*ovnnb.LogicalSwitch
 }
 
 func (c *Controller) deleteICLogicalRouterPorts(filter func(*ovnnb.LogicalRouterPort) bool) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalRouterPorts(nil, filter)
-	}
 	ports, err := c.listICLogicalRouterPorts(filter)
 	if err != nil {
 		return fmt.Errorf("list logical router ports: %w", err)
@@ -403,9 +382,6 @@ func (c *Controller) deleteICLogicalRouterPorts(filter func(*ovnnb.LogicalRouter
 }
 
 func (c *Controller) deleteICLogicalSwitch(name string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalSwitch(name)
-	}
 	var rows []ovnnb.LogicalSwitch
 	if err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Filter(context.Background(), func(row *ovnnb.LogicalSwitch) bool {
 		return row.Name == name
@@ -422,9 +398,6 @@ func (c *Controller) deleteICLogicalSwitch(name string) error {
 }
 
 func (c *Controller) getICChassisByHost(hostname string) (*ovnsb.Chassis, error) {
-	if c.OVNSbTables == nil {
-		return c.OVNSbClient.GetChassisByHost(hostname)
-	}
 	var rows []ovnsb.Chassis
 	if err := c.OVNSbTables.Table(&ovnsb.Chassis{}).Filter(context.Background(), func(row *ovnsb.Chassis) bool {
 		return row.Hostname == hostname
@@ -442,18 +415,12 @@ func (c *Controller) getICChassisByHost(hostname string) (*ovnsb.Chassis, error)
 }
 
 func (c *Controller) listICLogicalRouters() ([]ovnnb.LogicalRouter, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.ListLogicalRouter(false, nil)
-	}
 	var rows []ovnnb.LogicalRouter
 	err := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).List(context.Background(), &rows)
 	return rows, err
 }
 
 func (c *Controller) getICLogicalRouter(name string) (*ovnnb.LogicalRouter, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.GetLogicalRouter(name, false)
-	}
 	rows, err := c.listICLogicalRouters()
 	if err != nil {
 		return nil, err
@@ -467,9 +434,6 @@ func (c *Controller) getICLogicalRouter(name string) (*ovnnb.LogicalRouter, erro
 }
 
 func (c *Controller) listICRoutes(lr *ovnnb.LogicalRouter, filter func(*ovnnb.LogicalRouterStaticRoute) bool) ([]*ovnnb.LogicalRouterStaticRoute, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.ListLogicalRouterStaticRoutes(lr.Name, nil, nil, "", nil)
-	}
 	allowed := make(map[string]struct{}, len(lr.StaticRoutes))
 	for _, uuid := range lr.StaticRoutes {
 		allowed[uuid] = struct{}{}
@@ -502,9 +466,6 @@ func (c *Controller) deleteICRoutes(lr *ovnnb.LogicalRouter, routes []*ovnnb.Log
 }
 
 func (c *Controller) listICPolicies(lr *ovnnb.LogicalRouter, filter func(*ovnnb.LogicalRouterPolicy) bool) ([]*ovnnb.LogicalRouterPolicy, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.ListLogicalRouterPolicies(lr.Name, -1, nil, false)
-	}
 	allowed := make(map[string]struct{}, len(lr.Policies))
 	for _, uuid := range lr.Policies {
 		allowed[uuid] = struct{}{}
@@ -518,9 +479,6 @@ func (c *Controller) listICPolicies(lr *ovnnb.LogicalRouter, filter func(*ovnnb.
 }
 
 func (c *Controller) addICPolicy(lr *ovnnb.LogicalRouter, policy *ovnnb.LogicalRouterPolicy) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.AddLogicalRouterPolicy(lr.Name, policy.Priority, policy.Match, policy.Action, policy.Nexthops, policy.BFDSessions, policy.ExternalIDs)
-	}
 	policy.UUID = ovsclient.NamedUUID()
 	createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPolicy{}).CreateOps(policy)
 	if err != nil {
@@ -538,9 +496,6 @@ func (c *Controller) addICPolicy(lr *ovnnb.LogicalRouter, policy *ovnnb.LogicalR
 func (c *Controller) deleteICPolicyUUID(lr *ovnnb.LogicalRouter, uuid string) error {
 	if uuid == "" {
 		return nil
-	}
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lr.Name, uuid)
 	}
 	if !slices.Contains(lr.Policies, uuid) {
 		return nil
@@ -564,14 +519,6 @@ func (c *Controller) deleteICPolicies(lr *ovnnb.LogicalRouter, priority int, key
 	uuids := make([]string, 0, len(policies))
 	for _, policy := range policies {
 		uuids = append(uuids, policy.UUID)
-	}
-	if c.OVNNbTables == nil {
-		for _, uuid := range uuids {
-			if err := c.deleteICPolicyUUID(lr, uuid); err != nil {
-				return err
-			}
-		}
-		return nil
 	}
 	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Mutate(
 		context.Background(), "ic-policies-del", lr,

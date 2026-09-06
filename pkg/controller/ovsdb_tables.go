@@ -3386,9 +3386,12 @@ func (c *Controller) getNBGlobal() (*ovnnb.NBGlobal, error) {
 	}
 }
 
-func (c *Controller) setNBGlobalOption(key, value string, present bool, legacy func() error) error {
+func (c *Controller) setNBGlobalOption(key, value string, present bool, legacy ...func() error) error {
 	if c.OVNNbTables == nil {
-		return legacy()
+		if len(legacy) != 0 && legacy[0] != nil {
+			return legacy[0]()
+		}
+		return errors.New("OVN NB table provider is nil")
 	}
 	nbGlobal, err := c.getNBGlobal()
 	if err != nil {
@@ -3415,9 +3418,12 @@ func (c *Controller) setNBGlobalOption(key, value string, present bool, legacy f
 	)
 }
 
-func (c *Controller) setNBGlobalIPSec(enabled bool, legacy func() error) error {
+func (c *Controller) setNBGlobalIPSec(enabled bool, legacy ...func() error) error {
 	if c.OVNNbTables == nil {
-		return legacy()
+		if len(legacy) != 0 && legacy[0] != nil {
+			return legacy[0]()
+		}
+		return errors.New("OVN NB table provider is nil")
 	}
 	nbGlobal, err := c.getNBGlobal()
 	if err != nil {

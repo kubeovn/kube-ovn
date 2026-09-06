@@ -1186,40 +1186,28 @@ func Run(ctx context.Context, config *Configuration) {
 func (c *Controller) Run(ctx context.Context) {
 	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
 	// Otherwise, the init process should be placed after all workers have already started working
-	if err := c.setNBGlobalOption("ls_dnat_mod_dl_dst", strconv.FormatBool(c.config.LsDnatModDlDst), true, func() error {
-		return c.OVNNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst)
-	}); err != nil {
+	if err := c.setNBGlobalOption("ls_dnat_mod_dl_dst", strconv.FormatBool(c.config.LsDnatModDlDst), true); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_dnat_mod_dl_dst")
 	}
 
-	if err := c.setNBGlobalOption("use_ct_inv_match", "false", true, func() error {
-		return c.OVNNbClient.SetUseCtInvMatch()
-	}); err != nil {
+	if err := c.setNBGlobalOption("use_ct_inv_match", "false", true); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
 	}
 
-	if err := c.setNBGlobalOption("ls_ct_skip_dst_lport_ips", strconv.FormatBool(c.config.LsCtSkipDstLportIPs), true, func() error {
-		return c.OVNNbClient.SetLsCtSkipDstLportIPs(c.config.LsCtSkipDstLportIPs)
-	}); err != nil {
+	if err := c.setNBGlobalOption("ls_ct_skip_dst_lport_ips", strconv.FormatBool(c.config.LsCtSkipDstLportIPs), true); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_ct_skip_dst_lport_ips")
 	}
 
 	nodeLocalDNSIP := strings.Join(c.config.NodeLocalDNSIPs, ",")
-	if err := c.setNBGlobalOption("node_local_dns_ip", nodeLocalDNSIP, nodeLocalDNSIP != "", func() error {
-		return c.OVNNbClient.SetNodeLocalDNSIP(nodeLocalDNSIP)
-	}); err != nil {
+	if err := c.setNBGlobalOption("node_local_dns_ip", nodeLocalDNSIP, nodeLocalDNSIP != ""); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
 	}
 
-	if err := c.setNBGlobalOption("skip_conntrack_dst_cidrs", c.config.SkipConntrackDstCidrs, c.config.SkipConntrackDstCidrs != "", func() error {
-		return c.OVNNbClient.SetSkipConntrackCidrs(c.config.SkipConntrackDstCidrs)
-	}); err != nil {
+	if err := c.setNBGlobalOption("skip_conntrack_dst_cidrs", c.config.SkipConntrackDstCidrs, c.config.SkipConntrackDstCidrs != ""); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
-	if err := c.setNBGlobalIPSec(c.config.EnableOVNIPSec, func() error {
-		return c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec)
-	}); err != nil {
+	if err := c.setNBGlobalIPSec(c.config.EnableOVNIPSec); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global ipsec")
 	}
 
