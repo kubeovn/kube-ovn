@@ -955,33 +955,25 @@ func (c *Controller) isVMLauncherPodAlive(namespace, vmiName, iface string) bool
 }
 
 func (c *Controller) gcInterfaces() {
-	if c.vswitchTables != nil {
-		var interfaces []vswitch.Interface
-		err := c.vswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(iface *vswitch.Interface) bool {
-			if iface.LinkState != nil && *iface.LinkState == vswitch.InterfaceLinkStateUp {
-				return false
-			}
-			return iface.ExternalIDs["pod_name"] != "" && iface.ExternalIDs["pod_namespace"] != ""
-		}, &interfaces)
-		if err != nil {
-			klog.Errorf("failed to list interface pod map from OVSDB: %v", err)
-			return
-		}
-		for i := range interfaces {
-			iface := &interfaces[i]
-			pod := fmt.Sprintf("%s/%s/%s", iface.ExternalIDs["pod_namespace"], iface.ExternalIDs["pod_name"], interfaceErrorText(iface))
-			c.gcInterface(iface.Name, pod)
-		}
+	if c.vswitchTables == nil {
+		klog.Error("failed to garbage collect OVS interfaces: table provider is not configured")
 		return
 	}
-
-	interfacePodMap, err := ovs.ListInterfacePodMap()
+	var interfaces []vswitch.Interface
+	err := c.vswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(iface *vswitch.Interface) bool {
+		if iface.LinkState != nil && *iface.LinkState == vswitch.InterfaceLinkStateUp {
+			return false
+		}
+		return iface.ExternalIDs["pod_name"] != "" && iface.ExternalIDs["pod_namespace"] != ""
+	}, &interfaces)
 	if err != nil {
-		klog.Errorf("failed to list interface pod map: %v", err)
+		klog.Errorf("failed to list interface pod map from OVSDB: %v", err)
 		return
 	}
-	for iface, pod := range interfacePodMap {
-		c.gcInterface(iface, pod)
+	for i := range interfaces {
+		iface := &interfaces[i]
+		pod := fmt.Sprintf("%s/%s/%s", iface.ExternalIDs["pod_namespace"], iface.ExternalIDs["pod_name"], interfaceErrorText(iface))
+		c.gcInterface(iface.Name, pod)
 	}
 }
 
@@ -1034,14 +1026,14 @@ type interfaceCleaner interface {
 }
 
 func (c *Controller) cleanVswitchInterface(name string) error {
-	if c.vswitchTables != nil {
-		cleaner, ok := c.vswitchTables.(interfaceCleaner)
-		if !ok {
-			return errors.New("vswitch table provider does not support interface cleanup")
-		}
-		return cleaner.CleanInterface(name)
+	if c.vswitchTables == nil {
+		return errors.New("vswitch table provider is not configured")
 	}
-	return ovs.CleanInterface(name)
+	cleaner, ok := c.vswitchTables.(interfaceCleaner)
+	if !ok {
+		return errors.New("vswitch table provider does not support interface cleanup")
+	}
+	return cleaner.CleanInterface(name)
 }
 
 func (c *Controller) runIPSecWorker() {
