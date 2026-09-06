@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
@@ -954,17 +955,31 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 		}
 	}
 
-	if checkVip.Status.V4ip == "" && checkVip.Status.V6ip == "" {
-		err = fmt.Errorf("vip %s is not ready", vipName)
-		klog.Error(err)
-		return "", err
-	}
-
-	switch util.CheckProtocol(lbVip) {
-	case kubeovnv1.ProtocolIPv4:
-		checkIP = checkVip.Status.V4ip
-	case kubeovnv1.ProtocolIPv6:
-		checkIP = checkVip.Status.V6ip
+	protocol := util.CheckProtocol(lbVip)
+	checkIP = healthCheckVIPAddress(checkVip, protocol)
+	if checkIP == "" {
+		// A concurrent endpoint worker can observe the VIP after creation but
+		// before its status controller has allocated the requested address.
+		// Poll the API object directly so a stale informer cache cannot keep
+		// IPv4 service installation from converging.
+		pollErr := wait.PollUntilContextTimeout(context.Background(), 100*time.Millisecond, 10*time.Second, true,
+			func(ctx context.Context) (bool, error) {
+				current, getErr := c.config.KubeOvnClient.KubeovnV1().Vips().Get(ctx, vipName, metav1.GetOptions{})
+				if getErr != nil {
+					if k8serrors.IsNotFound(getErr) {
+						return false, nil
+					}
+					return false, getErr
+				}
+				checkVip = current
+				checkIP = healthCheckVIPAddress(current, protocol)
+				return checkIP != "", nil
+			})
+		if pollErr != nil {
+			err = fmt.Errorf("vip %s is not ready: %w", vipName, pollErr)
+			klog.Error(err)
+			return "", err
+		}
 	}
 	if checkIP == "" {
 		err = fmt.Errorf("failed to get health check vip subnet %s", vipName)
@@ -973,6 +988,20 @@ func (c *Controller) getHealthCheckVip(subnetName, lbVip string) (string, error)
 	}
 
 	return checkIP, nil
+}
+
+func healthCheckVIPAddress(vip *kubeovnv1.Vip, protocol string) string {
+	if vip == nil {
+		return ""
+	}
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
+		return vip.Status.V4ip
+	case kubeovnv1.ProtocolIPv6:
+		return vip.Status.V6ip
+	default:
+		return ""
+	}
 }
 
 // getEndpointBackend returns the LB backend for a service
