@@ -1,4 +1,4 @@
-From 477695a010affe56efdd66b60510fa612f8704c1 Mon Sep 17 00:00:00 2001
+From 9b90f44aeab469a118cc77f519557bcc4b883c07 Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
 Date: Fri, 23 May 2025 06:09:31 +0000
 Subject: [PATCH] northd: skip arp/nd request for lrp addresses from localnet
@@ -6,29 +6,33 @@ Subject: [PATCH] northd: skip arp/nd request for lrp addresses from localnet
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
- northd/northd.c | 50 ++++++++++++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 53 insertions(+)
+ northd/northd.c | 51 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 51 insertions(+)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index d674518a1..ad858258d 100644
+index 0ee76f8..0d34c44 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -10673,0 +10674,50 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
-+        struct ovn_port *lrp = op->peer;
+@@ -10656,3 +10656,54 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
+         if (is_vlan_transparent(op->od)) {
+             return;
+         }
++
++        const struct ovn_port *lrp = op->peer;
 +        if (lrp && lrp->nbrp && !lrp->primary_port &&
 +            !lrp->nbrp->n_gateway_chassis && !lrp->nbrp->ha_chassis_group &&
 +            lsp_is_router(op->nbsp)) {
 +            ovs_be32 lla_ip4;
 +            inet_pton(AF_INET, "169.254.0.0", &lla_ip4);
 +            for (size_t i = 0; i < vector_len(&op->od->localnet_ports); i++) {
-+                struct ovn_port *localnet_port = vector_get(
++                const struct ovn_port *localnet_port = vector_get(
 +                    &op->od->localnet_ports, i, struct ovn_port *);
 +                for (size_t j = 0; j < lrp->lrp_networks.n_ipv4_addrs; j++) {
-+                    struct ipv4_netaddr *addrs;
-+                    addrs = &lrp->lrp_networks.ipv4_addrs[j];
++                    const struct ipv4_netaddr *addrs =
++                        &lrp->lrp_networks.ipv4_addrs[j];
 +                    if (addrs->plen >= 16 &&
 +                        (addrs->addr & htonl(0xffff0000)) == lla_ip4) {
-+                        // skip link local address
++                        /* Skip link-local addresses. */
 +                        continue;
 +                    }
 +                    ds_clear(match);
@@ -43,10 +47,10 @@ index d674518a1..ad858258d 100644
 +                                  WITH_HINT(&op->nbsp->header_));
 +                }
 +                for (size_t j = 0; j < lrp->lrp_networks.n_ipv6_addrs; j++) {
-+                    struct ipv6_netaddr *addrs;
-+                    addrs = &lrp->lrp_networks.ipv6_addrs[j];
++                    const struct ipv6_netaddr *addrs =
++                        &lrp->lrp_networks.ipv6_addrs[j];
 +                    if (in6_is_lla(&addrs->network)) {
-+                        // skip link local address
++                        /* Skip link-local addresses. */
 +                        continue;
 +                    }
 +                    ds_clear(match);
@@ -64,4 +68,3 @@ index d674518a1..ad858258d 100644
 +                }
 +            }
 +        }
-+
