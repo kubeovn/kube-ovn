@@ -6,14 +6,14 @@ Subject: [PATCH] northd: skip arp/nd request for lrp addresses from localnet
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
- northd/northd.c | 53 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ northd/northd.c | 50 ++++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 53 insertions(+)
 
 diff --git a/northd/northd.c b/northd/northd.c
 index d674518a1..ad858258d 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -10673,0 +10674,53 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
+@@ -10673,0 +10674,50 @@ build_lswitch_arp_nd_responder_known_ips(struct ovn_port *op,
 +        struct ovn_port *lrp = op->peer;
 +        if (lrp && lrp->nbrp && !lrp->primary_port &&
 +            !lrp->nbrp->n_gateway_chassis && !lrp->nbrp->ha_chassis_group &&
@@ -36,12 +36,11 @@ index d674518a1..ad858258d 100644
 +                                  "inport == %s && "
 +                                  "arp.tpa == %s && arp.op == 1",
 +                                  localnet_port->json_key, addrs->addr_s);
-+                    ovn_lflow_add_with_lport_and_hint(lflows, op->od,
-+                                                      S_SWITCH_IN_ARP_ND_RSP,
-+                                                      105, ds_cstr(match),
-+                                                      "drop;", op->key,
-+                                                      &op->nbsp->header_,
-+                                                      op->lflow_ref);
++                    ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP,
++                                  105, ds_cstr(match), "drop;",
++                                  op->lflow_ref,
++                                  WITH_IO_PORT(localnet_port->key),
++                                  WITH_HINT(&op->nbsp->header_));
 +                }
 +                for (size_t j = 0; j < lrp->lrp_networks.n_ipv6_addrs; j++) {
 +                    struct ipv6_netaddr *addrs;
@@ -57,12 +56,11 @@ index d674518a1..ad858258d 100644
 +                                  localnet_port->json_key,
 +                                  addrs->addr_s, addrs->sn_addr_s,
 +                                  addrs->addr_s);
-+                    ovn_lflow_add_with_lport_and_hint(lflows, op->od,
-+                                                      S_SWITCH_IN_ARP_ND_RSP,
-+                                                      105, ds_cstr(match),
-+                                                      "drop;", op->key,
-+                                                      &op->nbsp->header_,
-+                                                      op->lflow_ref);
++                    ovn_lflow_add(lflows, op->od, S_SWITCH_IN_ARP_ND_RSP,
++                                  105, ds_cstr(match), "drop;",
++                                  op->lflow_ref,
++                                  WITH_IO_PORT(localnet_port->key),
++                                  WITH_HINT(&op->nbsp->header_));
 +                }
 +            }
 +        }
