@@ -26,6 +26,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -1866,8 +1867,14 @@ func (c *Controller) setExGateway() error {
 				externalBrReady = true
 			} else {
 				klog.Infof("external bridge should change from %s to %s, delete external bridge %s", existBr, externalBridge, existBr)
-				if _, err := ovs.Exec(ovs.IfExists, "del-br", existBr); err != nil {
-					err = fmt.Errorf("failed to del external br %s, %w", existBr, err)
+				var deleteErr error
+				if c.vswitchTables != nil {
+					deleteErr = ovs.DeleteVswitchBridge(context.Background(), c.vswitchTables, existBr)
+				} else {
+					_, deleteErr = ovs.Exec(ovs.IfExists, "del-br", existBr)
+				}
+				if deleteErr != nil {
+					err = fmt.Errorf("failed to del external br %s, %w", existBr, deleteErr)
 					klog.Error(err)
 					return err
 				}
@@ -1876,7 +1883,18 @@ func (c *Controller) setExGateway() error {
 
 		if !externalBrReady {
 			klog.Infof("create external bridge %s and add nic %s", externalBridge, linkName)
-			if _, err := ovs.Exec(
+			if c.vswitchTables != nil {
+				if err := ovs.EnsureVswitchBridge(context.Background(), c.vswitchTables, ovs.VswitchBridgeConfig{Name: externalBridge}); err != nil {
+					return fmt.Errorf("failed to enable external gateway bridge: %w", err)
+				}
+				if err := ovs.EnsureVswitchPort(context.Background(), c.vswitchTables, ovs.VswitchPortConfig{
+					BridgeName: externalBridge,
+					Port:       &vswitch.Port{Name: linkName},
+					Interface:  &vswitch.Interface{Name: linkName},
+				}); err != nil {
+					return fmt.Errorf("failed to enable external gateway port: %w", err)
+				}
+			} else if _, err := ovs.Exec(
 				ovs.MayExist, "add-br", externalBridge, "--",
 				ovs.MayExist, "add-port", externalBridge, linkName,
 			); err != nil {
@@ -1925,10 +1943,14 @@ func (c *Controller) setExGateway() error {
 
 		if !isUserspaceDP && !keepExternalSubnet {
 			klog.Infof("delete external bridge %s", externalBridge)
-			if _, err := ovs.Exec(
-				ovs.IfExists, "del-br", externalBridge,
-			); err != nil {
-				err = fmt.Errorf("failed to disable external gateway, %w", err)
+			var deleteErr error
+			if c.vswitchTables != nil {
+				deleteErr = ovs.DeleteVswitchBridge(context.Background(), c.vswitchTables, externalBridge)
+			} else {
+				_, deleteErr = ovs.Exec(ovs.IfExists, "del-br", externalBridge)
+			}
+			if deleteErr != nil {
+				err = fmt.Errorf("failed to disable external gateway, %w", deleteErr)
 				klog.Error(err)
 				return err
 			}

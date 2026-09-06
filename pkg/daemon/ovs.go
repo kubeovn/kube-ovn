@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +12,8 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -134,7 +138,13 @@ func pingGateway(gw, src string, verbose bool, maxRetry int, done chan struct{})
 	return pinger.PacketsSent, nil
 }
 
-func configureGlobalMirror(portName string, mtu int) error {
+func configureGlobalMirror(portName string, mtu int, providers ...compat.TableProvider) error {
+	if len(providers) != 0 && providers[0] != nil {
+		if err := ovs.EnsureVswitchMirror(context.Background(), providers[0], portName, true); err != nil {
+			return err
+		}
+		return configureMirrorLink(portName, mtu)
+	}
 	nicExist, err := linkExists(portName)
 	if err != nil {
 		klog.Error(err)
@@ -169,7 +179,13 @@ func configureGlobalMirror(portName string, mtu int) error {
 	return configureMirrorLink(portName, mtu)
 }
 
-func configureEmptyMirror(portName string, mtu int) error {
+func configureEmptyMirror(portName string, mtu int, providers ...compat.TableProvider) error {
+	if len(providers) != 0 && providers[0] != nil {
+		if err := ovs.EnsureVswitchMirror(context.Background(), providers[0], portName, false); err != nil {
+			return err
+		}
+		return configureMirrorLink(portName, mtu)
+	}
 	nicExist, err := linkExists(portName)
 	if err != nil {
 		klog.Error(err)
@@ -273,19 +289,36 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %w", err)
 	}
-	cmd := []string{
-		ovs.MayExist, "add-br", bridge,
-		"--", "set", "bridge", bridge, fmt.Sprintf("other_config:mac-learning-fallback=%v", macLearningFallback),
-		"--", "set", "bridge", bridge, "external_ids:vendor=" + util.CniTypeName,
-		"--", "set", "bridge", bridge, fmt.Sprintf("external_ids:exchange-link-name=%v", exchangeLinkName),
-	}
-	if !brExists {
-		// assign a new generated mac address only when the bridge is newly created
-		cmd = append(cmd, "--", "set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
-	}
-	output, err := ovs.Exec(cmd...)
-	if err != nil {
-		return fmt.Errorf("failed to create OVS bridge %s, %w: %q", bridge, err, output)
+	if c.vswitchTables != nil {
+		otherConfig := map[string]string{"mac-learning-fallback": strconv.FormatBool(macLearningFallback)}
+		if !brExists {
+			otherConfig["hwaddr"] = util.GenerateMac()
+		}
+		if err := ovs.EnsureVswitchBridge(context.Background(), c.vswitchTables, ovs.VswitchBridgeConfig{
+			Name: bridge,
+			ExternalIDs: map[string]string{
+				"vendor":             util.CniTypeName,
+				"exchange-link-name": strconv.FormatBool(exchangeLinkName),
+			},
+			OtherConfig: otherConfig,
+		}); err != nil {
+			return fmt.Errorf("failed to create OVS bridge %s: %w", bridge, err)
+		}
+	} else {
+		cmd := []string{
+			ovs.MayExist, "add-br", bridge,
+			"--", "set", "bridge", bridge, fmt.Sprintf("other_config:mac-learning-fallback=%v", macLearningFallback),
+			"--", "set", "bridge", bridge, "external_ids:vendor=" + util.CniTypeName,
+			"--", "set", "bridge", bridge, fmt.Sprintf("external_ids:exchange-link-name=%v", exchangeLinkName),
+		}
+		if !brExists {
+			// assign a new generated mac address only when the bridge is newly created
+			cmd = append(cmd, "--", "set", "bridge", bridge, fmt.Sprintf(`other-config:hwaddr="%s"`, util.GenerateMac()))
+		}
+		output, err := ovs.Exec(cmd...)
+		if err != nil {
+			return fmt.Errorf("failed to create OVS bridge %s, %w: %q", bridge, err, output)
+		}
 	}
 
 	if exchangeLinkName {
@@ -293,8 +326,18 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 			// Bridge created in OVSDB but kernel interface not available.
 			// Delete the stale bridge to allow a clean retry.
 			klog.Warningf("OVS bridge %s interface not ready, cleaning up: %v", bridge, err)
-			if output, delErr := ovs.Exec(ovs.IfExists, "del-br", bridge); delErr != nil {
-				klog.Errorf("failed to delete stale bridge %s: %v, %q", bridge, delErr, output)
+			var delErr error
+			if c.vswitchTables != nil {
+				delErr = ovs.DeleteVswitchBridge(context.Background(), c.vswitchTables, bridge)
+			} else {
+				var output string
+				output, delErr = ovs.Exec(ovs.IfExists, "del-br", bridge)
+				if delErr != nil {
+					klog.Errorf("failed to delete stale bridge %s: %v, %q", bridge, delErr, output)
+				}
+			}
+			if delErr != nil {
+				klog.Errorf("failed to delete stale bridge %s: %v", bridge, delErr)
 			}
 			return err
 		}
@@ -377,7 +420,25 @@ func (c *Controller) initProviderChassisMac(provider string) error {
 	return nil
 }
 
-func GetProviderChassisMac(provider string) (string, error) {
+// GetProviderChassisMac returns the chassis MAC recorded for a provider. The
+// optional table provider keeps callers on the generic OVSDB path while the
+// no-provider form remains compatible with standalone utilities.
+func GetProviderChassisMac(provider string, providers ...compat.TableProvider) (string, error) {
+	if len(providers) != 0 && providers[0] != nil {
+		var rows []vswitch.OpenvSwitch
+		if err := providers[0].Table(&vswitch.OpenvSwitch{}).List(context.Background(), &rows); err != nil {
+			return "", fmt.Errorf("failed to list Open_vSwitch rows: %w", err)
+		}
+		if len(rows) != 1 {
+			return "", fmt.Errorf("expected one Open_vSwitch row, found %d", len(rows))
+		}
+		mac := decodeOvnMappings(rows[0].ExternalIDs["ovn-chassis-mac-mappings"])[provider]
+		if mac == "" {
+			return "", fmt.Errorf("no chassis mac found for provider %s", provider)
+		}
+		return mac, nil
+	}
+
 	mappings, err := getOvnMappings("ovn-chassis-mac-mappings")
 	if err != nil {
 		return "", fmt.Errorf("failed to get chassis mac for provider %s: %w", provider, err)

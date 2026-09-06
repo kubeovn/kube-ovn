@@ -9,6 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 )
 
 const metricNamespace = "kube_ovn"
@@ -22,11 +23,12 @@ var (
 // the prometheus metrics package.
 type Exporter struct {
 	sync.RWMutex
-	Client       *ovsdb.OvsClient
-	timeout      int
-	pollInterval int
-	errors       int64
-	errorsLocker sync.RWMutex
+	Client        *ovsdb.OvsClient
+	VswitchTables compat.TableProvider
+	timeout       int
+	pollInterval  int
+	errors        int64
+	errorsLocker  sync.RWMutex
 }
 
 // NewExporter returns an initialized Exporter.
@@ -35,6 +37,11 @@ func NewExporter(cfg *Configuration) *Exporter {
 		Client: ovsdb.NewOvsClient(),
 	}
 	e.initParas(cfg)
+	if tables, err := ovs.NewVswitchClient(cfg.DatabaseVswitchSocketRemote, cfg.PollTimeout, cfg.PollTimeout); err != nil {
+		klog.Errorf("%s failed to connect generic OVSDB client: %v", appName, err)
+	} else {
+		e.VswitchTables = tables
+	}
 
 	if err := e.Client.GetSystemID(); err != nil {
 		klog.Errorf("%s failed to get system id: %s", appName, err)

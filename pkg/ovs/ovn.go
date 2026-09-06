@@ -247,6 +247,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 
 	monitors := []compat.MonitorOption{
 		compat.WithTable(&ovnsb.Chassis{}),
+		compat.WithTable(&ovnsb.PortBinding{}),
 	}
 	try := 0
 	var sbClient compat.Backend
