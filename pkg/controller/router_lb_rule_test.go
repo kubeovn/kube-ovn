@@ -658,6 +658,29 @@ func Test_handleDelRouterLBRule(t *testing.T) {
 		assert.NoError(t, fc.fakeController.handleDelRouterLBRule(makeInfo()))
 	})
 
+	t.Run("service not found recovers VIP from EIP", func(t *testing.T) {
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			OvnEips: []*kubeovnv1.OvnEip{{
+				Name:   "eip1",
+				Status: kubeovnv1.OvnEipStatus{V4Ip: testEIP},
+			}},
+			Vpcs: []*kubeovnv1.Vpc{{
+				Name:   testVpc,
+				Status: kubeovnv1.VpcStatus{TCPLoadBalancer: testTCPLB},
+			}},
+		})
+		require.NoError(t, err)
+		info := makeInfo()
+		info.UID = "rlr-uid"
+		info.OvnEip = "eip1"
+		info.Vpc = testVpc
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(testTCPLB, testVip, true).Return(nil)
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+		fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
+
+		assert.NoError(t, fc.fakeController.handleDelRouterLBRule(info))
+	})
+
 	t.Run("service without VIP annotation only deletes the service", func(t *testing.T) {
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			Services: []*corev1.Service{makeSvc(false)},

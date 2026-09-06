@@ -355,6 +355,23 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 	} else if !k8serrors.IsNotFound(e) {
 		klog.Warningf("failed to get service %s for cleanup enrichment: %v", svcName, e)
 	}
+	if len(vips) == 0 && info.OvnEip != "" {
+		// The generated Service may already have disappeared when the Rule
+		// delete worker runs. Recover the VIPs from the referenced EIP so an
+		// interrupted migration cannot leave entries in a fixed VPC LB.
+		if eip, e := c.ovnEipsLister.Get(info.OvnEip); e == nil {
+			for _, ip := range []string{eip.Status.V4Ip, eip.Status.V6Ip} {
+				if ip == "" {
+					continue
+				}
+				for _, port := range info.Ports {
+					vips = append(vips, util.JoinHostPort(ip, port))
+				}
+			}
+		} else if !k8serrors.IsNotFound(e) {
+			klog.Warningf("failed to get EIP %s for RouterLBRule cleanup: %v", info.OvnEip, e)
+		}
+	}
 
 	if len(vips) > 0 {
 		if err := c.deleteLegacyVpcVIPs(vpcForRlr, vips); err != nil {

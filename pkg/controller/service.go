@@ -170,6 +170,15 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	defer func() { _ = c.svcKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete service %s", key)
 
+	// SwitchLBRule and RouterLBRule services use resource-scoped load balancers.
+	// Their generated headless Services can be deleted after the six fixed VPC
+	// load balancers have already been retired, so do not try to clean those
+	// legacy names here. The rule deletion handlers also call this cleanup and
+	// make the operation idempotent when both delete events race.
+	if owner := serviceScopedLBOwner(service.Svc); owner.kind == switchLBRuleLBOwnerKind || owner.kind == routerLBRuleLBOwnerKind {
+		return c.deleteServiceScopedLoadBalancers(service.Svc)
+	}
+
 	svcs, err := c.servicesLister.Services(v1.NamespaceAll).List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list svc, %v", err)

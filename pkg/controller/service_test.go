@@ -5,10 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -129,6 +132,36 @@ func Test_getVipIps(t *testing.T) {
 			require.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestHandleDeleteServiceRuleServiceUsesScopedLoadBalancer(t *testing.T) {
+	svc := &v1.Service{
+		Name:      "slr-rule1",
+		Namespace: metav1.NamespaceDefault,
+		UID:       types.UID("rule-uid"),
+		Annotations: map[string]string{
+			serviceLBOwnerKindAnnotation:    switchLBRuleLBOwnerKind,
+			serviceLBOwnerNameAnnotation:    "rule1",
+			serviceLBOwnerUIDAnnotation:     "rule-uid",
+			util.SwitchLBRuleVipsAnnotation: "10.0.0.10",
+		},
+		Spec: v1.ServiceSpec{
+			ClusterIP: "None",
+			Ports:     []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: 80}},
+		},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*v1.Service{svc}})
+	require.NoError(t, err)
+	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)
+	fakeController.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
+
+	err = fakeController.fakeController.handleDeleteService(&vpcService{
+		Protocol: v1.ProtocolTCP,
+		Vpc:      "vpc1",
+		Vips:     []string{"10.0.0.10:80"},
+		Svc:      svc,
+	})
+	require.NoError(t, err)
 }
 
 func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
