@@ -175,7 +175,8 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	// load balancers have already been retired, so do not try to clean those
 	// legacy names here. The rule deletion handlers also call this cleanup and
 	// make the operation idempotent when both delete events race.
-	if owner := serviceScopedLBOwner(service.Svc); owner.kind == switchLBRuleLBOwnerKind || owner.kind == routerLBRuleLBOwnerKind {
+	if owner := serviceScopedLBOwner(service.Svc); owner.kind == switchLBRuleLBOwnerKind || owner.kind == routerLBRuleLBOwnerKind ||
+		service.Svc.Annotations[util.SwitchLBRuleVipsAnnotation] != "" || service.Svc.Annotations[util.RouterLBRuleVipsAnnotation] != "" {
 		return c.deleteServiceScopedLoadBalancers(service.Svc)
 	}
 

@@ -164,6 +164,31 @@ func TestHandleDeleteServiceRuleServiceUsesScopedLoadBalancer(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestHandleDeleteServiceLegacyRuleAnnotationSkipsFixedLoadBalancer(t *testing.T) {
+	svc := &v1.Service{
+		Name:      "rlr-rule1",
+		Namespace: metav1.NamespaceDefault,
+		Annotations: map[string]string{
+			util.RouterLBRuleVipsAnnotation: "192.0.2.10",
+		},
+		Spec: v1.ServiceSpec{
+			ClusterIP: "None",
+			Ports:     []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: 80}},
+		},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*v1.Service{svc}})
+	require.NoError(t, err)
+	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)
+
+	err = fakeController.fakeController.handleDeleteService(&vpcService{
+		Protocol: v1.ProtocolTCP,
+		Vpc:      "vpc1",
+		Vips:     []string{"192.0.2.10:80"},
+		Svc:      svc,
+	})
+	require.NoError(t, err)
+}
+
 func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 	t.Parallel()
 
