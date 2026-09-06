@@ -21,7 +21,7 @@ type icCapabilityProvider struct {
 	patchCalls   int
 }
 
-func (p *icCapabilityProvider) Table(model.Model) *compat.Table { return nil }
+func (p *icCapabilityProvider) Table(model.Model) compat.TableHandle { return nil }
 
 func (p *icCapabilityProvider) ReconcileGatewayChassises(string, []string) error {
 	p.gatewayCalls++

@@ -16,14 +16,41 @@ type Table struct {
 	prototype model.Model
 }
 
+// TableHandle is the table-scoped capability exposed to reconcile code.
+// Keeping the returned handle behind an interface lets tests and independent
+// compatibility implementations replace table behavior without depending on
+// the concrete Table implementation.
+type TableHandle interface {
+	Get(context.Context, model.Model) error
+	List(context.Context, any) error
+	Query(context.Context, model.Model, any) error
+	Filter(context.Context, any, any) error
+	FilterByUUIDs(context.Context, any, any, ...string) error
+	Where(...model.Model) ConditionalAPI
+	WhereCache(any) ConditionalAPI
+	CreateOps(...model.Model) ([]ovsdb.Operation, error)
+	UpdateOps(model.Model, model.Model, ...any) ([]ovsdb.Operation, error)
+	MutateOps(model.Model, ...model.Mutation) ([]ovsdb.Operation, error)
+	DeleteOps(...model.Model) ([]ovsdb.Operation, error)
+	Create(context.Context, string, ...model.Model) error
+	Update(context.Context, string, model.Model, model.Model, ...any) error
+	Mutate(context.Context, string, model.Model, ...model.Mutation) error
+	Delete(context.Context, string, ...model.Model) error
+	DeleteFilter(context.Context, string, any) error
+	Transact(context.Context, string, ...ovsdb.Operation) error
+}
+
 // TableProvider supplies generic table handles for a database schema.
 // Database implements this interface, and database-specific clients can
 // expose it through embedding without expanding their legacy client APIs.
 type TableProvider interface {
-	Table(model.Model) *Table
+	Table(model.Model) TableHandle
 }
 
-var _ TableProvider = (*Database)(nil)
+var (
+	_ TableProvider = (*Database)(nil)
+	_ TableHandle   = (*Table)(nil)
+)
 
 // Table returns a resource handle for a model table. The prototype is used by
 // Query when the caller omits an indexed selector and also documents the row
@@ -34,7 +61,7 @@ var _ TableProvider = (*Database)(nil)
 //	var rows []rowModel
 //	err := table.Filter(ctx, predicate, &rows)
 //	err = table.Update(ctx, "resource-update", selector, desired, &desired.Field)
-func (d *Database) Table(prototype model.Model) *Table {
+func (d *Database) Table(prototype model.Model) TableHandle {
 	return &Table{db: d, prototype: prototype}
 }
 

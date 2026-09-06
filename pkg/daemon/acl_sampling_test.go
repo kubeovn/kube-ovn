@@ -28,7 +28,7 @@ type fakeACLSamplingTables struct {
 	client *fakeACLSamplingVswitch
 }
 
-func (f *fakeACLSamplingTables) Table(model.Model) *compat.Table { return nil }
+func (f *fakeACLSamplingTables) Table(model.Model) compat.TableHandle { return nil }
 
 func (f *fakeACLSamplingTables) ReconcileACLSamplingCollectorSet(config aclsampling.NodeConfig) error {
 	return f.client.ReconcileACLSamplingCollectorSet(config)
