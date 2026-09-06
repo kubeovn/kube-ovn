@@ -263,11 +263,9 @@ func (c *Controller) ensureVpcEndpointTransitNetwork() error {
 		return err
 	}
 	nad := &nadv1.NetworkAttachmentDefinition{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      subnetName,
-			Namespace: c.config.PodNamespace,
-		},
-		Spec: nadv1.NetworkAttachmentDefinitionSpec{Config: string(buf)},
+		Name:      subnetName,
+		Namespace: c.config.PodNamespace,
+		Spec:      nadv1.NetworkAttachmentDefinitionSpec{Config: string(buf)},
 	}
 	_, err = c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(c.config.PodNamespace).Get(context.Background(), subnetName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
@@ -290,11 +288,9 @@ func (c *Controller) ensureVpcEndpointStitcherConfigMap() error {
 	existing, err := client.Get(context.Background(), vpcEndpointStitcherCMName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
 		_, err = client.Create(context.Background(), &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      vpcEndpointStitcherCMName,
-				Namespace: c.config.PodNamespace,
-			},
-			Data: desiredData,
+			Name:      vpcEndpointStitcherCMName,
+			Namespace: c.config.PodNamespace,
+			Data:      desiredData,
 		}, metav1.CreateOptions{})
 		return err
 	}
@@ -583,20 +579,16 @@ func (c *Controller) genVpcEndpointStitcherDeployment(name, namespace string, la
 		image = c.config.Image
 	}
 	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-		},
+		Name:      name,
+		Namespace: namespace,
+		Labels:    labels,
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr.To[int32](1),
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": name}},
 			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels:      labels,
-					Annotations: annotations,
-				},
+				Labels:      labels,
+				Annotations: annotations,
 				Spec: corev1.PodSpec{
 					TerminationGracePeriodSeconds: ptr.To[int64](0),
 					Containers: []corev1.Container{{
@@ -622,11 +614,9 @@ func (c *Controller) genVpcEndpointStitcherDeployment(name, namespace string, la
 					}},
 					Volumes: []corev1.Volume{{
 						Name: "stitcher-script",
-						VolumeSource: corev1.VolumeSource{
-							ConfigMap: &corev1.ConfigMapVolumeSource{
-								LocalObjectReference: corev1.LocalObjectReference{Name: vpcEndpointStitcherCMName},
-								DefaultMode:          ptr.To[int32](0o755),
-							},
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							Name:        vpcEndpointStitcherCMName,
+							DefaultMode: ptr.To[int32](0o755),
 						},
 					}},
 				},
@@ -997,8 +987,9 @@ func (c *Controller) ensureVpcEndpointStitcherConfigMapIn(namespace string) erro
 	existing, err := client.Get(context.Background(), vpcEndpointStitcherCMName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
 		_, err = client.Create(context.Background(), &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: vpcEndpointStitcherCMName, Namespace: namespace},
-			Data:       src.Data,
+			Name:      vpcEndpointStitcherCMName,
+			Namespace: namespace,
+			Data:      src.Data,
 		}, metav1.CreateOptions{})
 		return err
 	}

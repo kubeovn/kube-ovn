@@ -240,10 +240,10 @@ func TestVpcEndpointStitcherIPs(t *testing.T) {
 	require.Empty(t, transitIP)
 
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+		Annotations: map[string]string{
 			util.IPAddressAnnotation: "10.210.0.5/24",
 			fmt.Sprintf(util.IPAddressAnnotationTemplate, transitProvider): "100.65.0.4/16",
-		}},
+		},
 		Status: corev1.PodStatus{PodIP: "10.210.0.9"},
 	}
 	vpcIP, transitIP, err = c.vpcEndpointStitcherIPs(pod, util.OvnProvider, transitProvider)
@@ -252,9 +252,9 @@ func TestVpcEndpointStitcherIPs(t *testing.T) {
 	require.Equal(t, "100.65.0.4", transitIP)
 
 	pod = &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
+		Annotations: map[string]string{
 			nadv1.NetworkStatusAnnot: `[{"name":"kube-system/vpc-endpoint-transit","ips":["100.65.0.7"]}]`,
-		}},
+		},
 		Status: corev1.PodStatus{PodIP: "10.210.0.8"},
 	}
 	vpcIP, transitIP, err = c.vpcEndpointStitcherIPs(pod, util.OvnProvider, transitProvider)
@@ -356,14 +356,13 @@ func TestCreateOrUpdateVpcEndpointDeployment(t *testing.T) {
 
 func TestWaitVpcEndpointStitcherPod(t *testing.T) {
 	deploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "vpc-eps-db", Namespace: "ns-a"},
+		Name:      "vpc-eps-db",
+		Namespace: "ns-a",
 	}
 	readyPod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "vpc-eps-db-abc",
-			Namespace: "ns-a",
-			Labels:    map[string]string{"app": "vpc-eps-db"},
-		},
+		Name:      "vpc-eps-db-abc",
+		Namespace: "ns-a",
+		Labels:    map[string]string{"app": "vpc-eps-db"},
 		Status: corev1.PodStatus{
 			Phase: corev1.PodRunning,
 			Conditions: []corev1.PodCondition{{
@@ -388,26 +387,25 @@ func TestWaitVpcEndpointStitcherPod(t *testing.T) {
 	require.Equal(t, "vpc-eps-db-abc", pod.Name)
 
 	_, err = c.waitVpcEndpointStitcherPod(&appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "missing", Namespace: "ns-a"},
+		Name:      "missing",
+		Namespace: "ns-a",
 	})
 	require.ErrorContains(t, err, "waiting for stitcher pod")
 }
 
 func TestEnqueueVpcEndpointsForService(t *testing.T) {
 	labeled := &kubeovnv1.VpcEndpoint{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "labeled",
-			Labels: map[string]string{util.VpcEndpointServiceLabel: "eps-a"},
-		},
-		Spec: kubeovnv1.VpcEndpointSpec{EndpointService: "eps-a"},
+		Name:   "labeled",
+		Labels: map[string]string{util.VpcEndpointServiceLabel: "eps-a"},
+		Spec:   kubeovnv1.VpcEndpointSpec{EndpointService: "eps-a"},
 	}
 	unlabeled := &kubeovnv1.VpcEndpoint{
-		ObjectMeta: metav1.ObjectMeta{Name: "unlabeled"},
-		Spec:       kubeovnv1.VpcEndpointSpec{EndpointService: "eps-a"},
+		Name: "unlabeled",
+		Spec: kubeovnv1.VpcEndpointSpec{EndpointService: "eps-a"},
 	}
 	other := &kubeovnv1.VpcEndpoint{
-		ObjectMeta: metav1.ObjectMeta{Name: "other"},
-		Spec:       kubeovnv1.VpcEndpointSpec{EndpointService: "eps-b"},
+		Name: "other",
+		Spec: kubeovnv1.VpcEndpointSpec{EndpointService: "eps-b"},
 	}
 
 	factory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
@@ -447,25 +445,23 @@ func TestEnqueueVpcEndpointDeleteTombstone(t *testing.T) {
 
 	c.enqueueDeleteVpcEndpoint(cache.DeletedFinalStateUnknown{
 		Key: "client",
-		Obj: &kubeovnv1.VpcEndpoint{ObjectMeta: metav1.ObjectMeta{Name: "client"}},
+		Obj: &kubeovnv1.VpcEndpoint{Name: "client"},
 	})
 	require.Equal(t, 1, c.addOrUpdateVpcEndpointQueue.Len())
 
 	c.enqueueDeleteVpcEndpointService(cache.DeletedFinalStateUnknown{
 		Key: "db",
-		Obj: &kubeovnv1.VpcEndpointService{ObjectMeta: metav1.ObjectMeta{Name: "db"}},
+		Obj: &kubeovnv1.VpcEndpointService{Name: "db"},
 	})
 	require.Equal(t, 1, c.addOrUpdateVpcEndpointServiceQueue.Len())
 }
 
 func TestEnqueueVpcEndpointServiceFromServiceKey(t *testing.T) {
 	eps := &kubeovnv1.VpcEndpointService{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "db",
-			Labels: map[string]string{
-				util.VpcEndpointSvcNsLabel:   "ns-a",
-				util.VpcEndpointSvcNameLabel: "svc-a",
-			},
+		Name: "db",
+		Labels: map[string]string{
+			util.VpcEndpointSvcNsLabel:   "ns-a",
+			util.VpcEndpointSvcNameLabel: "svc-a",
 		},
 		Spec: kubeovnv1.VpcEndpointServiceSpec{Namespace: "ns-a", Service: "svc-a"},
 	}
@@ -491,10 +487,10 @@ func TestEnqueueVpcEndpointServiceFromServiceKey(t *testing.T) {
 
 func TestVpcEndpointConsumerNamespace(t *testing.T) {
 	vpc := &kubeovnv1.Vpc{
-		ObjectMeta: metav1.ObjectMeta{Name: "consumer"},
-		Spec:       kubeovnv1.VpcSpec{Namespaces: []string{"ep-consumer"}},
+		Name: "consumer",
+		Spec: kubeovnv1.VpcSpec{Namespaces: []string{"ep-consumer"}},
 	}
-	empty := &kubeovnv1.Vpc{ObjectMeta: metav1.ObjectMeta{Name: "empty"}}
+	empty := &kubeovnv1.Vpc{Name: "empty"}
 	factory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
 	vpcInformer := factory.Kubeovn().V1().Vpcs()
 	require.NoError(t, vpcInformer.Informer().GetStore().Add(vpc))
