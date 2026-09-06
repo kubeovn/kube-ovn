@@ -209,7 +209,7 @@ func TestHandleDeleteServiceSkipsMissingFixedLoadBalancer(t *testing.T) {
 
 	_, err = fakeController.fakeController.config.KubeClient.AppsV1().Deployments(svc.Namespace).Create(
 		context.Background(),
-		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: genLbSvcDpName(svc.Name), Namespace: svc.Namespace}},
+		&appsv1.Deployment{Name: genLbSvcDpName(svc.Name), Namespace: svc.Namespace},
 		metav1.CreateOptions{},
 	)
 	require.NoError(t, err)

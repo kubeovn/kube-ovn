@@ -206,7 +206,8 @@ var _ = framework.Describe("[group:rlr]", func() {
 		defer func() {
 			if externalGatewayConfigCreated {
 				_ = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Delete(
-					context.Background(), util.ExternalGatewayConfig, metav1.DeleteOptions{})
+					context.Background(), util.ExternalGatewayConfig, metav1.DeleteOptions{},
+				)
 			}
 		}()
 
@@ -299,10 +300,8 @@ var _ = framework.Describe("[group:rlr]", func() {
 		// so enable a centralized gateway for the nodes attached above.
 		ginkgo.By("Enabling the external gateway")
 		externalGatewayConfig := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      util.ExternalGatewayConfig,
-				Namespace: framework.KubeOvnNamespace,
-			},
+			Name:      util.ExternalGatewayConfig,
+			Namespace: framework.KubeOvnNamespace,
 			Data: map[string]string{
 				"enable-external-gw": "true",
 				"external-gw-nodes":  strings.Join(nodeNames, ","),
@@ -312,7 +311,8 @@ var _ = framework.Describe("[group:rlr]", func() {
 			},
 		}
 		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Create(
-			context.Background(), externalGatewayConfig, metav1.CreateOptions{})
+			context.Background(), externalGatewayConfig, metav1.CreateOptions{},
+		)
 		framework.ExpectNoError(err, "creating external gateway config")
 		externalGatewayConfigCreated = true
 		framework.WaitUntil(time.Second, 2*time.Minute, func(ctx context.Context) (bool, error) {
