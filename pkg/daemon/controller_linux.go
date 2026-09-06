@@ -55,8 +55,8 @@ func (o ovsPodQoSOperations) setInterfaceBandwidth(podName, podNamespace, iface,
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst, o.provider)
 }
 
-func (ovsPodQoSOperations) configInterfaceMirror(enableMirror bool, mirrorControl, iface string) error {
-	return ovs.ConfigInterfaceMirror(enableMirror, mirrorControl, iface)
+func (o ovsPodQoSOperations) configInterfaceMirror(enableMirror bool, mirrorControl, iface string) error {
+	return ovs.ConfigInterfaceMirror(enableMirror, mirrorControl, iface, o.provider)
 }
 
 func (o ovsPodQoSOperations) setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
@@ -188,7 +188,7 @@ func (c *Controller) initRuntime() error {
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(k8siptables.ProtocolIPv6)
 	}
 
-	if err = ovs.ClearU2OFlows(c.ovsClient); err != nil {
+	if err = ovs.ClearU2OFlows(c.ovsClient, c.vswitchTables); err != nil {
 		util.LogFatalAndExit(err, "failed to clear obsolete u2o flows")
 	}
 

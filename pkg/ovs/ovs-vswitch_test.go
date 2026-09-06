@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -319,6 +320,31 @@ func TestEnsureVswitchMirror(t *testing.T) {
 	require.Eventually(t, func() bool {
 		mirrors = nil
 		return client.OptionalTable(vswitch.MirrorTable, &mirrorTableRow{}).List(t.Context(), &mirrors) == nil && len(mirrors) == 1 && !mirrors[0].SelectAll
+	}, time.Second, 10*time.Millisecond)
+
+	var interfaces []vswitch.Interface
+	require.Eventually(t, func() bool {
+		interfaces = nil
+		return client.Table(&vswitch.Interface{}).List(t.Context(), &interfaces) == nil && len(interfaces) == 1
+	}, time.Second, 10*time.Millisecond)
+	desiredInterface := &vswitch.Interface{
+		UUID:        interfaces[0].UUID,
+		ExternalIDs: map[string]string{"iface-id": "pod.ns.eth0"},
+	}
+	require.NoError(t, client.Table(&vswitch.Interface{}).Update(t.Context(), "seed-vswitch-mirror-interface-id", &interfaces[0], desiredInterface, &desiredInterface.ExternalIDs))
+
+	require.NoError(t, ConfigVswitchInterfaceMirror(t.Context(), client, true, "pod.ns.eth0"))
+	require.Eventually(t, func() bool {
+		mirrors = nil
+		return client.OptionalTable(vswitch.MirrorTable, &mirrorTableRow{}).List(t.Context(), &mirrors) == nil &&
+			len(mirrors) == 1 && mirrors[0].OutputPort != nil && slices.Contains(mirrors[0].SelectDstPort, *mirrors[0].OutputPort)
+	}, time.Second, 10*time.Millisecond)
+
+	require.NoError(t, ConfigVswitchInterfaceMirror(t.Context(), client, false, "pod.ns.eth0"))
+	require.Eventually(t, func() bool {
+		mirrors = nil
+		return client.OptionalTable(vswitch.MirrorTable, &mirrorTableRow{}).List(t.Context(), &mirrors) == nil &&
+			len(mirrors) == 1 && (mirrors[0].OutputPort == nil || !slices.Contains(mirrors[0].SelectDstPort, *mirrors[0].OutputPort))
 	}, time.Second, 10*time.Millisecond)
 }
 
