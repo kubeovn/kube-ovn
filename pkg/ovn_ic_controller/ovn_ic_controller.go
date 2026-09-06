@@ -230,8 +230,6 @@ func (c *Controller) reconcileInterConnection(config map[string]string) {
 		klog.Info("finish establishing ovn-ic")
 		return
 	case icGatewayChange:
-		c.ovnLegacyClient.OvnICSbAddress = genHostAddress(config["ic-db-host"], config["ic-sb-port"])
-		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(config["ic-db-host"], config["ic-nb-port"])
 		klog.Info("start to reconcile ovn-ic gateways")
 		if err := c.establishInterConnection(config); err != nil {
 			klog.Errorf("failed to reconcile ovn-ic gateways: %v", err)
@@ -242,8 +240,6 @@ func (c *Controller) reconcileInterConnection(config map[string]string) {
 		klog.Info("finish reconciling ovn-ic gateways")
 		return
 	case icConfigChange:
-		c.ovnLegacyClient.OvnICSbAddress = genHostAddress(lastIcCm["ic-db-host"], config["ic-sb-port"])
-		c.ovnLegacyClient.OvnICNbAddress = genHostAddress(lastIcCm["ic-db-host"], config["ic-nb-port"])
 		err := c.disableOVNIC(lastIcCm["az-name"])
 		if err != nil {
 			klog.Errorf("Disable az %s OVN IC failed: %v", lastIcCm["az-name"], err)

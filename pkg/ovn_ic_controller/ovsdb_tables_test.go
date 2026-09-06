@@ -97,6 +97,12 @@ func TestICTableProviderICDatabaseOperations(t *testing.T) {
 	require.Equal(t, 1, backend.transacts)
 }
 
+func TestICAvailabilityZoneCleanupRequiresTableProvider(t *testing.T) {
+	controller := &Controller{}
+
+	require.EqualError(t, controller.removeOldICChassisInSbDB("region1"), "IC SB table provider is nil")
+}
+
 type icTableBackend struct {
 	rows        map[reflect.Type][]any
 	conditional icConditional
