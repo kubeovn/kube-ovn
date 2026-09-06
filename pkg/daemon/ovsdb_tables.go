@@ -2,9 +2,9 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -20,30 +20,30 @@ type databaseLifecycle interface {
 }
 
 func ensureVswitchPort(provider compat.TableProvider, config ovs.VswitchPortConfig, legacyArgs ...string) error {
-	if provider != nil {
-		return ovs.EnsureVswitchPort(context.Background(), provider, config)
+	if provider == nil {
+		output, err := ovs.Exec(legacyArgs...)
+		if err != nil {
+			return fmt.Errorf("legacy ovs-vsctl port ensure failed: %w: %s", err, output)
+		}
+		return nil
 	}
-	output, err := ovs.Exec(legacyArgs...)
-	if err != nil {
-		return fmt.Errorf("legacy ovs-vsctl port ensure failed: %w: %s", err, output)
-	}
-	return nil
+	return ovs.EnsureVswitchPort(context.Background(), provider, config)
 }
 
 func deleteVswitchPort(provider compat.TableProvider, bridgeName, portName string) error {
-	if provider != nil {
-		return ovs.DeleteVswitchPort(context.Background(), provider, portName)
+	if provider == nil {
+		output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", bridgeName, portName)
+		if err != nil {
+			return fmt.Errorf("legacy ovs-vsctl port delete failed: %w: %s", err, output)
+		}
+		return nil
 	}
-	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", bridgeName, portName)
-	if err != nil {
-		return fmt.Errorf("legacy ovs-vsctl port delete failed: %w: %s", err, output)
-	}
-	return nil
+	return ovs.DeleteVswitchPort(context.Background(), provider, portName)
 }
 
 func (c *Controller) listVswitchBridges(needVendorFilter bool, filter func(*vswitch.Bridge) bool) ([]vswitch.Bridge, error) {
 	if c.vswitchTables == nil {
-		return c.vswitchClient.ListBridge(needVendorFilter, filter)
+		return nil, errors.New("vswitch table provider is nil")
 	}
 	var rows []vswitch.Bridge
 	err := c.vswitchTables.Table(&vswitch.Bridge{}).Filter(context.Background(), func(row *vswitch.Bridge) bool {
@@ -57,7 +57,7 @@ func (c *Controller) listVswitchBridges(needVendorFilter bool, filter func(*vswi
 
 func (c *Controller) listVswitchPorts(filter func(*vswitch.Port) bool) ([]vswitch.Port, error) {
 	if c.vswitchTables == nil {
-		return c.vswitchClient.ListPort(filter)
+		return nil, errors.New("vswitch table provider is nil")
 	}
 	var rows []vswitch.Port
 	err := c.vswitchTables.Table(&vswitch.Port{}).Filter(context.Background(), func(row *vswitch.Port) bool {
@@ -68,7 +68,7 @@ func (c *Controller) listVswitchPorts(filter func(*vswitch.Port) bool) ([]vswitc
 
 func (c *Controller) listVswitchInterfaces(filter func(*vswitch.Interface) bool) ([]vswitch.Interface, error) {
 	if c.vswitchTables == nil {
-		return c.vswitchClient.ListInterface(filter)
+		return nil, errors.New("vswitch table provider is nil")
 	}
 	var rows []vswitch.Interface
 	err := c.vswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
@@ -92,8 +92,7 @@ func (c *Controller) getVswitchPortExternalID(name, key string) (string, error) 
 
 func cleanVswitchDuplicatePort(provider compat.TableProvider, ifaceID, portName string) error {
 	if provider == nil {
-		ovs.CleanDuplicatePort(ifaceID, portName)
-		return nil
+		return errors.New("vswitch table provider is nil")
 	}
 	var interfaces []vswitch.Interface
 	if err := provider.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
@@ -116,7 +115,7 @@ func cleanVswitchDuplicatePort(provider compat.TableProvider, ifaceID, portName 
 
 func getVswitchInterfacePodNs(provider compat.TableProvider, ifaceID string) (string, error) {
 	if provider == nil {
-		return ovs.GetInterfacePodNs(ifaceID)
+		return "", errors.New("vswitch table provider is nil")
 	}
 	var interfaces []vswitch.Interface
 	if err := provider.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
@@ -131,9 +130,6 @@ func getVswitchInterfacePodNs(provider compat.TableProvider, ifaceID string) (st
 }
 
 func (c *Controller) vswitchBridgeExists(name string) (bool, error) {
-	if c.vswitchTables == nil {
-		return ovs.BridgeExists(name)
-	}
 	bridges, err := c.listVswitchBridges(false, func(bridge *vswitch.Bridge) bool {
 		return bridge.Name == name
 	})
@@ -144,9 +140,6 @@ func (c *Controller) vswitchBridgeExists(name string) (bool, error) {
 }
 
 func (c *Controller) vswitchPortExists(name string) (bool, error) {
-	if c.vswitchTables == nil {
-		return ovs.PortExists(name)
-	}
 	ports, err := c.listVswitchPorts(func(port *vswitch.Port) bool {
 		return port.Name == name
 	})
@@ -157,9 +150,6 @@ func (c *Controller) vswitchPortExists(name string) (bool, error) {
 }
 
 func (c *Controller) validateVswitchPortVendor(name string) (bool, error) {
-	if c.vswitchTables == nil {
-		return ovs.ValidatePortVendor(name)
-	}
 	ports, err := c.listVswitchPorts(func(port *vswitch.Port) bool {
 		return port.Name == name
 	})
@@ -170,19 +160,6 @@ func (c *Controller) validateVswitchPortVendor(name string) (bool, error) {
 }
 
 func (c *Controller) listVswitchBridgePorts(bridgeName string) ([]vswitch.Port, error) {
-	if c.vswitchTables == nil {
-		output, err := ovs.Exec("list-ports", bridgeName)
-		if err != nil {
-			return nil, err
-		}
-		ports := make([]vswitch.Port, 0)
-		for portName := range strings.SplitSeq(output, "\n") {
-			if portName != "" {
-				ports = append(ports, vswitch.Port{Name: portName})
-			}
-		}
-		return ports, nil
-	}
 	bridges, err := c.listVswitchBridges(false, func(bridge *vswitch.Bridge) bool {
 		return bridge.Name == bridgeName
 	})
@@ -199,9 +176,6 @@ func (c *Controller) listVswitchBridgePorts(bridgeName string) ([]vswitch.Port, 
 }
 
 func (c *Controller) vswitchPortToBridge(portName string) (string, error) {
-	if c.vswitchTables == nil {
-		return ovs.Exec("port-to-br", portName)
-	}
 	ports, err := c.listVswitchPorts(func(port *vswitch.Port) bool {
 		return port.Name == portName
 	})

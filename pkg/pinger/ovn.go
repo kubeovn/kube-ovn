@@ -21,10 +21,16 @@ import (
 var (
 	sbServiceAddress string
 	sbClientMu       sync.Mutex
-	sbClient         *ovs.OVNSbClient
+	sbClient         managedTableProvider
 	vswitchClientMu  sync.Mutex
-	vswitchClient    *ovs.VswitchClient
+	vswitchClient    managedTableProvider
 )
+
+type managedTableProvider interface {
+	compat.TableProvider
+	Connected() bool
+	Close()
+}
 
 func init() {
 	sbHost, sbPort := util.InjectedServiceVariables("ovn-sb")

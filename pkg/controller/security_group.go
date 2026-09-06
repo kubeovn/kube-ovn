@@ -365,9 +365,6 @@ func securityGroupACL(parent string, direction ovnnb.ACLDirection, priority any,
 }
 
 func (c *Controller) createSgDenyAllACL(sgName string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.CreateSgDenyAllACL(sgName)
-	}
 	pgName := ovs.GetSgPortGroupName(sgName)
 	acls := make([]*ovnnb.ACL, 0, 2*(util.SecurityGroupAPITierMaximum-util.SecurityGroupAPITierMinimum+1))
 	for tier := util.SecurityGroupAPITierMinimum; tier <= util.SecurityGroupAPITierMaximum; tier++ {
@@ -381,9 +378,6 @@ func (c *Controller) createSgDenyAllACL(sgName string) error {
 }
 
 func (c *Controller) createSgBaseACL(sgName string, direction ovnnb.ACLDirection) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.CreateSgBaseACL(sgName, direction)
-	}
 	pgName := ovs.GetSgPortGroupName(sgName)
 	portDirection := "outport"
 	dhcpv4Src, dhcpv4Dst := "67", "68"
@@ -412,9 +406,6 @@ func (c *Controller) createSgBaseACL(sgName string, direction ovnnb.ACLDirection
 }
 
 func (c *Controller) updateSgACL(sg *kubeovnv1.SecurityGroup, direction ovnnb.ACLDirection) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.UpdateSgACL(sg, direction)
-	}
 	pgName := ovs.GetSgPortGroupName(sg.Name)
 	if err := c.deletePortGroupACLs(pgName, direction, nil); err != nil {
 		return fmt.Errorf("delete direction %s ACLs from port group %s: %w", direction, pgName, err)
@@ -503,9 +494,6 @@ func (c *Controller) createMissingSecurityGroupACLs(pgName string, desired ...*o
 }
 
 func (c *Controller) securityGroupLostACL(sg *kubeovnv1.SecurityGroup) (bool, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.SGLostACL(sg)
-	}
 	pgName := ovs.GetSgPortGroupName(sg.Name)
 	pg, err := c.getPortGroup(pgName, true)
 	if err != nil {
@@ -553,9 +541,6 @@ func (c *Controller) securityGroupLostACL(sg *kubeovnv1.SecurityGroup) (bool, er
 }
 
 func (c *Controller) deleteSecurityGroup(sgName string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteSecurityGroup(sgName)
-	}
 	pgName := ovs.GetSgPortGroupName(sgName)
 	if err := c.deletePortGroupACLs(pgName, "", nil); err != nil {
 		return fmt.Errorf("delete acls from port group %s: %w", pgName, err)

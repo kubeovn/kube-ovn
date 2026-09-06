@@ -61,7 +61,6 @@ type Configuration struct {
 	remoteAddresses             []string
 	singleReplica               bool
 	duplicateLeaderObservations map[string]int
-	icNbClient                  *ovs.OVNICNbClient
 	icNbTables                  compat.TableProvider
 }
 
@@ -664,16 +663,13 @@ func updateTS(cfg *Configuration) error {
 	if cfg == nil {
 		return errors.New("leader checker configuration is nil")
 	}
-	if cfg.icNbTables == nil && cfg.icNbClient == nil {
+	if cfg.icNbTables == nil {
 		address := ovs.OvsdbServerAddress(cfg.localAddress, intstr.FromInt32(util.ICNBDatabasePort))
 		client, err := ovs.NewOvnICNbClient(address, 3, 3, 0, 0)
 		if err != nil {
 			return fmt.Errorf("create IC NB client: %w", err)
 		}
-		cfg.icNbClient = client
 		cfg.icNbTables = client
-	} else if cfg.icNbTables == nil {
-		cfg.icNbTables = cfg.icNbClient
 	}
 
 	var transitSwitches []ovnicnb.TransitSwitch

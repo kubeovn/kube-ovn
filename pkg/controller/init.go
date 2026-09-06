@@ -40,30 +40,21 @@ func (c *Controller) migrateVendorExternalIDs() error {
 	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
 		return provider.MigrateVendorExternalIDs()
 	}
-	if c.OVNNbTables != nil {
-		return errors.New("OVN NB table provider does not support vendor migration")
-	}
-	return c.OVNNbClient.MigrateVendorExternalIDs()
+	return errors.New("OVN NB table provider does not support vendor migration")
 }
 
 func (c *Controller) migrateACLTier() error {
 	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
 		return provider.MigrateACLTier()
 	}
-	if c.OVNNbTables != nil {
-		return errors.New("OVN NB table provider does not support ACL tier migration")
-	}
-	return c.OVNNbClient.MigrateACLTier()
+	return errors.New("OVN NB table provider does not support ACL tier migration")
 }
 
 func (c *Controller) cleanNoParentKeyACLs() error {
 	if provider, ok := c.OVNNbTables.(nbMigrationProvider); ok {
 		return provider.CleanNoParentKeyAcls()
 	}
-	if c.OVNNbTables != nil {
-		return errors.New("OVN NB table provider does not support ACL parent cleanup")
-	}
-	return c.OVNNbClient.CleanNoParentKeyAcls()
+	return errors.New("OVN NB table provider does not support ACL parent cleanup")
 }
 
 func (c *Controller) InitOVN() error {
