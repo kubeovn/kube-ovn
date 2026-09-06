@@ -44,39 +44,39 @@ func (c *Controller) networkPolicyACLBuilder() (networkPolicyACLBuilder, error) 
 	if provider, ok := c.OVNNbTables.(networkPolicyACLBuilder); ok {
 		return provider, nil
 	}
-	if c.OVNNbTables != nil {
-		return nil, errors.New("OVN NB table provider does not support network policy ACL operations")
+	// Network-policy ACL construction is a domain capability rather than table
+	// CRUD. Keep the legacy client as an explicit adapter for old fixtures and
+	// callers that inject only NbClient; production wiring uses OVNNbTables.
+	if c.OVNNbTables == nil {
+		if provider, ok := c.OVNNbClient.(networkPolicyACLBuilder); ok {
+			return provider, nil
+		}
 	}
-	if c.OVNNbClient == nil {
-		return nil, errors.New("OVN NB client is nil")
-	}
-	return c.OVNNbClient, nil
+	return nil, errors.New("OVN NB table provider does not support network policy ACL operations")
 }
 
 func (c *Controller) adminNetworkPolicyACLBuilder() (adminNetworkPolicyACLBuilder, error) {
 	if provider, ok := c.OVNNbTables.(adminNetworkPolicyACLBuilder); ok {
 		return provider, nil
 	}
-	if c.OVNNbTables != nil {
-		return nil, errors.New("OVN NB table provider does not support admin network policy ACL operations")
+	if c.OVNNbTables == nil {
+		if provider, ok := c.OVNNbClient.(adminNetworkPolicyACLBuilder); ok {
+			return provider, nil
+		}
 	}
-	if c.OVNNbClient == nil {
-		return nil, errors.New("OVN NB client is nil")
-	}
-	return c.OVNNbClient, nil
+	return nil, errors.New("OVN NB table provider does not support admin network policy ACL operations")
 }
 
 func (c *Controller) clusterNetworkPolicyACLBuilder() (clusterNetworkPolicyACLBuilder, error) {
 	if provider, ok := c.OVNNbTables.(clusterNetworkPolicyACLBuilder); ok {
 		return provider, nil
 	}
-	if c.OVNNbTables != nil {
-		return nil, errors.New("OVN NB table provider does not support cluster network policy ACL operations")
+	if c.OVNNbTables == nil {
+		if provider, ok := c.OVNNbClient.(clusterNetworkPolicyACLBuilder); ok {
+			return provider, nil
+		}
 	}
-	if c.OVNNbClient == nil {
-		return nil, errors.New("OVN NB client is nil")
-	}
-	return c.OVNNbClient, nil
+	return nil, errors.New("OVN NB table provider does not support cluster network policy ACL operations")
 }
 
 // reconcilePortDHCPOptionsBackend keeps the compatibility path in one place.
@@ -87,7 +87,7 @@ func (c *Controller) reconcilePortDHCPOptionsBackend(
 ) (*ovs.DHCPOptionsUUIDs, bool, error) {
 	if c.OVNNbTables == nil {
 		if c.OVNNbClient == nil {
-			return nil, false, errors.New("OVN NB client is nil")
+			return nil, false, errors.New("OVN NB table provider is nil")
 		}
 		return c.OVNNbClient.ReconcilePortDHCPOptions(lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
 	}
@@ -97,7 +97,7 @@ func (c *Controller) reconcilePortDHCPOptionsBackend(
 func (c *Controller) updateSubnetDHCPOptionsBackend(subnet *kubeovnv1.Subnet, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
 	if c.OVNNbTables == nil {
 		if c.OVNNbClient == nil {
-			return nil, errors.New("OVN NB client is nil")
+			return nil, errors.New("OVN NB table provider is nil")
 		}
 		return c.OVNNbClient.UpdateDHCPOptions(subnet, mtu)
 	}
@@ -109,7 +109,7 @@ func (c *Controller) reconcileGatewayBFDWithCleanupBackend(
 ) (set.Set[string], error) {
 	if c.OVNNbTables == nil {
 		if c.OVNNbClient == nil {
-			return nil, errors.New("OVN NB client is nil")
+			return nil, errors.New("OVN NB table provider is nil")
 		}
 		return reconcileGatewayBFDWithCleanup(c.OVNNbClient, bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
 	}
@@ -121,7 +121,7 @@ func (c *Controller) reconcileGatewayBFDBackend(
 ) (set.Set[string], map[string]string, set.Set[string], error) {
 	if c.OVNNbTables == nil {
 		if c.OVNNbClient == nil {
-			return nil, nil, nil, errors.New("OVN NB client is nil")
+			return nil, nil, nil, errors.New("OVN NB table provider is nil")
 		}
 		return reconcileGatewayBFD(c.OVNNbClient, bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
 	}
@@ -131,7 +131,7 @@ func (c *Controller) reconcileGatewayBFDBackend(
 func (c *Controller) cleanupStaleBFDBackend(staleBFDIDs set.Set[string]) error {
 	if c.OVNNbTables == nil {
 		if c.OVNNbClient == nil {
-			return errors.New("OVN NB client is nil")
+			return errors.New("OVN NB table provider is nil")
 		}
 		return cleanupStaleBFD(c.OVNNbClient, staleBFDIDs)
 	}

@@ -668,7 +668,7 @@ func (c *Controller) reconcileNatGatewayPolicies(
 	internalCIDRs []string, nextHops, externalIDs map[string]string,
 ) error {
 	if c.OVNNbTables == nil {
-		return reconcileNatGatewayPolicies(c.OVNNbClient, gwName, lrName, af, bfdEnabled, bfdIDs, internalCIDRs, nextHops, externalIDs)
+		return fmt.Errorf("OVN NB table provider is nil for NAT gateway %q", gwName)
 	}
 	if len(internalCIDRs) == 0 || len(nextHops) == 0 {
 		if err := c.deleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDs); err != nil {

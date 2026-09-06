@@ -34,13 +34,12 @@ func (c *Controller) aclSamplingBackend() (aclSamplingProvider, error) {
 	if provider, ok := c.OVNNbTables.(aclSamplingProvider); ok {
 		return provider, nil
 	}
-	if c.OVNNbTables != nil {
-		return nil, errors.New("OVN NB table provider does not support ACL sampling")
+	if c.OVNNbTables == nil {
+		if provider, ok := c.OVNNbClient.(aclSamplingProvider); ok {
+			return provider, nil
+		}
 	}
-	if c.OVNNbClient == nil {
-		return nil, errors.New("OVN NB client is nil")
-	}
-	return c.OVNNbClient, nil
+	return nil, errors.New("OVN NB table provider does not support ACL sampling")
 }
 
 func (c *Controller) reconcileACLSamplingBackend(config aclsampling.ControllerConfig) error {
