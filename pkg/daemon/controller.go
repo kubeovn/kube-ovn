@@ -178,6 +178,9 @@ func NewController(config *Configuration,
 
 		fdbSyncChan: make(chan struct{}, 1),
 	}
+	if err := controller.initVswitch(); err != nil {
+		return nil, err
+	}
 
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
 	if err != nil {
@@ -275,28 +278,30 @@ func NewController(config *Configuration,
 		return nil, err
 	}
 
-	if config.VswitchTables != nil {
-		if vswitchClient, ok := config.VswitchTables.(ovs.Vswitch); ok {
-			controller.vswitchClient = vswitchClient
-		}
-		controller.vswitchTables = config.VswitchTables
-		controller.podQoSOps = ovsPodQoSOperations{provider: controller.vswitchTables}
-		return controller, nil
-	}
+	return controller, nil
+}
 
-	vswitchAddr := config.OvsSocket
+func (c *Controller) initVswitch() error {
+	provider := c.config.VswitchTables
+	vswitchAddr := c.config.OvsSocket
 	if vswitchAddr == "" {
 		vswitchAddr = "unix:/var/run/openvswitch/db.sock"
 	}
-	var vswitchClient *ovs.VswitchClient
-	if vswitchClient, err = ovs.NewVswitchClient(vswitchAddr, 1, 3); err != nil {
-		return nil, fmt.Errorf("failed to create vswitch client: %w", err)
+	if provider == nil {
+		vswitchClient, err := ovs.NewVswitchClient(vswitchAddr, 1, 3)
+		if err != nil {
+			return fmt.Errorf("failed to create vswitch client: %w", err)
+		}
+		provider = vswitchClient
+		c.config.VswitchTables = provider
 	}
-	controller.vswitchClient = vswitchClient
-	controller.vswitchTables = vswitchClient
-	controller.podQoSOps = ovsPodQoSOperations{provider: controller.vswitchTables}
 
-	return controller, nil
+	c.vswitchTables = provider
+	if vswitchClient, ok := provider.(ovs.Vswitch); ok {
+		c.vswitchClient = vswitchClient
+	}
+	c.podQoSOps = ovsPodQoSOperations{provider: provider}
+	return nil
 }
 
 func (c *Controller) recordGatewayNetfilterWarning(reason, message string) error {
