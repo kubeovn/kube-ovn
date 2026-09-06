@@ -242,6 +242,47 @@ func listPortsForInterface(provider compat.TableProvider, interfaceID string) ([
 	return ports, nil
 }
 
+func clearPortQosBindingTable(provider compat.TableProvider, ifaceID string) error {
+	if ifaceID == "" {
+		return nil
+	}
+	ctx := context.Background()
+	var interfaces []vswitch.Interface
+	if err := provider.Table(&vswitch.Interface{}).Filter(ctx, func(row *vswitch.Interface) bool {
+		return row.ExternalIDs["iface-id"] == ifaceID
+	}, &interfaces); err != nil {
+		return fmt.Errorf("list interfaces for QoS cleanup %s: %w", ifaceID, err)
+	}
+	interfaceIDs := make(map[string]struct{}, len(interfaces))
+	for _, row := range interfaces {
+		interfaceIDs[row.UUID] = struct{}{}
+	}
+	var ports []vswitch.Port
+	if err := provider.Table(&vswitch.Port{}).Filter(ctx, func(row *vswitch.Port) bool {
+		for _, interfaceID := range row.Interfaces {
+			if _, ok := interfaceIDs[interfaceID]; ok {
+				return row.QOS != nil
+			}
+		}
+		return false
+	}, &ports); err != nil {
+		return fmt.Errorf("list ports for QoS cleanup %s: %w", ifaceID, err)
+	}
+	if len(ports) == 0 {
+		return nil
+	}
+	operations := make([]ovsdb.Operation, 0, len(ports))
+	for i := range ports {
+		update := &vswitch.Port{UUID: ports[i].UUID}
+		ops, err := provider.Table(&vswitch.Port{}).UpdateOps(&ports[i], update, &update.QOS)
+		if err != nil {
+			return fmt.Errorf("build QoS binding cleanup for %s: %w", ports[i].Name, err)
+		}
+		operations = append(operations, ops...)
+	}
+	return provider.Table(&vswitch.Port{}).Transact(ctx, "qos-port-unbind", operations...)
+}
+
 func clearPodBandwidthTable(provider compat.TableProvider, podName, podNamespace, ifaceID string) error {
 	ctx := context.Background()
 	var qosRows []vswitch.QoS
