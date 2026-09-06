@@ -3985,9 +3985,20 @@ func (c *Controller) deleteLoadBalancerHealthCheck(lbName, uuid string) error {
 	if err != nil || !slices.Contains(lb.HealthCheck, uuid) {
 		return err
 	}
-	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Mutate(
-		context.Background(), "lb-hc-del", lb,
-		model.Mutation{Field: &lb.HealthCheck, Value: []string{uuid}, Mutator: ovsdb.MutateOperationDelete},
+	parentOps, err := c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).MutateOps(lb, model.Mutation{
+		Field: &lb.HealthCheck, Value: []string{uuid}, Mutator: ovsdb.MutateOperationDelete,
+	})
+	if err != nil {
+		return err
+	}
+	childOps, err := c.OVNNbTables.Table(&ovnnb.LoadBalancerHealthCheck{}).DeleteOps(
+		&ovnnb.LoadBalancerHealthCheck{UUID: uuid},
+	)
+	if err != nil {
+		return err
+	}
+	return c.OVNNbTables.Table(&ovnnb.LoadBalancer{}).Transact(
+		context.Background(), "lb-hc-del", append(parentOps, childOps...)...,
 	)
 }
 
