@@ -55,7 +55,7 @@ func TestReconcileACLSamplingCollectorSetRecordsAvailability(t *testing.T) {
 	client := &fakeACLSamplingVswitch{}
 	controller := &Controller{
 		config:        &Configuration{NodeName: nodeName, ACLSampling: config},
-		vswitchClient: client,
+		vswitchTables: &fakeACLSamplingTables{client: client},
 	}
 
 	controller.reconcileACLSamplingCollectorSet()
@@ -73,7 +73,7 @@ func TestReconcileACLSamplingCollectorSetRecordsFailure(t *testing.T) {
 	client := &fakeACLSamplingVswitch{err: errors.New("injected psample capability failure")}
 	controller := &Controller{
 		config:        &Configuration{NodeName: nodeName, ACLSampling: config},
-		vswitchClient: client,
+		vswitchTables: &fakeACLSamplingTables{client: client},
 	}
 	failuresBefore := testutil.ToFloat64(metricACLSamplingNodeFailures.WithLabelValues(nodeName))
 

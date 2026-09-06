@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -82,157 +83,30 @@ func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
 // values in Mbit. An empty burst falls back to 80% of the corresponding rate; an
 // explicit "0" is passed through verbatim.
 func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string, providers ...compat.TableProvider) error {
-	if len(providers) != 0 && providers[0] != nil {
-		return setInterfaceBandwidthTable(providers[0], podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
-	}
-	ingressKPS, err := parseAndScaleBandwidthRate(ingress, 1000)
-	if err != nil {
-		return fmt.Errorf("invalid ingress bandwidth: %w", err)
-	}
-	egressBPS, err := parseAndScaleBandwidthRate(egress, 1000*1000)
-	if err != nil {
-		return fmt.Errorf("invalid egress bandwidth: %w", err)
-	}
-	ingressBurstKbit := computeIngressPolicingBurstKbit(ingressKPS, ingressBurst)
-	egressBurstBytes := computeHtbBurstBytes(egressBPS, egressBurst)
-	interfaceList, err := ovsFind("interface", "name", "external-ids:iface-id="+iface)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	qosIfaceUIDMap, err := ListExternalIDs("qos")
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	queueIfaceUIDMap, err := ListExternalIDs("queue")
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	for _, ifName := range interfaceList {
-		// ingress_policing_rate and ingress_policing_burst are in Kbit
-		err := Set("interface", ifName, fmt.Sprintf("ingress_policing_rate=%d", ingressKPS), fmt.Sprintf("ingress_policing_burst=%d", ingressBurstKbit))
-		if err != nil {
-			klog.Error(err)
-			return err
+	if len(providers) == 0 || providers[0] == nil {
+		if _, err := parseAndScaleBandwidthRate(ingress, 1000); err != nil {
+			return fmt.Errorf("invalid ingress bandwidth: %w", err)
 		}
-
-		if egressBPS > 0 {
-			queueUID, err := SetHtbQosQueueRecord(podName, podNamespace, iface, egressBPS, egressBurstBytes, queueIfaceUIDMap)
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-
-			if err = SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID, qosIfaceUIDMap); err != nil {
-				klog.Error(err)
-				return err
-			}
-		} else {
-			if qosUID, ok := qosIfaceUIDMap[iface]; ok {
-				qosType, err := Get("qos", qosUID, "type", "", false)
-				if err != nil {
-					klog.Error(err)
-					return err
-				}
-				if qosType != util.HtbQos {
-					continue
-				}
-				queueID, err := Get("qos", qosUID, "queues", "0", false)
-				if err != nil {
-					klog.Error(err)
-					return err
-				}
-
-				if _, err := Exec("remove", "queue", queueID, "other_config", "max-rate"); err != nil {
-					klog.Error(err)
-					return fmt.Errorf("failed to remove rate limit for queue in pod %v/%v, %w", podNamespace, podName, err)
-				}
-				// burst may not exist on legacy queues; ignore the error in that case.
-				if _, err := Exec("remove", "queue", queueID, "other_config", "burst"); err != nil {
-					klog.V(3).Infof("failed to remove burst limit for queue in pod %v/%v: %v", podNamespace, podName, err)
-				}
-			}
+		if _, err := parseAndScaleBandwidthRate(egress, 1000*1000); err != nil {
+			return fmt.Errorf("invalid egress bandwidth: %w", err)
 		}
-
-		// Delete Qos and Queue record if both bandwidth and priority do not exist
-		if err = CheckAndUpdateHtbQos(podName, podNamespace, iface, queueIfaceUIDMap); err != nil {
-			klog.Errorf("failed to check htb qos: %v", err)
-			return err
-		}
+		return errors.New("vswitch table provider is nil")
 	}
-	return nil
+	return setInterfaceBandwidthTable(providers[0], podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
 }
 
 func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...compat.TableProvider) error {
-	if len(providers) != 0 && providers[0] != nil {
-		return clearHtbQosQueueTable(providers[0], podName, podNamespace, iface)
+	if len(providers) == 0 || providers[0] == nil {
+		return errors.New("vswitch table provider is nil")
 	}
-	var queueList []string
-	var err error
-	if iface != "" {
-		queueList, err = ovsFind("queue", "_uuid", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-	} else {
-		queueList, err = ovsFind("queue", "_uuid", fmt.Sprintf(`external-ids:pod="%s/%s"`, podNamespace, podName))
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-
-	// https://github.com/kubeovn/kube-ovn/issues/1191
-	qosQueueMap, err := ListQosQueueIDs()
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	for _, queueID := range queueList {
-		found := false
-		for _, usedQueueID := range qosQueueMap {
-			if queueID == usedQueueID {
-				found = true
-				break
-			}
-		}
-		if found {
-			continue
-		}
-
-		if err := ovsDestroy("queue", queueID); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-	return nil
+	return clearHtbQosQueueTable(providers[0], podName, podNamespace, iface)
 }
 
 func IsHtbQos(iface string, providers ...compat.TableProvider) (bool, error) {
-	if len(providers) != 0 && providers[0] != nil {
-		return isHtbQosTable(providers[0], iface)
+	if len(providers) == 0 || providers[0] == nil {
+		return false, errors.New("vswitch table provider is nil")
 	}
-	return isHtbQosLegacy(iface)
-}
-
-func isHtbQosLegacy(iface string) (bool, error) {
-	qosType, err := ovsFind("qos", "type", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
-	if err != nil {
-		klog.Error(err)
-		return false, err
-	}
-
-	if len(qosType) != 0 && qosType[0] == util.HtbQos {
-		return true, nil
-	}
-	return false, nil
+	return isHtbQosTable(providers[0], iface)
 }
 
 func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burstBytes int64, queueIfaceUIDMap map[string]string) (string, error) {
@@ -321,114 +195,10 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 
 // The latency value expressed in us.
 func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string, providers ...compat.TableProvider) error {
-	if len(providers) != 0 && providers[0] != nil {
-		return setNetemQosTable(providers[0], podName, podNamespace, iface, latency, limit, loss, jitter)
+	if len(providers) == 0 || providers[0] == nil {
+		return errors.New("vswitch table provider is nil")
 	}
-	latencyMs, _ := strconv.Atoi(latency)
-	latencyUs := latencyMs * 1000
-	jitterMs, _ := strconv.Atoi(jitter)
-	jitterUs := jitterMs * 1000
-	limitPkts, _ := strconv.Atoi(limit)
-	lossPercent, _ := strconv.ParseFloat(loss, 64)
-
-	interfaceList, err := ovsFind("interface", "name", "external-ids:iface-id="+iface)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	for _, ifName := range interfaceList {
-		qosList, err := GetQosList(podName, podNamespace, iface)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		var qosCommandValues []string
-		if latencyMs > 0 {
-			qosCommandValues = append(qosCommandValues, fmt.Sprintf("other_config:latency=%d", latencyUs))
-		}
-		if jitterMs > 0 {
-			qosCommandValues = append(qosCommandValues, fmt.Sprintf("other_config:jitter=%d", jitterUs))
-		}
-		if limitPkts > 0 {
-			qosCommandValues = append(qosCommandValues, fmt.Sprintf("other_config:limit=%d", limitPkts))
-		}
-		if lossPercent > 0 {
-			qosCommandValues = append(qosCommandValues, fmt.Sprintf("other_config:loss=%v", lossPercent))
-		}
-		if latencyMs > 0 || limitPkts > 0 || lossPercent > 0 || jitterMs > 0 {
-			if len(qosList) == 0 {
-				qosCommandValues = append(qosCommandValues, "type=linux-netem", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
-				if podNamespace != "" && podName != "" {
-					qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
-				}
-
-				qos, err := ovsCreate("qos", qosCommandValues...)
-				if err != nil {
-					klog.Error(err)
-					return err
-				}
-
-				if err = Set("port", ifName, "qos="+qos); err != nil {
-					klog.Error(err)
-					return err
-				}
-			} else {
-				for _, qos := range qosList {
-					qosType, err := Get("qos", qos, "type", "", false)
-					if err != nil {
-						klog.Error(err)
-						return err
-					}
-					if qosType != util.NetemQos {
-						klog.Errorf("htb qos with higher priority exists for pod %v/%v, conflict with netem qos config, please delete htb qos first", podNamespace, podName)
-						return nil
-					}
-
-					latencyVal, lossVal, limitVal, jitterVal, err := getNetemQosConfig(qos)
-					if err != nil {
-						klog.Errorf("failed to get other_config for qos %s: %v", qos, err)
-						return err
-					}
-
-					if latencyVal == strconv.Itoa(latencyUs) && limitVal == limit && lossVal == loss && jitterVal == strconv.Itoa(jitterUs) {
-						klog.Infof("no value changed for netem qos, ignore")
-						continue
-					}
-
-					if err = deleteNetemQosByID(qos, iface, podName, podNamespace); err != nil {
-						klog.Errorf("failed to delete netem qos: %v", err)
-						return err
-					}
-
-					qosCommandValues = append(qosCommandValues, "type=linux-netem", fmt.Sprintf(`external-ids:iface-id="%s"`, iface))
-					if podNamespace != "" && podName != "" {
-						qosCommandValues = append(qosCommandValues, fmt.Sprintf("external-ids:pod=%s/%s", podNamespace, podName))
-					}
-
-					qos, err := ovsCreate("qos", qosCommandValues...)
-					if err != nil {
-						klog.Errorf("failed to create netem qos: %v", err)
-						return err
-					}
-
-					if err = Set("port", ifName, "qos="+qos); err != nil {
-						klog.Errorf("failed to set netem qos to port: %v", err)
-						return err
-					}
-				}
-			}
-		} else {
-			for _, qos := range qosList {
-				if err := deleteNetemQosByID(qos, iface, podName, podNamespace); err != nil {
-					klog.Errorf("failed to delete netem qos: %v", err)
-					return err
-				}
-			}
-		}
-	}
-	return nil
+	return setNetemQosTable(providers[0], podName, podNamespace, iface, latency, limit, loss, jitter)
 }
 
 func getNetemQosConfig(qosID string) (string, string, string, string, error) {
@@ -480,15 +250,10 @@ func deleteNetemQosByID(qosID, iface, podName, podNamespace string) error {
 }
 
 func IsUserspaceDataPath(providers ...compat.TableProvider) (is bool, err error) {
-	if len(providers) != 0 && providers[0] != nil {
-		return isUserspaceDataPathTable(providers[0])
+	if len(providers) == 0 || providers[0] == nil {
+		return false, errors.New("vswitch table provider is nil")
 	}
-	dp, err := ovsFind("bridge", "datapath_type", "name=br-int")
-	if err != nil {
-		klog.Error(err)
-		return false, err
-	}
-	return len(dp) > 0 && dp[0] == "netdev", nil
+	return isUserspaceDataPathTable(providers[0])
 }
 
 func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUIDMap map[string]string) error {

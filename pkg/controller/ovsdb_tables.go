@@ -24,8 +24,7 @@ import (
 )
 
 // deleteAddressSets removes address sets selected by their names through the
-// generic table facade. The legacy client remains the compatibility path for
-// tests and callers that have not wired a TableProvider yet.
+// generic table facade.
 func (c *Controller) deleteAddressSets(names ...string) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.DeleteAddressSet(names...)
@@ -472,10 +471,10 @@ func (c *Controller) transactNB(method string, operations ...ovsdb.Operation) er
 	if len(operations) == 0 {
 		return nil
 	}
-	if c.OVNNbTables != nil {
-		return c.OVNNbTables.Table(&ovnnb.ACL{}).Transact(context.Background(), method, operations...)
+	if c.OVNNbTables == nil {
+		return errors.New("OVN NB table provider is nil")
 	}
-	return c.OVNNbClient.Transact(method, operations)
+	return c.OVNNbTables.Table(&ovnnb.ACL{}).Transact(context.Background(), method, operations...)
 }
 
 func (c *Controller) createLogicalSwitchACLTable(ls *ovnnb.LogicalSwitch, acls ...*ovnnb.ACL) ([]ovsdb.Operation, error) {

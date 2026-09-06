@@ -221,15 +221,9 @@ func TestControllerTableProviderNBGlobalUpdates(t *testing.T) {
 	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
 	controller := &Controller{OVNNbTables: database}
 
-	legacyCalled := false
-	legacy := func() error {
-		legacyCalled = true
-		return nil
-	}
-	require.NoError(t, controller.setNBGlobalOption("node_local_dns_ip", "10.96.0.10", true, legacy))
-	require.NoError(t, controller.setNBGlobalOption("stale", "", false, legacy))
-	require.NoError(t, controller.setNBGlobalIPSec(true, legacy))
-	require.False(t, legacyCalled)
+	require.NoError(t, controller.setNBGlobalOption("node_local_dns_ip", "10.96.0.10", true))
+	require.NoError(t, controller.setNBGlobalOption("stale", "", false))
+	require.NoError(t, controller.setNBGlobalIPSec(true))
 	require.Equal(t, 3, backend.updateCalls)
 	require.Equal(t, 3, backend.transactCalls)
 }

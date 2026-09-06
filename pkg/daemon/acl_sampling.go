@@ -28,15 +28,12 @@ func (c *Controller) reconcileACLSamplingCollectorSet() {
 }
 
 func (c *Controller) reconcileACLSamplingCollectorSetBackend() error {
-	if c.vswitchTables != nil {
-		reconciler, ok := c.vswitchTables.(aclSamplingReconciler)
-		if !ok {
-			return errors.New("vswitch table provider does not support ACL sampling")
-		}
-		return reconciler.ReconcileACLSamplingCollectorSet(c.config.ACLSampling)
+	if c.vswitchTables == nil {
+		return errors.New("vswitch table provider is nil")
 	}
-	if c.vswitchClient == nil {
-		return errors.New("vswitch client is nil")
+	reconciler, ok := c.vswitchTables.(aclSamplingReconciler)
+	if !ok {
+		return errors.New("vswitch table provider does not support ACL sampling")
 	}
-	return c.vswitchClient.ReconcileACLSamplingCollectorSet(c.config.ACLSampling)
+	return reconciler.ReconcileACLSamplingCollectorSet(c.config.ACLSampling)
 }
