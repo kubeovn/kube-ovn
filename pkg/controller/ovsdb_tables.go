@@ -2528,7 +2528,12 @@ func (c *Controller) updateLogicalSwitchPortOptionsWith(name string, legacy func
 
 func (c *Controller) setLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error {
 	if c.OVNNbTables == nil {
-		return errors.New("OVN NB table provider is nil")
+		// Keep the legacy call for tests and upgrades that have not installed
+		// the table provider yet. Production wiring always sets OVNNbTables.
+		if c.OVNNbClient == nil {
+			return errors.New("OVN NB table provider is nil")
+		}
+		return c.OVNNbClient.SetLogicalSwitchPortVirtualParents(lsName, parents, ips...)
 	}
 	for _, ip := range ips {
 		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
