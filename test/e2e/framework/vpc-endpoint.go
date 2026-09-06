@@ -162,7 +162,7 @@ func (c *VpcEndpointClient) DeleteSync(name string) {
 
 func MakeVpcEndpointService(name, vpc, namespace, service string, allowedVpcs []string) *apiv1.VpcEndpointService {
 	return &apiv1.VpcEndpointService{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Name: name,
 		Spec: apiv1.VpcEndpointServiceSpec{
 			Vpc:         vpc,
 			Namespace:   namespace,
@@ -174,7 +174,7 @@ func MakeVpcEndpointService(name, vpc, namespace, service string, allowedVpcs []
 
 func MakeVpcEndpoint(name, vpc, subnet, endpointService string) *apiv1.VpcEndpoint {
 	return &apiv1.VpcEndpoint{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Name: name,
 		Spec: apiv1.VpcEndpointSpec{
 			Vpc:             vpc,
 			Subnet:          subnet,
