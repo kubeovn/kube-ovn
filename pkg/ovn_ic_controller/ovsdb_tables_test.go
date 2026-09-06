@@ -45,6 +45,16 @@ func TestICOperationsUseTableProviderCapabilities(t *testing.T) {
 	require.Equal(t, 1, provider.patchCalls)
 }
 
+func TestICTransitSwitchReadsRequireTableProvider(t *testing.T) {
+	controller := &Controller{}
+
+	_, err := controller.listICTransitSwitches()
+	require.EqualError(t, err, "IC NB table provider is nil")
+
+	_, err = controller.getICTransitSwitchSubnet("ts-region1")
+	require.EqualError(t, err, "IC NB table provider is nil")
+}
+
 func TestICTableProviderNBGlobalAndPortParentCleanup(t *testing.T) {
 	backend := newICTableBackend(
 		&ovnnb.NBGlobal{UUID: "global-1", Options: map[string]string{"stale": "value"}},
