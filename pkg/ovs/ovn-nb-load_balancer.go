@@ -291,6 +291,41 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 	return nil
 }
 
+// SetLoadBalancerPreferLocalBackend sets whether the LB prefers local backends.
+func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
+	var (
+		options map[string]string
+		lb      *ovnnb.LoadBalancer
+		value   string
+		err     error
+	)
+
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+		klog.Errorf("failed to get lb: %v", err)
+		return err
+	}
+
+	if preferLocalBackend {
+		value = "true"
+	} else {
+		value = "false"
+	}
+	if len(lb.Options) != 0 && lb.Options["prefer_local_backend"] == value {
+		return nil
+	}
+
+	options = make(map[string]string, len(lb.Options)+1)
+	maps.Copy(options, lb.Options)
+	options["prefer_local_backend"] = value
+
+	lb.Options = options
+	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to set prefer local backend of lb %s to %s: %w", lbName, value, err)
+	}
+	return nil
+}
+
 // SetLoadBalancerCtFlush sets the LB's ct_flush option to flush conntrack entries when backends are removed
 func (c *OVNNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
 	var (
