@@ -144,7 +144,6 @@ type Configuration struct {
 	EnableEcmp                  bool
 	EnableKeepVMIP              bool
 	EnableLbSvc                 bool
-	EnableOVNLBPreferLocal      bool
 	EnableMetrics               bool
 	EnableANP                   bool
 	EnableDNSNameResolver       bool
@@ -262,7 +261,6 @@ func ParseFlags() (*Configuration, error) {
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
-		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
 		argEnableDNSNameResolver       = pflag.Bool("enable-dns-name-resolver", false, "Enable support for DNS name resolver")
@@ -384,7 +382,6 @@ func ParseFlags() (*Configuration, error) {
 		GCInterval:                  *argGCInterval,
 		InspectInterval:             *argInspectInterval,
 		EnableLbSvc:                 *argEnableLbSvc,
-		EnableOVNLBPreferLocal:      *argEnableOVNLBPreferLocal,
 		EnableMetrics:               *argEnableMetrics,
 		EnableOVNIPSec:              *argEnableOVNIPSec,
 		CertManagerIPSecCert:        *argCertManagerIPSecCert,

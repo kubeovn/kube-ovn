@@ -137,32 +137,10 @@ func TestGetServiceL2StatusNodeIndexerError(t *testing.T) {
 }
 
 func TestStartServiceL2StatusInformerDisabled(t *testing.T) {
-	tests := []struct {
-		name   string
-		config *Configuration
-	}{
-		{
-			name: "load balancer disabled",
-			config: &Configuration{
-				EnableOVNLBPreferLocal: true,
-			},
-		},
-		{
-			name: "prefer local disabled",
-			config: &Configuration{
-				EnableLb: true,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			controller := &Controller{config: tt.config}
-			require.NotPanics(t, func() {
-				controller.StartServiceL2StatusInformer(context.Background())
-			})
-		})
-	}
+	controller := &Controller{config: &Configuration{}}
+	require.NotPanics(t, func() {
+		controller.StartServiceL2StatusInformer(context.Background())
+	})
 }
 
 func TestServiceL2StatusServiceKey(t *testing.T) {

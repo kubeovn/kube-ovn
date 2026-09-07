@@ -178,7 +178,7 @@ func (c *Controller) tryStartServiceL2StatusInformer(ctx context.Context) bool {
 }
 
 func (c *Controller) StartServiceL2StatusInformer(ctx context.Context) {
-	if !c.config.EnableLb || !c.config.EnableOVNLBPreferLocal {
+	if !c.config.EnableLb {
 		return
 	}
 

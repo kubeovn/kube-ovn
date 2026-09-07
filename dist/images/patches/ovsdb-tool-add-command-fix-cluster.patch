@@ -400,7 +400,7 @@ index 98ef6fb5d11..bfd54a97f23 100644
 +
 +    for (size_t i = 0; i < c.n_servers; i++) {
 +        struct server *s = &c.servers[i];
-+        check_ovsdb_error(ovsdb_log_replace(s->log, c.entries[i]->array.elems, c.n_entries[i]));
++        check_ovsdb_error(ovsdb_log_replace(s->log, c.entries[i]->array.elements, c.n_entries[i]));
 +        ovsdb_log_close(s->log);
 +        s->log = NULL;
 +

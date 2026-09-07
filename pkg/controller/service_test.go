@@ -344,10 +344,7 @@ func TestEnqueueUpdateServiceReconcilesEndpointSliceOnExternalTrafficPolicyChang
 	newSvc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeCluster
 
 	c := &Controller{
-		config: &Configuration{
-			EnableLb:               true,
-			EnableOVNLBPreferLocal: true,
-		},
+		config:                        &Configuration{EnableLb: true},
 		updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 	}
@@ -362,12 +359,6 @@ func TestEnqueueUpdateServiceReconcilesEndpointSliceOnExternalTrafficPolicyChang
 	require.False(t, shutdown)
 	require.Equal(t, "default/svc", key)
 	c.addOrUpdateEndpointSliceQueue.Done(key)
-
-	c.config.EnableOVNLBPreferLocal = false
-	c.addOrUpdateEndpointSliceQueue = newTypedRateLimitingQueue[string]("UpdateEndpointSliceDisabled", nil)
-	t.Cleanup(c.addOrUpdateEndpointSliceQueue.ShutDown)
-	c.enqueueUpdateService(oldSvc, newSvc)
-	require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
 }
 
 func Test_enqueueUpdateEndpointSliceSkipsContentlessUpdates(t *testing.T) {

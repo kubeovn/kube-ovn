@@ -15,50 +15,51 @@ const DatabaseName = "OVN_Southbound"
 // FullDatabaseModel returns the DatabaseModel object to be used in libovsdb
 func FullDatabaseModel() (model.ClientDBModel, error) {
 	return model.NewClientDBModel(DatabaseName, map[string]model.Model{
-		"ACL_ID":               &ACLID{},
-		"Address_Set":          &AddressSet{},
-		"Advertised_Route":     &AdvertisedRoute{},
-		"BFD":                  &BFD{},
-		"Chassis":              &Chassis{},
-		"Chassis_Private":      &ChassisPrivate{},
-		"Chassis_Template_Var": &ChassisTemplateVar{},
-		"Connection":           &Connection{},
-		"Controller_Event":     &ControllerEvent{},
-		"DHCP_Options":         &DHCPOptions{},
-		"DHCPv6_Options":       &DHCPv6Options{},
-		"DNS":                  &DNS{},
-		"Datapath_Binding":     &DatapathBinding{},
-		"ECMP_Nexthop":         &ECMPNexthop{},
-		"Encap":                &Encap{},
-		"FDB":                  &FDB{},
-		"Gateway_Chassis":      &GatewayChassis{},
-		"HA_Chassis":           &HAChassis{},
-		"HA_Chassis_Group":     &HAChassisGroup{},
-		"IGMP_Group":           &IGMPGroup{},
-		"IP_Multicast":         &IPMulticast{},
-		"Learned_Route":        &LearnedRoute{},
-		"Load_Balancer":        &LoadBalancer{},
-		"Logical_DP_Group":     &LogicalDPGroup{},
-		"Logical_Flow":         &LogicalFlow{},
-		"MAC_Binding":          &MACBinding{},
-		"Meter":                &Meter{},
-		"Meter_Band":           &MeterBand{},
-		"Mirror":               &Mirror{},
-		"Multicast_Group":      &MulticastGroup{},
-		"Port_Binding":         &PortBinding{},
-		"Port_Group":           &PortGroup{},
-		"RBAC_Permission":      &RBACPermission{},
-		"RBAC_Role":            &RBACRole{},
-		"SB_Global":            &SBGlobal{},
-		"SSL":                  &SSL{},
-		"Service_Monitor":      &ServiceMonitor{},
-		"Static_MAC_Binding":   &StaticMACBinding{},
+		"ACL_ID":                 &ACLID{},
+		"Address_Set":            &AddressSet{},
+		"Advertised_MAC_Binding": &AdvertisedMACBinding{},
+		"Advertised_Route":       &AdvertisedRoute{},
+		"BFD":                    &BFD{},
+		"Chassis":                &Chassis{},
+		"Chassis_Private":        &ChassisPrivate{},
+		"Chassis_Template_Var":   &ChassisTemplateVar{},
+		"Connection":             &Connection{},
+		"Controller_Event":       &ControllerEvent{},
+		"DHCP_Options":           &DHCPOptions{},
+		"DHCPv6_Options":         &DHCPv6Options{},
+		"DNS":                    &DNS{},
+		"Datapath_Binding":       &DatapathBinding{},
+		"ECMP_Nexthop":           &ECMPNexthop{},
+		"Encap":                  &Encap{},
+		"FDB":                    &FDB{},
+		"Gateway_Chassis":        &GatewayChassis{},
+		"HA_Chassis":             &HAChassis{},
+		"HA_Chassis_Group":       &HAChassisGroup{},
+		"IGMP_Group":             &IGMPGroup{},
+		"IP_Multicast":           &IPMulticast{},
+		"Learned_Route":          &LearnedRoute{},
+		"Load_Balancer":          &LoadBalancer{},
+		"Logical_DP_Group":       &LogicalDPGroup{},
+		"Logical_Flow":           &LogicalFlow{},
+		"MAC_Binding":            &MACBinding{},
+		"Meter":                  &Meter{},
+		"Meter_Band":             &MeterBand{},
+		"Mirror":                 &Mirror{},
+		"Multicast_Group":        &MulticastGroup{},
+		"Port_Binding":           &PortBinding{},
+		"Port_Group":             &PortGroup{},
+		"RBAC_Permission":        &RBACPermission{},
+		"RBAC_Role":              &RBACRole{},
+		"SB_Global":              &SBGlobal{},
+		"SSL":                    &SSL{},
+		"Service_Monitor":        &ServiceMonitor{},
+		"Static_MAC_Binding":     &StaticMACBinding{},
 	})
 }
 
 var schema = `{
   "name": "OVN_Southbound",
-  "version": "20.41.0",
+  "version": "21.8.0",
   "tables": {
     "ACL_ID": {
       "columns": {
@@ -92,6 +93,55 @@ var schema = `{
       "indexes": [
         [
           "name"
+        ]
+      ],
+      "isRoot": true
+    },
+    "Advertised_MAC_Binding": {
+      "columns": {
+        "datapath": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Datapath_Binding",
+              "refType": "strong"
+            }
+          }
+        },
+        "external_ids": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": "unlimited"
+          }
+        },
+        "ip": {
+          "type": "string"
+        },
+        "logical_port": {
+          "type": {
+            "key": {
+              "type": "uuid",
+              "refTable": "Port_Binding",
+              "refType": "strong"
+            }
+          }
+        },
+        "mac": {
+          "type": "string"
+        }
+      },
+      "indexes": [
+        [
+          "datapath",
+          "logical_port",
+          "ip",
+          "mac"
         ]
       ],
       "isRoot": true
@@ -636,6 +686,15 @@ var schema = `{
             "max": "unlimited"
           }
         },
+        "nb_uuid": {
+          "type": {
+            "key": {
+              "type": "uuid"
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
         "tunnel_key": {
           "type": {
             "key": {
@@ -643,6 +702,22 @@ var schema = `{
               "minInteger": 1,
               "maxInteger": 16777215
             }
+          }
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "logical-switch",
+                  "logical-router"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
           }
         }
       },
@@ -732,7 +807,6 @@ var schema = `{
                 "set",
                 [
                   "geneve",
-                  "stt",
                   "vxlan"
                 ]
               ]
@@ -1311,7 +1385,7 @@ var schema = `{
             "key": {
               "type": "integer",
               "minInteger": 0,
-              "maxInteger": 32
+              "maxInteger": 33
             }
           }
         },
@@ -1476,7 +1550,8 @@ var schema = `{
                 [
                   "gre",
                   "erspan",
-                  "local"
+                  "local",
+                  "lport"
                 ]
               ]
             }
@@ -1634,6 +1709,15 @@ var schema = `{
             },
             "min": 0,
             "max": "unlimited"
+          }
+        },
+        "mirror_port": {
+          "type": {
+            "key": {
+              "type": "string"
+            },
+            "min": 0,
+            "max": 1
           }
         },
         "mirror_rules": {
@@ -1943,10 +2027,19 @@ var schema = `{
             "max": "unlimited"
           }
         },
+        "ic_learned": {
+          "type": "boolean"
+        },
         "ip": {
           "type": "string"
         },
+        "logical_input_port": {
+          "type": "string"
+        },
         "logical_port": {
+          "type": "string"
+        },
+        "mac": {
           "type": "string"
         },
         "options": {
@@ -1978,13 +2071,17 @@ var schema = `{
                 "set",
                 [
                   "tcp",
-                  "udp"
+                  "udp",
+                  "icmp"
                 ]
               ]
             },
             "min": 0,
             "max": 1
           }
+        },
+        "remote": {
+          "type": "boolean"
         },
         "src_ip": {
           "type": "string"
@@ -2002,6 +2099,23 @@ var schema = `{
                   "online",
                   "offline",
                   "error"
+                ]
+              ]
+            },
+            "min": 0,
+            "max": 1
+          }
+        },
+        "type": {
+          "type": {
+            "key": {
+              "type": "string",
+              "enum": [
+                "set",
+                [
+                  "load-balancer",
+                  "network-function",
+                  "logical-switch-port"
                 ]
               ]
             },

@@ -1266,7 +1266,6 @@ false
   "ENABLE_ANP": false,
   "ENABLE_BIND_LOCAL_IP": true,
   "ENABLE_DNS_NAME_RESOLVER": false,
-  "ENABLE_OVN_LB_PREFER_LOCAL": false,
   "LS_CT_SKIP_DST_LPORT_IPS": true,
   "LS_DNAT_MOD_DL_DST": true,
   "OVSDB_CON_TIMEOUT": 3,

@@ -1821,20 +1821,6 @@ func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerAffinityTimeout(lbName, t
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
 }
 
-// SetLoadBalancerCtFlush mocks base method.
-func (m *MockLoadBalancer) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerCtFlush", lbName, ctFlush)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLoadBalancerCtFlush indicates an expected call of SetLoadBalancerCtFlush.
-func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
-}
-
 // SetLoadBalancerPreferLocalBackend mocks base method.
 func (m *MockLoadBalancer) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
 	m.ctrl.T.Helper()
@@ -1861,6 +1847,20 @@ func (m *MockLoadBalancer) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, v
 func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerVIPExternalTrafficLocal", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerVIPExternalTrafficLocal), lbName, vip, vipNodeLSP)
+}
+
+// SetLoadBalancerCtFlush mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerCtFlush", lbName, ctFlush)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerCtFlush indicates an expected call of SetLoadBalancerCtFlush.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
 // MockLoadBalancerHealthCheck is a mock of LoadBalancerHealthCheck interface.
@@ -5729,20 +5729,6 @@ func (mr *MockNbClientMockRecorder) SetLoadBalancerAffinityTimeout(lbName, timeo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
 }
 
-// SetLoadBalancerCtFlush mocks base method.
-func (m *MockNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerCtFlush", lbName, ctFlush)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLoadBalancerCtFlush indicates an expected call of SetLoadBalancerCtFlush.
-func (mr *MockNbClientMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
-}
-
 // SetLoadBalancerPreferLocalBackend mocks base method.
 func (m *MockNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
 	m.ctrl.T.Helper()
@@ -5769,6 +5755,20 @@ func (m *MockNbClient) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNo
 func (mr *MockNbClientMockRecorder) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerVIPExternalTrafficLocal", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerVIPExternalTrafficLocal), lbName, vip, vipNodeLSP)
+}
+
+// SetLoadBalancerCtFlush mocks base method.
+func (m *MockNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLoadBalancerCtFlush", lbName, ctFlush)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLoadBalancerCtFlush indicates an expected call of SetLoadBalancerCtFlush.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
 // SetLogicalRouterPortHAChassisGroup mocks base method.

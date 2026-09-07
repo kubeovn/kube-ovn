@@ -1,0 +1,111 @@
+From 162235bbf94e084cea4109670d8f8723c658bde6 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Thu, 3 Sep 2026 10:59:29 +0000
+Subject: [PATCH] northd: direct DNAT output to logical switch ports
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+
+---
+ northd/en-global-config.c |  5 ++++
+ northd/northd.c           | 57 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 62 insertions(+)
+
+diff --git a/northd/en-global-config.c b/northd/en-global-config.c
+index 804396500..98bee3830 100644
+--- a/northd/en-global-config.c
++++ b/northd/en-global-config.c
+@@ -739,6 +739,11 @@ check_nb_options_out_of_sync(
+         return true;
+     }
+ 
++    if (config_out_of_sync(&nb->options, &config_data->nb_options,
++                           "ls_dnat_mod_dl_dst", false)) {
++        return true;
++    }
++
+     return false;
+ }
+ 
+diff --git a/northd/northd.c b/northd/northd.c
+index 9f1ee8397..79f03c7c5 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -95,3 +95,5 @@ static bool acl_ct_translation = false;
+ static bool acl_ct_translation = false;
+ 
++static bool ls_dnat_mod_dl_dst = false;
++
+ /* If this option is 'true' northd will implicitly add a lowest-priority
+@@ -9141,6 +9143,57 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+     }
+ }
+ 
++static void
++build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
++                                    struct lflow_table *lflows,
++                                    struct ds *actions,
++                                    struct ds *match)
++{
++    if (!ls_dnat_mod_dl_dst) {
++        return;
++    }
++    if (!op->nbsp || !op->od || !op->od->nbs ||
++        !vector_is_empty(&op->od->router_ports)) {
++        return;
++    }
++    if (!strcmp(op->nbsp->type, "virtual") ||
++        !strcmp(op->nbsp->type, "localport")) {
++        return;
++    }
++    if (lsp_is_external(op->nbsp) || lsp_is_router(op->nbsp) ||
++        op->has_unknown) {
++        return;
++    }
++
++    if (op->n_lsp_addrs != 1 || !strlen(op->lsp_addrs[0].ea_s) ||
++        (!op->lsp_addrs[0].n_ipv4_addrs &&
++         !op->lsp_addrs[0].n_ipv6_addrs)) {
++        return;
++    }
++
++    ds_clear(actions);
++    ds_put_format(actions, "eth.dst = %s; outport = \"%s\"; output;",
++                  op->lsp_addrs[0].ea_s, op->key);
++
++    for (size_t i = 0; i < op->lsp_addrs[0].n_ipv4_addrs; i++) {
++        ds_clear(match);
++        ds_put_format(match, REGBIT_CONNTRACK_NAT" != 0 && ip4.dst == %s",
++                       op->lsp_addrs[0].ipv4_addrs[i].addr_s);
++        ovn_lflow_add(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
++                      ds_cstr(match), ds_cstr(actions), op->lflow_ref,
++                      WITH_HINT(&op->nbsp->header_));
++    }
++
++    for (size_t i = 0; i < op->lsp_addrs[0].n_ipv6_addrs; i++) {
++        ds_clear(match);
++        ds_put_format(match, REGBIT_CONNTRACK_NAT" != 0 && ip6.dst == %s",
++                       op->lsp_addrs[0].ipv6_addrs[i].addr_s);
++        ovn_lflow_add(lflows, op->od, S_SWITCH_IN_L2_LKUP, 55,
++                      ds_cstr(match), ds_cstr(actions), op->lflow_ref,
++                      WITH_HINT(&op->nbsp->header_));
++    }
++}
++
+ static void
+ build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
+                struct lflow_ref *lflow_ref)
+@@ -19664,6 +19718,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
+     build_lswitch_from_localnet_op(op, lflows, match);
+     build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
+                                              meter_groups, actions, match);
++    build_lswitch_dnat_mod_dl_dst_rules(op, lflows, actions, match);
+     build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
+     build_lswitch_external_port(op, lflows);
+     build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
+@@ -21155,2 +21155,4 @@ ovnnb_db_run(struct northd_input *input_data,
+     acl_ct_translation = smap_get_bool(input_data->nb_options,
+                                        "acl_ct_translation", false);
++    ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,
++                                       "ls_dnat_mod_dl_dst", false);
+-- 
+2.55.0

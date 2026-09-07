@@ -649,7 +649,6 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 		require.NoError(t, err)
 	}
 	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, markedVIP, "node-worker-1"))
-
 	deletedVips = []string{
 		markedVIP,
 		"[fd00:10:96::e84f]:8080",

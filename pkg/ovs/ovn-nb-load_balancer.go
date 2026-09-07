@@ -291,7 +291,7 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 	return nil
 }
 
-// SetLoadBalancerPreferLocalBackend sets the LB's affinity timeout in seconds
+// SetLoadBalancerPreferLocalBackend sets whether the LB prefers local backends.
 func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
 	var (
 		options map[string]string
