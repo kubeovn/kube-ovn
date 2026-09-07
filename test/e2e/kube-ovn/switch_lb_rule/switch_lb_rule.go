@@ -460,7 +460,13 @@ var _ = framework.Describe("[group:slr]", func() {
 			TargetPort: intstr.FromInt32(80),
 		}}
 		svc1 := framework.MakeService(stsSvcName1, corev1.ServiceTypeClusterIP,
-			map[string]string{util.LogicalSwitchAnnotation: subnetName},
+			map[string]string{
+				util.LogicalSwitchAnnotation: subnetName,
+				// This Service only allocates the shared VIP for the SLRs. Its
+				// health-check VIP must not keep subnetName alive after SLR-1 is
+				// deleted.
+				util.ServiceHealthCheck: "false",
+			},
 			labels1, ports, corev1.ServiceAffinityNone)
 		svc1 = serviceClient.CreateSync(svc1, func(s *corev1.Service) (bool, error) {
 			return len(s.Spec.ClusterIPs) != 0, nil

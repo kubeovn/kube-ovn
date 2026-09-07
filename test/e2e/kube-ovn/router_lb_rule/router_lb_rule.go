@@ -66,7 +66,7 @@ func curlRLR(f *framework.Framework, clientPodName, eipIP string, port int32) {
 	}, fmt.Sprintf("%s:%d is reachable for %d consecutive requests", eipIP, port, wantConsecutive))
 }
 
-var _ = framework.Describe("[group:rlr]", func() {
+var _ = framework.SerialDescribe("[group:rlr]", func() {
 	f := framework.NewDefaultFramework("rlr")
 
 	var skip bool
@@ -86,6 +86,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 	var serviceClient *framework.ServiceClient
 	var endpointsClient *framework.EndpointsClient
 	var rlrClient *framework.RouterLBRuleClient
+	var externalGatewayConfigCreated bool
 
 	var (
 		namespaceName                                  string
@@ -130,6 +131,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		if skip {
 			ginkgo.Skip("RouterLBRule e2e only runs on Kind clusters")
 		}
+		externalGatewayConfigCreated = false
 		f.SkipVersionPriorTo(1, 17, "RouterLBRule was introduced in v1.17")
 
 		if clusterName == "" {
@@ -146,7 +148,7 @@ var _ = framework.Describe("[group:rlr]", func() {
 		}
 
 		ginkgo.By("Ensuring docker network " + dockerNetworkName + " exists")
-		dockerNetwork, err := docker.NetworkCreate(dockerNetworkName, f.HasIPv6(), false)
+		dockerNetwork, err := docker.NetworkCreate(dockerNetworkName, f.HasIPv6(), true)
 		framework.ExpectNoError(err, "creating docker network "+dockerNetworkName)
 
 		ginkgo.By("Getting Kind nodes")
@@ -200,6 +202,13 @@ var _ = framework.Describe("[group:rlr]", func() {
 		defer func() {
 			vlanClient.Delete(vlanName)
 			providerNetworkClient.DeleteSync(providerNetworkName)
+		}()
+		defer func() {
+			if externalGatewayConfigCreated {
+				_ = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Delete(
+					context.Background(), util.ExternalGatewayConfig, metav1.DeleteOptions{},
+				)
+			}
 		}()
 
 		ginkgo.By("Cleaning up RouterLBRule resources")
@@ -285,6 +294,39 @@ var _ = framework.Describe("[group:rlr]", func() {
 		ginkgo.By("Creating external underlay subnet " + externalSubnetName)
 		externalSubnet := framework.MakeSubnet(externalSubnetName, vlanName, strings.Join(cidrParts, ","), strings.Join(gatewayParts, ","), "", "", excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(externalSubnet)
+
+		// RouterLBRule EIP traffic needs the underlay external gateway. The
+		// conformance job starts without the optional external-gateway ConfigMap,
+		// so enable a centralized gateway for the nodes attached above.
+		ginkgo.By("Enabling the external gateway")
+		externalGatewayConfig := &corev1.ConfigMap{
+			Name:      util.ExternalGatewayConfig,
+			Namespace: framework.KubeOvnNamespace,
+			Data: map[string]string{
+				"enable-external-gw": "true",
+				"external-gw-nodes":  strings.Join(nodeNames, ","),
+				"type":               kubeovnv1.GWCentralizedType,
+				"external-gw-nic":    pn.Spec.DefaultInterface,
+				"external-gw-addr":   strings.Join(gatewayParts, ","),
+			},
+		}
+		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Create(
+			context.Background(), externalGatewayConfig, metav1.CreateOptions{},
+		)
+		framework.ExpectNoError(err, "creating external gateway config")
+		externalGatewayConfigCreated = true
+		framework.WaitUntil(time.Second, 2*time.Minute, func(ctx context.Context) (bool, error) {
+			k8sNodes, err := e2enode.GetReadySchedulableNodes(ctx, cs)
+			if err != nil {
+				return false, nil
+			}
+			for _, node := range k8sNodes.Items {
+				if node.Labels[util.ExGatewayLabel] != "true" {
+					return false, nil
+				}
+			}
+			return true, nil
+		}, "external gateway nodes are ready")
 
 		// --- Setup VPC ---
 		ginkgo.By("Creating VPC " + vpcName + " with enableExternal=true")

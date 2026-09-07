@@ -131,6 +131,8 @@ func:
   OVSDB_INACTIVITY_TIMEOUT: 10
   ENABLE_LIVE_MIGRATION_OPTIMIZE: true
   ENABLE_OVN_LB_PREFER_LOCAL: false
+  # Requires OVN 26.03+ on every ovn-controller and ovn-northd instance.
+  ENABLE_OVN_LB_DISTRIBUTED: false
 
 # Experimental OVN ACL sampling for NetworkPolicy events.
 aclSampling:

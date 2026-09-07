@@ -723,13 +723,9 @@ func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *ku
 	if !c.config.EnableLb || subnet.Name == c.config.NodeSwitch {
 		return nil
 	}
-	lbs := []string{
-		vpc.Status.TCPLoadBalancer,
-		vpc.Status.TCPSessionLoadBalancer,
-		vpc.Status.UDPLoadBalancer,
-		vpc.Status.UDPSessionLoadBalancer,
-		vpc.Status.SctpLoadBalancer,
-		vpc.Status.SctpSessionLoadBalancer,
+	lbs, err := c.serviceScopedLoadBalancerNamesForVPC(vpc.Name)
+	if err != nil {
+		return c.recordResourceError(subnet, "ListServiceLoadBalancersFailed", err)
 	}
 	if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
 		if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
@@ -2691,6 +2687,12 @@ func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string
 	if vpcName == "" {
 		return nil, nil, nil
 	}
+
+	// Multiple subnet workers can reconcile different subnets in the same VPC at
+	// the same time. Serialize the shared address-set create/update sequence so
+	// they cannot both pass the cache existence check and race in OVN NB.
+	c.vpcKeyMutex.LockKey(vpcName)
+	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpcName) }()
 
 	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
 	externalIDs := u2oOverlayCIDRsAddressSetExternalIDs(vpcName)

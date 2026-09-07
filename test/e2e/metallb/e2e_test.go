@@ -706,10 +706,11 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 
 		service = f.ServiceClient().Get(serviceName)
 		service2 = f.ServiceClient().Get(serviceName2)
-		tcpLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
-		framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
+		tcpLoadBalancer := serviceExternalLoadBalancerName(service, corev1.ProtocolTCP)
+		tcpLoadBalancer2 := serviceExternalLoadBalancerName(service2, corev1.ProtocolTCP)
 		vipNodes := make(map[string]string, 2)
 		for _, svc := range []*corev1.Service{service, service2} {
+			lbName := serviceExternalLoadBalancerName(svc, corev1.ProtocolTCP)
 			for _, clusterIP := range svc.Spec.ClusterIPs {
 				if util.CheckProtocol(clusterIP) == apiv1.ProtocolIPv4 {
 					expectNoUnderlayVIPBypassLFlow(clusterIP, curlListenPort)
@@ -721,7 +722,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 				}
 				vipNode := getVIPNodeFromService(f, svc.Name)
 				vipNodes[ingress.IP] = vipNode
-				waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, util.NodeLspName(vipNode), 30*time.Second)
+				waitLoadBalancerVIPNodeMarker(lbName, ingress.IP, util.NodeLspName(vipNode), 30*time.Second)
 				waitUnderlayVIPBypassLFlow(ingress.IP, curlListenPort, 30*time.Second)
 				waitUnderlayVIPNodeLFlow(ingress.IP, util.NodeLspName(vipNode), curlListenPort, 30*time.Second)
 			}
@@ -768,7 +769,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			}
 			waitUnderlayVIPBackendLFlowAbsent(clusterBackendPods.Items, vipNodes[ingress.IP], 30*time.Second)
 		}
-		waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
+		waitServiceVIPNodeMarkers(tcpLoadBalancer2, service2, vipNodes, 30*time.Second)
 
 		ginkgo.By("Checking the first service remains reachable with externalTrafficPolicy=Cluster")
 		for _, ingress := range service.Status.LoadBalancer.Ingress {
@@ -807,7 +808,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			waitUnderlayVIPBypassLFlow(ingress.IP, curlListenPort, 30*time.Second)
 			waitUnderlayVIPNodeLFlow(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
 		}
-		waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
+		waitServiceVIPNodeMarkers(tcpLoadBalancer2, service2, vipNodes, 30*time.Second)
 
 		ginkgo.By("Restarting ds kube-ovn-cni")
 		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
@@ -835,7 +836,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 				waitUnderlayVIPNodeLFlowCleaned(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
 			}
 		}
-		waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
+		waitServiceVIPNodeMarkers(tcpLoadBalancer2, service2, vipNodes, 30*time.Second)
 
 		ginkgo.By("Checking the second service is still reachable after first service deletion")
 		for i, ingress := range service2.Status.LoadBalancer.Ingress {
@@ -943,8 +944,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		firstVIPNode := env.vipNode
 		secondVIPNode := env.nonVIPBackendNode
 
-		tcpLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
-		framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
+		tcpLoadBalancer := serviceExternalLoadBalancerName(env.service, corev1.ProtocolTCP)
 		waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, env.vip, util.NodeLspName(firstVIPNode), 30*time.Second)
 
 		moveVIP := func(oldVIPNode, newVIPNode string) {
@@ -976,8 +976,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			return s.Spec.SessionAffinity == corev1.ServiceAffinityClientIP, nil
 		}, "sessionAffinity is ClientIP")
 
-		tcpSessionLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPSessionLoadBalancer
-		framework.ExpectNotEmpty(tcpSessionLoadBalancer, "default VPC TCP session load balancer should be set")
+		tcpSessionLoadBalancer := serviceExternalLoadBalancerName(env.service, corev1.ProtocolTCP)
 		waitLoadBalancerVIPNodeMarker(tcpSessionLoadBalancer, env.vip, util.NodeLspName(env.vipNode), 30*time.Second)
 		waitUnderlayVIPAffinityLFlow(env.vip, util.NodeLspName(env.vipNode), 30*time.Second)
 		checkInternalPodVIPBackend(f, client, env.vip, env.vipNode)
@@ -993,8 +992,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		env := setupInternalVIPEnvironment()
 		oldVIPNode := env.vipNode
 
-		tcpLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
-		framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
+		tcpLoadBalancer := serviceExternalLoadBalancerName(env.service, corev1.ProtocolTCP)
 
 		ginkgo.By("Recreating the backends so that none of them runs on the announcing node")
 		deployClient.DeleteSync(internalDeployName)
@@ -1076,8 +1074,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		client := createInternalVIPClient(env, internalVIPClientOnNonBackendNode)
 		defer f.PodClient().DeleteSync(client.Name)
 
-		tcpLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
-		framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
+		tcpLoadBalancer := serviceExternalLoadBalancerName(env.service, corev1.ProtocolTCP)
 
 		ginkgo.By("Making sure the VIP is not announced from the control-plane node")
 		controlPlaneNodes, err := kind.ListNodes(clusterName, "control-plane")
@@ -1583,6 +1580,10 @@ func getVIPNodeFromService(f *framework.Framework, serviceName string) string {
 	}, "MetalLB did not assign a VIP node for service "+serviceName)
 	framework.Logf("VIP node for service %s is %s", serviceName, vipNode)
 	return vipNode
+}
+
+func serviceExternalLoadBalancerName(service *corev1.Service, protocol corev1.Protocol) string {
+	return fmt.Sprintf("service:%s/%s:%s:external", service.Namespace, service.Name, strings.ToLower(string(protocol)))
 }
 
 func waitVIPNodeFromService(f *framework.Framework, serviceName, expectedNode string, timeout time.Duration) {

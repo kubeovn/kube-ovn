@@ -255,6 +255,8 @@ features:
   OVSDB_CON_TIMEOUT: 3
   OVSDB_INACTIVITY_TIMEOUT: 10
   ENABLE_OVN_LB_PREFER_LOCAL: false
+  # Requires OVN 26.03+ on every ovn-controller and ovn-northd instance.
+  ENABLE_OVN_LB_DISTRIBUTED: false
 
 # -- CNI binary/configuration injected on the nodes.
 # @section -- CNI configuration

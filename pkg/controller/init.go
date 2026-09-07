@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -14,7 +13,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,7 +21,6 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -59,13 +56,6 @@ func (c *Controller) InitOVN() error {
 	if err = c.initClusterRouter(); err != nil {
 		klog.Errorf("init cluster router failed: %v", err)
 		return err
-	}
-
-	if c.config.EnableLb {
-		if err = c.initLoadBalancer(); err != nil {
-			klog.Errorf("init load balancer failed: %v", err)
-			return err
-		}
 	}
 
 	if err = c.initDefaultVlan(); err != nil {
@@ -252,138 +242,6 @@ func (c *Controller) initClusterRouter() error {
 	}
 
 	return nil
-}
-
-func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
-	protocol = strings.ToLower(protocol)
-
-	var (
-		selectFields []string
-		err          error
-	)
-
-	if sessionAffinity {
-		selectFields = []string{
-			ovnnb.LoadBalancerSelectionFieldsIPSrc,
-			ovnnb.LoadBalancerSelectionFieldsIpv6Src,
-		}
-	}
-
-	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields...); err != nil {
-		klog.Errorf("create load balancer %s: %v", name, err)
-		return err
-	}
-
-	if sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
-			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
-			return err
-		}
-	}
-
-	err = c.OVNNbClient.SetLoadBalancerPreferLocalBackend(name, c.config.EnableOVNLBPreferLocal)
-	if err != nil {
-		klog.Errorf("failed to set prefer local backend for load balancer %s: %v", name, err)
-		return err
-	}
-
-	// ct_flush wipes all conntrack entries on the LB's datapath whenever a vip
-	// is mutated. Session-affinity LBs are shared across services, and their
-	// per-client affinity binding is carried in conntrack; enabling ct_flush on
-	// those LBs lets an unrelated service's backend change invalidate another
-	// service's active affinity. Only enable ct_flush on non-session UDP LBs.
-	if protocol == "udp" && !sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerCtFlush(name, true); err != nil {
-			klog.Errorf("failed to set ct_flush for load balancer %s: %v", name, err)
-			return err
-		}
-	}
-
-	return nil
-}
-
-// InitLoadBalancer creates the default TCP/UDP/SCTP cluster load balancers in
-// OVN for every existing VPC and records their names in each VPC's status so
-// the subnet worker can attach them to its logical switch on its first
-// reconcile.
-//
-// The status write uses a targeted merge patch that contains only the six
-// LB-name fields. An earlier version serialized the whole VpcStatus via
-// vpc.Status.Bytes() and raced InitDefaultVpc: if the VPC lister cache still
-// held the pre-UpdateStatus copy (Standby=false) the whole-status merge patch
-// would silently overwrite the Standby/Default/Router/DefaultLogicalSwitch
-// fields that InitDefaultVpc had just written, deadlocking the subnet worker.
-// A field-scoped patch avoids that class of overwrite entirely.
-func (c *Controller) initLoadBalancer() error {
-	vpcs, err := c.vpcsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list vpc: %v", err)
-		return err
-	}
-
-	for _, cachedVpc := range vpcs {
-		vpcLb := c.GenVpcLoadBalancer(cachedVpc.Name)
-		if err = c.initLB(vpcLb.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		body, err := buildVpcLBStatusPatch(vpcLb)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), cachedVpc.Name, types.MergePatchType, body, metav1.PatchOptions{}, "status"); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-	return nil
-}
-
-// buildVpcLBStatusPatch builds a merge-patch body that updates only the six
-// LB-name fields of VpcStatus. It deliberately excludes every other field so
-// the merge patch cannot overwrite state owned by InitDefaultVpc (Standby,
-// Default, Router, DefaultLogicalSwitch) when the caller reads from a stale
-// lister cache.
-func buildVpcLBStatusPatch(vpcLb *VpcLoadBalancer) ([]byte, error) {
-	patch := struct {
-		Status struct {
-			TCPLoadBalancer         string `json:"tcpLoadBalancer"`
-			TCPSessionLoadBalancer  string `json:"tcpSessionLoadBalancer"`
-			UDPLoadBalancer         string `json:"udpLoadBalancer"`
-			UDPSessionLoadBalancer  string `json:"udpSessionLoadBalancer"`
-			SctpLoadBalancer        string `json:"sctpLoadBalancer"`
-			SctpSessionLoadBalancer string `json:"sctpSessionLoadBalancer"`
-		} `json:"status"`
-	}{}
-	patch.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-	patch.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
-	patch.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-	patch.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
-	patch.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
-	patch.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
-	return json.Marshal(patch)
 }
 
 func (c *Controller) InitIPAM() error {

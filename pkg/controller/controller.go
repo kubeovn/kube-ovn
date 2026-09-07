@@ -909,6 +909,7 @@ func Run(ctx context.Context, config *Configuration) {
 	if _, err = endpointSliceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddEndpointSlice,
 		UpdateFunc: controller.enqueueUpdateEndpointSlice,
+		DeleteFunc: controller.enqueueDeleteEndpointSlice,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add endpoint slice event handler")
 	}

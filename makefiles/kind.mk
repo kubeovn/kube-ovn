@@ -2,6 +2,10 @@
 
 UNTAINT_CONTROL_PLANE ?= true
 TENANT_CONTROL_PLANE_REPLICAS ?= 1
+# Trusted PR jobs load workflow YAML from the base branch but run Make targets
+# from the PR head, so keep the conformance cluster requirements here as well.
+KIND_WORKER_COUNT ?= $(if $(filter k8s-conformance-e2e,$(GITHUB_JOB)),6,1)
+ENABLE_OVN_LB_DISTRIBUTED ?= $(if $(filter true,$(CI)),true,false)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
@@ -155,8 +159,15 @@ kind-init: kind-init-ipv4
 
 .PHONY: kind-init-%
 kind-init-%: kind-clean
-	@auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
+	@n_worker=$(if $(n_worker),$(n_worker),$(KIND_WORKER_COUNT)) auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
 	@$(MAKE) kind-create
+	@if [ "$(GITHUB_JOB)" = "k8s-conformance-e2e" ]; then \
+		zones=(zone-a zone-b zone-c); \
+		mapfile -t nodes < <(kubectl get nodes -o name | sort); \
+		for i in "$${!nodes[@]}"; do \
+			kubectl label --overwrite "$${nodes[$$i]}" topology.kubernetes.io/zone="$${zones[$$((i % $${#zones[@]}))]}"; \
+		done; \
+	fi
 
 .PHONY: kind-init-ovn-ic
 kind-init-ovn-ic: kind-init-ovn-ic-ipv4
@@ -284,7 +295,7 @@ kind-install: kind-load-image
 	@echo "Generating CRDs with controller-gen and syncing static CRD bundles..."
 	$(MAKE) gen-crd
 	@echo "Installing kube-ovn with synced generated CRDs..."
-	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | bash
+	sed 's/VERSION=.*/VERSION=$(VERSION)/' dist/images/install.sh | ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) bash
 	kubectl describe no
 
 .PHONY: kind-install-ipv4
@@ -352,7 +363,7 @@ kind-install-ovn-ic-ipv4:
 	@$(MAKE) untaint-control-plane
 	sed -e 's/10.16.0/10.18.0/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
-		dist/images/install.sh | ENABLE_IC=true bash
+		dist/images/install.sh | ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
@@ -382,7 +393,7 @@ kind-install-ovn-ic-ipv6:
 	sed -e 's/fd00:10:16:/fd00:10:18:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true ENABLE_IC=true bash
+		IPV6=true ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
@@ -400,7 +411,7 @@ kind-install-ovn-ic-dual:
 		-e 's/fd00:10:16:/fd00:10:18:/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_IC=true bash
+		DUAL_STACK=true ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_IC=true bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
@@ -422,7 +433,7 @@ kind-install-ovn-submariner: kind-install
 		-e 's/10.96.0.0/10.112.0.0/g' \
 		-e 's/100.64.0/100.68.0/g' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
-		dist/images/install.sh | bash
+		dist/images/install.sh | ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) bash
 	kubectl describe no
 
 	kubectl config use-context kind-kube-ovn
@@ -450,7 +461,7 @@ kind-install-underlay-ipv4: kind-disable-hairpin kind-load-image untaint-control
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
+		ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 	kubectl describe no
 
 .PHONY: kind-install-underlay-hairpin-ipv4
@@ -462,7 +473,7 @@ kind-install-underlay-hairpin-ipv4: kind-enable-hairpin kind-load-image untaint-
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
+		ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 	kubectl describe no
 
 .PHONY: kind-install-underlay-ipv6
@@ -474,7 +485,7 @@ kind-install-underlay-ipv6: kind-disable-hairpin kind-load-image untaint-control
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
+		IPV6=true ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-hairpin-ipv6
 kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image untaint-control-plane
@@ -485,7 +496,7 @@ kind-install-underlay-hairpin-ipv6: kind-enable-hairpin kind-load-image untaint-
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		IPV6=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
+		IPV6=true ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-dual
 kind-install-underlay-dual: kind-disable-hairpin kind-load-image untaint-control-plane
@@ -496,7 +507,7 @@ kind-install-underlay-dual: kind-disable-hairpin kind-load-image untaint-control
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
+		DUAL_STACK=true ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-hairpin-dual
 kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image untaint-control-plane
@@ -507,7 +518,7 @@ kind-install-underlay-hairpin-dual: kind-enable-hairpin kind-load-image untaint-
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
+		DUAL_STACK=true ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_VLAN=true VLAN_NIC=$(KIND_VLAN_NIC) bash
 
 .PHONY: kind-install-underlay-u2o
 kind-install-underlay-u2o: kind-install-underlay-u2o-ipv4
@@ -525,7 +536,7 @@ kind-install-underlay-logical-gateway-dual: kind-disable-hairpin kind-load-image
 		-e 's@^VLAN_ID=.*@VLAN_ID="0"@' \
 		-e 's/VERSION=.*/VERSION=$(VERSION)/' \
 		dist/images/install.sh | \
-		DUAL_STACK=true ENABLE_VLAN=true \
+		DUAL_STACK=true ENABLE_OVN_LB_DISTRIBUTED=$(ENABLE_OVN_LB_DISTRIBUTED) ENABLE_VLAN=true \
 		VLAN_NIC=$(KIND_VLAN_NIC) LOGICAL_GATEWAY=true bash
 
 .PHONY: kind-install-multus

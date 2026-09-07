@@ -39,6 +39,23 @@ func (c *Controller) enqueueAddNode(obj any) {
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(nil, node)
+	c.enqueueTrafficDistributionServices()
+}
+
+func (c *Controller) enqueueTrafficDistributionServices() {
+	if !c.config.EnableLb {
+		return
+	}
+	services, err := c.servicesLister.Services(metav1.NamespaceAll).List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services for traffic distribution update: %v", err)
+		return
+	}
+	for _, svc := range services {
+		if serviceUsesTrafficDistribution(svc) {
+			c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(svc).String())
+		}
+	}
 }
 
 func nodeReady(node *v1.Node) bool {
@@ -145,6 +162,9 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	if nodeReadyChanged || nodeLabelsChanged {
 		c.enqueueVpcBFDPortByNodeChange(oldNode, newNode)
 	}
+	if (nodeReadyChanged || nodeLabelsChanged) && c.config.EnableLb {
+		c.enqueueTrafficDistributionServices()
+	}
 }
 
 func (c *Controller) enqueueDeleteNode(obj any) {
@@ -169,6 +189,7 @@ func (c *Controller) enqueueDeleteNode(obj any) {
 	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(node, nil)
+	c.enqueueTrafficDistributionServices()
 }
 
 func nodeUnderlayAddressSetName(node string, af int) string {
@@ -234,6 +255,7 @@ func (c *Controller) handleAddNode(key string) (err error) {
 		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
+	c.enqueueTrafficDistributionServices()
 
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
@@ -632,6 +654,7 @@ func (c *Controller) handleUpdateNode(key string) (err error) {
 		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
+	c.enqueueTrafficDistributionServices()
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
