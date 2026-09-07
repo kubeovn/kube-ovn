@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -226,6 +227,63 @@ func CheckProtocol(address string) string {
 	err := fmt.Errorf("invalid address %q", address)
 	klog.Error(err)
 	return ""
+}
+
+// resolveProtocol classifies the given address into kubeovnv1.ProtocolIPv4 or
+// kubeovnv1.ProtocolIPv6. The address may be a literal IP address or a
+// hostname, in which case lookup is used to resolve it. lookup is injectable
+// so tests can provide deterministic results.
+//
+// When a hostname resolves to addresses of both address families, IPv4 is
+// preferred: the choice must be deterministic because resolver ordering is
+// not, and callers (e.g. the OVN leader checker) only distinguish IPv4 from
+// IPv6.
+func resolveProtocol(ctx context.Context, lookup func(ctx context.Context, host string) ([]net.IP, error), address string) (string, error) {
+	address = strings.Split(address, "/")[0]
+	if ip := net.ParseIP(address); ip != nil {
+		if ip.To4() != nil {
+			return kubeovnv1.ProtocolIPv4, nil
+		}
+		return kubeovnv1.ProtocolIPv6, nil
+	}
+
+	addrs, err := lookup(ctx, address)
+	if err != nil || len(addrs) == 0 {
+		return "", fmt.Errorf("failed to resolve address %q: %w", address, err)
+	}
+	var v4, v6 bool
+	for _, addr := range addrs {
+		if addr.To4() != nil {
+			v4 = true
+		} else if addr.To16() != nil {
+			v6 = true
+		}
+	}
+	switch {
+	case v4:
+		return kubeovnv1.ProtocolIPv4, nil
+	case v6:
+		return kubeovnv1.ProtocolIPv6, nil
+	default:
+		return "", fmt.Errorf("failed to resolve address %q to a valid IP", address)
+	}
+}
+
+// ResolveProtocol returns the address family of the given IP address or
+// hostname. Unlike CheckProtocol, which only accepts literal IP addresses,
+// hostnames are resolved via DNS.
+func ResolveProtocol(address string) (string, error) {
+	return resolveProtocol(context.Background(), func(ctx context.Context, host string) ([]net.IP, error) {
+		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		ips := make([]net.IP, 0, len(addrs))
+		for _, addr := range addrs {
+			ips = append(ips, addr.IP)
+		}
+		return ips, nil
+	}, address)
 }
 
 func AddressCountBigInt(network *net.IPNet) internal.BigInt {
