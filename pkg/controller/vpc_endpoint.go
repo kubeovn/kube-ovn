@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -185,6 +186,13 @@ func (c *Controller) enqueueVpcEndpointsForService(serviceName string) {
 		}
 		c.addOrUpdateVpcEndpointQueue.Add(ep.Name)
 	}
+}
+
+func (c *Controller) enqueueVpcEndpointServiceByName(name string) {
+	if name == "" || c.addOrUpdateVpcEndpointServiceQueue == nil {
+		return
+	}
+	c.addOrUpdateVpcEndpointServiceQueue.Add(name)
 }
 
 func (c *Controller) initVpcEndpointTransit() error {
@@ -420,7 +428,10 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 	if err := c.ensureVpcEndpointServiceLabels(eps); err != nil {
 		return err
 	}
-	return c.patchVpcEndpointServiceStatus(eps, true, "")
+	if err := c.patchVpcEndpointServiceStatus(eps, true, ""); err != nil {
+		return err
+	}
+	return c.syncVpcEndpointServiceTransitACLs(eps)
 }
 
 func (c *Controller) vpcEndpointProviderSubnet(vpcName string, svc *corev1.Service) (*kubeovnv1.Subnet, error) {
@@ -727,8 +738,67 @@ func (c *Controller) cleanupLegacyVpcEndpointServiceOVN(eps *kubeovnv1.VpcEndpoi
 		_ = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(eps.Spec.Vpc, ovsdb.MutateOperationDelete, lbName)
 		_ = c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == lbName })
 	}
-	_ = c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, "", nil)
 	_ = c.OVNNbClient.DeleteLogicalSwitchPort("vpc-eps-" + eps.Name)
+}
+
+// syncVpcEndpointServiceTransitACLs enforces AllowedVpcs on the shared transit
+// switch. Open services (empty allow-list) leave the VIP reachable from any
+// transit port; restricted services drop traffic to TransitVIP except from
+// authorized consumer stitcher LSPs.
+func (c *Controller) syncVpcEndpointServiceTransitACLs(eps *kubeovnv1.VpcEndpointService) error {
+	if c.config.VpcEndpointTransitSwitch == "" {
+		return nil
+	}
+	if len(eps.Spec.AllowedVpcs) == 0 || !eps.Status.Ready || eps.Status.TransitVIP == "" {
+		return c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, "", nil)
+	}
+	return c.OVNNbClient.UpdateVpcEndpointServiceACLs(
+		c.config.VpcEndpointTransitSwitch,
+		eps.Name,
+		eps.Status.TransitVIP,
+		c.vpcEndpointAllowedConsumerLSPs(eps),
+	)
+}
+
+func (c *Controller) vpcEndpointAllowedConsumerLSPs(eps *kubeovnv1.VpcEndpointService) []string {
+	if c.vpcEndpointLister == nil || c.podsLister == nil {
+		return nil
+	}
+	selector := labels.Set{util.VpcEndpointServiceLabel: eps.Name}.AsSelector()
+	endpoints, err := c.vpcEndpointLister.List(selector)
+	if err != nil {
+		klog.Errorf("failed to list VpcEndpoints for transit ACL sync of %s: %v", eps.Name, err)
+		return nil
+	}
+	seen := map[string]struct{}{}
+	allowed := make([]string, 0)
+	for _, ep := range endpoints {
+		if !vpcEndpointServiceAllowed(eps, ep.Spec.Vpc) {
+			continue
+		}
+		ns, err := c.vpcEndpointConsumerNamespace(ep.Spec.Vpc)
+		if err != nil {
+			continue
+		}
+		pods, err := c.podsLister.Pods(ns).List(labels.Set{"app": vpcEndpointDeployName(ep.Name)}.AsSelector())
+		if err != nil {
+			klog.Errorf("failed to list consumer stitcher pods for %s: %v", ep.Name, err)
+			continue
+		}
+		for _, pod := range pods {
+			if pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning {
+				continue
+			}
+			lsp := ovs.PodNameToPortName(pod.Name, pod.Namespace, vpcEndpointTransitProvider())
+			if _, ok := seen[lsp]; ok {
+				continue
+			}
+			seen[lsp] = struct{}{}
+			allowed = append(allowed, lsp)
+		}
+	}
+	sort.Strings(allowed)
+	return allowed
 }
 
 func (c *Controller) deactivateVpcEndpointService(eps *kubeovnv1.VpcEndpointService) error {
@@ -738,6 +808,9 @@ func (c *Controller) deactivateVpcEndpointService(eps *kubeovnv1.VpcEndpointServ
 		return err
 	}
 	_ = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
+	if c.config.VpcEndpointTransitSwitch != "" {
+		_ = c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, "", nil)
+	}
 	eps.Status.TransitVIP = ""
 	eps.Status.Mac = ""
 	eps.Status.Ports = ""
@@ -775,6 +848,7 @@ func (c *Controller) handleAddOrUpdateVpcEndpoint(key string) error {
 	}
 	ep := cached.DeepCopy()
 	if !ep.DeletionTimestamp.IsZero() {
+		svcName := ep.Spec.EndpointService
 		if err := c.cleanupVpcEndpoint(ep); err != nil {
 			return err
 		}
@@ -784,6 +858,7 @@ func (c *Controller) handleAddOrUpdateVpcEndpoint(key string) error {
 				return err
 			}
 		}
+		c.enqueueVpcEndpointServiceByName(svcName)
 		return nil
 	}
 
@@ -797,10 +872,12 @@ func (c *Controller) handleAddOrUpdateVpcEndpoint(key string) error {
 	if err := c.reconcileVpcEndpoint(ep); err != nil {
 		klog.Errorf("failed to reconcile VpcEndpoint %s: %v", key, err)
 		_ = c.patchVpcEndpointStatus(ep, false, err.Error())
+		c.enqueueVpcEndpointServiceByName(ep.Spec.EndpointService)
 		// Return the reconcile error so the workqueue rate-limits and retries
 		// (e.g. while waiting for the provider VES to become ready).
 		return err
 	}
+	c.enqueueVpcEndpointServiceByName(ep.Spec.EndpointService)
 	return nil
 }
 

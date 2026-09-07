@@ -1643,6 +1643,65 @@ func (c *Controller) gcVpcEndpoint() error {
 		}
 	}
 
+	acls, err := c.OVNNbClient.ListAcls("", nil)
+	if err != nil {
+		klog.Errorf("failed to list acls for vpc endpoint gc: %v", err)
+		return err
+	}
+	seenACLServices := map[string]struct{}{}
+	for _, acl := range acls {
+		epsName, ok := acl.ExternalIDs[util.VpcEndpointServiceACLExternalID]
+		if !ok || epsName == "" {
+			continue
+		}
+		if _, known := expectedACLServices[epsName]; known {
+			continue
+		}
+		if _, seen := seenACLServices[epsName]; seen {
+			continue
+		}
+		seenACLServices[epsName] = struct{}{}
+		klog.Infof("gc orphaned vpc endpoint service acls for %s", epsName)
+		if err := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, epsName, "", nil); err != nil {
+			klog.Errorf("failed to gc acls for vpc endpoint service %s: %v", epsName, err)
+			return err
+		}
+	}
+
+	if c.deploymentsLister != nil {
+		expectedDeploys := map[string]struct{}{}
+		for _, eps := range services {
+			expectedDeploys[eps.Spec.Namespace+"/"+vpcEndpointServiceDeployName(eps.Name)] = struct{}{}
+		}
+		for _, ep := range endpoints {
+			ns, err := c.vpcEndpointConsumerNamespace(ep.Spec.Vpc)
+			if err != nil {
+				continue
+			}
+			expectedDeploys[ns+"/"+vpcEndpointDeployName(ep.Name)] = struct{}{}
+		}
+		deps, err := c.deploymentsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list deployments for vpc endpoint gc: %v", err)
+			return err
+		}
+		for _, dep := range deps {
+			role := dep.Labels[util.VpcEndpointStitcherLabel]
+			if role != "provider" && role != "consumer" {
+				continue
+			}
+			key := dep.Namespace + "/" + dep.Name
+			if _, ok := expectedDeploys[key]; ok {
+				continue
+			}
+			klog.Infof("gc orphaned vpc endpoint stitcher deployment %s", key)
+			if err := c.config.KubeClient.AppsV1().Deployments(dep.Namespace).Delete(context.Background(), dep.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to gc stitcher deployment %s: %v", key, err)
+				return err
+			}
+		}
+	}
+
 	klog.Infof("finish to gc vpc endpoints")
 	return nil
 }

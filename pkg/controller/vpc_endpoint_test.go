@@ -50,6 +50,63 @@ func TestVpcEndpointServiceAllowed(t *testing.T) {
 	require.False(t, vpcEndpointServiceAllowed(restricted, "c"))
 }
 
+func TestVpcEndpointAllowedConsumerLSPs(t *testing.T) {
+	eps := &kubeovnv1.VpcEndpointService{
+		Name: "db",
+		Spec: kubeovnv1.VpcEndpointServiceSpec{AllowedVpcs: []string{"vpc-a"}},
+	}
+	epAllowed := &kubeovnv1.VpcEndpoint{
+		Name:   "client-a",
+		Labels: map[string]string{util.VpcEndpointServiceLabel: "db"},
+		Spec:   kubeovnv1.VpcEndpointSpec{Vpc: "vpc-a", EndpointService: "db"},
+	}
+	epDenied := &kubeovnv1.VpcEndpoint{
+		Name:   "client-b",
+		Labels: map[string]string{util.VpcEndpointServiceLabel: "db"},
+		Spec:   kubeovnv1.VpcEndpointSpec{Vpc: "vpc-b", EndpointService: "db"},
+	}
+	vpc := &kubeovnv1.Vpc{
+		Name: "vpc-a",
+		Spec: kubeovnv1.VpcSpec{Namespaces: []string{"ns-a"}},
+	}
+	pod := &corev1.Pod{
+		Name:      "vpc-ep-client-a-xyz",
+		Namespace: "ns-a",
+		Labels:    map[string]string{"app": vpcEndpointDeployName("client-a")},
+		Status:    corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+
+	kubeFactory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
+	k8sFactory := informers.NewSharedInformerFactory(fake.NewSimpleClientset(), 0)
+	require.NoError(t, kubeFactory.Kubeovn().V1().VpcEndpoints().Informer().GetStore().Add(epAllowed))
+	require.NoError(t, kubeFactory.Kubeovn().V1().VpcEndpoints().Informer().GetStore().Add(epDenied))
+	require.NoError(t, kubeFactory.Kubeovn().V1().Vpcs().Informer().GetStore().Add(vpc))
+	require.NoError(t, k8sFactory.Core().V1().Pods().Informer().GetStore().Add(pod))
+
+	c := &Controller{
+		vpcEndpointLister: kubeFactory.Kubeovn().V1().VpcEndpoints().Lister(),
+		vpcsLister:        kubeFactory.Kubeovn().V1().Vpcs().Lister(),
+		podsLister:        k8sFactory.Core().V1().Pods().Lister(),
+	}
+
+	allowed := c.vpcEndpointAllowedConsumerLSPs(eps)
+	require.Equal(t, []string{
+		fmt.Sprintf("%s.%s.%s", pod.Name, pod.Namespace, vpcEndpointTransitProvider()),
+	}, allowed)
+}
+
+func TestEnqueueVpcEndpointServiceByName(t *testing.T) {
+	c := &Controller{
+		addOrUpdateVpcEndpointServiceQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcEndpointService", nil),
+	}
+	t.Cleanup(c.addOrUpdateVpcEndpointServiceQueue.ShutDown)
+
+	c.enqueueVpcEndpointServiceByName("")
+	require.Zero(t, c.addOrUpdateVpcEndpointServiceQueue.Len())
+	c.enqueueVpcEndpointServiceByName("db")
+	require.Equal(t, 1, c.addOrUpdateVpcEndpointServiceQueue.Len())
+}
+
 func TestVpcEndpointPreferIP(t *testing.T) {
 	require.Equal(t, "10.0.0.1", vpcEndpointPreferIP("10.0.0.1", "fd00::1"))
 	require.Equal(t, "fd00::1", vpcEndpointPreferIP("", "fd00::1"))

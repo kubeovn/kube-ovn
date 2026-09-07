@@ -2550,6 +2550,21 @@ func (mr *MockACLMockRecorder) UpdateVpcEndpointServiceACLs(lsName, epsName, tra
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVpcEndpointServiceACLs", reflect.TypeOf((*MockACL)(nil).UpdateVpcEndpointServiceACLs), lsName, epsName, transitVIP, allowedLSPNames)
 }
 
+// ListAcls mocks base method.
+func (m *MockACL) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAcls", direction, externalIDs)
+	ret0, _ := ret[0].([]ovnnb.ACL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAcls indicates an expected call of ListAcls.
+func (mr *MockACLMockRecorder) ListAcls(direction, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAcls", reflect.TypeOf((*MockACL)(nil).ListAcls), direction, externalIDs)
+}
+
 // MockACLSampling is a mock of ACLSampling interface.
 type MockACLSampling struct {
 	ctrl     *gomock.Controller
@@ -6566,6 +6581,21 @@ func (m *MockNbClient) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP 
 func (mr *MockNbClientMockRecorder) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, allowedLSPNames any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVpcEndpointServiceACLs", reflect.TypeOf((*MockNbClient)(nil).UpdateVpcEndpointServiceACLs), lsName, epsName, transitVIP, allowedLSPNames)
+}
+
+// ListAcls mocks base method.
+func (m *MockNbClient) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAcls", direction, externalIDs)
+	ret0, _ := ret[0].([]ovnnb.ACL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAcls indicates an expected call of ListAcls.
+func (mr *MockNbClientMockRecorder) ListAcls(direction, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAcls", reflect.TypeOf((*MockNbClient)(nil).ListAcls), direction, externalIDs)
 }
 
 // MockSbClient is a mock of SbClient interface.

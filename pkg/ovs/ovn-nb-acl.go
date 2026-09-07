@@ -1059,19 +1059,19 @@ func (c *OVNNbClient) SetNetPolACLLog(pgName string, logEnable, isIngress bool) 
 }
 
 // UpdateVpcEndpointServiceACLs installs from-lport ACLs on the transit switch so
-// only allowed consumer ports may send traffic to the given transit VIP. When
-// allowedLSPNames is empty, existing ACLs for this service are cleared (open access).
+// only allowed consumer ports may send traffic to the given transit VIP.
 //
-// Only an exclusive drop is installed (dst == VIP && inport != allowed...). A
-// catch-all drop on dst == VIP would also match CT-established LB traffic and
-// break the datapath; allow-related alone does not reliably override that.
+// An empty transitVIP clears isolation for this service (open access). A non-empty
+// transitVIP installs a drop on dst == VIP, with optional inport exceptions for
+// allowed consumer LSPs. When allowedLSPNames is empty, all traffic to the VIP is
+// dropped (restricted service with no authorized consumers yet).
 func (c *OVNNbClient) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP string, allowedLSPNames []string) error {
 	extIDs := map[string]string{util.VpcEndpointServiceACLExternalID: epsName}
 	if err := c.DeleteAcls(lsName, LogicalSwitchKey, "", extIDs); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("clear vpc endpoint service %s acls: %w", epsName, err)
 	}
-	if len(allowedLSPNames) == 0 || transitVIP == "" {
+	if transitVIP == "" {
 		return nil
 	}
 
