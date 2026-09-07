@@ -1,6 +1,7 @@
 package pinger
 
 import (
+	"errors"
 	"os"
 	"sync"
 	"time"
@@ -23,12 +24,13 @@ var (
 // the prometheus metrics package.
 type Exporter struct {
 	sync.RWMutex
-	Client        *ovsdb.OvsClient
-	VswitchTables compat.TableProvider
-	timeout       int
-	pollInterval  int
-	errors        int64
-	errorsLocker  sync.RWMutex
+	Client           *ovsdb.OvsClient
+	VswitchTables    compat.TableProvider
+	newVswitchTables func() (compat.TableProvider, error)
+	timeout          int
+	pollInterval     int
+	errors           int64
+	errorsLocker     sync.RWMutex
 }
 
 // NewExporter returns an initialized Exporter.
@@ -37,10 +39,11 @@ func NewExporter(cfg *Configuration) *Exporter {
 		Client: ovsdb.NewOvsClient(),
 	}
 	e.initParas(cfg)
-	if tables, err := ovs.NewVswitchClient(cfg.DatabaseVswitchSocketRemote, cfg.PollTimeout, cfg.PollTimeout); err != nil {
+	e.newVswitchTables = func() (compat.TableProvider, error) {
+		return ovs.NewVswitchClient(cfg.DatabaseVswitchSocketRemote, cfg.PollTimeout, cfg.PollTimeout)
+	}
+	if err := e.connectVswitchTables(); err != nil {
 		klog.Errorf("%s failed to connect generic OVSDB client: %v", appName, err)
-	} else {
-		e.VswitchTables = tables
 	}
 
 	if err := e.Client.GetSystemID(); err != nil {
@@ -52,6 +55,24 @@ func NewExporter(cfg *Configuration) *Exporter {
 	}
 
 	return &e
+}
+
+func (e *Exporter) connectVswitchTables() error {
+	if e.VswitchTables != nil {
+		return nil
+	}
+	if e.newVswitchTables == nil {
+		return errors.New("generic OVSDB client factory is unavailable")
+	}
+	tables, err := e.newVswitchTables()
+	if err != nil {
+		return err
+	}
+	if tables == nil {
+		return errors.New("generic OVSDB client factory returned nil")
+	}
+	e.VswitchTables = tables
+	return nil
 }
 
 func (e *Exporter) initParas(cfg *Configuration) {

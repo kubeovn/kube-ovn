@@ -2,7 +2,6 @@ package pinger
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -147,8 +146,8 @@ func (e *Exporter) ovsDatapathPortMetrics(line, datapath string) {
 }
 
 func (e *Exporter) getInterfaceInfo() ([]*ovsdb.OvsInterface, error) {
-	if e.VswitchTables == nil {
-		err := errors.New("generic OVSDB table provider is unavailable")
+	if err := e.connectVswitchTables(); err != nil {
+		err = fmt.Errorf("failed to connect generic OVSDB client: %w", err)
 		klog.Errorf("failed to list OVS interfaces: %v", err)
 		e.IncrementErrorCounter()
 		return nil, err
