@@ -71,7 +71,7 @@ require (
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.78
 	kubevirt.io/api v1.9.0
-	kubevirt.io/client-go v1.9.0-beta.0.0.20260902025523-eca18b785298
+	kubevirt.io/client-go v1.9.0
 	sigs.k8s.io/controller-runtime v0.25.0
 	sigs.k8s.io/knftables v0.0.22
 	sigs.k8s.io/network-policy-api v0.1.8-0.20251209142732-3910463a5686
