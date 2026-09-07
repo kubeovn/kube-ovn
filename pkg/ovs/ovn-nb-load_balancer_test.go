@@ -15,7 +15,6 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
