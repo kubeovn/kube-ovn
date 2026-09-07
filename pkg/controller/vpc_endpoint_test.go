@@ -18,9 +18,14 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
 
+	"go.uber.org/mock/gomock"
+
+	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovninformers "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -871,4 +876,226 @@ func TestHandleAddOrUpdateVpcEndpointNotFound(t *testing.T) {
 		vpcEndpointKeyMutex: keymutex.NewHashed(0),
 	}
 	require.NoError(t, c.handleAddOrUpdateVpcEndpoint("missing"))
+}
+
+func TestSyncVpcEndpointServiceTransitACLs(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	nb := mockovs.NewMockNbClient(mockCtrl)
+
+	open := &kubeovnv1.VpcEndpointService{
+		Name:   "open",
+		Status: kubeovnv1.VpcEndpointServiceStatus{Ready: true, TransitVIP: "100.65.0.2"},
+	}
+	c := &Controller{
+		config:      &Configuration{},
+		OVNNbClient: nb,
+	}
+	require.NoError(t, c.syncVpcEndpointServiceTransitACLs(open))
+
+	c.config.VpcEndpointTransitSwitch = "vpc-endpoint-transit"
+	nb.EXPECT().UpdateVpcEndpointServiceACLs("vpc-endpoint-transit", "open", "", nil).Return(nil)
+	require.NoError(t, c.syncVpcEndpointServiceTransitACLs(open))
+
+	restricted := &kubeovnv1.VpcEndpointService{
+		Name: "db",
+		Spec: kubeovnv1.VpcEndpointServiceSpec{AllowedVpcs: []string{"vpc-a"}},
+		Status: kubeovnv1.VpcEndpointServiceStatus{
+			Ready:      true,
+			TransitVIP: "100.65.0.2",
+		},
+	}
+	ep := &kubeovnv1.VpcEndpoint{
+		Name:   "client-a",
+		Labels: map[string]string{util.VpcEndpointServiceLabel: "db"},
+		Spec:   kubeovnv1.VpcEndpointSpec{Vpc: "vpc-a", EndpointService: "db"},
+	}
+	vpc := &kubeovnv1.Vpc{
+		Name: "vpc-a",
+		Spec: kubeovnv1.VpcSpec{Namespaces: []string{"ns-a"}},
+	}
+	pod := &corev1.Pod{
+		Name:      "vpc-ep-client-a-xyz",
+		Namespace: "ns-a",
+		Labels:    map[string]string{"app": vpcEndpointDeployName("client-a")},
+		Status:    corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	kubeFactory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
+	k8sFactory := informers.NewSharedInformerFactory(fake.NewSimpleClientset(), 0)
+	require.NoError(t, kubeFactory.Kubeovn().V1().VpcEndpoints().Informer().GetStore().Add(ep))
+	require.NoError(t, kubeFactory.Kubeovn().V1().Vpcs().Informer().GetStore().Add(vpc))
+	require.NoError(t, k8sFactory.Core().V1().Pods().Informer().GetStore().Add(pod))
+
+	c.vpcEndpointLister = kubeFactory.Kubeovn().V1().VpcEndpoints().Lister()
+	c.vpcsLister = kubeFactory.Kubeovn().V1().Vpcs().Lister()
+	c.podsLister = k8sFactory.Core().V1().Pods().Lister()
+
+	expectedLSP := ovs.PodNameToPortName(pod.Name, pod.Namespace, vpcEndpointTransitProvider())
+	nb.EXPECT().UpdateVpcEndpointServiceACLs(
+		"vpc-endpoint-transit", "db", "100.65.0.2", []string{expectedLSP},
+	).Return(nil)
+	require.NoError(t, c.syncVpcEndpointServiceTransitACLs(restricted))
+
+	notReady := restricted.DeepCopy()
+	notReady.Status.Ready = false
+	nb.EXPECT().UpdateVpcEndpointServiceACLs("vpc-endpoint-transit", "db", "", nil).Return(nil)
+	require.NoError(t, c.syncVpcEndpointServiceTransitACLs(notReady))
+}
+
+func TestDeactivateVpcEndpointServiceClearsACLs(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	nb := mockovs.NewMockNbClient(mockCtrl)
+	deploy := &appsv1.Deployment{Name: "vpc-eps-db", Namespace: "ns-a"}
+	kube := fake.NewSimpleClientset(deploy)
+	eps := &kubeovnv1.VpcEndpointService{
+		Name: "db",
+		Spec: kubeovnv1.VpcEndpointServiceSpec{Namespace: "ns-a"},
+		Status: kubeovnv1.VpcEndpointServiceStatus{
+			TransitVIP: "100.65.0.2",
+			Ready:      true,
+		},
+	}
+	nb.EXPECT().UpdateVpcEndpointServiceACLs("vpc-endpoint-transit", "db", "", nil).Return(nil)
+	c := &Controller{
+		config: &Configuration{
+			KubeClient:               kube,
+			PodNamespace:             metav1.NamespaceSystem,
+			VpcEndpointTransitSwitch: "vpc-endpoint-transit",
+		},
+		OVNNbClient: nb,
+	}
+	require.NoError(t, c.deactivateVpcEndpointService(eps))
+	require.False(t, eps.Status.Ready)
+	require.Empty(t, eps.Status.TransitVIP)
+}
+
+func TestVpcEndpointAllowedConsumerLSPsSkipsUnready(t *testing.T) {
+	eps := &kubeovnv1.VpcEndpointService{
+		Name: "db",
+		Spec: kubeovnv1.VpcEndpointServiceSpec{AllowedVpcs: []string{"vpc-a"}},
+	}
+	ep := &kubeovnv1.VpcEndpoint{
+		Name:   "client-a",
+		Labels: map[string]string{util.VpcEndpointServiceLabel: "db"},
+		Spec:   kubeovnv1.VpcEndpointSpec{Vpc: "vpc-a", EndpointService: "db"},
+	}
+	vpc := &kubeovnv1.Vpc{
+		Name: "vpc-a",
+		Spec: kubeovnv1.VpcSpec{Namespaces: []string{"ns-a"}},
+	}
+	pending := &corev1.Pod{
+		Name:      "vpc-ep-client-a-pending",
+		Namespace: "ns-a",
+		Labels:    map[string]string{"app": vpcEndpointDeployName("client-a")},
+		Status:    corev1.PodStatus{Phase: corev1.PodPending},
+	}
+	deleting := &corev1.Pod{
+		Name:              "vpc-ep-client-a-deleting",
+		Namespace:         "ns-a",
+		Labels:            map[string]string{"app": vpcEndpointDeployName("client-a")},
+		DeletionTimestamp: &metav1.Time{Time: metav1.Now().Time},
+		Status:            corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+
+	kubeFactory := kubeovninformers.NewSharedInformerFactory(kubeovnfake.NewSimpleClientset(), 0)
+	k8sFactory := informers.NewSharedInformerFactory(fake.NewSimpleClientset(), 0)
+	require.NoError(t, kubeFactory.Kubeovn().V1().VpcEndpoints().Informer().GetStore().Add(ep))
+	require.NoError(t, kubeFactory.Kubeovn().V1().Vpcs().Informer().GetStore().Add(vpc))
+	require.NoError(t, k8sFactory.Core().V1().Pods().Informer().GetStore().Add(pending))
+	require.NoError(t, k8sFactory.Core().V1().Pods().Informer().GetStore().Add(deleting))
+
+	c := &Controller{
+		vpcEndpointLister: kubeFactory.Kubeovn().V1().VpcEndpoints().Lister(),
+		vpcsLister:        kubeFactory.Kubeovn().V1().Vpcs().Lister(),
+		podsLister:        k8sFactory.Core().V1().Pods().Lister(),
+	}
+	require.Empty(t, c.vpcEndpointAllowedConsumerLSPs(eps))
+	require.Nil(t, (&Controller{}).vpcEndpointAllowedConsumerLSPs(eps))
+}
+
+func TestGcVpcEndpointEarlyReturn(t *testing.T) {
+	require.NoError(t, (&Controller{config: &Configuration{}}).gcVpcEndpoint())
+	require.NoError(t, (&Controller{config: &Configuration{
+		EnableLb:                 true,
+		VpcEndpointTransitSwitch: "vpc-endpoint-transit",
+	}}).gcVpcEndpoint())
+}
+
+func TestGcVpcEndpointOrphanACLsAndDeployments(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	nb := mockovs.NewMockNbClient(mockCtrl)
+
+	eps := &kubeovnv1.VpcEndpointService{
+		Name: "db",
+		Spec: kubeovnv1.VpcEndpointServiceSpec{Vpc: "provider", Namespace: "ns-a"},
+	}
+	ep := &kubeovnv1.VpcEndpoint{
+		Name: "client",
+		Spec: kubeovnv1.VpcEndpointSpec{Vpc: "consumer", EndpointService: "db"},
+	}
+	vpc := &kubeovnv1.Vpc{
+		Name: "consumer",
+		Spec: kubeovnv1.VpcSpec{Namespaces: []string{"ep-consumer"}},
+	}
+	keepDeploy := &appsv1.Deployment{
+		Name:      vpcEndpointServiceDeployName("db"),
+		Namespace: "ns-a",
+		Labels:    map[string]string{util.VpcEndpointStitcherLabel: "provider"},
+	}
+	orphanDeploy := &appsv1.Deployment{
+		Name:      "vpc-ep-orphan",
+		Namespace: "ep-consumer",
+		Labels:    map[string]string{util.VpcEndpointStitcherLabel: "consumer"},
+	}
+	otherDeploy := &appsv1.Deployment{
+		Name:      "other",
+		Namespace: "ep-consumer",
+		Labels:    map[string]string{"app": "other"},
+	}
+
+	kubeovnClient := kubeovnfake.NewSimpleClientset()
+	kube := fake.NewSimpleClientset(keepDeploy, orphanDeploy, otherDeploy)
+	kubeFactory := kubeovninformers.NewSharedInformerFactory(kubeovnClient, 0)
+	k8sFactory := informers.NewSharedInformerFactory(kube, 0)
+	require.NoError(t, kubeFactory.Kubeovn().V1().VpcEndpointServices().Informer().GetStore().Add(eps))
+	require.NoError(t, kubeFactory.Kubeovn().V1().VpcEndpoints().Informer().GetStore().Add(ep))
+	require.NoError(t, kubeFactory.Kubeovn().V1().Vpcs().Informer().GetStore().Add(vpc))
+	require.NoError(t, k8sFactory.Apps().V1().Deployments().Informer().GetStore().Add(keepDeploy))
+	require.NoError(t, k8sFactory.Apps().V1().Deployments().Informer().GetStore().Add(orphanDeploy))
+	require.NoError(t, k8sFactory.Apps().V1().Deployments().Informer().GetStore().Add(otherDeploy))
+
+	nb.EXPECT().ListLoadBalancers(gomock.Any()).Return(nil, nil)
+	nb.EXPECT().ListLogicalSwitchPorts(false, nil, gomock.Any()).Return(nil, nil)
+	nb.EXPECT().ListLogicalRouterPorts(nil, gomock.Any()).Return(nil, nil)
+	nb.EXPECT().ListNats("provider", ovnnb.NATTypeSNAT, "0.0.0.0/0", nil).Return(nil, nil)
+	nb.EXPECT().ListNats("provider", ovnnb.NATTypeSNAT, "::/0", nil).Return(nil, nil)
+	nb.EXPECT().ListNats("consumer", ovnnb.NATTypeSNAT, "0.0.0.0/0", nil).Return(nil, nil)
+	nb.EXPECT().ListNats("consumer", ovnnb.NATTypeSNAT, "::/0", nil).Return(nil, nil)
+	nb.EXPECT().ListAcls("", nil).Return([]ovnnb.ACL{{
+		ExternalIDs: map[string]string{util.VpcEndpointServiceACLExternalID: "gone"},
+	}, {
+		ExternalIDs: map[string]string{util.VpcEndpointServiceACLExternalID: "db"},
+	}, {
+		ExternalIDs: map[string]string{"other": "x"},
+	}}, nil)
+	nb.EXPECT().UpdateVpcEndpointServiceACLs("vpc-endpoint-transit", "gone", "", nil).Return(nil)
+
+	c := &Controller{
+		config: &Configuration{
+			EnableLb:                 true,
+			VpcEndpointTransitSwitch: "vpc-endpoint-transit",
+			KubeClient:               kube,
+			KubeOvnClient:            kubeovnClient,
+		},
+		OVNNbClient:              nb,
+		vpcEndpointServiceLister: kubeFactory.Kubeovn().V1().VpcEndpointServices().Lister(),
+		vpcEndpointLister:        kubeFactory.Kubeovn().V1().VpcEndpoints().Lister(),
+		vpcsLister:               kubeFactory.Kubeovn().V1().Vpcs().Lister(),
+		deploymentsLister:        k8sFactory.Apps().V1().Deployments().Lister(),
+	}
+	require.NoError(t, c.gcVpcEndpoint())
+
+	_, err := kube.AppsV1().Deployments("ep-consumer").Get(context.Background(), "vpc-ep-orphan", metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = kube.AppsV1().Deployments("ns-a").Get(context.Background(), keepDeploy.Name, metav1.GetOptions{})
+	require.NoError(t, err)
 }
