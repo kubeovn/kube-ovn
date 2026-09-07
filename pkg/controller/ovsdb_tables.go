@@ -281,20 +281,24 @@ func (c *Controller) createLogicalSwitch(lsName, lrName, cidrBlock, gateway, gat
 	if err != nil {
 		return err
 	}
-	if existing != nil && switchNetworks != "" {
+	if existing == nil {
+		if err := c.createBareLogicalSwitch(lsName); err != nil {
+			return fmt.Errorf("create logical switch %s: %w", lsName, err)
+		}
+	} else if switchNetworks != "" {
 		if randomAllocateGW {
 			return nil
 		}
 		lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
-		if err := c.updateLogicalRouterPortNetworks(lrpName, strings.Split(switchNetworks, ",")); err != nil {
-			return fmt.Errorf("update logical router port %s: %w", lrpName, err)
+		lrp, getErr := c.getLogicalRouterPort(lrpName, true)
+		if getErr != nil {
+			return getErr
 		}
-		if gatewayMAC != "" {
-			lrp, getErr := c.getLogicalRouterPort(lrpName, false)
-			if getErr != nil {
-				return getErr
+		if lrp != nil {
+			if err := c.updateLogicalRouterPortNetworks(lrpName, strings.Split(switchNetworks, ",")); err != nil {
+				return fmt.Errorf("update logical router port %s: %w", lrpName, err)
 			}
-			if lrp.MAC != gatewayMAC {
+			if gatewayMAC != "" && lrp.MAC != gatewayMAC {
 				lrp.MAC = gatewayMAC
 				if err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Update(
 					context.Background(), "lrp-update", lrp, lrp, &lrp.MAC,
@@ -303,8 +307,6 @@ func (c *Controller) createLogicalSwitch(lsName, lrName, cidrBlock, gateway, gat
 				}
 			}
 		}
-	} else if err := c.createBareLogicalSwitch(lsName); err != nil {
-		return fmt.Errorf("create logical switch %s: %w", lsName, err)
 	}
 
 	lspName := fmt.Sprintf("%s-%s", lsName, lrName)

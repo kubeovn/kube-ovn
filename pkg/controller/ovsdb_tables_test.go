@@ -332,6 +332,21 @@ func TestControllerTableProviderPeerAndPatchPorts(t *testing.T) {
 	require.Equal(t, 1, patchBackend.transactCalls)
 }
 
+func TestControllerTableProviderLogicalSwitchRepairsMissingPatchPorts(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "switch-1"},
+		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "router-1"},
+	)
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+
+	require.NoError(t, controller.createLogicalSwitch(
+		"switch-1", "router-1", "10.0.0.0/24", "10.0.0.1", "00:00:00:00:00:01", true, false,
+	))
+	require.Equal(t, 2, backend.createCalls)
+	require.Equal(t, 2, backend.mutateCalls)
+	require.Equal(t, 1, backend.transactCalls)
+}
+
 func TestControllerTableProviderPolicyReconcile(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
 	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
