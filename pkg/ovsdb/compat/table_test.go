@@ -14,6 +14,10 @@ type exampleRow struct {
 	Name string
 }
 
+type otherExampleRow struct {
+	Name string
+}
+
 func ExampleTable_reconcile() {
 	var database *Database // supplied by controller wiring
 	table := database.Table(&exampleRow{})
@@ -131,6 +135,50 @@ func TestTableRejectsMissingPrototype(t *testing.T) {
 
 	require.Error(t, table.List(context.Background(), &[]struct{}{}))
 	require.Error(t, table.Get(context.Background(), &struct{}{}))
+}
+
+func TestTableRejectsModelsFromAnotherTable(t *testing.T) {
+	database := NewDatabase(&fakeBackend{conditional: crudConditional{}}, time.Second, RetryPolicy{})
+	table := database.Table(&exampleRow{})
+	other := &otherExampleRow{}
+	var rows []exampleRow
+	var otherRows []otherExampleRow
+
+	require.Error(t, table.Get(t.Context(), other))
+	require.Error(t, table.List(t.Context(), &otherRows))
+	require.Error(t, table.Query(t.Context(), other, &rows))
+	require.Error(t, table.Filter(t.Context(), func(*otherExampleRow) bool { return true }, &rows))
+	require.Error(t, table.FilterByUUIDs(t.Context(), func(*exampleRow) bool { return true }, &otherRows, "uuid"))
+	_, err := table.CreateOps(other)
+	require.Error(t, err)
+	_, err = table.UpdateOps(other, other)
+	require.Error(t, err)
+	_, err = table.MutateOps(other)
+	require.Error(t, err)
+	_, err = table.DeleteOps(other)
+	require.Error(t, err)
+	require.Error(t, table.Create(t.Context(), "create", other))
+	require.Error(t, table.Update(t.Context(), "update", other, other))
+	require.Error(t, table.Mutate(t.Context(), "mutate", other))
+	require.Error(t, table.Delete(t.Context(), "delete", other))
+	require.Error(t, table.DeleteFilter(t.Context(), "delete-filter", func(*otherExampleRow) bool { return true }))
+	_, err = table.Where(other).Delete()
+	require.Error(t, err)
+	_, err = table.WhereCache(func(*otherExampleRow) bool { return true }).Delete()
+	require.Error(t, err)
+	_, err = table.Where(&exampleRow{}).Update(other)
+	require.Error(t, err)
+	_, err = table.WhereCache(func(*exampleRow) bool { return true }).Update(other)
+	require.Error(t, err)
+	require.Error(t, table.Where(&exampleRow{}).List(t.Context(), &otherRows))
+}
+
+func TestTableAcceptsPointerAndValueSlices(t *testing.T) {
+	database := NewDatabase(&fakeBackend{conditional: crudConditional{}}, time.Second, RetryPolicy{})
+	table := database.Table(&exampleRow{})
+
+	require.NoError(t, table.List(t.Context(), &[]exampleRow{}))
+	require.NoError(t, table.List(t.Context(), &[]*exampleRow{}))
 }
 
 func TestGenericTableHelpers(t *testing.T) {

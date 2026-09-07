@@ -498,3 +498,44 @@ func TestSetNetemQosUsesTableProvider(t *testing.T) {
 		return len(currentQoS) == 0 && len(currentPorts) == 1 && currentPorts[0].QOS == nil
 	}, time.Second, 10*time.Millisecond)
 }
+
+func TestParseNetemQosConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		latency string
+		limit   string
+		loss    string
+		jitter  string
+		want    map[string]string
+		wantErr bool
+	}{
+		{name: "empty", want: map[string]string{}},
+		{
+			name: "valid", latency: "10", limit: "20", loss: "1.5", jitter: "3",
+			want: map[string]string{"latency": "10000", "limit": "20", "loss": "1.5", "jitter": "3000"},
+		},
+		{name: "invalid latency", latency: "invalid", wantErr: true},
+		{name: "invalid limit", limit: "invalid", wantErr: true},
+		{name: "invalid loss", loss: "invalid", wantErr: true},
+		{name: "invalid jitter", jitter: "invalid", wantErr: true},
+		{name: "negative latency", latency: "-1", wantErr: true},
+		{name: "negative limit", limit: "-1", wantErr: true},
+		{name: "negative loss", loss: "-1", wantErr: true},
+		{name: "negative jitter", jitter: "-1", wantErr: true},
+		{name: "loss above 100", loss: "100.1", wantErr: true},
+		{name: "loss NaN", loss: "NaN", wantErr: true},
+		{name: "loss infinity", loss: "+Inf", wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := parseNetemQosConfig(test.latency, test.limit, test.loss, test.jitter)
+			if test.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.want, got)
+		})
+	}
+}

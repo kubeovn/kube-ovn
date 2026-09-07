@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"math"
 	"strconv"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -15,10 +16,10 @@ import (
 )
 
 func setNetemQosTable(provider compat.TableProvider, podName, podNamespace, iface, latency, limit, loss, jitter string) error {
-	latencyMs, _ := strconv.Atoi(latency)
-	jitterMs, _ := strconv.Atoi(jitter)
-	limitPkts, _ := strconv.Atoi(limit)
-	lossPercent, _ := strconv.ParseFloat(loss, 64)
+	desiredConfig, err := parseNetemQosConfig(latency, limit, loss, jitter)
+	if err != nil {
+		return err
+	}
 
 	ctx := context.Background()
 	var interfaces []vswitch.Interface
@@ -61,7 +62,6 @@ func setNetemQosTable(provider compat.TableProvider, podName, podNamespace, ifac
 		return fmt.Errorf("list QoS bindings for netem %s: %w", iface, err)
 	}
 
-	desiredConfig := netemQosConfig(latencyMs, limitPkts, lossPercent, jitterMs)
 	for i := range qosRows {
 		if qosRows[i].Type != util.NetemQos && len(desiredConfig) != 0 {
 			// HTB is intentionally higher priority than netem. Keep the
@@ -171,6 +171,46 @@ func setNetemQosTable(provider compat.TableProvider, podName, podNamespace, ifac
 		return nil
 	}
 	return provider.Table(&vswitch.QoS{}).Transact(ctx, "netem-qos-reconcile", ops...)
+}
+
+func parseNetemQosConfig(latency, limit, loss, jitter string) (map[string]string, error) {
+	parseInt := func(name, value string) (int, error) {
+		if value == "" {
+			return 0, nil
+		}
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return 0, fmt.Errorf("invalid netem %s %q: %w", name, value, err)
+		}
+		if parsed < 0 {
+			return 0, fmt.Errorf("netem %s %q must not be negative", name, value)
+		}
+		return parsed, nil
+	}
+
+	latencyMs, err := parseInt("latency", latency)
+	if err != nil {
+		return nil, err
+	}
+	limitPkts, err := parseInt("limit", limit)
+	if err != nil {
+		return nil, err
+	}
+	jitterMs, err := parseInt("jitter", jitter)
+	if err != nil {
+		return nil, err
+	}
+	lossPercent := 0.0
+	if loss != "" {
+		lossPercent, err = strconv.ParseFloat(loss, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid netem loss %q: %w", loss, err)
+		}
+		if math.IsNaN(lossPercent) || math.IsInf(lossPercent, 0) || lossPercent < 0 || lossPercent > 100 {
+			return nil, fmt.Errorf("netem loss %q must be between 0 and 100", loss)
+		}
+	}
+	return netemQosConfig(latencyMs, limitPkts, lossPercent, jitterMs), nil
 }
 
 func netemQosConfig(latencyMs, limitPkts int, lossPercent float64, jitterMs int) map[string]string {

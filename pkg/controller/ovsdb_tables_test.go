@@ -40,6 +40,15 @@ func TestMatchesExternalIDs(t *testing.T) {
 	}
 }
 
+func TestGenericACLRejectsInvalidPriority(t *testing.T) {
+	require.Panics(t, func() {
+		genericACL("parent", ovnnb.ACLDirectionToLport, "invalid", "ip", ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil)
+	})
+	require.Panics(t, func() {
+		genericACL("parent", ovnnb.ACLDirectionToLport, 1.5, "ip", ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil)
+	})
+}
+
 func TestControllerTableProviderReadsAssociatedRows(t *testing.T) {
 	logicalRouter := &ovnnb.LogicalRouter{
 		UUID:         "lr-1",

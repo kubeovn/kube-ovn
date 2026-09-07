@@ -107,7 +107,7 @@ func (c *OVNNbClient) createMeterWithBand(name string, unit ovnnb.MeterUnit, rat
 	}
 
 	ops := make([]ovsdb.Operation, 0, 2)
-	bandOps, err := c.Database.Table(&ovnnb.Meter{}).CreateOps(band)
+	bandOps, err := c.Database.Table(&ovnnb.MeterBand{}).CreateOps(band)
 	if err != nil {
 		return fmt.Errorf("build meter band ops %s: %w", name, err)
 	}
@@ -167,7 +167,7 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 			BurstSize:   burst,
 			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 		}
-		createBandOps, err := c.Database.Table(&ovnnb.Meter{}).CreateOps(band)
+		createBandOps, err := c.Database.Table(&ovnnb.MeterBand{}).CreateOps(band)
 		if err != nil {
 			return fmt.Errorf("build meter band ops %s: %w", meter.Name, err)
 		}

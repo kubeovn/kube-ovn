@@ -330,7 +330,9 @@ func genericACL(parent, direction string, priority any, match string, action any
 	case int:
 		priorityValue = value
 	case string:
-		priorityValue, _ = strconv.Atoi(value)
+		priorityValue = mustParseACLInt(value)
+	default:
+		panic(fmt.Sprintf("unsupported ACL priority type %T", priority))
 	}
 	ids := maps.Clone(externalIDs)
 	if ids == nil {
@@ -693,7 +695,7 @@ func (c *Controller) createNodeACL(pgName, nodeIPStr, joinIPStr string) error {
 		}
 		for _, candidate := range matches {
 			for _, row := range existing {
-				if row.Direction == candidate.direction && row.Priority == parseACLInt(util.NodeAllowPriority) && row.Match == candidate.match && row.Tier == util.NetpolACLTier {
+				if row.Direction == candidate.direction && row.Priority == mustParseACLInt(util.NodeAllowPriority) && row.Match == candidate.match && row.Tier == util.NetpolACLTier {
 					stale = append(stale, row.UUID)
 				}
 			}
@@ -733,8 +735,11 @@ func (c *Controller) createNodeACL(pgName, nodeIPStr, joinIPStr string) error {
 	return c.OVNNbTables.Table(&ovnnb.PortGroup{}).Transact(context.Background(), "node-acls-update", operations...)
 }
 
-func parseACLInt(value string) int {
-	parsed, _ := strconv.Atoi(value)
+func mustParseACLInt(value string) int {
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		panic(fmt.Sprintf("invalid internal ACL priority %q: %v", value, err))
+	}
 	return parsed
 }
 
@@ -747,10 +752,10 @@ func (c *Controller) setNetPolACLLog(pgName string, logEnable, isIngress bool) e
 		return err
 	}
 	direction, portDirection := ovnnb.ACLDirectionToLport, "outport"
-	priority := parseACLInt(util.IngressDefaultDrop)
+	priority := mustParseACLInt(util.IngressDefaultDrop)
 	if !isIngress {
 		direction, portDirection = ovnnb.ACLDirectionFromLport, "inport"
-		priority = parseACLInt(util.EgressDefaultDrop)
+		priority = mustParseACLInt(util.EgressDefaultDrop)
 	}
 	match := ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch("ip", "", "", "")).String()
 	allowed := make(map[string]struct{}, len(pg.ACLs))

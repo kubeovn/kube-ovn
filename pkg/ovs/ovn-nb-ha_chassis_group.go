@@ -108,7 +108,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 			Priority:    priority,
 			ExternalIDs: map[string]string{"group": name, "vendor": util.CniTypeName},
 		}
-		createOps, err := c.Database.Table(&ovnnb.HAChassisGroup{}).CreateOps(haChassis)
+		createOps, err := c.Database.Table(&ovnnb.HAChassis{}).CreateOps(haChassis)
 		if err != nil {
 			klog.Error(err)
 			return err

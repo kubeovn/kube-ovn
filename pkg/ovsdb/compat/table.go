@@ -3,6 +3,8 @@ package compat
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -82,6 +84,10 @@ func (t *Table) ensure() error {
 	if t.prototype == nil {
 		return errors.New("ovsdb table prototype is nil")
 	}
+	value := reflect.ValueOf(t.prototype)
+	if value.Kind() == reflect.Pointer && value.IsNil() {
+		return errors.New("ovsdb table prototype is nil")
+	}
 	return nil
 }
 
@@ -91,6 +97,47 @@ func (t *Table) ensureModel(row model.Model) error {
 	}
 	if row == nil {
 		return errors.New("ovsdb table model is nil")
+	}
+	value := reflect.ValueOf(row)
+	if value.Kind() == reflect.Pointer && value.IsNil() {
+		return errors.New("ovsdb table model is nil")
+	}
+	if actual, expected := reflect.TypeOf(row), reflect.TypeOf(t.prototype); actual != expected {
+		return fmt.Errorf("ovsdb table model type %v does not match prototype %v", actual, expected)
+	}
+	return nil
+}
+
+func (t *Table) ensureResult(result any) error {
+	if err := t.ensure(); err != nil {
+		return err
+	}
+	value := reflect.ValueOf(result)
+	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Slice {
+		return errors.New("ovsdb table result must be a non-nil pointer to a slice")
+	}
+	elementType := value.Elem().Type().Elem()
+	prototypeType := reflect.TypeOf(t.prototype)
+	if elementType == prototypeType || prototypeType.Kind() == reflect.Pointer && elementType == prototypeType.Elem() {
+		return nil
+	}
+	return fmt.Errorf("ovsdb table result element type %v does not match prototype %v", elementType, prototypeType)
+}
+
+func (t *Table) ensurePredicate(predicate any) error {
+	if err := t.ensure(); err != nil {
+		return err
+	}
+	value := reflect.ValueOf(predicate)
+	if !value.IsValid() || value.Kind() != reflect.Func || value.IsNil() {
+		return errors.New("ovsdb table predicate must be a non-nil function")
+	}
+	typeOfPredicate := value.Type()
+	if typeOfPredicate.NumIn() != 1 || typeOfPredicate.In(0) != reflect.TypeOf(t.prototype) {
+		return fmt.Errorf("ovsdb table predicate model type does not match prototype %v", reflect.TypeOf(t.prototype))
+	}
+	if typeOfPredicate.NumOut() != 1 || typeOfPredicate.Out(0).Kind() != reflect.Bool {
+		return errors.New("ovsdb table predicate must return bool")
 	}
 	return nil
 }
@@ -105,7 +152,7 @@ func (t *Table) Get(ctx context.Context, result model.Model) error {
 
 // List reads all monitored rows for the table model.
 func (t *Table) List(ctx context.Context, result any) error {
-	if err := t.ensure(); err != nil {
+	if err := t.ensureResult(result); err != nil {
 		return err
 	}
 	return t.db.List(ctx, result)
@@ -114,11 +161,13 @@ func (t *Table) List(ctx context.Context, result any) error {
 // Query reads rows selected by an indexed model. If selector is nil, the
 // table prototype is used, which is useful for tables with a zero-value index.
 func (t *Table) Query(ctx context.Context, selector model.Model, result any) error {
-	if err := t.ensure(); err != nil {
+	if err := t.ensureResult(result); err != nil {
 		return err
 	}
 	if selector == nil {
 		selector = t.prototype
+	} else if err := t.ensureModel(selector); err != nil {
+		return err
 	}
 	return t.db.Where(selector).List(ctx, result)
 }
@@ -126,7 +175,10 @@ func (t *Table) Query(ctx context.Context, selector model.Model, result any) err
 // Filter reads rows selected by a predicate evaluated against the monitored
 // cache.
 func (t *Table) Filter(ctx context.Context, predicate, result any) error {
-	if err := t.ensure(); err != nil {
+	if err := t.ensurePredicate(predicate); err != nil {
+		return err
+	}
+	if err := t.ensureResult(result); err != nil {
 		return err
 	}
 	return t.db.WhereCache(predicate).List(ctx, result)
@@ -134,7 +186,10 @@ func (t *Table) Filter(ctx context.Context, predicate, result any) error {
 
 // FilterByUUIDs reads cache rows selected by a predicate and UUID allowlist.
 func (t *Table) FilterByUUIDs(ctx context.Context, predicate, result any, uuids ...string) error {
-	if err := t.ensure(); err != nil {
+	if err := t.ensurePredicate(predicate); err != nil {
+		return err
+	}
+	if err := t.ensureResult(result); err != nil {
 		return err
 	}
 	return t.db.WhereCacheByUUIDs(predicate, uuids...).List(ctx, result)
@@ -144,18 +199,23 @@ func (t *Table) FilterByUUIDs(ctx context.Context, predicate, result any, uuids 
 // Callers can use it to compose a larger transaction while keeping the table
 // selection behind the generic facade.
 func (t *Table) Where(selectors ...model.Model) ConditionalAPI {
-	if t == nil || t.db == nil {
-		return nil
+	if len(selectors) == 0 {
+		return tableConditional{table: t, err: errors.New("ovsdb table selector is nil")}
 	}
-	return t.db.Where(selectors...)
+	for _, selector := range selectors {
+		if err := t.ensureModel(selector); err != nil {
+			return tableConditional{table: t, err: err}
+		}
+	}
+	return tableConditional{table: t, backend: t.db.Where(selectors...)}
 }
 
 // WhereCache returns a cache-backed operation builder scoped to this table.
 func (t *Table) WhereCache(predicate any) ConditionalAPI {
-	if t == nil || t.db == nil {
-		return nil
+	if err := t.ensurePredicate(predicate); err != nil {
+		return tableConditional{table: t, err: err}
 	}
-	return t.db.WhereCache(predicate)
+	return tableConditional{table: t, backend: t.db.WhereCache(predicate)}
 }
 
 // CreateOps builds insert operations without submitting a transaction.
@@ -251,10 +311,73 @@ func (t *Table) Delete(ctx context.Context, method string, selectors ...model.Mo
 
 // DeleteFilter deletes rows selected by a cache predicate.
 func (t *Table) DeleteFilter(ctx context.Context, method string, predicate any) error {
-	if err := t.ensure(); err != nil {
+	if err := t.ensurePredicate(predicate); err != nil {
 		return err
 	}
 	return t.db.DeleteWhereCacheAndTransact(ctx, method, predicate)
+}
+
+type tableConditional struct {
+	table   *Table
+	backend ConditionalAPI
+	err     error
+}
+
+func (c tableConditional) List(ctx context.Context, result any) error {
+	if c.err != nil {
+		return c.err
+	}
+	if err := c.table.ensureResult(result); err != nil {
+		return err
+	}
+	return c.backend.List(ctx, result)
+}
+
+func (c tableConditional) Mutate(row model.Model, mutations ...model.Mutation) ([]ovsdb.Operation, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	if err := c.table.ensureModel(row); err != nil {
+		return nil, err
+	}
+	return c.backend.Mutate(row, mutations...)
+}
+
+func (c tableConditional) Update(row model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	if err := c.table.ensureModel(row); err != nil {
+		return nil, err
+	}
+	return c.backend.Update(row, fields...)
+}
+
+func (c tableConditional) Delete() ([]ovsdb.Operation, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	return c.backend.Delete()
+}
+
+func (c tableConditional) Wait(condition ovsdb.WaitCondition, timeout *int, row model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	if err := c.table.ensureModel(row); err != nil {
+		return nil, err
+	}
+	return c.backend.Wait(condition, timeout, row, fields...)
+}
+
+func (c tableConditional) Select(row model.Model, fields ...any) ([]ovsdb.Operation, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	if err := c.table.ensureModel(row); err != nil {
+		return nil, err
+	}
+	return c.backend.Select(row, fields...)
 }
 
 // Transact submits operations built by one or more table handles as a single

@@ -55,7 +55,11 @@ func (c *Controller) setGatewayBandwidth() error {
 	ingressBurst, egressBurst := node.Annotations[util.IngressBurstAnnotation], node.Annotations[util.EgressBurstAnnotation]
 	ifaceID := util.NodeLspName(c.config.NodeName)
 	if ingress == "" && egress == "" {
-		if htbQos, _ := ovs.IsHtbQos(ifaceID, c.vswitchTables); !htbQos {
+		htbQos, err := ovs.IsHtbQos(ifaceID, c.vswitchTables)
+		if err != nil {
+			return fmt.Errorf("check HTB QoS for interface %s: %w", ifaceID, err)
+		}
+		if !htbQos {
 			return nil
 		}
 	}
