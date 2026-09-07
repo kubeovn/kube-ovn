@@ -91,6 +91,11 @@ func (c *Controller) enqueueAddIptablesDnatRule(obj any) {
 func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj any) {
 	oldDnat := oldObj.(*kubeovnv1.IptablesDnatRule)
 	newDnat := newObj.(*kubeovnv1.IptablesDnatRule)
+	// A generated rule is controller-owned state: if its Spec is edited out-of-band, notify
+	// the owning nftable LB service so it can detect the drift and restore the desired rule.
+	if owner := util.NftableLbSvcOwnerKey(newDnat.Labels); owner != "" && oldDnat.Spec != newDnat.Spec {
+		c.enqueueNftableLbService(owner)
+	}
 	key := cache.MetaObjectToName(newDnat).String()
 	if !newDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean dnat %s", key)
@@ -131,6 +136,12 @@ func (c *Controller) enqueueDelIptablesDnatRule(obj any) {
 	default:
 		klog.Warningf("unexpected type: %T", obj)
 		return
+	}
+
+	// A generated rule was deleted out from under its owning service (or a stale delete raced
+	// a service re-creation); ask the service to recreate it on its next reconcile.
+	if owner := util.NftableLbSvcOwnerKey(dnat.Labels); owner != "" {
+		c.enqueueNftableLbService(owner)
 	}
 
 	key := cache.MetaObjectToName(dnat).String()
@@ -583,14 +594,14 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	switch dnat.Spec.Type {
 	case kubeovnv1.DnatRuleTypeShare:
 		// Share type: use nft map-based DNAT
-		backends, err := c.getShareBackends(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol, dnat.Name)
+		backends, _, _, err := c.getShareBackends(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol, dnat.Name)
 		if err != nil {
 			klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
 			return err
 		}
 		// Add current DNAT's backend
 		backends = append(backends, fmt.Sprintf("%s:%s", dnat.Spec.InternalIP, dnat.Spec.InternalPort))
-		if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol, eip.Status.IP, dnat.Spec.ExternalPort, backends); err != nil {
+		if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol, eip.Status.IP, dnat.Spec.ExternalPort, backends, dnat.Spec.SessionAffinity, dnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
 			klog.Errorf("failed to create nft dnat map, %v", err)
 			return err
 		}
@@ -757,13 +768,13 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		switch cachedDnat.Spec.Type {
 		case kubeovnv1.DnatRuleTypeShare:
 			// Share type: rebuild nft rule with updated backends
-			backends, err := c.getShareBackends(eip.Spec.NatGwDp, cachedDnat.Spec.EIP, newExternalPort, newProtocol, cachedDnat.Name)
+			backends, _, _, err := c.getShareBackends(eip.Spec.NatGwDp, cachedDnat.Spec.EIP, newExternalPort, newProtocol, cachedDnat.Name)
 			if err != nil {
 				klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
 				return err
 			}
 			backends = append(backends, fmt.Sprintf("%s:%s", newInternalIP, newInternalPort))
-			if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, newProtocol, newV4ip, newExternalPort, backends); err != nil {
+			if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, newProtocol, newV4ip, newExternalPort, backends, cachedDnat.Spec.SessionAffinity, cachedDnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
 				klog.Errorf("failed to create nft dnat map for %s, %v", key, err)
 				return err
 			}
@@ -838,13 +849,13 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 			// getShareBackends filters siblings by their Spec.EIP, so the lookup key must also be
 			// Spec.EIP to match. In the normal redo case Spec.EIP == Status EIP; they can only
 			// diverge in the rare "EIP renamed while not-yet-Ready + pod restart" corner case.
-			backends, err := c.getShareBackends(cachedDnat.Status.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Status.ExternalPort, cachedDnat.Status.Protocol, cachedDnat.Name)
+			backends, _, _, err := c.getShareBackends(cachedDnat.Status.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Status.ExternalPort, cachedDnat.Status.Protocol, cachedDnat.Name)
 			if err != nil {
 				klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
 				return err
 			}
 			backends = append(backends, fmt.Sprintf("%s:%s", cachedDnat.Status.InternalIP, cachedDnat.Status.InternalPort))
-			if err = c.createNftDnatMapInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol, cachedDnat.Status.V4ip, cachedDnat.Status.ExternalPort, backends); err != nil {
+			if err = c.createNftDnatMapInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol, cachedDnat.Status.V4ip, cachedDnat.Status.ExternalPort, backends, cachedDnat.Spec.SessionAffinity, cachedDnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
 				klog.Errorf("failed to create nft dnat map for %s, %v", key, err)
 				return err
 			}

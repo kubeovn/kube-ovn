@@ -406,7 +406,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		EnableDNSNameResolver: opts.EnableDNSNameResolver,
 	}
 
-	if err := ctrl.setupIndexers(vpcInformer.Informer(), podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer()); err != nil {
+	if err := ctrl.setupIndexers(vpcInformer.Informer(), podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer(), serviceInformer.Informer()); err != nil {
 		return nil, err
 	}
 

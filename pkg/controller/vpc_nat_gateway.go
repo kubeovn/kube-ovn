@@ -128,7 +128,9 @@ func (c *Controller) resyncVpcNatGwConfig() {
 }
 
 func (c *Controller) enqueueAddVpcNatGw(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.VpcNatGateway)).String()
+	gw := obj.(*kubeovnv1.VpcNatGateway)
+	c.enqueueNftableLbServicesForNatGw(gw.Name)
+	key := cache.MetaObjectToName(gw).String()
 	klog.V(3).Infof("enqueue add vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 }
@@ -144,6 +146,11 @@ func (c *Controller) enqueueAddOrUpdateVpcNatGwByName(gwName, reason string) {
 func (c *Controller) enqueueUpdateVpcNatGw(oldObj, newObj any) {
 	oldGw := oldObj.(*kubeovnv1.VpcNatGateway)
 	newGw := newObj.(*kubeovnv1.VpcNatGateway)
+	// Only VPC placement and termination affect nftable LB rules; status/ready churn is
+	// handled by the DNAT rule workers themselves, so avoid scanning EIPs on every update.
+	if oldGw.Spec.Vpc != newGw.Spec.Vpc || !oldGw.DeletionTimestamp.Equal(newGw.DeletionTimestamp) {
+		c.enqueueNftableLbServicesForNatGw(newGw.Name)
+	}
 	key := cache.MetaObjectToName(newGw).String()
 	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
@@ -176,6 +183,7 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 		natGwNs = c.config.PodNamespace
 	}
 	key := natGwNs + "/" + gw.Name
+	c.enqueueNftableLbServicesForNatGw(gw.Name)
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
 

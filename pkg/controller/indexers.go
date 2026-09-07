@@ -18,6 +18,7 @@ const (
 	IndexIPBySubnet            = "bySubnet"
 	IndexVpcByBFDPort          = "byBFDPort"
 	IndexVpcBFDPortEnabled     = "enabled"
+	IndexServiceByNftableLbEip = "byNftableLbEip"
 )
 
 func indexPodByNode(obj any) ([]string, error) {
@@ -83,10 +84,20 @@ func indexIPBySubnet(obj any) ([]string, error) {
 	return subnets, nil
 }
 
+// indexServiceByNftableLbEip indexes a nftable-lb-svc LoadBalancer Service by the EIP it
+// references, so the conflict resolver can find competing services in O(matched).
+func indexServiceByNftableLbEip(obj any) ([]string, error) {
+	svc, ok := obj.(*v1.Service)
+	if !ok || !nftableLbSvcQualifies(svc) {
+		return nil, nil
+	}
+	return []string{svc.Annotations[util.EipAnnotation]}, nil
+}
+
 // setupIndexers registers custom informer indexers used by hot-path
 // reconciliation loops to avoid O(N) full-store scans. Must be called before
 // the informer factory is started.
-func (c *Controller) setupIndexers(vpcInformer, podInformer, epsInformer, ipInformer cache.SharedIndexInformer) error {
+func (c *Controller) setupIndexers(vpcInformer, podInformer, epsInformer, ipInformer, svcInformer cache.SharedIndexInformer) error {
 	if err := vpcInformer.AddIndexers(cache.Indexers{IndexVpcByBFDPort: indexVpcByBFDPort}); err != nil {
 		return err
 	}
@@ -99,9 +110,13 @@ func (c *Controller) setupIndexers(vpcInformer, podInformer, epsInformer, ipInfo
 	if err := ipInformer.AddIndexers(cache.Indexers{IndexIPBySubnet: indexIPBySubnet}); err != nil {
 		return err
 	}
+	if err := svcInformer.AddIndexers(cache.Indexers{IndexServiceByNftableLbEip: indexServiceByNftableLbEip}); err != nil {
+		return err
+	}
 	c.vpcIndexer = vpcInformer.GetIndexer()
 	c.podIndexer = podInformer.GetIndexer()
 	c.epsIndexer = epsInformer.GetIndexer()
 	c.ipIndexer = ipInformer.GetIndexer()
+	c.svcIndexer = svcInformer.GetIndexer()
 	return nil
 }
