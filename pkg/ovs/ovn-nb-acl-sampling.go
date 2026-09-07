@@ -7,11 +7,11 @@ import (
 	"maps"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -137,9 +137,9 @@ func (c *OVNNbClient) ensureACLSamplingMonitor() error {
 	}
 
 	monitor := c.NewMonitor(
-		client.WithTable(&ovnnb.SamplingApp{}),
-		client.WithTable(&ovnnb.SampleCollector{}),
-		client.WithTable(&ovnnb.Sample{}),
+		compat.WithTable(&ovnnb.SamplingApp{}),
+		compat.WithTable(&ovnnb.SampleCollector{}),
+		compat.WithTable(&ovnnb.Sample{}),
 	)
 	if len(monitor.Errors) != 0 {
 		return fmt.Errorf("build OVN ACL sampling monitor: %w", errors.Join(monitor.Errors...))
@@ -179,7 +179,7 @@ func (c *OVNNbClient) listSamplingApps() ([]ovnnb.SamplingApp, error) {
 	defer cancel()
 
 	apps := make([]ovnnb.SamplingApp, 0)
-	if err := c.WhereCache(func(*ovnnb.SamplingApp) bool { return true }).List(ctx, &apps); err != nil {
+	if err := c.Database.Table(&ovnnb.SamplingApp{}).Filter(ctx, func(*ovnnb.SamplingApp) bool { return true }, &apps); err != nil {
 		return nil, fmt.Errorf("list OVN sampling applications: %w", err)
 	}
 	return apps, nil
@@ -190,7 +190,7 @@ func (c *OVNNbClient) listSampleCollectors() ([]ovnnb.SampleCollector, error) {
 	defer cancel()
 
 	collectors := make([]ovnnb.SampleCollector, 0)
-	if err := c.WhereCache(func(*ovnnb.SampleCollector) bool { return true }).List(ctx, &collectors); err != nil {
+	if err := c.Database.Table(&ovnnb.SampleCollector{}).Filter(ctx, func(*ovnnb.SampleCollector) bool { return true }, &collectors); err != nil {
 		return nil, fmt.Errorf("list OVN sample collectors: %w", err)
 	}
 	return collectors, nil
@@ -219,7 +219,7 @@ func (c *OVNNbClient) reconcileSamplingApp(apps []ovnnb.SamplingApp, desired des
 			ID:          int(desired.id),
 			Type:        desired.appType,
 		}
-		ops, err := c.Create(app)
+		ops, err := c.Database.Table(&ovnnb.SamplingApp{}).CreateOps(app)
 		if err != nil {
 			return nil, fmt.Errorf("build create operation for sampling application %s: %w", desired.appType, err)
 		}
@@ -238,7 +238,7 @@ func (c *OVNNbClient) reconcileSamplingApp(apps []ovnnb.SamplingApp, desired des
 
 	current.ID = int(desired.id)
 	current.ExternalIDs = desiredExternalIDs
-	ops, err := c.Where(current).Update(current, &current.ID, &current.ExternalIDs)
+	ops, err := c.Database.WhereTable(current).Update(current, &current.ID, &current.ExternalIDs)
 	if err != nil {
 		return nil, fmt.Errorf("build update operation for sampling application %s: %w", desired.appType, err)
 	}
@@ -274,7 +274,7 @@ func (c *OVNNbClient) reconcileSampleCollector(collectors []ovnnb.SampleCollecto
 			Probability: desired.probability,
 			SetID:       int(setID),
 		}
-		ops, err := c.Create(collector)
+		ops, err := c.Database.Table(&ovnnb.SampleCollector{}).CreateOps(collector)
 		if err != nil {
 			return nil, fmt.Errorf("build create operation for %s sample collector: %w", desired.role, err)
 		}
@@ -292,7 +292,7 @@ func (c *OVNNbClient) reconcileSampleCollector(collectors []ovnnb.SampleCollecto
 	current.Probability = desired.probability
 	current.SetID = int(setID)
 	current.ExternalIDs = desiredExternalIDs
-	ops, err := c.Where(current).Update(current,
+	ops, err := c.Database.WhereTable(current).Update(current,
 		&current.ID,
 		&current.Name,
 		&current.Probability,
@@ -440,7 +440,7 @@ func (c *OVNNbClient) deleteUnreferencedACLSamplingCollectors(collectors []ovnnb
 		if _, ok := retained[collector.UUID]; ok {
 			continue
 		}
-		ops, err := c.Where(collector).Delete()
+		ops, err := c.Database.Table(&ovnnb.SampleCollector{}).Where(collector).Delete()
 		if err != nil {
 			return fmt.Errorf("build delete operation for owned sample collector %s: %w", collector.UUID, err)
 		}
@@ -466,7 +466,7 @@ func (c *OVNNbClient) deleteOwnedACLSamplingApps() error {
 		if !isOwnedACLSamplingObject(app.ExternalIDs) {
 			continue
 		}
-		ops, err := c.Where(app).Delete()
+		ops, err := c.Database.WhereTable(app).Delete()
 		if err != nil {
 			return fmt.Errorf("build delete operation for owned sampling application %s: %w", app.UUID, err)
 		}

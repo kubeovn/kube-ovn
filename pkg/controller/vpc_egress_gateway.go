@@ -963,17 +963,17 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	includePortGroup := true
 	hasSelectors := len(gw.Spec.Selectors) > 0
 	if hasSelectors {
-		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
+		if err = c.createPortGroup(pgName, externalIDs); err != nil {
 			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
 			klog.Error(err)
 			return err
 		}
-		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports.UnsortedList()); err != nil {
+		if err = c.setPortGroupPorts(pgName, ports.UnsortedList()); err != nil {
 			err = fmt.Errorf("failed to set ports of port group %s: %w", pgName, err)
 			klog.Error(err)
 			return err
 		}
-	} else if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	} else if err = c.deletePortGroups(pgName); err != nil {
 		err = fmt.Errorf("failed to delete stale port group %s: %w", pgName, err)
 		klog.Error(err)
 		return err
@@ -981,44 +981,38 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 
 	// reconcile OVN address set
 	asName := vegAddressSetName(key, af)
-	if err = c.OVNNbClient.CreateAddressSet(asName, externalIDs); err != nil {
+	if err = c.createAddressSet(asName, externalIDs); err != nil {
 		err = fmt.Errorf("failed to create address set %s: %w", asName, err)
 		klog.Error(err)
 		return err
 	}
-	if err = c.OVNNbClient.AddressSetUpdateAddress(asName, sources.SortedList()...); err != nil {
+	if err = c.updateAddressSetAddresses(asName, sources.SortedList()...); err != nil {
 		err = fmt.Errorf("failed to update address set %s: %w", asName, err)
 		klog.Error(err)
 		return err
 	}
 	compatAsName := vegPortGroupAddressSetName(key, af)
 	if !hasSelectors {
-		if err = c.OVNNbClient.CreateAddressSet(compatAsName, externalIDs); err != nil {
+		if err = c.createAddressSet(compatAsName, externalIDs); err != nil {
 			err = fmt.Errorf("failed to create compatibility address set %s: %w", compatAsName, err)
 			klog.Error(err)
 			return err
 		}
-		if err = c.OVNNbClient.AddressSetUpdateAddress(compatAsName); err != nil {
+		if err = c.updateAddressSetAddresses(compatAsName); err != nil {
 			err = fmt.Errorf("failed to clear compatibility address set %s: %w", compatAsName, err)
 			klog.Error(err)
 			return err
 		}
-	} else if err = c.OVNNbClient.DeleteAddressSet(compatAsName); err != nil {
+	} else if err = c.deleteAddressSets(compatAsName); err != nil {
 		err = fmt.Errorf("failed to delete stale compatibility address set %s: %w", compatAsName, err)
 		klog.Error(err)
 		return err
 	}
 
 	// reconcile OVN BFD entries
-	bfdIDs, bfdMap, staleBFDIDs, err := reconcileGatewayBFD(
-		c.OVNNbClient,
-		bfdIP,
-		lrpName,
-		nextHops,
-		gw.Spec.BFD.MinTX,
-		gw.Spec.BFD.MinRX,
-		gw.Spec.BFD.Multiplier,
-		externalIDs,
+	bfdIDs, bfdMap, staleBFDIDs, err := c.reconcileGatewayBFDBackend(
+		bfdIP, lrpName, nextHops,
+		gw.Spec.BFD.MinTX, gw.Spec.BFD.MinRX, gw.Spec.BFD.Multiplier, externalIDs,
 	)
 	if err != nil {
 		return err
@@ -1047,7 +1041,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				rules[match] = nodeNextHops
 			}
 		}
-		policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
+		policies, err := c.listLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs, false)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -1056,7 +1050,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		for _, policy := range policies {
 			nextHops := rules[policy.Match]
 			if nextHops.Len() == 0 {
-				if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+				if err = c.deleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
 					err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
 					klog.Error(err)
 					return err
@@ -1064,7 +1058,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			} else {
 				bfdSessions := localGatewayPolicyBFDSessions(bfdMap, nextHops)
 				if updateVpcEgressGatewayPolicyNexthops(policy, nextHops, bfdSessions) {
-					if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
+					if err = c.updateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
 						err = fmt.Errorf("failed to update logical router policy %s: %w", policy.UUID, err)
 						klog.Error(err)
 						return err
@@ -1075,19 +1069,19 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		}
 		// create new policies
 		for match, nextHops := range rules {
-			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayLocalPolicyPriority, match,
+			if err = c.addLogicalRouterPolicy(lrName, util.EgressGatewayLocalPolicyPriority, match,
 				ovnnb.LogicalRouterPolicyActionReroute, nextHops.UnsortedList(), localGatewayPolicyBFDSessions(bfdMap, nextHops).UnsortedList(), externalIDs); err != nil {
 				klog.Error(err)
 				return err
 			}
 		}
 	} else {
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs); err != nil {
+		if err = c.deleteLogicalRouterPolicies(lrName, util.EgressGatewayLocalPolicyPriority, externalIDs); err != nil {
 			klog.Error(err)
 			return err
 		}
 	}
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayPolicyPriority, externalIDs, false)
+	policies, err := c.listLogicalRouterPolicies(lrName, util.EgressGatewayPolicyPriority, externalIDs, false)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1099,7 +1093,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	for _, policy := range policies {
 		if matches.Has(policy.Match) {
 			if updateVpcEgressGatewayPolicyNexthops(policy, nextHops, bfdIDs) {
-				if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
+				if err = c.updateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
 					err = fmt.Errorf("failed to update bfd sessions of logical router policy %s: %w", policy.UUID, err)
 					klog.Error(err)
 					return err
@@ -1108,14 +1102,14 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 			matches.Delete(policy.Match)
 			continue
 		}
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+		if err = c.deleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
 			err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
 			klog.Error(err)
 			return err
 		}
 	}
 	for _, match := range matches.UnsortedList() {
-		if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayPolicyPriority, match,
+		if err = c.addLogicalRouterPolicy(lrName, util.EgressGatewayPolicyPriority, match,
 			ovnnb.LogicalRouterPolicyActionReroute, nextHops.UnsortedList(), bfdIDs.UnsortedList(), externalIDs); err != nil {
 			klog.Error(err)
 			return err
@@ -1124,7 +1118,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 
 	if gw.Spec.BFD.Enabled {
 		// drop traffic if no nexthop is available
-		if policies, err = c.OVNNbClient.ListLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs, false); err != nil {
+		if policies, err = c.listLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs, false); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1134,26 +1128,27 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 				matches.Delete(policy.Match)
 				continue
 			}
-			if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
+			if err = c.deleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
 				err = fmt.Errorf("failed to delete ovn lr policy %q: %w", policy.Match, err)
 				klog.Error(err)
 				return err
 			}
 		}
 		for _, match := range matches.UnsortedList() {
-			if err = c.OVNNbClient.AddLogicalRouterPolicy(lrName, util.EgressGatewayDropPolicyPriority, match,
+			if err = c.addLogicalRouterPolicy(lrName, util.EgressGatewayDropPolicyPriority, match,
 				ovnnb.LogicalRouterPolicyActionDrop, nil, nil, externalIDs); err != nil {
 				klog.Error(err)
 				return err
 			}
 		}
-	} else if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs); err != nil {
+	} else if err = c.deleteLogicalRouterPolicies(lrName, util.EgressGatewayDropPolicyPriority, externalIDs); err != nil {
 		klog.Error(err)
 		return err
 	}
 
 	// Cleanup stale BFD sessions
-	if err = cleanupStaleBFD(c.OVNNbClient, staleBFDIDs); err != nil {
+	err = c.cleanupStaleBFDBackend(staleBFDIDs)
+	if err != nil {
 		return err
 	}
 
@@ -1472,13 +1467,13 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 		ovs.ExternalIDVpcEgressGateway: key,
 	}
 
-	bfdList, err := c.OVNNbClient.FindBFD(externalIDs)
+	bfdList, err := c.findBFD(externalIDs)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 	for _, bfd := range bfdList {
-		if err = c.OVNNbClient.DeleteBFD(bfd.UUID); err != nil {
+		if err = c.deleteBFD(bfd.UUID); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1487,20 +1482,20 @@ func (c *Controller) cleanOVNForVpcEgressGateway(key, lrName string) error {
 	if lrName == "" {
 		lrName = c.config.ClusterRouter
 	}
-	if err = c.OVNNbClient.DeleteLogicalRouterPolicies(lrName, -1, externalIDs); err != nil {
+	if err = c.deleteLogicalRouterPolicies(lrName, -1, externalIDs); err != nil {
 		klog.Error(err)
 		return err
 	}
-	if err = c.OVNNbClient.DeletePortGroup(vegPortGroupName(key)); err != nil {
+	if err = c.deletePortGroups(vegPortGroupName(key)); err != nil {
 		klog.Error(err)
 		return err
 	}
 	for _, af := range [...]int{4, 6} {
-		if err = c.OVNNbClient.DeleteAddressSet(vegAddressSetName(key, af)); err != nil {
+		if err = c.deleteAddressSets(vegAddressSetName(key, af)); err != nil {
 			klog.Error(err)
 			return err
 		}
-		if err = c.OVNNbClient.DeleteAddressSet(vegPortGroupAddressSetName(key, af)); err != nil {
+		if err = c.deleteAddressSets(vegPortGroupAddressSetName(key, af)); err != nil {
 			klog.Error(err)
 			return err
 		}

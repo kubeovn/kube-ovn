@@ -1,14 +1,15 @@
 package daemon
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -80,15 +81,18 @@ func buildFlowKey(kind, ip string, port uint16, protocol, extra string) string {
 }
 
 func (c *Controller) getPortID(portName string) (int, error) {
-	ofportStr, err := ovs.Get("Interface", portName, "ofport", "", true)
+	if c.vswitchTables == nil {
+		return 0, errors.New("vswitch table provider is not configured")
+	}
+	var interfaces []vswitch.Interface
+	err := c.vswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+		return row.Name == portName
+	}, &interfaces)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get ofport for interface %s: %w", portName, err)
 	}
-
-	portID, err := strconv.Atoi(strings.TrimSpace(ofportStr))
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse ofport %q: %w", ofportStr, err)
+	if len(interfaces) != 1 || interfaces[0].Ofport == nil {
+		return 0, fmt.Errorf("interface %s has no ofport", portName)
 	}
-
-	return portID, nil
+	return *interfaces[0].Ofport, nil
 }

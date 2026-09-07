@@ -2491,15 +2491,6 @@ false
 </td>
 			<td>""</td>
 		</tr>
-		<tr>
-			<td>performance.ovsVsctlConcurrency</td>
-			<td>int</td>
-			<td><pre lang="json">
-100
-</pre>
-</td>
-			<td>""</td>
-		</tr>
 	</tbody>
 </table>
 <h3>Ping daemon configuration</h3>

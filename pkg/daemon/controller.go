@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -36,6 +37,8 @@ import (
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -96,6 +99,7 @@ type Controller struct {
 	fdbSyncChan   chan struct{}
 	fdbSyncMutex  sync.Mutex
 	vswitchClient ovs.Vswitch
+	vswitchTables compat.TableProvider
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -173,6 +177,9 @@ func NewController(config *Configuration,
 		k8sExec:  k8sexec.New(),
 
 		fdbSyncChan: make(chan struct{}, 1),
+	}
+	if err := controller.initVswitch(); err != nil {
+		return nil, err
 	}
 
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
@@ -271,11 +278,30 @@ func NewController(config *Configuration,
 		return nil, err
 	}
 
-	if controller.vswitchClient, err = ovs.NewVswitchClient("unix:/var/run/openvswitch/db.sock", 1, 3); err != nil {
-		return nil, fmt.Errorf("failed to create vswitch client: %w", err)
+	return controller, nil
+}
+
+func (c *Controller) initVswitch() error {
+	provider := c.config.VswitchTables
+	vswitchAddr := c.config.OvsSocket
+	if vswitchAddr == "" {
+		vswitchAddr = "unix:/var/run/openvswitch/db.sock"
+	}
+	if provider == nil {
+		vswitchClient, err := ovs.NewVswitchClient(vswitchAddr, 1, 3)
+		if err != nil {
+			return fmt.Errorf("failed to create vswitch client: %w", err)
+		}
+		provider = vswitchClient
+		c.config.VswitchTables = provider
 	}
 
-	return controller, nil
+	c.vswitchTables = provider
+	if vswitchClient, ok := provider.(ovs.Vswitch); ok {
+		c.vswitchClient = vswitchClient
+	}
+	c.podQoSOps = ovsPodQoSOperations{provider: provider}
+	return nil
 }
 
 func (c *Controller) recordGatewayNetfilterWarning(reason, message string) error {
@@ -934,47 +960,85 @@ func (c *Controller) isVMLauncherPodAlive(namespace, vmiName, iface string) bool
 }
 
 func (c *Controller) gcInterfaces() {
-	interfacePodMap, err := ovs.ListInterfacePodMap()
-	if err != nil {
-		klog.Errorf("failed to list interface pod map: %v", err)
+	if c.vswitchTables == nil {
+		klog.Error("failed to garbage collect OVS interfaces: table provider is not configured")
 		return
 	}
-	for iface, pod := range interfacePodMap {
-		parts := strings.Split(pod, "/")
-		if len(parts) < 3 {
-			klog.Errorf("malformed pod string %q for interface %s, expected format 'namespace/name/errText'", pod, iface)
-			continue
+	var interfaces []vswitch.Interface
+	err := c.vswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(iface *vswitch.Interface) bool {
+		if iface.LinkState != nil && *iface.LinkState == vswitch.InterfaceLinkStateUp {
+			return false
+		}
+		return iface.ExternalIDs["pod_name"] != "" && iface.ExternalIDs["pod_namespace"] != ""
+	}, &interfaces)
+	if err != nil {
+		klog.Errorf("failed to list interface pod map from OVSDB: %v", err)
+		return
+	}
+	for i := range interfaces {
+		iface := &interfaces[i]
+		pod := fmt.Sprintf("%s/%s/%s", iface.ExternalIDs["pod_namespace"], iface.ExternalIDs["pod_name"], interfaceErrorText(iface))
+		c.gcInterface(iface.Name, pod)
+	}
+}
+
+func interfaceErrorText(iface *vswitch.Interface) string {
+	if iface == nil || iface.Error == nil {
+		return ""
+	}
+	return *iface.Error
+}
+
+func (c *Controller) gcInterface(iface, pod string) {
+	parts := strings.Split(pod, "/")
+	if len(parts) < 3 {
+		klog.Errorf("malformed pod string %q for interface %s, expected format 'namespace/name/errText'", pod, iface)
+		return
+	}
+
+	podNamespace, podName, errText := parts[0], parts[1], parts[2]
+	if strings.Contains(errText, "No such device") {
+		klog.Infof("pod %s/%s not found, delete ovs interface %s", podNamespace, podName, iface)
+		if err := c.cleanVswitchInterface(iface); err != nil {
+			klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
+		}
+		return
+	}
+
+	if _, err := c.podsLister.Pods(podNamespace).Get(podName); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get pod %s/%s: %v", podNamespace, podName, err)
+			return
 		}
 
-		podNamespace, podName, errText := parts[0], parts[1], parts[2]
-		if strings.Contains(errText, "No such device") {
-			klog.Infof("pod %s/%s not found, delete ovs interface %s", podNamespace, podName, iface)
-			if err := ovs.CleanInterface(iface); err != nil {
-				klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
-			}
-			continue
+		// Pod not found by name. Check if this might be a KubeVirt VM.
+		// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VMI name (not the launcher pod name).
+		// Try to find launcher pods using KubeVirt labels/annotations.
+		if c.isVMLauncherPodAlive(podNamespace, podName, iface) {
+			return
 		}
 
-		if _, err = c.podsLister.Pods(podNamespace).Get(podName); err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to get pod %s/%s: %v", podNamespace, podName, err)
-				continue
-			}
-
-			// Pod not found by name. Check if this might be a KubeVirt VM.
-			// For KubeVirt VMs, the pod_name in OVS external_ids is set to the VMI name (not the launcher pod name).
-			// Try to find launcher pods using KubeVirt labels/annotations.
-			if c.isVMLauncherPodAlive(podNamespace, podName, iface) {
-				continue
-			}
-
-			// No pod on this node and no launcher pod found - safe to delete
-			klog.Infof("pod %s/%s not found on this node, delete ovs interface %s", podNamespace, podName, iface)
-			if err = ovs.CleanInterface(iface); err != nil {
-				klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
-			}
+		// No pod on this node and no launcher pod found - safe to delete
+		klog.Infof("pod %s/%s not found on this node, delete ovs interface %s", podNamespace, podName, iface)
+		if err := c.cleanVswitchInterface(iface); err != nil {
+			klog.Errorf("failed to clean ovs interface %s: %v", iface, err)
 		}
 	}
+}
+
+type interfaceCleaner interface {
+	CleanInterface(string) error
+}
+
+func (c *Controller) cleanVswitchInterface(name string) error {
+	if c.vswitchTables == nil {
+		return errors.New("vswitch table provider is not configured")
+	}
+	cleaner, ok := c.vswitchTables.(interfaceCleaner)
+	if !ok {
+		return errors.New("vswitch table provider does not support interface cleanup")
+	}
+	return cleaner.CleanInterface(name)
 }
 
 func (c *Controller) runIPSecWorker() {
@@ -1057,7 +1121,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	defer c.updatePodQueue.ShutDown()
 	defer c.ipsecQueue.ShutDown()
 	defer c.updateNodeQueue.ShutDown()
-	defer c.vswitchClient.Close()
+	defer c.closeVswitch()
 
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(c.reconcileACLSamplingCollectorSet, time.Minute, stopCh)

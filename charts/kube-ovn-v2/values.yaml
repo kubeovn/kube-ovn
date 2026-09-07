@@ -1283,9 +1283,6 @@ performance:
   # -- ""
   # @section -- Performance configuration
   inspectInterval: 20
-  # -- ""
-  # @section -- Performance configuration
-  ovsVsctlConcurrency: 100
 
 # -- Array of extra K8s manifests to deploy.
 # Note: Supports use of custom Helm templates (Go templating)

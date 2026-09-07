@@ -121,7 +121,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		// create a lsp use subnet gw mac, and set it option as arp_proxy
 		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		klog.Infof("get logical router port %s", lrpName)
-		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, false)
+		lrp, err := c.getLogicalRouterPort(lrpName, false)
 		if err != nil {
 			klog.Errorf("failed to get lrp %s: %v", lrpName, err)
 			return err
@@ -133,12 +133,12 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		}
 		mac = lrp.MAC
 		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		if err := c.createLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
 			klog.Error(err)
 			return err
 		}
-		if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
+		if err := c.setLogicalSwitchPortArpProxy(portName, true); err != nil {
 			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %w", portName, err)
 			klog.Error(err)
 			return err
@@ -149,7 +149,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		// k8s host network pod vm use vip for its nic ip
 		klog.Infof("create lsp for host network pod vm nic ip %s", vip.Name)
 		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		if err := c.createLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
 			klog.Error(err)
 			return err
@@ -198,14 +198,14 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			}
 			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 			klog.Infof("delete vip lsp %s", portName)
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+			if err := c.deleteLogicalSwitchPort(portName); err != nil {
 				err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
 				klog.Error(err)
 				return err
 			}
 		}
 		// delete virtual ports
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(vip.Name); err != nil {
 			klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
 			return err
 		}
@@ -292,7 +292,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 
 	// add new virtual port if not exist
 	ipStr := util.GetStringIP(cachedVip.Status.V4ip, cachedVip.Status.V6ip)
-	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, ipStr); err != nil {
+	if err = c.createVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, ipStr); err != nil {
 		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", cachedVip.Name, cachedVip.Spec.Subnet, err)
 		return err
 	}
@@ -355,7 +355,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	}
 
 	parents := strings.Join(virtualParents, ",")
-	if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
+	if err = c.setVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
 		klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, parents, err)
 		return err
 	}

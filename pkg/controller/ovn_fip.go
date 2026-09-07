@@ -202,7 +202,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 
 	// support v4:v4
 	if v4IP != "" && v4Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
+		if err = c.addNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v4:v4 fip, %v", err)
 			return err
 		}
@@ -210,7 +210,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 
 	// support v6:v6
 	if v6IP != "" && v6Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
+		if err = c.addNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v6:v6 fip, %v", err)
 			return err
 		}
@@ -218,7 +218,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 
 	// support v4:v6
 	if v4IP != "" && v6IP == "" && v4Eip == "" && v6Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
+		if err = c.addNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v6Eip, v4IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v4:v6 fip, %v", err)
 			return err
 		}
@@ -226,7 +226,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 
 	// support v6:v4
 	if v6IP != "" && v4IP == "" && v6Eip == "" && v4Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
+		if err = c.addNat(vpcName, ovnnb.NATTypeDNATAndSNAT, v4Eip, v6IP, mac, cachedFip.Spec.IPName, options); err != nil {
 			klog.Errorf("failed to create v6:v4 fip, %v", err)
 			return err
 		}
@@ -281,13 +281,13 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 
 		// ovn delete fip nat
 		if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+			if err = c.deleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 				klog.Errorf("failed to delete v4 fip %s, %v", key, err)
 				return err
 			}
 		}
 		if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
+			if err = c.deleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
 				klog.Errorf("failed to delete v6 fip %s, %v", key, err)
 				return err
 			}
@@ -427,13 +427,13 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	}
 	// ovn delete fip nat
 	if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+		if err = c.deleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 			klog.Errorf("failed to delete v4 fip %s, %v", key, err)
 			return err
 		}
 	}
 	if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
+		if err = c.deleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
 			klog.Errorf("failed to delete v6 fip %s, %v", key, err)
 			return err
 		}

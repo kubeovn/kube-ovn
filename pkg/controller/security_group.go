@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cnf/structhash"
@@ -63,7 +65,7 @@ func (c *Controller) enqueueDeleteSg(obj any) {
 
 func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{
+	if err := c.createPortGroup(pgName, map[string]string{
 		"type": "security_group",
 		sgKey:  util.DenyAllSecurityGroup,
 	}); err != nil {
@@ -71,7 +73,7 @@ func (c *Controller) initDefaultDenyAllSecurityGroup() error {
 		return err
 	}
 
-	if err := c.OVNNbClient.CreateSgDenyAllACL(util.DenyAllSecurityGroup); err != nil {
+	if err := c.createSgDenyAllACL(util.DenyAllSecurityGroup); err != nil {
 		klog.Errorf("create deny all acl for sg %s: %v", util.DenyAllSecurityGroup, err)
 		return err
 	}
@@ -87,7 +89,7 @@ func (c *Controller) syncSecurityGroup() error {
 		return err
 	}
 	for _, sg := range sgs {
-		lost, err := c.OVNNbClient.SGLostACL(sg)
+		lost, err := c.securityGroupLostACL(sg)
 		if err != nil {
 			err = fmt.Errorf("failed to check if security group %s lost acl: %w", sg.Name, err)
 			klog.Error(err)
@@ -105,7 +107,7 @@ func (c *Controller) syncSecurityGroup() error {
 // updateDenyAllSgPorts set lsp to deny which security_groups is not empty
 func (c *Controller) updateDenyAllSgPorts() error {
 	// list all lsp which security_groups is not empty
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{sgsKey: ""})
+	lsps, err := c.listLogicalSwitchPorts(true, map[string]string{sgsKey: ""}, func(lsp *ovnnb.LogicalSwitchPort) bool { return lsp.Type == "" })
 	if err != nil {
 		klog.Errorf("list logical switch ports with security_groups is not empty: %v", err)
 		return err
@@ -131,7 +133,7 @@ func (c *Controller) updateDenyAllSgPorts() error {
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
 
 	klog.V(6).Infof("setting ports of port group %s to %v", pgName, addPorts)
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, addPorts); err != nil {
+	if err = c.setPortGroupPorts(pgName, addPorts); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -168,7 +170,7 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	}
 
 	pgName := ovs.GetSgPortGroupName(sg.Name)
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{
+	if err := c.createPortGroup(pgName, map[string]string{
 		"type": "security_group",
 		sgKey:  sg.Name,
 	}); err != nil {
@@ -182,12 +184,12 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 		sgKey: sg.Name,
 	}
 
-	if err = c.OVNNbClient.CreateAddressSet(v4AsName, externalIDs); err != nil {
+	if err = c.createAddressSet(v4AsName, externalIDs); err != nil {
 		klog.Errorf("create address set %s for sg %s: %v", v4AsName, key, err)
 		return err
 	}
 
-	if err = c.OVNNbClient.CreateAddressSet(v6AsName, externalIDs); err != nil {
+	if err = c.createAddressSet(v6AsName, externalIDs); err != nil {
 		klog.Errorf("create address set %s for sg %s: %v", v6AsName, key, err)
 		return err
 	}
@@ -221,14 +223,14 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 
 	// update sg rule
 	if ingressNeedUpdate {
-		if err = c.OVNNbClient.UpdateSgACL(sg, ovnnb.ACLDirectionToLport); err != nil {
+		if err = c.updateSgACL(sg, ovnnb.ACLDirectionToLport); err != nil {
 			sg.Status.IngressLastSyncSuccess = false
 			c.patchSgStatus(sg)
 			klog.Error(err)
 			return err
 		}
 
-		if err := c.OVNNbClient.CreateSgBaseACL(sg.Name, ovnnb.ACLDirectionToLport); err != nil {
+		if err := c.createSgBaseACL(sg.Name, ovnnb.ACLDirectionToLport); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -237,14 +239,14 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 		c.patchSgStatus(sg)
 	}
 	if egressNeedUpdate {
-		if err = c.OVNNbClient.UpdateSgACL(sg, ovnnb.ACLDirectionFromLport); err != nil {
+		if err = c.updateSgACL(sg, ovnnb.ACLDirectionFromLport); err != nil {
 			sg.Status.EgressLastSyncSuccess = false
 			c.patchSgStatus(sg)
 			klog.Error(err)
 			return err
 		}
 
-		if err := c.OVNNbClient.CreateSgBaseACL(sg.Name, ovnnb.ACLDirectionFromLport); err != nil {
+		if err := c.createSgBaseACL(sg.Name, ovnnb.ACLDirectionFromLport); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -350,7 +352,7 @@ func (c *Controller) handleDeleteSg(key string) error {
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete security group %s", key)
 
-	if err := c.OVNNbClient.DeleteSecurityGroup(key); err != nil {
+	if err := c.deleteSecurityGroup(key); err != nil {
 		klog.Errorf("delete sg %s: %v", key, err)
 		return err
 	}
@@ -358,12 +360,228 @@ func (c *Controller) handleDeleteSg(key string) error {
 	return nil
 }
 
+func securityGroupACL(parent string, direction ovnnb.ACLDirection, priority any, match string, action ovnnb.ACLAction, tier int) *ovnnb.ACL {
+	return genericACL(parent, direction, priority, match, action, tier, nil)
+}
+
+func (c *Controller) createSgDenyAllACL(sgName string) error {
+	pgName := ovs.GetSgPortGroupName(sgName)
+	acls := make([]*ovnnb.ACL, 0, 2*(util.SecurityGroupAPITierMaximum-util.SecurityGroupAPITierMinimum+1))
+	for tier := util.SecurityGroupAPITierMinimum; tier <= util.SecurityGroupAPITierMaximum; tier++ {
+		ovnTier := util.ConvertSGTierToOvnTier(tier)
+		acls = append(acls,
+			securityGroupACL(pgName, ovnnb.ACLDirectionToLport, util.SecurityGroupDropPriority, "outport == @"+pgName+" && ip", ovnnb.ACLActionDrop, ovnTier),
+			securityGroupACL(pgName, ovnnb.ACLDirectionFromLport, util.SecurityGroupDropPriority, "inport == @"+pgName+" && ip", ovnnb.ACLActionDrop, ovnTier),
+		)
+	}
+	return c.createMissingSecurityGroupACLs(pgName, acls...)
+}
+
+func (c *Controller) createSgBaseACL(sgName string, direction ovnnb.ACLDirection) error {
+	pgName := ovs.GetSgPortGroupName(sgName)
+	portDirection := "outport"
+	dhcpv4Src, dhcpv4Dst := "67", "68"
+	dhcpv6Src, dhcpv6Dst := "547", "546"
+	icmpv6Type := "{130, 134, 135, 136}"
+	if direction == ovnnb.ACLDirectionFromLport {
+		portDirection = "inport"
+		dhcpv4Src, dhcpv4Dst = dhcpv4Dst, dhcpv4Src
+		dhcpv6Src, dhcpv6Dst = dhcpv6Dst, dhcpv6Src
+		icmpv6Type = "{130, 133, 135, 136}"
+	}
+	matches := []string{
+		ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch("arp", "", "", "")).String(),
+		ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch("icmp6.type", "==", icmpv6Type, ""), ovs.NewACLMatch("icmp6.code", "==", "0", ""), ovs.NewACLMatch("ip.ttl", "==", "255", "")).String(),
+		ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch("udp.src", "==", dhcpv4Src, ""), ovs.NewACLMatch("udp.dst", "==", dhcpv4Dst, ""), ovs.NewACLMatch("ip4", "", "", "")).String(),
+		ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch("udp.src", "==", dhcpv6Src, ""), ovs.NewACLMatch("udp.dst", "==", dhcpv6Dst, ""), ovs.NewACLMatch("ip6", "", "", "")).String(),
+		ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch("ip.proto", "==", "112", "")).String(),
+	}
+	acls := make([]*ovnnb.ACL, 0, len(matches)*(util.SecurityGroupAPITierMaximum-util.SecurityGroupAPITierMinimum+1))
+	for _, match := range matches {
+		for tier := util.SecurityGroupAPITierMinimum; tier <= util.SecurityGroupAPITierMaximum; tier++ {
+			acls = append(acls, securityGroupACL(pgName, direction, util.SecurityGroupBasePriority, match, ovnnb.ACLActionAllowRelated, util.ConvertSGTierToOvnTier(tier)))
+		}
+	}
+	return c.createMissingSecurityGroupACLs(pgName, acls...)
+}
+
+func (c *Controller) updateSgACL(sg *kubeovnv1.SecurityGroup, direction ovnnb.ACLDirection) error {
+	pgName := ovs.GetSgPortGroupName(sg.Name)
+	if err := c.deletePortGroupACLs(pgName, direction, nil); err != nil {
+		return fmt.Errorf("delete direction %s ACLs from port group %s: %w", direction, pgName, err)
+	}
+	srcOrDst, portDirection, rules := "src", "outport", sg.Spec.IngressRules
+	if direction == ovnnb.ACLDirectionFromLport {
+		srcOrDst, portDirection, rules = "dst", "inport", sg.Spec.EgressRules
+	}
+	acls := make([]*ovnnb.ACL, 0, len(rules)+2)
+	if sg.Spec.AllowSameGroupTraffic {
+		for _, ipSuffix := range []string{"ip4", "ip6"} {
+			asName := ovs.GetSgV4AssociatedName(sg.Name)
+			if ipSuffix == "ip6" {
+				asName = ovs.GetSgV6AssociatedName(sg.Name)
+			}
+			match := ovs.NewAndACLMatch(
+				ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""),
+				ovs.NewACLMatch(ipSuffix, "", "", ""),
+				ovs.NewACLMatch(ipSuffix+"."+srcOrDst, "==", "$"+asName, ""),
+			).String()
+			acls = append(acls, securityGroupACL(pgName, direction, util.SecurityGroupAllowPriority, match, ovnnb.ACLActionAllowRelated, util.ConvertSGTierToOvnTier(sg.Spec.Tier)))
+		}
+	}
+	for _, rule := range rules {
+		acl, err := buildSecurityGroupRuleACL(sg.Name, direction, rule, util.ConvertSGTierToOvnTier(sg.Spec.Tier))
+		if err != nil {
+			return err
+		}
+		acls = append(acls, acl)
+	}
+	return c.createPortGroupACLs(pgName, acls...)
+}
+
+func buildSecurityGroupRuleACL(sgName string, direction ovnnb.ACLDirection, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
+	ipSuffix := "ip4"
+	if rule.IPVersion == "ipv6" {
+		ipSuffix = "ip6"
+	}
+	pgName := ovs.GetSgPortGroupName(sgName)
+	localSrcOrDst, remoteSrcOrDst, portDirection := "dst", "src", "outport"
+	if direction == ovnnb.ACLDirectionFromLport {
+		remoteSrcOrDst, localSrcOrDst, portDirection = "dst", "src", "inport"
+	}
+	remoteKey, localKey := ipSuffix+"."+remoteSrcOrDst, ipSuffix+"."+localSrcOrDst
+	match := ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch(ipSuffix, "", "", ""), ovs.NewACLMatch(remoteKey, "==", rule.RemoteAddress, ""))
+	if rule.RemoteType == kubeovnv1.SgRemoteTypeSg {
+		remotePG := ovs.GetSgV4AssociatedName(rule.RemoteSecurityGroup)
+		if rule.IPVersion == "ipv6" {
+			remotePG = ovs.GetSgV6AssociatedName(rule.RemoteSecurityGroup)
+		}
+		match = ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch(ipSuffix, "", "", ""), ovs.NewACLMatch(remoteKey, "==", "$"+remotePG, ""))
+	}
+	if rule.LocalAddress != "" {
+		match = ovs.NewAndACLMatch(match, ovs.NewACLMatch(localKey, "==", rule.LocalAddress, ""))
+	}
+	switch rule.Protocol {
+	case kubeovnv1.SgProtocolICMP:
+		proto := "icmp4"
+		if ipSuffix == "ip6" {
+			proto = "icmp6"
+		}
+		match = ovs.NewAndACLMatch(match, ovs.NewACLMatch(proto, "", "", ""))
+	case kubeovnv1.SgProtocolTCP, kubeovnv1.SgProtocolUDP:
+		protocol := string(rule.Protocol)
+		match = ovs.NewAndACLMatch(match, ovs.NewACLMatch(protocol+".dst", "<=", strconv.Itoa(rule.PortRangeMin), strconv.Itoa(rule.PortRangeMax)))
+		if rule.LocalAddress != "" {
+			match = ovs.NewAndACLMatch(match, ovs.NewACLMatch(protocol+".src", "<=", strconv.Itoa(rule.SourcePortRangeMin), strconv.Itoa(rule.SourcePortRangeMax)))
+		}
+	}
+	action := ovnnb.ACLActionDrop
+	switch rule.Policy {
+	case kubeovnv1.SgPolicyAllow:
+		action = ovnnb.ACLActionAllowRelated
+	case kubeovnv1.SgPolicyPass:
+		action = ovnnb.ACLActionPass
+	}
+	highestPriority, err := strconv.Atoi(util.SecurityGroupHighestPriority)
+	if err != nil {
+		return nil, fmt.Errorf("parse security group highest priority: %w", err)
+	}
+	return securityGroupACL(pgName, direction, highestPriority-rule.Priority, match.String(), action, tier), nil
+}
+
+func (c *Controller) createMissingSecurityGroupACLs(pgName string, desired ...*ovnnb.ACL) error {
+	return c.createMissingACLsForPortGroup(pgName, desired...)
+}
+
+func (c *Controller) securityGroupLostACL(sg *kubeovnv1.SecurityGroup) (bool, error) {
+	pgName := ovs.GetSgPortGroupName(sg.Name)
+	pg, err := c.getPortGroup(pgName, true)
+	if err != nil {
+		return false, err
+	}
+	if pg == nil {
+		return true, nil
+	}
+	allowed := make(map[string]struct{}, len(pg.ACLs))
+	for _, uuid := range pg.ACLs {
+		allowed[uuid] = struct{}{}
+	}
+	var existing []ovnnb.ACL
+	if err := c.OVNNbTables.Table(&ovnnb.ACL{}).Filter(context.Background(), func(row *ovnnb.ACL) bool {
+		_, attached := allowed[row.UUID]
+		return attached && row.ExternalIDs["parent"] == pgName
+	}, &existing); err != nil {
+		return false, err
+	}
+	for _, directionRules := range []struct {
+		direction ovnnb.ACLDirection
+		rules     []kubeovnv1.SecurityGroupRule
+	}{
+		{ovnnb.ACLDirectionToLport, sg.Spec.IngressRules},
+		{ovnnb.ACLDirectionFromLport, sg.Spec.EgressRules},
+	} {
+		for _, rule := range directionRules.rules {
+			desired, buildErr := buildSecurityGroupRuleACL(sg.Name, directionRules.direction, rule, util.ConvertSGTierToOvnTier(sg.Spec.Tier))
+			if buildErr != nil {
+				return false, buildErr
+			}
+			found := false
+			for _, row := range existing {
+				if row.Direction == desired.Direction && row.Priority == desired.Priority && row.Match == desired.Match && row.Tier == desired.Tier {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (c *Controller) deleteSecurityGroup(sgName string) error {
+	pgName := ovs.GetSgPortGroupName(sgName)
+	if err := c.deletePortGroupACLs(pgName, "", nil); err != nil {
+		return fmt.Errorf("delete acls from port group %s: %w", pgName, err)
+	}
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{sgKey: sgName}); err != nil {
+		return err
+	}
+	if sgName == util.DefaultSecurityGroupName {
+		lsps, err := c.listNormalLogicalSwitchPorts(true, map[string]string{"associated_sg_" + sgName: "true"})
+		if err != nil {
+			return err
+		}
+		for i := range lsps {
+			ids := maps.Clone(lsps[i].ExternalIDs)
+			associatedKey := "associated_sg_" + sgName
+			ids[associatedKey] = "false"
+			remaining := make([]string, 0)
+			for group := range strings.SplitSeq(ids[sgsKey], "/") {
+				if group != "" && group != sgName {
+					remaining = append(remaining, group)
+				}
+			}
+			if len(remaining) == 0 {
+				delete(ids, sgsKey)
+			} else {
+				ids[sgsKey] = strings.Join(remaining, "/")
+			}
+			if err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Update(context.Background(), "lsp-sg-remove", &lsps[i], &ovnnb.LogicalSwitchPort{UUID: lsps[i].UUID, ExternalIDs: ids}, &lsps[i].ExternalIDs); err != nil {
+				return err
+			}
+		}
+	}
+	return c.deletePortGroups(pgName)
+}
+
 func (c *Controller) syncSgLogicalPort(key string) error {
 	c.sgKeyMutex.LockKey(key)
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("sync lsp for security group %s", key)
 
-	sgPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{"associated_sg_" + key: "true"}, nil)
+	sgPorts, err := c.listLogicalSwitchPorts(false, map[string]string{"associated_sg_" + key: "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
 		return err
@@ -405,19 +623,19 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return err
 	}
 
-	if err = c.OVNNbClient.PortGroupSetPorts(sg.Status.PortGroup, ports); err != nil {
+	if err = c.setPortGroupPorts(sg.Status.PortGroup, ports); err != nil {
 		klog.Errorf("add ports to port group %s: %v", sg.Status.PortGroup, err)
 		return err
 	}
 
 	v4AsName := ovs.GetSgV4AssociatedName(key)
-	if err := c.OVNNbClient.AddressSetUpdateAddress(v4AsName, v4s...); err != nil {
+	if err := c.updateAddressSetAddresses(v4AsName, v4s...); err != nil {
 		klog.Errorf("set ips to address set %s: %v", v4AsName, err)
 		return err
 	}
 
 	v6AsName := ovs.GetSgV6AssociatedName(key)
-	if err := c.OVNNbClient.AddressSetUpdateAddress(v6AsName, v6s...); err != nil {
+	if err := c.updateAddressSetAddresses(v6AsName, v6s...); err != nil {
 		klog.Errorf("set ips to address set %s: %v", v6AsName, err)
 		return err
 	}
@@ -438,7 +656,7 @@ func (c *Controller) getPortSg(port *ovnnb.LogicalSwitchPort) ([]string, error) 
 }
 
 func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
-	port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, false)
+	port, err := c.getLogicalSwitchPort(portName, false)
 	if err != nil {
 		klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 		return err
@@ -461,14 +679,14 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 			needAssociated = "true"
 		}
 
-		if err = c.OVNNbClient.SetLogicalSwitchPortExternalIDs(portName, map[string]string{"associated_sg_" + sgName: needAssociated}); err != nil {
+		if err = c.setLogicalSwitchPortExternalIDs(portName, map[string]string{"associated_sg_" + sgName: needAssociated}); err != nil {
 			klog.Errorf("set logical switch port %s external_ids: %v", portName, err)
 			return err
 		}
 		c.syncSgPortsQueue.Add(sgName)
 	}
 
-	if err = c.OVNNbClient.SetLogicalSwitchPortExternalIDs(portName, map[string]string{"security_groups": strings.ReplaceAll(securityGroups, ",", "/")}); err != nil {
+	if err = c.setLogicalSwitchPortExternalIDs(portName, map[string]string{"security_groups": strings.ReplaceAll(securityGroups, ",", "/")}); err != nil {
 		klog.Errorf("set logical switch port %s external_ids: %v", portName, err)
 		return err
 	}
@@ -485,7 +703,7 @@ func (c *Controller) securityGroupAllNotExist(sgs []string) (bool, error) {
 	notExistsCount := 0
 	// sgs format: sg1/sg2/sg3
 	for _, sg := range sgs {
-		ok, err := c.OVNNbClient.PortGroupExists(ovs.GetSgPortGroupName(sg))
+		ok, err := c.portGroupExists(ovs.GetSgPortGroupName(sg))
 		if err != nil {
 			klog.Error(err)
 			return true, err

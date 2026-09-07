@@ -1,14 +1,11 @@
 package ovs
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	"k8s.io/klog/v2"
 
@@ -133,6 +130,13 @@ func buildDHCPv4Options(options, gateway, mac string, mtu int, necessaryOptions 
 	return parsedOptions
 }
 
+// BuildDHCPv4Options returns the normalized DHCPv4 option map used by OVN.
+// It is exported so generic controller table helpers can share the exact
+// option defaults without depending on an OVNNbClient method.
+func BuildDHCPv4Options(options, gateway, mac string, mtu int, necessaryOptions []string) map[string]string {
+	return buildDHCPv4Options(options, gateway, mac, mtu, necessaryOptions)
+}
+
 // buildDHCPv6Options constructs the DHCP options string for ipv6
 func buildDHCPv6Options(options, mac string, necessaryOptions []string) map[string]string {
 	if len(options) == 0 {
@@ -151,6 +155,11 @@ func buildDHCPv6Options(options, mac string, necessaryOptions []string) map[stri
 	}
 
 	return parsedOptions
+}
+
+// BuildDHCPv6Options returns the normalized DHCPv6 option map used by OVN.
+func BuildDHCPv6Options(options, mac string, necessaryOptions []string) map[string]string {
+	return buildDHCPv6Options(options, mac, necessaryOptions)
 }
 
 // formatDHCPOptions converts the parsed options map into a string format
@@ -195,6 +204,11 @@ func parseDHCPOptions(raw string) map[string]string {
 	}
 
 	return dhcpOpt
+}
+
+// ParseDHCPOptions parses an OVN DHCP option string into its model form.
+func ParseDHCPOptions(raw string) map[string]string {
+	return parseDHCPOptions(raw)
 }
 
 func matchAddressSetName(asName string) bool {
@@ -341,45 +355,4 @@ func (m groupACLMatch) Match() (string, error) {
 func (m groupACLMatch) String() string {
 	match, _ := m.Match()
 	return match
-}
-
-type Limiter struct {
-	limit   int32
-	current atomic.Int32
-}
-
-func (l *Limiter) Limit() int32 {
-	return l.limit
-}
-
-func (l *Limiter) Current() int32 {
-	return l.current.Load()
-}
-
-func (l *Limiter) Update(limit int32) {
-	l.limit = limit
-}
-
-func (l *Limiter) Wait(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.New("context canceled by timeout")
-		default:
-			if l.limit == 0 {
-				l.current.Add(1)
-				return nil
-			}
-
-			if l.current.Load() < l.limit {
-				l.current.Add(1)
-				return nil
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-}
-
-func (l *Limiter) Done() {
-	l.current.Add(-1)
 }

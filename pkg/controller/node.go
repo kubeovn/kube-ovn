@@ -274,7 +274,7 @@ func (c *Controller) ensureNodeJoinNetwork(node *v1.Node) (*nodeJoinNetwork, err
 	} else {
 		v4IP, v6IP, mac, err = c.ipam.GetRandomAddress(portName, portName, nil, c.config.NodeSwitch, "", nil, true)
 		if err == nil {
-			err = c.OVNNbClient.DeleteLogicalSwitchPort(portName)
+			err = c.deleteLogicalSwitchPort(portName)
 			if err == nil {
 				klog.Infof("deleted stale logical switch port %s", portName)
 			}
@@ -286,7 +286,7 @@ func (c *Controller) ensureNodeJoinNetwork(node *v1.Node) (*nodeJoinNetwork, err
 	}
 
 	ipStr := util.GetStringIP(v4IP, v6IP)
-	if err = c.OVNNbClient.CreateBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
+	if err = c.createBareLogicalSwitchPort(c.config.NodeSwitch, portName, ipStr, mac); err != nil {
 		klog.Errorf("failed to create logical switch port %s: %v", portName, err)
 		return nil, err
 	}
@@ -365,7 +365,7 @@ func (c *Controller) ensureNodePortGroups(node *v1.Node, subnets []*kubeovnv1.Su
 	c.distributedSubnetNeedSync.Store(true)
 
 	pgName := strings.ReplaceAll(joinNetwork.portName, "-", ".")
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{"node": node.Name, networkPolicyKey: "node" + "/" + node.Name}); err != nil {
+	if err := c.createPortGroup(pgName, map[string]string{"node": node.Name, networkPolicyKey: "node" + "/" + node.Name}); err != nil {
 		klog.Errorf("create port group %s for node %s: %v", pgName, node.Name, err)
 		return err
 	}
@@ -490,11 +490,11 @@ func (c *Controller) handleDeleteNode(key string) (err error) {
 func (c *Controller) deleteNode(key string) error {
 	portName := util.NodeLspName(key)
 	klog.Infof("delete logical switch port %s", portName)
-	if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+	if err := c.deleteLogicalSwitchPort(portName); err != nil {
 		klog.Errorf("failed to delete node switch port %s: %v", portName, err)
 		return err
 	}
-	if err := c.OVNSbClient.DeleteChassisByHost(key); err != nil {
+	if err := c.deleteChassisByHost(key); err != nil {
 		klog.Errorf("failed to delete chassis for node %s: %v", key, err)
 		return err
 	}
@@ -508,7 +508,7 @@ func (c *Controller) deleteNode(key string) error {
 
 	// ovn acl doesn't support address_set name with '-', so replace '-' by '.'
 	pgName := strings.ReplaceAll(portName, "-", ".")
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		klog.Errorf("delete port group %s for node: %v", portName, err)
 		return err
 	}
@@ -518,11 +518,11 @@ func (c *Controller) deleteNode(key string) error {
 		return err
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 4)); err != nil {
+	if err := c.deleteAddressSets(nodeUnderlayAddressSetName(key, 4)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
 	}
-	if err := c.OVNNbClient.DeleteAddressSet(nodeUnderlayAddressSetName(key, 6)); err != nil {
+	if err := c.deleteAddressSets(nodeUnderlayAddressSetName(key, 6)); err != nil {
 		klog.Errorf("failed to delete address set for node %s: %v", key, err)
 		return err
 	}
@@ -840,7 +840,7 @@ func (c *Controller) checkSubnetGatewayNode() error {
 
 func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	// if multi chassis has the same node name, delete all of them
-	_, err := c.OVNSbClient.GetChassisByHost(node.Name)
+	_, err := c.getChassisByHost(node.Name)
 	if err == nil {
 		return nil
 	}
@@ -851,7 +851,7 @@ func (c *Controller) cleanDuplicatedChassis(node *v1.Node) error {
 	}
 
 	klog.Warningf("node %s has multiple chassis, deleting all", node.Name)
-	if err := c.OVNSbClient.DeleteChassisByHost(node.Name); err != nil {
+	if err := c.deleteChassisByHost(node.Name); err != nil {
 		klog.Errorf("failed to delete chassis for node %s: %v", node.Name, err)
 		return err
 	}
@@ -970,18 +970,18 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 			return err
 		}
 
-		if err = c.OVNNbClient.PortGroupSetPorts(pgName, nodePorts); err != nil {
+		if err = c.setPortGroupPorts(pgName, nodePorts); err != nil {
 			klog.Errorf("failed to set ports of port group %s: %v", pgName, err)
 			return err
 		}
 
 		if networkPolicyExists {
-			if err := c.OVNNbClient.CreateNodeACL(pgName, nodeIP, joinIP); err != nil {
+			if err := c.createNodeACL(pgName, nodeIP, joinIP); err != nil {
 				klog.Errorf("create node acl for node pg %s: %v", pgName, err)
 			}
 		} else {
 			// clear all acl
-			if err = c.OVNNbClient.DeleteAcls(pgName, portGroupKey, "", nil); err != nil {
+			if err = c.deletePortGroupACLs(pgName, "", nil); err != nil {
 				klog.Errorf("delete node acl for node pg %s: %v", pgName, err)
 			}
 		}
@@ -996,7 +996,7 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 		// kube-ovn-cni not ready to set chassis
 		return nil
 	}
-	chassis, err := c.OVNSbClient.GetChassis(annoChassisName, true)
+	chassis, err := c.getChassis(annoChassisName, true)
 	if err != nil {
 		klog.Errorf("failed to get chassis %s for node %s: %v", annoChassisName, node.Name, err)
 		return err
@@ -1015,7 +1015,7 @@ func (c *Controller) UpdateChassisTag(node *v1.Node) error {
 
 	if chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName {
 		klog.Infof("init tag %s for node %s chassis %s", util.CniTypeName, node.Name, chassis.Name)
-		if err = c.OVNSbClient.UpdateChassisTag(chassis.Name, node.Name); err != nil {
+		if err = c.updateChassisTag(chassis.Name, node.Name); err != nil {
 			err := fmt.Errorf("failed to init chassis tag, %w", err)
 			klog.Error(err)
 			return err
@@ -1030,7 +1030,7 @@ func (c *Controller) getPolicyRouteParams(cidr string, priority int) (*strset.Se
 		ipSuffix = "ip6"
 	}
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
-	policyList, err := c.OVNNbClient.GetLogicalRouterPolicy(c.config.ClusterRouter, priority, match, true)
+	policyList, err := c.getLogicalRouterPolicy(c.config.ClusterRouter, priority, match, true)
 	if err != nil {
 		klog.Errorf("failed to get logical router policy: %v", err)
 		return nil, nil, err
@@ -1054,7 +1054,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 			continue
 		}
 		klog.Infof("deleting logical router policy with nexthop %q from %s for node %s", addr.IP, c.config.ClusterRouter, nodeName)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.IP); err != nil {
+		if err = c.deleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.IP); err != nil {
 			klog.Errorf("failed to delete logical router policy with nexthop %q from %s for node %s: %v", addr.IP, c.config.ClusterRouter, nodeName, err)
 			return err
 		}
@@ -1067,7 +1067,7 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 			pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
-			if err = c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+			if err = c.deletePortGroups(pgName); err != nil {
 				klog.Errorf("delete port group for subnet %s and node %s: %v", subnet.Name, nodeName, err)
 				return err
 			}
@@ -1220,7 +1220,7 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 		matches.Add(fmt.Sprintf("ip%d.src == $%s && ip%d.dst == %s", af, pgAs, af, ip))
 	}
 
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
 	if err != nil {
 		klog.Errorf("failed to list logical router policies for node %q af %d: %v", nodeName, af, err)
 		return err
@@ -1233,7 +1233,7 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 		}
 		// delete unused policy router policy
 		klog.Infof("deleting logical router policy by UUID %s", policy.UUID)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+		if err = c.deleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
 			klog.Errorf("failed to delete logical router policy by UUID %s: %v", policy.UUID, err)
 			return err
 		}
@@ -1260,7 +1260,7 @@ func (c *Controller) addPolicyRouteForLocalDNSCacheOnNode(dnsIPs []string, nodeP
 }
 
 func (c *Controller) deletePolicyRouteForLocalDNSCacheOnNode(nodeName string, af int) error {
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, map[string]string{
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, -1, map[string]string{
 		"vendor":          util.CniTypeName,
 		"node":            nodeName,
 		"address-family":  strconv.Itoa(af),
@@ -1277,7 +1277,7 @@ func (c *Controller) deletePolicyRouteForLocalDNSCacheOnNode(nodeName string, af
 	for _, policy := range policies {
 		klog.Infof("delete node local dns cache policy route for router %s with match %s", c.config.ClusterRouter, policy.Match)
 
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+		if err := c.deleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
 			klog.Errorf("failed to delete policy route for node local dns in router %s with match %s: %v", c.config.ClusterRouter, policy.Match, err)
 			return err
 		}
