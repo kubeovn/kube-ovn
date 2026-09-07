@@ -349,37 +349,83 @@ func TestControllerTableProviderLogicalSwitchRepairsMissingPatchPorts(t *testing
 
 func TestControllerTableProviderLogicalPatchPortRepairsPartialTopology(t *testing.T) {
 	tests := []struct {
-		name     string
-		existing model.Model
+		name        string
+		existing    []model.Model
+		wantCreate  int
+		wantLSPUUID string
+		wantLRPUUID string
 	}{
 		{
 			name: "logical switch port exists",
-			existing: &ovnnb.LogicalSwitchPort{
+			existing: []model.Model{&ovnnb.LogicalSwitchPort{
 				UUID: "lsp-1", Name: "lsp-1", Type: "router", Options: map[string]string{"router-port": "lrp-1"},
-			},
+			}},
+			wantCreate:  1,
+			wantLSPUUID: "lsp-1",
 		},
 		{
-			name:     "logical router port exists",
-			existing: &ovnnb.LogicalRouterPort{UUID: "lrp-1", Name: "lrp-1", Networks: []string{"10.0.0.1/24"}},
+			name:        "logical router port exists",
+			existing:    []model.Model{&ovnnb.LogicalRouterPort{UUID: "lrp-1", Name: "lrp-1", Networks: []string{"10.0.0.1/24"}}},
+			wantCreate:  1,
+			wantLRPUUID: "lrp-1",
+		},
+		{
+			name: "both ports exist detached",
+			existing: []model.Model{
+				&ovnnb.LogicalSwitchPort{UUID: "lsp-1", Name: "lsp-1", Type: "router", Options: map[string]string{"router-port": "lrp-1"}},
+				&ovnnb.LogicalRouterPort{UUID: "lrp-1", Name: "lrp-1", Networks: []string{"10.0.0.1/24"}},
+			},
+			wantLSPUUID: "lsp-1",
+			wantLRPUUID: "lrp-1",
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			backend := newTableBackend(
+			rows := []any{
 				&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "switch-1"},
 				&ovnnb.LogicalRouter{UUID: "lr-1", Name: "router-1"},
-				test.existing,
-			)
+			}
+			for _, row := range test.existing {
+				rows = append(rows, row)
+			}
+			backend := newTableBackend(rows...)
 			controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
 
 			require.NoError(t, controller.createLogicalPatchPort(
 				"switch-1", "router-1", "lsp-1", "lrp-1", "10.0.0.1/24", "00:00:00:00:00:01",
 			))
-			require.Equal(t, 1, backend.createCalls)
-			require.Equal(t, 1, backend.mutateCalls)
+			require.Equal(t, test.wantCreate, backend.createCalls)
+			require.Equal(t, 2, backend.mutateCalls)
 			require.Equal(t, 1, backend.transactCalls)
+			requireParentPortMutation(t, backend.mutations[0], "switch-1", test.wantLSPUUID, ovsdb.MutateOperationInsert)
+			requireParentPortMutation(t, backend.mutations[1], "router-1", test.wantLRPUUID, ovsdb.MutateOperationInsert)
 		})
 	}
+}
+
+func TestControllerTableProviderLogicalSwitchPortMovesBetweenSwitches(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-old", Name: "subnet-old", Ports: []string{"lsp-1"}},
+		&ovnnb.LogicalSwitch{UUID: "ls-new", Name: "subnet-new"},
+		&ovnnb.LogicalSwitchPort{
+			UUID: "lsp-1", Name: "vm.namespace", ExternalIDs: map[string]string{ovs.LogicalSwitchKey: "subnet-old"},
+		},
+	)
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+
+	require.NoError(t, controller.createLogicalSwitchPort(
+		"subnet-new", "vm.namespace", "10.0.0.2", "00:00:00:00:00:02", "vm", "namespace",
+		false, "", "", false, nil, util.DefaultVpc,
+	))
+	require.Equal(t, 1, backend.createCalls)
+	require.Len(t, backend.created, 1)
+	created, ok := backend.created[0].(*ovnnb.LogicalSwitchPort)
+	require.True(t, ok)
+	require.Equal(t, "subnet-new", created.ExternalIDs[ovs.LogicalSwitchKey])
+	require.Equal(t, 2, backend.mutateCalls)
+	requireParentPortMutation(t, backend.mutations[0], "subnet-old", "lsp-1", ovsdb.MutateOperationDelete)
+	requireParentPortMutation(t, backend.mutations[1], "subnet-new", created.UUID, ovsdb.MutateOperationInsert)
+	require.Equal(t, 1, backend.transactCalls)
 }
 
 func TestControllerTableProviderPolicyReconcile(t *testing.T) {
@@ -646,6 +692,30 @@ type tableBackend struct {
 	deleteCalls                int
 	transactCalls              int
 	transactionOperationCounts []int
+	mutations                  []tableMutation
+	created                    []model.Model
+}
+
+type tableMutation struct {
+	row       model.Model
+	mutations []model.Mutation
+}
+
+func requireParentPortMutation(t *testing.T, mutation tableMutation, parentName, childUUID string, mutator ovsdb.Mutator) {
+	t.Helper()
+	parent := reflect.ValueOf(mutation.row).Elem()
+	require.Equal(t, parentName, parent.FieldByName("Name").String())
+	require.Len(t, mutation.mutations, 1)
+	require.Equal(t, mutator, mutation.mutations[0].Mutator)
+	children, ok := mutation.mutations[0].Value.([]string)
+	require.True(t, ok)
+	require.Len(t, children, 1)
+	if childUUID == "" {
+		require.NotEmpty(t, children[0])
+	} else {
+		require.Equal(t, childUUID, children[0])
+	}
+	require.Equal(t, parent.FieldByName("Ports").Addr().Interface(), mutation.mutations[0].Field)
 }
 
 func newTableBackend(rows ...any) *tableBackend {
@@ -720,8 +790,9 @@ func (*tableBackend) Select(model.Model, ...any) ([]ovsdb.Operation, error) {
 	return nil, nil
 }
 
-func (b *tableBackend) Create(...model.Model) ([]ovsdb.Operation, error) {
+func (b *tableBackend) Create(rows ...model.Model) ([]ovsdb.Operation, error) {
 	b.createCalls++
+	b.created = append(b.created, rows...)
 	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}, nil
 }
 
@@ -790,8 +861,9 @@ func appendTableRow(destination, candidate reflect.Value) {
 	}
 }
 
-func (c tableConditional) Mutate(model.Model, ...model.Mutation) ([]ovsdb.Operation, error) {
+func (c tableConditional) Mutate(row model.Model, mutations ...model.Mutation) ([]ovsdb.Operation, error) {
 	c.backend.mutateCalls++
+	c.backend.mutations = append(c.backend.mutations, tableMutation{row: row, mutations: mutations})
 	return []ovsdb.Operation{{Op: ovsdb.OperationComment, Comment: new("table")}}, nil
 }
 

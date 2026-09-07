@@ -2017,6 +2017,73 @@ func (c *Controller) createGatewayChassisesOps(lrp *ovnnb.LogicalRouterPort, cha
 	return append(operations, parentOps...), nil
 }
 
+func (c *Controller) reconcileLogicalSwitchPatchPortOps(lsName, lspName, lrpName string) (*ovnnb.LogicalSwitchPort, []ovsdb.Operation, error) {
+	ls, err := c.getLogicalSwitch(lsName, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	lsp, err := c.getLogicalSwitchPort(lspName, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	var operations []ovsdb.Operation
+	if lsp == nil {
+		lsp = &ovnnb.LogicalSwitchPort{
+			UUID:        ovsclient.NamedUUID(),
+			Name:        lspName,
+			Addresses:   []string{"router"},
+			Type:        "router",
+			Options:     map[string]string{"router-port": lrpName},
+			ExternalIDs: map[string]string{ovs.LogicalSwitchKey: lsName, "vendor": util.CniTypeName},
+		}
+		createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(lsp)
+		if err != nil {
+			return nil, nil, err
+		}
+		operations = append(operations, createOps...)
+	}
+	parentOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(ls, model.Mutation{
+		Field: &ls.Ports, Value: []string{lsp.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return lsp, append(operations, parentOps...), nil
+}
+
+func (c *Controller) reconcileLogicalRouterPatchPortOps(lrName, lrpName, ip, mac string) (*ovnnb.LogicalRouterPort, []ovsdb.Operation, error) {
+	lr, err := c.getLogicalRouter(lrName, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	lrp, err := c.getLogicalRouterPort(lrpName, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	var operations []ovsdb.Operation
+	if lrp == nil {
+		lrp = &ovnnb.LogicalRouterPort{
+			UUID:        ovsclient.NamedUUID(),
+			Name:        lrpName,
+			Networks:    strings.Split(ip, ","),
+			MAC:         mac,
+			ExternalIDs: map[string]string{"lr": lrName, "vendor": util.CniTypeName},
+		}
+		createOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).CreateOps(lrp)
+		if err != nil {
+			return nil, nil, err
+		}
+		operations = append(operations, createOps...)
+	}
+	parentOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(lr, model.Mutation{
+		Field: &lr.Ports, Value: []string{lrp.UUID}, Mutator: ovsdb.MutateOperationInsert,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return lrp, append(operations, parentOps...), nil
+}
+
 func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac string, chassises ...string) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, ip, mac, chassises...)
@@ -2029,66 +2096,15 @@ func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip
 	if mac == "" {
 		mac = util.GenerateMac()
 	}
-	lsp, err := c.getLogicalSwitchPort(lspName, true)
+	_, lspOps, err := c.reconcileLogicalSwitchPatchPortOps(lsName, lspName, lrpName)
 	if err != nil {
 		return err
 	}
-	lrp, err := c.getLogicalRouterPort(lrpName, true)
+	lrp, lrpOps, err := c.reconcileLogicalRouterPatchPortOps(lrName, lrpName, ip, mac)
 	if err != nil {
 		return err
 	}
-	var operations []ovsdb.Operation
-	if lsp == nil {
-		ls, getErr := c.getLogicalSwitch(lsName, false)
-		if getErr != nil {
-			return getErr
-		}
-		lsp = &ovnnb.LogicalSwitchPort{
-			UUID:        ovsclient.NamedUUID(),
-			Name:        lspName,
-			Addresses:   []string{"router"},
-			Type:        "router",
-			Options:     map[string]string{"router-port": lrpName},
-			ExternalIDs: map[string]string{ovs.LogicalSwitchKey: lsName, "vendor": util.CniTypeName},
-		}
-		lspOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(lsp)
-		if opErr != nil {
-			return opErr
-		}
-		lsOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(ls, model.Mutation{
-			Field: &ls.Ports, Value: []string{lsp.UUID}, Mutator: ovsdb.MutateOperationInsert,
-		})
-		if opErr != nil {
-			return opErr
-		}
-		operations = append(operations, lspOps...)
-		operations = append(operations, lsOps...)
-	}
-	if lrp == nil {
-		lr, getErr := c.getLogicalRouter(lrName, false)
-		if getErr != nil {
-			return getErr
-		}
-		lrp = &ovnnb.LogicalRouterPort{
-			UUID:        ovsclient.NamedUUID(),
-			Name:        lrpName,
-			Networks:    strings.Split(ip, ","),
-			MAC:         mac,
-			ExternalIDs: map[string]string{"lr": lrName, "vendor": util.CniTypeName},
-		}
-		lrpOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).CreateOps(lrp)
-		if opErr != nil {
-			return opErr
-		}
-		lrOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(lr, model.Mutation{
-			Field: &lr.Ports, Value: []string{lrp.UUID}, Mutator: ovsdb.MutateOperationInsert,
-		})
-		if opErr != nil {
-			return opErr
-		}
-		operations = append(operations, lrpOps...)
-		operations = append(operations, lrOps...)
-	}
+	operations := append(lspOps, lrpOps...)
 	gatewayOps, err := c.createGatewayChassisesOps(lrp, chassises)
 	if err != nil {
 		return err
@@ -2217,6 +2233,14 @@ func (c *Controller) createLogicalSwitchPort(lsName, lspName, ip, mac, podName, 
 			&desired.Addresses, &desired.Dhcpv4Options, &desired.Dhcpv6Options, &desired.PortSecurity, &desired.ExternalIDs,
 		)
 	}
+	var operations []ovsdb.Operation
+	if existing != nil {
+		detachOps, err := c.logicalSwitchPortDeleteOps(existing)
+		if err != nil {
+			return fmt.Errorf("generate operations for moving logical switch port %s from logical switch %s: %w", lspName, existing.ExternalIDs[ovs.LogicalSwitchKey], err)
+		}
+		operations = append(operations, detachOps...)
+	}
 	parent, err := c.getLogicalSwitch(lsName, false)
 	if err != nil {
 		return err
@@ -2231,8 +2255,10 @@ func (c *Controller) createLogicalSwitchPort(lsName, lspName, ip, mac, podName, 
 	if err != nil {
 		return fmt.Errorf("generate operations for adding logical switch port %s to logical switch %s: %w", lspName, lsName, err)
 	}
+	operations = append(operations, createOps...)
+	operations = append(operations, parentOps...)
 	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).Transact(
-		context.Background(), "lsp-add", append(createOps, parentOps...)...,
+		context.Background(), "lsp-add", operations...,
 	)
 }
 
