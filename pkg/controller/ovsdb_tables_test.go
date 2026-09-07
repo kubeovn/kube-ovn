@@ -347,6 +347,41 @@ func TestControllerTableProviderLogicalSwitchRepairsMissingPatchPorts(t *testing
 	require.Equal(t, 1, backend.transactCalls)
 }
 
+func TestControllerTableProviderLogicalPatchPortRepairsPartialTopology(t *testing.T) {
+	tests := []struct {
+		name     string
+		existing model.Model
+	}{
+		{
+			name: "logical switch port exists",
+			existing: &ovnnb.LogicalSwitchPort{
+				UUID: "lsp-1", Name: "lsp-1", Type: "router", Options: map[string]string{"router-port": "lrp-1"},
+			},
+		},
+		{
+			name:     "logical router port exists",
+			existing: &ovnnb.LogicalRouterPort{UUID: "lrp-1", Name: "lrp-1", Networks: []string{"10.0.0.1/24"}},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			backend := newTableBackend(
+				&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "switch-1"},
+				&ovnnb.LogicalRouter{UUID: "lr-1", Name: "router-1"},
+				test.existing,
+			)
+			controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+
+			require.NoError(t, controller.createLogicalPatchPort(
+				"switch-1", "router-1", "lsp-1", "lrp-1", "10.0.0.1/24", "00:00:00:00:00:01",
+			))
+			require.Equal(t, 1, backend.createCalls)
+			require.Equal(t, 1, backend.mutateCalls)
+			require.Equal(t, 1, backend.transactCalls)
+		})
+	}
+}
+
 func TestControllerTableProviderPolicyReconcile(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
 	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}

@@ -2038,12 +2038,8 @@ func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip
 		return err
 	}
 	var operations []ovsdb.Operation
-	if lsp == nil && lrp == nil {
+	if lsp == nil {
 		ls, getErr := c.getLogicalSwitch(lsName, false)
-		if getErr != nil {
-			return getErr
-		}
-		lr, getErr := c.getLogicalRouter(lrName, false)
 		if getErr != nil {
 			return getErr
 		}
@@ -2055,18 +2051,7 @@ func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip
 			Options:     map[string]string{"router-port": lrpName},
 			ExternalIDs: map[string]string{ovs.LogicalSwitchKey: lsName, "vendor": util.CniTypeName},
 		}
-		lrp = &ovnnb.LogicalRouterPort{
-			UUID:        ovsclient.NamedUUID(),
-			Name:        lrpName,
-			Networks:    strings.Split(ip, ","),
-			MAC:         mac,
-			ExternalIDs: map[string]string{"lr": lrName, "vendor": util.CniTypeName},
-		}
 		lspOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).CreateOps(lsp)
-		if opErr != nil {
-			return opErr
-		}
-		lrpOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).CreateOps(lrp)
 		if opErr != nil {
 			return opErr
 		}
@@ -2076,18 +2061,33 @@ func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip
 		if opErr != nil {
 			return opErr
 		}
+		operations = append(operations, lspOps...)
+		operations = append(operations, lsOps...)
+	}
+	if lrp == nil {
+		lr, getErr := c.getLogicalRouter(lrName, false)
+		if getErr != nil {
+			return getErr
+		}
+		lrp = &ovnnb.LogicalRouterPort{
+			UUID:        ovsclient.NamedUUID(),
+			Name:        lrpName,
+			Networks:    strings.Split(ip, ","),
+			MAC:         mac,
+			ExternalIDs: map[string]string{"lr": lrName, "vendor": util.CniTypeName},
+		}
+		lrpOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).CreateOps(lrp)
+		if opErr != nil {
+			return opErr
+		}
 		lrOps, opErr := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(lr, model.Mutation{
 			Field: &lr.Ports, Value: []string{lrp.UUID}, Mutator: ovsdb.MutateOperationInsert,
 		})
 		if opErr != nil {
 			return opErr
 		}
-		operations = append(operations, lspOps...)
 		operations = append(operations, lrpOps...)
-		operations = append(operations, lsOps...)
 		operations = append(operations, lrOps...)
-	} else if lrp == nil || lsp == nil {
-		return fmt.Errorf("patch port %s/%s is partially present", lspName, lrpName)
 	}
 	gatewayOps, err := c.createGatewayChassisesOps(lrp, chassises)
 	if err != nil {
