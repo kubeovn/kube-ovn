@@ -310,11 +310,15 @@ func (c *Controller) serviceScopedLoadBalancerNamesForVPC(vpcName string) ([]str
 	}
 	names := make(map[string]struct{})
 	for _, svc := range services {
-		if serviceUsesScopedLB(svc) && serviceScopedLBOwner(svc).kind == serviceLBOwnerKind &&
-			serviceVPCName(svc, c.config.ClusterRouter) == vpcName {
-			for _, name := range serviceScopedLBNames(svc) {
-				names[name] = struct{}{}
-			}
+		ownerKind := serviceScopedLBOwner(svc).kind
+		if !serviceUsesScopedLB(svc) || serviceVPCName(svc, c.config.ClusterRouter) != vpcName {
+			continue
+		}
+		if ownerKind != serviceLBOwnerKind && ownerKind != routerLBRuleLBOwnerKind {
+			continue
+		}
+		for _, name := range serviceScopedLBNames(svc) {
+			names[name] = struct{}{}
 		}
 	}
 	return slices.Sorted(maps.Keys(names)), nil
@@ -397,7 +401,10 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 				return fmt.Errorf("detach resource-scoped load balancers from logical router %s: %w", vpc.Name, err)
 			}
 		}
-		return nil
+		// OVN health checks originate in the backend logical-switch datapath.
+		// Keep the RLR load balancer attached to the router for external traffic,
+		// and to the VPC switches so health-check traffic can reach its backends.
+		return c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...)
 	default:
 		return c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...)
 	}

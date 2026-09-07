@@ -152,6 +152,10 @@ func TestRuleScopedLoadBalancerAttachments(t *testing.T) {
 		fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Vpcs: []*kubeovnv1.Vpc{
 			{Name: "vpc1"},
 			{Name: "vpc2"},
+		}, Subnets: []*kubeovnv1.Subnet{
+			{Name: "subnet1", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc1", EnableLb: new(true)}},
+			{Name: "subnet2", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc1", EnableLb: new(false)}},
+			{Name: "subnet3", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc2", EnableLb: new(true)}},
 		}})
 		if err != nil {
 			t.Fatal(err)
@@ -160,6 +164,9 @@ func TestRuleScopedLoadBalancerAttachments(t *testing.T) {
 		setServiceScopedLBOwner(svc, routerLBRuleLBOwnerKind, "rlr1", "rlr-uid")
 		fake.mockOvnClient.EXPECT().LogicalRouterUpdateLoadBalancers("vpc1", ovsdb.MutateOperationInsert, "rlr-lb").Return(nil)
 		fake.mockOvnClient.EXPECT().LogicalRouterUpdateLoadBalancers("vpc2", ovsdb.MutateOperationDelete, "rlr-lb").Return(nil)
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet1", ovsdb.MutateOperationInsert, "rlr-lb").Return(nil)
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet2", ovsdb.MutateOperationDelete, "rlr-lb").Return(nil)
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet3", ovsdb.MutateOperationDelete, "rlr-lb").Return(nil)
 		if err := fake.fakeController.reconcileResourceScopedLoadBalancerAttachments(svc, "vpc1", "", "rlr-lb"); err != nil {
 			t.Fatal(err)
 		}
@@ -760,7 +767,32 @@ func TestUpdateSubnetLoadBalancersIncludesScopedLoadBalancers(t *testing.T) {
 			Ports:           []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
 		},
 	}
-	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*corev1.Service{svc}})
+	routerRuleSvc := &corev1.Service{
+		Namespace: "default", Name: "rlr-rlr1", UID: types.UID("rlr-service-uid"),
+		Annotations: map[string]string{
+			util.RouterLBRuleVipsAnnotation: "192.0.2.10",
+			util.VpcAnnotation:              util.DefaultVpc,
+		},
+		Spec: corev1.ServiceSpec{
+			ClusterIP: corev1.ClusterIPNone,
+			Ports:     []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
+		},
+	}
+	setServiceScopedLBOwner(routerRuleSvc, routerLBRuleLBOwnerKind, "rlr1", "rlr-uid")
+	otherVPCRouterRuleSvc := routerRuleSvc.DeepCopy()
+	otherVPCRouterRuleSvc.Name = "rlr-rlr2"
+	otherVPCRouterRuleSvc.Annotations[util.VpcAnnotation] = "other-vpc"
+	setServiceScopedLBOwner(otherVPCRouterRuleSvc, routerLBRuleLBOwnerKind, "rlr2", "other-rlr-uid")
+	switchRuleSvc := routerRuleSvc.DeepCopy()
+	switchRuleSvc.Name = "slr-slr1"
+	setServiceScopedLBOwner(switchRuleSvc, switchLBRuleLBOwnerKind, "slr1", "slr-uid")
+
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*corev1.Service{
+		svc,
+		routerRuleSvc,
+		otherVPCRouterRuleSvc,
+		switchRuleSvc,
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -780,6 +812,7 @@ func TestUpdateSubnetLoadBalancersIncludesScopedLoadBalancers(t *testing.T) {
 	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers(
 		subnet.Name,
 		ovsdb.MutateOperationInsert,
+		serviceScopedLBNameForTrafficClass(routerRuleSvc, corev1.ProtocolTCP, serviceLBExternalTraffic),
 		serviceScopedLBName(svc, corev1.ProtocolTCP),
 	).Return(nil)
 	if err := fake.fakeController.updateSubnetLoadBalancers(subnet, vpc); err != nil {
