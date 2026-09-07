@@ -428,6 +428,33 @@ func TestControllerTableProviderLogicalSwitchPortMovesBetweenSwitches(t *testing
 	require.Equal(t, 1, backend.transactCalls)
 }
 
+func TestControllerTableProviderLogicalPatchPortsMoveBetweenParents(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-old", Name: "switch-old", Ports: []string{"lsp-1"}},
+		&ovnnb.LogicalSwitch{UUID: "ls-new", Name: "switch-new"},
+		&ovnnb.LogicalRouter{UUID: "lr-old", Name: "router-old", Ports: []string{"lrp-1"}},
+		&ovnnb.LogicalRouter{UUID: "lr-new", Name: "router-new"},
+		&ovnnb.LogicalSwitchPort{
+			UUID: "lsp-1", Name: "lsp-1", ExternalIDs: map[string]string{ovs.LogicalSwitchKey: "switch-old"},
+		},
+		&ovnnb.LogicalRouterPort{
+			UUID: "lrp-1", Name: "lrp-1", ExternalIDs: map[string]string{"lr": "router-old"},
+		},
+	)
+	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}
+
+	require.NoError(t, controller.createLogicalPatchPort(
+		"switch-new", "router-new", "lsp-1", "lrp-1", "10.0.0.1/24", "00:00:00:00:00:01",
+	))
+	require.Equal(t, 0, backend.createCalls)
+	require.Equal(t, 4, backend.mutateCalls)
+	requireParentPortMutation(t, backend.mutations[0], "switch-old", "lsp-1", ovsdb.MutateOperationDelete)
+	requireParentPortMutation(t, backend.mutations[1], "switch-new", "lsp-1", ovsdb.MutateOperationInsert)
+	requireParentPortMutation(t, backend.mutations[2], "router-old", "lrp-1", ovsdb.MutateOperationDelete)
+	requireParentPortMutation(t, backend.mutations[3], "router-new", "lrp-1", ovsdb.MutateOperationInsert)
+	require.Equal(t, 1, backend.transactCalls)
+}
+
 func TestControllerTableProviderPolicyReconcile(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
 	controller := &Controller{OVNNbTables: compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})}

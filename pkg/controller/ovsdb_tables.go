@@ -2041,6 +2041,22 @@ func (c *Controller) reconcileLogicalSwitchPatchPortOps(lsName, lspName, lrpName
 			return nil, nil, err
 		}
 		operations = append(operations, createOps...)
+	} else {
+		parents, err := c.listLogicalSwitches(false, func(row *ovnnb.LogicalSwitch) bool {
+			return row.Name != lsName && slices.Contains(row.Ports, lsp.UUID)
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("list current logical switch parents for %s: %w", lspName, err)
+		}
+		for i := range parents {
+			detachOps, detachErr := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(&parents[i], model.Mutation{
+				Field: &parents[i].Ports, Value: []string{lsp.UUID}, Mutator: ovsdb.MutateOperationDelete,
+			})
+			if detachErr != nil {
+				return nil, nil, detachErr
+			}
+			operations = append(operations, detachOps...)
+		}
 	}
 	parentOps, err := c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).MutateOps(ls, model.Mutation{
 		Field: &ls.Ports, Value: []string{lsp.UUID}, Mutator: ovsdb.MutateOperationInsert,
@@ -2074,6 +2090,22 @@ func (c *Controller) reconcileLogicalRouterPatchPortOps(lrName, lrpName, ip, mac
 			return nil, nil, err
 		}
 		operations = append(operations, createOps...)
+	} else {
+		parents, err := c.listLogicalRouters(false, func(row *ovnnb.LogicalRouter) bool {
+			return row.Name != lrName && slices.Contains(row.Ports, lrp.UUID)
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("list current logical router parents for %s: %w", lrpName, err)
+		}
+		for i := range parents {
+			detachOps, detachErr := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(&parents[i], model.Mutation{
+				Field: &parents[i].Ports, Value: []string{lrp.UUID}, Mutator: ovsdb.MutateOperationDelete,
+			})
+			if detachErr != nil {
+				return nil, nil, detachErr
+			}
+			operations = append(operations, detachOps...)
+		}
 	}
 	parentOps, err := c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).MutateOps(lr, model.Mutation{
 		Field: &lr.Ports, Value: []string{lrp.UUID}, Mutator: ovsdb.MutateOperationInsert,
