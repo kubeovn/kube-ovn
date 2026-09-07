@@ -281,12 +281,6 @@ func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
 		}
 	}
 
-	err = c.OVNNbClient.SetLoadBalancerPreferLocalBackend(name, c.config.EnableOVNLBPreferLocal)
-	if err != nil {
-		klog.Errorf("failed to set prefer local backend for load balancer %s: %v", name, err)
-		return err
-	}
-
 	// ct_flush wipes all conntrack entries on the LB's datapath whenever a vip
 	// is mutated. Session-affinity LBs are shared across services, and their
 	// per-client affinity binding is carried in conntrack; enabling ct_flush on

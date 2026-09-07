@@ -8,60 +8,54 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG SRC_DIR='/usr/src'
 ARG PIP_BREAK_SYSTEM_PACKAGES=1
 
-ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
-ADD patches/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch $SRC_DIR
-ADD patches/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch $SRC_DIR
-ADD patches/f627b7721ec282f2edaf798913b1559b939687f0.patch $SRC_DIR
-ADD patches/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch $SRC_DIR
-ADD patches/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch $SRC_DIR
-ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
-ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
-ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
-ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
-ADD patches/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch $SRC_DIR
-ADD patches/e889d46924085ca0fe38a2847da973dfe6ea100e.patch $SRC_DIR
-ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
-ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
+ADD patches/fix-memory-leak-by-ofport-usage-and-trim-memory-periodically.patch $SRC_DIR
+ADD patches/increase-election-timer.patch $SRC_DIR
+ADD patches/add-fdb-update-log.patch $SRC_DIR
+ADD patches/fdb-fix-mac-learning-in-environments-with-hairpin-enabled.patch $SRC_DIR
+ADD patches/ovsdb-tool-add-optional-server-id-parameter-for-join-cluster-command.patch $SRC_DIR
+ADD patches/fix-memory-leak-in-qos.patch $SRC_DIR
+ADD patches/ovsdb-tool-add-command-fix-cluster.patch $SRC_DIR
+ADD patches/netdev-reduce-cpu-utilization-for-getting-device-addresses.patch $SRC_DIR
+ADD patches/ovs-router-skip-getting-source-address-for-kube-ipvs0.patch $SRC_DIR
+ADD patches/increase-the-default-probe-to-60s.patch $SRC_DIR
+ADD patches/modify-src-route-priority.patch $SRC_DIR
+ADD patches/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
 
 # The support for AVX-512 depends on your build machine's CPU. judge it support the avx512 use the command 'cat /proc/cpuinfo | grep avx512'
 RUN cd /usr/src/ && \
-    git clone -b branch-3.5 --depth=1 https://github.com/openvswitch/ovs.git && \
+    git clone -b branch-3.7 --depth=1 https://github.com/openvswitch/ovs.git && \
     cd ovs && \
     # fix memory leak by ofport_usage and trim memory periodically
-    git apply $SRC_DIR/4228eab1d722087ba795e310eadc9e25c4513ec1.patch && \
+    git apply --unidiff-zero $SRC_DIR/fix-memory-leak-by-ofport-usage-and-trim-memory-periodically.patch && \
     # increase election timer
-    git apply $SRC_DIR/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch && \
+    git apply --unidiff-zero $SRC_DIR/increase-election-timer.patch && \
     # add fdb update logging
-    git apply $SRC_DIR/6b4dcb311f171d81a5d40ea51a273fc356c123db.patch && \
+    git apply --unidiff-zero $SRC_DIR/add-fdb-update-log.patch && \
     # fdb: fix mac learning in environments with hairpin enabled
-    git apply $SRC_DIR/f627b7721ec282f2edaf798913b1559b939687f0.patch && \
+    git apply --unidiff-zero $SRC_DIR/fdb-fix-mac-learning-in-environments-with-hairpin-enabled.patch && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
-    git apply $SRC_DIR/3f3e3a436ff5eb2eaafbeeae8ea9dc0c514fe8a3.patch && \
+    git apply --unidiff-zero $SRC_DIR/ovsdb-tool-add-optional-server-id-parameter-for-join-cluster-command.patch && \
     # fix memory leak in qos
-    git apply $SRC_DIR/a6cb8215a80635129e4fada4c0d25c25fb746bf7.patch && \
+    git apply --unidiff-zero $SRC_DIR/fix-memory-leak-in-qos.patch && \
     # ovsdb-tool: add command fix-cluster
-    git apply $SRC_DIR/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch && \
+    git apply --unidiff-zero $SRC_DIR/ovsdb-tool-add-command-fix-cluster.patch && \
     # netdev: reduce cpu utilization for getting device addresses
-    git apply $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
+    git apply --unidiff-zero $SRC_DIR/netdev-reduce-cpu-utilization-for-getting-device-addresses.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
-    git apply $SRC_DIR/d088c5d8c263552c5a31d87813991aee30ab74de.patch && \
+    git apply --unidiff-zero $SRC_DIR/ovs-router-skip-getting-source-address-for-kube-ipvs0.patch && \
     # increase the default probe interval for large cluster
-    git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
+    git apply --unidiff-zero $SRC_DIR/increase-the-default-probe-to-60s.patch && \
     ovs_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?openvswitch\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovs_commit}\2\3/" configure.ac
 
-RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-org/ovn.git && \
+RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
     # modify src route priority
-    git apply $SRC_DIR/9ee66bd91be65605cffb9a490b4dba3bc13358e9.patch && \
-    # fix reaching resubmit limit in underlay
-    git apply $SRC_DIR/e889d46924085ca0fe38a2847da973dfe6ea100e.patch && \
+    git apply --unidiff-zero $SRC_DIR/modify-src-route-priority.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
-    git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
-    # adapt to the compose_nd_ns() signature change in ovs branch-3.5 commit 33825c273
-    git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch && \
+    git apply --unidiff-zero $SRC_DIR/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 

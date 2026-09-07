@@ -254,7 +254,6 @@ features:
   SET_VXLAN_TX_OFF: false
   OVSDB_CON_TIMEOUT: 3
   OVSDB_INACTIVITY_TIMEOUT: 10
-  ENABLE_OVN_LB_PREFER_LOCAL: false
 
 # -- CNI binary/configuration injected on the nodes.
 # @section -- CNI configuration

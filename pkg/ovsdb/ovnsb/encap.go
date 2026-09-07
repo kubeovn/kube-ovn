@@ -11,7 +11,6 @@ type (
 
 const (
 	EncapTypeGeneve EncapType = "geneve"
-	EncapTypeSTT    EncapType = "stt"
 	EncapTypeVxlan  EncapType = "vxlan"
 )
 
@@ -21,5 +20,5 @@ type Encap struct {
 	ChassisName string            `ovsdb:"chassis_name"`
 	IP          string            `ovsdb:"ip"`
 	Options     map[string]string `ovsdb:"options"`
-	Type        EncapType         `ovsdb:"type" validate:"oneof='geneve' 'stt' 'vxlan'"`
+	Type        EncapType         `ovsdb:"type" validate:"oneof='geneve' 'vxlan'"`
 }

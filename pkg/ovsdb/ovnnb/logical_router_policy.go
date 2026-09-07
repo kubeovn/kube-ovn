@@ -28,5 +28,6 @@ type LogicalRouterPolicy struct {
 	Nexthop     *string                   `ovsdb:"nexthop"`
 	Nexthops    []string                  `ovsdb:"nexthops"`
 	Options     map[string]string         `ovsdb:"options"`
+	OutputPort  *string                   `ovsdb:"output_port"`
 	Priority    int                       `ovsdb:"priority" validate:"min=0,max=32767"`
 }
