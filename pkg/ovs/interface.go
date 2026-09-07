@@ -142,11 +142,9 @@ type LoadBalancer interface {
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerDeleteIPPortMapping(lbName, vip string) error
-	SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP string) error
 	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
-	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
 	GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error)

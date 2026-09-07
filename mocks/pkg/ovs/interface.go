@@ -1835,34 +1835,6 @@ func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
-// SetLoadBalancerPreferLocalBackend mocks base method.
-func (m *MockLoadBalancer) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerPreferLocalBackend", lbName, preferLocalBackend)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLoadBalancerPreferLocalBackend indicates an expected call of SetLoadBalancerPreferLocalBackend.
-func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, preferLocalBackend any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
-}
-
-// SetLoadBalancerVIPExternalTrafficLocal mocks base method.
-func (m *MockLoadBalancer) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerVIPExternalTrafficLocal", lbName, vip, vipNodeLSP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLoadBalancerVIPExternalTrafficLocal indicates an expected call of SetLoadBalancerVIPExternalTrafficLocal.
-func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerVIPExternalTrafficLocal", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerVIPExternalTrafficLocal), lbName, vip, vipNodeLSP)
-}
-
 // MockLoadBalancerHealthCheck is a mock of LoadBalancerHealthCheck interface.
 type MockLoadBalancerHealthCheck struct {
 	ctrl     *gomock.Controller
@@ -5741,34 +5713,6 @@ func (m *MockNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
 func (mr *MockNbClientMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
-}
-
-// SetLoadBalancerPreferLocalBackend mocks base method.
-func (m *MockNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerPreferLocalBackend", lbName, preferLocalBackend)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLoadBalancerPreferLocalBackend indicates an expected call of SetLoadBalancerPreferLocalBackend.
-func (mr *MockNbClientMockRecorder) SetLoadBalancerPreferLocalBackend(lbName, preferLocalBackend any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerPreferLocalBackend", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerPreferLocalBackend), lbName, preferLocalBackend)
-}
-
-// SetLoadBalancerVIPExternalTrafficLocal mocks base method.
-func (m *MockNbClient) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerVIPExternalTrafficLocal", lbName, vip, vipNodeLSP)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLoadBalancerVIPExternalTrafficLocal indicates an expected call of SetLoadBalancerVIPExternalTrafficLocal.
-func (mr *MockNbClientMockRecorder) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerVIPExternalTrafficLocal", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerVIPExternalTrafficLocal), lbName, vip, vipNodeLSP)
 }
 
 // SetLogicalRouterPortHAChassisGroup mocks base method.

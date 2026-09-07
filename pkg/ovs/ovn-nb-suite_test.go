@@ -539,10 +539,6 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerDeleteVip() {
 	suite.testLoadBalancerDeleteVip()
 }
 
-func (suite *OvnClientTestSuite) Test_SetLoadBalancerVIPExternalTrafficLocal() {
-	suite.testSetLoadBalancerVIPExternalTrafficLocal()
-}
-
 func (suite *OvnClientTestSuite) Test_GetLoadBalancer() {
 	suite.testGetLoadBalancer()
 }
