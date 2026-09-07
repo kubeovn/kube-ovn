@@ -247,6 +247,33 @@ func TestEnsureAndDeleteVswitchBridge(t *testing.T) {
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 		OtherConfig: map[string]string{"mac-learning-fallback": "true"},
 	}))
+	bridgeIsComplete := func() bool {
+		var bridges []vswitch.Bridge
+		var ports []vswitch.Port
+		var interfaces []vswitch.Interface
+		var roots []vswitch.OpenvSwitch
+		if client.Table(&vswitch.Bridge{}).List(t.Context(), &bridges) != nil ||
+			client.Table(&vswitch.Port{}).List(t.Context(), &ports) != nil ||
+			client.Table(&vswitch.Interface{}).List(t.Context(), &interfaces) != nil ||
+			client.Table(&vswitch.OpenvSwitch{}).List(t.Context(), &roots) != nil {
+			return false
+		}
+		return len(bridges) == 1 && len(ports) == 1 && len(interfaces) == 1 && len(roots) == 1 &&
+			ports[0].Name == "br-provider" && interfaces[0].Name == "br-provider" && interfaces[0].Type == "internal" &&
+			len(ports[0].Interfaces) == 1 &&
+			ports[0].Interfaces[0] == interfaces[0].UUID && slices.Contains(bridges[0].Ports, ports[0].UUID) &&
+			slices.Contains(roots[0].Bridges, bridges[0].UUID)
+	}
+	require.Eventually(t, bridgeIsComplete, time.Second, 10*time.Millisecond)
+
+	require.NoError(t, DeleteVswitchPort(t.Context(), client, "br-provider"))
+	require.Eventually(t, func() bool {
+		var ports []vswitch.Port
+		return client.Table(&vswitch.Port{}).List(t.Context(), &ports) == nil && len(ports) == 0
+	}, time.Second, 10*time.Millisecond)
+	require.NoError(t, EnsureVswitchBridge(t.Context(), client, VswitchBridgeConfig{Name: "br-provider"}))
+	require.Eventually(t, bridgeIsComplete, time.Second, 10*time.Millisecond)
+
 	require.NoError(t, EnsureVswitchPort(t.Context(), client, VswitchPortConfig{
 		BridgeName: "br-provider",
 		Port:       &vswitch.Port{Name: "eth0"},
@@ -258,7 +285,7 @@ func TestEnsureAndDeleteVswitchBridge(t *testing.T) {
 		var roots []vswitch.OpenvSwitch
 		return client.Table(&vswitch.Bridge{}).List(t.Context(), &bridges) == nil &&
 			client.Table(&vswitch.OpenvSwitch{}).List(t.Context(), &roots) == nil &&
-			len(bridges) == 1 && len(bridges[0].Ports) == 1 && len(roots) == 1 && len(roots[0].Bridges) == 1
+			len(bridges) == 1 && len(bridges[0].Ports) == 2 && len(roots) == 1 && len(roots[0].Bridges) == 1
 	}, time.Second, 10*time.Millisecond)
 
 	require.NoError(t, DeleteVswitchBridge(t.Context(), client, "br-provider"))

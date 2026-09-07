@@ -222,8 +222,8 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		return fmt.Errorf("failed to create OVS bridge %s: %w", bridge, err)
 	}
 
-	if exchangeLinkName {
-		if err := c.waitForBridgeInterface(bridge, 5*time.Second); err != nil {
+	if err := c.waitForBridgeInterface(bridge, 5*time.Second); err != nil {
+		if exchangeLinkName {
 			// Bridge created in OVSDB but kernel interface not available.
 			// Delete the stale bridge to allow a clean retry.
 			klog.Warningf("OVS bridge %s interface not ready, cleaning up: %v", bridge, err)
@@ -231,8 +231,8 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 			if delErr != nil {
 				klog.Errorf("failed to delete stale bridge %s: %v", bridge, delErr)
 			}
-			return err
 		}
+		return err
 	}
 
 	bridgePorts, err := c.listVswitchBridgePorts(bridge)

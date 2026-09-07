@@ -24,8 +24,9 @@ type VswitchBridgeConfig struct {
 	OtherConfig map[string]string
 }
 
-// EnsureVswitchBridge creates or updates an OVS bridge and keeps the root
-// Open_vSwitch.bridges reference consistent in the same transaction.
+// EnsureVswitchBridge creates or updates an OVS bridge, its local Port and
+// internal Interface, and the root Open_vSwitch.bridges reference in one
+// transaction.
 func EnsureVswitchBridge(ctx context.Context, provider compat.TableProvider, config VswitchBridgeConfig) error {
 	if provider == nil {
 		return errors.New("ovsdb table provider is nil")
@@ -46,16 +47,72 @@ func EnsureVswitchBridge(ctx context.Context, provider compat.TableProvider, con
 		return fmt.Errorf("expected one Open_vSwitch row, found %d", len(roots))
 	}
 	root := &roots[0]
+	port, err := findVswitchPort(ctx, provider, config.Name)
+	if err != nil {
+		return err
+	}
+	iface, err := findVswitchInterface(ctx, provider, config.Name)
+	if err != nil {
+		return err
+	}
 
 	bridgeTable := provider.Table(&vswitch.Bridge{})
 	rootTable := provider.Table(&vswitch.OpenvSwitch{})
-	operations := make([]ovsdb.Operation, 0, 4)
+	portTable := provider.Table(&vswitch.Port{})
+	interfaceTable := provider.Table(&vswitch.Interface{})
+	operations := make([]ovsdb.Operation, 0, 7)
+	if iface == nil {
+		iface = &vswitch.Interface{
+			UUID: ovsclient.NamedUUID(),
+			Name: config.Name,
+			Type: "internal",
+		}
+		createOps, err := interfaceTable.CreateOps(iface)
+		if err != nil {
+			return fmt.Errorf("create local OVS interface %q operation: %w", config.Name, err)
+		}
+		operations = append(operations, createOps...)
+	} else if iface.Type != "internal" {
+		iface.Type = "internal"
+		updateOps, err := interfaceTable.UpdateOps(iface, iface, &iface.Type)
+		if err != nil {
+			return fmt.Errorf("update local OVS interface %q operation: %w", config.Name, err)
+		}
+		operations = append(operations, updateOps...)
+	}
+
+	if port == nil {
+		port = &vswitch.Port{
+			UUID:       ovsclient.NamedUUID(),
+			Name:       config.Name,
+			Interfaces: []string{iface.UUID},
+		}
+		createOps, err := portTable.CreateOps(port)
+		if err != nil {
+			return fmt.Errorf("create local OVS port %q operation: %w", config.Name, err)
+		}
+		operations = append(operations, createOps...)
+	} else if !slices.Contains(port.Interfaces, iface.UUID) {
+		if len(port.Interfaces) != 0 {
+			return fmt.Errorf("local OVS port %q does not reference its interface", config.Name)
+		}
+		mutateOps, err := portTable.MutateOps(port, model.Mutation{
+			Field: &port.Interfaces, Value: []string{iface.UUID}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		if err != nil {
+			return fmt.Errorf("attach local OVS interface %q to port: %w", config.Name, err)
+		}
+		operations = append(operations, mutateOps...)
+	}
+
+	bridgeExists := bridge != nil
 	if bridge == nil {
 		bridge = &vswitch.Bridge{
 			UUID:        ovsclient.NamedUUID(),
 			Name:        config.Name,
 			ExternalIDs: maps.Clone(config.ExternalIDs),
 			OtherConfig: maps.Clone(config.OtherConfig),
+			Ports:       []string{port.UUID},
 		}
 		createOps, err := bridgeTable.CreateOps(bridge)
 		if err != nil {
@@ -71,6 +128,19 @@ func EnsureVswitchBridge(ctx context.Context, provider compat.TableProvider, con
 		}
 		operations = append(operations, updateOps...)
 	}
+	attached, err := validateVswitchPortBridge(ctx, provider, port, bridge)
+	if err != nil {
+		return err
+	}
+	if bridgeExists && !attached {
+		mutateOps, err := bridgeTable.MutateOps(bridge, model.Mutation{
+			Field: &bridge.Ports, Value: []string{port.UUID}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		if err != nil {
+			return fmt.Errorf("attach local OVS port %q to bridge: %w", config.Name, err)
+		}
+		operations = append(operations, mutateOps...)
+	}
 
 	if !slices.Contains(root.Bridges, bridge.UUID) {
 		mutateOps, err := rootTable.MutateOps(root, model.Mutation{
@@ -82,7 +152,10 @@ func EnsureVswitchBridge(ctx context.Context, provider compat.TableProvider, con
 		operations = append(operations, mutateOps...)
 	}
 
-	return bridgeTable.Transact(ctx, "vswitch-bridge-ensure", operations...)
+	if err := bridgeTable.Transact(ctx, "vswitch-bridge-ensure", operations...); err != nil {
+		return err
+	}
+	return waitForVswitchBridge(ctx, provider, config.Name, root.UUID)
 }
 
 // DeleteVswitchBridge removes an OVS bridge and the Port, Interface, and QoS
@@ -209,6 +282,40 @@ func findVswitchBridgeOptional(ctx context.Context, provider compat.TableProvide
 		return nil, nil
 	}
 	return &rows[0], nil
+}
+
+func waitForVswitchBridge(ctx context.Context, provider compat.TableProvider, name, rootUUID string) error {
+	var interfaces []vswitch.Interface
+	if err := compat.WaitForRows(ctx, provider, &vswitch.Interface{}, func(row *vswitch.Interface) bool {
+		return row.Name == name && row.Type == "internal"
+	}, &interfaces); err != nil {
+		return fmt.Errorf("wait for local OVS interface %q cache update: %w", name, err)
+	}
+	interfaceUUID := interfaces[0].UUID
+
+	var ports []vswitch.Port
+	if err := compat.WaitForRows(ctx, provider, &vswitch.Port{}, func(row *vswitch.Port) bool {
+		return row.Name == name && slices.Contains(row.Interfaces, interfaceUUID)
+	}, &ports); err != nil {
+		return fmt.Errorf("wait for local OVS port %q cache update: %w", name, err)
+	}
+	portUUID := ports[0].UUID
+
+	var bridges []vswitch.Bridge
+	if err := compat.WaitForRows(ctx, provider, &vswitch.Bridge{}, func(row *vswitch.Bridge) bool {
+		return row.Name == name && slices.Contains(row.Ports, portUUID)
+	}, &bridges); err != nil {
+		return fmt.Errorf("wait for OVS bridge %q cache update: %w", name, err)
+	}
+	bridgeUUID := bridges[0].UUID
+
+	var roots []vswitch.OpenvSwitch
+	if err := compat.WaitForRows(ctx, provider, &vswitch.OpenvSwitch{}, func(row *vswitch.OpenvSwitch) bool {
+		return row.UUID == rootUUID && slices.Contains(row.Bridges, bridgeUUID)
+	}, &roots); err != nil {
+		return fmt.Errorf("wait for OVS bridge %q root attachment cache update: %w", name, err)
+	}
+	return nil
 }
 
 func mergeVswitchMap(current, desired map[string]string) map[string]string {
