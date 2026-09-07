@@ -37,9 +37,9 @@ type VpcNatGatewayStatusApplyConfiguration struct {
 	Replicas *int32 `json:"replicas,omitempty"`
 	// Ready state of the NAT gateway
 	Ready *bool `json:"ready,omitempty"`
-	// LAN IP address(es) for the NAT gateway.
-	// For non-HA, this is the single LanIP from spec.
-	// For HA, this is a comma-separated list of all IPs within the NAT gateway pods.
+	// LAN IP address(es) observed on the NAT gateway Pods.
+	// For non-HA, this is the single address persisted to spec.lanIp.
+	// For HA, this is a comma-separated, sorted list of all observed addresses.
 	LanIP       *string             `json:"lanIp,omitempty"`
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
 	Affinity    *corev1.Affinity    `json:"affinity,omitempty"`

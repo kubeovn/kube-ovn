@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -602,6 +603,21 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectNoError(err)
 		time.Sleep(3 * time.Second)
 
+		// Recover the image via DeferCleanup so a failure later in this spec still
+		// restores the shared ConfigMap instead of leaking v1.14.25 into subsequent specs.
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Recovering NAT gateway image to " + oldImage)
+			cur, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), vpcNatConfigName, metav1.GetOptions{})
+			if err != nil {
+				framework.Logf("failed to get configmap %s for image recovery: %v", vpcNatConfigName, err)
+				return
+			}
+			cur.Data["image"] = oldImage
+			if _, err := f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cur, metav1.UpdateOptions{}); err != nil {
+				framework.Logf("failed to recover NAT gateway image: %v", err)
+			}
+		})
+
 		// Custom namespace for the NAT gateway pod is a v1.17+ feature; on older
 		// versions the pod always lives in the controller PodNamespace.
 		// Register the namespace cleanup BEFORE setupVpcNatGwTestEnvironment so it is
@@ -688,11 +704,88 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"controller should auto-backfill spec.namespace from the referenced VpcNatGateway")
 		}
 
-		// recover the image
-		cm.Data["image"] = oldImage
-		_, err = f.ClientSet.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Update(context.Background(), cm, metav1.UpdateOptions{})
-		framework.ExpectNoError(err)
 		// Cleanup is handled by DeferCleanup in setupVpcNatGwTestEnvironment
+	})
+
+	framework.ConformanceIt("dynamically allocates and persists the non-HA LAN IP", func() {
+		f.SkipVersionPriorTo(1, 18, "Dynamic VpcNatGateway LAN IP allocation was introduced in v1.18")
+		// The overlay subnet follows the cluster IP family so the persisted LAN IP
+		// covers IPv4, IPv6, and the dual-stack IPv4-preferred selection.
+		var overlayCIDR, overlayGW string
+		if f.HasIPv4() {
+			overlayCIDR, overlayGW = "10.0.20.0/24", "10.0.20.1"
+		}
+		if f.HasIPv6() {
+			v6CIDR, v6GW := "fd00:10:0:20::/112", "fd00:10:0:20::1"
+			if overlayCIDR == "" {
+				overlayCIDR, overlayGW = v6CIDR, v6GW
+			} else {
+				overlayCIDR, overlayGW = overlayCIDR+","+v6CIDR, overlayGW+","+v6GW
+			}
+		}
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName+"-dynamic", vpcNatGwName, "",
+			overlayCIDR, overlayGW, "",
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, // the shared NAD is created in BeforeAll
+			nil, "", 1,
+		)
+
+		ginkgo.By("Waiting for the observed LAN IP to be persisted to spec")
+		var persistedLANIP string
+		gomega.Eventually(func() bool {
+			gw := vpcNatGwClient.Get(vpcNatGwName)
+			persistedLANIP = gw.Status.LanIP
+			return persistedLANIP != "" && gw.Spec.LanIP == persistedLANIP
+		}, 2*time.Minute, time.Second).Should(gomega.BeTrue())
+
+		ginkgo.By("Verifying the persisted LAN IP matches the subnet protocol")
+		framework.ExpectNotContainSubstring(persistedLANIP, ",")
+		if f.HasIPv4() {
+			framework.ExpectEqual(util.CheckProtocol(persistedLANIP), apiv1.ProtocolIPv4)
+		} else {
+			framework.ExpectEqual(util.CheckProtocol(persistedLANIP), apiv1.ProtocolIPv6)
+		}
+
+		ginkgo.By("Verifying the StatefulSet is controller-owned by the VpcNatGateway")
+		gw := vpcNatGwClient.Get(vpcNatGwName)
+		sts, err := f.ClientSet.AppsV1().StatefulSets(framework.KubeOvnNamespace).Get(
+			context.Background(), util.GenNatGwName(vpcNatGwName), metav1.GetOptions{},
+		)
+		framework.ExpectNoError(err)
+		owner := metav1.GetControllerOf(sts)
+		framework.ExpectNotNil(owner)
+		framework.ExpectEqual(owner.Kind, util.KindVpcNatGateway)
+		framework.ExpectEqual(owner.UID, gw.UID)
+
+		ginkgo.By("Recreating the gateway Pod and verifying the persisted LAN IP is retained")
+		// The template is updated after the LAN IP is persisted, so wait for it: a Pod recreated
+		// before that would be allocated a fresh address and be recreated once more.
+		ipAnnotation := fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider)
+		gomega.Eventually(func() string {
+			sts, err := f.ClientSet.AppsV1().StatefulSets(framework.KubeOvnNamespace).Get(
+				context.Background(), util.GenNatGwName(vpcNatGwName), metav1.GetOptions{},
+			)
+			framework.ExpectNoError(err)
+			return sts.Spec.Template.Annotations[ipAnnotation]
+		}, 2*time.Minute, time.Second).Should(gomega.Equal(persistedLANIP))
+
+		podName := getNatGwPodName(f, vpcNatGwName, "")
+		oldPod, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		framework.ExpectNoError(f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).Delete(
+			context.Background(), podName, metav1.DeleteOptions{},
+		))
+		gomega.Eventually(func() bool {
+			pod, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+			if err != nil || pod.UID == oldPod.UID || pod.Annotations[util.VpcNatGatewayInitAnnotation] != "true" {
+				return false
+			}
+			return slices.Contains(strings.Split(pod.Annotations[util.IPAddressAnnotation], ","), persistedLANIP)
+		}, 2*time.Minute, time.Second).Should(gomega.BeTrue())
 	})
 
 	framework.ConformanceIt("[2] iptables EIP FIP SNAT DNAT", func() {

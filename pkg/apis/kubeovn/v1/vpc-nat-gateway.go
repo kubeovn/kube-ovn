@@ -32,7 +32,7 @@ type VpcNatGatewayList struct {
 // +kubebuilder:printcolumn:name="BFD",type="boolean",JSONPath=".spec.bfd.enabled"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 //
-// VpcNatGateway represents a NAT gateway for a VPC, implemented as a StatefulSet Pod.
+// VpcNatGateway represents a NAT gateway for a VPC, implemented by a StatefulSet in non-HA mode or a Deployment in HA mode.
 //
 // Architecture note:
 // The NAT gateway Pod does NOT support hot updates. Any changes to Spec fields (ExternalSubnets,
@@ -42,7 +42,9 @@ type VpcNatGatewayList struct {
 //  2. Runtime state (vpc_cidrs, init status) is managed by separate handlers and will be
 //     automatically restored after Pod recreation through the normal reconciliation flow
 //
-// The only exception is QoSPolicy, which can be updated without Pod restart.
+// QoSPolicy updates are applied without restarting the Pod. Every other Spec change,
+// including the one-time persistence of a dynamically allocated LanIP, updates the
+// workload template and therefore recreates the Pod.
 type VpcNatGateway struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
@@ -62,8 +64,12 @@ type VpcNatGatewaySpec struct {
 	Subnet string `json:"subnet"`
 	// External subnets accessible through the NAT gateway
 	ExternalSubnets []string `json:"externalSubnets"`
-	// LAN IP address for the NAT gateway. This field is immutable after creation.
-	// Used only when Replicas = 1 (non-HA mode).
+	// LAN IP address for the NAT gateway. Used only when Replicas = 1 (non-HA mode).
+	// If empty, an address is allocated dynamically and persisted here after it is observed on the Pod.
+	// Once set, this field is immutable.
+	// In HA mode (Replicas > 1) this field is ignored and cannot be used to pin addresses: every
+	// replica allocates its own address dynamically, and the controller re-points the OVN policy
+	// routes and BFD sessions whenever a replica is replaced.
 	LanIP string `json:"lanIp"`
 	// Number of gateway replicas for HA support.
 	// When > 1, uses Deployment workload with pod anti-affinity to distribute instances across nodes.
@@ -160,9 +166,9 @@ type VpcNatGatewayStatus struct {
 	Replicas int32 `json:"replicas"`
 	// Ready state of the NAT gateway
 	Ready bool `json:"ready"`
-	// LAN IP address(es) for the NAT gateway.
-	// For non-HA, this is the single LanIP from spec.
-	// For HA, this is a comma-separated list of all IPs within the NAT gateway pods.
+	// LAN IP address(es) observed on the NAT gateway Pods.
+	// For non-HA, this is the single address persisted to spec.lanIp.
+	// For HA, this is a comma-separated, sorted list of all observed addresses.
 	LanIP       string              `json:"lanIp"`
 	Tolerations []corev1.Toleration `json:"tolerations" patchStrategy:"merge"`
 	Affinity    corev1.Affinity     `json:"affinity" patchStrategy:"merge"`

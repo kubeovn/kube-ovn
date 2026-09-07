@@ -451,7 +451,6 @@ func TestGenNatGwPodAnnotations(t *testing.T) {
 				VpcNatGatewayAnnotation:      "test-gateway",
 				nadv1.NetworkAttachmentAnnot: "kube-system/external-subnet",
 				LogicalSwitchAnnotation:      "internal-subnet",
-				IPAddressAnnotation:          "",
 			},
 			expectError: false,
 		},
