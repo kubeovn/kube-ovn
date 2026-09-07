@@ -47,64 +47,13 @@ func EnsureVswitchBridge(ctx context.Context, provider compat.TableProvider, con
 		return fmt.Errorf("expected one Open_vSwitch row, found %d", len(roots))
 	}
 	root := &roots[0]
-	port, err := findVswitchPort(ctx, provider, config.Name)
-	if err != nil {
-		return err
-	}
-	iface, err := findVswitchInterface(ctx, provider, config.Name)
+	port, operations, err := planVswitchBridgeLocalPort(ctx, provider, config.Name)
 	if err != nil {
 		return err
 	}
 
 	bridgeTable := provider.Table(&vswitch.Bridge{})
 	rootTable := provider.Table(&vswitch.OpenvSwitch{})
-	portTable := provider.Table(&vswitch.Port{})
-	interfaceTable := provider.Table(&vswitch.Interface{})
-	operations := make([]ovsdb.Operation, 0, 7)
-	if iface == nil {
-		iface = &vswitch.Interface{
-			UUID: ovsclient.NamedUUID(),
-			Name: config.Name,
-			Type: "internal",
-		}
-		createOps, err := interfaceTable.CreateOps(iface)
-		if err != nil {
-			return fmt.Errorf("create local OVS interface %q operation: %w", config.Name, err)
-		}
-		operations = append(operations, createOps...)
-	} else if iface.Type != "internal" {
-		iface.Type = "internal"
-		updateOps, err := interfaceTable.UpdateOps(iface, iface, &iface.Type)
-		if err != nil {
-			return fmt.Errorf("update local OVS interface %q operation: %w", config.Name, err)
-		}
-		operations = append(operations, updateOps...)
-	}
-
-	if port == nil {
-		port = &vswitch.Port{
-			UUID:       ovsclient.NamedUUID(),
-			Name:       config.Name,
-			Interfaces: []string{iface.UUID},
-		}
-		createOps, err := portTable.CreateOps(port)
-		if err != nil {
-			return fmt.Errorf("create local OVS port %q operation: %w", config.Name, err)
-		}
-		operations = append(operations, createOps...)
-	} else if !slices.Contains(port.Interfaces, iface.UUID) {
-		if len(port.Interfaces) != 0 {
-			return fmt.Errorf("local OVS port %q does not reference its interface", config.Name)
-		}
-		mutateOps, err := portTable.MutateOps(port, model.Mutation{
-			Field: &port.Interfaces, Value: []string{iface.UUID}, Mutator: ovsdb.MutateOperationInsert,
-		})
-		if err != nil {
-			return fmt.Errorf("attach local OVS interface %q to port: %w", config.Name, err)
-		}
-		operations = append(operations, mutateOps...)
-	}
-
 	bridgeExists := bridge != nil
 	if bridge == nil {
 		bridge = &vswitch.Bridge{
@@ -156,6 +105,57 @@ func EnsureVswitchBridge(ctx context.Context, provider compat.TableProvider, con
 		return err
 	}
 	return waitForVswitchBridge(ctx, provider, config.Name, root.UUID)
+}
+
+func planVswitchBridgeLocalPort(ctx context.Context, provider compat.TableProvider, name string) (*vswitch.Port, []ovsdb.Operation, error) {
+	port, err := findVswitchPort(ctx, provider, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	iface, err := findVswitchInterface(ctx, provider, name)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	interfaceTable := provider.Table(&vswitch.Interface{})
+	portTable := provider.Table(&vswitch.Port{})
+	operations := make([]ovsdb.Operation, 0, 3)
+	if iface == nil {
+		iface = &vswitch.Interface{UUID: ovsclient.NamedUUID(), Name: name, Type: "internal"}
+		createOps, err := interfaceTable.CreateOps(iface)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create local OVS interface %q operation: %w", name, err)
+		}
+		operations = append(operations, createOps...)
+	} else if iface.Type != "internal" {
+		iface.Type = "internal"
+		updateOps, err := interfaceTable.UpdateOps(iface, iface, &iface.Type)
+		if err != nil {
+			return nil, nil, fmt.Errorf("update local OVS interface %q operation: %w", name, err)
+		}
+		operations = append(operations, updateOps...)
+	}
+
+	if port == nil {
+		port = &vswitch.Port{UUID: ovsclient.NamedUUID(), Name: name, Interfaces: []string{iface.UUID}}
+		createOps, err := portTable.CreateOps(port)
+		if err != nil {
+			return nil, nil, fmt.Errorf("create local OVS port %q operation: %w", name, err)
+		}
+		operations = append(operations, createOps...)
+	} else if !slices.Contains(port.Interfaces, iface.UUID) {
+		if len(port.Interfaces) != 0 {
+			return nil, nil, fmt.Errorf("local OVS port %q does not reference its interface", name)
+		}
+		mutateOps, err := portTable.MutateOps(port, model.Mutation{
+			Field: &port.Interfaces, Value: []string{iface.UUID}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("attach local OVS interface %q to port: %w", name, err)
+		}
+		operations = append(operations, mutateOps...)
+	}
+	return port, operations, nil
 }
 
 // DeleteVswitchBridge removes an OVS bridge and the Port, Interface, and QoS

@@ -29,17 +29,8 @@ type VswitchPortConfig struct {
 // EnsureVswitchPort creates or updates an OVS Port/Interface pair and attaches
 // it to a bridge in one transaction.
 func EnsureVswitchPort(ctx context.Context, provider compat.TableProvider, config VswitchPortConfig) error {
-	if provider == nil {
-		return errors.New("ovsdb table provider is nil")
-	}
-	if config.BridgeName == "" {
-		return errors.New("OVS bridge name is empty")
-	}
-	if config.Port == nil || config.Port.Name == "" {
-		return errors.New("OVS port name is empty")
-	}
-	if config.Interface == nil || config.Interface.Name == "" {
-		return errors.New("OVS interface name is empty")
+	if err := validateVswitchPortConfig(provider, config); err != nil {
+		return err
 	}
 
 	bridge, err := findVswitchBridge(ctx, provider, config.BridgeName)
@@ -128,7 +119,26 @@ func EnsureVswitchPort(ctx context.Context, provider compat.TableProvider, confi
 	if err := portTable.Transact(ctx, "vswitch-port-ensure", operations...); err != nil {
 		return err
 	}
+	return waitForVswitchPort(ctx, provider, config)
+}
 
+func validateVswitchPortConfig(provider compat.TableProvider, config VswitchPortConfig) error {
+	if provider == nil {
+		return errors.New("ovsdb table provider is nil")
+	}
+	if config.BridgeName == "" {
+		return errors.New("OVS bridge name is empty")
+	}
+	if config.Port == nil || config.Port.Name == "" {
+		return errors.New("OVS port name is empty")
+	}
+	if config.Interface == nil || config.Interface.Name == "" {
+		return errors.New("OVS interface name is empty")
+	}
+	return nil
+}
+
+func waitForVswitchPort(ctx context.Context, provider compat.TableProvider, config VswitchPortConfig) error {
 	var interfaces []vswitch.Interface
 	if err := compat.WaitForRows(ctx, provider, &vswitch.Interface{}, func(row *vswitch.Interface) bool {
 		return row.Name == config.Interface.Name

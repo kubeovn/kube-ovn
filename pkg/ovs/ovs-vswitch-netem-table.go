@@ -15,6 +15,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+type netemQosState struct {
+	ports    []vswitch.Port
+	allPorts []vswitch.Port
+	qosRows  []vswitch.QoS
+}
+
 func setNetemQosTable(provider compat.TableProvider, podName, podNamespace, iface, latency, limit, loss, jitter string) error {
 	desiredConfig, err := parseNetemQosConfig(latency, limit, loss, jitter)
 	if err != nil {
@@ -22,45 +28,11 @@ func setNetemQosTable(provider compat.TableProvider, podName, podNamespace, ifac
 	}
 
 	ctx := context.Background()
-	var interfaces []vswitch.Interface
-	if err := provider.Table(&vswitch.Interface{}).Filter(ctx, func(row *vswitch.Interface) bool {
-		return row.ExternalIDs["iface-id"] == iface
-	}, &interfaces); err != nil {
-		return fmt.Errorf("list interfaces for netem qos %s: %w", iface, err)
+	state, err := loadNetemQosState(ctx, provider, podName, podNamespace, iface)
+	if err != nil || state == nil {
+		return err
 	}
-	if len(interfaces) == 0 {
-		return nil
-	}
-
-	var qosRows []vswitch.QoS
-	if err := provider.Table(&vswitch.QoS{}).Filter(ctx, func(row *vswitch.QoS) bool {
-		if iface != "" {
-			return row.ExternalIDs["iface-id"] == iface
-		}
-		return row.ExternalIDs["pod"] == podNamespace+"/"+podName
-	}, &qosRows); err != nil {
-		return fmt.Errorf("list QoS rows for netem %s: %w", iface, err)
-	}
-
-	interfaceIDs := make(map[string]struct{}, len(interfaces))
-	for i := range interfaces {
-		interfaceIDs[interfaces[i].UUID] = struct{}{}
-	}
-	var ports []vswitch.Port
-	if err := provider.Table(&vswitch.Port{}).Filter(ctx, func(row *vswitch.Port) bool {
-		for _, interfaceID := range row.Interfaces {
-			if _, ok := interfaceIDs[interfaceID]; ok {
-				return true
-			}
-		}
-		return false
-	}, &ports); err != nil {
-		return fmt.Errorf("list ports for netem qos %s: %w", iface, err)
-	}
-	var allPorts []vswitch.Port
-	if err := provider.Table(&vswitch.Port{}).List(ctx, &allPorts); err != nil {
-		return fmt.Errorf("list QoS bindings for netem %s: %w", iface, err)
-	}
+	ports, qosRows := state.ports, state.qosRows
 
 	for i := range qosRows {
 		if qosRows[i].Type != util.NetemQos && len(desiredConfig) != 0 {
@@ -70,43 +42,9 @@ func setNetemQosTable(provider compat.TableProvider, podName, podNamespace, ifac
 		}
 	}
 
-	targetPortIDs := make(map[string]struct{}, len(ports))
-	for _, port := range ports {
-		targetPortIDs[port.UUID] = struct{}{}
-	}
-	usedByOtherPort := make(map[string]bool, len(qosRows))
-	for _, port := range allPorts {
-		if port.QOS == nil {
-			continue
-		}
-		if _, target := targetPortIDs[port.UUID]; target {
-			continue
-		}
-		usedByOtherPort[*port.QOS] = true
-	}
-
 	ops := make([]ovsdb.Operation, 0, len(qosRows)*2+len(ports)*2+2)
-	removeQoS := make(map[string]struct{}, len(qosRows))
-	var matchingQoS *vswitch.QoS
-	if len(desiredConfig) != 0 {
-		for i := range qosRows {
-			if qosRows[i].Type == util.NetemQos && maps.Equal(qosRows[i].OtherConfig, desiredConfig) {
-				matchingQoS = &qosRows[i]
-				break
-			}
-		}
-	}
-
-	for i := range qosRows {
-		qos := &qosRows[i]
-		if matchingQoS != nil && qos.UUID == matchingQoS.UUID {
-			continue
-		}
-		if qos.Type != util.NetemQos {
-			continue
-		}
-		removeQoS[qos.UUID] = struct{}{}
-	}
+	matchingQoS, removeQoS := classifyNetemQos(qosRows, desiredConfig)
+	usedByOtherPort := netemQosUsedByOtherPorts(ports, state.allPorts)
 
 	for i := range ports {
 		port := &ports[i]
@@ -171,6 +109,85 @@ func setNetemQosTable(provider compat.TableProvider, podName, podNamespace, ifac
 		return nil
 	}
 	return provider.Table(&vswitch.QoS{}).Transact(ctx, "netem-qos-reconcile", ops...)
+}
+
+func loadNetemQosState(ctx context.Context, provider compat.TableProvider, podName, podNamespace, iface string) (*netemQosState, error) {
+	var interfaces []vswitch.Interface
+	if err := provider.Table(&vswitch.Interface{}).Filter(ctx, func(row *vswitch.Interface) bool {
+		return row.ExternalIDs["iface-id"] == iface
+	}, &interfaces); err != nil {
+		return nil, fmt.Errorf("list interfaces for netem qos %s: %w", iface, err)
+	}
+	if len(interfaces) == 0 {
+		return nil, nil
+	}
+
+	state := &netemQosState{}
+	if err := provider.Table(&vswitch.QoS{}).Filter(ctx, func(row *vswitch.QoS) bool {
+		if iface != "" {
+			return row.ExternalIDs["iface-id"] == iface
+		}
+		return row.ExternalIDs["pod"] == podNamespace+"/"+podName
+	}, &state.qosRows); err != nil {
+		return nil, fmt.Errorf("list QoS rows for netem %s: %w", iface, err)
+	}
+
+	interfaceIDs := make(map[string]struct{}, len(interfaces))
+	for i := range interfaces {
+		interfaceIDs[interfaces[i].UUID] = struct{}{}
+	}
+	if err := provider.Table(&vswitch.Port{}).Filter(ctx, func(row *vswitch.Port) bool {
+		for _, interfaceID := range row.Interfaces {
+			if _, ok := interfaceIDs[interfaceID]; ok {
+				return true
+			}
+		}
+		return false
+	}, &state.ports); err != nil {
+		return nil, fmt.Errorf("list ports for netem qos %s: %w", iface, err)
+	}
+	if err := provider.Table(&vswitch.Port{}).List(ctx, &state.allPorts); err != nil {
+		return nil, fmt.Errorf("list QoS bindings for netem %s: %w", iface, err)
+	}
+	return state, nil
+}
+
+func classifyNetemQos(qosRows []vswitch.QoS, desiredConfig map[string]string) (*vswitch.QoS, map[string]struct{}) {
+	var matchingQoS *vswitch.QoS
+	if len(desiredConfig) != 0 {
+		for i := range qosRows {
+			if qosRows[i].Type == util.NetemQos && maps.Equal(qosRows[i].OtherConfig, desiredConfig) {
+				matchingQoS = &qosRows[i]
+				break
+			}
+		}
+	}
+
+	removeQoS := make(map[string]struct{}, len(qosRows))
+	for i := range qosRows {
+		qos := &qosRows[i]
+		if qos.Type == util.NetemQos && (matchingQoS == nil || qos.UUID != matchingQoS.UUID) {
+			removeQoS[qos.UUID] = struct{}{}
+		}
+	}
+	return matchingQoS, removeQoS
+}
+
+func netemQosUsedByOtherPorts(targetPorts, allPorts []vswitch.Port) map[string]bool {
+	targetPortIDs := make(map[string]struct{}, len(targetPorts))
+	for _, port := range targetPorts {
+		targetPortIDs[port.UUID] = struct{}{}
+	}
+	used := make(map[string]bool)
+	for _, port := range allPorts {
+		if port.QOS == nil {
+			continue
+		}
+		if _, target := targetPortIDs[port.UUID]; !target {
+			used[*port.QOS] = true
+		}
+	}
+	return used
 }
 
 func parseNetemQosConfig(latency, limit, loss, jitter string) (map[string]string, error) {
