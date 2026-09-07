@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -11,10 +10,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes"
 	appsv1listers "k8s.io/client-go/listers/apps/v1"
-	v1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
@@ -352,22 +350,16 @@ func reconcileGatewayBFDWithCleanup(
 }
 
 // getWorkloadNodes returns the list of nodes where the workload's pods are currently running.
-func getWorkloadNodes(podLister v1.PodLister, namespace string, selector *metav1.LabelSelector) ([]string, error) {
+func getWorkloadNodes(pods []*corev1.Pod, selector *metav1.LabelSelector) ([]string, error) {
 	s, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
 		klog.Errorf("failed to create label selector: %v", err)
 		return nil, err
 	}
 
-	pods, err := podLister.Pods(namespace).List(s)
-	if err != nil {
-		klog.Errorf("failed to list pods for namespace %s: %v", namespace, err)
-		return nil, err
-	}
-
 	nodes := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		if pod.Spec.NodeName != "" {
+		if pod.Spec.NodeName != "" && s.Matches(labels.Set(pod.Labels)) {
 			nodes = append(nodes, pod.Spec.NodeName)
 		}
 	}
@@ -375,11 +367,12 @@ func getWorkloadNodes(podLister v1.PodLister, namespace string, selector *metav1
 }
 
 // updateNatGwWorkloadStatus updates the workload information in the VPC NAT Gateway status.
+// pods must be the freshly read gateway Pods, see Controller.listNatGwPods.
 func updateNatGwWorkloadStatus(
 	gw *kubeovnv1.VpcNatGateway,
-	podLister v1.PodLister,
+	pods []*corev1.Pod,
 	deployLister appsv1listers.DeploymentLister,
-	kubeClient kubernetes.Interface,
+	stsLister appsv1listers.StatefulSetLister,
 	natGwNamespace string,
 ) bool {
 	workloadName := util.GenNatGwName(gw.Name)
@@ -396,18 +389,18 @@ func updateNatGwWorkloadStatus(
 			deploy, err = deployLister.Deployments(natGwNamespace).Get(workloadName)
 		}
 		if err == nil && deploy != nil {
-			workloadNodes, err = getWorkloadNodes(podLister, natGwNamespace, deploy.Spec.Selector)
+			workloadNodes, err = getWorkloadNodes(pods, deploy.Spec.Selector)
 			ready = util.DeploymentIsReady(deploy)
 		}
 	} else {
 		workloadKind = util.KindStatefulSet
 		workloadAPIVersion = "apps/v1"
 		var sts *appsv1.StatefulSet
-		if kubeClient != nil {
-			sts, err = kubeClient.AppsV1().StatefulSets(natGwNamespace).Get(context.Background(), workloadName, metav1.GetOptions{})
+		if stsLister != nil {
+			sts, err = stsLister.StatefulSets(natGwNamespace).Get(workloadName)
 		}
 		if err == nil && sts != nil {
-			workloadNodes, err = getWorkloadNodes(podLister, natGwNamespace, sts.Spec.Selector)
+			workloadNodes, err = getWorkloadNodes(pods, sts.Spec.Selector)
 			ready = util.StatefulSetIsReady(sts)
 		}
 	}

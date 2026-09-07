@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -508,58 +507,34 @@ func TestGetWorkloadNodes(t *testing.T) {
 		MatchLabels: map[string]string{"app": "test-app"},
 	}
 
-	pods := []corev1.Pod{
+	pods := []*corev1.Pod{
 		{
 			Name:      "pod1",
 			Namespace: namespace,
 			Labels:    map[string]string{"app": "test-app"},
-			Spec: corev1.PodSpec{
-				NodeName: "node1",
-			},
+			Spec:      corev1.PodSpec{NodeName: "node1"},
 		},
 		{
 			Name:      "pod2",
 			Namespace: namespace,
 			Labels:    map[string]string{"app": "test-app"},
-			Spec: corev1.PodSpec{
-				NodeName: "node2",
-			},
+			Spec:      corev1.PodSpec{NodeName: "node2"},
 		},
 		{
 			Name:      "pod3",
 			Namespace: namespace,
 			Labels:    map[string]string{"app": "other-app"},
-			Spec: corev1.PodSpec{
-				NodeName: "node3",
-			},
+			Spec:      corev1.PodSpec{NodeName: "node3"},
 		},
 		{
 			Name:      "pod4",
 			Namespace: namespace,
 			Labels:    map[string]string{"app": "test-app"},
-			Spec: corev1.PodSpec{
-				NodeName: "", // No node assigned
-			},
+			Spec:      corev1.PodSpec{NodeName: ""}, // No node assigned
 		},
 	}
 
-	client := fake.NewSimpleClientset()
-	for _, pod := range pods {
-		_, err := client.CoreV1().Pods(namespace).Create(context.Background(), &pod, metav1.CreateOptions{})
-		assert.NoError(t, err)
-	}
-
-	informerFactory := informers.NewSharedInformerFactory(client, 0)
-	podLister := informerFactory.Core().V1().Pods().Lister()
-
-	// Fill the cache
-	_ = informerFactory.Core().V1().Pods().Informer()
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-	informerFactory.Start(stopCh)
-	informerFactory.WaitForCacheSync(stopCh)
-
-	nodes, err := getWorkloadNodes(podLister, namespace, selector)
+	nodes, err := getWorkloadNodes(pods, selector)
 	assert.NoError(t, err)
 	assert.ElementsMatch(t, []string{"node1", "node2"}, nodes)
 }
@@ -592,9 +567,8 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 			Spec:      corev1.PodSpec{NodeName: "node-1"},
 		}
 
-		client := fake.NewSimpleClientset(deploy, pod)
+		client := fake.NewSimpleClientset(deploy)
 		informerFactory := informers.NewSharedInformerFactory(client, 0)
-		podLister := informerFactory.Core().V1().Pods().Lister()
 		deployLister := informerFactory.Apps().V1().Deployments().Lister()
 
 		// Start informers and wait for sync
@@ -603,7 +577,8 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		informerFactory.Start(stopCh)
 		informerFactory.WaitForCacheSync(stopCh)
 
-		changed := updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		pods := []*corev1.Pod{pod}
+		changed := updateNatGwWorkloadStatus(gw, pods, deployLister, nil, namespace)
 		assert.True(t, changed)
 		assert.Equal(t, util.KindDeployment, gw.Status.Workload.Kind)
 		assert.Equal(t, "apps/v1", gw.Status.Workload.APIVersion)
@@ -611,7 +586,7 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		assert.Equal(t, []string{"node-1"}, gw.Status.Workload.Nodes)
 
 		// Test no change
-		changed = updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		changed = updateNatGwWorkloadStatus(gw, pods, deployLister, nil, namespace)
 		assert.False(t, changed)
 	})
 
@@ -638,10 +613,10 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 			Spec:      corev1.PodSpec{NodeName: "node-1"},
 		}
 
-		client := fake.NewSimpleClientset(sts, pod)
+		client := fake.NewSimpleClientset(sts)
 		informerFactory := informers.NewSharedInformerFactory(client, 0)
-		podLister := informerFactory.Core().V1().Pods().Lister()
 		deployLister := informerFactory.Apps().V1().Deployments().Lister()
+		stsLister := informerFactory.Apps().V1().StatefulSets().Lister()
 
 		// Start informers and wait for sync
 		stopCh := make(chan struct{})
@@ -649,7 +624,7 @@ func TestUpdateNatGwWorkloadStatus(t *testing.T) {
 		informerFactory.Start(stopCh)
 		informerFactory.WaitForCacheSync(stopCh)
 
-		changed := updateNatGwWorkloadStatus(gw, podLister, deployLister, client, namespace)
+		changed := updateNatGwWorkloadStatus(gw, []*corev1.Pod{pod}, deployLister, stsLister, namespace)
 		assert.True(t, changed)
 		assert.Equal(t, util.KindStatefulSet, gw.Status.Workload.Kind)
 		assert.Equal(t, "apps/v1", gw.Status.Workload.APIVersion)
