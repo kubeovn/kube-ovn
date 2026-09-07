@@ -88,6 +88,24 @@ func Test_getIPFamilies(t *testing.T) {
 	}
 }
 
+func TestGenerateHeadlessServiceExplicitEndpointsHasNoSelector(t *testing.T) {
+	slr := &kubeovnv1.SwitchLBRule{
+		Name: "slr", Namespace: "default",
+		Spec: kubeovnv1.SwitchLBRuleSpec{
+			Vip:       "10.0.0.10",
+			Endpoints: []string{"10.0.0.2"},
+			Ports: []kubeovnv1.SwitchLBRulePort{{
+				Name: "tcp", Port: 80, TargetPort: 80, Protocol: "TCP",
+			}},
+		},
+	}
+
+	service := generateHeadlessService(slr, nil)
+	if service.Spec.Selector != nil {
+		t.Fatalf("explicit endpoint service selector = %#v, want nil", service.Spec.Selector)
+	}
+}
+
 func Test_setUserDefinedNetwork(t *testing.T) {
 	tests := []struct {
 		name    string

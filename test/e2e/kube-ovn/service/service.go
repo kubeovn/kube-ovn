@@ -160,15 +160,19 @@ var _ = framework.Describe("[group:service]", func() {
 		checkContainsClusterIP := func(v6ClusterIP string, isContain bool) {
 			ginkgo.GinkgoHelper()
 
-			cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=vips list Load_Balancer cluster-tcp-loadbalancer"
+			lbName := "cluster-tcp-loadbalancer"
+			if !f.VersionPriorTo(1, 17) {
+				lbName = fmt.Sprintf("service:%s/%s:tcp:internal", service.Namespace, service.Name)
+			}
+			cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=vips list Load_Balancer %s", lbName)
 			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 				output, _, err := framework.NBExec(cmd)
 				framework.ExpectNoError(err)
 				output = bytes.TrimSpace(output)
-				if output[0] == '"' {
+				if len(output) >= 2 && output[0] == '"' && output[len(output)-1] == '"' {
 					output = output[1 : len(output)-1]
 				}
-				framework.Logf("cluster-tcp-loadbalancer vips is %q", output)
+				framework.Logf("%s vips is %q", lbName, output)
 				framework.Logf("IPv6 cluster ip is %q", v6ClusterIP)
 				vips := strings.Fields(string(output))
 				prefix := util.JoinHostPort(v6ClusterIP, port) + "="

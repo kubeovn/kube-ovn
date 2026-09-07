@@ -148,7 +148,7 @@ var _ = framework.SerialDescribe("[group:rlr]", func() {
 		}
 
 		ginkgo.By("Ensuring docker network " + dockerNetworkName + " exists")
-		dockerNetwork, err := docker.NetworkCreate(dockerNetworkName, f.HasIPv6(), false)
+		dockerNetwork, err := docker.NetworkCreate(dockerNetworkName, f.HasIPv6(), true)
 		framework.ExpectNoError(err, "creating docker network "+dockerNetworkName)
 
 		ginkgo.By("Getting Kind nodes")

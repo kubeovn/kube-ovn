@@ -394,7 +394,9 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 		selectors map[string]string
 	)
 
-	selectors = make(map[string]string, 0)
+	if len(slr.Spec.Selector) != 0 {
+		selectors = make(map[string]string, len(slr.Spec.Selector))
+	}
 	for _, s := range slr.Spec.Selector {
 		keyValue := strings.Split(strings.TrimSpace(s), ":")
 		if len(keyValue) != 2 {
