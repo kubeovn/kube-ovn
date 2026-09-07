@@ -30,15 +30,12 @@ diff --git a/northd/northd.c b/northd/northd.c
 index 9f1ee8397..79f03c7c5 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -113,6 +113,8 @@ static struct sset skip_conntrack_dst_cidrs_v6 = SSET_INITIALIZER(&skip_conntrac
- 
- static bool ls_ct_skip_dst_lport_ips = false;
+@@ -95,3 +95,5 @@ static bool acl_ct_translation = false;
+ static bool acl_ct_translation = false;
  
 +static bool ls_dnat_mod_dl_dst = false;
 +
- #define MAX_OVN_TAGS 4096
- 
- #define MAX_OVN_NF_GROUP_IDS 256
+ /* If this option is 'true' northd will implicitly add a lowest-priority
 @@ -9141,6 +9143,57 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
      }
  }
@@ -105,14 +102,8 @@ index 9f1ee8397..79f03c7c5 100644
      build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
      build_lswitch_external_port(op, lflows);
      build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
-@@ -21243,6 +21298,8 @@ ovnnb_db_run(struct northd_input *input_data,
-     ls_ct_skip_dst_lport_ips = smap_get_bool(input_data->nb_options,
-                                              "ls_ct_skip_dst_lport_ips",
-                                              false);
+@@ -21253,0 +21253,2 @@
 +    ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,
 +                                       "ls_dnat_mod_dl_dst", false);
- 
-     /* deprecated, use --event instead */
-     controller_event_en = smap_get_bool(input_data->nb_options,
 -- 
 2.55.0

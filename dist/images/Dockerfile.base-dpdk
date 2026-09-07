@@ -15,8 +15,6 @@ ADD patches/fdb-fix-mac-learning-in-environments-with-hairpin-enabled.patch $SRC
 ADD patches/ovsdb-tool-add-optional-server-id-parameter-for-join-cluster-command.patch $SRC_DIR
 ADD patches/fix-memory-leak-in-qos.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-command-fix-cluster.patch $SRC_DIR
-ADD patches/netdev-reduce-cpu-utilization-for-getting-device-addresses.patch $SRC_DIR
-ADD patches/ovs-router-skip-getting-source-address-for-kube-ipvs0.patch $SRC_DIR
 ADD patches/increase-the-default-probe-to-60s.patch $SRC_DIR
 ADD patches/modify-src-route-priority.patch $SRC_DIR
 ADD patches/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch $SRC_DIR
@@ -41,10 +39,6 @@ RUN cd /usr/src/ && \
     git apply --unidiff-zero $SRC_DIR/fix-memory-leak-in-qos.patch && \
     # ovsdb-tool: add command fix-cluster
     git apply --unidiff-zero $SRC_DIR/ovsdb-tool-add-command-fix-cluster.patch && \
-    # netdev: reduce cpu utilization for getting device addresses
-    git apply --unidiff-zero $SRC_DIR/netdev-reduce-cpu-utilization-for-getting-device-addresses.patch && \
-    # ovs-router: skip getting source address for kube-ipvs0
-    git apply --unidiff-zero $SRC_DIR/ovs-router-skip-getting-source-address-for-kube-ipvs0.patch && \
     # increase the default probe interval for large cluster
     git apply --unidiff-zero $SRC_DIR/increase-the-default-probe-to-60s.patch && \
     ovs_commit=$(git rev-parse --short=12 HEAD) && \

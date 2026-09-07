@@ -47,8 +47,6 @@ ADD patches/ovsdb-tool-add-optional-server-id-parameter-for-join-cluster-command
 ADD patches/fix-memory-leak-in-qos.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-command-fix-cluster.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-commands-db-raft-header-rejoin-cluster.patch $SRC_DIR
-ADD patches/netdev-reduce-cpu-utilization-for-getting-device-addresses.patch $SRC_DIR
-ADD patches/ovs-router-skip-getting-source-address-for-kube-ipvs0.patch $SRC_DIR
 ADD patches/increase-the-default-probe-to-60s.patch $SRC_DIR
 ADD patches/update-ovs-sandbox-for-docker-run.patch $SRC_DIR
 ADD patches/modify-src-route-priority.patch $SRC_DIR
@@ -84,10 +82,6 @@ RUN cd /usr/src/ && \
     git apply --unidiff-zero $SRC_DIR/ovsdb-tool-add-command-fix-cluster.patch && \
     # ovsdb-tool: add commands db-raft-header/rejoin-cluster
     git apply --unidiff-zero $SRC_DIR/ovsdb-tool-add-commands-db-raft-header-rejoin-cluster.patch && \
-    # netdev: reduce cpu utilization for getting device addresses
-    git apply --unidiff-zero $SRC_DIR/netdev-reduce-cpu-utilization-for-getting-device-addresses.patch && \
-    # ovs-router: skip getting source address for kube-ipvs0
-    git apply --unidiff-zero $SRC_DIR/ovs-router-skip-getting-source-address-for-kube-ipvs0.patch && \
     # increase the default probe interval for large cluster
     git apply --unidiff-zero $SRC_DIR/increase-the-default-probe-to-60s.patch && \
     # update ovs-sandbox for docker run
