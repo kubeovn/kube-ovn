@@ -253,7 +253,6 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oldLb, err)
 					return err
 				}
-
 			}
 		}
 	}
