@@ -19,8 +19,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-const localExternalVIPKeyPrefix = "kube-ovn.io/local-external-vip/"
-
 // CreateLoadBalancer create loadbalancer
 func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	var (
@@ -188,14 +186,6 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 					Mutator: ovsdb.MutateOperationDelete,
 				},
 			}
-			key := localExternalVIPKeyPrefix + vipEndpoint
-			if value, ok := lb.ExternalIDs[key]; ok {
-				mutations = append(mutations, model.Mutation{
-					Field:   &lb.ExternalIDs,
-					Value:   map[string]string{key: value},
-					Mutator: ovsdb.MutateOperationDelete,
-				})
-			}
 			return mutations
 		},
 	)
@@ -210,53 +200,6 @@ func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHe
 	if err = c.Transact("lb-add", ops); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to delete vip %s from load balancers %s: %w", vipEndpoint, lbName, err)
-	}
-	return nil
-}
-
-// SetLoadBalancerVIPExternalTrafficLocal records the node LSP of the chassis
-// announcing an external VIP of a LoadBalancer Service with
-// externalTrafficPolicy=Local.
-func (c *OVNNbClient) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP string) error {
-	key := localExternalVIPKeyPrefix + vip
-	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		if vipNodeLSP != "" {
-			if lb.ExternalIDs[key] == vipNodeLSP {
-				return nil
-			}
-			mutations := make([]model.Mutation, 0, 2)
-			if oldValue, ok := lb.ExternalIDs[key]; ok {
-				mutations = append(mutations, model.Mutation{
-					Field:   &lb.ExternalIDs,
-					Value:   map[string]string{key: oldValue},
-					Mutator: ovsdb.MutateOperationDelete,
-				})
-			}
-			mutations = append(mutations, model.Mutation{
-				Field:   &lb.ExternalIDs,
-				Value:   map[string]string{key: vipNodeLSP},
-				Mutator: ovsdb.MutateOperationInsert,
-			})
-			return mutations
-		}
-
-		if _, ok := lb.ExternalIDs[key]; !ok {
-			return nil
-		}
-		return []model.Mutation{{
-			Field:   &lb.ExternalIDs,
-			Value:   map[string]string{key: lb.ExternalIDs[key]},
-			Mutator: ovsdb.MutateOperationDelete,
-		}}
-	})
-	if err != nil {
-		return fmt.Errorf("failed to generate operations when updating external traffic local marker for vip %s on load balancer %s: %w", vip, lbName, err)
-	}
-	if len(ops) == 0 {
-		return nil
-	}
-	if err = c.Transact("lb-update-external-vip", ops); err != nil {
-		return fmt.Errorf("failed to update external traffic local marker for vip %s on load balancer %s: %w", vip, lbName, err)
 	}
 	return nil
 }
@@ -287,41 +230,6 @@ func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int)
 	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to set affinity timeout of lb %s to %d: %w", lbName, timeout, err)
-	}
-	return nil
-}
-
-// SetLoadBalancerPreferLocalBackend sets the LB's affinity timeout in seconds
-func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
-	var (
-		options map[string]string
-		lb      *ovnnb.LoadBalancer
-		value   string
-		err     error
-	)
-
-	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
-		klog.Errorf("failed to get lb: %v", err)
-		return err
-	}
-
-	if preferLocalBackend {
-		value = "true"
-	} else {
-		value = "false"
-	}
-	if len(lb.Options) != 0 && lb.Options["prefer_local_backend"] == value {
-		return nil
-	}
-
-	options = make(map[string]string, len(lb.Options)+1)
-	maps.Copy(options, lb.Options)
-	options["prefer_local_backend"] = value
-
-	lb.Options = options
-	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to set prefer local backend of lb %s to %s: %w", lbName, value, err)
 	}
 	return nil
 }

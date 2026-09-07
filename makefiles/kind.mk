@@ -562,17 +562,17 @@ kind-configure-metallb:
 
 .PHONY: kind-install-metallb-pool-from-underlay-ipv4
 kind-install-metallb-pool-from-underlay-ipv4: kind-load-image
-	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false kind-install
+	@$(MAKE) LS_CT_SKIP_DST_LPORT_IPS=false kind-install
 	@$(MAKE) kind-install-metallb
 
 .PHONY: kind-install-metallb-pool-from-underlay-ipv6
 kind-install-metallb-pool-from-underlay-ipv6: kind-load-image
-	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false IPV6=true kind-install
+	@$(MAKE) LS_CT_SKIP_DST_LPORT_IPS=false IPV6=true kind-install
 	@$(MAKE) IPV6=true kind-install-metallb
 
 .PHONY: kind-install-metallb-pool-from-underlay-dual
 kind-install-metallb-pool-from-underlay-dual: kind-load-image
-	@$(MAKE) ENABLE_OVN_LB_PREFER_LOCAL=true LS_CT_SKIP_DST_LPORT_IPS=false DUAL_STACK=true kind-install
+	@$(MAKE) LS_CT_SKIP_DST_LPORT_IPS=false DUAL_STACK=true kind-install
 	@$(MAKE) DUAL_STACK=true kind-install-metallb
 
 .PHONY: kind-install-metallb-pool-from-underlay
