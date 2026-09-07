@@ -1,39 +1,36 @@
 {%- if ip_family is not defined -%}
   {%- set ip_family = "ipv4" -%}
 {%- endif -%}
-cluster:
-  discovery:
-    enabled: false
-  allowSchedulingOnControlPlanes: true
-  apiServer:
-    certSANs:
-      - talos-control-plane
-      - 172.99.99.10
-      - 2001:db8:99:99::10
-  controllerManager:
-    extraArgs:
-      {%- if ip_family is equalto "ipv4" %}
-      node-cidr-mask-size: 24
-      {%- elif ip_family is equalto "ipv6" %}
-      node-cidr-mask-size: 120
-      {%- else %}
-      node-cidr-mask-size-ipv4: 24
-      node-cidr-mask-size-ipv6: 120
-      {%- endif %}
-  network:
-    cni:
-      name: none
-    podSubnets:
-      {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
-      - 10.16.0.0/16
-      {%- endif %}
-      {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
-      - fd00:10:16::/112
-      {%- endif %}
-    serviceSubnets:
-      {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
-      - 10.96.0.0/12
-      {%- endif %}
-      {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
-      - fd00:10:96::/108
-      {%- endif %}
+apiVersion: v1alpha1
+kind: KubeNetworkConfig
+dnsDomain: cluster.local
+podSubnets:
+  {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
+  - 10.16.0.0/16
+  {%- endif %}
+  {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
+  - fd00:10:16::/112
+  {%- endif %}
+serviceSubnets:
+  {%- if ip_family is equalto "ipv4" or ip_family is equalto "dual" %}
+  - 10.96.0.0/12
+  {%- endif %}
+  {%- if ip_family is equalto "ipv6" or ip_family is equalto "dual" %}
+  - fd00:10:96::/108
+  {%- endif %}
+{%- if ip_family is equalto "ipv4" %}
+nodeCIDRMaskSizeIPv4: 24
+{%- elif ip_family is equalto "ipv6" %}
+nodeCIDRMaskSizeIPv6: 120
+{%- else %}
+nodeCIDRMaskSizeIPv4: 24
+nodeCIDRMaskSizeIPv6: 120
+{%- endif %}
+---
+apiVersion: v1alpha1
+kind: KubeFlannelCNIConfig
+$patch: delete
+---
+apiVersion: v1alpha1
+kind: KubeNodeConfig
+taints: null

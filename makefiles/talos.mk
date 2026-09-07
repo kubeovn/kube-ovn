@@ -8,7 +8,10 @@ TALOS_IMAGE_DIR ?= /var/lib/talos
 # customization:
 #   extraKernelArgs:
 #     - talos.network.interface.ignore=enp0s5f1
-TALOS_IMAGE_URL = https://factory.talos.dev/image/9ecea35ddd146528c1d742aab47e680a1f1137a93fc7bab55edc1afee125a658/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
+TALOS_IMAGE_SCHEMATIC ?= 9ecea35ddd146528c1d742aab47e680a1f1137a93fc7bab55edc1afee125a658
+TALOS_IMAGE_URL = https://factory.talos.dev/image/$(TALOS_IMAGE_SCHEMATIC)/$(TALOS_VERSION)/metal-$(TALOS_ARCH).iso
+TALOS_INSTALLER_IMAGE = factory.talos.dev/metal-installer/$(TALOS_IMAGE_SCHEMATIC):$(TALOS_VERSION)
+TALOS_INSTALL_DISK ?= /dev/vda
 TALOS_IMAGE_ISO = $(TALOS_VERSION)-metal-$(TALOS_ARCH).iso
 TALOS_IMAGE_PATH = $(TALOS_IMAGE_DIR)/$(TALOS_IMAGE_ISO)
 
@@ -70,7 +73,7 @@ talos-registry-mirror:
 .PHONY: talos-prepare-images
 talos-prepare-images: talos-registry-mirror
 	@echo ">>> Preparing Talos images..."
-	@for image in ghcr.io/siderolabs/installer:$(TALOS_VERSION) $$(talosctl image default | grep -v flannel); do \
+	@for image in $(TALOS_INSTALLER_IMAGE) $$(talosctl image default | grep -v flannel); do \
 		if echo "$$image" | grep -qE '/(kube-(apiserver|controller-manager|scheduler|proxy)|kubelet):'; then \
 			image=$$(echo $$image | sed -e 's/:v\([[:digit:]]\+\.\)\{2\}[[:digit:]]\+$$/:v$(TALOS_K8S_VERSION)/'); \
 		fi; \
@@ -166,10 +169,17 @@ talos-apply-config-%:
 	ip_family=$* jinjanate talos/cluster-config.yaml.j2 -o talos/cluster-config.yaml
 	talosctl gen config --force -o talos \
 		--kubernetes-version "$(TALOS_K8S_VERSION)" \
+		--install-disk "$(TALOS_INSTALL_DISK)" \
+		--install-image "$(TALOS_INSTALLER_IMAGE)" \
+		--with-cluster-discovery=false \
+		--additional-sans talos-control-plane \
+		--additional-sans $(TALOS_CONTROL_PLANE_IPV4) \
+		--additional-sans $(TALOS_CONTROL_PLANE_IPV6) \
 		--registry-mirror docker.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror gcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror ghcr.io=$(TALOS_REGISTRY_MIRROR_URL) \
 		--registry-mirror registry.k8s.io=$(TALOS_REGISTRY_MIRROR_URL) \
+		--registry-mirror factory.talos.dev=$(TALOS_REGISTRY_MIRROR_URL) \
 		--config-patch "@talos/cluster-config.yaml" "$(TALOS_CLUSTER_NAME)" "$(TALOS_ENDPOINT)"
 	mv talos/talosconfig ~/.talos/config
 	@echo ">>> Applying Talos node $* configuration..."
