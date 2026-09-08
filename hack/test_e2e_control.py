@@ -1706,9 +1706,11 @@ class E2EControlTest(unittest.TestCase):
             "Pull private Kind node image with trusted token",
             workflow,
         )
-        self.assertIn("kind-node-v1.36.1.tar", workflow)
-        self.assertIn("kind-node-v1.29.14.tar", workflow)
+        self.assertIn("kind-node-v1.37.0.tar", workflow)
+        self.assertNotIn("kind-node-v1.29.14.tar", workflow)
         self.assertNotIn("kind-ghcr-pull", workflow)
+        self.assertIn("prepare-kind-node-images", workflow)
+        self.assertNotIn("installation-compatibility-test", workflow)
         self.assertIn(
             "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "
             "github.event.pull_request.head.sha || inputs.headSHA || github.sha }}",
@@ -1758,6 +1760,8 @@ class E2EControlTest(unittest.TestCase):
                 )
                 if "docker load --input kind-node-" in block:
                     self.assertIn("- prepare-kind-node-images", block)
+                    self.assertIn("kind-node-v1.37.0.tar", block)
+                    self.assertNotIn("kind-node-v1.29.14.tar", block)
 
     def testTrustedDispatchDetectsBaseImageChanges(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
