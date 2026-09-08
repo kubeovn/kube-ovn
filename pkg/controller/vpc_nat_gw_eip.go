@@ -529,7 +529,6 @@ func (c *Controller) delEIPBandwidthLimitRules(eip *kubeovnv1.IptablesEIP, v4ip 
 
 // del tc rule for eip in nat gw pod
 func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
-	var err error
 	qosPolicy, err := c.qosPoliciesLister.Get(eip.Status.QoSPolicy)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -539,7 +538,25 @@ func (c *Controller) delEipQoS(eip *kubeovnv1.IptablesEIP, v4ip string) error {
 		return err
 	}
 
-	return c.delEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules)
+	if err = c.delEIPBandwidthLimitRules(eip, v4ip, qosPolicy.Status.BandwidthLimitRules); err != nil {
+		return err
+	}
+
+	// Reapply QoS for the other EIPs on this gateway. Removing one EIP's tc
+	// filter can remove the shared HTB state, so its peers must be restored.
+	eips, err := c.iptablesEipsLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, peer := range eips {
+		if peer.Name == eip.Name || peer.Spec.NatGwDp != eip.Spec.NatGwDp || peer.Spec.QoSPolicy == "" || peer.Status.IP == "" {
+			continue
+		}
+		if err = c.addEipQoS(peer, peer.Status.IP); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Controller) addEipQoSInPod(

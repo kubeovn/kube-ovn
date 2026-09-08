@@ -408,19 +408,28 @@ func checkQosFloat(f *framework.Framework,
 	// The unlimited case is intentionally not tested: saturating the link is expensive and flaky,
 	// removing a policy is instead verified by falling back to another expected rate limit.
 
+	checkDirection := func(clientPod *corev1.Pod, serverEIP *apiv1.IptablesEIP, direction string) {
+		var result bandwidthValidationResult
+		for attempt := range 3 {
+			result = validateRateLimitFloatWithResult(iperf(f, clientPod, serverEIP), limitMbps)
+			if result.Passed {
+				break
+			}
+			// The first iperf run can race with tc rule installation after a policy update.
+			if attempt < 2 {
+				time.Sleep(5 * time.Second)
+			}
+		}
+		klog.Info(formatBandwidthSummary(result, direction))
+		framework.ExpectTrue(result.Passed, "expected %s bandwidth to be limited to %.2f~%.2f Mbps, but got %.2f Mbps",
+			direction, result.MinExpected, result.MaxExpected, result.BestMatch)
+	}
+
 	// Test egress: qosPod → noQosEIP (QoS applied on qosEIP's egress)
-	output := iperf(f, qosPod, noQosEIP)
-	result := validateRateLimitFloatWithResult(output, limitMbps)
-	klog.Info(formatBandwidthSummary(result, "Egress: qosPod -> noQosEIP"))
-	framework.ExpectTrue(result.Passed, "expected egress bandwidth to be limited to %.2f~%.2f Mbps, but got %.2f Mbps",
-		result.MinExpected, result.MaxExpected, result.BestMatch)
+	checkDirection(qosPod, noQosEIP, "Egress: qosPod -> noQosEIP")
 
 	// Test ingress: noQosPod → qosEIP (QoS applied on qosEIP's ingress)
-	output = iperf(f, noQosPod, qosEIP)
-	result = validateRateLimitFloatWithResult(output, limitMbps)
-	klog.Info(formatBandwidthSummary(result, "Ingress: noQosPod -> qosEIP"))
-	framework.ExpectTrue(result.Passed, "expected ingress bandwidth to be limited to %.2f~%.2f Mbps, but got %.2f Mbps",
-		result.MinExpected, result.MaxExpected, result.BestMatch)
+	checkDirection(noQosPod, qosEIP, "Ingress: noQosPod -> qosEIP")
 }
 
 func getNicDefaultQoSPolicy(limit int) apiv1.QoSPolicyBandwidthLimitRules {
@@ -1111,11 +1120,16 @@ func parseBandwidthFromIperfOutput(text string) []float64 {
 			continue
 		}
 		fields := strings.Split(line, ",")
-		number, err := strconv.Atoi(fields[len(fields)-1])
+		// Iperf's extended CSV output puts the bandwidth in column 10; the
+		// trailing columns are TCP diagnostics, not bandwidth.
+		if len(fields) <= 9 {
+			continue
+		}
+		bandwidth, err := strconv.ParseFloat(fields[9], 64)
 		if err != nil {
 			continue
 		}
-		bandwidths = append(bandwidths, float64(number))
+		bandwidths = append(bandwidths, bandwidth)
 	}
 	return bandwidths
 }
