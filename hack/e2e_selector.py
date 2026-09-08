@@ -18,13 +18,12 @@ infrastructureJobs = {
     "build-e2e-binaries",
     "e2e-selection",
     "e2e-control-validation",
-    "prepare-kind-node-images",
     "e2e-executor-result",
     "notify-x86-e2e-gate",
     "publish-pr-e2e-checks",
     "push",
 }
-expectedX86RunnerJobs = 85
+expectedX86RunnerJobs = 84
 mandatorySmoke = [
     {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
     {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "underlay"},

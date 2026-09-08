@@ -244,7 +244,6 @@ class E2EControlTest(unittest.TestCase):
             infraTitles=[
                 "Build kube-ovn",
                 "Build E2E Binaries",
-                "Prepare private Kind node image (${{ matrix.k8s-version }})",
             ],
         )
         byName = {payload["name"]: payload for payload in payloads}
@@ -1702,13 +1701,15 @@ class E2EControlTest(unittest.TestCase):
         self.assertEqual(workflow.count("statuses: write"), 1)
         self.assertIn("name: Publish x86 E2E checks on the pull request", workflow)
         self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
-        self.assertIn(
+        self.assertNotIn(
             "Pull private Kind node image with trusted token",
             workflow,
         )
-        self.assertIn("kind-node-v1.37.0.tar", workflow)
-        self.assertIn("kind-node-v1.29.14.tar", workflow)
+        self.assertNotIn("kind-node-v1.37.0.tar", workflow)
+        self.assertNotIn("kind-node-v1.29.14.tar", workflow)
         self.assertNotIn("kind-ghcr-pull", workflow)
+        self.assertNotIn("prepare-kind-node-images", workflow)
+        self.assertNotIn("installation-compatibility-test", workflow)
         self.assertIn(
             "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "
             "github.event.pull_request.head.sha || inputs.headSHA || github.sha }}",
@@ -1743,7 +1744,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("make ut", build)
         self.assertIn("make lint", build)
         self.assertIn("make image-kube-ovn", build)
-        self.assertNotIn("- prepare-kind-node-images", build)
+        self.assertNotIn("prepare-kind-node-images", build)
         self.assertIn(
             "if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'",
             build,
@@ -1756,8 +1757,8 @@ class E2EControlTest(unittest.TestCase):
                     "contains(fromJSON(needs.e2e-selection.outputs.executionJobIds)",
                     block,
                 )
-                if "docker load --input kind-node-" in block:
-                    self.assertIn("- prepare-kind-node-images", block)
+                self.assertNotIn("prepare-kind-node-images", block)
+                self.assertNotIn("docker load --input kind-node-", block)
 
     def testTrustedDispatchDetectsBaseImageChanges(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()

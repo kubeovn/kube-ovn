@@ -726,7 +726,6 @@ visibleInfrastructureJobIds = (
     "build-kube-ovn",
     "build-e2e-binaries",
     "build-vpc-nat-gateway",
-    "prepare-kind-node-images",
 )
 
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedRunnerJobs": 85,
+  "expectedRunnerJobs": 84,
   "forceFull": false,
   "fullThreshold": 3,
   "productionPrefixes": ["cmd/", "fastpath/", "pkg/", "versions/"],
@@ -206,7 +206,6 @@
     "install-platform": {
       "jobs": [
         {"id": "chart-test", "matrix": {"ssl": ["true", "false"]}},
-        {"id": "installation-compatibility-test", "matrix": {"k8s-version": ["v1.29.14"]}},
         {"id": "talos-installation-test", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]}}
       ]
     },
