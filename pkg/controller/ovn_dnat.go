@@ -267,6 +267,7 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 	if cachedDnat.Spec.OvnEip != "" {
 		c.resetOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
 	}
+	c.notifyDeletedVpcChild(vpcOfNatRule(cachedDnat.Status.Vpc, cachedDnat.Spec.Vpc), "ovn dnat rule "+cachedDnat.Name)
 	return nil
 }
 
@@ -318,6 +319,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		if cachedDnat.Spec.OvnEip != "" {
 			c.resetOvnEipQueue.Add(cachedDnat.Spec.OvnEip)
 		}
+		c.notifyDeletedVpcChild(vpcOfNatRule(cachedDnat.Status.Vpc, cachedDnat.Spec.Vpc), "ovn dnat rule "+cachedDnat.Name)
 		return nil
 	}
 

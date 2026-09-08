@@ -35,24 +35,21 @@ var _ = framework.SerialDescribe("[group:vpc-subnet-delete]", func() {
 		ginkgo.By("deleting the VPC while its subnet still exists")
 		err := vpcClient.VpcInterface.Delete(context.Background(), vpc.Name, metav1.DeleteOptions{})
 		if err != nil {
-			// Admission validation may reject this request before the controller sees it.
-			// That is a valid deployment mode, but it cannot exercise the finalizer path.
 			framework.Logf("VPC deletion rejected by admission: %v", err)
-			subnetClient.DeleteSync(subnet.Name)
-			vpcClient.DeleteSync(vpc.Name)
-			return
+		} else {
+			// The controller finalizer must hold the VPC in Terminating while the subnet exists.
+			ginkgo.By("checking the VPC stays in Terminating")
+			framework.ExpectError(vpcClient.WaitToDisappear(vpc.Name, 2*time.Second, 20*time.Second),
+				"vpc %s should not disappear while subnet %s exists", vpc.Name, subnet.Name)
+			terminating := vpcClient.Get(vpc.Name)
+			framework.ExpectNotNil(terminating.DeletionTimestamp)
 		}
 
-		// The controller finalizer must hold the VPC in Terminating: releasing it here would
-		// tear down the logical router while the subnet cleanup is still running.
-		ginkgo.By("checking the VPC stays in Terminating")
-		framework.ExpectError(vpcClient.WaitToDisappear(vpc.Name, 2*time.Second, 20*time.Second),
-			"vpc %s should not disappear while subnet %s exists", vpc.Name, subnet.Name)
-		terminating := vpcClient.Get(vpc.Name)
-		framework.ExpectNotNil(terminating.DeletionTimestamp)
-
-		ginkgo.By("deleting the subnet unblocks the VPC")
+		ginkgo.By("deleting the subnet and VPC")
 		subnetClient.DeleteSync(subnet.Name)
+		if err != nil {
+			framework.ExpectNoError(vpcClient.VpcInterface.Delete(context.Background(), vpc.Name, metav1.DeleteOptions{}))
+		}
 		framework.ExpectNoError(vpcClient.WaitToDisappear(vpc.Name, 2*time.Second, 2*time.Minute))
 	})
 })

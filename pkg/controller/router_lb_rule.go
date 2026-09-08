@@ -137,12 +137,12 @@ func (c *Controller) enqueueDeleteRouterLBRule(obj any) {
 	}
 
 	klog.Infof("enqueue del RouterLBRule %s", rlr.Name)
-	if len(rlr.GetFinalizers()) == 0 {
-		// Legacy object: cleanup must finish before its parent is notified.
+	if controllerutil.ContainsFinalizer(rlr, util.KubeOVNControllerFinalizer) || len(rlr.GetFinalizers()) == 0 {
+		// Legacy objects and objects still carrying our finalizer need the cleanup queue.
 		c.delRouterLBRuleQueue.Add(newRouterLBRuleInfo(rlr))
 		return
 	}
-	// A finalizer means cleanup completed before the object disappeared.
+	// Our finalizer is gone, so cleanup completed before the object disappeared.
 	c.notifyDeletedVpcChild(rlr.Spec.Vpc, "router lb rule "+rlr.Name)
 }
 

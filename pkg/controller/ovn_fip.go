@@ -303,6 +303,7 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 		if cachedFip.Spec.OvnEip != "" {
 			c.resetOvnEipQueue.Add(cachedFip.Spec.OvnEip)
 		}
+		c.notifyDeletedVpcChild(cachedFip.Status.Vpc, "ovn fip "+cachedFip.Name)
 		return nil
 	}
 
@@ -446,6 +447,7 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	if cachedFip.Spec.OvnEip != "" {
 		c.resetOvnEipQueue.Add(cachedFip.Spec.OvnEip)
 	}
+	c.notifyDeletedVpcChild(cachedFip.Status.Vpc, "ovn fip "+cachedFip.Name)
 	return nil
 }
 

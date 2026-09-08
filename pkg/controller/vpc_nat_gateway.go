@@ -194,11 +194,19 @@ func (c *Controller) handleDelVpcNatGw(gw *kubeovnv1.VpcNatGateway) error {
 	}
 	klog.Infof("delete vpc nat gw %s in namespace %s", workloadName, natGwNs)
 
-	// STS are legacy NAT gateways, which might not have the finalizer yet.
-	if err := c.config.KubeClient.AppsV1().StatefulSets(natGwNs).Delete(context.Background(),
-		workloadName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
-		klog.Error(err)
-		return err
+	apps := c.config.KubeClient.AppsV1()
+	for _, deleteWorkload := range []func() error{
+		func() error {
+			return apps.Deployments(natGwNs).Delete(context.Background(), workloadName, metav1.DeleteOptions{})
+		},
+		func() error {
+			return apps.StatefulSets(natGwNs).Delete(context.Background(), workloadName, metav1.DeleteOptions{})
+		},
+	} {
+		if err := deleteWorkload(); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	// Prefer the latest lister object, but retain the DeleteFunc snapshot after the CR
