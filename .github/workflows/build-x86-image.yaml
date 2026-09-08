@@ -434,6 +434,43 @@ jobs:
       - name: Run control module tests
         run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
 
+  prepare-kind-node-images:
+    name: Prepare private Kind node image (${{ matrix.k8s-version }})
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]') ||
+      github.event_name == 'push'
+    needs: e2e-selection
+    permissions:
+      contents: read
+      packages: read
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-version:
+          - v1.37.0
+    steps:
+      - name: Pull private Kind node image with trusted token
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          K8S_VERSION: ${{ matrix.k8s-version }}
+        run: |
+          set -euo pipefail
+          dockerConfig=$(mktemp -d)
+          trap 'rm -rf "$dockerConfig"' EXIT
+          export DOCKER_CONFIG="$dockerConfig"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
+          docker pull "ghcr.io/kubeovn/kindest-node:$K8S_VERSION"
+          docker tag "ghcr.io/kubeovn/kindest-node:$K8S_VERSION" "kindest/node:$K8S_VERSION"
+          docker save "kindest/node:$K8S_VERSION" -o "kind-node-$K8S_VERSION.tar"
+
+      - name: Upload private Kind node image without credentials
+        uses: actions/upload-artifact@v7
+        with:
+          name: kind-node-${{ matrix.k8s-version }}
+          path: kind-node-${{ matrix.k8s-version }}.tar
+          retention-days: 2
+
   build-kube-ovn-base:
     name: Build kube-ovn-base
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
@@ -887,6 +924,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -979,6 +1017,13 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -1082,6 +1127,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'acl-sampling-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1115,6 +1161,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -1165,6 +1218,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-netpol-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1266,6 +1320,13 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -1365,6 +1426,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cyclonus-netpol-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -1437,6 +1499,13 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -1538,6 +1607,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1625,6 +1695,13 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -1735,6 +1812,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ic-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1818,6 +1896,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -1899,6 +1984,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'multus-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -1982,6 +2068,13 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -2053,6 +2146,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'non-primary-cni-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2144,6 +2238,13 @@ jobs:
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -2217,6 +2318,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'bgp-speaker-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2300,6 +2402,13 @@ jobs:
       - name: Load kube-ovn image
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create BGP kind and containerlab topology
         id: setup
@@ -2534,6 +2643,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'chart-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     strategy:
@@ -2573,6 +2683,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -2611,6 +2728,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'underlay-logical-gateway-installation-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -2644,6 +2762,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -2680,6 +2805,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-ovn-lb-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -2713,6 +2839,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -2751,6 +2884,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-np-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -2784,6 +2918,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -2822,6 +2963,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'lb-svc-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
@@ -2906,6 +3048,13 @@ jobs:
           docker load -i kube-ovn.tar
           docker load -i vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -2973,6 +3122,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'webhook-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3050,6 +3200,13 @@ jobs:
         run: |
           docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -3184,6 +3341,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-cnp-domain-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3273,6 +3431,13 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -3337,6 +3502,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-anp-domain-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3426,6 +3592,13 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -3490,6 +3663,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cilium-chaining-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3588,6 +3762,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -3661,6 +3842,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ha-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3750,6 +3932,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -3804,6 +3993,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-submariner-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -3864,6 +4054,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -3906,6 +4103,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'vpc-egress-gateway-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -3989,6 +4187,13 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -4095,6 +4300,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'iptables-vpc-nat-gw-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
@@ -4179,6 +4385,13 @@ jobs:
           docker load -i kube-ovn.tar
           docker load -i vpc-nat-gateway.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -4246,6 +4459,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'ovn-vpc-nat-gw-conformance-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4322,6 +4536,13 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -4396,6 +4617,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4472,6 +4694,13 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -4541,6 +4770,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-cert-mgr-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4617,6 +4847,13 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -4684,6 +4921,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-connectivity-test')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4766,6 +5004,13 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -4802,6 +5047,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-underlay-metallb-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -4885,6 +5131,13 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |
@@ -4953,6 +5206,7 @@ jobs:
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'router-lb-rule-e2e')
     needs:
       - e2e-selection
+      - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -5029,6 +5283,13 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
         run: |

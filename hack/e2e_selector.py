@@ -18,6 +18,7 @@ infrastructureJobs = {
     "build-e2e-binaries",
     "e2e-selection",
     "e2e-control-validation",
+    "prepare-kind-node-images",
     "e2e-executor-result",
     "notify-x86-e2e-gate",
     "publish-pr-e2e-checks",
