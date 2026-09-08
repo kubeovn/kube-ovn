@@ -1966,6 +1966,15 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		ginkgo.By("Verifying the loser does not program any rule")
 		gomega.Consistently(ownedRuleCount(loserSvcName), 15*time.Second, 3*time.Second).Should(gomega.Equal(0),
 			"the losing service must not create rules for an identity owned by another service")
+		ginkgo.By("Verifying the losing service does not publish the contested EIP")
+		gomega.Eventually(func() []corev1.LoadBalancerIngress {
+			service := serviceClient.Get(loserSvcName)
+			if service == nil {
+				return nil
+			}
+			return service.Status.LoadBalancer.Ingress
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeEmpty(),
+			"the losing service must not advertise an EIP owned by another service")
 
 		ginkgo.By("Verifying a conflict warning event is recorded on the loser service")
 		gomega.Eventually(func() bool {

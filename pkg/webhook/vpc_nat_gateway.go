@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -26,6 +27,14 @@ var (
 	iptablesSnatRule = ovnv1.SchemeGroupVersion.WithKind(util.KindIptablesSnatRule)
 	iptablesFIPRule  = ovnv1.SchemeGroupVersion.WithKind(util.KindIptablesFIPRule)
 )
+
+func canonicalPort(port string) string {
+	value, err := strconv.Atoi(port)
+	if err != nil {
+		return port
+	}
+	return strconv.Itoa(value)
+}
 
 func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req admission.Request) admission.Response {
 	gw := ovnv1.VpcNatGateway{}
@@ -565,11 +574,11 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return errors.New("parameter \"internalPort\" cannot be empty")
 	}
 
-	if err := util.ValidatePort(dnat.Spec.ExternalPort); err != nil {
+	if err := util.ValidateCanonicalPort(dnat.Spec.ExternalPort); err != nil {
 		return fmt.Errorf("externalPort %s is not a valid port: %w", dnat.Spec.ExternalPort, err)
 	}
 
-	if err := util.ValidatePort(dnat.Spec.InternalPort); err != nil {
+	if err := util.ValidateCanonicalPort(dnat.Spec.InternalPort); err != nil {
 		return fmt.Errorf("internalPort %s is not a valid port: %w", dnat.Spec.InternalPort, err)
 	}
 
@@ -578,8 +587,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return err
 	}
 
-	if !strings.EqualFold(dnat.Spec.Protocol, "tcp") &&
-		!strings.EqualFold(dnat.Spec.Protocol, "udp") {
+	if dnat.Spec.Protocol != "tcp" && dnat.Spec.Protocol != "udp" {
 		err := fmt.Errorf("invalid iptable protocol: %s,supported params: \"tcp\", \"udp\"", dnat.Spec.Protocol)
 		return err
 	}
@@ -620,7 +628,6 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		dnatList := &ovnv1.IptablesDnatRuleList{}
 		if err := v.cache.List(ctx, dnatList, cli.MatchingLabels{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
-			util.VpcDnatEPortLabel:      dnat.Spec.ExternalPort,
 		}); err != nil {
 			return fmt.Errorf("failed to list iptables DNAT rules: %w", err)
 		}
@@ -631,7 +638,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 				continue
 			}
 			// Only check same identity (EIP + Protocol)
-			if existing.Spec.EIP != dnat.Spec.EIP || existing.Spec.Protocol != dnat.Spec.Protocol {
+			if existing.Spec.EIP != dnat.Spec.EIP || strings.ToLower(existing.Spec.Protocol) != dnat.Spec.Protocol || canonicalPort(existing.Spec.ExternalPort) != dnat.Spec.ExternalPort {
 				continue
 			}
 

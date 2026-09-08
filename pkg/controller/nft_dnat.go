@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -188,7 +189,7 @@ func dedupSortedBackends(backends []string) []string {
 // change the old rule may still be terminating while newer live rules already carry the new
 // affinity, and the nft map must always be rebuilt with the live rules' settings.
 func (c *Controller) getShareBackends(gwName, eipName, externalPort, protocol, dnatName string) ([]string, string, int32, error) {
-	// The label selector only coarse-filters by gateway name + external port; the EIP
+	// The label selector only coarse-filters by gateway name; the EIP, port and protocol
 	// identity is intentionally enforced as a Spec post-filter below (d.Spec.EIP != eipName)
 	// rather than added to the selector:
 	//   - EIP name cannot be a label value: IptablesEIP is a cluster-scoped CR whose name may be
@@ -205,15 +206,14 @@ func (c *Controller) getShareBackends(gwName, eipName, externalPort, protocol, d
 	//     object) to the Spec.V4ip == Status.IP backfill invariant. We keep EIP as a single-source
 	//     Spec post-filter. A genuine speedup would require a dedicated label indexer, which is
 	//     over-engineering for this small per-(gw,eport) set.
-	// gwName + externalPort are safe selector dimensions: both are always populated, immutable
-	// (NatGwDp is webhook-immutable, externalPort comes straight from the DNAT Spec), and short.
+	// gwName is a safe selector dimension: it is always populated, immutable (NatGwDp is
+	// webhook-immutable), and short.
 	// gwName is explicitly length-validated by the VpcNatGateway webhook via
 	// ValidateNatGwStatefulSetNameLength (<=52 chars, derived from the 63-char label-value limit
 	// minus the StatefulSet revision-hash suffix), so it always fits in a label value; IptablesEIP
 	// has no such name-length webhook, which is the real reason its name cannot be used as a label.
 	dnats, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
 		util.VpcNatGatewayNameLabel: gwName,
-		util.VpcDnatEPortLabel:      externalPort,
 	}))
 	if err != nil {
 		return nil, "", 0, err
@@ -223,11 +223,13 @@ func (c *Controller) getShareBackends(gwName, eipName, externalPort, protocol, d
 	var affinity string
 	var affinityTimeout int32
 	affinitySet := false
+	canonicalExternalPort := canonicalDnatPort(externalPort)
+	canonicalProtocol := strings.ToLower(protocol)
 	for _, d := range dnats {
 		if d.Name == dnatName {
 			continue
 		}
-		if d.Spec.EIP != eipName || d.Spec.Protocol != protocol || d.Spec.ExternalPort != externalPort {
+		if d.Spec.EIP != eipName || strings.ToLower(d.Spec.Protocol) != canonicalProtocol || canonicalDnatPort(d.Spec.ExternalPort) != canonicalExternalPort {
 			continue
 		}
 		if d.Spec.Type != kubeovnv1.DnatRuleTypeShare {
@@ -309,8 +311,10 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort, p
 		return false, nil
 	}
 
+	canonicalExternalPort := canonicalDnatPort(externalPort)
+	canonicalProtocol := strings.ToLower(protocol)
 	for _, d := range dnats {
-		if d.Name == dnatName || d.Spec.EIP != eipName || d.Spec.Protocol != protocol {
+		if d.Name == dnatName || d.Spec.EIP != eipName || strings.ToLower(d.Spec.Protocol) != canonicalProtocol || canonicalDnatPort(d.Spec.ExternalPort) != canonicalExternalPort {
 			continue
 		}
 		// Found a DNAT with same identity
@@ -324,4 +328,12 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort, p
 		return true, err
 	}
 	return false, nil
+}
+
+func canonicalDnatPort(port string) string {
+	value, err := strconv.Atoi(port)
+	if err != nil {
+		return port
+	}
+	return strconv.Itoa(value)
 }

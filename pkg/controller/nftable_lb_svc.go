@@ -204,13 +204,18 @@ func (c *Controller) handleAddOrUpdateNftableLbService(key string) error {
 		return c.cleanupNftableLbService(cachedSvc, namespace, name)
 	}
 
-	// Publish the EIP's IPv4 address as the Service's external LoadBalancer ingress IP.
-	// Unlike the classic lb-svc path (which runs a VIP pod), this mode has no allocated
-	// ingress IP of its own; the EIP is the externally reachable address, so surface it in
-	// status.loadBalancer.ingress to fill in the otherwise-<pending> EXTERNAL-IP.
-	if err = c.ensureNftableLbSvcIngressIP(cachedSvc, eip.Status.IP); err != nil {
-		klog.Errorf("failed to set ingress ip for nftable lb service %s: %v", key, err)
+	// The gateway lives in its VpcNatGateway's VPC and can only DNAT to backends reachable
+	// there, so backend IPs are resolved against that VPC (see nftableLbBackendResolver).
+	natGw, err := c.vpcNatGatewayLister.Get(eip.Spec.NatGwDp)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return c.cleanupNftableLbService(cachedSvc, namespace, name)
+		}
+		klog.Errorf("nftable lb service %s: failed to get nat gateway %s referenced by eip %s: %v", key, eip.Spec.NatGwDp, eipName, err)
 		return err
+	}
+	if !natGw.DeletionTimestamp.IsZero() {
+		return c.cleanupNftableLbService(cachedSvc, namespace, name)
 	}
 
 	endpointSlices, err := c.endpointSlicesLister.EndpointSlices(namespace).List(labels.Set{discoveryv1.LabelServiceName: name}.AsSelector())
@@ -222,17 +227,6 @@ func (c *Controller) handleAddOrUpdateNftableLbService(key string) error {
 		return err
 	}
 
-	// The gateway lives in its VpcNatGateway's VPC and can only DNAT to backends reachable
-	// there, so backend IPs are resolved against that VPC (see nftableLbBackendResolver).
-	natGw, err := c.vpcNatGatewayLister.Get(eip.Spec.NatGwDp)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return c.cleanupNftableLbService(cachedSvc, namespace, name)
-		}
-		klog.Errorf("nftable lb service %s: failed to get nat gateway %s referenced by eip %s: %v", key, eip.Spec.NatGwDp, eipName, err)
-		return err
-	}
-
 	desired := buildDesiredNftableLbDnatRules(cachedSvc, eipName, endpointSlices, c.nftableLbBackendResolver(cachedSvc, natGw.Spec.Vpc))
 
 	// A share DNAT identity (eip+externalPort+protocol) aggregates all its backends into
@@ -240,8 +234,21 @@ func (c *Controller) handleAddOrUpdateNftableLbService(key string) error {
 	// (or a manually-created share rule) target the same identity, a deterministic winner
 	// keeps it and the others back off; this avoids backend cross-talk and reconcile
 	// oscillation between the competing owners.
+	conflicted := false
 	if len(desired) > 0 {
-		if err = c.resolveNftableLbConflicts(cachedSvc, key, desired); err != nil {
+		conflicted, err = c.resolveNftableLbConflicts(cachedSvc, key, desired)
+		if err != nil {
+			return err
+		}
+	}
+	if conflicted {
+		if err = c.clearNftableLbSvcIngressIP(cachedSvc); err != nil {
+			return err
+		}
+	} else {
+		// Publish the EIP only after gateway and identity ownership are validated.
+		if err = c.ensureNftableLbSvcIngressIP(cachedSvc, eip.Status.IP); err != nil {
+			klog.Errorf("failed to set ingress ip for nftable lb service %s: %v", key, err)
 			return err
 		}
 	}
@@ -355,7 +362,7 @@ func (c *Controller) ensureNftableLbSvcIngressIP(svc *v1.Service, ip string) err
 		}
 		updated.Annotations[util.NftableLbSvcManagedAnnotation] = "true"
 		var err error
-		if _, err = c.config.KubeClient.CoreV1().Services(svc.Namespace).Update(context.Background(), updated, metav1.UpdateOptions{}); err != nil {
+		if updated, err = c.config.KubeClient.CoreV1().Services(svc.Namespace).Update(context.Background(), updated, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 		svc = updated
@@ -440,7 +447,7 @@ func (c *Controller) cleanupNftableLbService(svc *v1.Service, namespace, name st
 // A contested identity is resolved deterministically (see chooseNftableLbOwner) so exactly
 // one owner programs it; losing services emit a warning event and requeue to take over once
 // the identity is released. It returns an error only when the underlying list fails.
-func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desired map[string]*kubeovnv1.IptablesDnatRule) error {
+func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desired map[string]*kubeovnv1.IptablesDnatRule) (bool, error) {
 	selfKey := svc.Namespace + "/" + svc.Name
 	eipName := svc.Annotations[util.EipAnnotation]
 
@@ -464,7 +471,7 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 	svcObjs, err := c.svcIndexer.ByIndex(IndexServiceByNftableLbEip, eipName)
 	if err != nil {
 		klog.Errorf("failed to query services by eip for nftable lb conflict check %s: %v", key, err)
-		return err
+		return false, err
 	}
 	for _, obj := range svcObjs {
 		s, ok := obj.(*v1.Service)
@@ -483,7 +490,7 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 	allDnats, err := c.iptablesDnatRulesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list iptables dnat rules for nftable lb conflict check %s: %v", key, err)
-		return err
+		return false, err
 	}
 	for _, d := range allDnats {
 		if d.Spec.Type != kubeovnv1.DnatRuleTypeShare || nftableLbSvcOwnerKey(d) != "" {
@@ -520,7 +527,7 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 		c.addOrUpdateNftableLbSvcQueue.AddAfter(key, 10*time.Second)
 	}
 
-	return nil
+	return len(droppedIdentities) > 0, nil
 }
 
 // nftableLbSvcIdentities returns the share DNAT identities (eip/externalPort/protocol) a

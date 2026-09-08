@@ -488,6 +488,8 @@ func TestValidateIptablesDnat(t *testing.T) {
 		{name: "internal port zero rejected", externalPort: "8080", internalPort: "0", wantErr: true},
 		{name: "external port over range rejected", externalPort: "65536", internalPort: "80", wantErr: true},
 		{name: "external port non-numeric rejected", externalPort: "abc", internalPort: "80", wantErr: true},
+		{name: "external port leading zero rejected", externalPort: "080", internalPort: "80", wantErr: true},
+		{name: "internal port leading zero rejected", externalPort: "8080", internalPort: "080", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -499,6 +501,19 @@ func TestValidateIptablesDnat(t *testing.T) {
 				require.NoError(t, err)
 			}
 		})
+	}
+}
+
+func TestValidateIptablesDnatProtocolCanonical(t *testing.T) {
+	v := &ValidatingHook{cache: &mockCache{objects: map[string]runtime.Object{
+		"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"}},
+	}}}
+
+	for _, protocol := range []string{"TCP", "Udp", "SCTP"} {
+		dnat := &ovnv1.IptablesDnatRule{Spec: ovnv1.IptablesDnatRuleSpec{
+			EIP: "test-eip", ExternalPort: "80", InternalPort: "80", InternalIP: "10.0.0.10", Protocol: protocol,
+		}}
+		require.Error(t, v.ValidateIptablesDnat(context.Background(), dnat), protocol)
 	}
 }
 

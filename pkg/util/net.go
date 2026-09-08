@@ -878,6 +878,21 @@ func ValidatePort(port string) error {
 	return nil
 }
 
+// ValidateCanonicalPort checks a decimal port in its canonical form (1-65535).
+func ValidateCanonicalPort(port string) error {
+	value, err := strconv.Atoi(port)
+	if err != nil || value < 1 || value > 65535 {
+		if err != nil {
+			return errors.New("must be a number")
+		}
+		return errors.New("must be between 1 and 65535")
+	}
+	if strconv.Itoa(value) != port {
+		return errors.New("must use canonical decimal form")
+	}
+	return nil
+}
+
 // ValidateProtocol checks if the protocol is valid (tcp or udp).
 func ValidateProtocol(protocol string) error {
 	p := strings.ToLower(protocol)
