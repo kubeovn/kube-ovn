@@ -1120,11 +1120,16 @@ func parseBandwidthFromIperfOutput(text string) []float64 {
 			continue
 		}
 		fields := strings.Split(line, ",")
-		number, err := strconv.Atoi(fields[len(fields)-1])
+		// Iperf's extended CSV output puts the bandwidth in column 10; the
+		// trailing columns are TCP diagnostics, not bandwidth.
+		if len(fields) <= 9 {
+			continue
+		}
+		bandwidth, err := strconv.ParseFloat(fields[9], 64)
 		if err != nil {
 			continue
 		}
-		bandwidths = append(bandwidths, float64(number))
+		bandwidths = append(bandwidths, bandwidth)
 	}
 	return bandwidths
 }

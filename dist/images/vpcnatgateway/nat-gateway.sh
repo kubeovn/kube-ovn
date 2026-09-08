@@ -289,8 +289,8 @@ function add_eip() {
 }
 
 function del_eip() {
-    # make sure inited
-    check_inited
+    # Deletion is idempotent. A restarted gateway may not have initialized its
+    # NAT chains yet, in which case the EIP is already absent.
     for rule in "$@"
     do
         arr=(${rule//,/ })
@@ -354,8 +354,8 @@ function del_floating_ip() {
     # NOTE: Current FIP CRD/controller path sends one rule per invocation.
     # The for-loop is currently of limited practical value.
     # TODO: Consider removing the for-loop and avoid cache optimizations driven only by loop batching.
-    # make sure inited
-    check_inited
+    # Deletion is idempotent. A restarted gateway may not have initialized its
+    # NAT chains yet, in which case there is no FIP rule to remove.
     for eip in "$@"
     do
         # delete DNAT rule: match "-d <eip>/32" (/32 suffix prevents prefix match)
