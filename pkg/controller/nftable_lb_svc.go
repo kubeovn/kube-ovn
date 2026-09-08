@@ -234,12 +234,9 @@ func (c *Controller) handleAddOrUpdateNftableLbService(key string) error {
 	// (or a manually-created share rule) target the same identity, a deterministic winner
 	// keeps it and the others back off; this avoids backend cross-talk and reconcile
 	// oscillation between the competing owners.
-	conflicted := false
-	if len(desired) > 0 {
-		conflicted, err = c.resolveNftableLbConflicts(cachedSvc, key, desired)
-		if err != nil {
-			return err
-		}
+	conflicted, err := c.resolveNftableLbConflicts(cachedSvc, key, desired)
+	if err != nil {
+		return err
 	}
 	if conflicted {
 		if err = c.clearNftableLbSvcIngressIP(cachedSvc); err != nil {
@@ -451,10 +448,12 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 	selfKey := svc.Namespace + "/" + svc.Name
 	eipName := svc.Annotations[util.EipAnnotation]
 
-	// identities this service wants to program
+	// Identities come from Service intent, not desired backends. A Service can have no
+	// ready endpoints temporarily, but it must still lose a contested identity and must
+	// not publish an EIP that routes to another Service's backends.
 	wanted := make(map[string]struct{})
-	for _, rule := range desired {
-		wanted[nftableLbDnatIdentity(rule.Spec.EIP, rule.Spec.ExternalPort, rule.Spec.Protocol)] = struct{}{}
+	for _, id := range nftableLbSvcIdentities(svc, eipName) {
+		wanted[id] = struct{}{}
 	}
 
 	// Competing owners are derived from the Service objects that reference the same EIP and
@@ -502,17 +501,21 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 		}
 	}
 
-	// drop desired rules for identities this service does not win
+	// Resolve every Service identity even when there are no desired backend rules.
 	droppedIdentities := make(map[string]string)
-	for name, rule := range desired {
-		id := nftableLbDnatIdentity(rule.Spec.EIP, rule.Spec.ExternalPort, rule.Spec.Protocol)
+	for id := range wanted {
 		winner := chooseNftableLbOwner(owners[id])
 		if winner == selfKey {
 			continue
 		}
-		delete(desired, name)
-		if _, done := droppedIdentities[id]; !done {
-			droppedIdentities[id] = nftableLbOwnerDesc(winner)
+		droppedIdentities[id] = nftableLbOwnerDesc(winner)
+	}
+
+	// Drop available backend rules for identities this service does not win.
+	for name, rule := range desired {
+		id := nftableLbDnatIdentity(rule.Spec.EIP, rule.Spec.ExternalPort, rule.Spec.Protocol)
+		if _, conflicted := droppedIdentities[id]; conflicted {
+			delete(desired, name)
 		}
 	}
 

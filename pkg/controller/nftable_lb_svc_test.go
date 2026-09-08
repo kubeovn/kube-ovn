@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -393,6 +394,46 @@ func Test_nftableLbSvcIdentities(t *testing.T) {
 	ids := nftableLbSvcIdentities(svc, "eip0")
 	// identities must match what buildDesiredNftableLbDnatRules would program (tcp/udp only)
 	require.ElementsMatch(t, []string{"eip0/80/tcp", "eip0/53/udp"}, ids)
+}
+
+func TestResolveNftableLbConflictsWithNoReadyBackends(t *testing.T) {
+	t.Parallel()
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+		IndexServiceByNftableLbEip: indexServiceByNftableLbEip,
+	})
+	port := int32(80)
+	newService := func(namespace, name string) *v1.Service {
+		return &v1.Service{
+			Namespace: namespace,
+			Name:      name,
+			Annotations: map[string]string{
+				util.EipAnnotation: "eip0",
+			},
+			Spec: v1.ServiceSpec{
+				Type:  v1.ServiceTypeLoadBalancer,
+				Ports: []v1.ServicePort{{Port: port, Protocol: v1.ProtocolTCP}},
+			},
+		}
+	}
+	winner := newService("ns", "a-winner")
+	loser := newService("ns", "z-loser")
+	require.NoError(t, indexer.Add(winner))
+	require.NoError(t, indexer.Add(loser))
+
+	ruleIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	queue := newTypedRateLimitingQueue[string]("nftable-lb-conflict-test", nil)
+	t.Cleanup(queue.ShutDown)
+	controller := &Controller{
+		svcIndexer:                   indexer,
+		iptablesDnatRulesLister:      kubeovnlister.NewIptablesDnatRuleLister(ruleIndexer),
+		recorder:                     record.NewFakeRecorder(1),
+		addOrUpdateNftableLbSvcQueue: queue,
+	}
+
+	conflicted, err := controller.resolveNftableLbConflicts(loser, "ns/z-loser", map[string]*kubeovnv1.IptablesDnatRule{})
+	require.NoError(t, err)
+	require.True(t, conflicted, "a loser must be detected from Service ports even without ready backends")
 }
 
 func Test_nftableLbDnatSpecEqual(t *testing.T) {

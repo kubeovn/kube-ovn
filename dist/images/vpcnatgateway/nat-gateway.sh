@@ -605,7 +605,12 @@ function cleanup_nft_affinity_objects() {
     local idhash=$1 keep=$2
     local obj bk
 
-    for obj in $(nft list chains ip $NFT_TABLE 2>/dev/null | grep -oE "chain ep-${idhash}-[0-9a-f]+" | awk '{print $2}'); do
+    # nft 1.0.x does not support `list chains ip <table>` or `list sets ip <table>`.
+    # Enumerate the table once and select only objects owned by this identity.
+    local table_dump
+    table_dump=$(nft list table ip "$NFT_TABLE" 2>/dev/null || true)
+
+    for obj in $(printf '%s\n' "$table_dump" | grep -oE "chain ep-${idhash}-[0-9a-f]+" | awk '{print $2}'); do
         bk=${obj#ep-${idhash}-}
         if ! printf ' %s ' $keep | grep -q " ${bk} "; then
             nft_transaction_ignore_errors \
@@ -614,7 +619,7 @@ function cleanup_nft_affinity_objects() {
         fi
     done
 
-    for obj in $(nft list sets ip $NFT_TABLE 2>/dev/null | grep -oE "set aff-${idhash}-[0-9a-f]+" | awk '{print $2}'); do
+    for obj in $(printf '%s\n' "$table_dump" | grep -oE "set aff-${idhash}-[0-9a-f]+" | awk '{print $2}'); do
         bk=${obj#aff-${idhash}-}
         if ! printf ' %s ' $keep | grep -q " ${bk} "; then
             nft_transaction_ignore_errors "delete set ip $NFT_TABLE $obj"
