@@ -156,15 +156,29 @@ tcpdump(){
     namespace=${namespace:-default}
   fi
 
-  isVm=$([[ "$(kubectl get vmi "$podName" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachine")].kind}' 2>/dev/null)" == "VirtualMachine" ]] && echo true || echo false)
+  isVm=$([[ "$(kubectl get vmi "$podName" -n "$namespace" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachine")].kind}' 2>/dev/null)" == "VirtualMachine" ]] && echo true || echo false)
   if [ "$isVm" = "true" ]; then
     vmName=$(echo "$podName")
-    podName=$(kubectl get pod -l vm.kubevirt.io/name="$vmName" -o jsonpath='{.items[*].metadata.name}')
+
+    migrationState=$(kubectl get vmi "$vmName" -n "$namespace" -o jsonpath='{.status.migrationState}' 2>/dev/null)
+    migrationStateCompleted=$(kubectl get vmi "$vmName" -n "$namespace" -o jsonpath='{.status.migrationState.completed}' 2>/dev/null)
+    if [[ -n "$migrationState" && -z "$migrationStateCompleted" ]]; then # migration in progress
+      podName=$(kubectl get vmi "$vmName" -n "$namespace" -o jsonpath='{.status.migrationState.sourcePod}')
+      echo "WARNING: Migration in progress"
+      echo "$podName"
+    elif [[ -n "$migrationState" && -n "$migrationStateCompleted" ]]; then # migration done
+      podName=$(kubectl get vmi "$vmName" -n "$namespace" -o jsonpath='{.status.migrationState.targetPod}')
+      echo "$podName"
+    else
+      nodeName=$(kubectl get vmi "$vmName" -n "$namespace" -o jsonpath='{.status.nodeName}')
+      podName=$(kubectl get pod -n "$namespace" -l vm.kubevirt.io/name="$vmName" -o jsonpath="{range .items[?(@.spec.nodeName=='$nodeName')]}{.metadata.name}{'\n'}{end}")
+      echo "$podName"
+    fi
   fi
 
-  isVmi=$([[ "$(kubectl get pod "$podName" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachineInstance")].kind}' 2>/dev/null)" == "VirtualMachineInstance" ]] && echo true || echo false)
+  isVmi=$([[ "$(kubectl get pod "$podName" -n "$namespace" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachineInstance")].kind}' 2>/dev/null)" == "VirtualMachineInstance" ]] && echo true || echo false)
   if [ "$isVmi" = "true" ]; then
-    vmName=$(kubectl get pod "$podName" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachineInstance")].name}')
+    vmName=$(kubectl get pod "$podName" -n "$namespace" -o jsonpath='{.metadata.ownerReferences[?(@.kind == "VirtualMachineInstance")].name}')
     isVm=true
   fi
   
