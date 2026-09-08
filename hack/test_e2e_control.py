@@ -1706,7 +1706,7 @@ class E2EControlTest(unittest.TestCase):
             "Pull private Kind node image with trusted token",
             workflow,
         )
-        self.assertIn("kind-node-v1.36.1.tar", workflow)
+        self.assertIn("kind-node-v1.37.0.tar", workflow)
         self.assertIn("kind-node-v1.29.14.tar", workflow)
         self.assertNotIn("kind-ghcr-pull", workflow)
         self.assertIn(

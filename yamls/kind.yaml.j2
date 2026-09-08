@@ -1,5 +1,5 @@
 {%- if kube_proxy_mode is not defined -%}
-  {%- set kube_proxy_mode = "ipvs" -%}
+  {%- set kube_proxy_mode = "nftables" -%}
 {%- endif -%}
 {%- if auditing is not defined -%}
   {%- set auditing = "false" -%}
