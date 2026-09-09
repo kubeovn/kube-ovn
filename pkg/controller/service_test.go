@@ -713,3 +713,41 @@ func Test_checkServiceLBIPBelongToSubnet(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleUpdateServiceScopedLoadBalancerAnnotatesExternalSubnet(t *testing.T) {
+	const (
+		ns         = metav1.NamespaceDefault
+		svcName    = "lb-svc"
+		subnetName = "ext-subnet"
+	)
+
+	svc := &v1.Service{
+		Name:      svcName,
+		Namespace: ns,
+		Spec: v1.ServiceSpec{
+			Type:      v1.ServiceTypeLoadBalancer,
+			ClusterIP: "10.96.0.80",
+			Ports:     []v1.ServicePort{{Name: "http", Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+		Status: v1.ServiceStatus{
+			LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: "192.168.1.10"}}},
+		},
+	}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Services: []*v1.Service{svc},
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{CIDRBlock: "192.168.1.0/24"},
+		}},
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	ctrl.svcKeyMutex = keymutex.NewHashed(0)
+	ctrl.config.EnableLb = true
+
+	require.NoError(t, ctrl.handleUpdateService(&updateSvcObject{key: ns + "/" + svcName}))
+
+	got, err := ctrl.config.KubeClient.CoreV1().Services(ns).Get(context.Background(), svcName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, subnetName, got.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+}
