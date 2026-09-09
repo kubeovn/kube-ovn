@@ -893,6 +893,17 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	return pod, nil
 }
 
+func policyRouteSrcMatches(podIP, nextHop string) []string {
+	var matches []string
+	for podAddr := range strings.SplitSeq(podIP, ",") {
+		if util.CheckProtocol(podAddr) != util.CheckProtocol(nextHop) {
+			continue
+		}
+		matches = append(matches, fmt.Sprintf("%s.src == %s", getIPSuffix(util.CheckProtocol(podAddr)), podAddr))
+	}
+	return matches
+}
+
 // do the same thing as update pod
 func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kubeovnNet) error {
 	// the lb-svc pod has dependencies on Running state, check it when pod state get updated
@@ -1015,21 +1026,32 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 					nextHop = strings.Split(nextHop, "/")[0]
 				}
 
-				if err := c.addPolicyRouteToVpc(
-					subnet.Spec.Vpc,
-					&kubeovnv1.PolicyRoute{
-						Priority:  util.NorthGatewayRoutePolicyPriority,
-						Match:     "ip4.src == " + podIP,
-						Action:    kubeovnv1.PolicyRouteActionReroute,
-						NextHopIP: nextHop,
-					},
-					map[string]string{
-						"vendor": util.CniTypeName,
-						"subnet": subnet.Name,
-					},
-				); err != nil {
-					klog.Errorf("failed to add policy route, %v", err)
-					return err
+				legacyMatch := "ip4.src == " + podIP
+				matches := policyRouteSrcMatches(podIP, nextHop)
+				if !slices.Contains(matches, legacyMatch) {
+					if err := c.deletePolicyRouteFromVpc(subnet.Spec.Vpc, util.NorthGatewayRoutePolicyPriority, legacyMatch); err != nil {
+						klog.Errorf("failed to delete stale policy route, %v", err)
+						return err
+					}
+				}
+
+				for _, match := range matches {
+					if err := c.addPolicyRouteToVpc(
+						subnet.Spec.Vpc,
+						&kubeovnv1.PolicyRoute{
+							Priority:  util.NorthGatewayRoutePolicyPriority,
+							Match:     match,
+							Action:    kubeovnv1.PolicyRouteActionReroute,
+							NextHopIP: nextHop,
+						},
+						map[string]string{
+							"vendor": util.CniTypeName,
+							"subnet": subnet.Name,
+						},
+					); err != nil {
+						klog.Errorf("failed to add policy route, %v", err)
+						return err
+					}
 				}
 
 				// remove lsp from port group to make EIP/SNAT work
