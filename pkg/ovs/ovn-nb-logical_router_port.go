@@ -1,14 +1,12 @@
 package ovs
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
@@ -24,8 +22,7 @@ func (c *OVNNbClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 
 	exist, err := c.LogicalRouterPortExists(localRouterPort)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 
 	// update networks when logical router port exists
@@ -47,24 +44,18 @@ func (c *OVNNbClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 	}
 
 	ops, err := c.CreateLogicalRouterPortOp(lrp, localRouter)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
+	return c.transactGenerated("lrp-add", ops, err, nil,
+		wrapErr("create peer router port %s for logical router%s: %w", localRouterPort, localRouter),
+	)
+}
 
-	if err = c.Transact("lrp-add", ops); err != nil {
-		err := fmt.Errorf("create peer router port %s for logical router%s: %w", localRouterPort, localRouter, err)
-		klog.Error(err)
-		return err
-	}
-
-	return nil
+func (c *OVNNbClient) requireLogicalRouterPort(lrpName string) (*ovnnb.LogicalRouterPort, error) {
+	return logRet(c.GetLogicalRouterPort(lrpName, false))
 }
 
 func (c *OVNNbClient) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error {
-	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	lrp, err := c.requireLogicalRouterPort(lrpName)
 	if err != nil {
-		klog.Error(err)
 		return err
 	}
 
@@ -86,9 +77,8 @@ func (c *OVNNbClient) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string
 }
 
 func (c *OVNNbClient) UpdateLogicalRouterPortNetworks(lrpName string, networks []string) error {
-	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	lrp, err := c.requireLogicalRouterPort(lrpName)
 	if err != nil {
-		klog.Error(err)
 		return err
 	}
 	if slices.Equal(networks, lrp.Networks) {
@@ -104,9 +94,8 @@ func (c *OVNNbClient) UpdateLogicalRouterPortOptions(lrpName string, options map
 		return nil
 	}
 
-	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	lrp, err := c.requireLogicalRouterPort(lrpName)
 	if err != nil {
-		klog.Error(err)
 		return err
 	}
 
@@ -130,15 +119,13 @@ func (c *OVNNbClient) UpdateLogicalRouterPortOptions(lrpName string, options map
 }
 
 func (c *OVNNbClient) SetLogicalRouterPortHAChassisGroup(lrpName, haChassisGroupName string) error {
-	lrp, err := c.GetLogicalRouterPort(lrpName, false)
+	lrp, err := c.requireLogicalRouterPort(lrpName)
 	if err != nil {
-		klog.Error(err)
 		return err
 	}
 	group, err := c.GetHAChassisGroup(haChassisGroupName, false)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 
 	lrp.HaChassisGroup = &group.UUID
@@ -151,40 +138,36 @@ func (c *OVNNbClient) UpdateLogicalRouterPort(lrp *ovnnb.LogicalRouterPort, fiel
 		return errors.New("logical_router_port is nil")
 	}
 
-	op, err := c.Where(lrp).Update(lrp, fields...)
+	return c.updateModelLogged("lrp-update", lrp, func(err error) error {
+		return fmt.Errorf("update logical router port %s: %w", lrp.Name, err)
+	}, fields...)
+}
+
+func (c *OVNNbClient) createLRPIfAbsent(lrName string, lrp *ovnnb.LogicalRouterPort) error {
+	exists, err := c.LogicalRouterPortExists(lrp.Name)
 	if err != nil {
-		err := fmt.Errorf("generate operations for updating logical router port %s: %w", lrp.Name, err)
-		klog.Error(err)
-		return err
+		return logErr(err)
+	}
+	if exists {
+		return c.EnsureLogicalRouterPortParent(lrp.Name, lrName)
 	}
 
-	if err = c.Transact("lrp-update", op); err != nil {
-		err := fmt.Errorf("update logical router port %s: %w", lrp.Name, err)
-		klog.Error(err)
-		return err
+	op, err := c.CreateLogicalRouterPortOp(lrp, lrName)
+	if err != nil {
+		return logFmt("generate operations for creating logical router port %s: %w", lrp.Name, err)
 	}
-
+	if err := transactOps(c, "lrp-add", op); err != nil {
+		return logFmt("create logical router port %s: %w", lrp.Name, err)
+	}
 	return nil
 }
 
 // CreateLogicalRouterPort create logical router port with basic configuration
 func (c *OVNNbClient) CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error {
-	exists, err := c.LogicalRouterPortExists(lrpName)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	// ignore
-	if exists {
-		return nil
-	}
-
 	if mac == "" {
 		mac = util.GenerateMac()
 	}
-
-	lrp := &ovnnb.LogicalRouterPort{
+	return c.createLRPIfAbsent(lrName, &ovnnb.LogicalRouterPort{
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lrpName,
 		MAC:      mac,
@@ -192,146 +175,71 @@ func (c *OVNNbClient) CreateLogicalRouterPort(lrName, lrpName, mac string, netwo
 		ExternalIDs: map[string]string{
 			"vendor": util.CniTypeName,
 		},
-	}
-
-	op, err := c.CreateLogicalRouterPortOp(lrp, lrName)
-	if err != nil {
-		err := fmt.Errorf("generate operations for creating logical router port %s: %w", lrp.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	if err = c.Transact("lrp-add", op); err != nil {
-		err := fmt.Errorf("create logical router port %s: %w", lrp.Name, err)
-		klog.Error(err)
-		return err
-	}
-
-	return nil
+	})
 }
 
 // DeleteLogicalRouterPort delete logical router port from logical router
 func (c *OVNNbClient) DeleteLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) error {
 	lrpList, err := c.ListLogicalRouterPorts(externalIDs, filter)
 	if err != nil {
-		err := fmt.Errorf("list logical router ports: %w", err)
-		klog.Error(err)
-		return err
+		return logFmt("list logical router ports: %w", err)
 	}
 
 	ops := make([]ovsdb.Operation, 0, len(lrpList))
 	for _, lrp := range lrpList {
 		op, err := c.DeleteLogicalRouterPortOp(lrp.Name)
 		if err != nil {
-			klog.Error(err)
-			return fmt.Errorf("generate operations for deleting logical router port %s: %w", lrp.Name, err)
+			return logWrap(err, wrapErr("generate operations for deleting logical router port %s: %w", lrp.Name))
 		}
 		ops = append(ops, op...)
 	}
 
-	if err := c.Transact("lrps-del", ops); err != nil {
-		err := fmt.Errorf("del logical router ports: %w", err)
-		klog.Error(err)
-		return err
-	}
-
-	return nil
+	return c.transactGenerated("lrps-del", ops, nil, nil, wrapErr("del logical router ports: %w"))
 }
 
 // DeleteLogicalRouterPort delete logical router port from logical router
 func (c *OVNNbClient) DeleteLogicalRouterPort(lrpName string) error {
 	ops, err := c.DeleteLogicalRouterPortOp(lrpName)
-	if err != nil {
-		err := fmt.Errorf("generate operations for deleting logical router port %s: %w", lrpName, err)
-		klog.Error(err)
-		return err
-	}
-
-	if err = c.Transact("lrp-del", ops); err != nil {
-		err := fmt.Errorf("delete logical router port %s", lrpName)
-		klog.Error(err)
-		return err
-	}
-
-	return nil
+	return c.transactGenerated("lrp-del", ops, err,
+		wrapErr("generate operations for deleting logical router port %s: %w", lrpName),
+		func(error) error { return fmt.Errorf("delete logical router port %s", lrpName) },
+	)
 }
 
 // GetLogicalRouterPort get logical router port by name
 func (c *OVNNbClient) GetLogicalRouterPort(lrpName string, ignoreNotFound bool) (*ovnnb.LogicalRouterPort, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	lrp := &ovnnb.LogicalRouterPort{Name: lrpName}
-	if err := c.Get(ctx, lrp); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
-			return nil, nil
-		}
-		err = fmt.Errorf("get logical router port %s: %w", lrpName, err)
-		klog.Error(err)
-		return nil, err
-	}
-
-	return lrp, nil
+	return getIndexedWrap(c.Database, &ovnnb.LogicalRouterPort{Name: lrpName}, ignoreNotFound, func(err error) error {
+		return fmt.Errorf("get logical router port %s: %w", lrpName, err)
+	})
 }
 
 // GetLogicalRouterPortByUUID get logical router port by UUID
 func (c *OVNNbClient) GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	lrp := &ovnnb.LogicalRouterPort{UUID: uuid}
-	if err := c.Get(ctx, lrp); err != nil {
-		err := fmt.Errorf("get logical router port by UUID %s: %w", uuid, err)
-		klog.Error(err)
-		return nil, err
-	}
-
-	return lrp, nil
+	return getIndexedWrap(c.Database, &ovnnb.LogicalRouterPort{UUID: uuid}, false, func(err error) error {
+		return fmt.Errorf("get logical router port by UUID %s: %w", uuid, err)
+	})
 }
 
 // ListLogicalRouterPorts list logical router ports
 func (c *OVNNbClient) ListLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	lrpList := make([]ovnnb.LogicalRouterPort, 0)
-
-	if err := c.WhereCache(logicalRouterPortFilter(externalIDs, filter)).List(ctx, &lrpList); err != nil {
-		err := fmt.Errorf("list logical router ports: %w", err)
-		klog.Error(err)
-		return nil, err
+	lrpList, err := filterTimeout(c.Database, &ovnnb.LogicalRouterPort{}, logicalRouterPortFilter(externalIDs, filter))
+	if err != nil {
+		return nil, logFmt("list logical router ports: %w", err)
 	}
-
 	return lrpList, nil
 }
 
 func (c *OVNNbClient) LogicalRouterPortExists(lrpName string) (bool, error) {
 	lrp, err := c.GetLogicalRouterPort(lrpName, true)
 	if err != nil {
-		err := fmt.Errorf("get logical router port %s: %w", lrpName, err)
-		klog.Error(err)
-		return false, err
+		return false, logFmt("get logical router port %s: %w", lrpName, err)
 	}
 	return lrp != nil, err
 }
 
 // LogicalRouterPortUpdateGatewayChassisOp create operations add to or delete gateway chassis from logical router port
 func (c *OVNNbClient) LogicalRouterPortUpdateGatewayChassisOp(lrpName string, uuids []string, op ovsdb.Mutator) ([]ovsdb.Operation, error) {
-	if len(uuids) == 0 {
-		return nil, nil
-	}
-
-	mutation := func(lrp *ovnnb.LogicalRouterPort) *model.Mutation {
-		mutation := &model.Mutation{
-			Field:   &lrp.GatewayChassis,
-			Value:   uuids,
-			Mutator: op,
-		}
-
-		return mutation
-	}
-
-	return c.LogicalRouterPortOp(lrpName, mutation)
+	return c.logicalRouterPortTable().mutateUUIDs(lrpName, func(lrp *ovnnb.LogicalRouterPort) *[]string { return &lrp.GatewayChassis }, uuids, op)
 }
 
 // CreateLogicalRouterPortOp create operation which create logical router port
@@ -348,26 +256,13 @@ func (c *OVNNbClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lr
 	lrp.ExternalIDs[logicalRouterKey] = lrName
 	lrp.ExternalIDs["vendor"] = util.CniTypeName
 
-	/* create logical router port */
-	lrpCreateOp, err := c.Create(lrp)
+	models, uuids := modelsAndUUIDs([]*ovnnb.LogicalRouterPort{lrp}, func(port *ovnnb.LogicalRouterPort) string { return port.UUID })
+	ops, err := createAndAttachOps(c, &ovnnb.LogicalRouterPort{}, models, func(ids []string) ([]ovsdb.Operation, error) {
+		return c.LogicalRouterUpdatePortOp(lrName, ids[0], ovsdb.MutateOperationInsert)
+	}, uuids)
 	if err != nil {
-		err := fmt.Errorf("generate operations for creating logical router port %s: %w", lrp.Name, err)
-		klog.Error(err)
-		return nil, err
+		return nil, logFmt("generate operations for creating logical router port %s: %w", lrp.Name, err)
 	}
-
-	/* add logical router port to logical router*/
-	lrpAddOp, err := c.LogicalRouterUpdatePortOp(lrName, lrp.UUID, ovsdb.MutateOperationInsert)
-	if err != nil {
-		err := fmt.Errorf("generate operations for adding logical router port %s to logical router %s: %w", lrp.Name, lrName, err)
-		klog.Error(err)
-		return nil, err
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(lrpCreateOp)+len(lrpAddOp))
-	ops = append(ops, lrpCreateOp...)
-	ops = append(ops, lrpAddOp...)
-
 	return ops, nil
 }
 
@@ -375,9 +270,7 @@ func (c *OVNNbClient) CreateLogicalRouterPortOp(lrp *ovnnb.LogicalRouterPort, lr
 func (c *OVNNbClient) DeleteLogicalRouterPortOp(lrpName string) ([]ovsdb.Operation, error) {
 	lrp, err := c.GetLogicalRouterPort(lrpName, true)
 	if err != nil {
-		err := fmt.Errorf("get logical router port %s when generate delete operations: %w", lrpName, err)
-		klog.Error(err)
-		return nil, err
+		return nil, logFmt("get logical router port %s when generate delete operations: %w", lrpName, err)
 	}
 
 	// not found, skip
@@ -394,59 +287,31 @@ func (c *OVNNbClient) DeleteLogicalRouterPortOp(lrpName string) ([]ovsdb.Operati
 func (c *OVNNbClient) LogicalRouterPortOp(lrpName string, mutationsFunc ...func(lrp *ovnnb.LogicalRouterPort) *model.Mutation) ([]ovsdb.Operation, error) {
 	lrp, err := c.GetLogicalRouterPort(lrpName, false)
 	if err != nil {
-		klog.Error(err)
-		return nil, err
+		return nil, logErr(err)
 	}
 
-	if len(mutationsFunc) == 0 {
-		return nil, nil
-	}
-
-	mutations := make([]model.Mutation, 0, len(mutationsFunc))
-	for _, f := range mutationsFunc {
-		if mutation := f(lrp); mutation != nil {
-			mutations = append(mutations, *mutation)
-		}
-	}
-
-	ops, err := c.ovsDbClient.Where(lrp).Mutate(lrp, mutations...)
+	ops, err := c.logicalRouterPortTable().mutate(lrp, mutationsFunc...)
 	if err != nil {
-		err := fmt.Errorf("generate operations for mutating logical router port %s: %w", lrpName, err)
-		klog.Error(err)
-		return nil, err
+		return nil, logFmt("generate operations for mutating logical router port %s: %w", lrpName, err)
 	}
 
 	return ops, nil
 }
 
+func (c *OVNNbClient) logicalRouterPortTable() namedTable[ovnnb.LogicalRouterPort] {
+	table := newNamedTable(c.Database, &ovnnb.LogicalRouterPort{}, "logical router port",
+		func(lrp *ovnnb.LogicalRouterPort) string { return lrp.Name },
+		func(lrp *ovnnb.LogicalRouterPort) map[string]string { return lrp.ExternalIDs })
+	table.newByName = func(name string) *ovnnb.LogicalRouterPort { return &ovnnb.LogicalRouterPort{Name: name} }
+	return table
+}
+
 // logicalRouterPortFilter filter logical router port which match the given externalIDs and external filter func
 func logicalRouterPortFilter(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) func(lrp *ovnnb.LogicalRouterPort) bool {
 	return func(lrp *ovnnb.LogicalRouterPort) bool {
-		if len(lrp.ExternalIDs) < len(externalIDs) {
+		if !matchExternalIDs(lrp.ExternalIDs, externalIDs) {
 			return false
 		}
-
-		if len(lrp.ExternalIDs) != 0 {
-			for k, v := range externalIDs {
-				// if only key exist but not value in externalIDs, we should include this lrp,
-				// it's equal to shell command `ovn-nbctl --columns=xx find logical_router_port external_ids:key!=\"\"`
-				if len(v) == 0 {
-					if len(lrp.ExternalIDs[k]) == 0 {
-						return false
-					}
-				} else {
-					if lrp.ExternalIDs[k] != v {
-						return false
-					}
-				}
-			}
-		}
-
-		// need meet custom filter
-		if filter != nil {
-			return filter(lrp)
-		}
-
-		return true
+		return filter == nil || filter(lrp)
 	}
 }

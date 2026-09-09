@@ -33,6 +33,17 @@ func newLauncherPod(name, namespace, vmiName string, useNewLabel bool) *v1.Pod {
 	return pod
 }
 
+func TestInitVswitchUsesConfiguredTableProvider(t *testing.T) {
+	provider := cniEventTableProvider{}
+	controller := &Controller{config: &Configuration{VswitchTables: provider}}
+
+	require.NoError(t, controller.initVswitch())
+	require.Equal(t, provider, controller.vswitchTables)
+	qosOperations, ok := controller.podQoSOps.(ovsPodQoSOperations)
+	require.True(t, ok)
+	require.Equal(t, provider, qosOperations.provider)
+}
+
 func TestIsVMLauncherPodAlive(t *testing.T) {
 	t.Parallel()
 

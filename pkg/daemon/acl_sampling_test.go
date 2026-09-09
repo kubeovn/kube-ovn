@@ -4,11 +4,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 )
 
 type fakeACLSamplingVswitch struct {
@@ -22,13 +24,38 @@ func (f *fakeACLSamplingVswitch) ReconcileACLSamplingCollectorSet(config aclsamp
 	return f.err
 }
 
+type fakeACLSamplingTables struct {
+	client *fakeACLSamplingVswitch
+}
+
+func (f *fakeACLSamplingTables) Table(model.Model) compat.TableHandle { return nil }
+
+func (f *fakeACLSamplingTables) ReconcileACLSamplingCollectorSet(config aclsampling.NodeConfig) error {
+	return f.client.ReconcileACLSamplingCollectorSet(config)
+}
+
+var _ compat.TableProvider = (*fakeACLSamplingTables)(nil)
+
+func TestReconcileACLSamplingCollectorSetUsesTableProviderCapability(t *testing.T) {
+	nodeName := "acl-sampling-provider-node"
+	config := aclsampling.NodeConfig{Enabled: true, SetID: 142, LocalGroupID: 142}
+	client := &fakeACLSamplingVswitch{}
+	controller := &Controller{
+		config:        &Configuration{NodeName: nodeName, ACLSampling: config},
+		vswitchTables: &fakeACLSamplingTables{client: client},
+	}
+
+	controller.reconcileACLSamplingCollectorSet()
+	require.Equal(t, []aclsampling.NodeConfig{config}, client.configs)
+}
+
 func TestReconcileACLSamplingCollectorSetRecordsAvailability(t *testing.T) {
 	nodeName := "acl-sampling-node-success"
 	config := aclsampling.NodeConfig{Enabled: true, SetID: 142, LocalGroupID: 142}
 	client := &fakeACLSamplingVswitch{}
 	controller := &Controller{
 		config:        &Configuration{NodeName: nodeName, ACLSampling: config},
-		vswitchClient: client,
+		vswitchTables: &fakeACLSamplingTables{client: client},
 	}
 
 	controller.reconcileACLSamplingCollectorSet()
@@ -46,7 +73,7 @@ func TestReconcileACLSamplingCollectorSetRecordsFailure(t *testing.T) {
 	client := &fakeACLSamplingVswitch{err: errors.New("injected psample capability failure")}
 	controller := &Controller{
 		config:        &Configuration{NodeName: nodeName, ACLSampling: config},
-		vswitchClient: client,
+		vswitchTables: &fakeACLSamplingTables{client: client},
 	}
 	failuresBefore := testutil.ToFloat64(metricACLSamplingNodeFailures.WithLabelValues(nodeName))
 

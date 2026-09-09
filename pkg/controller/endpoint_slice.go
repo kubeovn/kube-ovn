@@ -368,6 +368,128 @@ func (c *Controller) replaceEndpointSliceSecondaryIPs(svc *v1.Service, endpointS
 	if err := c.replaceEndpointAddressesWithSecondaryIPs(endpointSlices, pods); err != nil {
 		return fmt.Errorf("replace endpoint addresses for service %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
+
+	tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
+	oldTCPLb, oldUDPLb, oldSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
+	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+		tcpLb, udpLb, sctpLb, oldTCPLb, oldUDPLb, oldSctpLb = oldTCPLb, oldUDPLb, oldSctpLb, tcpLb, udpLb, sctpLb
+	}
+	if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, tcpLb, udpLb, sctpLb); err != nil {
+		return err
+	}
+	if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, oldTCPLb, oldUDPLb, oldSctpLb); err != nil {
+		return err
+	}
+	for _, lbVip := range lbVips {
+		for _, port := range svc.Spec.Ports {
+			var lb, oldLb string
+			switch port.Protocol {
+			case v1.ProtocolTCP:
+				lb, oldLb = tcpLb, oldTCPLb
+			case v1.ProtocolUDP:
+				lb, oldLb = udpLb, oldUDPLb
+			case v1.ProtocolSCTP:
+				lb, oldLb = sctpLb, oldSctpLb
+			}
+
+			var (
+				vip, checkIP             string
+				backends                 []string
+				ipPortMapping, externals map[string]string
+			)
+
+			if !ignoreHealthCheck {
+				if checkIP, err = c.getHealthCheckVip(subnetName, lbVip); err != nil {
+					klog.Error(err)
+					return err
+				}
+				externals = map[string]string{
+					util.SwitchLBRuleSubnet: subnetName,
+				}
+			}
+			if isPreferLocalBackend {
+				checkIP = util.MasqueradeCheckIP
+			}
+
+			backends = c.getEndpointBackend(endpointSlices, port, lbVip)
+
+			if !ignoreHealthCheck || isPreferLocalBackend {
+				ipPortMapping, err = c.getIPPortMapping(endpointSlices, svc, checkIP)
+				if err != nil {
+					err := fmt.Errorf("couldn't get ip port mapping for svc %s/%s: %w", svc.Namespace, svc.Name, err)
+					return err
+				}
+			}
+
+			// for performance reason delete lb with no backends
+			if len(backends) != 0 {
+				vip = util.JoinHostPort(lbVip, port.Port)
+				klog.Infof("add vip endpoint %s, backends %v to LB %s", vip, backends, lb)
+				if err = c.addLoadBalancerVIP(lb, vip, backends...); err != nil {
+					klog.Errorf("failed to add vip %s with backends %s to LB %s: %v", lbVip, backends, lb, err)
+					return err
+				}
+				if isPreferLocalBackend &&
+					svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
+					svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal &&
+					serviceL2StatusReady &&
+					slices.ContainsFunc(svc.Status.LoadBalancer.Ingress, func(ingress v1.LoadBalancerIngress) bool {
+						return ingress.IP == lbVip
+					}) {
+					vipNodeLSP := ""
+					if externalVIPNode != "" {
+						vipNodeLSP = util.NodeLspName(externalVIPNode)
+					}
+					if err = c.setLoadBalancerExternalTrafficLocal(lb, vip, vipNodeLSP); err != nil {
+						return fmt.Errorf("couldn't mark external local vip %s on LB %s: %w", vip, lb, err)
+					}
+				}
+				if isPreferLocalBackend && len(ipPortMapping) != 0 {
+					if err = c.updateLoadBalancerIPPortMapping(lb, vip, ipPortMapping); err != nil {
+						klog.Errorf("failed to update ip port mapping %s for vip %s to LB %s: %v", ipPortMapping, vip, lb, err)
+						return err
+					}
+				}
+				if !ignoreHealthCheck {
+					klog.Infof("add health check ip port mapping %v to LB %s", ipPortMapping, lb)
+					if err = c.addLoadBalancerHealthCheck(lb, vip, ignoreHealthCheck, ipPortMapping, externals); err != nil {
+						klog.Errorf("failed to add health check for vip %s with ip port mapping %s to LB %s: %v", lbVip, ipPortMapping, lb, err)
+						return err
+					}
+				}
+			} else {
+				vip = util.JoinHostPort(lbVip, port.Port)
+				klog.V(3).Infof("delete vip endpoint %s from LB %s", vip, lb)
+				if err = c.deleteLoadBalancerVIP(lb, vip, true); err != nil {
+					klog.Errorf("failed to delete vip endpoint %s from LB %s: %v", vip, lb, err)
+					return err
+				}
+
+				klog.V(3).Infof("delete vip endpoint %s from old LB %s", vip, oldLb)
+				if err = c.deleteLoadBalancerVIP(oldLb, vip, true); err != nil {
+					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, oldLb, err)
+					return err
+				}
+				if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb, vip); err != nil {
+					klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, lb, err)
+					return err
+				}
+				if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(oldLb, vip); err != nil {
+					klog.Errorf("failed to delete ip port mapping for vip %s from LB %s: %v", vip, oldLb, err)
+					return err
+				}
+			}
+		}
+	}
+
+	if svcVpc = svc.Annotations[util.VpcAnnotation]; svcVpc != vpcName {
+		patch := util.KVPatch{util.VpcAnnotation: vpcName}
+		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Services(namespace), svc.Name, patch); err != nil {
+			klog.Errorf("failed to patch service %s: %v", key, err)
+			return err
+		}
+	}
+
 	return nil
 }
 

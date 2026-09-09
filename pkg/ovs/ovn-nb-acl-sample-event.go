@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -68,14 +69,10 @@ func (c *OVNNbClient) ResolveNetworkPolicyACLSample(reference aclsampling.Sample
 		}
 		matches = append(matches, event)
 	}
-	if len(matches) == 0 {
-		return nil, fmt.Errorf("%w: no Kube-OVN NetworkPolicy ACL references metadata %d", ErrACLSampleNotFound, reference.Metadata)
-	}
-	if len(matches) != 1 {
-		return nil, fmt.Errorf("%w: metadata %d is referenced by %d Kube-OVN NetworkPolicy ACLs", ErrACLSampleAmbiguous, reference.Metadata, len(matches))
-	}
-
-	return matches[0], nil
+	return uniquePtrs(matches, false,
+		fmt.Errorf("%w: no Kube-OVN NetworkPolicy ACL references metadata %d", ErrACLSampleNotFound, reference.Metadata),
+		fmt.Errorf("%w: metadata %d is referenced by %d Kube-OVN NetworkPolicy ACLs", ErrACLSampleAmbiguous, reference.Metadata, len(matches)),
+	)
 }
 
 func (c *OVNNbClient) resolveACLSampleApplication(applicationID *uint32) (aclsampling.Application, error) {
@@ -92,13 +89,14 @@ func (c *OVNNbClient) resolveACLSampleApplication(applicationID *uint32) (aclsam
 			matches = append(matches, apps[i])
 		}
 	}
-	if len(matches) == 0 {
-		return "", fmt.Errorf("%w: sampling application ID %d does not exist", ErrACLSampleNotFound, *applicationID)
+	app, err := compat.Unique(matches, false,
+		fmt.Errorf("%w: sampling application ID %d does not exist", ErrACLSampleNotFound, *applicationID),
+		fmt.Errorf("%w: sampling application ID %d has %d rows", ErrACLSampleAmbiguous, *applicationID, len(matches)),
+	)
+	if err != nil {
+		return "", err
 	}
-	if len(matches) != 1 {
-		return "", fmt.Errorf("%w: sampling application ID %d has %d rows", ErrACLSampleAmbiguous, *applicationID, len(matches))
-	}
-	switch matches[0].Type {
+	switch app.Type {
 	case ovnnb.SamplingAppTypeACLNew:
 		return aclsampling.ApplicationACLNew, nil
 	case ovnnb.SamplingAppTypeACLEst:
@@ -119,13 +117,10 @@ func (c *OVNNbClient) resolveSampleMetadata(metadata uint32) (*ovnnb.Sample, err
 			matches = append(matches, samples[i])
 		}
 	}
-	if len(matches) == 0 {
-		return nil, fmt.Errorf("%w: sample metadata %d does not exist", ErrACLSampleNotFound, metadata)
-	}
-	if len(matches) != 1 {
-		return nil, fmt.Errorf("%w: sample metadata %d has %d rows", ErrACLSampleAmbiguous, metadata, len(matches))
-	}
-	return &matches[0], nil
+	return compat.Unique(matches, false,
+		fmt.Errorf("%w: sample metadata %d does not exist", ErrACLSampleNotFound, metadata),
+		fmt.Errorf("%w: sample metadata %d has %d rows", ErrACLSampleAmbiguous, metadata, len(matches)),
+	)
 }
 
 func aclReferencesSample(acl ovnnb.ACL, sampleUUID string, application aclsampling.Application) bool {

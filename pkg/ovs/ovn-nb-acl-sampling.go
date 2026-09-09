@@ -1,17 +1,15 @@
 package ovs
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"maps"
-	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -119,10 +117,9 @@ func (c *OVNNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) 
 		operations = append(operations, ops...)
 	}
 
-	if err := c.Transact("acl-sampling-reconcile", operations); err != nil {
-		return fmt.Errorf("reconcile OVN ACL sampling objects: %w", err)
-	}
-	return nil
+	return c.transactGenerated("acl-sampling-reconcile", operations, nil, nil,
+		wrapErr("reconcile OVN ACL sampling objects: %w"),
+	)
 }
 
 func (c *OVNNbClient) ensureACLSamplingMonitor() error {
@@ -137,14 +134,14 @@ func (c *OVNNbClient) ensureACLSamplingMonitor() error {
 	}
 
 	monitor := c.NewMonitor(
-		client.WithTable(&ovnnb.SamplingApp{}),
-		client.WithTable(&ovnnb.SampleCollector{}),
-		client.WithTable(&ovnnb.Sample{}),
+		compat.WithTable(&ovnnb.SamplingApp{}),
+		compat.WithTable(&ovnnb.SampleCollector{}),
+		compat.WithTable(&ovnnb.Sample{}),
 	)
 	if len(monitor.Errors) != 0 {
 		return fmt.Errorf("build OVN ACL sampling monitor: %w", errors.Join(monitor.Errors...))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	ctx, cancel := timeoutCtx(c.Database)
 	defer cancel()
 	if _, err := c.Monitor(ctx, monitor); err != nil {
 		return fmt.Errorf("monitor OVN ACL sampling tables: %w", err)
@@ -175,25 +172,15 @@ func validateACLSamplingSchema(schema ovsdb.DatabaseSchema) error {
 }
 
 func (c *OVNNbClient) listSamplingApps() ([]ovnnb.SamplingApp, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	apps := make([]ovnnb.SamplingApp, 0)
-	if err := c.WhereCache(func(*ovnnb.SamplingApp) bool { return true }).List(ctx, &apps); err != nil {
-		return nil, fmt.Errorf("list OVN sampling applications: %w", err)
-	}
-	return apps, nil
+	return filterAll[ovnnb.SamplingApp](c.Database, &ovnnb.SamplingApp{}, func(err error) error {
+		return fmt.Errorf("list OVN sampling applications: %w", err)
+	})
 }
 
 func (c *OVNNbClient) listSampleCollectors() ([]ovnnb.SampleCollector, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	collectors := make([]ovnnb.SampleCollector, 0)
-	if err := c.WhereCache(func(*ovnnb.SampleCollector) bool { return true }).List(ctx, &collectors); err != nil {
-		return nil, fmt.Errorf("list OVN sample collectors: %w", err)
-	}
-	return collectors, nil
+	return filterAll[ovnnb.SampleCollector](c.Database, &ovnnb.SampleCollector{}, func(err error) error {
+		return fmt.Errorf("list OVN sample collectors: %w", err)
+	})
 }
 
 func (c *OVNNbClient) reconcileSamplingApp(apps []ovnnb.SamplingApp, desired desiredSamplingApp, desiredIDs map[ovnnb.SamplingAppType]uint32) ([]ovsdb.Operation, error) {
@@ -219,7 +206,7 @@ func (c *OVNNbClient) reconcileSamplingApp(apps []ovnnb.SamplingApp, desired des
 			ID:          int(desired.id),
 			Type:        desired.appType,
 		}
-		ops, err := c.Create(app)
+		ops, err := c.Database.Table(&ovnnb.SamplingApp{}).CreateOps(app)
 		if err != nil {
 			return nil, fmt.Errorf("build create operation for sampling application %s: %w", desired.appType, err)
 		}
@@ -238,7 +225,7 @@ func (c *OVNNbClient) reconcileSamplingApp(apps []ovnnb.SamplingApp, desired des
 
 	current.ID = int(desired.id)
 	current.ExternalIDs = desiredExternalIDs
-	ops, err := c.Where(current).Update(current, &current.ID, &current.ExternalIDs)
+	ops, err := c.Database.Table(&ovnnb.SamplingApp{}).UpdateOps(current, current, &current.ID, &current.ExternalIDs)
 	if err != nil {
 		return nil, fmt.Errorf("build update operation for sampling application %s: %w", desired.appType, err)
 	}
@@ -274,7 +261,7 @@ func (c *OVNNbClient) reconcileSampleCollector(collectors []ovnnb.SampleCollecto
 			Probability: desired.probability,
 			SetID:       int(setID),
 		}
-		ops, err := c.Create(collector)
+		ops, err := c.Database.Table(&ovnnb.SampleCollector{}).CreateOps(collector)
 		if err != nil {
 			return nil, fmt.Errorf("build create operation for %s sample collector: %w", desired.role, err)
 		}
@@ -292,7 +279,7 @@ func (c *OVNNbClient) reconcileSampleCollector(collectors []ovnnb.SampleCollecto
 	current.Probability = desired.probability
 	current.SetID = int(setID)
 	current.ExternalIDs = desiredExternalIDs
-	ops, err := c.Where(current).Update(current,
+	ops, err := c.Database.Table(&ovnnb.SampleCollector{}).UpdateOps(current, current,
 		&current.ID,
 		&current.Name,
 		&current.Probability,
@@ -345,10 +332,10 @@ func (c *OVNNbClient) cleanupACLSampling() error {
 		}
 		clearOps = append(clearOps, ops...)
 	}
-	if len(clearOps) != 0 {
-		if err := c.Transact("acl-sampling-cleanup-references", clearOps); err != nil {
-			return fmt.Errorf("clear owned ACL sampling references: %w", err)
-		}
+	if err := c.transactGenerated("acl-sampling-cleanup-references", clearOps, nil, nil,
+		wrapErr("clear owned ACL sampling references: %w"),
+	); err != nil {
+		return err
 	}
 
 	collectors, err := c.listSampleCollectors()
@@ -372,25 +359,18 @@ func (c *OVNNbClient) cleanupACLSampling() error {
 }
 
 func (c *OVNNbClient) waitForACLSamplingSampleGC(ownedCollectors map[string]struct{}) (map[string]struct{}, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
+	return pollUntil(c.Database, func() (map[string]struct{}, bool, error) {
 		retained, pending, err := c.aclSamplingCollectorReferences(ownedCollectors)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if !pending {
-			return retained, nil
+			return retained, true, nil
 		}
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("wait for owned ACL samples to be garbage collected: %w", ctx.Err())
-		case <-ticker.C:
-		}
-	}
+		return nil, false, nil
+	}, func(err error) error {
+		return fmt.Errorf("wait for owned ACL samples to be garbage collected: %w", err)
+	})
 }
 
 func (c *OVNNbClient) aclSamplingCollectorReferences(ownedCollectors map[string]struct{}) (map[string]struct{}, bool, error) {
@@ -440,19 +420,15 @@ func (c *OVNNbClient) deleteUnreferencedACLSamplingCollectors(collectors []ovnnb
 		if _, ok := retained[collector.UUID]; ok {
 			continue
 		}
-		ops, err := c.Where(collector).Delete()
+		ops, err := c.Database.Table(&ovnnb.SampleCollector{}).Where(collector).Delete()
 		if err != nil {
 			return fmt.Errorf("build delete operation for owned sample collector %s: %w", collector.UUID, err)
 		}
 		operations = append(operations, ops...)
 	}
-	if len(operations) == 0 {
-		return nil
-	}
-	if err := c.Transact("acl-sampling-cleanup-collectors", operations); err != nil {
-		return fmt.Errorf("delete unreferenced owned sample collectors: %w", err)
-	}
-	return nil
+	return c.transactGenerated("acl-sampling-cleanup-collectors", operations, nil, nil,
+		wrapErr("delete unreferenced owned sample collectors: %w"),
+	)
 }
 
 func (c *OVNNbClient) deleteOwnedACLSamplingApps() error {
@@ -466,17 +442,13 @@ func (c *OVNNbClient) deleteOwnedACLSamplingApps() error {
 		if !isOwnedACLSamplingObject(app.ExternalIDs) {
 			continue
 		}
-		ops, err := c.Where(app).Delete()
+		ops, err := c.Database.Table(&ovnnb.SamplingApp{}).DeleteOps(app)
 		if err != nil {
 			return fmt.Errorf("build delete operation for owned sampling application %s: %w", app.UUID, err)
 		}
 		operations = append(operations, ops...)
 	}
-	if len(operations) == 0 {
-		return nil
-	}
-	if err := c.Transact("acl-sampling-cleanup-applications", operations); err != nil {
-		return fmt.Errorf("delete owned sampling applications: %w", err)
-	}
-	return nil
+	return c.transactGenerated("acl-sampling-cleanup-applications", operations, nil, nil,
+		wrapErr("delete owned sampling applications: %w"),
+	)
 }

@@ -89,19 +89,19 @@ func (c *Controller) syncFdb() {
 
 	klog.Info("starting fdb sync")
 
-	bridges, err := c.vswitchClient.ListBridge(true, nil)
+	bridges, err := c.listVswitchBridges(true, nil)
 	if err != nil {
 		klog.Errorf("failed to list ovs bridges: %v", err)
 		return
 	}
-	ports, err := c.vswitchClient.ListPort(func(port *vswitch.Port) bool {
+	ports, err := c.listVswitchPorts(func(port *vswitch.Port) bool {
 		return len(port.ExternalIDs) != 0 && port.ExternalIDs["ovn-localnet-port"] != ""
 	})
 	if err != nil {
 		klog.Errorf("failed to list ovs patch ports: %v", err)
 		return
 	}
-	interfaces, err := c.vswitchClient.ListInterface(func(iface *vswitch.Interface) bool {
+	interfaces, err := c.listVswitchInterfaces(func(iface *vswitch.Interface) bool {
 		return iface.Type == "patch"
 	})
 	if err != nil {
