@@ -23,7 +23,8 @@ import (
 )
 
 type mockCache struct {
-	objects map[string]runtime.Object
+	objects   map[string]runtime.Object
+	dnatRules []ovnv1.IptablesDnatRule
 }
 
 func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
@@ -50,7 +51,15 @@ func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Obje
 	return nil
 }
 
-func (m *mockCache) List(_ context.Context, _ client.ObjectList, _ ...client.ListOption) error {
+func (m *mockCache) List(_ context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	// The validation code lists every share DNAT rule only for the unlabelled owner/affinity
+	// conflict check; labelled lookups (which use ListOptions) keep returning an empty result
+	// so existing tests that do not exercise the new check stay unchanged.
+	if len(opts) == 0 {
+		if dnats, ok := list.(*ovnv1.IptablesDnatRuleList); ok {
+			dnats.Items = m.dnatRules
+		}
+	}
 	return nil
 }
 
@@ -479,6 +488,8 @@ func TestValidateIptablesDnat(t *testing.T) {
 		{name: "internal port zero rejected", externalPort: "8080", internalPort: "0", wantErr: true},
 		{name: "external port over range rejected", externalPort: "65536", internalPort: "80", wantErr: true},
 		{name: "external port non-numeric rejected", externalPort: "abc", internalPort: "80", wantErr: true},
+		{name: "external port leading zero rejected", externalPort: "080", internalPort: "80", wantErr: true},
+		{name: "internal port leading zero rejected", externalPort: "8080", internalPort: "080", wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -491,4 +502,219 @@ func TestValidateIptablesDnat(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateIptablesDnatProtocolCanonical(t *testing.T) {
+	v := &ValidatingHook{cache: &mockCache{objects: map[string]runtime.Object{
+		"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"}},
+	}}}
+
+	for _, protocol := range []string{"TCP", "Udp", "SCTP"} {
+		dnat := &ovnv1.IptablesDnatRule{Spec: ovnv1.IptablesDnatRuleSpec{
+			EIP: "test-eip", ExternalPort: "80", InternalPort: "80", InternalIP: "10.0.0.10", Protocol: protocol,
+		}}
+		require.Error(t, v.ValidateIptablesDnat(context.Background(), dnat), protocol)
+	}
+}
+
+func TestValidateIptablesDnatSessionAffinity(t *testing.T) {
+	cache := &mockCache{
+		objects: map[string]runtime.Object{
+			"/test-eip": &ovnv1.IptablesEIP{
+				Name: "test-eip",
+				Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"},
+			},
+		},
+	}
+	v := &ValidatingHook{cache: cache}
+
+	base := &ovnv1.IptablesDnatRule{
+		Name: "test-dnat",
+		Spec: ovnv1.IptablesDnatRuleSpec{
+			Type:         ovnv1.DnatRuleTypeShare,
+			EIP:          "test-eip",
+			ExternalPort: "80",
+			InternalPort: "8080",
+			InternalIP:   "10.0.0.10",
+			Protocol:     "tcp",
+		},
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(spec *ovnv1.IptablesDnatRuleSpec)
+		wantErr bool
+	}{
+		{
+			name: "none with zero timeout is valid",
+		},
+		{
+			name: "clientip with zero timeout is valid",
+			mutate: func(spec *ovnv1.IptablesDnatRuleSpec) {
+				spec.SessionAffinity = ovnv1.DnatSessionAffinityClientIP
+			},
+		},
+		{
+			name: "clientip with timeout is valid",
+			mutate: func(spec *ovnv1.IptablesDnatRuleSpec) {
+				spec.SessionAffinity = ovnv1.DnatSessionAffinityClientIP
+				spec.SessionAffinityTimeoutSeconds = 600
+			},
+		},
+		{
+			name: "none with timeout is rejected",
+			mutate: func(spec *ovnv1.IptablesDnatRuleSpec) {
+				spec.SessionAffinityTimeoutSeconds = 600
+			},
+			wantErr: true,
+		},
+		{
+			name: "clientip on exclusive is rejected",
+			mutate: func(spec *ovnv1.IptablesDnatRuleSpec) {
+				spec.Type = ovnv1.DnatRuleTypeExclusive
+				spec.SessionAffinity = ovnv1.DnatSessionAffinityClientIP
+			},
+			wantErr: true,
+		},
+		{
+			name: "clientip timeout out of range is rejected",
+			mutate: func(spec *ovnv1.IptablesDnatRuleSpec) {
+				spec.SessionAffinity = ovnv1.DnatSessionAffinityClientIP
+				spec.SessionAffinityTimeoutSeconds = 86401
+			},
+			wantErr: true,
+		},
+		{
+			name: "unknown affinity is rejected",
+			mutate: func(spec *ovnv1.IptablesDnatRuleSpec) {
+				spec.SessionAffinity = "PerConnection"
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dnat := base.DeepCopy()
+			if tt.mutate != nil {
+				tt.mutate(&dnat.Spec)
+			}
+			err := v.ValidateIptablesDnat(context.Background(), dnat)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateIptablesDnatShareIdentityConflict(t *testing.T) {
+	newDnat := func(ownerNS, ownerName, affinity string, affinityTimeout int32) *ovnv1.IptablesDnatRule {
+		dnat := &ovnv1.IptablesDnatRule{
+			Name: "new-dnat",
+			Spec: ovnv1.IptablesDnatRuleSpec{
+				Type:                          ovnv1.DnatRuleTypeShare,
+				EIP:                           "test-eip",
+				ExternalPort:                  "80",
+				InternalPort:                  "8080",
+				InternalIP:                    "10.0.0.10",
+				Protocol:                      "tcp",
+				SessionAffinity:               affinity,
+				SessionAffinityTimeoutSeconds: affinityTimeout,
+			},
+		}
+		if ownerNS != "" || ownerName != "" {
+			dnat.Labels = map[string]string{
+				util.NftableLbSvcNsLabel:   ownerNS,
+				util.NftableLbSvcNameLabel: ownerName,
+			}
+		}
+		return dnat
+	}
+
+	newCache := func(existing *ovnv1.IptablesDnatRule) *mockCache {
+		cache := &mockCache{
+			objects: map[string]runtime.Object{
+				"/test-eip": &ovnv1.IptablesEIP{
+					Name: "test-eip",
+					Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"},
+				},
+			},
+		}
+		if existing != nil {
+			cache.dnatRules = []ovnv1.IptablesDnatRule{*existing}
+		}
+		return cache
+	}
+
+	t.Run("different service owners conflict", func(t *testing.T) {
+		existing := newDnat("ns1", "svc-a", ovnv1.DnatSessionAffinityNone, 0)
+		existing.Name = "existing-dnat"
+		v := &ValidatingHook{cache: newCache(existing)}
+		err := v.ValidateIptablesDnat(context.Background(), newDnat("ns1", "svc-b", ovnv1.DnatSessionAffinityNone, 0))
+		require.ErrorContains(t, err, "already in use by service ns1/svc-a")
+	})
+
+	t.Run("manual rule conflicts with service owner", func(t *testing.T) {
+		existing := newDnat("", "", ovnv1.DnatSessionAffinityNone, 0)
+		existing.Name = "manual-dnat"
+		v := &ValidatingHook{cache: newCache(existing)}
+		err := v.ValidateIptablesDnat(context.Background(), newDnat("ns1", "svc", ovnv1.DnatSessionAffinityNone, 0))
+		require.ErrorContains(t, err, "already in use by a manually-created share DNAT rule")
+	})
+
+	t.Run("same owner must keep identity affinity consistent", func(t *testing.T) {
+		existing := newDnat("ns1", "svc", ovnv1.DnatSessionAffinityClientIP, 600)
+		existing.Name = "existing-dnat"
+		v := &ValidatingHook{cache: newCache(existing)}
+		err := v.ValidateIptablesDnat(context.Background(), newDnat("ns1", "svc", ovnv1.DnatSessionAffinityNone, 0))
+		require.ErrorContains(t, err, "must use identical sessionAffinity settings")
+	})
+
+	t.Run("terminating rule does not block replacement", func(t *testing.T) {
+		existing := newDnat("ns1", "svc", ovnv1.DnatSessionAffinityClientIP, 600)
+		existing.Name = "existing-dnat"
+		now := metav1.Now()
+		existing.DeletionTimestamp = &now
+		v := &ValidatingHook{cache: newCache(existing)}
+		err := v.ValidateIptablesDnat(context.Background(), newDnat("ns1", "svc", ovnv1.DnatSessionAffinityClientIP, 600))
+		require.NoError(t, err)
+	})
+}
+
+func TestIptablesDnatAffinityImmutableOnUpdate(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+
+	encode := func(dnat *ovnv1.IptablesDnatRule) runtime.RawExtension {
+		raw, err := json.Marshal(dnat)
+		require.NoError(t, err)
+		return runtime.RawExtension{Raw: raw}
+	}
+
+	oldDnat := &ovnv1.IptablesDnatRule{
+		Name: "test-dnat",
+		Spec: ovnv1.IptablesDnatRuleSpec{
+			Type:         ovnv1.DnatRuleTypeShare,
+			EIP:          "test-eip",
+			ExternalPort: "80",
+			InternalPort: "8080",
+			InternalIP:   "10.0.0.1",
+			Protocol:     "tcp",
+		},
+	}
+	newDnat := oldDnat.DeepCopy()
+	newDnat.Spec.SessionAffinity = ovnv1.DnatSessionAffinityClientIP
+	newDnat.Spec.SessionAffinityTimeoutSeconds = 600
+
+	req := admission.Request{
+		Operation: admissionv1.Update,
+		OldObject: encode(oldDnat),
+		Object:    encode(newDnat),
+	}
+	v := &ValidatingHook{decoder: admission.NewDecoder(scheme)}
+	resp := v.iptablesDnatUpdateHook(context.Background(), req)
+	require.False(t, resp.Allowed)
+	require.Contains(t, resp.Result.Message, "sessionAffinity is immutable")
 }

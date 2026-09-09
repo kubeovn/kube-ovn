@@ -51,6 +51,34 @@ func (c *Controller) enqueueAddEndpointSlice(obj any) {
 	if key != "" {
 		klog.V(3).Infof("enqueue add endpointSlice %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
+		c.enqueueNftableLbService(key)
+	}
+}
+
+func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
+	if !c.config.EnableLb {
+		return
+	}
+
+	var endpointSlice *discoveryv1.EndpointSlice
+	switch t := obj.(type) {
+	case *discoveryv1.EndpointSlice:
+		endpointSlice = t
+	case cache.DeletedFinalStateUnknown:
+		var ok bool
+		endpointSlice, ok = t.Obj.(*discoveryv1.EndpointSlice)
+		if !ok {
+			klog.Warningf("unexpected object type: %T", t.Obj)
+			return
+		}
+	default:
+		klog.Warningf("unexpected type: %T", obj)
+		return
+	}
+
+	if key := findServiceKey(endpointSlice); key != "" {
+		c.addOrUpdateEndpointSliceQueue.Add(key)
+		c.enqueueNftableLbService(key)
 	}
 }
 
@@ -65,7 +93,15 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 		return
 	}
 
+	oldKey := findServiceKey(oldEndpointSlice)
+	newKey := findServiceKey(newEndpointSlice)
 	if len(oldEndpointSlice.Endpoints) == 0 && len(newEndpointSlice.Endpoints) == 0 {
+		if oldKey != newKey {
+			c.enqueueNftableLbService(oldKey)
+			c.enqueueNftableLbService(newKey)
+		} else if !reflect.DeepEqual(oldEndpointSlice.Ports, newEndpointSlice.Ports) {
+			c.enqueueNftableLbService(newKey)
+		}
 		return
 	}
 
@@ -78,10 +114,13 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 		return
 	}
 
-	key := findServiceKey(newEndpointSlice)
-	if key != "" {
-		klog.V(3).Infof("enqueue update endpointSlice for service %s", key)
-		c.addOrUpdateEndpointSliceQueue.Add(key)
+	if oldKey != newKey {
+		c.enqueueNftableLbService(oldKey)
+	}
+	if newKey != "" {
+		klog.V(3).Infof("enqueue update endpointSlice for service %s", newKey)
+		c.addOrUpdateEndpointSliceQueue.Add(newKey)
+		c.enqueueNftableLbService(newKey)
 	}
 }
 

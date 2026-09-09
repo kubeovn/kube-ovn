@@ -630,11 +630,30 @@ func TestGetShareBackends(t *testing.T) {
 		deleting,
 	)
 
-	backends, err := c.getShareBackends("gw", "eip", "80", "tcp", "self")
+	backends, affinity, affinityTimeout, err := c.getShareBackends("gw", "eip", "80", "tcp", "self")
 	require.NoError(t, err)
 	// Self is excluded; only ready share siblings with the same identity are returned.
 	// Exclusive, other protocol/eip, incomplete spec and deleting rules are filtered out.
 	assert.ElementsMatch(t, []string{"10.0.0.1:8080", "10.0.0.2:8080"}, backends)
+	assert.Empty(t, affinity)
+	assert.Zero(t, affinityTimeout)
+}
+
+func TestGetShareBackendsUsesLiveSiblingAffinity(t *testing.T) {
+	t.Parallel()
+
+	live := shareDnat("live", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeShare)
+	live.Spec.SessionAffinity = kubeovnv1.DnatSessionAffinityClientIP
+	live.Spec.SessionAffinityTimeoutSeconds = 600
+	deleting := shareDnat("deleting", "gw", "eip", "80", "tcp", "10.0.0.9", "8080", kubeovnv1.DnatRuleTypeShare)
+	deleting.DeletionTimestamp = &metav1.Time{Time: time.Unix(1, 0)}
+
+	c := dnatListerController(t, live, deleting)
+	backends, affinity, affinityTimeout, err := c.getShareBackends("gw", "eip", "80", "tcp", "deleting")
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"10.0.0.1:8080"}, backends)
+	assert.Equal(t, kubeovnv1.DnatSessionAffinityClientIP, affinity)
+	assert.Equal(t, int32(600), affinityTimeout)
 }
 
 func TestIsDnatDuplicated(t *testing.T) {
@@ -738,6 +757,63 @@ func TestEnqueueAddIptablesDnatRule(t *testing.T) {
 		&kubeovnv1.IptablesDnatRule{Name: "live-dnat"},
 		&kubeovnv1.IptablesDnatRule{Name: "terminating-dnat", DeletionTimestamp: &now},
 	)
+}
+
+func TestEnqueueUpdateIptablesDnatRuleNotifiesNftableLbService(t *testing.T) {
+	t.Parallel()
+	c := &Controller{
+		updateIptablesDnatRuleQueue:  newTypedRateLimitingQueue[string]("UpdateIptablesDnat", nil),
+		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
+		config:                       &Configuration{EnableLb: true, EnableNftableLbSvc: true},
+	}
+	t.Cleanup(c.updateIptablesDnatRuleQueue.ShutDown)
+	t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)
+
+	oldDnat := &kubeovnv1.IptablesDnatRule{
+		Name: "lb-default-abc",
+		Labels: map[string]string{
+			util.NftableLbSvcNsLabel:   "ns1",
+			util.NftableLbSvcNameLabel: "svc1",
+		},
+		Spec: kubeovnv1.IptablesDnatRuleSpec{Type: kubeovnv1.DnatRuleTypeShare},
+	}
+	newDnat := oldDnat.DeepCopy()
+	newDnat.Spec.SessionAffinity = kubeovnv1.DnatSessionAffinityClientIP
+
+	c.enqueueUpdateIptablesDnatRule(oldDnat, newDnat)
+	require.Equal(t, 1, c.addOrUpdateNftableLbSvcQueue.Len(), "out-of-band spec drift must notify the owning nftable LB service")
+	item, _ := c.addOrUpdateNftableLbSvcQueue.Get()
+	require.Equal(t, "ns1/svc1", item)
+	c.addOrUpdateNftableLbSvcQueue.Done(item)
+}
+
+func TestEnqueueDelIptablesDnatRuleNotifiesNftableLbService(t *testing.T) {
+	t.Parallel()
+	c := &Controller{
+		delIptablesDnatRuleQueue:     newTypedRateLimitingQueue[string]("DelIptablesDnat", nil),
+		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
+		config:                       &Configuration{EnableLb: true, EnableNftableLbSvc: true},
+	}
+	t.Cleanup(c.delIptablesDnatRuleQueue.ShutDown)
+	t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)
+
+	owned := &kubeovnv1.IptablesDnatRule{
+		Name: "lb-default-abc",
+		Labels: map[string]string{
+			util.NftableLbSvcNsLabel:   "ns1",
+			util.NftableLbSvcNameLabel: "svc1",
+		},
+	}
+	c.enqueueDelIptablesDnatRule(owned)
+	require.Equal(t, 1, c.delIptablesDnatRuleQueue.Len())
+	require.Equal(t, 1, c.addOrUpdateNftableLbSvcQueue.Len(), "deleting a generated rule must notify its owning service")
+	item, _ := c.addOrUpdateNftableLbSvcQueue.Get()
+	require.Equal(t, "ns1/svc1", item)
+	c.addOrUpdateNftableLbSvcQueue.Done(item)
+
+	c.enqueueDelIptablesDnatRule(&kubeovnv1.IptablesDnatRule{Name: "manual"})
+	require.Equal(t, 2, c.delIptablesDnatRuleQueue.Len())
+	require.Equal(t, 0, c.addOrUpdateNftableLbSvcQueue.Len(), "manual rules must not trigger nftable LB service reconciliation")
 }
 
 func TestEnqueueAddIptablesSnatRule(t *testing.T) {

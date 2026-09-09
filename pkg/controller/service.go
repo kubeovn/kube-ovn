@@ -51,6 +51,8 @@ func (c *Controller) enqueueAddService(obj any) {
 		klog.V(3).Infof("enqueue add lb service %s", key)
 		c.addServiceQueue.Add(key)
 	}
+
+	c.enqueueNftableLbService(key)
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
@@ -75,6 +77,8 @@ func (c *Controller) enqueueDeleteService(obj any) {
 	}
 
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
+
+	c.enqueueNftableLbService(cache.MetaObjectToName(svc).String())
 
 	ips := getVipIps(svc)
 	if len(ips) != 0 {
@@ -132,6 +136,9 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 
 	key := cache.MetaObjectToName(newSvc).String()
 	klog.V(3).Infof("enqueue update service %s", key)
+
+	c.enqueueNftableLbService(key)
+
 	if len(ipsToDel) != 0 {
 		ipsToDelStr := strings.Join(ipsToDel, ",")
 		key = strings.Join([]string{key, ipsToDelStr}, "#")
