@@ -318,16 +318,18 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		return fmt.Errorf("failed to create OVS bridge %s, %w: %q", bridge, err, output)
 	}
 
-	if exchangeLinkName {
-		if err := c.waitForBridgeInterface(bridge, 5*time.Second); err != nil {
-			// Bridge created in OVSDB but kernel interface not available.
-			// Delete the stale bridge to allow a clean retry.
-			klog.Warningf("OVS bridge %s interface not ready, cleaning up: %v", bridge, err)
-			if output, delErr := ovs.Exec(ovs.IfExists, "del-br", bridge); delErr != nil {
-				klog.Errorf("failed to delete stale bridge %s: %v, %q", bridge, delErr, output)
-			}
-			return err
+	// OVSDB can acknowledge add-br before the kernel bridge interface is
+	// available. Wait in both exchange-link-name and regular provider modes
+	// before netlink address/route migration below; otherwise a fresh bridge
+	// can fail with a transient "Link not found" error.
+	if err := c.waitForBridgeInterface(bridge, 5*time.Second); err != nil {
+		// Bridge created in OVSDB but kernel interface not available.
+		// Delete the stale bridge to allow a clean retry.
+		klog.Warningf("OVS bridge %s interface not ready, cleaning up: %v", bridge, err)
+		if output, delErr := ovs.Exec(ovs.IfExists, "del-br", bridge); delErr != nil {
+			klog.Errorf("failed to delete stale bridge %s: %v, %q", bridge, delErr, output)
 		}
+		return err
 	}
 
 	if output, err = ovs.Exec("list-ports", bridge); err != nil {

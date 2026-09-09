@@ -555,12 +555,44 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerAddVip() {
 	suite.testLoadBalancerAddVip()
 }
 
+func (suite *OvnClientTestSuite) Test_LoadBalancerMigrateVIP() {
+	suite.testLoadBalancerMigrateVIP()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
 	suite.testDeleteLoadBalancerOp()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLoadBalancerAffinityTimeout() {
 	suite.testSetLoadBalancerAffinityTimeout()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerAffinityTimeout() {
+	suite.testDeleteLoadBalancerAffinityTimeout()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerSelectionFields() {
+	suite.testSetLoadBalancerSelectionFields()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerDistributed() {
+	suite.testSetLoadBalancerDistributed()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerAddressFamily() {
+	suite.testSetLoadBalancerAddressFamily()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerExternalIDs() {
+	suite.testSetLoadBalancerExternalIDs()
+}
+
+func (suite *OvnClientTestSuite) Test_ReconcileChassisTemplateVariables() {
+	suite.testReconcileChassisTemplateVariables()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteChassisTemplateVariables() {
+	suite.testDeleteChassisTemplateVariables()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLoadBalancerCtFlush() {
@@ -1459,6 +1491,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		client.WithTable(&ovnnb.ACL{}),
 		client.WithTable(&ovnnb.AddressSet{}),
 		client.WithTable(&ovnnb.BFD{}),
+		client.WithTable(&ovnnb.ChassisTemplateVar{}),
 		client.WithTable(&ovnnb.DHCPOptions{}),
 		client.WithTable(&ovnnb.GatewayChassis{}),
 		client.WithTable(&ovnnb.HAChassis{}),
