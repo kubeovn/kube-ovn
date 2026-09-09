@@ -39,6 +39,7 @@ import (
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovninformerfactory "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/informer"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -287,6 +288,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		configMapsSynced:        alwaysReady,
 		vpcNatGwKeyMutex:        keymutex.NewHashed(0),
 	}
+
+	// the kubevirt informer is created without a client: tests populate its indexer directly
+	ctrl.kubevirtInformerFactory = informer.NewKubeVirtInformerFactoryWithOptions(nil, nil)
 
 	ctrl.config = &Configuration{
 		ClusterRouter:        util.DefaultVpc,
