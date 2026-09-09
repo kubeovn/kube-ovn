@@ -133,35 +133,6 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 	}
 }
 
-func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
-	if !c.config.EnableLb {
-		return
-	}
-
-	var endpointSlice *discoveryv1.EndpointSlice
-	switch t := obj.(type) {
-	case *discoveryv1.EndpointSlice:
-		endpointSlice = t
-	case cache.DeletedFinalStateUnknown:
-		s, ok := t.Obj.(*discoveryv1.EndpointSlice)
-		if !ok {
-			klog.Warningf("unexpected object type: %T", t.Obj)
-			return
-		}
-		endpointSlice = s
-	default:
-		klog.Warningf("unexpected type: %T", obj)
-		return
-	}
-
-	key := findServiceKey(endpointSlice)
-	if key != "" {
-		klog.V(3).Infof("enqueue delete endpointSlice for service %s", key)
-		c.addOrUpdateEndpointSliceQueue.Add(key)
-		c.enqueueVpcEndpointServiceFromServiceKey(key)
-	}
-}
-
 func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {

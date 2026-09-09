@@ -130,7 +130,7 @@ networking:
       # @section -- Network parameters of the CNI
       v6: "fd00:100:64::/112"
 
-	# -- Leave empty to use the controller binary defaults (switch "vpc-endpoint-transit",
+  # -- Leave empty to use the controller binary defaults (switch "vpc-endpoint-transit",
   # CIDR "100.65.0.0/16"). Only used when features.ENABLE_VPC_ENDPOINT is true.
   # @section -- Network parameters of the CNI
   vpcEndpointTransit:
