@@ -521,8 +521,7 @@ func (c *Controller) serviceLBMigrationCandidates(svc *v1.Service, protocol v1.P
 	if serviceUsesScopedLB(svc) {
 		add(serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass))
 		if trafficClass == serviceLBInternalTraffic {
-			families := append(serviceScopedInternalLBFamilies(svc), "ipv4", "ipv6")
-			for _, family := range families {
+			for _, family := range serviceScopedInternalLBFamilies(svc) {
 				add(serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family))
 			}
 		}

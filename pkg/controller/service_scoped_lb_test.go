@@ -562,10 +562,14 @@ func TestServiceLBMigrationCandidates(t *testing.T) {
 		Spec: corev1.ServiceSpec{ClusterIP: "10.96.0.10", ClusterIPs: []string{"10.96.0.10", "fd00::10"}},
 	}
 	candidates = ctrl.serviceLBMigrationCandidates(dual, corev1.ProtocolTCP, vpc, serviceLBInternalTraffic)
+	wantUnsuffixed := serviceScopedLBNameForTrafficClass(dual, corev1.ProtocolTCP, serviceLBInternalTraffic)
+	if !slices.Contains(candidates, wantUnsuffixed) {
+		t.Fatalf("non-template dual-stack migration candidates %v do not contain %q", candidates, wantUnsuffixed)
+	}
 	for _, family := range []string{"ipv4", "ipv6"} {
-		want := serviceScopedLBNameForTrafficClassAndFamily(dual, corev1.ProtocolTCP, serviceLBInternalTraffic, family)
-		if !slices.Contains(candidates, want) {
-			t.Fatalf("dual-stack migration candidates %v do not contain %q", candidates, want)
+		familyName := serviceScopedLBNameForTrafficClassAndFamily(dual, corev1.ProtocolTCP, serviceLBInternalTraffic, family)
+		if slices.Contains(candidates, familyName) {
+			t.Fatalf("non-template dual-stack migration candidates %v unexpectedly contain %q", candidates, familyName)
 		}
 	}
 }
