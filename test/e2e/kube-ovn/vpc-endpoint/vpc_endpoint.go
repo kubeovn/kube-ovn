@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"time"
 
@@ -61,11 +62,9 @@ var _ = framework.Describe("[group:vpc-endpoint]", func() {
 		framework.ExpectNoError(err)
 		enabled := false
 		for _, c := range controller.Spec.Template.Spec.Containers {
-			for _, arg := range c.Args {
-				if arg == "--enable-vpc-endpoint=true" {
-					enabled = true
-					break
-				}
+			if slices.Contains(c.Args, "--enable-vpc-endpoint=true") {
+				enabled = true
+				break
 			}
 		}
 		if !enabled {
