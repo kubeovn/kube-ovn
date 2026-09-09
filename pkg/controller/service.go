@@ -299,6 +299,10 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 	}
 	if serviceUsesScopedLB(svc) {
 		c.enqueueEndpointSliceService(key, svc)
+		if err := c.checkServiceLBIPBelongToSubnet(svc); err != nil {
+			klog.Error(err)
+			return err
+		}
 	}
 
 	if !serviceUsesScopedLB(svc) {
