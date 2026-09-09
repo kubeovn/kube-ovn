@@ -13,8 +13,8 @@ import (
 )
 
 type rowTable interface {
-	table.TableReader
-	table.TableMutator
+	table.Reader
+	table.Mutator
 }
 
 func listMatching[T any](ctx context.Context, t rowTable, pred func(*T) bool) ([]T, error) {

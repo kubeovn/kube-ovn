@@ -17,9 +17,9 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -30,7 +30,7 @@ func (c *Controller) getNamed[T any](name, kind string, ignoreNotFound bool, pro
 	return table.GetByName(context.Background(), c.OVNNbTables, prototype, name, kind, ignoreNotFound, nameOf)
 }
 
-func (c *Controller) listOn[T any](provider table.TableProvider, prototype *T, fallback func() ([]T, error), pred func(*T) bool) ([]T, error) {
+func (c *Controller) listOn[T any](provider table.Provider, prototype *T, fallback func() ([]T, error), pred func(*T) bool) ([]T, error) {
 	if provider == nil {
 		return fallback()
 	}
@@ -73,7 +73,7 @@ func (c *Controller) deleteFiltered[T any](prototype *T, method string, fallback
 	return c.deleteOn(c.OVNNbTables, prototype, method, fallback, pred)
 }
 
-func (c *Controller) deleteOn[T any](provider table.TableProvider, prototype *T, method string, fallback func() error, pred func(*T) bool) error {
+func (c *Controller) deleteOn[T any](provider table.Provider, prototype *T, method string, fallback func() error, pred func(*T) bool) error {
 	if provider == nil {
 		return fallback()
 	}
@@ -457,7 +457,7 @@ func (c *Controller) updateRow(row model.Model, method string, fields ...any) er
 	return c.updateOn(c.OVNNbTables, row, method, fields...)
 }
 
-func (c *Controller) updateOn(provider table.TableProvider, row model.Model, method string, fields ...any) error {
+func (c *Controller) updateOn(provider table.Provider, row model.Model, method string, fields ...any) error {
 	if len(fields) == 0 {
 		return nil
 	}
@@ -2239,7 +2239,7 @@ func equalOptionalString(left, right *string) bool {
 
 // createLogicalSwitchPort reconciles a normal LSP row and its parent switch
 // reference. Complex DHCP reconciliation remains in the OVS compatibility
-// fallback when no TableProvider is installed.
+// fallback when no Provider is installed.
 func (c *Controller) createLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *ovs.DHCPOptionsUUIDs, vpc string) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)

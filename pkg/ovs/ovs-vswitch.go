@@ -20,8 +20,8 @@ type VswitchClient struct {
 }
 
 var (
-	_ Vswitch              = (*VswitchClient)(nil)
-	_ table.TableProvider = (*VswitchClient)(nil)
+	_ Vswitch        = (*VswitchClient)(nil)
+	_ table.Provider = (*VswitchClient)(nil)
 )
 
 // NewVswitchClient creates a new vswitch client

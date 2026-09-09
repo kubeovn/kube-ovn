@@ -28,15 +28,15 @@ type fakeACLSamplingTables struct {
 	client *fakeACLSamplingVswitch
 }
 
-func (f *fakeACLSamplingTables) Table(model.Model) table.TableHandle { return nil }
+func (f *fakeACLSamplingTables) Table(model.Model) table.Handle { return nil }
 
 func (f *fakeACLSamplingTables) ReconcileACLSamplingCollectorSet(config aclsampling.NodeConfig) error {
 	return f.client.ReconcileACLSamplingCollectorSet(config)
 }
 
-var _ table.TableProvider = (*fakeACLSamplingTables)(nil)
+var _ table.Provider = (*fakeACLSamplingTables)(nil)
 
-func TestReconcileACLSamplingCollectorSetUsesTableProviderCapability(t *testing.T) {
+func TestReconcileACLSamplingCollectorSetUsesProviderCapability(t *testing.T) {
 	nodeName := "acl-sampling-provider-node"
 	config := aclsampling.NodeConfig{Enabled: true, SetID: 142, LocalGroupID: 142}
 	client := &fakeACLSamplingVswitch{}

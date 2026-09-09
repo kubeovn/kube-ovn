@@ -11,11 +11,11 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 )
 
-// OptionalTableProvider exposes tables that are not part of the fixed client
+// OptionalProvider exposes tables that are not part of the fixed client
 // model. It is intended for versioned or vendor-specific schema extensions;
 // callers must check the schema before using the returned handle.
-type OptionalTableProvider interface {
-	TableProvider
+type OptionalProvider interface {
+	Provider
 	OptionalTable(string, model.Model) *OptionalTable
 }
 
@@ -28,7 +28,7 @@ type OptionalTable struct {
 	prototype model.Model
 }
 
-var _ OptionalTableProvider = (*Database)(nil)
+var _ OptionalProvider = (*Database)(nil)
 
 // OptionalTable returns a handle for a table that may be absent from a server
 // schema. The handle reports a schema error when an operation is attempted.

@@ -99,7 +99,7 @@ type Controller struct {
 	fdbSyncChan   chan struct{}
 	fdbSyncMutex  sync.Mutex
 	vswitchClient ovs.Vswitch
-	vswitchTables table.TableProvider
+	vswitchTables table.Provider
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {

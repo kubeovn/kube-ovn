@@ -12,12 +12,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
 
-type pingerTableHandle struct {
-	table.TableHandle
+type pingerHandle struct {
+	table.Handle
 	interfaces []vswitch.Interface
 }
 
-func (h *pingerTableHandle) List(_ context.Context, result any) error {
+func (h *pingerHandle) List(_ context.Context, result any) error {
 	rows, ok := result.(*[]vswitch.Interface)
 	if !ok {
 		return errors.New("unexpected table result type")
@@ -26,21 +26,21 @@ func (h *pingerTableHandle) List(_ context.Context, result any) error {
 	return nil
 }
 
-type pingerTableProvider struct {
-	handle table.TableHandle
+type pingerProvider struct {
+	handle table.Handle
 }
 
-func (p *pingerTableProvider) Table(model.Model) table.TableHandle {
+func (p *pingerProvider) Table(model.Model) table.Handle {
 	return p.handle
 }
 
 func TestExporterReconnectsGenericVswitchProvider(t *testing.T) {
 	attempts := 0
-	provider := &pingerTableProvider{handle: &pingerTableHandle{
+	provider := &pingerProvider{handle: &pingerHandle{
 		interfaces: []vswitch.Interface{{UUID: "interface-1", Name: "eth0"}},
 	}}
 	exporter := &Exporter{
-		newVswitchTables: func() (table.TableProvider, error) {
+		newVswitchTables: func() (table.Provider, error) {
 			attempts++
 			if attempts == 1 {
 				return nil, errors.New("OVSDB is not ready")

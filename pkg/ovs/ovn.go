@@ -17,11 +17,11 @@ import (
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicsb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 // LegacyClient is the legacy ovn client
@@ -52,12 +52,12 @@ type OVNICSbClient struct {
 }
 
 var (
-	_ NbClient             = (*OVNNbClient)(nil)
-	_ SbClient             = (*OVNSbClient)(nil)
-	_ table.TableProvider = (*OVNNbClient)(nil)
-	_ table.TableProvider = (*OVNSbClient)(nil)
-	_ table.TableProvider = (*OVNICNbClient)(nil)
-	_ table.TableProvider = (*OVNICSbClient)(nil)
+	_ NbClient       = (*OVNNbClient)(nil)
+	_ SbClient       = (*OVNSbClient)(nil)
+	_ table.Provider = (*OVNNbClient)(nil)
+	_ table.Provider = (*OVNSbClient)(nil)
+	_ table.Provider = (*OVNICNbClient)(nil)
+	_ table.Provider = (*OVNICSbClient)(nil)
 )
 
 type ovsTransactionObserver struct{}

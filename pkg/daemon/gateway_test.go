@@ -35,7 +35,7 @@ func TestSetGatewayBandwidthReturnsHTBQueryError(t *testing.T) {
 	controller := &Controller{
 		config:        &Configuration{NodeName: node.Name},
 		nodesLister:   listerv1.NewNodeLister(indexer),
-		vswitchTables: cniEventTableProvider{filterErr: wantErr},
+		vswitchTables: cniEventProvider{filterErr: wantErr},
 	}
 
 	err := controller.setGatewayBandwidth()

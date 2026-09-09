@@ -18,10 +18,10 @@ type Table struct {
 	prototype model.Model
 }
 
-// TableHandle is the table-scoped capability exposed to reconcile code.
+// Handle is the table-scoped capability exposed to reconcile code.
 // Keeping the returned handle behind an interface lets tests replace table
 // behavior without depending on the concrete Table implementation.
-type TableHandle interface {
+type Handle interface {
 	Get(context.Context, model.Model) error
 	List(context.Context, any) error
 	Query(context.Context, model.Model, any) error
@@ -41,40 +41,40 @@ type TableHandle interface {
 	Transact(context.Context, string, ...ovsdb.Operation) error
 }
 
-// TableReader is the minimal cache-backed read capability used by resource
+// Reader is the minimal cache-backed read capability used by resource
 // facades. It intentionally excludes operation construction and transactions.
-type TableReader interface {
+type Reader interface {
 	Get(context.Context, model.Model) error
 	Filter(context.Context, any, any) error
 }
 
-// TableMutator is the minimal capability for building typed mutation
+// Mutator is the minimal capability for building typed mutation
 // operations without submitting a transaction.
-type TableMutator interface {
+type Mutator interface {
 	MutateOps(model.Model, ...model.Mutation) ([]ovsdb.Operation, error)
 }
 
-// TableOperationBuilder builds create, update, and delete operations for a
+// OperationBuilder builds create, update, and delete operations for a
 // resource facade to compose into a TxPlan.
-type TableOperationBuilder interface {
+type OperationBuilder interface {
 	CreateOps(...model.Model) ([]ovsdb.Operation, error)
 	UpdateOps(model.Model, model.Model, ...any) ([]ovsdb.Operation, error)
 	DeleteOps(...model.Model) ([]ovsdb.Operation, error)
 }
 
-// TableProvider supplies generic table handles for a database schema.
+// Provider supplies generic table handles for a database schema.
 // Database implements this interface, and database-specific clients can
 // expose it through embedding without expanding their legacy client APIs.
-type TableProvider interface {
-	Table(model.Model) TableHandle
+type Provider interface {
+	Table(model.Model) Handle
 }
 
 var (
-	_ TableProvider         = (*Database)(nil)
-	_ TableHandle           = (*Table)(nil)
-	_ TableReader           = (*Table)(nil)
-	_ TableMutator          = (*Table)(nil)
-	_ TableOperationBuilder = (*Table)(nil)
+	_ Provider         = (*Database)(nil)
+	_ Handle           = (*Table)(nil)
+	_ Reader           = (*Table)(nil)
+	_ Mutator          = (*Table)(nil)
+	_ OperationBuilder = (*Table)(nil)
 )
 
 // Table returns a resource handle for a model table. The prototype is used by
@@ -86,7 +86,7 @@ var (
 //	var rows []rowModel
 //	err := table.Filter(ctx, predicate, &rows)
 //	err = table.Update(ctx, "resource-update", selector, desired, &desired.Field)
-func (d *Database) Table(prototype model.Model) TableHandle {
+func (d *Database) Table(prototype model.Model) Handle {
 	return &Table{db: d, prototype: prototype}
 }
 

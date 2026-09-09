@@ -12,9 +12,9 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -49,7 +49,7 @@ func TestGenericACLRejectsInvalidPriority(t *testing.T) {
 	})
 }
 
-func TestControllerTableProviderReadsAssociatedRows(t *testing.T) {
+func TestControllerProviderReadsAssociatedRows(t *testing.T) {
 	logicalRouter := &ovnnb.LogicalRouter{
 		UUID:         "lr-1",
 		Name:         "router-1",
@@ -136,7 +136,7 @@ func TestControllerTableProviderReadsAssociatedRows(t *testing.T) {
 	require.Len(t, kubeOvnChassises, 1)
 }
 
-func TestControllerTableProviderWrites(t *testing.T) {
+func TestControllerProviderWrites(t *testing.T) {
 	backend := newTableBackend()
 	database := table.NewDatabase(backend, time.Second, table.RetryPolicy{})
 	controller := &Controller{OVNNbTables: database}
@@ -150,7 +150,7 @@ func TestControllerTableProviderWrites(t *testing.T) {
 	require.Equal(t, 4, backend.transactCalls)
 }
 
-func TestControllerTableProviderFieldUpdates(t *testing.T) {
+func TestControllerProviderFieldUpdates(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LoadBalancer{
 			UUID:    "lb-1",
@@ -179,7 +179,7 @@ func TestControllerTableProviderFieldUpdates(t *testing.T) {
 	require.Equal(t, 5, backend.transactCalls)
 }
 
-func TestControllerTableProviderCollectionUpdates(t *testing.T) {
+func TestControllerProviderCollectionUpdates(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.AddressSet{UUID: "as-1", Name: "as-1", Addresses: []string{"10.0.0.0/24"}},
 		&ovnnb.PortGroup{UUID: "pg-1", Name: "pg-1", Ports: []string{"lsp-old"}},
@@ -201,7 +201,7 @@ func TestControllerTableProviderCollectionUpdates(t *testing.T) {
 	require.Equal(t, 3, backend.transactCalls)
 }
 
-func TestControllerTableProviderRelationUpdates(t *testing.T) {
+func TestControllerProviderRelationUpdates(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1"},
 		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"},
@@ -222,7 +222,7 @@ func TestControllerTableProviderRelationUpdates(t *testing.T) {
 	require.Equal(t, 5, backend.transactCalls)
 }
 
-func TestControllerTableProviderNBGlobalUpdates(t *testing.T) {
+func TestControllerProviderNBGlobalUpdates(t *testing.T) {
 	backend := newTableBackend(&ovnnb.NBGlobal{
 		UUID:    "nb-global-1",
 		Options: map[string]string{"stale": "value"},
@@ -237,7 +237,7 @@ func TestControllerTableProviderNBGlobalUpdates(t *testing.T) {
 	require.Equal(t, 3, backend.transactCalls)
 }
 
-func TestControllerTableProviderParentReferenceDeletes(t *testing.T) {
+func TestControllerProviderParentReferenceDeletes(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalRouter{
 			UUID:     "lr-1",
@@ -273,7 +273,7 @@ func TestControllerTableProviderParentReferenceDeletes(t *testing.T) {
 	require.Equal(t, 5, backend.transactCalls)
 }
 
-func TestControllerTableProviderNatCreate(t *testing.T) {
+func TestControllerProviderNatCreate(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
 	controller := &Controller{OVNNbTables: table.NewDatabase(backend, time.Second, table.RetryPolicy{})}
 
@@ -292,7 +292,7 @@ func TestControllerTableProviderNatCreate(t *testing.T) {
 	require.Equal(t, 0, duplicateBackend.transactCalls)
 }
 
-func TestControllerTableProviderNatReconcile(t *testing.T) {
+func TestControllerProviderNatReconcile(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
 	controller := &Controller{OVNNbTables: table.NewDatabase(backend, time.Second, table.RetryPolicy{})}
 	require.NoError(t, controller.ensureSnat("lr-1", "192.0.2.11", "10.0.0.11"))
@@ -311,7 +311,7 @@ func TestControllerTableProviderNatReconcile(t *testing.T) {
 	require.Equal(t, 1, existingBackend.transactCalls)
 }
 
-func TestControllerTableProviderPeerAndPatchPorts(t *testing.T) {
+func TestControllerProviderPeerAndPatchPorts(t *testing.T) {
 	peerBackend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "local"})
 	peerController := &Controller{OVNNbTables: table.NewDatabase(peerBackend, time.Second, table.RetryPolicy{})}
 	require.NoError(t, peerController.createPeerRouterPort("local", "remote", "169.254.0.1/30"))
@@ -332,7 +332,7 @@ func TestControllerTableProviderPeerAndPatchPorts(t *testing.T) {
 	require.Equal(t, 1, patchBackend.transactCalls)
 }
 
-func TestControllerTableProviderLogicalSwitchRepairsMissingPatchPorts(t *testing.T) {
+func TestControllerProviderLogicalSwitchRepairsMissingPatchPorts(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "switch-1"},
 		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "router-1"},
@@ -347,7 +347,7 @@ func TestControllerTableProviderLogicalSwitchRepairsMissingPatchPorts(t *testing
 	require.Equal(t, 1, backend.transactCalls)
 }
 
-func TestControllerTableProviderLogicalPatchPortRepairsPartialTopology(t *testing.T) {
+func TestControllerProviderLogicalPatchPortRepairsPartialTopology(t *testing.T) {
 	tests := []struct {
 		name        string
 		existing    []model.Model
@@ -409,7 +409,7 @@ func TestControllerTableProviderLogicalPatchPortRepairsPartialTopology(t *testin
 	}
 }
 
-func TestControllerTableProviderLogicalSwitchPortMovesBetweenSwitches(t *testing.T) {
+func TestControllerProviderLogicalSwitchPortMovesBetweenSwitches(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-old", Name: "subnet-old", Ports: []string{"lsp-1"}},
 		&ovnnb.LogicalSwitch{UUID: "ls-new", Name: "subnet-new"},
@@ -435,7 +435,7 @@ func TestControllerTableProviderLogicalSwitchPortMovesBetweenSwitches(t *testing
 	require.Equal(t, []string{"mutate:LogicalSwitch", "create:LogicalSwitchPort", "mutate:LogicalSwitch"}, backend.transactionLabels[0])
 }
 
-func TestControllerTableProviderLogicalPatchPortsMoveBetweenParents(t *testing.T) {
+func TestControllerProviderLogicalPatchPortsMoveBetweenParents(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-old", Name: "switch-old", Ports: []string{"lsp-1"}},
 		&ovnnb.LogicalSwitch{UUID: "ls-new", Name: "switch-new"},
@@ -474,7 +474,7 @@ func TestControllerTableProviderLogicalPatchPortsMoveBetweenParents(t *testing.T
 	}, backend.transactionLabels[0])
 }
 
-func TestControllerTableProviderPolicyReconcile(t *testing.T) {
+func TestControllerProviderPolicyReconcile(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"})
 	controller := &Controller{OVNNbTables: table.NewDatabase(backend, time.Second, table.RetryPolicy{})}
 	require.NoError(t, controller.addLogicalRouterPolicy(
@@ -497,7 +497,7 @@ func TestControllerTableProviderPolicyReconcile(t *testing.T) {
 	require.Equal(t, 1, deleteBackend.transactCalls)
 }
 
-func TestControllerTableProviderRouterPortRA(t *testing.T) {
+func TestControllerProviderRouterPortRA(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalRouterPort{
 		UUID: "lrp-1", Name: "lrp-1", Networks: []string{"10.0.0.1/24", "fd00::1/64"},
 	})
@@ -508,7 +508,7 @@ func TestControllerTableProviderRouterPortRA(t *testing.T) {
 	require.Equal(t, 2, backend.transactCalls)
 }
 
-func TestControllerTableProviderLogicalSwitchAndDHCP(t *testing.T) {
+func TestControllerProviderLogicalSwitchAndDHCP(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "vpc-1"})
 	database := table.NewDatabase(backend, time.Second, table.RetryPolicy{})
 	controller := &Controller{OVNNbTables: database}
@@ -526,7 +526,7 @@ func TestControllerTableProviderLogicalSwitchAndDHCP(t *testing.T) {
 	require.Equal(t, 2, backend.createCalls)
 }
 
-func TestControllerTableProviderLogicalSwitchACL(t *testing.T) {
+func TestControllerProviderLogicalSwitchACL(t *testing.T) {
 	backend := newTableBackend(&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "subnet-1"})
 	controller := &Controller{OVNNbTables: table.NewDatabase(backend, time.Second, table.RetryPolicy{})}
 	require.NoError(t, controller.updateLogicalSwitchACL("subnet-1", "10.0.0.0/24", []kubeovnv1.ACL{{
@@ -536,7 +536,7 @@ func TestControllerTableProviderLogicalSwitchACL(t *testing.T) {
 	require.Equal(t, 1, backend.transactCalls)
 }
 
-func TestControllerTableProviderPortDeletes(t *testing.T) {
+func TestControllerProviderPortDeletes(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1", Ports: []string{"lsp-1"}},
 		&ovnnb.LogicalSwitchPort{
@@ -564,7 +564,7 @@ func TestControllerTableProviderPortDeletes(t *testing.T) {
 	require.Equal(t, 2, backend.transactCalls)
 }
 
-func TestControllerTableProviderHAChassisGroup(t *testing.T) {
+func TestControllerProviderHAChassisGroup(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.HAChassisGroup{
 			UUID:        "group-1",
@@ -588,7 +588,7 @@ func TestControllerTableProviderHAChassisGroup(t *testing.T) {
 	require.Equal(t, 2, backend.transactCalls)
 }
 
-func TestControllerTableProviderMeterDelete(t *testing.T) {
+func TestControllerProviderMeterDelete(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.Meter{UUID: "meter-1", Name: "meter-1", Bands: []string{"band-1", "band-2"}},
 		&ovnnb.MeterBand{UUID: "band-1"},
@@ -601,7 +601,7 @@ func TestControllerTableProviderMeterDelete(t *testing.T) {
 	require.NoError(t, controller.deleteMeter("missing-meter"))
 }
 
-func TestControllerTableProviderStaticRoutes(t *testing.T) {
+func TestControllerProviderStaticRoutes(t *testing.T) {
 	policy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
 	backend := newTableBackend(
 		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1", StaticRoutes: []string{"route-1"}},
@@ -627,7 +627,7 @@ func TestControllerTableProviderStaticRoutes(t *testing.T) {
 	require.Equal(t, 4, backend.transactCalls)
 }
 
-func TestControllerTableProviderPortCreates(t *testing.T) {
+func TestControllerProviderPortCreates(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ls-1"},
 		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "lr-1"},
@@ -646,7 +646,7 @@ func TestControllerTableProviderPortCreates(t *testing.T) {
 	require.Equal(t, 5, backend.transactCalls)
 }
 
-func TestControllerTableProviderLoadBalancerOperations(t *testing.T) {
+func TestControllerProviderLoadBalancerOperations(t *testing.T) {
 	backend := newTableBackend(
 		&ovnnb.LoadBalancer{
 			UUID:           "lb-1",
@@ -685,7 +685,7 @@ func TestControllerTableProviderLoadBalancerOperations(t *testing.T) {
 	require.Equal(t, 7, backend.transactCalls)
 }
 
-func TestControllerTableProviderSecurityGroupACLs(t *testing.T) {
+func TestControllerProviderSecurityGroupACLs(t *testing.T) {
 	pgName := ovs.GetSgPortGroupName("sg-1")
 	backend := newTableBackend(&ovnnb.PortGroup{UUID: "pg-1", Name: pgName})
 	controller := &Controller{OVNNbTables: table.NewDatabase(backend, time.Second, table.RetryPolicy{})}
@@ -712,7 +712,7 @@ func TestControllerTableProviderSecurityGroupACLs(t *testing.T) {
 	require.Equal(t, 3, backend.transactCalls)
 }
 
-func TestControllerTableProviderACLHelpers(t *testing.T) {
+func TestControllerProviderACLHelpers(t *testing.T) {
 	pgName := "node-pg"
 	logMatch := "inport == @" + pgName + " && ip"
 	backend := newTableBackend(

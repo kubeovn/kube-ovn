@@ -16,7 +16,7 @@ type LogicalRouterPorts struct {
 }
 
 // NewLogicalRouterPorts creates a typed facade over an NB table provider.
-func NewLogicalRouterPorts(provider table.TableProvider, executor table.Executor) *LogicalRouterPorts {
+func NewLogicalRouterPorts(provider table.Provider, executor table.Executor) *LogicalRouterPorts {
 	if provider == nil {
 		return &LogicalRouterPorts{executor: executor}
 	}

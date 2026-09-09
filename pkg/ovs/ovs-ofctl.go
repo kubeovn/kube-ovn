@@ -53,7 +53,7 @@ func ReplaceFlows(bridgeName string, flows []string) error {
 }
 
 // ClearU2OFlows clears obsolete U2O flows
-func ClearU2OFlows(client *ovs.Client, provider table.TableProvider) error {
+func ClearU2OFlows(client *ovs.Client, provider table.Provider) error {
 	if provider == nil {
 		return errors.New("vswitch table provider is nil")
 	}

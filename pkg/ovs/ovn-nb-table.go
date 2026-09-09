@@ -17,7 +17,7 @@ import (
 // tables. The model-specific methods remain in their logical resource files,
 // while this type owns the repeated lookup, list, create, and mutation flow.
 type namedStore interface {
-	table.TableProvider
+	table.Provider
 	table.Executor
 }
 
@@ -31,7 +31,7 @@ type namedTable[T any] struct {
 	newByName     func(string) *T
 }
 
-func (t namedTable[T]) table() table.TableHandle {
+func (t namedTable[T]) table() table.Handle {
 	return t.store.Table(t.prototype)
 }
 
@@ -44,7 +44,7 @@ func (t namedTable[T]) listError(format string, args ...any) error {
 }
 
 func (t namedTable[T]) get(name string, ignoreNotFound bool) (*T, error) {
-	rows, err := t.store.Filter(context.Background(), t.prototype, func(row *T) bool {
+	rows, err := table.Filter[T](context.Background(), t.store, t.prototype, func(row *T) bool {
 		return t.nameOf(row) == name
 	})
 	if err != nil {
@@ -54,7 +54,7 @@ func (t namedTable[T]) get(name string, ignoreNotFound bool) (*T, error) {
 }
 
 func (t namedTable[T]) list(needVendorFilter bool, filter func(*T) bool) ([]T, error) {
-	rows, err := t.store.Filter(context.Background(), t.prototype, func(row *T) bool {
+	rows, err := table.Filter[T](context.Background(), t.store, t.prototype, func(row *T) bool {
 		if needVendorFilter && !hasVendor(t.externalIDsOf(row)) {
 			return false
 		}

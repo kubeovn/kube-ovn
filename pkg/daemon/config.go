@@ -59,7 +59,7 @@ type Configuration struct {
 	CertManagerClient certmanagerclientset.Interface
 	// VswitchTables is injected before Init so startup OVSDB writes use the
 	// same generic database handle as the daemon controller.
-	VswitchTables                 table.TableProvider
+	VswitchTables                 table.Provider
 	PodName                       string
 	PodNamespace                  string
 	NodeName                      string

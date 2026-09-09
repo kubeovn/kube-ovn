@@ -20,8 +20,8 @@ import (
 )
 
 // InitOVSBridges initializes OVS bridges
-func InitOVSBridges(providers ...table.TableProvider) (map[string]string, error) {
-	var provider table.TableProvider
+func InitOVSBridges(providers ...table.Provider) (map[string]string, error) {
+	var provider table.Provider
 	if len(providers) != 0 {
 		provider = providers[0]
 	}

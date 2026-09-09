@@ -21,7 +21,7 @@ type netemQosState struct {
 	qosRows  []vswitch.QoS
 }
 
-func setNetemQosTable(provider table.TableProvider, podName, podNamespace, iface, latency, limit, loss, jitter string) error {
+func setNetemQosTable(provider table.Provider, podName, podNamespace, iface, latency, limit, loss, jitter string) error {
 	desiredConfig, err := parseNetemQosConfig(latency, limit, loss, jitter)
 	if err != nil {
 		return err
@@ -108,7 +108,7 @@ func setNetemQosTable(provider table.TableProvider, podName, podNamespace, iface
 	return transactTable(ctx, provider.Table(&vswitch.QoS{}), "netem-qos-reconcile", ops)
 }
 
-func loadNetemQosState(ctx context.Context, provider table.TableProvider, podName, podNamespace, iface string) (*netemQosState, error) {
+func loadNetemQosState(ctx context.Context, provider table.Provider, podName, podNamespace, iface string) (*netemQosState, error) {
 	interfaces, err := vswitchRowsByIfaceID(ctx, provider, &vswitch.Interface{}, iface, func(row *vswitch.Interface) map[string]string { return row.ExternalIDs })
 	if err != nil {
 		return nil, fmt.Errorf("list interfaces for netem qos %s: %w", iface, err)
@@ -246,7 +246,7 @@ func netemQosExternalIDs(podName, podNamespace, iface string) map[string]string 
 	return externalIDs
 }
 
-func isHtbQosTable(provider table.TableProvider, iface string) (bool, error) {
+func isHtbQosTable(provider table.Provider, iface string) (bool, error) {
 	rows, err := vswitchRowsByIfaceID(context.Background(), provider, &vswitch.QoS{}, iface, func(row *vswitch.QoS) map[string]string { return row.ExternalIDs })
 	if err != nil {
 		return false, fmt.Errorf("list QoS rows for %s: %w", iface, err)
@@ -259,7 +259,7 @@ func isHtbQosTable(provider table.TableProvider, iface string) (bool, error) {
 	return false, nil
 }
 
-func isUserspaceDataPathTable(provider table.TableProvider) (bool, error) {
+func isUserspaceDataPathTable(provider table.Provider) (bool, error) {
 	var bridges []vswitch.Bridge
 	if err := provider.Table(&vswitch.Bridge{}).Filter(context.Background(), func(row *vswitch.Bridge) bool {
 		return row.Name == "br-int"

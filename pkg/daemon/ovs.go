@@ -138,7 +138,7 @@ func pingGateway(gw, src string, verbose bool, maxRetry int, done chan struct{})
 	return pinger.PacketsSent, nil
 }
 
-func configureGlobalMirror(portName string, mtu int, providers ...table.TableProvider) error {
+func configureGlobalMirror(portName string, mtu int, providers ...table.Provider) error {
 	if len(providers) == 0 || providers[0] == nil {
 		return errors.New("vswitch table provider is not configured")
 	}
@@ -148,7 +148,7 @@ func configureGlobalMirror(portName string, mtu int, providers ...table.TablePro
 	return configureMirrorLink(portName, mtu)
 }
 
-func configureEmptyMirror(portName string, mtu int, providers ...table.TableProvider) error {
+func configureEmptyMirror(portName string, mtu int, providers ...table.Provider) error {
 	if len(providers) == 0 || providers[0] == nil {
 		return errors.New("vswitch table provider is not configured")
 	}
@@ -313,7 +313,7 @@ func (c *Controller) initProviderChassisMac(provider string) error {
 }
 
 // GetProviderChassisMac returns the chassis MAC recorded for a provider.
-func GetProviderChassisMac(provider string, providers ...table.TableProvider) (string, error) {
+func GetProviderChassisMac(provider string, providers ...table.Provider) (string, error) {
 	if len(providers) == 0 || providers[0] == nil {
 		return "", errors.New("vswitch table provider is not configured")
 	}

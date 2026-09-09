@@ -27,7 +27,7 @@ type VswitchBridgeConfig struct {
 // EnsureVswitchBridge creates or updates an OVS bridge, its local Port and
 // internal Interface, and the root Open_vSwitch.bridges reference in one
 // transaction.
-func EnsureVswitchBridge(ctx context.Context, provider table.TableProvider, config VswitchBridgeConfig) error {
+func EnsureVswitchBridge(ctx context.Context, provider table.Provider, config VswitchBridgeConfig) error {
 	if err := requireVswitchTable(provider, config.Name, "OVS bridge name is empty"); err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func EnsureVswitchBridge(ctx context.Context, provider table.TableProvider, conf
 	return waitForVswitchBridge(ctx, provider, config.Name, root.UUID)
 }
 
-func planVswitchBridgeLocalPort(ctx context.Context, provider table.TableProvider, name string) (*vswitch.Port, []ovsdb.Operation, error) {
+func planVswitchBridgeLocalPort(ctx context.Context, provider table.Provider, name string) (*vswitch.Port, []ovsdb.Operation, error) {
 	port, err := findVswitchPort(ctx, provider, name)
 	if err != nil {
 		return nil, nil, err
@@ -154,7 +154,7 @@ func planVswitchBridgeLocalPort(ctx context.Context, provider table.TableProvide
 // DeleteVswitchBridge removes an OVS bridge and the Port, Interface, and QoS
 // rows owned by it. The caller should first perform any domain-specific state
 // restoration required for the attached kernel links.
-func DeleteVswitchBridge(ctx context.Context, provider table.TableProvider, name string) error {
+func DeleteVswitchBridge(ctx context.Context, provider table.Provider, name string) error {
 	if err := requireVswitchTable(provider, name, "OVS bridge name is empty"); err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func DeleteVswitchBridge(ctx context.Context, provider table.TableProvider, name
 	return transactTable(ctx, bridgeTable, "vswitch-bridge-delete", operations)
 }
 
-func listVswitchOpenVSwitch(ctx context.Context, provider table.TableProvider) ([]vswitch.OpenvSwitch, error) {
+func listVswitchOpenVSwitch(ctx context.Context, provider table.Provider) ([]vswitch.OpenvSwitch, error) {
 	var roots []vswitch.OpenvSwitch
 	if err := provider.Table(&vswitch.OpenvSwitch{}).List(ctx, &roots); err != nil {
 		return nil, fmt.Errorf("list Open_vSwitch rows: %w", err)
@@ -236,11 +236,11 @@ func listVswitchOpenVSwitch(ctx context.Context, provider table.TableProvider) (
 	return roots, nil
 }
 
-func findVswitchBridgeOptional(ctx context.Context, provider table.TableProvider, name string) (*vswitch.Bridge, error) {
+func findVswitchBridgeOptional(ctx context.Context, provider table.Provider, name string) (*vswitch.Bridge, error) {
 	return findNamedRow(ctx, provider, &vswitch.Bridge{}, name, "bridge", false, func(row *vswitch.Bridge) string { return row.Name })
 }
 
-func requireVswitchTable(provider table.TableProvider, name, emptyErr string) error {
+func requireVswitchTable(provider table.Provider, name, emptyErr string) error {
 	if provider == nil {
 		return errors.New("ovsdb table provider is nil")
 	}
@@ -250,7 +250,7 @@ func requireVswitchTable(provider table.TableProvider, name, emptyErr string) er
 	return nil
 }
 
-func uniqueOpenVSwitch(ctx context.Context, provider table.TableProvider) (*vswitch.OpenvSwitch, error) {
+func uniqueOpenVSwitch(ctx context.Context, provider table.Provider) (*vswitch.OpenvSwitch, error) {
 	roots, err := listVswitchOpenVSwitch(ctx, provider)
 	if err != nil {
 		return nil, err
@@ -261,7 +261,7 @@ func uniqueOpenVSwitch(ctx context.Context, provider table.TableProvider) (*vswi
 	)
 }
 
-func waitForVswitchRows[T any](ctx context.Context, provider table.TableProvider, prototype model.Model, pred func(*T) bool, wrap, name string) ([]T, error) {
+func waitForVswitchRows[T any](ctx context.Context, provider table.Provider, prototype model.Model, pred func(*T) bool, wrap, name string) ([]T, error) {
 	var rows []T
 	if err := table.WaitForRows(ctx, provider, prototype, pred, &rows); err != nil {
 		return nil, fmt.Errorf(wrap, name, err)
@@ -269,7 +269,7 @@ func waitForVswitchRows[T any](ctx context.Context, provider table.TableProvider
 	return rows, nil
 }
 
-func waitForVswitchBridge(ctx context.Context, provider table.TableProvider, name, rootUUID string) error {
+func waitForVswitchBridge(ctx context.Context, provider table.Provider, name, rootUUID string) error {
 	interfaces, err := waitForVswitchRows(ctx, provider, &vswitch.Interface{}, func(row *vswitch.Interface) bool {
 		return row.Name == name && row.Type == "internal"
 	}, "wait for local OVS interface %q cache update: %w", name)
@@ -327,7 +327,7 @@ func collectVswitchPortRefs(ports []vswitch.Port) (map[string]struct{}, map[stri
 	return interfaceIDs, qosIDs
 }
 
-func appendVswitchUUIDDeletes[T any](table table.TableHandle, ops []ovsdb.Operation, uuids map[string]struct{}, makeRow func(string) *T, errFmt string) ([]ovsdb.Operation, error) {
+func appendVswitchUUIDDeletes[T any](table table.Handle, ops []ovsdb.Operation, uuids map[string]struct{}, makeRow func(string) *T, errFmt string) ([]ovsdb.Operation, error) {
 	for uuid := range uuids {
 		deleteOps, err := table.DeleteOps(makeRow(uuid))
 		if err != nil {
@@ -338,7 +338,7 @@ func appendVswitchUUIDDeletes[T any](table table.TableHandle, ops []ovsdb.Operat
 	return ops, nil
 }
 
-func appendVswitchPortDeletes(table table.TableHandle, ops []ovsdb.Operation, ports []vswitch.Port, errFmt string) ([]ovsdb.Operation, error) {
+func appendVswitchPortDeletes(table table.Handle, ops []ovsdb.Operation, ports []vswitch.Port, errFmt string) ([]ovsdb.Operation, error) {
 	for i := range ports {
 		deleteOps, err := table.DeleteOps(&vswitch.Port{UUID: ports[i].UUID})
 		if err != nil {
@@ -356,25 +356,25 @@ func vswitchOwnerMatch(externalIDs map[string]string, podName, podNamespace, ifa
 	return externalIDs["pod"] == podNamespace+"/"+podName
 }
 
-func vswitchRowsByIfaceID[T any](ctx context.Context, provider table.TableProvider, prototype model.Model, iface string, idsOf func(*T) map[string]string) ([]T, error) {
+func vswitchRowsByIfaceID[T any](ctx context.Context, provider table.Provider, prototype model.Model, iface string, idsOf func(*T) map[string]string) ([]T, error) {
 	return table.Filter[T](ctx, provider, prototype, func(row *T) bool {
 		return idsOf(row)["iface-id"] == iface
 	})
 }
 
-func vswitchRowsByUUID[T any](ctx context.Context, provider table.TableProvider, prototype model.Model, uuid string, uuidOf func(*T) string) ([]T, error) {
+func vswitchRowsByUUID[T any](ctx context.Context, provider table.Provider, prototype model.Model, uuid string, uuidOf func(*T) string) ([]T, error) {
 	return table.Filter[T](ctx, provider, prototype, func(row *T) bool {
 		return uuidOf(row) == uuid
 	})
 }
 
-func vswitchRowsByOwner[T any](ctx context.Context, provider table.TableProvider, prototype model.Model, podName, podNamespace, ifaceID string, idsOf func(*T) map[string]string) ([]T, error) {
+func vswitchRowsByOwner[T any](ctx context.Context, provider table.Provider, prototype model.Model, podName, podNamespace, ifaceID string, idsOf func(*T) map[string]string) ([]T, error) {
 	return table.Filter[T](ctx, provider, prototype, func(row *T) bool {
 		return vswitchOwnerMatch(idsOf(row), podName, podNamespace, ifaceID)
 	})
 }
 
-func vswitchIfaceIDMap[T any](ctx context.Context, provider table.TableProvider, prototype model.Model, idsOf func(*T) map[string]string, uuidOf func(*T) string) (map[string]string, error) {
+func vswitchIfaceIDMap[T any](ctx context.Context, provider table.Provider, prototype model.Model, idsOf func(*T) map[string]string, uuidOf func(*T) string) (map[string]string, error) {
 	rows, err := table.Filter[T](ctx, provider, prototype, func(row *T) bool {
 		return idsOf(row)["iface-id"] != ""
 	})
@@ -388,7 +388,7 @@ func vswitchIfaceIDMap[T any](ctx context.Context, provider table.TableProvider,
 	return result, nil
 }
 
-func deleteUnusedVswitchRows[T any](ctx context.Context, table table.TableHandle, method string, rows []T, used map[string]struct{}, uuidOf func(*T) string, errFmt string) error {
+func deleteUnusedVswitchRows[T any](ctx context.Context, table table.Handle, method string, rows []T, used map[string]struct{}, uuidOf func(*T) string, errFmt string) error {
 	ops := make([]ovsdb.Operation, 0, len(rows))
 	for i := range rows {
 		row := &rows[i]
