@@ -137,7 +137,9 @@ type LogicalSwitchPort interface {
 
 type LoadBalancer interface {
 	CreateLoadBalancer(lbName, protocol string, selectFields ...string) error
+	SetLoadBalancerSelectionFields(lbName string, selectionFields []string) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
+	LoadBalancerMigrateVIP(lbName, vip string, backends []string, oldVIP string, oldLBNames ...string) error
 	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
@@ -146,6 +148,14 @@ type LoadBalancer interface {
 	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
+	DeleteLoadBalancerAffinityTimeout(lbName string) error
+	SetLoadBalancerDistributed(lbName string, distributed bool) error
+	SetLoadBalancerTemplate(lbName string, template bool) error
+	SetLoadBalancerAddressFamily(lbName, family string) error
+	SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error
+	ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error
+	DeleteChassisTemplateVariables(filter func(name string) bool) error
+	SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error

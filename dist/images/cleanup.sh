@@ -115,7 +115,9 @@ for resource_type in subnets.kubeovn.io vpcs.kubeovn.io ips.kubeovn.io; do
   done
 done
 
-# delete CRD
+# Delete CRDs and wait for every custom resource to finish terminating. If this
+# blocks, the remaining resource/finalizer must be diagnosed instead of hiding
+# the problem with asynchronous deletion.
 kubectl delete --ignore-not-found crd \
   security-groups.kubeovn.io \
   ippools.kubeovn.io \

@@ -87,7 +87,7 @@ func (c *Controller) enqueueServiceL2Status(obj any) {
 	if !ok || c.addOrUpdateEndpointSliceQueue == nil {
 		return
 	}
-	c.addOrUpdateEndpointSliceQueue.Add(key)
+	c.enqueueEndpointSliceService(key)
 }
 
 func newMetalLBRESTClient(config *rest.Config) (rest.Interface, error) {

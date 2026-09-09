@@ -160,34 +160,40 @@ var _ = framework.Describe("[group:service]", func() {
 		checkContainsClusterIP := func(v6ClusterIP string, isContain bool) {
 			ginkgo.GinkgoHelper()
 
-			cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=vips list Load_Balancer cluster-tcp-loadbalancer"
-			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-				output, _, err := framework.NBExec(cmd)
-				framework.ExpectNoError(err)
-				output = bytes.TrimSpace(output)
-				if output[0] == '"' {
-					output = output[1 : len(output)-1]
-				}
-				framework.Logf("cluster-tcp-loadbalancer vips is %q", output)
-				framework.Logf("IPv6 cluster ip is %q", v6ClusterIP)
-				vips := strings.Fields(string(output))
-				prefix := util.JoinHostPort(v6ClusterIP, port) + "="
-				var found bool
-				for _, vip := range vips {
-					if strings.HasPrefix(vip, prefix) {
-						found = true
-						break
+			lbNames := []string{"cluster-tcp-loadbalancer"}
+			if !f.VersionPriorTo(1, 17) {
+				base := fmt.Sprintf("service:%s/%s:tcp:internal", service.Namespace, service.Name)
+				lbNames = []string{base, base + ":ipv6"}
+			}
+			prefix := util.JoinHostPort(v6ClusterIP, port) + "="
+			hasVIP := func() bool {
+				ginkgo.GinkgoHelper()
+				for _, lbName := range lbNames {
+					cmd := fmt.Sprintf("ovn-nbctl --format=csv --data=bare --no-heading --columns=vips list Load_Balancer %s", lbName)
+					output, _, err := framework.NBExec(cmd)
+					if err != nil {
+						framework.Logf("load balancer %s is absent: %v", lbName, err)
+						continue
+					}
+					output = bytes.TrimSpace(output)
+					if len(output) >= 2 && output[0] == '"' && output[len(output)-1] == '"' {
+						output = output[1 : len(output)-1]
+					}
+					framework.Logf("%s vips is %q", lbName, output)
+					framework.Logf("IPv6 cluster ip is %q", v6ClusterIP)
+					for vip := range strings.FieldsSeq(string(output)) {
+						if strings.HasPrefix(vip, prefix) {
+							return true
+						}
 					}
 				}
-				if found == isContain {
-					return true, nil
-				}
-				return false, nil
-			}, "")
+				return false
+			}
 
-			output, _, err := framework.NBExec(cmd)
-			framework.ExpectNoError(err)
-			framework.ExpectEqual(strings.Contains(string(output), v6ClusterIP), isContain)
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				return hasVIP() == isContain, nil
+			}, "")
+			framework.ExpectEqual(hasVIP(), isContain)
 		}
 
 		ginkgo.By("check service from dual stack should have cluster ip")
