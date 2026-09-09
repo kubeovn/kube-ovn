@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	k8stesting "k8s.io/client-go/testing"
@@ -1656,8 +1657,12 @@ func TestHandleDeletePodRetriesOrphanedVMPortIPLookupFailure(t *testing.T) {
 	mockVMIs := kubecli.NewMockVirtualMachineInstanceInterface(mockCtrl)
 	mockVMs := kubecli.NewMockVirtualMachineInterface(mockCtrl)
 	mockKubevirt := kubecli.NewMockKubevirtClient(mockCtrl)
-	mockKubevirt.EXPECT().VirtualMachineInstance(metav1.NamespaceDefault).Return(mockVMIs).Times(2)
-	mockVMIs.EXPECT().Get(gomock.Any(), "test-vm", gomock.Any()).Return(&kubevirtv1.VirtualMachineInstance{}, nil).Times(2)
+	mockKubevirt.EXPECT().VirtualMachineInstance(metav1.NamespaceDefault).Return(mockVMIs).AnyTimes()
+	// the VM is live on this pod, so its deletion still releases the port migrate options
+	liveVMI := &kubevirtv1.VirtualMachineInstance{
+		Status: kubevirtv1.VirtualMachineInstanceStatus{ActivePods: map[types.UID]string{pod.UID: "node1"}},
+	}
+	mockVMIs.EXPECT().Get(gomock.Any(), "test-vm", gomock.Any()).Return(liveVMI, nil).AnyTimes()
 	mockKubevirt.EXPECT().VirtualMachine(metav1.NamespaceDefault).Return(mockVMs).Times(4)
 	vmTemplate := &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 		Spec: kubevirtv1.VirtualMachineInstanceSpec{Networks: []kubevirtv1.Network{{

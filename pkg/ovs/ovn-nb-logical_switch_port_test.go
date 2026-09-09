@@ -2524,6 +2524,44 @@ func (suite *OvnClientTestSuite) testResetLogicalSwitchPortMigrateOptions() {
 		require.Equal(t, expectedOptions, updatedLsp.Options)
 	})
 
+	t.Run("keep the options owned by a newer migration", func(t *testing.T) {
+		// a newer migration of the same VM took the port over: srcNodeName is now its source
+		newTargetNodeName := "new-target-node"
+		lsp.Options = map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", targetNodeName, newTargetNodeName),
+			"activation-strategy": "rarp",
+		}
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, false)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", targetNodeName, newTargetNodeName),
+			"activation-strategy": "rarp",
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("keep the options of an already reset port", func(t *testing.T) {
+		lsp.Options = map[string]string{"requested-chassis": targetNodeName}
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, false)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{"requested-chassis": targetNodeName}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
 	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
 		nonExistentLspName := "nonexistent-lsp"
 		err = nbClient.ResetLogicalSwitchPortMigrateOptions(nonExistentLspName, srcNodeName, targetNodeName, false)
