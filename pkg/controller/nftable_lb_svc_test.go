@@ -436,6 +436,51 @@ func TestResolveNftableLbConflictsWithNoReadyBackends(t *testing.T) {
 	require.True(t, conflicted, "a loser must be detected from Service ports even without ready backends")
 }
 
+func TestResolveNftableLbConflictsIgnoresNonQualifyingServices(t *testing.T) {
+	t.Parallel()
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+		IndexServiceByNftableLbEip: indexServiceByNftableLbEip,
+	})
+	stale := &v1.Service{
+		Namespace: "ns",
+		Name:      "a-stale",
+		Annotations: map[string]string{
+			util.EipAnnotation: "eip0",
+		},
+		Spec: v1.ServiceSpec{
+			Type:  v1.ServiceTypeClusterIP,
+			Ports: []v1.ServicePort{{Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+	}
+	require.NoError(t, indexer.Add(stale))
+
+	ruleIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	queue := newTypedRateLimitingQueue[string]("nftable-lb-non-qualifying-test", nil)
+	t.Cleanup(queue.ShutDown)
+	controller := &Controller{
+		svcIndexer:                   indexer,
+		iptablesDnatRulesLister:      kubeovnlister.NewIptablesDnatRuleLister(ruleIndexer),
+		recorder:                     record.NewFakeRecorder(1),
+		addOrUpdateNftableLbSvcQueue: queue,
+	}
+	loser := &v1.Service{
+		Namespace: "ns",
+		Name:      "z-loser",
+		Annotations: map[string]string{
+			util.EipAnnotation: "eip0",
+		},
+		Spec: v1.ServiceSpec{
+			Type:  v1.ServiceTypeLoadBalancer,
+			Ports: []v1.ServicePort{{Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+	}
+
+	conflicted, err := controller.resolveNftableLbConflicts(loser, "ns/z-loser", map[string]*kubeovnv1.IptablesDnatRule{})
+	require.NoError(t, err)
+	require.False(t, conflicted, "a non-LoadBalancer Service must not own a share DNAT identity")
+}
+
 func Test_nftableLbDnatSpecEqual(t *testing.T) {
 	t.Parallel()
 

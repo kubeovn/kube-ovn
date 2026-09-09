@@ -474,7 +474,8 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 	}
 	for _, obj := range svcObjs {
 		s, ok := obj.(*v1.Service)
-		if !ok || (s.Namespace == svc.Namespace && s.Name == svc.Name) {
+		if !ok || (s.Namespace == svc.Namespace && s.Name == svc.Name) ||
+			!s.DeletionTimestamp.IsZero() || !nftableLbSvcQualifies(s) {
 			continue
 		}
 		for _, id := range nftableLbSvcIdentities(s, eipName) {
