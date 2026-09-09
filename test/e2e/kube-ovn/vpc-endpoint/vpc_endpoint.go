@@ -3,7 +3,9 @@ package vpc_endpoint
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -52,6 +54,22 @@ var _ = framework.Describe("[group:vpc-endpoint]", func() {
 		_, err := f.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(metav1.NamespaceSystem).List(context.Background(), metav1.ListOptions{Limit: 1})
 		if err != nil {
 			ginkgo.Skip(fmt.Sprintf("Multus NetworkAttachmentDefinition API unavailable: %v", err))
+		}
+
+		ginkgo.By("Checking --enable-vpc-endpoint is on")
+		controller, err := cs.AppsV1().Deployments(framework.KubeOvnNamespace).Get(context.Background(), "kube-ovn-controller", metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		enabled := false
+		for _, c := range controller.Spec.Template.Spec.Containers {
+			for _, arg := range c.Args {
+				if arg == "--enable-vpc-endpoint=true" {
+					enabled = true
+					break
+				}
+			}
+		}
+		if !enabled {
+			ginkgo.Skip("VPC endpoint feature is disabled (--enable-vpc-endpoint=false)")
 		}
 
 		suffix := framework.RandomSuffix()
@@ -109,7 +127,7 @@ var _ = framework.Describe("[group:vpc-endpoint]", func() {
 		}
 	})
 
-	framework.ConformanceIt("should expose a provider Service to a consumer VPC with an overlapping CIDR", func() {
+	setupOverlappingVPCs := func() {
 		ginkgo.By("Creating provider/consumer namespaces")
 		_ = nsClient.Create(framework.MakeNamespace(providerNS, map[string]string{util.VpcAnnotation: providerVPC}, map[string]string{util.VpcAnnotation: providerVPC}))
 		_ = nsClient.Create(framework.MakeNamespace(consumerNS, map[string]string{util.VpcAnnotation: consumerVPC}, map[string]string{util.VpcAnnotation: consumerVPC}))
@@ -119,7 +137,9 @@ var _ = framework.Describe("[group:vpc-endpoint]", func() {
 		_ = vpcClient.CreateSync(framework.MakeVpc(consumerVPC, "", false, false, []string{consumerNS}))
 		_ = subnetClient.CreateSync(framework.MakeSubnet(providerSubnet, "", cidr, "", providerVPC, "", nil, nil, []string{providerNS}))
 		_ = subnetClient.CreateSync(framework.MakeSubnet(consumerSubnet, "", cidr, "", consumerVPC, "", nil, nil, []string{consumerNS}))
+	}
 
+	createProviderService := func() {
 		ginkgo.By("Creating provider Deployment and Service")
 		labels := map[string]string{"app": deployName}
 		annotations := map[string]string{
@@ -145,6 +165,11 @@ var _ = framework.Describe("[group:vpc-endpoint]", func() {
 		_ = svcClient.CreateSync(svc, func(s *corev1.Service) (bool, error) {
 			return s.Spec.ClusterIP != "" && s.Spec.ClusterIP != corev1.ClusterIPNone, nil
 		}, "cluster IP assigned")
+	}
+
+	framework.ConformanceIt("should expose a provider Service to a consumer VPC with an overlapping CIDR", func() {
+		setupOverlappingVPCs()
+		createProviderService()
 
 		ginkgo.By("Publishing VpcEndpointService and consuming via VpcEndpoint")
 		ves := vesClient.CreateSync(framework.MakeVpcEndpointService(vesName, providerVPC, providerNS, svcName, []string{consumerVPC}))
@@ -153,6 +178,13 @@ var _ = framework.Describe("[group:vpc-endpoint]", func() {
 		vep := vepClient.CreateSync(framework.MakeVpcEndpoint(vepName, consumerVPC, consumerSubnet, vesName))
 		framework.ExpectNotEmpty(vep.Status.LocalVIP)
 		framework.ExpectEqual(vep.Status.TransitVIP, ves.Status.TransitVIP)
+
+		ginkgo.By("Asserting LocalVIP is allocated from the consumer subnet")
+		_, ipNet, err := net.ParseCIDR(cidr)
+		framework.ExpectNoError(err)
+		localIP := net.ParseIP(vep.Status.LocalVIP)
+		framework.ExpectNotNil(localIP)
+		framework.ExpectTrue(ipNet.Contains(localIP))
 
 		ginkgo.By("Creating consumer client and curling LocalVIP")
 		clientAnnotations := map[string]string{
@@ -167,10 +199,35 @@ var _ = framework.Describe("[group:vpc-endpoint]", func() {
 		framework.ExpectEqual(output, "200")
 
 		ginkgo.By("Checking stitcher ConfigMap is managed by the controller")
-		_, err := cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), "vpc-endpoint-stitcher", metav1.GetOptions{})
+		_, err = cs.CoreV1().ConfigMaps(framework.KubeOvnNamespace).Get(context.Background(), "vpc-endpoint-stitcher", metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			_, err = cs.CoreV1().ConfigMaps(providerNS).Get(context.Background(), "vpc-endpoint-stitcher", metav1.GetOptions{})
 		}
 		framework.ExpectNoError(err)
+
+		ginkgo.By("Deleting the VpcEndpoint tears down the consumer stitcher Deployment")
+		consumerDeploy := "vpc-ep-" + vepName
+		vepClient.DeleteSync(vepName)
+		vepName = ""
+		framework.WaitUntil(2*time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
+			_, err := cs.AppsV1().Deployments(consumerNS).Get(context.Background(), consumerDeploy, metav1.GetOptions{})
+			return apierrors.IsNotFound(err), nil
+		}, "consumer stitcher deployment deleted")
+	})
+
+	framework.ConformanceIt("should reject a consumer VPC that is not in allowedVpcs", func() {
+		setupOverlappingVPCs()
+		createProviderService()
+
+		ginkgo.By("Publishing a VpcEndpointService that denies the consumer VPC")
+		ves := vesClient.CreateSync(framework.MakeVpcEndpointService(vesName, providerVPC, providerNS, svcName, []string{"some-other-vpc"}))
+		framework.ExpectNotEmpty(ves.Status.TransitVIP)
+
+		ginkgo.By("Creating a VpcEndpoint that must stay NotReady")
+		vep := vepClient.Create(framework.MakeVpcEndpoint(vepName, consumerVPC, consumerSubnet, vesName))
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			current := vepClient.Get(vep.Name)
+			return !current.Status.Ready && current.Status.LocalVIP == "", nil
+		}, "denied VpcEndpoint stays NotReady without LocalVIP")
 	})
 })

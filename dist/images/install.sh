@@ -69,6 +69,7 @@ CERT_MANAGER_IPSEC_CERT=${CERT_MANAGER_IPSEC_CERT:-false}
 IPSEC_CERT_DURATION=${IPSEC_CERT_DURATION:-63072000} # 2 years in seconds
 CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
+ENABLE_VPC_ENDPOINT=${ENABLE_VPC_ENDPOINT:-false}
 ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 HOST_TUNNEL_SRC=${HOST_TUNNEL_SRC:-false}
@@ -9227,6 +9228,7 @@ spec:
           - --default-u2o-interconnection=$U2O_INTERCONNECTION
           - --default-exclude-ips=$EXCLUDE_IPS
           - --node-switch-cidr=$JOIN_CIDR
+          - --enable-vpc-endpoint=$ENABLE_VPC_ENDPOINT
           - --vpc-endpoint-transit-switch=$VPC_ENDPOINT_TRANSIT_SWITCH
           - --vpc-endpoint-transit-cidr=$VPC_ENDPOINT_TRANSIT_CIDR
           - --service-cluster-ip-range=$SVC_CIDR

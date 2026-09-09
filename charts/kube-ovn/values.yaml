@@ -84,8 +84,8 @@ networking:
   DEFAULT_SUBNET: "ovn-default"
   DEFAULT_VPC: "ovn-cluster"
   NODE_SUBNET: "join"
-  # Leave empty to use controller binary defaults. Only set when the image
-  # supports --vpc-endpoint-transit-switch / --vpc-endpoint-transit-cidr.
+  # Leave empty; only used when func.ENABLE_VPC_ENDPOINT is true.
+  # Supports --vpc-endpoint-transit-switch / --vpc-endpoint-transit-cidr.
   VPC_ENDPOINT_TRANSIT_SWITCH: ""
   # Must not overlap join/pod/service CIDRs. Empty means controller default
   # 100.65.0.0/16 (join defaults to 100.64.0.0/16).
@@ -131,6 +131,7 @@ func:
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false
   ENABLE_ANP: false
+  ENABLE_VPC_ENDPOINT: false
   ENABLE_DNS_NAME_RESOLVER: false
   SET_VXLAN_TX_OFF: false
   HOST_TUNNEL_SRC: false

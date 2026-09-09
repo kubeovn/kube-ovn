@@ -75,6 +75,14 @@ done
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-monitor
 kubectl delete --ignore-not-found -n kube-system cm ovn-config ovn-ic-config \
   ovn-external-gw-config ovn-vpc-nat-config ovn-vpc-nat-gw-config vpc-endpoint-stitcher
+# Remove tenant-namespace copies of the vpc-endpoint stitcher ConfigMap and leftover stitcher Deployments.
+kubectl get cm -A -o jsonpath='{range .items[?(@.metadata.name=="vpc-endpoint-stitcher")]}{.metadata.namespace}{"\n"}{end}' 2>/dev/null | while read -r ns; do
+  [ -z "$ns" ] && continue
+  kubectl delete --ignore-not-found -n "$ns" cm vpc-endpoint-stitcher
+done
+kubectl get deploy -A -l ovn.kubernetes.io/vpc-endpoint-stitcher -o name 2>/dev/null | while read -r dep; do
+  kubectl delete --ignore-not-found "$dep"
+done
 kubectl delete --ignore-not-found -n kube-system svc kube-ovn-pinger kube-ovn-controller kube-ovn-cni kube-ovn-monitor
 kubectl delete --ignore-not-found -n kube-system deploy kube-ovn-controller
 kubectl delete --ignore-not-found -n kube-system deploy ovn-ic-controller

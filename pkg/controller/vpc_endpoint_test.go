@@ -259,17 +259,38 @@ func TestEndpointSlicePortMatchesServicePort(t *testing.T) {
 	http := "http"
 	port80 := int32(80)
 
-	unnamedSvc := corev1.ServicePort{Protocol: tcp, Port: 80}
+	unnamedSvc := corev1.ServicePort{Protocol: tcp, Port: 80, TargetPort: intstr.FromInt32(8080)}
 	emptyName := ""
 	require.True(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp}, unnamedSvc))
 	require.True(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp, Name: &emptyName}, unnamedSvc))
+	require.True(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Protocol: &tcp}, unnamedSvc), "nil Port still matches by name/protocol")
 	require.False(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp, Name: &http}, unnamedSvc))
-	require.False(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Protocol: &tcp}, unnamedSvc))
 	require.False(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &udp}, unnamedSvc))
 
 	namedSvc := corev1.ServicePort{Name: "http", Protocol: tcp, Port: 80}
 	require.True(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp, Name: &http}, namedSvc))
 	require.False(t, endpointSlicePortMatchesServicePort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp}, namedSvc))
+}
+
+func TestEndpointSliceResolvedPort(t *testing.T) {
+	tcp := corev1.ProtocolTCP
+	port80 := int32(80)
+	svc := corev1.ServicePort{Protocol: tcp, Port: 80, TargetPort: intstr.FromInt32(8080)}
+
+	got, ok := endpointSliceResolvedPort(discoveryv1.EndpointPort{Port: &port80, Protocol: &tcp}, svc)
+	require.True(t, ok)
+	require.Equal(t, int32(80), got)
+
+	got, ok = endpointSliceResolvedPort(discoveryv1.EndpointPort{Protocol: &tcp}, svc)
+	require.True(t, ok)
+	require.Equal(t, int32(8080), got, "nil EndpointSlice Port falls back to TargetPort")
+
+	got, ok = endpointSliceResolvedPort(discoveryv1.EndpointPort{Protocol: &tcp}, corev1.ServicePort{Protocol: tcp, Port: 443})
+	require.True(t, ok)
+	require.Equal(t, int32(443), got)
+
+	_, ok = endpointSliceResolvedPort(discoveryv1.EndpointPort{Protocol: &tcp}, corev1.ServicePort{Protocol: tcp})
+	require.False(t, ok)
 }
 
 func TestVpcEndpointTransitProvider(t *testing.T) {
@@ -378,14 +399,17 @@ func TestEnsureVpcEndpointStitcherConfigMapIn(t *testing.T) {
 		KubeClient:   client,
 		PodNamespace: metav1.NamespaceSystem,
 	}}
-	require.NoError(t, c.ensureVpcEndpointStitcherConfigMapIn(metav1.NamespaceSystem))
-	require.NoError(t, c.ensureVpcEndpointStitcherConfigMapIn("ep-provider"))
+	owner := &kubeovnv1.VpcEndpointService{Name: "db", Namespace: ""}
+	owner.UID = "owner-uid"
+	require.NoError(t, c.ensureVpcEndpointStitcherConfigMapIn(metav1.NamespaceSystem, nil))
+	require.NoError(t, c.ensureVpcEndpointStitcherConfigMapIn("ep-provider", owner))
 	cm, err := client.CoreV1().ConfigMaps("ep-provider").Get(context.Background(), vpcEndpointStitcherCMName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Contains(t, cm.Data[vpcEndpointStitcherScriptKey], "consumer_sync()")
+	require.NotEmpty(t, cm.OwnerReferences)
 
 	// Second call is a no-op when already synced.
-	require.NoError(t, c.ensureVpcEndpointStitcherConfigMapIn("ep-provider"))
+	require.NoError(t, c.ensureVpcEndpointStitcherConfigMapIn("ep-provider", owner))
 }
 
 func TestCreateOrUpdateVpcEndpointDeployment(t *testing.T) {
@@ -535,6 +559,7 @@ func TestEnqueueVpcEndpointServiceFromServiceKey(t *testing.T) {
 	require.NoError(t, vesInformer.Informer().GetStore().Add(eps))
 
 	c := &Controller{
+		config:                             &Configuration{EnableVpcEndpoint: true},
 		vpcEndpointServiceLister:           vesInformer.Lister(),
 		addOrUpdateVpcEndpointServiceQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcEndpointService", nil),
 	}
@@ -574,11 +599,15 @@ func TestInitVpcEndpointTransitEarlyReturn(t *testing.T) {
 	c := &Controller{config: &Configuration{EnableLb: false}}
 	require.NoError(t, c.initVpcEndpointTransit())
 
-	c = &Controller{config: &Configuration{EnableLb: true}}
+	c = &Controller{config: &Configuration{EnableLb: true, EnableVpcEndpoint: false}}
+	require.NoError(t, c.initVpcEndpointTransit())
+
+	c = &Controller{config: &Configuration{EnableLb: true, EnableVpcEndpoint: true}}
 	require.NoError(t, c.initVpcEndpointTransit())
 
 	c = &Controller{config: &Configuration{
 		EnableLb:                 true,
+		EnableVpcEndpoint:        true,
 		VpcEndpointTransitSwitch: "vpc-endpoint-transit",
 	}}
 	require.NoError(t, c.initVpcEndpointTransit())
@@ -634,6 +663,7 @@ func TestEnqueueVpcEndpointServiceForK8sService(t *testing.T) {
 	require.NoError(t, vesInformer.Informer().GetStore().Add(eps))
 
 	c := &Controller{
+		config:                             &Configuration{EnableVpcEndpoint: true},
 		vpcEndpointServiceLister:           vesInformer.Lister(),
 		addOrUpdateVpcEndpointServiceQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcEndpointService", nil),
 	}
@@ -1082,6 +1112,7 @@ func TestGcVpcEndpointOrphanACLsAndDeployments(t *testing.T) {
 	c := &Controller{
 		config: &Configuration{
 			EnableLb:                 true,
+			EnableVpcEndpoint:        true,
 			VpcEndpointTransitSwitch: "vpc-endpoint-transit",
 			KubeClient:               kube,
 			KubeOvnClient:            kubeovnClient,

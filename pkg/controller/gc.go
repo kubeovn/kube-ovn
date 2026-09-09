@@ -1475,7 +1475,7 @@ func logicalRouterPortFilter(exceptPeerPorts *strset.Set) func(lrp *ovnnb.Logica
 }
 
 func (c *Controller) gcVpcEndpoint() error {
-	if !c.config.EnableLb || c.config.VpcEndpointTransitSwitch == "" {
+	if !c.config.EnableVpcEndpoint || !c.config.EnableLb || c.config.VpcEndpointTransitSwitch == "" {
 		return nil
 	}
 	if c.vpcEndpointServiceLister == nil || c.vpcEndpointLister == nil {

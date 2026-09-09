@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -793,7 +794,11 @@ func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSl
 			if !endpointSlicePortMatchesServicePort(port, servicePort) {
 				continue
 			}
-			targetPort = *port.Port
+			resolved, ok := endpointSliceResolvedPort(port, servicePort)
+			if !ok {
+				continue
+			}
+			targetPort = resolved
 			break
 		}
 		if targetPort == 0 {
@@ -818,11 +823,8 @@ func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSl
 
 // endpointSlicePortMatchesServicePort matches EndpointSlice ports to a Service
 // port by protocol and name. Unnamed Service ports (empty name) match
-// EndpointSlice ports whose Name is nil or empty; Port must be non-nil.
+// EndpointSlice ports whose Name is nil or empty.
 func endpointSlicePortMatchesServicePort(port discoveryv1.EndpointPort, servicePort v1.ServicePort) bool {
-	if port.Port == nil {
-		return false
-	}
 	if port.Protocol != nil && *port.Protocol != servicePort.Protocol {
 		return false
 	}
@@ -831,6 +833,21 @@ func endpointSlicePortMatchesServicePort(port discoveryv1.EndpointPort, serviceP
 		portName = *port.Name
 	}
 	return portName == servicePort.Name
+}
+
+// endpointSliceResolvedPort returns the backend port for a matched EndpointSlice
+// port. When EndpointSlice Port is nil, fall back to Service TargetPort (int) or Port.
+func endpointSliceResolvedPort(port discoveryv1.EndpointPort, servicePort v1.ServicePort) (int32, bool) {
+	if port.Port != nil && *port.Port > 0 {
+		return *port.Port, true
+	}
+	if servicePort.TargetPort.Type == intstr.Int && servicePort.TargetPort.IntVal > 0 {
+		return servicePort.TargetPort.IntVal, true
+	}
+	if servicePort.Port > 0 {
+		return servicePort.Port, true
+	}
+	return 0, false
 }
 
 // endpointReady returns whether an endpoint can receive traffic

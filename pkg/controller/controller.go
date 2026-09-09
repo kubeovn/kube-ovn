@@ -889,7 +889,6 @@ func Run(ctx context.Context, config *Configuration) {
 	klog.Info("Waiting for informer caches to sync")
 	cacheSyncs := []cache.InformerSynced{
 		controller.vpcNatGatewaySynced, controller.vpcEgressGatewaySynced,
-		controller.vpcEndpointServiceSynced, controller.vpcEndpointSynced,
 		controller.vpcSynced, controller.subnetSynced,
 		controller.ipSynced, controller.virtualIpsSynced, controller.iptablesEipSynced,
 		controller.iptablesFipSynced, controller.iptablesDnatRuleSynced, controller.iptablesSnatRuleSynced,
@@ -898,6 +897,9 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.statefulSetsSynced, controller.configMapsSynced,
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
+	}
+	if controller.config.EnableVpcEndpoint {
+		cacheSyncs = append(cacheSyncs, controller.vpcEndpointServiceSynced, controller.vpcEndpointSynced)
 	}
 	if controller.config.EnableLb {
 		cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
@@ -995,20 +997,22 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add vpc egress gateway event handler")
 	}
 
-	if _, err = vpcEndpointServiceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddVpcEndpointService,
-		UpdateFunc: controller.enqueueUpdateVpcEndpointService,
-		DeleteFunc: controller.enqueueDeleteVpcEndpointService,
-	}); err != nil {
-		util.LogFatalAndExit(err, "failed to add vpc endpoint service event handler")
-	}
+	if controller.config.EnableVpcEndpoint {
+		if _, err = vpcEndpointServiceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddVpcEndpointService,
+			UpdateFunc: controller.enqueueUpdateVpcEndpointService,
+			DeleteFunc: controller.enqueueDeleteVpcEndpointService,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add vpc endpoint service event handler")
+		}
 
-	if _, err = vpcEndpointInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddVpcEndpoint,
-		UpdateFunc: controller.enqueueUpdateVpcEndpoint,
-		DeleteFunc: controller.enqueueDeleteVpcEndpoint,
-	}); err != nil {
-		util.LogFatalAndExit(err, "failed to add vpc endpoint event handler")
+		if _, err = vpcEndpointInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddVpcEndpoint,
+			UpdateFunc: controller.enqueueUpdateVpcEndpoint,
+			DeleteFunc: controller.enqueueDeleteVpcEndpoint,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add vpc endpoint event handler")
+		}
 	}
 
 	if _, err = subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1520,7 +1524,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("delete vpc nat gateway", c.delVpcNatGatewayQueue, c.handleDelVpcNatGw), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update vpc egress gateway", c.addOrUpdateVpcEgressGatewayQueue, c.handleAddOrUpdateVpcEgressGateway), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete vpc egress gateway", c.delVpcEgressGatewayQueue, c.handleDelVpcEgressGateway), time.Second, ctx.Done())
-	if c.config.EnableLb {
+	if c.config.EnableLb && c.config.EnableVpcEndpoint {
 		go wait.Until(runWorker("add/update vpc endpoint service", c.addOrUpdateVpcEndpointServiceQueue, c.handleAddOrUpdateVpcEndpointService), time.Second, ctx.Done())
 		go wait.Until(runWorker("add/update vpc endpoint", c.addOrUpdateVpcEndpointQueue, c.handleAddOrUpdateVpcEndpoint), time.Second, ctx.Done())
 	}

@@ -138,7 +138,7 @@ func (c *Controller) enqueueDeleteVpcEndpoint(obj any) {
 }
 
 func (c *Controller) enqueueVpcEndpointServiceForK8sService(namespace, name string) {
-	if c.vpcEndpointServiceLister == nil {
+	if c.config == nil || !c.config.EnableVpcEndpoint || c.vpcEndpointServiceLister == nil {
 		return
 	}
 	selector := labels.Set{
@@ -196,7 +196,7 @@ func (c *Controller) enqueueVpcEndpointServiceByName(name string) {
 }
 
 func (c *Controller) initVpcEndpointTransit() error {
-	if !c.config.EnableLb {
+	if !c.config.EnableVpcEndpoint || !c.config.EnableLb {
 		return nil
 	}
 	if c.config.VpcEndpointTransitSwitch == "" || c.config.VpcEndpointTransitCIDR == "" {
@@ -377,12 +377,18 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 	svc, err := c.servicesLister.Services(eps.Spec.Namespace).Get(eps.Spec.Service)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			_ = c.deactivateVpcEndpointService(eps)
+			if cleanupErr := c.deactivateVpcEndpointService(eps); cleanupErr != nil {
+				klog.Errorf("failed to deactivate VpcEndpointService %s after missing Service: %v", eps.Name, cleanupErr)
+				return cleanupErr
+			}
 		}
 		return fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
 	}
 	if svcVpc := vpcEndpointEffectiveServiceVpc(svc, c.config.ClusterRouter); svcVpc != eps.Spec.Vpc {
-		_ = c.deactivateVpcEndpointService(eps)
+		if cleanupErr := c.deactivateVpcEndpointService(eps); cleanupErr != nil {
+			klog.Errorf("failed to deactivate VpcEndpointService %s after VPC mismatch: %v", eps.Name, cleanupErr)
+			return cleanupErr
+		}
 		return fmt.Errorf("provider service %s/%s belongs to vpc %s, not %s", eps.Spec.Namespace, eps.Spec.Service, svcVpc, eps.Spec.Vpc)
 	}
 
@@ -569,7 +575,7 @@ func (c *Controller) ensureVpcEndpointServiceStitcher(eps *kubeovnv1.VpcEndpoint
 		annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, vpcEndpointTransitProvider())] = transitVIP
 	}
 
-	if err := c.ensureVpcEndpointStitcherConfigMapIn(eps.Spec.Namespace); err != nil {
+	if err := c.ensureVpcEndpointStitcherConfigMapIn(eps.Spec.Namespace, eps); err != nil {
 		return nil, err
 	}
 	deploy := c.genVpcEndpointStitcherDeployment(name, eps.Spec.Namespace, labels, annotations)
@@ -807,9 +813,16 @@ func (c *Controller) deactivateVpcEndpointService(eps *kubeovnv1.VpcEndpointServ
 	if err != nil && !k8serrors.IsNotFound(err) {
 		return err
 	}
-	_ = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
+	if err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Warningf("delete provider stitcher deploy in %s: %v", c.config.PodNamespace, err)
+	}
 	if c.config.VpcEndpointTransitSwitch != "" {
-		_ = c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, "", nil)
+		if err := c.OVNNbClient.UpdateVpcEndpointServiceACLs(c.config.VpcEndpointTransitSwitch, eps.Name, "", nil); err != nil {
+			return fmt.Errorf("clear transit ACLs for %s: %w", eps.Name, err)
+		}
+	}
+	if err := c.deleteVpcEndpointStitcherConfigMapIfUnused(eps.Spec.Namespace); err != nil {
+		return err
 	}
 	eps.Status.TransitVIP = ""
 	eps.Status.Mac = ""
@@ -902,23 +915,36 @@ func (c *Controller) reconcileVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 	eps, err := c.vpcEndpointServiceLister.Get(ep.Spec.EndpointService)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			_ = c.cleanupVpcEndpoint(ep)
+			if cleanupErr := c.cleanupVpcEndpoint(ep); cleanupErr != nil {
+				klog.Errorf("failed to cleanup VpcEndpoint %s after missing VES: %v", ep.Name, cleanupErr)
+				return cleanupErr
+			}
 		}
 		return fmt.Errorf("get VpcEndpointService %s: %w", ep.Spec.EndpointService, err)
 	}
 	if !vpcEndpointServiceAllowed(eps, ep.Spec.Vpc) {
+		if cleanupErr := c.cleanupVpcEndpoint(ep); cleanupErr != nil {
+			klog.Errorf("failed to cleanup VpcEndpoint %s after allowedVpcs deny: %v", ep.Name, cleanupErr)
+			return cleanupErr
+		}
 		return fmt.Errorf("vpc %s is not allowed to consume endpoint service %s", ep.Spec.Vpc, eps.Name)
 	}
 	if !eps.Status.Ready || eps.Status.TransitVIP == "" {
 		if ep.Status.Ready || ep.Status.LocalVIP != "" || ep.Status.SnatIP != "" {
-			_ = c.cleanupVpcEndpoint(ep)
+			if cleanupErr := c.cleanupVpcEndpoint(ep); cleanupErr != nil {
+				klog.Errorf("failed to cleanup VpcEndpoint %s while waiting for VES: %v", ep.Name, cleanupErr)
+				return cleanupErr
+			}
 		}
 		return fmt.Errorf("endpoint service %s is not ready", eps.Name)
 	}
 	svc, err := c.servicesLister.Services(eps.Spec.Namespace).Get(eps.Spec.Service)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			_ = c.cleanupVpcEndpoint(ep)
+			if cleanupErr := c.cleanupVpcEndpoint(ep); cleanupErr != nil {
+				klog.Errorf("failed to cleanup VpcEndpoint %s after missing Service: %v", ep.Name, cleanupErr)
+				return cleanupErr
+			}
 		}
 		return fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
 	}
@@ -1028,7 +1054,7 @@ func (c *Controller) ensureVpcEndpointStitcher(ep *kubeovnv1.VpcEndpoint, subnet
 	if snatIP != "" {
 		annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, vpcEndpointTransitProvider())] = snatIP
 	}
-	if err := c.ensureVpcEndpointStitcherConfigMapIn(ns); err != nil {
+	if err := c.ensureVpcEndpointStitcherConfigMapIn(ns, ep); err != nil {
 		return nil, err
 	}
 	deploy := c.genVpcEndpointStitcherDeployment(name, ns, labels, annotations)
@@ -1049,7 +1075,7 @@ func (c *Controller) vpcEndpointConsumerNamespace(vpcName string) (string, error
 	return "", fmt.Errorf("vpc %s has no namespaces for stitcher deployment", vpcName)
 }
 
-func (c *Controller) ensureVpcEndpointStitcherConfigMapIn(namespace string) error {
+func (c *Controller) ensureVpcEndpointStitcherConfigMapIn(namespace string, owner metav1.Object) error {
 	if namespace == c.config.PodNamespace {
 		return c.ensureVpcEndpointStitcherConfigMap()
 	}
@@ -1063,23 +1089,63 @@ func (c *Controller) ensureVpcEndpointStitcherConfigMapIn(namespace string) erro
 	client := c.config.KubeClient.CoreV1().ConfigMaps(namespace)
 	existing, err := client.Get(context.Background(), vpcEndpointStitcherCMName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
-		_, err = client.Create(context.Background(), &corev1.ConfigMap{
+		cm := &corev1.ConfigMap{
 			Name:      vpcEndpointStitcherCMName,
 			Namespace: namespace,
 			Data:      src.Data,
-		}, metav1.CreateOptions{})
+		}
+		if owner != nil {
+			if err := util.SetOwnerReference(owner, cm); err != nil {
+				return err
+			}
+		}
+		_, err = client.Create(context.Background(), cm, metav1.CreateOptions{})
 		return err
 	}
 	if err != nil {
 		return err
 	}
-	if existing.Data[vpcEndpointStitcherScriptKey] == src.Data[vpcEndpointStitcherScriptKey] {
+	existing = existing.DeepCopy()
+	if owner != nil && len(existing.OwnerReferences) == 0 {
+		if err := util.SetOwnerReference(owner, existing); err != nil {
+			return err
+		}
+	}
+	if existing.Data[vpcEndpointStitcherScriptKey] == src.Data[vpcEndpointStitcherScriptKey] && len(existing.OwnerReferences) > 0 {
 		return nil
 	}
-	existing = existing.DeepCopy()
 	existing.Data = src.Data
 	_, err = client.Update(context.Background(), existing, metav1.UpdateOptions{})
 	return err
+}
+
+// deleteVpcEndpointStitcherConfigMapIfUnused removes a tenant-namespace stitcher
+// ConfigMap once no stitcher Deployments remain in that namespace. The
+// controller-namespace ConfigMap is kept as the shared source of truth.
+func (c *Controller) deleteVpcEndpointStitcherConfigMapIfUnused(namespace string) error {
+	if namespace == "" || namespace == c.config.PodNamespace {
+		return nil
+	}
+	if c.deploymentsLister != nil {
+		deps, err := c.deploymentsLister.Deployments(namespace).List(labels.Everything())
+		if err != nil {
+			return err
+		}
+		for _, dep := range deps {
+			if dep.DeletionTimestamp != nil {
+				continue
+			}
+			role := dep.Labels[util.VpcEndpointStitcherLabel]
+			if role == "provider" || role == "consumer" {
+				return nil
+			}
+		}
+	}
+	err := c.config.KubeClient.CoreV1().ConfigMaps(namespace).Delete(context.Background(), vpcEndpointStitcherCMName, metav1.DeleteOptions{})
+	if err != nil && !k8serrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) cleanupLegacyVpcEndpointOVN(ep *kubeovnv1.VpcEndpoint) {
@@ -1094,11 +1160,24 @@ func (c *Controller) cleanupLegacyVpcEndpointOVN(ep *kubeovnv1.VpcEndpoint) {
 
 func (c *Controller) cleanupVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 	name := vpcEndpointDeployName(ep.Name)
+	var consumerNS string
 	if ns, err := c.vpcEndpointConsumerNamespace(ep.Spec.Vpc); err == nil {
-		_ = c.config.KubeClient.AppsV1().Deployments(ns).Delete(context.Background(), name, metav1.DeleteOptions{})
+		consumerNS = ns
+		if err := c.config.KubeClient.AppsV1().Deployments(ns).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			return err
+		}
 	}
-	_ = c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
-	_ = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), "vpc-ep-"+ep.Name, metav1.DeleteOptions{})
+	if err := c.config.KubeClient.AppsV1().Deployments(c.config.PodNamespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Warningf("delete consumer stitcher deploy in %s: %v", c.config.PodNamespace, err)
+	}
+	if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), "vpc-ep-"+ep.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		return err
+	}
+	if consumerNS != "" {
+		if err := c.deleteVpcEndpointStitcherConfigMapIfUnused(consumerNS); err != nil {
+			return err
+		}
+	}
 	ep.Status.LocalVIP = ""
 	ep.Status.TransitVIP = ""
 	ep.Status.SnatIP = ""

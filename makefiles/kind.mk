@@ -581,8 +581,15 @@ kind-install-metallb-pool-from-underlay: kind-install-metallb-pool-from-underlay
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw:
 	@$(MAKE) kind-load-image-vpc-nat-gateway
-	@$(MAKE) ENABLE_NAT_GW=true ENABLE_NFTABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 kind-install
+	@$(MAKE) ENABLE_NAT_GW=true ENABLE_NFTABLE_LB_SVC=true ENABLE_VPC_ENDPOINT=true CNI_CONFIG_PRIORITY=10 kind-install
 	@$(MAKE) kind-install-multus
+
+.PHONY: kind-install-vpc-endpoint
+kind-install-vpc-endpoint:
+	@$(MAKE) ENABLE_VPC_ENDPOINT=true CNI_CONFIG_PRIORITY=10 kind-install
+	@$(MAKE) kind-install-multus
+	@$(MAKE) kind-load-image-vpc-nat-gateway
+	# Stitcher pods reuse the vpc-nat-gw image when configured; fall back to controller image.
 
 .PHONY: kind-install-kubevirt
 kind-install-kubevirt:

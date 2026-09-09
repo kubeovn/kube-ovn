@@ -150,7 +150,8 @@ provider_sync() {
 		done
 	done
 
-	# Return path: backend sees stitcher VPC-leg IP as source.
+	# Return path: provider backends see the stitcher VPC-leg IP as source
+	# (MASQUERADE), not a transit SNAT IP.
 	exec_cmd $iptables_cmd -t nat -A VPC_EP_POSTROUTING -o "$VPC_INTERFACE" -j MASQUERADE
 	echo "provider sync transit=$transit_vip backends=${#group_keys[@]} ports"
 }
