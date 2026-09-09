@@ -228,12 +228,9 @@ func (c *Controller) handleDelVpcNatGw(key string) (retErr error) {
 	workloadName := util.GenNatGwName(gwName)
 	klog.Infof("delete vpc nat gw %s in namespace %s", workloadName, stsNamespace)
 
-	// Workloads created since v1.17 carry an owner reference, so Kubernetes garbage collects
-	// them once this gateway is gone, which is why HA Deployments are not deleted here: they
-	// were introduced together with that owner reference. This explicit deletion only still
-	// covers StatefulSets created before v1.17, which have no owner reference at all.
-	// TODO: drop it once no gateway created before v1.17 can still exist, leaving deletion
-	// entirely to garbage collection.
+	// Keep explicit StatefulSet deletion for legacy gateways that may already have lost their
+	// CR or finalizer. For current gateways this is idempotent with owner-reference garbage
+	// collection. HA Deployments rely on garbage collection.
 	if err := c.config.KubeClient.AppsV1().StatefulSets(stsNamespace).Delete(context.Background(),
 		workloadName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Error(err)
@@ -307,6 +304,15 @@ func natGwLanIPAnnotationKey(subnet *kubeovnv1.Subnet) string {
 		provider = util.OvnProvider
 	}
 	return fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)
+}
+
+func natGwWorkloadLabelsChanged(current, desired map[string]string) bool {
+	for key, value := range desired {
+		if current[key] != value {
+			return true
+		}
+	}
+	return false
 }
 
 // handleAddOrUpdateVpcNatGw is called when a VPC NAT gateway is added or updated.
@@ -429,8 +435,9 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 
 		hashChanged := oldDeploy.Annotations[util.GenerateHashAnnotation] != newDeploy.Annotations[util.GenerateHashAnnotation]
 		parametersChanged := isVpcNatGwChanged(gw)
+		labelsChanged := natGwWorkloadLabelsChanged(oldDeploy.Labels, newDeploy.Labels)
 
-		if hashChanged || parametersChanged {
+		if hashChanged || parametersChanged || labelsChanged {
 			// Update the stored workload in place: this controller owns the spec and its own
 			// annotations, while owner references and metadata set by third parties are kept.
 			updatedDeploy := oldDeploy.DeepCopy()
@@ -439,6 +446,10 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 				updatedDeploy.Annotations = make(map[string]string, len(newDeploy.Annotations))
 			}
 			maps.Copy(updatedDeploy.Annotations, newDeploy.Annotations)
+			if updatedDeploy.Labels == nil {
+				updatedDeploy.Labels = make(map[string]string, len(newDeploy.Labels))
+			}
+			maps.Copy(updatedDeploy.Labels, newDeploy.Labels)
 			if _, err := c.config.KubeClient.AppsV1().Deployments(c.natGwNamespace(gw)).
 				Update(context.Background(), updatedDeploy, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update deployment '%s', err: %w", newDeploy.Name, err)
@@ -501,13 +512,18 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		// the IP annotation to the generated template after status has already been synchronized.
 		ipAnnotation := natGwLanIPAnnotationKey(subnet)
 		templateChanged := oldSts.Spec.Template.Annotations[ipAnnotation] != newSts.Spec.Template.Annotations[ipAnnotation]
+		labelsChanged := natGwWorkloadLabelsChanged(oldSts.Labels, newSts.Labels)
 		// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
 		// TODO: support hot update of runtime Pod annotations directly via patch
-		if gwChanged || templateChanged || needRestartRecovery {
+		if gwChanged || templateChanged || labelsChanged || needRestartRecovery {
 			// Update the stored workload in place so that owner references and metadata set
 			// by third parties survive; only the spec is owned by this controller.
 			updatedSts := oldSts.DeepCopy()
 			updatedSts.Spec = newSts.Spec
+			if updatedSts.Labels == nil {
+				updatedSts.Labels = make(map[string]string, len(newSts.Labels))
+			}
+			maps.Copy(updatedSts.Labels, newSts.Labels)
 			if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.natGwNamespace(gw)).
 				Update(context.Background(), updatedSts, metav1.UpdateOptions{}); err != nil {
 				err := fmt.Errorf("failed to update statefulset '%s', err: %w", newSts.Name, err)
@@ -1873,6 +1889,8 @@ func selectNatGwLanIP(ip, protocol string) string {
 // durable, so a live read is guaranteed to observe that Pod. The Pod informer is fed
 // by a different watch and may still lag behind the workload event, which would make
 // the gateway observe a stale state that no later event would ever reconcile.
+// TODO: If production API server metrics show material LIST pressure, filter status-only
+// gateway updates and skip repeated init status sync after a non-HA LAN IP is persisted.
 func (c *Controller) listNatGwPods(gw *kubeovnv1.VpcNatGateway) ([]*corev1.Pod, error) {
 	selector := labels.Set{"app": util.GenNatGwName(gw.Name), util.VpcNatGatewayLabel: "true"}.String()
 	podList, err := c.config.KubeClient.CoreV1().Pods(c.natGwNamespace(gw)).List(context.Background(),
@@ -1963,6 +1981,8 @@ func (c *Controller) persistNatGwLanIP(gw *kubeovnv1.VpcNatGateway, observedLanI
 	if err != nil {
 		return err
 	}
+	// Use the main resource endpoint intentionally: this atomic patch tests status.lanIp and
+	// replaces spec.lanIp. The status subresource cannot update spec.
 	if _, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Patch(context.Background(), gw.Name,
 		types.JSONPatchType, raw, metav1.PatchOptions{}); err != nil {
 		return fmt.Errorf("failed to persist observed LAN IP %s for vpc nat gateway %s: %w", observedLanIP, gw.Name, err)
