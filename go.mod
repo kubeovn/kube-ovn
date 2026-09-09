@@ -32,7 +32,7 @@ require (
 	github.com/moby/moby/api v1.56.0
 	github.com/moby/moby/client v0.6.0
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/onsi/ginkgo/v2 v2.32.1
+	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
 	github.com/osrg/gobgp/v4 v4.9.0
 	github.com/ovn-kubernetes/libovsdb v0.8.2-0.20260710115425-adb4e0375fb5
