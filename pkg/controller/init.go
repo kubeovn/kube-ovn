@@ -29,7 +29,7 @@ import (
 
 // nbMigrationProvider is an optional capability for upgrade-only operations.
 // These operations coordinate several tables and schema versions, so exposing
-// them as basic TableProvider CRUD would obscure their invariants.
+// them as basic Provider CRUD would obscure their invariants.
 type nbMigrationProvider interface {
 	MigrateVendorExternalIDs() error
 	MigrateACLTier() error

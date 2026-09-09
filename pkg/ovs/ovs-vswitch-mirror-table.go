@@ -27,7 +27,7 @@ type mirrorTableRow struct {
 
 // EnsureVswitchMirror configures the named internal mirror output port and
 // replaces the bridge's mirror set atomically.
-func EnsureVswitchMirror(ctx context.Context, provider table.TableProvider, portName string, selectAll bool) error {
+func EnsureVswitchMirror(ctx context.Context, provider table.Provider, portName string, selectAll bool) error {
 	if err := requireVswitchTable(provider, portName, "mirror port name is empty"); err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func EnsureVswitchMirror(ctx context.Context, provider table.TableProvider, port
 		return fmt.Errorf("OVS mirror port %q not found", portName)
 	}
 
-	optionalProvider, ok := provider.(table.OptionalTableProvider)
+	optionalProvider, ok := provider.(table.OptionalProvider)
 	if !ok {
 		return errors.New("OVS provider does not support optional tables")
 	}
@@ -114,14 +114,14 @@ func EnsureVswitchMirror(ctx context.Context, provider table.TableProvider, port
 
 // ConfigVswitchInterfaceMirror adds or removes an OVS port from the default
 // mirror's select_dst_port set. The Mirror table is optional in older OVS
-// schemas, so this path deliberately uses OptionalTableProvider instead of
+// schemas, so this path deliberately uses OptionalProvider instead of
 // assuming the table is part of the monitored client model.
-func ConfigVswitchInterfaceMirror(ctx context.Context, provider table.TableProvider, open bool, ifaceID string) error {
+func ConfigVswitchInterfaceMirror(ctx context.Context, provider table.Provider, open bool, ifaceID string) error {
 	if err := requireVswitchTable(provider, ifaceID, "OVS interface ID is empty"); err != nil {
 		return err
 	}
 
-	optionalProvider, ok := provider.(table.OptionalTableProvider)
+	optionalProvider, ok := provider.(table.OptionalProvider)
 	if !ok {
 		return errors.New("OVS provider does not support optional tables")
 	}

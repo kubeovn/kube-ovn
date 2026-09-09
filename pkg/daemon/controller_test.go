@@ -33,8 +33,8 @@ func newLauncherPod(name, namespace, vmiName string, useNewLabel bool) *v1.Pod {
 	return pod
 }
 
-func TestInitVswitchUsesConfiguredTableProvider(t *testing.T) {
-	provider := cniEventTableProvider{}
+func TestInitVswitchUsesConfiguredProvider(t *testing.T) {
+	provider := cniEventProvider{}
 	controller := &Controller{config: &Configuration{VswitchTables: provider}}
 
 	require.NoError(t, controller.initVswitch())

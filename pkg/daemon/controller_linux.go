@@ -48,7 +48,7 @@ type podQoSOperations interface {
 }
 
 type ovsPodQoSOperations struct {
-	provider table.TableProvider
+	provider table.Provider
 }
 
 func (o ovsPodQoSOperations) setInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {

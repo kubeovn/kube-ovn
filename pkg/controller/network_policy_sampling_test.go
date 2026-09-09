@@ -166,7 +166,7 @@ func TestHandleNetworkPolicyACLSamplingWaitsForSuccessfulEnforcement(t *testing.
 func TestSetNetworkPolicyACLLogReportsSamplingReadiness(t *testing.T) {
 	controller, nbClient, _ := newNetworkPolicySamplingTestController(t)
 	// This test exercises the legacy domain capability directly; the generic
-	// table ACL-log path is covered by TestControllerTableProviderACLHelpers.
+	// table ACL-log path is covered by TestControllerProviderACLHelpers.
 	controller.OVNNbTables = nil
 	nbClient.EXPECT().SetNetPolACLLog("pg", true, true).Return(nil)
 	require.True(t, controller.setNetworkPolicyACLLog("pg", "default/test", true, true))
@@ -205,7 +205,7 @@ func newNetworkPolicySamplingTestController(t *testing.T) (*Controller, *mockovs
 	controller := &Controller{
 		config:           &Configuration{ACLSampling: config},
 		OVNNbClient:      nbClient,
-		OVNNbTables:      samplingTableProvider{MockNbClient: nbClient},
+		OVNNbTables:      samplingProvider{MockNbClient: nbClient},
 		npSamplingQueue:  newTypedRateLimitingQueue[string]("TestNetworkPolicyACLSampling", nil),
 		npSamplingStates: xsync.NewMap[string, *networkPolicySamplingState](),
 		npKeyMutex:       keymutex.NewHashed(1),
@@ -214,11 +214,11 @@ func newNetworkPolicySamplingTestController(t *testing.T) (*Controller, *mockovs
 	return controller, nbClient, config
 }
 
-type samplingTableProvider struct {
+type samplingProvider struct {
 	*mockovs.MockNbClient
 }
 
-func (samplingTableProvider) Table(model.Model) table.TableHandle { return nil }
+func (samplingProvider) Table(model.Model) table.Handle { return nil }
 
 func networkPolicySamplingTestPolicy() *netv1.NetworkPolicy {
 	return &netv1.NetworkPolicy{
@@ -235,7 +235,7 @@ func TestReconcileACLSamplingRecordsAvailability(t *testing.T) {
 	controller := &Controller{
 		config:      &Configuration{ACLSampling: config},
 		OVNNbClient: nbClient,
-		OVNNbTables: samplingTableProvider{MockNbClient: nbClient},
+		OVNNbTables: samplingProvider{MockNbClient: nbClient},
 	}
 
 	failuresBefore := testutil.ToFloat64(metricACLSamplingControllerFailures.WithLabelValues(aclSamplingOperationReconcile))

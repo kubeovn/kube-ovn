@@ -89,7 +89,7 @@ func getIndexed[T any](db *table.Database, row *T, ignoreNotFound bool) (*T, err
 func filterTimeout[T any](db *table.Database, prototype model.Model, predicate func(*T) bool) ([]T, error) {
 	ctx, cancel := timeoutCtx(db)
 	defer cancel()
-	return db.Filter(ctx, prototype, predicate)
+	return table.Filter[T](ctx, db, prototype, predicate)
 }
 
 func filterLogged[T any](db *table.Database, prototype model.Model, predicate func(*T) bool, wrap func(error) error) ([]T, error) {
@@ -311,7 +311,7 @@ func uniqueOwnerName[T any](rows []T, uuid, child, parent string, nameOf func(*T
 	return nameOf(&rows[0]), nil
 }
 
-func findNamedRow[T any](ctx context.Context, provider table.TableProvider, prototype model.Model, name, kind string, required bool, nameOf func(*T) string) (*T, error) {
+func findNamedRow[T any](ctx context.Context, provider table.Provider, prototype model.Model, name, kind string, required bool, nameOf func(*T) string) (*T, error) {
 	rows, err := table.Filter[T](ctx, provider, prototype, func(row *T) bool {
 		return nameOf(row) == name
 	})

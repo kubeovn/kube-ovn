@@ -19,7 +19,7 @@ type LogicalSwitchPorts struct {
 }
 
 // NewLogicalSwitchPorts creates a typed facade over an NB table provider.
-func NewLogicalSwitchPorts(provider table.TableProvider, executor table.Executor) *LogicalSwitchPorts {
+func NewLogicalSwitchPorts(provider table.Provider, executor table.Executor) *LogicalSwitchPorts {
 	if provider == nil {
 		return &LogicalSwitchPorts{executor: executor}
 	}

@@ -10,10 +10,10 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicsb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 type icCapabilityProvider struct {
@@ -21,7 +21,7 @@ type icCapabilityProvider struct {
 	patchCalls   int
 }
 
-func (p *icCapabilityProvider) Table(model.Model) table.TableHandle { return nil }
+func (p *icCapabilityProvider) Table(model.Model) table.Handle { return nil }
 
 func (p *icCapabilityProvider) ReconcileGatewayChassises(string, []string) error {
 	p.gatewayCalls++
@@ -33,9 +33,9 @@ func (p *icCapabilityProvider) CreateLogicalPatchPort(string, string, string, st
 	return nil
 }
 
-var _ table.TableProvider = (*icCapabilityProvider)(nil)
+var _ table.Provider = (*icCapabilityProvider)(nil)
 
-func TestICOperationsUseTableProviderCapabilities(t *testing.T) {
+func TestICOperationsUseProviderCapabilities(t *testing.T) {
 	provider := &icCapabilityProvider{}
 	controller := &Controller{OVNNbTables: provider}
 
@@ -45,7 +45,7 @@ func TestICOperationsUseTableProviderCapabilities(t *testing.T) {
 	require.Equal(t, 1, provider.patchCalls)
 }
 
-func TestICTransitSwitchReadsRequireTableProvider(t *testing.T) {
+func TestICTransitSwitchReadsRequireProvider(t *testing.T) {
 	controller := &Controller{}
 
 	_, err := controller.listICTransitSwitches()
@@ -55,7 +55,7 @@ func TestICTransitSwitchReadsRequireTableProvider(t *testing.T) {
 	require.EqualError(t, err, "IC NB table provider is nil")
 }
 
-func TestICTableProviderNBGlobalAndPortParentCleanup(t *testing.T) {
+func TestICProviderNBGlobalAndPortParentCleanup(t *testing.T) {
 	backend := newICTableBackend(
 		&ovnnb.NBGlobal{UUID: "global-1", Options: map[string]string{"stale": "value"}},
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ts-region1", Ports: []string{"lsp-1"}},
@@ -71,7 +71,7 @@ func TestICTableProviderNBGlobalAndPortParentCleanup(t *testing.T) {
 	require.Equal(t, 2, backend.transacts)
 }
 
-func TestICTableProviderICDatabaseOperations(t *testing.T) {
+func TestICProviderICDatabaseOperations(t *testing.T) {
 	backend := newICTableBackend(
 		&ovnicnb.TransitSwitch{UUID: "ts-1", Name: "ts-region1", ExternalIDs: map[string]string{
 			"vendor": "kube-ovn", "subnet": "10.1.0.0/16",
@@ -97,7 +97,7 @@ func TestICTableProviderICDatabaseOperations(t *testing.T) {
 	require.Equal(t, 1, backend.transacts)
 }
 
-func TestICAvailabilityZoneCleanupRequiresTableProvider(t *testing.T) {
+func TestICAvailabilityZoneCleanupRequiresProvider(t *testing.T) {
 	controller := &Controller{}
 
 	require.EqualError(t, controller.removeOldICChassisInSbDB("region1"), "IC SB table provider is nil")
@@ -189,9 +189,9 @@ func (b *icTableBackend) Transact(_ context.Context, operations ...ovsdb.Operati
 	b.transacts++
 	return make([]ovsdb.OperationResult, len(operations)), nil
 }
-func (b *icTableBackend) Cache() table.Cache                                { return nil }
-func (b *icTableBackend) Schema() ovsdb.DatabaseSchema                       { return ovsdb.DatabaseSchema{} }
-func (b *icTableBackend) Connected() bool                                    { return true }
+func (b *icTableBackend) Cache() table.Cache                               { return nil }
+func (b *icTableBackend) Schema() ovsdb.DatabaseSchema                     { return ovsdb.DatabaseSchema{} }
+func (b *icTableBackend) Connected() bool                                  { return true }
 func (b *icTableBackend) NewMonitor(...table.MonitorOption) *table.Monitor { return nil }
 func (b *icTableBackend) Monitor(context.Context, *table.Monitor) (table.MonitorCookie, error) {
 	return table.MonitorCookie{}, nil

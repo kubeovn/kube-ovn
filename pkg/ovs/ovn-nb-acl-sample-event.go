@@ -9,8 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 var (

@@ -18,7 +18,7 @@ const (
 
 // tableFor resolves a provider once for package-level helpers. Keeping this
 // validation in one place gives callers the same error behavior as Table.
-func tableFor(provider TableProvider, prototype model.Model) (TableHandle, error) {
+func tableFor(provider Provider, prototype model.Model) (Handle, error) {
 	if provider == nil {
 		return nil, errors.New("ovsdb table provider is nil")
 	}
@@ -59,7 +59,7 @@ func (d *Database) WaitForRows(ctx context.Context, prototype model.Model, predi
 
 // List returns all monitored rows for prototype. T is the non-pointer row
 // type, matching the []Row convention used by generated OVN models.
-func List[T any](ctx context.Context, provider TableProvider, prototype model.Model) ([]T, error) {
+func List[T any](ctx context.Context, provider Provider, prototype model.Model) ([]T, error) {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func List[T any](ctx context.Context, provider TableProvider, prototype model.Mo
 }
 
 // Query returns rows selected by an indexed model.
-func Query[T any](ctx context.Context, provider TableProvider, prototype, selector model.Model) ([]T, error) {
+func Query[T any](ctx context.Context, provider Provider, prototype, selector model.Model) ([]T, error) {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func Query[T any](ctx context.Context, provider TableProvider, prototype, select
 }
 
 // Filter returns monitored rows matching predicate.
-func Filter[T any](ctx context.Context, provider TableProvider, prototype model.Model, predicate any) ([]T, error) {
+func Filter[T any](ctx context.Context, provider Provider, prototype model.Model, predicate any) ([]T, error) {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func UniqueByName[T any](rows []T, name, kind string, ignoreNotFound bool) (*T, 
 }
 
 // GetByName returns the unique named row matching nameOf.
-func GetByName[T any](ctx context.Context, provider TableProvider, prototype model.Model, name, kind string, ignoreNotFound bool, nameOf func(*T) string) (*T, error) {
+func GetByName[T any](ctx context.Context, provider Provider, prototype model.Model, name, kind string, ignoreNotFound bool, nameOf func(*T) string) (*T, error) {
 	rows, err := Filter[T](ctx, provider, prototype, func(row *T) bool {
 		return nameOf(row) == name
 	})
@@ -132,7 +132,7 @@ func GetByName[T any](ctx context.Context, provider TableProvider, prototype mod
 }
 
 // FilterByUUIDs returns monitored rows matching predicate and UUIDs.
-func FilterByUUIDs[T any](ctx context.Context, provider TableProvider, prototype model.Model, predicate any, uuids ...string) ([]T, error) {
+func FilterByUUIDs[T any](ctx context.Context, provider Provider, prototype model.Model, predicate any, uuids ...string) ([]T, error) {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func FilterByUUIDs[T any](ctx context.Context, provider TableProvider, prototype
 // transaction replies can arrive before the monitor update has been applied
 // to the local cache, so callers that continue with a cache read immediately
 // after a write should use this helper as the synchronization point.
-func WaitForRows(ctx context.Context, provider TableProvider, prototype model.Model, predicate, result any) error {
+func WaitForRows(ctx context.Context, provider Provider, prototype model.Model, predicate, result any) error {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return err
@@ -185,7 +185,7 @@ func WaitForRows(ctx context.Context, provider TableProvider, prototype model.Mo
 
 // Get reads the row identified by result. The result must be a pointer to the
 // generated row type; the prototype selects the table and indexed schema.
-func Get(ctx context.Context, provider TableProvider, prototype, result model.Model) error {
+func Get(ctx context.Context, provider Provider, prototype, result model.Model) error {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return err
@@ -194,7 +194,7 @@ func Get(ctx context.Context, provider TableProvider, prototype, result model.Mo
 }
 
 // Create inserts rows and submits one transaction.
-func Create(ctx context.Context, provider TableProvider, prototype model.Model, method string, rows ...model.Model) error {
+func Create(ctx context.Context, provider Provider, prototype model.Model, method string, rows ...model.Model) error {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return err
@@ -203,7 +203,7 @@ func Create(ctx context.Context, provider TableProvider, prototype model.Model, 
 }
 
 // Update changes selected fields on one row and submits one transaction.
-func Update(ctx context.Context, provider TableProvider, prototype model.Model, method string, selector, update model.Model, fields ...any) error {
+func Update(ctx context.Context, provider Provider, prototype model.Model, method string, selector, update model.Model, fields ...any) error {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return err
@@ -212,7 +212,7 @@ func Update(ctx context.Context, provider TableProvider, prototype model.Model, 
 }
 
 // Mutate applies mutations to one row and submits one transaction.
-func Mutate(ctx context.Context, provider TableProvider, prototype model.Model, method string, selector model.Model, mutations ...model.Mutation) error {
+func Mutate(ctx context.Context, provider Provider, prototype model.Model, method string, selector model.Model, mutations ...model.Mutation) error {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return err
@@ -221,7 +221,7 @@ func Mutate(ctx context.Context, provider TableProvider, prototype model.Model, 
 }
 
 // Delete deletes rows selected by their indexed models.
-func Delete(ctx context.Context, provider TableProvider, prototype model.Model, method string, selectors ...model.Model) error {
+func Delete(ctx context.Context, provider Provider, prototype model.Model, method string, selectors ...model.Model) error {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return err
@@ -230,7 +230,7 @@ func Delete(ctx context.Context, provider TableProvider, prototype model.Model, 
 }
 
 // DeleteFilter deletes all monitored rows matching predicate.
-func DeleteFilter(ctx context.Context, provider TableProvider, prototype model.Model, method string, predicate any) error {
+func DeleteFilter(ctx context.Context, provider Provider, prototype model.Model, method string, predicate any) error {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return err
@@ -239,7 +239,7 @@ func DeleteFilter(ctx context.Context, provider TableProvider, prototype model.M
 }
 
 // Transact submits pre-built operations through the selected table policy.
-func Transact(ctx context.Context, provider TableProvider, prototype model.Model, method string, operations ...ovsdb.Operation) error {
+func Transact(ctx context.Context, provider Provider, prototype model.Model, method string, operations ...ovsdb.Operation) error {
 	table, err := tableFor(provider, prototype)
 	if err != nil {
 		return err

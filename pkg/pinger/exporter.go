@@ -25,8 +25,8 @@ var (
 type Exporter struct {
 	sync.RWMutex
 	Client           *ovsdb.OvsClient
-	VswitchTables    table.TableProvider
-	newVswitchTables func() (table.TableProvider, error)
+	VswitchTables    table.Provider
+	newVswitchTables func() (table.Provider, error)
 	timeout          int
 	pollInterval     int
 	errors           int64
@@ -39,7 +39,7 @@ func NewExporter(cfg *Configuration) *Exporter {
 		Client: ovsdb.NewOvsClient(),
 	}
 	e.initParas(cfg)
-	e.newVswitchTables = func() (table.TableProvider, error) {
+	e.newVswitchTables = func() (table.Provider, error) {
 		return ovs.NewVswitchClient(cfg.DatabaseVswitchSocketRemote, cfg.PollTimeout, cfg.PollTimeout)
 	}
 	if err := e.connectVswitchTables(); err != nil {
@@ -218,7 +218,7 @@ func (e *Exporter) exportOvsDpGauge() {
 func (e *Exporter) exportOvsInterfaceGauge() {
 	intfs, err := e.getInterfaceInfo()
 	if err != nil {
-		klog.Errorf("Failed to list OVS Interface rows through TableProvider: %v", err)
+		klog.Errorf("Failed to list OVS Interface rows through Provider: %v", err)
 		return
 	}
 

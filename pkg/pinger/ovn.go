@@ -12,8 +12,8 @@ import (
 	"k8s.io/utils/set"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -21,13 +21,13 @@ import (
 var (
 	sbServiceAddress string
 	sbClientMu       sync.Mutex
-	sbClient         managedTableProvider
+	sbClient         managedProvider
 	vswitchClientMu  sync.Mutex
-	vswitchClient    managedTableProvider
+	vswitchClient    managedProvider
 )
 
-type managedTableProvider interface {
-	table.TableProvider
+type managedProvider interface {
+	table.Provider
 	Connected() bool
 	Close()
 }
@@ -122,7 +122,7 @@ func checkOvsBindings(config *Configuration) (set.Set[string], error) {
 	return result, nil
 }
 
-func getChassis(hostname string, providers ...table.TableProvider) (string, error) {
+func getChassis(hostname string, providers ...table.Provider) (string, error) {
 	provider, err := firstSBProvider(providers...)
 	if err != nil {
 		return "", err
@@ -142,7 +142,7 @@ func getChassis(hostname string, providers ...table.TableProvider) (string, erro
 	return rows[0].UUID, nil
 }
 
-func getLogicalPort(chassisUUID string, providers ...table.TableProvider) (set.Set[string], error) {
+func getLogicalPort(chassisUUID string, providers ...table.Provider) (set.Set[string], error) {
 	provider, err := firstSBProvider(providers...)
 	if err != nil {
 		return nil, err
@@ -175,14 +175,14 @@ func checkSBBindings(config *Configuration) (set.Set[string], error) {
 	return getLogicalPort(chassisUUID, provider)
 }
 
-func firstSBProvider(providers ...table.TableProvider) (table.TableProvider, error) {
+func firstSBProvider(providers ...table.Provider) (table.Provider, error) {
 	if len(providers) != 0 && providers[0] != nil {
 		return providers[0], nil
 	}
 	return getSBProvider()
 }
 
-func getSBProvider() (table.TableProvider, error) {
+func getSBProvider() (table.Provider, error) {
 	sbClientMu.Lock()
 	defer sbClientMu.Unlock()
 	if sbClient != nil && sbClient.Connected() {
@@ -200,7 +200,7 @@ func getSBProvider() (table.TableProvider, error) {
 	return client, nil
 }
 
-func getVswitchProvider(config *Configuration) (table.TableProvider, error) {
+func getVswitchProvider(config *Configuration) (table.Provider, error) {
 	vswitchClientMu.Lock()
 	defer vswitchClientMu.Unlock()
 	if vswitchClient != nil && vswitchClient.Connected() {

@@ -42,10 +42,10 @@ type Controller struct {
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	recorder               record.EventRecorder
 
-	OVNNbTables table.TableProvider
-	OVNSbTables table.TableProvider
-	ICNbTables  table.TableProvider
-	ICSbTables  table.TableProvider
+	OVNNbTables table.Provider
+	OVNSbTables table.Provider
+	ICNbTables  table.Provider
+	ICSbTables  table.Provider
 	icNbClient  *ovs.OVNICNbClient
 	icSbClient  *ovs.OVNICSbClient
 	icNbAddress string

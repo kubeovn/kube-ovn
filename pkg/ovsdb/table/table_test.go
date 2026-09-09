@@ -82,7 +82,7 @@ func TestTableCRUDDelegatesToDatabase(t *testing.T) {
 	require.Equal(t, 6, fake.transacts)
 }
 
-func TestTableOperationBuilders(t *testing.T) {
+func TestOperationBuilders(t *testing.T) {
 	fake := &fakeBackend{
 		create:      func(...model.Model) ([]ovsdb.Operation, error) { return tableOperation(), nil },
 		conditional: crudConditional{},
@@ -238,15 +238,15 @@ func TestWaitForRowsWaitsForCachePropagation(t *testing.T) {
 }
 
 type waitRowsProvider struct {
-	handle TableHandle
+	handle Handle
 }
 
-func (p waitRowsProvider) Table(model.Model) TableHandle {
+func (p waitRowsProvider) Table(model.Model) Handle {
 	return p.handle
 }
 
 type waitRowsHandle struct {
-	TableHandle
+	Handle
 	calls int
 }
 
@@ -298,7 +298,7 @@ func TestUniqueByName(t *testing.T) {
 }
 
 type getByNameHandle struct {
-	TableHandle
+	Handle
 	rows []exampleRow
 }
 
@@ -314,10 +314,10 @@ func (h getByNameHandle) Filter(_ context.Context, predicate, result any) error 
 }
 
 type getByNameProvider struct {
-	handle TableHandle
+	handle Handle
 }
 
-func (p getByNameProvider) Table(model.Model) TableHandle {
+func (p getByNameProvider) Table(model.Model) Handle {
 	return p.handle
 }
 

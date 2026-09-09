@@ -29,7 +29,7 @@ type ACLs struct {
 }
 
 // NewACLs creates a typed facade over an NB table provider.
-func NewACLs(provider table.TableProvider, executor table.Executor) *ACLs {
+func NewACLs(provider table.Provider, executor table.Executor) *ACLs {
 	if provider == nil {
 		return &ACLs{executor: executor}
 	}

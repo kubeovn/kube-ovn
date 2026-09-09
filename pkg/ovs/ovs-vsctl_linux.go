@@ -86,7 +86,7 @@ func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
 // ingress and egress are rate values in Mbps; ingressBurst and egressBurst are burst
 // values in Mbit. An empty burst falls back to 80% of the corresponding rate; an
 // explicit "0" is passed through verbatim.
-func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string, providers ...table.TableProvider) error {
+func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string, providers ...table.Provider) error {
 	if len(providers) == 0 || providers[0] == nil {
 		if _, err := parseAndScaleBandwidthRate(ingress, 1000); err != nil {
 			return fmt.Errorf("invalid ingress bandwidth: %w", err)
@@ -99,7 +99,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingres
 	return setInterfaceBandwidthTable(providers[0], podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
 }
 
-func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...table.TableProvider) error {
+func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...table.Provider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...table.Ta
 	return clearHtbQosQueueTable(provider, podName, podNamespace, iface)
 }
 
-func IsHtbQos(iface string, providers ...table.TableProvider) (bool, error) {
+func IsHtbQos(iface string, providers ...table.Provider) (bool, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return false, err
@@ -115,7 +115,7 @@ func IsHtbQos(iface string, providers ...table.TableProvider) (bool, error) {
 	return isHtbQosTable(provider, iface)
 }
 
-func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burstBytes int64, queueIfaceUIDMap map[string]string, providers ...table.TableProvider) (string, error) {
+func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burstBytes int64, queueIfaceUIDMap map[string]string, providers ...table.Provider) (string, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return "", err
@@ -166,7 +166,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burst
 // and binds that QoS row to the corresponding Port. The optional provider is
 // kept variadic for source compatibility with old unit tests; production code
 // must provide the vswitch table provider.
-func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, qosIfaceUIDMap map[string]string, providers ...table.TableProvider) error {
+func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, qosIfaceUIDMap map[string]string, providers ...table.Provider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -255,7 +255,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 }
 
 // The latency value expressed in us.
-func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string, providers ...table.TableProvider) error {
+func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string, providers ...table.Provider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -263,7 +263,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 	return setNetemQosTable(provider, podName, podNamespace, iface, latency, limit, loss, jitter)
 }
 
-func getNetemQosConfig(qosID string, providers ...table.TableProvider) (string, string, string, string, error) {
+func getNetemQosConfig(qosID string, providers ...table.Provider) (string, string, string, string, error) {
 	var latency, loss, limit, jitter string
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
@@ -292,7 +292,7 @@ func getNetemQosConfig(qosID string, providers ...table.TableProvider) (string, 
 	return latency, loss, limit, jitter, nil
 }
 
-func deleteNetemQosByID(qosID, iface, podName, podNamespace string, providers ...table.TableProvider) error {
+func deleteNetemQosByID(qosID, iface, podName, podNamespace string, providers ...table.Provider) error {
 	if len(providers) == 0 || providers[0] == nil {
 		return nil
 	}
@@ -317,7 +317,7 @@ func deleteNetemQosByID(qosID, iface, podName, podNamespace string, providers ..
 	return nil
 }
 
-func IsUserspaceDataPath(providers ...table.TableProvider) (is bool, err error) {
+func IsUserspaceDataPath(providers ...table.Provider) (is bool, err error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return false, err
@@ -325,7 +325,7 @@ func IsUserspaceDataPath(providers ...table.TableProvider) (is bool, err error) 
 	return isUserspaceDataPathTable(provider)
 }
 
-func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUIDMap map[string]string, providers ...table.TableProvider) error {
+func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUIDMap map[string]string, providers ...table.Provider) error {
 	var queueUID string
 	var ok bool
 	if queueUID, ok = queueIfaceUIDMap[ifaceID]; !ok {

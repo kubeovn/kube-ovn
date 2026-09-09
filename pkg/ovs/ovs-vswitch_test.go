@@ -375,7 +375,7 @@ func TestEnsureVswitchMirror(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 }
 
-func TestSetInterfaceBandwidthUsesTableProvider(t *testing.T) {
+func TestSetInterfaceBandwidthUsesProvider(t *testing.T) {
 	dbModel, err := model.NewClientDBModel(vswitch.DatabaseName, map[string]model.Model{
 		vswitch.OpenvSwitchTable: &vswitch.OpenvSwitch{},
 		vswitch.BridgeTable:      &vswitch.Bridge{},
@@ -454,7 +454,7 @@ func TestSetInterfaceBandwidthUsesTableProvider(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 }
 
-func TestSetNetemQosUsesTableProvider(t *testing.T) {
+func TestSetNetemQosUsesProvider(t *testing.T) {
 	dbModel, err := model.NewClientDBModel(vswitch.DatabaseName, map[string]model.Model{
 		vswitch.OpenvSwitchTable: &vswitch.OpenvSwitch{},
 		vswitch.BridgeTable:      &vswitch.Bridge{},

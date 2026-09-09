@@ -80,8 +80,8 @@ type Controller struct {
 	OVNSbClient ovs.SbClient
 	// OVNNbTables and OVNSbTables expose the generic table seam to reconcile
 	// code while the legacy client interfaces remain unchanged.
-	OVNNbTables table.TableProvider
-	OVNSbTables table.TableProvider
+	OVNNbTables table.Provider
+	OVNSbTables table.Provider
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string

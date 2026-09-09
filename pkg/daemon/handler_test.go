@@ -206,7 +206,7 @@ func TestHandleDelSuccessEventPreservesPodReference(t *testing.T) {
 func TestHandleDelFailureEvent(t *testing.T) {
 	recorder := &cniEventRecorder{}
 	handler := cniEventTestHandler(t, nil, nil, recorder)
-	handler.Config.VswitchTables = cniEventTableProvider{filterErr: errors.New("exit status 1")}
+	handler.Config.VswitchTables = cniEventProvider{filterErr: errors.New("exit status 1")}
 
 	response := serveCNIRequest(t, handler, "/api/v1/del", request.CniRequest{
 		PodName: "deleted", PodNamespace: "ns", ContainerID: "1234567890abcdef",
@@ -263,7 +263,7 @@ func cniEventTestHandler(t *testing.T, pod *v1.Pod, subnet *kubeovnv1.Subnet, re
 	if subnet != nil {
 		require.NoError(t, subnetIndexer.Add(subnet))
 	}
-	config := &Configuration{NodeName: "node-a", VswitchTables: cniEventTableProvider{}}
+	config := &Configuration{NodeName: "node-a", VswitchTables: cniEventProvider{}}
 	controller := &Controller{
 		config:        config,
 		podsLister:    listerv1.NewPodLister(podIndexer),
@@ -273,20 +273,20 @@ func cniEventTestHandler(t *testing.T, pod *v1.Pod, subnet *kubeovnv1.Subnet, re
 	return createCniServerHandler(config, controller)
 }
 
-type cniEventTableProvider struct {
+type cniEventProvider struct {
 	filterErr error
 }
 
-func (p cniEventTableProvider) Table(model.Model) table.TableHandle {
-	return cniEventTableHandle{filterErr: p.filterErr}
+func (p cniEventProvider) Table(model.Model) table.Handle {
+	return cniEventHandle{filterErr: p.filterErr}
 }
 
-type cniEventTableHandle struct {
-	table.TableHandle
+type cniEventHandle struct {
+	table.Handle
 	filterErr error
 }
 
-func (h cniEventTableHandle) Filter(context.Context, any, any) error {
+func (h cniEventHandle) Filter(context.Context, any, any) error {
 	return h.filterErr
 }
 
