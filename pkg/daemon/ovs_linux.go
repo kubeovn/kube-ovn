@@ -36,7 +36,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/net/yusur"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -299,7 +299,7 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 	return finalRoutes, nil
 }
 
-func waitForLocalnetPatchPort(subnetName string, provider compat.TableProvider) error {
+func waitForLocalnetPatchPort(subnetName string, provider table.TableProvider) error {
 	patchPort := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
 	klog.Infof("waiting for localnet patch port %s to be ready", patchPort)
 	if provider == nil {
@@ -745,7 +745,7 @@ func waitNetworkReady(nic, ipAddr, gateway string, preferARP, verbose bool, maxR
 	return nil
 }
 
-func configureNodeNicWithProvider(cs kubernetes.Interface, nodeName, portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int, enableNonPrimaryCNI bool, provider compat.TableProvider) error {
+func configureNodeNicWithProvider(cs kubernetes.Interface, nodeName, portName, ip, gw, joinCIDR string, macAddr net.HardwareAddr, mtu int, enableNonPrimaryCNI bool, provider table.TableProvider) error {
 	if provider == nil {
 		return errors.New("vswitch table provider is nil")
 	}
@@ -1041,7 +1041,7 @@ func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS)
 	return err
 }
 
-func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS, provider compat.TableProvider) error {
+func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS, provider table.TableProvider) error {
 	if provider == nil {
 		return errors.New("vswitch table provider is nil")
 	}
@@ -1140,7 +1140,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 	})
 }
 
-func removeNodeGwNic(provider compat.TableProvider) error {
+func removeNodeGwNic(provider table.TableProvider) error {
 	if err := deleteVswitchPort(provider, util.NodeGwNic); err != nil {
 		return fmt.Errorf("failed to remove ecmp external port %s from OVS bridge %s: %w", "br-int", util.NodeGwNic, err)
 	}
@@ -1349,7 +1349,7 @@ func macToLinkLocalIPv6(mac net.HardwareAddr) (net.IP, error) {
 	return linkLocalIPv6, nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, ipv6DAD, setUfoOff, ipv6LinkLocalOn bool, provider compat.TableProvider) error {
+func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, ipv6DAD, setUfoOff, ipv6LinkLocalOn bool, provider table.TableProvider) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)

@@ -8,14 +8,14 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb/serverdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 // ServerClient is a short-lived generic client for the libovsdb _Server
 // database. The database schema is queried through OptionalTable because the
 // server database is not monitored by the regular NB/SB clients.
 type ServerClient struct {
-	*compat.Database
+	*table.Database
 }
 
 // NewOvsdbServerClient creates a client for the libovsdb server database.
@@ -35,7 +35,7 @@ func NewOvsdbServerClient(address string, connTimeout, transactTimeout int) (*Se
 	if err != nil {
 		return nil, fmt.Errorf("connect to ovsdb-server database: %w", err)
 	}
-	return &ServerClient{Database: compat.NewDatabase(backend, time.Duration(transactTimeout)*time.Second, compat.RetryPolicy{}, compat.WithDatabaseName("ovsdb-server"))}, nil
+	return &ServerClient{Database: table.NewDatabase(backend, time.Duration(transactTimeout)*time.Second, table.RetryPolicy{}, table.WithDatabaseName("ovsdb-server"))}, nil
 }
 
 // DatabaseLeader reads the leader flag for one served database.

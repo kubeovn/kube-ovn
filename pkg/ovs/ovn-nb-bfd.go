@@ -7,7 +7,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -118,7 +118,7 @@ func (c *OVNNbClient) DeleteBFDByDstIP(lrpName, dstIP string) error {
 // to NB libovsdb cache to update the BFD priority.
 // This function should only be called once.
 func (c *OVNNbClient) MonitorBFD() {
-	c.Database.Cache().AddEventHandler(&compat.EventHandlerFuncs{
+	c.Database.Cache().AddEventHandler(&table.EventHandlerFuncs{
 		AddFunc: func(table string, model model.Model) {
 			c.bfdAddL3HAHandler(table, model)
 		},

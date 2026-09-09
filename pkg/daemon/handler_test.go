@@ -22,7 +22,7 @@ import (
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -277,12 +277,12 @@ type cniEventTableProvider struct {
 	filterErr error
 }
 
-func (p cniEventTableProvider) Table(model.Model) compat.TableHandle {
+func (p cniEventTableProvider) Table(model.Model) table.TableHandle {
 	return cniEventTableHandle{filterErr: p.filterErr}
 }
 
 type cniEventTableHandle struct {
-	compat.TableHandle
+	table.TableHandle
 	filterErr error
 }
 

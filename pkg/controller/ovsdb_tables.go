@@ -17,7 +17,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -27,14 +27,14 @@ func (c *Controller) getNamed[T any](name, kind string, ignoreNotFound bool, pro
 	if c.OVNNbTables == nil {
 		return fallback()
 	}
-	return compat.GetByName(context.Background(), c.OVNNbTables, prototype, name, kind, ignoreNotFound, nameOf)
+	return table.GetByName(context.Background(), c.OVNNbTables, prototype, name, kind, ignoreNotFound, nameOf)
 }
 
-func (c *Controller) listOn[T any](provider compat.TableProvider, prototype *T, fallback func() ([]T, error), pred func(*T) bool) ([]T, error) {
+func (c *Controller) listOn[T any](provider table.TableProvider, prototype *T, fallback func() ([]T, error), pred func(*T) bool) ([]T, error) {
 	if provider == nil {
 		return fallback()
 	}
-	return compat.Filter[T](context.Background(), provider, prototype, pred)
+	return table.Filter[T](context.Background(), provider, prototype, pred)
 }
 
 func (c *Controller) listFiltered[T any](prototype *T, fallback func() ([]T, error), pred func(*T) bool) ([]T, error) {
@@ -52,7 +52,7 @@ func (c *Controller) deleteNamed[T any](names []string, prototype *T, method str
 	for _, name := range names {
 		wanted[name] = struct{}{}
 	}
-	rows, err := compat.Filter[T](context.Background(), c.OVNNbTables, prototype, func(row *T) bool {
+	rows, err := table.Filter[T](context.Background(), c.OVNNbTables, prototype, func(row *T) bool {
 		_, ok := wanted[nameOf(row)]
 		return ok
 	})
@@ -66,18 +66,18 @@ func (c *Controller) deleteNamed[T any](names []string, prototype *T, method str
 	for i := range rows {
 		selectors[i] = &rows[i]
 	}
-	return compat.Delete(context.Background(), c.OVNNbTables, prototype, method, selectors...)
+	return table.Delete(context.Background(), c.OVNNbTables, prototype, method, selectors...)
 }
 
 func (c *Controller) deleteFiltered[T any](prototype *T, method string, fallback func() error, pred func(*T) bool) error {
 	return c.deleteOn(c.OVNNbTables, prototype, method, fallback, pred)
 }
 
-func (c *Controller) deleteOn[T any](provider compat.TableProvider, prototype *T, method string, fallback func() error, pred func(*T) bool) error {
+func (c *Controller) deleteOn[T any](provider table.TableProvider, prototype *T, method string, fallback func() error, pred func(*T) bool) error {
 	if provider == nil {
 		return fallback()
 	}
-	return compat.DeleteFilter(context.Background(), provider, prototype, method, pred)
+	return table.DeleteFilter(context.Background(), provider, prototype, method, pred)
 }
 
 func (c *Controller) listAttached[T any](uuids []string, prototype *T, pred func(*T) bool) ([]T, error) {
@@ -87,14 +87,14 @@ func (c *Controller) listAttached[T any](uuids []string, prototype *T, pred func
 	if pred == nil {
 		pred = func(*T) bool { return true }
 	}
-	return compat.FilterByUUIDs[T](context.Background(), c.OVNNbTables, prototype, pred, uuids...)
+	return table.FilterByUUIDs[T](context.Background(), c.OVNNbTables, prototype, pred, uuids...)
 }
 
 func (c *Controller) getIndexed[T any](row *T, fallback func() (*T, error)) (*T, error) {
 	if c.OVNNbTables == nil {
 		return fallback()
 	}
-	if err := compat.Get(context.Background(), c.OVNNbTables, row, row); err != nil {
+	if err := table.Get(context.Background(), c.OVNNbTables, row, row); err != nil {
 		return nil, err
 	}
 	return row, nil
@@ -156,7 +156,7 @@ func (c *Controller) createAddressSet(name string, externalIDs map[string]string
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.CreateAddressSet(name, externalIDs)
 	}
-	rows, err := compat.Filter[ovnnb.AddressSet](
+	rows, err := table.Filter[ovnnb.AddressSet](
 		context.Background(), c.OVNNbTables, &ovnnb.AddressSet{},
 		func(row *ovnnb.AddressSet) bool { return row.Name == name },
 	)
@@ -171,8 +171,8 @@ func (c *Controller) createAddressSet(name string, externalIDs map[string]string
 
 func (c *Controller) getAddressSet(name string, ignoreNotFound bool) (*ovnnb.AddressSet, error) {
 	row := &ovnnb.AddressSet{Name: name}
-	if err := compat.Get(context.Background(), c.OVNNbTables, &ovnnb.AddressSet{}, row); err != nil {
-		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
+	if err := table.Get(context.Background(), c.OVNNbTables, &ovnnb.AddressSet{}, row); err != nil {
+		if ignoreNotFound && errors.Is(err, table.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, err
@@ -457,7 +457,7 @@ func (c *Controller) updateRow(row model.Model, method string, fields ...any) er
 	return c.updateOn(c.OVNNbTables, row, method, fields...)
 }
 
-func (c *Controller) updateOn(provider compat.TableProvider, row model.Model, method string, fields ...any) error {
+func (c *Controller) updateOn(provider table.TableProvider, row model.Model, method string, fields ...any) error {
 	if len(fields) == 0 {
 		return nil
 	}
@@ -465,7 +465,7 @@ func (c *Controller) updateOn(provider compat.TableProvider, row model.Model, me
 }
 
 func (c *Controller) createRow(method string, row model.Model) error {
-	return compat.Create(context.Background(), c.OVNNbTables, row, method, row)
+	return table.Create(context.Background(), c.OVNNbTables, row, method, row)
 }
 
 func (c *Controller) createOps(row model.Model) ([]ovsdb.Operation, error) {
@@ -1249,7 +1249,7 @@ func (c *Controller) getDHCPOptionsTable(lsName, portName, protocol string, igno
 	if err != nil {
 		return nil, fmt.Errorf("list %s DHCP options: %w", protocol, err)
 	}
-	return compat.Unique(rows, ignoreNotFound,
+	return table.Unique(rows, ignoreNotFound,
 		fmt.Errorf("DHCP options not found for switch %s port %s", lsName, portName),
 		fmt.Errorf("multiple %s DHCP options for switch %s port %s", protocol, lsName, portName))
 }
@@ -1306,7 +1306,7 @@ func (c *Controller) updateDHCPOptionTable(lsName, portName, cidr, protocol, gat
 		Options:     optionMap,
 		ExternalIDs: externalIDs,
 	}
-	if err := compat.Create(context.Background(), c.OVNNbTables, &ovnnb.DHCPOptions{}, "dhcp-options-create", created); err != nil {
+	if err := table.Create(context.Background(), c.OVNNbTables, &ovnnb.DHCPOptions{}, "dhcp-options-create", created); err != nil {
 		return "", err
 	}
 	if current, err = c.getDHCPOptionsTable(lsName, portName, protocol, true); err != nil {
@@ -1508,7 +1508,7 @@ func (c *Controller) logicalSwitchPortParent(lsp *ovnnb.LogicalSwitchPort) (*ovn
 	if err != nil {
 		return nil, fmt.Errorf("failed to list logical switches by LSP UUID %s: %w", lsp.UUID, err)
 	}
-	return compat.Unique(rows, false,
+	return table.Unique(rows, false,
 		fmt.Errorf("no logical switch found for LSP %s", lsp.UUID),
 		fmt.Errorf("multiple logical switches found for LSP %s: %s", lsp.UUID, strings.Join(rowNames(rows, func(row *ovnnb.LogicalSwitch) string { return row.Name }), ", ")))
 }
@@ -1526,7 +1526,7 @@ func (c *Controller) logicalRouterPortParent(lrp *ovnnb.LogicalRouterPort) (*ovn
 	if err != nil {
 		return nil, fmt.Errorf("failed to list logical routers by LRP UUID %s: %w", lrp.UUID, err)
 	}
-	return compat.Unique(rows, false,
+	return table.Unique(rows, false,
 		fmt.Errorf("no logical router found for LRP %s", lrp.UUID),
 		fmt.Errorf("multiple logical routers found for LRP %s: %s", lrp.UUID, strings.Join(rowNames(rows, func(row *ovnnb.LogicalRouter) string { return row.Name }), ", ")))
 }
@@ -1607,7 +1607,7 @@ func (c *Controller) getHAChassisGroup(name string, ignoreNotFound bool) (*ovnnb
 		return c.OVNNbClient.GetHAChassisGroup(name, ignoreNotFound)
 	})
 	if err != nil {
-		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, table.ErrNotFound) {
 			return nil, nil
 		}
 		if c.OVNNbTables == nil {
@@ -1738,8 +1738,8 @@ func (c *Controller) deleteMeter(name string) error {
 		return c.OVNNbClient.DeleteMeter(name)
 	}
 	meter := &ovnnb.Meter{Name: name}
-	if err := compat.Get(context.Background(), c.OVNNbTables, meter, meter); err != nil {
-		if errors.Is(err, compat.ErrNotFound) {
+	if err := table.Get(context.Background(), c.OVNNbTables, meter, meter); err != nil {
+		if errors.Is(err, table.ErrNotFound) {
 			return nil
 		}
 		return fmt.Errorf("failed to get meter %s: %w", name, err)
@@ -1977,7 +1977,7 @@ func (c *Controller) createGatewayChassisesOps(lrp *ovnnb.LogicalRouterPort, cha
 		name := lrp.Name + "-" + chassisName
 		existing := &ovnnb.GatewayChassis{Name: name}
 		if err := c.OVNNbTables.Table(&ovnnb.GatewayChassis{}).Get(context.Background(), existing); err != nil {
-			if !errors.Is(err, compat.ErrNotFound) {
+			if !errors.Is(err, table.ErrNotFound) {
 				return nil, err
 			}
 			row := &ovnnb.GatewayChassis{
@@ -2728,7 +2728,7 @@ func (c *Controller) deleteBFD(uuid string) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.DeleteBFD(uuid)
 	}
-	return compat.Delete(context.Background(), c.OVNNbTables, &ovnnb.BFD{}, "bfd-del", &ovnnb.BFD{UUID: uuid})
+	return table.Delete(context.Background(), c.OVNNbTables, &ovnnb.BFD{}, "bfd-del", &ovnnb.BFD{UUID: uuid})
 }
 
 func (c *Controller) deleteBFDByDestination(logicalPort, destination string) error {
@@ -2791,7 +2791,7 @@ func (c *Controller) deleteLogicalSwitch(name string) error {
 	if ls == nil {
 		return nil
 	}
-	return compat.Delete(context.Background(), c.OVNNbTables, ls, "ls-del", ls)
+	return table.Delete(context.Background(), c.OVNNbTables, ls, "ls-del", ls)
 }
 
 func (c *Controller) deleteLogicalGatewaySwitch(lsName, lrName string) error {
@@ -3273,7 +3273,7 @@ func (c *Controller) getLogicalSwitch(name string, ignoreNotFound bool) (*ovnnb.
 			if err != nil {
 				return nil, err
 			}
-			return compat.UniqueByName(rows, name, "logical switch", ignoreNotFound)
+			return table.UniqueByName(rows, name, "logical switch", ignoreNotFound)
 		},
 		func(row *ovnnb.LogicalSwitch) string { return row.Name })
 }
@@ -3288,7 +3288,7 @@ func (c *Controller) getNBGlobal() (*ovnnb.NBGlobal, error) {
 	if err != nil {
 		return nil, err
 	}
-	return compat.Unique(rows, false, errors.New("not found NB_Global"), errors.New("more than one NB_Global row"))
+	return table.Unique(rows, false, errors.New("not found NB_Global"), errors.New("more than one NB_Global row"))
 }
 
 func (c *Controller) setNBGlobalOption(key, value string, present bool, legacy ...func() error) error {
@@ -3556,7 +3556,7 @@ func (c *Controller) deleteChassis(name string) error {
 	if chassis == nil {
 		return nil
 	}
-	return compat.Delete(context.Background(), c.OVNSbTables, chassis, "chassis-del", chassis)
+	return table.Delete(context.Background(), c.OVNSbTables, chassis, "chassis-del", chassis)
 }
 
 func (c *Controller) deleteChassisByHost(hostname string) error {
@@ -3578,7 +3578,7 @@ func (c *Controller) deleteChassisByHost(hostname string) error {
 	for i := range rows {
 		selectors[i] = &rows[i]
 	}
-	return compat.Delete(context.Background(), c.OVNSbTables, &ovnsb.Chassis{}, "chassis-del", selectors...)
+	return table.Delete(context.Background(), c.OVNSbTables, &ovnsb.Chassis{}, "chassis-del", selectors...)
 }
 
 func (c *Controller) updateChassisTag(name, nodeName string) error {
@@ -4288,7 +4288,7 @@ func (c *Controller) getChassis(name string, ignoreNotFound bool) (*ovnsb.Chassi
 	}
 	row := &ovnsb.Chassis{Name: name}
 	if err := c.OVNSbTables.Table(&ovnsb.Chassis{}).Get(context.Background(), row); err != nil {
-		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, table.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get chassis %s: %w", name, err)
@@ -4309,7 +4309,7 @@ func (c *Controller) getChassisByHost(hostname string) (*ovnsb.Chassis, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list Chassis with hostname=%s: %w", hostname, err)
 	}
-	return compat.Unique(rows, false,
+	return table.Unique(rows, false,
 		fmt.Errorf("failed to get Chassis with hostname=%s", hostname),
 		ovs.ErrOneNodeMultiChassis)
 }
@@ -4363,7 +4363,7 @@ func (c *Controller) logicalSwitchExists(name string) (bool, error) {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.LogicalSwitchExists(name)
 	}
-	rows, err := compat.Filter[ovnnb.LogicalSwitch](
+	rows, err := table.Filter[ovnnb.LogicalSwitch](
 		context.Background(), c.OVNNbTables, &ovnnb.LogicalSwitch{},
 		func(row *ovnnb.LogicalSwitch) bool { return row.Name == name },
 	)

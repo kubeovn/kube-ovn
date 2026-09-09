@@ -30,7 +30,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -59,7 +59,7 @@ type Configuration struct {
 	CertManagerClient certmanagerclientset.Interface
 	// VswitchTables is injected before Init so startup OVSDB writes use the
 	// same generic database handle as the daemon controller.
-	VswitchTables                 compat.TableProvider
+	VswitchTables                 table.TableProvider
 	PodName                       string
 	PodNamespace                  string
 	NodeName                      string

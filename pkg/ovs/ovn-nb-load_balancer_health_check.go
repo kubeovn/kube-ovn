@@ -9,7 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -137,7 +137,7 @@ func (c *OVNNbClient) GetLoadBalancerHealthCheck(lbName, vipEndpoint string, ign
 		return nil, nil, logFmt("failed to list lb health check lb health check by vip %q: %w", vipEndpoint, err)
 	}
 
-	hc, err := compat.Unique(healthCheckList, ignoreNotFound,
+	hc, err := table.Unique(healthCheckList, ignoreNotFound,
 		fmt.Errorf("lb %s doesn't have health check with vip %s", lbName, vipEndpoint),
 		fmt.Errorf("lb %s has more than one health check with the same vip %s", lbName, vipEndpoint),
 	)

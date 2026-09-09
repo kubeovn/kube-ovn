@@ -8,7 +8,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovs/nbops"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/nbops"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )

@@ -22,7 +22,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -61,10 +61,10 @@ func NewOvsDbClient(
 	db string,
 	addr string,
 	dbModel model.ClientDBModel,
-	monitors []compat.MonitorOption,
+	monitors []table.MonitorOption,
 	ovsDbConTimeout int,
 	ovsDbInactivityTimeout int,
-) (compat.Backend, error) {
+) (table.Backend, error) {
 	klog.Infof("creating ovsdb client for %s database at %s", db, addr)
 
 	var ssl bool
@@ -121,7 +121,7 @@ func NewOvsDbClient(
 		klog.Errorf("failed to connect to %s database server %s: %v", db, addr, err)
 		return nil, err
 	}
-	backend := compat.Wrap(c)
+	backend := table.Wrap(c)
 
 	if len(monitors) != 0 {
 		klog.Infof("setting up monitors for %s database on server %s", db, addr)

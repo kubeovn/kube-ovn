@@ -8,7 +8,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/model"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
 
@@ -16,12 +16,12 @@ const defaultVswitchEndpoint = "unix:/var/run/openvswitch/db.sock"
 
 // VswitchClient is a client for interacting with the vswitch database
 type VswitchClient struct {
-	*compat.Database
+	*table.Database
 }
 
 var (
 	_ Vswitch              = (*VswitchClient)(nil)
-	_ compat.TableProvider = (*VswitchClient)(nil)
+	_ table.TableProvider = (*VswitchClient)(nil)
 )
 
 // NewVswitchClient creates a new vswitch client
@@ -40,13 +40,13 @@ func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchCl
 		return nil, logWrap(err, wrapErr("failed to create client db model: %w"))
 	}
 
-	monitors := []compat.MonitorOption{
-		compat.WithTable(&vswitch.Bridge{}),
-		compat.WithTable(&vswitch.Interface{}),
-		compat.WithTable(&vswitch.OpenvSwitch{}),
-		compat.WithTable(&vswitch.Port{}),
-		compat.WithTable(&vswitch.QoS{}),
-		compat.WithTable(&vswitch.Queue{}),
+	monitors := []table.MonitorOption{
+		table.WithTable(&vswitch.Bridge{}),
+		table.WithTable(&vswitch.Interface{}),
+		table.WithTable(&vswitch.OpenvSwitch{}),
+		table.WithTable(&vswitch.Port{}),
+		table.WithTable(&vswitch.QoS{}),
+		table.WithTable(&vswitch.Queue{}),
 	}
 	c, err := ovsclient.NewOvsDbClient(
 		vswitch.DatabaseName,
@@ -61,8 +61,8 @@ func NewVswitchClient(addr string, connTimeout, transactTimeout int) (*VswitchCl
 	}
 
 	return &VswitchClient{
-		Database: compat.NewDatabase(c, time.Duration(transactTimeout)*time.Second, compat.RetryPolicy{},
-			compat.WithDatabaseName("vswitchd"), compat.WithTransactionObserver(ovsTransactionObserver{})),
+		Database: table.NewDatabase(c, time.Duration(transactTimeout)*time.Second, table.RetryPolicy{},
+			table.WithDatabaseName("vswitchd"), table.WithTransactionObserver(ovsTransactionObserver{})),
 	}, nil
 }
 

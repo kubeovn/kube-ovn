@@ -10,7 +10,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
 
@@ -27,7 +27,7 @@ type VswitchPortConfig struct {
 
 // EnsureVswitchPort creates or updates an OVS Port/Interface pair and attaches
 // it to a bridge in one transaction.
-func EnsureVswitchPort(ctx context.Context, provider compat.TableProvider, config VswitchPortConfig) error {
+func EnsureVswitchPort(ctx context.Context, provider table.TableProvider, config VswitchPortConfig) error {
 	if err := validateVswitchPortConfig(provider, config); err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func EnsureVswitchPort(ctx context.Context, provider compat.TableProvider, confi
 	return waitForVswitchPort(ctx, provider, config)
 }
 
-func validateVswitchPortConfig(provider compat.TableProvider, config VswitchPortConfig) error {
+func validateVswitchPortConfig(provider table.TableProvider, config VswitchPortConfig) error {
 	if err := requireVswitchTable(provider, config.BridgeName, "OVS bridge name is empty"); err != nil {
 		return err
 	}
@@ -134,7 +134,7 @@ func validateVswitchPortConfig(provider compat.TableProvider, config VswitchPort
 	return nil
 }
 
-func waitForVswitchPort(ctx context.Context, provider compat.TableProvider, config VswitchPortConfig) error {
+func waitForVswitchPort(ctx context.Context, provider table.TableProvider, config VswitchPortConfig) error {
 	if _, err := waitForVswitchRows(ctx, provider, &vswitch.Interface{}, func(row *vswitch.Interface) bool {
 		return row.Name == config.Interface.Name
 	}, "wait for OVS interface %q cache update: %w", config.Interface.Name); err != nil {
@@ -173,19 +173,19 @@ func mergeVswitchPortMaps(current, desired *vswitch.Port) {
 	mergeVswitchField(current.OtherConfig, &desired.OtherConfig)
 }
 
-func findVswitchBridge(ctx context.Context, provider compat.TableProvider, name string) (*vswitch.Bridge, error) {
+func findVswitchBridge(ctx context.Context, provider table.TableProvider, name string) (*vswitch.Bridge, error) {
 	return findNamedRow(ctx, provider, &vswitch.Bridge{}, name, "bridge", true, func(row *vswitch.Bridge) string { return row.Name })
 }
 
-func findVswitchPort(ctx context.Context, provider compat.TableProvider, name string) (*vswitch.Port, error) {
+func findVswitchPort(ctx context.Context, provider table.TableProvider, name string) (*vswitch.Port, error) {
 	return findNamedRow(ctx, provider, &vswitch.Port{}, name, "port", false, func(row *vswitch.Port) string { return row.Name })
 }
 
-func findVswitchInterface(ctx context.Context, provider compat.TableProvider, name string) (*vswitch.Interface, error) {
+func findVswitchInterface(ctx context.Context, provider table.TableProvider, name string) (*vswitch.Interface, error) {
 	return findNamedRow(ctx, provider, &vswitch.Interface{}, name, "interface", false, func(row *vswitch.Interface) string { return row.Name })
 }
 
-func validateVswitchPortBridge(ctx context.Context, provider compat.TableProvider, port *vswitch.Port, target *vswitch.Bridge) (bool, error) {
+func validateVswitchPortBridge(ctx context.Context, provider table.TableProvider, port *vswitch.Port, target *vswitch.Bridge) (bool, error) {
 	var bridges []vswitch.Bridge
 	if err := provider.Table(&vswitch.Bridge{}).List(ctx, &bridges); err != nil {
 		return false, fmt.Errorf("list OVS bridges for port %q: %w", port.Name, err)
@@ -204,7 +204,7 @@ func validateVswitchPortBridge(ctx context.Context, provider compat.TableProvide
 
 // DeleteVswitchPort detaches matching ports and removes their Interface and
 // QoS rows in one transaction. Missing ports are treated as already deleted.
-func DeleteVswitchPort(ctx context.Context, provider compat.TableProvider, name string) error {
+func DeleteVswitchPort(ctx context.Context, provider table.TableProvider, name string) error {
 	if err := requireVswitchTable(provider, name, "OVS port name is empty"); err != nil {
 		return err
 	}

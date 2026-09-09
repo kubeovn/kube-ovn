@@ -12,12 +12,12 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func vswitchProvider(providers ...compat.TableProvider) (compat.TableProvider, error) {
+func vswitchProvider(providers ...table.TableProvider) (table.TableProvider, error) {
 	if len(providers) == 0 || providers[0] == nil {
 		return nil, errors.New("vswitch table provider is nil")
 	}
@@ -25,13 +25,13 @@ func vswitchProvider(providers ...compat.TableProvider) (compat.TableProvider, e
 }
 
 // Bridges returns bridges created by Kube-OVN.
-func kubeOvnVswitchBridges(ctx context.Context, provider compat.TableProvider) ([]vswitch.Bridge, error) {
-	return compat.Filter[vswitch.Bridge](ctx, provider, &vswitch.Bridge{}, func(row *vswitch.Bridge) bool {
+func kubeOvnVswitchBridges(ctx context.Context, provider table.TableProvider) ([]vswitch.Bridge, error) {
+	return table.Filter[vswitch.Bridge](ctx, provider, &vswitch.Bridge{}, func(row *vswitch.Bridge) bool {
 		return row.ExternalIDs[ExternalIDVendor] == util.CniTypeName
 	})
 }
 
-func Bridges(providers ...compat.TableProvider) ([]string, error) {
+func Bridges(providers ...table.TableProvider) ([]string, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func Bridges(providers ...compat.TableProvider) ([]string, error) {
 }
 
 // BridgeExists checks whether the bridge already exists
-func BridgeExists(name string, providers ...compat.TableProvider) (bool, error) {
+func BridgeExists(name string, providers ...table.TableProvider) (bool, error) {
 	bridges, err := Bridges(providers...)
 	if err != nil {
 		klog.Error(err)
@@ -55,7 +55,7 @@ func BridgeExists(name string, providers ...compat.TableProvider) (bool, error) 
 
 // PortExists checks whether the port already exists
 
-func PortExists(name string, providers ...compat.TableProvider) (bool, error) {
+func PortExists(name string, providers ...table.TableProvider) (bool, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return false, err
@@ -67,7 +67,7 @@ func PortExists(name string, providers ...compat.TableProvider) (bool, error) {
 	return port != nil, nil
 }
 
-func GetQosList(podName, podNamespace, ifaceID string, providers ...compat.TableProvider) ([]string, error) {
+func GetQosList(podName, podNamespace, ifaceID string, providers ...table.TableProvider) ([]string, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func GetQosList(podName, podNamespace, ifaceID string, providers ...compat.Table
 }
 
 // ClearPodBandwidth remove qos related to this pod.
-func ClearPodBandwidth(podName, podNamespace, ifaceID string, providers ...compat.TableProvider) error {
+func ClearPodBandwidth(podName, podNamespace, ifaceID string, providers ...table.TableProvider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -90,7 +90,7 @@ func ClearPodBandwidth(podName, podNamespace, ifaceID string, providers ...compa
 
 var lastInterfacePodMap map[string]string
 
-func ListInterfacePodMap(providers ...compat.TableProvider) (map[string]string, error) {
+func ListInterfacePodMap(providers ...table.TableProvider) (map[string]string, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func ListInterfacePodMap(providers ...compat.TableProvider) (map[string]string, 
 	return result, nil
 }
 
-func CleanInterface(name string, providers ...compat.TableProvider) error {
+func CleanInterface(name string, providers ...table.TableProvider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -129,7 +129,7 @@ func CleanInterface(name string, providers ...compat.TableProvider) error {
 // have multiple sandboxes if some are waiting for garbage collection,
 // but only the latest one should have the iface-id set.
 // See: https://github.com/ovn-org/ovn-kubernetes/pull/869
-func CleanDuplicatePort(ifaceID, portName string, providers ...compat.TableProvider) {
+func CleanDuplicatePort(ifaceID, portName string, providers ...table.TableProvider) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		klog.Error(err)
@@ -152,7 +152,7 @@ func CleanDuplicatePort(ifaceID, portName string, providers ...compat.TableProvi
 }
 
 // ValidatePortVendor returns true if the port's external_ids:vendor=kube-ovn
-func ValidatePortVendor(port string, providers ...compat.TableProvider) (bool, error) {
+func ValidatePortVendor(port string, providers ...table.TableProvider) (bool, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return false, err
@@ -166,7 +166,7 @@ func ValidatePortVendor(port string, providers ...compat.TableProvider) (bool, e
 	return len(rows) != 0, nil
 }
 
-func GetInterfacePodNs(iface string, providers ...compat.TableProvider) (string, error) {
+func GetInterfacePodNs(iface string, providers ...table.TableProvider) (string, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return "", err
@@ -182,7 +182,7 @@ func GetInterfacePodNs(iface string, providers ...compat.TableProvider) (string,
 }
 
 // config mirror for interface by pod annotations and install param
-func ConfigInterfaceMirror(globalMirror bool, open, iface string, providers ...compat.TableProvider) error {
+func ConfigInterfaceMirror(globalMirror bool, open, iface string, providers ...table.TableProvider) error {
 	if globalMirror {
 		return nil
 	}
@@ -194,7 +194,7 @@ func ConfigInterfaceMirror(globalMirror bool, open, iface string, providers ...c
 }
 
 // remove qos related to this port.
-func ClearPortQosBinding(ifaceID string, providers ...compat.TableProvider) error {
+func ClearPortQosBinding(ifaceID string, providers ...table.TableProvider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -202,7 +202,7 @@ func ClearPortQosBinding(ifaceID string, providers ...compat.TableProvider) erro
 	return clearPortQosBindingTable(provider, ifaceID)
 }
 
-func ListExternalIDs(table string, providers ...compat.TableProvider) (map[string]string, error) {
+func ListExternalIDs(table string, providers ...table.TableProvider) (map[string]string, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ func ListExternalIDs(table string, providers ...compat.TableProvider) (map[strin
 	}
 }
 
-func ListQosQueueIDs(providers ...compat.TableProvider) (map[string]string, error) {
+func ListQosQueueIDs(providers ...table.TableProvider) (map[string]string, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return nil, err

@@ -11,7 +11,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -20,7 +20,7 @@ import (
 // through the monitored Open_vSwitch tables. All rows for one reconcile are
 // submitted as a single transaction so queue creation and port binding cannot
 // be observed independently.
-func setInterfaceBandwidthTable(provider compat.TableProvider, podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
+func setInterfaceBandwidthTable(provider table.TableProvider, podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
 	config, err := newInterfaceBandwidthConfig(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
 	if err != nil {
 		return err
@@ -89,7 +89,7 @@ func newInterfaceBandwidthConfig(podName, podNamespace, iface, ingress, egress, 
 	}, nil
 }
 
-func loadInterfaceBandwidthState(ctx context.Context, provider compat.TableProvider, iface string) ([]vswitch.Interface, *interfaceBandwidthState, error) {
+func loadInterfaceBandwidthState(ctx context.Context, provider table.TableProvider, iface string) ([]vswitch.Interface, *interfaceBandwidthState, error) {
 	interfaces, err := vswitchRowsByIfaceID(ctx, provider, &vswitch.Interface{}, iface, func(row *vswitch.Interface) map[string]string { return row.ExternalIDs })
 	if err != nil {
 		return nil, nil, fmt.Errorf("list interfaces for %s: %w", iface, err)
@@ -116,7 +116,7 @@ func loadInterfaceBandwidthState(ctx context.Context, provider compat.TableProvi
 	return interfaces, state, nil
 }
 
-func buildInterfacePolicingOps(provider compat.TableProvider, iface *vswitch.Interface, config interfaceBandwidthConfig) ([]ovsdb.Operation, error) {
+func buildInterfacePolicingOps(provider table.TableProvider, iface *vswitch.Interface, config interfaceBandwidthConfig) ([]ovsdb.Operation, error) {
 	update := &vswitch.Interface{
 		UUID:                 iface.UUID,
 		IngressPolicingRate:  int(config.ingressKPS),
@@ -130,14 +130,14 @@ func buildInterfacePolicingOps(provider compat.TableProvider, iface *vswitch.Int
 	return ops, nil
 }
 
-func buildHtbBandwidthOps(provider compat.TableProvider, ports []vswitch.Port, state *interfaceBandwidthState, config interfaceBandwidthConfig) ([]ovsdb.Operation, error) {
+func buildHtbBandwidthOps(provider table.TableProvider, ports []vswitch.Port, state *interfaceBandwidthState, config interfaceBandwidthConfig) ([]ovsdb.Operation, error) {
 	if config.egressBPS <= 0 {
 		return buildHtbBandwidthRemovalOps(provider, ports, state, config.iface)
 	}
 	return buildHtbBandwidthEnsureOps(provider, ports, state, config)
 }
 
-func buildHtbBandwidthRemovalOps(provider compat.TableProvider, ports []vswitch.Port, state *interfaceBandwidthState, iface string) ([]ovsdb.Operation, error) {
+func buildHtbBandwidthRemovalOps(provider table.TableProvider, ports []vswitch.Port, state *interfaceBandwidthState, iface string) ([]ovsdb.Operation, error) {
 	qos := state.qos
 	if qos == nil || qos.Type != util.HtbQos {
 		return nil, nil
@@ -190,7 +190,7 @@ func buildHtbBandwidthRemovalOps(provider compat.TableProvider, ports []vswitch.
 	return append(ops, queueOps...), nil
 }
 
-func buildHtbBandwidthEnsureOps(provider compat.TableProvider, ports []vswitch.Port, state *interfaceBandwidthState, config interfaceBandwidthConfig) ([]ovsdb.Operation, error) {
+func buildHtbBandwidthEnsureOps(provider table.TableProvider, ports []vswitch.Port, state *interfaceBandwidthState, config interfaceBandwidthConfig) ([]ovsdb.Operation, error) {
 	var ops []ovsdb.Operation
 	queueID := ""
 	if len(state.queues) != 0 {
@@ -276,7 +276,7 @@ func htbQueueConfig(maxRateBPS, burstBytes int64) map[string]string {
 	return config
 }
 
-func listPortsForInterface(provider compat.TableProvider, interfaceID string) ([]vswitch.Port, error) {
+func listPortsForInterface(provider table.TableProvider, interfaceID string) ([]vswitch.Port, error) {
 	var ports []vswitch.Port
 	if err := provider.Table(&vswitch.Port{}).Filter(context.Background(), func(row *vswitch.Port) bool {
 		return slices.Contains(row.Interfaces, interfaceID)
@@ -286,7 +286,7 @@ func listPortsForInterface(provider compat.TableProvider, interfaceID string) ([
 	return ports, nil
 }
 
-func clearPortQosBindingTable(provider compat.TableProvider, ifaceID string) error {
+func clearPortQosBindingTable(provider table.TableProvider, ifaceID string) error {
 	if ifaceID == "" {
 		return nil
 	}
@@ -325,7 +325,7 @@ func clearPortQosBindingTable(provider compat.TableProvider, ifaceID string) err
 	return transactTable(ctx, provider.Table(&vswitch.Port{}), "qos-port-unbind", operations)
 }
 
-func clearPodBandwidthTable(provider compat.TableProvider, podName, podNamespace, ifaceID string) error {
+func clearPodBandwidthTable(provider table.TableProvider, podName, podNamespace, ifaceID string) error {
 	ctx := context.Background()
 	qosRows, err := vswitchRowsByOwner(ctx, provider, &vswitch.QoS{}, podName, podNamespace, ifaceID, func(row *vswitch.QoS) map[string]string { return row.ExternalIDs })
 	if err != nil {
@@ -352,7 +352,7 @@ func clearPodBandwidthTable(provider compat.TableProvider, podName, podNamespace
 	)
 }
 
-func clearHtbQosQueueTable(provider compat.TableProvider, podName, podNamespace, ifaceID string) error {
+func clearHtbQosQueueTable(provider table.TableProvider, podName, podNamespace, ifaceID string) error {
 	ctx := context.Background()
 	queueRows, err := vswitchRowsByOwner(ctx, provider, &vswitch.Queue{}, podName, podNamespace, ifaceID, func(row *vswitch.Queue) map[string]string { return row.ExternalIDs })
 	if err != nil {

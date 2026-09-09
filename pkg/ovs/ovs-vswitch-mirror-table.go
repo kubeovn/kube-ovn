@@ -9,7 +9,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -27,7 +27,7 @@ type mirrorTableRow struct {
 
 // EnsureVswitchMirror configures the named internal mirror output port and
 // replaces the bridge's mirror set atomically.
-func EnsureVswitchMirror(ctx context.Context, provider compat.TableProvider, portName string, selectAll bool) error {
+func EnsureVswitchMirror(ctx context.Context, provider table.TableProvider, portName string, selectAll bool) error {
 	if err := requireVswitchTable(provider, portName, "mirror port name is empty"); err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func EnsureVswitchMirror(ctx context.Context, provider compat.TableProvider, por
 		return fmt.Errorf("OVS mirror port %q not found", portName)
 	}
 
-	optionalProvider, ok := provider.(compat.OptionalTableProvider)
+	optionalProvider, ok := provider.(table.OptionalTableProvider)
 	if !ok {
 		return errors.New("OVS provider does not support optional tables")
 	}
@@ -116,12 +116,12 @@ func EnsureVswitchMirror(ctx context.Context, provider compat.TableProvider, por
 // mirror's select_dst_port set. The Mirror table is optional in older OVS
 // schemas, so this path deliberately uses OptionalTableProvider instead of
 // assuming the table is part of the monitored client model.
-func ConfigVswitchInterfaceMirror(ctx context.Context, provider compat.TableProvider, open bool, ifaceID string) error {
+func ConfigVswitchInterfaceMirror(ctx context.Context, provider table.TableProvider, open bool, ifaceID string) error {
 	if err := requireVswitchTable(provider, ifaceID, "OVS interface ID is empty"); err != nil {
 		return err
 	}
 
-	optionalProvider, ok := provider.(compat.OptionalTableProvider)
+	optionalProvider, ok := provider.(table.OptionalTableProvider)
 	if !ok {
 		return errors.New("OVS provider does not support optional tables")
 	}

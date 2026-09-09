@@ -14,12 +14,12 @@ import (
 	"k8s.io/utils/set"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func timeoutCtx(db *compat.Database) (context.Context, context.CancelFunc) {
+func timeoutCtx(db *table.Database) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), db.Timeout)
 }
 
@@ -74,11 +74,11 @@ func uniquePtrs[T any](rows []*T, ignoreNotFound bool, notFound, duplicated erro
 	}
 }
 
-func getIndexed[T any](db *compat.Database, row *T, ignoreNotFound bool) (*T, error) {
+func getIndexed[T any](db *table.Database, row *T, ignoreNotFound bool) (*T, error) {
 	ctx, cancel := timeoutCtx(db)
 	defer cancel()
 	if err := db.Table(row).Get(ctx, row); err != nil {
-		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, table.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, err
@@ -86,13 +86,13 @@ func getIndexed[T any](db *compat.Database, row *T, ignoreNotFound bool) (*T, er
 	return row, nil
 }
 
-func filterTimeout[T any](db *compat.Database, prototype model.Model, predicate func(*T) bool) ([]T, error) {
+func filterTimeout[T any](db *table.Database, prototype model.Model, predicate func(*T) bool) ([]T, error) {
 	ctx, cancel := timeoutCtx(db)
 	defer cancel()
-	return compat.Filter[T](ctx, db, prototype, predicate)
+	return db.Filter(ctx, prototype, predicate)
 }
 
-func filterLogged[T any](db *compat.Database, prototype model.Model, predicate func(*T) bool, wrap func(error) error) ([]T, error) {
+func filterLogged[T any](db *table.Database, prototype model.Model, predicate func(*T) bool, wrap func(error) error) ([]T, error) {
 	rows, err := filterTimeout(db, prototype, predicate)
 	if err != nil {
 		klog.Error(err)
@@ -104,7 +104,7 @@ func filterLogged[T any](db *compat.Database, prototype model.Model, predicate f
 	return rows, nil
 }
 
-func filterWrap[T any](db *compat.Database, prototype model.Model, predicate func(*T) bool, wrap func(error) error) ([]T, error) {
+func filterWrap[T any](db *table.Database, prototype model.Model, predicate func(*T) bool, wrap func(error) error) ([]T, error) {
 	rows, err := filterTimeout(db, prototype, predicate)
 	if err != nil && wrap != nil {
 		return nil, wrap(err)
@@ -112,11 +112,11 @@ func filterWrap[T any](db *compat.Database, prototype model.Model, predicate fun
 	return rows, err
 }
 
-func filterAll[T any](db *compat.Database, prototype model.Model, wrap func(error) error) ([]T, error) {
+func filterAll[T any](db *table.Database, prototype model.Model, wrap func(error) error) ([]T, error) {
 	return filterWrap(db, prototype, func(*T) bool { return true }, wrap)
 }
 
-func getIndexedFmt[T any](db *compat.Database, row *T, ignoreNotFound bool, wrap func(error) error) (*T, error) {
+func getIndexedFmt[T any](db *table.Database, row *T, ignoreNotFound bool, wrap func(error) error) (*T, error) {
 	result, err := getIndexed(db, row, ignoreNotFound)
 	if err != nil && wrap != nil {
 		return nil, wrap(err)
@@ -124,7 +124,7 @@ func getIndexedFmt[T any](db *compat.Database, row *T, ignoreNotFound bool, wrap
 	return result, err
 }
 
-func getIndexedWrap[T any](db *compat.Database, row *T, ignoreNotFound bool, wrap func(error) error) (*T, error) {
+func getIndexedWrap[T any](db *table.Database, row *T, ignoreNotFound bool, wrap func(error) error) (*T, error) {
 	result, err := getIndexed(db, row, ignoreNotFound)
 	if err != nil {
 		klog.Error(err)
@@ -136,7 +136,7 @@ func getIndexedWrap[T any](db *compat.Database, row *T, ignoreNotFound bool, wra
 	return result, nil
 }
 
-func getIndexedLogged[T any](db *compat.Database, row *T) (*T, error) {
+func getIndexedLogged[T any](db *table.Database, row *T) (*T, error) {
 	return getIndexedWrap(db, row, false, nil)
 }
 
@@ -187,7 +187,7 @@ func namesFrom[T any](rows []T, err error, names func([]T) []string) ([]string, 
 	return names(rows), nil
 }
 
-func listByUUIDs[T any](db *compat.Database, prototype model.Model, uuids []string, uuidOf func(*T) string, filter func(*T) bool) ([]*T, error) {
+func listByUUIDs[T any](db *table.Database, prototype model.Model, uuids []string, uuidOf func(*T) string, filter func(*T) bool) ([]*T, error) {
 	if len(uuids) == 0 {
 		return nil, nil
 	}
@@ -254,7 +254,7 @@ func createAndAttach[T any](store namedStore, method string, prototype model.Mod
 	if err != nil {
 		return err
 	}
-	plan := compat.NewTxPlan(method)
+	plan := table.NewTxPlan(method)
 	plan.Add(ops...)
 	return store.Execute(context.Background(), plan)
 }
@@ -274,9 +274,9 @@ func (c *OVNNbClient) updateModelLogged(method string, row model.Model, wrap fun
 	return nil
 }
 
-func connectOvsdb(dbName, addr string, dbModel model.ClientDBModel, monitors []compat.MonitorOption, connTimeout, inactivityTimeout, maxRetry int, logName string) (compat.Backend, error) {
+func connectOvsdb(dbName, addr string, dbModel model.ClientDBModel, monitors []table.MonitorOption, connTimeout, inactivityTimeout, maxRetry int, logName string) (table.Backend, error) {
 	var (
-		backend compat.Backend
+		backend table.Backend
 		err     error
 	)
 	for try := 0; ; try++ {
@@ -292,9 +292,9 @@ func connectOvsdb(dbName, addr string, dbModel model.ClientDBModel, monitors []c
 	}
 }
 
-func newObservedDatabase(backend compat.Backend, timeout int, name string) *compat.Database {
-	return compat.NewDatabase(backend, time.Duration(timeout)*time.Second, compat.RetryPolicy{},
-		compat.WithDatabaseName(name), compat.WithTransactionObserver(ovsTransactionObserver{}))
+func newObservedDatabase(backend table.Backend, timeout int, name string) *table.Database {
+	return table.NewDatabase(backend, time.Duration(timeout)*time.Second, table.RetryPolicy{},
+		table.WithDatabaseName(name), table.WithTransactionObserver(ovsTransactionObserver{}))
 }
 
 func uniqueOwnerName[T any](rows []T, uuid, child, parent string, nameOf func(*T) string) (string, error) {
@@ -311,8 +311,8 @@ func uniqueOwnerName[T any](rows []T, uuid, child, parent string, nameOf func(*T
 	return nameOf(&rows[0]), nil
 }
 
-func findNamedRow[T any](ctx context.Context, provider compat.TableProvider, prototype model.Model, name, kind string, required bool, nameOf func(*T) string) (*T, error) {
-	rows, err := compat.Filter[T](ctx, provider, prototype, func(row *T) bool {
+func findNamedRow[T any](ctx context.Context, provider table.TableProvider, prototype model.Model, name, kind string, required bool, nameOf func(*T) string) (*T, error) {
+	rows, err := table.Filter[T](ctx, provider, prototype, func(row *T) bool {
 		return nameOf(row) == name
 	})
 	if err != nil {
@@ -333,7 +333,7 @@ func findNamedRow[T any](ctx context.Context, provider compat.TableProvider, pro
 	return &rows[0], nil
 }
 
-func kubeOvnNames[T any](db *compat.Database, prototype model.Model, nameOf func(*T) string, externalIDsOf func(*T) map[string]string, listErr string) (map[string]bool, error) {
+func kubeOvnNames[T any](db *table.Database, prototype model.Model, nameOf func(*T) string, externalIDsOf func(*T) map[string]string, listErr string) (map[string]bool, error) {
 	rows, err := filterTimeout(db, prototype, func(row *T) bool {
 		return hasVendor(externalIDsOf(row))
 	})
@@ -578,7 +578,7 @@ func mapReplaceMutations(field *map[string]string, current map[string]string, ke
 	return mutations
 }
 
-func pollUntil[T any](db *compat.Database, fn func() (T, bool, error), timeoutWrap func(error) error) (T, error) {
+func pollUntil[T any](db *table.Database, fn func() (T, bool, error), timeoutWrap func(error) error) (T, error) {
 	ctx, cancel := timeoutCtx(db)
 	defer cancel()
 	ticker := time.NewTicker(10 * time.Millisecond)
@@ -603,7 +603,7 @@ func pollUntil[T any](db *compat.Database, fn func() (T, bool, error), timeoutWr
 	}
 }
 
-func listWhere[T any](db *compat.Database, prototype model.Model, indexes ...model.Model) ([]*T, error) {
+func listWhere[T any](db *table.Database, prototype model.Model, indexes ...model.Model) ([]*T, error) {
 	if len(indexes) == 0 {
 		return nil, nil
 	}

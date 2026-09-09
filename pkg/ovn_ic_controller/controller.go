@@ -20,7 +20,7 @@ import (
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -42,10 +42,10 @@ type Controller struct {
 	kubeovnInformerFactory kubeovninformer.SharedInformerFactory
 	recorder               record.EventRecorder
 
-	OVNNbTables compat.TableProvider
-	OVNSbTables compat.TableProvider
-	ICNbTables  compat.TableProvider
-	ICSbTables  compat.TableProvider
+	OVNNbTables table.TableProvider
+	OVNSbTables table.TableProvider
+	ICNbTables  table.TableProvider
+	ICSbTables  table.TableProvider
 	icNbClient  *ovs.OVNICNbClient
 	icSbClient  *ovs.OVNICSbClient
 	icNbAddress string

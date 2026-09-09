@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 )
@@ -1354,7 +1354,7 @@ func newOvnNbClient(t testing.TB, ovnNbAddr string, ovnNbTimeout int) (*OVNNbCli
 	require.NoError(t, err)
 
 	return &OVNNbClient{
-		Database: compat.NewDatabase(nbClient, time.Duration(ovnNbTimeout)*time.Second, compat.RetryPolicy{}, compat.WithDatabaseName("ovn-nb")),
+		Database: table.NewDatabase(nbClient, time.Duration(ovnNbTimeout)*time.Second, table.RetryPolicy{}, table.WithDatabaseName("ovn-nb")),
 	}, nil
 }
 
@@ -1365,7 +1365,7 @@ func newLegacyClient(timeout int) *LegacyClient {
 	}
 }
 
-func newNbClient(addr string, timeout int) (compat.Backend, error) {
+func newNbClient(addr string, timeout int) (table.Backend, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
 		return nil, err
@@ -1378,27 +1378,27 @@ func newNbClient(addr string, timeout int) (compat.Backend, error) {
 		}}, {Columns: []model.ColumnKey{{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "match"}}}},
 	})
 
-	monitorOpts := []compat.MonitorOption{
-		compat.WithTable(&ovnnb.ACL{}),
-		compat.WithTable(&ovnnb.AddressSet{}),
-		compat.WithTable(&ovnnb.BFD{}),
-		compat.WithTable(&ovnnb.DHCPOptions{}),
-		compat.WithTable(&ovnnb.GatewayChassis{}),
-		compat.WithTable(&ovnnb.HAChassis{}),
-		compat.WithTable(&ovnnb.HAChassisGroup{}),
-		compat.WithTable(&ovnnb.LoadBalancer{}),
-		compat.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
-		compat.WithTable(&ovnnb.LogicalRouterPolicy{}),
-		compat.WithTable(&ovnnb.LogicalRouterPort{}),
-		compat.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		compat.WithTable(&ovnnb.LogicalRouter{}),
-		compat.WithTable(&ovnnb.LogicalSwitchPort{}),
-		compat.WithTable(&ovnnb.LogicalSwitch{}),
-		compat.WithTable(&ovnnb.NAT{}),
-		compat.WithTable(&ovnnb.NBGlobal{}),
-		compat.WithTable(&ovnnb.PortGroup{}),
-		compat.WithTable(&ovnnb.Meter{}),
-		compat.WithTable(&ovnnb.MeterBand{}),
+	monitorOpts := []table.MonitorOption{
+		table.WithTable(&ovnnb.ACL{}),
+		table.WithTable(&ovnnb.AddressSet{}),
+		table.WithTable(&ovnnb.BFD{}),
+		table.WithTable(&ovnnb.DHCPOptions{}),
+		table.WithTable(&ovnnb.GatewayChassis{}),
+		table.WithTable(&ovnnb.HAChassis{}),
+		table.WithTable(&ovnnb.HAChassisGroup{}),
+		table.WithTable(&ovnnb.LoadBalancer{}),
+		table.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
+		table.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		table.WithTable(&ovnnb.LogicalRouterPort{}),
+		table.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		table.WithTable(&ovnnb.LogicalRouter{}),
+		table.WithTable(&ovnnb.LogicalSwitchPort{}),
+		table.WithTable(&ovnnb.LogicalSwitch{}),
+		table.WithTable(&ovnnb.NAT{}),
+		table.WithTable(&ovnnb.NBGlobal{}),
+		table.WithTable(&ovnnb.PortGroup{}),
+		table.WithTable(&ovnnb.Meter{}),
+		table.WithTable(&ovnnb.MeterBand{}),
 	}
 	return ovsclient.NewOvsDbClient(ovnnb.DatabaseName, addr, dbModel, monitorOpts, timeout, 0)
 }
@@ -1408,17 +1408,17 @@ func newOvnSbClient(t *testing.T, ovnSbAddr string, ovnSbTimeout int) (*OVNSbCli
 	require.NoError(t, err)
 
 	return &OVNSbClient{
-		Database: compat.NewDatabase(nbClient, time.Duration(ovnSbTimeout)*time.Second, compat.RetryPolicy{}, compat.WithDatabaseName("ovn-sb")),
+		Database: table.NewDatabase(nbClient, time.Duration(ovnSbTimeout)*time.Second, table.RetryPolicy{}, table.WithDatabaseName("ovn-sb")),
 	}, nil
 }
 
-func newSbClient(addr string, timeout int) (compat.Backend, error) {
+func newSbClient(addr string, timeout int) (table.Backend, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
 		return nil, err
 	}
 
-	return ovsclient.NewOvsDbClient(ovnsb.DatabaseName, addr, dbModel, []compat.MonitorOption{
-		compat.WithTable(&ovnsb.Chassis{}),
+	return ovsclient.NewOvsDbClient(ovnsb.DatabaseName, addr, dbModel, []table.MonitorOption{
+		table.WithTable(&ovnsb.Chassis{}),
 	}, timeout, 0)
 }

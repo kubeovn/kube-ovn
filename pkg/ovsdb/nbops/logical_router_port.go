@@ -4,19 +4,19 @@ import (
 	"context"
 	"errors"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 // LogicalRouterPorts provides resource-level parent ownership operations.
 type LogicalRouterPorts struct {
-	ports    table
-	routers  table
-	executor compat.Executor
+	ports    rowTable
+	routers  rowTable
+	executor table.Executor
 }
 
 // NewLogicalRouterPorts creates a typed facade over an NB table provider.
-func NewLogicalRouterPorts(provider compat.TableProvider, executor compat.Executor) *LogicalRouterPorts {
+func NewLogicalRouterPorts(provider table.TableProvider, executor table.Executor) *LogicalRouterPorts {
 	if provider == nil {
 		return &LogicalRouterPorts{executor: executor}
 	}

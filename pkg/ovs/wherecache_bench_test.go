@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -25,7 +25,7 @@ func listNatOldLoop(c *OVNNbClient, lrName string) ([]*ovnnb.NAT, error) {
 	for _, uuid := range lr.Nat {
 		nat, err := c.GetNATByUUID(uuid)
 		if err != nil {
-			if errors.Is(err, compat.ErrNotFound) {
+			if errors.Is(err, table.ErrNotFound) {
 				continue
 			}
 			return nil, err

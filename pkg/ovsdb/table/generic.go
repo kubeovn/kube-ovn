@@ -1,4 +1,4 @@
-package compat
+package table
 
 import (
 	"context"
@@ -30,6 +30,31 @@ func tableFor(provider TableProvider, prototype model.Model) (TableHandle, error
 		return nil, errors.New("ovsdb table handle is nil")
 	}
 	return table, nil
+}
+
+// Query returns rows selected by an indexed model.
+func (d *Database) Query[T any](ctx context.Context, prototype, selector model.Model) ([]T, error) {
+	return Query[T](ctx, d, prototype, selector)
+}
+
+// Filter returns monitored rows matching predicate.
+func (d *Database) Filter[T any](ctx context.Context, prototype model.Model, predicate func(*T) bool) ([]T, error) {
+	return Filter[T](ctx, d, prototype, predicate)
+}
+
+// GetByName returns the unique named row matching nameOf.
+func (d *Database) GetByName[T any](ctx context.Context, prototype model.Model, name, kind string, ignoreNotFound bool, nameOf func(*T) string) (*T, error) {
+	return GetByName[T](ctx, d, prototype, name, kind, ignoreNotFound, nameOf)
+}
+
+// FilterByUUIDs returns monitored rows matching predicate and UUIDs.
+func (d *Database) FilterByUUIDs[T any](ctx context.Context, prototype model.Model, predicate func(*T) bool, uuids ...string) ([]T, error) {
+	return FilterByUUIDs[T](ctx, d, prototype, predicate, uuids...)
+}
+
+// WaitForRows waits until a cache predicate returns at least one row.
+func (d *Database) WaitForRows(ctx context.Context, prototype model.Model, predicate, result any) error {
+	return WaitForRows(ctx, d, prototype, predicate, result)
 }
 
 // List returns all monitored rows for prototype. T is the non-pointer row
