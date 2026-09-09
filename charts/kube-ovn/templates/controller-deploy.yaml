@@ -176,7 +176,9 @@ spec:
           {{- end }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
           - --enable-anp={{- .Values.func.ENABLE_ANP }}
-          - --enable-vpc-endpoint={{- .Values.func.ENABLE_VPC_ENDPOINT }}
+          {{- if .Values.func.ENABLE_VPC_ENDPOINT }}
+          - --enable-vpc-endpoint=true
+          {{- end }}
           - --enable-dns-name-resolver={{- .Values.func.ENABLE_DNS_NAME_RESOLVER }}
           - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
           - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
