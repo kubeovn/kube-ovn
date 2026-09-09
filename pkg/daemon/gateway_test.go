@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
@@ -23,6 +25,22 @@ func (errSubnetLister) List(labels.Selector) ([]*kubeovnv1.Subnet, error) {
 
 func (errSubnetLister) Get(string) (*kubeovnv1.Subnet, error) {
 	return nil, errors.New("get failed")
+}
+
+func TestSetGatewayBandwidthReturnsHTBQueryError(t *testing.T) {
+	node := &corev1.Node{Name: "node-a"}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(node))
+	wantErr := errors.New("query HTB QoS")
+	controller := &Controller{
+		config:        &Configuration{NodeName: node.Name},
+		nodesLister:   listerv1.NewNodeLister(indexer),
+		vswitchTables: cniEventTableProvider{filterErr: wantErr},
+	}
+
+	err := controller.setGatewayBandwidth()
+	require.ErrorIs(t, err, wantErr)
+	require.ErrorContains(t, err, "check HTB QoS")
 }
 
 func TestGetCidrByProtocol(t *testing.T) {

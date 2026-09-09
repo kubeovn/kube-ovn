@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	k8sipset "k8s.io/kubernetes/pkg/proxy/ipvs/ipset"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -204,7 +205,7 @@ func TestInitNodeGatewayRecordsFailureEvent(t *testing.T) {
 	}
 	failure := errors.New("configure ovn0 failed")
 	originalConfigureNodeGateway := configureNodeGateway
-	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool) error {
+	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool, compat.TableProvider) error {
 		return failure
 	}
 	t.Cleanup(func() { configureNodeGateway = originalConfigureNodeGateway })
@@ -261,7 +262,7 @@ func TestInitNodeGatewayDeduplicatesInvalidAnnotations(t *testing.T) {
 
 	originalConfigureNodeGateway := configureNodeGateway
 	originalRetryInterval := nodeGatewayInitRetryInterval
-	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool) error {
+	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool, compat.TableProvider) error {
 		return nil
 	}
 	nodeGatewayInitRetryInterval = 0
@@ -316,7 +317,7 @@ func TestInitNodeGatewayDeduplicatesEachAnnotationFailureMessage(t *testing.T) {
 
 	originalConfigureNodeGateway := configureNodeGateway
 	originalRetryInterval := nodeGatewayInitRetryInterval
-	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool) error {
+	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool, compat.TableProvider) error {
 		return nil
 	}
 	nodeGatewayInitRetryInterval = 0
@@ -367,7 +368,7 @@ func TestInitNodeGatewayRetriesFailedAnnotationEventWrite(t *testing.T) {
 
 	originalConfigureNodeGateway := configureNodeGateway
 	originalRetryInterval := nodeGatewayInitRetryInterval
-	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool) error {
+	configureNodeGateway = func(kubernetes.Interface, string, string, string, string, string, net.HardwareAddr, int, bool, compat.TableProvider) error {
 		return nil
 	}
 	nodeGatewayInitRetryInterval = 0
@@ -401,7 +402,7 @@ func TestInitNodeGatewayRecordsRouteFailureWhenGatewayIsReady(t *testing.T) {
 	originalConfigureNodeGateway := configureNodeGateway
 	originalReplaceNodeRoute := replaceNodeRoute
 	originalCheckNodeGatewayReady := checkNodeGatewayReady
-	configureNodeGateway = func(client kubernetes.Interface, nodeName, _, ip, gateway, _ string, _ net.HardwareAddr, _ int, enableNonPrimaryCNI bool) error {
+	configureNodeGateway = func(client kubernetes.Interface, nodeName, _, ip, gateway, _ string, _ net.HardwareAddr, _ int, enableNonPrimaryCNI bool, _ compat.TableProvider) error {
 		link := &netlink.Dummy{Name: util.NodeNic, Index: 1}
 		return finishNodeGatewaySetup(client, nodeName, ip, gateway, link, []netlink.Route{{}}, enableNonPrimaryCNI)
 	}

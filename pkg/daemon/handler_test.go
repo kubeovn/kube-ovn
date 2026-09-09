@@ -2,14 +2,15 @@ package daemon
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,6 +22,7 @@ import (
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -176,7 +178,6 @@ func TestHandleAddFailureEvent(t *testing.T) {
 }
 
 func TestHandleDelSuccessEventPreservesPodReference(t *testing.T) {
-	useFakeOVSVsctl(t, true)
 	pod := &v1.Pod{
 		Name: "virt-launcher", Namespace: "ns", UID: types.UID("real-uid"),
 		Annotations: map[string]string{
@@ -203,9 +204,9 @@ func TestHandleDelSuccessEventPreservesPodReference(t *testing.T) {
 }
 
 func TestHandleDelFailureEvent(t *testing.T) {
-	useFakeOVSVsctl(t, false)
 	recorder := &cniEventRecorder{}
 	handler := cniEventTestHandler(t, nil, nil, recorder)
+	handler.Config.VswitchTables = cniEventTableProvider{filterErr: errors.New("exit status 1")}
 
 	response := serveCNIRequest(t, handler, "/api/v1/del", request.CniRequest{
 		PodName: "deleted", PodNamespace: "ns", ContainerID: "1234567890abcdef",
@@ -262,7 +263,7 @@ func cniEventTestHandler(t *testing.T, pod *v1.Pod, subnet *kubeovnv1.Subnet, re
 	if subnet != nil {
 		require.NoError(t, subnetIndexer.Add(subnet))
 	}
-	config := &Configuration{NodeName: "node-a"}
+	config := &Configuration{NodeName: "node-a", VswitchTables: cniEventTableProvider{}}
 	controller := &Controller{
 		config:        config,
 		podsLister:    listerv1.NewPodLister(podIndexer),
@@ -270,6 +271,23 @@ func cniEventTestHandler(t *testing.T, pod *v1.Pod, subnet *kubeovnv1.Subnet, re
 		recorder:      recorder,
 	}
 	return createCniServerHandler(config, controller)
+}
+
+type cniEventTableProvider struct {
+	filterErr error
+}
+
+func (p cniEventTableProvider) Table(model.Model) compat.TableHandle {
+	return cniEventTableHandle{filterErr: p.filterErr}
+}
+
+type cniEventTableHandle struct {
+	compat.TableHandle
+	filterErr error
+}
+
+func (h cniEventTableHandle) Filter(context.Context, any, any) error {
+	return h.filterErr
 }
 
 func serveCNIRequest(t *testing.T, handler *cniServerHandler, path string, podRequest request.CniRequest) *httptest.ResponseRecorder {
@@ -287,15 +305,4 @@ func requireSingleCNIEvent(t *testing.T, recorder *cniEventRecorder) recordedCNI
 	t.Helper()
 	require.Len(t, recorder.events, 1)
 	return recorder.events[0]
-}
-
-func useFakeOVSVsctl(t *testing.T, succeed bool) {
-	t.Helper()
-	target := "/bin/false"
-	if succeed {
-		target = "/bin/true"
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.Symlink(target, filepath.Join(dir, "ovs-vsctl")))
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }

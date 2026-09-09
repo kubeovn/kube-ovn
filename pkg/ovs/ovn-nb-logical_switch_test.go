@@ -539,7 +539,9 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdatePortOp() {
 		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
 
-		err = nbClient.LogicalSwitchAddPort(lsName2, lspName)
+		ops, err := nbClient.LogicalSwitchUpdatePortOp(lsName2, lsp.UUID, ovsdb.MutateOperationInsert)
+		require.NoError(t, err)
+		err = nbClient.Transact("lsp-add", ops)
 		require.NoError(t, err)
 
 		_, err = nbClient.LogicalSwitchUpdatePortOp("", lsp.UUID, ovsdb.MutateOperationDelete)

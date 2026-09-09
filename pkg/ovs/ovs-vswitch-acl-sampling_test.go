@@ -1,10 +1,12 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/mapper"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -12,6 +14,52 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
+
+func (c *VswitchClient) transactVswitchOperations(operations []ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	results, err := c.TransactResults(context.Background(), operations...)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) != len(operations) {
+		return nil, fmt.Errorf("expected %d OVSDB operation results, got %d", len(operations), len(results))
+	}
+	return results, nil
+}
+
+func decodeVswitchRows[T any](schema ovsdb.DatabaseSchema, tableName string, rows []ovsdb.Row) ([]T, error) {
+	table := schema.Table(tableName)
+	if table == nil {
+		return nil, fmt.Errorf("OVSDB table %s is missing", tableName)
+	}
+	ovsMapper := mapper.NewMapper(schema)
+	result := make([]T, len(rows))
+	for i := range rows {
+		info, err := mapper.NewInfo(tableName, table, &result[i])
+		if err != nil {
+			return nil, fmt.Errorf("build OVSDB mapper for table %s: %w", tableName, err)
+		}
+		if err := ovsMapper.GetRowDataWithUUID(&rows[i], info); err != nil {
+			return nil, fmt.Errorf("decode OVSDB row from table %s: %w", tableName, err)
+		}
+	}
+	return result, nil
+}
+
+func newVswitchRow(schema ovsdb.DatabaseSchema, tableName string, value any, fields ...any) (ovsdb.Row, error) {
+	table := schema.Table(tableName)
+	if table == nil {
+		return nil, fmt.Errorf("OVSDB table %s is missing", tableName)
+	}
+	info, err := mapper.NewInfo(tableName, table, value)
+	if err != nil {
+		return nil, err
+	}
+	return mapper.NewMapper(schema).NewRow(info, fields...)
+}
+
+func uuidWhere(uuid string) []ovsdb.Condition {
+	return []ovsdb.Condition{{Column: "_uuid", Function: ovsdb.ConditionEqual, Value: ovsdb.UUID{GoUUID: uuid}}}
+}
 
 func TestReconcileACLSamplingCollectorSetLifecycle(t *testing.T) {
 	client := newACLSamplingVswitchTestClient(t, "", map[string]string{"psample": "true"})

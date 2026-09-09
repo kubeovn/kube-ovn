@@ -82,7 +82,7 @@ func (c *Controller) syncExternalVpc() {
 
 func (c *Controller) getNonKubeovnRouterStatus() (logicalRouters map[string]util.LogicalRouter, err error) {
 	logicalRouters = make(map[string]util.LogicalRouter)
-	nonKubeovnRouters, err := c.OVNNbClient.ListLogicalRouter(false, func(lr *ovnnb.LogicalRouter) bool {
+	nonKubeovnRouters, err := c.listLogicalRouters(false, func(lr *ovnnb.LogicalRouter) bool {
 		return len(lr.ExternalIDs) == 0 || lr.ExternalIDs["vendor"] != util.CniTypeName
 	})
 	if err != nil {
@@ -100,7 +100,7 @@ func (c *Controller) getNonKubeovnRouterStatus() (logicalRouters map[string]util
 			Ports: make([]util.Port, 0, len(router.Ports)),
 		}
 		for _, uuid := range router.Ports {
-			lrp, err := c.OVNNbClient.GetLogicalRouterPortByUUID(uuid)
+			lrp, err := c.getLogicalRouterPortByUUID(uuid)
 			if err != nil {
 				klog.Warningf("failed to get LRP by UUID %s: %v", uuid, err)
 				continue
@@ -112,7 +112,7 @@ func (c *Controller) getNonKubeovnRouterStatus() (logicalRouters map[string]util
 	for routerName, logicalRouter := range logicalRouters {
 		tmpRouter := logicalRouter
 		for _, port := range logicalRouter.Ports {
-			peerPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			peerPorts, err := c.listLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
 				return len(lsp.Options) != 0 && lsp.Options["router-port"] == port.Name
 			})
 			if err != nil {
@@ -127,7 +127,7 @@ func (c *Controller) getNonKubeovnRouterStatus() (logicalRouters map[string]util
 				continue
 			}
 			lsp := peerPorts[0]
-			switches, err := c.OVNNbClient.ListLogicalSwitch(false, func(ls *ovnnb.LogicalSwitch) bool {
+			switches, err := c.listLogicalSwitches(false, func(ls *ovnnb.LogicalSwitch) bool {
 				return slices.Contains(ls.Ports, lsp.UUID)
 			})
 			if err != nil {

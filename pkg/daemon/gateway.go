@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -54,11 +55,15 @@ func (c *Controller) setGatewayBandwidth() error {
 	ingressBurst, egressBurst := node.Annotations[util.IngressBurstAnnotation], node.Annotations[util.EgressBurstAnnotation]
 	ifaceID := util.NodeLspName(c.config.NodeName)
 	if ingress == "" && egress == "" {
-		if htbQos, _ := ovs.IsHtbQos(ifaceID); !htbQos {
+		htbQos, err := ovs.IsHtbQos(ifaceID, c.vswitchTables)
+		if err != nil {
+			return fmt.Errorf("check HTB QoS for interface %s: %w", ifaceID, err)
+		}
+		if !htbQos {
 			return nil
 		}
 	}
-	return ovs.SetInterfaceBandwidth("", "", ifaceID, egress, ingress, egressBurst, ingressBurst)
+	return ovs.SetInterfaceBandwidth("", "", ifaceID, egress, ingress, egressBurst, ingressBurst, c.vswitchTables)
 }
 
 func (c *Controller) setICGateway() error {
@@ -68,18 +73,21 @@ func (c *Controller) setICGateway() error {
 		return err
 	}
 	enable := node.Labels[util.ICGatewayLabel]
+	if c.config.VswitchTables == nil {
+		return errors.New("vswitch table provider is not configured")
+	}
 	if enable == "true" {
-		icEnabled, err := ovs.Exec(ovs.IfExists, "get", "open", ".", "external_ids:ovn-is-interconn")
+		icEnabled, err := c.config.getOpenVSwitchExternalID("ovn-is-interconn")
 		if err != nil {
 			return fmt.Errorf("failed to get if ic enabled, %w", err)
 		}
 		if strings.Trim(icEnabled, "\"") != "true" {
-			if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=true"); err != nil {
+			if err := c.config.updateOpenVSwitchExternalIDs("daemon-ic-gateway-enable", map[string]*string{"ovn-is-interconn": new("true")}); err != nil {
 				return fmt.Errorf("failed to enable ic gateway, %w", err)
 			}
 		}
 	} else {
-		if _, err := ovs.Exec("set", "open", ".", "external_ids:ovn-is-interconn=false"); err != nil {
+		if err := c.config.updateOpenVSwitchExternalIDs("daemon-ic-gateway-disable", map[string]*string{"ovn-is-interconn": new("false")}); err != nil {
 			return fmt.Errorf("failed to disable ic gateway, %w", err)
 		}
 	}

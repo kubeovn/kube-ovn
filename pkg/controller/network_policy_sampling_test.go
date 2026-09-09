@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,7 @@ import (
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 )
 
 func TestHandleNetworkPolicyACLSamplingRetriesOnlySampling(t *testing.T) {
@@ -163,6 +165,9 @@ func TestHandleNetworkPolicyACLSamplingWaitsForSuccessfulEnforcement(t *testing.
 
 func TestSetNetworkPolicyACLLogReportsSamplingReadiness(t *testing.T) {
 	controller, nbClient, _ := newNetworkPolicySamplingTestController(t)
+	// This test exercises the legacy domain capability directly; the generic
+	// table ACL-log path is covered by TestControllerTableProviderACLHelpers.
+	controller.OVNNbTables = nil
 	nbClient.EXPECT().SetNetPolACLLog("pg", true, true).Return(nil)
 	require.True(t, controller.setNetworkPolicyACLLog("pg", "default/test", true, true))
 	nbClient.EXPECT().SetNetPolACLLog("pg", true, false).Return(errors.New("injected logging failure"))
@@ -200,6 +205,7 @@ func newNetworkPolicySamplingTestController(t *testing.T) (*Controller, *mockovs
 	controller := &Controller{
 		config:           &Configuration{ACLSampling: config},
 		OVNNbClient:      nbClient,
+		OVNNbTables:      samplingTableProvider{MockNbClient: nbClient},
 		npSamplingQueue:  newTypedRateLimitingQueue[string]("TestNetworkPolicyACLSampling", nil),
 		npSamplingStates: xsync.NewMap[string, *networkPolicySamplingState](),
 		npKeyMutex:       keymutex.NewHashed(1),
@@ -207,6 +213,12 @@ func newNetworkPolicySamplingTestController(t *testing.T) (*Controller, *mockovs
 	t.Cleanup(controller.npSamplingQueue.ShutDown)
 	return controller, nbClient, config
 }
+
+type samplingTableProvider struct {
+	*mockovs.MockNbClient
+}
+
+func (samplingTableProvider) Table(model.Model) compat.TableHandle { return nil }
 
 func networkPolicySamplingTestPolicy() *netv1.NetworkPolicy {
 	return &netv1.NetworkPolicy{
@@ -223,6 +235,7 @@ func TestReconcileACLSamplingRecordsAvailability(t *testing.T) {
 	controller := &Controller{
 		config:      &Configuration{ACLSampling: config},
 		OVNNbClient: nbClient,
+		OVNNbTables: samplingTableProvider{MockNbClient: nbClient},
 	}
 
 	failuresBefore := testutil.ToFloat64(metricACLSamplingControllerFailures.WithLabelValues(aclSamplingOperationReconcile))

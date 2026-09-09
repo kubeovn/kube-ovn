@@ -389,7 +389,7 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 	t.Run("should no err when create logical switch port repeatedly", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, vip)
 		require.NoError(t, err)
-		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, "test-create-virtual-port-ls2", vip)
+		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, vip)
 		require.NoError(t, err)
 	})
 
