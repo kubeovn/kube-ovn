@@ -1,6 +1,8 @@
 package util
 
 import (
+	"context"
+	"errors"
 	"math/big"
 	"net"
 	"os"
@@ -482,6 +484,84 @@ func TestCheckProtocol(t *testing.T) {
 				t.Errorf("%v expected %v, but %v got",
 					c.address, c.want, ans)
 			}
+		})
+	}
+}
+
+func TestResolveProtocol(t *testing.T) {
+	errLookupFailed := errors.New("lookup failed")
+	tests := []struct {
+		name    string
+		address string
+		addrs   []net.IP
+		lookErr error
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "literalIPv4",
+			address: "192.168.0.23",
+			want:    kubeovnv1.ProtocolIPv4,
+		},
+		{
+			name:    "literalIPv6",
+			address: "ffff:ffff:ffff:ffff:ffff:0:ffff:fffe",
+			want:    kubeovnv1.ProtocolIPv6,
+		},
+		{
+			name:    "hostnameResolvesIPv4",
+			address: "ovn-central-0.ovn-central.kube-system.svc",
+			addrs:   []net.IP{net.ParseIP("192.168.0.23")},
+			want:    kubeovnv1.ProtocolIPv4,
+		},
+		{
+			name:    "hostnameResolvesIPv6",
+			address: "ovn-central-0.ovn-central.kube-system.svc",
+			addrs:   []net.IP{net.ParseIP("ffff::fffe")},
+			want:    kubeovnv1.ProtocolIPv6,
+		},
+		{
+			name:    "hostnameResolvesBothFamiliesPrefersIPv4",
+			address: "ovn-central-0.ovn-central.kube-system.svc",
+			addrs:   []net.IP{net.ParseIP("ffff::fffe"), net.ParseIP("192.168.0.23")},
+			want:    kubeovnv1.ProtocolIPv4,
+		},
+		{
+			name:    "hostnameResolvesBothFamiliesIPv4FirstAlsoPrefersIPv4",
+			address: "ovn-central-0.ovn-central.kube-system.svc",
+			addrs:   []net.IP{net.ParseIP("192.168.0.23"), net.ParseIP("ffff::fffe")},
+			want:    kubeovnv1.ProtocolIPv4,
+		},
+		{
+			name:    "lookupFails",
+			address: "missing.svc.cluster.local",
+			lookErr: errLookupFailed,
+			wantErr: true,
+		},
+		{
+			name:    "lookupReturnsNoAddresses",
+			address: "empty.svc.cluster.local",
+			addrs:   []net.IP{},
+			wantErr: true,
+		},
+		{
+			name:    "emptyAddress",
+			address: "",
+			wantErr: true,
+		},
+	}
+	for _, c := range tests {
+		t.Run(c.name, func(t *testing.T) {
+			lookup := func(_ context.Context, _ string) ([]net.IP, error) {
+				return c.addrs, c.lookErr
+			}
+			got, err := resolveProtocol(context.Background(), lookup, c.address)
+			if c.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, c.want, got)
 		})
 	}
 }
