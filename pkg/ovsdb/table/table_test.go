@@ -1,4 +1,4 @@
-package compat
+package table
 
 import (
 	"context"
@@ -200,9 +200,15 @@ func TestGenericTableHelpers(t *testing.T) {
 	require.NoError(t, err)
 	_, err = Query[exampleRow](ctx, database, prototype, &exampleRow{Name: "key"})
 	require.NoError(t, err)
+	_, err = database.Query[exampleRow](ctx, prototype, &exampleRow{Name: "key"})
+	require.NoError(t, err)
 	_, err = Filter[exampleRow](ctx, database, prototype, func(*exampleRow) bool { return true })
 	require.NoError(t, err)
+	_, err = database.Filter[exampleRow](ctx, prototype, func(*exampleRow) bool { return true })
+	require.NoError(t, err)
 	_, err = FilterByUUIDs[exampleRow](ctx, database, prototype, func(*exampleRow) bool { return true }, "uuid")
+	require.NoError(t, err)
+	_, err = database.FilterByUUIDs[exampleRow](ctx, prototype, func(*exampleRow) bool { return true }, "uuid")
 	require.NoError(t, err)
 	require.NoError(t, Get(ctx, database, prototype, &exampleRow{Name: "key"}))
 	require.NoError(t, Create(ctx, database, prototype, "create", &exampleRow{Name: "new"}))

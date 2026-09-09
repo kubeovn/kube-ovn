@@ -32,7 +32,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -48,7 +48,7 @@ type podQoSOperations interface {
 }
 
 type ovsPodQoSOperations struct {
-	provider compat.TableProvider
+	provider table.TableProvider
 }
 
 func (o ovsPodQoSOperations) setInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {

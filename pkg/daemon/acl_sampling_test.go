@@ -10,7 +10,7 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 type fakeACLSamplingVswitch struct {
@@ -28,13 +28,13 @@ type fakeACLSamplingTables struct {
 	client *fakeACLSamplingVswitch
 }
 
-func (f *fakeACLSamplingTables) Table(model.Model) compat.TableHandle { return nil }
+func (f *fakeACLSamplingTables) Table(model.Model) table.TableHandle { return nil }
 
 func (f *fakeACLSamplingTables) ReconcileACLSamplingCollectorSet(config aclsampling.NodeConfig) error {
 	return f.client.ReconcileACLSamplingCollectorSet(config)
 }
 
-var _ compat.TableProvider = (*fakeACLSamplingTables)(nil)
+var _ table.TableProvider = (*fakeACLSamplingTables)(nil)
 
 func TestReconcileACLSamplingCollectorSetUsesTableProviderCapability(t *testing.T) {
 	nodeName := "acl-sampling-provider-node"

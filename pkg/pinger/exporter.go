@@ -10,7 +10,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 const metricNamespace = "kube_ovn"
@@ -25,8 +25,8 @@ var (
 type Exporter struct {
 	sync.RWMutex
 	Client           *ovsdb.OvsClient
-	VswitchTables    compat.TableProvider
-	newVswitchTables func() (compat.TableProvider, error)
+	VswitchTables    table.TableProvider
+	newVswitchTables func() (table.TableProvider, error)
 	timeout          int
 	pollInterval     int
 	errors           int64
@@ -39,7 +39,7 @@ func NewExporter(cfg *Configuration) *Exporter {
 		Client: ovsdb.NewOvsClient(),
 	}
 	e.initParas(cfg)
-	e.newVswitchTables = func() (compat.TableProvider, error) {
+	e.newVswitchTables = func() (table.TableProvider, error) {
 		return ovs.NewVswitchClient(cfg.DatabaseVswitchSocketRemote, cfg.PollTimeout, cfg.PollTimeout)
 	}
 	if err := e.connectVswitchTables(); err != nil {

@@ -18,9 +18,9 @@ import (
 	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs/nbops"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/nbops"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -1086,7 +1086,7 @@ func (c *OVNNbClient) GetACL(parent, direction, priority, match string, tier int
 	if err != nil {
 		return nil, err
 	}
-	return compat.Unique(aclList, ignoreNotFound,
+	return table.Unique(aclList, ignoreNotFound,
 		NewACLError(ACLErrorNotFound, fmt.Sprintf("not found acl with 'parent %s direction %s priority %s match %s tier %d '", parent, direction, priority, match, tier)),
 		NewACLError(ACLErrorDuplicated, fmt.Sprintf("more than one acl with same 'parent %s direction %s priority %s match %s tier %d '", parent, direction, priority, match, tier)),
 	)

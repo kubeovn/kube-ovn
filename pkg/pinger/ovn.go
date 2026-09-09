@@ -12,7 +12,7 @@ import (
 	"k8s.io/utils/set"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -27,7 +27,7 @@ var (
 )
 
 type managedTableProvider interface {
-	compat.TableProvider
+	table.TableProvider
 	Connected() bool
 	Close()
 }
@@ -122,7 +122,7 @@ func checkOvsBindings(config *Configuration) (set.Set[string], error) {
 	return result, nil
 }
 
-func getChassis(hostname string, providers ...compat.TableProvider) (string, error) {
+func getChassis(hostname string, providers ...table.TableProvider) (string, error) {
 	provider, err := firstSBProvider(providers...)
 	if err != nil {
 		return "", err
@@ -142,7 +142,7 @@ func getChassis(hostname string, providers ...compat.TableProvider) (string, err
 	return rows[0].UUID, nil
 }
 
-func getLogicalPort(chassisUUID string, providers ...compat.TableProvider) (set.Set[string], error) {
+func getLogicalPort(chassisUUID string, providers ...table.TableProvider) (set.Set[string], error) {
 	provider, err := firstSBProvider(providers...)
 	if err != nil {
 		return nil, err
@@ -175,14 +175,14 @@ func checkSBBindings(config *Configuration) (set.Set[string], error) {
 	return getLogicalPort(chassisUUID, provider)
 }
 
-func firstSBProvider(providers ...compat.TableProvider) (compat.TableProvider, error) {
+func firstSBProvider(providers ...table.TableProvider) (table.TableProvider, error) {
 	if len(providers) != 0 && providers[0] != nil {
 		return providers[0], nil
 	}
 	return getSBProvider()
 }
 
-func getSBProvider() (compat.TableProvider, error) {
+func getSBProvider() (table.TableProvider, error) {
 	sbClientMu.Lock()
 	defer sbClientMu.Unlock()
 	if sbClient != nil && sbClient.Connected() {
@@ -200,7 +200,7 @@ func getSBProvider() (compat.TableProvider, error) {
 	return client, nil
 }
 
-func getVswitchProvider(config *Configuration) (compat.TableProvider, error) {
+func getVswitchProvider(config *Configuration) (table.TableProvider, error) {
 	vswitchClientMu.Lock()
 	defer vswitchClientMu.Unlock()
 	if vswitchClient != nil && vswitchClient.Connected() {

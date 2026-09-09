@@ -9,7 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -37,7 +37,7 @@ func (c *OVNNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, igno
 		return gwChassis.ExternalIDs != nil && gwChassis.ExternalIDs["lrp"] == lrpName
 	})
 	if err != nil {
-		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, table.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, logFmt("failed to list gw chassis for lrp %s: %w", lrpName, err)

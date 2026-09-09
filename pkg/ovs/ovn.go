@@ -17,7 +17,7 @@ import (
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicsb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -32,37 +32,37 @@ type LegacyClient struct {
 }
 
 type OVNNbClient struct {
-	*compat.Database
+	*table.Database
 	aclSamplingMonitorMu sync.Mutex
 	aclSamplingMonitored bool
 }
 
 type OVNSbClient struct {
-	*compat.Database
+	*table.Database
 }
 
 // OVNICNbClient is the generic IC northbound database client.
 type OVNICNbClient struct {
-	*compat.Database
+	*table.Database
 }
 
 // OVNICSbClient is the generic IC southbound database client.
 type OVNICSbClient struct {
-	*compat.Database
+	*table.Database
 }
 
 var (
 	_ NbClient             = (*OVNNbClient)(nil)
 	_ SbClient             = (*OVNSbClient)(nil)
-	_ compat.TableProvider = (*OVNNbClient)(nil)
-	_ compat.TableProvider = (*OVNSbClient)(nil)
-	_ compat.TableProvider = (*OVNICNbClient)(nil)
-	_ compat.TableProvider = (*OVNICSbClient)(nil)
+	_ table.TableProvider = (*OVNNbClient)(nil)
+	_ table.TableProvider = (*OVNSbClient)(nil)
+	_ table.TableProvider = (*OVNICNbClient)(nil)
+	_ table.TableProvider = (*OVNICSbClient)(nil)
 )
 
 type ovsTransactionObserver struct{}
 
-func (ovsTransactionObserver) ObserveTransaction(event compat.TransactionEvent) {
+func (ovsTransactionObserver) ObserveTransaction(event table.TransactionEvent) {
 	elapsed := float64(event.Duration / time.Millisecond)
 	code := "0"
 	if event.Err != nil {
@@ -120,13 +120,13 @@ func NewDynamicOvnNbClient(
 	nbClient.Close()
 
 	models := make(map[string]model.Model, len(tables))
-	monitors := make([]compat.MonitorOption, 0, len(tables))
-	for name, table := range schemaTables {
+	monitors := make([]table.MonitorOption, 0, len(tables))
+	for name, schemaTable := range schemaTables {
 		if len(tables) != 0 && !slices.Contains(tables, name) {
 			continue
 		}
 
-		columns := maps.Clone(table.Columns)
+		columns := maps.Clone(schemaTable.Columns)
 		keys := slices.Collect(maps.Keys(columns))
 		slices.Sort(keys)
 		sortedColumns := slices.Insert(keys, 0, "_uuid")
@@ -142,7 +142,7 @@ func NewDynamicOvnNbClient(
 		}
 
 		model := reflect.New(reflect.StructOf(fields)).Interface().(model.Model)
-		monitors = append(monitors, compat.WithTable(model))
+		monitors = append(monitors, table.WithTable(model))
 		models[name] = model
 	}
 
@@ -179,27 +179,27 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	})
 	klog.Infof("ovn nb table %s client index %#v", ovnnb.LogicalRouterPolicyTable, dbModel.Indexes(ovnnb.LogicalRouterPolicyTable))
 
-	monitors := []compat.MonitorOption{
-		compat.WithTable(&ovnnb.ACL{}),
-		compat.WithTable(&ovnnb.AddressSet{}),
-		compat.WithTable(&ovnnb.BFD{}),
-		compat.WithTable(&ovnnb.DHCPOptions{}),
-		compat.WithTable(&ovnnb.GatewayChassis{}),
-		compat.WithTable(&ovnnb.HAChassis{}),
-		compat.WithTable(&ovnnb.HAChassisGroup{}),
-		compat.WithTable(&ovnnb.LoadBalancer{}),
-		compat.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
-		compat.WithTable(&ovnnb.LogicalRouterPolicy{}),
-		compat.WithTable(&ovnnb.LogicalRouterPort{}),
-		compat.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		compat.WithTable(&ovnnb.LogicalRouter{}),
-		compat.WithTable(&ovnnb.LogicalSwitchPort{}),
-		compat.WithTable(&ovnnb.LogicalSwitch{}),
-		compat.WithTable(&ovnnb.NAT{}),
-		compat.WithTable(&ovnnb.NBGlobal{}),
-		compat.WithTable(&ovnnb.PortGroup{}),
-		compat.WithTable(&ovnnb.Meter{}),
-		compat.WithTable(&ovnnb.MeterBand{}),
+	monitors := []table.MonitorOption{
+		table.WithTable(&ovnnb.ACL{}),
+		table.WithTable(&ovnnb.AddressSet{}),
+		table.WithTable(&ovnnb.BFD{}),
+		table.WithTable(&ovnnb.DHCPOptions{}),
+		table.WithTable(&ovnnb.GatewayChassis{}),
+		table.WithTable(&ovnnb.HAChassis{}),
+		table.WithTable(&ovnnb.HAChassisGroup{}),
+		table.WithTable(&ovnnb.LoadBalancer{}),
+		table.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
+		table.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		table.WithTable(&ovnnb.LogicalRouterPort{}),
+		table.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		table.WithTable(&ovnnb.LogicalRouter{}),
+		table.WithTable(&ovnnb.LogicalSwitchPort{}),
+		table.WithTable(&ovnnb.LogicalSwitch{}),
+		table.WithTable(&ovnnb.NAT{}),
+		table.WithTable(&ovnnb.NBGlobal{}),
+		table.WithTable(&ovnnb.PortGroup{}),
+		table.WithTable(&ovnnb.Meter{}),
+		table.WithTable(&ovnnb.MeterBand{}),
 	}
 
 	nbClient, err := connectOvsdb(ovnnb.DatabaseName, ovnNbAddr, dbModel, monitors, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry, "OVN NB")
@@ -215,9 +215,9 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 		return nil, logErr(err)
 	}
 
-	monitors := []compat.MonitorOption{
-		compat.WithTable(&ovnsb.Chassis{}),
-		compat.WithTable(&ovnsb.PortBinding{}),
+	monitors := []table.MonitorOption{
+		table.WithTable(&ovnsb.Chassis{}),
+		table.WithTable(&ovnsb.PortBinding{}),
 	}
 	sbClient, err := connectOvsdb(ovnsb.DatabaseName, ovnSbAddr, dbModel, monitors, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry, "OVN SB")
 	if err != nil {
@@ -231,8 +231,8 @@ func NewOvnICNbClient(ovnICNbAddr string, timeout, ovsDbConTimeout, ovsDbInactiv
 	if err != nil {
 		return nil, err
 	}
-	monitors := []compat.MonitorOption{
-		compat.WithTable(&ovnicnb.TransitSwitch{}),
+	monitors := []table.MonitorOption{
+		table.WithTable(&ovnicnb.TransitSwitch{}),
 	}
 	backend, err := connectOvsdb(ovnicnb.DatabaseName, ovnICNbAddr, dbModel, monitors, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry, "OVN IC NB")
 	if err != nil {
@@ -246,11 +246,11 @@ func NewOvnICSbClient(ovnICSbAddr string, timeout, ovsDbConTimeout, ovsDbInactiv
 	if err != nil {
 		return nil, err
 	}
-	monitors := []compat.MonitorOption{
-		compat.WithTable(&ovnicsb.AvailabilityZone{}),
-		compat.WithTable(&ovnicsb.Gateway{}),
-		compat.WithTable(&ovnicsb.Route{}),
-		compat.WithTable(&ovnicsb.PortBinding{}),
+	monitors := []table.MonitorOption{
+		table.WithTable(&ovnicsb.AvailabilityZone{}),
+		table.WithTable(&ovnicsb.Gateway{}),
+		table.WithTable(&ovnicsb.Route{}),
+		table.WithTable(&ovnicsb.PortBinding{}),
 	}
 	backend, err := connectOvsdb(ovnicsb.DatabaseName, ovnICSbAddr, dbModel, monitors, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry, "OVN IC SB")
 	if err != nil {

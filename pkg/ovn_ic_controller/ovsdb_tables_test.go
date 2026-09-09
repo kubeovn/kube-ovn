@@ -10,7 +10,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicsb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -21,7 +21,7 @@ type icCapabilityProvider struct {
 	patchCalls   int
 }
 
-func (p *icCapabilityProvider) Table(model.Model) compat.TableHandle { return nil }
+func (p *icCapabilityProvider) Table(model.Model) table.TableHandle { return nil }
 
 func (p *icCapabilityProvider) ReconcileGatewayChassises(string, []string) error {
 	p.gatewayCalls++
@@ -33,7 +33,7 @@ func (p *icCapabilityProvider) CreateLogicalPatchPort(string, string, string, st
 	return nil
 }
 
-var _ compat.TableProvider = (*icCapabilityProvider)(nil)
+var _ table.TableProvider = (*icCapabilityProvider)(nil)
 
 func TestICOperationsUseTableProviderCapabilities(t *testing.T) {
 	provider := &icCapabilityProvider{}
@@ -61,7 +61,7 @@ func TestICTableProviderNBGlobalAndPortParentCleanup(t *testing.T) {
 		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "ts-region1", Ports: []string{"lsp-1"}},
 		&ovnnb.LogicalSwitchPort{UUID: "lsp-1", Name: "ts-region1-region2", ExternalIDs: map[string]string{"vendor": "kube-ovn"}},
 	)
-	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	database := table.NewDatabase(backend, time.Second, table.RetryPolicy{})
 	controller := &Controller{OVNNbTables: database}
 
 	require.NoError(t, controller.setICAutoRouteTable(true, []string{"10.0.0.0/8"}))
@@ -82,7 +82,7 @@ func TestICTableProviderICDatabaseOperations(t *testing.T) {
 		&ovnicsb.Route{UUID: "route-1", AvailabilityZone: "az-1"},
 		&ovnicsb.PortBinding{UUID: "pb-1", AvailabilityZone: "az-1"},
 	)
-	database := compat.NewDatabase(backend, time.Second, compat.RetryPolicy{})
+	database := table.NewDatabase(backend, time.Second, table.RetryPolicy{})
 	controller := &Controller{ICNbTables: database, ICSbTables: database}
 
 	names, err := controller.listICTransitSwitches()
@@ -137,7 +137,7 @@ func (b *icTableBackend) Get(_ context.Context, result model.Model) error {
 			}
 		}
 	}
-	return compat.ErrNotFound
+	return table.ErrNotFound
 }
 
 func (b *icTableBackend) List(_ context.Context, result any) error {
@@ -160,20 +160,20 @@ func (b *icTableBackend) List(_ context.Context, result any) error {
 	return nil
 }
 
-func (b *icTableBackend) WhereCache(predicate any) compat.ConditionalAPI {
+func (b *icTableBackend) WhereCache(predicate any) table.ConditionalAPI {
 	b.conditional.predicate = predicate
 	return &b.conditional
 }
 
-func (b *icTableBackend) WhereCacheByUUIDs(any, ...string) compat.ConditionalAPI {
+func (b *icTableBackend) WhereCacheByUUIDs(any, ...string) table.ConditionalAPI {
 	return &b.conditional
 }
-func (b *icTableBackend) Where(...model.Model) compat.ConditionalAPI { return &b.conditional }
-func (b *icTableBackend) WhereAny(model.Model, ...model.Condition) compat.ConditionalAPI {
+func (b *icTableBackend) Where(...model.Model) table.ConditionalAPI { return &b.conditional }
+func (b *icTableBackend) WhereAny(model.Model, ...model.Condition) table.ConditionalAPI {
 	return &b.conditional
 }
 
-func (b *icTableBackend) WhereAll(model.Model, ...model.Condition) compat.ConditionalAPI {
+func (b *icTableBackend) WhereAll(model.Model, ...model.Condition) table.ConditionalAPI {
 	return &b.conditional
 }
 
@@ -189,12 +189,12 @@ func (b *icTableBackend) Transact(_ context.Context, operations ...ovsdb.Operati
 	b.transacts++
 	return make([]ovsdb.OperationResult, len(operations)), nil
 }
-func (b *icTableBackend) Cache() compat.Cache                                { return nil }
+func (b *icTableBackend) Cache() table.Cache                                { return nil }
 func (b *icTableBackend) Schema() ovsdb.DatabaseSchema                       { return ovsdb.DatabaseSchema{} }
 func (b *icTableBackend) Connected() bool                                    { return true }
-func (b *icTableBackend) NewMonitor(...compat.MonitorOption) *compat.Monitor { return nil }
-func (b *icTableBackend) Monitor(context.Context, *compat.Monitor) (compat.MonitorCookie, error) {
-	return compat.MonitorCookie{}, nil
+func (b *icTableBackend) NewMonitor(...table.MonitorOption) *table.Monitor { return nil }
+func (b *icTableBackend) Monitor(context.Context, *table.Monitor) (table.MonitorCookie, error) {
+	return table.MonitorCookie{}, nil
 }
 func (b *icTableBackend) Echo(context.Context) error { return nil }
 func (b *icTableBackend) Close()                     {}

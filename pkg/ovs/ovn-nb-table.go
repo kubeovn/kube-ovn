@@ -10,19 +10,19 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 // namedTable centralizes the cache-backed operations shared by named OVN NB
 // tables. The model-specific methods remain in their logical resource files,
 // while this type owns the repeated lookup, list, create, and mutation flow.
 type namedStore interface {
-	compat.TableProvider
-	compat.Executor
+	table.TableProvider
+	table.Executor
 }
 
 type namedTable[T any] struct {
-	store         namedStore
+	store         *table.Database
 	prototype     model.Model
 	kind          string
 	listErrorVerb string
@@ -31,7 +31,7 @@ type namedTable[T any] struct {
 	newByName     func(string) *T
 }
 
-func (t namedTable[T]) table() compat.TableHandle {
+func (t namedTable[T]) table() table.TableHandle {
 	return t.store.Table(t.prototype)
 }
 
@@ -44,17 +44,17 @@ func (t namedTable[T]) listError(format string, args ...any) error {
 }
 
 func (t namedTable[T]) get(name string, ignoreNotFound bool) (*T, error) {
-	rows, err := compat.Filter[T](context.Background(), t.store, t.prototype, func(row *T) bool {
+	rows, err := t.store.Filter(context.Background(), t.prototype, func(row *T) bool {
 		return t.nameOf(row) == name
 	})
 	if err != nil {
 		return nil, t.listError("%s %q: %w", t.kind, name, err)
 	}
-	return compat.UniqueByName(rows, name, t.kind, ignoreNotFound)
+	return table.UniqueByName(rows, name, t.kind, ignoreNotFound)
 }
 
 func (t namedTable[T]) list(needVendorFilter bool, filter func(*T) bool) ([]T, error) {
-	rows, err := compat.Filter[T](context.Background(), t.store, t.prototype, func(row *T) bool {
+	rows, err := t.store.Filter(context.Background(), t.prototype, func(row *T) bool {
 		if needVendorFilter && !hasVendor(t.externalIDsOf(row)) {
 			return false
 		}
@@ -117,7 +117,7 @@ func (t namedTable[T]) createIfAbsent(name, method string, row *T) error {
 	if err != nil {
 		return fmt.Errorf("generate operations for creating %s %s: %w", t.kind, name, err)
 	}
-	plan := compat.NewTxPlan(method)
+	plan := table.NewTxPlan(method)
 	plan.Add(operations...)
 	if err := t.store.Execute(context.Background(), plan); err != nil {
 		return fmt.Errorf("create %s %s: %w", t.kind, name, err)
@@ -129,7 +129,7 @@ func (t namedTable[T]) delete(row *T) ([]ovsdb.Operation, error) {
 	return t.table().DeleteOps(row)
 }
 
-func newNamedTable[T any](store namedStore, prototype model.Model, kind string, nameOf func(*T) string, externalIDsOf func(*T) map[string]string) namedTable[T] {
+func newNamedTable[T any](store *table.Database, prototype model.Model, kind string, nameOf func(*T) string, externalIDsOf func(*T) map[string]string) namedTable[T] {
 	return namedTable[T]{
 		store:         store,
 		prototype:     prototype,
@@ -145,7 +145,7 @@ func (t namedTable[T]) lookup(name string, ignoreNotFound bool) (*T, error) {
 	}
 	row := t.newByName(name)
 	if err := t.table().Get(context.Background(), row); err != nil {
-		if ignoreNotFound && errors.Is(err, compat.ErrNotFound) {
+		if ignoreNotFound && errors.Is(err, table.ErrNotFound) {
 			return nil, nil
 		}
 		return nil, err

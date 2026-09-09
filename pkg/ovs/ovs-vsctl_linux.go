@@ -13,7 +13,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -86,7 +86,7 @@ func parseAndScaleBandwidthRate(rate string, scale int64) (int64, error) {
 // ingress and egress are rate values in Mbps; ingressBurst and egressBurst are burst
 // values in Mbit. An empty burst falls back to 80% of the corresponding rate; an
 // explicit "0" is passed through verbatim.
-func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string, providers ...compat.TableProvider) error {
+func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string, providers ...table.TableProvider) error {
 	if len(providers) == 0 || providers[0] == nil {
 		if _, err := parseAndScaleBandwidthRate(ingress, 1000); err != nil {
 			return fmt.Errorf("invalid ingress bandwidth: %w", err)
@@ -99,7 +99,7 @@ func SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingres
 	return setInterfaceBandwidthTable(providers[0], podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
 }
 
-func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...compat.TableProvider) error {
+func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...table.TableProvider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func ClearHtbQosQueue(podName, podNamespace, iface string, providers ...compat.T
 	return clearHtbQosQueueTable(provider, podName, podNamespace, iface)
 }
 
-func IsHtbQos(iface string, providers ...compat.TableProvider) (bool, error) {
+func IsHtbQos(iface string, providers ...table.TableProvider) (bool, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return false, err
@@ -115,7 +115,7 @@ func IsHtbQos(iface string, providers ...compat.TableProvider) (bool, error) {
 	return isHtbQosTable(provider, iface)
 }
 
-func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burstBytes int64, queueIfaceUIDMap map[string]string, providers ...compat.TableProvider) (string, error) {
+func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burstBytes int64, queueIfaceUIDMap map[string]string, providers ...table.TableProvider) (string, error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return "", err
@@ -125,7 +125,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burst
 	if err != nil {
 		return "", fmt.Errorf("list HTB queues for %s: %w", iface, err)
 	}
-	existing, err := compat.Unique(rows, true, nil, fmt.Errorf("more than one HTB queue for %s", iface))
+	existing, err := table.Unique(rows, true, nil, fmt.Errorf("more than one HTB queue for %s", iface))
 	if err != nil {
 		return "", err
 	}
@@ -166,7 +166,7 @@ func SetHtbQosQueueRecord(podName, podNamespace, iface string, maxRateBPS, burst
 // and binds that QoS row to the corresponding Port. The optional provider is
 // kept variadic for source compatibility with old unit tests; production code
 // must provide the vswitch table provider.
-func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, qosIfaceUIDMap map[string]string, providers ...compat.TableProvider) error {
+func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, qosIfaceUIDMap map[string]string, providers ...table.TableProvider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -194,7 +194,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 			return fmt.Errorf("find QoS for interface %q: %w", iface, err)
 		}
 	}
-	qos, err := compat.Unique(qosRows, true, nil, fmt.Errorf("more than one QoS row for interface %q", iface))
+	qos, err := table.Unique(qosRows, true, nil, fmt.Errorf("more than one QoS row for interface %q", iface))
 	if err != nil {
 		return err
 	}
@@ -255,7 +255,7 @@ func SetQosQueueBinding(podName, podNamespace, ifName, iface, queueUID string, q
 }
 
 // The latency value expressed in us.
-func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string, providers ...compat.TableProvider) error {
+func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter string, providers ...table.TableProvider) error {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return err
@@ -263,7 +263,7 @@ func SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter stri
 	return setNetemQosTable(provider, podName, podNamespace, iface, latency, limit, loss, jitter)
 }
 
-func getNetemQosConfig(qosID string, providers ...compat.TableProvider) (string, string, string, string, error) {
+func getNetemQosConfig(qosID string, providers ...table.TableProvider) (string, string, string, string, error) {
 	var latency, loss, limit, jitter string
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
@@ -274,7 +274,7 @@ func getNetemQosConfig(qosID string, providers ...compat.TableProvider) (string,
 	if err != nil {
 		return latency, loss, limit, jitter, fmt.Errorf("find QoS %q: %w", qosID, err)
 	}
-	qos, err := compat.Unique(rows, false,
+	qos, err := table.Unique(rows, false,
 		fmt.Errorf("expected one QoS %q, found %d", qosID, len(rows)),
 		fmt.Errorf("expected one QoS %q, found %d", qosID, len(rows)),
 	)
@@ -292,7 +292,7 @@ func getNetemQosConfig(qosID string, providers ...compat.TableProvider) (string,
 	return latency, loss, limit, jitter, nil
 }
 
-func deleteNetemQosByID(qosID, iface, podName, podNamespace string, providers ...compat.TableProvider) error {
+func deleteNetemQosByID(qosID, iface, podName, podNamespace string, providers ...table.TableProvider) error {
 	if len(providers) == 0 || providers[0] == nil {
 		return nil
 	}
@@ -317,7 +317,7 @@ func deleteNetemQosByID(qosID, iface, podName, podNamespace string, providers ..
 	return nil
 }
 
-func IsUserspaceDataPath(providers ...compat.TableProvider) (is bool, err error) {
+func IsUserspaceDataPath(providers ...table.TableProvider) (is bool, err error) {
 	provider, err := vswitchProvider(providers...)
 	if err != nil {
 		return false, err
@@ -325,7 +325,7 @@ func IsUserspaceDataPath(providers ...compat.TableProvider) (is bool, err error)
 	return isUserspaceDataPathTable(provider)
 }
 
-func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUIDMap map[string]string, providers ...compat.TableProvider) error {
+func CheckAndUpdateHtbQos(podName, podNamespace, ifaceID string, queueIfaceUIDMap map[string]string, providers ...table.TableProvider) error {
 	var queueUID string
 	var ok bool
 	if queueUID, ok = queueIfaceUIDMap[ifaceID]; !ok {

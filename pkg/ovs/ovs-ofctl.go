@@ -11,7 +11,7 @@ import (
 	"github.com/digitalocean/go-openvswitch/ovs"
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -53,7 +53,7 @@ func ReplaceFlows(bridgeName string, flows []string) error {
 }
 
 // ClearU2OFlows clears obsolete U2O flows
-func ClearU2OFlows(client *ovs.Client, provider compat.TableProvider) error {
+func ClearU2OFlows(client *ovs.Client, provider table.TableProvider) error {
 	if provider == nil {
 		return errors.New("vswitch table provider is nil")
 	}

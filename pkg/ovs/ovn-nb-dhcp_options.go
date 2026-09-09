@@ -9,7 +9,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -312,7 +312,7 @@ func (c *OVNNbClient) getDHCPOptionsEntry(lsName, portName, protocol string, ign
 		notFound = fmt.Errorf("not found logical switch %s %s dhcp options", lsName, protocol)
 		duplicated = fmt.Errorf("more than one %s dhcp options in logical switch %s", protocol, lsName)
 	}
-	return compat.Unique(dhcpOptList, ignoreNotFound, notFound, duplicated)
+	return table.Unique(dhcpOptList, ignoreNotFound, notFound, duplicated)
 }
 
 // ListDHCPOptions list dhcp options which match the given externalIDs

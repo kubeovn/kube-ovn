@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -89,7 +89,7 @@ func (c *OVNNbClient) resolveACLSampleApplication(applicationID *uint32) (aclsam
 			matches = append(matches, apps[i])
 		}
 	}
-	app, err := compat.Unique(matches, false,
+	app, err := table.Unique(matches, false,
 		fmt.Errorf("%w: sampling application ID %d does not exist", ErrACLSampleNotFound, *applicationID),
 		fmt.Errorf("%w: sampling application ID %d has %d rows", ErrACLSampleAmbiguous, *applicationID, len(matches)),
 	)
@@ -117,7 +117,7 @@ func (c *OVNNbClient) resolveSampleMetadata(metadata uint32) (*ovnnb.Sample, err
 			matches = append(matches, samples[i])
 		}
 	}
-	return compat.Unique(matches, false,
+	return table.Unique(matches, false,
 		fmt.Errorf("%w: sample metadata %d does not exist", ErrACLSampleNotFound, metadata),
 		fmt.Errorf("%w: sample metadata %d has %d rows", ErrACLSampleAmbiguous, metadata, len(matches)),
 	)

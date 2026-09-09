@@ -1,5 +1,5 @@
-// Package compat provides a small, policy-driven seam around libovsdb.
-package compat
+// Package table is the libovsdb access layer: Database, Table handles, and transactions.
+package table
 
 import (
 	"context"

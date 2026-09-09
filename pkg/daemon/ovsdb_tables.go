@@ -10,7 +10,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -19,14 +19,14 @@ type databaseLifecycle interface {
 	Close()
 }
 
-func ensureVswitchPort(provider compat.TableProvider, config ovs.VswitchPortConfig) error {
+func ensureVswitchPort(provider table.TableProvider, config ovs.VswitchPortConfig) error {
 	if provider == nil {
 		return errors.New("vswitch table provider is nil")
 	}
 	return ovs.EnsureVswitchPort(context.Background(), provider, config)
 }
 
-func deleteVswitchPort(provider compat.TableProvider, portName string) error {
+func deleteVswitchPort(provider table.TableProvider, portName string) error {
 	if provider == nil {
 		return errors.New("vswitch table provider is nil")
 	}
@@ -82,7 +82,7 @@ func (c *Controller) getVswitchPortExternalID(name, key string) (string, error) 
 	return ports[0].ExternalIDs[key], nil
 }
 
-func cleanVswitchDuplicatePort(provider compat.TableProvider, ifaceID, portName string) error {
+func cleanVswitchDuplicatePort(provider table.TableProvider, ifaceID, portName string) error {
 	if provider == nil {
 		return errors.New("vswitch table provider is nil")
 	}
@@ -105,7 +105,7 @@ func cleanVswitchDuplicatePort(provider compat.TableProvider, ifaceID, portName 
 	return nil
 }
 
-func getVswitchInterfacePodNs(provider compat.TableProvider, ifaceID string) (string, error) {
+func getVswitchInterfacePodNs(provider table.TableProvider, ifaceID string) (string, error) {
 	if provider == nil {
 		return "", errors.New("vswitch table provider is nil")
 	}

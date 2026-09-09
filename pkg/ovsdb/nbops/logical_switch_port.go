@@ -5,21 +5,21 @@ import (
 	"context"
 	"errors"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 // LogicalSwitchPorts provides resource-level parent ownership operations.
 // It hides model selectors, mutation fields, and detach-before-attach ordering
 // from callers while retaining schema-generated models inside this package.
 type LogicalSwitchPorts struct {
-	ports    table
-	switches table
-	executor compat.Executor
+	ports    rowTable
+	switches rowTable
+	executor table.Executor
 }
 
 // NewLogicalSwitchPorts creates a typed facade over an NB table provider.
-func NewLogicalSwitchPorts(provider compat.TableProvider, executor compat.Executor) *LogicalSwitchPorts {
+func NewLogicalSwitchPorts(provider table.TableProvider, executor table.Executor) *LogicalSwitchPorts {
 	if provider == nil {
 		return &LogicalSwitchPorts{executor: executor}
 	}

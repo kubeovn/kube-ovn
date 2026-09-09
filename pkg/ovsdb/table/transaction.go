@@ -1,4 +1,4 @@
-package compat
+package table
 
 import (
 	"context"

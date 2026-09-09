@@ -8,8 +8,8 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 type recordingTable struct {
@@ -32,10 +32,10 @@ func (t *recordingTable) MutateOps(_ model.Model, mutations ...model.Mutation) (
 }
 
 type recordingExecutor struct {
-	plans []*compat.TxPlan
+	plans []*table.TxPlan
 }
 
-func (e *recordingExecutor) Execute(_ context.Context, plan *compat.TxPlan) error {
+func (e *recordingExecutor) Execute(_ context.Context, plan *table.TxPlan) error {
 	e.plans = append(e.plans, plan)
 	return nil
 }

@@ -44,7 +44,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/informer"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -80,8 +80,8 @@ type Controller struct {
 	OVNSbClient ovs.SbClient
 	// OVNNbTables and OVNSbTables expose the generic table seam to reconcile
 	// code while the legacy client interfaces remain unchanged.
-	OVNNbTables compat.TableProvider
-	OVNSbTables compat.TableProvider
+	OVNNbTables table.TableProvider
+	OVNSbTables table.TableProvider
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string

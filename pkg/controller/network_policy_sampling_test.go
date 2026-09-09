@@ -20,7 +20,7 @@ import (
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 func TestHandleNetworkPolicyACLSamplingRetriesOnlySampling(t *testing.T) {
@@ -218,7 +218,7 @@ type samplingTableProvider struct {
 	*mockovs.MockNbClient
 }
 
-func (samplingTableProvider) Table(model.Model) compat.TableHandle { return nil }
+func (samplingTableProvider) Table(model.Model) table.TableHandle { return nil }
 
 func networkPolicySamplingTestPolicy() *netv1.NetworkPolicy {
 	return &netv1.NetworkPolicy{

@@ -30,7 +30,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/fileutil"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnicnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -61,7 +61,7 @@ type Configuration struct {
 	remoteAddresses             []string
 	singleReplica               bool
 	duplicateLeaderObservations map[string]int
-	icNbTables                  compat.TableProvider
+	icNbTables                  table.TableProvider
 }
 
 func (c *Configuration) observeDuplicateLeader(database string, duplicate bool) (int, bool) {

@@ -14,14 +14,14 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // InitOVSBridges initializes OVS bridges
-func InitOVSBridges(providers ...compat.TableProvider) (map[string]string, error) {
-	var provider compat.TableProvider
+func InitOVSBridges(providers ...table.TableProvider) (map[string]string, error) {
+	var provider table.TableProvider
 	if len(providers) != 0 {
 		provider = providers[0]
 	}

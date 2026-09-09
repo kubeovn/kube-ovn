@@ -9,8 +9,8 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 const (
@@ -22,14 +22,14 @@ const (
 // Parent lookup uses LogicalSwitch.ACLs and PortGroup.ACLs membership, not
 // external_ids["parent"].
 type ACLs struct {
-	acl        table
-	switches   table
-	portGroups table
-	executor   compat.Executor
+	acl        rowTable
+	switches   rowTable
+	portGroups rowTable
+	executor   table.Executor
 }
 
 // NewACLs creates a typed facade over an NB table provider.
-func NewACLs(provider compat.TableProvider, executor compat.Executor) *ACLs {
+func NewACLs(provider table.TableProvider, executor table.Executor) *ACLs {
 	if provider == nil {
 		return &ACLs{executor: executor}
 	}
@@ -89,7 +89,7 @@ func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID
 		return fmt.Errorf("find port group parents for acl %s: %w", aclUUID, err)
 	}
 
-	plan := compat.NewTxPlan("acl-parent")
+	plan := table.NewTxPlan("acl-parent")
 	hasTarget := false
 	for i := range lsParents {
 		parent := &lsParents[i]

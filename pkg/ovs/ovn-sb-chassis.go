@@ -7,7 +7,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -76,7 +76,7 @@ func (c *OVNSbClient) GetChassisByHost(nodeName string) (*ovnsb.Chassis, error) 
 	if err != nil {
 		return nil, err
 	}
-	chassis, err := compat.Unique(chassisList, false,
+	chassis, err := table.Unique(chassisList, false,
 		fmt.Errorf("failed to get Chassis with hostname=%s", nodeName),
 		ErrOneNodeMultiChassis,
 	)

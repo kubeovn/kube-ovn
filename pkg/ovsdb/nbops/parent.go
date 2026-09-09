@@ -9,15 +9,15 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/compat"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
-type table interface {
-	compat.TableReader
-	compat.TableMutator
+type rowTable interface {
+	table.TableReader
+	table.TableMutator
 }
 
-func listMatching[T any](ctx context.Context, t table, pred func(*T) bool) ([]T, error) {
+func listMatching[T any](ctx context.Context, t rowTable, pred func(*T) bool) ([]T, error) {
 	rows := make([]T, 0)
 	if err := t.Filter(ctx, pred, &rows); err != nil {
 		return nil, err
@@ -25,7 +25,7 @@ func listMatching[T any](ctx context.Context, t table, pred func(*T) bool) ([]T,
 	return rows, nil
 }
 
-func getNamed[T any](ctx context.Context, t table, name, kind string, nameOf func(*T) string) (*T, error) {
+func getNamed[T any](ctx context.Context, t rowTable, name, kind string, nameOf func(*T) string) (*T, error) {
 	rows, err := listMatching(ctx, t, func(row *T) bool {
 		return nameOf(row) == name
 	})
@@ -33,7 +33,7 @@ func getNamed[T any](ctx context.Context, t table, name, kind string, nameOf fun
 		return nil, fmt.Errorf("get %s %s: %w", kind, name, err)
 	}
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("get %s %s: %w", kind, name, compat.ErrNotFound)
+		return nil, fmt.Errorf("get %s %s: %w", kind, name, table.ErrNotFound)
 	}
 	if len(rows) > 1 {
 		return nil, fmt.Errorf("%s %s has multiple rows", kind, name)
@@ -45,9 +45,9 @@ func getNamed[T any](ctx context.Context, t table, name, kind string, nameOf fun
 // Logical_Switch_Port and Logical_Router_Port. ACL stays out because it has
 // two parent tables.
 type namedParentSpec[Child, Parent any] struct {
-	executor   compat.Executor
-	children   table
-	parents    table
+	executor   table.Executor
+	children   rowTable
+	parents    rowTable
 	method     string
 	nilErr     string
 	namesErr   string
@@ -85,7 +85,7 @@ func (s namedParentSpec[Child, Parent]) ensure(ctx context.Context, childName, p
 		return fmt.Errorf("find parents for %s %s: %w", s.childKind, childName, err)
 	}
 
-	plan := compat.NewTxPlan(s.method)
+	plan := table.NewTxPlan(s.method)
 	hasTarget := false
 	for i := range parents {
 		parent := &parents[i]

@@ -1,4 +1,4 @@
-package compat
+package table
 
 import (
 	"context"
@@ -19,9 +19,8 @@ type Table struct {
 }
 
 // TableHandle is the table-scoped capability exposed to reconcile code.
-// Keeping the returned handle behind an interface lets tests and independent
-// compatibility implementations replace table behavior without depending on
-// the concrete Table implementation.
+// Keeping the returned handle behind an interface lets tests replace table
+// behavior without depending on the concrete Table implementation.
 type TableHandle interface {
 	Get(context.Context, model.Model) error
 	List(context.Context, any) error
