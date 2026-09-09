@@ -273,6 +273,17 @@ func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
 	// EIPs with finalizers are handled in handleUpdateOvnEip
 	klog.Infof("handle del ovn eip %s (without finalizer)", eip.Name)
 
+	nat, err := c.getOvnEipNat(eip.Spec.V4Ip, eip.Spec.V6Ip)
+	if err != nil {
+		klog.Errorf("failed to get ovn eip %s nat rules, %v", eip.Name, err)
+		return err
+	}
+	if nat != "" {
+		err := fmt.Errorf("ovn eip %s is still being used by NAT rules: %s, waiting for them to be deleted", eip.Name, nat)
+		klog.Error(err)
+		return err
+	}
+
 	// Clean up resources if they still exist
 	if eip.Spec.Type == util.OvnEipTypeLSP {
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
