@@ -351,7 +351,7 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 	// ovn delete snat
 	if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
 		if err = c.deleteNatIgnoreNotFound(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT,
-		cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
+			cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 			klog.Errorf("failed to delete v4 snat %s, %v", key, err)
 			return err
 		}
