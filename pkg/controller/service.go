@@ -30,10 +30,11 @@ type vpcService struct {
 }
 
 type updateSvcObject struct {
-	key                    string
-	oldPorts               []v1.ServicePort
-	newPorts               []v1.ServicePort
-	oldTrafficDistribution bool
+	key                      string
+	oldPorts                 []v1.ServicePort
+	newPorts                 []v1.ServicePort
+	oldTrafficDistribution   bool
+	oldExternalLocalTemplate bool
 }
 
 func (c *Controller) enqueueAddService(obj any) {
@@ -148,10 +149,11 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	}
 
 	updateSvc := &updateSvcObject{
-		key:                    key,
-		oldPorts:               oldSvc.Spec.Ports,
-		newPorts:               newSvc.Spec.Ports,
-		oldTrafficDistribution: serviceUsesTrafficDistribution(oldSvc),
+		key:                      key,
+		oldPorts:                 oldSvc.Spec.Ports,
+		newPorts:                 newSvc.Spec.Ports,
+		oldTrafficDistribution:   serviceUsesTrafficDistribution(oldSvc),
+		oldExternalLocalTemplate: serviceUsesExternalLocalTemplate(oldSvc),
 	}
 	c.updateServiceQueue.Add(updateSvc)
 	oldSpec, newSpec := oldSvc.Spec, newSvc.Spec
@@ -294,6 +296,11 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 	}
 	if svcObject.oldTrafficDistribution && (!serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc)) {
 		if err := c.cleanupServiceTrafficDistributionState(svc); err != nil {
+			return err
+		}
+	}
+	if svcObject.oldExternalLocalTemplate && !serviceUsesExternalLocalTemplate(svc) {
+		if err := c.cleanupServiceExternalLocalTemplateState(svc); err != nil {
 			return err
 		}
 	}

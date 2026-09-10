@@ -1057,3 +1057,16 @@ func TestDeleteSubnetHealthCheckVipWithoutLister(t *testing.T) {
 	_, err = ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
 	require.Error(t, err)
 }
+
+func TestServiceNeedsPriorityEndpointReconcileLoadBalancerETPLocal(t *testing.T) {
+	svc := &corev1.Service{
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
+		},
+	}
+	require.True(t, serviceNeedsPriorityEndpointReconcile(svc))
+
+	svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
+	require.False(t, serviceNeedsPriorityEndpointReconcile(svc))
+}

@@ -23,6 +23,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -47,7 +48,10 @@ func findServiceKey(endpointSlice *discoveryv1.EndpointSlice) string {
 }
 
 func serviceNeedsPriorityEndpointReconcile(svc *v1.Service) bool {
-	return serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc) || svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP
+	return serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc) ||
+		svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP ||
+		(svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
+			svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal)
 }
 
 func (c *Controller) enqueueEndpointSliceService(key string, services ...*v1.Service) {
@@ -265,6 +269,11 @@ func (c *Controller) reconcileServiceEndpointSlices(svc *v1.Service, endpointSli
 	}
 	if serviceUsesTrafficDistribution(svc) {
 		if err := c.reconcileServiceTrafficDistribution(svc, endpointSlices, vpc, profile.lbVips, profile.trafficClasses); err != nil {
+			return err
+		}
+	}
+	if serviceUsesExternalLocalTemplate(svc) {
+		if err := c.reconcileServiceExternalLocalTemplate(reconcileCtx); err != nil {
 			return err
 		}
 	}
@@ -488,6 +497,10 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 		state.oldLB = shared.previous[port.Protocol]
 	}
 
+	if isExternalVIP && serviceUsesExternalLocalTemplate(svc) {
+		return nil
+	}
+
 	if state.template {
 		state.lb = serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBInternalTraffic, strings.ToLower(util.CheckProtocol(lbVip)))
 		return nil
@@ -571,17 +584,6 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 	candidates := c.serviceLBMigrationCandidates(svc, state.port.Protocol, reconcileCtx.vpc, state.trafficClass)
 	if err := c.OVNNbClient.LoadBalancerMigrateVIP(state.lb, state.vip, state.backends, state.vip, candidates...); err != nil {
 		return fmt.Errorf("migrate vip %s: %w", state.vip, err)
-	}
-	if profile.preferLocalBackend && svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
-		svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal && profile.serviceL2StatusReady &&
-		slices.ContainsFunc(svc.Status.LoadBalancer.Ingress, func(ingress v1.LoadBalancerIngress) bool { return ingress.IP == state.lbVip }) {
-		vipNodeLSP := ""
-		if profile.externalVIPNode != "" {
-			vipNodeLSP = util.NodeLspName(profile.externalVIPNode)
-		}
-		if err := c.OVNNbClient.SetLoadBalancerVIPExternalTrafficLocal(state.lb, state.vip, vipNodeLSP); err != nil {
-			return fmt.Errorf("mark external local vip %s on load balancer %s: %w", state.vip, state.lb, err)
-		}
 	}
 	if (profile.preferLocalBackend || state.distributed) && len(state.mapping) != 0 {
 		if err := c.OVNNbClient.LoadBalancerUpdateIPPortMapping(state.lb, state.vip, state.mapping); err != nil {
@@ -1199,6 +1201,162 @@ func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName, traff
 
 func serviceTrafficDistributionVariablePrefix(svc *v1.Service) string {
 	return serviceTemplateVarRoot + util.Sha256Hash([]byte(string(svc.UID)))[:12] + "_"
+}
+
+func serviceUsesExternalLocalTemplate(svc *v1.Service) bool {
+	return svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
+		svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal
+}
+
+func serviceExternalLocalTemplatePrefix(svc *v1.Service) string {
+	return serviceTemplateVarRoot + util.Sha256Hash([]byte(string(svc.UID)))[:12] + "_eloc_"
+}
+
+func endpointNodeName(endpoint discoveryv1.Endpoint) string {
+	if endpoint.NodeName != nil {
+		return *endpoint.NodeName
+	}
+	return ""
+}
+
+func serviceEndpointBackendsOnNode(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP, nodeName string) []string {
+	if nodeName == "" {
+		return nil
+	}
+	var backends []string
+	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, true) {
+		if endpointNodeName(candidate.endpoint) != nodeName {
+			continue
+		}
+		for _, address := range candidate.addresses {
+			backends = append(backends, util.JoinHostPort(address, candidate.targetPort))
+		}
+	}
+	return backends
+}
+
+func chassisServesNode(chassis ovnsb.Chassis, nodeName string) bool {
+	if nodeName == "" {
+		return false
+	}
+	if chassis.Hostname == nodeName || chassis.Name == nodeName {
+		return true
+	}
+	return chassis.ExternalIDs != nil && chassis.ExternalIDs["node"] == nodeName
+}
+
+func (c *Controller) cleanupServiceExternalLocalTemplateState(svc *v1.Service) error {
+	prefix := serviceExternalLocalTemplatePrefix(svc)
+	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
+	})
+	if err != nil {
+		return fmt.Errorf("list load balancers for service %s/%s external local template cleanup: %w", svc.Namespace, svc.Name, err)
+	}
+	for _, lb := range lbs {
+		for templateVIP := range lb.Vips {
+			if !strings.HasPrefix(templateVIP, "^"+prefix) {
+				continue
+			}
+			if err := c.OVNNbClient.LoadBalancerDeleteVip(lb.Name, templateVIP, true); err != nil {
+				return fmt.Errorf("delete external local template VIP %s from load balancer %s: %w", templateVIP, lb.Name, err)
+			}
+		}
+	}
+	if c.OVNSbClient == nil {
+		return nil
+	}
+	chassises, err := c.OVNSbClient.ListChassis()
+	if err != nil {
+		return fmt.Errorf("list OVN chassis while cleaning service %s/%s external local template variables: %w", svc.Namespace, svc.Name, err)
+	}
+	for _, chassis := range *chassises {
+		if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis.Name, prefix, nil); err != nil {
+			return fmt.Errorf("clean external local template variables for chassis %s: %w", chassis.Name, err)
+		}
+	}
+	return nil
+}
+
+func (c *Controller) reconcileServiceExternalLocalTemplate(reconcileCtx *endpointSliceReconcileContext) error {
+	svc := reconcileCtx.service
+	if c.OVNSbClient == nil {
+		return errors.New("OVN southbound client is not initialized")
+	}
+	chassises, err := c.OVNSbClient.ListChassis()
+	if err != nil {
+		return fmt.Errorf("list OVN chassis for service %s/%s external local template: %w", svc.Namespace, svc.Name, err)
+	}
+	prefix := serviceExternalLocalTemplatePrefix(svc)
+	variablesByChassis := make(map[string]map[string]string, len(*chassises))
+	desiredTemplateVIPs := make(map[string]map[string]string)
+	for _, chassis := range *chassises {
+		variablesByChassis[chassis.Name] = make(map[string]string)
+	}
+
+	speakerNode := ""
+	if reconcileCtx.profile.serviceL2StatusReady {
+		speakerNode = reconcileCtx.profile.externalVIPNode
+	}
+
+	for _, port := range svc.Spec.Ports {
+		lbName := serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic)
+		for _, lbVip := range reconcileCtx.profile.lbVips {
+			if reconcileCtx.profile.trafficClasses[lbVip] != serviceLBExternalTraffic {
+				continue
+			}
+			vip := util.JoinHostPort(lbVip, port.Port)
+			base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
+			vipVariable, backendVariable := base+"_vip", base+"_backends"
+			templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.Port))
+			candidates := c.serviceLBMigrationCandidates(svc, port.Protocol, reconcileCtx.vpc, serviceLBExternalTraffic)
+			if err := c.OVNNbClient.LoadBalancerMigrateVIP(lbName, templateVIP, []string{"^" + backendVariable}, vip, candidates...); err != nil {
+				return fmt.Errorf("set external local template for service %s/%s: %w", svc.Namespace, svc.Name, err)
+			}
+			if desiredTemplateVIPs[lbName] == nil {
+				desiredTemplateVIPs[lbName] = make(map[string]string)
+			}
+			desiredTemplateVIPs[lbName][templateVIP] = "^" + backendVariable
+			backends := serviceEndpointBackendsOnNode(reconcileCtx.endpointSlices, port, lbVip, speakerNode)
+			if speakerNode == "" || len(backends) == 0 {
+				continue
+			}
+			for _, chassis := range *chassises {
+				if !chassisServesNode(chassis, speakerNode) {
+					continue
+				}
+				variablesByChassis[chassis.Name][vipVariable] = lbVip
+				variablesByChassis[chassis.Name][backendVariable] = strings.Join(backends, ",")
+			}
+		}
+	}
+
+	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
+	})
+	if err != nil {
+		return fmt.Errorf("list load balancers for service %s/%s external local template: %w", svc.Namespace, svc.Name, err)
+	}
+	for _, lb := range lbs {
+		desired := desiredTemplateVIPs[lb.Name]
+		for templateVIP := range lb.Vips {
+			if !strings.HasPrefix(templateVIP, "^"+prefix) {
+				continue
+			}
+			if _, ok := desired[templateVIP]; ok {
+				continue
+			}
+			if err := c.OVNNbClient.LoadBalancerDeleteVip(lb.Name, templateVIP, true); err != nil {
+				return fmt.Errorf("delete stale external local template VIP %s from load balancer %s: %w", templateVIP, lb.Name, err)
+			}
+		}
+	}
+	for chassis, variables := range variablesByChassis {
+		if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Controller) cleanupServiceTrafficDistributionState(svc *v1.Service) error {
