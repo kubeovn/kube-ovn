@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -183,6 +184,23 @@ func TestRuleScopedLoadBalancerAttachments(t *testing.T) {
 		fake.fakeController.config.EnableLb = true
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-nil", ovsdb.MutateOperationInsert, "svc-lb").Return(nil)
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("disabled", ovsdb.MutateOperationDelete, "svc-lb").Return(nil)
+		if err := fake.fakeController.reconcileServiceScopedLoadBalancerAttachments(util.DefaultVpc, "svc-lb"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("missing logical switch does not block other subnets", func(t *testing.T) {
+		fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{
+			{Name: "good", Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, EnableLb: new(true)}},
+			{Name: "missing", Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, EnableLb: new(true)}},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("good", ovsdb.MutateOperationInsert, "svc-lb").Return(nil)
+		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("missing", ovsdb.MutateOperationInsert, "svc-lb").Return(
+			fmt.Errorf("get logical switch missing when generate mutate operations: not found logical switch %q", "missing"),
+		)
 		if err := fake.fakeController.reconcileServiceScopedLoadBalancerAttachments(util.DefaultVpc, "svc-lb"); err != nil {
 			t.Fatal(err)
 		}
