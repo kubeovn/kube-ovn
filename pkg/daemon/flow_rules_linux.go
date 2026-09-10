@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,6 +15,8 @@ import (
 
 const flowKindUnderlayService = "usvc"
 
+var errUnderlayLocalnetPatchNotReady = errors.New("underlay localnet patch port is not ready")
+
 func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string, port uint16, protocol, dstMac, underlayNic, bridgeName, subnetName string) error {
 	inPort, err := c.getPortID(underlayNic)
 	if err != nil {
@@ -23,8 +26,8 @@ func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string
 	patchPortName := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
 	outPort, err := c.getPortID(patchPortName)
 	if err != nil {
-		klog.V(5).Infof("patch-localnet port %s not found on bridge %s, skipping underlay service flow for %s:%d (subnet %s may not have pods on this node yet)", patchPortName, bridgeName, serviceIP, port, subnetName)
-		return nil
+		klog.Infof("patch-localnet port %s not found on bridge %s, retrying underlay service flow for %s:%d", patchPortName, bridgeName, serviceIP, port)
+		return fmt.Errorf("install underlay service flow for %s:%d on %s: %w", serviceIP, port, patchPortName, errUnderlayLocalnetPatchNotReady)
 	}
 
 	isIPv6 := util.CheckProtocol(serviceIP) == kubeovnv1.ProtocolIPv6

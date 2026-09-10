@@ -286,6 +286,24 @@ func (c *Controller) handleU2OInterconnectionMACChange(oldSubnet, newSubnet *kub
 	return nil
 }
 
+func (c *Controller) enqueueServicesForUnderlaySubnet(subnetName string) {
+	if subnetName == "" || c.servicesLister == nil || c.serviceQueue == nil {
+		return
+	}
+	services, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services for underlay subnet %s: %v", subnetName, err)
+		return
+	}
+	for _, svc := range services {
+		if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != subnetName {
+			continue
+		}
+		klog.Infof("enqueue service %s/%s after localnet patch for subnet %s became ready", svc.Namespace, svc.Name, subnetName)
+		c.serviceQueue.Add(&serviceEvent{newObj: svc})
+	}
+}
+
 func (c *Controller) reconcileRouters(event *subnetEvent) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -587,6 +605,10 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 		for _, rule := range lbServiceRulesToAdd {
 			klog.Infof("Adding LB service rule: %+v", rule)
 			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule.IP, rule.Port, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.BridgeName, rule.SubnetName); err != nil {
+				if errors.Is(err, errUnderlayLocalnetPatchNotReady) {
+					klog.Infof("retry underlay service flow later: %v", err)
+					return err
+				}
 				klog.Errorf("failed to update underlay subnet svc local openflow cache: %v", err)
 				return err
 			}
