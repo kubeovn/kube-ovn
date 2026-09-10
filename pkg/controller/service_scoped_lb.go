@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -377,16 +378,31 @@ func (c *Controller) reconcileServiceScopedLoadBalancerAttachments(vpcName strin
 	slices.Sort(insertSwitches)
 	slices.Sort(deleteSwitches)
 	for _, logicalSwitch := range insertSwitches {
-		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(logicalSwitch, ovsdb.MutateOperationInsert, lbNames...); err != nil {
+		if err := c.updateServiceScopedSwitchLoadBalancers(logicalSwitch, ovsdb.MutateOperationInsert, lbNames...); err != nil {
 			return fmt.Errorf("attach service-scoped load balancers to subnet %s: %w", logicalSwitch, err)
 		}
 	}
 	for _, logicalSwitch := range deleteSwitches {
-		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(logicalSwitch, ovsdb.MutateOperationDelete, lbNames...); err != nil {
+		if err := c.updateServiceScopedSwitchLoadBalancers(logicalSwitch, ovsdb.MutateOperationDelete, lbNames...); err != nil {
 			return fmt.Errorf("detach service-scoped load balancers from subnet %s: %w", logicalSwitch, err)
 		}
 	}
 	return nil
+}
+
+func (c *Controller) updateServiceScopedSwitchLoadBalancers(lsName string, op ovsdb.Mutator, lbNames ...string) error {
+	if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(lsName, op, lbNames...); err != nil {
+		if isMissingLogicalSwitchError(err) {
+			klog.Infof("skip updating service-scoped load balancers on missing logical switch %s", lsName)
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func isMissingLogicalSwitchError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "not found logical switch")
 }
 
 func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Service, vpcName, subnetName string, lbNames ...string) error {
