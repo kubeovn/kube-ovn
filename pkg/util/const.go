@@ -265,6 +265,8 @@ const (
 
 	VpcEndpointServiceLabel = "ovn.kubernetes.io/vpc-endpoint-service"
 	VpcEndpointVpcLabel     = "ovn.kubernetes.io/vpc-endpoint-vpc"
+	VpcEndpointSubnetLabel  = "ovn.kubernetes.io/vpc-endpoint-subnet"
+	VpcEndpointIPLabel      = "ovn.kubernetes.io/vpc-endpoint-ip"
 	VpcEndpointSvcNsLabel   = "ovn.kubernetes.io/vpc-endpoint-svc-ns"
 	VpcEndpointSvcNameLabel = "ovn.kubernetes.io/vpc-endpoint-svc-name"
 	// VpcEndpointStitcherLabel marks Deployments owned by VpcEndpoint / VpcEndpointService.

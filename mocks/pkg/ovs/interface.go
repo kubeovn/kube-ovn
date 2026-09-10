@@ -1840,18 +1840,18 @@ func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerAffinityTimeout(lbName, t
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
 }
 
-// SetLoadBalancerNeighborResponder mocks base method.
-func (m *MockLoadBalancer) SetLoadBalancerNeighborResponder(lbName, mode string) error {
+// SetLoadBalancerCtFlush mocks base method.
+func (m *MockLoadBalancer) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerNeighborResponder", lbName, mode)
+	ret := m.ctrl.Call(m, "SetLoadBalancerCtFlush", lbName, ctFlush)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetLoadBalancerNeighborResponder indicates an expected call of SetLoadBalancerNeighborResponder.
-func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerNeighborResponder(lbName, mode any) *gomock.Call {
+// SetLoadBalancerCtFlush indicates an expected call of SetLoadBalancerCtFlush.
+func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerNeighborResponder", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerNeighborResponder), lbName, mode)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
 // SetLoadBalancerPreferLocalBackend mocks base method.
@@ -1880,20 +1880,6 @@ func (m *MockLoadBalancer) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, v
 func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerVIPExternalTrafficLocal", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerVIPExternalTrafficLocal), lbName, vip, vipNodeLSP)
-}
-
-// SetLoadBalancerCtFlush mocks base method.
-func (m *MockLoadBalancer) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerCtFlush", lbName, ctFlush)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLoadBalancerCtFlush indicates an expected call of SetLoadBalancerCtFlush.
-func (mr *MockLoadBalancerMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockLoadBalancer)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
 // MockLoadBalancerHealthCheck is a mock of LoadBalancerHealthCheck interface.
@@ -2317,6 +2303,21 @@ func (mr *MockACLMockRecorder) DeleteAclsOps(parentName, parentType, direction, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockACL)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
 }
 
+// ListAcls mocks base method.
+func (m *MockACL) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAcls", direction, externalIDs)
+	ret0, _ := ret[0].([]ovnnb.ACL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAcls indicates an expected call of ListAcls.
+func (mr *MockACLMockRecorder) ListAcls(direction, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAcls", reflect.TypeOf((*MockACL)(nil).ListAcls), direction, externalIDs)
+}
+
 // MigrateACLTier mocks base method.
 func (m *MockACL) MigrateACLTier() error {
 	m.ctrl.T.Helper()
@@ -2548,21 +2549,6 @@ func (m *MockACL) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP strin
 func (mr *MockACLMockRecorder) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, allowedLSPNames any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVpcEndpointServiceACLs", reflect.TypeOf((*MockACL)(nil).UpdateVpcEndpointServiceACLs), lsName, epsName, transitVIP, allowedLSPNames)
-}
-
-// ListAcls mocks base method.
-func (m *MockACL) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListAcls", direction, externalIDs)
-	ret0, _ := ret[0].([]ovnnb.ACL)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListAcls indicates an expected call of ListAcls.
-func (mr *MockACLMockRecorder) ListAcls(direction, externalIDs any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAcls", reflect.TypeOf((*MockACL)(nil).ListAcls), direction, externalIDs)
 }
 
 // MockACLSampling is a mock of ACLSampling interface.
@@ -3204,20 +3190,6 @@ func (mr *MockNATMockRecorder) AddNat(lrName, natType, externalIP, logicalIP, lo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNat", reflect.TypeOf((*MockNAT)(nil).AddNat), lrName, natType, externalIP, logicalIP, logicalMac, port, options)
 }
 
-// AddSnatWithMatch mocks base method.
-func (m *MockNAT) AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddSnatWithMatch", lrName, externalIP, logicalIP, match)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AddSnatWithMatch indicates an expected call of AddSnatWithMatch.
-func (mr *MockNATMockRecorder) AddSnatWithMatch(lrName, externalIP, logicalIP, match any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSnatWithMatch", reflect.TypeOf((*MockNAT)(nil).AddSnatWithMatch), lrName, externalIP, logicalIP, match)
-}
-
 // DeleteNat mocks base method.
 func (m *MockNAT) DeleteNat(lrName, natType, externalIP, logicalIP string) error {
 	m.ctrl.T.Helper()
@@ -3613,20 +3585,6 @@ func (m *MockNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac
 func (mr *MockNbClientMockRecorder) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port, options any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddNat", reflect.TypeOf((*MockNbClient)(nil).AddNat), lrName, natType, externalIP, logicalIP, logicalMac, port, options)
-}
-
-// AddSnatWithMatch mocks base method.
-func (m *MockNbClient) AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddSnatWithMatch", lrName, externalIP, logicalIP, match)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AddSnatWithMatch indicates an expected call of AddSnatWithMatch.
-func (mr *MockNbClientMockRecorder) AddSnatWithMatch(lrName, externalIP, logicalIP, match any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddSnatWithMatch", reflect.TypeOf((*MockNbClient)(nil).AddSnatWithMatch), lrName, externalIP, logicalIP, match)
 }
 
 // AddressSetUpdateAddress mocks base method.
@@ -4957,6 +4915,21 @@ func (mr *MockNbClientMockRecorder) GetPortGroup(pgName, ignoreNotFound any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPortGroup", reflect.TypeOf((*MockNbClient)(nil).GetPortGroup), pgName, ignoreNotFound)
 }
 
+// ListAcls mocks base method.
+func (m *MockNbClient) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAcls", direction, externalIDs)
+	ret0, _ := ret[0].([]ovnnb.ACL)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAcls indicates an expected call of ListAcls.
+func (mr *MockNbClientMockRecorder) ListAcls(direction, externalIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAcls", reflect.TypeOf((*MockNbClient)(nil).ListAcls), direction, externalIDs)
+}
+
 // ListAddressSets mocks base method.
 func (m *MockNbClient) ListAddressSets(externalIDs map[string]string) ([]ovnnb.AddressSet, error) {
 	m.ctrl.T.Helper()
@@ -5847,18 +5820,18 @@ func (mr *MockNbClientMockRecorder) SetLoadBalancerAffinityTimeout(lbName, timeo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerAffinityTimeout", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerAffinityTimeout), lbName, timeout)
 }
 
-// SetLoadBalancerNeighborResponder mocks base method.
-func (m *MockNbClient) SetLoadBalancerNeighborResponder(lbName, mode string) error {
+// SetLoadBalancerCtFlush mocks base method.
+func (m *MockNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerNeighborResponder", lbName, mode)
+	ret := m.ctrl.Call(m, "SetLoadBalancerCtFlush", lbName, ctFlush)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SetLoadBalancerNeighborResponder indicates an expected call of SetLoadBalancerNeighborResponder.
-func (mr *MockNbClientMockRecorder) SetLoadBalancerNeighborResponder(lbName, mode any) *gomock.Call {
+// SetLoadBalancerCtFlush indicates an expected call of SetLoadBalancerCtFlush.
+func (mr *MockNbClientMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerNeighborResponder", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerNeighborResponder), lbName, mode)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
 // SetLoadBalancerPreferLocalBackend mocks base method.
@@ -5887,20 +5860,6 @@ func (m *MockNbClient) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNo
 func (mr *MockNbClientMockRecorder) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerVIPExternalTrafficLocal", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerVIPExternalTrafficLocal), lbName, vip, vipNodeLSP)
-}
-
-// SetLoadBalancerCtFlush mocks base method.
-func (m *MockNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLoadBalancerCtFlush", lbName, ctFlush)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLoadBalancerCtFlush indicates an expected call of SetLoadBalancerCtFlush.
-func (mr *MockNbClientMockRecorder) SetLoadBalancerCtFlush(lbName, ctFlush any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLoadBalancerCtFlush", reflect.TypeOf((*MockNbClient)(nil).SetLoadBalancerCtFlush), lbName, ctFlush)
 }
 
 // SetLogicalRouterPortHAChassisGroup mocks base method.
@@ -6581,21 +6540,6 @@ func (m *MockNbClient) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP 
 func (mr *MockNbClientMockRecorder) UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP, allowedLSPNames any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVpcEndpointServiceACLs", reflect.TypeOf((*MockNbClient)(nil).UpdateVpcEndpointServiceACLs), lsName, epsName, transitVIP, allowedLSPNames)
-}
-
-// ListAcls mocks base method.
-func (m *MockNbClient) ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListAcls", direction, externalIDs)
-	ret0, _ := ret[0].([]ovnnb.ACL)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListAcls indicates an expected call of ListAcls.
-func (mr *MockNbClientMockRecorder) ListAcls(direction, externalIDs any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAcls", reflect.TypeOf((*MockNbClient)(nil).ListAcls), direction, externalIDs)
 }
 
 // MockSbClient is a mock of SbClient interface.

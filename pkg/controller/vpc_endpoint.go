@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"slices"
 	"sort"
 	"strings"
@@ -278,11 +279,10 @@ func (c *Controller) ensureVpcEndpointTransitNetwork() error {
 	_, err = c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(c.config.PodNamespace).Get(context.Background(), subnetName, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
 		if _, err = c.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(c.config.PodNamespace).Create(context.Background(), nad, metav1.CreateOptions{}); err != nil {
-			if k8serrors.IsForbidden(err) || k8serrors.IsAlreadyExists(err) {
-				klog.Warningf("transit NAD %s/%s create skipped: %v (create it manually if missing)", c.config.PodNamespace, subnetName, err)
-			} else {
-				return fmt.Errorf("create transit NAD %s/%s: %w", c.config.PodNamespace, subnetName, err)
+			if k8serrors.IsAlreadyExists(err) {
+				return nil
 			}
+			return fmt.Errorf("create transit NAD %s/%s: %w", c.config.PodNamespace, subnetName, err)
 		}
 	} else if err != nil {
 		return err
@@ -371,7 +371,8 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 		return err
 	}
 	if err := c.ensureVpcEndpointStitcherConfigMap(); err != nil {
-		klog.Warningf("stitcher configmap ensure: %v", err)
+		klog.Errorf("failed to ensure stitcher ConfigMap for VpcEndpointService %s: %v", eps.Name, err)
+		return err
 	}
 
 	svc, err := c.servicesLister.Services(eps.Spec.Namespace).Get(eps.Spec.Service)
@@ -413,6 +414,9 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 	if vpcIP == "" || newTransitVIP == "" {
 		return fmt.Errorf("waiting for provider stitcher IPs on %s/%s", pod.Namespace, pod.Name)
 	}
+	if util.CheckProtocol(vpcIP) != kubeovnv1.ProtocolIPv4 || util.CheckProtocol(newTransitVIP) != kubeovnv1.ProtocolIPv4 {
+		return fmt.Errorf("provider stitcher allocated non-IPv4 addresses vpc=%q transit=%q", vpcIP, newTransitVIP)
+	}
 	transitVIP = newTransitVIP
 
 	if err := c.initVpcEndpointStitcher(pod); err != nil {
@@ -427,7 +431,10 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 	}
 
 	// Best-effort cleanup of legacy OVN LB/ACL datapath from previous design.
-	c.cleanupLegacyVpcEndpointServiceOVN(eps)
+	if err := c.cleanupLegacyVpcEndpointServiceOVN(eps); err != nil {
+		klog.Errorf("failed to cleanup legacy OVN resources for VpcEndpointService %s: %v", eps.Name, err)
+		return err
+	}
 
 	eps.Status.TransitVIP = transitVIP
 	eps.Status.Ports = vpcEndpointServicePorts(svc)
@@ -475,7 +482,18 @@ func (c *Controller) vpcEndpointProviderMappings(svc *corev1.Service) ([]string,
 	mappings := make([]string, 0, len(svc.Spec.Ports))
 	for _, port := range svc.Spec.Ports {
 		backends := c.getEndpointBackend(endpointSlices, port, serviceIP)
-		mappings = append(mappings, vpcEndpointProviderPortMappings(port, backends)...)
+		v4Backends := make([]string, 0, len(backends))
+		for _, backend := range backends {
+			host := backend
+			if h, _, err := net.SplitHostPort(strings.Trim(backend, "[]")); err == nil {
+				host = h
+			}
+			if util.CheckProtocol(host) != kubeovnv1.ProtocolIPv4 {
+				continue
+			}
+			v4Backends = append(v4Backends, backend)
+		}
+		mappings = append(mappings, vpcEndpointProviderPortMappings(port, v4Backends)...)
 	}
 	if len(mappings) == 0 {
 		return nil, errors.New("no ready backends for provider service")
@@ -738,13 +756,24 @@ func (c *Controller) execVpcEndpointStitcher(pod *corev1.Pod, args ...string) er
 	return nil
 }
 
-func (c *Controller) cleanupLegacyVpcEndpointServiceOVN(eps *kubeovnv1.VpcEndpointService) {
+func (c *Controller) cleanupLegacyVpcEndpointServiceOVN(eps *kubeovnv1.VpcEndpointService) error {
+	var errs []error
 	for _, protocol := range []string{"tcp", "udp", "sctp"} {
 		lbName := vpcEndpointServiceLBName(eps.Name, protocol)
-		_ = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(eps.Spec.Vpc, ovsdb.MutateOperationDelete, lbName)
-		_ = c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == lbName })
+		if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(eps.Spec.Vpc, ovsdb.MutateOperationDelete, lbName); err != nil {
+			klog.Errorf("failed to detach legacy load balancer %s from vpc %s: %v", lbName, eps.Spec.Vpc, err)
+			errs = append(errs, err)
+		}
+		if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == lbName }); err != nil {
+			klog.Errorf("failed to delete legacy load balancer %s: %v", lbName, err)
+			errs = append(errs, err)
+		}
 	}
-	_ = c.OVNNbClient.DeleteLogicalSwitchPort("vpc-eps-" + eps.Name)
+	if err := c.OVNNbClient.DeleteLogicalSwitchPort("vpc-eps-" + eps.Name); err != nil {
+		klog.Errorf("failed to delete legacy transit LSP vpc-eps-%s: %v", eps.Name, err)
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // syncVpcEndpointServiceTransitACLs enforces AllowedVpcs on the shared transit
@@ -912,45 +941,76 @@ func (c *Controller) reconcileVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 	if subnet.Spec.Vpc != ep.Spec.Vpc {
 		return fmt.Errorf("subnet %s belongs to vpc %s, not %s", ep.Spec.Subnet, subnet.Spec.Vpc, ep.Spec.Vpc)
 	}
+	if err := validateVpcEndpointIPv4(ep, subnet); err != nil {
+		return err
+	}
+	eps, svc, err := c.vpcEndpointReadyProvider(ep)
+	if err != nil {
+		return err
+	}
+	return c.syncVpcEndpointConsumerStitcher(ep, subnet, eps, svc)
+}
+
+// validateVpcEndpointIPv4 rejects IPv6-only consumer subnets and IPv6 Spec.IP.
+// The stitcher datapath programs iptables only.
+func validateVpcEndpointIPv4(ep *kubeovnv1.VpcEndpoint, subnet *kubeovnv1.Subnet) error {
+	proto := subnet.Spec.Protocol
+	if proto == "" {
+		proto = util.CheckProtocol(subnet.Spec.CIDRBlock)
+	}
+	if proto == kubeovnv1.ProtocolIPv6 {
+		return fmt.Errorf("VpcEndpoint is IPv4-only; subnet %s is IPv6", subnet.Name)
+	}
+	if ep.Spec.IP != "" && util.CheckProtocol(ep.Spec.IP) != kubeovnv1.ProtocolIPv4 {
+		return fmt.Errorf("VpcEndpoint.spec.ip must be IPv4 (got %q)", ep.Spec.IP)
+	}
+	return nil
+}
+
+func (c *Controller) vpcEndpointReadyProvider(ep *kubeovnv1.VpcEndpoint) (*kubeovnv1.VpcEndpointService, *corev1.Service, error) {
 	eps, err := c.vpcEndpointServiceLister.Get(ep.Spec.EndpointService)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if cleanupErr := c.cleanupVpcEndpoint(ep); cleanupErr != nil {
 				klog.Errorf("failed to cleanup VpcEndpoint %s after missing VES: %v", ep.Name, cleanupErr)
-				return cleanupErr
+				return nil, nil, cleanupErr
 			}
 		}
-		return fmt.Errorf("get VpcEndpointService %s: %w", ep.Spec.EndpointService, err)
+		return nil, nil, fmt.Errorf("get VpcEndpointService %s: %w", ep.Spec.EndpointService, err)
 	}
 	if !vpcEndpointServiceAllowed(eps, ep.Spec.Vpc) {
 		if cleanupErr := c.cleanupVpcEndpoint(ep); cleanupErr != nil {
 			klog.Errorf("failed to cleanup VpcEndpoint %s after allowedVpcs deny: %v", ep.Name, cleanupErr)
-			return cleanupErr
+			return nil, nil, cleanupErr
 		}
-		return fmt.Errorf("vpc %s is not allowed to consume endpoint service %s", ep.Spec.Vpc, eps.Name)
+		return nil, nil, fmt.Errorf("vpc %s is not allowed to consume endpoint service %s", ep.Spec.Vpc, eps.Name)
 	}
 	if !eps.Status.Ready || eps.Status.TransitVIP == "" {
 		if ep.Status.Ready || ep.Status.LocalVIP != "" || ep.Status.SnatIP != "" {
 			if cleanupErr := c.cleanupVpcEndpoint(ep); cleanupErr != nil {
 				klog.Errorf("failed to cleanup VpcEndpoint %s while waiting for VES: %v", ep.Name, cleanupErr)
-				return cleanupErr
+				return nil, nil, cleanupErr
 			}
 		}
-		return fmt.Errorf("endpoint service %s is not ready", eps.Name)
+		return nil, nil, fmt.Errorf("endpoint service %s is not ready", eps.Name)
 	}
 	svc, err := c.servicesLister.Services(eps.Spec.Namespace).Get(eps.Spec.Service)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			if cleanupErr := c.cleanupVpcEndpoint(ep); cleanupErr != nil {
 				klog.Errorf("failed to cleanup VpcEndpoint %s after missing Service: %v", ep.Name, cleanupErr)
-				return cleanupErr
+				return nil, nil, cleanupErr
 			}
 		}
-		return fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
+		return nil, nil, fmt.Errorf("get provider service %s/%s: %w", eps.Spec.Namespace, eps.Spec.Service, err)
 	}
+	return eps, svc, nil
+}
 
+func (c *Controller) syncVpcEndpointConsumerStitcher(ep *kubeovnv1.VpcEndpoint, subnet *kubeovnv1.Subnet, eps *kubeovnv1.VpcEndpointService, svc *corev1.Service) error {
 	if err := c.ensureVpcEndpointStitcherConfigMap(); err != nil {
-		klog.Warningf("stitcher configmap ensure: %v", err)
+		klog.Errorf("failed to ensure stitcher ConfigMap for VpcEndpoint %s: %v", ep.Name, err)
+		return err
 	}
 
 	localVIP := ep.Spec.IP
@@ -978,6 +1038,9 @@ func (c *Controller) reconcileVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 		return fmt.Errorf("waiting for consumer stitcher IPs on %s/%s", pod.Namespace, pod.Name)
 	}
 	localVIP, snatIP = gotLocal, gotSnat
+	if util.CheckProtocol(localVIP) != kubeovnv1.ProtocolIPv4 || util.CheckProtocol(snatIP) != kubeovnv1.ProtocolIPv4 {
+		return fmt.Errorf("consumer stitcher allocated non-IPv4 addresses local=%q snat=%q", localVIP, snatIP)
+	}
 
 	if err := c.initVpcEndpointStitcher(pod); err != nil {
 		return err
@@ -991,7 +1054,10 @@ func (c *Controller) reconcileVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 		return err
 	}
 
-	c.cleanupLegacyVpcEndpointOVN(ep)
+	if err := c.cleanupLegacyVpcEndpointOVN(ep); err != nil {
+		klog.Errorf("failed to cleanup legacy OVN resources for VpcEndpoint %s: %v", ep.Name, err)
+		return err
+	}
 
 	ep.Status.LocalVIP = localVIP
 	ep.Status.TransitVIP = eps.Status.TransitVIP
@@ -1009,8 +1075,14 @@ func validateVpcEndpointImmutability(ep *kubeovnv1.VpcEndpoint) error {
 	if vpc := ep.Labels[util.VpcEndpointVpcLabel]; vpc != "" && vpc != ep.Spec.Vpc {
 		return fmt.Errorf("vpc is immutable after creation (was %s)", vpc)
 	}
+	if subnet := ep.Labels[util.VpcEndpointSubnetLabel]; subnet != "" && subnet != ep.Spec.Subnet {
+		return fmt.Errorf("subnet is immutable after creation (was %s)", subnet)
+	}
 	if svc := ep.Labels[util.VpcEndpointServiceLabel]; svc != "" && svc != ep.Spec.EndpointService {
 		return fmt.Errorf("endpointService is immutable after creation (was %s)", svc)
+	}
+	if ip := ep.Labels[util.VpcEndpointIPLabel]; ip != "" && ip != ep.Spec.IP {
+		return fmt.Errorf("ip is immutable after creation (was %s)", ip)
 	}
 	return nil
 }
@@ -1019,12 +1091,21 @@ func (c *Controller) ensureVpcEndpointLabels(ep *kubeovnv1.VpcEndpoint) error {
 	if ep.Labels == nil {
 		ep.Labels = map[string]string{}
 	}
+	desiredIP := ep.Spec.IP
 	if ep.Labels[util.VpcEndpointServiceLabel] == ep.Spec.EndpointService &&
-		ep.Labels[util.VpcEndpointVpcLabel] == ep.Spec.Vpc {
+		ep.Labels[util.VpcEndpointVpcLabel] == ep.Spec.Vpc &&
+		ep.Labels[util.VpcEndpointSubnetLabel] == ep.Spec.Subnet &&
+		ep.Labels[util.VpcEndpointIPLabel] == desiredIP {
 		return nil
 	}
 	ep.Labels[util.VpcEndpointServiceLabel] = ep.Spec.EndpointService
 	ep.Labels[util.VpcEndpointVpcLabel] = ep.Spec.Vpc
+	ep.Labels[util.VpcEndpointSubnetLabel] = ep.Spec.Subnet
+	if desiredIP == "" {
+		delete(ep.Labels, util.VpcEndpointIPLabel)
+	} else {
+		ep.Labels[util.VpcEndpointIPLabel] = desiredIP
+	}
 	_, err := c.config.KubeOvnClient.KubeovnV1().VpcEndpoints().Update(context.Background(), ep, metav1.UpdateOptions{})
 	return err
 }
@@ -1148,14 +1229,28 @@ func (c *Controller) deleteVpcEndpointStitcherConfigMapIfUnused(namespace string
 	return nil
 }
 
-func (c *Controller) cleanupLegacyVpcEndpointOVN(ep *kubeovnv1.VpcEndpoint) {
+func (c *Controller) cleanupLegacyVpcEndpointOVN(ep *kubeovnv1.VpcEndpoint) error {
+	var errs []error
 	for _, protocol := range []string{"tcp", "udp", "sctp"} {
 		lbName := vpcEndpointLBName(ep.Name, protocol)
-		_ = c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(ep.Spec.Subnet, ovsdb.MutateOperationDelete, lbName)
-		_ = c.OVNNbClient.LogicalRouterUpdateLoadBalancers(ep.Spec.Vpc, ovsdb.MutateOperationDelete, lbName)
-		_ = c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == lbName })
+		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(ep.Spec.Subnet, ovsdb.MutateOperationDelete, lbName); err != nil {
+			klog.Errorf("failed to detach legacy load balancer %s from subnet %s: %v", lbName, ep.Spec.Subnet, err)
+			errs = append(errs, err)
+		}
+		if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(ep.Spec.Vpc, ovsdb.MutateOperationDelete, lbName); err != nil {
+			klog.Errorf("failed to detach legacy load balancer %s from vpc %s: %v", lbName, ep.Spec.Vpc, err)
+			errs = append(errs, err)
+		}
+		if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool { return lb.Name == lbName }); err != nil {
+			klog.Errorf("failed to delete legacy load balancer %s: %v", lbName, err)
+			errs = append(errs, err)
+		}
 	}
-	_ = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vpcEndpointVipCRName(ep.Name), metav1.DeleteOptions{})
+	if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vpcEndpointVipCRName(ep.Name), metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to delete legacy Vip %s: %v", vpcEndpointVipCRName(ep.Name), err)
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 func (c *Controller) cleanupVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {

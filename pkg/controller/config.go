@@ -21,6 +21,7 @@ import (
 	anpclientset "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -308,7 +309,7 @@ func ParseFlags() (*Configuration, error) {
 		argSkipConntrackDstCidrs = pflag.String("skip-conntrack-dst-cidrs", "", "Comma-separated list of destination IP CIDRs that should skip conntrack processing")
 
 		argVpcEndpointTransitSwitch = pflag.String("vpc-endpoint-transit-switch", util.DefaultVpcEndpointTransitSwitch, "Logical switch used as the unique transit fabric for VPC endpoint services")
-		argVpcEndpointTransitCIDR   = pflag.String("vpc-endpoint-transit-cidr", util.DefaultVpcEndpointTransitCIDR, "CIDR of the VPC endpoint transit switch. Must not overlap join/pod/service CIDRs. Defaults to 100.65.0.0/16 because join uses 100.64.0.0/16")
+		argVpcEndpointTransitCIDR   = pflag.String("vpc-endpoint-transit-cidr", util.DefaultVpcEndpointTransitCIDR, "IPv4 CIDR of the VPC endpoint transit switch. Must not overlap join/pod/service CIDRs. IPv6/dual is not supported. Defaults to 100.65.0.0/16 because join uses 100.64.0.0/16")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -435,8 +436,13 @@ func ParseFlags() (*Configuration, error) {
 	if config.EnableLbSvc && !config.EnableLb {
 		klog.Warning("--enable-lb-svc requires --enable-lb, the loadbalancer service feature will not work")
 	}
-	if config.EnableVpcEndpoint && !config.EnableLb {
-		klog.Warning("--enable-vpc-endpoint requires --enable-lb, the VPC endpoint feature will not work")
+	if config.EnableVpcEndpoint {
+		if !config.EnableLb {
+			return nil, errors.New("--enable-vpc-endpoint requires --enable-lb")
+		}
+		if proto := util.CheckProtocol(config.VpcEndpointTransitCIDR); proto != kubeovnv1.ProtocolIPv4 {
+			return nil, fmt.Errorf("--vpc-endpoint-transit-cidr must be an IPv4 CIDR (got %q); IPv6/dual is not supported by the stitcher datapath", config.VpcEndpointTransitCIDR)
+		}
 	}
 	if err := config.ACLSampling.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ACL sampling configuration: %w", err)

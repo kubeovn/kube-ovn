@@ -14,7 +14,6 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
-	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
@@ -129,55 +128,6 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 	}
 
 	return nil
-}
-
-// AddSnatWithMatch creates an SNAT rule that only matches traffic selected by
-// match (for example `ip4.dst == <transitVIP>`). Multiple rules may share the
-// same externalIP/logicalIP pair when their matches differ; an existing rule is
-// never overwritten. Construction bypasses newNat, which treats
-// (externalIP, logicalIP) as a unique SNAT key without considering Match.
-func (c *OVNNbClient) AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
-	if match == "" {
-		return c.EnsureSnat(lrName, externalIP, logicalIP)
-	}
-	if len(lrName) == 0 {
-		err := errors.New("the logical router name is required")
-		klog.Error(err)
-		return err
-	}
-	if externalIP == "" {
-		err := errors.New("snat external ip is required")
-		klog.Error(err)
-		return err
-	}
-	if logicalIP == "" {
-		err := errors.New("snat logical ip is required")
-		klog.Error(err)
-		return err
-	}
-
-	nats, err := c.ListNats(lrName, ovnnb.NATTypeSNAT, logicalIP, nil)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	for _, nat := range nats {
-		if nat.ExternalIP == externalIP && nat.Match == match {
-			return nil
-		}
-	}
-
-	nat := &ovnnb.NAT{
-		UUID:       ovsclient.NamedUUID(),
-		Type:       ovnnb.NATTypeSNAT,
-		ExternalIP: externalIP,
-		LogicalIP:  logicalIP,
-		Match:      match,
-		ExternalIDs: map[string]string{
-			"vendor": util.CniTypeName,
-		},
-	}
-	return c.CreateNats(lrName, nat)
 }
 
 // DeleteSnatWithMatch deletes the SNAT rule that matches the given match expression.

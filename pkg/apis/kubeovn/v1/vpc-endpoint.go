@@ -17,7 +17,9 @@ type VpcEndpointServiceList struct {
 }
 
 // VpcEndpointService publishes a Kubernetes Service from a provider VPC onto a
-// unique transit address so consumer VPCs with overlapping CIDRs can reach it.
+// unique IPv4 transit address so consumer VPCs with overlapping CIDRs can reach
+// it. NAT and load-balancing run in privileged dual-NIC stitcher pods via
+// iptables (IPv4 only); Multus is required for the transit NIC.
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
@@ -53,9 +55,11 @@ type VpcEndpointServiceSpec struct {
 }
 
 type VpcEndpointServiceStatus struct {
-	// Unique IP allocated from the transit subnet and used as the provider OVN LB VIP.
+	// Unique IPv4 address allocated from the transit subnet and owned by the
+	// provider stitcher Multus interface. Consumer stitchers DNAT LocalVIP to
+	// this address; provider stitchers DNAT it to Service backends via iptables.
 	TransitVIP string `json:"transitVIP,omitempty"`
-	// MAC used by the transit logical switch port that answers ARP for TransitVIP.
+	// Deprecated: unused by the stitcher datapath; retained for API compatibility.
 	Mac string `json:"mac,omitempty"`
 	// Human-readable summary of published service ports.
 	Ports string `json:"ports,omitempty"`
@@ -85,8 +89,9 @@ type VpcEndpointList struct {
 	Items []VpcEndpoint `json:"items"`
 }
 
-// VpcEndpoint allocates a local VIP in a consumer subnet and DNATs it to a
-// VpcEndpointService transit VIP, with SNAT so overlapping tenant CIDRs stay isolated.
+// VpcEndpoint allocates a local IPv4 VIP in a consumer subnet and DNATs it to a
+// VpcEndpointService transit VIP via a dual-NIC stitcher pod, with SNAT on the
+// transit path so overlapping tenant CIDRs stay isolated. IPv6 is not supported.
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient:nonNamespaced
@@ -119,16 +124,19 @@ type VpcEndpointSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="endpointService is immutable"
 	EndpointService string `json:"endpointService"`
 	// Optional static IPv4 address for the local VIP. Allocated from the subnet when empty.
+	// IPv6 addresses are rejected; the stitcher datapath is IPv4-only.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ip is immutable"
 	IP string `json:"ip,omitempty"`
 }
 
 type VpcEndpointStatus struct {
-	// IP in the consumer subnet that applications dial.
+	// IPv4 address in the consumer subnet that applications dial.
 	LocalVIP string `json:"localVIP,omitempty"`
 	// Provider transit VIP this endpoint maps to.
 	TransitVIP string `json:"transitVIP,omitempty"`
-	// Shared SNAT IP of the consumer VPC on the transit subnet.
+	// IPv4 address of the consumer stitcher transit-leg interface.
+	// Provider backends do not see this address; they see the provider stitcher
+	// VPC-leg IP after MASQUERADE on the provider stitcher.
 	SnatIP string `json:"snatIP,omitempty"`
 	// Indicates whether the endpoint is ready.
 	Ready bool `json:"ready"`

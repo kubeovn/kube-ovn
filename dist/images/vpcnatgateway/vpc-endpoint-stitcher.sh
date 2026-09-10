@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # VpcEndpoint stitcher: in-pod iptables SNAT/DNAT between a VPC leg and a transit leg.
-# Interfaces are persisted after init so subsequent rule updates survive restarts.
+# IPv4 only — there is no ip6tables path; dual-stack/IPv6 transit CIDRs are rejected
+# by the controller. Interfaces are persisted after init so subsequent rule updates
+# survive restarts.
 
 set -euo pipefail
 

@@ -167,16 +167,39 @@ func TestValidateVpcEndpointImmutability(t *testing.T) {
 	ep := &kubeovnv1.VpcEndpoint{
 		Labels: map[string]string{
 			util.VpcEndpointVpcLabel:     "vpc-a",
+			util.VpcEndpointSubnetLabel:  "subnet-a",
 			util.VpcEndpointServiceLabel: "eps-a",
+			util.VpcEndpointIPLabel:      "10.0.0.5",
 		},
-		Spec: kubeovnv1.VpcEndpointSpec{Vpc: "vpc-a", EndpointService: "eps-a"},
+		Spec: kubeovnv1.VpcEndpointSpec{
+			Vpc:             "vpc-a",
+			Subnet:          "subnet-a",
+			EndpointService: "eps-a",
+			IP:              "10.0.0.5",
+		},
 	}
 	require.NoError(t, validateVpcEndpointImmutability(ep))
 	ep.Spec.Vpc = "vpc-b"
 	require.ErrorContains(t, validateVpcEndpointImmutability(ep), "vpc is immutable")
 	ep.Spec.Vpc = "vpc-a"
+	ep.Spec.Subnet = "subnet-b"
+	require.ErrorContains(t, validateVpcEndpointImmutability(ep), "subnet is immutable")
+	ep.Spec.Subnet = "subnet-a"
 	ep.Spec.EndpointService = "eps-b"
 	require.ErrorContains(t, validateVpcEndpointImmutability(ep), "endpointService is immutable")
+	ep.Spec.EndpointService = "eps-a"
+	ep.Spec.IP = "10.0.0.6"
+	require.ErrorContains(t, validateVpcEndpointImmutability(ep), "ip is immutable")
+}
+
+func TestValidateVpcEndpointIPv4(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.16.0.0/16", Protocol: kubeovnv1.ProtocolIPv4}}
+	require.NoError(t, validateVpcEndpointIPv4(&kubeovnv1.VpcEndpoint{}, subnet))
+	require.NoError(t, validateVpcEndpointIPv4(&kubeovnv1.VpcEndpoint{Spec: kubeovnv1.VpcEndpointSpec{IP: "10.16.0.20"}}, subnet))
+	require.ErrorContains(t, validateVpcEndpointIPv4(&kubeovnv1.VpcEndpoint{Spec: kubeovnv1.VpcEndpointSpec{IP: "fd00::1"}}, subnet), "must be IPv4")
+
+	v6 := &kubeovnv1.Subnet{Name: "v6", Spec: kubeovnv1.SubnetSpec{CIDRBlock: "fd00::/64", Protocol: kubeovnv1.ProtocolIPv6}}
+	require.ErrorContains(t, validateVpcEndpointIPv4(&kubeovnv1.VpcEndpoint{}, v6), "IPv4-only")
 }
 
 func TestEnqueueVpcEndpointServiceHandlers(t *testing.T) {

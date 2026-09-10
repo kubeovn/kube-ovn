@@ -136,6 +136,8 @@ POD_GATEWAY="10.16.0.1"
 SVC_CIDR="10.96.0.0/12"                     # Do NOT overlap with NODE/POD/JOIN CIDR
 JOIN_CIDR="100.64.0.0/16"                   # Do NOT overlap with NODE/POD/SVC CIDR
 VPC_ENDPOINT_TRANSIT_SWITCH="vpc-endpoint-transit"
+# VPC endpoints are IPv4-only (stitcher uses iptables, not ip6tables). Keep an
+# IPv4 transit CIDR even on dual-stack / IPv6 clusters; do not advertise IPv6.
 VPC_ENDPOINT_TRANSIT_CIDR="100.65.0.0/16"   # Do NOT overlap with NODE/POD/SVC/JOIN CIDR
 PINGER_EXTERNAL_ADDRESS="1.1.1.1"           # Pinger check external ip probe
 PINGER_EXTERNAL_DOMAIN="kube-ovn.io."         # Pinger check external domain probe
@@ -145,7 +147,6 @@ if [ "$IPV6" = "true" ]; then
   POD_GATEWAY="fd00:10:16::1"
   SVC_CIDR="fd00:10:96::/108"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="fd00:100:64::/112"             # Do NOT overlap with NODE/POD/SVC CIDR
-  VPC_ENDPOINT_TRANSIT_CIDR="fd00:100:65::/112"
   PINGER_EXTERNAL_ADDRESS="2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN="google.com."
 fi
@@ -154,7 +155,6 @@ if [ "$DUAL_STACK" = "true" ]; then
   POD_GATEWAY="10.16.0.1,fd00:10:16::1"
   SVC_CIDR="10.96.0.0/12,fd00:10:96::/108"               # Do NOT overlap with NODE/POD/JOIN CIDR
   JOIN_CIDR="100.64.0.0/16,fd00:100:64::/112"            # Do NOT overlap with NODE/POD/SVC CIDR
-  VPC_ENDPOINT_TRANSIT_CIDR="100.65.0.0/16,fd00:100:65::/112"
   PINGER_EXTERNAL_ADDRESS="1.1.1.1,2606:4700:4700::1111"
   PINGER_EXTERNAL_DOMAIN="google.com."
   SVC_YAML_IPFAMILYPOLICY="ipFamilyPolicy: PreferDualStack"
@@ -5098,7 +5098,9 @@ spec:
       openAPIV3Schema:
         description: |-
           VpcEndpointService publishes a Kubernetes Service from a provider VPC onto a
-          unique transit address so consumer VPCs with overlapping CIDRs can reach it.
+          unique IPv4 transit address so consumer VPCs with overlapping CIDRs can reach
+          it. NAT and load-balancing run in privileged dual-NIC stitcher pods via
+          iptables (IPv4 only); Multus is required for the transit NIC.
         properties:
           apiVersion:
             description: |-
@@ -5183,8 +5185,8 @@ spec:
                   type: object
                 type: array
               mac:
-                description: MAC used by the transit logical switch port that answers
-                  ARP for TransitVIP.
+                description: 'Deprecated: unused by the stitcher datapath; retained
+                  for API compatibility.'
                 type: string
               ports:
                 description: Human-readable summary of published service ports.
@@ -5194,8 +5196,10 @@ spec:
                   consumed.
                 type: boolean
               transitVIP:
-                description: Unique IP allocated from the transit subnet and used
-                  as the provider OVN LB VIP.
+                description: |-
+                  Unique IPv4 address allocated from the transit subnet and owned by the
+                  provider stitcher Multus interface. Consumer stitchers DNAT LocalVIP to
+                  this address; provider stitchers DNAT it to Service backends via iptables.
                 type: string
             type: object
         type: object
@@ -5248,8 +5252,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          VpcEndpoint allocates a local VIP in a consumer subnet and DNATs it to a
-          VpcEndpointService transit VIP, with SNAT so overlapping tenant CIDRs stay isolated.
+          VpcEndpoint allocates a local IPv4 VIP in a consumer subnet and DNATs it to a
+          VpcEndpointService transit VIP via a dual-NIC stitcher pod, with SNAT on the
+          transit path so overlapping tenant CIDRs stay isolated. IPv6 is not supported.
         properties:
           apiVersion:
             description: |-
@@ -5277,8 +5282,9 @@ spec:
                 - message: endpointService is immutable
                   rule: self == oldSelf
               ip:
-                description: Optional static IPv4 address for the local VIP. Allocated
-                  from the subnet when empty.
+                description: |-
+                  Optional static IPv4 address for the local VIP. Allocated from the subnet when empty.
+                  IPv6 addresses are rejected; the stitcher datapath is IPv4-only.
                 type: string
                 x-kubernetes-validations:
                 - message: ip is immutable
@@ -5335,13 +5341,17 @@ spec:
                   type: object
                 type: array
               localVIP:
-                description: IP in the consumer subnet that applications dial.
+                description: IPv4 address in the consumer subnet that applications
+                  dial.
                 type: string
               ready:
                 description: Indicates whether the endpoint is ready.
                 type: boolean
               snatIP:
-                description: Shared SNAT IP of the consumer VPC on the transit subnet.
+                description: |-
+                  IPv4 address of the consumer stitcher transit-leg interface.
+                  Provider backends do not see this address; they see the provider stitcher
+                  VPC-leg IP after MASQUERADE on the provider stitcher.
                 type: string
               transitVIP:
                 description: Provider transit VIP this endpoint maps to.

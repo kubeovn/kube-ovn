@@ -1495,31 +1495,45 @@ func (c *Controller) gcVpcEndpoint() error {
 		return err
 	}
 
-	expectedLBs := map[string]struct{}{}
 	expectedACLServices := map[string]struct{}{}
 	expectedVPCs := map[string]struct{}{}
-	expectedVipCRs := map[string]struct{}{}
-	expectedSnat := map[string]struct{}{} // key: vpc/snatIP/match
-
 	for _, eps := range services {
 		expectedACLServices[eps.Name] = struct{}{}
 		expectedVPCs[eps.Spec.Vpc] = struct{}{}
-		for _, protocol := range []string{"tcp", "udp", "sctp"} {
-			expectedLBs[vpcEndpointServiceLBName(eps.Name, protocol)] = struct{}{}
-		}
 	}
 	for _, ep := range endpoints {
 		expectedVPCs[ep.Spec.Vpc] = struct{}{}
-		expectedVipCRs[vpcEndpointVipCRName(ep.Name)] = struct{}{}
-		for _, protocol := range []string{"tcp", "udp", "sctp"} {
-			expectedLBs[vpcEndpointLBName(ep.Name, protocol)] = struct{}{}
-		}
-		if ep.Status.SnatIP != "" && ep.Status.TransitVIP != "" {
-			key := ep.Spec.Vpc + "/" + ep.Status.SnatIP + "/" + vpcEndpointSnatMatch(ep.Status.TransitVIP)
-			expectedSnat[key] = struct{}{}
-		}
 	}
 
+	if err := c.gcVpcEndpointLegacyLoadBalancers(); err != nil {
+		return err
+	}
+	if err := c.gcVpcEndpointLegacyLSPs(expectedACLServices); err != nil {
+		return err
+	}
+	if err := c.gcVpcEndpointTransitAttachments(expectedVPCs); err != nil {
+		return err
+	}
+	if err := c.gcVpcEndpointLegacySNATs(expectedVPCs); err != nil {
+		return err
+	}
+	if err := c.gcVpcEndpointLegacyVips(); err != nil {
+		return err
+	}
+	if err := c.gcVpcEndpointOrphanACLs(expectedACLServices); err != nil {
+		return err
+	}
+	if err := c.gcVpcEndpointStitcherDeployments(services, endpoints); err != nil {
+		return err
+	}
+
+	klog.Infof("finish to gc vpc endpoints")
+	return nil
+}
+
+// gcVpcEndpointLegacyLoadBalancers removes leftover OVN LBs from the pre-stitcher datapath.
+// The stitcher path does not create OVN LBs, so every vpc-ep*/vpc-eps* LB is an orphan.
+func (c *Controller) gcVpcEndpointLegacyLoadBalancers() error {
 	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
 		return strings.HasPrefix(lb.Name, "vpc-eps-") || strings.HasPrefix(lb.Name, "vpc-ep-")
 	})
@@ -1528,16 +1542,16 @@ func (c *Controller) gcVpcEndpoint() error {
 		return err
 	}
 	for _, lb := range lbs {
-		if _, ok := expectedLBs[lb.Name]; ok {
-			continue
-		}
 		klog.Infof("gc orphaned vpc endpoint load balancer %s", lb.Name)
 		if err := c.OVNNbClient.DeleteLoadBalancers(func(item *ovnnb.LoadBalancer) bool { return item.Name == lb.Name }); err != nil {
 			klog.Errorf("failed to gc load balancer %s: %v", lb.Name, err)
 			return err
 		}
 	}
+	return nil
+}
 
+func (c *Controller) gcVpcEndpointLegacyLSPs(expectedACLServices map[string]struct{}) error {
 	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return strings.HasPrefix(lsp.Name, "vpc-eps-")
 	})
@@ -1546,7 +1560,6 @@ func (c *Controller) gcVpcEndpoint() error {
 		return err
 	}
 	for _, lsp := range lsps {
-		// TransitVIP LSPs are no longer created; clean up any leftover ports.
 		klog.Infof("gc orphaned vpc endpoint logical switch port %s", lsp.Name)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
 			klog.Errorf("failed to gc logical switch port %s: %v", lsp.Name, err)
@@ -1561,7 +1574,10 @@ func (c *Controller) gcVpcEndpoint() error {
 			}
 		}
 	}
+	return nil
+}
 
+func (c *Controller) gcVpcEndpointTransitAttachments(expectedVPCs map[string]struct{}) error {
 	transitSuffix := "-" + c.config.VpcEndpointTransitSwitch
 	transitPrefix := c.config.VpcEndpointTransitSwitch + "-"
 	transitVpcName := c.config.VpcEndpointTransitSwitch + "-vpc"
@@ -1575,7 +1591,6 @@ func (c *Controller) gcVpcEndpoint() error {
 	for _, lrp := range lrps {
 		vpcName := strings.TrimSuffix(lrp.Name, transitSuffix)
 		if vpcName == transitVpcName {
-			// Subnet gateway LRP for the transit fabric itself — never GC.
 			continue
 		}
 		if _, ok := expectedVPCs[vpcName]; ok {
@@ -1588,9 +1603,17 @@ func (c *Controller) gcVpcEndpoint() error {
 			return err
 		}
 		c.ipam.ReleaseAddressByPod(vpcEndpointSnatIPAMName(vpcName), c.config.VpcEndpointTransitSwitch)
+		if err := c.gcVpcEndpointLegacySNATs(map[string]struct{}{vpcName: {}}); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
-	for vpcName := range expectedVPCs {
+// gcVpcEndpointLegacySNATs deletes leftover destination-match SNATs from the
+// pre-stitcher OVN NAT path. The stitcher datapath does not create OVN SNATs.
+func (c *Controller) gcVpcEndpointLegacySNATs(vpcs map[string]struct{}) error {
+	for vpcName := range vpcs {
 		nats, err := c.OVNNbClient.ListNats(vpcName, ovnnb.NATTypeSNAT, "0.0.0.0/0", nil)
 		if err != nil {
 			klog.Errorf("failed to list snat for vpc %s: %v", vpcName, err)
@@ -1601,17 +1624,8 @@ func (c *Controller) gcVpcEndpoint() error {
 			klog.Errorf("failed to list ipv6 snat for vpc %s: %v", vpcName, err)
 			return err
 		}
-		nats = append(nats, nats6...)
-		for _, nat := range nats {
-			if nat.Match == "" {
-				continue
-			}
-			key := vpcName + "/" + nat.ExternalIP + "/" + nat.Match
-			if _, ok := expectedSnat[key]; ok {
-				continue
-			}
-			// Only GC destination-match SNATs that look like vpc-endpoint rules.
-			if !strings.Contains(nat.Match, ".dst == ") {
+		for _, nat := range append(nats, nats6...) {
+			if nat.Match == "" || !strings.Contains(nat.Match, ".dst == ") {
 				continue
 			}
 			klog.Infof("gc orphaned vpc endpoint snat on vpc %s match %s", vpcName, nat.Match)
@@ -1621,28 +1635,32 @@ func (c *Controller) gcVpcEndpoint() error {
 			}
 		}
 	}
+	return nil
+}
 
-	if c.virtualIpsLister != nil {
-		vips, err := c.virtualIpsLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list vips for vpc endpoint gc: %v", err)
+func (c *Controller) gcVpcEndpointLegacyVips() error {
+	if c.virtualIpsLister == nil {
+		return nil
+	}
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vips for vpc endpoint gc: %v", err)
+		return err
+	}
+	for _, vip := range vips {
+		if !strings.HasPrefix(vip.Name, "vpc-ep-") {
+			continue
+		}
+		klog.Infof("gc orphaned vpc endpoint vip %s", vip.Name)
+		if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to gc vip %s: %v", vip.Name, err)
 			return err
 		}
-		for _, vip := range vips {
-			if !strings.HasPrefix(vip.Name, "vpc-ep-") {
-				continue
-			}
-			if _, ok := expectedVipCRs[vip.Name]; ok {
-				continue
-			}
-			klog.Infof("gc orphaned vpc endpoint vip %s", vip.Name)
-			if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to gc vip %s: %v", vip.Name, err)
-				return err
-			}
-		}
 	}
+	return nil
+}
 
+func (c *Controller) gcVpcEndpointOrphanACLs(expectedACLServices map[string]struct{}) error {
 	acls, err := c.OVNNbClient.ListAcls("", nil)
 	if err != nil {
 		klog.Errorf("failed to list acls for vpc endpoint gc: %v", err)
@@ -1667,41 +1685,43 @@ func (c *Controller) gcVpcEndpoint() error {
 			return err
 		}
 	}
+	return nil
+}
 
-	if c.deploymentsLister != nil {
-		expectedDeploys := map[string]struct{}{}
-		for _, eps := range services {
-			expectedDeploys[eps.Spec.Namespace+"/"+vpcEndpointServiceDeployName(eps.Name)] = struct{}{}
-		}
-		for _, ep := range endpoints {
-			ns, err := c.vpcEndpointConsumerNamespace(ep.Spec.Vpc)
-			if err != nil {
-				continue
-			}
-			expectedDeploys[ns+"/"+vpcEndpointDeployName(ep.Name)] = struct{}{}
-		}
-		deps, err := c.deploymentsLister.List(labels.Everything())
+func (c *Controller) gcVpcEndpointStitcherDeployments(services []*kubeovnv1.VpcEndpointService, endpoints []*kubeovnv1.VpcEndpoint) error {
+	if c.deploymentsLister == nil {
+		return nil
+	}
+	expectedDeploys := map[string]struct{}{}
+	for _, eps := range services {
+		expectedDeploys[eps.Spec.Namespace+"/"+vpcEndpointServiceDeployName(eps.Name)] = struct{}{}
+	}
+	for _, ep := range endpoints {
+		ns, err := c.vpcEndpointConsumerNamespace(ep.Spec.Vpc)
 		if err != nil {
-			klog.Errorf("failed to list deployments for vpc endpoint gc: %v", err)
+			continue
+		}
+		expectedDeploys[ns+"/"+vpcEndpointDeployName(ep.Name)] = struct{}{}
+	}
+	deps, err := c.deploymentsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list deployments for vpc endpoint gc: %v", err)
+		return err
+	}
+	for _, dep := range deps {
+		role := dep.Labels[util.VpcEndpointStitcherLabel]
+		if role != "provider" && role != "consumer" {
+			continue
+		}
+		key := dep.Namespace + "/" + dep.Name
+		if _, ok := expectedDeploys[key]; ok {
+			continue
+		}
+		klog.Infof("gc orphaned vpc endpoint stitcher deployment %s", key)
+		if err := c.config.KubeClient.AppsV1().Deployments(dep.Namespace).Delete(context.Background(), dep.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to gc stitcher deployment %s: %v", key, err)
 			return err
 		}
-		for _, dep := range deps {
-			role := dep.Labels[util.VpcEndpointStitcherLabel]
-			if role != "provider" && role != "consumer" {
-				continue
-			}
-			key := dep.Namespace + "/" + dep.Name
-			if _, ok := expectedDeploys[key]; ok {
-				continue
-			}
-			klog.Infof("gc orphaned vpc endpoint stitcher deployment %s", key)
-			if err := c.config.KubeClient.AppsV1().Deployments(dep.Namespace).Delete(context.Background(), dep.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to gc stitcher deployment %s: %v", key, err)
-				return err
-			}
-		}
 	}
-
-	klog.Infof("finish to gc vpc endpoints")
 	return nil
 }

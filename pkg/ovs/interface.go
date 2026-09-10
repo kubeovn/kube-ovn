@@ -149,7 +149,6 @@ type LoadBalancer interface {
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
-	SetLoadBalancerNeighborResponder(lbName, mode string) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
 	GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error)
 	ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error)
@@ -253,7 +252,6 @@ type LogicalRouterPolicy interface {
 type NAT interface {
 	GetNATByUUID(uuid string) (*ovnnb.NAT, error)
 	AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error
-	AddSnatWithMatch(lrName, externalIP, logicalIP, match string) error
 	DeleteSnatWithMatch(lrName, externalIP, logicalIP, match string) error
 	EnsureSnat(lrName, externalIP, logicalIP string) error
 	UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error
