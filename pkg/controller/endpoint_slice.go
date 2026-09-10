@@ -171,7 +171,6 @@ type endpointSliceServiceProfile struct {
 	externalVIPNode      string
 	serviceL2StatusReady bool
 	ignoreHealthCheck    bool
-	preferLocalBackend   bool
 	distributedLocal     bool
 }
 
@@ -337,7 +336,6 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 			}
 		}
 		if svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal {
-			profile.preferLocalBackend = true
 			var err error
 			profile.externalVIPNode, profile.serviceL2StatusReady, err = c.getServiceL2StatusNode(svc.Namespace, svc.Name)
 			if err != nil {
@@ -522,7 +520,7 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	if err != nil {
 		return err
 	}
-	if !reconcileCtx.profile.ignoreHealthCheck && !reconcileCtx.profile.preferLocalBackend && len(state.mapping) == 0 {
+	if !reconcileCtx.profile.ignoreHealthCheck && len(state.mapping) == 0 {
 		// Host-network or manually managed endpoints do not have an OVN logical
 		// port to probe from the health-check VIP. Keeping a health check with an
 		// empty mapping would mark otherwise reachable backends (for example the
@@ -550,9 +548,6 @@ func (c *Controller) serviceVIPHealthCheck(reconcileCtx *endpointSliceReconcileC
 		}
 		externals = map[string]string{util.SwitchLBRuleSubnet: reconcileCtx.subnetName}
 	}
-	if reconcileCtx.profile.preferLocalBackend {
-		checkIP = util.MasqueradeCheckIP
-	}
 	return checkIP, externals, nil
 }
 
@@ -568,7 +563,7 @@ func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcil
 		}
 		return mapping, nil
 	}
-	if reconcileCtx.profile.ignoreHealthCheck && !reconcileCtx.profile.preferLocalBackend {
+	if reconcileCtx.profile.ignoreHealthCheck {
 		return nil, nil
 	}
 	mapping, err := c.getIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service, checkIP)
@@ -585,7 +580,7 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 	if err := c.OVNNbClient.LoadBalancerMigrateVIP(state.lb, state.vip, state.backends, state.vip, candidates...); err != nil {
 		return fmt.Errorf("migrate vip %s: %w", state.vip, err)
 	}
-	if (profile.preferLocalBackend || state.distributed) && len(state.mapping) != 0 {
+	if state.distributed && len(state.mapping) != 0 {
 		if err := c.OVNNbClient.LoadBalancerUpdateIPPortMapping(state.lb, state.vip, state.mapping); err != nil {
 			return fmt.Errorf("update ip port mapping for vip %s on load balancer %s: %w", state.vip, state.lb, err)
 		}
