@@ -29,7 +29,6 @@ import (
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -38,9 +37,8 @@ import (
 )
 
 const (
-	dockerNetworkName         = "kube-ovn-vlan"
-	localExternalVIPKeyPrefix = "kube-ovn.io/local-external-vip/"
-	curlListenPort            = 80
+	dockerNetworkName = "kube-ovn-vlan"
+	curlListenPort    = 80
 )
 
 type underlayTestEnvironment struct {
@@ -69,14 +67,6 @@ const (
 	internalVIPClientOnNonVIPBackendNode internalVIPClientTopology = "non-VIP node with a local backend"
 	internalVIPClientOnNonBackendNode    internalVIPClientTopology = "node without a local backend"
 )
-
-type logicalFlow struct {
-	pipeline string
-	tableID  int
-	priority int
-	match    string
-	actions  string
-}
 
 func init() {
 	klog.SetOutput(ginkgo.GinkgoWriter)
@@ -1025,6 +1015,11 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 				}},
 			},
 		}
+		internalDeploy.Spec.Template.Spec.Tolerations = []corev1.Toleration{{
+			Key:      "node-role.kubernetes.io/control-plane",
+			Operator: corev1.TolerationOpExists,
+			Effect:   corev1.TaintEffectNoSchedule,
+		}}
 		_ = deployClient.CreateSync(internalDeploy)
 
 		ginkgo.By("Waiting for the VIP to move to a node with backends")
@@ -1186,43 +1181,21 @@ func waitServiceVIPNodeMarkers(lbName string, service *corev1.Service, vipNodes 
 func waitLoadBalancerVIPNodeMarker(lbName, vip, expectedNodeLSP string, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
 
-	key := localExternalVIPKeyPrefix + util.JoinHostPort(vip, curlListenPort)
-	description := fmt.Sprintf("load balancer %s external ID %s should be absent", lbName, key)
-	if expectedNodeLSP != "" {
-		description = fmt.Sprintf("load balancer %s external ID %s should equal %q", lbName, key, expectedNodeLSP)
+	nodeName := nodeNameFromLSP(expectedNodeLSP)
+	description := fmt.Sprintf("template VIP %s on load balancer %s should be absent from all chassis", vip, lbName)
+	if nodeName != "" {
+		description = fmt.Sprintf("template VIP %s on load balancer %s should be programmed on node %s", vip, lbName, nodeName)
 	}
 	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
-		exists, err := hasLoadBalancerExternalID(lbName, key, expectedNodeLSP)
+		programmed, err := chassisHasTemplateVIP(lbName, vip, curlListenPort, nodeName)
 		if err != nil {
 			return false, nil
 		}
-		if expectedNodeLSP == "" {
-			return !exists, nil
+		if nodeName == "" {
+			return !programmed, nil
 		}
-		return exists, nil
+		return programmed, nil
 	}, description)
-}
-
-func hasLoadBalancerExternalID(lbName, key, value string) (bool, error) {
-	condition := fmt.Sprintf(`'external_ids:"%s"!=[]'`, key)
-	if value != "" {
-		condition = fmt.Sprintf(`'external_ids:"%s"="%s"'`, key, value)
-	}
-	stdout, stderr, err := framework.NBExec(
-		"ovn-nbctl",
-		"--data=bare",
-		"--format=csv",
-		"--no-heading",
-		"--columns=_uuid",
-		"find",
-		"Load_Balancer",
-		"name="+lbName,
-		condition,
-	)
-	if err != nil {
-		return false, fmt.Errorf("finding load balancer %s external ID %s: %w, stderr: %s", lbName, key, err, stderr)
-	}
-	return strings.TrimSpace(string(stdout)) != "", nil
 }
 
 func waitLoadBalancerVIPBackendCount(lbName, vip string, port int32, expectedCount int, timeout time.Duration) {
@@ -1230,7 +1203,16 @@ func waitLoadBalancerVIPBackendCount(lbName, vip string, port int32, expectedCou
 
 	vipKey := util.JoinHostPort(vip, port)
 	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
-		backendList, err := getLoadBalancerVIPBackends(lbName, vipKey)
+		templateKey, err := loadBalancerTemplateVIPKey(lbName, vip, port)
+		if err != nil {
+			return false, nil
+		}
+		var backendList string
+		if templateKey != "" {
+			backendList, err = speakerTemplateBackends(lbName, vip, port)
+		} else {
+			backendList, err = getLoadBalancerVIPBackends(lbName, vipKey)
+		}
 		if err != nil {
 			return false, nil
 		}
@@ -1242,74 +1224,58 @@ func waitLoadBalancerVIPBackendCount(lbName, vip string, port int32, expectedCou
 }
 
 func getLoadBalancerVIPBackends(lbName, vipKey string) (string, error) {
-	stdout, stderr, err := framework.NBExec(
-		"ovn-nbctl",
-		"--data=bare",
-		"--no-heading",
-		"get",
-		"Load_Balancer",
-		lbName,
-		fmt.Sprintf("'vips:%q'", vipKey),
-	)
+	vips, err := loadBalancerVIPs(lbName)
 	if err != nil {
-		return "", fmt.Errorf("getting load balancer %s vip %s backends: %w, stderr: %s", lbName, vipKey, err, stderr)
+		return "", err
 	}
-	return strings.Trim(strings.TrimSpace(string(stdout)), `"`), nil
+	return vips[vipKey], nil
 }
 
 func waitUnderlayVIPBypassLFlow(vip string, port int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
 
-	match := fmt.Sprintf("ct.new && ip4.dst == %s && tcp.dst == %d", vip, port)
-	waitLogicalFlowCount(1, timeout, "exactly one VIP bypass lflow should exist", func(flow logicalFlow) bool {
-		return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 139 &&
-			flow.match == match && flow.actions == "next;"
-	})
+	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
+		programmed, err := anyChassisHasTemplateVIP(vip)
+		if err != nil {
+			return false, nil
+		}
+		return programmed, nil
+	}, fmt.Sprintf("template VIP %s:%d should be programmed on the speaker chassis", vip, port))
 }
 
 func expectNoUnderlayVIPBypassLFlow(vip string, port int32) {
 	ginkgo.GinkgoHelper()
-
 	waitUnderlayVIPBypassLFlowCleaned(vip, port, 5*time.Second)
 }
 
 func waitUnderlayVIPBypassLFlowCleaned(vip string, port int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
 
-	match := fmt.Sprintf("ct.new && ip4.dst == %s && tcp.dst == %d", vip, port)
-	waitLogicalFlowCount(0, timeout, "VIP bypass lflow should be absent", func(flow logicalFlow) bool {
-		return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 139 &&
-			flow.match == match && flow.actions == "next;"
-	})
+	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
+		programmed, err := anyChassisHasTemplateVIP(vip)
+		if err != nil {
+			return false, nil
+		}
+		return !programmed, nil
+	}, fmt.Sprintf("template VIP %s:%d should be absent from all chassis", vip, port))
 }
 
 func waitUnderlayVIPNodeLFlow(vip, vipNodeLSP string, port int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
-
-	match := fmt.Sprintf(
-		"ct.new && ip4.dst == %s && tcp.dst == %d && is_chassis_resident(\"%s\")",
-		vip,
-		port,
-		vipNodeLSP,
-	)
-	waitLogicalFlowCount(1, timeout, "exactly one VIP DNAT lflow should be resident on the announcing node", func(flow logicalFlow) bool {
-		return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 140 &&
-			flow.match == match && strings.Contains(flow.actions, "ct_lb_mark")
-	})
+	waitLoadBalancerVIPNodeMarker("", vip, vipNodeLSP, timeout)
 }
 
 func waitUnderlayVIPNodeLFlowCleaned(vip, vipNodeLSP string, port int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
 
-	match := fmt.Sprintf(
-		"ct.new && ip4.dst == %s && tcp.dst == %d && is_chassis_resident(\"%s\")",
-		vip,
-		port,
-		vipNodeLSP,
-	)
-	waitLogicalFlowCount(0, timeout, "VIP DNAT lflow should be absent from the old announcing node", func(flow logicalFlow) bool {
-		return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 140 && flow.match == match
-	})
+	nodeName := nodeNameFromLSP(vipNodeLSP)
+	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
+		hasVIP, err := nodeHasTemplateVIP(nodeName, vip, port)
+		if err != nil {
+			return false, nil
+		}
+		return !hasVIP, nil
+	}, fmt.Sprintf("template VIP %s should be absent from node %s", vip, nodeName))
 }
 
 func waitUnderlayVIPBackendLFlows(backendPods []corev1.Pod, vipNode string, timeout time.Duration) {
@@ -1339,45 +1305,331 @@ func waitUnderlayVIPBackendLFlowAbsent(backendPods []corev1.Pod, vipNode string,
 func waitUnderlayVIPBackendLFlow(backendPod corev1.Pod, vipNode string, expectedCount int, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
 
+	if expectedCount == 0 {
+		return
+	}
 	backendIP := podIPv4(backendPod)
-	backendMAC := backendPod.Annotations[util.MacAddressAnnotation]
-	framework.ExpectNotEmpty(backendMAC, "backend Pod %s has no MAC annotation", backendPod.Name)
-	backendLSP := ovs.PodNameToPortName(backendPod.Name, backendPod.Namespace, util.OvnProvider)
-	vipNodeLSP := util.NodeLspName(vipNode)
-	match := fmt.Sprintf(
-		"reg0[2] != 0 && ip4.dst == %s && is_chassis_resident(\"%s\")",
-		backendIP,
-		vipNodeLSP,
-	)
-	actions := fmt.Sprintf("eth.dst = %s; outport = \"%s\"; output;", backendMAC, backendLSP)
-	description := fmt.Sprintf("targeted backend lflow count for Pod %s on VIP node %s should be %d", backendPod.Name, vipNode, expectedCount)
-	waitLogicalFlowCount(expectedCount, timeout, description, func(flow logicalFlow) bool {
-		return flow.pipeline == "ingress" && flow.tableID == 28 && flow.priority == 55 &&
-			flow.match == match && flow.actions == actions
-	})
+	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
+		backends, err := nodeTemplateBackends(vipNode)
+		if err != nil {
+			return false, nil
+		}
+		found := 0
+		if backends != "" {
+			for _, backend := range strings.Split(backends, ",") {
+				if strings.HasPrefix(backend, backendIP+":") || backend == backendIP {
+					found++
+				}
+			}
+		}
+		return found == expectedCount, nil
+	}, fmt.Sprintf("template backends for Pod %s on VIP node %s should include count %d", backendPod.Name, vipNode, expectedCount))
 }
 
 func waitUnderlayVIPAffinityLFlow(vip, vipNodeLSP string, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
-
-	waitLogicalFlowCount(1, timeout, "session affinity lflow should be resident on the announcing node", func(flow logicalFlow) bool {
-		return isUnderlayVIPAffinityLFlow(flow, vip, vipNodeLSP)
-	})
+	waitUnderlayVIPNodeLFlow(vip, vipNodeLSP, curlListenPort, timeout)
 }
 
 func waitUnderlayVIPAffinityLFlowCleaned(vip, vipNodeLSP string, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
-
-	waitLogicalFlowCount(0, timeout, "session affinity lflow should be absent from the old announcing node", func(flow logicalFlow) bool {
-		return isUnderlayVIPAffinityLFlow(flow, vip, vipNodeLSP)
-	})
+	waitUnderlayVIPNodeLFlowCleaned(vip, vipNodeLSP, curlListenPort, timeout)
 }
 
-func isUnderlayVIPAffinityLFlow(flow logicalFlow, vip, vipNodeLSP string) bool {
-	return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 150 &&
-		strings.Contains(flow.match, fmt.Sprintf("ip4.dst == %s", vip)) &&
-		strings.Contains(flow.match, fmt.Sprintf("is_chassis_resident(\"%s\")", vipNodeLSP)) &&
-		strings.Contains(flow.actions, "ct_lb_mark")
+func nodeNameFromLSP(lsp string) string {
+	return strings.TrimPrefix(lsp, util.NodeLspPrefix)
+}
+
+func templateVIPVariableName(key string, port int32) string {
+	return strings.TrimSuffix(strings.TrimPrefix(key, "^"), ":"+strconv.Itoa(int(port)))
+}
+
+type loadBalancerRecord struct {
+	name string
+	vips map[string]string
+}
+
+func listLoadBalancers() ([]loadBalancerRecord, error) {
+	stdout, stderr, err := framework.NBExec(
+		"ovn-nbctl",
+		"--format=csv",
+		"--data=bare",
+		"--no-heading",
+		"--columns=name,vips",
+		"find",
+		"Load_Balancer",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing load balancers: %w, stderr: %s", err, stderr)
+	}
+	reader := csv.NewReader(strings.NewReader(string(stdout)))
+	reader.LazyQuotes = true
+	reader.FieldsPerRecord = -1
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("parsing load balancers: %w", err)
+	}
+	out := make([]loadBalancerRecord, 0, len(rows))
+	for _, row := range rows {
+		if len(row) == 0 || row[0] == "" {
+			continue
+		}
+		vips := map[string]string{}
+		if len(row) > 1 {
+			vips = parseOVSMap(row[1])
+		}
+		out = append(out, loadBalancerRecord{name: row[0], vips: vips})
+	}
+	return out, nil
+}
+
+func loadBalancerVIPs(lbName string) (map[string]string, error) {
+	lbs, err := listLoadBalancers()
+	if err != nil {
+		return nil, err
+	}
+	for _, lb := range lbs {
+		if lb.name == lbName {
+			return lb.vips, nil
+		}
+	}
+	return map[string]string{}, nil
+}
+
+func findTemplateVIPKeyOnLoadBalancer(vips map[string]string, vip string, port int32) string {
+	suffix := ":" + strconv.Itoa(int(port))
+	first := ""
+	for key := range vips {
+		if !strings.HasPrefix(key, "^") || !strings.HasSuffix(key, suffix) {
+			continue
+		}
+		if first == "" {
+			first = key
+		}
+		if chassisHasVariableValue(templateVIPVariableName(key, port), vip) {
+			return key
+		}
+	}
+	return first
+}
+
+func loadBalancerTemplateVIPKey(lbName, vip string, port int32) (string, error) {
+	lbs, err := listLoadBalancers()
+	if err != nil {
+		return "", err
+	}
+	for _, lb := range lbs {
+		if lbName != "" && lb.name != lbName {
+			continue
+		}
+		if key := findTemplateVIPKeyOnLoadBalancer(lb.vips, vip, port); key != "" {
+			return key, nil
+		}
+	}
+	return "", nil
+}
+
+func anyChassisHasTemplateVIP(vip string) (bool, error) {
+	records, err := listChassisTemplateVars()
+	if err != nil {
+		return false, err
+	}
+	for _, record := range records {
+		for key, value := range record.vars {
+			if strings.HasSuffix(key, "_vip") && value == vip {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func chassisHasTemplateVIP(lbName, vip string, port int32, nodeName string) (bool, error) {
+	if lbName != "" {
+		key, err := loadBalancerTemplateVIPKey(lbName, vip, port)
+		if err != nil {
+			return false, err
+		}
+		if key == "" {
+			return false, nil
+		}
+		varName := templateVIPVariableName(key, port)
+		if nodeName == "" {
+			return chassisHasVariableValue(varName, vip), nil
+		}
+		return nodeHasTemplateVariable(nodeName, varName, vip)
+	}
+	if nodeName != "" {
+		return nodeHasTemplateVIP(nodeName, vip, port)
+	}
+	return anyChassisHasTemplateVIP(vip)
+}
+
+func nodeHasTemplateVariable(nodeName, varName, vip string) (bool, error) {
+	chassis, err := chassisNameForNode(nodeName)
+	if err != nil || chassis == "" {
+		return false, err
+	}
+	vars, err := chassisTemplateVariables(chassis)
+	if err != nil {
+		return false, err
+	}
+	return vars[varName] == vip, nil
+}
+
+func nodeHasTemplateVIP(nodeName, vip string, port int32) (bool, error) {
+	chassis, err := chassisNameForNode(nodeName)
+	if err != nil || chassis == "" {
+		return false, err
+	}
+	vars, err := chassisTemplateVariables(chassis)
+	if err != nil {
+		return false, err
+	}
+	for key, value := range vars {
+		if strings.HasSuffix(key, "_vip") && value == vip {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func speakerTemplateBackends(lbName, vip string, port int32) (string, error) {
+	key, err := loadBalancerTemplateVIPKey(lbName, vip, port)
+	if err != nil || key == "" {
+		return "", err
+	}
+	vipVar := templateVIPVariableName(key, port)
+	backendVar := strings.TrimSuffix(vipVar, "_vip") + "_backends"
+	records, err := listChassisTemplateVars()
+	if err != nil {
+		return "", err
+	}
+	for _, record := range records {
+		if record.vars[vipVar] == vip {
+			return record.vars[backendVar], nil
+		}
+	}
+	return "", nil
+}
+
+func nodeTemplateBackends(nodeName string) (string, error) {
+	chassis, err := chassisNameForNode(nodeName)
+	if err != nil || chassis == "" {
+		return "", err
+	}
+	vars, err := chassisTemplateVariables(chassis)
+	if err != nil {
+		return "", err
+	}
+	var backends []string
+	for key, value := range vars {
+		if strings.HasSuffix(key, "_backends") && value != "" {
+			backends = append(backends, value)
+		}
+	}
+	return strings.Join(backends, ","), nil
+}
+
+func chassisNameForNode(nodeName string) (string, error) {
+	if nodeName == "" {
+		return "", nil
+	}
+	stdout, stderr, err := framework.SBExec(
+		"ovn-sbctl",
+		"--data=bare",
+		"--no-heading",
+		"--columns=name",
+		"find",
+		"Chassis",
+		"hostname="+nodeName,
+	)
+	if err != nil {
+		return "", fmt.Errorf("finding chassis for node %s: %w, stderr: %s", nodeName, err, stderr)
+	}
+	name := strings.TrimSpace(string(stdout))
+	if name != "" {
+		return strings.Fields(name)[0], nil
+	}
+	return nodeName, nil
+}
+
+type chassisTemplateRecord struct {
+	chassis string
+	vars    map[string]string
+}
+
+func listChassisTemplateVars() ([]chassisTemplateRecord, error) {
+	stdout, stderr, err := framework.NBExec(
+		"ovn-nbctl",
+		"--format=csv",
+		"--data=bare",
+		"--no-heading",
+		"--columns=chassis,variables",
+		"find",
+		"Chassis_Template_Var",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing chassis template variables: %w, stderr: %s", err, stderr)
+	}
+	reader := csv.NewReader(strings.NewReader(string(stdout)))
+	reader.LazyQuotes = true
+	reader.FieldsPerRecord = -1
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("parsing chassis template variables: %w", err)
+	}
+	out := make([]chassisTemplateRecord, 0, len(records))
+	for _, record := range records {
+		if len(record) < 2 {
+			continue
+		}
+		out = append(out, chassisTemplateRecord{chassis: record[0], vars: parseOVSMap(record[1])})
+	}
+	return out, nil
+}
+
+func chassisTemplateVariables(chassis string) (map[string]string, error) {
+	records, err := listChassisTemplateVars()
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		if record.chassis == chassis {
+			return record.vars, nil
+		}
+	}
+	return map[string]string{}, nil
+}
+
+func chassisHasVariableValue(key, value string) bool {
+	records, err := listChassisTemplateVars()
+	if err != nil {
+		return false
+	}
+	for _, record := range records {
+		if record.vars[key] == value {
+			return true
+		}
+	}
+	return false
+}
+
+func parseOVSMap(raw string) map[string]string {
+	result := make(map[string]string)
+	s := strings.TrimSpace(raw)
+	s = strings.Trim(s, "{}")
+	if s == "" {
+		return result
+	}
+	for _, token := range strings.Fields(s) {
+		key, value, ok := strings.Cut(token, "=")
+		if !ok || key == "" {
+			continue
+		}
+		result[key] = strings.Trim(value, `"`)
+	}
+	return result
 }
 
 func podIPv4(pod corev1.Pod) string {
@@ -1390,105 +1642,6 @@ func podIPv4(pod corev1.Pod) string {
 	}
 	framework.Failf("Pod %s/%s has no IPv4 address", pod.Namespace, pod.Name)
 	return ""
-}
-
-func waitLogicalFlowCount(expectedCount int, timeout time.Duration, description string, match func(logicalFlow) bool) {
-	ginkgo.GinkgoHelper()
-
-	matched := 0
-	err := func() error {
-		deadline := time.Now().Add(timeout)
-		for {
-			flows, err := listLogicalFlows()
-			if err == nil {
-				matched = 0
-				for _, flow := range flows {
-					if match(flow) {
-						matched++
-					}
-				}
-				if matched == expectedCount {
-					return nil
-				}
-			}
-			if time.Now().After(deadline) {
-				if err != nil {
-					return err
-				}
-				framework.Logf("timed out waiting for %s: matched %d flows, expected %d; related logical flows:\n%s",
-					description, matched, expectedCount, dumpUnderlayVIPRelatedLFlows(flows))
-				return fmt.Errorf("timed out waiting for %s", description)
-			}
-			time.Sleep(time.Second)
-		}
-	}()
-	framework.ExpectNoError(err)
-}
-
-// dumpUnderlayVIPRelatedLFlows prints the logical flows related to underlay VIP
-// load balancing (ingress LB table 13 with priority >= 130 and L2 lookup table 28
-// with priority 55) to ease diagnosis when a flow assertion times out.
-func dumpUnderlayVIPRelatedLFlows(flows []logicalFlow) string {
-	const maxDump = 100
-	var builder strings.Builder
-	count := 0
-	for _, flow := range flows {
-		related := (flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority >= 130) ||
-			(flow.pipeline == "ingress" && flow.tableID == 28 && flow.priority == 55)
-		if !related {
-			continue
-		}
-		if count++; count > maxDump {
-			fmt.Fprintf(&builder, "... and more\n")
-			break
-		}
-		fmt.Fprintf(&builder, "table=%d priority=%d match=%q actions=%q\n", flow.tableID, flow.priority, flow.match, flow.actions)
-	}
-	if count == 0 {
-		return "(none found)\n"
-	}
-	return builder.String()
-}
-
-func listLogicalFlows() ([]logicalFlow, error) {
-	output, err := exec.Command(
-		"kubectl", "ko", "sbctl",
-		"--format=csv",
-		"--data=bare",
-		"--no-heading",
-		"--columns=pipeline,table_id,priority,match,actions",
-		"find", "Logical_Flow",
-	).CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("listing OVN logical flows: %w, output: %s", err, output)
-	}
-
-	records, err := csv.NewReader(strings.NewReader(string(output))).ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("parsing OVN logical flows: %w", err)
-	}
-	flows := make([]logicalFlow, 0, len(records))
-	for _, record := range records {
-		if len(record) != 5 {
-			return nil, fmt.Errorf("unexpected logical flow record with %d columns: %q", len(record), record)
-		}
-		tableID, err := strconv.Atoi(record[1])
-		if err != nil {
-			return nil, fmt.Errorf("parsing logical flow table ID %q: %w", record[1], err)
-		}
-		priority, err := strconv.Atoi(record[2])
-		if err != nil {
-			return nil, fmt.Errorf("parsing logical flow priority %q: %w", record[2], err)
-		}
-		flows = append(flows, logicalFlow{
-			pipeline: record[0],
-			tableID:  tableID,
-			priority: priority,
-			match:    record[3],
-			actions:  record[4],
-		})
-	}
-	return flows, nil
 }
 
 func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6, targetIP, targetPort, clusterName string, expectReachable bool) {
@@ -1709,13 +1862,21 @@ func getVIPNode(containerID, targetIP, clusterName string) string {
 	return vipNode
 }
 
+func underlayServiceFlowMatch(serviceIP string, servicePort int32) (cookie string, matchPort string) {
+	cookieVal := util.UnderlaySvcLocalOpenFlowCookieV4
+	if util.CheckProtocol(serviceIP) == apiv1.ProtocolIPv6 {
+		cookieVal = util.UnderlaySvcLocalOpenFlowCookieV6
+	}
+	return fmt.Sprintf("cookie=%#x", cookieVal), fmt.Sprintf("tp_dst=%d", servicePort)
+}
+
 func waitUnderlayServiceFlow(nodeName, providerNetworkName, serviceIP string, servicePort int32, timeout time.Duration) bool {
 	ginkgo.GinkgoHelper()
 
 	bridgeName := util.ExternalBridgeName(providerNetworkName)
-	matchPort := fmt.Sprintf("tp_dst=%d", servicePort)
-	cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s",
-		nodeName, bridgeName, serviceIP, matchPort)
+	cookie, matchPort := underlayServiceFlowMatch(serviceIP, servicePort)
+	cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
+		nodeName, bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
 
 	var flowFound bool
 	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
@@ -1731,34 +1892,34 @@ func waitUnderlayServiceFlowOnAnyNode(nodeNames []string, providerNetworkName, s
 	ginkgo.GinkgoHelper()
 
 	bridgeName := util.ExternalBridgeName(providerNetworkName)
-	matchPort := fmt.Sprintf("tp_dst=%d", servicePort)
+	cookie, matchPort := underlayServiceFlowMatch(serviceIP, servicePort)
 
 	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
 		for _, nodeName := range nodeNames {
-			cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s",
-				nodeName, bridgeName, serviceIP, matchPort)
+			cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
+				nodeName, bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
 			if _, err := exec.Command("bash", "-c", cmd).CombinedOutput(); err == nil {
 				return true, nil
 			}
 		}
 		return false, nil
-	}, fmt.Sprintf("underlay service flow for %s should be installed on at least one node", serviceIP))
+	}, fmt.Sprintf("underlay service OpenFlow cookie=%s priority=%d for %s should be installed on at least one node", cookie, util.UnderlaySvcLocalOpenFlowPriority, serviceIP))
 }
 
 func waitUnderlayServiceFlowCleaned(nodeNames []string, providerNetworkName, serviceIP string, servicePort int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
 
 	bridgeName := util.ExternalBridgeName(providerNetworkName)
-	matchPort := fmt.Sprintf("tp_dst=%d", servicePort)
+	cookie, matchPort := underlayServiceFlowMatch(serviceIP, servicePort)
 
 	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
 		for _, nodeName := range nodeNames {
-			cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s",
-				nodeName, bridgeName, serviceIP, matchPort)
+			cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
+				nodeName, bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
 			if _, err := exec.Command("bash", "-c", cmd).CombinedOutput(); err == nil {
 				return false, nil // flow still exists on this node
 			}
 		}
 		return true, nil // flow cleaned from all nodes
-	}, fmt.Sprintf("underlay service flow for %s should be cleaned up", serviceIP))
+	}, fmt.Sprintf("underlay service OpenFlow cookie=%s for %s should be cleaned up", cookie, serviceIP))
 }
