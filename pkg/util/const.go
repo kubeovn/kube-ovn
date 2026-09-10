@@ -36,8 +36,12 @@ const (
 	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
-	VpcNatGatewayAnnotation                 = "ovn.kubernetes.io/vpc_nat_gw"
-	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
+	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
+	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
+	// VpcNatGatewayInitInstanceAnnotation records the container instance the init command
+	// completed on, so a replacement instance initializes again.
+	VpcNatGatewayInitInstanceAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init_instance"
+	// Deprecated: container restarts are detected from Pod status.
 	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
 	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
 	VpcEipsAnnotation                       = "ovn.kubernetes.io/vpc_eips"

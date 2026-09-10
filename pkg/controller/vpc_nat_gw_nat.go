@@ -490,27 +490,6 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		cachedFip.Status.V4ip != "" &&
 		cachedFip.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply fip '%s' in pod", key)
-		gwPods, err := c.getNatGwPods(cachedFip.Status.NatGwDp, c.natGwNamespaceByName(cachedFip.Status.NatGwDp), false)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		// If all Pods started before the redo timestamp, they have not restarted since
-		// the redo was marked — iptables rules are still intact, skip re-creation.
-		fipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedFip.Status.Redo, time.Local)
-		allPodsStartedBeforeRedo := true
-		for _, gwPod := range gwPods {
-			if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
-				return fmt.Errorf("fip %s: gateway pod %s/%s container not running, will retry redo", key, gwPod.Namespace, gwPod.Name)
-			}
-			if !gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
-				allPodsStartedBeforeRedo = false
-			}
-		}
-		if allPodsStartedBeforeRedo {
-			klog.V(3).Infof("fip %s: all pods started before redo mark, rules intact, skip", key)
-			return nil
-		}
 		if err = c.createFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIP); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
@@ -819,28 +798,6 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		cachedDnat.Status.V4ip != "" &&
 		cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply dnat in pod for %s", key)
-		gwPods, err := c.getNatGwPods(cachedDnat.Status.NatGwDp, c.natGwNamespaceByName(cachedDnat.Status.NatGwDp), false)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		// If all Pods started before the redo timestamp, they have not restarted since
-		// the redo was marked — iptables rules are still intact, skip re-creation.
-		dnatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedDnat.Status.Redo, time.Local)
-		allPodsStartedBeforeRedo := true
-		for _, gwPod := range gwPods {
-			if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
-				return fmt.Errorf("dnat %s: gateway pod %s/%s container not running, will retry redo", key, gwPod.Namespace, gwPod.Name)
-			}
-			if !gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: dnatRedo}) {
-				allPodsStartedBeforeRedo = false
-			}
-		}
-		if allPodsStartedBeforeRedo {
-			klog.V(3).Infof("dnat %s: all pods started before redo mark, rules intact, skip", key)
-			return nil
-		}
-
 		switch cachedDnat.Spec.Type {
 		case kubeovnv1.DnatRuleTypeShare:
 			// Share type: rebuild nft rule with all backends.
@@ -1126,27 +1083,6 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		cachedSnat.Status.Redo != "" &&
 		cachedSnat.Status.V4ip != "" &&
 		cachedSnat.DeletionTimestamp.IsZero() {
-		gwPods, err := c.getNatGwPods(cachedSnat.Status.NatGwDp, c.natGwNamespaceByName(cachedSnat.Status.NatGwDp), false)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		// If all Pods started before the redo timestamp, they have not restarted since
-		// the redo was marked — iptables rules are still intact, skip re-creation.
-		snatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedSnat.Status.Redo, time.Local)
-		allPodsStartedBeforeRedo := true
-		for _, gwPod := range gwPods {
-			if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
-				return fmt.Errorf("snat %s: gateway pod %s/%s container not running, will retry redo", key, gwPod.Namespace, gwPod.Name)
-			}
-			if !gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: snatRedo}) {
-				allPodsStartedBeforeRedo = false
-			}
-		}
-		if allPodsStartedBeforeRedo {
-			klog.V(3).Infof("snat %s: all pods started before redo mark, rules intact, skip", key)
-			return nil
-		}
 		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, cachedSnat.Status.InternalCIDR); err != nil {
 			klog.Errorf("failed to create new snat, %v", err)
 			return err

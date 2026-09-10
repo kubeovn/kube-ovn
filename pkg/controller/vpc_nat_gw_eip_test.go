@@ -101,4 +101,17 @@ func TestEnqueueAddIptablesEip(t *testing.T) {
 		&kubeovnv1.IptablesEIP{Name: "live-eip"},
 		&kubeovnv1.IptablesEIP{Name: "terminating-eip", DeletionTimestamp: &now},
 	)
+
+	// Informer relist uses AddFunc after a controller restart. Resume a QoS update
+	// that had not yet published its applied credential instead of taking the add
+	// handler's allocated-EIP fast path.
+	c.enqueueAddIptablesEip(&kubeovnv1.IptablesEIP{
+		Name: "pending-qos-eip",
+		Spec: kubeovnv1.IptablesEIPSpec{QoSPolicy: "new-qos"},
+		Status: kubeovnv1.IptablesEIPStatus{
+			Ready: true, IP: "192.0.2.10", QoSPolicy: "old-qos",
+		},
+	})
+	require.Equal(t, 1, c.addIptablesEipQueue.Len(), "allocated EIP must not re-enter add")
+	require.Equal(t, 2, c.updateIptablesEipQueue.Len(), "pending QoS credential must resume update")
 }

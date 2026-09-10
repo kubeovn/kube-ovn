@@ -571,19 +571,21 @@ func restartNatGwPods(f *framework.Framework, natgwName string) {
 		framework.ExpectNoError(podClient.Delete(pod.Name), "failed to delete natgw pod "+pod.Name)
 	}
 
-	// The old pods must be gone before waiting for readiness, otherwise the readiness check could
-	// observe the pod which is still terminating and return before the gateway is rebuilt.
-	ginkgo.By("Wait for the old natgw pods of " + natgwName + " to disappear")
+	// The old pods must be gone and their replacements must have completed initialization.
+	// Checking only for an initialized Pod with the gateway labels could still observe the
+	// terminating Pod, and returning then would let the caller assert against a gateway whose
+	// data plane has not been rebuilt.
+	ginkgo.By("Wait for the recreated natgw " + natgwName + " pod to be initialized")
 	gomega.Eventually(func(g gomega.Gomega) {
 		pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
 		g.Expect(err).NotTo(gomega.HaveOccurred())
+		g.Expect(pods.Items).NotTo(gomega.BeEmpty(), "no natgw pod exists after recreation")
 		for _, pod := range pods.Items {
 			g.Expect(oldUIDs).NotTo(gomega.HaveKey(pod.UID), "natgw pod %s is still terminating", pod.Name)
+			g.Expect(pod.Annotations[util.VpcNatGatewayInitAnnotation]).To(gomega.Equal("true"),
+				"natgw pod %s has not been initialized yet", pod.Name)
 		}
 	}, 2*time.Minute, 2*time.Second).Should(gomega.Succeed())
-
-	ginkgo.By("Wait for natgw " + natgwName + " pod to be ready after recreation")
-	f.VpcNatGatewayClient().WaitGwPodReady(natgwName, "", 2*time.Minute, f.ClientSet)
 }
 
 // tcRateMatcher builds a matcher for the rate of a tc class as printed by tc, which uses either
@@ -621,6 +623,23 @@ func expectTcClassOnNatGwDev(f *framework.Framework, natgwName, dev string, rate
 		"expected the tc class limited to %gMbps on %s of natgw %s to exist: %v", rateMbps, dev, natgwName, expectExists)
 }
 
+func expectTcFilterMatchCountOnNatGwDev(
+	f *framework.Framework,
+	natgwName, dev, ip, direction string,
+	count int,
+) {
+	ginkgo.GinkgoHelper()
+
+	cmd := fmt.Sprintf("tc -p filter show dev %s parent 1: | grep -ci 'match IP %s %s/32' || true", dev, direction, ip)
+	gomega.Eventually(func(g gomega.Gomega) {
+		podName := getNatGwPodName(f, natgwName, "")
+		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, podName, cmd)
+		g.Expect(err).NotTo(gomega.HaveOccurred(), errOutput)
+		g.Expect(strings.TrimSpace(stdOutput)).To(gomega.Equal(strconv.Itoa(count)))
+	}, 60*time.Second, 3*time.Second).Should(gomega.Succeed(),
+		"expected %d tc filter match(es) for %s %s/32 on %s of natgw %s", count, direction, ip, dev, natgwName)
+}
+
 // expectTcRateOnNatGw asserts that the HTB classes on the NAT gateway carry the expected rates in
 // both directions (egress on net1, ingress on ifb-net1).
 func expectTcRateOnNatGw(f *framework.Framework, natgwName string, ratesMbps ...float64) {
@@ -631,6 +650,27 @@ func expectTcRateOnNatGw(f *framework.Framework, natgwName string, ratesMbps ...
 			expectTcClassOnNatGwDev(f, natgwName, dev, rate, true)
 		}
 	}
+}
+
+// expectSharedQoSInfrastructure asserts that the state shared by every EIP QoS
+// rule on the external interface survives: the HTB root, the default class
+// 1:9999 that carries unclassified traffic, and the ingress redirect to the IFB
+// device.
+func expectSharedQoSInfrastructure(f *framework.Framework, natgwName string) {
+	ginkgo.GinkgoHelper()
+
+	podName := getNatGwPodName(f, natgwName, "")
+	for _, dev := range []string{"net1", "ifb-net1"} {
+		stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, podName,
+			fmt.Sprintf("tc qdisc show dev %s; tc class show dev %s classid 1:9999", dev, dev))
+		framework.ExpectNoError(err, errOutput)
+		gomega.Expect(stdOutput).To(gomega.And(gomega.ContainSubstring("htb 1:"), gomega.ContainSubstring("class htb 1:9999")),
+			"shared QoS infrastructure is missing on %s", dev)
+	}
+	stdOutput, errOutput, err := framework.ExecShellInPod(context.Background(), f, framework.KubeOvnNamespace, podName,
+		"tc filter show dev net1 parent ffff:")
+	framework.ExpectNoError(err, errOutput)
+	gomega.Expect(stdOutput).To(gomega.ContainSubstring("mirred"), "shared ingress redirect is missing on net1")
 }
 
 // natGwQoSCasesLegacy validates QoS on versions whose nat-gateway image still uses tc police
@@ -1599,6 +1639,57 @@ var _ = framework.OrderedDescribe("[group:qos-policy]", func() {
 		ginkgo.By("Expecting qos policy " + qosName + " to be cleaned up after being unbound")
 		gomega.Expect(qosPolicyClient.WaitToDisappear(qosName, 2*time.Second, 2*time.Minute)).To(gomega.Succeed(),
 			"qos policy should drop its finalizer once it is unbound from the natgw")
+	})
+
+	framework.ConformanceIt("qos add and qos del are idempotent", func() {
+		f.SkipVersionPriorTo(1, 17, "idempotent QoS script commands require the v1.17 NAT gateway script")
+		setupQosNatGwEnvironment(f, dockerExtNetNetwork, vpcQosParams, net1NicName, "")
+
+		podName := getNatGwPodName(f, vpcQosParams.qosNatGwName, "")
+
+		// An EIP without a QoS policy provides a real external IP for the tc
+		// filters while keeping the controller out of this test's data path.
+		eipName := "qos-idempotent-eip-" + framework.RandomSuffix()
+		eipClient := f.IptablesEIPClient()
+		eip := framework.MakeIptablesEIP(eipName, "", "", "", vpcQosParams.qosNatGwName, vpcQosParams.attachDefName, "")
+		_ = eipClient.CreateSync(eip)
+		eip = waitForIptablesEIPReady(eipClient, eipName, 60*time.Second)
+		ginkgo.DeferCleanup(func() { eipClient.DeleteSync(eipName) })
+
+		execQoSCmd := func(args ...string) {
+			ginkgo.GinkgoHelper()
+			_, errOutput, err := framework.ExecCommandInContainer(f, framework.KubeOvnNamespace, podName, "vpc-nat-gw",
+				append([]string{"bash", "/kube-ovn/nat-gateway.sh"}, args...)...)
+			framework.ExpectNoError(err, errOutput)
+		}
+
+		// Add egress and ingress rules twice each: the second run must not create
+		// duplicate classes/filters or fail because the first one already exists.
+		for range 2 {
+			execQoSCmd("eip-egress-qos-add", eip.Status.IP+",1,2.5,0.3")
+			expectTcClassOnNatGwDev(f, vpcQosParams.qosNatGwName, "net1", 2.5, true)
+			expectTcFilterMatchCountOnNatGwDev(f, vpcQosParams.qosNatGwName, "net1", eip.Status.IP, "src", 1)
+		}
+		for range 2 {
+			execQoSCmd("eip-ingress-qos-add", eip.Status.IP+",1,2.5,0.3")
+			expectTcClassOnNatGwDev(f, vpcQosParams.qosNatGwName, "ifb-net1", 2.5, true)
+			expectTcFilterMatchCountOnNatGwDev(f, vpcQosParams.qosNatGwName, "ifb-net1", eip.Status.IP, "dst", 1)
+		}
+
+		// Delete egress and ingress rules twice each: the second run is a no-op
+		// and must leave shared infrastructure intact.
+		for range 2 {
+			execQoSCmd("eip-egress-qos-del", eip.Status.IP)
+			expectTcClassOnNatGwDev(f, vpcQosParams.qosNatGwName, "net1", 2.5, false)
+			expectTcFilterMatchCountOnNatGwDev(f, vpcQosParams.qosNatGwName, "net1", eip.Status.IP, "src", 0)
+		}
+		for range 2 {
+			execQoSCmd("eip-ingress-qos-del", eip.Status.IP)
+			expectTcClassOnNatGwDev(f, vpcQosParams.qosNatGwName, "ifb-net1", 2.5, false)
+			expectTcFilterMatchCountOnNatGwDev(f, vpcQosParams.qosNatGwName, "ifb-net1", eip.Status.IP, "dst", 0)
+		}
+
+		expectSharedQoSInfrastructure(f, vpcQosParams.qosNatGwName)
 	})
 
 	framework.ConformanceIt("natgw qos", func() {

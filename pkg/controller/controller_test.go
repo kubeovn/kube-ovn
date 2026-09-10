@@ -386,6 +386,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		deploymentsLister:             deploymentInformer.Lister(),
 		configMapsLister:              configMapInformer.Lister(),
 		vpcNatGwKeyMutex:              keymutex.NewHashed(0),
+		qosNatGwKeyMutex:              keymutex.NewHashed(1),
 		OVNNbClient:                   mockOvnClient,
 		OVNSbClient:                   mockOvnSbClient,
 		ipam:                          ovnipam.NewIPAM(),
@@ -398,6 +399,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		updateSubnetStatusQueue:       newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcNatGateway", nil),
 		initVpcNatGatewayQueue:        newTypedRateLimitingQueue[string]("InitVpcNatGateway", nil),
+		updateIptablesEipQueue:        newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
 	}
 
 	ctrl.config = &Configuration{
