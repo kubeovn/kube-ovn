@@ -324,6 +324,7 @@ func TestEnsureServiceScopedLBExternalTrafficDoesNotDistribute(t *testing.T) {
 		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc, ctrl.config.ClusterRouter, serviceLBExternalTraffic))).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerAffinityTimeout(lbName, util.DefaultServiceSessionStickinessTimeout).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerTemplate(lbName, false).Return(nil),
 	)
 	if _, err := ctrl.ensureServiceScopedLBForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, ""); err != nil {
 		t.Fatal(err)
@@ -357,6 +358,7 @@ func TestEnsureServiceScopedLBExternalTraffic(t *testing.T) {
 		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc, ctrl.config.ClusterRouter, serviceLBExternalTraffic))).Return(nil),
 		fake.mockOvnClient.EXPECT().DeleteLoadBalancerAffinityTimeout(lbName).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerTemplate(lbName, false).Return(nil),
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-a", ovsdb.MutateOperationInsert, lbName).Return(nil),
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-b", ovsdb.MutateOperationInsert, lbName).Return(nil),
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("disabled", ovsdb.MutateOperationDelete, lbName).Return(nil),
@@ -676,6 +678,41 @@ func TestDeleteServiceScopedLoadBalancers(t *testing.T) {
 	}
 }
 
+func TestDeleteServiceScopedLoadBalancersExternalLocalTemplate(t *testing.T) {
+	fake := newFakeController(t)
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-delete-eloc"),
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
+		},
+	}
+	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
+	fake.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return(nil, nil)
+	fake.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{}, nil)
+	if err := fake.fakeController.deleteServiceScopedLoadBalancers(svc); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCleanupServiceExternalLocalTemplateState(t *testing.T) {
+	fake := newFakeController(t)
+	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-clean-eloc")}
+	prefix := serviceExternalLocalTemplatePrefix(svc)
+	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+	staleVIP := "^" + prefix + "tcp_vip:80"
+	fake.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{
+		Name:        lbName,
+		ExternalIDs: map[string]string{serviceLBOwnerExternalID: string(svc.UID)},
+		Vips:        map[string]string{staleVIP: "^backends", "172.19.0.100:80": "10.0.0.2:8080"},
+	}}, nil)
+	fake.mockOvnClient.EXPECT().LoadBalancerDeleteVip(lbName, staleVIP, true).Return(nil)
+	fake.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{}, nil)
+	if err := fake.fakeController.cleanupServiceExternalLocalTemplateState(svc); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDeleteServiceScopedLBTrafficClass(t *testing.T) {
 	fake := newFakeController(t)
 	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-delete-class")}
@@ -934,5 +971,120 @@ func TestServiceScopedInternalLBFamilies(t *testing.T) {
 			t.Fatalf("template dual-stack families = %v, unexpected %q", got, family)
 		}
 		delete(want, family)
+	}
+}
+
+func TestServiceUsesExternalLocalTemplate(t *testing.T) {
+	svc := &corev1.Service{Spec: corev1.ServiceSpec{
+		Type:                  corev1.ServiceTypeLoadBalancer,
+		ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
+	}}
+	if !serviceUsesExternalLocalTemplate(svc) {
+		t.Fatal("LoadBalancer ETP Local must use external local templates")
+	}
+	svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
+	if serviceUsesExternalLocalTemplate(svc) {
+		t.Fatal("LoadBalancer ETP Cluster must not use external local templates")
+	}
+	svc.Spec.Type = corev1.ServiceTypeClusterIP
+	svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+	if serviceUsesExternalLocalTemplate(svc) {
+		t.Fatal("ClusterIP must not use external local templates")
+	}
+}
+
+func TestEnsureServiceScopedLBExternalETPLocalEnablesTemplate(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-eloc-ensure"),
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
+		},
+	}
+	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+	gomock.InOrder(
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc, ctrl.config.ClusterRouter, serviceLBExternalTraffic))).Return(nil),
+		fake.mockOvnClient.EXPECT().DeleteLoadBalancerAffinityTimeout(lbName).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerTemplate(lbName, true).Return(nil),
+	)
+	if _, err := ctrl.ensureServiceScopedLBForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReconcileServiceExternalLocalTemplate(t *testing.T) {
+	fake := newFakeController(t)
+	nodeA := "node-a"
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-eloc-reconcile"),
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
+			Ports:                 []corev1.ServicePort{{Name: "http", Protocol: corev1.ProtocolTCP, Port: 80}},
+		},
+		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "172.19.0.100"}}}},
+	}
+	endpointSlices := []*discoveryv1.EndpointSlice{{
+		Ports: []discoveryv1.EndpointPort{{Name: new("http"), Port: new(int32(8080))}},
+		Endpoints: []discoveryv1.Endpoint{
+			{Addresses: []string{"10.0.0.2"}, NodeName: &nodeA},
+			{Addresses: []string{"10.0.0.3"}, NodeName: new("node-b")},
+		},
+	}}
+	vpc := &kubeovnv1.Vpc{Status: kubeovnv1.VpcStatus{
+		TCPLoadBalancer:        "tcp",
+		TCPSessionLoadBalancer: "tcp-session",
+	}}
+	chassises := []ovnsb.Chassis{
+		{Name: "chassis-a", Hostname: "node-a"},
+		{Name: "chassis-x", Hostname: "node-x"},
+	}
+	prefix := serviceExternalLocalTemplatePrefix(svc)
+	base := prefix + "tcp_" + util.Sha256Hash([]byte("172.19.0.100:80"))[:8]
+	vipVariable, backendVariable := base+"_vip", base+"_backends"
+	templateVIP := "^" + vipVariable + ":80"
+	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+	staleVIP := "^" + prefix + "stale_vip:81"
+
+	fake.mockOvnSbClient.EXPECT().ListChassis().Return(&chassises, nil)
+	fake.mockOvnClient.EXPECT().LoadBalancerMigrateVIP(
+		lbName,
+		templateVIP,
+		[]string{"^" + backendVariable},
+		"172.19.0.100:80",
+		lbName,
+	).Return(nil)
+	fake.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{
+		Name:        lbName,
+		ExternalIDs: map[string]string{serviceLBOwnerExternalID: string(svc.UID)},
+		Vips: map[string]string{
+			templateVIP: "^" + backendVariable,
+			staleVIP:    "^old_backends",
+		},
+	}}, nil)
+	fake.mockOvnClient.EXPECT().LoadBalancerDeleteVip(lbName, staleVIP, true).Return(nil)
+	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-a", prefix, gomock.Eq(map[string]string{
+		vipVariable:     "172.19.0.100",
+		backendVariable: "10.0.0.2:8080",
+	})).Return(nil)
+	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-x", prefix, gomock.Eq(map[string]string{})).Return(nil)
+
+	if err := fake.fakeController.reconcileServiceExternalLocalTemplate(&endpointSliceReconcileContext{
+		service:        svc,
+		endpointSlices: endpointSlices,
+		vpc:            vpc,
+		profile: endpointSliceServiceProfile{
+			lbVips:               []string{"172.19.0.100"},
+			trafficClasses:       map[string]serviceLBTrafficClass{"172.19.0.100": serviceLBExternalTraffic},
+			externalVIPNode:      "node-a",
+			serviceL2StatusReady: true,
+		},
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -277,16 +277,21 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.SetLoadBalancerDistributed(name, distributed); err != nil {
 		return "", fmt.Errorf("set distributed mode on service-scoped load balancer %s: %w", name, err)
 	}
-	if serviceUsesTemplateLB(svc) && trafficClass == serviceLBInternalTraffic {
+	switch {
+	case serviceUsesTemplateLB(svc) && trafficClass == serviceLBInternalTraffic:
 		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, true); err != nil {
 			return "", fmt.Errorf("set template mode on service-scoped load balancer %s: %w", name, err)
 		}
 		if err := c.OVNNbClient.SetLoadBalancerAddressFamily(name, family); err != nil {
 			return "", fmt.Errorf("set address family on service-scoped load balancer %s: %w", name, err)
 		}
-	} else if distributed {
+	case serviceUsesExternalLocalTemplate(svc) && trafficClass == serviceLBExternalTraffic:
+		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, true); err != nil {
+			return "", fmt.Errorf("set template mode on external local service-scoped load balancer %s: %w", name, err)
+		}
+	case distributed || trafficClass == serviceLBExternalTraffic:
 		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, false); err != nil {
-			return "", fmt.Errorf("clear template mode on distributed service-scoped load balancer %s: %w", name, err)
+			return "", fmt.Errorf("clear template mode on service-scoped load balancer %s: %w", name, err)
 		}
 	}
 	return name, nil
@@ -296,11 +301,6 @@ func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, proto
 	lb, err := c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBExternalTraffic, "")
 	if err != nil {
 		return "", err
-	}
-	if serviceUsesTrafficDistribution(svc) {
-		if err := c.OVNNbClient.SetLoadBalancerTemplate(lb, false); err != nil {
-			return "", fmt.Errorf("disable template mode on external service-scoped load balancer %s: %w", lb, err)
-		}
 	}
 	return lb, nil
 }
@@ -476,6 +476,11 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 	}
 	if serviceUsesTrafficDistribution(svc) {
 		if err := c.cleanupServiceTrafficDistributionState(svc); err != nil {
+			return err
+		}
+	}
+	if serviceUsesExternalLocalTemplate(svc) {
+		if err := c.cleanupServiceExternalLocalTemplateState(svc); err != nil {
 			return err
 		}
 	}
@@ -655,6 +660,9 @@ func (c *Controller) gcServiceTrafficDistributionVariables(services []*v1.Servic
 	for _, svc := range services {
 		if serviceUsesTemplateLB(svc) {
 			activePrefixes[serviceTrafficDistributionVariablePrefix(svc)] = struct{}{}
+		}
+		if serviceUsesExternalLocalTemplate(svc) {
+			activePrefixes[serviceExternalLocalTemplatePrefix(svc)] = struct{}{}
 		}
 	}
 	if err := c.OVNNbClient.DeleteChassisTemplateVariables(func(name string) bool {
