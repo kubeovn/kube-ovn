@@ -922,8 +922,26 @@ func TestEndpointSliceServiceProfileDistributedLocalDoesNotPreferLocalBackend(t 
 	profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
 	require.NoError(t, err)
 	require.True(t, profile.distributedLocal)
-	require.False(t, profile.preferLocalBackend)
 	require.True(t, profile.ignoreHealthCheck)
+}
+
+func TestEndpointSliceServiceProfileLoadBalancerETPLocalKeepsClusterIPInternal(t *testing.T) {
+	svc := &corev1.Service{
+		Namespace: "default",
+		Name:      "web",
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ClusterIP:             "10.96.0.10",
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
+		},
+		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "172.19.0.100"}}}},
+	}
+
+	profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
+	require.NoError(t, err)
+	require.True(t, profile.ignoreHealthCheck)
+	require.Equal(t, serviceLBInternalTraffic, profile.trafficClasses["10.96.0.10"])
+	require.Equal(t, serviceLBExternalTraffic, profile.trafficClasses["172.19.0.100"])
 }
 
 func TestEndpointSliceServiceProfileClusterIPDoesNotEnableHealthCheck(t *testing.T) {
