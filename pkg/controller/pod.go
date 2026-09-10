@@ -893,13 +893,31 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	return pod, nil
 }
 
-func policyRouteSrcMatches(podIP, nextHop string) []string {
-	var matches []string
+type policyRouteMatch struct {
+	match     string
+	nextHopIP string
+}
+
+func policyRouteSrcMatches(podIP, nextHop string) []policyRouteMatch {
+	var matches []policyRouteMatch
+	nextHopV4, nextHopV6 := util.SplitStringIP(nextHop)
+	nextHopV4, _, _ = strings.Cut(nextHopV4, "/")
+	nextHopV6, _, _ = strings.Cut(nextHopV6, "/")
 	for podAddr := range strings.SplitSeq(podIP, ",") {
-		if util.CheckProtocol(podAddr) != util.CheckProtocol(nextHop) {
+		var hop string
+		switch util.CheckProtocol(podAddr) {
+		case kubeovnv1.ProtocolIPv4:
+			hop = nextHopV4
+		case kubeovnv1.ProtocolIPv6:
+			hop = nextHopV6
+		}
+		if hop == "" {
 			continue
 		}
-		matches = append(matches, fmt.Sprintf("%s.src == %s", getIPSuffix(util.CheckProtocol(podAddr)), podAddr))
+		matches = append(matches, policyRouteMatch{
+			match:     fmt.Sprintf("%s.src == %s", getIPSuffix(util.CheckProtocol(podAddr)), podAddr),
+			nextHopIP: hop,
+		})
 	}
 	return matches
 }
@@ -1022,13 +1040,9 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 						return errors.New("no available gateway address")
 					}
 				}
-				if strings.Contains(nextHop, "/") {
-					nextHop = strings.Split(nextHop, "/")[0]
-				}
-
 				legacyMatch := "ip4.src == " + podIP
 				matches := policyRouteSrcMatches(podIP, nextHop)
-				if !slices.Contains(matches, legacyMatch) {
+				if !slices.ContainsFunc(matches, func(m policyRouteMatch) bool { return m.match == legacyMatch }) {
 					if err := c.deletePolicyRouteFromVpc(subnet.Spec.Vpc, util.NorthGatewayRoutePolicyPriority, legacyMatch); err != nil {
 						klog.Errorf("failed to delete stale policy route, %v", err)
 						return err
@@ -1040,9 +1054,9 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 						subnet.Spec.Vpc,
 						&kubeovnv1.PolicyRoute{
 							Priority:  util.NorthGatewayRoutePolicyPriority,
-							Match:     match,
+							Match:     match.match,
 							Action:    kubeovnv1.PolicyRouteActionReroute,
-							NextHopIP: nextHop,
+							NextHopIP: match.nextHopIP,
 						},
 						map[string]string{
 							"vendor": util.CniTypeName,
@@ -1095,22 +1109,14 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" && pod.Annotations[util.IPAddressAnnotation] != "" {
-					for podAddr := range strings.SplitSeq(pod.Annotations[util.IPAddressAnnotation], ",") {
-						if util.CheckProtocol(podAddr) != util.CheckProtocol(pod.Annotations[util.NorthGatewayAnnotation]) {
-							continue
-						}
-						ipSuffix := "ip4"
-						if util.CheckProtocol(podAddr) == kubeovnv1.ProtocolIPv6 {
-							ipSuffix = "ip6"
-						}
-
+					for _, match := range policyRouteSrcMatches(pod.Annotations[util.IPAddressAnnotation], pod.Annotations[util.NorthGatewayAnnotation]) {
 						if err := c.addPolicyRouteToVpc(
 							subnet.Spec.Vpc,
 							&kubeovnv1.PolicyRoute{
 								Priority:  util.NorthGatewayRoutePolicyPriority,
-								Match:     fmt.Sprintf("%s.src == %s", ipSuffix, podAddr),
+								Match:     match.match,
 								Action:    kubeovnv1.PolicyRouteActionReroute,
-								NextHopIP: pod.Annotations[util.NorthGatewayAnnotation],
+								NextHopIP: match.nextHopIP,
 							},
 							map[string]string{
 								"vendor": util.CniTypeName,
