@@ -10,6 +10,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsv1listers "k8s.io/client-go/listers/apps/v1"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -165,10 +167,10 @@ func TestHandleAddOrUpdateVpcNatGwUpdatesStatefulSetLanIP(t *testing.T) {
 	// The existing StatefulSet still carries the template generated while the LAN IP
 	// was allocated dynamically, i.e. without an IP address annotation.
 	sts := &appsv1.StatefulSet{
-		Name: stsName, Namespace: namespace, UID: "sts-uid", Labels: gwLabels,
+		Name: stsName, Namespace: namespace, UID: "sts-uid",
+		Labels:      map[string]string{"example.com/managed-by": "gitops"},
 		Annotations: map[string]string{"example.com/managed-by": "gitops"},
 		OwnerReferences: []metav1.OwnerReference{
-			controllerOwnerReference(kubeovnv1.SchemeGroupVersion.String(), util.KindVpcNatGateway, gwName, gw.UID),
 			{APIVersion: "example.com/v1", Kind: "Other", Name: "other", UID: "other-uid"},
 		},
 		Spec: appsv1.StatefulSetSpec{
@@ -198,6 +200,10 @@ func TestHandleAddOrUpdateVpcNatGwUpdatesStatefulSetLanIP(t *testing.T) {
 	})
 	require.NoError(t, err)
 	controller := fakeController.fakeController
+	// The missing controller label removes the StatefulSet from the filtered production
+	// informer. Mirror that state here while keeping the owner-less object available through
+	// the API, so one reconcile must restore both watch and ownership metadata.
+	controller.statefulSetsLister = appsv1listers.NewStatefulSetLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil))
 
 	vpcNatEnabled = "true"
 	t.Cleanup(func() { vpcNatEnabled = "unknown" })
@@ -209,6 +215,9 @@ func TestHandleAddOrUpdateVpcNatGwUpdatesStatefulSetLanIP(t *testing.T) {
 	require.Equal(t, lanIP, updated.Spec.Template.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider)],
 		"persisted spec.lanIp must be propagated to the existing StatefulSet template")
 	require.Len(t, updated.OwnerReferences, 2, "unrelated owner references must survive the update")
+	require.Equal(t, gw.UID, metav1.GetControllerOf(updated).UID, "controller owner must be restored")
+	require.Equal(t, "true", updated.Labels[util.VpcNatGatewayLabel], "controller label must be restored")
+	require.Equal(t, "gitops", updated.Labels["example.com/managed-by"], "third-party labels must survive the update")
 	require.Equal(t, "gitops", updated.Annotations["example.com/managed-by"], "third-party metadata must survive the update")
 }
 

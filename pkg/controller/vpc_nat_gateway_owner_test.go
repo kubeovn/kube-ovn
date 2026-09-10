@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
+	appsv1listers "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -83,15 +84,54 @@ func TestVpcNatGatewayOwnerFromStatefulSetPod(t *testing.T) {
 	fakeController.fakeController.enqueueVpcNatGatewayForWorkload(cache.DeletedFinalStateUnknown{Obj: sts})
 	require.Equal(t, 1, fakeController.fakeController.addOrUpdateVpcNatGatewayQueue.Len())
 
-	oldRegularPod := &corev1.Pod{Name: "regular", Namespace: namespace}
-	newRegularPod := oldRegularPod.DeepCopy()
-	newRegularPod.Annotations = map[string]string{"changed": "true"}
-	fakeController.fakeController.enqueueUpdateVpcNatGatewayForWorkload(oldRegularPod, newRegularPod)
+	// An update with an unchanged owner is deduplicated. If the owner is removed, the old
+	// owner still has to reconcile so it can restore the controller reference.
+	updatedSts := sts.DeepCopy()
+	updatedSts.Annotations = map[string]string{"changed": "true"}
+	fakeController.fakeController.enqueueUpdateVpcNatGatewayForWorkload(sts, updatedSts)
+	require.Equal(t, 1, fakeController.fakeController.addOrUpdateVpcNatGatewayQueue.Len())
+	item, _ := fakeController.fakeController.addOrUpdateVpcNatGatewayQueue.Get()
+	fakeController.fakeController.addOrUpdateVpcNatGatewayQueue.Done(item)
+	fakeController.fakeController.addOrUpdateVpcNatGatewayQueue.Forget(item)
+	orphanedSts := updatedSts.DeepCopy()
+	orphanedSts.OwnerReferences = nil
+	fakeController.fakeController.enqueueUpdateVpcNatGatewayForWorkload(updatedSts, orphanedSts)
 	require.Equal(t, 1, fakeController.fakeController.addOrUpdateVpcNatGatewayQueue.Len())
 
 	pod.OwnerReferences[0].UID = "stale-sts-uid"
 	_, err = fakeController.fakeController.vpcNatGatewayStatefulSetOwner(pod)
 	require.ErrorContains(t, err, "does not match")
+}
+
+func TestNatGwWorkloadLabelsChanged(t *testing.T) {
+	desired := util.GenNatGwLabels("gw")
+	require.True(t, natGwWorkloadLabelsChanged(nil, desired))
+	require.True(t, natGwWorkloadLabelsChanged(map[string]string{"app": desired["app"]}, desired))
+	require.False(t, natGwWorkloadLabelsChanged(map[string]string{
+		"app":                         desired["app"],
+		util.VpcNatGatewayLabel:       "true",
+		"example.com/third-party-key": "value",
+	}, desired))
+}
+
+func TestEnqueueUpdateDeploymentNotifiesRemovedNatGatewayOwner(t *testing.T) {
+	const gwName = "ha-gw"
+	gw := &kubeovnv1.VpcNatGateway{Name: gwName, UID: "gw-uid"}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
+	})
+	require.NoError(t, err)
+	controller := fakeController.fakeController
+
+	oldDeploy := &appsv1.Deployment{
+		Name:            util.GenNatGwName(gwName),
+		Labels:          util.GenNatGwLabels(gwName),
+		OwnerReferences: []metav1.OwnerReference{controllerOwnerReference(kubeovnv1.SchemeGroupVersion.String(), util.KindVpcNatGateway, gwName, gw.UID)},
+	}
+	newDeploy := oldDeploy.DeepCopy()
+	newDeploy.OwnerReferences = nil
+	controller.enqueueUpdateDeployment(oldDeploy, newDeploy)
+	require.Equal(t, 1, controller.addOrUpdateVpcNatGatewayQueue.Len())
 }
 
 func TestGetNatGwObservedLanIPsForHAPods(t *testing.T) {
@@ -138,7 +178,7 @@ func TestGetNatGwObservedLanIPsForHAPods(t *testing.T) {
 	require.Equal(t, []string{"10.20.0.10", "fd00::10"}, lanIPs)
 }
 
-func TestGetNatGwObservedLanIPsRetriesOnOwnerCacheMiss(t *testing.T) {
+func TestGetNatGwObservedLanIPsResolvesOwnerOutsideFilteredCache(t *testing.T) {
 	const (
 		gwName    = "cache-miss-gw"
 		namespace = "default"
@@ -149,8 +189,12 @@ func TestGetNatGwObservedLanIPsRetriesOnOwnerCacheMiss(t *testing.T) {
 		Name: gwName, UID: "gw-uid",
 		Spec: kubeovnv1.VpcNatGatewaySpec{Namespace: namespace, Subnet: subnet, Replicas: 1},
 	}
-	// The StatefulSet is deliberately absent from the informer cache: the Pod is running
-	// and holds an address, but its owner cannot be resolved yet.
+	sts := &appsv1.StatefulSet{
+		Name: stsName, Namespace: namespace, UID: "sts-uid",
+		OwnerReferences: []metav1.OwnerReference{controllerOwnerReference(
+			kubeovnv1.SchemeGroupVersion.String(), util.KindVpcNatGateway, gwName, gw.UID,
+		)},
+	}
 	pod := &corev1.Pod{
 		Name: stsName + "-0", Namespace: namespace, Labels: util.GenNatGwLabels(gwName),
 		Annotations:     map[string]string{util.IPAddressAnnotation: "10.20.0.10"},
@@ -164,14 +208,25 @@ func TestGetNatGwObservedLanIPsRetriesOnOwnerCacheMiss(t *testing.T) {
 			Name: subnet,
 			Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Protocol: kubeovnv1.ProtocolIPv4},
 		}},
-		Pods: []*corev1.Pod{pod},
+		StatefulSets: []*appsv1.StatefulSet{sts},
+		Pods:         []*corev1.Pod{pod},
 	})
 	require.NoError(t, err)
 	controller := fakeController.fakeController
 
+	// Simulate removal of the workload's watch label: the StatefulSet still exists in the API,
+	// but has left the filtered informer cache. Ownership must be resolved by a live fallback.
+	controller.statefulSetsLister = appsv1listers.NewStatefulSetLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil))
+	lanIPs, err := controller.getNatGwObservedLanIPs(gw, []*corev1.Pod{pod})
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.20.0.10"}, lanIPs)
+
+	// If the StatefulSet is absent from both cache and API, retry instead of accepting the Pod.
+	require.NoError(t, controller.config.KubeClient.AppsV1().StatefulSets(namespace).Delete(
+		context.Background(), stsName, metav1.DeleteOptions{},
+	))
 	_, err = controller.getNatGwObservedLanIPs(gw, []*corev1.Pod{pod})
-	require.ErrorContains(t, err, "failed to resolve owner of nat gateway pod", "a cache miss must be retried, not silently skipped")
-	require.ErrorContains(t, patchNatGwStatusFromAPI(t, controller, gwName), "failed to resolve owner of nat gateway pod")
+	require.ErrorContains(t, err, "failed to resolve owner of nat gateway pod")
 
 	// A Pod owned by something else is not transient and must not block the gateway.
 	foreignPod := pod.DeepCopy()
@@ -185,7 +240,7 @@ func TestGetNatGwObservedLanIPsRetriesOnOwnerCacheMiss(t *testing.T) {
 		Pods: []*corev1.Pod{foreignPod},
 	})
 	require.NoError(t, err)
-	lanIPs, err := foreignController.fakeController.getNatGwObservedLanIPs(gw, []*corev1.Pod{foreignPod})
+	lanIPs, err = foreignController.fakeController.getNatGwObservedLanIPs(gw, []*corev1.Pod{foreignPod})
 	require.NoError(t, err)
 	require.Empty(t, lanIPs)
 }
@@ -325,8 +380,9 @@ func TestSelectNatGwLanIP(t *testing.T) {
 func TestVpcNatGatewayControllerReferencePatch(t *testing.T) {
 	gw := &kubeovnv1.VpcNatGateway{Name: "gw", UID: "gw-uid"}
 	legacy := &appsv1.StatefulSet{
-		Name:      "gw-sts",
-		Namespace: "default",
+		Name:            "gw-sts",
+		Namespace:       "default",
+		ResourceVersion: "42",
 		OwnerReferences: []metav1.OwnerReference{
 			{APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: util.KindVpcNatGateway, Name: gw.Name, UID: gw.UID},
 			{APIVersion: appsv1.SchemeGroupVersion.String(), Kind: util.KindDeployment, Name: "other", UID: "other-uid"},
@@ -341,6 +397,7 @@ func TestVpcNatGatewayControllerReferencePatch(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, needed)
 	require.Contains(t, string(patch), `"controller":true`)
+	require.Contains(t, string(patch), `"resourceVersion":"42"`)
 
 	client := k8sfake.NewSimpleClientset(legacy)
 	_, err = client.AppsV1().StatefulSets(legacy.Namespace).Patch(
@@ -353,6 +410,10 @@ func TestVpcNatGatewayControllerReferencePatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, gw.UID, metav1.GetControllerOf(migrated).UID)
 	require.Len(t, migrated.OwnerReferences, 2)
+	patch, needed, err = vpcNatGatewayControllerReferencePatch(migrated, desired, gw)
+	require.NoError(t, err)
+	require.False(t, needed, "an unrelated owner reference must not cause repeated migration patches")
+	require.Empty(t, patch)
 
 	other := legacy.DeepCopy()
 	other.OwnerReferences = []metav1.OwnerReference{

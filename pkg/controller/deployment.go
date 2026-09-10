@@ -32,6 +32,7 @@ func (c *Controller) enqueueDeploymentEvent(obj any) {
 	}
 }
 
-func (c *Controller) enqueueUpdateDeployment(_, newObj any) {
+func (c *Controller) enqueueUpdateDeployment(oldObj, newObj any) {
+	c.enqueueDeploymentEvent(oldObj)
 	c.enqueueDeploymentEvent(newObj)
 }
