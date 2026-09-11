@@ -54,12 +54,10 @@ func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string
 		nwDst = "ipv6_dst"
 	}
 
-	flow := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d "+
-		"actions=mod_dl_dst:%s,output:%d",
-		cookie, util.UnderlaySvcLocalOpenFlowPriority, inPort, protoStr, nwDst, serviceIP, port, dstMac, outPort)
+	flows := underlayServiceLocalFlows(cookie, util.UnderlaySvcLocalOpenFlowPriority, inPort, outPort, protoStr, nwDst, serviceIP, dstMac, port)
 
 	key := buildFlowKey(flowKindUnderlayService, serviceIP, port, protocol, "")
-	c.setFlowCache(c.flowCache, bridgeName, key, []string{flow})
+	c.setFlowCache(c.flowCache, bridgeName, key, flows)
 
 	klog.V(5).Infof("updated underlay flow cache for service %s", key)
 	c.requestFlowSync()
@@ -73,6 +71,14 @@ func (c *Controller) deleteUnderlaySubnetSvcLocalFlowCache(bridgeName, serviceIP
 
 	klog.V(5).Infof("deleted underlay flow cache for service %s", key)
 	c.requestFlowSync()
+}
+
+func underlayServiceLocalFlows(cookie string, priority, inPort, outPort int, protoStr, nwDst, serviceIP, dstMac string, port uint16) []string {
+	phy := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d actions=mod_dl_dst:%s,output:%d",
+		cookie, priority, inPort, protoStr, nwDst, serviceIP, port, dstMac, outPort)
+	local := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d actions=mod_dl_dst:%s,in_port",
+		cookie, priority, outPort, protoStr, nwDst, serviceIP, port, dstMac)
+	return []string{phy, local}
 }
 
 func buildFlowKey(kind, ip string, port uint16, protocol, extra string) string {
