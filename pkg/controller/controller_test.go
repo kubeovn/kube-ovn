@@ -332,7 +332,6 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
-	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -401,7 +400,6 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		updateSubnetStatusQueue:       newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcNatGateway", nil),
 		initVpcNatGatewayQueue:        newTypedRateLimitingQueue[string]("InitVpcNatGateway", nil),
-		configMapsLister:              configMapInformer.Lister(),
 		configMapsSynced:              alwaysReady,
 		serviceCIDRStore:              util.NewServiceCIDRStore("10.96.0.0/12"),
 	}
