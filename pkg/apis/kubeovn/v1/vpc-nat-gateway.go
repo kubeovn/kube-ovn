@@ -70,6 +70,8 @@ type VpcNatGatewaySpec struct {
 	// In HA mode (Replicas > 1) this field is ignored and cannot be used to pin addresses: every
 	// replica allocates its own address dynamically, and the controller re-points the OVN policy
 	// routes and BFD sessions whenever a replica is replaced.
+	// iptables EIP/FIP/DNAT/SNAT do not fully support IPv6 yet. Once they do, consider
+	// adding a v6LanIp field to pin the IPv6 LAN address separately.
 	LanIP string `json:"lanIp"`
 	// Number of gateway replicas for HA support.
 	// When > 1, uses Deployment workload with pod anti-affinity to distribute instances across nodes.

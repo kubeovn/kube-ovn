@@ -114,6 +114,7 @@ type FakeControllerOptions struct {
 	IptablesEips          []*kubeovnv1.IptablesEIP
 	StatefulSets          []*appsv1.StatefulSet
 	Deployments           []*appsv1.Deployment
+	ConfigMaps            []*corev1.ConfigMap
 }
 
 // newFakeControllerWithOptions creates a fake controller with optional pre-populated objects
@@ -135,7 +136,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 
 	// Create fake Kubernetes client with namespaces, pods, nodes, services, and workloads.
 	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods)+len(opts.Nodes)+len(opts.Services)+
-		len(opts.StatefulSets)+len(opts.Deployments))
+		len(opts.StatefulSets)+len(opts.Deployments)+len(opts.ConfigMaps))
 	for _, ns := range namespaces {
 		kubeObjects = append(kubeObjects, ns)
 	}
@@ -153,6 +154,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 	for _, deploy := range opts.Deployments {
 		kubeObjects = append(kubeObjects, deploy)
+	}
+	for _, cm := range opts.ConfigMaps {
+		kubeObjects = append(kubeObjects, cm)
 	}
 	kubeClient := fake.NewSimpleClientset(kubeObjects...)
 
@@ -302,6 +306,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	namespaceInformer := kubeInformerFactory.Core().V1().Namespaces()
 	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	endpointSliceInformer := kubeInformerFactory.Discovery().V1().EndpointSlices()
 	statefulSetInformer := kubeInformerFactory.Apps().V1().StatefulSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
@@ -391,6 +396,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		iptablesEipsLister:            iptablesEipInformer.Lister(),
 		statefulSetsLister:            statefulSetInformer.Lister(),
 		deploymentsLister:             deploymentInformer.Lister(),
+		configMapsLister:              configMapInformer.Lister(),
 		vpcNatGwKeyMutex:              keymutex.NewHashed(0),
 		OVNNbClient:                   mockOvnClient,
 		OVNSbClient:                   mockOvnSbClient,
