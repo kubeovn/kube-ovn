@@ -663,6 +663,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 
 	framework.ConformanceIt("should support MetalLB underlay service lifecycle", func() {
 		env := setupUnderlayEnvironment()
+		hasInternalUnderlayVIP := !f.VersionPriorTo(1, 15)
 
 		ginkgo.By("Create deploy in underlay subnet")
 		podLabels := map[string]string{"app": "nginx"}
@@ -708,7 +709,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		service2 = f.ServiceClient().Get(serviceName2)
 		var tcpLoadBalancer string
 		vipNodes := make(map[string]string, 2)
-		if !f.VersionPriorTo(1, 15) {
+		if hasInternalUnderlayVIP {
 			tcpLoadBalancer = f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
 			framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
 			for _, svc := range []*corev1.Service{service, service2} {
@@ -746,7 +747,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			}
 		}
 
-		if !f.VersionPriorTo(1, 15) {
+		if hasInternalUnderlayVIP {
 			ginkgo.By("Switching the first service to externalTrafficPolicy=Cluster")
 			modifiedService := service.DeepCopy()
 			modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
@@ -834,13 +835,13 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		ginkgo.By("Waiting for first service's underlay OpenFlow rules to be cleaned up")
 		for _, ingress := range service.Status.LoadBalancer.Ingress {
 			waitUnderlayServiceFlowCleaned(nodeNames, providerNetworkName, ingress.IP, curlListenPort, 30*time.Second)
-			if !f.VersionPriorTo(1, 15) && util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
+			if hasInternalUnderlayVIP && util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
 				waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, "", 30*time.Second)
 				waitUnderlayVIPBypassLFlowCleaned(ingress.IP, curlListenPort, 30*time.Second)
 				waitUnderlayVIPNodeLFlowCleaned(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
 			}
 		}
-		if !f.VersionPriorTo(1, 15) {
+		if hasInternalUnderlayVIP {
 			waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
 		}
 
