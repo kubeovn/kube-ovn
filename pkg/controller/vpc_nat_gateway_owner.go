@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,28 +80,31 @@ func validateVpcNatGatewayWorkloadController(object metav1.Object, gw *kubeovnv1
 // so the patch is issued at most once per workload.
 // TODO: remove together with the fallback in vpcNatGatewayOwnerRef.
 func vpcNatGatewayControllerReferencePatch(current, desired metav1.Object, gw *kubeovnv1.VpcNatGateway) ([]byte, bool, error) {
-	if reflect.DeepEqual(current.GetOwnerReferences(), desired.GetOwnerReferences()) {
-		return nil, false, nil
+	desiredOwnerReferences := desired.GetOwnerReferences()
+	if len(desiredOwnerReferences) != 1 {
+		return nil, false, errors.New("desired workload must have exactly one owner reference")
 	}
 	if err := validateVpcNatGatewayWorkloadController(current, gw); err != nil {
 		return nil, false, err
 	}
 
-	desiredOwnerReferences := desired.GetOwnerReferences()
-	if len(desiredOwnerReferences) != 1 {
-		return nil, false, errors.New("desired workload must have exactly one owner reference")
-	}
 	// Replace only the VpcNatGateway entry so unrelated owner references keep their GC semantics.
 	ownerReferences := append([]metav1.OwnerReference(nil), current.GetOwnerReferences()...)
 	index := slices.IndexFunc(ownerReferences, func(ref metav1.OwnerReference) bool {
 		return ref.APIVersion == kubeovnv1.SchemeGroupVersion.String() && ref.Kind == util.KindVpcNatGateway
 	})
+	if index >= 0 && reflect.DeepEqual(ownerReferences[index], desiredOwnerReferences[0]) {
+		return nil, false, nil
+	}
 	if index < 0 {
 		ownerReferences = append(ownerReferences, desiredOwnerReferences[0])
 	} else {
 		ownerReferences[index] = desiredOwnerReferences[0]
 	}
-	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{"ownerReferences": ownerReferences}})
+	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{
+		"ownerReferences": ownerReferences,
+		"resourceVersion": current.GetResourceVersion(),
+	}})
 	if err != nil {
 		return nil, false, err
 	}
@@ -115,8 +119,6 @@ func vpcNatGatewayControllerReferencePatch(current, desired metav1.Object, gw *k
 // v1.18, i.e. once no workload can still carry a plain (non-controller) owner
 // reference. vpcNatGatewayControllerReferencePatch below can then go as well,
 // together with the statefulsets/deployments `patch` RBAC verbs it requires.
-// The explicit workload deletion in handleDelVpcNatGw belongs to the same cleanup,
-// see the TODO there.
 func vpcNatGatewayOwnerRef(object metav1.Object) *metav1.OwnerReference {
 	if ref := metav1.GetControllerOf(object); ref != nil &&
 		ref.APIVersion == kubeovnv1.SchemeGroupVersion.String() && ref.Kind == util.KindVpcNatGateway {
@@ -163,9 +165,11 @@ func (c *Controller) enqueueVpcNatGatewayForWorkload(obj any) {
 	}
 }
 
-// enqueueUpdateVpcNatGatewayForWorkload only looks at the new object: a workload keeps
-// the same owning gateway for its whole life, so the old object resolves to the same key.
-func (c *Controller) enqueueUpdateVpcNatGatewayForWorkload(_, newObj any) {
+// enqueueUpdateVpcNatGatewayForWorkload notifies both owners so an owner reference removal
+// or replacement wakes the previously referenced gateway. The work queue deduplicates an
+// unchanged owner.
+func (c *Controller) enqueueUpdateVpcNatGatewayForWorkload(oldObj, newObj any) {
+	c.enqueueVpcNatGatewayForWorkload(oldObj)
 	c.enqueueVpcNatGatewayForWorkload(newObj)
 }
 
@@ -203,6 +207,13 @@ func (c *Controller) vpcNatGatewayStatefulSetOwner(pod *corev1.Pod) (*metav1.Own
 		return nil, errors.New("statefulset lister is not initialized")
 	}
 	sts, err := c.statefulSetsLister.StatefulSets(pod.Namespace).Get(podOwner.Name)
+	if k8serrors.IsNotFound(err) {
+		// A workload whose watch label was removed leaves the filtered informer cache. Read it
+		// live so its owner can still be validated and the reconcile can restore the label.
+		sts, err = c.config.KubeClient.AppsV1().StatefulSets(pod.Namespace).Get(
+			context.Background(), podOwner.Name, metav1.GetOptions{},
+		)
+	}
 	if err != nil {
 		return nil, err
 	}

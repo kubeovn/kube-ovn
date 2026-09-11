@@ -205,6 +205,10 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 			return err
 		}
 	}
+	if err = c.patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip, internalV6Ip, false); err != nil {
+		klog.Errorf("failed to record nat status for dnat %s, %v", key, err)
+		return err
+	}
 	if err := c.handleAddOvnDnatFinalizer(cachedDnat); err != nil {
 		klog.Errorf("failed to add finalizer for ovn dnat %s, %v", cachedDnat.Name, err)
 		return err
@@ -556,7 +560,7 @@ func (c *Controller) patchOvnDnatStatus(key, vpcName, v4Eip, v6Eip, internalV4Ip
 		dnat.Status.InternalPort = dnat.Spec.InternalPort
 		changed = true
 	}
-	if ready && dnat.Spec.ExternalPort != "" && dnat.Status.ExternalPort != dnat.Spec.ExternalPort {
+	if dnat.Spec.ExternalPort != "" && dnat.Status.ExternalPort != dnat.Spec.ExternalPort {
 		dnat.Status.ExternalPort = dnat.Spec.ExternalPort
 		changed = true
 	}
