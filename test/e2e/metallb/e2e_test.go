@@ -1316,7 +1316,7 @@ func waitUnderlayVIPBackendLFlow(backendPod corev1.Pod, vipNode string, expected
 		}
 		found := 0
 		if backends != "" {
-			for _, backend := range strings.Split(backends, ",") {
+			for backend := range strings.SplitSeq(backends, ",") {
 				if strings.HasPrefix(backend, backendIP+":") || backend == backendIP {
 					found++
 				}
@@ -1622,7 +1622,7 @@ func parseOVSMap(raw string) map[string]string {
 	if s == "" {
 		return result
 	}
-	for _, token := range strings.Fields(s) {
+	for token := range strings.FieldsSeq(s) {
 		key, value, ok := strings.Cut(token, "=")
 		if !ok || key == "" {
 			continue
