@@ -232,6 +232,11 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		}
 	}
 
+	if err = c.patchOvnFipStatus(key, vpcName, v4Eip, v6Eip, v4IP, v6IP, false); err != nil {
+		klog.Errorf("failed to record nat status for fip %s, %v", key, err)
+		return err
+	}
+
 	if err = c.handleAddOvnFipFinalizer(cachedFip); err != nil {
 		klog.Errorf("failed to add finalizer for ovn fip, %v", err)
 		return err
@@ -246,7 +251,7 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		klog.Errorf("failed to update label for fip %s, %v", key, err)
 		return err
 	}
-	if err = c.patchOvnFipStatus(key, vpcName, v4Eip, v4IP, true); err != nil {
+	if err = c.patchOvnFipStatus(key, vpcName, v4Eip, v6Eip, v4IP, v6IP, true); err != nil {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
 		return err
 	}
@@ -255,6 +260,18 @@ func (c *Controller) handleAddOvnFip(key string) error {
 		return err
 	}
 	return nil
+}
+
+func (c *Controller) deleteNatIgnoreNotFound(lrName, natType, externalIP, logicalIP string) error {
+	exists, err := c.OVNNbClient.NatExists(lrName, natType, externalIP, logicalIP)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	return c.OVNNbClient.DeleteNat(lrName, natType, externalIP, logicalIP)
 }
 
 func (c *Controller) handleUpdateOvnFip(key string) error {
@@ -281,13 +298,13 @@ func (c *Controller) handleUpdateOvnFip(key string) error {
 
 		// ovn delete fip nat
 		if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+			if err = c.deleteNatIgnoreNotFound(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 				klog.Errorf("failed to delete v4 fip %s, %v", key, err)
 				return err
 			}
 		}
 		if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
+			if err = c.deleteNatIgnoreNotFound(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
 				klog.Errorf("failed to delete v6 fip %s, %v", key, err)
 				return err
 			}
@@ -427,13 +444,13 @@ func (c *Controller) handleDelOvnFip(key string) error {
 	}
 	// ovn delete fip nat
 	if cachedFip.Status.V4Eip != "" && cachedFip.Status.V4Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
+		if err = c.deleteNatIgnoreNotFound(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V4Eip, cachedFip.Status.V4Ip); err != nil {
 			klog.Errorf("failed to delete v4 fip %s, %v", key, err)
 			return err
 		}
 	}
 	if cachedFip.Status.V6Eip != "" && cachedFip.Status.V6Ip != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
+		if err = c.deleteNatIgnoreNotFound(cachedFip.Status.Vpc, ovnnb.NATTypeDNATAndSNAT, cachedFip.Status.V6Eip, cachedFip.Status.V6Ip); err != nil {
 			klog.Errorf("failed to delete v6 fip %s, %v", key, err)
 			return err
 		}
@@ -486,7 +503,7 @@ func (c *Controller) patchOvnFipAnnotations(key, eipName string) error {
 	return nil
 }
 
-func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIP string, ready bool) error {
+func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, v6Eip, v4IP, v6IP string, ready bool) error {
 	oriFip, err := c.ovnFipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -532,8 +549,16 @@ func (c *Controller) patchOvnFipStatus(key, vpcName, v4Eip, podIP string, ready 
 		fip.Status.V4Eip = v4Eip
 		changed = true
 	}
-	if podIP != "" && fip.Status.V4Ip != podIP {
-		fip.Status.V4Ip = podIP
+	if v6Eip != "" && fip.Status.V6Eip != v6Eip {
+		fip.Status.V6Eip = v6Eip
+		changed = true
+	}
+	if v4IP != "" && fip.Status.V4Ip != v4IP {
+		fip.Status.V4Ip = v4IP
+		changed = true
+	}
+	if v6IP != "" && fip.Status.V6Ip != v6IP {
+		fip.Status.V6Ip = v6IP
 		changed = true
 	}
 	if changed {

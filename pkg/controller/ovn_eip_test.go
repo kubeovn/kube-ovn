@@ -215,3 +215,40 @@ func TestEnqueueAddOvnEipRequeuesRouterLBRules(t *testing.T) {
 	require.Equal(t, 0, c.addOvnEipQueue.Len(), "terminating eip must not go to the add queue")
 	require.Equal(t, 1, c.addRouterLBRuleQueue.Len(), "router lb rules must be re-queued even for a terminating eip")
 }
+
+func TestHandleDelOvnEip_BlocksWhileNatStillUsesIt(t *testing.T) {
+	t.Parallel()
+
+	eip := &kubeovnv1.OvnEip{
+		Name: "test-eip",
+		Spec: kubeovnv1.OvnEipSpec{ExternalSubnet: "pubnet", V4Ip: "10.0.0.10"},
+	}
+	fip := &kubeovnv1.OvnFip{
+		Name:   "test-fip",
+		Labels: map[string]string{util.EipV4IpLabel: eip.Spec.V4Ip},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		OvnEips:     []*kubeovnv1.OvnEip{eip},
+		OvnFipRules: []*kubeovnv1.OvnFip{fip},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+
+	require.Error(t, ctrl.handleDelOvnEip(eip))
+}
+
+func TestHandleDelOvnEip_ReleasesWhenNoNatRemains(t *testing.T) {
+	t.Parallel()
+
+	eip := &kubeovnv1.OvnEip{
+		Name: "test-eip",
+		Spec: kubeovnv1.OvnEipSpec{ExternalSubnet: "pubnet", V4Ip: "10.0.0.10"},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{OvnEips: []*kubeovnv1.OvnEip{eip}})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+
+	require.NoError(t, ctrl.handleDelOvnEip(eip))
+}
