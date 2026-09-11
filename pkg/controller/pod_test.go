@@ -2615,15 +2615,13 @@ func TestNeedAllocateSubnets(t *testing.T) {
 
 	t.Run("terminating migration pod does not reallocate", func(t *testing.T) {
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:                       "virt-launcher-vm",
-				Namespace:                  "ns",
-				DeletionTimestamp:          &now,
-				DeletionGracePeriodSeconds: new(int64(30)),
-				Annotations: map[string]string{
-					kubevirtv1.MigrationJobNameAnnotation: "mig-1",
-					allocatedKey:                          "true",
-				},
+			Name:                       "virt-launcher-vm",
+			Namespace:                  "ns",
+			DeletionTimestamp:          &now,
+			DeletionGracePeriodSeconds: new(int64(30)),
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
 			},
 			Status: corev1.PodStatus{Phase: corev1.PodRunning},
 		}
@@ -2632,13 +2630,11 @@ func TestNeedAllocateSubnets(t *testing.T) {
 
 	t.Run("live migration pod reallocates", func(t *testing.T) {
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "virt-launcher-vm",
-				Namespace: "ns",
-				Annotations: map[string]string{
-					kubevirtv1.MigrationJobNameAnnotation: "mig-1",
-					allocatedKey:                          "true",
-				},
+			Name:      "virt-launcher-vm",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
 			},
 			Status: corev1.PodStatus{Phase: corev1.PodRunning},
 		}
@@ -2647,12 +2643,10 @@ func TestNeedAllocateSubnets(t *testing.T) {
 
 	t.Run("allocated pod without migration annotation does not reallocate", func(t *testing.T) {
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod",
-				Namespace: "ns",
-				Annotations: map[string]string{
-					allocatedKey: "true",
-				},
+			Name:      "pod",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				allocatedKey: "true",
 			},
 			Status: corev1.PodStatus{Phase: corev1.PodRunning},
 		}
@@ -2661,11 +2655,9 @@ func TestNeedAllocateSubnets(t *testing.T) {
 
 	t.Run("unallocated live pod allocates", func(t *testing.T) {
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "pod",
-				Namespace: "ns",
-			},
-			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+			Name:      "pod",
+			Namespace: "ns",
+			Status:    corev1.PodStatus{Phase: corev1.PodRunning},
 		}
 		require.Equal(t, nets, needAllocateSubnets(pod, nets))
 	})

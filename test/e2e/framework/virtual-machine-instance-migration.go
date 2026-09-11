@@ -114,9 +114,7 @@ func (c *VMIMigrationClient) WaitToDisappear(name string, poll, timeout time.Dur
 // MakeVMIMigration returns a VirtualMachineInstanceMigration object targeting the given VMI.
 func MakeVMIMigration(name, vmiName string) *v1.VirtualMachineInstanceMigration {
 	return &v1.VirtualMachineInstanceMigration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
+		Name: name,
 		Spec: v1.VirtualMachineInstanceMigrationSpec{
 			VMIName: vmiName,
 		},
