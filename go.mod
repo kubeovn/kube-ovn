@@ -15,7 +15,6 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-logr/logr v1.4.4
-	github.com/go-logr/stdr v1.2.2
 	github.com/go-logr/zapr v1.3.0
 	github.com/google/gopacket v1.1.19
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
@@ -131,6 +130,7 @@ require (
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/go-openapi/jsonreference v1.0.1 // indirect
 	github.com/go-openapi/swag v0.29.1 // indirect

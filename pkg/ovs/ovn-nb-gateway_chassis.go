@@ -1,96 +1,58 @@
 package ovs
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 // CreateGatewayChassises create multiple gateway chassis once
 func (c *OVNNbClient) CreateGatewayChassises(lrpName string, chassises ...string) error {
 	op, err := c.CreateGatewayChassisesOp(lrpName, chassises)
-	if err != nil {
-		err := fmt.Errorf("generate operations for creating gateway chassis %w", err)
-		klog.Error(err)
-		return err
-	}
-
-	if err = c.Transact("gateway-chassises-add", op); err != nil {
-		err := fmt.Errorf("create gateway chassis %v for logical router port %s: %w", chassises, lrpName, err)
-		klog.Error(err)
-		return err
-	}
-
-	return nil
+	return c.transactGenerated("gateway-chassises-add", op, err,
+		wrapErr("generate operations for creating gateway chassis %w"),
+		wrapErr("create gateway chassis %v for logical router port %s: %w", chassises, lrpName),
+	)
 }
 
 // UpdateGatewayChassis update gateway chassis
 func (c *OVNNbClient) UpdateGatewayChassis(gwChassis *ovnnb.GatewayChassis, fields ...any) error {
-	op, err := c.ovsDbClient.Where(gwChassis).Update(gwChassis, fields...)
-	if err != nil {
-		err := fmt.Errorf("failed to generate operations for gateway chassis %s with fields %v: %w", gwChassis.ChassisName, fields, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.Transact("gateway-chassis-update", op); err != nil {
-		err := fmt.Errorf("failed to update gateway chassis %s: %w", gwChassis.ChassisName, err)
-		klog.Error(err)
-		return err
-	}
-	return nil
+	op, err := c.Database.Table(&ovnnb.GatewayChassis{}).UpdateOps(gwChassis, gwChassis, fields...)
+	return c.transactGenerated("gateway-chassis-update", op, err,
+		wrapErr("failed to generate operations for gateway chassis %s with fields %v: %w", gwChassis.ChassisName, fields),
+		wrapErr("failed to update gateway chassis %s: %w", gwChassis.ChassisName),
+	)
 }
 
 // ListGatewayChassisByLogicalRouterPort get gateway chassis by lrp name
 func (c *OVNNbClient) ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	gwChassisList := make([]ovnnb.GatewayChassis, 0)
-	if err := c.ovsDbClient.WhereCache(func(gwChassis *ovnnb.GatewayChassis) bool {
-		if gwChassis.ExternalIDs != nil && gwChassis.ExternalIDs["lrp"] == lrpName {
-			return true
-		}
-		return false
-	}).List(ctx, &gwChassisList); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
+	gwChassisList, err := filterTimeout(c.Database, &ovnnb.GatewayChassis{}, func(gwChassis *ovnnb.GatewayChassis) bool {
+		return gwChassis.ExternalIDs != nil && gwChassis.ExternalIDs["lrp"] == lrpName
+	})
+	if err != nil {
+		if ignoreNotFound && errors.Is(err, table.ErrNotFound) {
 			return nil, nil
 		}
-		err = fmt.Errorf("failed to list gw chassis for lrp %s: %w", lrpName, err)
-		klog.Error(err)
-		return nil, err
+		return nil, logFmt("failed to list gw chassis for lrp %s: %w", lrpName, err)
 	}
-
 	return gwChassisList, nil
 }
 
-// GetGatewayChassis get gateway chassis by name
 func (c *OVNNbClient) GetGatewayChassis(name string, ignoreNotFound bool) (*ovnnb.GatewayChassis, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	gwChassis := &ovnnb.GatewayChassis{Name: name}
-	if err := c.Get(ctx, gwChassis); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
-			return nil, nil
-		}
-
-		return nil, fmt.Errorf("get gateway chassis %s: %w", name, err)
-	}
-
-	return gwChassis, nil
+	return getIndexedFmt(c.Database, &ovnnb.GatewayChassis{Name: name}, ignoreNotFound, func(err error) error {
+		return fmt.Errorf("get gateway chassis %s: %w", name, err)
+	})
 }
 
 func (c *OVNNbClient) GatewayChassisExist(name string) (bool, error) {
-	gwChassis, err := c.GetGatewayChassis(name, true)
-	return gwChassis != nil, err
+	return existsByGet(c.GetGatewayChassis, name)
 }
 
 // newGatewayChassis return gateway chassis with basic information
@@ -98,8 +60,7 @@ func (c *OVNNbClient) newGatewayChassis(lrpName, chassisName string, priority in
 	gwChassisName := lrpName + "-" + chassisName
 	exists, err := c.GatewayChassisExist(gwChassisName)
 	if err != nil {
-		klog.Error(err)
-		return nil, err
+		return nil, logErr(err)
 	}
 
 	// found, skip
@@ -133,16 +94,14 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 		gwChassisName := lrpName + "-" + chassisName
 		gwChassis, err := c.GetGatewayChassis(gwChassisName, true)
 		if err != nil {
-			klog.Error(err)
-			return nil, err
+			return nil, logErr(err)
 		}
 		if gwChassis != nil {
 			continue
 		}
 		gwChassis, err = c.newGatewayChassis(lrpName, chassisName, 100-i)
 		if err != nil {
-			klog.Error(err)
-			return nil, err
+			return nil, logErr(err)
 		}
 
 		// found, skip
@@ -152,24 +111,18 @@ func (c *OVNNbClient) CreateGatewayChassisesOp(lrpName string, chassises []strin
 		}
 	}
 
-	gwChassisCreateop, err := c.Create(models...)
+	gwChassisCreateop, err := c.Database.Table(&ovnnb.GatewayChassis{}).CreateOps(models...)
 	if err != nil {
-		klog.Error(err)
-		return nil, fmt.Errorf("generate operations for creating gateway chassis %w", err)
+		return nil, logWrap(err, wrapErr("generate operations for creating gateway chassis %w"))
 	}
 
 	/* add gateway chassis to logical router port */
 	gwChassisAddOp, err := c.LogicalRouterPortUpdateGatewayChassisOp(lrpName, uuids, ovsdb.MutateOperationInsert)
 	if err != nil {
-		klog.Error(err)
-		return nil, err
+		return nil, logErr(err)
 	}
 
-	ops := make([]ovsdb.Operation, 0, len(gwChassisCreateop)+len(gwChassisAddOp))
-	ops = append(ops, gwChassisCreateop...)
-	ops = append(ops, gwChassisAddOp...)
-
-	return ops, nil
+	return appendOps(gwChassisCreateop, gwChassisAddOp), nil
 }
 
 // DeleteGatewayChassises delete multiple gateway chassis once
@@ -180,8 +133,7 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 
 	lrp, err := c.GetLogicalRouterPort(lrpName, false)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 
 	ops := make([]ovsdb.Operation, 0, len(chassises)*2)
@@ -189,21 +141,19 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 		gwChassisName := lrpName + "-" + chassisName
 		uuid, delOps, err := c.DeleteGatewayChassisOp(gwChassisName)
 		if err != nil {
-			klog.Error(err)
-			return err
+			return logErr(err)
 		}
 		if uuid == "" {
 			continue
 		}
 
-		mutateOps, err := c.Where(lrp).Mutate(lrp, model.Mutation{
+		mutateOps, err := c.Database.Table(&ovnnb.LogicalRouterPort{}).MutateOps(lrp, model.Mutation{
 			Field:   &lrp.GatewayChassis,
 			Value:   []string{uuid},
 			Mutator: ovsdb.MutateOperationDelete,
 		})
 		if err != nil {
-			klog.Error(err)
-			return err
+			return logErr(err)
 		}
 
 		ops = append(ops, mutateOps...)
@@ -213,12 +163,9 @@ func (c *OVNNbClient) DeleteGatewayChassises(lrpName string, chassises []string)
 		return nil
 	}
 
-	if err := c.Transact("gateway-chassises-delete", ops); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("delete gateway chassises %v from logical router port %s: %w", chassises, lrpName, err)
-	}
-
-	return nil
+	return c.transactGenerated("gateway-chassises-delete", ops, nil, nil,
+		wrapErr("delete gateway chassises %v from logical router port %s: %w", chassises, lrpName),
+	)
 }
 
 // DeleteGatewayChassisOp create operation which delete gateway chassis
@@ -234,7 +181,7 @@ func (c *OVNNbClient) DeleteGatewayChassisOp(chassisName string) (uuid string, o
 		return "", nil, nil
 	}
 
-	if ops, err = c.Where(gwChassis).Delete(); err != nil {
+	if ops, err = c.Database.Table(&ovnnb.GatewayChassis{}).DeleteOps(gwChassis); err != nil {
 		klog.Error(err)
 		return "", nil, err
 	}
@@ -246,8 +193,7 @@ func (c *OVNNbClient) DeleteGatewayChassisOp(chassisName string) (uuid string, o
 func (c *OVNNbClient) ReconcileGatewayChassises(lrpName string, chassises []string) error {
 	existing, err := c.ListGatewayChassisByLogicalRouterPort(lrpName, true)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 
 	desired := make(map[string]int, len(chassises))
@@ -264,27 +210,23 @@ func (c *OVNNbClient) ReconcileGatewayChassises(lrpName string, chassises []stri
 		}
 	}
 	if err := c.DeleteGatewayChassises(lrpName, stale); err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 	if err := c.CreateGatewayChassises(lrpName, chassises...); err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 
 	for chassisName, priority := range desired {
 		gwChassis, err := c.GetGatewayChassis(lrpName+"-"+chassisName, false)
 		if err != nil {
-			klog.Error(err)
-			return err
+			return logErr(err)
 		}
 		if gwChassis.Priority == priority {
 			continue
 		}
 		gwChassis.Priority = priority
 		if err := c.UpdateGatewayChassis(gwChassis, &gwChassis.Priority); err != nil {
-			klog.Error(err)
-			return err
+			return logErr(err)
 		}
 	}
 	return nil

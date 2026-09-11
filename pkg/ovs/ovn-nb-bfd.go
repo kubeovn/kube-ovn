@@ -1,77 +1,53 @@
 package ovs
 
 import (
-	"context"
 	"fmt"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/cache"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *OVNNbClient) ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	bfdList := make([]ovnnb.BFD, 0)
-	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
-		if bfd.LogicalPort != lrpName {
-			return false
-		}
-		return dstIP == "" || bfd.DstIP == dstIP
-	}).List(ctx, &bfdList); err != nil {
-		err := fmt.Errorf("failed to list BFD with logical_port=%s and dst_ip=%s: %w", lrpName, dstIP, err)
-		klog.Error(err)
-		return nil, err
+func (c *OVNNbClient) listBFDs(predicate func(*ovnnb.BFD) bool, wrap func(error) error) ([]ovnnb.BFD, error) {
+	bfdList, err := filterTimeout(c.Database, &ovnnb.BFD{}, predicate)
+	if err != nil {
+		return nil, logErr(wrap(err))
 	}
-
 	return bfdList, nil
+}
+
+func (c *OVNNbClient) ListBFDs(lrpName, dstIP string) ([]ovnnb.BFD, error) {
+	return c.listBFDs(func(bfd *ovnnb.BFD) bool {
+		return bfd.LogicalPort == lrpName && (dstIP == "" || bfd.DstIP == dstIP)
+	}, func(err error) error {
+		return fmt.Errorf("failed to list BFD with logical_port=%s and dst_ip=%s: %w", lrpName, dstIP, err)
+	})
 }
 
 func (c *OVNNbClient) ListDownBFDs(dstIP string) ([]ovnnb.BFD, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	bfdList := make([]ovnnb.BFD, 0)
-	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
-		if bfd.DstIP == dstIP && (*bfd.Status == ovnnb.BFDStatusDown || *bfd.Status == ovnnb.BFDStatusAdminDown) {
-			return true
-		}
-		return false
-	}).List(ctx, &bfdList); err != nil {
-		err := fmt.Errorf("failed to list down BFDs: %w", err)
-		klog.Error(err)
-		return nil, err
-	}
-
-	return bfdList, nil
+	return c.listBFDs(func(bfd *ovnnb.BFD) bool {
+		return bfd.DstIP == dstIP && (*bfd.Status == ovnnb.BFDStatusDown || *bfd.Status == ovnnb.BFDStatusAdminDown)
+	}, func(err error) error {
+		return fmt.Errorf("failed to list down BFDs: %w", err)
+	})
 }
 
 func (c *OVNNbClient) ListUpBFDs(dstIP string) ([]ovnnb.BFD, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	bfdList := make([]ovnnb.BFD, 0)
-	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
+	return c.listBFDs(func(bfd *ovnnb.BFD) bool {
 		return bfd.DstIP == dstIP && *bfd.Status == ovnnb.BFDStatusUp
-	}).List(ctx, &bfdList); err != nil {
-		err := fmt.Errorf("failed to list up BFDs: %w", err)
-		klog.Error(err)
-		return nil, err
-	}
-
-	return bfdList, nil
+	}, func(err error) error {
+		return fmt.Errorf("failed to list up BFDs: %w", err)
+	})
 }
 
 func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult int, externalIDs map[string]string) (*ovnnb.BFD, error) {
 	bfdList, err := c.ListBFDs(lrpName, dstIP)
 	if err != nil {
-		klog.Error(err)
-		return nil, err
+		return nil, logErr(err)
 	}
 	if len(bfdList) != 0 {
 		return &bfdList[0], nil
@@ -85,22 +61,16 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 		DetectMult:  &detectMult,
 		ExternalIDs: externalIDs,
 	}
-	ops, err := c.Create(bfd)
-	if err != nil {
-		err := fmt.Errorf("failed to generate operations for BFD creation with logical_port=%s and dst_ip=%s: %w", lrpName, dstIP, err)
-		klog.Error(err)
-		return nil, err
-	}
-	if err = c.Transact("bfd-add", ops); err != nil {
-		err := fmt.Errorf("failed to create BFD with logical_port=%s and dst_ip=%s: %w", lrpName, dstIP, err)
-		klog.Error(err)
+	ops, err := c.Database.Table(&ovnnb.BFD{}).CreateOps(bfd)
+	if err := c.transactGenerated("bfd-add", ops, err,
+		wrapErr("failed to generate operations for BFD creation with logical_port=%s and dst_ip=%s: %w", lrpName, dstIP),
+		wrapErr("failed to create BFD with logical_port=%s and dst_ip=%s: %w", lrpName, dstIP),
+	); err != nil {
 		return nil, err
 	}
 
 	if bfdList, err = c.ListBFDs(lrpName, dstIP); err != nil {
-		err := fmt.Errorf("failed to list BFDs: %w", err)
-		klog.Error(err)
-		return nil, err
+		return nil, logFmt("failed to list BFDs: %w", err)
 	}
 	if len(bfdList) == 0 {
 		return nil, fmt.Errorf("BFD with logical_port=%s and dst_ip=%s not found", lrpName, dstIP)
@@ -110,55 +80,34 @@ func (c *OVNNbClient) CreateBFD(lrpName, dstIP string, minRx, minTx, detectMult 
 
 // UpdateBFD update BFD
 func (c *OVNNbClient) UpdateBFD(bfd *ovnnb.BFD, fields ...any) error {
-	op, err := c.ovsDbClient.Where(bfd).Update(bfd, fields...)
-	if err != nil {
-		err := fmt.Errorf("failed to generate bfd update operations for lrp %s with fields %v: %w", bfd.LogicalPort, fields, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.Transact("bfd-update", op); err != nil {
-		err := fmt.Errorf("failed to update bfd %s for lrp %s: %w", bfd.UUID, bfd.LogicalPort, err)
-		klog.Error(err)
-		return err
-	}
-	return nil
+	return c.updateModelLogged("bfd-update", bfd, func(err error) error {
+		return fmt.Errorf("failed to update bfd %s for lrp %s: %w", bfd.UUID, bfd.LogicalPort, err)
+	}, fields...)
+}
+
+func (c *OVNNbClient) deleteBFDByUUID(uuid string) error {
+	ops, err := c.Database.Table(&ovnnb.BFD{}).DeleteOps(&ovnnb.BFD{UUID: uuid})
+	return c.transactGenerated("bfd-del", ops, err,
+		wrapErr("failed to generate operations for BFD deletion with UUID %s: %w", uuid),
+		wrapErr("failed to delete BFD with UUID %s: %w", uuid),
+	)
 }
 
 func (c *OVNNbClient) DeleteBFD(uuid string) error {
-	ops, err := c.Where(&ovnnb.BFD{UUID: uuid}).Delete()
-	if err != nil {
-		err := fmt.Errorf("failed to generate operations for BFD deletion with UUID %s: %w", uuid, err)
-		klog.Error(err)
-		return err
-	}
-	if err = c.Transact("bfd-del", ops); err != nil {
-		err = fmt.Errorf("failed to delete BFD with UUID %s: %w", uuid, err)
-		klog.Error(err)
-		return err
-	}
-	return nil
+	return c.deleteBFDByUUID(uuid)
 }
 
 func (c *OVNNbClient) DeleteBFDByDstIP(lrpName, dstIP string) error {
 	bfdList, err := c.ListBFDs(lrpName, dstIP)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 	if len(bfdList) == 0 {
 		return nil
 	}
 	for _, bfd := range bfdList {
-		ops, err := c.Where(&bfd).Delete()
-		if err != nil {
-			err := fmt.Errorf("failed to generate operations for BFD deletion with UUID %s: %w", bfd.UUID, err)
-			klog.Error(err)
-			return err
-		}
 		klog.Infof("delete lrp %s BFD dst ip %s", lrpName, bfd.DstIP)
-		if err = c.Transact("bfd-del", ops); err != nil {
-			err := fmt.Errorf("failed to delete BFD with UUID %s: %w", bfd.UUID, err)
-			klog.Error(err)
+		if err := c.deleteBFDByUUID(bfd.UUID); err != nil {
 			return err
 		}
 	}
@@ -169,7 +118,7 @@ func (c *OVNNbClient) DeleteBFDByDstIP(lrpName, dstIP string) error {
 // to NB libovsdb cache to update the BFD priority.
 // This function should only be called once.
 func (c *OVNNbClient) MonitorBFD() {
-	c.ovsDbClient.Cache().AddEventHandler(&cache.EventHandlerFuncs{
+	c.Database.Cache().AddEventHandler(&table.EventHandlerFuncs{
 		AddFunc: func(table string, model model.Model) {
 			c.bfdAddL3HAHandler(table, model)
 		},
@@ -195,17 +144,13 @@ func (c *OVNNbClient) isLrpBfdUp(lrpName, dstIP string) (bool, error) {
 	}
 	bfd := bfdList[0]
 	if bfd.Status == nil {
-		err := fmt.Errorf("lrp %s bfd status is nil", lrpName)
-		klog.Error(err)
-		return false, err
+		return false, logFmt("lrp %s bfd status is nil", lrpName)
 	} else if *bfd.Status == ovnnb.BFDStatusUp {
 		klog.Infof("lrp %s bfd dst ip %s status is up", lrpName, bfd.DstIP)
 		return true, nil
 	}
 	// bfd status is still down
-	err = fmt.Errorf("lrp %s bfd dst ip %s status is down", lrpName, bfd.DstIP)
-	klog.Error(err)
-	return false, err
+	return false, logFmt("lrp %s bfd dst ip %s status is down", lrpName, bfd.DstIP)
 }
 
 func (c *OVNNbClient) bfdAddL3HAHandler(table string, model model.Model) {
@@ -372,25 +317,9 @@ func (c *OVNNbClient) bfdDelL3HAHandler(table string, model model.Model) {
 }
 
 func (c *OVNNbClient) FindBFD(externalIDs map[string]string) ([]ovnnb.BFD, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	bfdList := make([]ovnnb.BFD, 0)
-	if err := c.ovsDbClient.WhereCache(func(bfd *ovnnb.BFD) bool {
-		if len(bfd.ExternalIDs) == 0 && len(externalIDs) != 0 {
-			return false
-		}
-		for k, v := range externalIDs {
-			if bfd.ExternalIDs[k] != v {
-				return false
-			}
-		}
-		return true
-	}).List(ctx, &bfdList); err != nil {
-		err := fmt.Errorf("failed to find ovn BFD: %w", err)
-		klog.Error(err)
-		return nil, err
-	}
-
-	return bfdList, nil
+	return c.listBFDs(func(bfd *ovnnb.BFD) bool {
+		return matchExternalIDsMode(bfd.ExternalIDs, externalIDs, false)
+	}, func(err error) error {
+		return fmt.Errorf("failed to find ovn BFD: %w", err)
+	})
 }

@@ -296,7 +296,7 @@ func (suite *OvnClientTestSuite) testDeleteChassisByHost() {
 		require.NoError(t, err)
 		chassis, err := sbClient.GetChassisByHost("node3")
 		require.NoError(t, err)
-		ops, err := sbClient.Where(chassis).Delete()
+		ops, err := sbClient.Database.Where(chassis).Delete()
 		require.NoError(t, err)
 		err = sbClient.Transact("chassis-del", ops)
 		require.NoError(t, err)

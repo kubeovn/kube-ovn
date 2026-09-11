@@ -153,13 +153,13 @@ func (c *Controller) handleAddOvnSnatRule(key string) error {
 	}
 	// about conflicts: if multi vpc snat use the same eip, if only one gw node exist, it may should work
 	if v4IpCidr != "" && v4Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, v4Eip, v4IpCidr, "", "", nil); err != nil {
+		if err = c.addNat(vpcName, ovnnb.NATTypeSNAT, v4Eip, v4IpCidr, "", "", nil); err != nil {
 			klog.Errorf("failed to create v4 snat, %v", err)
 			return err
 		}
 	}
 	if v6IpCidr != "" && v6Eip != "" {
-		if err = c.OVNNbClient.AddNat(vpcName, ovnnb.NATTypeSNAT, v6Eip, v6IpCidr, "", "", nil); err != nil {
+		if err = c.addNat(vpcName, ovnnb.NATTypeSNAT, v6Eip, v6IpCidr, "", "", nil); err != nil {
 			klog.Errorf("failed to create v6 snat, %v", err)
 			return err
 		}
@@ -211,13 +211,13 @@ func (c *Controller) handleUpdateOvnSnatRule(key string) error {
 
 		// ovn delete snat
 		if cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
+			if err = c.deleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 				klog.Errorf("failed to delete v4 snat %s, %v", key, err)
 				return err
 			}
 		}
 		if cachedSnat.Status.V6Eip != "" && cachedSnat.Status.V6IpCidr != "" {
-			if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
+			if err = c.deleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
 				klog.Errorf("failed to delete v6 snat %s, %v", key, err)
 				return err
 			}
@@ -346,14 +346,14 @@ func (c *Controller) handleDelOvnSnatRule(key string) error {
 	}
 	// ovn delete snat
 	if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V4Eip != "" && cachedSnat.Status.V4IpCidr != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT,
+		if err = c.deleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT,
 			cachedSnat.Status.V4Eip, cachedSnat.Status.V4IpCidr); err != nil {
 			klog.Errorf("failed to delete v4 snat %s, %v", key, err)
 			return err
 		}
 	}
 	if cachedSnat.Status.Vpc != "" && cachedSnat.Status.V6Eip != "" && cachedSnat.Status.V6IpCidr != "" {
-		if err = c.OVNNbClient.DeleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
+		if err = c.deleteNat(cachedSnat.Status.Vpc, ovnnb.NATTypeSNAT, cachedSnat.Status.V6Eip, cachedSnat.Status.V6IpCidr); err != nil {
 			klog.Errorf("failed to delete v6 snat, %v", err)
 			return err
 		}
