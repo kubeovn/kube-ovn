@@ -706,24 +706,27 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 
 		service = f.ServiceClient().Get(serviceName)
 		service2 = f.ServiceClient().Get(serviceName2)
-		tcpLoadBalancer := f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
-		framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
+		var tcpLoadBalancer string
 		vipNodes := make(map[string]string, 2)
-		for _, svc := range []*corev1.Service{service, service2} {
-			for _, clusterIP := range svc.Spec.ClusterIPs {
-				if util.CheckProtocol(clusterIP) == apiv1.ProtocolIPv4 {
-					expectNoUnderlayVIPBypassLFlow(clusterIP, curlListenPort)
+		if !f.VersionPriorTo(1, 15) {
+			tcpLoadBalancer = f.VpcClient().Get(util.DefaultVpc).Status.TCPLoadBalancer
+			framework.ExpectNotEmpty(tcpLoadBalancer, "default VPC TCP load balancer should be set")
+			for _, svc := range []*corev1.Service{service, service2} {
+				for _, clusterIP := range svc.Spec.ClusterIPs {
+					if util.CheckProtocol(clusterIP) == apiv1.ProtocolIPv4 {
+						expectNoUnderlayVIPBypassLFlow(clusterIP, curlListenPort)
+					}
 				}
-			}
-			for _, ingress := range svc.Status.LoadBalancer.Ingress {
-				if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
-					continue
+				for _, ingress := range svc.Status.LoadBalancer.Ingress {
+					if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
+						continue
+					}
+					vipNode := getVIPNodeFromService(f, svc.Name)
+					vipNodes[ingress.IP] = vipNode
+					waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, util.NodeLspName(vipNode), 30*time.Second)
+					waitUnderlayVIPBypassLFlow(ingress.IP, curlListenPort, 30*time.Second)
+					waitUnderlayVIPNodeLFlow(ingress.IP, util.NodeLspName(vipNode), curlListenPort, 30*time.Second)
 				}
-				vipNode := getVIPNodeFromService(f, svc.Name)
-				vipNodes[ingress.IP] = vipNode
-				waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, util.NodeLspName(vipNode), 30*time.Second)
-				waitUnderlayVIPBypassLFlow(ingress.IP, curlListenPort, 30*time.Second)
-				waitUnderlayVIPNodeLFlow(ingress.IP, util.NodeLspName(vipNode), curlListenPort, 30*time.Second)
 			}
 		}
 
@@ -743,71 +746,73 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			}
 		}
 
-		ginkgo.By("Switching the first service to externalTrafficPolicy=Cluster")
-		modifiedService := service.DeepCopy()
-		modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
-		service = serviceClient.PatchSync(service, modifiedService, func(s *corev1.Service) (bool, error) {
-			return s.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyTypeCluster, nil
-		}, "externalTrafficPolicy is Cluster")
-		for _, ingress := range service.Status.LoadBalancer.Ingress {
-			if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
-				continue
+		if !f.VersionPriorTo(1, 15) {
+			ginkgo.By("Switching the first service to externalTrafficPolicy=Cluster")
+			modifiedService := service.DeepCopy()
+			modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
+			service = serviceClient.PatchSync(service, modifiedService, func(s *corev1.Service) (bool, error) {
+				return s.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyTypeCluster, nil
+			}, "externalTrafficPolicy is Cluster")
+			for _, ingress := range service.Status.LoadBalancer.Ingress {
+				if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
+					continue
+				}
+				waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, "", 30*time.Second)
+				waitUnderlayVIPBypassLFlowCleaned(ingress.IP, curlListenPort, 30*time.Second)
+				waitUnderlayVIPNodeLFlowCleaned(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
 			}
-			waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, "", 30*time.Second)
-			waitUnderlayVIPBypassLFlowCleaned(ingress.IP, curlListenPort, 30*time.Second)
-			waitUnderlayVIPNodeLFlowCleaned(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
-		}
-		ginkgo.By("Verifying backend L2 lookup lflows are cleaned up for externalTrafficPolicy=Cluster")
-		clusterBackendPods, err := cs.CoreV1().Pods(f.Namespace.Name).List(context.Background(), metav1.ListOptions{
-			LabelSelector: "app=nginx",
-		})
-		framework.ExpectNoError(err, "listing backends of the first service")
-		for _, ingress := range service.Status.LoadBalancer.Ingress {
-			if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
-				continue
+			ginkgo.By("Verifying backend L2 lookup lflows are cleaned up for externalTrafficPolicy=Cluster")
+			clusterBackendPods, err := cs.CoreV1().Pods(f.Namespace.Name).List(context.Background(), metav1.ListOptions{
+				LabelSelector: "app=nginx",
+			})
+			framework.ExpectNoError(err, "listing backends of the first service")
+			for _, ingress := range service.Status.LoadBalancer.Ingress {
+				if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
+					continue
+				}
+				waitUnderlayVIPBackendLFlowAbsent(clusterBackendPods.Items, vipNodes[ingress.IP], 30*time.Second)
 			}
-			waitUnderlayVIPBackendLFlowAbsent(clusterBackendPods.Items, vipNodes[ingress.IP], 30*time.Second)
-		}
-		waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
+			waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
 
-		ginkgo.By("Checking the first service remains reachable with externalTrafficPolicy=Cluster")
-		for _, ingress := range service.Status.LoadBalancer.Ingress {
-			if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
-				checkReachable(f, containerID, clientIPv4, clientIPv6, ingress.IP, "80", clusterName, true)
+			ginkgo.By("Checking the first service remains reachable with externalTrafficPolicy=Cluster")
+			for _, ingress := range service.Status.LoadBalancer.Ingress {
+				if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
+					checkReachable(f, containerID, clientIPv4, clientIPv6, ingress.IP, "80", clusterName, true)
+				}
 			}
-		}
 
-		ginkgo.By("Refreshing endpoints while the first service uses externalTrafficPolicy=Cluster")
-		deployClient.SetScale(deployName, 2)
-		deployClient.RolloutStatus(deployName)
-		for _, ingress := range service.Status.LoadBalancer.Ingress {
-			if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
-				waitLoadBalancerVIPBackendCount(tcpLoadBalancer, ingress.IP, curlListenPort, 2, 30*time.Second)
+			ginkgo.By("Refreshing endpoints while the first service uses externalTrafficPolicy=Cluster")
+			deployClient.SetScale(deployName, 2)
+			deployClient.RolloutStatus(deployName)
+			for _, ingress := range service.Status.LoadBalancer.Ingress {
+				if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
+					waitLoadBalancerVIPBackendCount(tcpLoadBalancer, ingress.IP, curlListenPort, 2, 30*time.Second)
+				}
 			}
-		}
-		deployClient.SetScale(deployName, 3)
-		deployClient.RolloutStatus(deployName)
-		for _, ingress := range service.Status.LoadBalancer.Ingress {
-			if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
-				waitLoadBalancerVIPBackendCount(tcpLoadBalancer, ingress.IP, curlListenPort, 3, 30*time.Second)
+			deployClient.SetScale(deployName, 3)
+			deployClient.RolloutStatus(deployName)
+			for _, ingress := range service.Status.LoadBalancer.Ingress {
+				if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
+					waitLoadBalancerVIPBackendCount(tcpLoadBalancer, ingress.IP, curlListenPort, 3, 30*time.Second)
+				}
 			}
-		}
 
-		ginkgo.By("Switching the first service back to externalTrafficPolicy=Local")
-		modifiedService = service.DeepCopy()
-		modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
-		service = serviceClient.PatchSync(service, modifiedService, func(s *corev1.Service) (bool, error) {
-			return s.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyTypeLocal, nil
-		}, "externalTrafficPolicy is Local")
-		for _, ingress := range service.Status.LoadBalancer.Ingress {
-			if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
-				continue
+			ginkgo.By("Switching the first service back to externalTrafficPolicy=Local")
+			modifiedService = service.DeepCopy()
+			modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+			service = serviceClient.PatchSync(service, modifiedService, func(s *corev1.Service) (bool, error) {
+				return s.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyTypeLocal, nil
+			}, "externalTrafficPolicy is Local")
+			for _, ingress := range service.Status.LoadBalancer.Ingress {
+				if util.CheckProtocol(ingress.IP) != apiv1.ProtocolIPv4 {
+					continue
+				}
+				waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), 30*time.Second)
+				waitUnderlayVIPBypassLFlow(ingress.IP, curlListenPort, 30*time.Second)
+				waitUnderlayVIPNodeLFlow(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
 			}
-			waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), 30*time.Second)
-			waitUnderlayVIPBypassLFlow(ingress.IP, curlListenPort, 30*time.Second)
-			waitUnderlayVIPNodeLFlow(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
+			waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
 		}
-		waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
 
 		ginkgo.By("Restarting ds kube-ovn-cni")
 		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
@@ -829,13 +834,15 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		ginkgo.By("Waiting for first service's underlay OpenFlow rules to be cleaned up")
 		for _, ingress := range service.Status.LoadBalancer.Ingress {
 			waitUnderlayServiceFlowCleaned(nodeNames, providerNetworkName, ingress.IP, curlListenPort, 30*time.Second)
-			if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
+			if !f.VersionPriorTo(1, 15) && util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
 				waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, ingress.IP, "", 30*time.Second)
 				waitUnderlayVIPBypassLFlowCleaned(ingress.IP, curlListenPort, 30*time.Second)
 				waitUnderlayVIPNodeLFlowCleaned(ingress.IP, util.NodeLspName(vipNodes[ingress.IP]), curlListenPort, 30*time.Second)
 			}
 		}
-		waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
+		if !f.VersionPriorTo(1, 15) {
+			waitServiceVIPNodeMarkers(tcpLoadBalancer, service2, vipNodes, 30*time.Second)
+		}
 
 		ginkgo.By("Checking the second service is still reachable after first service deletion")
 		for i, ingress := range service2.Status.LoadBalancer.Ingress {
