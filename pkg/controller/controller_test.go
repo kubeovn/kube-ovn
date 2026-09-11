@@ -98,6 +98,7 @@ type FakeControllerOptions struct {
 	Pods               []*corev1.Pod
 	Nodes              []*corev1.Node
 	Namespaces         []*corev1.Namespace
+	ConfigMaps         []*corev1.ConfigMap
 }
 
 // newFakeControllerWithOptions creates a fake controller with optional pre-populated objects
@@ -117,8 +118,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}}
 	}
 
-	// Create fake Kubernetes client with namespaces, pods, and nodes
-	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods)+len(opts.Nodes))
+	// Create fake Kubernetes client with namespaces, pods, nodes, and configmaps
+	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods)+len(opts.Nodes)+len(opts.ConfigMaps))
 	for _, ns := range namespaces {
 		kubeObjects = append(kubeObjects, ns)
 	}
@@ -127,6 +128,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 	for _, node := range opts.Nodes {
 		kubeObjects = append(kubeObjects, node)
+	}
+	for _, cm := range opts.ConfigMaps {
+		kubeObjects = append(kubeObjects, cm)
 	}
 	kubeClient := fake.NewSimpleClientset(kubeObjects...)
 
@@ -197,6 +201,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	namespaceInformer := kubeInformerFactory.Core().V1().Namespaces()
 	nodeInformer := kubeInformerFactory.Core().V1().Nodes()
 	podInformer := kubeInformerFactory.Core().V1().Pods()
+	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 
 	nadInformerFactory := nadinformers.NewSharedInformerFactoryWithOptions(nadClient, 0,
 		nadinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
@@ -245,6 +250,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		namespacesLister:        namespaceInformer.Lister(),
 		nodesLister:             nodeInformer.Lister(),
 		podsLister:              podInformer.Lister(),
+		configMapsLister:        configMapInformer.Lister(),
 		vpcsLister:              vpcInformer.Lister(),
 		vpcSynced:               alwaysReady,
 		subnetsLister:           subnetInformer.Lister(),

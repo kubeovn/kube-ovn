@@ -2015,6 +2015,222 @@ func TestHandleAddOrUpdatePodWithoutWorkDoesNotRecordSuccess(t *testing.T) {
 	assertNoPodEvent(t, fc.fakeController)
 }
 
+func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
+	const (
+		nodeName   = "node1"
+		podIPv4    = "10.40.0.13"
+		podIPv6    = "2001:db8:1:801:1::d"
+		dualPodIP  = podIPv4 + "," + podIPv6
+		v4OnlyIP   = "10.42.0.6"
+		nextHop    = "203.0.113.62"
+		eipV4      = "203.0.113.26"
+		macAddress = "00:00:00:00:00:01"
+	)
+
+	tests := []struct {
+		name          string
+		podIP         string
+		nextHop       string
+		snat          bool
+		wantPolicies  []policyRouteMatch
+		wantLegacyDel string
+	}{
+		{
+			name:    "dual-stack pod with IPv4 external gateway",
+			podIP:   dualPodIP,
+			nextHop: nextHop + "/26",
+			wantPolicies: []policyRouteMatch{
+				{match: "ip4.src == " + podIPv4, nextHopIP: nextHop},
+			},
+			wantLegacyDel: "ip4.src == " + dualPodIP,
+		},
+		{
+			name:    "IPv4-only pod keeps a single ip4.src match",
+			podIP:   v4OnlyIP,
+			nextHop: nextHop,
+			wantPolicies: []policyRouteMatch{
+				{match: "ip4.src == " + v4OnlyIP, nextHopIP: nextHop},
+			},
+		},
+		{
+			name:    "dual-stack pod with IPv6 external gateway",
+			podIP:   dualPodIP,
+			nextHop: "2001:db8:2::1",
+			wantPolicies: []policyRouteMatch{
+				{match: "ip6.src == " + podIPv6, nextHopIP: "2001:db8:2::1"},
+			},
+			wantLegacyDel: "ip4.src == " + dualPodIP,
+		},
+		{
+			name:    "dual-stack pod with dual-stack external gateway",
+			podIP:   dualPodIP,
+			nextHop: nextHop + "/26,2001:db8:2::1/64",
+			wantPolicies: []policyRouteMatch{
+				{match: "ip4.src == " + podIPv4, nextHopIP: nextHop},
+				{match: "ip6.src == " + podIPv6, nextHopIP: "2001:db8:2::1"},
+			},
+			wantLegacyDel: "ip4.src == " + dualPodIP,
+		},
+		{
+			name:    "IPv4-only SNAT pod keeps a single ip4.src match",
+			podIP:   v4OnlyIP,
+			nextHop: nextHop,
+			snat:    true,
+			wantPolicies: []policyRouteMatch{
+				{match: "ip4.src == " + v4OnlyIP, nextHopIP: nextHop},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pod := &corev1.Pod{
+				Name:      "repro-dualstack",
+				Namespace: metav1.NamespaceDefault,
+				UID:       "pod-uid",
+				Spec:      corev1.PodSpec{NodeName: nodeName},
+				Annotations: map[string]string{
+					util.AllocatedAnnotation:     "true",
+					util.IPAddressAnnotation:     tc.podIP,
+					util.MacAddressAnnotation:    macAddress,
+					util.LogicalSwitchAnnotation: "ovn-default",
+				},
+			}
+			subnet := &kubeovnv1.Subnet{
+				Name: "ovn-default",
+				Spec: kubeovnv1.SubnetSpec{
+					CIDRBlock: "10.40.0.0/16,2001:db8:1:801:1::/80",
+					Gateway:   "10.40.0.1,2001:db8:1:801:1::1",
+					Protocol:  kubeovnv1.ProtocolDual,
+					Provider:  util.OvnProvider,
+					Vpc:       util.DefaultVpc,
+					Default:   true,
+				},
+			}
+			node := &corev1.Node{
+				Name: nodeName,
+				Annotations: map[string]string{
+					util.PortNameAnnotation: nodeName,
+				},
+			}
+			gwCM := &corev1.ConfigMap{
+				Name:      util.ExternalGatewayConfig,
+				Namespace: metav1.NamespaceSystem,
+				Data: map[string]string{
+					"external-gw-addr": tc.nextHop,
+				},
+			}
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Pods:       []*corev1.Pod{pod},
+				Nodes:      []*corev1.Node{node},
+				Subnets:    []*kubeovnv1.Subnet{subnet},
+				ConfigMaps: []*corev1.ConfigMap{gwCM},
+			})
+			require.NoError(t, err)
+			fc.fakeController.config.EnableEipSnat = true
+			fc.fakeController.config.ExternalGatewayConfigNS = metav1.NamespaceSystem
+
+			portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+			fc.mockOvnClient.EXPECT().ListPortGroups(gomock.Any()).Return(nil, nil).AnyTimes()
+			fc.mockOvnClient.EXPECT().RemovePortFromPortGroups(portName).Return(nil)
+			fc.mockOvnClient.EXPECT().PortGroupAddPorts(gomock.Any(), portName).Return(nil)
+			fc.mockOvnClient.EXPECT().PortGroupRemovePorts(gomock.Any(), portName).Return(nil)
+			if tc.snat {
+				pod.Annotations[util.SnatAnnotation] = eipV4
+			} else {
+				pod.Annotations[util.EipAnnotation] = eipV4
+			}
+			fc.mockOvnClient.EXPECT().UpdateDnatAndSnat(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			fc.mockOvnClient.EXPECT().EnsureSnat(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			fc.mockOvnClient.EXPECT().DeleteNats(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			if tc.wantLegacyDel != "" {
+				fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicy(util.DefaultVpc, util.NorthGatewayRoutePolicyPriority, tc.wantLegacyDel).Return(nil)
+			}
+			for _, policy := range tc.wantPolicies {
+				fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy(
+					util.DefaultVpc,
+					util.NorthGatewayRoutePolicyPriority,
+					policy.match,
+					string(kubeovnv1.PolicyRouteActionReroute),
+					[]string{policy.nextHopIP},
+					([]string)(nil),
+					map[string]string{"vendor": util.CniTypeName, "subnet": subnet.Name},
+				).Return(nil)
+			}
+
+			err = fc.fakeController.reconcileRouteSubnets(pod, []*kubeovnNet{{
+				ProviderName: util.OvnProvider,
+				Subnet:       subnet,
+				IsDefault:    true,
+			}})
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestPolicyRouteSrcMatches(t *testing.T) {
+	tests := []struct {
+		name    string
+		podIP   string
+		nextHop string
+		want    []policyRouteMatch
+	}{
+		{
+			name:    "dual-stack pod with IPv4 next hop",
+			podIP:   "10.40.0.13,2001:db8:1:801:1::d",
+			nextHop: "203.0.113.62",
+			want:    []policyRouteMatch{{match: "ip4.src == 10.40.0.13", nextHopIP: "203.0.113.62"}},
+		},
+		{
+			name:    "dual-stack pod with IPv6 next hop",
+			podIP:   "10.40.0.13,2001:db8:1:801:1::d",
+			nextHop: "2001:db8:2::1",
+			want:    []policyRouteMatch{{match: "ip6.src == 2001:db8:1:801:1::d", nextHopIP: "2001:db8:2::1"}},
+		},
+		{
+			name:    "IPv4-only pod",
+			podIP:   "10.42.0.6",
+			nextHop: "203.0.113.62",
+			want:    []policyRouteMatch{{match: "ip4.src == 10.42.0.6", nextHopIP: "203.0.113.62"}},
+		},
+		{
+			name:    "IPv6-only pod",
+			podIP:   "2001:db8:1:801:1::d",
+			nextHop: "2001:db8:2::1",
+			want:    []policyRouteMatch{{match: "ip6.src == 2001:db8:1:801:1::d", nextHopIP: "2001:db8:2::1"}},
+		},
+		{
+			name:    "family mismatch yields no match",
+			podIP:   "2001:db8:1:801:1::d",
+			nextHop: "203.0.113.62",
+		},
+		{
+			name:    "dual-stack pod with dual-stack next hop",
+			podIP:   "10.40.0.13,2001:db8:1:801:1::d",
+			nextHop: "203.0.113.62,2001:db8:2::1",
+			want: []policyRouteMatch{
+				{match: "ip4.src == 10.40.0.13", nextHopIP: "203.0.113.62"},
+				{match: "ip6.src == 2001:db8:1:801:1::d", nextHopIP: "2001:db8:2::1"},
+			},
+		},
+		{
+			name:    "dual-stack CIDR next hop strips prefixes per family",
+			podIP:   "10.40.0.13,2001:db8:1:801:1::d",
+			nextHop: "203.0.113.62/26,2001:db8:2::1/64",
+			want: []policyRouteMatch{
+				{match: "ip4.src == 10.40.0.13", nextHopIP: "203.0.113.62"},
+				{match: "ip6.src == 2001:db8:1:801:1::d", nextHopIP: "2001:db8:2::1"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, policyRouteSrcMatches(tc.podIP, tc.nextHop))
+		})
+	}
+}
+
 func podEventFixture() (*corev1.Pod, *kubeovnv1.Subnet) {
 	pod := &corev1.Pod{
 		Name:      "test-pod",
