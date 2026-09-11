@@ -731,6 +731,35 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 	return pod, nil
 }
 
+type policyRouteMatch struct {
+	match     string
+	nextHopIP string
+}
+
+func policyRouteSrcMatches(podIP, nextHop string) []policyRouteMatch {
+	var matches []policyRouteMatch
+	nextHopV4, nextHopV6 := util.SplitStringIP(nextHop)
+	nextHopV4, _, _ = strings.Cut(nextHopV4, "/")
+	nextHopV6, _, _ = strings.Cut(nextHopV6, "/")
+	for podAddr := range strings.SplitSeq(podIP, ",") {
+		var hop string
+		switch util.CheckProtocol(podAddr) {
+		case kubeovnv1.ProtocolIPv4:
+			hop = nextHopV4
+		case kubeovnv1.ProtocolIPv6:
+			hop = nextHopV6
+		}
+		if hop == "" {
+			continue
+		}
+		matches = append(matches, policyRouteMatch{
+			match:     fmt.Sprintf("%s.src == %s", getIPSuffix(util.CheckProtocol(podAddr)), podAddr),
+			nextHopIP: hop,
+		})
+	}
+	return matches
+}
+
 // do the same thing as update pod
 func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kubeovnNet) error {
 	// the lb-svc pod has dependencies on Running state, check it when pod state get updated
@@ -855,25 +884,32 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 						return errors.New("no available gateway address")
 					}
 				}
-				if strings.Contains(nextHop, "/") {
-					nextHop = strings.Split(nextHop, "/")[0]
+				legacyMatch := "ip4.src == " + podIP
+				matches := policyRouteSrcMatches(podIP, nextHop)
+				if !slices.ContainsFunc(matches, func(m policyRouteMatch) bool { return m.match == legacyMatch }) {
+					if err := c.deletePolicyRouteFromVpc(subnet.Spec.Vpc, util.NorthGatewayRoutePolicyPriority, legacyMatch); err != nil {
+						klog.Errorf("failed to delete stale policy route, %v", err)
+						return err
+					}
 				}
 
-				if err := c.addPolicyRouteToVpc(
-					subnet.Spec.Vpc,
-					&kubeovnv1.PolicyRoute{
-						Priority:  util.NorthGatewayRoutePolicyPriority,
-						Match:     "ip4.src == " + podIP,
-						Action:    kubeovnv1.PolicyRouteActionReroute,
-						NextHopIP: nextHop,
-					},
-					map[string]string{
-						"vendor": util.CniTypeName,
-						"subnet": subnet.Name,
-					},
-				); err != nil {
-					klog.Errorf("failed to add policy route, %v", err)
-					return err
+				for _, match := range matches {
+					if err := c.addPolicyRouteToVpc(
+						subnet.Spec.Vpc,
+						&kubeovnv1.PolicyRoute{
+							Priority:  util.NorthGatewayRoutePolicyPriority,
+							Match:     match.match,
+							Action:    kubeovnv1.PolicyRouteActionReroute,
+							NextHopIP: match.nextHopIP,
+						},
+						map[string]string{
+							"vendor": util.CniTypeName,
+							"subnet": subnet.Name,
+						},
+					); err != nil {
+						klog.Errorf("failed to add policy route, %v", err)
+						return err
+					}
 				}
 
 				// remove lsp from port group to make EIP/SNAT work
@@ -917,22 +953,14 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				}
 
 				if pod.Annotations[util.NorthGatewayAnnotation] != "" && pod.Annotations[util.IPAddressAnnotation] != "" {
-					for podAddr := range strings.SplitSeq(pod.Annotations[util.IPAddressAnnotation], ",") {
-						if util.CheckProtocol(podAddr) != util.CheckProtocol(pod.Annotations[util.NorthGatewayAnnotation]) {
-							continue
-						}
-						ipSuffix := "ip4"
-						if util.CheckProtocol(podAddr) == kubeovnv1.ProtocolIPv6 {
-							ipSuffix = "ip6"
-						}
-
+					for _, match := range policyRouteSrcMatches(pod.Annotations[util.IPAddressAnnotation], pod.Annotations[util.NorthGatewayAnnotation]) {
 						if err := c.addPolicyRouteToVpc(
 							subnet.Spec.Vpc,
 							&kubeovnv1.PolicyRoute{
 								Priority:  util.NorthGatewayRoutePolicyPriority,
-								Match:     fmt.Sprintf("%s.src == %s", ipSuffix, podAddr),
+								Match:     match.match,
 								Action:    kubeovnv1.PolicyRouteActionReroute,
-								NextHopIP: pod.Annotations[util.NorthGatewayAnnotation],
+								NextHopIP: match.nextHopIP,
 							},
 							map[string]string{
 								"vendor": util.CniTypeName,
