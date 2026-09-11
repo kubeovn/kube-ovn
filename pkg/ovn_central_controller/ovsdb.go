@@ -470,7 +470,7 @@ func buildOvnCtlArgs(cfg *Config, peers []string) []string {
 		)
 	}
 	args = append(args,
-		"--db-cluster-schema-upgrade=no",
+		"--db-cluster-schema-upgrade=yes",
 		fmt.Sprintf("--db-nb-cluster-local-addr=[%s]", cfg.DBClusterAddr),
 		fmt.Sprintf("--db-sb-cluster-local-addr=[%s]", cfg.DBClusterAddr),
 		fmt.Sprintf("--db-nb-cluster-local-port=%d", cfg.NBClusterPort),
