@@ -66,14 +66,23 @@ func (c *VMIMigrationClient) DeleteSync(name string) {
 	gomega.Expect(c.WaitToDisappear(name, poll, timeout)).To(gomega.Succeed(), "wait for migration %q to disappear", name)
 }
 
+func isTerminalMigrationPhase(phase v1.VirtualMachineInstanceMigrationPhase) bool {
+	return phase == v1.MigrationSucceeded || phase == v1.MigrationFailed
+}
+
 // WaitForPhase waits until the migration reaches the specified phase.
 func (c *VMIMigrationClient) WaitForPhase(name string, phase v1.VirtualMachineInstanceMigrationPhase, timeout time.Duration) error {
+	ginkgo.GinkgoHelper()
 	err := k8sframework.Gomega().Eventually(context.TODO(), k8sframework.RetryNotFound(func(ctx context.Context) (*v1.VirtualMachineInstanceMigration, error) {
 		return c.VirtualMachineInstanceMigrationInterface.Get(ctx, name, metav1.GetOptions{})
 	})).WithTimeout(timeout).Should(
 		k8sframework.MakeMatcher(func(m *v1.VirtualMachineInstanceMigration) (func() string, error) {
 			if m.Status.Phase == phase {
 				return nil, nil
+			}
+			if isTerminalMigrationPhase(m.Status.Phase) {
+				Failf("expected migration %s to reach phase %s, got terminal phase %s instead:\n%s",
+					name, phase, m.Status.Phase, format.Object(m.Status, 1))
 			}
 			return func() string {
 				return fmt.Sprintf("expected migration phase %s, got %s instead:\n%s",

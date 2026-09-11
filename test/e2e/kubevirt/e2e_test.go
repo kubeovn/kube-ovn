@@ -79,18 +79,21 @@ func expectLSPMigrationCleanup(portName string) {
 	}
 }
 
-func parsePingStats(stdout string) (transmitted, received, lost int) {
-	ginkgo.GinkgoHelper()
-	re := regexp.MustCompile(`(\d+) packets transmitted, (\d+) packets received`)
+func parsePingStats(stdout string) (transmitted, received, lost int, err error) {
+	re := regexp.MustCompile(`(?m)(\d+) packets transmitted, (\d+)(?: packets)? received`)
 	matches := re.FindStringSubmatch(stdout)
-	framework.ExpectNotEmpty(matches, "failed to parse ping statistics from output")
-	var err error
+	if len(matches) != 3 {
+		return 0, 0, 0, fmt.Errorf("failed to parse ping statistics from output %q", stdout)
+	}
 	transmitted, err = strconv.Atoi(matches[1])
-	framework.ExpectNoError(err)
+	if err != nil {
+		return 0, 0, 0, err
+	}
 	received, err = strconv.Atoi(matches[2])
-	framework.ExpectNoError(err)
-	lost = transmitted - received
-	return transmitted, received, lost
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return transmitted, received, transmitted - received, nil
 }
 
 func init() {
@@ -646,7 +649,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			migration = migrationClient.Create(migration)
 
 			ginkgo.By("Aborting migration " + migrationName)
-			migrationClient.Delete(migration.Name)
+			migrationClient.DeleteSync(migration.Name)
+
+			ginkgo.By("Waiting for vm " + vmName + " to be ready")
+			err := vmClient.WaitToBeReady(vmName, 2*time.Minute)
+			framework.ExpectNoError(err)
 
 			ginkgo.By("Getting pod of vm " + vmName + " after canceled migration")
 			pod = getVMPod(podClient, vmName)
@@ -706,7 +713,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				stdout, _, err = framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, pingCmd)
 				framework.ExpectNoError(err)
 
-				transmitted, received, lost := parsePingStats(stdout)
+				transmitted, received, lost, err := parsePingStats(stdout)
+				framework.ExpectNoError(err)
 				framework.Logf("[migration %d/%d] Ping: %d transmitted, %d received, %d lost", i, migrationCount, transmitted, received, lost)
 
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Verifying migration succeeded", i, migrationCount))
@@ -798,7 +806,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.Logf("Continuous ping output:\n%s", stdout)
 
 			ginkgo.By("Parsing ping statistics for packet loss")
-			transmitted, received, lost := parsePingStats(stdout)
+			transmitted, received, lost, err := parsePingStats(stdout)
+			framework.ExpectNoError(err)
 			framework.Logf("Ping results: %d transmitted, %d received, %d lost", transmitted, received, lost)
 
 			ginkgo.By("Verifying migration succeeded")
