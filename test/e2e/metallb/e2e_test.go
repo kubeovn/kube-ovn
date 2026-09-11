@@ -1260,7 +1260,7 @@ func waitUnderlayVIPBypassLFlowCleaned(vip string, port int32, timeout time.Dura
 	}, fmt.Sprintf("template VIP %s:%d should be absent from all chassis", vip, port))
 }
 
-func waitUnderlayVIPNodeLFlow(vip, vipNodeLSP string, port int32, timeout time.Duration) {
+func waitUnderlayVIPNodeLFlow(vip, vipNodeLSP string, _ int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
 	waitLoadBalancerVIPNodeMarker("", vip, vipNodeLSP, timeout)
 }
@@ -1477,7 +1477,7 @@ func nodeHasTemplateVariable(nodeName, varName, vip string) (bool, error) {
 	return vars[varName] == vip, nil
 }
 
-func nodeHasTemplateVIP(nodeName, vip string, port int32) (bool, error) {
+func nodeHasTemplateVIP(nodeName, vip string, _ int32) (bool, error) {
 	chassis, err := chassisNameForNode(nodeName)
 	if err != nil || chassis == "" {
 		return false, err
@@ -1862,7 +1862,7 @@ func getVIPNode(containerID, targetIP, clusterName string) string {
 	return vipNode
 }
 
-func underlayServiceFlowMatch(serviceIP string, servicePort int32) (cookie string, matchPort string) {
+func underlayServiceFlowMatch(serviceIP string, servicePort int32) (cookie, matchPort string) {
 	cookieVal := util.UnderlaySvcLocalOpenFlowCookieV4
 	if util.CheckProtocol(serviceIP) == apiv1.ProtocolIPv6 {
 		cookieVal = util.UnderlaySvcLocalOpenFlowCookieV6

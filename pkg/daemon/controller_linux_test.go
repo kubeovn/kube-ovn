@@ -612,7 +612,7 @@ func TestEnqueueServicesForUnderlaySubnet(t *testing.T) {
 	require.Equal(t, 0, controller.serviceQueue.Len())
 }
 
-func TestEnqueueServicesForUnderlaySubnetNilControllerFields(t *testing.T) {
+func TestEnqueueServicesForUnderlaySubnetNilControllerFields(_ *testing.T) {
 	controller := &Controller{}
 	controller.enqueueServicesForUnderlaySubnet("subnet-demo")
 }
