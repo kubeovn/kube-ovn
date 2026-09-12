@@ -16,7 +16,7 @@ import (
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
 
-func CheckIptablesRulesOnNode(f *framework.Framework, node, table, _ string, protocol string, expectedRules []string, shouldExist bool) {
+func CheckIptablesRulesOnNode(f *framework.Framework, node, table, _, protocol string, expectedRules []string, shouldExist bool) {
 	ovsPod := getOvsPodOnNode(f, node)
 
 	iptBin := "iptables"
