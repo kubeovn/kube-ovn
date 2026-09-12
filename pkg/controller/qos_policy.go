@@ -2,11 +2,14 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net"
+	"net/netip"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -35,16 +38,14 @@ func (c *Controller) enqueueAddQoSPolicy(obj any) {
 	c.addQoSPolicyQueue.Add(key)
 }
 
-// enqueueQoSPolicyRelease re-enqueues a QoS policy whose QoSLabel a referencing resource (EIP or
-// NatGw) no longer carries, so a policy marked for deletion can drop its finalizer once unused.
-// The QoS reconcile decides "in use" via the QoSLabel selector, so the re-enqueue must key on the
-// label's old value. It is triggered from the delete handler (old labels only, newLabels nil) and
-// from the update handler when the label is cleared or switched; both fire only after the informer
-// cache already reflects the change, which avoids the stale-cache race that left policies stuck in
-// Terminating.
-func (c *Controller) enqueueQoSPolicyRelease(oldLabels, newLabels map[string]string) {
-	if oldQoS := oldLabels[util.QoSLabel]; oldQoS != "" && oldQoS != newLabels[util.QoSLabel] {
-		c.updateQoSPolicyQueue.Add(oldQoS)
+// enqueueQoSPolicyRelease re-enqueues policies no longer present in either the
+// desired Spec reference or the applied Status credential. The event handler runs
+// after the informer store update, so cleanup has converged before finalizer release.
+func (c *Controller) enqueueQoSPolicyRelease(oldSpec, oldStatus, newSpec, newStatus string) {
+	for _, qos := range []string{oldSpec, oldStatus} {
+		if qos != "" && qos != newSpec && qos != newStatus {
+			c.updateQoSPolicyQueue.Add(qos)
+		}
 	}
 }
 
@@ -69,9 +70,13 @@ func compareQoSPolicyBandwidthLimitRules(oldObj, newObj kubeovnv1.QoSPolicyBandw
 	return reflect.DeepEqual(sortedOld, sortedNew)
 }
 
-func (c *Controller) enqueueUpdateQoSPolicy(_, newObj any) {
+func (c *Controller) enqueueUpdateQoSPolicy(oldObj, newObj any) {
+	oldQos := oldObj.(*kubeovnv1.QoSPolicy)
 	newQos := newObj.(*kubeovnv1.QoSPolicy)
 	key := cache.MetaObjectToName(newQos).String()
+	if oldQos.Status.BindingType == "" && qosPolicyStatusMatchesSpec(newQos) {
+		c.enqueueQoSPolicyReferences(newQos)
+	}
 	if !newQos.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("enqueue update to clean qos %s", key)
 		c.updateQoSPolicyQueue.Add(key)
@@ -86,6 +91,53 @@ func (c *Controller) enqueueUpdateQoSPolicy(_, newObj any) {
 		klog.V(3).Infof("enqueue update qos %s", key)
 		c.updateQoSPolicyQueue.Add(key)
 		return
+	}
+}
+
+func qosPolicyStatusMatchesSpec(qos *kubeovnv1.QoSPolicy) bool {
+	return qos.Status.Shared == qos.Spec.Shared && qos.Status.BindingType == qos.Spec.BindingType &&
+		compareQoSPolicyBandwidthLimitRules(qos.Status.BandwidthLimitRules, qos.Spec.BandwidthLimitRules)
+}
+
+func iptablesEIPsUsingQoS(eips []*kubeovnv1.IptablesEIP, qos string) []*kubeovnv1.IptablesEIP {
+	result := make([]*kubeovnv1.IptablesEIP, 0, len(eips))
+	for _, eip := range eips {
+		if eip.Spec.QoSPolicy == qos || eip.Status.QoSPolicy == qos {
+			result = append(result, eip)
+		}
+	}
+	return result
+}
+
+// enqueueQoSPolicyReferences notifies the resources referencing a policy once it
+// first becomes usable. Each referrer reconciles the policy from its own queue, so
+// a referrer that cannot apply the policy cannot hold up an unrelated one.
+func (c *Controller) enqueueQoSPolicyReferences(qos *kubeovnv1.QoSPolicy) {
+	switch qos.Status.BindingType {
+	case kubeovnv1.QoSBindingTypeEIP:
+		eips, err := c.iptablesEipsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list eips referencing QoS policy %s: %v", qos.Name, err)
+			return
+		}
+		for _, eip := range eips {
+			if eip.Spec.QoSPolicy == qos.Name {
+				klog.V(3).Infof("enqueue eip %s for ready QoS policy %s", eip.Name, qos.Name)
+				c.updateIptablesEipQueue.Add(eip.Name)
+			}
+		}
+	case kubeovnv1.QoSBindingTypeNatGw:
+		items, err := c.vpcNatGatewayLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list nat gateways referencing QoS policy %s: %v", qos.Name, err)
+			return
+		}
+		for _, gateway := range items {
+			if gateway.Spec.QoSPolicy == qos.Name {
+				klog.V(3).Infof("enqueue vpc nat gateway %s for ready QoS policy %s", gateway.Name, qos.Name)
+				c.addOrUpdateVpcNatGatewayQueue.Add(gateway.Name)
+			}
+		}
 	}
 }
 
@@ -132,7 +184,7 @@ func (c *Controller) handleAddQoSPolicy(key string) error {
 		return err
 	}
 
-	sortedNewRules := cachedQoS.Spec.BandwidthLimitRules
+	sortedNewRules := slices.Clone(cachedQoS.Spec.BandwidthLimitRules)
 	sort.Slice(sortedNewRules, func(i, j int) bool {
 		return sortedNewRules[i].Name < sortedNewRules[j].Name
 	})
@@ -245,14 +297,18 @@ func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwi
 
 	// Loop through new rules and compare with old rules
 	for _, s := range newList {
-		if old, ok := oldMap[s.Name]; !ok {
-			// add the rule
+		old, ok := oldMap[s.Name]
+		switch {
+		case !ok:
 			added = append(added, s)
-		} else if !reflect.DeepEqual(old, s) {
-			// updated the rule
+		case reflect.DeepEqual(old, s):
+		case old.Direction == s.Direction && old.Interface == s.Interface && old.Priority == s.Priority &&
+			old.MatchType == s.MatchType && old.MatchValue == s.MatchValue:
 			updated = append(updated, s)
+		default:
+			deleted = append(deleted, old)
+			added = append(added, s)
 		}
-		// keep the rule not changed
 		delete(oldMap, s.Name)
 	}
 
@@ -264,55 +320,42 @@ func diffQoSPolicyBandwidthLimitRules(oldList, newList kubeovnv1.QoSPolicyBandwi
 	return added, deleted, updated
 }
 
-func (c *Controller) reconcileEIPBandwidthLimitRules(
+func (c *Controller) reconcileEIPBandwidthLimitRulesLocked(
 	eip *kubeovnv1.IptablesEIP,
 	added kubeovnv1.QoSPolicyBandwidthLimitRules,
 	deleted kubeovnv1.QoSPolicyBandwidthLimitRules,
 	updated kubeovnv1.QoSPolicyBandwidthLimitRules,
 ) error {
-	var err error
-	// in this case, we must delete rules first, then add or update rules
+	if eip.Spec.NatGwDp == "" || eip.Status.IP == "" {
+		return nil
+	}
+	// Rules whose identity changed are deleted first, then the new rules are
+	// added, so that the gateway never carries stale tc classes from the old rule.
 	if len(deleted) > 0 {
-		if err = c.delEIPBandwidthLimitRules(eip, eip.Status.IP, deleted); err != nil {
-			klog.Errorf("failed to delete eip %s bandwidth limit rules, %v", eip.Name, err)
-			return err
+		if err := c.delEIPBandwidthLimitRulesLocked(eip, eip.Status.IP, deleted); err != nil {
+			return fmt.Errorf("failed to delete eip %s bandwidth limit rules: %w", eip.Name, err)
 		}
 	}
 	if len(added) > 0 {
-		if err = c.addOrUpdateEIPBandwidthLimitRules(eip, eip.Status.IP, added); err != nil {
-			klog.Errorf("failed to add eip %s bandwidth limit rules, %v", eip.Name, err)
-			return err
+		if err := c.addOrUpdateEIPBandwidthLimitRulesLocked(eip, eip.Status.IP, added); err != nil {
+			return fmt.Errorf("failed to add eip %s bandwidth limit rules: %w", eip.Name, err)
 		}
 	}
 	if len(updated) > 0 {
-		if err = c.addOrUpdateEIPBandwidthLimitRules(eip, eip.Status.IP, updated); err != nil {
-			klog.Errorf("failed to update eip %s bandwidth limit rules, %v", eip.Name, err)
-			return err
+		if err := c.addOrUpdateEIPBandwidthLimitRulesLocked(eip, eip.Status.IP, updated); err != nil {
+			return fmt.Errorf("failed to update eip %s bandwidth limit rules: %w", eip.Name, err)
 		}
 	}
-
 	return nil
 }
 
 func validateIPMatchValue(matchValue string) bool {
 	parts := strings.Split(matchValue, " ")
-	if len(parts) != 2 {
-		klog.Errorf("invalid ip MatchValue %s", matchValue)
+	if len(parts) != 2 || parts[0] != "src" && parts[0] != "dst" {
 		return false
 	}
-
-	direction := parts[0]
-	if direction != "src" && direction != "dst" {
-		klog.Errorf("invalid direction %s, must be src or dst", direction)
-		return false
-	}
-
-	cidr := parts[1]
-	if _, _, err := net.ParseCIDR(cidr); err != nil {
-		klog.Errorf("invalid cidr %s", cidr)
-		return false
-	}
-	return true
+	prefix, err := netip.ParsePrefix(parts[1])
+	return err == nil && prefix.Addr().Is4() && prefix == prefix.Masked()
 }
 
 // numericRatePattern validates that rate/burst values are numeric (integer or decimal)
@@ -329,10 +372,17 @@ var interfaceNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,15}$`)
 
 func validateRateValue(value, fieldName string) error {
 	if value == "" {
-		return nil // empty is allowed (omitempty in CRD)
+		return fmt.Errorf("%s must not be empty", fieldName)
 	}
 	if !numericRatePattern.MatchString(value) {
 		return fmt.Errorf("invalid %s value %q: must be a positive number (e.g., 100 or 0.5)", fieldName, value)
+	}
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil || n <= 0 {
+		return fmt.Errorf("invalid %s value %q: must be greater than zero", fieldName, value)
+	}
+	if fieldName == "rateMax" && n < 0.000008 {
+		return fmt.Errorf("invalid rateMax value %q: tc cannot represent less than 0.000008 Mbps", value)
 	}
 	return nil
 }
@@ -352,51 +402,103 @@ func validateInterfaceName(iface string) error {
 // validateDirection validates QoS rule direction to prevent command injection
 // Only "ingress" and "egress" are valid values
 func validateDirection(direction kubeovnv1.QoSPolicyRuleDirection) error {
-	if direction == "" {
-		return nil // empty is allowed (omitempty in CRD)
-	}
 	if direction != kubeovnv1.QoSDirectionIngress && direction != kubeovnv1.QoSDirectionEgress {
 		return fmt.Errorf("invalid direction %q: must be 'ingress' or 'egress'", direction)
 	}
 	return nil
 }
 
+func qosRuleInterface(rule kubeovnv1.QoSPolicyBandwidthLimitRule) string {
+	if rule.Interface != "" {
+		return rule.Interface
+	}
+	if rule.Direction == kubeovnv1.QoSDirectionIngress {
+		return "eth0"
+	}
+	return "net1"
+}
+
 func (c *Controller) validateQosPolicy(qosPolicy *kubeovnv1.QoSPolicy) error {
-	var err error
-	if qosPolicy.Spec.BandwidthLimitRules != nil {
-		for _, rule := range qosPolicy.Spec.BandwidthLimitRules {
-			// Validate RateMax and BurstMax are numeric only (prevents command injection)
-			if err = validateRateValue(rule.RateMax, "rateMax"); err != nil {
-				klog.Error(err)
-				return err
+	if qosPolicy.Spec.BindingType != kubeovnv1.QoSBindingTypeEIP &&
+		qosPolicy.Spec.BindingType != kubeovnv1.QoSBindingTypeNatGw {
+		return fmt.Errorf("invalid binding type %q: must be EIP or NATGW", qosPolicy.Spec.BindingType)
+	}
+	names := make(map[string]struct{}, len(qosPolicy.Spec.BandwidthLimitRules))
+	directions := make(map[kubeovnv1.QoSPolicyRuleDirection]struct{}, 2)
+	identities := make(map[struct {
+		direction  kubeovnv1.QoSPolicyRuleDirection
+		iface      string
+		priority   int
+		matchType  kubeovnv1.QoSPolicyRuleMatchType
+		matchValue string
+	}]struct{}, len(qosPolicy.Spec.BandwidthLimitRules))
+	for _, rule := range qosPolicy.Spec.BandwidthLimitRules {
+		if _, ok := names[rule.Name]; ok {
+			return fmt.Errorf("duplicate bandwidth rule name %q", rule.Name)
+		}
+		names[rule.Name] = struct{}{}
+		if rule.Priority < 0 || rule.Priority > 65535 {
+			return fmt.Errorf("invalid priority %d: must be between 0 and 65535", rule.Priority)
+		}
+		if qosPolicy.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw &&
+			rule.MatchType == kubeovnv1.QoSMatchTypeIP && rule.Priority == 0 {
+			return errors.New("priority must be greater than zero for NATGW ip match rules")
+		}
+		if err := validateRateValue(rule.RateMax, "rateMax"); err != nil {
+			return err
+		}
+		if err := validateRateValue(rule.BurstMax, "burstMax"); err != nil {
+			return err
+		}
+		if err := validateInterfaceName(rule.Interface); err != nil {
+			return err
+		}
+		if err := validateDirection(rule.Direction); err != nil {
+			return err
+		}
+		switch rule.MatchType {
+		case "":
+			if rule.MatchValue != "" {
+				return errors.New("matchValue must be empty when matchType is empty")
 			}
-			if err = validateRateValue(rule.BurstMax, "burstMax"); err != nil {
-				klog.Error(err)
-				return err
+		case kubeovnv1.QoSMatchTypeIP:
+			if !validateIPMatchValue(rule.MatchValue) {
+				return fmt.Errorf("invalid ip MatchValue %s", rule.MatchValue)
 			}
-			// Validate Interface name (prevents command injection)
-			if err = validateInterfaceName(rule.Interface); err != nil {
-				klog.Error(err)
-				return err
+		default:
+			return fmt.Errorf("invalid match type %q", rule.MatchType)
+		}
+
+		if qosPolicy.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw {
+			matchValue := rule.MatchValue
+			priority := rule.Priority
+			if rule.MatchType == "" {
+				matchValue = ""
+				priority %= 255
 			}
-			// Validate Direction (prevents command injection)
-			if err = validateDirection(rule.Direction); err != nil {
-				klog.Error(err)
-				return err
+			identity := struct {
+				direction  kubeovnv1.QoSPolicyRuleDirection
+				iface      string
+				priority   int
+				matchType  kubeovnv1.QoSPolicyRuleMatchType
+				matchValue string
+			}{rule.Direction, qosRuleInterface(rule), priority, rule.MatchType, matchValue}
+			if _, ok := identities[identity]; ok {
+				return fmt.Errorf("bandwidth rule %q duplicates an existing rule identity", rule.Name)
 			}
-			if rule.MatchType == "ip" {
-				if !validateIPMatchValue(rule.MatchValue) {
-					err = fmt.Errorf("invalid ip MatchValue %s", rule.MatchValue)
-					klog.Error(err)
-					return err
-				}
+			identities[identity] = struct{}{}
+		} else {
+			if rule.Interface != "" || rule.MatchType != "" || rule.MatchValue != "" {
+				return fmt.Errorf("bandwidth rule %q: interface and match fields are not supported for EIP binding", rule.Name)
 			}
+			if _, ok := directions[rule.Direction]; ok {
+				return fmt.Errorf("bandwidth rule %q duplicates direction %q", rule.Name, rule.Direction)
+			}
+			directions[rule.Direction] = struct{}{}
 		}
 	}
 	if !qosPolicy.Spec.Shared && qosPolicy.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw {
-		err = fmt.Errorf("qos policy %s is not shared, but binding to nat gateway", qosPolicy.Name)
-		klog.Error(err)
-		return err
+		return fmt.Errorf("qos policy %s is not shared, but binding to nat gateway", qosPolicy.Name)
 	}
 	return nil
 }
@@ -417,30 +519,23 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 
 	// should delete
 	if !cachedQos.DeletionTimestamp.IsZero() {
-		// Check if the QoS policy is still being used before allowing deletion
-		var inUse bool
-		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeEIP {
-			eips, err := c.iptablesEipsLister.List(
-				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}),
-			)
-			// when eip is not found, we should delete finalizer
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to get eip list, %v", err)
-				return err
-			}
-			inUse = len(eips) != 0
+		// Check both supported reference types. BindingType changes are rejected by
+		// reconciliation but not by API validation, so deletion cannot trust Spec alone.
+		eips, err := c.iptablesEipsLister.List(labels.Everything())
+		if err != nil {
+			return fmt.Errorf("failed to list eips: %w", err)
 		}
-
-		if cachedQos.Spec.BindingType == kubeovnv1.QoSBindingTypeNatGw {
-			gws, err := c.vpcNatGatewayLister.List(
-				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}),
-			)
-			// when nat gw is not found, we should delete finalizer
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to get gw list, %v", err)
-				return err
+		inUse := slices.ContainsFunc(eips, func(eip *kubeovnv1.IptablesEIP) bool {
+			return eip.Spec.QoSPolicy == key || eip.Status.QoSPolicy == key
+		})
+		if !inUse {
+			gateways, err := c.vpcNatGatewayLister.List(labels.Everything())
+			if err != nil {
+				return fmt.Errorf("failed to list nat gateways: %w", err)
 			}
-			inUse = len(gws) != 0
+			inUse = slices.ContainsFunc(gateways, func(gateway *kubeovnv1.VpcNatGateway) bool {
+				return gateway.Spec.QoSPolicy == key || gateway.Status.QoSPolicy == key
+			})
 		}
 
 		if inUse {
@@ -489,40 +584,35 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 			return err
 		}
 
-		if cachedQos.Status.BindingType == kubeovnv1.QoSBindingTypeEIP {
-			// filter to eip
-			eips, err := c.iptablesEipsLister.List(
-				labels.SelectorFromSet(labels.Set{util.QoSLabel: key}),
-			)
-			if err != nil {
-				klog.Errorf("failed to get eip list, %v", err)
-				return err
-			}
-			switch {
-			case len(eips) == 0:
-				// not thing to do
-			case len(eips) == 1:
-				eip := eips[0]
-				if err = c.reconcileEIPBandwidthLimitRules(eip, added, deleted, updated); err != nil {
-					klog.Errorf("failed to reconcile eip %s bandwidth limit rules, %v", eip.Name, err)
-					return err
-				}
-			default:
-				err := fmt.Errorf("not support qos %s change rule, related eip more than one", key)
-				klog.Error(err)
-				return err
-			}
-		}
-
-		sortedNewRules := cachedQos.Spec.BandwidthLimitRules
+		sortedNewRules := slices.Clone(cachedQos.Spec.BandwidthLimitRules)
 		sort.Slice(sortedNewRules, func(i, j int) bool {
 			return sortedNewRules[i].Name < sortedNewRules[j].Name
 		})
 
-		// .Status.Shared and .Status.BindingType are not supported to change
+		if cachedQos.Status.BindingType == kubeovnv1.QoSBindingTypeEIP {
+			eips, err := c.iptablesEipsLister.List(labels.Everything())
+			if err != nil {
+				return fmt.Errorf("failed to list eips for QoS policy %s: %w", key, err)
+			}
+			eips = iptablesEIPsUsingQoS(eips, key)
+			switch len(eips) {
+			case 0:
+			case 1:
+				eip := eips[0]
+				return c.withNatGwQoSLock(eip.Spec.NatGwDp, func() error {
+					if err := c.reconcileEIPBandwidthLimitRulesLocked(eip, added, deleted, updated); err != nil {
+						return err
+					}
+					return c.patchQoSStatus(key, cachedQos.Status.Shared, cachedQos.Status.BindingType, sortedNewRules)
+				})
+			default:
+				return fmt.Errorf("not support qos %s change rule, related eip more than one", key)
+			}
+		}
+
+		// .Status.Shared and .Status.BindingType are not supported to change.
 		if err = c.patchQoSStatus(key, cachedQos.Status.Shared, cachedQos.Status.BindingType, sortedNewRules); err != nil {
-			klog.Errorf("failed to patch status for qos %s, %v", key, err)
-			return err
+			return fmt.Errorf("failed to patch status for qos %s: %w", key, err)
 		}
 	}
 	return nil

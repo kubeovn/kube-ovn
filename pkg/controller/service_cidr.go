@@ -115,9 +115,9 @@ func (c *Controller) onServiceCIDRDelete(obj any) {
 // against the freshly merged set.
 //
 // VpcNatGateways are deliberately skipped: handleAddOrUpdateVpcNatGw only diffs
-// Spec, and handleInitVpcNatGw bails on VpcNatGatewayInitAnnotation. Existing
-// NAT GWs need pod recreation to pick up new routes; new ones already render
-// against the current store.
+// Spec, and the gateway init script re-runs as a no-op once its chains exist.
+// Existing NAT GWs need pod recreation to pick up new routes; new ones already
+// render against the current store.
 func (c *Controller) reconcileForServiceCIDRChange() {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {

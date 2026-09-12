@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,7 +38,6 @@ import (
 var (
 	vpcNatEnabled   = "unknown"
 	VpcNatCmVersion = ""
-	natGwCreatedAT  = ""
 )
 
 const (
@@ -155,9 +155,8 @@ func (c *Controller) enqueueUpdateVpcNatGw(oldObj, newObj any) {
 	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 
-	// When the QoSLabel is cleared or switched, re-enqueue the previous QoS policy so it can drop
-	// its finalizer once unused (the in-use check is keyed on the label).
-	c.enqueueQoSPolicyRelease(oldGw.Labels, newGw.Labels)
+	c.enqueueQoSPolicyRelease(oldGw.Spec.QoSPolicy, oldGw.Status.QoSPolicy,
+		newGw.Spec.QoSPolicy, newGw.Status.QoSPolicy)
 }
 
 func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
@@ -187,9 +186,8 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
 
-	// Trigger QoS Policy reconcile after NatGw is deleted so it can drop its finalizer if no
-	// other NatGw references it. Key on the QoSLabel, matching the QoS in-use check.
-	c.enqueueQoSPolicyRelease(gw.Labels, nil)
+	// Trigger QoS reconciliation after the informer cache drops this gateway.
+	c.enqueueQoSPolicyRelease(gw.Spec.QoSPolicy, gw.Status.QoSPolicy, "", "")
 }
 
 // handleDelVpcNatGw handles NAT gateways when they've been deleted
@@ -318,29 +316,28 @@ func natGwWorkloadLabelsChanged(current, desired map[string]string) bool {
 // handleAddOrUpdateVpcNatGw is called when a VPC NAT gateway is added or updated.
 // If a VPC NAT gateway is deleted, the deletionTimestamp will be updated and this function will also be called.
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
+	c.vpcNatGwKeyMutex.LockKey(key)
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
+		_ = c.vpcNatGwKeyMutex.UnlockKey(key)
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Error(err)
-		_ = c.recordResourceError(&kubeovnv1.VpcNatGateway{Name: key},
-			"GetVpcNatGatewayFailed", err)
+		_ = c.recordResourceError(&kubeovnv1.VpcNatGateway{Name: key}, "GetVpcNatGatewayFailed", err)
 		return err
 	}
-
-	statusUpdateFailed := false
 	if !gw.DeletionTimestamp.IsZero() {
+		_ = c.vpcNatGwKeyMutex.UnlockKey(key)
 		return c.handleDelVpcNatGw(key)
 	}
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+
+	statusUpdateFailed := false
 	defer func() {
 		if retErr != nil && !statusUpdateFailed {
 			_ = c.recordResourceError(gw, "ReconcileFailed", retErr)
 		}
 	}()
-
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 
 	if err := c.handleAddVpcNatGwFinalizer(gw); err != nil {
 		klog.Errorf("failed to add vpc nat gateway finalizer for %s: %v", key, err)
@@ -372,16 +369,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		klog.Error(err)
 		return err
 	}
-	var natGwPodContainerRestartCount int32
-	for _, pod := range pods {
-		for _, containerStatus := range pod.Status.ContainerStatuses {
-			if containerStatus.Name == "vpc-nat-gw" {
-				natGwPodContainerRestartCount = max(natGwPodContainerRestartCount, containerStatus.RestartCount)
-			}
-		}
-	}
-	needRestartRecovery := natGwPodContainerRestartCount > 0
-
 	// Choose between Deployment (HA mode) or StatefulSet (legacy mode)
 	if util.IsNatGwHAMode(gw) {
 		// HA mode: use Deployment
@@ -471,7 +458,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		}
 		gwChanged := isVpcNatGwChanged(gw)
 
-		newSts, err := c.genNatGwStatefulSet(gw, oldSts, natGwPodContainerRestartCount)
+		newSts, err := c.genNatGwStatefulSet(gw)
 		if err != nil {
 			klog.Error(err)
 			return err
@@ -515,7 +502,7 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		labelsChanged := natGwWorkloadLabelsChanged(oldSts.Labels, newSts.Labels)
 		// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
 		// TODO: support hot update of runtime Pod annotations directly via patch
-		if gwChanged || templateChanged || labelsChanged || needRestartRecovery {
+		if gwChanged || templateChanged || labelsChanged {
 			// Update the stored workload in place so that owner references and metadata set
 			// by third parties survive; only the spec is owned by this controller.
 			updatedSts := oldSts.DeepCopy()
@@ -544,17 +531,21 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 
 	// Handle QoS update (independent of StatefulSet/Deployment changes)
 	if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
-		if gw.Status.QoSPolicy != "" {
-			if err = c.execNatGwQoS(gw, gw.Status.QoSPolicy, QoSDel); err != nil {
-				klog.Errorf("failed to del qos for nat gw %s, %v", key, err)
-				return err
+		if err = c.withNatGwQoSLock(gw.Name, func() error {
+			if gw.Status.QoSPolicy != "" {
+				if err = c.execNatGwQoSLocked(gw, gw.Status.QoSPolicy, QoSDel); err != nil {
+					return fmt.Errorf("failed to del qos for nat gw %s: %w", gw.Name, err)
+				}
 			}
-		}
-		if gw.Spec.QoSPolicy != "" {
-			if err = c.execNatGwQoS(gw, gw.Spec.QoSPolicy, QoSAdd); err != nil {
-				klog.Errorf("failed to add qos for nat gw %s, %v", key, err)
-				return err
+			if gw.Spec.QoSPolicy != "" {
+				if err = c.execNatGwQoSLocked(gw, gw.Spec.QoSPolicy, QoSAdd); err != nil {
+					return fmt.Errorf("failed to add qos for nat gw %s: %w", gw.Name, err)
+				}
 			}
+			return nil
+		}); err != nil {
+			klog.Error(err)
+			return err
 		}
 		if err := c.updateCrdNatGwLabels(key, gw.Spec.QoSPolicy); err != nil {
 			err := fmt.Errorf("failed to update nat gw %s: %w", gw.Name, err)
@@ -593,27 +584,33 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 //
 // The order matters: stage 1 closes the window in which a Pod recreation could pick a
 // different address, and it must not be held up by stage 2, which legitimately fails on its
-// first attempts. Both stages are idempotent, stage 1 through the preconditions of its JSON
-// patch and stage 2 through the init annotation it sets on each Pod.
+// first attempts. Both stages are idempotent: stage 1 through the preconditions of its JSON
+// patch and stage 2 through the script operations. The init annotation only records completion.
 //
 // This is a separate work queue rather than a step of handleAddOrUpdateVpcNatGw because the
 // exec takes seconds and its unit of work is a Pod instance rather than the gateway
 // generation, so it needs its own back-off, and a flapping exec must not block the gateway
 // reconcile. The two never interleave for one gateway because both take vpcNatGwKeyMutex.
 func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
+	c.vpcNatGwKeyMutex.LockKey(key)
+	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
+	klog.Infof("handle init vpc nat gateway %s", key)
+
+	// The queue item may have waited behind a gateway update. Read from the
+	// informer after taking the shared lock so initialization cannot restore the
+	// object captured before it waited.
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Error(err)
-		_ = c.recordResourceError(&kubeovnv1.VpcNatGateway{Name: key},
-			"GetVpcNatGatewayFailed", err)
+		_ = c.recordResourceError(&kubeovnv1.VpcNatGateway{Name: key}, "GetVpcNatGatewayFailed", err)
 		return err
 	}
 	statusUpdateFailed := false
+	initWaitingForPod := false
 	defer func() {
-		if retErr != nil && !statusUpdateFailed {
+		if retErr != nil && !statusUpdateFailed && !initWaitingForPod {
 			_ = c.recordResourceError(gw, "InitializeFailed", retErr)
 		}
 	}()
@@ -621,10 +618,6 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 	if vpcNatEnabled != "true" {
 		return errors.New("iptables nat gw not enable")
 	}
-
-	c.vpcNatGwKeyMutex.LockKey(key)
-	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
-	klog.Infof("handle init vpc nat gateway %s", key)
 
 	// Stage 1: reconcile the status, which pins the allocated address. patchNatGwStatus is
 	// reused as a whole rather than reduced to the pinning: persistNatGwLanIP is guarded by a
@@ -647,22 +640,45 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 	// Stage 2: configure the Pods themselves.
 	// subnet for vpc-nat-gw has been checked when create vpc-nat-gw
 
-	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw), true)
+	// Read the Pods live: after a replacement the informer cache can still return the previous
+	// instance together with the completion annotation it carries, which would make this handler
+	// skip a Pod that is in fact not initialized yet.
+	pods, err := c.listNatGwPods(gw)
 	if err != nil {
 		err := fmt.Errorf("failed to get nat gw %s pods: %w", gw.Name, err)
 		klog.Error(err)
 		return err
 	}
 
-	for _, pod := range pods {
-		if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
+	// A terminating Pod cannot be initialized and its replacement may not be visible yet.
+	// Reporting success here would leave that replacement uninitialized until an unrelated
+	// event re-runs this handler, which is what leaves a recreated gateway without any
+	// data-plane state.
+	initTargets := natGwInitTargets(pods)
+	if natGwInitPending(gw, initTargets) {
+		// The replacement Pod is not available yet. This is a retry, not a gateway failure,
+		// so it is not recorded as a resource error.
+		initWaitingForPod = true
+		return fmt.Errorf("nat gateway %s has no live pod to initialize, will retry", key)
+	}
+	if len(initTargets) == 0 {
+		// The gateway is being deleted: there is nothing left to initialize.
+		return nil
+	}
+
+	// The init script is re-run on every reconcile: it exits early once its
+	// iptables chains exist, but it first rewrites the interface configuration it
+	// persists, which a restarted vpc-nat-gw container loses with its writable layer.
+	// A pod that is not running yet is not skipped: the failing exec is what
+	// requeues this handler, since a Pending->Running transition raises no init
+	// event of its own.
+	for _, pod := range initTargets {
+		if !natGwPodPendingInit(pod) {
+			// Already initialized on this instance. Upstream skipped these Pods, and the
+			// completion mark now carries the instance identity, so a restart or replacement
+			// still re-runs the command.
 			continue
 		}
-		last, _ := time.Parse("2006-01-02T15:04:05", natGwCreatedAT)
-		if pod.CreationTimestamp.Unix() > last.Unix() {
-			natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-		}
-		klog.V(3).Infof("nat gw pod '%s/%s' inited at %s", pod.Namespace, pod.Name, natGwCreatedAT)
 		// During initialization, when KubeOVN is running on non primary cni mode, we need to ensure the NAT gateway interfaces
 		// are properly configured. We extract the interfaces from the runtime Pod annotations (network-status).
 		var interfaces []string
@@ -718,12 +734,8 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 			return fmt.Errorf("failed to init vpc nat gateway, %w", err)
 		}
 	}
-
-	if gw.Spec.QoSPolicy != "" {
-		if err = c.execNatGwQoS(gw, gw.Spec.QoSPolicy, QoSAdd); err != nil {
-			klog.Errorf("failed to add qos for nat gw %s, %v", key, err)
-			return err
-		}
+	if err = c.restoreVpcNatGwQoS(gw); err != nil {
+		return err
 	}
 	// if update qos success, will update nat gw status
 	if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
@@ -741,25 +753,95 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 		return err
 	}
 
-	c.updateVpcFloatingIPQueue.Add(key)
-	c.updateVpcDnatQueue.Add(key)
-	c.updateVpcSnatQueue.Add(key)
-	c.updateVpcSubnetQueue.Add(key)
-	c.updateVpcEipQueue.Add(key)
-
-	for _, pod := range pods {
-		if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
+	for _, pod := range initTargets {
+		instanceToken := natGwPodInstanceToken(pod)
+		hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation] == "true"
+		// The exec runs against the container by name, so the init command can succeed while the
+		// cached Pod still reports its previous status. Record completion in that case too, and
+		// let the next attempt attach the instance token once the status is observed.
+		if hasInit && (instanceToken == "" ||
+			pod.Annotations[util.VpcNatGatewayInitInstanceAnnotation] == instanceToken) {
 			continue
 		}
-
 		patch := util.KVPatch{util.VpcNatGatewayInitAnnotation: "true"}
+		if instanceToken != "" {
+			patch[util.VpcNatGatewayInitInstanceAnnotation] = instanceToken
+		}
 		if err = util.PatchAnnotations(c.config.KubeClient.CoreV1().Pods(pod.Namespace), pod.Name, patch); err != nil {
 			err := fmt.Errorf("failed to patch pod %s/%s: %w", pod.Namespace, pod.Name, err)
 			klog.Error(err)
 			return err
 		}
 	}
+
+	// A previous attempt on a replaced Pod may have left these queues in back-off, which delays
+	// the data-plane restore far beyond the Pod becoming ready. Forget the failure counts so the
+	// redo runs as soon as this initialization succeeded.
+	c.updateVpcFloatingIPQueue.Forget(key)
+	c.updateVpcDnatQueue.Forget(key)
+	c.updateVpcSnatQueue.Forget(key)
+	c.updateVpcSubnetQueue.Forget(key)
+	c.updateVpcEipQueue.Forget(key)
+
+	c.updateVpcFloatingIPQueue.Add(key)
+	c.updateVpcDnatQueue.Add(key)
+	c.updateVpcSnatQueue.Add(key)
+	c.updateVpcSubnetQueue.Add(key)
+	c.updateVpcEipQueue.Add(key)
 	return nil
+}
+
+// natGwInitTargets returns the gateway Pods the init command can be run on. A Pod that is
+// terminating is excluded: its replacement takes over the same address, and the gateway is
+// not initialized until that replacement has been configured.
+func natGwInitTargets(pods []*corev1.Pod) []*corev1.Pod {
+	targets := make([]*corev1.Pod, 0, len(pods))
+	for _, pod := range pods {
+		if pod.DeletionTimestamp != nil {
+			continue
+		}
+		targets = append(targets, pod)
+	}
+	return targets
+}
+
+// natGwInitPending reports whether the init handler has to come back later because the
+// gateway still exists but has no Pod to run the init command on. The terminating Pod is
+// gone before its replacement is visible, so this gap is expected.
+func natGwInitPending(gw *kubeovnv1.VpcNatGateway, targets []*corev1.Pod) bool {
+	return len(targets) == 0 && gw.DeletionTimestamp.IsZero()
+}
+
+// natGwPodInstanceToken identifies the running vpc-nat-gw container instance of one Pod. A
+// recreated Pod has a new UID and a restarted container a new ContainerID, and both lose the
+// state the init command writes, so the token covers both. An empty token means the container
+// is not running and the Pod cannot be initialized right now.
+func natGwPodInstanceToken(pod *corev1.Pod) string {
+	if pod.Status.Phase != corev1.PodRunning || pod.DeletionTimestamp != nil {
+		return ""
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == "vpc-nat-gw" && status.State.Running != nil && status.ContainerID != "" {
+			return fmt.Sprintf("%x", sha256.Sum256([]byte(string(pod.UID)+"="+status.ContainerID)))
+		}
+	}
+	return ""
+}
+
+// restoreVpcNatGwQoS re-applies the gateway policy on a (re)created gateway pod.
+// EIP policies are not part of this restore: they own a per-EIP redo credential
+// (handleUpdateVpcEip) and reconcile from their own queue, so one EIP that cannot
+// be applied cannot hold up the initialization of its gateway.
+func (c *Controller) restoreVpcNatGwQoS(gw *kubeovnv1.VpcNatGateway) error {
+	if gw.Spec.QoSPolicy == "" {
+		return nil
+	}
+	return c.withNatGwQoSLock(gw.Name, func() error {
+		if err := c.execNatGwQoSLocked(gw, gw.Spec.QoSPolicy, QoSAdd); err != nil {
+			return fmt.Errorf("failed to restore QoS for nat gateway %s: %w", gw.Name, err)
+		}
+		return nil
+	})
 }
 
 func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
@@ -771,10 +853,8 @@ func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update vpc fip %s", natGwKey)
 
-	// refresh exist fips
-	if err := c.initCreateAt(natGwKey); err != nil {
-		err = fmt.Errorf("failed to init nat gw pod '%s' create at, %w", natGwKey, err)
-		klog.Error(err)
+	redoToken, err := c.natGwRedoToken(natGwKey)
+	if err != nil {
 		return err
 	}
 
@@ -786,9 +866,9 @@ func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
 	}
 
 	for _, fip := range fips {
-		if fip.Status.Redo != natGwCreatedAT {
+		if fip.Status.Redo != redoToken {
 			klog.V(3).Infof("redo fip %s", fip.Name)
-			if err = c.redoFip(fip.Name, natGwCreatedAT, false); err != nil {
+			if err = c.redoFip(fip.Name, redoToken, false); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", fip.Spec.EIP, err)
 				return err
 			}
@@ -806,25 +886,21 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update vpc eip %s", natGwKey)
 
-	// refresh exist fips
-	if err := c.initCreateAt(natGwKey); err != nil {
-		err = fmt.Errorf("failed to init nat gw pod '%s' create at, %w", natGwKey, err)
-		klog.Error(err)
+	redoToken, err := c.natGwRedoToken(natGwKey)
+	if err != nil {
 		return err
 	}
 	eips, err := c.iptablesEipsLister.List(labels.Everything())
 	if err != nil {
-		err = fmt.Errorf("failed to get eip list, %w", err)
-		klog.Error(err)
-		return err
+		return fmt.Errorf("failed to get eip list: %w", err)
 	}
 	for _, eip := range eips {
-		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != natGwCreatedAT {
-			klog.V(3).Infof("redo eip %s", eip.Name)
-			if err = c.patchEipStatus(eip.Name, "", natGwCreatedAT, "", false); err != nil {
-				klog.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)
-				return err
-			}
+		if eip.Spec.NatGwDp != natGwKey || !eip.DeletionTimestamp.IsZero() || eip.Status.Redo == redoToken {
+			continue
+		}
+		klog.V(3).Infof("redo eip %s", eip.Name)
+		if err = c.patchEipStatus(eip.Name, "", redoToken, "", false); err != nil {
+			return fmt.Errorf("failed to update eip %s for re-apply: %w", eip.Name, err)
 		}
 	}
 	return nil
@@ -839,10 +915,8 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update vpc snat %s", natGwKey)
 
-	// refresh exist snats
-	if err := c.initCreateAt(natGwKey); err != nil {
-		err = fmt.Errorf("failed to init nat gw pod '%s' create at, %w", natGwKey, err)
-		klog.Error(err)
+	redoToken, err := c.natGwRedoToken(natGwKey)
+	if err != nil {
 		return err
 	}
 	snats, err := c.iptablesSnatRulesLister.List(labels.SelectorFromSet(labels.Set{util.VpcNatGatewayNameLabel: natGwKey}))
@@ -852,9 +926,9 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 		return err
 	}
 	for _, snat := range snats {
-		if snat.Status.Redo != natGwCreatedAT {
+		if snat.Status.Redo != redoToken {
 			klog.V(3).Infof("redo snat %s", snat.Name)
-			if err = c.redoSnat(snat.Name, natGwCreatedAT, false); err != nil {
+			if err = c.redoSnat(snat.Name, redoToken, false); err != nil {
 				err = fmt.Errorf("failed to update eip '%s' to re-apply, %w", snat.Spec.EIP, err)
 				klog.Error(err)
 				return err
@@ -873,10 +947,8 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update vpc dnat %s", natGwKey)
 
-	// refresh exist dnats
-	if err := c.initCreateAt(natGwKey); err != nil {
-		err = fmt.Errorf("failed to init nat gw pod '%s' create at, %w", natGwKey, err)
-		klog.Error(err)
+	redoToken, err := c.natGwRedoToken(natGwKey)
+	if err != nil {
 		return err
 	}
 
@@ -887,9 +959,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		return err
 	}
 	for _, dnat := range dnats {
-		if dnat.Status.Redo != natGwCreatedAT {
+		if dnat.Status.Redo != redoToken {
 			klog.V(3).Infof("redo dnat %s", dnat.Name)
-			if err = c.redoDnat(dnat.Name, natGwCreatedAT, false); err != nil {
+			if err = c.redoDnat(dnat.Name, redoToken, false); err != nil {
 				err := fmt.Errorf("failed to update dnat '%s' to redo, %w", dnat.Name, err)
 				klog.Error(err)
 				return err
@@ -1099,6 +1171,18 @@ func (c *Controller) handleUpdateNatGwSubnetRoute(natGwKey string) error {
 	return nil
 }
 
+// natGwPodInited asks the gateway whether this Pod holds the chains the data plane needs. The
+// script command's exit status is the answer, so no stderr text is interpreted here.
+func (c *Controller) natGwPodInited(pod *corev1.Pod) (bool, error) {
+	args := []string{"bash", "/kube-ovn/nat-gateway.sh", "check-inited"}
+	_, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig,
+		pod.Namespace, pod.Name, "vpc-nat-gw", args...)
+	if err != nil {
+		return false, fmt.Errorf("pod %s/%s is not initialized: %w: %s", pod.Namespace, pod.Name, err, errOutput)
+	}
+	return true, nil
+}
+
 func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []string) error {
 	lockKey := fmt.Sprintf("nat-gw-exec:%s/%s", pod.Namespace, pod.Name)
 
@@ -1114,6 +1198,17 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 		if len(errOutput) > 0 {
 			klog.Errorf("NAT gateway command failed - stderr: %v", errOutput)
 		}
+		// The data plane just proved that this Pod is not initialized. Let that failure drive
+		// convergence instead of relying on a Pod event to re-run the init command.
+		// Ask the gateway itself whether it is initialized, through a command whose exit status
+		// is the answer: a failing data-plane command only proves that something is wrong, and
+		// its stderr is not an interface.
+		if inited, checkErr := c.natGwPodInited(pod); checkErr != nil || !inited {
+			if isGw, gwName := c.checkIsPodVpcNatGw(pod); isGw {
+				klog.Infof("nat gateway %s needs initialization (%v), requeuing it", gwName, checkErr)
+				c.initVpcNatGatewayQueue.Add(gwName)
+			}
+		}
 		if len(stdOutput) > 0 {
 			klog.Infof("NAT gateway command failed - stdout: %v", stdOutput)
 		}
@@ -1126,28 +1221,9 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	}
 
 	if len(errOutput) > 0 {
-		// tc commands may output warnings to stderr (e.g., "Warning: sch_htb: quantum of class is big")
-		// Filter out lines that are only warnings, but preserve actual errors
-		lines := strings.Split(errOutput, "\n")
-		var errorLines []string
-		for _, line := range lines {
-			trimmedLine := strings.TrimSpace(line)
-			if trimmedLine == "" {
-				continue
-			}
-			// Skip lines that are just warnings
-			if strings.HasPrefix(trimmedLine, "Warning:") {
-				klog.Warningf("NAT gateway command warning: %v", trimmedLine)
-				continue
-			}
-			errorLines = append(errorLines, trimmedLine)
-		}
-		// If there are actual error lines (not just warnings), return error
-		if len(errorLines) > 0 {
-			errMsg := strings.Join(errorLines, "; ")
-			klog.Errorf("failed to ExecuteCommandInContainer errOutput: %v", errMsg)
-			return errors.New(errMsg)
-		}
+		// The command exited successfully, so its stderr is diagnostic only: the gateway script
+		// is responsible for reporting failures through its exit status.
+		klog.Warningf("nat gateway %s command wrote to stderr: %v", operation, errOutput)
 	}
 	return nil
 }
@@ -1314,7 +1390,7 @@ func (c *Controller) generateNatGwRoutes(
 	return annotations, nil
 }
 
-func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (*v1.StatefulSet, error) {
+func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway) (*v1.StatefulSet, error) {
 	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
 	if err != nil {
 		klog.Errorf("failed to get gw external subnet nad: %v", err)
@@ -1343,12 +1419,6 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		return nil, err
 	}
 
-	// Restart logic to fix #5072
-	if oldSts != nil && len(oldSts.Spec.Template.Annotations) != 0 {
-		if _, ok := oldSts.Spec.Template.Annotations[util.VpcNatGatewayContainerRestartAnnotation]; !ok && natGwPodContainerRestartCount > 0 {
-			templateAnnotations[util.VpcNatGatewayContainerRestartAnnotation] = ""
-		}
-	}
 	klog.V(3).Infof("%s templateAnnotations:%v", gw.Name, templateAnnotations)
 
 	// Add an interface that can reach the API server, we need access to it to probe Kube-OVN resources
@@ -1751,30 +1821,45 @@ func (c *Controller) getNatGwPods(name, namespace string, allPods bool) ([]*core
 	return activePods, nil
 }
 
-func (c *Controller) initCreateAt(key string) (err error) {
-	if natGwCreatedAT != "" {
-		return nil
-	}
+// natGwRedoToken identifies the running gateway container instances without
+// relying on clocks. Pod UID changes on recreation and ContainerID changes on
+// an in-place container restart.
+//
+// A Pod whose container is not running yet carries no instance to identify and is
+// skipped: it cannot be configured either, and the Pod update that starts its
+// container adds the instance to the token, which triggers the redo again.
+func (c *Controller) natGwRedoToken(key string) (string, error) {
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return "", err
 	}
-	pods, err := c.getNatGwPods(key, c.natGwNamespace(gw), false)
+	pods, err := c.listNatGwPods(gw)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return "", err
 	}
-
-	natGwCreatedAT = pods[0].CreationTimestamp.Format("2006-01-02T15:04:05")
+	instances := make([]string, 0, len(pods))
 	for _, pod := range pods {
-		last, _ := time.Parse("2006-01-02T15:04:05", natGwCreatedAT)
-		if pod.CreationTimestamp.Unix() > last.Unix() {
-			natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
+		if pod.Status.Phase != corev1.PodRunning || pod.DeletionTimestamp != nil {
+			continue
 		}
+		var containerID string
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name == "vpc-nat-gw" && status.State.Running != nil {
+				containerID = status.ContainerID
+				break
+			}
+		}
+		if containerID == "" {
+			klog.V(3).Infof("nat gateway pod %s/%s container is not running, skipping it", pod.Namespace, pod.Name)
+			continue
+		}
+		instances = append(instances, string(pod.UID)+"="+containerID)
 	}
-
-	return nil
+	if len(instances) == 0 {
+		return "", fmt.Errorf("nat gateway %s has no running pod", key)
+	}
+	slices.Sort(instances)
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(instances, ",")))), nil
 }
 
 func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
@@ -2072,21 +2157,23 @@ func (c *Controller) patchNatGwStatus(oriGw *kubeovnv1.VpcNatGateway, pods []*co
 	return nil
 }
 
-func (c *Controller) execNatGwQoS(gw *kubeovnv1.VpcNatGateway, qos, operation string) error {
+func (c *Controller) execNatGwQoSLocked(gw *kubeovnv1.VpcNatGateway, qos, operation string) error {
 	qosPolicy, err := c.qosPoliciesLister.Get(qos)
 	if err != nil {
-		klog.Errorf("get qos policy %s failed: %v", qos, err)
-		return err
+		return fmt.Errorf("failed to get qos policy %s: %w", qos, err)
 	}
+	if operation == QoSAdd && !qosPolicyStatusMatchesSpec(qosPolicy) {
+		return fmt.Errorf("qos policy %s is not ready", qos)
+	}
+	return c.execNatGwQoSPolicyLocked(gw, qosPolicy, operation)
+}
+
+func (c *Controller) execNatGwQoSPolicyLocked(gw *kubeovnv1.VpcNatGateway, qosPolicy *kubeovnv1.QoSPolicy, operation string) error {
 	if !qosPolicy.Status.Shared {
-		err := fmt.Errorf("not support unshared qos policy %s to related to gw", qos)
-		klog.Error(err)
-		return err
+		return fmt.Errorf("not support unshared qos policy %s to related to gw", qosPolicy.Name)
 	}
 	if qosPolicy.Status.BindingType != kubeovnv1.QoSBindingTypeNatGw {
-		err := fmt.Errorf("not support qos policy %s binding type %s to related to gw", qos, qosPolicy.Status.BindingType)
-		klog.Error(err)
-		return err
+		return fmt.Errorf("not support qos policy %s binding type %s to related to gw", qosPolicy.Name, qosPolicy.Status.BindingType)
 	}
 	return c.execNatGwBandwidthLimitRules(gw, qosPolicy.Status.BandwidthLimitRules, operation)
 }
@@ -2131,14 +2218,7 @@ func (c *Controller) execNatGwQoSInPod(
 		klog.Error(err)
 		return err
 	}
-	iface := r.Interface
-	if iface == "" {
-		if r.Direction == kubeovnv1.QoSDirectionEgress {
-			iface = "net1"
-		} else {
-			iface = "eth0"
-		}
-	}
+	iface := qosRuleInterface(*r)
 	rule := fmt.Sprintf("%s,%s,%d,%s,%s,%s,%s,%s,%s",
 		r.Direction, iface, r.Priority,
 		classifierType, r.MatchType, matchDirection,
@@ -2187,9 +2267,6 @@ func (c *Controller) initVpcNatGw() error {
 
 		for _, pod := range pods {
 			if isNatGateway, natGateway := c.checkIsPodVpcNatGw(pod); isNatGateway {
-				if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
-					continue
-				}
 				c.initVpcNatGatewayQueue.Add(natGateway)
 			}
 		}
