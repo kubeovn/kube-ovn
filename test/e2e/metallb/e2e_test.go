@@ -623,7 +623,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 				if node == nil {
 					continue
 				}
-				_, _, _ = node.Exec("ip", "rule", "del", "priority", "10001", "to", cidrV4, "table", policyRouteTable)
+				_, _, _ = node.Exec("ip", "rule", "del", "priority", "10001", "iif", "ovn0", "to", cidrV4, "table", policyRouteTable)
 				_, _, _ = node.Exec("ip", "route", "del", cidrV4, "table", policyRouteTable)
 			}
 		})
@@ -635,11 +635,11 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			framework.ExpectNoError(err, "getting ovn0 gateway on node %s: %s", nodeName, stderr)
 			ovn0Gateway := strings.TrimSpace(string(output))
 			framework.ExpectNotEmpty(ovn0Gateway, "ovn0 gateway not found on node %s", nodeName)
-			_, _, _ = node.Exec("ip", "rule", "del", "priority", "10001", "to", cidrV4, "table", policyRouteTable)
+			_, _, _ = node.Exec("ip", "rule", "del", "priority", "10001", "iif", "ovn0", "to", cidrV4, "table", policyRouteTable)
 			_, _, _ = node.Exec("ip", "route", "del", cidrV4, "table", policyRouteTable)
 			_, stderr, err = node.Exec("ip", "route", "add", cidrV4, "via", ovn0Gateway, "dev", "ovn0", "table", policyRouteTable)
 			framework.ExpectNoError(err, "adding policy route for underlay CIDR on node %s: %s", nodeName, stderr)
-			_, stderr, err = node.Exec("ip", "rule", "add", "priority", "10001", "to", cidrV4, "table", policyRouteTable)
+			_, stderr, err = node.Exec("ip", "rule", "add", "priority", "10001", "iif", "ovn0", "to", cidrV4, "table", policyRouteTable)
 			framework.ExpectNoError(err, "adding policy rule for underlay CIDR on node %s: %s", nodeName, stderr)
 
 			route, stderr, err := node.Exec("ip", "-4", "route", "show", "table", policyRouteTable, "exact", cidrV4)
@@ -647,6 +647,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			framework.ExpectContainSubstring(string(route), "dev ovn0", "policy route for underlay CIDR should use ovn0 on node %s, output: %s", nodeName, route)
 			rule, stderr, err := node.Exec("ip", "-4", "rule", "show", "priority", "10001")
 			framework.ExpectNoError(err, "getting policy rule for underlay CIDR on node %s: %s", nodeName, stderr)
+			framework.ExpectContainSubstring(string(rule), "iif ovn0", "policy rule for underlay CIDR should match iif ovn0 on node %s, output: %s", nodeName, rule)
 			framework.ExpectContainSubstring(string(rule), "to "+cidrV4, "policy rule for underlay CIDR not found on node %s, output: %s", nodeName, rule)
 		}
 	}
