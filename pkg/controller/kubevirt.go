@@ -106,10 +106,12 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return err
 	}
 	// MigrationState may still be nil before target virt-launcher pod handoff. Pending and
-	// Scheduling can derive both nodes without it, so allow network setup to proceed.
+	// Scheduling can derive both nodes without it, so allow network setup to proceed. Failed
+	// migrations also need to proceed so options configured while Pending can be cleaned up.
 	if vmiMigration.Status.MigrationState == nil &&
 		vmiMigration.Status.Phase != kubevirtv1.MigrationPending &&
-		vmiMigration.Status.Phase != kubevirtv1.MigrationScheduling {
+		vmiMigration.Status.Phase != kubevirtv1.MigrationScheduling &&
+		vmiMigration.Status.Phase != kubevirtv1.MigrationFailed {
 		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is nil, skipping", key)
 		return nil
 	}
@@ -137,10 +139,13 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		} else {
 			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
 		}
-		// If we're at an end state and the vmi migration state is stale or nil, we're probably looking at an old migration
-		// either way, we can't proceed since we don't have the source and target nodes for resetting the migrate options
-		if vmiMigration.Status.Phase == kubevirtv1.MigrationSucceeded || vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
-			klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded/Failed but VMI migration state is stale or nil, skipping", key)
+		// A failed migration may have configured options while Pending, before the VMI
+		// migration state was populated. The VMI's current node is still the source
+		// needed to roll back those options.
+		if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
+			srcNodeName = vmi.Status.NodeName
+		} else if vmiMigration.Status.Phase == kubevirtv1.MigrationSucceeded {
+			klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded but VMI migration state is stale or nil, skipping", key)
 			return nil
 		}
 	}
