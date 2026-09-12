@@ -138,9 +138,12 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		} else {
 			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
 		}
-		// A migration that fails before its target pod is ready never reaches the VMI
-		// migration state, so the nodes it used have to be recovered from the target pod.
+
+		// Passing a stale Failed migration through is safe: resetVMIMigratePorts yields to a
+		// newer active migration, so it cannot clobber the options that one pinned
 		if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
+			// A migration that fails before its target pod is ready never reaches the VMI
+			// migration state, so the nodes it used have to be recovered from the target pod.
 			if srcNodeName, targetNodeName, err = c.recoverVMIMigrationNodes(vmiMigration, vmi); err != nil {
 				return err
 			}
@@ -153,10 +156,29 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		}
 	}
 
+	portNames, err := c.vmiMigrationPortNames(vmi)
+	if err != nil {
+		return err
+	}
+
+	switch vmiMigration.Status.Phase {
+	// Re-asserted on every phase before the migration, a no-op while the options are intact.
+	// Not MigrationRunning: re-adding rarp after the guest RARP would block the target port.
+	case kubevirtv1.MigrationScheduling, kubevirtv1.MigrationScheduled,
+		kubevirtv1.MigrationPreparingTarget, kubevirtv1.MigrationTargetReady:
+		return c.setupVMIMigratePorts(vmiMigration, vmi, srcNodeName, portNames)
+	case kubevirtv1.MigrationSucceeded, kubevirtv1.MigrationFailed:
+		return c.resetVMIMigratePorts(vmiMigration, vmi, srcNodeName, targetNodeName, portNames)
+	}
+	return nil
+}
+
+// vmiMigrationPortNames collects the logical switch ports of the VM being migrated.
+func (c *Controller) vmiMigrationPortNames(vmi *kubevirtv1.VirtualMachineInstance) ([]string, error) {
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)})
 	if err != nil {
 		klog.Errorf("failed to list logical switch ports for vmi %s/%s, %v", vmi.Namespace, vmi.Name, err)
-		return err
+		return nil, err
 	}
 
 	portNames := make([]string, 0, len(lsps))
@@ -165,85 +187,93 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	}
 
 	klog.Infof("collected port names of vmi %s, port names are %v", vmi.Name, strings.Join(portNames, ", "))
+	return portNames, nil
+}
 
-	switch vmiMigration.Status.Phase {
-	// Re-asserted on every phase before the migration, a no-op while the options are intact.
-	// Not MigrationRunning: re-adding rarp after the guest RARP would block the target port.
-	case kubevirtv1.MigrationScheduling, kubevirtv1.MigrationScheduled,
-		kubevirtv1.MigrationPreparingTarget, kubevirtv1.MigrationTargetReady:
-		targetPod, err := c.vmiMigrationTargetPod(vmiMigration)
-		if err != nil {
-			return err
-		}
-		if targetPod == nil {
-			klog.Warningf("target pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
-				vmiMigration.UID, vmiMigration.Status.Phase)
-			return nil
-		}
+// setupVMIMigratePorts pins the VM ports to the node pair of a migration on its way to the target.
+func (c *Controller) setupVMIMigratePorts(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration,
+	vmi *kubevirtv1.VirtualMachineInstance, srcNodeName string, portNames []string,
+) error {
+	targetPod, err := c.vmiMigrationTargetPod(vmiMigration)
+	if err != nil {
+		return err
+	}
+	if targetPod == nil {
+		klog.Warningf("target pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
+			vmiMigration.UID, vmiMigration.Status.Phase)
+		return nil
+	}
 
-		// Use vmi.Status.NodeName if SourceNode is empty because vmi.Status.MigrationState
-		// only becomes authoritative for this migration once kubevirt hands off to the target
-		sourceNode := srcNodeName
-		if sourceNode == "" {
-			sourceNode = vmi.Status.NodeName
-		}
+	// Use vmi.Status.NodeName if SourceNode is empty because vmi.Status.MigrationState
+	// only becomes authoritative for this migration once kubevirt hands off to the target
+	sourceNode := srcNodeName
+	if sourceNode == "" {
+		sourceNode = vmi.Status.NodeName
+	}
 
-		if sourceNode == "" || targetPod.Spec.NodeName == "" || sourceNode == targetPod.Spec.NodeName {
-			klog.Warningf("VM pod %s/%s migration setup skipped, source node: %s, target node: %s (migration job UID: %s)",
-				targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
-			// Scheduling produces no further event, so requeue instead of dropping it
-			// https://github.com/kubeovn/kube-ovn/issues/6823
-			if sourceNode == "" || targetPod.Spec.NodeName == "" {
-				return fmt.Errorf("VM pod %s/%s migration setup deferred, source node %q, target node %q not ready yet (migration job UID %s)",
-					targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
-			}
-			return nil
-		}
-
-		klog.Infof("VM pod %s/%s is migrating from %s to %s (migration job UID: %s)",
+	if sourceNode == "" || targetPod.Spec.NodeName == "" || sourceNode == targetPod.Spec.NodeName {
+		klog.Warningf("VM pod %s/%s migration setup skipped, source node: %s, target node: %s (migration job UID: %s)",
 			targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
-
-		for _, portName := range portNames {
-			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
-				err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
-				klog.Error(err)
-				return err
-			}
-			klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
+		// Scheduling produces no further event, so requeue instead of dropping it
+		// https://github.com/kubeovn/kube-ovn/issues/6823
+		if sourceNode == "" || targetPod.Spec.NodeName == "" {
+			return fmt.Errorf("VM pod %s/%s migration setup deferred, source node %q, target node %q not ready yet (migration job UID %s)",
+				targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
 		}
-	case kubevirtv1.MigrationSucceeded, kubevirtv1.MigrationFailed:
-		// A controller restart replays terminal migrations: resetting ports a newer migration
-		// already took over would strip its options and strand the new target port
-		hasNewerMigration, err := c.hasNewerActiveVMIMigration(vmiMigration)
-		if err != nil {
+		return nil
+	}
+
+	klog.Infof("VM pod %s/%s is migrating from %s to %s (migration job UID: %s)",
+		targetPod.Namespace, targetPod.Name, sourceNode, targetPod.Spec.NodeName, vmiMigration.UID)
+
+	for _, portName := range portNames {
+		if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
+			err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
+			klog.Error(err)
 			return err
 		}
-		if hasNewerMigration {
-			klog.Infof("skip resetting migrate options of vmi %s/%s for the %s migration %s, a newer migration is in progress",
-				vmi.Namespace, vmi.Name, vmiMigration.Status.Phase, key)
-			return nil
-		}
-		migrateFailed := vmiMigration.Status.Phase == kubevirtv1.MigrationFailed
-		// a failed migration whose target pod is already gone has no node pair to roll back to,
-		// so the options it wrote are dropped instead of being reset
-		if migrateFailed && (srcNodeName == "" || targetNodeName == "") {
-			for _, portName := range portNames {
-				klog.Infof("migrate end clean options for lsp %s, migration failed with unknown nodes", portName)
-				if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(portName); err != nil {
-					err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-					klog.Error(err)
-					return err
-				}
-			}
-			return nil
-		}
+		klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetPod.Spec.NodeName)
+	}
+	return nil
+}
+
+// resetVMIMigratePorts releases the options a terminal migration left on the VM ports.
+func (c *Controller) resetVMIMigratePorts(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration,
+	vmi *kubevirtv1.VirtualMachineInstance, srcNodeName, targetNodeName string, portNames []string,
+) error {
+	// A controller restart replays terminal migrations: resetting ports a newer migration
+	// already took over would strip its options and strand the new target port
+	hasNewerMigration, err := c.hasNewerActiveVMIMigration(vmiMigration)
+	if err != nil {
+		return err
+	}
+	if hasNewerMigration {
+		klog.Infof("skip resetting migrate options of vmi %s/%s for the %s migration %s, a newer migration is in progress",
+			vmi.Namespace, vmi.Name, vmiMigration.Status.Phase, cache.MetaObjectToName(vmiMigration))
+		return nil
+	}
+
+	migrateFailed := vmiMigration.Status.Phase == kubevirtv1.MigrationFailed
+	// with no active successor nothing should be pinned, so drop the options outright:
+	// this also converges ports whose pod deletes the controller was down for
+	if migrateFailed && (srcNodeName == "" || targetNodeName == "") {
 		for _, portName := range portNames {
-			klog.Infof("migrate end reset options for lsp %s from %s to %s, migration %s", portName, srcNodeName, targetNodeName, vmiMigration.Status.Phase)
-			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migrateFailed); err != nil {
+			klog.Infof("migrate end clean options for lsp %s, migration failed with unknown nodes", portName)
+			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(portName); err != nil {
 				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 				klog.Error(err)
 				return err
 			}
+		}
+		return nil
+	}
+
+	for _, portName := range portNames {
+		klog.Infof("migrate end reset options for lsp %s from %s to %s, migration %s", portName, srcNodeName, targetNodeName, vmiMigration.Status.Phase)
+		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migrateFailed); err != nil {
+			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+			klog.Error(err)
+			return err
 		}
 	}
 	return nil
