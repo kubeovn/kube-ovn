@@ -702,7 +702,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		vipNodes := make(map[string]string, 2)
 		if hasInternalUnderlayVIP {
 			for _, svc := range []*corev1.Service{service, service2} {
-				lbName := serviceExternalLoadBalancerName(svc, corev1.ProtocolTCP)
+				lbName := serviceExternalLoadBalancerNameForVIP(svc, corev1.ProtocolTCP, "")
 				for _, clusterIP := range svc.Spec.ClusterIPs {
 					if util.CheckProtocol(clusterIP) == apiv1.ProtocolIPv4 {
 						expectNoUnderlayVIPBypassLFlow(clusterIP, curlListenPort)
@@ -941,7 +941,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		firstVIPNode := env.vipNode
 		secondVIPNode := env.nonVIPBackendNode
 
-		tcpLoadBalancer := serviceExternalLoadBalancerName(env.service, corev1.ProtocolTCP)
+		tcpLoadBalancer := serviceExternalLoadBalancerNameForVIP(env.service, corev1.ProtocolTCP, env.vip)
 		waitLoadBalancerVIPNodeMarker(tcpLoadBalancer, env.vip, util.NodeLspName(firstVIPNode), 30*time.Second)
 
 		moveVIP := func(oldVIPNode, newVIPNode string) {
@@ -973,7 +973,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			return s.Spec.SessionAffinity == corev1.ServiceAffinityClientIP, nil
 		}, "sessionAffinity is ClientIP")
 
-		tcpSessionLoadBalancer := serviceExternalLoadBalancerName(env.service, corev1.ProtocolTCP)
+		tcpSessionLoadBalancer := serviceExternalLoadBalancerNameForVIP(env.service, corev1.ProtocolTCP, env.vip)
 		waitLoadBalancerVIPNodeMarker(tcpSessionLoadBalancer, env.vip, util.NodeLspName(env.vipNode), 30*time.Second)
 		waitUnderlayVIPAffinityLFlow(env.vip, util.NodeLspName(env.vipNode), 30*time.Second)
 		checkInternalPodVIPBackend(f, client, env.vip, env.vipNode)
@@ -989,7 +989,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		env := setupInternalVIPEnvironment()
 		oldVIPNode := env.vipNode
 
-		tcpLoadBalancer := serviceExternalLoadBalancerName(env.service, corev1.ProtocolTCP)
+		tcpLoadBalancer := serviceExternalLoadBalancerNameForVIP(env.service, corev1.ProtocolTCP, env.vip)
 
 		ginkgo.By("Recreating the backends so that none of them runs on the announcing node")
 		deployClient.DeleteSync(internalDeployName)
@@ -1076,7 +1076,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		client := createInternalVIPClient(env, internalVIPClientOnNonBackendNode)
 		defer f.PodClient().DeleteSync(client.Name)
 
-		tcpLoadBalancer := serviceExternalLoadBalancerName(env.service, corev1.ProtocolTCP)
+		tcpLoadBalancer := serviceExternalLoadBalancerNameForVIP(env.service, corev1.ProtocolTCP, env.vip)
 
 		ginkgo.By("Making sure the VIP is not announced from the control-plane node")
 		controlPlaneNodes, err := kind.ListNodes(clusterName, "control-plane")
@@ -1743,7 +1743,32 @@ func getVIPNodeFromService(f *framework.Framework, serviceName string) string {
 }
 
 func serviceExternalLoadBalancerName(service *corev1.Service, protocol corev1.Protocol) string {
-	return fmt.Sprintf("service:%s/%s:%s:external", service.Namespace, service.Name, strings.ToLower(string(protocol)))
+	return serviceExternalLoadBalancerNameForVIP(service, protocol, "")
+}
+
+func serviceExternalLoadBalancerNameForVIP(service *corev1.Service, protocol corev1.Protocol, vip string) string {
+	name := fmt.Sprintf("service:%s/%s:%s:external", service.Namespace, service.Name, strings.ToLower(string(protocol)))
+	family := strings.ToLower(util.CheckProtocol(vip))
+	if family == "" {
+		for _, ingress := range service.Status.LoadBalancer.Ingress {
+			family = strings.ToLower(util.CheckProtocol(ingress.IP))
+			if family != "" {
+				break
+			}
+		}
+	}
+	if family == "" {
+		for _, ip := range service.Spec.ClusterIPs {
+			family = strings.ToLower(util.CheckProtocol(ip))
+			if family != "" {
+				break
+			}
+		}
+	}
+	if family == "" {
+		return name
+	}
+	return name + ":" + family
 }
 
 func waitVIPNodeFromService(f *framework.Framework, serviceName, expectedNode string, timeout time.Duration) {
