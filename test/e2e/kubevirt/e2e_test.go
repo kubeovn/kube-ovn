@@ -1,7 +1,6 @@
 package kubevirt
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -65,18 +64,7 @@ func expectLSPMigrationCleanup(portName string) {
 	framework.ExpectNoError(err)
 	outputStr := string(output)
 	framework.ExpectNotContainSubstring(outputStr, "activation-strategy")
-	if strings.Contains(outputStr, "requested-chassis") {
-		scanner := bufio.NewScanner(strings.NewReader(outputStr))
-		scanner.Split(bufio.ScanWords)
-		for scanner.Scan() {
-			if chassisValue, ok := strings.CutPrefix(scanner.Text(), "requested-chassis="); ok {
-				framework.ExpectNotContainSubstring(chassisValue, ",")
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			framework.ExpectNoError(err)
-		}
-	}
+	framework.ExpectNotContainSubstring(outputStr, "requested-chassis")
 }
 
 func parsePingStats(stdout string) (transmitted, received, lost int, err error) {
@@ -649,10 +637,12 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			migration = migrationClient.Create(migration)
 
 			ginkgo.By("Aborting migration " + migrationName)
+			err := migrationClient.WaitForStarted(migration.Name, 2*time.Minute)
+			framework.ExpectNoError(err)
 			migrationClient.DeleteSync(migration.Name)
 
 			ginkgo.By("Waiting for vm " + vmName + " to be ready")
-			err := vmClient.WaitToBeReady(vmName, 2*time.Minute)
+			err = vmClient.WaitToBeReady(vmName, 2*time.Minute)
 			framework.ExpectNoError(err)
 
 			ginkgo.By("Getting pod of vm " + vmName + " after canceled migration")
