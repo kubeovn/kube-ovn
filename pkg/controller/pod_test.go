@@ -2687,3 +2687,58 @@ func assertRecordedPodEvent(t *testing.T, events <-chan *corev1.Event, pod *core
 		t.Fatal("expected pod event")
 	}
 }
+
+func TestNeedAllocateSubnets(t *testing.T) {
+	nets := []*kubeovnNet{{ProviderName: util.OvnProvider}}
+	allocatedKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider)
+	now := metav1.Now()
+
+	t.Run("terminating migration pod does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:                       "virt-launcher-vm",
+			Namespace:                  "ns",
+			DeletionTimestamp:          &now,
+			DeletionGracePeriodSeconds: new(int64(30)),
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("live migration pod reallocates", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "virt-launcher-vm",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Equal(t, nets, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("allocated pod without migration annotation does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "pod",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				allocatedKey: "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("unallocated live pod allocates", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "pod",
+			Namespace: "ns",
+			Status:    corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Equal(t, nets, needAllocateSubnets(pod, nets))
+	})
+}
