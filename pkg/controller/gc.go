@@ -1526,6 +1526,9 @@ func (c *Controller) gcVpcEndpoint() error {
 	if err := c.gcVpcEndpointStitcherDeployments(services, endpoints); err != nil {
 		return err
 	}
+	if err := c.gcVpcEndpointStitcherConfigMaps(services, endpoints); err != nil {
+		return err
+	}
 
 	klog.Infof("finish to gc vpc endpoints")
 	return nil
@@ -1720,6 +1723,62 @@ func (c *Controller) gcVpcEndpointStitcherDeployments(services []*kubeovnv1.VpcE
 		klog.Infof("gc orphaned vpc endpoint stitcher deployment %s", key)
 		if err := c.config.KubeClient.AppsV1().Deployments(dep.Namespace).Delete(context.Background(), dep.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to gc stitcher deployment %s: %v", key, err)
+			return err
+		}
+	}
+	return nil
+}
+
+// gcVpcEndpointStitcherConfigMaps removes tenant-namespace stitcher ConfigMaps that
+// are no longer referenced by any live VES/VEP. Cluster-scoped CRs cannot own
+// namespaced ConfigMaps for Kubernetes GC, so cleanup must be explicit.
+func (c *Controller) gcVpcEndpointStitcherConfigMaps(services []*kubeovnv1.VpcEndpointService, endpoints []*kubeovnv1.VpcEndpoint) error {
+	expectedNS := map[string]struct{}{}
+	for _, eps := range services {
+		if eps.Spec.Namespace != "" {
+			expectedNS[eps.Spec.Namespace] = struct{}{}
+		}
+	}
+	for _, ep := range endpoints {
+		ns, err := c.vpcEndpointConsumerNamespace(ep.Spec.Vpc)
+		if err != nil {
+			continue
+		}
+		expectedNS[ns] = struct{}{}
+	}
+
+	var cms []*corev1.ConfigMap
+	var err error
+	if c.configMapsLister != nil {
+		cms, err = c.configMapsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list ConfigMaps for vpc endpoint gc: %v", err)
+			return err
+		}
+	} else {
+		listed, listErr := c.config.KubeClient.CoreV1().ConfigMaps("").List(context.Background(), metav1.ListOptions{})
+		if listErr != nil {
+			klog.Errorf("failed to list ConfigMaps for vpc endpoint gc: %v", listErr)
+			return listErr
+		}
+		for i := range listed.Items {
+			cms = append(cms, &listed.Items[i])
+		}
+	}
+
+	for _, cm := range cms {
+		if cm.Name != vpcEndpointStitcherCMName {
+			continue
+		}
+		if cm.Namespace == c.config.PodNamespace {
+			continue
+		}
+		if _, ok := expectedNS[cm.Namespace]; ok {
+			continue
+		}
+		klog.Infof("gc orphaned vpc endpoint stitcher ConfigMap %s/%s", cm.Namespace, cm.Name)
+		if err := c.config.KubeClient.CoreV1().ConfigMaps(cm.Namespace).Delete(context.Background(), cm.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to gc stitcher ConfigMap %s/%s: %v", cm.Namespace, cm.Name, err)
 			return err
 		}
 	}

@@ -723,7 +723,22 @@ func (c *Controller) vpcEndpointStitcherIPs(pod *corev1.Pod, vpcProvider, transi
 			transitIP = firstIPFromNetworkStatus(status, c.config.VpcEndpointTransitSwitch)
 		}
 	}
-	return strings.Split(vpcIP, "/")[0], strings.Split(transitIP, "/")[0], nil
+	return vpcEndpointSelectIPv4(vpcIP), vpcEndpointSelectIPv4(transitIP), nil
+}
+
+// vpcEndpointSelectIPv4 returns the first IPv4 address from a kube-ovn IP annotation
+// value, which may be dual-stack ("v4,v6") and/or include CIDR masks. Empty if none.
+func vpcEndpointSelectIPv4(ipStr string) string {
+	if ipStr == "" {
+		return ""
+	}
+	for _, part := range strings.Split(ipStr, ",") {
+		ip := strings.Split(strings.TrimSpace(part), "/")[0]
+		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 {
+			return ip
+		}
+	}
+	return ""
 }
 
 func firstIPFromNetworkStatus(statusJSON, nadName string) string {
@@ -735,9 +750,13 @@ func firstIPFromNetworkStatus(statusJSON, nadName string) string {
 		return ""
 	}
 	for _, st := range statuses {
-		if strings.Contains(st.Name, nadName) && len(st.IPs) > 0 {
-			return st.IPs[0]
+		if !strings.Contains(st.Name, nadName) || len(st.IPs) == 0 {
+			continue
 		}
+		if v4 := vpcEndpointSelectIPv4(strings.Join(st.IPs, ",")); v4 != "" {
+			return v4
+		}
+		return st.IPs[0]
 	}
 	return ""
 }
@@ -952,7 +971,7 @@ func (c *Controller) reconcileVpcEndpoint(ep *kubeovnv1.VpcEndpoint) error {
 }
 
 // validateVpcEndpointIPv4 rejects IPv6-only consumer subnets and IPv6 Spec.IP.
-// The stitcher datapath programs iptables only.
+// Dual-stack subnets are allowed; the stitcher selects the IPv4 address.
 func validateVpcEndpointIPv4(ep *kubeovnv1.VpcEndpoint, subnet *kubeovnv1.Subnet) error {
 	proto := subnet.Spec.Protocol
 	if proto == "" {
@@ -1156,7 +1175,7 @@ func (c *Controller) vpcEndpointConsumerNamespace(vpcName string) (string, error
 	return "", fmt.Errorf("vpc %s has no namespaces for stitcher deployment", vpcName)
 }
 
-func (c *Controller) ensureVpcEndpointStitcherConfigMapIn(namespace string, owner metav1.Object) error {
+func (c *Controller) ensureVpcEndpointStitcherConfigMapIn(namespace string, _ metav1.Object) error {
 	if namespace == c.config.PodNamespace {
 		return c.ensureVpcEndpointStitcherConfigMap()
 	}
@@ -1175,26 +1194,18 @@ func (c *Controller) ensureVpcEndpointStitcherConfigMapIn(namespace string, owne
 			Namespace: namespace,
 			Data:      src.Data,
 		}
-		if owner != nil {
-			if err := util.SetOwnerReference(owner, cm); err != nil {
-				return err
-			}
-		}
+		// Do not set ownerRef to the cluster-scoped VES/VEP: Kubernetes GC does
+		// not honor namespaced dependents owned by cluster-scoped owners.
 		_, err = client.Create(context.Background(), cm, metav1.CreateOptions{})
 		return err
 	}
 	if err != nil {
 		return err
 	}
-	existing = existing.DeepCopy()
-	if owner != nil && len(existing.OwnerReferences) == 0 {
-		if err := util.SetOwnerReference(owner, existing); err != nil {
-			return err
-		}
-	}
-	if existing.Data[vpcEndpointStitcherScriptKey] == src.Data[vpcEndpointStitcherScriptKey] && len(existing.OwnerReferences) > 0 {
+	if existing.Data[vpcEndpointStitcherScriptKey] == src.Data[vpcEndpointStitcherScriptKey] {
 		return nil
 	}
+	existing = existing.DeepCopy()
 	existing.Data = src.Data
 	_, err = client.Update(context.Background(), existing, metav1.UpdateOptions{})
 	return err

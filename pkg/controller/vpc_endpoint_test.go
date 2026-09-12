@@ -198,6 +198,12 @@ func TestValidateVpcEndpointIPv4(t *testing.T) {
 	require.NoError(t, validateVpcEndpointIPv4(&kubeovnv1.VpcEndpoint{Spec: kubeovnv1.VpcEndpointSpec{IP: "10.16.0.20"}}, subnet))
 	require.ErrorContains(t, validateVpcEndpointIPv4(&kubeovnv1.VpcEndpoint{Spec: kubeovnv1.VpcEndpointSpec{IP: "fd00::1"}}, subnet), "must be IPv4")
 
+	dual := &kubeovnv1.Subnet{Name: "dual", Spec: kubeovnv1.SubnetSpec{
+		CIDRBlock: "10.16.0.0/16,fd00:10:16::/112",
+		Protocol:  kubeovnv1.ProtocolDual,
+	}}
+	require.NoError(t, validateVpcEndpointIPv4(&kubeovnv1.VpcEndpoint{}, dual))
+
 	v6 := &kubeovnv1.Subnet{Name: "v6", Spec: kubeovnv1.SubnetSpec{CIDRBlock: "fd00::/64", Protocol: kubeovnv1.ProtocolIPv6}}
 	require.ErrorContains(t, validateVpcEndpointIPv4(&kubeovnv1.VpcEndpoint{}, v6), "IPv4-only")
 }
@@ -337,6 +343,18 @@ func TestFirstIPFromNetworkStatus(t *testing.T) {
 		`[{"name":"kube-ovn","ips":["10.0.0.1"]},{"name":"kube-system/vpc-endpoint-transit","ips":["100.65.0.4","100.65.0.5"]}]`,
 		"vpc-endpoint-transit",
 	))
+	require.Equal(t, "100.65.0.4", firstIPFromNetworkStatus(
+		`[{"name":"kube-system/vpc-endpoint-transit","ips":["fd00:65::4","100.65.0.4"]}]`,
+		"vpc-endpoint-transit",
+	))
+}
+
+func TestVpcEndpointSelectIPv4(t *testing.T) {
+	require.Empty(t, vpcEndpointSelectIPv4(""))
+	require.Equal(t, "10.210.0.5", vpcEndpointSelectIPv4("10.210.0.5/24"))
+	require.Equal(t, "10.210.0.5", vpcEndpointSelectIPv4("10.210.0.5/24,fd00:10:210::5/112"))
+	require.Equal(t, "10.210.0.5", vpcEndpointSelectIPv4("fd00:10:210::5/112,10.210.0.5/24"))
+	require.Empty(t, vpcEndpointSelectIPv4("fd00:10:210::5/112"))
 }
 
 func TestVpcEndpointStitcherIPs(t *testing.T) {
@@ -354,6 +372,17 @@ func TestVpcEndpointStitcherIPs(t *testing.T) {
 			fmt.Sprintf(util.IPAddressAnnotationTemplate, transitProvider): "100.65.0.4/16",
 		},
 		Status: corev1.PodStatus{PodIP: "10.210.0.9"},
+	}
+	vpcIP, transitIP, err = c.vpcEndpointStitcherIPs(pod, util.OvnProvider, transitProvider)
+	require.NoError(t, err)
+	require.Equal(t, "10.210.0.5", vpcIP)
+	require.Equal(t, "100.65.0.4", transitIP)
+
+	pod = &corev1.Pod{
+		Annotations: map[string]string{
+			util.IPAddressAnnotation: "10.210.0.5/24,fd00:10:210::5/112",
+			fmt.Sprintf(util.IPAddressAnnotationTemplate, transitProvider): "100.65.0.4/16,fd00:65::4/112",
+		},
 	}
 	vpcIP, transitIP, err = c.vpcEndpointStitcherIPs(pod, util.OvnProvider, transitProvider)
 	require.NoError(t, err)
@@ -429,10 +458,38 @@ func TestEnsureVpcEndpointStitcherConfigMapIn(t *testing.T) {
 	cm, err := client.CoreV1().ConfigMaps("ep-provider").Get(context.Background(), vpcEndpointStitcherCMName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Contains(t, cm.Data[vpcEndpointStitcherScriptKey], "consumer_sync()")
-	require.NotEmpty(t, cm.OwnerReferences)
+	// Cluster-scoped owners cannot GC namespaced dependents; no ownerRef is set.
+	require.Empty(t, cm.OwnerReferences)
 
 	// Second call is a no-op when already synced.
 	require.NoError(t, c.ensureVpcEndpointStitcherConfigMapIn("ep-provider", owner))
+}
+
+func TestGcVpcEndpointStitcherConfigMaps(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&corev1.ConfigMap{Name: vpcEndpointStitcherCMName, Namespace: metav1.NamespaceSystem},
+		&corev1.ConfigMap{Name: vpcEndpointStitcherCMName, Namespace: "keep-ns"},
+		&corev1.ConfigMap{Name: vpcEndpointStitcherCMName, Namespace: "orphan-ns"},
+		&corev1.ConfigMap{Name: "other", Namespace: "orphan-ns"},
+	)
+	c := &Controller{config: &Configuration{
+		KubeClient:   client,
+		PodNamespace: metav1.NamespaceSystem,
+	}}
+	services := []*kubeovnv1.VpcEndpointService{{
+		Name: "db",
+		Spec: kubeovnv1.VpcEndpointServiceSpec{Namespace: "keep-ns"},
+	}}
+	require.NoError(t, c.gcVpcEndpointStitcherConfigMaps(services, nil))
+
+	_, err := client.CoreV1().ConfigMaps("keep-ns").Get(context.Background(), vpcEndpointStitcherCMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	_, err = client.CoreV1().ConfigMaps(metav1.NamespaceSystem).Get(context.Background(), vpcEndpointStitcherCMName, metav1.GetOptions{})
+	require.NoError(t, err)
+	_, err = client.CoreV1().ConfigMaps("orphan-ns").Get(context.Background(), vpcEndpointStitcherCMName, metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = client.CoreV1().ConfigMaps("orphan-ns").Get(context.Background(), "other", metav1.GetOptions{})
+	require.NoError(t, err)
 }
 
 func TestCreateOrUpdateVpcEndpointDeployment(t *testing.T) {
