@@ -16,6 +16,23 @@ func (c *Controller) enqueueDeploymentEvent(obj any) {
 		klog.Warningf("unexpected deployment event object %T", obj)
 		return
 	}
+
+	if role := deploy.Labels[util.VpcEndpointStitcherLabel]; role != "" {
+		owner := deploy.Labels[util.VpcEndpointOwnerLabel]
+		if owner == "" {
+			return
+		}
+		switch role {
+		case "provider":
+			klog.V(3).Infof("enqueue update VpcEndpointService %s from stitcher deployment %s/%s", owner, deploy.Namespace, deploy.Name)
+			c.addOrUpdateVpcEndpointServiceQueue.Add(owner)
+		case "consumer":
+			klog.V(3).Infof("enqueue update VpcEndpoint %s from stitcher deployment %s/%s", owner, deploy.Namespace, deploy.Name)
+			c.addOrUpdateVpcEndpointQueue.Add(owner)
+		}
+		return
+	}
+
 	_, hasNatGwLabel := deploy.Labels[util.VpcNatGatewayLabel]
 	_, hasEgressGwLabel := deploy.Labels[util.VpcEgressGatewayLabel]
 	if !hasNatGwLabel && !hasEgressGwLabel {

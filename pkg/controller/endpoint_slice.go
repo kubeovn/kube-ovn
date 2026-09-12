@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -52,6 +53,7 @@ func (c *Controller) enqueueAddEndpointSlice(obj any) {
 		klog.V(3).Infof("enqueue add endpointSlice %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
 		c.enqueueNftableLbService(key)
+		c.enqueueVpcEndpointServiceFromServiceKey(key)
 	}
 }
 
@@ -77,8 +79,10 @@ func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
 	}
 
 	if key := findServiceKey(endpointSlice); key != "" {
+		klog.V(3).Infof("enqueue delete endpointSlice for service %s", key)
 		c.addOrUpdateEndpointSliceQueue.Add(key)
 		c.enqueueNftableLbService(key)
+		c.enqueueVpcEndpointServiceFromServiceKey(key)
 	}
 }
 
@@ -99,8 +103,11 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 		if oldKey != newKey {
 			c.enqueueNftableLbService(oldKey)
 			c.enqueueNftableLbService(newKey)
+			c.enqueueVpcEndpointServiceFromServiceKey(oldKey)
+			c.enqueueVpcEndpointServiceFromServiceKey(newKey)
 		} else if !reflect.DeepEqual(oldEndpointSlice.Ports, newEndpointSlice.Ports) {
 			c.enqueueNftableLbService(newKey)
+			c.enqueueVpcEndpointServiceFromServiceKey(newKey)
 		}
 		return
 	}
@@ -116,11 +123,13 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 
 	if oldKey != newKey {
 		c.enqueueNftableLbService(oldKey)
+		c.enqueueVpcEndpointServiceFromServiceKey(oldKey)
 	}
 	if newKey != "" {
 		klog.V(3).Infof("enqueue update endpointSlice for service %s", newKey)
 		c.addOrUpdateEndpointSliceQueue.Add(newKey)
 		c.enqueueNftableLbService(newKey)
+		c.enqueueVpcEndpointServiceFromServiceKey(newKey)
 	}
 }
 
@@ -753,10 +762,15 @@ func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSl
 	for _, endpointSlice := range endpointSlices {
 		var targetPort int32
 		for _, port := range endpointSlice.Ports {
-			if port.Name != nil && *port.Name == servicePort.Name {
-				targetPort = *port.Port
-				break
+			if !endpointSlicePortMatchesServicePort(port, servicePort) {
+				continue
 			}
+			resolved, ok := endpointSliceResolvedPort(port, servicePort)
+			if !ok {
+				continue
+			}
+			targetPort = resolved
+			break
 		}
 		if targetPort == 0 {
 			continue
@@ -776,6 +790,35 @@ func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSl
 	}
 
 	return backends
+}
+
+// endpointSlicePortMatchesServicePort matches EndpointSlice ports to a Service
+// port by protocol and name. Unnamed Service ports (empty name) match
+// EndpointSlice ports whose Name is nil or empty.
+func endpointSlicePortMatchesServicePort(port discoveryv1.EndpointPort, servicePort v1.ServicePort) bool {
+	if port.Protocol != nil && *port.Protocol != servicePort.Protocol {
+		return false
+	}
+	portName := ""
+	if port.Name != nil {
+		portName = *port.Name
+	}
+	return portName == servicePort.Name
+}
+
+// endpointSliceResolvedPort returns the backend port for a matched EndpointSlice
+// port. When EndpointSlice Port is nil, fall back to Service TargetPort (int) or Port.
+func endpointSliceResolvedPort(port discoveryv1.EndpointPort, servicePort v1.ServicePort) (int32, bool) {
+	if port.Port != nil && *port.Port > 0 {
+		return *port.Port, true
+	}
+	if servicePort.TargetPort.Type == intstr.Int && servicePort.TargetPort.IntVal > 0 {
+		return servicePort.TargetPort.IntVal, true
+	}
+	if servicePort.Port > 0 {
+		return servicePort.Port, true
+	}
+	return 0, false
 }
 
 // endpointReady returns whether an endpoint can receive traffic

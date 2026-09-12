@@ -130,6 +130,20 @@ networking:
       # @section -- Network parameters of the CNI
       v6: "fd00:100:64::/112"
 
+  # -- Leave empty to use the controller binary defaults (switch "vpc-endpoint-transit",
+  # CIDR "100.65.0.0/16"). Only used when features.ENABLE_VPC_ENDPOINT is true.
+  # Transit CIDR must be IPv4-only; IPv6/dual is rejected by the controller.
+  # @section -- Network parameters of the CNI
+  vpcEndpointTransit:
+    # -- Name of the transit logical switch. Empty means use the controller default.
+    # @section -- Network parameters of the CNI
+    switchName: ""
+    # -- IPv4 CIDR of the transit switch. Must not overlap join/pod/service CIDRs.
+    # Empty means use the controller default (100.65.0.0/16; join uses 100.64.0.0/16).
+    # IPv6/dual is not supported.
+    # @section -- Network parameters of the CNI
+    cidr: ""
+
   # -- Name of the default VPC once it is generated in the cluster.
   # Pods in the default subnet live in this VPC.
   # @section -- Network parameters of the CNI
@@ -253,6 +267,7 @@ features:
   LS_DNAT_MOD_DL_DST: true
   LS_CT_SKIP_DST_LPORT_IPS: true
   ENABLE_ANP: false
+  ENABLE_VPC_ENDPOINT: false
   ENABLE_DNS_NAME_RESOLVER: false
   SET_VXLAN_TX_OFF: false
   OVSDB_CON_TIMEOUT: 3
