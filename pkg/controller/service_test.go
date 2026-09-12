@@ -16,6 +16,7 @@ import (
 	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -750,4 +751,41 @@ func TestHandleUpdateServiceScopedLoadBalancerAnnotatesExternalSubnet(t *testing
 	got, err := ctrl.config.KubeClient.CoreV1().Services(ns).Get(context.Background(), svcName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, subnetName, got.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+}
+
+func TestHandleUpdateServiceExternalTrafficPolicyChangeDoesNotEnqueueRegularEndpointReconcile(t *testing.T) {
+	svc := &v1.Service{
+		Name:      "lb-svc",
+		Namespace: metav1.NamespaceDefault,
+		UID:       types.UID("lb-svc-uid"),
+		Spec: v1.ServiceSpec{
+			Type:                  v1.ServiceTypeLoadBalancer,
+			ClusterIP:             "10.96.0.80",
+			ClusterIPs:            []string{"10.96.0.80"},
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeCluster,
+			Ports:                 []v1.ServicePort{{Name: "http", Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+		Status: v1.ServiceStatus{
+			LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: "172.19.0.100"}}},
+		},
+	}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*v1.Service{svc}})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	ctrl.svcKeyMutex = keymutex.NewHashed(0)
+	ctrl.config.EnableLb = true
+	ctrl.addOrUpdateEndpointSliceQueue = newTypedRateLimitingQueue[string]("test-endpoint-slice-policy", nil)
+	ctrl.priorityEndpointSliceQueue = newTypedRateLimitingQueue[string]("test-priority-endpoint-slice-policy", nil)
+	t.Cleanup(ctrl.addOrUpdateEndpointSliceQueue.ShutDown)
+	t.Cleanup(ctrl.priorityEndpointSliceQueue.ShutDown)
+
+	fakeCtrl.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return(nil, nil)
+	fakeCtrl.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{}, nil)
+	require.NoError(t, ctrl.handleUpdateService(&updateSvcObject{
+		key:                      "default/lb-svc",
+		oldExternalLocalTemplate: true,
+	}))
+
+	require.Zero(t, ctrl.addOrUpdateEndpointSliceQueue.Len())
+	require.Zero(t, ctrl.priorityEndpointSliceQueue.Len())
 }
