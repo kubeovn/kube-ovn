@@ -444,29 +444,35 @@ func (c *OVNNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, 
 		return nil
 	}
 	row := &rows[0]
+	current := make(map[string]string)
 	deletes := make(map[string]string)
 	for key, value := range row.Variables {
 		if strings.HasPrefix(key, prefix) {
+			current[key] = value
 			deletes[key] = value
 		}
 	}
-	if len(deletes) == 0 && len(variables) == 0 {
+	if maps.Equal(current, variables) {
 		return nil
 	}
-	if maps.Equal(row.Variables, variables) {
-		return nil
-	}
-	mutations := make([]model.Mutation, 0, 2)
 	if len(deletes) != 0 {
-		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes})
+		ops, err := c.ovsDbClient.Where(row).Mutate(row, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes})
+		if err != nil {
+			return fmt.Errorf("generate template variable delete for chassis %s: %w", chassis, err)
+		}
+		if err := c.Transact("chassis-template-var-delete", ops); err != nil {
+			return fmt.Errorf("delete template variables for chassis %s: %w", chassis, err)
+		}
 	}
-	if len(variables) != 0 {
-		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationInsert, Value: variables})
+	if len(variables) == 0 {
+		return nil
 	}
-	if ops, err := c.ovsDbClient.Where(row).Mutate(row, mutations...); err != nil {
-		return fmt.Errorf("generate template variable update for chassis %s: %w", chassis, err)
-	} else if err := c.Transact("chassis-template-var-update", ops); err != nil {
-		return fmt.Errorf("update template variables for chassis %s: %w", chassis, err)
+	ops, err := c.ovsDbClient.Where(row).Mutate(row, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationInsert, Value: variables})
+	if err != nil {
+		return fmt.Errorf("generate template variable insert for chassis %s: %w", chassis, err)
+	}
+	if err := c.Transact("chassis-template-var-insert", ops); err != nil {
+		return fmt.Errorf("insert template variables for chassis %s: %w", chassis, err)
 	}
 	return nil
 }

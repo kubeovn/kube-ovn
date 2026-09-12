@@ -446,20 +446,26 @@ func (c *Controller) clearServiceExternalTrafficLocalMarkers(reconcileCtx *endpo
 		}
 	}
 	if svc.Spec.Type == v1.ServiceTypeLoadBalancer && serviceUsesScopedLB(svc) {
-		var external [3]string
-		for _, port := range svc.Spec.Ports {
-			name := serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic)
-			switch port.Protocol {
-			case v1.ProtocolTCP:
-				external[0] = name
-			case v1.ProtocolUDP:
-				external[1] = name
-			case v1.ProtocolSCTP:
-				external[2] = name
-			}
+		families := serviceScopedExternalLBFamilies(svc)
+		if !slices.Contains(families, "") {
+			families = append(slices.Clone(families), "")
 		}
-		if err := c.clearLoadBalancerVIPExternalTrafficLocal(svc, external[0], external[1], external[2]); err != nil {
-			return err
+		for _, family := range families {
+			var external [3]string
+			for _, port := range svc.Spec.Ports {
+				name := serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBExternalTraffic, family)
+				switch port.Protocol {
+				case v1.ProtocolTCP:
+					external[0] = name
+				case v1.ProtocolUDP:
+					external[1] = name
+				case v1.ProtocolSCTP:
+					external[2] = name
+				}
+			}
+			if err := c.clearLoadBalancerVIPExternalTrafficLocal(svc, external[0], external[1], external[2]); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -490,7 +496,7 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	state.distributed = profile.distributedLocal && !isExternalVIP
 	state.template = serviceUsesTemplateLB(svc) && !isExternalVIP
 	if isExternalVIP && serviceUsesScopedLB(svc) {
-		state.lb = serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic)
+		state.lb = serviceScopedExternalLBName(svc, port.Protocol, lbVip)
 	} else if isExternalVIP {
 		shared := serviceLoadBalancers(reconcileCtx.vpc, svc.Spec.SessionAffinity)
 		state.lb = shared.current[port.Protocol]
@@ -631,6 +637,9 @@ func (c *Controller) finishServiceEndpointSliceReconcile(reconcileCtx *endpointS
 		return c.deleteServiceScopedLoadBalancers(svc)
 	}
 	if err := c.cleanupServiceScopedLBVIPs(svc, reconcileCtx.desiredScopedVIPs); err != nil {
+		return err
+	}
+	if err := c.deleteStaleServiceScopedLoadBalancers(svc); err != nil {
 		return err
 	}
 	if !slices.ContainsFunc(reconcileCtx.profile.lbVips, func(vip string) bool {
@@ -1087,8 +1096,9 @@ type serviceEndpointCandidate struct {
 }
 
 type topologyBackend struct {
-	backend string
-	hints   *discoveryv1.EndpointHints
+	backend  string
+	nodeName string
+	hints    *discoveryv1.EndpointHints
 }
 
 func endpointSlicePort(endpointSlice *discoveryv1.EndpointSlice, servicePort v1.ServicePort) int32 {
@@ -1110,9 +1120,14 @@ func topologyBackends(endpointSlices []*discoveryv1.EndpointSlice, servicePort v
 	var backends []topologyBackend
 	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, false) {
 		for _, address := range candidate.addresses {
+			nodeName := ""
+			if candidate.endpoint.NodeName != nil {
+				nodeName = *candidate.endpoint.NodeName
+			}
 			backends = append(backends, topologyBackend{
-				backend: util.JoinHostPort(address, candidate.targetPort),
-				hints:   candidate.endpoint.Hints,
+				backend:  util.JoinHostPort(address, candidate.targetPort),
+				nodeName: nodeName,
+				hints:    candidate.endpoint.Hints,
 			})
 		}
 	}
@@ -1153,26 +1168,20 @@ func serviceEndpointCandidates(endpointSlices []*discoveryv1.EndpointSlice, serv
 
 func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName, trafficDistribution string) []string {
 	all := make([]string, 0, len(backends))
-	allForNodes, allForZones := true, true
+	allForZones := true
 	for _, backend := range backends {
 		all = append(all, backend.backend)
-		if backend.hints == nil || len(backend.hints.ForNodes) == 0 {
-			allForNodes = false
-		}
 		if backend.hints == nil || len(backend.hints.ForZones) == 0 {
 			allForZones = false
 		}
 	}
 	preferNode := trafficDistribution == v1.ServiceTrafficDistributionPreferSameNode
 	preferZone := preferNode || trafficDistribution == v1.ServiceTrafficDistributionPreferSameZone || trafficDistribution == v1.ServiceTrafficDistributionPreferClose
-	if preferNode && allForNodes && nodeName != "" {
+	if preferNode && nodeName != "" {
 		matched := make([]string, 0, len(backends))
 		for _, backend := range backends {
-			for _, hint := range backend.hints.ForNodes {
-				if hint.Name == nodeName {
-					matched = append(matched, backend.backend)
-					break
-				}
+			if backend.nodeName == nodeName {
+				matched = append(matched, backend.backend)
 			}
 		}
 		if len(matched) != 0 {
