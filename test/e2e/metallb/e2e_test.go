@@ -734,7 +734,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			for i, ingress := range svc.Status.LoadBalancer.Ingress {
 				lbsvcIP := ingress.IP
 				ginkgo.By(fmt.Sprintf("Checking service %s[%d] with IP %s", svc.Name, i, lbsvcIP))
-				checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP, "80", clusterName, true)
+				checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP, "80", clusterName, true, true)
 			}
 		}
 
@@ -769,7 +769,8 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			ginkgo.By("Checking the first service remains reachable with externalTrafficPolicy=Cluster")
 			for _, ingress := range service.Status.LoadBalancer.Ingress {
 				if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
-					checkReachable(f, containerID, clientIPv4, clientIPv6, ingress.IP, "80", clusterName, true)
+					waitLoadBalancerVIPBackendCount(tcpLoadBalancer, ingress.IP, curlListenPort, 3, 30*time.Second)
+					checkReachable(f, containerID, clientIPv4, clientIPv6, ingress.IP, "80", clusterName, true, false)
 				}
 			}
 
@@ -840,7 +841,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		for i, ingress := range service2.Status.LoadBalancer.Ingress {
 			lbsvcIP2 := ingress.IP
 			ginkgo.By(fmt.Sprintf("Checking service %s[%d] with IP %s after first service deletion", service2.Name, i, lbsvcIP2))
-			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true)
+			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true, true)
 		}
 
 		ginkgo.By("Enabling u2oInterconnection on subnet")
@@ -857,7 +858,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		for _, ingress := range service2.Status.LoadBalancer.Ingress {
 			lbsvcIP2 := ingress.IP
 			ginkgo.By(fmt.Sprintf("Checking service %s with IP %s (with u2oInterconnection)", service2.Name, lbsvcIP2))
-			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true)
+			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true, true)
 		}
 
 		ginkgo.By("Verifying OpenFlow rules use u2oInterconnection MAC")
@@ -891,7 +892,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		for _, ingress := range service2.Status.LoadBalancer.Ingress {
 			lbsvcIP2 := ingress.IP
 			ginkgo.By(fmt.Sprintf("Checking service %s with IP %s (after disabling u2oInterconnection)", service2.Name, lbsvcIP2))
-			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true)
+			checkReachable(f, containerID, clientIPv4, clientIPv6, lbsvcIP2, "80", clusterName, true, true)
 		}
 	})
 
@@ -1645,7 +1646,7 @@ func podIPv4(pod corev1.Pod) string {
 	return ""
 }
 
-func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6, targetIP, targetPort, clusterName string, expectReachable bool) {
+func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6, targetIP, targetPort, clusterName string, expectReachable, requireLocalBackend bool) {
 	ginkgo.GinkgoHelper()
 	ginkgo.By("checking curl reachable")
 	isIPv6 := util.CheckProtocol(targetIP) == apiv1.ProtocolIPv6
@@ -1686,16 +1687,6 @@ func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6,
 		framework.ExpectError(err)
 	}
 
-	ginkgo.By("checking vip node is same as backend pod's host")
-	if !isIPv6 {
-		cmd = strings.Fields(fmt.Sprintf("arping -c 5 -W 2 %s", targetIP))
-		output, _, err := docker.Exec(containerID, nil, cmd...)
-		if err != nil {
-			framework.Failf("arping failed: %v, output: %s", err, output)
-		}
-		framework.Logf("arping result is %s ", output)
-	}
-
 	if isIPv6 {
 		cmd = []string{
 			"curl", "-q", "-s", "-g", "--connect-timeout", "2", "--max-time", "2",
@@ -1707,17 +1698,38 @@ func checkReachable(f *framework.Framework, containerID, sourceIPv4, sourceIPv6,
 			fmt.Sprintf("%s:%s/hostname", targetIP, targetPort),
 		}
 	}
-	output, _, err := docker.Exec(containerID, nil, cmd...)
-	framework.ExpectNoError(err)
-	backendPodName := strings.TrimSpace(string(output))
+	var hostnameOutput []byte
+	if expectReachable {
+		framework.WaitUntil(2*time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+			var err error
+			hostnameOutput, _, err = docker.Exec(containerID, nil, cmd...)
+			return err == nil && strings.TrimSpace(string(hostnameOutput)) != "", nil
+		}, fmt.Sprintf("service %s:%s hostname should be reachable", targetIP, targetPort))
+	} else {
+		_, _, err := docker.Exec(containerID, nil, cmd...)
+		framework.ExpectError(err)
+		return
+	}
+	backendPodName := strings.TrimSpace(string(hostnameOutput))
 	framework.Logf("Packet reached backend: %s", backendPodName)
+	if !requireLocalBackend {
+		return
+	}
+
+	ginkgo.By("checking vip node is same as backend pod's host")
+	if !isIPv6 {
+		arpCmd := strings.Fields(fmt.Sprintf("arping -c 5 -W 2 %s", targetIP))
+		output, _, err := docker.Exec(containerID, nil, arpCmd...)
+		if err != nil {
+			framework.Failf("arping failed: %v, output: %s", err, output)
+		}
+		framework.Logf("arping result is %s ", output)
+	}
 
 	vipNode := getVIPNode(containerID, targetIP, clusterName)
-
 	ginkgo.By("Checking the backend pod's host is same as the metallb vip's node")
 	backendPod := f.PodClient().GetPod(backendPodName)
-	backendPodNode := backendPod.Spec.NodeName
-	framework.ExpectEqual(backendPodNode, vipNode)
+	framework.ExpectEqual(backendPod.Spec.NodeName, vipNode)
 }
 
 func getVIPNodeFromService(f *framework.Framework, serviceName string) string {
