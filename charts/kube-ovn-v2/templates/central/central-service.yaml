@@ -1,8 +1,9 @@
 {{- if .Values.central.hcp.enabled }}
+{{- $centralName := include "kubeovn.centralName" . -}}
 kind: Service
 apiVersion: v1
 metadata:
-  name: ovn-central
+  name: {{ $centralName }}
   namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
@@ -25,6 +26,6 @@ spec:
       port: 6644
       targetPort: 6644
   selector:
-    app.kubernetes.io/name: ovn-central
+    app.kubernetes.io/name: {{ $centralName }}
     app.kubernetes.io/part-of: kube-ovn
 {{- end }}

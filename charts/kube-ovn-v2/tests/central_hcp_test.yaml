@@ -32,7 +32,7 @@ tests:
           value: 3
       - equal:
           path: spec.serviceName
-          value: ovn-central
+          value: RELEASE-NAME-kube-ovn-v2-ovn-central
       - equal:
           path: spec.persistentVolumeClaimRetentionPolicy.whenDeleted
           value: Delete
@@ -44,7 +44,7 @@ tests:
           value: false
       - equal:
           path: spec.template.spec.serviceAccountName
-          value: ovn-central
+          value: RELEASE-NAME-kube-ovn-v2-ovn-central
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: true
@@ -70,7 +70,7 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: NODE_IPS
-            value: ovn-central-0.ovn-central.hcp.svc,ovn-central-1.ovn-central.hcp.svc,ovn-central-2.ovn-central.hcp.svc
+            value: RELEASE-NAME-kube-ovn-v2-ovn-central-0.RELEASE-NAME-kube-ovn-v2-ovn-central.hcp.svc,RELEASE-NAME-kube-ovn-v2-ovn-central-1.RELEASE-NAME-kube-ovn-v2-ovn-central.hcp.svc,RELEASE-NAME-kube-ovn-v2-ovn-central-2.RELEASE-NAME-kube-ovn-v2-ovn-central.hcp.svc
       - contains:
           path: spec.template.spec.containers[0].env
           content:
@@ -138,7 +138,7 @@ tests:
           of: ServiceAccount
       - equal:
           path: metadata.name
-          value: ovn-central
+          value: RELEASE-NAME-kube-ovn-v2-ovn-central
       - equal:
           path: metadata.namespace
           value: hcp
@@ -156,7 +156,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: ovn-central
+          value: RELEASE-NAME-kube-ovn-v2-ovn-central
       - equal:
           path: metadata.namespace
           value: hcp

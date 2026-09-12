@@ -1,3 +1,5 @@
+{{- $agentClusterRoleName := include "kubeovn.agentClusterRoleName" . -}}
+{{- $agentSecretReaderRoleName := include "kubeovn.resourceName" (dict "context" . "suffix" "secret-reader-ovn-ipsec") -}}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -11,7 +13,7 @@ metadata:
   labels:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  name: system:kube-ovn-cni
+  name: {{ $agentClusterRoleName }}
 rules:
   - apiGroups:
       - "kubeovn.io"
@@ -95,7 +97,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: secret-reader-ovn-ipsec
+  name: {{ $agentSecretReaderRoleName }}
   namespace: {{ .Values.namespace }}
 rules:
 - apiGroups: 

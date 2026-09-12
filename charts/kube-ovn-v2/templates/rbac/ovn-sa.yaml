@@ -1,7 +1,10 @@
+{{- $ovnServiceAccountName := include "kubeovn.ovnServiceAccountName" . -}}
+{{- $ovsServiceAccountName := include "kubeovn.ovsServiceAccountName" . -}}
+{{- $appServiceAccountName := include "kubeovn.appServiceAccountName" . -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ovn
+  name: {{ $ovnServiceAccountName }}
   namespace: {{ .Values.namespace }}
 automountServiceAccountToken: false
 {{-  if .Values.global.registry.imagePullSecrets }}
@@ -17,7 +20,7 @@ imagePullSecrets:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ovn-ovs
+  name: {{ $ovsServiceAccountName }}
   namespace: {{ .Values.namespace }}
 automountServiceAccountToken: false
 {{-  if .Values.global.registry.imagePullSecrets }}
@@ -33,7 +36,7 @@ imagePullSecrets:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kube-ovn-app
+  name: {{ $appServiceAccountName }}
   namespace: {{ .Values.namespace }}
 automountServiceAccountToken: false
 {{-  if .Values.global.registry.imagePullSecrets }}

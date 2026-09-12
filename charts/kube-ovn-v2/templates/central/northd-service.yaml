@@ -1,7 +1,9 @@
+{{- $centralName := include "kubeovn.centralName" . -}}
+{{- $serviceName := include "kubeovn.centralNorthdName" . -}}
 kind: Service
 apiVersion: v1
 metadata:
-  name: ovn-northd
+  name: {{ $serviceName }}
   namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
@@ -13,7 +15,7 @@ metadata:
   {{- end }}
 spec:
   ports:
-    - name: ovn-northd
+    - name: {{ $serviceName }}
       protocol: TCP
       port: 6643
       targetPort: 6643
@@ -22,7 +24,7 @@ spec:
   ipFamilyPolicy: PreferDualStack
   {{- end }}
   selector:
-    app.kubernetes.io/name: ovn-central
+    app.kubernetes.io/name: {{ $centralName }}
     app.kubernetes.io/part-of: kube-ovn
     ovn-northd-leader: "true"
   sessionAffinity: None

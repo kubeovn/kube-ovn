@@ -24,6 +24,40 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 
 {{/*
+Names for resources owned by this release. Keeping these in helpers makes
+every resource identity and cross-reference follow fullnameOverride.
+*/}}
+{{- define "kubeovn.resourceName" -}}
+{{- $suffix := .suffix -}}
+{{- $base := include "kubeovn.fullname" .context | trunc (int (sub 63 (add (len $suffix) 1))) | trimSuffix "-" -}}
+{{- printf "%s-%s" $base $suffix | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "kubeovn.centralName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovn-central") | trunc 61 | trimSuffix "-" }}{{- end -}}
+{{- define "kubeovn.centralNBName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovn-nb") }}{{- end -}}
+{{- define "kubeovn.centralSBName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovn-sb") }}{{- end -}}
+{{- define "kubeovn.centralNorthdName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovn-northd") }}{{- end -}}
+{{- define "kubeovn.centralServiceAccountName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovn-central") }}{{- end -}}
+{{- define "kubeovn.controllerName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "controller") }}{{- end -}}
+{{- define "kubeovn.agentName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "cni") }}{{- end -}}
+{{- define "kubeovn.pingerName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "pinger") }}{{- end -}}
+{{- define "kubeovn.monitorName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "monitor") }}{{- end -}}
+{{- define "kubeovn.ovsOvnName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovs-ovn") }}{{- end -}}
+{{- define "kubeovn.ovsOvnDpdkName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovs-ovn-dpdk") }}{{- end -}}
+{{- define "kubeovn.icName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ic-controller") }}{{- end -}}
+{{- define "kubeovn.speakerName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "speaker") }}{{- end -}}
+{{- define "kubeovn.webhookName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "webhook") }}{{- end -}}
+{{- define "kubeovn.tlsSecretName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "tls") }}{{- end -}}
+{{- define "kubeovn.ovnServiceAccountName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovn") }}{{- end -}}
+{{- define "kubeovn.ovsServiceAccountName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "ovn-ovs") }}{{- end -}}
+{{- define "kubeovn.appServiceAccountName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "app") }}{{- end -}}
+{{- define "kubeovn.agentServiceAccountName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "cni") }}{{- end -}}
+{{- define "kubeovn.ovnClusterRoleName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "system-ovn") }}{{- end -}}
+{{- define "kubeovn.ovsClusterRoleName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "system-ovn-ovs") }}{{- end -}}
+{{- define "kubeovn.appClusterRoleName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "system-app") }}{{- end -}}
+{{- define "kubeovn.agentClusterRoleName" -}}{{ include "kubeovn.resourceName" (dict "context" . "suffix" "system-cni") }}{{- end -}}
+
+{{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "kubeovn.chart" -}}
@@ -162,9 +196,10 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 
 {{- define "kubeovn.centralRaftAddresses" -}}
 {{- $namespace := include "kubeovn.centralNamespace" . -}}
+{{- $centralName := include "kubeovn.centralName" . -}}
 {{- $addresses := list -}}
 {{- range $i := until (int .Values.central.hcp.replicas) -}}
-{{- $addresses = append $addresses (printf "ovn-central-%d.ovn-central.%s.svc" $i $namespace) -}}
+{{- $addresses = append $addresses (printf "%s-%d.%s.%s.svc" $centralName $i $centralName $namespace) -}}
 {{- end -}}
 {{- join "," $addresses -}}
 {{- end -}}
@@ -188,7 +223,7 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 {{- end -}}
 
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
-  {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace "ovs-ovn" -}}
+  {{- $ds := lookup "apps/v1" "DaemonSet" $.Values.namespace (include "kubeovn.ovsOvnName" $) -}}
   {{- if $ds -}}
     {{- if eq $ds.spec.updateStrategy.type "RollingUpdate" -}}
       RollingUpdate
