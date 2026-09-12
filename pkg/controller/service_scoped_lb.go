@@ -164,6 +164,35 @@ func serviceScopedInternalLBFamilies(svc *v1.Service) []string {
 	return families
 }
 
+func serviceScopedExternalLBFamilies(svc *v1.Service) []string {
+	if !serviceUsesExternalLocalTemplate(svc) {
+		return []string{""}
+	}
+	seen := make(map[string]struct{})
+	families := make([]string, 0, 2)
+	add := func(ip string) {
+		family := strings.ToLower(util.CheckProtocol(ip))
+		if family == "" {
+			return
+		}
+		if _, ok := seen[family]; ok {
+			return
+		}
+		seen[family] = struct{}{}
+		families = append(families, family)
+	}
+	for _, ingress := range svc.Status.LoadBalancer.Ingress {
+		add(ingress.IP)
+	}
+	for _, ip := range util.ServiceClusterIPs(*svc) {
+		add(ip)
+	}
+	if len(families) == 0 {
+		return []string{""}
+	}
+	return families
+}
+
 func serviceTemplateLBAddressFamilies(svc *v1.Service) []string {
 	families := make([]string, 0, len(svc.Spec.ClusterIPs))
 	seen := make(map[string]struct{}, len(svc.Spec.ClusterIPs))
@@ -289,6 +318,11 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, true); err != nil {
 			return "", fmt.Errorf("set template mode on external local service-scoped load balancer %s: %w", name, err)
 		}
+		if family != "" {
+			if err := c.OVNNbClient.SetLoadBalancerAddressFamily(name, family); err != nil {
+				return "", fmt.Errorf("set address family on external local service-scoped load balancer %s: %w", name, err)
+			}
+		}
 	case distributed || trafficClass == serviceLBExternalTraffic:
 		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, false); err != nil {
 			return "", fmt.Errorf("clear template mode on service-scoped load balancer %s: %w", name, err)
@@ -298,11 +332,18 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 }
 
 func (c *Controller) ensureServiceScopedLBExternalTraffic(svc *v1.Service, protocol v1.Protocol) (string, error) {
-	lb, err := c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBExternalTraffic, "")
-	if err != nil {
-		return "", err
+	var last string
+	for _, family := range serviceScopedExternalLBFamilies(svc) {
+		lb, err := c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBExternalTraffic, family)
+		if err != nil {
+			return "", err
+		}
+		last = lb
 	}
-	return lb, nil
+	if last == "" {
+		return c.ensureServiceScopedLBForTrafficClass(svc, protocol, serviceLBExternalTraffic, "")
+	}
+	return last, nil
 }
 
 func serviceVPCName(svc *v1.Service, defaultVPC string) string {
@@ -546,6 +587,11 @@ func (c *Controller) serviceLBMigrationCandidates(svc *v1.Service, protocol v1.P
 				add(serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family))
 			}
 		}
+		if trafficClass == serviceLBExternalTraffic {
+			for _, family := range serviceScopedExternalLBFamilies(svc) {
+				add(serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family))
+			}
+		}
 	}
 	return candidates
 }
@@ -718,8 +764,11 @@ func serviceScopedLBNames(svc *v1.Service) []string {
 		}
 		for _, trafficClass := range trafficClasses {
 			families := []string{""}
-			if trafficClass == serviceLBInternalTraffic {
+			switch trafficClass {
+			case serviceLBInternalTraffic:
 				families = serviceScopedInternalLBFamilies(svc)
+			case serviceLBExternalTraffic:
+				families = serviceScopedExternalLBFamilies(svc)
 			}
 			for _, family := range families {
 				name := serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, trafficClass, family)
