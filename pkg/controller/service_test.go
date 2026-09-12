@@ -753,7 +753,7 @@ func TestHandleUpdateServiceScopedLoadBalancerAnnotatesExternalSubnet(t *testing
 	require.Equal(t, subnetName, got.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
 }
 
-func TestHandleUpdateServiceExternalTrafficPolicyChangeDoesNotEnqueueRegularEndpointReconcile(t *testing.T) {
+func TestHandleUpdateServiceExternalTrafficPolicyChangeRequeuesEndpointReconcileAfterCleanup(t *testing.T) {
 	svc := &v1.Service{
 		Name:      "lb-svc",
 		Namespace: metav1.NamespaceDefault,
@@ -786,6 +786,6 @@ func TestHandleUpdateServiceExternalTrafficPolicyChangeDoesNotEnqueueRegularEndp
 		oldExternalLocalTemplate: true,
 	}))
 
-	require.Zero(t, ctrl.addOrUpdateEndpointSliceQueue.Len())
+	require.Equal(t, 1, ctrl.addOrUpdateEndpointSliceQueue.Len())
 	require.Zero(t, ctrl.priorityEndpointSliceQueue.Len())
 }
