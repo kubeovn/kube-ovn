@@ -110,7 +110,11 @@ type Controller struct {
 	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
 	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
-	vpcNatGwExecKeyMutex          keymutex.KeyMutex
+	// qosNatGwKeyMutex is the only QoS data-plane lock. It is keyed by NAT gateway,
+	// never by EIP or QoS policy, because every QoS rule on one gateway shares its
+	// HTB root, IFB device and ingress redirect state.
+	qosNatGwKeyMutex     keymutex.KeyMutex
+	vpcNatGwExecKeyMutex keymutex.KeyMutex
 
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
@@ -533,6 +537,7 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcSnatQueue:               newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
 		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
 		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
+		qosNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,

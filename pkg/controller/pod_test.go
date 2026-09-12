@@ -61,19 +61,99 @@ func TestEnqueueVpcNatGwFromPod(t *testing.T) {
 	controller.enqueueVpcNatGatewayInit(pod)
 	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
 
-	// A restart is not an allocation event, so it carries its own trigger.
-	controller.enqueueVpcNatGatewayRestart(pod)
-	require.Zero(t, controller.addOrUpdateVpcNatGatewayQueue.Len())
-	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "vpc-nat-gw", RestartCount: 1}}
-	controller.enqueueVpcNatGatewayRestart(pod)
-	require.Equal(t, 1, controller.addOrUpdateVpcNatGatewayQueue.Len())
+	// A restart reuses the idempotent init path.
+	item, shutdown := controller.initVpcNatGatewayQueue.Get()
+	require.False(t, shutdown)
+	controller.initVpcNatGatewayQueue.Done(item)
+
+	// No running container instance is not a restart, and neither is a resync.
+	oldPod := pod.DeepCopy()
+	controller.enqueueVpcNatGatewayRestart(oldPod, pod)
+	require.Zero(t, controller.initVpcNatGatewayQueue.Len())
+
+	// The first running container instance wakes initialization.
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name: "vpc-nat-gw", ContainerID: "containerd://first", RestartCount: 1,
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+	}}
+	controller.enqueueVpcNatGatewayRestart(oldPod, pod)
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
+
+	// Resyncing the same instance does nothing. A new ContainerID wakes recovery
+	// even if restart count is unchanged.
+	controller.enqueueVpcNatGatewayRestart(pod, pod.DeepCopy())
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
+	item, shutdown = controller.initVpcNatGatewayQueue.Get()
+	require.False(t, shutdown)
+	controller.initVpcNatGatewayQueue.Done(item)
+	controller.initVpcNatGatewayQueue.Forget(item)
+
+	restartedPod := pod.DeepCopy()
+	restartedPod.Status.ContainerStatuses[0].ContainerID = "containerd://second"
+	controller.enqueueVpcNatGatewayRestart(pod, restartedPod)
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
 
 	// A regular Pod triggers nothing.
-	regularPod := &corev1.Pod{Name: "regular", Namespace: metav1.NamespaceSystem}
+	regularPod := &corev1.Pod{
+		Name:      "regular",
+		Namespace: metav1.NamespaceSystem,
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "vpc-nat-gw", ContainerID: "containerd://regular",
+				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}},
+		},
+	}
 	controller.enqueueVpcNatGatewayInit(regularPod)
-	controller.enqueueVpcNatGatewayRestart(regularPod)
+	controller.enqueueVpcNatGatewayRestart(&corev1.Pod{Name: "regular", Namespace: metav1.NamespaceSystem}, regularPod)
 	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
-	require.Equal(t, 1, controller.addOrUpdateVpcNatGatewayQueue.Len())
+	require.Zero(t, controller.addOrUpdateVpcNatGatewayQueue.Len())
+
+	// A gateway Pod that never completed initialization is woken by any of its own updates,
+	// even when its container instance is unchanged: a replacement Pod can be observed
+	// before its init command has run.
+	uninitialized := &corev1.Pod{
+		Name:      util.GenNatGwName("pending-init-gw") + "-0",
+		Namespace: metav1.NamespaceSystem,
+		Labels:    map[string]string{util.VpcNatGatewayLabel: "true"},
+		Annotations: map[string]string{
+			util.VpcNatGatewayAnnotation: "pending-init-gw",
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "vpc-nat-gw", ContainerID: "containerd://running",
+				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}},
+		},
+	}
+	// Drain the key left by the previous case so the assertion cannot be satisfied by dedup.
+	item, shutdown = controller.initVpcNatGatewayQueue.Get()
+	require.False(t, shutdown)
+	controller.initVpcNatGatewayQueue.Done(item)
+	controller.initVpcNatGatewayQueue.Forget(item)
+
+	controller.enqueueVpcNatGatewayRestart(uninitialized.DeepCopy(), uninitialized)
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len(), "uninitialized gateway pod must retry init")
+	item, shutdown = controller.initVpcNatGatewayQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "pending-init-gw", item)
+	controller.initVpcNatGatewayQueue.Done(item)
+
+	// Once the init command marked the Pod, further updates of the same instance do nothing.
+	initialized := uninitialized.DeepCopy()
+	initialized.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
+	initialized.Annotations[util.VpcNatGatewayInitInstanceAnnotation] = natGwPodInstanceToken(initialized)
+	require.NotEmpty(t, initialized.Annotations[util.VpcNatGatewayInitInstanceAnnotation])
+	controller.enqueueVpcNatGatewayRestart(initialized.DeepCopy(), initialized)
+	require.Zero(t, controller.initVpcNatGatewayQueue.Len())
+
+	// The mark belongs to the instance that completed init, so a replacement Pod under the same
+	// name (new UID) or a restarted container (new ContainerID) must initialize again.
+	replaced := initialized.DeepCopy()
+	replaced.UID = "replacement-uid"
+	controller.enqueueVpcNatGatewayRestart(initialized.DeepCopy(), replaced)
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
 }
 
 func TestCheckIsPodVpcNatGw(t *testing.T) {
