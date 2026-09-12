@@ -1,0 +1,98 @@
+suite: Install mode resource boundaries
+templates:
+  - kube-ovn-crd.yaml
+  - pre-upgrade-ovs-ovn.yaml
+  - upgrade-ovs-ovn.yaml
+  - post-delete-hook.yaml
+  - controller-deploy.yaml
+tests:
+  - it: does not render data-plane CRDs for controlPlaneOnly
+    template: kube-ovn-crd.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render pre-upgrade hooks for controlPlaneOnly
+    template: pre-upgrade-ovs-ovn.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render post-upgrade hooks for controlPlaneOnly
+    template: upgrade-ovs-ovn.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render post-delete cleanup for controlPlaneOnly
+    template: post-delete-hook.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders data-plane CRDs for dataPlaneOnly
+    template: kube-ovn-crd.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+    asserts:
+      - isKind:
+          of: CustomResourceDefinition
+
+  - it: does not render pre-upgrade hooks for dataPlaneOnly
+    template: pre-upgrade-ovs-ovn.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render post-upgrade hooks for dataPlaneOnly
+    template: upgrade-ovs-ovn.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders post-delete cleanup for dataPlaneOnly
+    template: post-delete-hook.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+    asserts:
+      - hasDocuments:
+          count: 4
+
+  - it: falls back to one data-plane controller replica without node labels
+    template: controller-deploy.yaml
+    kubernetesProvider:
+      scheme:
+        "v1/Node":
+          gvr:
+            version: v1
+            resource: nodes
+          namespaced: false
+      objects: []
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
