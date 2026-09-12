@@ -1064,6 +1064,13 @@ func eipQoSCases(f *framework.Framework,
 // its KubeOVN controller finalizer, runs bind to attach it to a resource, then deletes it while
 // still bound and asserts it stays in Terminating. It returns the policy name so the caller can
 // exercise the release trigger (deleting or unbinding the referencing resource).
+//
+// A policy is protected by the resources that claim its generation, which the referencing
+// controller records in the `ovn.kubernetes.io/qos_uid` label of the referencing resource after
+// the reference is applied. bind must therefore wait for that claim before the policy is
+// deleted, otherwise the policy is deleted before any resource claims it. The resource is then
+// left referencing a policy that no longer exists, which is a different scenario than the one
+// these cases cover.
 func createQoSMarkedForDeletionWhileBound(
 	f *framework.Framework,
 	shared bool,
@@ -1133,6 +1140,7 @@ func setupEIPBoundQoSMarkedForDeletion(f *framework.Framework, vpcQosParams *qos
 	qosName = createQoSMarkedForDeletionWhileBound(f, false, apiv1.QoSBindingTypeEIP, getEIPQoSRule(eipLimit), func(qos string) {
 		ginkgo.By("Binding eip " + eipName + " to qos policy " + qos)
 		_ = eipClient.PatchQoSPolicySync(eipName, qos)
+		waitForQoSClaim(f, eipName, func() map[string]string { return eipClient.Get(eipName).Labels }, qos)
 	})
 	return eipName, qosName
 }
@@ -1147,7 +1155,21 @@ func setupNatGwBoundQoSMarkedForDeletion(f *framework.Framework, natgwName strin
 	return createQoSMarkedForDeletionWhileBound(f, true, apiv1.QoSBindingTypeNatGw, getNicDefaultQoSPolicy(defaultNicLimit), func(qos string) {
 		ginkgo.By("Binding natgw " + natgwName + " to qos policy " + qos)
 		_ = natgwClient.PatchQoSPolicySync(natgwName, qos)
+		waitForQoSClaim(f, natgwName, func() map[string]string { return natgwClient.Get(natgwName).Labels }, qos)
 	})
+}
+
+// waitForQoSClaim waits until the resource carries the claim of the given policy generation, so
+// that the policy is protected before a test marks it for deletion.
+func waitForQoSClaim(f *framework.Framework, resource string, labels func() map[string]string, qosName string) {
+	ginkgo.GinkgoHelper()
+
+	policy, err := f.QoSPolicyClient().QoSPolicyInterface.Get(context.TODO(), qosName, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+	gomega.Eventually(func(g gomega.Gomega) {
+		g.Expect(labels()).To(gomega.HaveKeyWithValue(util.QoSPolicyUIDLabel, string(policy.UID)))
+	}, 2*time.Minute, 2*time.Second).Should(gomega.Succeed(),
+		"resource %s must claim qos policy generation %s before the policy is deleted", resource, policy.UID)
 }
 
 // parseBandwidthFromIperfOutput extracts bandwidth values from iperf CSV output

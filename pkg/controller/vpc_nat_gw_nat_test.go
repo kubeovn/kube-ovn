@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -14,6 +15,86 @@ import (
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+// TestNatRuleCreationClaimsEipBeforeRule pins that every NAT rule records the eip generation it
+// depends on before the rule can exist in the gateway pod. An eip marked for deletion finds its
+// users through that label, so a rule that is already in the pod must be able to claim the eip.
+func TestNatRuleCreationClaimsEipBeforeRule(t *testing.T) {
+	oldEnabled := vpcNatEnabled
+	vpcNatEnabled = "true"
+	t.Cleanup(func() { vpcNatEnabled = oldEnabled })
+
+	eip := func() *kubeovnv1.IptablesEIP {
+		return &kubeovnv1.IptablesEIP{
+			Name: "eip", UID: "eip-uid",
+			Spec:   kubeovnv1.IptablesEIPSpec{V4ip: "2.2.2.2", NatGwDp: "gw"},
+			Status: kubeovnv1.IptablesEIPStatus{IP: "2.2.2.2", Ready: true},
+		}
+	}
+	// The gateway exists but has no pod, so creating the rule fails while the claim is written.
+	options := func() *FakeControllerOptions {
+		return &FakeControllerOptions{
+			VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("gw")},
+			IptablesEips:   []*kubeovnv1.IptablesEIP{eip()},
+		}
+	}
+
+	t.Run("fip", func(t *testing.T) {
+		fip := &kubeovnv1.IptablesFIPRule{
+			Name: "fip",
+			Spec: kubeovnv1.IptablesFIPRuleSpec{EIP: "eip", InternalIP: "10.0.0.5"},
+		}
+		opts := options()
+		opts.IptablesFips = []*kubeovnv1.IptablesFIPRule{fip}
+		fc, err := newFakeControllerWithOptions(t, opts)
+		require.NoError(t, err)
+
+		require.Error(t, fc.fakeController.handleAddIptablesFip("fip"))
+		got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Get(
+			context.Background(), "fip", metav1.GetOptions{},
+		)
+		require.NoError(t, err)
+		require.Equal(t, "eip-uid", got.Labels[util.EipUIDLabel])
+	})
+
+	t.Run("dnat", func(t *testing.T) {
+		dnat := &kubeovnv1.IptablesDnatRule{
+			Name: "dnat",
+			Spec: kubeovnv1.IptablesDnatRuleSpec{
+				EIP: "eip", Protocol: "tcp", ExternalPort: "80", InternalIP: "10.0.0.5", InternalPort: "8080",
+			},
+		}
+		opts := options()
+		opts.IptablesDnatRules = []*kubeovnv1.IptablesDnatRule{dnat}
+		fc, err := newFakeControllerWithOptions(t, opts)
+		require.NoError(t, err)
+
+		require.Error(t, fc.fakeController.handleAddIptablesDnatRule("dnat"))
+		got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Get(
+			context.Background(), "dnat", metav1.GetOptions{},
+		)
+		require.NoError(t, err)
+		require.Equal(t, "eip-uid", got.Labels[util.EipUIDLabel])
+	})
+
+	t.Run("snat", func(t *testing.T) {
+		snat := &kubeovnv1.IptablesSnatRule{
+			Name: "snat",
+			Spec: kubeovnv1.IptablesSnatRuleSpec{EIP: "eip", InternalCIDR: "10.0.0.0/24"},
+		}
+		opts := options()
+		opts.IptablesSnatRules = []*kubeovnv1.IptablesSnatRule{snat}
+		fc, err := newFakeControllerWithOptions(t, opts)
+		require.NoError(t, err)
+
+		require.Error(t, fc.fakeController.handleAddIptablesSnatRule("snat"))
+		got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Get(
+			context.Background(), "snat", metav1.GetOptions{},
+		)
+		require.NoError(t, err)
+		require.Equal(t, "eip-uid", got.Labels[util.EipUIDLabel])
+	})
+}
 
 func TestValidateDnat(t *testing.T) {
 	c := &Controller{}

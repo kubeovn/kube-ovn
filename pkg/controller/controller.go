@@ -1232,6 +1232,12 @@ func (c *Controller) Run(ctx context.Context) {
 	if err := c.syncFinalizers(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize crd finalizers")
 	}
+	if err := c.syncNatUIDLabels(); err != nil {
+		// References that could not be migrated keep their previous labels and are migrated on
+		// the next start, but the controller must stay up: a single object that a webhook or an
+		// inconsistent spec rejects would otherwise restart the controller in a loop.
+		klog.Errorf("failed to migrate NAT UID labels: %v", err)
+	}
 
 	if err := c.InitIPAM(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ipam")

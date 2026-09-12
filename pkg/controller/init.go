@@ -27,6 +27,168 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+// syncNatUIDLabels migrates legacy name/address references to UID labels. A reference is
+// identified by the UID of the object it points at, so objects created before the UID
+// labels existed have to be labeled before the referenced object can be deleted again.
+//
+// The migration is best effort: an object that cannot be updated keeps its previous labels
+// and is migrated on the next start instead of holding up the whole controller. Every
+// failure is reported so it stays visible.
+func (c *Controller) syncNatUIDLabels() error {
+	ctx := context.Background()
+	qos, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	qosUID := make(map[string]string, len(qos.Items))
+	for i := range qos.Items {
+		qosUID[qos.Items[i].Name] = string(qos.Items[i].UID)
+	}
+
+	var errs []error
+	eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range eips.Items {
+		eip := eips.Items[i].DeepCopy()
+		uid := qosUID[eip.Spec.QoSPolicy]
+		hasBinding := eip.Labels[util.QoSLabel] == eip.Spec.QoSPolicy || eip.Status.QoSPolicy == eip.Spec.QoSPolicy
+		if !eip.DeletionTimestamp.IsZero() && !hasBinding {
+			continue
+		}
+		if uid == "" && eip.Spec.QoSPolicy == "" && eip.Labels[util.QoSLabel] == "" && eip.Labels[util.QoSPolicyUIDLabel] == "" {
+			continue
+		}
+		if eip.Labels == nil {
+			eip.Labels = map[string]string{}
+		}
+		if uid == "" && eip.Spec.QoSPolicy != "" {
+			continue
+		}
+		if uid == "" {
+			delete(eip.Labels, util.QoSLabel)
+			delete(eip.Labels, util.QoSPolicyUIDLabel)
+		} else {
+			if eip.Labels[util.QoSLabel] == eip.Spec.QoSPolicy && eip.Labels[util.QoSPolicyUIDLabel] == uid {
+				continue
+			}
+			eip.Labels[util.QoSLabel] = eip.Spec.QoSPolicy
+			eip.Labels[util.QoSPolicyUIDLabel] = uid
+		}
+
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(ctx, eip, metav1.UpdateOptions{}); err != nil {
+			errs = append(errs, fmt.Errorf("failed to migrate qos claim of iptables eip %s: %w", eip.Name, err))
+		}
+	}
+
+	gws, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range gws.Items {
+		gw := gws.Items[i].DeepCopy()
+		uid := qosUID[gw.Spec.QoSPolicy]
+		hasBinding := gw.Labels[util.QoSLabel] == gw.Spec.QoSPolicy || gw.Status.QoSPolicy == gw.Spec.QoSPolicy
+		if !gw.DeletionTimestamp.IsZero() && !hasBinding {
+			continue
+		}
+		if uid == "" && gw.Spec.QoSPolicy == "" && gw.Labels[util.QoSLabel] == "" && gw.Labels[util.QoSPolicyUIDLabel] == "" {
+			continue
+		}
+		if gw.Labels == nil {
+			gw.Labels = map[string]string{}
+		}
+		if uid == "" && gw.Spec.QoSPolicy != "" {
+			continue
+		}
+		if uid == "" {
+			delete(gw.Labels, util.QoSLabel)
+			delete(gw.Labels, util.QoSPolicyUIDLabel)
+		} else {
+			if gw.Labels[util.QoSLabel] == gw.Spec.QoSPolicy && gw.Labels[util.QoSPolicyUIDLabel] == uid {
+				continue
+			}
+			gw.Labels[util.QoSLabel] = gw.Spec.QoSPolicy
+			gw.Labels[util.QoSPolicyUIDLabel] = uid
+		}
+
+		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Update(ctx, gw, metav1.UpdateOptions{}); err != nil {
+			errs = append(errs, fmt.Errorf("failed to migrate qos claim of vpc nat gateway %s: %w", gw.Name, err))
+		}
+	}
+	return errors.Join(append(errs, c.syncNatRuleUIDLabels(ctx, eips.Items))...)
+}
+
+func (c *Controller) syncNatRuleUIDLabels(ctx context.Context, eips []kubeovnv1.IptablesEIP) error {
+	eipUID := make(map[string]string, len(eips))
+	for i := range eips {
+		eipUID[eips[i].Name] = string(eips[i].UID)
+	}
+	fips, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range fips.Items {
+		if err = c.syncNatRuleUID(ctx, &fips.Items[i], eipUID); err != nil {
+			return err
+		}
+	}
+	dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range dnats.Items {
+		if err = c.syncNatRuleUID(ctx, &dnats.Items[i], eipUID); err != nil {
+			return err
+		}
+	}
+	snats, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range snats.Items {
+		if err = c.syncNatRuleUID(ctx, &snats.Items[i], eipUID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) syncNatRuleUID(ctx context.Context, rule client.Object, eips map[string]string) error {
+	// The concrete rule types expose Spec.EIP; use the existing label when no migration target exists.
+	var eipName string
+	switch obj := rule.(type) {
+	case *kubeovnv1.IptablesFIPRule:
+		eipName = obj.Spec.EIP
+	case *kubeovnv1.IptablesDnatRule:
+		eipName = obj.Spec.EIP
+	case *kubeovnv1.IptablesSnatRule:
+		eipName = obj.Spec.EIP
+	}
+	uid := eips[eipName]
+	if uid == "" || (!rule.GetDeletionTimestamp().IsZero() && rule.GetLabels()[util.EipV4IpLabel] == "") || rule.GetLabels()[util.EipUIDLabel] == uid {
+		return nil
+	}
+	updated := rule.DeepCopyObject().(client.Object)
+	labelsCopy := maps.Clone(rule.GetLabels())
+	if labelsCopy == nil {
+		labelsCopy = map[string]string{}
+	}
+	labelsCopy[util.EipUIDLabel] = uid
+	updated.SetLabels(labelsCopy)
+	var err error
+	switch obj := updated.(type) {
+	case *kubeovnv1.IptablesFIPRule:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Update(ctx, obj, metav1.UpdateOptions{})
+	case *kubeovnv1.IptablesDnatRule:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Update(ctx, obj, metav1.UpdateOptions{})
+	case *kubeovnv1.IptablesSnatRule:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Update(ctx, obj, metav1.UpdateOptions{})
+	}
+	return err
+}
+
 func (c *Controller) InitOVN() error {
 	var err error
 

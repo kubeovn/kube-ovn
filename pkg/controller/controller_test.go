@@ -111,6 +111,9 @@ type FakeControllerOptions struct {
 	OvnSnatRules          []*kubeovnv1.OvnSnatRule
 	QoSPolicies           []*kubeovnv1.QoSPolicy
 	IptablesEips          []*kubeovnv1.IptablesEIP
+	IptablesFips          []*kubeovnv1.IptablesFIPRule
+	IptablesDnatRules     []*kubeovnv1.IptablesDnatRule
+	IptablesSnatRules     []*kubeovnv1.IptablesSnatRule
 	StatefulSets          []*appsv1.StatefulSet
 	Deployments           []*appsv1.Deployment
 	ConfigMaps            []*corev1.ConfigMap
@@ -284,6 +287,21 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, fip := range opts.IptablesFips {
+		if _, err := kubeovnClient.KubeovnV1().IptablesFIPRules().Create(context.Background(), fip, metav1.CreateOptions{}); err != nil {
+			return nil, err
+		}
+	}
+	for _, dnat := range opts.IptablesDnatRules {
+		if _, err := kubeovnClient.KubeovnV1().IptablesDnatRules().Create(context.Background(), dnat, metav1.CreateOptions{}); err != nil {
+			return nil, err
+		}
+	}
+	for _, snat := range opts.IptablesSnatRules {
+		if _, err := kubeovnClient.KubeovnV1().IptablesSnatRules().Create(context.Background(), snat, metav1.CreateOptions{}); err != nil {
+			return nil, err
+		}
+	}
 
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
@@ -331,6 +349,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
+	iptablesFipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesFIPRules()
+	iptablesDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesDnatRules()
+	iptablesSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesSnatRules()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -382,6 +403,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		qosPoliciesLister:             qosPolicyInformer.Lister(),
 		qosPolicySynced:               alwaysReady,
 		iptablesEipsLister:            iptablesEipInformer.Lister(),
+		iptablesFipsLister:            iptablesFipInformer.Lister(),
+		iptablesDnatRulesLister:       iptablesDnatRuleInformer.Lister(),
+		iptablesSnatRulesLister:       iptablesSnatRuleInformer.Lister(),
 		statefulSetsLister:            statefulSetInformer.Lister(),
 		deploymentsLister:             deploymentInformer.Lister(),
 		configMapsLister:              configMapInformer.Lister(),

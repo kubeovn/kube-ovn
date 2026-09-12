@@ -234,6 +234,10 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		return errors.New("iptables nat gw not enable")
 	}
 
+	if !fip.DeletionTimestamp.IsZero() {
+		return c.handleUpdateIptablesFip(key)
+	}
+
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add iptables fip %s", key)
@@ -254,7 +258,7 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		return err
 	}
 
-	if err = c.fipTryUseEip(key, eip.Spec.V4ip); err != nil {
+	if err = c.fipTryUseEip(key, eip); err != nil {
 		err = fmt.Errorf("failed to create fip %s, %w", key, err)
 		klog.Error(err)
 		return err
@@ -270,17 +274,19 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 		return err
 	}
 
+	// Claim the eip generation before the rule can reach the data plane, so an eip marked for
+	// deletion already sees this fip as a user of this generation.
+	if err = c.patchFipLabel(key, eip); err != nil {
+		klog.Errorf("failed to update label for fip %s before creating rule, %v", key, err)
+		return err
+	}
+
 	if err = c.createFipInPod(eip.Spec.NatGwDp, eip.Status.IP, fip.Spec.InternalIP); err != nil {
 		klog.Errorf("failed to create fip, %v", err)
 		return err
 	}
 	if err = c.patchFipStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 		klog.Errorf("failed to patch status for fip %s, %v", key, err)
-		return err
-	}
-	// label too long cause error
-	if err = c.patchFipLabel(key, eip); err != nil {
-		klog.Errorf("failed to update label for fip %s, %v", key, err)
 		return err
 	}
 	if err = c.patchEipStatus(fip.Spec.EIP, "", "", "", true); err != nil {
@@ -295,9 +301,9 @@ func (c *Controller) handleAddIptablesFip(key string) error {
 	return nil
 }
 
-func (c *Controller) fipTryUseEip(fipName, eipV4IP string) error {
-	// check if has another fip using this eip already
-	selector := labels.SelectorFromSet(labels.Set{util.EipV4IpLabel: eipV4IP})
+func (c *Controller) fipTryUseEip(fipName string, eip *kubeovnv1.IptablesEIP) error {
+	// check if another FIP already uses this EIP generation
+	selector := labels.SelectorFromSet(labels.Set{util.EipUIDLabel: string(eip.UID)})
 	usingFips, err := c.iptablesFipsLister.List(selector)
 	if err != nil {
 		klog.Errorf("failed to get fips, %v", err)
@@ -305,7 +311,7 @@ func (c *Controller) fipTryUseEip(fipName, eipV4IP string) error {
 	}
 	for _, uf := range usingFips {
 		if uf.Name != fipName {
-			err = fmt.Errorf("%s is used by the other fip %s", eipV4IP, uf.Name)
+			err = fmt.Errorf("%s is used by the other fip %s", eip.Spec.V4ip, uf.Name)
 			klog.Error(err)
 			return err
 		}
@@ -400,7 +406,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		return err
 	}
 
-	if err = c.fipTryUseEip(key, eip.Spec.V4ip); err != nil {
+	if err = c.fipTryUseEip(key, eip); err != nil {
 		err = fmt.Errorf("failed to update fip %s, %w", key, err)
 		klog.Error(err)
 		return err
@@ -454,16 +460,16 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		if err = c.finalDeleteFipInPod(key, cachedFip); err != nil {
 			return err
 		}
+		if err = c.patchFipLabel(key, eip); err != nil {
+			klog.Errorf("failed to update label for fip %s before creating rule, %v", key, err)
+			return err
+		}
 		if err = c.createFipInPod(eip.Spec.NatGwDp, newV4ip, newInternalIP); err != nil {
 			klog.Errorf("failed to create fip %s, %v", key, err)
 			return err
 		}
 		if err = c.patchFipStatus(key, newV4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 			klog.Errorf("failed to patch status for fip %s, %v", key, err)
-			return err
-		}
-		if err = c.patchFipLabel(key, eip); err != nil {
-			klog.Errorf("failed to update label for fip %s, %v", key, err)
 			return err
 		}
 		if err = c.patchEipStatus(cachedFip.Spec.EIP, "", "", "", true); err != nil {
@@ -539,6 +545,10 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		return errors.New("iptables nat gw not enable")
 	}
 
+	if !dnat.DeletionTimestamp.IsZero() {
+		return c.handleUpdateIptablesDnatRule(key)
+	}
+
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add iptables dnat rule %s", key)
@@ -570,6 +580,13 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		return err
 	}
 
+	// Claim the eip generation before the rule can reach the data plane, so an eip marked for
+	// deletion already sees this dnat as a user of this generation.
+	if err = c.patchDnatLabel(key, eip); err != nil {
+		klog.Errorf("failed to patch label for dnat %s before creating rule, %v", key, err)
+		return err
+	}
+
 	switch dnat.Spec.Type {
 	case kubeovnv1.DnatRuleTypeShare:
 		// Share type: use nft map-based DNAT
@@ -595,11 +612,6 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 	}
 	if err = c.patchDnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
-		return err
-	}
-	// label too long cause error
-	if err = c.patchDnatLabel(key, eip); err != nil {
-		klog.Errorf("failed to patch label for dnat %s, %v", key, err)
 		return err
 	}
 	if err = c.patchEipStatus(dnat.Spec.EIP, "", "", "", true); err != nil {
@@ -743,6 +755,10 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		if err = c.finalDeleteDnatInPod(key, cachedDnat); err != nil {
 			return err
 		}
+		if err = c.patchDnatLabel(key, eip); err != nil {
+			klog.Errorf("failed to patch label for dnat %s before creating rule, %v", key, err)
+			return err
+		}
 
 		switch cachedDnat.Spec.Type {
 		case kubeovnv1.DnatRuleTypeShare:
@@ -768,10 +784,6 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		}
 		if err = c.patchDnatStatus(key, newV4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 			klog.Errorf("failed to patch status for dnat %s, %v", key, err)
-			return err
-		}
-		if err = c.patchDnatLabel(key, eip); err != nil {
-			klog.Errorf("failed to patch label for dnat %s, %v", key, err)
 			return err
 		}
 		if err = c.patchEipStatus(cachedDnat.Spec.EIP, "", "", "", true); err != nil {
@@ -869,6 +881,10 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		return errors.New("iptables nat gw not enable")
 	}
 
+	if !snat.DeletionTimestamp.IsZero() {
+		return c.handleUpdateIptablesSnatRule(key)
+	}
+
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle add iptables snat rule %s", key)
@@ -902,16 +918,18 @@ func (c *Controller) handleAddIptablesSnatRule(key string) error {
 		klog.Errorf("failed to handle add finalizer for snat, %v", err)
 		return err
 	}
+	// Claim the eip generation before the rule can reach the data plane, so an eip marked for
+	// deletion already sees this snat as a user of this generation.
+	if err = c.patchSnatLabel(key, eip); err != nil {
+		klog.Errorf("failed to patch label for snat %s before creating rule, %v", key, err)
+		return err
+	}
 	if err = c.createSnatInPod(eip.Spec.NatGwDp, eip.Status.IP, v4Cidr); err != nil {
 		klog.Errorf("failed to create snat, %v", err)
 		return err
 	}
 	if err = c.patchSnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 		klog.Errorf("failed to update status for snat %s, %v", key, err)
-		return err
-	}
-	if err = c.patchSnatLabel(key, eip); err != nil {
-		klog.Errorf("failed to patch label for snat %s, %v", key, err)
 		return err
 	}
 	if err = c.patchEipStatus(snat.Spec.EIP, "", "", "", true); err != nil {
@@ -1048,16 +1066,16 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		if err = c.finalDeleteSnatInPod(key, cachedSnat); err != nil {
 			return err
 		}
+		if err = c.patchSnatLabel(key, eip); err != nil {
+			klog.Errorf("failed to patch label for snat %s before creating rule, %v", key, err)
+			return err
+		}
 		if err = c.createSnatInPod(eip.Spec.NatGwDp, newV4ip, newV4Cidr); err != nil {
 			klog.Errorf("failed to create snat %s, %v", key, err)
 			return err
 		}
 		if err = c.patchSnatStatus(key, newV4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 			klog.Errorf("failed to patch status for snat %s, %v", key, err)
-			return err
-		}
-		if err = c.patchSnatLabel(key, eip); err != nil {
-			klog.Errorf("failed to patch label for snat %s, %v", key, err)
 			return err
 		}
 		if err = c.patchEipStatus(cachedSnat.Spec.EIP, "", "", "", true); err != nil {
@@ -1250,6 +1268,9 @@ func (c *Controller) handleDelIptablesDnatFinalizer(key string) error {
 	return nil
 }
 
+// patchFipLabel records the gateway and eip references of the fip, including the UID of the eip
+// generation it uses (ovn.kubernetes.io/eip_uid). The claim is written before the rule is created
+// in the pod, and rewritten only after the rule of the previous eip generation is gone.
 func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error {
 	oriFip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
@@ -1267,13 +1288,16 @@ func (c *Controller) patchFipLabel(key string, eip *kubeovnv1.IptablesEIP) error
 		fip.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
 			util.EipV4IpLabel:           eip.Spec.V4ip,
+			util.EipUIDLabel:            string(eip.UID),
 		}
 		needUpdateLabel = true
-	} else if fip.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
-		fip.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
+	} else if fip.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp ||
+		fip.Labels[util.EipV4IpLabel] != eip.Spec.V4ip ||
+		fip.Labels[util.EipUIDLabel] != string(eip.UID) {
 		op = "replace"
 		fip.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
 		fip.Labels[util.EipV4IpLabel] = eip.Spec.V4ip
+		fip.Labels[util.EipUIDLabel] = string(eip.UID)
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
@@ -1455,6 +1479,9 @@ func (c *Controller) redoFip(key, redo string, eipReady bool) error {
 	return err
 }
 
+// patchDnatLabel records the gateway, port and eip references of the dnat, including the UID of
+// the eip generation it uses (ovn.kubernetes.io/eip_uid). The claim is written before the rule is
+// created in the pod, and rewritten only after the rule of the previous eip generation is gone.
 func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) error {
 	oriDnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
@@ -1473,15 +1500,18 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
 			util.VpcDnatEPortLabel:      dnat.Spec.ExternalPort,
 			util.EipV4IpLabel:           eip.Spec.V4ip,
+			util.EipUIDLabel:            string(eip.UID),
 		}
 		needUpdateLabel = true
 	} else if dnat.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp ||
 		dnat.Labels[util.VpcDnatEPortLabel] != dnat.Spec.ExternalPort ||
-		dnat.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
+		dnat.Labels[util.EipV4IpLabel] != eip.Spec.V4ip ||
+		dnat.Labels[util.EipUIDLabel] != string(eip.UID) {
 		op = "replace"
 		dnat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
 		dnat.Labels[util.VpcDnatEPortLabel] = dnat.Spec.ExternalPort
 		dnat.Labels[util.EipV4IpLabel] = eip.Spec.V4ip
+		dnat.Labels[util.EipUIDLabel] = string(eip.UID)
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
@@ -1597,6 +1627,9 @@ func (c *Controller) redoDnat(key, redo string, eipReady bool) error {
 	return nil
 }
 
+// patchSnatLabel records the gateway and eip references of the snat, including the UID of the eip
+// generation it uses (ovn.kubernetes.io/eip_uid). The claim is written before the rule is created
+// in the pod, and rewritten only after the rule of the previous eip generation is gone.
 func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) error {
 	oriSnat, err := c.iptablesSnatRulesLister.Get(key)
 	if err != nil {
@@ -1614,13 +1647,16 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 		snat.Labels = map[string]string{
 			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
 			util.EipV4IpLabel:           eip.Spec.V4ip,
+			util.EipUIDLabel:            string(eip.UID),
 		}
 		needUpdateLabel = true
-	} else if snat.Labels[util.SubnetNameLabel] != eip.Spec.NatGwDp ||
-		snat.Labels[util.EipV4IpLabel] != eip.Spec.V4ip {
+	} else if snat.Labels[util.VpcNatGatewayNameLabel] != eip.Spec.NatGwDp ||
+		snat.Labels[util.EipV4IpLabel] != eip.Spec.V4ip ||
+		snat.Labels[util.EipUIDLabel] != string(eip.UID) {
 		op = "replace"
 		snat.Labels[util.VpcNatGatewayNameLabel] = eip.Spec.NatGwDp
 		snat.Labels[util.EipV4IpLabel] = eip.Spec.V4ip
+		snat.Labels[util.EipUIDLabel] = string(eip.UID)
 		needUpdateLabel = true
 	}
 	if needUpdateLabel {
