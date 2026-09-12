@@ -70,6 +70,46 @@ func isTerminalMigrationPhase(phase v1.VirtualMachineInstanceMigrationPhase) boo
 	return phase == v1.MigrationSucceeded || phase == v1.MigrationFailed
 }
 
+func isStartedMigrationPhase(phase v1.VirtualMachineInstanceMigrationPhase) bool {
+	switch phase {
+	case v1.MigrationScheduling,
+		v1.MigrationPreparingTarget,
+		v1.MigrationTargetReady,
+		v1.MigrationRunning,
+		v1.MigrationWaitingForSync,
+		v1.MigrationSynchronizing:
+		return true
+	default:
+		return false
+	}
+}
+
+// WaitForStarted waits until the migration controller has started processing the migration.
+func (c *VMIMigrationClient) WaitForStarted(name string, timeout time.Duration) error {
+	ginkgo.GinkgoHelper()
+	err := k8sframework.Gomega().Eventually(context.TODO(), k8sframework.RetryNotFound(func(ctx context.Context) (*v1.VirtualMachineInstanceMigration, error) {
+		return c.VirtualMachineInstanceMigrationInterface.Get(ctx, name, metav1.GetOptions{})
+	})).WithTimeout(timeout).Should(
+		k8sframework.MakeMatcher(func(m *v1.VirtualMachineInstanceMigration) (func() string, error) {
+			if isStartedMigrationPhase(m.Status.Phase) {
+				return nil, nil
+			}
+			if isTerminalMigrationPhase(m.Status.Phase) {
+				Failf("expected migration %s to start, got terminal phase %s instead:\n%s",
+					name, m.Status.Phase, format.Object(m.Status, 1))
+			}
+			return func() string {
+				return fmt.Sprintf("expected migration to start, got phase %s instead:\n%s",
+					m.Status.Phase, format.Object(m.Status, 1))
+			}, nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("expected migration %s to start: %w", name, err)
+	}
+	return nil
+}
+
 // WaitForPhase waits until the migration reaches the specified phase.
 func (c *VMIMigrationClient) WaitForPhase(name string, phase v1.VirtualMachineInstanceMigrationPhase, timeout time.Duration) error {
 	ginkgo.GinkgoHelper()
