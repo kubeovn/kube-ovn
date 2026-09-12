@@ -305,7 +305,13 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		}
 	}
 	if serviceUsesScopedLB(svc) {
-		c.enqueueEndpointSliceService(key, svc)
+		// ExternalTrafficPolicy changes are enqueued by enqueueUpdateService with
+		// the priority endpoint queue. Do not enqueue the same service on the
+		// regular queue as well, or the two workers can race while migrating
+		// external-local template VIPs to literal VIPs.
+		if svcObject.oldExternalLocalTemplate == serviceUsesExternalLocalTemplate(svc) {
+			c.enqueueEndpointSliceService(key, svc)
+		}
 		if err := c.checkServiceLBIPBelongToSubnet(svc); err != nil {
 			klog.Error(err)
 			return err
