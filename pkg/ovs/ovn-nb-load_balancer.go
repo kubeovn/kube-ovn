@@ -455,24 +455,19 @@ func (c *OVNNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, 
 	if maps.Equal(current, variables) {
 		return nil
 	}
+	mutations := make([]model.Mutation, 0, 2)
 	if len(deletes) != 0 {
-		ops, err := c.ovsDbClient.Where(row).Mutate(row, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes})
-		if err != nil {
-			return fmt.Errorf("generate template variable delete for chassis %s: %w", chassis, err)
-		}
-		if err := c.Transact("chassis-template-var-delete", ops); err != nil {
-			return fmt.Errorf("delete template variables for chassis %s: %w", chassis, err)
-		}
+		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes})
 	}
-	if len(variables) == 0 {
-		return nil
+	if len(variables) != 0 {
+		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationInsert, Value: variables})
 	}
-	ops, err := c.ovsDbClient.Where(row).Mutate(row, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationInsert, Value: variables})
+	ops, err := c.ovsDbClient.Where(row).Mutate(row, mutations...)
 	if err != nil {
-		return fmt.Errorf("generate template variable insert for chassis %s: %w", chassis, err)
+		return fmt.Errorf("generate template variable reconciliation for chassis %s: %w", chassis, err)
 	}
-	if err := c.Transact("chassis-template-var-insert", ops); err != nil {
-		return fmt.Errorf("insert template variables for chassis %s: %w", chassis, err)
+	if err := c.Transact("chassis-template-var-reconcile", ops); err != nil {
+		return fmt.Errorf("reconcile template variables for chassis %s: %w", chassis, err)
 	}
 	return nil
 }

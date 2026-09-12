@@ -468,9 +468,9 @@ func TestReconcileServiceTrafficDistribution(t *testing.T) {
 		TCPSessionLoadBalancer: "tcp-session",
 	}}
 	chassises := []ovnsb.Chassis{
-		{Name: "chassis-a", Hostname: "node-a"},
-		{Name: "chassis-x", Hostname: "node-x"},
-		{Name: "chassis-y", Hostname: "node-y"},
+		{Name: "chassis-a", Hostname: "host-a", ExternalIDs: map[string]string{"node": "node-a"}},
+		{Name: "chassis-x", Hostname: "host-x", ExternalIDs: map[string]string{"node": "node-x"}},
+		{Name: "chassis-y", Hostname: "host-y", ExternalIDs: map[string]string{"node": "node-y"}},
 	}
 	prefix := serviceTrafficDistributionVariablePrefix(svc)
 	base := prefix + "tcp_" + util.Sha256Hash([]byte("10.96.0.10:80"))[:8]
