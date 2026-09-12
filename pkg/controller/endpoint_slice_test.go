@@ -1087,3 +1087,35 @@ func TestServiceNeedsPriorityEndpointReconcileLoadBalancerETPLocal(t *testing.T)
 	svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
 	require.False(t, serviceNeedsPriorityEndpointReconcile(svc))
 }
+
+func TestClearServiceExternalTrafficLocalMarkersUsesFamilyScopedLB(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	svc := &corev1.Service{
+		Namespace: "metallb",
+		Name:      "web",
+		UID:       "web-uid",
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ClusterIP:             "10.96.0.10",
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeCluster,
+			Ports: []corev1.ServicePort{{
+				Protocol: corev1.ProtocolTCP,
+				Port:     80,
+			}},
+		},
+		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{
+			Ingress: []corev1.LoadBalancerIngress{{IP: "172.19.0.100"}},
+		}},
+	}
+	lbName := serviceScopedExternalLBName(svc, corev1.ProtocolTCP, "172.19.0.100")
+	fake.mockOvnClient.EXPECT().SetLoadBalancerVIPExternalTrafficLocal(
+		lbName, "172.19.0.100:80", "",
+	).Return(nil)
+	fake.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping(
+		lbName, "172.19.0.100:80",
+	).Return(nil)
+
+	reconcileCtx := &endpointSliceReconcileContext{service: svc}
+	require.NoError(t, ctrl.clearServiceExternalTrafficLocalMarkers(reconcileCtx))
+}

@@ -447,9 +447,6 @@ func (c *Controller) clearServiceExternalTrafficLocalMarkers(reconcileCtx *endpo
 	}
 	if svc.Spec.Type == v1.ServiceTypeLoadBalancer && serviceUsesScopedLB(svc) {
 		families := serviceScopedExternalLBFamilies(svc)
-		if !slices.Contains(families, "") {
-			families = append(slices.Clone(families), "")
-		}
 		for _, family := range families {
 			var external [3]string
 			for _, port := range svc.Spec.Ports {
