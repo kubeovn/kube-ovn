@@ -1411,6 +1411,10 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 		variablesByChassis[chassis.Name] = make(map[string]string)
 	}
 	if !serviceUsesDistributedLB(svc) {
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			return fmt.Errorf("list nodes for service %s/%s traffic distribution: %w", svc.Namespace, svc.Name, err)
+		}
 		for _, port := range svc.Spec.Ports {
 			for _, lbVip := range lbVips {
 				if classes[lbVip] == serviceLBExternalTraffic {
@@ -1433,10 +1437,12 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 				backends := topologyBackends(endpointSlices, port, lbVip)
 				for _, chassis := range *chassises {
 					nodeName, zoneName := chassis.Hostname, ""
-					if node, getErr := c.nodesLister.Get(chassis.Hostname); getErr == nil {
-						zoneName = node.Labels[v1.LabelTopologyZone]
-					} else if !k8serrors.IsNotFound(getErr) {
-						return fmt.Errorf("get node %s for service %s/%s traffic distribution: %w", chassis.Hostname, svc.Namespace, svc.Name, getErr)
+					for _, node := range nodes {
+						if chassisServesNode(chassis, node.Name) {
+							nodeName = node.Name
+							zoneName = node.Labels[v1.LabelTopologyZone]
+							break
+						}
 					}
 					selected := topologyBackendSubset(backends, nodeName, zoneName, *svc.Spec.TrafficDistribution)
 					variablesByChassis[chassis.Name][vipVariable] = lbVip
