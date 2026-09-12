@@ -60,11 +60,13 @@ func expectVMAnnotations(pod *corev1.Pod, vmName string) {
 func expectLSPMigrationCleanup(portName string) {
 	ginkgo.GinkgoHelper()
 	cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=options list Logical_Switch_Port " + portName
-	output, _, err := framework.NBExec(cmd)
-	framework.ExpectNoError(err)
-	outputStr := string(output)
-	framework.ExpectNotContainSubstring(outputStr, "activation-strategy")
-	framework.ExpectNotContainSubstring(outputStr, "requested-chassis")
+	gomega.Eventually(func(g gomega.Gomega) {
+		output, _, err := framework.NBExec(cmd)
+		g.Expect(err).NotTo(gomega.HaveOccurred())
+		outputStr := string(output)
+		g.Expect(outputStr).NotTo(gomega.ContainSubstring("activation-strategy"))
+		g.Expect(outputStr).NotTo(gomega.ContainSubstring("requested-chassis"))
+	}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 }
 
 func parsePingStats(stdout string) (transmitted, received, lost int, err error) {
