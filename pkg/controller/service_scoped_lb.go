@@ -507,6 +507,15 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...); err != nil {
 			return err
 		}
+		// ClusterIP traffic is handled on each enabled logical switch, matching
+		// the legacy VPC LB attachment. Attaching the internal LB to the router
+		// makes host-network Service requests enter OVN through the join port and
+		// changes the source address observed by the backend to the join IP.
+		// LoadBalancer Services still need the router attachment for their
+		// external ingress VIPs.
+		if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+			return nil
+		}
 		return c.attachServiceScopedLoadBalancersToRouter(vpcName, lbNames...)
 	}
 }
