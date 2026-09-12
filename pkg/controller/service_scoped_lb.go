@@ -164,8 +164,16 @@ func serviceScopedInternalLBFamilies(svc *v1.Service) []string {
 	return families
 }
 
+func serviceScopedExternalLBName(svc *v1.Service, protocol v1.Protocol, vip string) string {
+	family := ""
+	if !slices.Contains(serviceScopedExternalLBFamilies(svc), "") {
+		family = strings.ToLower(util.CheckProtocol(vip))
+	}
+	return serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, serviceLBExternalTraffic, family)
+}
+
 func serviceScopedExternalLBFamilies(svc *v1.Service) []string {
-	if !serviceUsesExternalLocalTemplate(svc) {
+	if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
 		return []string{""}
 	}
 	seen := make(map[string]struct{})
@@ -668,6 +676,29 @@ func (c *Controller) deleteLegacyVpcVIPs(vpcName string, vips []string) error {
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func (c *Controller) deleteStaleServiceScopedLoadBalancers(svc *v1.Service) error {
+	owner := serviceScopedLBOwner(svc)
+	if owner.uid == "" {
+		return nil
+	}
+	desired := make(map[string]struct{}, len(svc.Spec.Ports)*4)
+	for _, name := range serviceScopedLBNames(svc) {
+		desired[name] = struct{}{}
+	}
+	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+		if lb.ExternalIDs[serviceLBOwnerExternalID] != owner.uid ||
+			lb.ExternalIDs[serviceLBOwnerKindID] != owner.kind ||
+			lb.ExternalIDs[serviceLBVersionID] != serviceLBVersion {
+			return false
+		}
+		_, ok := desired[lb.Name]
+		return !ok
+	}); err != nil {
+		return fmt.Errorf("delete stale service-scoped load balancers for %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
 	return nil
 }

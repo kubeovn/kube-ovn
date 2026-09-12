@@ -426,6 +426,7 @@ func TestEnsureServiceScopedLBTrafficDistributionAddressFamily(t *testing.T) {
 func trafficDistributionEndpoint(address, node, zone string) discoveryv1.Endpoint {
 	return discoveryv1.Endpoint{
 		Addresses: []string{address},
+		NodeName:  &node,
 		Hints: &discoveryv1.EndpointHints{
 			ForNodes: []discoveryv1.ForNode{{Name: node}},
 			ForZones: []discoveryv1.ForZone{{Name: zone}},
@@ -738,6 +739,41 @@ func TestDeleteServiceScopedLBExternalTraffic(t *testing.T) {
 	}
 }
 
+func TestDeleteStaleServiceScopedLoadBalancers(t *testing.T) {
+	fake := newFakeController(t)
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-stale-lb"),
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeCluster,
+			Ports:                 []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
+		},
+		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "172.19.0.100"}}}},
+	}
+	stale := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+	keep := serviceScopedExternalLBName(svc, corev1.ProtocolTCP, "172.19.0.100")
+	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
+		if !filter(&ovnnb.LoadBalancer{Name: stale, ExternalIDs: map[string]string{
+			serviceLBOwnerExternalID: string(svc.UID),
+			serviceLBOwnerKindID:     serviceLBOwnerKind,
+			serviceLBVersionID:       serviceLBVersion,
+		}}) {
+			t.Fatalf("stale unsuffixed external LB %q should be deleted", stale)
+		}
+		if filter(&ovnnb.LoadBalancer{Name: keep, ExternalIDs: map[string]string{
+			serviceLBOwnerExternalID: string(svc.UID),
+			serviceLBOwnerKindID:     serviceLBOwnerKind,
+			serviceLBVersionID:       serviceLBVersion,
+		}}) {
+			t.Fatalf("family-scoped external LB %q should be kept", keep)
+		}
+		return nil
+	})
+	if err := fake.fakeController.deleteStaleServiceScopedLoadBalancers(svc); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCleanupServiceScopedLBVIPs(t *testing.T) {
 	fake := newFakeController(t)
 	svc := &corev1.Service{Namespace: "default", Name: "web", UID: types.UID("uid-clean-vips")}
@@ -1009,6 +1045,21 @@ func TestServiceScopedExternalLBFamilies(t *testing.T) {
 	got := serviceScopedExternalLBFamilies(svc)
 	if len(got) != 1 || got[0] != "ipv6" {
 		t.Fatalf("ipv6 families = %v, want [ipv6]", got)
+	}
+	ipv4svc := &corev1.Service{
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeCluster,
+		},
+		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "172.19.0.100"}}}},
+	}
+	got = serviceScopedExternalLBFamilies(ipv4svc)
+	if len(got) != 1 || got[0] != "ipv4" {
+		t.Fatalf("ipv4 cluster etp families = %v, want [ipv4]", got)
+	}
+	wantName := serviceScopedLBNameForTrafficClassAndFamily(ipv4svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv4")
+	if name := serviceScopedExternalLBName(ipv4svc, corev1.ProtocolTCP, "172.19.0.100"); name != wantName {
+		t.Fatalf("cluster etp external LB name = %q, want %q", name, wantName)
 	}
 }
 
