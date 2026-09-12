@@ -70,6 +70,38 @@ func Test_parseDHCPOptions(t *testing.T) {
 		}
 		require.Equal(t, expected, result)
 	})
+
+	t.Run("braced values with commas", func(t *testing.T) {
+		t.Parallel()
+		result := parseDHCPOptions("router=10.0.0.1,classless_static_route={10.0.0.0/24,10.0.0.1,0.0.0.0/0,10.0.0.254},dns_server={8.8.8.8,8.8.4.4},lease_time=3600")
+		expected := map[string]string{
+			"router":                 "10.0.0.1",
+			"classless_static_route": "{10.0.0.0/24,10.0.0.1,0.0.0.0/0,10.0.0.254}",
+			"dns_server":             "{8.8.8.8,8.8.4.4}",
+			"lease_time":             "3600",
+		}
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("semicolon is kept in scalar values", func(t *testing.T) {
+		t.Parallel()
+		result := parseDHCPOptions("wpad=http://example.test/a;b,router=10.0.0.1")
+		expected := map[string]string{
+			"wpad":   "http://example.test/a;b",
+			"router": "10.0.0.1",
+		}
+		require.Equal(t, expected, result)
+	})
+
+	t.Run("unbalanced braces do not swallow following options", func(t *testing.T) {
+		t.Parallel()
+		result := parseDHCPOptions("classless_static_route={10.0.0.0/24,router=10.0.0.1")
+		expected := map[string]string{
+			"classless_static_route": "{10.0.0.0/24",
+			"router":                 "10.0.0.1",
+		}
+		require.Equal(t, expected, result)
+	})
 }
 
 func Test_getIpv6Prefix(t *testing.T) {
@@ -540,6 +572,13 @@ func TestFormatDHCPOptions(t *testing.T) {
 				"dns_server": "{8.8.8.8,1.1.1.1}",
 			},
 			expected: "dns_server={8.8.8.8;1.1.1.1}",
+		},
+		{
+			name: "classless static route keeps commas inside braces",
+			options: map[string]string{
+				"classless_static_route": "{10.0.0.0/24,10.0.0.1}",
+			},
+			expected: "classless_static_route={10.0.0.0/24,10.0.0.1}",
 		},
 	}
 
