@@ -70,7 +70,8 @@ topology:
          -c '   redistribute connected'
          -c '  exit-address-family'
 {%- endif %}
-         -c '!'
+         -c 'end'
+         -c 'write memory'
     kube-ovn-control-plane:
       kind: ext-container
       exec:
