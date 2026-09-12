@@ -423,11 +423,13 @@ func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSli
 				continue
 			}
 			externalProtocols[port.Protocol] = struct{}{}
-			lbName, err := c.ensureServiceScopedLBExternalTraffic(svc, port.Protocol)
-			if err != nil {
-				return err
+			for _, family := range serviceScopedExternalLBFamilies(svc) {
+				lbName, err := c.ensureServiceScopedLBForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic, family)
+				if err != nil {
+					return err
+				}
+				lbNames = append(lbNames, lbName)
 			}
-			lbNames = append(lbNames, lbName)
 		}
 	}
 	if err := c.reconcileResourceScopedLoadBalancerAttachments(svc, reconcileCtx.vpcName, reconcileCtx.subnetName, lbNames...); err != nil {
@@ -1295,11 +1297,12 @@ func (c *Controller) reconcileServiceExternalLocalTemplate(reconcileCtx *endpoin
 	}
 
 	for _, port := range svc.Spec.Ports {
-		lbName := serviceScopedLBNameForTrafficClass(svc, port.Protocol, serviceLBExternalTraffic)
 		for _, lbVip := range reconcileCtx.profile.lbVips {
 			if reconcileCtx.profile.trafficClasses[lbVip] != serviceLBExternalTraffic {
 				continue
 			}
+			family := strings.ToLower(util.CheckProtocol(lbVip))
+			lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBExternalTraffic, family)
 			vip := util.JoinHostPort(lbVip, port.Port)
 			base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
 			vipVariable, backendVariable := base+"_vip", base+"_backends"
