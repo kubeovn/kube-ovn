@@ -142,9 +142,10 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		// A failed migration may have configured options while Pending, before the VMI
 		// migration state was populated. The VMI's current node is still the source
 		// needed to roll back those options.
-		if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
+		switch vmiMigration.Status.Phase {
+		case kubevirtv1.MigrationFailed:
 			srcNodeName = vmi.Status.NodeName
-		} else if vmiMigration.Status.Phase == kubevirtv1.MigrationSucceeded {
+		case kubevirtv1.MigrationSucceeded:
 			klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded but VMI migration state is stale or nil, skipping", key)
 			return nil
 		}
