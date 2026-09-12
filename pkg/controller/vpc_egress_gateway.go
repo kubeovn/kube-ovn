@@ -517,6 +517,36 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
+
+	intProvider := util.OvnProvider
+	var internalAttachmentNwName string
+
+	// if EnableNonPrimaryCNI is set, the internal network will be the default network (eth0) and provider is internal network provider and not ovn.
+	if c.config.EnableNonPrimaryCNI {
+		provider := intSubnet.Spec.Provider
+
+		intNadName, intNadNamespace, err := util.ParseInternalSubnetProvider(
+			provider, intSubnet.Name,
+		)
+		if err != nil {
+			return "", nil, nil, nil, err
+		}
+
+		if _, err := c.netAttachLister.
+			NetworkAttachmentDefinitions(intNadNamespace).
+			Get(intNadName); err != nil {
+			return "", nil, nil, nil, fmt.Errorf(
+				"failed to get net-attach-def %s/%s for internal subnet %s: %w",
+				intNadNamespace, intNadName, intSubnet.Name, err,
+			)
+		}
+
+		intProvider = provider
+		internalAttachmentNwName = fmt.Sprintf(
+			"%s/%s", intNadNamespace, intNadName,
+		)
+	}
+
 	extSubnet, err := c.subnetsLister.Get(gw.Spec.ExternalSubnet)
 	if err != nil {
 		klog.Error(err)
@@ -601,14 +631,14 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	intGatewayIPv4, intGatewayIPv6 := util.SplitStringIP(intSubnet.Spec.Gateway)
 	extGatewayIPv4, extGatewayIPv6 := util.SplitStringIP(extSubnet.Spec.Gateway)
 	// add routes for the VPC BFD Port so that the egress gateway can establish BFD session(s) with it
-	routes.Add(util.OvnProvider, bfdIPv4, intGatewayIPv4)
-	routes.Add(util.OvnProvider, bfdIPv6, intGatewayIPv6)
+	routes.Add(intProvider, bfdIPv4, intGatewayIPv4)
+	routes.Add(intProvider, bfdIPv6, intGatewayIPv6)
 	// add routes for the internal networks
 	for _, dst := range intRouteDstIPv4.UnsortedList() {
-		routes.Add(util.OvnProvider, dst, intGatewayIPv4)
+		routes.Add(intProvider, dst, intGatewayIPv4)
 	}
 	for _, dst := range intRouteDstIPv6.UnsortedList() {
-		routes.Add(util.OvnProvider, dst, intGatewayIPv6)
+		routes.Add(intProvider, dst, intGatewayIPv6)
 	}
 	// add default routes to forward traffic to the external network
 	routes.Add(extSubnet.Spec.Provider, "0.0.0.0/0", extGatewayIPv4)
@@ -621,10 +651,15 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		return attachmentNetworkName, nil, nil, nil, err
 	}
 	annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
-	annotations[util.LogicalSwitchAnnotation] = intSubnet.Name
+	// Make the internal network the default network (eth0) when nonPrimaryCNI mode is set.
+	if internalAttachmentNwName != "" {
+		annotations[util.DefaultNetworkAnnotation] = internalAttachmentNwName
+	}
+
+	annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, intProvider)] = intSubnet.Name
 	if len(gw.Spec.InternalIPs) != 0 {
 		// set internal IPs
-		annotations[util.IPPoolAnnotation] = strings.Join(gw.Spec.InternalIPs, ";")
+		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, intProvider)] = strings.Join(gw.Spec.InternalIPs, ";")
 	} else if gw.Spec.InternalIPPool != "" {
 		// allocate the internal IP from the referenced IPPool
 		pool, err := c.ippoolLister.Get(gw.Spec.InternalIPPool)
@@ -637,7 +672,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
 		}
-		annotations[util.IPPoolAnnotation] = gw.Spec.InternalIPPool
+		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, intProvider)] = gw.Spec.InternalIPPool
 	}
 	if len(gw.Spec.ExternalIPs) != 0 {
 		// set external IPs
@@ -656,7 +691,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		}
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = gw.Spec.ExternalIPPool
 	}
-	if err := setVpcEgressGatewayBandwidthAnnotations(annotations, gw.Spec.Bandwidth); err != nil {
+	if err := setVpcEgressGatewayBandwidthAnnotations(annotations, gw.Spec.Bandwidth, intProvider); err != nil {
 		return attachmentNetworkName, nil, nil, nil, err
 	}
 
@@ -863,7 +898,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	return attachmentNetworkName, ipv4Src, ipv6Src, deploy, nil
 }
 
-func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, bandwidth *kubeovnv1.BandwidthLimit) error {
+func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, bandwidth *kubeovnv1.BandwidthLimit, provider string) error {
 	ingressMbps, egressMbps, err := bandwidth.Mbps()
 	if err != nil {
 		return err
@@ -871,12 +906,12 @@ func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, band
 	if ingressMbps > 0 {
 		// The 'ingress' on the VpcEgressGateway CRD refers to traffic entering the VPC from external.
 		// From the gateway pod's perspective, this is egress traffic of the primary network interface.
-		annotations[util.EgressRateAnnotation] = strconv.FormatInt(ingressMbps, 10)
+		annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] = strconv.FormatInt(ingressMbps, 10)
 	}
 	if egressMbps > 0 {
 		// The 'egress' on the VpcEgressGateway CRD refers to traffic leaving the VPC.
 		// From the gateway pod's perspective, this is ingress traffic of the primary network interface.
-		annotations[util.IngressRateAnnotation] = strconv.FormatInt(egressMbps, 10)
+		annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] = strconv.FormatInt(egressMbps, 10)
 	}
 	return nil
 }
@@ -902,6 +937,15 @@ func vpcEgressGatewayLocalPolicyMatches(af int, localPgName, pgName, asName stri
 }
 
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nodeNexthops map[string]set.Set[string], sources set.Set[string]) error {
+	if c.config.EnableNonPrimaryCNI && len(gw.Spec.Selectors) != 0 {
+		// reconcileVpcEgressGatewayOVNRoutes matches pods via the "ovn" provider
+		// but when kube-ovn runs as a non-primary CNI, provider is intenal network, so the selectors will not work as expected.
+		// this is not supported in this version and will be supported in the future.
+		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "SelectorsNotSupported",
+			"spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
+		return nil
+	}
+
 	nextHops := flattenVpcEgressGatewayNexthops(nodeNexthops)
 
 	externalIDs := map[string]string{
