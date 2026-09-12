@@ -16,7 +16,8 @@ var (
 			"node_name",
 			"method",
 			"status_code",
-		})
+		},
+	)
 
 	cniWaitAddressResult = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -82,7 +83,8 @@ var (
 			Name: "checksum_err_count",
 			Help: "Value of InCsumErrors for cmd `netstat -us`, checksum is error when value is greater than 0",
 		},
-		[]string{"hostname"})
+		[]string{"hostname"},
+	)
 
 	metricDNSSearch = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "dns_search_domain",

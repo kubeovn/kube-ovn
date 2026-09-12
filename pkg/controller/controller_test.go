@@ -127,7 +127,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	nadClient := nadfake.NewSimpleClientset()
 	for _, nad := range opts.NetworkAttachments {
 		_, err := nadClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(nad.Namespace).Create(
-			context.Background(), nad, metav1.CreateOptions{})
+			context.Background(), nad, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -137,21 +138,24 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeovnClient := kubeovnfake.NewSimpleClientset()
 	for _, subnet := range opts.Subnets {
 		_, err := kubeovnClient.KubeovnV1().Subnets().Create(
-			context.Background(), subnet, metav1.CreateOptions{})
+			context.Background(), subnet, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, ip := range opts.IPs {
 		_, err := kubeovnClient.KubeovnV1().IPs().Create(
-			context.Background(), ip, metav1.CreateOptions{})
+			context.Background(), ip, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
 	}
 	for _, vlan := range opts.Vlans {
 		_, err := kubeovnClient.KubeovnV1().Vlans().Create(
-			context.Background(), vlan, metav1.CreateOptions{})
+			context.Background(), vlan, metav1.CreateOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
