@@ -1078,7 +1078,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -1199,7 +1199,7 @@ jobs:
       - name: Collect kubectl ko log
         if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         continue-on-error: true
-        run: make kubectl-ko-log
+        run: bash .github/scripts/collect-kubectl-ko-log.sh
 
       - name: Upload diagnostics
         if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1377,7 +1377,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -1558,7 +1558,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -1760,7 +1760,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -1966,7 +1966,7 @@ jobs:
         run: |
           for cluster in `kind get clusters`; do
             kubectl config use-context kind-$cluster
-            make kubectl-ko-log
+            bash .github/scripts/collect-kubectl-ko-log.sh
             mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-$cluster-ko-log.tar.gz
           done
           tar zcvf kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz \
@@ -2131,7 +2131,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2303,7 +2303,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2459,7 +2459,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          if make kubectl-ko-log && test -f kubectl-ko-log.tar.gz; then
+          if bash .github/scripts/collect-kubectl-ko-log.sh && test -f kubectl-ko-log.tar.gz; then
             mv kubectl-ko-log.tar.gz bgp-speaker-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
           else
             echo "kubectl ko log was unavailable because the BGP test cluster did not become usable." > bgp-speaker-e2e-ko-log-unavailable.txt
@@ -2622,7 +2622,7 @@ jobs:
         run: |
           tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
           if [ -s "$tenant_kubeconfig" ]; then
-            KUBECONFIG="$tenant_kubeconfig" make kubectl-ko-log
+            KUBECONFIG="$tenant_kubeconfig" bash .github/scripts/collect-kubectl-ko-log.sh
             mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
           fi
 
@@ -2710,7 +2710,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz chart-test-${{ matrix.ssl }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2787,7 +2787,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz underlay-logical-gateway-installation-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2866,7 +2866,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz no-ovn-lb-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2945,7 +2945,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz no-np-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3107,7 +3107,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz lb-svc-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3233,7 +3233,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3326,7 +3326,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz talos-installation-test-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3487,7 +3487,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3648,7 +3648,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3824,7 +3824,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3975,7 +3975,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4085,7 +4085,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4252,7 +4252,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4444,7 +4444,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4602,7 +4602,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4755,7 +4755,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ipsec-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4906,7 +4906,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ipsec-cert-mgr-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -5031,7 +5031,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-connectivity-e2e-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -5191,7 +5191,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -5341,7 +5341,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz router-lb-rule-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
