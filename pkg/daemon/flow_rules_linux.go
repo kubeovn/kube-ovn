@@ -76,9 +76,7 @@ func (c *Controller) deleteUnderlaySubnetSvcLocalFlowCache(bridgeName, serviceIP
 func underlayServiceLocalFlows(cookie string, priority, inPort, outPort int, protoStr, nwDst, serviceIP, dstMac string, port uint16) []string {
 	phy := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d actions=mod_dl_dst:%s,output:%d",
 		cookie, priority, inPort, protoStr, nwDst, serviceIP, port, dstMac, outPort)
-	local := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d actions=mod_dl_dst:%s,in_port",
-		cookie, priority, outPort, protoStr, nwDst, serviceIP, port, dstMac)
-	return []string{phy, local}
+	return []string{phy}
 }
 
 func buildFlowKey(kind, ip string, port uint16, protocol, extra string) string {
