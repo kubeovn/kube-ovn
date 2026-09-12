@@ -993,6 +993,52 @@ func TestServiceUsesExternalLocalTemplate(t *testing.T) {
 	}
 }
 
+func TestServiceScopedExternalLBFamilies(t *testing.T) {
+	svc := &corev1.Service{Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP}}
+	if got := serviceScopedExternalLBFamilies(svc); len(got) != 1 || got[0] != "" {
+		t.Fatalf("non-template families = %v, want [\"\"]", got)
+	}
+	svc = &corev1.Service{
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
+			ClusterIPs:            []string{"fd00::10"},
+		},
+		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "fc00::64"}}}},
+	}
+	got := serviceScopedExternalLBFamilies(svc)
+	if len(got) != 1 || got[0] != "ipv6" {
+		t.Fatalf("ipv6 families = %v, want [ipv6]", got)
+	}
+}
+
+func TestEnsureServiceScopedLBExternalETPLocalIPv6SetsAddressFamily(t *testing.T) {
+	fake := newFakeController(t)
+	ctrl := fake.fakeController
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-eloc-ipv6"),
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
+			ClusterIPs:            []string{"fd00::10"},
+		},
+		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "fc00::64"}}}},
+	}
+	lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv6")
+	gomock.InOrder(
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc, ctrl.config.ClusterRouter, serviceLBExternalTraffic))).Return(nil),
+		fake.mockOvnClient.EXPECT().DeleteLoadBalancerAffinityTimeout(lbName).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerTemplate(lbName, true).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerAddressFamily(lbName, "ipv6").Return(nil),
+	)
+	if _, err := ctrl.ensureServiceScopedLBForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv6"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEnsureServiceScopedLBExternalETPLocalEnablesTemplate(t *testing.T) {
 	fake := newFakeController(t)
 	ctrl := fake.fakeController
@@ -1048,7 +1094,7 @@ func TestReconcileServiceExternalLocalTemplate(t *testing.T) {
 	base := prefix + "tcp_" + util.Sha256Hash([]byte("172.19.0.100:80"))[:8]
 	vipVariable, backendVariable := base+"_vip", base+"_backends"
 	templateVIP := "^" + vipVariable + ":80"
-	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+	lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv4")
 	staleVIP := "^" + prefix + "stale_vip:81"
 
 	fake.mockOvnSbClient.EXPECT().ListChassis().Return(&chassises, nil)
@@ -1057,6 +1103,7 @@ func TestReconcileServiceExternalLocalTemplate(t *testing.T) {
 		templateVIP,
 		[]string{"^" + backendVariable},
 		"172.19.0.100:80",
+		serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic),
 		lbName,
 	).Return(nil)
 	fake.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{
