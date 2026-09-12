@@ -1276,13 +1276,25 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	var hasAliveVMSibling bool
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
-		for _, port := range ports {
-			stage = "cleanLogicalSwitchPortMigrateOptions"
-			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
-				klog.Error(err)
-				return err
+		// Every virt-launcher pod of the VM resolves to the same shared LSPs, so only the pods
+		// the VM is actually live on may unpin them
+		stage = "checkMigrateOptionsOwner"
+		ownsMigrateOptions, err := c.deletedPodOwnsMigrateOptions(pod, vmName)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		if ownsMigrateOptions {
+			for _, port := range ports {
+				stage = "cleanLogicalSwitchPortMigrateOptions"
+				if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
+					err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
+					klog.Error(err)
+					return err
+				}
 			}
+		} else {
+			klog.Infof("skip cleaning migrate options of vm %s/%s, pod %s is not one the VM is live on", pod.Namespace, vmName, pod.Name)
 		}
 		if pod.DeletionTimestamp != nil {
 			klog.Infof("handle deletion of vm pod %s", podKey)
