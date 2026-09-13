@@ -135,17 +135,15 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
-func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol) []string {
+func serviceScopedLBSelectionFields(svc *v1.Service, _ v1.Protocol) []string {
 	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
 		return nil
 	}
 
-	// Datagram clients create a new flow for every request. Keep their fallback
-	// selection keyed by source address so each request reaches the affinity
-	// learning flow's backend, while TCP keeps OVN's flow hash for timeout expiry.
-	if protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
-		return nil
-	}
+	// OVN's affinity learning flow keys clients by source IP. Keep the regular
+	// load-balancer selection on the same fields for every protocol so packets
+	// that create a new flow, including datagrams, consistently reach that
+	// learned backend.
 	return []string{
 		ovnnb.LoadBalancerSelectionFieldsIPSrc,
 		ovnnb.LoadBalancerSelectionFieldsIpv6Src,
