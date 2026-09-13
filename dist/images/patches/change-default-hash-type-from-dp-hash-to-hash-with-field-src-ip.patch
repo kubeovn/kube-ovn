@@ -1,22 +1,21 @@
 From e490f5ac0b644101913c2a3db8e03d85e859deff Mon Sep 17 00:00:00 2001
 From: Mengxin Liu <mengxin@alauda.io>
 Date: Thu, 10 Apr 2025 01:28:59 +0000
-Subject: [PATCH] change default hash type from dp_hash to hash with field
- src_ip
----
- lib/actions.c | 8 +++++---
- 1 file changed, 5 insertions(+), 3 deletions(-)
+Subject: [PATCH] use source IP hash for policy route ECMP
 
-diff --git a/lib/actions.c b/lib/actions.c
-index 26df8e203..3f6572445 100644
---- a/lib/actions.c
-+++ b/lib/actions.c
-@@ -1729,2 +1728,0 @@ encode_SELECT(const struct ovnact_select *select,
--    ds_put_format(&ds, "type=select,selection_method=%s",
--                  select->hash_fields ? "hash": "dp_hash");
-@@ -1732 +1730,4 @@ encode_SELECT(const struct ovnact_select *select,
--      ds_put_format(&ds, ",fields(%s)", select->hash_fields);
-+        ds_put_format(&ds, "type=select,selection_method=hash,fields(%s)",
-+                      select->hash_fields);
-+    } else {
-+        ds_put_format(&ds, "type=select,selection_method=hash,fields=ip_src");
+---
+ northd/northd.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/northd/northd.c b/northd/northd.c
+index 1ca8ded..37623d4 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -11882 +11882 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+-                      "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
++                      "; %s = select(values=(", REG_ECMP_GROUP_ID, ecmp_group_id,
+@@ -11892 +11892 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+-        ds_put_cstr(&actions, ");");
++        ds_put_cstr(&actions, "); hash_fields=\"ip_src\");");
+--
+2.43.0
