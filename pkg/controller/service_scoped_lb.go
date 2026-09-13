@@ -135,15 +135,18 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
-func serviceScopedLBSelectionFields(svc *v1.Service, _ v1.Protocol) []string {
+func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol) []string {
 	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
 		return nil
 	}
 
-	// OVN's affinity learning flow keys clients by source IP. Keep the regular
-	// load-balancer selection on the same fields for every protocol so packets
-	// that create a new flow, including datagrams, consistently reach that
-	// learned backend.
+	// Datagram clients create a new flow for every request. Keep their fallback
+	// selection keyed by source address so each request reaches the affinity
+	// learning flow's backend. TCP must retain OVN's flow hash so that the
+	// affinity timeout can select a different backend after expiry.
+	if protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
+		return nil
+	}
 	return []string{
 		ovnnb.LoadBalancerSelectionFieldsIPSrc,
 		ovnnb.LoadBalancerSelectionFieldsIpv6Src,
@@ -310,10 +313,11 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		return "", err
 	}
 	distributed := trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)
-	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol))); err != nil {
+	selectionFields := serviceScopedLBSelectionFields(svc, protocol)
+	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol)), selectionFields...); err != nil {
 		return "", fmt.Errorf("create service-scoped load balancer %s: %w", name, err)
 	}
-	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, serviceScopedLBSelectionFields(svc, protocol)); err != nil {
+	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, selectionFields); err != nil {
 		return "", fmt.Errorf("set selection fields on service-scoped load balancer %s: %w", name, err)
 	}
 	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, vpcName, trafficClass)); err != nil {
