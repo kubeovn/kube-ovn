@@ -135,6 +135,16 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
+func serviceScopedLBSelectionFields(svc *v1.Service) []string {
+	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
+		return nil
+	}
+	return []string{
+		ovnnb.LoadBalancerSelectionFieldsIPSrc,
+		ovnnb.LoadBalancerSelectionFieldsIpv6Src,
+	}
+}
+
 func serviceScopedLBName(svc *v1.Service, protocol v1.Protocol) string {
 	return serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, serviceLBInternalTraffic, "")
 }
@@ -298,7 +308,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol))); err != nil {
 		return "", fmt.Errorf("create service-scoped load balancer %s: %w", name, err)
 	}
-	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, nil); err != nil {
+	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, serviceScopedLBSelectionFields(svc)); err != nil {
 		return "", fmt.Errorf("set selection fields on service-scoped load balancer %s: %w", name, err)
 	}
 	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, vpcName, trafficClass)); err != nil {
@@ -523,10 +533,17 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...); err != nil {
 			return err
 		}
-		// ClusterIP and NodePort services retain the legacy switch-only
-		// attachment. Only LoadBalancer services have an external ingress LB
-		// that belongs on the VPC router.
-		if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+		// ClusterIP services keep their internal LB switch-only so host-network
+		// requests preserve the node source address. NodePort traffic enters via
+		// the node's router port, so its LB must also be attached to the router.
+		isNodePort := false
+		for _, port := range svc.Spec.Ports {
+			if port.NodePort != 0 {
+				isNodePort = true
+				break
+			}
+		}
+		if svc.Spec.Type != v1.ServiceTypeLoadBalancer && !isNodePort {
 			return nil
 		}
 
@@ -544,7 +561,9 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		}
 		var routerLBNames, nonRouterLBNames []string
 		for _, name := range lbNames {
-			if _, ok := externalNames[name]; ok {
+			if isNodePort {
+				routerLBNames = append(routerLBNames, name)
+			} else if _, ok := externalNames[name]; ok {
 				routerLBNames = append(routerLBNames, name)
 			} else {
 				nonRouterLBNames = append(nonRouterLBNames, name)
