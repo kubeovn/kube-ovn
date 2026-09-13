@@ -523,6 +523,12 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...); err != nil {
 			return err
 		}
+		// ClusterIP and NodePort services retain the legacy switch-only
+		// attachment. Only LoadBalancer services have an external ingress LB
+		// that belongs on the VPC router.
+		if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+			return nil
+		}
 
 		// ClusterIP traffic is handled on each enabled logical switch, matching
 		// the legacy VPC LB attachment. Attaching an internal LB to the router
