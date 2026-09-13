@@ -530,13 +530,11 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		// ClusterIP services keep their internal LB switch-only so host-network
 		// requests preserve the node source address. NodePort traffic enters via
 		// the node's router port, so its LB must also be attached to the router.
-		isNodePort := false
-		for _, port := range svc.Spec.Ports {
-			if port.NodePort != 0 {
-				isNodePort = true
-				break
-			}
-		}
+		// LoadBalancer Services also receive allocated NodePort values, but their
+		// internal and external traffic still use separate LB attachment scopes.
+		// Only a Service explicitly typed NodePort needs every scoped LB on the
+		// router for node-port ingress.
+		isNodePort := svc.Spec.Type == v1.ServiceTypeNodePort
 		if svc.Spec.Type != v1.ServiceTypeLoadBalancer && !isNodePort {
 			return nil
 		}
