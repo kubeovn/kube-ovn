@@ -423,7 +423,11 @@ jobs:
           swap-storage: false
 
       - name: Go cache
-        if: steps.lookup-go-cache.outputs.cache-hit != 'true'
+        # Only default-branch pushes can populate a cache visible to all refs.
+        if: >-
+          steps.lookup-go-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref_name == github.event.repository.default_branch
         uses: actions/cache@v4
         with:
           path: |
