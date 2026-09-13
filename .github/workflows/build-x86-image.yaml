@@ -417,10 +417,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
           lookup-only: true
 
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -435,16 +433,18 @@ jobs:
           swap-storage: false
 
       - name: Go cache
-        if: steps.lookup-go-cache.outputs.cache-hit != 'true'
+        # Only default-branch pushes can populate a cache visible to all refs.
+        if: >-
+          steps.lookup-go-cache.outputs.cache-hit != 'true' &&
+          github.event_name == 'push' &&
+          github.ref_name == github.event.repository.default_branch
         uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - run: make e2e-build
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
@@ -556,10 +556,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -836,10 +834,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         env:
@@ -1198,10 +1194,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -1407,10 +1401,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -1566,10 +1558,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -1718,7 +1708,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
@@ -1894,10 +1884,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2315,10 +2303,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2460,10 +2446,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -2737,7 +2721,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
@@ -2885,7 +2869,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
@@ -3048,10 +3032,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -3205,10 +3187,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -3434,10 +3414,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -3612,10 +3590,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -3757,10 +3733,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -3902,10 +3876,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -4042,10 +4014,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -4186,10 +4156,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
@@ -4300,10 +4268,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.14.0
