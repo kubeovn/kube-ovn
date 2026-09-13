@@ -144,6 +144,17 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		// needed to roll back those options.
 		switch vmiMigration.Status.Phase {
 		case kubevirtv1.MigrationFailed:
+			// A stale Failed event can be processed after a newer migration has already
+			// pinned the same ports. Do not let the old event roll back the newer options.
+			hasUnfinishedMigration, err := c.hasUnfinishedVMIMigration(vmiMigration)
+			if err != nil {
+				return err
+			}
+			if hasUnfinishedMigration {
+				klog.Infof("VirtualMachineInstanceMigration %s is stale because another migration for VMI %s is unfinished, skipping cleanup",
+					key, vmiMigration.Spec.VMIName)
+				return nil
+			}
 			srcNodeName = vmi.Status.NodeName
 		case kubevirtv1.MigrationSucceeded:
 			klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded but VMI migration state is stale or nil, skipping", key)
@@ -251,6 +262,32 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		}
 	}
 	return nil
+}
+
+// hasUnfinishedVMIMigration reports whether another migration for the same VMI is still active.
+// Terminal cleanup must yield to any such migration because its OVN options may already own the ports.
+func (c *Controller) hasUnfinishedVMIMigration(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration) (bool, error) {
+	if c.vmiMigrationIndexer == nil {
+		return false, nil
+	}
+
+	key := fmt.Sprintf("%s/%s", vmiMigration.Namespace, vmiMigration.Spec.VMIName)
+	migrations, err := c.vmiMigrationIndexer.ByIndex(informer.ByVMINameIndex, key)
+	if err != nil {
+		return false, fmt.Errorf("failed to find migrations for VMI %s: %w", key, err)
+	}
+
+	for _, obj := range migrations {
+		migration, ok := obj.(*kubevirtv1.VirtualMachineInstanceMigration)
+		if !ok {
+			return false, fmt.Errorf("unexpected object type %T in VMI migration index", obj)
+		}
+		if migration.UID != vmiMigration.UID && !migration.IsFinal() {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (c *Controller) isKubevirtCRDInstalled() (bool, error) {
