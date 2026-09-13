@@ -131,6 +131,10 @@ func (c *Controller) enqueueAddVpcNatGw(obj any) {
 	gw := obj.(*kubeovnv1.VpcNatGateway)
 	c.enqueueNftableLbServicesForNatGw(gw.Name)
 	key := cache.MetaObjectToName(gw).String()
+	if !gw.DeletionTimestamp.IsZero() {
+		c.delVpcNatGatewayQueue.Add(key)
+		return
+	}
 	klog.V(3).Infof("enqueue add vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 }
@@ -152,6 +156,10 @@ func (c *Controller) enqueueUpdateVpcNatGw(oldObj, newObj any) {
 		c.enqueueNftableLbServicesForNatGw(newGw.Name)
 	}
 	key := cache.MetaObjectToName(newGw).String()
+	if !newGw.DeletionTimestamp.IsZero() {
+		c.delVpcNatGatewayQueue.Add(key)
+		return
+	}
 	klog.V(3).Infof("enqueue update vpc-nat-gw %s", key)
 	c.addOrUpdateVpcNatGatewayQueue.Add(key)
 
@@ -537,6 +545,13 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 					return fmt.Errorf("failed to del qos for nat gw %s: %w", gw.Name, err)
 				}
 			}
+			// Rewrite the claim only after the rules of the previous generation are gone and
+			// before the rules of the new one can exist: the new policy has to see this gateway
+			// as a user from the moment its rules can be applied, while the previous policy
+			// stays claimed until its rules are deleted.
+			if err := c.updateCrdNatGwLabels(key, gw.Spec.QoSPolicy); err != nil {
+				return fmt.Errorf("failed to update nat gw %s labels: %w", gw.Name, err)
+			}
 			if gw.Spec.QoSPolicy != "" {
 				if err = c.execNatGwQoSLocked(gw, gw.Spec.QoSPolicy, QoSAdd); err != nil {
 					return fmt.Errorf("failed to add qos for nat gw %s: %w", gw.Name, err)
@@ -544,11 +559,6 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 			}
 			return nil
 		}); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err := c.updateCrdNatGwLabels(key, gw.Spec.QoSPolicy); err != nil {
-			err := fmt.Errorf("failed to update nat gw %s: %w", gw.Name, err)
 			klog.Error(err)
 			return err
 		}
@@ -615,6 +625,9 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 		}
 	}()
 
+	if !gw.DeletionTimestamp.IsZero() {
+		return nil
+	}
 	if vpcNatEnabled != "true" {
 		return errors.New("iptables nat gw not enable")
 	}
@@ -734,7 +747,7 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 			return fmt.Errorf("failed to init vpc nat gateway, %w", err)
 		}
 	}
-	if err = c.restoreVpcNatGwQoS(gw); err != nil {
+	if err = c.claimAndRestoreVpcNatGwQoS(gw); err != nil {
 		return err
 	}
 	// if update qos success, will update nat gw status
@@ -745,12 +758,6 @@ func (c *Controller) handleInitVpcNatGw(key string) (retErr error) {
 			_ = c.recordResourceError(gw, "UpdateStatusFailed", err)
 			return err
 		}
-	}
-
-	if err := c.updateCrdNatGwLabels(gw.Name, gw.Spec.QoSPolicy); err != nil {
-		err := fmt.Errorf("failed to update nat gw %s: %w", gw.Name, err)
-		klog.Error(err)
-		return err
 	}
 
 	for _, pod := range initTargets {
@@ -826,6 +833,16 @@ func natGwPodInstanceToken(pod *corev1.Pod) string {
 		}
 	}
 	return ""
+}
+
+// claimAndRestoreVpcNatGwQoS publishes the qos claim of the gateway and then re-applies its
+// policy on a (re)created gateway pod, so the policy cannot be released between the two: the
+// claim is written first and the rules follow.
+func (c *Controller) claimAndRestoreVpcNatGwQoS(gw *kubeovnv1.VpcNatGateway) error {
+	if err := c.updateCrdNatGwLabels(gw.Name, gw.Spec.QoSPolicy); err != nil {
+		return fmt.Errorf("failed to update nat gw %s: %w", gw.Name, err)
+	}
+	return c.restoreVpcNatGwQoS(gw)
 }
 
 // restoreVpcNatGwQoS re-applies the gateway policy on a (re)created gateway pod.
@@ -1862,6 +1879,10 @@ func (c *Controller) natGwRedoToken(key string) (string, error) {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(instances, ",")))), nil
 }
 
+// updateCrdNatGwLabels records the subnet, vpc and qos references of the gateway, including the
+// UID claim of the policy generation it uses (ovn.kubernetes.io/qos_uid). A caller that applies
+// the rules of a policy must write the claim before those rules can reach the data plane, and a
+// caller that drops the reference must do so only after the rules are gone.
 func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 	oriGw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
@@ -1869,6 +1890,21 @@ func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 		klog.Error(errMsg)
 		return errMsg
 	}
+	qosUID := ""
+	if qos != "" {
+		policy, err := c.qosPoliciesLister.Get(qos)
+		switch {
+		case err != nil && oriGw.DeletionTimestamp.IsZero():
+			return fmt.Errorf("failed to get qos policy %s: %w", qos, err)
+		case err != nil:
+			qosUID = oriGw.Labels[util.QoSPolicyUIDLabel]
+		case !policy.DeletionTimestamp.IsZero() && oriGw.DeletionTimestamp.IsZero() && oriGw.Labels[util.QoSLabel] != qos:
+			return fmt.Errorf("qos policy %s is terminating", qos)
+		default:
+			qosUID = string(policy.UID)
+		}
+	}
+
 	var needUpdateLabel bool
 	var op string
 
@@ -1882,6 +1918,7 @@ func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 		labels[util.SubnetNameLabel] = oriGw.Spec.Subnet
 		labels[util.VpcNameLabel] = oriGw.Spec.Vpc
 		labels[util.QoSLabel] = qos
+		labels[util.QoSPolicyUIDLabel] = qosUID
 		needUpdateLabel = true
 	} else {
 		if oriGw.Labels[util.SubnetNameLabel] != oriGw.Spec.Subnet {
@@ -1894,9 +1931,10 @@ func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
 			labels[util.VpcNameLabel] = oriGw.Spec.Vpc
 			needUpdateLabel = true
 		}
-		if oriGw.Labels[util.QoSLabel] != qos {
+		if oriGw.Labels[util.QoSLabel] != qos || oriGw.Labels[util.QoSPolicyUIDLabel] != qosUID {
 			op = "replace"
 			labels[util.QoSLabel] = qos
+			labels[util.QoSPolicyUIDLabel] = qosUID
 			needUpdateLabel = true
 		}
 	}

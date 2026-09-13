@@ -99,10 +99,24 @@ func qosPolicyStatusMatchesSpec(qos *kubeovnv1.QoSPolicy) bool {
 		compareQoSPolicyBandwidthLimitRules(qos.Status.BandwidthLimitRules, qos.Spec.BandwidthLimitRules)
 }
 
-func iptablesEIPsUsingQoS(eips []*kubeovnv1.IptablesEIP, qos string) []*kubeovnv1.IptablesEIP {
+// qosReferencedByEip reports whether the EIP still claims the policy generation. Spec and
+// Status hold names, so they cannot tell two policies of the same name apart: a leftover
+// reference of an earlier policy would otherwise both hide and prolong the claim of the
+// current one. The claim is therefore keyed on the UID the EIP was labeled with, which its
+// controller only clears after the data plane of that policy generation is gone.
+func qosReferencedByEip(eip *kubeovnv1.IptablesEIP, qos *kubeovnv1.QoSPolicy) bool {
+	return qos.UID != "" && eip.Labels[util.QoSPolicyUIDLabel] == string(qos.UID)
+}
+
+// qosReferencedByNatGw is the NAT gateway counterpart of qosReferencedByEip.
+func qosReferencedByNatGw(gw *kubeovnv1.VpcNatGateway, qos *kubeovnv1.QoSPolicy) bool {
+	return qos.UID != "" && gw.Labels[util.QoSPolicyUIDLabel] == string(qos.UID)
+}
+
+func iptablesEIPsUsingQoS(eips []*kubeovnv1.IptablesEIP, qos *kubeovnv1.QoSPolicy) []*kubeovnv1.IptablesEIP {
 	result := make([]*kubeovnv1.IptablesEIP, 0, len(eips))
 	for _, eip := range eips {
-		if eip.Spec.QoSPolicy == qos || eip.Status.QoSPolicy == qos {
+		if qosReferencedByEip(eip, qos) {
 			result = append(result, eip)
 		}
 	}
@@ -520,13 +534,14 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 	// should delete
 	if !cachedQos.DeletionTimestamp.IsZero() {
 		// Check both supported reference types. BindingType changes are rejected by
-		// reconciliation but not by API validation, so deletion cannot trust Spec alone.
+		// reconciliation but not by API validation, so a referrer labeled with this
+		// policy generation is looked up among EIPs and among NAT gateways.
 		eips, err := c.iptablesEipsLister.List(labels.Everything())
 		if err != nil {
 			return fmt.Errorf("failed to list eips: %w", err)
 		}
 		inUse := slices.ContainsFunc(eips, func(eip *kubeovnv1.IptablesEIP) bool {
-			return eip.Spec.QoSPolicy == key || eip.Status.QoSPolicy == key
+			return qosReferencedByEip(eip, cachedQos)
 		})
 		if !inUse {
 			gateways, err := c.vpcNatGatewayLister.List(labels.Everything())
@@ -534,7 +549,7 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 				return fmt.Errorf("failed to list nat gateways: %w", err)
 			}
 			inUse = slices.ContainsFunc(gateways, func(gateway *kubeovnv1.VpcNatGateway) bool {
-				return gateway.Spec.QoSPolicy == key || gateway.Status.QoSPolicy == key
+				return qosReferencedByNatGw(gateway, cachedQos)
 			})
 		}
 
@@ -594,7 +609,7 @@ func (c *Controller) handleUpdateQoSPolicy(key string) error {
 			if err != nil {
 				return fmt.Errorf("failed to list eips for QoS policy %s: %w", key, err)
 			}
-			eips = iptablesEIPsUsingQoS(eips, key)
+			eips = iptablesEIPsUsingQoS(eips, cachedQos)
 			switch len(eips) {
 			case 0:
 			case 1:

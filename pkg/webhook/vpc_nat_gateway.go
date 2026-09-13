@@ -46,9 +46,10 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 	// 1. Changing the namespace would create a new StatefulSet in the new namespace while
 	// leaving the old one orphaned; there is no migration path for the running workload.
 	// 2. HA to non-HA (or vice-versa) is not supported without a deletion.
+	var gwOld *ovnv1.VpcNatGateway
 	if len(req.OldObject.Raw) > 0 {
-		gwOld := ovnv1.VpcNatGateway{}
-		if err := v.decoder.DecodeRaw(req.OldObject, &gwOld); err != nil {
+		gwOld = &ovnv1.VpcNatGateway{}
+		if err := v.decoder.DecodeRaw(req.OldObject, gwOld); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if gwOld.Spec.Namespace != gw.Spec.Namespace {
@@ -75,7 +76,7 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 
-		if err := validateVpcNatGatewayLanIPUpdate(&gwOld, &gw); err != nil {
+		if err := validateVpcNatGatewayLanIPUpdate(gwOld, &gw); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
@@ -90,6 +91,19 @@ func (v *ValidatingHook) VpcNatGwCreateOrUpdateHook(ctx context.Context, req adm
 
 	if err := v.ValidateVpcNatGW(ctx, &gw); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
+	// A policy that is terminating may only be referenced by objects that already reference it:
+	// their controller still has to refresh labels and status, and to clean up the data plane,
+	// while the policy terminates. Only a reference this request introduces is rejected.
+	var oldQoSPolicy string
+	if gwOld != nil {
+		oldQoSPolicy = gwOld.Spec.QoSPolicy
+	}
+	if gwOld == nil || oldQoSPolicy != gw.Spec.QoSPolicy {
+		if err := validateQoSPolicyRef(ctx, v.cache, gw.Spec.QoSPolicy); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 	}
 
 	return ctrlwebhook.Allowed("bypass")
@@ -144,6 +158,11 @@ func (v *ValidatingHook) iptablesEIPCreateHook(ctx context.Context, req admissio
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
+	// A new eip introduces both of its references, so both have to be live.
+	if err := v.validateNewEipReferences(ctx, &eip, nil); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+
 	return ctrlwebhook.Allowed("bypass")
 }
 
@@ -191,6 +210,10 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 		if err := v.ValidateIptablesEIP(ctx, &eipNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
+
+		if err := v.validateNewEipReferences(ctx, &eipNew, &eipOld); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 	}
 	return ctrlwebhook.Allowed("bypass")
 }
@@ -215,15 +238,12 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 		snatList := ovnv1.IptablesSnatRuleList{}
 		dnatList := ovnv1.IptablesDnatRuleList{}
 
-		for natType := range strings.SplitSeq(eip.Status.Nat, ",") {
-			switch natType {
-			case util.FipUsingEip:
-				err = v.cache.List(ctx, &fipList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP})
-			case util.SnatUsingEip:
-				err = v.cache.List(ctx, &snatList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP})
-			case util.DnatUsingEip:
-				err = v.cache.List(ctx, &dnatList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP})
-			}
+		selector := cli.MatchingLabels{util.EipUIDLabel: string(eip.UID)}
+		if err = v.cache.List(ctx, &fipList, selector); err == nil {
+			err = v.cache.List(ctx, &snatList, selector)
+		}
+		if err == nil {
+			err = v.cache.List(ctx, &dnatList, selector)
 		}
 
 		if err != nil {
@@ -233,7 +253,17 @@ func (v *ValidatingHook) iptablesEIPDeleteHook(ctx context.Context, req admissio
 		}
 
 		if len(fipList.Items) != 0 || len(snatList.Items) != 0 || len(dnatList.Items) != 0 {
-			err = fmt.Errorf("eip \"%s\" is still in use, you need to delete the %s of eip first", eip.Name, eip.Status.Nat)
+			var inUse []string
+			if len(fipList.Items) != 0 {
+				inUse = append(inUse, util.FipUsingEip)
+			}
+			if len(snatList.Items) != 0 {
+				inUse = append(inUse, util.SnatUsingEip)
+			}
+			if len(dnatList.Items) != 0 {
+				inUse = append(inUse, util.DnatUsingEip)
+			}
+			err = fmt.Errorf("eip \"%s\" is still in use, you need to delete the %s of eip first", eip.Name, strings.Join(inUse, ","))
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
@@ -256,6 +286,9 @@ func (v *ValidatingHook) iptablesDnatCreateHook(ctx context.Context, req admissi
 	}
 
 	if err := v.ValidateIptablesDnat(ctx, &dnat); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if err := v.validateNewRuleEipReferences(ctx, dnat.Spec.EIP, true); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -303,6 +336,9 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 		if err := v.ValidateIptablesDnat(ctx, &dnatNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
+		if err := v.validateNewRuleEipReferences(ctx, dnatNew.Spec.EIP, dnatOld.Spec.EIP != dnatNew.Spec.EIP); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 	}
 
 	return ctrlwebhook.Allowed("bypass")
@@ -323,6 +359,9 @@ func (v *ValidatingHook) iptablesSnatCreateHook(ctx context.Context, req admissi
 	}
 
 	if err := v.ValidateIptablesSnat(ctx, &snat); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if err := v.validateNewRuleEipReferences(ctx, snat.Spec.EIP, true); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -350,6 +389,9 @@ func (v *ValidatingHook) iptablesSnatUpdateHook(ctx context.Context, req admissi
 		if err := v.ValidateIptablesSnat(ctx, &snatNew); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
+		if err := v.validateNewRuleEipReferences(ctx, snatNew.Spec.EIP, snatOld.Spec.EIP != snatNew.Spec.EIP); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
 	}
 
 	return ctrlwebhook.Allowed("bypass")
@@ -370,6 +412,9 @@ func (v *ValidatingHook) iptablesFipCreateHook(ctx context.Context, req admissio
 	}
 
 	if err := v.ValidateIptablesFip(ctx, &fip); err != nil {
+		return ctrlwebhook.Errored(http.StatusBadRequest, err)
+	}
+	if err := v.validateNewRuleEipReferences(ctx, fip.Spec.EIP, true); err != nil {
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
@@ -395,6 +440,9 @@ func (v *ValidatingHook) iptablesFipUpdateHook(ctx context.Context, req admissio
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 		if err := v.ValidateIptablesFip(ctx, &fipNew); err != nil {
+			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+		}
+		if err := v.validateNewRuleEipReferences(ctx, fipNew.Spec.EIP, fipOld.Spec.EIP != fipNew.Spec.EIP); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
@@ -468,14 +516,6 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		}
 	}
 
-	if gw.Spec.QoSPolicy != "" {
-		qos := &ovnv1.QoSPolicy{}
-		key = cli.ObjectKey{Name: gw.Spec.QoSPolicy}
-		if err := v.cache.Get(ctx, key, qos); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -509,6 +549,80 @@ func (v *ValidatingHook) ValidateVpcNatGatewayConfig(ctx context.Context) error 
 	}
 
 	return nil
+}
+
+func validateEipRef(ctx context.Context, reader cli.Reader, name string) error {
+	eip := &ovnv1.IptablesEIP{}
+	if err := reader.Get(ctx, cli.ObjectKey{Name: name}, eip); err != nil {
+		return err
+	}
+	if !eip.DeletionTimestamp.IsZero() {
+		return fmt.Errorf("eip %s is terminating", name)
+	}
+	return nil
+}
+
+func validateNatGwRef(ctx context.Context, reader cli.Reader, name string) error {
+	gw := &ovnv1.VpcNatGateway{}
+	if err := reader.Get(ctx, cli.ObjectKey{Name: name}, gw); err != nil {
+		return err
+	}
+	if !gw.DeletionTimestamp.IsZero() {
+		return fmt.Errorf("vpc nat gateway %s is terminating", name)
+	}
+	return nil
+}
+
+func validateQoSPolicyRef(ctx context.Context, reader cli.Reader, name string) error {
+	if name == "" {
+		return nil
+	}
+	qos := &ovnv1.QoSPolicy{}
+	if err := reader.Get(ctx, cli.ObjectKey{Name: name}, qos); err != nil {
+		return err
+	}
+	if !qos.DeletionTimestamp.IsZero() {
+		return fmt.Errorf("qos policy %s is terminating", name)
+	}
+	return nil
+}
+
+// validateNewEipReferences validates the references a create or update introduces. Both
+// references belong to the spec of the eip, and a reference the object already carried is not
+// re-validated: its controller still has to refresh labels and status, and to clean up the data
+// plane, while the referenced object terminates. oldEip is nil when the eip is created.
+func (v *ValidatingHook) validateNewEipReferences(ctx context.Context, eip, oldEip *ovnv1.IptablesEIP) error {
+	if oldEip == nil || oldEip.Spec.NatGwDp != eip.Spec.NatGwDp {
+		if err := validateNatGwRef(ctx, v.cache, eip.Spec.NatGwDp); err != nil {
+			return err
+		}
+	}
+	if oldEip == nil || oldEip.Spec.QoSPolicy != eip.Spec.QoSPolicy {
+		if err := validateQoSPolicyRef(ctx, v.cache, eip.Spec.QoSPolicy); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateNewRuleEipReferences is the DNAT/SNAT/FIP counterpart of validateNewEipReferences.
+// Those rules point at an eip by name and inherit its gateway, so both the eip and its gateway
+// are references of the rule. eipChanged is false when the rule keeps pointing at its eip.
+func (v *ValidatingHook) validateNewRuleEipReferences(ctx context.Context, eipName string, eipChanged bool) error {
+	if !eipChanged {
+		return nil
+	}
+	if err := validateEipRef(ctx, v.cache, eipName); err != nil {
+		return err
+	}
+	eip := &ovnv1.IptablesEIP{}
+	if err := v.cache.Get(ctx, cli.ObjectKey{Name: eipName}, eip); err != nil {
+		return err
+	}
+	if eip.Spec.NatGwDp == "" {
+		return nil
+	}
+	return validateNatGwRef(ctx, v.cache, eip.Spec.NatGwDp)
 }
 
 func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.IptablesEIP) error {
@@ -565,7 +679,6 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
-
 	if dnat.Spec.ExternalPort == "" {
 		return errors.New("parameter \"externalPort\" cannot be empty")
 	}
@@ -660,7 +773,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 	// which shadows any port-specific DNAT rules (SHARED_DNAT) for the same EIP.
 	if eip.Status.IP != "" {
 		fipList := &ovnv1.IptablesFIPRuleList{}
-		if err := v.cache.List(ctx, fipList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP}); err != nil {
+		if err := v.cache.List(ctx, fipList, cli.MatchingLabels{util.EipUIDLabel: string(eip.UID)}); err != nil {
 			return fmt.Errorf("failed to list iptables FIP rules: %w", err)
 		}
 		if len(fipList.Items) != 0 {
@@ -742,7 +855,6 @@ func (v *ValidatingHook) ValidateIptablesSnat(ctx context.Context, snat *ovnv1.I
 	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
-
 	if err := util.CheckCidrs(snat.Spec.InternalCIDR); err != nil {
 		return fmt.Errorf("invalid cidr %s", snat.Spec.InternalCIDR)
 	}
@@ -760,7 +872,6 @@ func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.Ipt
 	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
-
 	if net.ParseIP(fip.Spec.InternalIP) == nil {
 		err := fmt.Errorf("internalIP %s is not a valid", fip.Spec.InternalIP)
 		return err
@@ -770,7 +881,7 @@ func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.Ipt
 	// which shadows any port-specific DNAT rules (SHARED_DNAT) for the same EIP.
 	if eip.Status.IP != "" {
 		dnatList := &ovnv1.IptablesDnatRuleList{}
-		if err := v.cache.List(ctx, dnatList, cli.MatchingLabels{util.EipV4IpLabel: eip.Status.IP}); err != nil {
+		if err := v.cache.List(ctx, dnatList, cli.MatchingLabels{util.EipUIDLabel: string(eip.UID)}); err != nil {
 			return fmt.Errorf("failed to list iptables DNAT rules: %w", err)
 		}
 		if len(dnatList.Items) != 0 {
