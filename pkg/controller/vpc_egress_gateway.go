@@ -517,6 +517,17 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
+	// resolve net-attach-def for the internal subnet, if its provider references one
+	var internalattachmentNwName string
+	if idx := strings.IndexRune(intSubnet.Spec.Provider, '.'); idx >= 0 {
+		parts := strings.Split(intSubnet.Spec.Provider, ".")
+		intNadName, intNadNamespace := parts[0], parts[1]
+		if _, lookupErr := c.netAttachLister.NetworkAttachmentDefinitions(intNadNamespace).Get(intNadName); lookupErr != nil {
+			klog.Errorf("failed to get net-attach-def %s/%s: %v", intNadNamespace, intNadName, lookupErr)
+			return "", nil, nil, nil, lookupErr
+		}
+		internalattachmentNwName = fmt.Sprintf("%s/%s", intNadNamespace, intNadName)
+	}
 	extSubnet, err := c.subnetsLister.Get(gw.Spec.ExternalSubnet)
 	if err != nil {
 		klog.Error(err)
@@ -620,7 +631,12 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return attachmentNetworkName, nil, nil, nil, err
 	}
-	annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
+	// attach internal network to the pod if internalattachmentNwName is not empty and EnableNonPrimaryCNI is true
+	if internalattachmentNwName != "" && c.config.EnableNonPrimaryCNI {
+		annotations[nadv1.NetworkAttachmentAnnot] = internalattachmentNwName + "," + attachmentNetworkName
+	} else {
+		annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
+	}
 	annotations[util.LogicalSwitchAnnotation] = intSubnet.Name
 	if len(gw.Spec.InternalIPs) != 0 {
 		// set internal IPs
