@@ -169,6 +169,16 @@ func (c *OVNNbClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.M
 		return nil
 	}
 
+	ls, err := c.GetLogicalSwitch(lsName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if ls == nil {
+		klog.Infof("skip updating load balancers on missing logical switch %s", lsName)
+		return nil
+	}
+
 	lbUUIDs := make([]string, 0, len(lbNames))
 
 	for _, lbName := range lbNames {

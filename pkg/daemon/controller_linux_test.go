@@ -577,3 +577,42 @@ func TestGetPolicyRouting(t *testing.T) {
 		})
 	}
 }
+
+func TestEnqueueServicesForUnderlaySubnet(t *testing.T) {
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	matching := &v1.Service{
+		Namespace: "metallb-demo",
+		Name:      "underlay-web",
+		Annotations: map[string]string{
+			util.ServiceExternalIPFromSubnetAnnotation: "subnet-demo",
+		},
+	}
+	other := &v1.Service{
+		Namespace: "default",
+		Name:      "kubernetes",
+	}
+	require.NoError(t, indexer.Add(matching))
+	require.NoError(t, indexer.Add(other))
+
+	controller := &Controller{
+		servicesLister: listerv1.NewServiceLister(indexer),
+		serviceQueue:   newTypedRateLimitingQueue[*serviceEvent]("Service", nil),
+	}
+	controller.enqueueServicesForUnderlaySubnet("subnet-demo")
+	require.Equal(t, 1, controller.serviceQueue.Len())
+
+	item, shutdown := controller.serviceQueue.Get()
+	require.False(t, shutdown)
+	controller.serviceQueue.Done(item)
+	svc, ok := item.newObj.(*v1.Service)
+	require.True(t, ok)
+	require.Equal(t, "underlay-web", svc.Name)
+
+	controller.enqueueServicesForUnderlaySubnet("")
+	require.Equal(t, 0, controller.serviceQueue.Len())
+}
+
+func TestEnqueueServicesForUnderlaySubnetNilControllerFields(_ *testing.T) {
+	controller := &Controller{}
+	controller.enqueueServicesForUnderlaySubnet("subnet-demo")
+}

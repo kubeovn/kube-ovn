@@ -303,8 +303,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancers() {
 
 	t.Run("update load balancers for non-existent logical switch", func(t *testing.T) {
 		err := nbClient.LogicalSwitchUpdateLoadBalancers("non-existent-ls", ovsdb.MutateOperationInsert, lbNames...)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "not found logical switch")
+		require.NoError(t, err)
 	})
 }
 

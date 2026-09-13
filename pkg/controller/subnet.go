@@ -313,6 +313,26 @@ func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
 	})
 }
 
+func (c *Controller) deleteSubnetHealthCheckVip(subnet *kubeovnv1.Subnet) error {
+	if c.config == nil || c.config.KubeOvnClient == nil {
+		return nil
+	}
+	vip, err := c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnet.Name, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("get health check vip %s: %w", subnet.Name, err)
+	}
+	if vip.Spec.Subnet != subnet.Name {
+		return nil
+	}
+	if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), subnet.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		return fmt.Errorf("delete health check vip %s: %w", subnet.Name, err)
+	}
+	return nil
+}
+
 func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, bool, error) {
 	if subnet.DeletionTimestamp.IsZero() && !slices.Contains(subnet.GetFinalizers(), util.KubeOVNControllerFinalizer) {
 		newSubnet := subnet.DeepCopy()
@@ -330,6 +350,12 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 		}
 
 		return patchSubnet, false, nil
+	}
+
+	if !subnet.DeletionTimestamp.IsZero() {
+		if err := c.deleteSubnetHealthCheckVip(subnet); err != nil {
+			return subnet, false, err
+		}
 	}
 
 	if readyToRemoveFinalizer(subnet) {
@@ -723,15 +749,11 @@ func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *ku
 	if !c.config.EnableLb || subnet.Name == c.config.NodeSwitch {
 		return nil
 	}
-	lbs := []string{
-		vpc.Status.TCPLoadBalancer,
-		vpc.Status.TCPSessionLoadBalancer,
-		vpc.Status.UDPLoadBalancer,
-		vpc.Status.UDPSessionLoadBalancer,
-		vpc.Status.SctpLoadBalancer,
-		vpc.Status.SctpSessionLoadBalancer,
+	lbs, err := c.serviceScopedLoadBalancerNamesForVPC(vpc.Name)
+	if err != nil {
+		return c.recordResourceError(subnet, "ListServiceLoadBalancersFailed", err)
 	}
-	if subnet.Spec.EnableLb != nil && *subnet.Spec.EnableLb {
+	if subnetEnablesServiceLB(subnet, c.config.EnableLb) {
 		if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
 			klog.Error(lbErr)
 			if patchErr := c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", lbErr.Error()); patchErr != nil {
@@ -2691,6 +2713,12 @@ func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string
 	if vpcName == "" {
 		return nil, nil, nil
 	}
+
+	// Multiple subnet workers can reconcile different subnets in the same VPC at
+	// the same time. Serialize the shared address-set create/update sequence so
+	// they cannot both pass the cache existence check and race in OVN NB.
+	c.vpcKeyMutex.LockKey(vpcName)
+	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpcName) }()
 
 	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
 	externalIDs := u2oOverlayCIDRsAddressSetExternalIDs(vpcName)
