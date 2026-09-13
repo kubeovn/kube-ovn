@@ -135,16 +135,6 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
-func serviceScopedLBSelectionFields(svc *v1.Service) []string {
-	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
-		return nil
-	}
-	return []string{
-		ovnnb.LoadBalancerSelectionFieldsIPSrc,
-		ovnnb.LoadBalancerSelectionFieldsIpv6Src,
-	}
-}
-
 func serviceScopedLBName(svc *v1.Service, protocol v1.Protocol) string {
 	return serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, serviceLBInternalTraffic, "")
 }
@@ -308,7 +298,11 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol))); err != nil {
 		return "", fmt.Errorf("create service-scoped load balancer %s: %w", name, err)
 	}
-	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, serviceScopedLBSelectionFields(svc)); err != nil {
+	// OVN's affinity_timeout uses conntrack state to keep a client on one
+	// backend for the configured interval.  Selection fields use a deterministic
+	// hash and would keep the client on the same backend after that interval,
+	// defeating Kubernetes' timeout semantics.
+	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, nil); err != nil {
 		return "", fmt.Errorf("set selection fields on service-scoped load balancer %s: %w", name, err)
 	}
 	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, vpcName, trafficClass)); err != nil {
