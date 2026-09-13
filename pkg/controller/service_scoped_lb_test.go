@@ -427,7 +427,7 @@ func TestReconcileServiceScopedLoadBalancerAttachmentsLoadBalancerSeparatesTraff
 		Spec: corev1.ServiceSpec{
 			Type:      corev1.ServiceTypeLoadBalancer,
 			ClusterIP: "10.96.0.10",
-			Ports:     []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
+			Ports:     []corev1.ServicePort{{Protocol: corev1.ProtocolTCP, NodePort: 30080}},
 		},
 		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "172.19.0.10"}}}},
 	}
