@@ -391,6 +391,34 @@ func TestReconcileServiceScopedLoadBalancerAttachmentsClusterIP(t *testing.T) {
 	}
 }
 
+func TestReconcileServiceScopedLoadBalancerAttachmentsLoadBalancerSeparatesTrafficScopes(t *testing.T) {
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:    []*kubeovnv1.Vpc{{Name: util.DefaultVpc}},
+		Subnets: []*kubeovnv1.Subnet{{Name: "subnet-a", Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, EnableLb: new(true)}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("svc-uid"),
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeLoadBalancer,
+			ClusterIP: "10.96.0.10",
+			Ports:     []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
+		},
+		Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{Ingress: []corev1.LoadBalancerIngress{{IP: "172.19.0.10"}}}},
+	}
+	internal := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBInternalTraffic)
+	external := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv4")
+	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-a", ovsdb.MutateOperationInsert, internal, external).Return(nil)
+	fake.mockOvnClient.EXPECT().LogicalRouterUpdateLoadBalancers(util.DefaultVpc, ovsdb.MutateOperationDelete, internal).Return(nil)
+	fake.mockOvnClient.EXPECT().LogicalRouterUpdateLoadBalancers(util.DefaultVpc, ovsdb.MutateOperationInsert, external).Return(nil)
+
+	if err := fake.fakeController.reconcileResourceScopedLoadBalancerAttachments(svc, util.DefaultVpc, "", internal, external); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEnsureServiceScopedLBClearsAffinityTimeout(t *testing.T) {
 	fake := newFakeController(t)
 	ctrl := fake.fakeController
