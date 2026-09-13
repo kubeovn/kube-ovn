@@ -407,6 +407,22 @@ func (c *Controller) attachServiceScopedLoadBalancersToRouter(vpcName string, lb
 	return nil
 }
 
+func (c *Controller) detachServiceScopedLoadBalancersFromRouters(lbNames ...string) error {
+	if len(lbNames) == 0 {
+		return nil
+	}
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("list logical routers for service-scoped load balancer detachment: %w", err)
+	}
+	for _, vpc := range vpcs {
+		if err := c.OVNNbClient.LogicalRouterUpdateLoadBalancers(vpc.Name, ovsdb.MutateOperationDelete, lbNames...); err != nil {
+			return fmt.Errorf("detach service-scoped load balancers from logical router %s: %w", vpc.Name, err)
+		}
+	}
+	return nil
+}
+
 func (c *Controller) reconcileServiceScopedLoadBalancerAttachments(vpcName string, lbNames ...string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -507,16 +523,34 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...); err != nil {
 			return err
 		}
+
 		// ClusterIP traffic is handled on each enabled logical switch, matching
-		// the legacy VPC LB attachment. Attaching the internal LB to the router
+		// the legacy VPC LB attachment. Attaching an internal LB to the router
 		// makes host-network Service requests enter OVN through the join port and
 		// changes the source address observed by the backend to the join IP.
-		// LoadBalancer Services still need the router attachment for their
-		// external ingress VIPs.
-		if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+		externalNames := make(map[string]struct{})
+		if svc.Spec.Type == v1.ServiceTypeLoadBalancer {
+			for _, port := range svc.Spec.Ports {
+				for _, family := range serviceScopedExternalLBFamilies(svc) {
+					externalNames[serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBExternalTraffic, family)] = struct{}{}
+				}
+			}
+		}
+		var routerLBNames, nonRouterLBNames []string
+		for _, name := range lbNames {
+			if _, ok := externalNames[name]; ok {
+				routerLBNames = append(routerLBNames, name)
+			} else {
+				nonRouterLBNames = append(nonRouterLBNames, name)
+			}
+		}
+		if err := c.detachServiceScopedLoadBalancersFromRouters(nonRouterLBNames...); err != nil {
+			return err
+		}
+		if len(routerLBNames) == 0 {
 			return nil
 		}
-		return c.attachServiceScopedLoadBalancersToRouter(vpcName, lbNames...)
+		return c.attachServiceScopedLoadBalancersToRouter(vpcName, routerLBNames...)
 	}
 }
 
