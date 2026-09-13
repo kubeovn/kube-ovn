@@ -1650,7 +1650,7 @@ jobs:
         run: |
           tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
           if [ -s "$tenant_kubeconfig" ]; then
-            KUBECONFIG="$tenant_kubeconfig" bash .github/scripts/collect-kubectl-ko-log.sh
+            KUBECONFIG="$tenant_kubeconfig" bash "$GITHUB_WORKSPACE/.github/scripts/collect-kubectl-ko-log.sh"
             mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
           fi
 

@@ -2,11 +2,8 @@
 set -euo pipefail
 
 KUBE_OVN_NS=${KUBE_OVN_NS:-kube-system}
-log_archive_status=0
-if bash dist/images/kubectl-ko log all; then
-  :
-else
-  log_archive_status=$?
+if ! bash dist/images/kubectl-ko log all; then
+  echo "Warning: kubectl-ko log collection failed; continuing with Docker node fallback"
 fi
 
 mkdir -p kubectl-ko-log
@@ -30,7 +27,7 @@ if command -v docker > /dev/null 2>&1; then
 
     for component in kube-ovn ovn openvswitch; do
       destination="kubectl-ko-log/$node/$component"
-      if find "$destination" -type f -print -quit 2>/dev/null | grep -q .; then
+      if [[ -n "$(find "$destination" -type f -print -quit 2>/dev/null)" ]]; then
         continue
       fi
 
@@ -46,4 +43,3 @@ else
 fi
 
 tar -zcf kubectl-ko-log.tar.gz kubectl-ko-log/
-exit "$log_archive_status"
