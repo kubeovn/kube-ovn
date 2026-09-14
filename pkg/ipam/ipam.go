@@ -568,3 +568,36 @@ func (ipam *IPAM) RecordGatewayMAC(subnetName, gatewayMAC string) error {
 	klog.Infof("recorded gateway MAC %s for subnet %s", gatewayMAC, subnetName)
 	return nil
 }
+
+// GetGatewayMAC returns the recorded gateway MAC of the given subnet, or "" if the
+// subnet is unknown or no gateway MAC has been recorded for it yet.
+func (ipam *IPAM) GetGatewayMAC(subnetName string) string {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return ""
+	}
+	return subnet.GatewayMAC
+}
+
+// RenewNicMac forces a fresh MAC onto the given nic, discarding whatever MAC (if
+// any) is currently recorded for it. Used to repair nics whose recorded MAC was
+// found to be invalid (e.g. it collides with the subnet's gateway MAC), since the
+// normal allocation path always reuses a nic's already-recorded MAC.
+func (ipam *IPAM) RenewNicMac(subnetName, podName, nicName string) (string, error) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return "", fmt.Errorf("subnet %s not found in ipam", subnetName)
+	}
+
+	if oldMac, ok := subnet.NicToMac[nicName]; ok {
+		delete(subnet.MacToPod, oldMac)
+		delete(subnet.NicToMac, nicName)
+	}
+	return subnet.GetRandomMac(podName, nicName), nil
+}

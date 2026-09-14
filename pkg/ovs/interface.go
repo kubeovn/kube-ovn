@@ -117,7 +117,6 @@ type LogicalSwitchPort interface {
 	ReconcilePortDHCPOptions(lsName, portName string, subnetDHCP *DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, bool, error)
 	SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error
 	SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error
-	SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error
 	SetLogicalSwitchPortExternalIDs(lspName string, externalIDs map[string]string) error
 	SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 	SetLogicalSwitchPortsSecurityGroup(sgName, op string) error

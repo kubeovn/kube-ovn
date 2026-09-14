@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
@@ -387,37 +386,6 @@ func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents
 	if err := c.Transact("lsp-update", op); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("set logical switch port virtual-parents %w", err)
-	}
-	return nil
-}
-
-func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
-	lsp, err := c.GetLogicalSwitchPort(lspName, false)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
-	}
-	if lsp == nil {
-		err = fmt.Errorf("logical switch port %s not found", lspName)
-		klog.Error(err)
-		return err
-	}
-	if lsp.Options == nil {
-		lsp.Options = make(map[string]string)
-	}
-	lsp.Options["arp_proxy"] = strconv.FormatBool(enableArpProxy)
-	if !enableArpProxy {
-		delete(lsp.Options, "arp_proxy")
-	}
-
-	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if err := c.Transact("lsp-update", op); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to set logical switch port option arp_proxy %w", err)
 	}
 	return nil
 }
