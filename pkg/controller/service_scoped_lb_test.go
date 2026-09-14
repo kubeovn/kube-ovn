@@ -71,20 +71,6 @@ func TestServiceSessionAffinityTimeout(t *testing.T) {
 	}
 }
 
-func TestServiceScopedLBSelectionFields(t *testing.T) {
-	svc := &corev1.Service{Spec: corev1.ServiceSpec{SessionAffinity: corev1.ServiceAffinityClientIP}}
-	want := []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}
-	for _, protocol := range []corev1.Protocol{corev1.ProtocolTCP, corev1.ProtocolUDP, corev1.ProtocolSCTP} {
-		if got := serviceScopedLBSelectionFields(svc, protocol); !slices.Equal(got, want) {
-			t.Fatalf("serviceScopedLBSelectionFields(%s) = %v, want %v", protocol, got, want)
-		}
-	}
-	svc.Spec.SessionAffinity = corev1.ServiceAffinityNone
-	if got := serviceScopedLBSelectionFields(svc, corev1.ProtocolUDP); got != nil {
-		t.Fatalf("serviceScopedLBSelectionFields without affinity = %v, want nil", got)
-	}
-}
-
 func TestServiceScopedLBIdentityAndPolicy(t *testing.T) {
 	local := corev1.ServiceInternalTrafficPolicyLocal
 	svc := &corev1.Service{
@@ -304,8 +290,8 @@ func TestEnsureServiceScopedLB(t *testing.T) {
 	}
 	lbName := serviceScopedLBName(svc, corev1.ProtocolTCP)
 	gomock.InOrder(
-		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp", ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src).Return(nil),
-		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, serviceScopedLBSelectionFields(svc, corev1.ProtocolTCP)).Return(nil),
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc, ctrl.config.ClusterRouter, serviceLBInternalTraffic))).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerAffinityTimeout(lbName, 42).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
@@ -333,8 +319,8 @@ func TestEnsureServiceScopedLBExternalTrafficDoesNotDistribute(t *testing.T) {
 	}
 	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
 	gomock.InOrder(
-		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp", ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src).Return(nil),
-		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, serviceScopedLBSelectionFields(svc, corev1.ProtocolTCP)).Return(nil),
+		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc, ctrl.config.ClusterRouter, serviceLBExternalTraffic))).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerAffinityTimeout(lbName, util.DefaultServiceSessionStickinessTimeout).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
