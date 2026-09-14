@@ -427,3 +427,72 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted", subnetName)
 	})
 }
+
+func Test_handleAddOrUpdateSwitchLBRule(t *testing.T) {
+	t.Parallel()
+
+	const (
+		slrName   = "test-slr"
+		namespace = "default"
+		vip       = "10.96.0.100"
+		newIP     = "10.244.0.26"
+	)
+	newSLR := func() *kubeovnv1.SwitchLBRule {
+		return &kubeovnv1.SwitchLBRule{
+			ObjectMeta: metav1.ObjectMeta{Name: slrName},
+			Spec: kubeovnv1.SwitchLBRuleSpec{
+				Vip:       vip,
+				Namespace: namespace,
+				Endpoints: []string{newIP},
+				Ports:     []kubeovnv1.SwitchLBRulePort{{Name: "api", Port: 6443, TargetPort: 6443, Protocol: "TCP"}},
+			},
+		}
+	}
+	verify := func(t *testing.T, ctrl *Controller) {
+		t.Helper()
+		svcName := generateSvcName(slrName)
+
+		eps, err := ctrl.config.KubeClient.CoreV1().Endpoints(namespace).Get(context.Background(), svcName, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Len(t, eps.Subsets, 1)
+		require.Len(t, eps.Subsets[0].Addresses, 1)
+		require.Equal(t, newIP, eps.Subsets[0].Addresses[0].IP)
+
+		_, err = ctrl.config.KubeClient.CoreV1().Services(namespace).Get(context.Background(), svcName, metav1.GetOptions{})
+		require.NoError(t, err)
+
+		slr, err := ctrl.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Get(context.Background(), slrName, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, namespace+"/"+svcName, slr.Status.Service)
+	}
+
+	t.Run("service and endpoints are created when neither exists", func(t *testing.T) {
+		t.Parallel()
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{SwitchLBRules: []*kubeovnv1.SwitchLBRule{newSLR()}})
+		require.NoError(t, err)
+
+		require.NoError(t, fc.fakeController.handleAddOrUpdateSwitchLBRule(slrName))
+		verify(t, fc.fakeController)
+	})
+
+	t.Run("endpoints left behind without their service are reused", func(t *testing.T) {
+		t.Parallel()
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{SwitchLBRules: []*kubeovnv1.SwitchLBRule{newSLR()}})
+		require.NoError(t, err)
+		ctrl := fc.fakeController
+
+		// The generated Endpoints exist but the generated Service does not, e.g.
+		// an earlier attempt created the Endpoints and then failed to create the
+		// Service. The rule must still converge instead of failing forever on an
+		// Endpoints create.
+		leftover := &corev1.Endpoints{
+			ObjectMeta: metav1.ObjectMeta{Name: generateSvcName(slrName), Namespace: namespace},
+			Subsets:    []corev1.EndpointSubset{{Addresses: []corev1.EndpointAddress{{IP: "10.244.0.20"}}}},
+		}
+		_, err = ctrl.config.KubeClient.CoreV1().Endpoints(namespace).Create(context.Background(), leftover, metav1.CreateOptions{})
+		require.NoError(t, err)
+
+		require.NoError(t, ctrl.handleAddOrUpdateSwitchLBRule(slrName))
+		verify(t, ctrl)
+	})
+}
