@@ -443,7 +443,9 @@ func (c *Controller) cleanupNftableLbService(svc *v1.Service, namespace, name st
 // (eip+externalPort+protocol) is owned by another service or a manually-created share rule.
 // A contested identity is resolved deterministically (see chooseNftableLbOwner) so exactly
 // one owner programs it; losing services emit a warning event and requeue to take over once
-// the identity is released. It returns an error only when the underlying list fails.
+// the identity is released. A Service that is being deleted releases the identity right away,
+// so a successor can take it over without waiting for the terminating Service to leave the
+// informer cache. It returns an error only when the underlying list fails.
 func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desired map[string]*kubeovnv1.IptablesDnatRule) (bool, error) {
 	selfKey := svc.Namespace + "/" + svc.Name
 	eipName := svc.Annotations[util.EipAnnotation]
@@ -474,7 +476,9 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 	}
 	for _, obj := range svcObjs {
 		s, ok := obj.(*v1.Service)
-		if !ok || (s.Namespace == svc.Namespace && s.Name == svc.Name) {
+		// The index only holds qualifying Services, so skip just self and Services that are
+		// going away: a terminating owner must not block its successor.
+		if !ok || (s.Namespace == svc.Namespace && s.Name == svc.Name) || !s.DeletionTimestamp.IsZero() {
 			continue
 		}
 		for _, id := range nftableLbSvcIdentities(s, eipName) {
