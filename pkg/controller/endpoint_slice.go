@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -180,14 +181,16 @@ type serviceLoadBalancerSet struct {
 }
 
 type endpointSliceReconcileContext struct {
-	service           *v1.Service
-	endpointSlices    []*discoveryv1.EndpointSlice
-	vpc               *kubeovnv1.Vpc
-	vpcName           string
-	subnetName        string
-	profile           endpointSliceServiceProfile
-	loadBalancers     serviceLoadBalancerSet
-	desiredScopedVIPs map[string]map[string]struct{}
+	service                    *v1.Service
+	endpointSlices             []*discoveryv1.EndpointSlice
+	vpc                        *kubeovnv1.Vpc
+	vpcName                    string
+	subnetName                 string
+	profile                    endpointSliceServiceProfile
+	loadBalancers              serviceLoadBalancerSet
+	scopedLBAttachments        []ovs.LoadBalancerAttachment
+	scopedLBAttachmentsApplied bool
+	desiredScopedVIPs          map[string]map[string]struct{}
 }
 
 type serviceEndpointVIPState struct {
@@ -432,10 +435,43 @@ func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSli
 			}
 		}
 	}
+	if svc.Spec.Type == v1.ServiceTypeClusterIP && !serviceUsesTemplateLB(svc) {
+		attachments, err := c.serviceScopedLBAttachments(reconcileCtx.vpcName)
+		if err != nil {
+			return err
+		}
+		reconcileCtx.scopedLBAttachments = attachments
+		return nil
+	}
 	if err := c.reconcileResourceScopedLoadBalancerAttachments(svc, reconcileCtx.vpcName, reconcileCtx.subnetName, lbNames...); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (c *Controller) serviceScopedLBAttachments(vpcName string) ([]ovs.LoadBalancerAttachment, error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("list subnets for service-scoped load balancer migration in vpc %s: %w", vpcName, err)
+	}
+	attachments := make([]ovs.LoadBalancerAttachment, 0, len(subnets))
+	for _, subnet := range subnets {
+		if subnet.Name == c.config.NodeSwitch || !isOvnSubnet(subnet) {
+			continue
+		}
+		operation := ovsdb.MutateOperationDelete
+		if subnet.Spec.Vpc == vpcName && subnetEnablesServiceLB(subnet, c.config.EnableLb) {
+			operation = ovsdb.MutateOperationInsert
+		}
+		attachments = append(attachments, ovs.LoadBalancerAttachment{
+			LogicalSwitch: subnet.Name,
+			Operation:     operation,
+		})
+	}
+	slices.SortFunc(attachments, func(a, b ovs.LoadBalancerAttachment) int {
+		return strings.Compare(a.LogicalSwitch, b.LogicalSwitch)
+	})
+	return attachments, nil
 }
 
 func (c *Controller) clearServiceExternalTrafficLocalMarkers(reconcileCtx *endpointSliceReconcileContext) error {
@@ -582,9 +618,16 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
 	klog.Infof("add vip endpoint %s, backends %v to LB %s", state.vip, state.backends, state.lb)
 	candidates := c.serviceLBMigrationCandidates(svc, state.port.Protocol, reconcileCtx.vpc, state.trafficClass)
-	if err := c.OVNNbClient.LoadBalancerMigrateVIP(state.lb, state.vip, state.backends, state.vip, candidates...); err != nil {
+	if len(reconcileCtx.scopedLBAttachments) == 0 {
+		if err := c.OVNNbClient.LoadBalancerMigrateVIP(state.lb, state.vip, state.backends, state.vip, candidates...); err != nil {
+			return fmt.Errorf("migrate vip %s: %w", state.vip, err)
+		}
+	} else if err := c.OVNNbClient.LoadBalancerMigrateVIPWithAttachments(
+		state.lb, state.vip, state.backends, state.vip, candidates, reconcileCtx.scopedLBAttachments,
+	); err != nil {
 		return fmt.Errorf("migrate vip %s: %w", state.vip, err)
 	}
+	reconcileCtx.scopedLBAttachmentsApplied = len(reconcileCtx.scopedLBAttachments) != 0
 	if state.distributed && len(state.mapping) != 0 {
 		if err := c.OVNNbClient.LoadBalancerUpdateIPPortMapping(state.lb, state.vip, state.mapping); err != nil {
 			return fmt.Errorf("update ip port mapping for vip %s on load balancer %s: %w", state.vip, state.lb, err)
@@ -624,6 +667,17 @@ func (c *Controller) deleteServiceEndpointVIP(reconcileCtx *endpointSliceReconci
 
 func (c *Controller) finishServiceEndpointSliceReconcile(reconcileCtx *endpointSliceReconcileContext) error {
 	svc := reconcileCtx.service
+	if len(reconcileCtx.scopedLBAttachments) != 0 && !reconcileCtx.scopedLBAttachmentsApplied {
+		lbNames := make([]string, 0, len(reconcileCtx.loadBalancers.current))
+		for _, name := range reconcileCtx.loadBalancers.current {
+			if name != "" {
+				lbNames = append(lbNames, name)
+			}
+		}
+		if err := c.reconcileServiceScopedLoadBalancerAttachments(reconcileCtx.vpcName, lbNames...); err != nil {
+			return err
+		}
+	}
 	if svc.Annotations[util.VpcAnnotation] != reconcileCtx.vpcName {
 		patch := util.KVPatch{util.VpcAnnotation: reconcileCtx.vpcName}
 		if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Services(svc.Namespace), svc.Name, patch); err != nil {

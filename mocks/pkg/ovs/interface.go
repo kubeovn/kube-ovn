@@ -1873,6 +1873,20 @@ func (mr *MockLoadBalancerMockRecorder) LoadBalancerMigrateVIP(lbName, vip, back
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerMigrateVIP", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerMigrateVIP), varargs...)
 }
 
+// LoadBalancerMigrateVIPWithAttachments mocks base method.
+func (m *MockLoadBalancer) LoadBalancerMigrateVIPWithAttachments(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []ovs.LoadBalancerAttachment) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadBalancerMigrateVIPWithAttachments", lbName, vip, backends, oldVIP, oldLBNames, attachments)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LoadBalancerMigrateVIPWithAttachments indicates an expected call of LoadBalancerMigrateVIPWithAttachments.
+func (mr *MockLoadBalancerMockRecorder) LoadBalancerMigrateVIPWithAttachments(lbName, vip, backends, oldVIP, oldLBNames, attachments any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerMigrateVIPWithAttachments", reflect.TypeOf((*MockLoadBalancer)(nil).LoadBalancerMigrateVIPWithAttachments), lbName, vip, backends, oldVIP, oldLBNames, attachments)
+}
+
 // LoadBalancerUpdateIPPortMapping mocks base method.
 func (m *MockLoadBalancer) LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error {
 	m.ctrl.T.Helper()
@@ -5496,6 +5510,20 @@ func (mr *MockNbClientMockRecorder) LoadBalancerMigrateVIP(lbName, vip, backends
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{lbName, vip, backends, oldVIP}, oldLBNames...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerMigrateVIP", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerMigrateVIP), varargs...)
+}
+
+// LoadBalancerMigrateVIPWithAttachments mocks base method.
+func (m *MockNbClient) LoadBalancerMigrateVIPWithAttachments(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []ovs.LoadBalancerAttachment) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadBalancerMigrateVIPWithAttachments", lbName, vip, backends, oldVIP, oldLBNames, attachments)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LoadBalancerMigrateVIPWithAttachments indicates an expected call of LoadBalancerMigrateVIPWithAttachments.
+func (mr *MockNbClientMockRecorder) LoadBalancerMigrateVIPWithAttachments(lbName, vip, backends, oldVIP, oldLBNames, attachments any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadBalancerMigrateVIPWithAttachments", reflect.TypeOf((*MockNbClient)(nil).LoadBalancerMigrateVIPWithAttachments), lbName, vip, backends, oldVIP, oldLBNames, attachments)
 }
 
 // LoadBalancerUpdateIPPortMapping mocks base method.
