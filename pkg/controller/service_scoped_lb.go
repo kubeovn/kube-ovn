@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -295,6 +297,47 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		return "", err
 	}
 	distributed := trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)
+	options := make(map[string]string)
+	deleteOptions := make([]string, 0, 2)
+	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+		options["affinity_timeout"] = strconv.Itoa(timeout)
+	} else {
+		deleteOptions = append(deleteOptions, "affinity_timeout")
+	}
+	if distributed {
+		options["distributed"] = "true"
+	} else {
+		deleteOptions = append(deleteOptions, "distributed")
+	}
+	if serviceLB, ok := c.OVNNbClient.(interface {
+		ReconcileLoadBalancer(config ovs.LoadBalancerConfig) error
+	}); ok {
+		switch {
+		case serviceUsesTemplateLB(svc) && trafficClass == serviceLBInternalTraffic:
+			options["template"] = "true"
+			if family != "" {
+				options["address-family"] = family
+			}
+		case serviceUsesExternalLocalTemplate(svc) && trafficClass == serviceLBExternalTraffic:
+			options["template"] = "true"
+			if family != "" {
+				options["address-family"] = family
+			}
+		case distributed || trafficClass == serviceLBExternalTraffic:
+			options["template"] = "false"
+		}
+		if err := serviceLB.ReconcileLoadBalancer(ovs.LoadBalancerConfig{
+			Name:            name,
+			Protocol:        strings.ToLower(string(protocol)),
+			SelectionFields: nil,
+			ExternalIDs:     serviceScopedLBExternalIDs(svc, vpcName, trafficClass),
+			Options:         options,
+			DeleteOptions:   deleteOptions,
+		}); err != nil {
+			return "", fmt.Errorf("reconcile service-scoped load balancer %s: %w", name, err)
+		}
+		return name, nil
+	}
 	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol))); err != nil {
 		return "", fmt.Errorf("create service-scoped load balancer %s: %w", name, err)
 	}

@@ -42,6 +42,41 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 	require.NoError(t, err)
 }
 
+func (suite *OvnClientTestSuite) testReconcileLoadBalancer() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-reconcile-lb"
+	externalIDs := map[string]string{"owner": "service"}
+
+	require.NoError(t, nbClient.ReconcileLoadBalancer(LoadBalancerConfig{
+		Name:            lbName,
+		Protocol:        "tcp",
+		SelectionFields: nil,
+		ExternalIDs:     externalIDs,
+		Options:         map[string]string{"affinity_timeout": "42", "unrelated": "keep"},
+	}))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, externalIDs, lb.ExternalIDs)
+	require.Equal(t, map[string]string{"affinity_timeout": "42", "unrelated": "keep"}, lb.Options)
+
+	require.NoError(t, nbClient.ReconcileLoadBalancer(LoadBalancerConfig{
+		Name:          lbName,
+		Protocol:      "tcp",
+		ExternalIDs:   map[string]string{"version": "v1"},
+		Options:       map[string]string{"distributed": "true"},
+		DeleteOptions: []string{"affinity_timeout"},
+	}))
+
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"owner": "service", "version": "v1"}, lb.ExternalIDs)
+	require.Equal(t, map[string]string{"distributed": "true", "unrelated": "keep"}, lb.Options)
+}
+
 func (suite *OvnClientTestSuite) testUpdateLoadBalancer() {
 	t := suite.T()
 	t.Parallel()
@@ -923,13 +958,16 @@ func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
 	require.NoError(t, nbClient.LoadBalancerAddVip(oldLBName, oldVIP, backend))
 	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(oldLBName, oldVIP, false, map[string]string{"10.0.0.2": "backend.default"}, nil))
 
-	require.NoError(t, nbClient.LoadBalancerMigrateVIPWithAttachments(
+	require.NoError(t, nbClient.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
 		newLBName,
 		newVIP,
 		[]string{"^service_backends"},
 		oldVIP,
 		[]string{oldLBName},
 		[]LoadBalancerAttachment{{LogicalSwitch: lsName, Operation: ovsdb.MutateOperationInsert}},
+		map[string]string{"10.0.0.2": "backend.default"},
+		false,
+		nil,
 	))
 
 	oldLB, err := nbClient.GetLoadBalancer(oldLBName, false)
@@ -941,6 +979,8 @@ func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
 	newLB, err := nbClient.GetLoadBalancer(newLBName, false)
 	require.NoError(t, err)
 	require.Equal(t, "^service_backends", newLB.Vips[newVIP])
+	require.Equal(t, map[string]string{"10.0.0.2": "backend.default"}, newLB.IPPortMappings)
+	require.Len(t, newLB.HealthCheck, 1)
 
 	ls, err := nbClient.GetLogicalSwitch(lsName, false)
 	require.NoError(t, err)
