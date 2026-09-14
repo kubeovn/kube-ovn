@@ -519,6 +519,10 @@ func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 	suite.testCreateLoadBalancer()
 }
 
+func (suite *OvnClientTestSuite) Test_ReconcileLoadBalancer() {
+	suite.testReconcileLoadBalancer()
+}
+
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancer() {
 	suite.testUpdateLoadBalancer()
 }

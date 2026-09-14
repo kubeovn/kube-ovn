@@ -618,26 +618,37 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
 	klog.Infof("add vip endpoint %s, backends %v to LB %s", state.vip, state.backends, state.lb)
 	candidates := c.serviceLBMigrationCandidates(svc, state.port.Protocol, reconcileCtx.vpc, state.trafficClass)
-	if len(reconcileCtx.scopedLBAttachments) == 0 {
-		if err := c.OVNNbClient.LoadBalancerMigrateVIP(state.lb, state.vip, state.backends, state.vip, candidates...); err != nil {
+	if serviceLB, ok := c.OVNNbClient.(interface {
+		LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []ovs.LoadBalancerAttachment, ipPortMappings map[string]string, ignoreHealthCheck bool, externals map[string]string) error
+	}); ok {
+		if err := serviceLB.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
+			state.lb, state.vip, state.backends, state.vip, candidates, reconcileCtx.scopedLBAttachments,
+			state.mapping, profile.ignoreHealthCheck, state.externals,
+		); err != nil {
+			return fmt.Errorf("reconcile vip %s: %w", state.vip, err)
+		}
+	} else {
+		if len(reconcileCtx.scopedLBAttachments) == 0 {
+			if err := c.OVNNbClient.LoadBalancerMigrateVIP(state.lb, state.vip, state.backends, state.vip, candidates...); err != nil {
+				return fmt.Errorf("migrate vip %s: %w", state.vip, err)
+			}
+		} else if err := c.OVNNbClient.LoadBalancerMigrateVIPWithAttachments(
+			state.lb, state.vip, state.backends, state.vip, candidates, reconcileCtx.scopedLBAttachments,
+		); err != nil {
 			return fmt.Errorf("migrate vip %s: %w", state.vip, err)
 		}
-	} else if err := c.OVNNbClient.LoadBalancerMigrateVIPWithAttachments(
-		state.lb, state.vip, state.backends, state.vip, candidates, reconcileCtx.scopedLBAttachments,
-	); err != nil {
-		return fmt.Errorf("migrate vip %s: %w", state.vip, err)
+		if state.distributed && len(state.mapping) != 0 {
+			if err := c.OVNNbClient.LoadBalancerUpdateIPPortMapping(state.lb, state.vip, state.mapping); err != nil {
+				return fmt.Errorf("update ip port mapping for vip %s on load balancer %s: %w", state.vip, state.lb, err)
+			}
+		}
+		if !profile.ignoreHealthCheck {
+			if err := c.OVNNbClient.LoadBalancerAddHealthCheck(state.lb, state.vip, profile.ignoreHealthCheck, state.mapping, state.externals); err != nil {
+				return fmt.Errorf("add health check for vip %s on load balancer %s: %w", state.vip, state.lb, err)
+			}
+		}
 	}
 	reconcileCtx.scopedLBAttachmentsApplied = len(reconcileCtx.scopedLBAttachments) != 0
-	if state.distributed && len(state.mapping) != 0 {
-		if err := c.OVNNbClient.LoadBalancerUpdateIPPortMapping(state.lb, state.vip, state.mapping); err != nil {
-			return fmt.Errorf("update ip port mapping for vip %s on load balancer %s: %w", state.vip, state.lb, err)
-		}
-	}
-	if !profile.ignoreHealthCheck {
-		if err := c.OVNNbClient.LoadBalancerAddHealthCheck(state.lb, state.vip, profile.ignoreHealthCheck, state.mapping, state.externals); err != nil {
-			return fmt.Errorf("add health check for vip %s on load balancer %s: %w", state.vip, state.lb, err)
-		}
-	}
 	if serviceUsesScopedLB(svc) {
 		if reconcileCtx.desiredScopedVIPs[state.lb] == nil {
 			reconcileCtx.desiredScopedVIPs[state.lb] = make(map[string]struct{})
