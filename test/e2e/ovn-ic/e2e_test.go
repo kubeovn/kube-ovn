@@ -76,7 +76,8 @@ func execPodOrDie(kubeContext, namespace, pod, cmd string) string {
 	return e2epodoutput.RunHostCmdOrDie(namespace, pod, cmd)
 }
 
-var _ = framework.SerialDescribe("[group:ovn-ic]", func() {
+// The specs mutate shared interconnection state and must run in declaration order.
+var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 	frameworks := make([]*framework.Framework, len(clusters))
 	for i := range clusters {
 		frameworks[i] = framework.NewFrameworkWithContext("ovn-ic", "kind-"+clusters[i])

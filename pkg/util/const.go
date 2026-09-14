@@ -36,8 +36,12 @@ const (
 	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
-	VpcNatGatewayAnnotation                 = "ovn.kubernetes.io/vpc_nat_gw"
-	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
+	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
+	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
+	// VpcNatGatewayInitInstanceAnnotation records the container instance the init command
+	// completed on, so a replacement instance initializes again.
+	VpcNatGatewayInitInstanceAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init_instance"
+	// Deprecated: container restarts are detected from Pod status.
 	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
 	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
 	VpcEipsAnnotation                       = "ovn.kubernetes.io/vpc_eips"
@@ -53,6 +57,7 @@ const (
 	VpcNatAnnotation                        = "ovn.kubernetes.io/vpc_nat"
 	OvnEipTypeLabel                         = "ovn.kubernetes.io/ovn_eip_type"
 	EipV4IpLabel                            = "ovn.kubernetes.io/eip_v4_ip"
+	EipUIDLabel                             = "ovn.kubernetes.io/eip_uid"
 	EipV6IpLabel                            = "ovn.kubernetes.io/eip_v6_ip"
 
 	RouterLBRuleVipsAnnotation = "ovn.kubernetes.io/router_lb_vip"
@@ -139,6 +144,7 @@ const (
 	VpcLbLabel                         = "ovn.kubernetes.io/vpc_lb"
 	VpcDNSNameLabel                    = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                           = "ovn.kubernetes.io/qos"
+	QoSPolicyUIDLabel                  = "ovn.kubernetes.io/qos_uid"
 	NodeNameLabel                      = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation         = "ovn.kubernetes.io/enable_log"
 	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
