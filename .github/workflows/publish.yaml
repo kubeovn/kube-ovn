@@ -7,6 +7,12 @@ on:
   workflow_dispatch:
   schedule:
   - cron: "20 16 * * *"
+  # Re-assemble the multi-arch tags as soon as an architecture publishes a new
+  # image, instead of waiting up to a day for the scheduled run.
+  workflow_run:
+    workflows: ["Build x86 Image", "Build arm64 Image"]
+    types: [completed]
+    branches: [master, release-*]
 
 concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
@@ -15,6 +21,10 @@ concurrency:
 jobs:
   build:
     name: Publish Images
+    # The arm64 workflow also builds on pull requests and the x86 workflow is
+    # dispatched for pull request E2E on the master ref, so only completed
+    # architecture push runs publish.
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -27,16 +37,33 @@ jobs:
         run: |
           TAG=$(cat VERSION)
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+          revision() {
+            docker image inspect --format '{{ if .Config.Labels }}{{ index .Config.Labels "org.opencontainers.image.revision" }}{{ end }}' "$1"
+          }
+
+          # A multi-arch tag is a snapshot of the two architecture digests, so it must
+          # not be published while one architecture still points at an older commit.
+          # The other architecture's workflow_run publishes once both legs agree.
+          publish_multiarch() {
+            local target=$1 x86=$2 arm=$3 rev_x86 rev_arm
+            rev_x86=$(revision "$x86" || true)
+            rev_arm=$(revision "$arm" || true)
+            if [ -z "$rev_x86" ] || [ "$rev_x86" != "$rev_arm" ]; then
+              echo "::warning::skipping $target: $x86 was built from ${rev_x86:-unknown} while $arm was built from ${rev_arm:-unknown}"
+              return 0
+            fi
+            docker manifest create "$target" "$x86" "$arm"
+            docker manifest push "$target"
+          }
+
           docker pull kubeovn/kube-ovn:$TAG-x86
           docker pull kubeovn/kube-ovn:$TAG-arm
           docker pull kubeovn/kube-ovn:$TAG-debug-x86
           docker pull kubeovn/kube-ovn:$TAG-debug-arm
-          docker manifest create kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86 kubeovn/kube-ovn:$TAG-arm
-          docker manifest create kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86 kubeovn/kube-ovn:$TAG-debug-arm
-          docker manifest push kubeovn/kube-ovn:$TAG
-          docker manifest push kubeovn/kube-ovn:$TAG-debug
-
           docker pull kubeovn/vpc-nat-gateway:$TAG-x86
           docker pull kubeovn/vpc-nat-gateway:$TAG-arm
-          docker manifest create kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86 kubeovn/vpc-nat-gateway:$TAG-arm
-          docker manifest push kubeovn/vpc-nat-gateway:$TAG
+
+          publish_multiarch kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86 kubeovn/kube-ovn:$TAG-arm
+          publish_multiarch kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86 kubeovn/kube-ovn:$TAG-debug-arm
+          publish_multiarch kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86 kubeovn/vpc-nat-gateway:$TAG-arm
