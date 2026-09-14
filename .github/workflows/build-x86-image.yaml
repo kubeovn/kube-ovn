@@ -5555,6 +5555,10 @@ jobs:
       - e2e-executor-result
     if: github.event_name == 'push' && needs.e2e-executor-result.result == 'success'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # "Trigger multi-arch publish" dispatches the publish workflow below.
+      actions: write
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -5630,3 +5634,13 @@ jobs:
           docker push kubeovn/kube-ovn:$TAG-dpdk-x86
           docker push kubeovn/vpc-nat-gateway:$TAG-x86
           docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+
+      - name: Trigger multi-arch publish
+        # The arm64 workflow triggers the publish on completion as well; this
+        # dispatch publishes the amd64 leg as soon as it is pushed instead of
+        # waiting for the whole x86 run (E2E matrix) to finish.
+        if: github.ref_name == github.event.repository.default_branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: gh workflow run publish.yaml --ref "$DEFAULT_BRANCH"
