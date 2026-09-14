@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.16.4 (2026-09-14)
+
+ * [a9296ef2a](https://github.com/kubeovn/kube-ovn/commit/a9296ef2a37c6519bc0ecb798082ce139c72f8eb) release v1.16.4
+ * [a6cdc426c](https://github.com/kubeovn/kube-ovn/commit/a6cdc426ce6ec08b16589201705e90eaf94ed0e9) Share E2E Go cache keys on release-1.16 (#7440)
+ * [faa56e26c](https://github.com/kubeovn/kube-ovn/commit/faa56e26c9e8f25a54e3e9fe18432a8445ca5fcd) fix(deps): update containerd to v2.2.8 (#7437)
+ * [6537d5bb6](https://github.com/kubeovn/kube-ovn/commit/6537d5bb6c97410bba7385b21ac0a4b1003f3f4a) ci: install Multus and KubeVirt from the PR checkout in conformance e2e (#7435)
+ * [b91874436](https://github.com/kubeovn/kube-ovn/commit/b918744366deec471276548afaea866b01326bf8) fix(dhcp): keep commas inside braced DHCP option values
+ * [d5a6191c8](https://github.com/kubeovn/kube-ovn/commit/d5a6191c81e076845ab27c53c92a4513b7ebb967) fix(test): persist FRR BGP topology configuration
+ * [cb3e5b872](https://github.com/kubeovn/kube-ovn/commit/cb3e5b872eaf59056cc8df6184fb665fc8130d09) fix(deps): update golang.org/x/exp (#7422)
+ * [2e4c673c5](https://github.com/kubeovn/kube-ovn/commit/2e4c673c529fd3542394ab3a292e28d19226bdfb) fix: use per-family match for dual-stack EIP/SNAT policies (#7401) (#7411)
+ * [4c1c92601](https://github.com/kubeovn/kube-ovn/commit/4c1c92601d744c9f140ce13d0a9f52306f774bd7) fix(deps): update golang (#7393)
+ * [3c630523d](https://github.com/kubeovn/kube-ovn/commit/3c630523d0b740e90864809baf83da0e36c39c19) deps: update compatible indirect Go modules on release-1.16 (#7377)
+ * [e8dc3a867](https://github.com/kubeovn/kube-ovn/commit/e8dc3a867245fafae13c1482528ddf70662d5a05) [release-1.16] feat: backport ACL sampling support (#7369)
+ * [7183826fa](https://github.com/kubeovn/kube-ovn/commit/7183826fa3072183bf00c2b22efe43f763cc6268) chore(deps): update module golang.org/x/crypto to v0.56.0 (#7368)
+ * [9748f928e](https://github.com/kubeovn/kube-ovn/commit/9748f928e48e8cbf77fa72ddb031aa06395628db) Remove OVN version compatibility upgrade logic (#7359)
+ * [b9d79e336](https://github.com/kubeovn/kube-ovn/commit/b9d79e3361ec23b502f21173fca10d0fe4fe02c9) deps: update libovsdb to latest upstream (#7242) (#7361)
+ * [9616086b3](https://github.com/kubeovn/kube-ovn/commit/9616086b32f6b4d8678d67a9a75e7fce1933e42e) chore(deps): update dependency go to v1.27.1 (release-1.16) (#7262)
+ * [6475f58e1](https://github.com/kubeovn/kube-ovn/commit/6475f58e122b88d07a058a5c5c5108e3f4511a27) prepare for next release
+
+### Contributors
+
+ * Nick
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.3 (2026-09-02)
 
  * [1d1779ac2](https://github.com/kubeovn/kube-ovn/commit/1d1779ac2f4f203b170e54f42dae55250ee67045) release v1.16.3
@@ -544,6 +570,32 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.25 (2026-09-14)
+
+ * [4c4c61ca0](https://github.com/kubeovn/kube-ovn/commit/4c4c61ca09a979139fc5fa652dcd7c737388d7c9) release v1.15.25
+ * [8675b5cdd](https://github.com/kubeovn/kube-ovn/commit/8675b5cdd6da5e86dd03697d701d2c3f0b400216) fix(deps): update containerd to v2.2.8
+ * [e14f8f875](https://github.com/kubeovn/kube-ovn/commit/e14f8f875e614afd45990280f07d6fde40fcc7bc) Share E2E Go cache keys on release-1.15 (#7439)
+ * [36fcd66d3](https://github.com/kubeovn/kube-ovn/commit/36fcd66d3bbb6f3198e4c6f0aa05619b4848e9c9) ci: install Multus and KubeVirt from the PR checkout in conformance e2e (#7435)
+ * [11eeb3616](https://github.com/kubeovn/kube-ovn/commit/11eeb3616e775d6d14c425e95b060b8a52016793) fix(dhcp): keep commas inside braced DHCP option values
+ * [2675d0fbd](https://github.com/kubeovn/kube-ovn/commit/2675d0fbdda7058d552c776361d1669ed4d07fc1) chore: apply lint fixes on release-1.15
+ * [3a80b85f8](https://github.com/kubeovn/kube-ovn/commit/3a80b85f81970fe1e1205597cb29e179c82a5371) fix(test): persist FRR BGP topology configuration
+ * [1fd205d53](https://github.com/kubeovn/kube-ovn/commit/1fd205d53ed66d2eeda65d7897e640d2303ce079) fix(deps): update golang.org/x modules (#7421)
+ * [18c0f6a95](https://github.com/kubeovn/kube-ovn/commit/18c0f6a95545f30e104e223c5b8252b7fdc5acbe) fix: use per-family match for dual-stack EIP/SNAT policies (#7401) (#7412)
+ * [2565d9b62](https://github.com/kubeovn/kube-ovn/commit/2565d9b62822582941cbdc3a81292bd49ab0b8fc) fix(deps): update Go to 1.26.8, golang.org/x modules, and grpc (#7387)
+ * [fab4feda0](https://github.com/kubeovn/kube-ovn/commit/fab4feda0951b4689e739a115df48bb75aa5447a) Remove OVN version compatibility upgrade logic (#7360)
+ * [46fe06933](https://github.com/kubeovn/kube-ovn/commit/46fe06933278239ad720b37cc991cab4a7d184d8) deps: update libovsdb to latest upstream (#7242) (#7362)
+ * [f27eb67f0](https://github.com/kubeovn/kube-ovn/commit/f27eb67f0d3d674214600af0a6939048144e3ea8) ci: decouple image push from iptables NAT gateway E2E
+ * [33339c53f](https://github.com/kubeovn/kube-ovn/commit/33339c53fb6e76c918696ea12369fe9a690d14e8) fix(controller): reconcile missing node logical switch ports (#7322) (#7348)
+ * [0be9754ea](https://github.com/kubeovn/kube-ovn/commit/0be9754ea164fc41aa576747d3549f56268eb133) prepare for next release
+
+### Contributors
+
+ * Nick
+ * Zujian Zhang
+ * changluyi
  * zhangzujian
  * 张祖建
 
@@ -1597,6 +1649,33 @@
  * xieyanker
  * zbb88888
  * zhangzujian
+ * 张祖建
+
+## v1.14.42 (2026-09-14)
+
+ * [306c09bb2](https://github.com/kubeovn/kube-ovn/commit/306c09bb2e234ec23fd1a61125c541f73c582c46) release v1.14.42
+ * [9ab7a45b1](https://github.com/kubeovn/kube-ovn/commit/9ab7a45b1f4461fae58fd9ab9023c37d1dd52091) fix: refresh release-1.14 image dependencies (#7443)
+ * [7e1dc1d9e](https://github.com/kubeovn/kube-ovn/commit/7e1dc1d9eeadc4f4421a9daa3fd014da3f140e8f) chore: update KubeVirt to v1.7.0 on release-1.14 (#7436)
+ * [c60aeb53d](https://github.com/kubeovn/kube-ovn/commit/c60aeb53d4e20a9a72c17fbf1a1f48d70df14477) Share E2E Go cache keys on release-1.14 (#7441)
+ * [c89c86b82](https://github.com/kubeovn/kube-ovn/commit/c89c86b829dfe59a8fbca2a9b0df91022165791f) ci: install Multus and KubeVirt from the PR checkout in conformance e2e (#7435)
+ * [4b03159ee](https://github.com/kubeovn/kube-ovn/commit/4b03159ee95ee521ff8f93af5f4a2259f0c3f593) fix(ipam): stop random allocation of excludeIps after IPPool reconcile (#7392)
+ * [02824bda7](https://github.com/kubeovn/kube-ovn/commit/02824bda7c3a0b6a770cbd57f6accb9178643f07) fix: count NAT objects that have not entered the deletion state to avoid "informer cache" issues. (#6983)
+ * [0b4ca179d](https://github.com/kubeovn/kube-ovn/commit/0b4ca179d043f8f7aa4cd6e2af4c21fd6801a4d0) ci: decouple image push from iptables NAT gateway E2E
+ * [6da549de0](https://github.com/kubeovn/kube-ovn/commit/6da549de02a92900cbaa979255c8e3a2f24c012d) fix(controller): reconcile missing node logical switch ports (#7322) (#7347)
+ * [4e9956f0b](https://github.com/kubeovn/kube-ovn/commit/4e9956f0b056077a37d71d1522435f6202069ed0) [release-1.14] fix(chart): correct v2 agent capability name (#7076)
+ * [3754b3c7f](https://github.com/kubeovn/kube-ovn/commit/3754b3c7fd8389ecce82f7c6f343e25f0983c28b) fix: reject subnet gateway static IP allocation (#6975)
+ * [c6a3bc6e7](https://github.com/kubeovn/kube-ovn/commit/c6a3bc6e79263ce2a053130006d9b02b0cd9a915) [release-1.14] build: refresh kubectl golang.org/x deps and CNI plugin rebuilds (#6987)
+ * [3b0114dec](https://github.com/kubeovn/kube-ovn/commit/3b0114decaf739222add36cc47167d765dcd8888) fix veg init for mismatched IP families (#6986)
+ * [e892e7204](https://github.com/kubeovn/kube-ovn/commit/e892e7204a9fe7584eabc8dda33c3378c0f3a59a) [release-1.14] fix: skip non-security-group port groups in sg gc (#6962)
+ * [2a113addf](https://github.com/kubeovn/kube-ovn/commit/2a113addf5114dea5a264ae4b061eccf56def0fd) fix vpc egress local policy without bfd
+ * [835348782](https://github.com/kubeovn/kube-ovn/commit/83534878212273d2e73ff7d37b5fc41f535fa6c2) prepare for next release
+
+### Contributors
+
+ * Mengxin Liu
+ * changluyi
+ * zhangzujian
+ * zzhuoji
  * 张祖建
 
 ## v1.14.41 (2026-06-22)
