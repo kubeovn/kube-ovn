@@ -135,22 +135,6 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
-func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol) []string {
-	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
-		return nil
-	}
-
-	// Keep fallback selection keyed by source address so new flows from one
-	// client consistently reach the backend learned by OVN's affinity flow.
-	if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
-		return nil
-	}
-	return []string{
-		ovnnb.LoadBalancerSelectionFieldsIPSrc,
-		ovnnb.LoadBalancerSelectionFieldsIpv6Src,
-	}
-}
-
 func serviceScopedLBName(svc *v1.Service, protocol v1.Protocol) string {
 	return serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, serviceLBInternalTraffic, "")
 }
@@ -311,11 +295,10 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		return "", err
 	}
 	distributed := trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)
-	selectionFields := serviceScopedLBSelectionFields(svc, protocol)
-	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol)), selectionFields...); err != nil {
+	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol))); err != nil {
 		return "", fmt.Errorf("create service-scoped load balancer %s: %w", name, err)
 	}
-	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, selectionFields); err != nil {
+	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, nil); err != nil {
 		return "", fmt.Errorf("set selection fields on service-scoped load balancer %s: %w", name, err)
 	}
 	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, vpcName, trafficClass)); err != nil {
