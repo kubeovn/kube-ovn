@@ -1815,9 +1815,15 @@ func (c *Controller) getNatGwPod(name, namespace string) (*corev1.Pod, error) {
 	return pods[0], nil
 }
 
+// getNatGwPods returns the Pods a rule of the gateway has to be applied to: its running
+// instances, or every Pod when allPods is set.
+//
+// The Pods are read live, see listNatGwPodsByName: the redo tokens that decide whether a rule
+// still has to be re-applied are computed from live Pods (natGwRedoToken), so applying the rules
+// to the informer cache can leave an instance the token already claims as configured without its
+// rules, and no later event re-applies them.
 func (c *Controller) getNatGwPods(name, namespace string, allPods bool) ([]*corev1.Pod, error) {
-	selector := labels.Set{"app": util.GenNatGwName(name), util.VpcNatGatewayLabel: "true"}.AsSelector()
-	pods, err := c.podsLister.Pods(namespace).List(selector)
+	pods, err := c.listNatGwPodsByName(name, namespace)
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -2005,7 +2011,7 @@ func selectNatGwLanIP(ip, protocol string) string {
 	}
 }
 
-// listNatGwPods reads the gateway Pods straight from the API server.
+// listNatGwPodsByName reads the gateway Pods straight from the API server.
 //
 // This must not be replaced by podsLister: the gateway is reconciled on workload
 // events, and the workload controller writes its status only after the Pod change is
@@ -2014,18 +2020,22 @@ func selectNatGwLanIP(ip, protocol string) string {
 // the gateway observe a stale state that no later event would ever reconcile.
 // TODO: If production API server metrics show material LIST pressure, filter status-only
 // gateway updates and skip repeated init status sync after a non-HA LAN IP is persisted.
-func (c *Controller) listNatGwPods(gw *kubeovnv1.VpcNatGateway) ([]*corev1.Pod, error) {
-	selector := labels.Set{"app": util.GenNatGwName(gw.Name), util.VpcNatGatewayLabel: "true"}.String()
-	podList, err := c.config.KubeClient.CoreV1().Pods(c.natGwNamespace(gw)).List(context.Background(),
+func (c *Controller) listNatGwPodsByName(name, namespace string) ([]*corev1.Pod, error) {
+	selector := labels.Set{"app": util.GenNatGwName(name), util.VpcNatGatewayLabel: "true"}.String()
+	podList, err := c.config.KubeClient.CoreV1().Pods(namespace).List(context.Background(),
 		metav1.ListOptions{LabelSelector: selector})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list pods of vpc nat gateway %s: %w", gw.Name, err)
+		return nil, fmt.Errorf("failed to list pods of vpc nat gateway %s: %w", name, err)
 	}
 	pods := make([]*corev1.Pod, 0, len(podList.Items))
 	for i := range podList.Items {
 		pods = append(pods, &podList.Items[i])
 	}
 	return pods, nil
+}
+
+func (c *Controller) listNatGwPods(gw *kubeovnv1.VpcNatGateway) ([]*corev1.Pod, error) {
+	return c.listNatGwPodsByName(gw.Name, c.natGwNamespace(gw))
 }
 
 // getNatGwObservedLanIPs returns the LAN IPs observed on the gateway Pods owned by gw,
