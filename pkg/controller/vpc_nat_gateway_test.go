@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	appsv1listers "k8s.io/client-go/listers/apps/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -141,6 +142,45 @@ func TestIsVpcNatGwChanged(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// TestGetNatGwPodsReadsLivePods pins the Pods rule application works on to the live Pods. Redo
+// tokens, which decide whether a rule still has to be re-applied, are computed from live Pods:
+// applying the rules to the informer cache can leave a replica the token already counts as
+// configured without its rules, and no later event re-applies them. The HA VPC NAT gateway e2e
+// spec hit exactly that when it created an EIP right after a replica started, while the informer
+// cache still lagged behind that replica.
+func TestGetNatGwPodsReadsLivePods(t *testing.T) {
+	t.Parallel()
+
+	const (
+		gwName    = "gw-live-pods"
+		namespace = metav1.NamespaceSystem
+	)
+	pod := &corev1.Pod{
+		Name:      util.GenNatGwName(gwName) + "-7d9f4b6c8d-live",
+		Namespace: namespace,
+		Labels: map[string]string{
+			"app":                   util.GenNatGwName(gwName),
+			util.VpcNatGatewayLabel: "true",
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
+	require.NoError(t, err)
+	controller := fakeCtrl.fakeController
+	// A replica that has just started is not in the informer cache yet.
+	controller.podsLister = corelisters.NewPodLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, nil))
+
+	pods, err := controller.getNatGwPods(gwName, namespace, false)
+	require.NoError(t, err)
+	require.Len(t, pods, 1)
+	require.Equal(t, pod.Name, pods[0].Name)
+
+	allPods, err := controller.getNatGwPods(gwName, namespace, true)
+	require.NoError(t, err)
+	require.Len(t, allPods, 1)
+	require.Equal(t, pod.Name, allPods[0].Name)
 }
 
 func TestHandleAddOrUpdateVpcNatGwUpdatesStatefulSetLanIP(t *testing.T) {
