@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/moby/moby/api/types/network"
 	"github.com/onsi/ginkgo/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,7 +41,18 @@ func makeProviderNetwork(name string, linkMap map[string]*iproute.Link) *kubeovn
 	return framework.MakeProviderNetwork(name, false, defaultInterface, customInterfaces, nil)
 }
 
+// setNodeGWLabel adds the external gateway label to a node, or removes it when add is false.
 func setNodeGWLabel(cs clientset.Interface, nodeName string, add bool) {
+	if add {
+		setNodeGWLabelValue(cs, nodeName, "true")
+		return
+	}
+	setNodeGWLabelValue(cs, nodeName, "")
+}
+
+// setNodeGWLabelValue sets the external gateway label of a node to the given value; an empty value
+// removes the label.
+func setNodeGWLabelValue(cs clientset.Interface, nodeName, value string) {
 	ginkgo.GinkgoHelper()
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		node, err := cs.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
@@ -51,15 +63,177 @@ func setNodeGWLabel(cs clientset.Interface, nodeName string, add bool) {
 		if updated.Labels == nil {
 			updated.Labels = make(map[string]string)
 		}
-		if add {
-			updated.Labels[util.ExGatewayLabel] = "true"
-		} else {
+		if value == "" {
 			delete(updated.Labels, util.ExGatewayLabel)
+		} else {
+			updated.Labels[util.ExGatewayLabel] = value
 		}
 		_, err = cs.CoreV1().Nodes().Update(context.Background(), updated, metav1.UpdateOptions{})
 		return err
 	})
 	framework.ExpectNoError(err)
+}
+
+// gwLabelState captures the external gateway label of a node so that the suite can restore it
+// verbatim. kube-ovn sets the label to "false" (instead of removing it) when a node stops being an
+// external gateway node, so restoring a boolean would turn such a node back into a gateway.
+type gwLabelState struct {
+	value   string
+	present bool
+}
+
+// gwLabelStateOf returns the external gateway label state of the given labels.
+func gwLabelStateOf(labels map[string]string) gwLabelState {
+	value, present := labels[util.ExGatewayLabel]
+	return gwLabelState{value: value, present: present}
+}
+
+// gwLabelStateOfNode returns the external gateway label state of the named node.
+func gwLabelStateOfNode(cs clientset.Interface, nodeName string) gwLabelState {
+	ginkgo.GinkgoHelper()
+	node, err := cs.CoreV1().Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	framework.ExpectNoError(err)
+	return gwLabelStateOf(node.Labels)
+}
+
+// restoreValue returns the value the label has to be set to; an empty value removes the label.
+func (s gwLabelState) restoreValue() string {
+	if !s.present {
+		return ""
+	}
+	return s.value
+}
+
+// restore brings the external gateway label of the named node back to its original state.
+func (s gwLabelState) restore(cs clientset.Interface, nodeName string) {
+	setNodeGWLabelValue(cs, nodeName, s.restoreValue())
+}
+
+// countGWNodes returns the number of nodes that already carry the external gateway label and are
+// not managed by this suite. The chassis of these nodes stay on the VPC external LRPs during the
+// whole test, so expectations have to be relative to them.
+func countGWNodes(cs clientset.Interface, ignored ...string) int {
+	ginkgo.GinkgoHelper()
+	nodes, err := cs.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+	framework.ExpectNoError(err)
+
+	skip := make(map[string]struct{}, len(ignored))
+	for _, name := range ignored {
+		skip[name] = struct{}{}
+	}
+	count := 0
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		if _, ok := skip[node.Name]; ok {
+			continue
+		}
+		if node.Labels[util.ExGatewayLabel] == "true" {
+			count++
+		}
+	}
+	return count
+}
+
+// pickNodesWithoutGWLabel returns up to count ready schedulable nodes that do not carry the
+// external gateway label, so the suite never reconfigures a cluster that already has an external
+// gateway configured.
+func pickNodesWithoutGWLabel(cs clientset.Interface, count int) []string {
+	ginkgo.GinkgoHelper()
+	nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+	framework.ExpectNoError(err)
+
+	names := make([]string, 0, count)
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		if node.Labels[util.ExGatewayLabel] == "true" {
+			continue
+		}
+		names = append(names, node.Name)
+		if len(names) == count {
+			break
+		}
+	}
+	return names
+}
+
+// deleteOvnEipBestEffort deletes an OVN EIP and waits for it to disappear. A timeout is only
+// logged: deleting the VPC already releases its LRP EIP, and slow garbage collection must not
+// fail the spec. Only use it for the shared default external subnet, whose subnet cleanup is
+// best-effort as well; suite-owned subnets delete their EIPs with DeleteSync so that the subnet
+// they depend on is removed deterministically.
+func deleteOvnEipBestEffort(client *framework.OvnEipClient, name string) {
+	ginkgo.GinkgoHelper()
+	client.Delete(name)
+
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		if _, err := client.OvnEipInterface.Get(context.Background(), name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
+			return
+		}
+		time.Sleep(time.Second)
+	}
+	framework.Logf("OVN EIP %s still exists after cleanup, leaving it to the controller", name)
+}
+
+// waitSubnetGoneBestEffort waits until the subnet disappears and reports the outcome without
+// failing the spec.
+func waitSubnetGoneBestEffort(client *framework.SubnetClient, name string) bool {
+	ginkgo.GinkgoHelper()
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		if _, err := client.SubnetInterface.Get(context.Background(), name, metav1.GetOptions{}); apierrors.IsNotFound(err) {
+			return true
+		}
+		time.Sleep(time.Second)
+	}
+	return false
+}
+
+// ensureDefaultExternalSubnet makes the cluster wide default external gateway subnet available
+// and reports whether this suite created it (and therefore owns its cleanup). The subnet is
+// shared with other suites (e.g. [group:rlr]), so an existing subnet is reused and a leftover
+// subnet that is still terminating is waited for instead of failing the spec.
+func ensureDefaultExternalSubnet(f *framework.Framework, clusterName, suffix, dockerNetName, pnName, vlanPrefix string) (bool, func()) {
+	ginkgo.GinkgoHelper()
+
+	subnetClient := f.SubnetClient()
+	for {
+		subnet, err := subnetClient.SubnetInterface.Get(context.Background(), extDefaultSubnet, metav1.GetOptions{})
+		switch {
+		case err == nil && subnet.DeletionTimestamp.IsZero():
+			framework.ExpectTrue(subnetClient.WaitToBeReady(extDefaultSubnet, 2*time.Minute),
+				"wait for the existing subnet %s to become ready", extDefaultSubnet)
+			return false, nil
+		case err == nil:
+			ginkgo.By("Waiting for the leftover subnet " + extDefaultSubnet + " to disappear")
+			if !waitSubnetGoneBestEffort(subnetClient, extDefaultSubnet) {
+				framework.Failf("subnet %s is stuck in Terminating, a previous run left it behind", extDefaultSubnet)
+			}
+		case apierrors.IsNotFound(err):
+			ginkgo.By("Setting up main docker network for default external subnet")
+			linkMap, disconnect := connectDockerNetwork(f, clusterName, dockerNetName)
+			pn := makeProviderNetwork(pnName, linkMap)
+			// A previous run intentionally keeps the provider network when the shared subnet is
+			// stuck terminating; the subnet is gone now, so reuse the leftover instead of failing
+			// CreateSync with AlreadyExists.
+			switch _, getErr := f.ProviderNetworkClient().ProviderNetworkInterface.Get(context.Background(), pnName, metav1.GetOptions{}); {
+			case getErr == nil:
+				framework.ExpectTrue(f.ProviderNetworkClient().WaitToBeReady(pnName, 2*time.Minute),
+					"wait for the retained provider network %s to become ready", pnName)
+			case apierrors.IsNotFound(getErr):
+				_ = f.ProviderNetworkClient().CreateSync(pn)
+			default:
+				framework.ExpectNoError(getErr)
+			}
+			vlan := framework.MakeVlan(vlanPrefix+"-"+suffix, pnName, 0)
+			_ = f.VlanClient().Create(vlan)
+			cidr, gw, excludeIPs := dockerSubnetCIDR(f, dockerNetName)
+			_ = subnetClient.CreateSync(framework.MakeSubnet(extDefaultSubnet, vlan.Name, cidr, gw, "", "", excludeIPs, nil, nil))
+			return true, disconnect
+		default:
+			framework.ExpectNoError(err)
+		}
+	}
 }
 
 // lrpChassisList returns the chassis names registered on the given LRP's gateway chassis.
@@ -169,27 +343,45 @@ func connectDockerNetwork(f *framework.Framework, clusterName, netName string) (
 	return linkMap, cleanup
 }
 
+// orderedDockerSubnet joins the enabled Docker IPAM subnets and gateways with IPv4 first.
+// Kube-OVN dual-stack subnets must keep the IPv4 CIDR before the IPv6 one (the IPAM assigns
+// cidrs[0] to IPv4), while the Docker IPAM config order is not guaranteed. [group:rlr] does the
+// same ordering when it creates the shared external subnet.
+func orderedDockerSubnet(configs []network.IPAMConfig, hasIPv4, hasIPv6 bool) (cidr, gw string) {
+	var cidrV4, cidrV6, gwV4, gwV6 string
+	for _, cfg := range configs {
+		switch util.CheckProtocol(cfg.Subnet.String()) {
+		case kubeovnv1.ProtocolIPv4:
+			if hasIPv4 {
+				cidrV4, gwV4 = cfg.Subnet.String(), cfg.Gateway.String()
+			}
+		case kubeovnv1.ProtocolIPv6:
+			if hasIPv6 {
+				cidrV6, gwV6 = cfg.Subnet.String(), cfg.Gateway.String()
+			}
+		}
+	}
+
+	cidrParts := make([]string, 0, 2)
+	gwParts := make([]string, 0, 2)
+	if cidrV4 != "" {
+		cidrParts = append(cidrParts, cidrV4)
+		gwParts = append(gwParts, gwV4)
+	}
+	if cidrV6 != "" {
+		cidrParts = append(cidrParts, cidrV6)
+		gwParts = append(gwParts, gwV6)
+	}
+	return strings.Join(cidrParts, ","), strings.Join(gwParts, ",")
+}
+
 // dockerSubnetCIDR extracts IPv4/IPv6 CIDR, gateway, and container exclude-IPs from a docker network.
 func dockerSubnetCIDR(f *framework.Framework, netName string) (cidr, gw string, excludeIPs []string) {
 	ginkgo.GinkgoHelper()
 	net, err := docker.NetworkInspect(netName)
 	framework.ExpectNoError(err)
 
-	var cidrParts, gwParts []string
-	for _, cfg := range net.IPAM.Config {
-		switch util.CheckProtocol(cfg.Subnet.String()) {
-		case kubeovnv1.ProtocolIPv4:
-			if f.HasIPv4() {
-				cidrParts = append(cidrParts, cfg.Subnet.String())
-				gwParts = append(gwParts, cfg.Gateway.String())
-			}
-		case kubeovnv1.ProtocolIPv6:
-			if f.HasIPv6() {
-				cidrParts = append(cidrParts, cfg.Subnet.String())
-				gwParts = append(gwParts, cfg.Gateway.String())
-			}
-		}
-	}
+	cidr, gw = orderedDockerSubnet(net.IPAM.Config, f.HasIPv4(), f.HasIPv6())
 	for _, c := range net.Containers {
 		if c.IPv4Address.IsValid() && f.HasIPv4() {
 			excludeIPs = append(excludeIPs, c.IPv4Address.Addr().String())
@@ -198,7 +390,7 @@ func dockerSubnetCIDR(f *framework.Framework, netName string) (cidr, gw string, 
 			excludeIPs = append(excludeIPs, c.IPv6Address.Addr().String())
 		}
 	}
-	return strings.Join(cidrParts, ","), strings.Join(gwParts, ","), excludeIPs
+	return cidr, gw, excludeIPs
 }
 
 // patchVPCExternal updates EnableExternal and ExtraExternalSubnets on a VPC and waits for ready.
@@ -211,7 +403,9 @@ func patchVPCExternal(vpcClient *framework.VpcClient, vpcName string, enable boo
 	vpcClient.PatchSync(cur, mod, 2*time.Minute)
 }
 
-var _ = framework.Describe("[group:vpc-external]", func() {
+// Serial: both specs create, use and delete the cluster wide default external gateway subnet,
+// so they must never run in parallel with each other or with other specs.
+var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 	f := framework.NewDefaultFramework("vpc-external")
 
 	var (
@@ -253,6 +447,9 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			createdDefaultInfra bool
 			disconnectMain      func()
 			disconnectExtra     func()
+			origNode1GW         gwLabelState
+			origNode2GW         gwLabelState
+			gwBase              int
 
 			providerNetworkClient *framework.ProviderNetworkClient
 			vlanClient            *framework.VlanClient
@@ -277,32 +474,20 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			vpcClient = f.VpcClient()
 			ovnEipClient = f.OvnEipClient()
 
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
-			framework.ExpectNoError(err)
-			if len(k8sNodes.Items) < 2 {
-				ginkgo.Skip("GW node lifecycle test requires at least 2 schedulable nodes")
+			nodes := pickNodesWithoutGWLabel(cs, 2)
+			if len(nodes) < 2 {
+				ginkgo.Skip("GW node lifecycle test requires at least 2 schedulable nodes without an external gateway label")
 			}
-			node1 = k8sNodes.Items[0].Name
-			node2 = k8sNodes.Items[1].Name
+			node1, node2 = nodes[0], nodes[1]
+			origNode1GW, origNode2GW = gwLabelStateOfNode(cs, node1), gwLabelStateOfNode(cs, node2)
+			// Chassis of pre-existing external gateway nodes stay on the VPC LRPs during the whole
+			// test, so every expectation has to be relative to them.
+			gwBase = countGWNodes(cs, node1, node2)
 
-			// Setup main docker network → provider + VLAN + "external" subnet.
-			// Skip creation if the cluster already has a pre-existing "external" subnet.
-			_, defaultSubnetErr := subnetClient.SubnetInterface.Get(context.Background(), extDefaultSubnet, metav1.GetOptions{})
-			if apierrors.IsNotFound(defaultSubnetErr) {
-				ginkgo.By("Setting up main docker network for default external subnet")
-				mainLinkMap, disconn := connectDockerNetwork(f, clusterName, dockerNetMain)
-				disconnectMain = disconn
-				pn := makeProviderNetwork("pn-gw-main", mainLinkMap)
-				_ = providerNetworkClient.CreateSync(pn)
-				vlan := framework.MakeVlan("vlan-gw-main-"+suffix, "pn-gw-main", 0)
-				_ = vlanClient.Create(vlan)
-				cidr, gw, excl := dockerSubnetCIDR(f, dockerNetMain)
-				sub := framework.MakeSubnet(extDefaultSubnet, vlan.Name, cidr, gw, "", "", excl, nil, nil)
-				_ = subnetClient.CreateSync(sub)
-				createdDefaultInfra = true
-			} else {
-				framework.ExpectNoError(defaultSubnetErr)
-			}
+			// Setup main docker network → provider + VLAN + "external" subnet. The subnet is shared
+			// with other suites (e.g. [group:rlr]), so it is reused when it already exists.
+			createdDefaultInfra, disconnectMain = ensureDefaultExternalSubnet(f, clusterName, suffix,
+				dockerNetMain, "pn-gw-main", "vlan-gw-main")
 
 			// Setup extra docker network → provider + VLAN + extra subnet for VPC2.
 			ginkgo.By("Setting up extra docker network for extra external subnet")
@@ -338,27 +523,40 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 		})
 
 		ginkgo.AfterEach(func() {
-			// Always remove GW labels to avoid contaminating other tests.
+			// Restore the external gateway labels of the nodes managed by this suite instead of
+			// removing them unconditionally, so a pre-existing configuration is not clobbered.
 			if node1 != "" {
-				setNodeGWLabel(cs, node1, false)
+				origNode1GW.restore(cs, node1)
 			}
 			if node2 != "" {
-				setNodeGWLabel(cs, node2, false)
+				origNode2GW.restore(cs, node2)
 			}
 
-			ovnEipClient.DeleteSync(vpc1Name + "-" + extDefaultSubnet)
-			ovnEipClient.DeleteSync(vpc2Name + "-" + extraSubnetName)
+			// Delete the VPCs before their auto-created LRP EIPs: while a VPC still has
+			// enableExternal=true the controller re-allocates the LRP EIP as fast as the test
+			// deletes it, so the EIP would never converge (see [group:rlr]). Deleting the VPC
+			// releases the external connection, after which the LRP EIP can be removed for good.
 			vpcClient.DeleteSync(vpc1Name)
 			vpcClient.DeleteSync(vpc2Name)
+			deleteOvnEipBestEffort(ovnEipClient, vpc1Name+"-"+extDefaultSubnet)
+			// The extra subnet is owned by this suite and deleted below, so its LRP EIP must be
+			// gone first; wait for it instead of leaving it to the best-effort default path.
+			ovnEipClient.DeleteSync(vpc2Name + "-" + extraSubnetName)
 
-			time.Sleep(time.Second)
 			subnetClient.DeleteSync(extraSubnetName)
 			vlanClient.Delete("vlan-gw-extra-" + suffix)
 			providerNetworkClient.DeleteSync("pn-gw-extra")
 			if createdDefaultInfra {
-				subnetClient.DeleteSync(extDefaultSubnet)
-				vlanClient.Delete("vlan-gw-main-" + suffix)
-				providerNetworkClient.DeleteSync("pn-gw-main")
+				// The default external subnet is shared with other suites: remove it only after
+				// every LRP EIP allocated from it is gone, and never fail the spec on cleanup.
+				subnetClient.Delete(extDefaultSubnet)
+				if waitSubnetGoneBestEffort(subnetClient, extDefaultSubnet) {
+					vlanClient.Delete("vlan-gw-main-" + suffix)
+					providerNetworkClient.DeleteSync("pn-gw-main")
+				} else {
+					framework.Logf("subnet %s was not removed, keeping its provider network, vlan and docker network for the next run", extDefaultSubnet)
+					disconnectMain = nil
+				}
 			}
 
 			if disconnectExtra != nil {
@@ -370,31 +568,31 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 		})
 
 		framework.ConformanceIt("should sync gateway chassis to all VPC LRPs when GW label is added or removed", func() {
-			f.SkipVersionPriorTo(1, 16, "VPC external subnet chassis reconciliation was enhanced in v1.16")
+			f.SkipVersionPriorTo(1, 17, "VPC external LRP chassis reconciliation was introduced in v1.17")
 
 			ginkgo.By("Step 1: Verify initial state — node1 chassis on both LRPs")
-			waitLRPChassisCount(vpc1Name, extDefaultSubnet, 1)
-			waitLRPChassisCount(vpc2Name, extraSubnetName, 1)
+			waitLRPChassisCount(vpc1Name, extDefaultSubnet, gwBase+1)
+			waitLRPChassisCount(vpc2Name, extraSubnetName, gwBase+1)
 
 			ginkgo.By("Step 2: Label node2 as GW — both chassis appear on both LRPs")
 			setNodeGWLabel(cs, node2, true)
-			waitLRPChassisCount(vpc1Name, extDefaultSubnet, 2)
-			waitLRPChassisCount(vpc2Name, extraSubnetName, 2)
+			waitLRPChassisCount(vpc1Name, extDefaultSubnet, gwBase+2)
+			waitLRPChassisCount(vpc2Name, extraSubnetName, gwBase+2)
 
 			ginkgo.By("Step 3: Remove GW label from node1 — only node2 chassis remains")
 			setNodeGWLabel(cs, node1, false)
-			waitLRPChassisCount(vpc1Name, extDefaultSubnet, 1)
-			waitLRPChassisCount(vpc2Name, extraSubnetName, 1)
+			waitLRPChassisCount(vpc1Name, extDefaultSubnet, gwBase+1)
+			waitLRPChassisCount(vpc2Name, extraSubnetName, gwBase+1)
 
-			ginkgo.By("Step 4: Remove GW label from node2 — chassis list becomes empty")
+			ginkgo.By("Step 4: Remove GW label from node2 — only pre-existing external gateways remain")
 			setNodeGWLabel(cs, node2, false)
-			waitLRPChassisCount(vpc1Name, extDefaultSubnet, 0)
-			waitLRPChassisCount(vpc2Name, extraSubnetName, 0)
+			waitLRPChassisCount(vpc1Name, extDefaultSubnet, gwBase)
+			waitLRPChassisCount(vpc2Name, extraSubnetName, gwBase)
 
 			ginkgo.By("Step 5: Re-label node1 — chassis restored on both LRPs")
 			setNodeGWLabel(cs, node1, true)
-			waitLRPChassisCount(vpc1Name, extDefaultSubnet, 1)
-			waitLRPChassisCount(vpc2Name, extraSubnetName, 1)
+			waitLRPChassisCount(vpc1Name, extDefaultSubnet, gwBase+1)
+			waitLRPChassisCount(vpc2Name, extraSubnetName, gwBase+1)
 		})
 	})
 
@@ -418,6 +616,8 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			disconnectMain        func()
 			disconnectExtra1      func()
 			disconnectExtra2      func()
+			origNode1GW           gwLabelState
+			gwBase                int
 			providerNetworkClient *framework.ProviderNetworkClient
 			vlanClient            *framework.VlanClient
 			subnetClient          *framework.SubnetClient
@@ -441,29 +641,20 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			vpcClient = f.VpcClient()
 			ovnEipClient = f.OvnEipClient()
 
-			k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
-			framework.ExpectNoError(err)
-			framework.ExpectNotEmpty(k8sNodes.Items)
-			node1 = k8sNodes.Items[0].Name
-
-			// Setup main docker network → "external" subnet.
-			// Skip creation if the cluster already has a pre-existing "external" subnet.
-			_, defaultSubnetErr := subnetClient.SubnetInterface.Get(context.Background(), extDefaultSubnet, metav1.GetOptions{})
-			if apierrors.IsNotFound(defaultSubnetErr) {
-				ginkgo.By("Setting up main docker network for default external subnet")
-				mainLinkMap, disconn := connectDockerNetwork(f, clusterName, dockerNetMain)
-				disconnectMain = disconn
-				pn := makeProviderNetwork("pn-sub-main", mainLinkMap)
-				_ = providerNetworkClient.CreateSync(pn)
-				vlan := framework.MakeVlan("vlan-sub-main-"+suffix, "pn-sub-main", 0)
-				_ = vlanClient.Create(vlan)
-				cidr, gw, excl := dockerSubnetCIDR(f, dockerNetMain)
-				sub := framework.MakeSubnet(extDefaultSubnet, vlan.Name, cidr, gw, "", "", excl, nil, nil)
-				_ = subnetClient.CreateSync(sub)
-				createdDefaultInfra = true
-			} else {
-				framework.ExpectNoError(defaultSubnetErr)
+			nodes := pickNodesWithoutGWLabel(cs, 1)
+			if len(nodes) < 1 {
+				ginkgo.Skip("VPC external subnet lifecycle test requires a schedulable node without an external gateway label")
 			}
+			node1 = nodes[0]
+			origNode1GW = gwLabelStateOfNode(cs, node1)
+			// Chassis of pre-existing external gateway nodes stay on the VPC LRPs during the whole
+			// test, so every expectation has to be relative to them.
+			gwBase = countGWNodes(cs, node1)
+
+			// Setup main docker network → "external" subnet. The subnet is shared with other suites
+			// (e.g. [group:rlr]), so it is reused when it already exists.
+			createdDefaultInfra, disconnectMain = ensureDefaultExternalSubnet(f, clusterName, suffix,
+				dockerNetMain, "pn-sub-main", "vlan-sub-main")
 
 			// Setup docker network for extra1 subnet.
 			ginkgo.By("Setting up extra1 docker network")
@@ -504,16 +695,19 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 
 		ginkgo.AfterEach(func() {
 			if node1 != "" {
-				setNodeGWLabel(cs, node1, false)
+				origNode1GW.restore(cs, node1)
 			}
 
-			// Delete any auto-created LRP EIPs for all subnets that may have been connected.
-			ovnEipClient.DeleteSync(vpcName + "-" + extDefaultSubnet)
+			// Delete the VPC before its auto-created LRP EIPs: while the VPC still has
+			// enableExternal=true the controller re-allocates the LRP EIP as fast as the test
+			// deletes it, so the EIP would never converge (see [group:rlr]).
+			vpcClient.DeleteSync(vpcName)
+			deleteOvnEipBestEffort(ovnEipClient, vpcName+"-"+extDefaultSubnet)
+			// The extra subnets are owned by this suite and deleted below, so their LRP EIPs must
+			// be gone first; wait for them instead of leaving them to the best-effort default path.
 			ovnEipClient.DeleteSync(vpcName + "-" + extra1SubnetName)
 			ovnEipClient.DeleteSync(vpcName + "-" + extra2SubnetName)
-			vpcClient.DeleteSync(vpcName)
 
-			time.Sleep(time.Second)
 			subnetClient.DeleteSync(extra2SubnetName)
 			subnetClient.DeleteSync(extra1SubnetName)
 			vlanClient.Delete("vlan-sub-extra2-" + suffix)
@@ -521,9 +715,16 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			providerNetworkClient.DeleteSync("pn-sub-ext2")
 			providerNetworkClient.DeleteSync("pn-sub-ext1")
 			if createdDefaultInfra {
-				subnetClient.DeleteSync(extDefaultSubnet)
-				vlanClient.Delete("vlan-sub-main-" + suffix)
-				providerNetworkClient.DeleteSync("pn-sub-main")
+				// The default external subnet is shared with other suites: remove it only after
+				// every LRP EIP allocated from it is gone, and never fail the spec on cleanup.
+				subnetClient.Delete(extDefaultSubnet)
+				if waitSubnetGoneBestEffort(subnetClient, extDefaultSubnet) {
+					vlanClient.Delete("vlan-sub-main-" + suffix)
+					providerNetworkClient.DeleteSync("pn-sub-main")
+				} else {
+					framework.Logf("subnet %s was not removed, keeping its provider network, vlan and docker network for the next run", extDefaultSubnet)
+					disconnectMain = nil
+				}
 			}
 
 			if disconnectExtra2 != nil {
@@ -538,14 +739,14 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 		})
 
 		framework.ConformanceIt("should manage LRP connections and chassis through external subnet configuration changes", func() {
-			f.SkipVersionPriorTo(1, 16, "VPC external subnet chassis reconciliation was enhanced in v1.16")
+			f.SkipVersionPriorTo(1, 17, "VPC external LRP chassis reconciliation was introduced in v1.17")
 
 			// ------------------------------------------------------------------
 			// Phase 1: Default subnet active — toggle EnableExternal
 			// ------------------------------------------------------------------
 			ginkgo.By("Phase 1: Verify initial state — default LRP active with chassis")
 			waitLRPPresent(vpcName, extDefaultSubnet)
-			waitLRPChassisCount(vpcName, extDefaultSubnet, 1)
+			waitLRPChassisCount(vpcName, extDefaultSubnet, gwBase+1)
 			exists1, err := lrpExists(vpcName, extra1SubnetName)
 			framework.ExpectNoError(err)
 			framework.ExpectEqual(exists1, false)
@@ -560,7 +761,7 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			ginkgo.By("Phase 1: Re-enable EnableExternal → default LRP re-created with chassis")
 			patchVPCExternal(vpcClient, vpcName, true, nil)
 			waitLRPPresent(vpcName, extDefaultSubnet)
-			waitLRPChassisCount(vpcName, extDefaultSubnet, 1)
+			waitLRPChassisCount(vpcName, extDefaultSubnet, gwBase+1)
 
 			// ------------------------------------------------------------------
 			// Phase 2: Switch to extra1 (default LRP must be removed)
@@ -569,7 +770,7 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			patchVPCExternal(vpcClient, vpcName, true, []string{extra1SubnetName})
 			waitLRPPresent(vpcName, extra1SubnetName)
 			waitLRPAbsent(vpcName, extDefaultSubnet)
-			waitLRPChassisCount(vpcName, extra1SubnetName, 1)
+			waitLRPChassisCount(vpcName, extra1SubnetName, gwBase+1)
 
 			// ------------------------------------------------------------------
 			// Phase 3: Add extra2 (both extra LRPs active)
@@ -577,7 +778,7 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			ginkgo.By("Phase 3: Add extra2 to ExtraExternalSubnets → both extra LRPs active with chassis")
 			patchVPCExternal(vpcClient, vpcName, true, []string{extra1SubnetName, extra2SubnetName})
 			waitLRPPresent(vpcName, extra2SubnetName)
-			waitLRPChassisCount(vpcName, extra2SubnetName, 1)
+			waitLRPChassisCount(vpcName, extra2SubnetName, gwBase+1)
 			extra1Exists, err := lrpExists(vpcName, extra1SubnetName)
 			framework.ExpectNoError(err)
 			framework.ExpectEqual(extra1Exists, true)
@@ -594,8 +795,8 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			patchVPCExternal(vpcClient, vpcName, true, []string{extra1SubnetName, extra2SubnetName})
 			waitLRPPresent(vpcName, extra1SubnetName)
 			waitLRPPresent(vpcName, extra2SubnetName)
-			waitLRPChassisCount(vpcName, extra1SubnetName, 1)
-			waitLRPChassisCount(vpcName, extra2SubnetName, 1)
+			waitLRPChassisCount(vpcName, extra1SubnetName, gwBase+1)
+			waitLRPChassisCount(vpcName, extra2SubnetName, gwBase+1)
 
 			// ------------------------------------------------------------------
 			// Phase 5: Remove extra1 (only extra2 remains)
@@ -614,7 +815,7 @@ var _ = framework.Describe("[group:vpc-external]", func() {
 			patchVPCExternal(vpcClient, vpcName, true, nil)
 			waitLRPAbsent(vpcName, extra2SubnetName)
 			waitLRPPresent(vpcName, extDefaultSubnet)
-			waitLRPChassisCount(vpcName, extDefaultSubnet, 1)
+			waitLRPChassisCount(vpcName, extDefaultSubnet, gwBase+1)
 		})
 	})
 })
