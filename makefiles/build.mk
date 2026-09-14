@@ -177,6 +177,12 @@ else
 endif
 
 .PHONY: scan
-scan:
+scan: scan-kube-ovn scan-vpc-nat-gateway
+
+.PHONY: scan-kube-ovn
+scan-kube-ovn:
 	trivy image --exit-code=1 --ignore-unfixed --scanners vuln $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
+
+.PHONY: scan-vpc-nat-gateway
+scan-vpc-nat-gateway:
 	trivy image --exit-code=1 --ignore-unfixed --scanners vuln $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG)

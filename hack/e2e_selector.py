@@ -22,7 +22,9 @@ infrastructureJobs = {
     "e2e-executor-result",
     "notify-x86-e2e-gate",
     "publish-pr-e2e-checks",
+    "publish-multiarch",
     "push",
+    "push-vpc-nat-gateway",
 }
 expectedX86RunnerJobs = 84
 mandatorySmoke = [

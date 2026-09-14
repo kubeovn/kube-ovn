@@ -432,7 +432,7 @@ jobs:
           persist-credentials: false
 
       - name: Run control module tests
-        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
+        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py hack/test_publish_workflow.py
 
   prepare-kind-node-images:
     name: Prepare private Kind node image (${{ matrix.k8s-version }})
@@ -5551,9 +5551,18 @@ jobs:
 
   push:
     name: Push Images
+    # Publish as soon as the images are built, like the arm64 workflow does: the
+    # x86 E2E matrix is a quality signal, not a publish gate. Depending on
+    # e2e-executor-result left kubeovn/kube-ovn:<VERSION>-x86 unpublished whenever
+    # an E2E group failed or a newer run cancelled the current one, so the
+    # linux/amd64 image lagged behind linux/arm64 inside the multi-arch tag.
+    outputs:
+      # Set once the tags consumed by publish.yaml are published; the auxiliary
+      # pushes happen after it, so their failure cannot gate the assembly.
+      core-images: ${{ steps.push-images.outputs.core-images }}
     needs:
-      - e2e-executor-result
-    if: github.event_name == 'push' && needs.e2e-executor-result.result == 'success'
+      - build-kube-ovn
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -5582,15 +5591,9 @@ jobs:
         with:
           name: kube-ovn-dpdk
 
-      - name: Download vpc-nat-gateway image
-        uses: actions/download-artifact@v8
-        with:
-          name: vpc-nat-gateway
-
       - name: Load image
         run: |
           docker load --input kube-ovn.tar
-          docker load --input vpc-nat-gateway.tar
           if [ '${{ github.event_name }}' != 'pull_request' ]; then
             docker load --input kube-ovn-dpdk.tar
           fi
@@ -5604,9 +5607,10 @@ jobs:
           echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
           sudo apt-get update
           sudo apt-get install trivy
-          make scan
+          make scan-kube-ovn
 
       - name: Push
+        id: push-images
         if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -5620,13 +5624,100 @@ jobs:
           docker tag kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86
           docker tag kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86
           docker tag kubeovn/kube-ovn:$TAG-dpdk kubeovn/kube-ovn:$TAG-dpdk-x86
-          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
-          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
           docker images
           docker push kubeovn/kube-ovn:$TAG-x86
+          docker push kubeovn/kube-ovn:$TAG-debug-x86
+          echo "core-images=1" >> "$GITHUB_OUTPUT"
           docker push kubeovn/kube-ovn:$TAG-amd64-legacy
           docker push kubeovn/kube-ovn-dev:$COMMIT-x86
-          docker push kubeovn/kube-ovn:$TAG-debug-x86
           docker push kubeovn/kube-ovn:$TAG-dpdk-x86
+
+  # Separate from the push job so a failure of this auxiliary image cannot block
+  # the kube-ovn publication: the publish skips the pairs that are not ready.
+  push-vpc-nat-gateway:
+    name: Push vpc-nat-gateway image
+    outputs:
+      core-images: ${{ steps.push-vpc-nat-gateway.outputs.core-images }}
+    needs:
+      - build-vpc-nat-gateway
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
+
+      - name: Download vpc-nat-gateway image
+        uses: actions/download-artifact@v8
+        with:
+          name: vpc-nat-gateway
+
+      - name: Load image
+        run: docker load --input vpc-nat-gateway.tar
+
+      - name: Security Scan
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+        run: |
+          sudo apt-get install wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy
+          make scan-vpc-nat-gateway
+
+      - name: Push
+        id: push-vpc-nat-gateway
+        if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          TAG=$(cat VERSION)
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86
+          docker tag kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+          docker images
           docker push kubeovn/vpc-nat-gateway:$TAG-x86
+          echo "core-images=1" >> "$GITHUB_OUTPUT"
           docker push kubeovn/vpc-nat-gateway-dev:$COMMIT-x86
+
+  # Separate from the push job so a failed dispatch is not reported as a failed
+  # image push: the artifacts are already published at this point. It runs when
+  # either push job reports its tags, and the publish itself verifies that both
+  # legs come from the same revision and skips pairs that are not ready.
+  publish-multiarch:
+    name: Assemble multi-arch tags
+    needs:
+      - push
+      - push-vpc-nat-gateway
+    # always(): an auxiliary push failing after the tags consumed by the publish
+    # must not skip the assembly. The output check keeps a failed build from
+    # dispatching an assembly of the leftover tags.
+    if: always() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch && (needs.push.outputs.core-images == '1' || needs.push-vpc-nat-gateway.outputs.core-images == '1')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Dispatch the publish workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_REPO: ${{ github.repository }}
+        # gh needs the repository explicitly, and the tag is passed so a later
+        # version bump cannot redirect the assembly.
+        run: gh workflow run publish.yaml --ref "$DEFAULT_BRANCH" --repo "$GH_REPO" -f "tag=$(cat VERSION)"
