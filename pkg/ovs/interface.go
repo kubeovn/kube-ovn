@@ -127,6 +127,7 @@ type LogicalSwitchPort interface {
 	ListNormalLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string) ([]ovnnb.LogicalSwitchPort, error)
 	ListLogicalSwitchPortsWithLegacyExternalIDs() ([]ovnnb.LogicalSwitchPort, error)
 	GetLogicalSwitchPort(lspName string, ignoreNotFound bool) (*ovnnb.LogicalSwitchPort, error)
+	UpdateLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, fields ...any) error
 	LogicalSwitchPortExists(name string) (bool, error)
 	SetLogicalSwitchPortActivationStrategy(lspName, chassis string) error
 	// vm live migrate
@@ -192,6 +193,8 @@ type ACL interface {
 	SetNetPolACLLog(pgName string, logEnable, isIngress bool) error
 	SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error
 	SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error
+	UpdateVpcEndpointServiceACLs(lsName, epsName, transitVIP string, allowedLSPNames []string) error
+	ListAcls(direction string, externalIDs map[string]string) ([]ovnnb.ACL, error)
 	SGLostACL(sg *kubeovnv1.SecurityGroup) (bool, error)
 	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
 	DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
@@ -249,6 +252,7 @@ type LogicalRouterPolicy interface {
 type NAT interface {
 	GetNATByUUID(uuid string) (*ovnnb.NAT, error)
 	AddNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options map[string]string) error
+	DeleteSnatWithMatch(lrName, externalIP, logicalIP, match string) error
 	EnsureSnat(lrName, externalIP, logicalIP string) error
 	UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error
 	DeleteNats(lrName, natType, logicalIP string) error

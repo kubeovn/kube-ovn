@@ -150,6 +150,37 @@ func (suite *OvnClientTestSuite) testEnsureSnat() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testDeleteSnatWithMatch() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-delete-snat-with-match-lr"
+	externalIP := "100.65.0.10"
+	logicalIP := "0.0.0.0/0"
+	matchA := "ip4.dst == 100.65.1.20"
+	matchB := "ip4.dst == 100.65.1.21"
+
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+
+	require.NoError(t, nbClient.CreateNats(lrName,
+		&ovnnb.NAT{UUID: ovsclient.NamedUUID(), Type: ovnnb.NATTypeSNAT, ExternalIP: externalIP, LogicalIP: logicalIP, Match: matchA},
+		&ovnnb.NAT{UUID: ovsclient.NamedUUID(), Type: ovnnb.NATTypeSNAT, ExternalIP: externalIP, LogicalIP: logicalIP, Match: matchB},
+	))
+
+	require.NoError(t, nbClient.DeleteSnatWithMatch(lrName, externalIP, logicalIP, matchA))
+	nats, err := nbClient.ListNats(lrName, ovnnb.NATTypeSNAT, logicalIP, nil)
+	require.NoError(t, err)
+	remaining := make([]string, 0, len(nats))
+	for _, nat := range nats {
+		if nat.ExternalIP == externalIP {
+			remaining = append(remaining, nat.Match)
+		}
+	}
+	require.Equal(t, []string{matchB}, remaining)
+}
+
 func (suite *OvnClientTestSuite) testUpdateDnatAndSnat() {
 	t := suite.T()
 	t.Parallel()

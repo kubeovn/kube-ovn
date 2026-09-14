@@ -21,6 +21,7 @@ import (
 	anpclientset "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -152,6 +153,8 @@ type Configuration struct {
 	EnableOVNIPSec              bool
 	CertManagerIPSecCert        bool
 	EnableLiveMigrationOptimize bool
+	// EnableVpcEndpoint turns on PrivateLink-style VPC endpoints (stitcher pods).
+	EnableVpcEndpoint bool
 
 	ExternalGatewaySwitch   string
 	ExternalGatewayConfigNS string
@@ -190,6 +193,11 @@ type Configuration struct {
 
 	// Skip conntrack for specific destination IP CIDRs
 	SkipConntrackDstCidrs string
+
+	// Transit logical switch for VPC endpoint services (PrivateLink-style).
+	// Used only when EnableVpcEndpoint is true.
+	VpcEndpointTransitSwitch string
+	VpcEndpointTransitCIDR   string
 }
 
 // ParseFlags parses cmd args then init kubeclient and conf
@@ -271,6 +279,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
+		argEnableVpcEndpoint           = pflag.Bool("enable-vpc-endpoint", false, "Enable PrivateLink-style VPC endpoints via dual-NIC stitcher pods (requires Multus and --enable-lb)")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config")
 		argExternalGatewaySwitch   = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch, which is an OVS bridge that provides external network access")
@@ -298,6 +307,9 @@ func ParseFlags() (*Configuration, error) {
 		argNonPrimaryCNI = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, Kube-OVN will only manage the network for network attachment definitions")
 
 		argSkipConntrackDstCidrs = pflag.String("skip-conntrack-dst-cidrs", "", "Comma-separated list of destination IP CIDRs that should skip conntrack processing")
+
+		argVpcEndpointTransitSwitch = pflag.String("vpc-endpoint-transit-switch", util.DefaultVpcEndpointTransitSwitch, "Logical switch used as the unique transit fabric for VPC endpoint services")
+		argVpcEndpointTransitCIDR   = pflag.String("vpc-endpoint-transit-cidr", util.DefaultVpcEndpointTransitCIDR, "IPv4 CIDR of the VPC endpoint transit switch. Must not overlap join/pod/service CIDRs. IPv6/dual is not supported. Defaults to 100.65.0.0/16 because join uses 100.64.0.0/16")
 	)
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
@@ -406,6 +418,9 @@ func ParseFlags() (*Configuration, error) {
 		EnableNonPrimaryCNI:         *argNonPrimaryCNI,
 		NetworkPolicyEnforcement:    *argNPEnforcement,
 		SkipConntrackDstCidrs:       *argSkipConntrackDstCidrs,
+		EnableVpcEndpoint:           *argEnableVpcEndpoint,
+		VpcEndpointTransitSwitch:    *argVpcEndpointTransitSwitch,
+		VpcEndpointTransitCIDR:      *argVpcEndpointTransitCIDR,
 	}
 	if err := config.LeaderElection.validate(); err != nil {
 		return nil, err
@@ -420,6 +435,14 @@ func ParseFlags() (*Configuration, error) {
 
 	if config.EnableLbSvc && !config.EnableLb {
 		klog.Warning("--enable-lb-svc requires --enable-lb, the loadbalancer service feature will not work")
+	}
+	if config.EnableVpcEndpoint {
+		if !config.EnableLb {
+			return nil, errors.New("--enable-vpc-endpoint requires --enable-lb")
+		}
+		if proto := util.CheckProtocol(config.VpcEndpointTransitCIDR); proto != kubeovnv1.ProtocolIPv4 {
+			return nil, fmt.Errorf("--vpc-endpoint-transit-cidr must be an IPv4 CIDR (got %q); IPv6/dual is not supported by the stitcher datapath", config.VpcEndpointTransitCIDR)
+		}
 	}
 	if err := config.ACLSampling.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ACL sampling configuration: %w", err)
@@ -461,7 +484,11 @@ func ParseFlags() (*Configuration, error) {
 		return nil, err
 	}
 
-	if err := util.CheckSystemCIDR([]string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}); err != nil {
+	systemCIDRs := []string{config.NodeSwitchCIDR, config.DefaultCIDR, config.ServiceClusterIPRange}
+	if config.EnableVpcEndpoint && config.VpcEndpointTransitCIDR != "" {
+		systemCIDRs = append(systemCIDRs, config.VpcEndpointTransitCIDR)
+	}
+	if err := util.CheckSystemCIDR(systemCIDRs); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("check system cidr failed, %w", err)
 	}

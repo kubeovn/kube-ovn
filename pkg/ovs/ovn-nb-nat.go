@@ -130,6 +130,31 @@ func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 	return nil
 }
 
+// DeleteSnatWithMatch deletes the SNAT rule that matches the given match expression.
+func (c *OVNNbClient) DeleteSnatWithMatch(lrName, externalIP, logicalIP, match string) error {
+	nats, err := c.ListNats(lrName, ovnnb.NATTypeSNAT, logicalIP, nil)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	for _, nat := range nats {
+		if nat.ExternalIP != externalIP || nat.Match != match {
+			continue
+		}
+		ops, err := c.LogicalRouterUpdateNatOp(lrName, []string{nat.UUID}, ovsdb.MutateOperationDelete)
+		if err != nil {
+			klog.Error(err)
+			return fmt.Errorf("generate operations for deleting snat from logical router %s: %w", lrName, err)
+		}
+		if err = c.Transact("lr-nat-del", ops); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("del snat from logical router %s: %w", lrName, err)
+		}
+		return nil
+	}
+	return nil
+}
+
 // EnsureSnat ensures a SNAT rule exists for the given (externalIP, logicalIP) pair.
 // If the rule already exists, it is a no-op; otherwise a new rule is created.
 func (c *OVNNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
