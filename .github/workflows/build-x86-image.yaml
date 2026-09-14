@@ -882,10 +882,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
           lookup-only: true
 
       - uses: jlumbroso/free-disk-space@v1.3.1
@@ -900,20 +898,18 @@ jobs:
           swap-storage: false
 
       - name: Go cache
-        # Trusted dispatches use an executor-specific ref, so this cache remains isolated from PRs and branches.
+        # Only default-branch pushes can populate a cache visible to all refs.
         if: >-
           steps.lookup-go-cache.outputs.cache-hit != 'true' &&
-          (github.event_name == 'push' ||
-          (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'))
+          github.event_name == 'push' &&
+          github.ref_name == github.event.repository.default_branch
         uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - run: make e2e-build
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
@@ -990,10 +986,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -1078,7 +1072,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -1199,7 +1193,7 @@ jobs:
       - name: Collect kubectl ko log
         if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         continue-on-error: true
-        run: make kubectl-ko-log
+        run: bash .github/scripts/collect-kubectl-ko-log.sh
 
       - name: Upload diagnostics
         if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1291,10 +1285,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         env:
@@ -1377,7 +1369,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -1558,7 +1550,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -1668,10 +1660,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -1719,34 +1709,47 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
-        run: |
-          make kube-ovn-conformance-e2e
-          make kind-install-multus
-          make kind-install-kubevirt
-          make kube-ovn-kubevirt-e2e
+        run: make kube-ovn-conformance-e2e
+
+      - name: Install Multus
+        id: install-multus
+        run: make kind-install-multus
+
+      - name: Install KubeVirt
+        id: install-kubevirt
+        run: make kind-install-kubevirt
+
+      - name: Run KubeVirt E2E
+        id: kubevirt-e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: ${{ matrix.mode }}
+        run: make kube-ovn-kubevirt-e2e
 
       - name: Collect k8s events
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
         run: |
           kubectl get events -A -o yaml > kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
           tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Collect apiserver audit logs
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
           tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz
@@ -1754,18 +1757,18 @@ jobs:
 
       - name: Check kube ovn pod restarts
         id: check-restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: kubectl ko log
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
@@ -1877,10 +1880,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -1966,7 +1967,7 @@ jobs:
         run: |
           for cluster in `kind get clusters`; do
             kubectl config use-context kind-$cluster
-            make kubectl-ko-log
+            bash .github/scripts/collect-kubectl-ko-log.sh
             mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-$cluster-ko-log.tar.gz
           done
           tar zcvf kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz \
@@ -2049,10 +2050,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -2131,7 +2130,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2214,7 +2213,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
@@ -2303,7 +2302,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2383,10 +2382,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -2459,7 +2456,8 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          if make kubectl-ko-log && test -f kubectl-ko-log.tar.gz; then
+          bash .github/scripts/collect-kubectl-ko-log.sh || true
+          if test -f kubectl-ko-log.tar.gz; then
             mv kubectl-ko-log.tar.gz bgp-speaker-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
           else
             echo "kubectl ko log was unavailable because the BGP test cluster did not become usable." > bgp-speaker-e2e-ko-log-unavailable.txt
@@ -2545,10 +2543,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles('go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -2622,7 +2618,7 @@ jobs:
         run: |
           tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
           if [ -s "$tenant_kubeconfig" ]; then
-            KUBECONFIG="$tenant_kubeconfig" make kubectl-ko-log
+            KUBECONFIG="$tenant_kubeconfig" bash .github/scripts/collect-kubectl-ko-log.sh
             mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
           fi
 
@@ -2710,7 +2706,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz chart-test-${{ matrix.ssl }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2787,7 +2783,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz underlay-logical-gateway-installation-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2866,7 +2862,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz no-ovn-lb-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -2945,7 +2941,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz no-np-test-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3022,10 +3018,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -3107,7 +3101,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz lb-svc-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3180,10 +3174,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -3233,7 +3225,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3326,7 +3318,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz talos-installation-test-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3406,7 +3398,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
@@ -3487,7 +3479,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3567,7 +3559,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
@@ -3648,7 +3640,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3743,10 +3735,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -3824,7 +3814,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -3913,10 +3903,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -3975,7 +3963,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4085,7 +4073,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4168,10 +4156,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -4252,7 +4238,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4359,10 +4345,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -4444,7 +4428,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4517,10 +4501,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -4602,7 +4584,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4675,10 +4657,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -4755,7 +4735,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ipsec-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4828,10 +4808,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -4906,7 +4884,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ipsec-cert-mgr-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -4985,10 +4963,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -5031,7 +5007,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-connectivity-e2e-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -5112,10 +5088,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -5191,7 +5165,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log
@@ -5264,10 +5238,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         uses: helm/kind-action@v1.15.0
@@ -5341,7 +5313,7 @@ jobs:
       - name: kubectl ko log
         if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz router-lb-rule-e2e-ko-log.tar.gz
 
       - name: upload kubectl ko log

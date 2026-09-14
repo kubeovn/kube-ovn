@@ -730,6 +730,17 @@ class E2ESelectorTest(unittest.TestCase):
                     f"{path} silently selected smoke only",
                 )
 
+    def testOvnICSpecsAreOrdered(self):
+        source = (repoRoot / "test/e2e/ovn-ic/e2e_test.go").read_text()
+        self.assertIn(
+            'framework.OrderedDescribe("[group:ovn-ic]"',
+            source,
+        )
+        self.assertNotIn(
+            'framework.SerialDescribe("[group:ovn-ic]"',
+            source,
+        )
+
     def testSharedE2EFrameworkPromotesToFull(self):
         plan = self.select(["test/e2e/framework/pod.go"])
 

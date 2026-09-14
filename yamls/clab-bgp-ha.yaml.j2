@@ -43,7 +43,8 @@ topology:
          -c ' address-family ipv4 unicast'
          -c '   redistribute connected'
          -c '  exit-address-family'
-         -c '!'
+         -c 'end'
+         -c 'write memory'
     router-2:
       kind: linux
       image: {{ frr_image }}
@@ -69,7 +70,8 @@ topology:
          -c ' address-family ipv4 unicast'
          -c '   redistribute connected'
          -c '  exit-address-family'
-         -c '!'
+         -c 'end'
+         -c 'write memory'
     kube-ovn-control-plane:
       kind: ext-container
       exec:

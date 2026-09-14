@@ -308,6 +308,7 @@ func (c *Controller) enqueueDeletePod(obj any) {
 func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+	c.enqueueVpcNatGatewayRestart(oldPod, newPod)
 	// Only kube-ovn network annotations can change the backend NIC resolution without an
 	// EndpointSlice update (the k8s endpointslice controller already emits EndpointSlice
 	// updates for readiness, deletion, PodIP and label changes). Re-checking every status
@@ -560,12 +561,6 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 			return nil
 		}
 	}
-
-	// A restarted vpc-nat-gw container loses the state the gateway script keeps in its writable
-	// layer, so the Pod has to be recreated for its init flow to run again. Workload status only
-	// carries replica counts and cannot report a restart, and this is not an allocation event
-	// either, so it needs its own trigger.
-	c.enqueueVpcNatGatewayRestart(pod)
 
 	// Reconcile per-port DHCP options for pods that carry DHCP annotations.
 	// This handles annotation add/change on already-running pods without requiring a pod restart.
@@ -1942,28 +1937,56 @@ func (c *Controller) enqueueVpcNatGatewayInit(pod *v1.Pod) {
 	}
 }
 
-// enqueueVpcNatGatewayRestart asks the gateway to recreate a Pod whose vpc-nat-gw container has
-// been restarted. Other Pods, and Pods that were not restarted, are ignored.
-func (c *Controller) enqueueVpcNatGatewayRestart(pod *v1.Pod) {
-	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
-	if !isVpcNatGw || !needRestartNatGatewayPod(pod) {
+// enqueueVpcNatGatewayRestart re-runs gateway initialization when the gateway
+// container starts after a restart, and keeps retrying while a gateway Pod is still
+// missing the mark its init command writes on completion. Initialization is
+// idempotent, and a restarted container is only observable through its ContainerID:
+// a container restart cannot be triggered from a Pod exec, because PID 1 of the
+// container's own namespace ignores the signals such an exec could send.
+func (c *Controller) enqueueVpcNatGatewayRestart(oldPod, newPod *v1.Pod) {
+	// The Pod-only checks run first: this runs on every Pod update in the cluster.
+	if !natGwContainerRestarted(oldPod, newPod) && !natGwPodPendingInit(newPod) {
 		return
 	}
-	klog.Infof("restarting vpc nat gateway %s", vpcGwName)
-	c.addOrUpdateVpcNatGatewayQueue.Add(vpcGwName)
+	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(newPod)
+	if !isVpcNatGw {
+		return
+	}
+	klog.Infof("reinitializing vpc nat gateway %s", vpcGwName)
+	c.initVpcNatGatewayQueue.Add(vpcGwName)
 }
 
-// needRestartNatGatewayPod reports whether the vpc-nat-gw container has been restarted.
-func needRestartNatGatewayPod(pod *v1.Pod) bool {
-	for _, psc := range pod.Status.ContainerStatuses {
-		if psc.Name != "vpc-nat-gw" {
-			continue
-		}
-		if psc.RestartCount > 0 {
-			return true
+// natGwPodPendingInit reports whether a gateway Pod still needs the init command. The label is
+// checked first so that the Pod updates of every other workload in the cluster stop before
+// touching the annotation map. The completion mark is bound to the container instance: a Pod
+// that was recreated under the same name, or whose container restarted in place, carries the
+// mark of an instance that is gone and has to be initialized again.
+func natGwPodPendingInit(pod *v1.Pod) bool {
+	if pod.Labels[util.VpcNatGatewayLabel] != "true" {
+		return false
+	}
+	if pod.Annotations[util.VpcNatGatewayInitAnnotation] != "true" {
+		return true
+	}
+	instanceToken := natGwPodInstanceToken(pod)
+	return instanceToken != "" && pod.Annotations[util.VpcNatGatewayInitInstanceAnnotation] != instanceToken
+}
+
+// natGwContainerRestarted reports whether a new vpc-nat-gw container instance
+// is running. ContainerID comes from the current CRI instance; unlike restart
+// count, it is not reconstructed from previous kubelet status.
+func natGwContainerRestarted(oldPod, newPod *v1.Pod) bool {
+	oldID, newID := natGwContainerID(oldPod), natGwContainerID(newPod)
+	return newID != "" && newID != oldID
+}
+
+func natGwContainerID(pod *v1.Pod) string {
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == "vpc-nat-gw" && status.State.Running != nil {
+			return status.ContainerID
 		}
 	}
-	return false
+	return ""
 }
 
 func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
