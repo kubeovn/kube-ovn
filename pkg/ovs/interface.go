@@ -142,6 +142,7 @@ type LoadBalancer interface {
 	SetLoadBalancerSelectionFields(lbName string, selectionFields []string) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
 	LoadBalancerMigrateVIP(lbName, vip string, backends []string, oldVIP string, oldLBNames ...string) error
+	LoadBalancerMigrateVIPWithAttachments(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []LoadBalancerAttachment) error
 	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error

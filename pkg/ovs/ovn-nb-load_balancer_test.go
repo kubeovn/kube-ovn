@@ -911,6 +911,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
 	const (
 		oldLBName = "test-lb-migrate-vip-old"
 		newLBName = "test-lb-migrate-vip-new"
+		lsName    = "test-lb-migrate-vip-ls"
 		oldVIP    = "10.96.0.20:80"
 		newVIP    = "^service_vip:80"
 		backend   = "10.0.0.2:8080"
@@ -918,10 +919,18 @@ func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
 	nbClient := suite.ovnNBClient
 	require.NoError(t, nbClient.CreateLoadBalancer(oldLBName, "tcp"))
 	require.NoError(t, nbClient.CreateLoadBalancer(newLBName, "tcp"))
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(lsName))
 	require.NoError(t, nbClient.LoadBalancerAddVip(oldLBName, oldVIP, backend))
 	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(oldLBName, oldVIP, false, map[string]string{"10.0.0.2": "backend.default"}, nil))
 
-	require.NoError(t, nbClient.LoadBalancerMigrateVIP(newLBName, newVIP, []string{"^service_backends"}, oldVIP, oldLBName))
+	require.NoError(t, nbClient.LoadBalancerMigrateVIPWithAttachments(
+		newLBName,
+		newVIP,
+		[]string{"^service_backends"},
+		oldVIP,
+		[]string{oldLBName},
+		[]LoadBalancerAttachment{{LogicalSwitch: lsName, Operation: ovsdb.MutateOperationInsert}},
+	))
 
 	oldLB, err := nbClient.GetLoadBalancer(oldLBName, false)
 	require.NoError(t, err)
@@ -932,6 +941,10 @@ func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
 	newLB, err := nbClient.GetLoadBalancer(newLBName, false)
 	require.NoError(t, err)
 	require.Equal(t, "^service_backends", newLB.Vips[newVIP])
+
+	ls, err := nbClient.GetLogicalSwitch(lsName, false)
+	require.NoError(t, err)
+	require.Contains(t, ls.LoadBalancer, newLB.UUID)
 }
 
 func (suite *OvnClientTestSuite) testSetLoadBalancerVIPExternalTrafficLocal() {

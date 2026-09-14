@@ -21,6 +21,13 @@ import (
 
 const localExternalVIPKeyPrefix = "kube-ovn.io/local-external-vip/"
 
+// LoadBalancerAttachment describes a logical switch mutation for a load
+// balancer migration transaction.
+type LoadBalancerAttachment struct {
+	LogicalSwitch string
+	Operation     ovsdb.Mutator
+}
+
 // CreateLoadBalancer create loadbalancer
 func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
 	var (
@@ -139,6 +146,13 @@ func (c *OVNNbClient) loadBalancerSetVIPOps(lbName, vip, value string) ([]ovsdb.
 // LoadBalancerMigrateVIP atomically installs a VIP on one load balancer and
 // removes its previous representation from the supplied load balancers.
 func (c *OVNNbClient) LoadBalancerMigrateVIP(lbName, vip string, backends []string, oldVIP string, oldLBNames ...string) error {
+	return c.LoadBalancerMigrateVIPWithAttachments(lbName, vip, backends, oldVIP, oldLBNames, nil)
+}
+
+// LoadBalancerMigrateVIPWithAttachments atomically installs a VIP on a load
+// balancer, updates its logical-switch attachments, and removes its previous
+// representation from the supplied load balancers.
+func (c *OVNNbClient) LoadBalancerMigrateVIPWithAttachments(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []LoadBalancerAttachment) error {
 	desiredBackends := slices.Clone(backends)
 	sort.Strings(desiredBackends)
 	ops, err := c.loadBalancerSetVIPOps(lbName, vip, strings.Join(desiredBackends, ","))
@@ -151,6 +165,13 @@ func (c *OVNNbClient) LoadBalancerMigrateVIP(lbName, vip string, backends []stri
 			return fmt.Errorf("generate operations for deleting old vip %s from load balancer %s: %w", oldVIP, lbName, err)
 		}
 		ops = append(ops, oldOps...)
+	}
+	if len(attachments) != 0 {
+		attachmentOps, err := c.loadBalancerAttachmentOps(lbName, attachments)
+		if err != nil {
+			return fmt.Errorf("generate operations for attaching load balancer %s during vip %s migration: %w", lbName, vip, err)
+		}
+		ops = append(ops, attachmentOps...)
 	}
 
 	seen := map[string]struct{}{lbName: {}}
@@ -182,6 +203,46 @@ func (c *OVNNbClient) LoadBalancerMigrateVIP(lbName, vip string, backends []stri
 		return fmt.Errorf("migrate vip %s to load balancer %s: %w", vip, lbName, err)
 	}
 	return nil
+}
+
+func (c *OVNNbClient) loadBalancerAttachmentOps(lbName string, attachments []LoadBalancerAttachment) ([]ovsdb.Operation, error) {
+	lb, err := c.GetLoadBalancer(lbName, true)
+	if err != nil {
+		return nil, err
+	}
+	if lb == nil {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(attachments))
+	var ops []ovsdb.Operation
+	for _, attachment := range attachments {
+		if attachment.LogicalSwitch == "" {
+			continue
+		}
+		if _, ok := seen[attachment.LogicalSwitch]; ok {
+			continue
+		}
+		seen[attachment.LogicalSwitch] = struct{}{}
+		ls, err := c.GetLogicalSwitch(attachment.LogicalSwitch, true)
+		if err != nil {
+			return nil, err
+		}
+		if ls == nil {
+			continue
+		}
+		mutation := model.Mutation{
+			Field:   &ls.LoadBalancer,
+			Value:   []string{lb.UUID},
+			Mutator: attachment.Operation,
+		}
+		attachmentOps, err := c.ovsDbClient.Where(ls).Mutate(ls, mutation)
+		if err != nil {
+			return nil, fmt.Errorf("generate operations for logical switch %s: %w", attachment.LogicalSwitch, err)
+		}
+		ops = append(ops, attachmentOps...)
+	}
+	return ops, nil
 }
 
 // LoadBalancerDeleteVip deletes load balancer vip
