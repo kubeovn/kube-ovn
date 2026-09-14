@@ -2,6 +2,7 @@ package ovs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net"
@@ -45,7 +46,7 @@ type LoadBalancerConfig struct {
 // configured load balancer between a sequence of independent updates.
 func (c *OVNNbClient) ReconcileLoadBalancer(config LoadBalancerConfig) error {
 	if config.Name == "" {
-		return fmt.Errorf("load balancer name is required")
+		return errors.New("load balancer name is required")
 	}
 
 	lb, err := c.GetLoadBalancer(config.Name, true)
