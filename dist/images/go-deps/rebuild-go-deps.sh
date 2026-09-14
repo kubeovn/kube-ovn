@@ -59,7 +59,13 @@ for t in $(cat "$TRIVY_DIR/trivy-targets.txt"); do
             cd -
             ;;
         gobgp)
-            $GO_INSTALL github.com/osrg/gobgp/v3/cmd/$name@$version
+            mkdir "gobgp-$version"
+            cd "gobgp-$version"
+            "$GO" mod init gobgp-build
+            "$GO" get "github.com/osrg/gobgp/v3/cmd/$name@$version"
+            "$GO" get golang.org/x/text@v0.42.0 google.golang.org/grpc@v1.83.2
+            "$GO" install -v -trimpath "github.com/osrg/gobgp/v3/cmd/$name"
+            cd -
             ;;
         *)
             echo "Unknown go binary: $f"
