@@ -140,11 +140,9 @@ func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol) []str
 		return nil
 	}
 
-	// Datagram clients create a new flow for every request. Keep their fallback
-	// selection keyed by source address so each request reaches the affinity
-	// learning flow's backend. TCP must retain OVN's flow hash so that the
-	// affinity timeout can select a different backend after expiry.
-	if protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
+	// Keep fallback selection keyed by source address so new flows from one
+	// client consistently reach the backend learned by OVN's affinity flow.
+	if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
 		return nil
 	}
 	return []string{

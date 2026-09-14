@@ -74,13 +74,10 @@ func TestServiceSessionAffinityTimeout(t *testing.T) {
 func TestServiceScopedLBSelectionFields(t *testing.T) {
 	svc := &corev1.Service{Spec: corev1.ServiceSpec{SessionAffinity: corev1.ServiceAffinityClientIP}}
 	want := []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}
-	for _, protocol := range []corev1.Protocol{corev1.ProtocolUDP, corev1.ProtocolSCTP} {
+	for _, protocol := range []corev1.Protocol{corev1.ProtocolTCP, corev1.ProtocolUDP, corev1.ProtocolSCTP} {
 		if got := serviceScopedLBSelectionFields(svc, protocol); !slices.Equal(got, want) {
 			t.Fatalf("serviceScopedLBSelectionFields(%s) = %v, want %v", protocol, got, want)
 		}
-	}
-	if got := serviceScopedLBSelectionFields(svc, corev1.ProtocolTCP); got != nil {
-		t.Fatalf("serviceScopedLBSelectionFields(tcp) = %v, want nil", got)
 	}
 	svc.Spec.SessionAffinity = corev1.ServiceAffinityNone
 	if got := serviceScopedLBSelectionFields(svc, corev1.ProtocolUDP); got != nil {
