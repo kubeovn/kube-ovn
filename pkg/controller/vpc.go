@@ -817,8 +817,9 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 }
 
 // reconcileVpcExternalSubnetChassis keeps the gateway_chassis list of the LRP
-// connecting vpcName to subnet in sync with the current external-gateway nodes.
-// It adds chassis for newly-labelled nodes and removes chassis for deleted nodes.
+// connecting vpcName to subnet in sync with the current external-gateway nodes: it adds chassis
+// for newly-labelled nodes, removes chassis for nodes that stopped being gateways, and reconciles
+// their priority order so the active gateway stays spread deterministically across VPCs.
 func (c *Controller) reconcileVpcExternalSubnetChassis(vpcName, subnet string) error {
 	lrpName := fmt.Sprintf("%s-%s", vpcName, subnet)
 
@@ -848,39 +849,26 @@ func (c *Controller) reconcileVpcExternalSubnetChassis(vpcName, subnet string) e
 		desiredChassis = append(desiredChassis, chassis.Name)
 	}
 
-	// Add new chassis entries; CreateGatewayChassises skips existing ones.
-	if len(desiredChassis) > 0 {
+	// Keep the same deterministic ordering as LRP creation (handleAddVpcExternalSubnet) so that
+	// the priority of newly added chassis entries spreads the active gateway node across VPCs
+	// instead of following the unordered node lister output.
+	sort.Slice(desiredChassis, func(i, j int) bool {
+		return util.Sha256Hash([]byte(vpcName+desiredChassis[i])) < util.Sha256Hash([]byte(vpcName+desiredChassis[j]))
+	})
+
+	// Do not remove chassis while a gateway node is temporarily missing its annotation or SB entry.
+	if anyNodeSkipped {
+		if len(desiredChassis) == 0 {
+			return nil
+		}
 		if err := c.OVNNbClient.CreateGatewayChassises(lrpName, desiredChassis...); err != nil {
 			return fmt.Errorf("failed to add gateway chassis for lrp %s: %w", lrpName, err)
 		}
-	}
-
-	// Skip stale removal when some nodes were skipped due to transient state
-	// (missing chassis annotation or not yet registered in SB). Deleting the
-	// existing chassis in that case would cause an unnecessary flap.
-	if anyNodeSkipped {
 		return nil
 	}
 
-	// Remove stale chassis entries for nodes that are no longer gateway nodes.
-	actualGwChassis, err := c.OVNNbClient.ListGatewayChassisByLogicalRouterPort(lrpName, true)
-	if err != nil {
-		return fmt.Errorf("failed to list gateway chassis for lrp %s: %w", lrpName, err)
-	}
-	desiredSet := make(map[string]struct{}, len(desiredChassis))
-	for _, name := range desiredChassis {
-		desiredSet[name] = struct{}{}
-	}
-	var stale []string
-	for _, gwc := range actualGwChassis {
-		if _, ok := desiredSet[gwc.ChassisName]; !ok {
-			stale = append(stale, gwc.ChassisName)
-		}
-	}
-	if len(stale) > 0 {
-		if err := c.OVNNbClient.DeleteGatewayChassises(lrpName, stale); err != nil {
-			return fmt.Errorf("failed to remove stale gateway chassis for lrp %s: %w", lrpName, err)
-		}
+	if err := c.OVNNbClient.ReconcileGatewayChassises(lrpName, desiredChassis); err != nil {
+		return fmt.Errorf("failed to reconcile gateway chassis for lrp %s: %w", lrpName, err)
 	}
 	return nil
 }
