@@ -450,6 +450,7 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 			origNode1GW         gwLabelState
 			origNode2GW         gwLabelState
 			gwBase              int
+			setupStarted        bool
 
 			providerNetworkClient *framework.ProviderNetworkClient
 			vlanClient            *framework.VlanClient
@@ -462,6 +463,8 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 			if skip {
 				ginkgo.Skip("vpc-external e2e only runs on Kind clusters")
 			}
+			f.SkipVersionPriorTo(1, 17, "VPC external LRP chassis reconciliation was introduced in v1.17")
+			setupStarted = true
 
 			suffix = framework.RandomSuffix()
 			extraSubnetName = "vpc-gw-extra-" + suffix
@@ -523,6 +526,10 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 		})
 
 		ginkgo.AfterEach(func() {
+			if !setupStarted {
+				return
+			}
+
 			// Restore the external gateway labels of the nodes managed by this suite instead of
 			// removing them unconditionally, so a pre-existing configuration is not clobbered.
 			if node1 != "" {
@@ -568,8 +575,6 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 		})
 
 		framework.ConformanceIt("should sync gateway chassis to all VPC LRPs when GW label is added or removed", func() {
-			f.SkipVersionPriorTo(1, 17, "VPC external LRP chassis reconciliation was introduced in v1.17")
-
 			ginkgo.By("Step 1: Verify initial state — node1 chassis on both LRPs")
 			waitLRPChassisCount(vpc1Name, extDefaultSubnet, gwBase+1)
 			waitLRPChassisCount(vpc2Name, extraSubnetName, gwBase+1)
@@ -618,6 +623,7 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 			disconnectExtra2      func()
 			origNode1GW           gwLabelState
 			gwBase                int
+			setupStarted          bool
 			providerNetworkClient *framework.ProviderNetworkClient
 			vlanClient            *framework.VlanClient
 			subnetClient          *framework.SubnetClient
@@ -629,6 +635,8 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 			if skip {
 				ginkgo.Skip("vpc-external e2e only runs on Kind clusters")
 			}
+			f.SkipVersionPriorTo(1, 17, "VPC external LRP chassis reconciliation was introduced in v1.17")
+			setupStarted = true
 
 			suffix = framework.RandomSuffix()
 			vpcName = "vpc-sub-" + suffix
@@ -694,6 +702,10 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 		})
 
 		ginkgo.AfterEach(func() {
+			if !setupStarted {
+				return
+			}
+
 			if node1 != "" {
 				origNode1GW.restore(cs, node1)
 			}
@@ -739,8 +751,6 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 		})
 
 		framework.ConformanceIt("should manage LRP connections and chassis through external subnet configuration changes", func() {
-			f.SkipVersionPriorTo(1, 17, "VPC external LRP chassis reconciliation was introduced in v1.17")
-
 			// ------------------------------------------------------------------
 			// Phase 1: Default subnet active — toggle EnableExternal
 			// ------------------------------------------------------------------
