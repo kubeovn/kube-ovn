@@ -15,6 +15,7 @@ import (
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/crd"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/ipam"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/kubectl-ko"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/metrics"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/network-policy"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/nftables"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/kube-ovn/node"
