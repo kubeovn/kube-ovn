@@ -76,9 +76,20 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	needsMacRepair := false
 	if cachedVip.Status.Mac != "" {
-		// already ok
-		return nil
+		if cachedVip.Spec.Type != util.SwitchLBRuleVip {
+			return nil
+		}
+		// Pre-fix switch_lb_rule vips had their lsp mac forced to the subnet gateway
+		// mac, which collides with the gateway lsp in ovn's l2 lookup. Repair those
+		// by reallocating a unique mac; leave already-fixed vips alone.
+		gwMac := c.ipam.GetGatewayMAC(cachedVip.Spec.Subnet)
+		if gwMac == "" || gwMac != cachedVip.Status.Mac {
+			return nil
+		}
+		needsMacRepair = true
+		klog.Infof("repairing switch lb vip %s: recorded mac %s collides with subnet gateway mac", key, cachedVip.Status.Mac)
 	}
 	klog.V(3).Infof("handle add vip %s", key)
 
@@ -94,6 +105,15 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	if needsMacRepair {
+		newMac, err := c.ipam.RenewNicMac(subnet.Name, vip.Name, portName)
+		if err != nil {
+			err = fmt.Errorf("failed to renew mac for vip %s: %w", key, err)
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("renewed mac for switch lb vip %s: %s -> %s", key, cachedVip.Status.Mac, newMac)
+	}
 	sourceV4Ip = vip.Spec.V4ip
 	sourceV6Ip = vip.Spec.V6ip
 	// v6 ip address can not use upper case
@@ -118,28 +138,11 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 	if vip.Spec.Type == util.SwitchLBRuleVip {
-		// create a lsp use subnet gw mac, and set it option as arp_proxy
-		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		klog.Infof("get logical router port %s", lrpName)
-		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, false)
-		if err != nil {
-			klog.Errorf("failed to get lrp %s: %v", lrpName, err)
-			return err
-		}
-		if lrp.MAC == "" {
-			err = fmt.Errorf("logical router port %s should have mac", lrpName)
-			klog.Error(err)
-			return err
-		}
-		mac = lrp.MAC
+		// switch_lb_rule is a routed vip: the lb DNATs by ip/port and delivery goes through
+		// the gateway mac, so the lsp only needs its own ipam-assigned mac for bookkeeping
 		ipStr := util.GetStringIP(v4ip, v6ip)
 		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
-			klog.Error(err)
-			return err
-		}
-		if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
-			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %w", portName, err)
 			klog.Error(err)
 			return err
 		}
@@ -155,7 +158,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 			return err
 		}
 	}
-	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac); err != nil {
+	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, needsMacRepair); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
@@ -244,7 +247,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	// should update
 	if vip.Status.Mac == "" {
 		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
-			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress); err != nil {
+			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress, false); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -363,7 +366,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string) error {
+func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string, macRepair bool) error {
 	vipCR, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -410,9 +413,10 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 
 		if vip.Status.Mac == "" && mac != "" ||
 			vip.Status.V4ip == "" && v4ip != "" ||
-			vip.Status.V6ip == "" && v6ip != "" {
-			// vip spec mac or ip not support to update
-			// only set once during creation
+			vip.Status.V6ip == "" && v6ip != "" ||
+			(macRepair && vip.Status.Mac != mac) {
+			// vip spec/status ip is only set once during creation; mac is too, except
+			// for a one-time repair of a mac previously corrupted by a bug (macRepair)
 			vip.Spec.Namespace = ns
 			vip.Spec.V4ip = v4ip
 			vip.Spec.V6ip = v6ip

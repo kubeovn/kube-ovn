@@ -110,6 +110,7 @@ type FakeControllerOptions struct {
 	OvnDnatRules          []*kubeovnv1.OvnDnatRule
 	OvnFipRules           []*kubeovnv1.OvnFip
 	OvnSnatRules          []*kubeovnv1.OvnSnatRule
+	Vips                  []*kubeovnv1.Vip
 	QoSPolicies           []*kubeovnv1.QoSPolicy
 	IptablesEips          []*kubeovnv1.IptablesEIP
 	IptablesFips          []*kubeovnv1.IptablesFIPRule
@@ -272,6 +273,14 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, vip := range opts.Vips {
+		_, err := kubeovnClient.KubeovnV1().Vips().Create(
+			context.Background(), vip, metav1.CreateOptions{},
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, qos := range opts.QoSPolicies {
 		_, err := kubeovnClient.KubeovnV1().QoSPolicies().Create(
 			context.Background(), qos, metav1.CreateOptions{},
@@ -348,6 +357,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
+	vipInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
 	iptablesFipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesFIPRules()
@@ -399,6 +409,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		ovnFipSynced:                  alwaysReady,
 		ovnSnatRulesLister:            ovnSnatRuleInformer.Lister(),
 		ovnSnatRuleSynced:             alwaysReady,
+		virtualIpsLister:              vipInformer.Lister(),
+		virtualIpsSynced:              alwaysReady,
 		netAttachLister:               nadInformer.Lister(),
 		netAttachSynced:               alwaysReady,
 		vpcNatGatewayLister:           vpcNatGwInformer.Lister(),

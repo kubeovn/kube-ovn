@@ -1504,20 +1504,6 @@ func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortActivationStrat
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortActivationStrategy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortActivationStrategy), lspName, chassis)
 }
 
-// SetLogicalSwitchPortArpProxy mocks base method.
-func (m *MockLogicalSwitchPort) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLogicalSwitchPortArpProxy", lspName, enableArpProxy)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLogicalSwitchPortArpProxy indicates an expected call of SetLogicalSwitchPortArpProxy.
-func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortArpProxy(lspName, enableArpProxy any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortArpProxy), lspName, enableArpProxy)
-}
-
 // SetLogicalSwitchPortDHCPOptions mocks base method.
 func (m *MockLogicalSwitchPort) SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *ovs.DHCPOptionsUUIDs) error {
 	m.ctrl.T.Helper()
@@ -5830,20 +5816,6 @@ func (m *MockNbClient) SetLogicalSwitchPortActivationStrategy(lspName, chassis s
 func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortActivationStrategy(lspName, chassis any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortActivationStrategy", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortActivationStrategy), lspName, chassis)
-}
-
-// SetLogicalSwitchPortArpProxy mocks base method.
-func (m *MockNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetLogicalSwitchPortArpProxy", lspName, enableArpProxy)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetLogicalSwitchPortArpProxy indicates an expected call of SetLogicalSwitchPortArpProxy.
-func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortArpProxy(lspName, enableArpProxy any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortArpProxy), lspName, enableArpProxy)
 }
 
 // SetLogicalSwitchPortDHCPOptions mocks base method.

@@ -557,15 +557,24 @@ var _ = framework.Describe("[group:vip]", func() {
 		}
 
 		ginkgo.By("3. Test switch lb vip")
-		ginkgo.By("Creating two arp proxy vips, should have the same mac which is from gw subnet mac")
-		ginkgo.By("Creating arp proxy switch lb vip " + switchLbVip1Name)
+		ginkgo.By("Creating two switch lb vips, each should get its own unique mac, not the gw subnet mac")
+		ginkgo.By("Creating switch lb vip " + switchLbVip1Name)
 		switchLbVip1 := makeOvnVip(namespaceName, switchLbVip1Name, subnetName, "", "", util.SwitchLBRuleVip)
 		switchLbVip1 = vipClient.CreateSync(switchLbVip1)
-		ginkgo.By("Creating arp proxy switch lb vip " + switchLbVip2Name)
+		ginkgo.By("Creating switch lb vip " + switchLbVip2Name)
 		switchLbVip2 := makeOvnVip(namespaceName, switchLbVip2Name, subnetName, "", "", util.SwitchLBRuleVip)
 		switchLbVip2 = vipClient.CreateSync(switchLbVip2)
-		// arp proxy vip only used in switch lb rule, the lb vip use the subnet gw mac to use lb nat flow
-		framework.ExpectEqual(switchLbVip1.Status.Mac, switchLbVip2.Status.Mac)
+		// switch lb vip is a routed vip: the lb DNATs by ip/port and delivery goes through the
+		// gateway mac, so each vip's lsp must use its own ipam-assigned mac, not the shared gw mac
+		framework.ExpectNotEqual(switchLbVip1.Status.Mac, switchLbVip2.Status.Mac)
+		lrpName := fmt.Sprintf("%s-%s", vpcName, subnetName)
+		nbctlCmd = "ovn-nbctl --format=list --data=bare --no-heading --columns=mac find Logical_Router_Port name=" + lrpName
+		output, _, err = framework.NBExec(nbctlCmd)
+		framework.ExpectNoError(err)
+		gwMac := strings.TrimSpace(string(output))
+		framework.ExpectNotEmpty(gwMac)
+		framework.ExpectNotEqual(switchLbVip1.Status.Mac, gwMac)
+		framework.ExpectNotEqual(switchLbVip2.Status.Mac, gwMac)
 		if vip1.Status.V4ip != "" {
 			framework.ExpectNotEqual(vip1.Status.V4ip, vip2.Status.V4ip)
 		} else {
