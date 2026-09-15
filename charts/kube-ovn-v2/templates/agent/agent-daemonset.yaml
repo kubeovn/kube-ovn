@@ -131,6 +131,9 @@ spec:
           {{- if (gt (int .Values.networking.pods.mtu) 0) }}
           - --mtu={{ .Values.networking.pods.mtu  }}
           {{- end }}
+          {{- if (gt (int .Values.networking.maxMtu) 0) }}
+          - --max-mtu={{ .Values.networking.maxMtu }}
+          {{- end }}
           - --dpdk-tunnel-iface={{- .Values.agent.dpdkTunnelInterface }}
           - --network-type={{- .Values.networking.tunnelType }}
           - --default-interface-name={{- .Values.networking.vlan.interfaceName }}
