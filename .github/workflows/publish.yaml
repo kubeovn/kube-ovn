@@ -5,16 +5,49 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to assemble, defaults to the VERSION file
+        required: false
+        type: string
   schedule:
   - cron: "20 16 * * *"
 
 concurrency:
-  group: "${{ github.workflow }}-${{ github.ref }}"
-  cancel-in-progress: true
+  # Key the group by the tag being assembled, not only by the ref: GitHub keeps a
+  # single pending run per group, so a dispatch for a new VERSION would otherwise
+  # replace a pending dispatch for the previous one and that release would keep
+  # its architecture tags without a multi-arch manifest (the schedule only reads
+  # the current VERSION). Dispatched runs for the same tag queue instead of being
+  # cancelled. The scheduled run has no tag input and falls back to the ref, so it
+  # can overlap a dispatch; that is harmless because both re-read the same remote
+  # tags and a mismatching pair is never published.
+  group: "${{ github.workflow }}-${{ inputs.tag || github.ref }}"
+  cancel-in-progress: false
 
 jobs:
+  # A scheduled run never publishes directly: it re-dispatches this workflow with
+  # the tag from VERSION, so every assembly runs in the tag-keyed concurrency
+  # group and cannot roll a tag back after a newer dispatched run published it.
+  schedule-dispatch:
+    name: Dispatch the scheduled assembly
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Dispatch the publish workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run publish.yaml --repo "$GH_REPO" --ref "${{ github.event.repository.default_branch }}" -f "tag=$(cat VERSION)"
+
   build:
     name: Publish Images
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -24,19 +57,105 @@ jobs:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
           DOCKER_CLI_EXPERIMENTAL: enabled
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          TAG=$(cat VERSION)
+          # A dispatch carries the tag it was built for, so a version bump on the
+          # default branch cannot redirect the assembly to another release.
+          TAG="${INPUT_TAG:-$(cat VERSION)}"
           echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker pull kubeovn/kube-ovn:$TAG-x86
-          docker pull kubeovn/kube-ovn:$TAG-arm
-          docker pull kubeovn/kube-ovn:$TAG-debug-x86
-          docker pull kubeovn/kube-ovn:$TAG-debug-arm
-          docker manifest create kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86 kubeovn/kube-ovn:$TAG-arm
-          docker manifest create kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86 kubeovn/kube-ovn:$TAG-debug-arm
-          docker manifest push kubeovn/kube-ovn:$TAG
-          docker manifest push kubeovn/kube-ovn:$TAG-debug
 
-          docker pull kubeovn/vpc-nat-gateway:$TAG-x86
-          docker pull kubeovn/vpc-nat-gateway:$TAG-arm
-          docker manifest create kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86 kubeovn/vpc-nat-gateway:$TAG-arm
-          docker manifest push kubeovn/vpc-nat-gateway:$TAG
+          revision() {
+            local value rc=0
+            value=$(docker image inspect --format '{{ if .Config.Labels }}{{ index .Config.Labels "org.opencontainers.image.revision" }}{{ end }}' "$1") || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              return 2
+            fi
+            # An absent key renders as "<no value>" rather than an empty string.
+            if [ "$value" = "<no value>" ]; then
+              value=""
+            fi
+            printf '%s' "$value"
+          }
+
+          # The architecture tags are mutable: another push could move them between
+          # the pull and the assembly, so build the manifest list from the immutable
+          # digests of the images that were actually verified.
+          immutable_ref() {
+            local value rc=0
+            value=$(docker image inspect --format '{{ if .RepoDigests }}{{ index .RepoDigests 0 }}{{ end }}' "$1") || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              return 2
+            fi
+            printf '%s' "$value"
+          }
+
+          # Return 0 when the tag was pulled, 1 when it is not published yet (the
+          # other architecture may still have to push the first image of a version)
+          # and 2 for any other error, which must keep the job red.
+          pull_leg() {
+            local ref=$1 output rc=0
+            output=$(docker pull "$ref" 2>&1) || rc=$?
+            if [ "$rc" -eq 0 ]; then
+              return 0
+            fi
+            if [[ "$output" == *"manifest unknown"* || "$output" == *"manifest for"*"not found"* ]]; then
+              return 1
+            fi
+            printf '%s\n' "$output" >&2
+            return 2
+          }
+
+          # A multi-arch tag is a snapshot of the two architecture digests, so it must
+          # not be published while one architecture still points at an older commit.
+          # The architecture workflows dispatch this workflow again once their tags
+          # are pushed, so a mismatching pair is assembled by a later run.
+          publish_multiarch() {
+            local target=$1 x86=$2 arm=$3 rev_x86 rev_arm ref_x86 ref_arm rc_x86=0 rc_arm=0
+            pull_leg "$x86" || rc_x86=$?
+            pull_leg "$arm" || rc_arm=$?
+            if [ "$rc_x86" -eq 2 ] || [ "$rc_arm" -eq 2 ]; then
+              echo "::error::cannot pull $x86 or $arm" >&2
+              return 1
+            fi
+            if [ "$rc_x86" -ne 0 ] || [ "$rc_arm" -ne 0 ]; then
+              echo "::warning::skipping $target: $x86 or $arm is not published yet"
+              return 0
+            fi
+            rev_x86=$(revision "$x86") || rc_x86=$?
+            if [ "$rc_x86" -eq 2 ]; then
+              echo "::error::cannot inspect $x86" >&2
+              return 1
+            fi
+            rc_arm=0
+            rev_arm=$(revision "$arm") || rc_arm=$?
+            if [ "$rc_arm" -eq 2 ]; then
+              echo "::error::cannot inspect $arm" >&2
+              return 1
+            fi
+            if [ -z "$rev_x86" ] || [ "$rev_x86" != "$rev_arm" ]; then
+              echo "::warning::skipping $target: $x86 was built from ${rev_x86:-unknown} while $arm was built from ${rev_arm:-unknown}"
+              return 0
+            fi
+            rc_x86=0
+            ref_x86=$(immutable_ref "$x86") || rc_x86=$?
+            if [ "$rc_x86" -eq 2 ]; then
+              echo "::error::cannot resolve the digest of $x86" >&2
+              return 1
+            fi
+            rc_arm=0
+            ref_arm=$(immutable_ref "$arm") || rc_arm=$?
+            if [ "$rc_arm" -eq 2 ]; then
+              echo "::error::cannot resolve the digest of $arm" >&2
+              return 1
+            fi
+            if [ -z "$ref_x86" ] || [ -z "$ref_arm" ]; then
+              echo "::warning::skipping $target: cannot resolve the digests of $x86 / $arm"
+              return 0
+            fi
+            docker manifest create "$target" "$ref_x86" "$ref_arm"
+            docker manifest push "$target"
+          }
+
+          publish_multiarch kubeovn/kube-ovn:$TAG kubeovn/kube-ovn:$TAG-x86 kubeovn/kube-ovn:$TAG-arm
+          publish_multiarch kubeovn/kube-ovn:$TAG-debug kubeovn/kube-ovn:$TAG-debug-x86 kubeovn/kube-ovn:$TAG-debug-arm
+          publish_multiarch kubeovn/vpc-nat-gateway:$TAG kubeovn/vpc-nat-gateway:$TAG-x86 kubeovn/vpc-nat-gateway:$TAG-arm
