@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -582,6 +583,50 @@ func TestGenNatGwBgpSpeakerContainer(t *testing.T) {
 			firstEnv := result.Env[0]
 			if firstEnv.Name != EnvGatewayName || firstEnv.Value != tc.gatewayName {
 				t.Errorf("gateway name env injection is faulty, got %v", firstEnv)
+			}
+		})
+	}
+}
+
+func TestGetImagePullSecrets(t *testing.T) {
+	tests := []struct {
+		name       string
+		secretName string
+		expected   []corev1.LocalObjectReference
+	}{
+		{
+			name:       "empty secret name",
+			secretName: "",
+			expected:   nil,
+		},
+		{
+			name:       "whitespace only",
+			secretName: "   ",
+			expected:   nil,
+		},
+		{
+			name:       "secret name",
+			secretName: "my-secret",
+			expected: []corev1.LocalObjectReference{
+				{Name: "my-secret"},
+			},
+		},
+		{
+			name:       "secret name with leading and trailing whitespace",
+			secretName: "  my-secret  ",
+			expected: []corev1.LocalObjectReference{
+				{Name: "my-secret"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GetImagePullSecrets(tt.secretName)
+
+			if !reflect.DeepEqual(got, tt.expected) {
+				t.Errorf("GetImagePullSecrets(%q) = %v, want %v",
+					tt.secretName, got, tt.expected)
 			}
 		})
 	}

@@ -251,3 +251,17 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 
 	return bgpSpeakerContainer, nil
 }
+
+// GetImagePullSecrets returns a list of image pull secrets for a given secret name
+func GetImagePullSecrets(secretName string) []corev1.LocalObjectReference {
+	secretName = strings.TrimSpace(secretName)
+	if secretName == "" {
+		return nil
+	}
+
+	return []corev1.LocalObjectReference{
+		{
+			Name: secretName,
+		},
+	}
+}

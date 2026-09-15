@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -334,6 +336,171 @@ func TestGetExternalSubnetNad(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedNamespace, namespace, "namespace mismatch")
 			assert.Equal(t, tt.expectedName, name, "name mismatch")
+		})
+	}
+}
+
+func TestGenNatGwStatefulSetImagePullSecrets(t *testing.T) {
+	tests := []struct {
+		name           string
+		pullSecret     string
+		expectedResult []corev1.LocalObjectReference
+	}{
+		{
+			name:           "empty pull secret results in nil",
+			pullSecret:     "",
+			expectedResult: nil,
+		},
+		{
+			name:       "non-empty pull secret is injected",
+			pullSecret: "pull-secret",
+			expectedResult: []corev1.LocalObjectReference{
+				{Name: "pull-secret"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gw := &kubeovnv1.VpcNatGateway{
+				Name: "test-gw",
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Vpc:             "test-vpc",
+					Subnet:          "internal-subnet",
+					ExternalSubnets: []string{"external-subnet"},
+				},
+			}
+
+			subnets := []*kubeovnv1.Subnet{
+				{
+					Name: "internal-subnet",
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.0.0/24",
+						Gateway:   "10.0.0.1",
+						Provider:  "internal.default.ovn",
+					},
+				},
+				{
+					Name: "external-subnet",
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "192.168.0.0/24",
+						Gateway:   "192.168.0.1",
+						Provider:  "external.default.ovn",
+					},
+				},
+			}
+
+			vpcs := []*kubeovnv1.Vpc{
+				{
+					Name: "test-vpc",
+					Status: kubeovnv1.VpcStatus{
+						Subnets: []string{"internal-subnet"},
+					},
+				},
+			}
+
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets: subnets,
+				Vpcs:    vpcs,
+			})
+			require.NoError(t, err)
+			controller := fakeController.fakeController
+
+			oldPullSecret := vpcNatImagePullSecret
+			vpcNatImagePullSecret = tt.pullSecret
+			t.Cleanup(func() { vpcNatImagePullSecret = oldPullSecret })
+
+			sts, err := controller.genNatGwStatefulSet(gw, nil, 0)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expectedResult, sts.Spec.Template.Spec.ImagePullSecrets)
+		})
+	}
+}
+
+func TestHandleAddOrUpdateVpcNatGwImagePullSecretsOnCreate(t *testing.T) {
+	tests := []struct {
+		name           string
+		pullSecret     string
+		expectedResult []corev1.LocalObjectReference
+	}{
+		{
+			name:           "no pull secret configured",
+			pullSecret:     "",
+			expectedResult: nil,
+		},
+		{
+			name:       "pull secret configured",
+			pullSecret: "pull-secret",
+			expectedResult: []corev1.LocalObjectReference{
+				{Name: "pull-secret"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gw := &kubeovnv1.VpcNatGateway{
+				Name: "test-gw",
+				Spec: kubeovnv1.VpcNatGatewaySpec{
+					Vpc:             "test-vpc",
+					Subnet:          "internal-subnet",
+					ExternalSubnets: []string{"external-subnet"},
+				},
+			}
+
+			subnets := []*kubeovnv1.Subnet{
+				{
+					Name: "internal-subnet",
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.0.0/24",
+						Gateway:   "10.0.0.1",
+						Provider:  "internal.default.ovn",
+					},
+				},
+				{
+					Name: "external-subnet",
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "192.168.0.0/24",
+						Gateway:   "192.168.0.1",
+						Provider:  "external.default.ovn",
+					},
+				},
+			}
+
+			vpcs := []*kubeovnv1.Vpc{
+				{
+					Name: "test-vpc",
+					Status: kubeovnv1.VpcStatus{
+						Subnets: []string{"internal-subnet"},
+					},
+				},
+			}
+
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets:        subnets,
+				Vpcs:           vpcs,
+				VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
+			})
+			require.NoError(t, err)
+			controller := fakeController.fakeController
+
+			// ensure the "iptables nat gw enabled" gate is set so handleAddOrUpdateVpcNatGw proceeds
+			oldEnabled := vpcNatEnabled
+			vpcNatEnabled = "true"
+			t.Cleanup(func() { vpcNatEnabled = oldEnabled })
+
+			oldSecret := vpcNatImagePullSecret
+			vpcNatImagePullSecret = tt.pullSecret
+			t.Cleanup(func() { vpcNatImagePullSecret = oldSecret })
+
+			err = controller.handleAddOrUpdateVpcNatGw(gw.Name)
+			require.NoError(t, err)
+
+			sts, err := controller.config.KubeClient.AppsV1().StatefulSets(controller.config.PodNamespace).
+				Get(context.Background(), util.GenNatGwName(gw.Name), metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedResult, sts.Spec.Template.Spec.ImagePullSecrets)
 		})
 	}
 }

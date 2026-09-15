@@ -1070,6 +1070,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 				},
 				Spec: corev1.PodSpec{
 					TerminationGracePeriodSeconds: new(int64(0)),
+					ImagePullSecrets:              util.GetImagePullSecrets(vpcNatImagePullSecret),
 					Containers: []corev1.Container{
 						{
 							Name:    "vpc-nat-gw",
