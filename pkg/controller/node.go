@@ -41,6 +41,11 @@ func (c *Controller) enqueueAddNode(obj any) {
 	c.enqueueVpcBFDPortByNodeChange(nil, node)
 }
 
+// nodeIsExternalGateway reports whether the node is configured as an external gateway node.
+func nodeIsExternalGateway(node *v1.Node) bool {
+	return node.Labels[util.ExGatewayLabel] == "true"
+}
+
 // enqueueExternalVpcsForReconcile re-queues all custom VPCs that use external subnets
 // so their LRP gateway-chassis lists are kept in sync with external-gateway nodes.
 func (c *Controller) enqueueExternalVpcsForReconcile() {
@@ -163,7 +168,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	if nodeReadyChanged || nodeLabelsChanged {
 		c.enqueueVpcBFDPortByNodeChange(oldNode, newNode)
 	}
-	if oldNode.Labels[util.ExGatewayLabel] != newNode.Labels[util.ExGatewayLabel] {
+	if nodeIsExternalGateway(oldNode) != nodeIsExternalGateway(newNode) {
 		c.enqueueExternalVpcsForReconcile()
 	}
 }
@@ -225,6 +230,13 @@ func (c *Controller) handleAddNode(key string) (err error) {
 	defer func() { c.recordNodeReconcileFailure(node, "AddNodeFailed", err) }()
 	klog.Infof("handle add node %s", node.Name)
 
+	// Notify the external VPCs early: the notification only enqueues the VPCs which then converge on
+	// their own based on the latest state, and it must not depend on the join network setup below
+	// nor on the node chassis being registered yet (the node update handler covers that case).
+	if nodeIsExternalGateway(node) {
+		c.enqueueExternalVpcsForReconcile()
+	}
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
@@ -259,9 +271,6 @@ func (c *Controller) handleAddNode(key string) (err error) {
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
-	}
-	if _, ok := node.Labels[util.ExGatewayLabel]; ok {
-		c.enqueueExternalVpcsForReconcile()
 	}
 	return nil
 }
@@ -511,7 +520,7 @@ func (c *Controller) handleDeleteNode(key string) (err error) {
 	if err = c.deleteNode(key); err != nil {
 		return err
 	}
-	if _, ok := node.Labels[util.ExGatewayLabel]; ok {
+	if nodeIsExternalGateway(node) {
 		c.enqueueExternalVpcsForReconcile()
 	}
 	return nil
@@ -665,6 +674,14 @@ func (c *Controller) handleUpdateNode(key string) (err error) {
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
+	}
+
+	// A node that joins with the external gateway label already set registers its chassis only
+	// after the CNI starts, so the first reconcile may have run before the chassis was available.
+	// The chassis annotation is present and UpdateChassisTag verified its SB entry above, so the
+	// external VPCs are enqueued to make sure that the LRP chassis lists include this node.
+	if node.Annotations[util.ChassisAnnotation] != "" && nodeIsExternalGateway(node) {
+		c.enqueueExternalVpcsForReconcile()
 	}
 
 	c.distributedSubnetNeedSync.Store(true)
