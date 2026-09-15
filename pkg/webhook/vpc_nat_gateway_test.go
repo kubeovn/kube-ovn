@@ -519,6 +519,21 @@ func TestValidateIptablesDnatProtocolCanonical(t *testing.T) {
 	}
 }
 
+func TestValidateIptablesDnatAcceptsEveryTransportProtocol(t *testing.T) {
+	v := &ValidatingHook{cache: &mockCache{objects: map[string]runtime.Object{
+		"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"}},
+	}}}
+
+	// tcp, udp and sctp are programmed the same way (share DNAT over nft and exclusive DNAT over
+	// iptables both handle every transport protocol)
+	for _, protocol := range []string{"tcp", "udp", "sctp"} {
+		dnat := &ovnv1.IptablesDnatRule{Spec: ovnv1.IptablesDnatRuleSpec{
+			EIP: "test-eip", ExternalPort: "80", InternalPort: "80", InternalIP: "10.0.0.10", Protocol: protocol,
+		}}
+		require.NoError(t, v.ValidateIptablesDnat(context.Background(), dnat), protocol)
+	}
+}
+
 func TestValidateIptablesDnatSessionAffinity(t *testing.T) {
 	cache := &mockCache{
 		objects: map[string]runtime.Object{

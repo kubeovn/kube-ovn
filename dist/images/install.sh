@@ -1105,7 +1105,7 @@ spec:
                 description: Internal port number to forward traffic to
                 type: string
               protocol:
-                description: Protocol type (TCP or UDP)
+                description: Protocol type. TCP, UDP and SCTP share the same treatment.
                 type: string
               sessionAffinity:
                 description: |-

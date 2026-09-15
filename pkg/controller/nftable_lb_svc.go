@@ -36,6 +36,11 @@ import (
 //     spec.natGwDp, so no extra gateway annotation is needed.
 //   - The generated IptablesDnatRule share the EIP:externalPort:protocol identity
 //     (externalPort = servicePort, internalPort = endpoint target port).
+//   - The Service's IPv4 ClusterIP is a second share DNAT identity with the same
+//     backends: the gateway holds it on lo and programs the same nft map for it,
+//     so the Service is reachable from inside the VPC as well. It is recorded in
+//     the util.NftableLbSvcClusterIPAnnotation annotation of every generated rule,
+//     which is the only durable record of that VIP once the Service is gone.
 //
 // Lifecycle:
 //   IptablesDnatRule is cluster-scoped, so it cannot use an OwnerReference to the
@@ -54,6 +59,15 @@ import (
 //   per-node), and Cluster policy is the intended, sufficient behavior here.
 //   Consequently client source IP is not preserved (traffic is DNAT'd through the
 //   gateway), matching what Cluster policy already implies.
+//
+// OVN load balancer exclusion (per VIP):
+//   This feature and the OVN load balancer are two independent service load balancing
+//   implementations that can both be enabled: the flags control their own
+//   implementation. They must not program the same VIP though. OVN load balances in
+//   the logical switch pipeline, before the router, so a VIP it programs there never
+//   reaches the gateway's policy route, share DNAT and hairpin SNAT. The VIPs of a
+//   Service handled here are therefore owned by the gateway in the VPC it serves and
+//   are removed from that VPC's load balancers (see nftableLbSvcOwnsServiceVipsInVpc).
 
 // nftableLbSvcQualifies reports whether a Service should be handled by the
 // nftable LB service feature: it must be a LoadBalancer and reference an EIP.
@@ -61,12 +75,97 @@ func nftableLbSvcQualifies(svc *v1.Service) bool {
 	return svc.Spec.Type == v1.ServiceTypeLoadBalancer && svc.Annotations[util.EipAnnotation] != ""
 }
 
+// nftableLbSvcOwnsServiceVipsInVpc reports whether the vpc-nat-gw nft share DNAT owns the VIPs of
+// the given Service in the given VPC.
+//
+// When it does, that VPC's OVN load balancer must not program them: the logical switch LB stage runs
+// before the router, so an OVN load balanced VIP would never reach the gateway's policy route, share
+// DNAT and hairpin SNAT. A Service whose endpoints live in another VPC is not reachable through this
+// gateway and keeps being load balanced by OVN. The decision is deliberately static (feature gate,
+// annotations, EIP and gateway objects) so the two planes cannot flap while the EIP is allocated.
+func (c *Controller) nftableLbSvcOwnsServiceVipsInVpc(svc *v1.Service, vpcName string) bool {
+	if c.config == nil || !c.config.EnableNftableLbSvc || !nftableLbSvcQualifies(svc) {
+		return false
+	}
+	// A SwitchLBRule/RouterLBRule VIP stays under the control of the VIP feature; suppressing the
+	// whole Service would drop the load balancing of that VIP.
+	if svc.Annotations[util.SwitchLBRuleVipsAnnotation] != "" || svc.Annotations[util.RouterLBRuleVipsAnnotation] != "" {
+		return false
+	}
+	eip, err := c.iptablesEipsLister.Get(svc.Annotations[util.EipAnnotation])
+	if err != nil {
+		return false
+	}
+	// Share DNAT is IPv4 only, so an EIP without an IPv4 address has no gateway data plane: the VIPs
+	// have to stay with the OVN load balancer instead of being released to a gateway that cannot
+	// serve them (the reconciler skips such an EIP the same way).
+	if util.CheckProtocol(eip.Status.IP) != kubeovnv1.ProtocolIPv4 {
+		return false
+	}
+	gw, err := c.vpcNatGatewayLister.Get(eip.Spec.NatGwDp)
+	if err != nil {
+		return false
+	}
+	return gw.Spec.Vpc == vpcName
+}
+
+// nftableLbSvcVips returns the IPv4 VIPs the nftable LB service feature programs for a Service: its
+// IPv4 ClusterIP and the IPv4 LoadBalancer ingress address it publishes. Share DNAT is IPv4 only, so
+// an IPv6 VIP has no gateway data plane and is not part of the owned set.
+func nftableLbSvcVips(svc *v1.Service) []string {
+	vips := make([]string, 0, 2)
+	if clusterIP := nftableLbSvcClusterIP(svc); clusterIP != "" {
+		vips = append(vips, clusterIP)
+	}
+	for _, ingress := range svc.Status.LoadBalancer.Ingress {
+		if util.CheckProtocol(ingress.IP) == kubeovnv1.ProtocolIPv4 {
+			vips = append(vips, ingress.IP)
+		}
+	}
+	return vips
+}
+
+// nftableLbSvcVipPorts returns the OVN load balancer identities the nftable LB service feature
+// programs for a Service: <vip>:<port> for every IPv4 VIP and every servicePort. Those are exactly
+// the identities the gateway serves (share DNAT is IPv4, and every transport protocol is programmed
+// the same way), so anything else -- an IPv6 ClusterIP -- keeps being load balanced by OVN.
+func nftableLbSvcVipPorts(svc *v1.Service) []string {
+	var vipPorts []string
+	for _, vip := range nftableLbSvcVips(svc) {
+		for _, port := range svc.Spec.Ports {
+			vipPorts = append(vipPorts, util.JoinHostPort(vip, port.Port))
+		}
+	}
+	return vipPorts
+}
+
+// clearNftableLbSvcVipsFromLBs removes the identities owned by the nftable LB service feature from
+// the given load balancers, so a Service that opted in after kube-ovn had already programmed them
+// (or one whose ownership just moved to another VPC) cannot leave an OVN load balanced VIP behind
+// next to the gateway's share DNAT. It is idempotent: deleting an absent VIP is a no-op.
+func (c *Controller) clearNftableLbSvcVipsFromLBs(svc *v1.Service, lbNames ...string) error {
+	for _, lbName := range lbNames {
+		if lbName == "" {
+			continue
+		}
+		for _, vipPort := range nftableLbSvcVipPorts(svc) {
+			if err := c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lbName, vipPort); err != nil {
+				return fmt.Errorf("failed to delete ip port mapping for vip %s from lb %s: %w", vipPort, lbName, err)
+			}
+			if err := c.OVNNbClient.LoadBalancerDeleteVip(lbName, vipPort, true); err != nil {
+				return fmt.Errorf("failed to delete vip %s from lb %s: %w", vipPort, lbName, err)
+			}
+		}
+	}
+	return nil
+}
+
 // enqueueNftableLbService enqueues a Service key for nftable LB reconciliation.
 // It is a no-op unless both the load balancer and nftable LB service features
 // are enabled. Qualification and cleanup decisions are made in the handler so a
 // Service that stops qualifying still gets its stale rules cleaned up.
 func (c *Controller) enqueueNftableLbService(key string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil || key == "" {
+	if c.config == nil || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil || key == "" {
 		return
 	}
 	klog.V(3).Infof("enqueue add/update nftable lb service %s", key)
@@ -81,7 +180,7 @@ func (c *Controller) enqueueNftableLbService(key string) {
 // controller was down; this scan only adds owners that can be discovered from the rules that
 // are still present.
 func (c *Controller) enqueueNftableLbSvcOwnersFromRules() error {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil {
+	if c.config == nil || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil {
 		return nil
 	}
 	rules, err := c.iptablesDnatRulesLister.List(labels.Everything())
@@ -101,7 +200,7 @@ func (c *Controller) enqueueNftableLbSvcOwnersFromRules() error {
 }
 
 func (c *Controller) enqueueNftableLbServicesForPod(pod *v1.Pod) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || pod == nil || c.endpointSlicesLister == nil {
+	if c.config == nil || !c.config.EnableNftableLbSvc || pod == nil || c.endpointSlicesLister == nil {
 		return
 	}
 	slices, err := c.endpointSlicesLister.EndpointSlices(pod.Namespace).List(labels.Everything())
@@ -127,7 +226,7 @@ func (c *Controller) enqueueNftableLbServicesForPod(pod *v1.Pod) {
 }
 
 func (c *Controller) enqueueNftableLbServicesForNatGw(natGwName string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || natGwName == "" || c.iptablesEipsLister == nil {
+	if c.config == nil || !c.config.EnableNftableLbSvc || natGwName == "" || c.iptablesEipsLister == nil {
 		return
 	}
 	eips, err := c.iptablesEipsLister.List(labels.Everything())
@@ -143,7 +242,7 @@ func (c *Controller) enqueueNftableLbServicesForNatGw(natGwName string) {
 }
 
 func (c *Controller) enqueueNftableLbServicesForEIP(eipName string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.svcIndexer == nil || eipName == "" {
+	if c.config == nil || !c.config.EnableNftableLbSvc || c.svcIndexer == nil || eipName == "" {
 		return
 	}
 	services, err := c.svcIndexer.ByIndex(IndexServiceByNftableLbEip, eipName)
@@ -155,6 +254,13 @@ func (c *Controller) enqueueNftableLbServicesForEIP(eipName string) {
 		svc, ok := obj.(*v1.Service)
 		if ok {
 			c.enqueueNftableLbService(svc.Namespace + "/" + svc.Name)
+			// The EIP decides which VPC owns the Service's VIPs, so the endpoint slices have to be
+			// reconciled as well when the OVN load balancer runs: they release the VIPs from that
+			// VPC's load balancer (see nftableLbSvcOwnsServiceVipsInVpc) and are the only handler
+			// that programs them. Without the OVN load balancer that queue has no consumer.
+			if c.config.EnableLb {
+				c.addOrUpdateEndpointSliceQueue.Add(svc.Namespace + "/" + svc.Name)
+			}
 		}
 	}
 }
@@ -293,7 +399,7 @@ func (c *Controller) handleAddOrUpdateNftableLbService(key string) error {
 			klog.Infof("deleted stale nftable lb dnat rule %s for service %s", rule.Name, key)
 			continue
 		}
-		if !nftableLbDnatSpecEqual(&rule.Spec, &want.Spec) {
+		if nftableLbDnatRuleDrifted(rule, want) {
 			// drifted (e.g. session affinity or EIP changed): delete and recreate later
 			if err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Delete(context.Background(), rule.Name, metav1.DeleteOptions{}); err != nil {
 				if !k8serrors.IsNotFound(err) {
@@ -330,7 +436,23 @@ func (c *Controller) handleAddOrUpdateNftableLbService(key string) error {
 		c.addOrUpdateNftableLbSvcQueue.AddAfter(key, 2*time.Second)
 	}
 
+	// The gateway's VIP routes are derived from the rules reconciled above, which are the durable
+	// record. Reconciling them here as well closes the loop for a gateway whose rules already exist
+	// (controller restart, or a Service that was already programmed) and whose routes drifted out of
+	// band: without it they would only be repaired by a later rule event.
+	if err = c.syncNatGwVipRoutes(natGw.Name); err != nil {
+		klog.Errorf("failed to sync vip routes for nat gw %s: %v", natGw.Name, err)
+		return err
+	}
+
 	return nil
+}
+
+// nftableLbSvcClusterIP returns the IPv4 ClusterIP that the gateway programs as a second share
+// DNAT identity next to the Service's EIP, or "" when the Service has none: a headless Service,
+// a ClusterIP that is not allocated yet, or an IPv6-only Service (share DNAT is IPv4 only).
+func nftableLbSvcClusterIP(svc *v1.Service) string {
+	return firstIPv4(util.ServiceClusterIPs(*svc))
 }
 
 // nftableLbDnatSpecEqual compares the controller-managed fields of two share DNAT specs.
@@ -345,6 +467,16 @@ func nftableLbDnatSpecEqual(a, b *kubeovnv1.IptablesDnatRuleSpec) bool {
 		a.Type == b.Type &&
 		a.SessionAffinity == b.SessionAffinity &&
 		a.SessionAffinityTimeoutSeconds == b.SessionAffinityTimeoutSeconds
+}
+
+// nftableLbDnatRuleDrifted reports whether a live generated rule has to be deleted and recreated:
+// its share DNAT spec changed, or the ClusterIP it records no longer matches the Service's. The
+// ClusterIP is an annotation rather than part of the spec, but it drives the internal VIP the
+// gateway programs and cleans up, so a mismatch (a Service deleted and recreated with the same
+// name and backends gets a new ClusterIP while its rule names stay identical) must rebuild it.
+func nftableLbDnatRuleDrifted(rule, want *kubeovnv1.IptablesDnatRule) bool {
+	return !nftableLbDnatSpecEqual(&rule.Spec, &want.Spec) ||
+		rule.Annotations[util.NftableLbSvcClusterIPAnnotation] != want.Annotations[util.NftableLbSvcClusterIPAnnotation]
 }
 
 // ensureNftableLbSvcIngressIP sets the Service's status.loadBalancer.ingress to the EIP's
@@ -538,14 +670,11 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 }
 
 // nftableLbSvcIdentities returns the share DNAT identities (eip/externalPort/protocol) a
-// LoadBalancer Service would program for the given EIP, one per tcp/udp servicePort.
+// LoadBalancer Service would program for the given EIP, one per servicePort.
 func nftableLbSvcIdentities(svc *v1.Service, eipName string) []string {
 	ids := make([]string, 0, len(svc.Spec.Ports))
 	for _, port := range svc.Spec.Ports {
 		protocol := strings.ToLower(string(port.Protocol))
-		if protocol != "tcp" && protocol != "udp" {
-			continue
-		}
 		ids = append(ids, nftableLbDnatIdentity(eipName, strconv.Itoa(int(port.Port)), protocol))
 	}
 	return ids
@@ -607,6 +736,9 @@ func endpointPortMatchesServicePort(port discoveryv1.EndpointPort, servicePort v
 func buildDesiredNftableLbDnatRules(svc *v1.Service, eipName string, endpointSlices []*discoveryv1.EndpointSlice, backendIP func(discoveryv1.Endpoint) (string, bool)) map[string]*kubeovnv1.IptablesDnatRule {
 	desired := make(map[string]*kubeovnv1.IptablesDnatRule)
 
+	// The internal VIP the gateway programs with the same backends (see file header).
+	clusterIP := nftableLbSvcClusterIP(svc)
+
 	// Translate the Service's client-IP session affinity into the share DNAT fields. All
 	// backends of one identity carry the same affinity settings, matching kube-proxy where
 	// affinity is a per-ServicePort property.
@@ -621,12 +753,9 @@ func buildDesiredNftableLbDnatRules(svc *v1.Service, eipName string, endpointSli
 
 	for _, port := range svc.Spec.Ports {
 		protocol := strings.ToLower(string(port.Protocol))
-		// share DNAT only supports tcp/udp
-		if protocol != "tcp" && protocol != "udp" {
-			klog.Warningf("skipping service %s/%s port %d: nftable lb service only supports tcp/udp, got %s",
-				svc.Namespace, svc.Name, port.Port, port.Protocol)
-			continue
-		}
+		// tcp, udp and sctp share the same nftables treatment (the protocol is a key field of the
+		// service map and the port comes from the transport header, like kube-proxy's nftables
+		// proxier), so every transport protocol is programmed the same way.
 		externalPort := strconv.Itoa(int(port.Port))
 
 		for _, endpointSlice := range endpointSlices {
@@ -657,7 +786,7 @@ func buildDesiredNftableLbDnatRules(svc *v1.Service, eipName string, endpointSli
 				}
 				internalPort := strconv.Itoa(int(targetPort))
 				name := nftableLbDnatRuleName(svc.Namespace, svc.Name, protocol, externalPort, address, internalPort)
-				desired[name] = &kubeovnv1.IptablesDnatRule{
+				rule := &kubeovnv1.IptablesDnatRule{
 					Name: name,
 					Labels: map[string]string{
 						util.NftableLbSvcNsLabel:   svc.Namespace,
@@ -674,6 +803,12 @@ func buildDesiredNftableLbDnatRules(svc *v1.Service, eipName string, endpointSli
 						SessionAffinityTimeoutSeconds: affinityTimeout,
 					},
 				}
+				if clusterIP != "" {
+					// The gateway programs this VIP as a second share DNAT identity with the same
+					// backends. Recording it on every rule keeps it recoverable after the Service is gone.
+					rule.Annotations = map[string]string{util.NftableLbSvcClusterIPAnnotation: clusterIP}
+				}
+				desired[name] = rule
 			}
 		}
 	}
@@ -829,4 +964,10 @@ func nftableLbDnatRuleName(namespace, name, protocol, externalPort, backendIP, i
 		svcPart = svcPart[:maxNameLen]
 	}
 	return fmt.Sprintf("%s%s-%s", prefix, svcPart, hash)
+}
+
+// nftableLbSvcClusterIPFromRule returns the internal VIP recorded on a generated share DNAT rule,
+// or "" for a hand-managed rule. See util.NftableLbSvcClusterIPAnnotation.
+func nftableLbSvcClusterIPFromRule(rule *kubeovnv1.IptablesDnatRule) string {
+	return rule.Annotations[util.NftableLbSvcClusterIPAnnotation]
 }

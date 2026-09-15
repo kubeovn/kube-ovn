@@ -75,6 +75,10 @@ function show_help() {
     echo "  subnet-route-del         - Delete VPC internal routes"
     echo "  eip-add                  - Add external IP"
     echo "  eip-del                  - Delete external IP"
+    echo "  vip-addr-add             - Hold a share-DNAT VIP (e.g. a Service ClusterIP) on lo"
+    echo "  vip-addr-del             - Remove a share-DNAT VIP from lo"
+    echo "  vip-hairpin-add          - Add a per-identity hairpin SNAT rule for a VIP"
+    echo "  vip-hairpin-del          - Delete a per-identity hairpin SNAT rule for a VIP"
     echo "  floating-ip-add          - Add floating IP mapping"
     echo "  floating-ip-del          - Delete floating IP mapping"
     echo "  dnat-add                 - Add DNAT rule"
@@ -321,6 +325,121 @@ function del_eip() {
     done
 }
 
+# ===== share-DNAT VIPs (nftable LoadBalancer services) =====
+#
+# A Service handled by the nft share-DNAT feature is reachable from the VPC both through its EIP
+# and through its ClusterIP. Both are programmed as nft share-DNAT identities by the controller
+# and both need the same local support here:
+#   - the ClusterIP is held on lo (/32) so the gateway owns the VIP locally;
+#   - VPC-originated traffic that was DNAT'd back into the VPC is SNAT'd to this gateway's own VPC
+#     address, so the backend's reply returns to the exact instance that holds the conntrack.
+#
+# The SNAT source is deliberately the gateway's own address and not the VIP: with more than one
+# gateway replica, a reply addressed to the VIP can be load balanced to another replica, which has
+# no conntrack entry for the connection. The gateway's own address is instance-local, so the reply
+# always lands on the replica that performed the DNAT. (add_eip keeps its VIP-wide rule that SNATs
+# to the EIP for hand-managed EIP/FIP rules; the per-identity rules added here are more specific
+# and are inserted before it, see vip_hairpin_add.)
+
+function local_vpc_ipv4() {
+    # The address the gateway uses to talk to the VPC. Each replica has its own, which is what
+    # makes the hairpin SNAT instance-local.
+    local ip
+    ip=$(ip -4 addr show dev "$VPC_INTERFACE" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -1)
+    if [ -z "$ip" ]; then
+        echo "Error: no IPv4 address on VPC interface $VPC_INTERFACE" >&2
+        return 1
+    fi
+    echo "$ip"
+}
+
+function vip_addr_add() {
+    check_inited
+    for rule in "$@"
+    do
+        vip=(${rule//\// })
+        if [ -z "$vip" ]; then
+            echo "Error: invalid vip-addr-add rule: $rule" >&2
+            exit 1
+        fi
+        # /32 on lo keeps the VIP from claiming a whole ClusterIP range on the VPC interface.
+        exec_cmd "ip addr replace $vip/32 dev lo"
+    done
+}
+
+function vip_addr_del() {
+    # Deletion is idempotent: a restarted gateway container may never have added the address.
+    for rule in "$@"
+    do
+        vip=(${rule//\// })
+        ipCidr=$(ip addr show lo | grep -w "$vip" | awk '{print $2}' || true)
+        if [ -n "$ipCidr" ]; then
+            exec_cmd "ip addr del $ipCidr dev lo"
+        fi
+    done
+}
+
+function vip_hairpin_add() {
+    check_inited
+    local local_ip
+    local_ip=$(local_vpc_ipv4) || exit 1
+    for rule in "$@"
+    do
+        IFS=',' read -r vip port protocol <<< "$rule"
+        # The controller may pass the protocol in either case (like add_nft_dnat_map accepts);
+        # the kernel only knows the lower case names.
+        protocol=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+        if [ -z "$vip" ] || [ -z "$port" ] || [ -z "$protocol" ]; then
+            echo "Error: invalid vip-hairpin-add rule: $rule" >&2
+            exit 1
+        fi
+        if ! [[ "$vip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
+            echo "Error: invalid vip in vip-hairpin-add rule: $vip" >&2
+            exit 1
+        fi
+        if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+            echo "Error: invalid port in vip-hairpin-add rule: $port" >&2
+            exit 1
+        fi
+        case "$protocol" in
+            tcp|udp|sctp) ;;
+            *)
+                echo "Error: invalid protocol in vip-hairpin-add rule: $protocol" >&2
+                exit 1
+                ;;
+        esac
+
+        # --ctorigdstport matches the destination port before DNAT rewrote it, so the rule stays
+        # scoped to one service identity even though the packet's port is already the backend's.
+        local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -p $protocol -m conntrack --ctstate DNAT --ctorigdst $vip --ctorigdstport $port -j SNAT --to-source $local_ip"
+        if ! $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
+            # Insert at the head: add_eip installs a VIP-wide hairpin rule (SNAT to the EIP) that
+            # would otherwise match this traffic first and SNAT it to the VIP instead.
+            exec_cmd "$iptables_cmd -t nat -I HAIRPIN_SNAT 1 $hairpin_rule --random-fully"
+        fi
+    done
+}
+
+function vip_hairpin_del() {
+    # Deletion is idempotent and must not depend on the chains being initialized: the rule may be
+    # absent because the gateway is being torn down or was just restarted.
+    local local_ip
+    local_ip=$(local_vpc_ipv4) || exit 1
+    for rule in "$@"
+    do
+        IFS=',' read -r vip port protocol <<< "$rule"
+        protocol=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+        if [ -z "$vip" ] || [ -z "$port" ] || [ -z "$protocol" ]; then
+            echo "Error: invalid vip-hairpin-del rule: $rule" >&2
+            exit 1
+        fi
+        local hairpin_rule="-m mark --mark 0x1/0x1 -o $VPC_INTERFACE -p $protocol -m conntrack --ctstate DNAT --ctorigdst $vip --ctorigdstport $port -j SNAT --to-source $local_ip"
+        if $iptables_cmd -t nat -C HAIRPIN_SNAT $hairpin_rule --random-fully >/dev/null 2>&1; then
+            exec_cmd "$iptables_cmd -t nat -D HAIRPIN_SNAT $hairpin_rule --random-fully"
+        fi
+    done
+}
+
 function add_floating_ip() {
     # Strict validation before adding (FIP is 1:1, identity = EIP):
     # 1. If EIP rule does not exist -> create DNAT + SNAT rules
@@ -548,6 +667,10 @@ function del_dnat() {
 #   └── Per-identity chains: dnat-XXXXX (one per eip:port:protocol)
 #       └── Rule: numgen random mod N dnat to ip addr . port map { backends }
 #
+# Protocols: tcp, udp and sctp. The transport protocol is just a key field of the service map
+# (inet_proto) and the port is read from the transport header (th dport), exactly like kube-proxy's
+# nftables proxier, so nothing here is protocol specific.
+#
 # Atomicity: all operations use `nft -f` (single netlink batch transaction).
 # When backends change, only the per-identity chain is flushed + rebuilt.
 # The vmap element is stable (only added/removed when an identity is created/destroyed).
@@ -683,10 +806,14 @@ function add_nft_dnat_map() {
             echo "Error: invalid external port in nft-dnat-map rule: $dport"
             exit 1
         fi
-        if [ "$protocol" != "tcp" ] && [ "$protocol" != "udp" ] && [ "$protocol" != "TCP" ] && [ "$protocol" != "UDP" ]; then
-            echo "Error: invalid protocol in nft-dnat-map rule: $protocol"
-            exit 1
-        fi
+        protocol=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+        case "$protocol" in
+            tcp|udp|sctp) ;;
+            *)
+                echo "Error: invalid protocol in nft-dnat-map rule: $protocol"
+                exit 1
+                ;;
+        esac
         if [ "$affinity" != "none" ] && [ "$affinity" != "clientip" ]; then
             echo "Error: invalid affinity in nft-dnat-map rule: $affinity"
             exit 1
@@ -707,9 +834,9 @@ function add_nft_dnat_map() {
             exit 1
         fi
 
-        # Map protocol name to nft inet_proto keyword
+        # Map protocol name to nft inet_proto keyword (already normalized above)
         local nft_proto
-        nft_proto=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+        nft_proto=$protocol
 
         # Determine per-identity chain name and identity hash.
         # The hash uses the raw protocol string (as before the affinity feature) so the
@@ -852,13 +979,17 @@ function del_nft_dnat_map() {
             echo "Error: invalid external port in nft-dnat-map identity: $dport"
             exit 1
         fi
-        if [ "$protocol" != "tcp" ] && [ "$protocol" != "udp" ] && [ "$protocol" != "TCP" ] && [ "$protocol" != "UDP" ]; then
-            echo "Error: invalid protocol in nft-dnat-map identity: $protocol"
-            exit 1
-        fi
+        protocol=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+        case "$protocol" in
+            tcp|udp|sctp) ;;
+            *)
+                echo "Error: invalid protocol in nft-dnat-map identity: $protocol"
+                exit 1
+                ;;
+        esac
 
         local identity_chain nft_proto idhash
-        nft_proto=$(echo "$protocol" | tr '[:upper:]' '[:lower:]')
+        nft_proto=$protocol
         identity_chain=$(nft_identity_chain_name "$eip" "$dport" "$protocol")
         idhash=$(nft_identity_hash "$eip" "$dport" "$protocol")
 
@@ -1852,6 +1983,22 @@ case $opt in
     eip-del)
         echo "eip-del $*"
         del_eip "$@"
+        ;;
+    vip-addr-add)
+        echo "vip-addr-add $*"
+        vip_addr_add "$@"
+        ;;
+    vip-addr-del)
+        echo "vip-addr-del $*"
+        vip_addr_del "$@"
+        ;;
+    vip-hairpin-add)
+        echo "vip-hairpin-add $*"
+        vip_hairpin_add "$@"
+        ;;
+    vip-hairpin-del)
+        echo "vip-hairpin-del $*"
+        vip_hairpin_del "$@"
         ;;
     dnat-add)
         echo "dnat-add $*"

@@ -321,10 +321,22 @@ func nftDnatMapRuleExists(natGwPodName, eip, externalPort, protocol string, back
 	}
 	output := string(stdout)
 
-	// Check if the vmap element for this identity exists (eip . proto . port : goto chain)
+	// Check if the vmap element for this identity exists (eip . proto . port : goto chain).
+	// nft prints the protocol by name only when it can map the number back (tcp/udp), so an sctp
+	// element shows up as 132: accept both forms.
 	nftProto := strings.ToLower(protocol)
-	vmapEntry := fmt.Sprintf("%s . %s . %s : goto", eip, nftProto, externalPort)
-	if !strings.Contains(output, vmapEntry) {
+	protoTokens := []string{nftProto}
+	if number, ok := map[string]string{"tcp": "6", "udp": "17", "sctp": "132"}[nftProto]; ok {
+		protoTokens = append(protoTokens, number)
+	}
+	found := false
+	for _, token := range protoTokens {
+		if strings.Contains(output, fmt.Sprintf("%s . %s . %s : goto", eip, token, externalPort)) {
+			found = true
+			break
+		}
+	}
+	if !found {
 		return false
 	}
 
@@ -374,6 +386,159 @@ func nftDnatAffinityRuleExists(natGwPodName, eip, externalPort, protocol string,
 		}
 	}
 	return true
+}
+
+// natGwLoAddrExists checks whether a VIP is held on lo inside the NAT gateway pod. Holding the
+// ClusterIP there is what makes the gateway own the internal VIP locally.
+func natGwLoAddrExists(natGwPodName, vip string) bool {
+	stdout, _, err := framework.KubectlExec(framework.KubeOvnNamespace, natGwPodName, "ip addr show lo")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(stdout), vip+"/32")
+}
+
+// vipHairpinRuleExists checks the per-identity hairpin SNAT rule of a share DNAT VIP: traffic that
+// entered the gateway from the VPC and was DNAT'd back into the VPC is SNAT'd to the gateway's own
+// VPC address, so the backend's reply returns to the instance holding the conntrack (and not to a
+// VIP address that another replica might own).
+func vipHairpinRuleExists(natGwPodName, vip, port, protocol, sourceIP string) bool {
+	output := iptablesSaveNat(natGwPodName)
+	if !strings.Contains(output, ":HAIRPIN_SNAT") && !strings.Contains(output, "-N HAIRPIN_SNAT") {
+		return false
+	}
+	pattern := fmt.Sprintf(
+		`-A HAIRPIN_SNAT .*-p %s .*-m conntrack --ctstate DNAT --ctorigdst \b%s\b --ctorigdstport \b%s\b -j SNAT --to-source \b%s\b`,
+		protocol, regexp.QuoteMeta(vip), port, regexp.QuoteMeta(sourceIP),
+	)
+	return regexp.MustCompile(pattern).MatchString(output)
+}
+
+// observeSourceIP curls the agnhost /clientip endpoint of a VIP from a client pod and returns the
+// source address the backend observed for the request.
+func observeSourceIP(namespace, clientPod, vip, port string) string {
+	cmd := []string{"curl", "-s", "-m", "10", fmt.Sprintf("http://%s:%s/clientip", vip, port)}
+	stdout, _, err := framework.KubectlExec(namespace, clientPod, cmd...)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(stdout))
+}
+
+// vpcLbHasVip reports whether the given VPC load balancer programs the VIP. The gateway's VPC must
+// not: OVN load balancing happens in the logical switch pipeline, before the router, so a VIP
+// programmed there would shadow the gateway's policy route, share DNAT and hairpin SNAT. A load
+// balancer that does not exist (the OVN load balancer is disabled) cannot program anything, so a
+// failed lookup counts as absent.
+func vpcLbHasVip(lbName, vip string, port int32) bool {
+	stdout, _, err := framework.NBExec(fmt.Sprintf("ovn-nbctl --no-leader-only lb-list %s", lbName))
+	if err != nil {
+		framework.Logf("load balancer %s not listed (%v), treating VIP %s as absent", lbName, err, vip)
+		return false
+	}
+	return strings.Contains(string(stdout), util.JoinHostPort(vip, port))
+}
+
+// natGwVipPolicyRouteExists checks that traffic destined for the VIP is rerouted to the NAT gateway
+// from inside the VPC, which is what makes the VIP reachable without leaving the VPC.
+func natGwVipPolicyRouteExists(vpcName, vip, nextHop string) bool {
+	stdout, _, err := framework.NBExec(fmt.Sprintf("ovn-nbctl lr-policy-list %s", vpcName))
+	if err != nil {
+		framework.Logf("failed to list policies of vpc %s: %v", vpcName, err)
+		return false
+	}
+	output := string(stdout)
+	return strings.Contains(output, "ip4.dst == "+vip) && strings.Contains(output, nextHop)
+}
+
+// backendHitCount returns how many requests got an answer, i.e. the sum of the per backend hits.
+// curlBackendHostnames only records requests that returned a hostname, so asserting that this equals
+// the number of attempts proves that no request timed out or failed to connect.
+func backendHitCount(hits map[string]int) int {
+	total := 0
+	for _, count := range hits {
+		total += count
+	}
+	return total
+}
+
+// natGwInstances returns the running NAT gateway instances with their VPC (LAN) address, keyed by
+// pod name. An HA gateway has one per replica, and every one of them has to hold the VIPs.
+func natGwInstances(f *framework.Framework, gwName string) map[string]string {
+	selector := metav1.FormatLabelSelector(&metav1.LabelSelector{MatchLabels: util.GenNatGwLabels(gwName)})
+	pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		framework.Logf("failed to list NAT gateway %s pods: %v", gwName, err)
+		return nil
+	}
+	instances := map[string]string{}
+	for _, pod := range pods.Items {
+		if pod.Status.Phase != corev1.PodRunning || pod.DeletionTimestamp != nil {
+			continue
+		}
+		ready := false
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+				ready = true
+			}
+		}
+		if !ready {
+			continue
+		}
+		if ip := pod.Annotations[util.IPAddressAnnotation]; ip != "" {
+			instances[pod.Name] = ip
+		}
+	}
+	return instances
+}
+
+// natGwVipPolicyRouteLine returns the policy route line of the VIP (match and next hops), or "" when
+// the route is absent.
+func natGwVipPolicyRouteLine(vpcName, vip string) string {
+	stdout, _, err := framework.NBExec(fmt.Sprintf("ovn-nbctl lr-policy-list %s", vpcName))
+	if err != nil {
+		framework.Logf("failed to list policies of vpc %s: %v", vpcName, err)
+		return ""
+	}
+	for line := range strings.SplitSeq(string(stdout), "\n") {
+		if strings.Contains(line, "ip4.dst == "+vip) {
+			return line
+		}
+	}
+	return ""
+}
+
+// natGwVipPolicyRouteNextHops returns the next hops of a policy route line printed by
+// ovn-nbctl lr-policy-list (the tokens after the reroute action, which may be comma separated).
+//
+// TODO: this depends on the human readable column layout of lr-policy-list. Parse a machine
+// readable form (--format=json or --format=csv with explicit columns) if that layout ever changes.
+func natGwVipPolicyRouteNextHops(line string) []string {
+	const action = "reroute"
+	_, after, ok := strings.Cut(line, action)
+	if !ok {
+		return nil
+	}
+	var nextHops []string
+	for field := range strings.FieldsSeq(after) {
+		for hop := range strings.SplitSeq(field, ",") {
+			if hop != "" {
+				nextHops = append(nextHops, hop)
+			}
+		}
+	}
+	slices.Sort(nextHops)
+	return nextHops
+}
+
+// nanGwInstanceIPs returns the sorted VPC addresses of the given instances.
+func natGwInstanceIPs(instances map[string]string) []string {
+	ips := make([]string, 0, len(instances))
+	for _, ip := range instances {
+		ips = append(ips, ip)
+	}
+	slices.Sort(ips)
+	return ips
 }
 
 // hairpinSnatChainExists checks if the HAIRPIN_SNAT chain exists in the NAT gateway pod.
@@ -1658,12 +1823,23 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Creating a LoadBalancer service referencing the eip")
 		serviceClient := f.ServiceClient()
-		ports := []corev1.ServicePort{{
-			Name:       "http",
-			Protocol:   corev1.ProtocolTCP,
-			Port:       80,
-			TargetPort: intstr.FromInt32(8080),
-		}}
+		ports := []corev1.ServicePort{
+			{
+				Name:       "http",
+				Protocol:   corev1.ProtocolTCP,
+				Port:       80,
+				TargetPort: intstr.FromInt32(8080),
+			},
+			{
+				// sctp is programmed exactly like tcp/udp (kube-proxy nftables parity): the protocol
+				// is a key field and the port comes from the transport header, so the same nft
+				// identity and hairpin rule have to be created for it.
+				Name:       "sctp",
+				Protocol:   corev1.ProtocolSCTP,
+				Port:       132,
+				TargetPort: intstr.FromInt32(132),
+			},
+		}
 		svc := framework.MakeService(lbSvcName, corev1.ServiceTypeLoadBalancer,
 			map[string]string{util.EipAnnotation: lbEipName}, podLabels, ports, corev1.ServiceAffinityNone)
 		_ = serviceClient.Create(svc)
@@ -1683,8 +1859,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				return -1
 			}
 			return len(rules.Items)
-		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(2),
-			"controller should create one share DNAT rule per ready backend")
+		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(4),
+			"controller should create one share DNAT rule per (service port, ready backend)")
 
 		ginkgo.By("Verifying the service reports the EIP as its LoadBalancer ingress IP")
 		gomega.Eventually(func() string {
@@ -1703,6 +1879,104 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
 			"nft DNAT map rule should list both service backends")
 
+		// TODO: sctp is covered at the configuration level only (the nft identity and the hairpin rule
+		// exist and the VIP is not load balanced by OVN). Real sctp traffic needs an sctp server image
+		// (agnhost has none) and the node's sctp conntrack support, so it stays untested for now.
+		ginkgo.By("Verifying the sctp port is programmed like tcp (same nft identity shape)")
+		for _, vip := range []string{lbEip.Status.IP, serviceClient.Get(lbSvcName).Spec.ClusterIP} {
+			gomega.Eventually(func() bool {
+				return nftDnatMapRuleExists(vpcNatGwPodName, vip, "132", "sctp",
+					[]string{srv1IP + " . 132", srv2IP + " . 132"})
+			}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+				"the sctp port of VIP %s should be a share DNAT identity with both backends", vip)
+		}
+
+		ginkgo.By("Verifying the ClusterIP is programmed with the same backends as the EIP")
+		clusterIP := serviceClient.Get(lbSvcName).Spec.ClusterIP
+		framework.ExpectNotEmpty(clusterIP, "the service should have a ClusterIP")
+		gomega.Eventually(func() bool {
+			return natGwLoAddrExists(vpcNatGwPodName, clusterIP)
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"the gateway should hold the ClusterIP on lo")
+		gomega.Eventually(func() bool {
+			return nftDnatMapRuleExists(vpcNatGwPodName, clusterIP, "80", "tcp",
+				[]string{srv1IP + " . 8080", srv2IP + " . 8080"})
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"the internal VIP should be a share DNAT identity with the same backends as the EIP")
+
+		ginkgo.By("Verifying the VPC routes both VIPs to the gateway")
+		for _, vip := range []string{lbEip.Status.IP, clusterIP} {
+			gomega.Eventually(func() bool {
+				return natGwVipPolicyRouteExists(vpcName, vip, lanIP)
+			}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+				"VPC traffic destined for VIP %s should be routed to the gateway at %s", vip, lanIP)
+		}
+
+		ginkgo.By("Verifying the gateway's VPC does not load balance the VIPs (one data plane per VIP)")
+		vpcTCPLb := "vpc-" + vpcName + "-tcp-load"
+		vpcSctpLb := "vpc-" + vpcName + "-sctp-load"
+		for _, identity := range []struct {
+			lb       string
+			vip      string
+			port     int32
+			protocol string
+		}{
+			{vpcTCPLb, lbEip.Status.IP, 80, "tcp"},
+			{vpcTCPLb, clusterIP, 80, "tcp"},
+			{vpcSctpLb, lbEip.Status.IP, 132, "sctp"},
+			{vpcSctpLb, clusterIP, 132, "sctp"},
+		} {
+			gomega.Eventually(func() bool {
+				return vpcLbHasVip(identity.lb, identity.vip, identity.port)
+			}, 60*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+				"the VPC %s load balancer %s must not program VIP %s:%d: it would shadow the gateway",
+				identity.protocol, identity.lb, identity.vip, identity.port)
+		}
+
+		ginkgo.By("Verifying VPC-internal access to both VIPs is served and hairpinned by the gateway")
+		// The gateway owns these VIPs in this VPC (the OVN load balancer must not program them, see
+		// nftableLbSvcOwnsServiceVipsInVpc), so this traffic really goes through the policy route,
+		// the share DNAT and the hairpin SNAT of the gateway. The backend then sees the gateway LAN
+		// address as the source, not the client pod.
+		clientName := "nftlb-client-" + randomSuffix
+		clientPod := framework.MakePod(f.Namespace.Name, clientName, nil, podAnnotations, framework.AgnhostImage, nil, []string{"pause"})
+		_ = podClient.CreateSync(clientPod)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up client pod " + clientName)
+			podClient.DeleteSync(clientName)
+		})
+		for _, vip := range []string{lbEip.Status.IP, clusterIP} {
+			gomega.Eventually(func() bool {
+				hits := curlBackendHostnames(f.Namespace.Name, clientName, vip, "80", 20)
+				// every one of the consecutive requests has to succeed (no timeout, no refused
+				// connection) and both backends have to serve
+				return hits[srv1Name] > 0 && hits[srv2Name] > 0 && backendHitCount(hits) == 20
+			}, 90*time.Second, 5*time.Second).Should(gomega.BeTrue(),
+				"20 consecutive requests from inside the VPC to VIP %s should all succeed and reach both backends", vip)
+			// Once converged, one more burst without a retry: a steady failure rate must not be
+			// hidden by Eventually happening to observe a clean burst.
+			steadyHits := curlBackendHostnames(f.Namespace.Name, clientName, vip, "80", 20)
+			gomega.Expect(backendHitCount(steadyHits)).To(gomega.Equal(20),
+				"a second burst of 20 requests to VIP %s must not lose a single request (hits: %v)", vip, steadyHits)
+			gomega.Eventually(func() string {
+				return observeSourceIP(f.Namespace.Name, clientName, vip, "80")
+			}, 30*time.Second, 2*time.Second).Should(gomega.ContainSubstring(lanIP),
+				"the backend should see the hairpin SNAT source %s for VIP %s, not the client pod", lanIP, vip)
+		}
+
+		ginkgo.By("Verifying both VIPs have a per-identity hairpin SNAT rule on the gateway")
+		for _, vip := range []string{lbEip.Status.IP, clusterIP} {
+			for _, port := range []struct {
+				number   string
+				protocol string
+			}{{"80", "tcp"}, {"132", "sctp"}} {
+				gomega.Eventually(func() bool {
+					return vipHairpinRuleExists(vpcNatGwPodName, vip, port.number, port.protocol, lanIP)
+				}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+					"the gateway should hairpin SNAT %s of VIP %s to its own VPC address", port.protocol, vip)
+			}
+		}
+
 		ginkgo.By("Deleting one backend pod and verifying the rule set shrinks to one backend")
 		podClient.DeleteSync(srv2Name)
 		gomega.Eventually(func() int {
@@ -1712,14 +1986,20 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				return -1
 			}
 			return len(rules.Items)
-		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(1),
-			"controller should remove the share DNAT rule for the deleted backend")
+		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(2),
+			"controller should remove the share DNAT rules of the deleted backend")
 
 		gomega.Eventually(func() bool {
 			return nftDnatMapRuleExists(vpcNatGwPodName, lbEip.Status.IP, "80", "tcp",
 				[]string{srv1IP + " . 8080"})
 		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
 			"nft DNAT map rule should be rebuilt with the remaining backend")
+
+		gomega.Eventually(func() bool {
+			return nftDnatMapRuleExists(vpcNatGwPodName, clusterIP, "80", "tcp",
+				[]string{srv1IP + " . 8080"})
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"the internal VIP should shrink together with the EIP")
 
 		ginkgo.By("Removing the eip annotation and verifying the ingress IP and rules are cleared")
 		curSvc := serviceClient.Get(lbSvcName)
@@ -1740,6 +2020,26 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(0),
 			"leaving nftable-lb-svc mode should clear the published LoadBalancer ingress IP")
 
+		ginkgo.By("Verifying the internal VIP, its lo address, its hairpin rule and both VIP routes are released")
+		gomega.Eventually(func() bool {
+			return nftDnatMapRuleExists(vpcNatGwPodName, clusterIP, "80", "tcp", nil)
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"leaving nftable-lb-svc mode should delete the internal VIP identity")
+		gomega.Eventually(func() bool {
+			return natGwLoAddrExists(vpcNatGwPodName, clusterIP)
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+			"leaving nftable-lb-svc mode should release the ClusterIP from lo")
+		for _, vip := range []string{lbEip.Status.IP, clusterIP} {
+			gomega.Eventually(func() bool {
+				return vipHairpinRuleExists(vpcNatGwPodName, vip, "80", "tcp", lanIP)
+			}, 60*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+				"leaving nftable-lb-svc mode should remove the per-identity hairpin rule of %s", vip)
+			gomega.Eventually(func() bool {
+				return natGwVipPolicyRouteExists(vpcName, vip, lanIP)
+			}, 60*time.Second, 2*time.Second).Should(gomega.BeFalse(),
+				"the VIP route of %s should be removed once no rule references it", vip)
+		}
+
 		ginkgo.By("Deleting the service and verifying all generated rules are cleaned up")
 		serviceClient.DeleteSync(lbSvcName)
 		gomega.Eventually(func() int {
@@ -1756,6 +2056,179 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			return nftDnatMapRuleExists(vpcNatGwPodName, lbEip.Status.IP, "80", "tcp", nil)
 		}, 60*time.Second, 2*time.Second).Should(gomega.BeFalse(),
 			"nft DNAT map rule should be removed after the service is deleted")
+	})
+
+	framework.ConformanceIt("[nftable-lb-svc-ha] an HA gateway programs both VIPs on every instance and routes them to all of them", func() {
+		f.SkipVersionPriorTo(1, 18, "nftable LoadBalancer service on vpc nat gateway was introduced in v1.18")
+
+		randomSuffix := framework.RandomSuffix()
+		lbEipName := "nftlbha-eip-" + randomSuffix
+		lbSvcName := "nftlbha-svc-" + randomSuffix
+		srv1Name := "nftlbha-srv1-" + randomSuffix
+		srv2Name := "nftlbha-srv2-" + randomSuffix
+		clientName := "nftlbha-client-" + randomSuffix
+		appLabel := "nftlbha-app-" + randomSuffix
+		const backendPort = "8080"
+
+		overlaySubnetV4Cidr := "10.0.7.0/24"
+		overlaySubnetV4Gw := "10.0.7.1"
+		lanIP := "10.0.7.254"
+		// replicas=2 runs the gateway as a Deployment. In HA mode spec.lanIp is ignored and every
+		// replica allocates its own VPC address, so the VPC's default route to lanIP is not what
+		// carries the traffic here: the /32 VIP policy routes under test are, which is exactly the
+		// behavior this spec pins down.
+		// TODO: the shared setup helper always creates the VPC with that static default route to
+		// lanIP, which no replica owns in HA mode. It is harmless here (the routes are asserted to
+		// carry exactly the live instances, and the traffic uses them), but an HA aware setup that
+		// leaves the VPC default route empty would describe the environment better.
+		setupVpcNatGwTestEnvironment(
+			f, dockerExtNet1Network, attachNetClient,
+			subnetClient, vpcClient, vpcNatGwClient,
+			vpcName, overlaySubnetName, vpcNatGwName, "",
+			overlaySubnetV4Cidr, overlaySubnetV4Gw, lanIP,
+			dockerExtNet1Name, networkAttachDefName, net1NicName,
+			externalSubnetProvider,
+			true, // skipNADSetup: shared NAD created in BeforeAll
+			nil,  // no custom annotations
+			"",   // gwNamespace: use default (PodNamespace)
+			2,
+		)
+
+		ginkgo.By("Creating iptables eip for the HA nftable lb service")
+		lbEip := framework.MakeIptablesEIP(lbEipName, "", "", "", vpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(lbEip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up HA nftable lb eip " + lbEipName)
+			iptablesEIPClient.DeleteSync(lbEipName)
+		})
+		lbEip = iptablesEIPClient.Get(lbEipName)
+		framework.ExpectNotEmpty(lbEip.Status.IP, "HA nftable lb eip should have an IPv4 address")
+
+		ginkgo.By("Creating two backend pod and a client pod in the overlay subnet")
+		podLabels := map[string]string{"app": appLabel}
+		podAnnotations := map[string]string{util.LogicalSwitchAnnotation: overlaySubnetName}
+		serverArgs := []string{"netexec", "--http-port", backendPort}
+		for _, name := range []string{srv1Name, srv2Name} {
+			pod := framework.MakePod(f.Namespace.Name, name, podLabels, podAnnotations, framework.AgnhostImage, nil, serverArgs)
+			_ = podClient.CreateSync(pod)
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up server pod " + name)
+				podClient.DeleteSync(name)
+			})
+		}
+		clientPod := framework.MakePod(f.Namespace.Name, clientName, nil, podAnnotations, framework.AgnhostImage, nil, []string{"pause"})
+		_ = podClient.CreateSync(clientPod)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up client pod " + clientName)
+			podClient.DeleteSync(clientName)
+		})
+		srv1IP := podClient.GetPod(srv1Name).Annotations[util.IPAddressAnnotation]
+		srv2IP := podClient.GetPod(srv2Name).Annotations[util.IPAddressAnnotation]
+		framework.ExpectNotEmpty(srv1IP, "server pod 1 should have an IP assigned")
+		framework.ExpectNotEmpty(srv2IP, "server pod 2 should have an IP assigned")
+
+		ginkgo.By("Creating a LoadBalancer service referencing the eip")
+		serviceClient := f.ServiceClient()
+		ports := []corev1.ServicePort{{
+			Name:       "http",
+			Protocol:   corev1.ProtocolTCP,
+			Port:       80,
+			TargetPort: intstr.FromInt32(8080),
+		}}
+		svc := framework.MakeService(lbSvcName, corev1.ServiceTypeLoadBalancer,
+			map[string]string{util.EipAnnotation: lbEipName}, podLabels, ports, corev1.ServiceAffinityNone)
+		_ = serviceClient.Create(svc)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up HA nftable lb service " + lbSvcName)
+			serviceClient.DeleteSync(lbSvcName)
+		})
+		clusterIP := serviceClient.Get(lbSvcName).Spec.ClusterIP
+		framework.ExpectNotEmpty(clusterIP, "the service should have a ClusterIP")
+		backends := []string{srv1IP + " . " + backendPort, srv2IP + " . " + backendPort}
+
+		ginkgo.By("Verifying both gateway instances hold both share DNAT identities")
+		gomega.Eventually(func() bool {
+			instances := natGwInstances(f, vpcNatGwName)
+			if len(instances) != 2 {
+				return false
+			}
+			for podName := range instances {
+				for _, vip := range []string{lbEip.Status.IP, clusterIP} {
+					if !nftDnatMapRuleExists(podName, vip, "80", "tcp", backends) {
+						return false
+					}
+				}
+			}
+			return true
+		}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+			"every gateway instance must program both VIPs with the service backends")
+
+		ginkgo.By("Verifying every VIP route carries exactly the live gateway instances as next hops")
+		for _, vip := range []string{lbEip.Status.IP, clusterIP} {
+			gomega.Eventually(func() bool {
+				instances := natGwInstances(f, vpcNatGwName)
+				if len(instances) != 2 {
+					return false
+				}
+				return slices.Equal(natGwVipPolicyRouteNextHops(natGwVipPolicyRouteLine(vpcName, vip)), natGwInstanceIPs(instances))
+			}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+				"the VIP route of %s must reuse exactly every ready gateway instance (ECMP)", vip)
+		}
+
+		// TODO: the hairpin SNAT of an HA gateway is proven implicitly here (a request DNAT'd by one
+		// replica only completes if that replica SNAT'd it, because the backend's reply would otherwise
+		// bypass the gateway). An explicit assertion that the backend sees one of the live instances'
+		// VPC addresses would state the same property directly.
+		ginkgo.By("Verifying in-VPC traffic works through the HA gateway on both VIPs")
+		for _, vip := range []string{lbEip.Status.IP, clusterIP} {
+			gomega.Eventually(func() bool {
+				hits := curlBackendHostnames(f.Namespace.Name, clientName, vip, "80", 20)
+				return hits[srv1Name] > 0 && hits[srv2Name] > 0 && backendHitCount(hits) == 20
+			}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+				"20 consecutive requests to VIP %s must all succeed and reach both backends", vip)
+			steadyHits := curlBackendHostnames(f.Namespace.Name, clientName, vip, "80", 20)
+			gomega.Expect(backendHitCount(steadyHits)).To(gomega.Equal(20),
+				"a second burst of 20 requests to VIP %s must not lose a single request (hits: %v)", vip, steadyHits)
+		}
+
+		ginkgo.By("Deleting one gateway instance and verifying the VIPs converge to the remaining one")
+		var deleted string
+		instances := natGwInstances(f, vpcNatGwName)
+		for podName := range instances {
+			deleted = podName
+			break
+		}
+		framework.ExpectNotEmpty(deleted, "at least one gateway instance should be running")
+		framework.ExpectNoError(f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).Delete(
+			context.Background(), deleted, metav1.DeleteOptions{},
+		))
+
+		// Wait for the replacement to be ready before checking convergence, otherwise the route still
+		// lists the terminating instance and "it contains the live IPs" would hold vacuously.
+		gomega.Eventually(func() bool {
+			instances := natGwInstances(f, vpcNatGwName)
+			_, terminating := instances[deleted]
+			return len(instances) == 2 && !terminating
+		}, 3*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+			"the deleted gateway instance %s should be replaced by a ready one", deleted)
+
+		for _, vip := range []string{lbEip.Status.IP, clusterIP} {
+			gomega.Eventually(func() bool {
+				instances := natGwInstances(f, vpcNatGwName)
+				if len(instances) == 0 {
+					return false
+				}
+				return slices.Equal(natGwVipPolicyRouteNextHops(natGwVipPolicyRouteLine(vpcName, vip)), natGwInstanceIPs(instances))
+			}, 3*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+				"the VIP route of %s must carry exactly the live gateway instances after %s is deleted", vip, deleted)
+		}
+
+		ginkgo.By("Verifying in-VPC traffic still works after the instance is replaced")
+		gomega.Eventually(func() bool {
+			hits := curlBackendHostnames(f.Namespace.Name, clientName, clusterIP, "80", 20)
+			return hits[srv1Name] > 0 && hits[srv2Name] > 0 && backendHitCount(hits) == 20
+		}, 3*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+			"the ClusterIP must keep serving 20 consecutive requests after a gateway instance is replaced")
 	})
 
 	framework.ConformanceIt("[nftable-lb-svc-dualnic] dual-NIC backend: the gateway-VPC NIC IP is used, not the default-VPC endpoint IP", func() {
@@ -2306,12 +2779,16 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
 			"nft map should contain both service backends")
 
-		ginkgo.By("Verifying real traffic through the EIP is distributed across BOTH backends")
+		ginkgo.By("Verifying real traffic through the EIP reaches BOTH backends without a single failure")
 		gomega.Eventually(func() bool {
 			hits := curlBackendHostnames(f.Namespace.Name, clientName, lbEip.Status.IP, "80", 20)
-			return hits[srv1Name] > 0 && hits[srv2Name] > 0
+			return hits[srv1Name] > 0 && hits[srv2Name] > 0 && backendHitCount(hits) == 20
 		}, 90*time.Second, 5*time.Second).Should(gomega.BeTrue(),
-			"traffic to the LoadBalancer EIP should reach both backends (numgen random distribution)")
+			"20 consecutive requests to the LoadBalancer EIP should all succeed and reach both backends")
+		// Once converged, one more burst without a retry (see the [nftable-lb-svc] spec).
+		steadyHits := curlBackendHostnames(f.Namespace.Name, clientName, lbEip.Status.IP, "80", 20)
+		gomega.Expect(backendHitCount(steadyHits)).To(gomega.Equal(20),
+			"a second burst of 20 requests to the LoadBalancer EIP must not lose a single request (hits: %v)", steadyHits)
 	})
 
 	framework.ConformanceIt("[3] manage IptablesEIP lifecycle with finalizer and update subnet status", func() {

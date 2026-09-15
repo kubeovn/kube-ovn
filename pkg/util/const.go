@@ -141,6 +141,7 @@ const (
 	NftableLbSvcNsLabel                = "ovn.kubernetes.io/nftable-lb-svc-ns"
 	NftableLbSvcNameLabel              = "ovn.kubernetes.io/nftable-lb-svc-name"
 	NftableLbSvcManagedAnnotation      = "ovn.kubernetes.io/nftable-lb-svc-managed"
+	NftableLbSvcClusterIPAnnotation    = "ovn.kubernetes.io/nftable-lb-svc-cluster-ip"
 	VpcLbLabel                         = "ovn.kubernetes.io/vpc_lb"
 	VpcDNSNameLabel                    = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                           = "ovn.kubernetes.io/qos"
@@ -285,6 +286,7 @@ const (
 	EgressGatewayLocalPolicyPriority = 29150
 	NatGatewayDropPolicyPriority     = 29190
 	NatGatewayPolicyPriority         = 29200
+	NatGatewayVipPolicyPriority      = 29210 // routes VPC traffic destined for a share DNAT VIP to the gateway
 	NorthGatewayRoutePolicyPriority  = 29250
 	U2OSubnetPolicyPriority          = 29400
 	OvnICPolicyPriority              = 29500

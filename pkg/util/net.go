@@ -893,13 +893,16 @@ func ValidateCanonicalPort(port string) error {
 	return nil
 }
 
-// ValidateProtocol checks if the protocol is valid (tcp or udp).
+// ValidateProtocol checks if the protocol is a supported transport protocol. TCP, UDP and SCTP
+// share the same treatment in the DNAT data planes (the protocol is a key/match field and the port
+// comes from the transport header), so all three are accepted.
 func ValidateProtocol(protocol string) error {
-	p := strings.ToLower(protocol)
-	if p != ProtocolTCP && p != ProtocolUDP {
-		return fmt.Errorf("must be %s or %s", ProtocolTCP, ProtocolUDP)
+	switch strings.ToLower(protocol) {
+	case ProtocolTCP, ProtocolUDP, ProtocolSCTP:
+		return nil
+	default:
+		return fmt.Errorf("must be %s, %s or %s", ProtocolTCP, ProtocolUDP, ProtocolSCTP)
 	}
-	return nil
 }
 
 // GetAnnotationWithIfNameOverride returns the annotation value with interface name override if ifName is provided, otherwise return the annotation value without interface name.
