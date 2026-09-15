@@ -1294,21 +1294,30 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		err = cs.CoreV1().ConfigMaps(configMap.Namespace).Delete(context.Background(), configMap.Name, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete ConfigMap")
 
-		lrpEipName := fmt.Sprintf("%s-%s", bfdVpcName, underlaySubnetName)
-		ginkgo.By("Deleting ovn eip " + lrpEipName)
-		ovnEipClient.DeleteSync(lrpEipName)
+		framework.WaitUntil(time.Second, 2*time.Minute, func(ctx context.Context) (bool, error) {
+			defaultVpc, err := vpcClient.VpcInterface.Get(ctx, util.DefaultVpc, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if defaultVpc.Spec.EnableExternal || defaultVpc.Status.EnableExternal {
+				return false, nil
+			}
+
+			k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
+			if err != nil {
+				return false, err
+			}
+			for _, node := range k8sNodes.Items {
+				if node.Labels[util.NodeExtGwLabel] != "false" {
+					return false, nil
+				}
+			}
+			return true, nil
+		}, "default VPC and gateway nodes have external access disabled")
 
 		defaultVpcLrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, underlaySubnetName)
 		ginkgo.By("Deleting ovn eip " + defaultVpcLrpEipName)
 		ovnEipClient.DeleteSync(defaultVpcLrpEipName)
-
-		k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
-		framework.ExpectNoError(err)
-		time.Sleep(5 * time.Second)
-		for _, node := range k8sNodes.Items {
-			// label should be false after remove node external gw
-			framework.ExpectHaveKeyWithValue(node.Labels, util.NodeExtGwLabel, "false")
-		}
 	})
 })
 
