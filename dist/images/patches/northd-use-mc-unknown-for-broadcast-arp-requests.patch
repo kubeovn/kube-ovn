@@ -41,7 +41,7 @@ index 36dae91dce..a7203d9c82 100644
  {
      struct ds match   = DS_EMPTY_INITIALIZER;
      struct ds m       = DS_EMPTY_INITIALIZER;
-+    struct ds mGarp  = DS_EMPTY_INITIALIZER;
++    struct ds m_garp  = DS_EMPTY_INITIALIZER;
      struct ds actions = DS_EMPTY_INITIALIZER;
 
      arp_nd_ns_match(ips, addr_family, &m);
@@ -50,8 +50,8 @@ index 36dae91dce..a7203d9c82 100644
      }
 
 +    if (addr_family == AF_INET) {
-+        ds_clone(&mGarp, &m);
-+        ds_put_format(&mGarp, " && arp.spa == %s", ips);
++        ds_clone(&m_garp, &m);
++        ds_put_format(&m_garp, " && arp.spa == %s", ips);
 +    }
 +
      /* Send a the packet to the router pipeline.  If the switch has non-router
@@ -68,7 +68,7 @@ index 36dae91dce..a7203d9c82 100644
                                  lflow_ref);
 +        if (addr_family == AF_INET) {
 +            ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP,
-+                                    priority + 10, ds_cstr(&mGarp),
++                                    priority + 10, ds_cstr(&m_garp),
 +                                    "outport = \""MC_FLOOD_L2"\"; output;",
 +                                    stage_hint, lflow_ref);
 +        }
@@ -88,7 +88,7 @@ index 36dae91dce..a7203d9c82 100644
 
      ds_destroy(&m);
      ds_destroy(&match);
-+    ds_destroy(&mGarp);
++    ds_destroy(&m_garp);
      ds_destroy(&actions);
  }
 
