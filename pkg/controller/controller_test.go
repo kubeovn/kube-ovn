@@ -106,6 +106,7 @@ type FakeControllerOptions struct {
 	Services              []*corev1.Service
 	Vpcs                  []*kubeovnv1.Vpc
 	RouterLBRules         []*kubeovnv1.RouterLBRule
+	SwitchLBRules         []*kubeovnv1.SwitchLBRule
 	OvnEips               []*kubeovnv1.OvnEip
 	OvnDnatRules          []*kubeovnv1.OvnDnatRule
 	OvnFipRules           []*kubeovnv1.OvnFip
@@ -240,6 +241,14 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, slr := range opts.SwitchLBRules {
+		_, err := kubeovnClient.KubeovnV1().SwitchLBRules().Create(
+			context.Background(), slr, metav1.CreateOptions{},
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, eip := range opts.OvnEips {
 		_, err := kubeovnClient.KubeovnV1().OvnEips().Create(
 			context.Background(), eip, metav1.CreateOptions{},
@@ -344,6 +353,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	routerLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().RouterLBRules()
+	switchLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
@@ -391,6 +401,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		providerNetworksLister:        providerNetworkInformer.Lister(),
 		routerLBRuleLister:            routerLBRuleInformer.Lister(),
 		routerLBRuleSynced:            alwaysReady,
+		switchLBRuleLister:            switchLBRuleInformer.Lister(),
+		switchLBRuleSynced:            alwaysReady,
 		ovnEipsLister:                 ovnEipInformer.Lister(),
 		ovnEipSynced:                  alwaysReady,
 		ovnDnatRulesLister:            ovnDnatRuleInformer.Lister(),

@@ -127,8 +127,12 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 	svcName = generateSvcName(slr.Name)
 	if oldSvc, err = c.servicesLister.Services(slr.Spec.Namespace).Get(svcName); err != nil {
 		if k8serrors.IsNotFound(err) {
+			// Do not infer the Endpoints state from the missing Service: the
+			// Endpoints can outlive it (e.g. an earlier attempt created them and
+			// then failed to create the Service). Re-creating them from the
+			// leftover object is rejected by the API server on every retry, so
+			// the lookup below alone decides between create and update.
 			needToCreateSvc = true
-			needToCreateEps = true
 		} else {
 			klog.Errorf("failed to create service '%s', err: %v", svcName, err)
 			return err
