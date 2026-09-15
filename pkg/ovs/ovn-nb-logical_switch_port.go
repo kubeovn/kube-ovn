@@ -1180,8 +1180,16 @@ func (c *OVNNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName,
 		klog.Infof("logical switch port %s has no options", lspName)
 		return nil
 	}
-	if _, ok := lsp.Options["requested-chassis"]; !ok {
+	requestedChassis, ok := lsp.Options["requested-chassis"]
+	if !ok {
 		klog.Infof("logical switch port %s has no migrator options", lspName)
+		return nil
+	}
+	// Only reset the options set for this very migration: a newer migration of the same VM may
+	// have taken the port over, and resetting it here would strand its target port
+	if expected := fmt.Sprintf("%s,%s", srcNodeName, targetNodeName); requestedChassis != expected {
+		klog.Infof("skip resetting migrator port %s: requested-chassis %q does not belong to the migration from %s to %s",
+			lspName, requestedChassis, srcNodeName, targetNodeName)
 		return nil
 	}
 	if migratedFail {
