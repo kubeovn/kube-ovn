@@ -1748,22 +1748,17 @@ func (c *Controller) gcVpcEndpointStitcherConfigMaps(services []*kubeovnv1.VpcEn
 	}
 
 	var cms []*corev1.ConfigMap
-	var err error
-	if c.configMapsLister != nil {
-		cms, err = c.configMapsLister.List(labels.Everything())
-		if err != nil {
-			klog.Errorf("failed to list ConfigMaps for vpc endpoint gc: %v", err)
-			return err
-		}
-	} else {
-		listed, listErr := c.config.KubeClient.CoreV1().ConfigMaps("").List(context.Background(), metav1.ListOptions{})
-		if listErr != nil {
-			klog.Errorf("failed to list ConfigMaps for vpc endpoint gc: %v", listErr)
-			return listErr
-		}
-		for i := range listed.Items {
-			cms = append(cms, &listed.Items[i])
-		}
+	// configMapsLister is namespaced to PodNamespace; always list cluster-wide
+	// so tenant-namespace stitcher ConfigMaps can be garbage-collected.
+	listed, err := c.config.KubeClient.CoreV1().ConfigMaps("").List(context.Background(), metav1.ListOptions{
+		FieldSelector: "metadata.name=" + vpcEndpointStitcherCMName,
+	})
+	if err != nil {
+		klog.Errorf("failed to list ConfigMaps for vpc endpoint gc: %v", err)
+		return err
+	}
+	for i := range listed.Items {
+		cms = append(cms, &listed.Items[i])
 	}
 
 	for _, cm := range cms {

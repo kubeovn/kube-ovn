@@ -4780,8 +4780,7 @@ spec:
                   type: object
                 type: array
               mac:
-                description: 'Deprecated: unused by the stitcher datapath; retained
-                  for API compatibility.'
+                description: Unused by the stitcher datapath; retained for API compatibility.
                 type: string
               ports:
                 description: Human-readable summary of published service ports.

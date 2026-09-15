@@ -89,6 +89,7 @@ func TestVpcEndpointAllowedConsumerLSPs(t *testing.T) {
 	require.NoError(t, k8sFactory.Core().V1().Pods().Informer().GetStore().Add(pod))
 
 	c := &Controller{
+		config:            &Configuration{PodNamespace: metav1.NamespaceSystem, VpcEndpointTransitSwitch: util.DefaultVpcEndpointTransitSwitch},
 		vpcEndpointLister: kubeFactory.Kubeovn().V1().VpcEndpoints().Lister(),
 		vpcsLister:        kubeFactory.Kubeovn().V1().Vpcs().Lister(),
 		podsLister:        k8sFactory.Core().V1().Pods().Lister(),
@@ -96,7 +97,7 @@ func TestVpcEndpointAllowedConsumerLSPs(t *testing.T) {
 
 	allowed := c.vpcEndpointAllowedConsumerLSPs(eps)
 	require.Equal(t, []string{
-		fmt.Sprintf("%s.%s.%s", pod.Name, pod.Namespace, vpcEndpointTransitProvider()),
+		fmt.Sprintf("%s.%s.%s", pod.Name, pod.Namespace, c.vpcEndpointTransitProvider()),
 	}, allowed)
 }
 
@@ -323,7 +324,15 @@ func TestEndpointSliceResolvedPort(t *testing.T) {
 }
 
 func TestVpcEndpointTransitProvider(t *testing.T) {
-	require.Equal(t, "vpc-endpoint-transit.kube-system.ovn", vpcEndpointTransitProvider())
+	require.Equal(t, "vpc-endpoint-transit.kube-system.ovn", vpcEndpointTransitProviderName("", ""))
+	require.Equal(t, "custom.kube-system.ovn", vpcEndpointTransitProviderName("custom", ""))
+	require.Equal(t, "custom.ovn-ns.ovn", vpcEndpointTransitProviderName("custom", "ovn-ns"))
+
+	c := &Controller{config: &Configuration{
+		VpcEndpointTransitSwitch: "custom",
+		PodNamespace:             "ovn-ns",
+	}}
+	require.Equal(t, "custom.ovn-ns.ovn", c.vpcEndpointTransitProvider())
 }
 
 func TestVpcEndpointPodReady(t *testing.T) {
@@ -359,7 +368,7 @@ func TestVpcEndpointSelectIPv4(t *testing.T) {
 
 func TestVpcEndpointStitcherIPs(t *testing.T) {
 	c := &Controller{config: &Configuration{VpcEndpointTransitSwitch: "vpc-endpoint-transit"}}
-	transitProvider := vpcEndpointTransitProvider()
+	transitProvider := c.vpcEndpointTransitProvider()
 
 	vpcIP, transitIP, err := c.vpcEndpointStitcherIPs(&corev1.Pod{}, util.OvnProvider, transitProvider)
 	require.NoError(t, err)
@@ -472,10 +481,22 @@ func TestGcVpcEndpointStitcherConfigMaps(t *testing.T) {
 		&corev1.ConfigMap{Name: vpcEndpointStitcherCMName, Namespace: "orphan-ns"},
 		&corev1.ConfigMap{Name: "other", Namespace: "orphan-ns"},
 	)
-	c := &Controller{config: &Configuration{
-		KubeClient:   client,
-		PodNamespace: metav1.NamespaceSystem,
-	}}
+	// Simulate production: configMapsLister is namespaced to PodNamespace and
+	// cannot see tenant ConfigMaps. GC must still use a cluster-wide client list.
+	nsFactory := informers.NewSharedInformerFactoryWithOptions(client, 0, informers.WithNamespace(metav1.NamespaceSystem))
+	cmInformer := nsFactory.Core().V1().ConfigMaps()
+	require.NoError(t, cmInformer.Informer().GetStore().Add(&corev1.ConfigMap{
+		Name:      vpcEndpointStitcherCMName,
+		Namespace: metav1.NamespaceSystem,
+	}))
+
+	c := &Controller{
+		config: &Configuration{
+			KubeClient:   client,
+			PodNamespace: metav1.NamespaceSystem,
+		},
+		configMapsLister: cmInformer.Lister(),
+	}
 	services := []*kubeovnv1.VpcEndpointService{{
 		Name: "db",
 		Spec: kubeovnv1.VpcEndpointServiceSpec{Namespace: "keep-ns"},
@@ -871,6 +892,57 @@ func TestVpcEndpointProviderSubnet(t *testing.T) {
 	require.ErrorContains(t, err, "no subnet found")
 }
 
+func TestVpcEndpointServiceIPv4(t *testing.T) {
+	require.Equal(t, "0.0.0.0", vpcEndpointServiceIPv4(&corev1.Service{}))
+	require.Equal(t, "0.0.0.0", vpcEndpointServiceIPv4(&corev1.Service{Spec: corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone}}))
+	require.Equal(t, "10.96.0.10", vpcEndpointServiceIPv4(&corev1.Service{Spec: corev1.ServiceSpec{ClusterIP: "10.96.0.10"}}))
+	// IPv6-first dual-stack: Spec.ClusterIP is IPv6, IPv4 is in ClusterIPs.
+	require.Equal(t, "10.96.0.10", vpcEndpointServiceIPv4(&corev1.Service{Spec: corev1.ServiceSpec{
+		ClusterIP:  "fd00:10:96::a",
+		ClusterIPs: []string{"fd00:10:96::a", "10.96.0.10"},
+		IPFamilies: []corev1.IPFamily{corev1.IPv6Protocol, corev1.IPv4Protocol},
+	}}))
+	require.Equal(t, "0.0.0.0", vpcEndpointServiceIPv4(&corev1.Service{Spec: corev1.ServiceSpec{
+		ClusterIP:  "fd00:10:96::a",
+		ClusterIPs: []string{"fd00:10:96::a"},
+	}}))
+}
+
+func TestVpcEndpointProviderMappingsIPv6FirstDualStack(t *testing.T) {
+	tcp := corev1.ProtocolTCP
+	portNum := int32(80)
+	slice := &discoveryv1.EndpointSlice{
+		Name:      "svc-a",
+		Namespace: "ns-a",
+		Labels:    map[string]string{discoveryv1.LabelServiceName: "svc-a"},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Ports: []discoveryv1.EndpointPort{{
+			Port:     &portNum,
+			Protocol: &tcp,
+		}},
+		Endpoints: []discoveryv1.Endpoint{{
+			Addresses: []string{"10.210.0.10"},
+		}},
+	}
+	factory := informers.NewSharedInformerFactory(fake.NewSimpleClientset(), 0)
+	esInformer := factory.Discovery().V1().EndpointSlices()
+	require.NoError(t, esInformer.Informer().GetStore().Add(slice))
+
+	c := &Controller{endpointSlicesLister: esInformer.Lister()}
+	svc := &corev1.Service{
+		Name:      "svc-a",
+		Namespace: "ns-a",
+		Spec: corev1.ServiceSpec{
+			ClusterIP:  "fd00:10:96::a",
+			ClusterIPs: []string{"fd00:10:96::a", "10.96.0.10"},
+			Ports:      []corev1.ServicePort{{Port: 80, Protocol: corev1.ProtocolTCP}},
+		},
+	}
+	mappings, err := c.vpcEndpointProviderMappings(svc)
+	require.NoError(t, err)
+	require.Equal(t, []string{"tcp:80:10.210.0.10:80"}, mappings)
+}
+
 func TestVpcEndpointProviderMappings(t *testing.T) {
 	portNum := int32(80)
 	tcp := corev1.ProtocolTCP
@@ -936,7 +1008,7 @@ func TestEnsureVpcEndpointServiceStitcher(t *testing.T) {
 	require.Equal(t, "vpc-eps-db", deploy.Name)
 	require.Equal(t, "ns-a", deploy.Namespace)
 	require.Equal(t, "provider", deploy.Spec.Template.Annotations[util.VpcAnnotation])
-	require.Equal(t, "100.65.0.2", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, vpcEndpointTransitProvider())])
+	require.Equal(t, "100.65.0.2", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, c.vpcEndpointTransitProvider())])
 	require.Equal(t, "provider", deploy.Labels[util.VpcEndpointStitcherLabel])
 }
 
@@ -1003,6 +1075,7 @@ func TestSyncVpcEndpointServiceTransitACLs(t *testing.T) {
 	require.NoError(t, c.syncVpcEndpointServiceTransitACLs(open))
 
 	c.config.VpcEndpointTransitSwitch = "vpc-endpoint-transit"
+	c.config.PodNamespace = metav1.NamespaceSystem
 	nb.EXPECT().UpdateVpcEndpointServiceACLs("vpc-endpoint-transit", "open", "", nil).Return(nil)
 	require.NoError(t, c.syncVpcEndpointServiceTransitACLs(open))
 
@@ -1039,7 +1112,7 @@ func TestSyncVpcEndpointServiceTransitACLs(t *testing.T) {
 	c.vpcsLister = kubeFactory.Kubeovn().V1().Vpcs().Lister()
 	c.podsLister = k8sFactory.Core().V1().Pods().Lister()
 
-	expectedLSP := ovs.PodNameToPortName(pod.Name, pod.Namespace, vpcEndpointTransitProvider())
+	expectedLSP := ovs.PodNameToPortName(pod.Name, pod.Namespace, c.vpcEndpointTransitProvider())
 	nb.EXPECT().UpdateVpcEndpointServiceACLs(
 		"vpc-endpoint-transit", "db", "100.65.0.2", []string{expectedLSP},
 	).Return(nil)

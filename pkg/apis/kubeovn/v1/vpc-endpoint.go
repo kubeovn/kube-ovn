@@ -59,7 +59,7 @@ type VpcEndpointServiceStatus struct {
 	// provider stitcher Multus interface. Consumer stitchers DNAT LocalVIP to
 	// this address; provider stitchers DNAT it to Service backends via iptables.
 	TransitVIP string `json:"transitVIP,omitempty"`
-	// Deprecated: unused by the stitcher datapath; retained for API compatibility.
+	// Unused by the stitcher datapath; retained for API compatibility.
 	Mac string `json:"mac,omitempty"`
 	// Human-readable summary of published service ports.
 	Ports string `json:"ports,omitempty"`

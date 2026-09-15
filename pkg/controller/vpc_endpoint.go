@@ -58,8 +58,20 @@ func vpcEndpointDeployName(name string) string {
 	return "vpc-ep-" + name
 }
 
-func vpcEndpointTransitProvider() string {
-	return fmt.Sprintf("%s.%s.ovn", util.DefaultVpcEndpointTransitSwitch, metav1.NamespaceSystem)
+// vpcEndpointTransitProviderName builds the Multus/OVN attachment provider for the
+// transit NAD: <switch>.<namespace>.ovn, matching pod-controller derivation.
+func vpcEndpointTransitProviderName(switchName, namespace string) string {
+	if switchName == "" {
+		switchName = util.DefaultVpcEndpointTransitSwitch
+	}
+	if namespace == "" {
+		namespace = metav1.NamespaceSystem
+	}
+	return fmt.Sprintf("%s.%s.ovn", switchName, namespace)
+}
+
+func (c *Controller) vpcEndpointTransitProvider() string {
+	return vpcEndpointTransitProviderName(c.config.VpcEndpointTransitSwitch, c.config.PodNamespace)
 }
 
 func vpcEndpointServiceAllowed(eps *kubeovnv1.VpcEndpointService, vpc string) bool {
@@ -213,7 +225,7 @@ func (c *Controller) ensureVpcEndpointTransitNetwork() error {
 	// Subnet and VPC names must differ (kube-ovn validation).
 	vpcName := c.config.VpcEndpointTransitSwitch + "-vpc"
 	subnetName := c.config.VpcEndpointTransitSwitch
-	provider := vpcEndpointTransitProvider()
+	provider := c.vpcEndpointTransitProvider()
 	gw, err := util.GetGwByCidr(c.config.VpcEndpointTransitCIDR)
 	if err != nil {
 		return fmt.Errorf("get gateway for transit cidr %s: %w", c.config.VpcEndpointTransitCIDR, err)
@@ -407,7 +419,7 @@ func (c *Controller) reconcileVpcEndpointService(eps *kubeovnv1.VpcEndpointServi
 	if err != nil {
 		return err
 	}
-	vpcIP, newTransitVIP, err := c.vpcEndpointStitcherIPs(pod, providerSubnet.Spec.Provider, vpcEndpointTransitProvider())
+	vpcIP, newTransitVIP, err := c.vpcEndpointStitcherIPs(pod, providerSubnet.Spec.Provider, c.vpcEndpointTransitProvider())
 	if err != nil {
 		return err
 	}
@@ -473,12 +485,9 @@ func (c *Controller) vpcEndpointProviderMappings(svc *corev1.Service) ([]string,
 	if err != nil {
 		return nil, err
 	}
-	// getEndpointBackend filters addresses by protocol of serviceIP; use ClusterIP
-	// (or a v4 placeholder) so empty string does not drop all backends.
-	serviceIP := svc.Spec.ClusterIP
-	if serviceIP == "" || serviceIP == corev1.ClusterIPNone {
-		serviceIP = "0.0.0.0"
-	}
+	// getEndpointBackend filters addresses by the family of serviceIP. Prefer an
+	// IPv4 ClusterIP so IPv6-first dual-stack Services still yield IPv4 backends.
+	serviceIP := vpcEndpointServiceIPv4(svc)
 	mappings := make([]string, 0, len(svc.Spec.Ports))
 	for _, port := range svc.Spec.Ports {
 		backends := c.getEndpointBackend(endpointSlices, port, serviceIP)
@@ -499,6 +508,21 @@ func (c *Controller) vpcEndpointProviderMappings(svc *corev1.Service) ([]string,
 		return nil, errors.New("no ready backends for provider service")
 	}
 	return mappings, nil
+}
+
+// vpcEndpointServiceIPv4 returns an IPv4 ClusterIP for EndpointSlice filtering.
+// IPv6-first dual-stack Services expose Spec.ClusterIP as IPv6; prefer ClusterIPs.
+func vpcEndpointServiceIPv4(svc *corev1.Service) string {
+	for _, ip := range svc.Spec.ClusterIPs {
+		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 {
+			return ip
+		}
+	}
+	if svc.Spec.ClusterIP != "" && svc.Spec.ClusterIP != corev1.ClusterIPNone &&
+		util.CheckProtocol(svc.Spec.ClusterIP) == kubeovnv1.ProtocolIPv4 {
+		return svc.Spec.ClusterIP
+	}
+	return "0.0.0.0"
 }
 
 // vpcEndpointProviderPortMappings builds provider-sync args for one Service port.
@@ -587,10 +611,10 @@ func (c *Controller) ensureVpcEndpointServiceStitcher(eps *kubeovnv1.VpcEndpoint
 		util.VpcAnnotation:           eps.Spec.Vpc,
 		util.LogicalSwitchAnnotation: providerSubnet.Name,
 		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", c.config.PodNamespace, c.config.VpcEndpointTransitSwitch),
-		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, vpcEndpointTransitProvider()): c.config.VpcEndpointTransitSwitch,
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, c.vpcEndpointTransitProvider()): c.config.VpcEndpointTransitSwitch,
 	}
 	if transitVIP != "" {
-		annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, vpcEndpointTransitProvider())] = transitVIP
+		annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, c.vpcEndpointTransitProvider())] = transitVIP
 	}
 
 	if err := c.ensureVpcEndpointStitcherConfigMapIn(eps.Spec.Namespace, eps); err != nil {
@@ -843,7 +867,7 @@ func (c *Controller) vpcEndpointAllowedConsumerLSPs(eps *kubeovnv1.VpcEndpointSe
 			if pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning {
 				continue
 			}
-			lsp := ovs.PodNameToPortName(pod.Name, pod.Namespace, vpcEndpointTransitProvider())
+			lsp := ovs.PodNameToPortName(pod.Name, pod.Namespace, c.vpcEndpointTransitProvider())
 			if _, ok := seen[lsp]; ok {
 				continue
 			}
@@ -1049,7 +1073,7 @@ func (c *Controller) syncVpcEndpointConsumerStitcher(ep *kubeovnv1.VpcEndpoint, 
 	if vpcProvider == "" {
 		vpcProvider = util.OvnProvider
 	}
-	gotLocal, gotSnat, err := c.vpcEndpointStitcherIPs(pod, vpcProvider, vpcEndpointTransitProvider())
+	gotLocal, gotSnat, err := c.vpcEndpointStitcherIPs(pod, vpcProvider, c.vpcEndpointTransitProvider())
 	if err != nil {
 		return err
 	}
@@ -1146,13 +1170,13 @@ func (c *Controller) ensureVpcEndpointStitcher(ep *kubeovnv1.VpcEndpoint, subnet
 		util.VpcAnnotation:           ep.Spec.Vpc,
 		util.LogicalSwitchAnnotation: subnet.Name,
 		nadv1.NetworkAttachmentAnnot: fmt.Sprintf("%s/%s", c.config.PodNamespace, c.config.VpcEndpointTransitSwitch),
-		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, vpcEndpointTransitProvider()): c.config.VpcEndpointTransitSwitch,
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, c.vpcEndpointTransitProvider()): c.config.VpcEndpointTransitSwitch,
 	}
 	if localVIP != "" {
 		annotations[util.IPAddressAnnotation] = localVIP
 	}
 	if snatIP != "" {
-		annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, vpcEndpointTransitProvider())] = snatIP
+		annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, c.vpcEndpointTransitProvider())] = snatIP
 	}
 	if err := c.ensureVpcEndpointStitcherConfigMapIn(ns, ep); err != nil {
 		return nil, err
