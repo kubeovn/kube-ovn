@@ -131,7 +131,7 @@ index 480d0c151c..548d67f03e 100644
        </li>
 
        <li>
-@@ -2240,7 +2248,7 @@ output;
+@@ -2240,6 +2248,6 @@ output;
        <li>
          A priority-72 flow that outputs all ARP requests and ND NS (Neighbor
          Solicitation) packets with an Ethernet broadcast or multicast
@@ -139,4 +139,3 @@ index 480d0c151c..548d67f03e 100644
 +        <code>eth.dst</code> to the <code>MC_UNKNOWN</code> multicast group
          if <code>other_config:broadcast-arps-to-all-routers=false</code>.
        </li>
-
