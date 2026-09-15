@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -88,6 +89,103 @@ func Test_getIPFamilies(t *testing.T) {
 	}
 }
 
+func TestGenerateHeadlessServiceExplicitEndpointsHasNoSelector(t *testing.T) {
+	slr := &kubeovnv1.SwitchLBRule{
+		Name: "slr", Namespace: "default",
+		Spec: kubeovnv1.SwitchLBRuleSpec{
+			Vip:       "10.0.0.10",
+			Endpoints: []string{"10.0.0.2"},
+			Ports: []kubeovnv1.SwitchLBRulePort{{
+				Name: "tcp", Port: 80, TargetPort: 80, Protocol: "TCP",
+			}},
+		},
+	}
+
+	service := generateHeadlessService(slr, nil)
+	if service.Spec.Selector != nil {
+		t.Fatalf("explicit endpoint service selector = %#v, want nil", service.Spec.Selector)
+	}
+}
+
+func TestHandleAddOrUpdateSwitchLBRuleClearsSelectorBeforeEndpoints(t *testing.T) {
+	service := &corev1.Service{
+		Name: "slr-static", Namespace: metav1.NamespaceDefault,
+		Spec: corev1.ServiceSpec{
+			ClusterIP: "None",
+			Selector:  map[string]string{"app": "stale"},
+			Type:      corev1.ServiceTypeClusterIP,
+		},
+	}
+	slr := &kubeovnv1.SwitchLBRule{
+		Name: "static", UID: "slr-uid",
+		Spec: kubeovnv1.SwitchLBRuleSpec{
+			Namespace: metav1.NamespaceDefault,
+			Vip:       "10.0.0.10",
+			Selector:  []string{"app:stale"},
+			Endpoints: []string{"10.0.0.2"},
+			Ports:     []kubeovnv1.SwitchLBRulePort{{Name: "http", Port: 80, TargetPort: 80, Protocol: "TCP"}},
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Services:      []*corev1.Service{service},
+		SwitchLBRules: []*kubeovnv1.SwitchLBRule{slr},
+	})
+	require.NoError(t, err)
+	_, err = fc.kubeClient.DiscoveryV1().EndpointSlices(metav1.NamespaceDefault).Create(
+		context.Background(), &discoveryv1.EndpointSlice{
+			Name:      "stale-slice",
+			Namespace: metav1.NamespaceDefault,
+			Labels: map[string]string{
+				discoveryv1.LabelServiceName: service.Name,
+				discoveryv1.LabelManagedBy:   "endpointslice-controller.k8s.io",
+			},
+		}, metav1.CreateOptions{},
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, fc.fakeController.handleAddOrUpdateSwitchLBRule(slr.Name))
+	cachedRule, err := fc.fakeController.switchLBRuleLister.Get(slr.Name)
+	require.NoError(t, err)
+	require.Equal(t, []string{"app:stale"}, cachedRule.Spec.Selector)
+
+	updatedService, err := fc.fakeController.config.KubeClient.CoreV1().Services(metav1.NamespaceDefault).Get(
+		context.Background(), service.Name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Nil(t, updatedService.Spec.Selector)
+
+	serviceUpdateIndex, endpointsCreateIndex := -1, -1
+	for i, action := range fc.kubeClient.Actions() {
+		if action.GetVerb() == "update" && action.GetResource().Resource == "services" {
+			serviceUpdateIndex = i
+		}
+		if action.GetVerb() == "create" && action.GetResource().Resource == "endpoints" {
+			endpointsCreateIndex = i
+		}
+	}
+	require.GreaterOrEqual(t, serviceUpdateIndex, 0)
+	require.GreaterOrEqual(t, endpointsCreateIndex, 0)
+	require.Less(t, serviceUpdateIndex, endpointsCreateIndex)
+}
+
+func TestFilterServiceEndpointSlicesIgnoresStaleSelectorSlices(t *testing.T) {
+	service := &corev1.Service{Spec: corev1.ServiceSpec{Selector: nil}}
+	selectorSlice := &discoveryv1.EndpointSlice{Labels: map[string]string{
+		discoveryv1.LabelManagedBy:   "endpointslice-controller.k8s.io",
+		discoveryv1.LabelServiceName: "svc",
+	}}
+	mirrorSlice := &discoveryv1.EndpointSlice{Labels: map[string]string{
+		discoveryv1.LabelManagedBy:   "endpointslicemirror-controller.k8s.io",
+		discoveryv1.LabelServiceName: "svc",
+	}}
+
+	filtered := filterServiceEndpointSlices(service, []*discoveryv1.EndpointSlice{selectorSlice, mirrorSlice})
+	require.Equal(t, []*discoveryv1.EndpointSlice{mirrorSlice}, filtered)
+
+	service.Spec.Selector = map[string]string{"app": "backend"}
+	require.Equal(t, []*discoveryv1.EndpointSlice{selectorSlice, mirrorSlice}, filterServiceEndpointSlices(service, []*discoveryv1.EndpointSlice{selectorSlice, mirrorSlice}))
+}
+
 func Test_setUserDefinedNetwork(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -106,6 +204,7 @@ func Test_setUserDefinedNetwork(t *testing.T) {
 			result: &corev1.Service{
 				Annotations: map[string]string{
 					util.LogicalRouterAnnotation: "test",
+					util.VpcAnnotation:           "test",
 				},
 			},
 		},
@@ -136,8 +235,19 @@ func Test_setUserDefinedNetwork(t *testing.T) {
 				Annotations: map[string]string{
 					util.LogicalRouterAnnotation: "test1",
 					util.LogicalSwitchAnnotation: "test2",
+					util.VpcAnnotation:           "test1",
 				},
 			},
+		},
+		{
+			name: "Remove stale VPC/subnet",
+			service: &corev1.Service{Annotations: map[string]string{
+				util.LogicalRouterAnnotation: "old-vpc",
+				util.LogicalSwitchAnnotation: "old-subnet",
+				util.VpcAnnotation:           "old-vpc",
+			}},
+			slr:    &kubeovnv1.SwitchLBRule{},
+			result: &corev1.Service{Annotations: map[string]string{}},
 		},
 		{
 			name:    "Propagate nothing",
@@ -180,14 +290,19 @@ func setupHandleDelSLRTest(t *testing.T, vpcName, subnetName, slrName, namespace
 	svc := &corev1.Service{
 		Name:      svcName,
 		Namespace: namespace,
+		UID:       "slr-owner-uid",
 		Annotations: map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 			util.VpcAnnotation:           vpcName,
+			serviceLBOwnerKindAnnotation: switchLBRuleLBOwnerKind,
+			serviceLBOwnerNameAnnotation: slrName,
+			serviceLBOwnerUIDAnnotation:  "slr-owner-uid",
 		},
 	}
 	_, err = ctrl.config.KubeClient.CoreV1().Services(namespace).Create(context.Background(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 	require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(svc))
+	fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
 
 	vip := &kubeovnv1.Vip{
 		Name: subnetName,
@@ -211,6 +326,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		vip1       = "10.0.0.1:8080"
 		vip2       = "10.0.0.2:8082"
 		tcpLBName  = "vpc-test-tcp-load"
+		ownerUID   = "slr-owner-uid"
 	)
 
 	t.Run("orphaned LBHC with no LB references should be cleaned up", func(t *testing.T) {
@@ -231,7 +347,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		// Second call: after LBHC deletion, no more LBHCs for this subnet
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 
-		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, UID: ownerUID, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
@@ -240,7 +356,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted", subnetName)
 	})
 
-	t.Run("LBHC referenced by same VPC LB should be cleaned up", func(t *testing.T) {
+	t.Run("LBHC referenced by owner LB should be cleaned up", func(t *testing.T) {
 		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
 
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(
@@ -250,11 +366,18 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 				ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: subnetName},
 			}}, nil,
 		)
-		// LB in same VPC references this LBHC
+		// The resource-scoped LB owned by this SLR references this LBHC.
 		fc.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return(
 			[]ovnnb.LoadBalancer{{
 				Name:        tcpLBName,
 				HealthCheck: []string{lbhcUUID1},
+				ExternalIDs: map[string]string{
+					serviceLBOwnerExternalID: "slr-owner-uid",
+					serviceLBOwnerKindID:     switchLBRuleLBOwnerKind,
+					serviceLBNamespaceID:     namespace,
+					serviceLBNameExternalID:  slrName,
+					serviceLBVersionID:       serviceLBVersion,
+				},
 			}}, nil,
 		)
 		fc.mockOvnClient.EXPECT().LoadBalancerDeleteHealthCheck(tcpLBName, lbhcUUID1).Return(nil)
@@ -262,7 +385,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 
-		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, UID: ownerUID, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
@@ -270,7 +393,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted", subnetName)
 	})
 
-	t.Run("LBHC referenced by other VPC LB should not be cleaned up", func(t *testing.T) {
+	t.Run("LBHC referenced by another owner LB should not be cleaned up", func(t *testing.T) {
 		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
 
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(
@@ -298,7 +421,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 			}}, nil,
 		)
 
-		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, UID: ownerUID, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
@@ -315,7 +438,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		// Fallback: no LBHC for subnet after deletion check
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 
-		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, UID: ownerUID, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
@@ -342,6 +465,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		info := &SwitchLBRuleInfo{
 			Name:      slrName,
 			Namespace: namespace,
+			UID:       ownerUID,
 			Subnet:    subnetName,
 			Vips:      []string{vip1},
 		}
@@ -390,6 +514,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		info := &SwitchLBRuleInfo{
 			Name:      slrName,
 			Namespace: namespace,
+			UID:       ownerUID,
 			Subnet:    subnetName,
 			VPC:       vpcName,
 			Vips:      []string{vip1},
@@ -419,7 +544,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		// After deletion, no more LBHCs for this subnet
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 
-		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1, vip2}}
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, UID: ownerUID, Vips: []string{vip1, vip2}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
