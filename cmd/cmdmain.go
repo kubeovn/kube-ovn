@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/kubeovn/kube-ovn/cmd/frr"
+	"github.com/kubeovn/kube-ovn/cmd/ovn_central_controller"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_ic_controller"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_leader_checker"
 	"github.com/kubeovn/kube-ovn/cmd/ovn_monitor"
@@ -15,11 +16,12 @@ import (
 )
 
 const (
-	CmdMonitor          = "kube-ovn-monitor"
-	CmdSpeaker          = "kube-ovn-speaker"
-	CmdWebhook          = "kube-ovn-webhook"
-	CmdOvnLeaderChecker = "kube-ovn-leader-checker"
-	CmdOvnICController  = "kube-ovn-ic-controller"
+	CmdMonitor              = "kube-ovn-monitor"
+	CmdSpeaker              = "kube-ovn-speaker"
+	CmdWebhook              = "kube-ovn-webhook"
+	CmdOvnLeaderChecker     = "kube-ovn-leader-checker"
+	CmdOvnICController      = "kube-ovn-ic-controller"
+	CmdOvnCentralController = "ovn-central-controller"
 )
 
 func main() {
@@ -42,6 +44,8 @@ func main() {
 		ovn_leader_checker.CmdMain()
 	case CmdOvnICController:
 		ovn_ic_controller.CmdMain()
+	case CmdOvnCentralController:
+		ovn_central_controller.CmdMain()
 	default:
 		util.LogFatalAndExit(nil, "%s is an unknown command", cmd)
 	}
