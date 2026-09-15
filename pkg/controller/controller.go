@@ -115,6 +115,14 @@ type Controller struct {
 	// HTB root, IFB device and ingress redirect state.
 	qosNatGwKeyMutex     keymutex.KeyMutex
 	vpcNatGwExecKeyMutex keymutex.KeyMutex
+	// natGwVipKeyMutex serializes one gateway's share DNAT VIP state (the ClusterIP on lo, the
+	// per-identity hairpin SNAT rules) and its VIP policy routes. The rule consumers run on three
+	// independent queues and the routes are a read-modify-write of shared OVN state, so a lost
+	// hairpin rule or route would otherwise survive until the next unrelated event. It is a separate
+	// instance because a caller holds a key of vpcNatGwKeyMutex (the DNAT rule) while taking this
+	// lock, and this lock is in turn held while a key of vpcNatGwExecKeyMutex (the Pod) is taken:
+	// nested LockKey calls on one instance deadlock when the two keys hash to the same bucket.
+	natGwVipKeyMutex keymutex.KeyMutex
 
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
@@ -539,6 +547,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		qosNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
+		natGwVipKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
@@ -1538,17 +1547,21 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
+	if c.config.EnableNftableLbSvc {
+		// The nftable LB service feature runs independently of the OVN load balancer: both can be
+		// enabled at once, they just never own the same VIP (see nftableLbSvcOwnsServiceVipsInVpc).
+		// It owns its VIPs in the vpc nat gateway and needs the Service and EndpointSlice informers
+		// only, not the OVN LB workers.
+		if err := c.enqueueNftableLbSvcOwnersFromRules(); err != nil {
+			util.LogFatalAndExit(err, "failed to enqueue nftable lb service owners from generated dnat rules")
+		}
+		go wait.Until(runWorker("add/update nftable lb service", c.addOrUpdateNftableLbSvcQueue, c.handleAddOrUpdateNftableLbService), time.Second, ctx.Done())
+	}
+
 	if c.config.EnableLb {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
-
-		if c.config.EnableNftableLbSvc {
-			if err := c.enqueueNftableLbSvcOwnersFromRules(); err != nil {
-				util.LogFatalAndExit(err, "failed to enqueue nftable lb service owners from generated dnat rules")
-			}
-			go wait.Until(runWorker("add/update nftable lb service", c.addOrUpdateNftableLbSvcQueue, c.handleAddOrUpdateNftableLbService), time.Second, ctx.Done())
-		}
 
 		go wait.Until(runWorker("add/update router lb rule", c.addRouterLBRuleQueue, c.handleAddOrUpdateRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete router lb rule", c.delRouterLBRuleQueue, c.handleDelRouterLBRule), time.Second, ctx.Done())

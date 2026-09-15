@@ -25,7 +25,7 @@ type IptablesDnatRuleSpecApplyConfiguration struct {
 	EIP *string `json:"eip,omitempty"`
 	// External port number
 	ExternalPort *string `json:"externalPort,omitempty"`
-	// Protocol type (TCP or UDP)
+	// Protocol type. TCP, UDP and SCTP share the same treatment.
 	Protocol *string `json:"protocol,omitempty"`
 	// Internal IP address to forward traffic to
 	InternalIP *string `json:"internalIp,omitempty"`

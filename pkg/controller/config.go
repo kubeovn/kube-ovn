@@ -137,6 +137,9 @@ type Configuration struct {
 	LsDnatModDlDst          bool
 	LsCtSkipDstLportIPs     bool
 
+	// TODO: rename EnableLb to EnableOvnLB: it only enables the OVN load balancer implementation.
+	// Other service load balancing implementations are controlled by their own flags
+	// (--enable-nftable-lb-svc, --enable-lb-svc, kube-proxy ipvs).
 	EnableLb                    bool
 	EnableNP                    bool
 	EnableEipSnat               bool
@@ -423,10 +426,6 @@ func ParseFlags() (*Configuration, error) {
 	}
 	if err := config.ACLSampling.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ACL sampling configuration: %w", err)
-	}
-
-	if config.EnableNftableLbSvc && !config.EnableLb {
-		klog.Warning("--enable-nftable-lb-svc requires --enable-lb, the nftable loadbalancer service feature will not work")
 	}
 
 	if config.DefaultGateway == "" {

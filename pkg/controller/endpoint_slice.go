@@ -43,23 +43,22 @@ func findServiceKey(endpointSlice *discoveryv1.EndpointSlice) string {
 }
 
 func (c *Controller) enqueueAddEndpointSlice(obj any) {
+	key := findServiceKey(obj.(*discoveryv1.EndpointSlice))
+	if key == "" {
+		return
+	}
+	// The nftable LB service feature consumes EndpointSlice events too. It stays enabled next to the
+	// OVN load balancer; the two only never own the same VIP (see nftableLbSvcOwnsServiceVipsInVpc).
+	c.enqueueNftableLbService(key)
 	if !c.config.EnableLb {
 		return
 	}
 
-	key := findServiceKey(obj.(*discoveryv1.EndpointSlice))
-	if key != "" {
-		klog.V(3).Infof("enqueue add endpointSlice %s", key)
-		c.addOrUpdateEndpointSliceQueue.Add(key)
-		c.enqueueNftableLbService(key)
-	}
+	klog.V(3).Infof("enqueue add endpointSlice %s", key)
+	c.addOrUpdateEndpointSliceQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
-	if !c.config.EnableLb {
-		return
-	}
-
 	var endpointSlice *discoveryv1.EndpointSlice
 	switch t := obj.(type) {
 	case *discoveryv1.EndpointSlice:
@@ -76,17 +75,21 @@ func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
 		return
 	}
 
-	if key := findServiceKey(endpointSlice); key != "" {
-		c.addOrUpdateEndpointSliceQueue.Add(key)
-		c.enqueueNftableLbService(key)
+	key := findServiceKey(endpointSlice)
+	if key == "" {
+		return
 	}
-}
-
-func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
+	// See enqueueAddEndpointSlice: the gateway's reconcile depends on the EndpointSlice events even
+	// without the OVN load balancer, so the queue has to be fed before the feature gate below.
+	c.enqueueNftableLbService(key)
 	if !c.config.EnableLb {
 		return
 	}
 
+	c.addOrUpdateEndpointSliceQueue.Add(key)
+}
+
+func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 	oldEndpointSlice := oldObj.(*discoveryv1.EndpointSlice)
 	newEndpointSlice := newObj.(*discoveryv1.EndpointSlice)
 	if oldEndpointSlice.ResourceVersion == newEndpointSlice.ResourceVersion {
@@ -96,6 +99,8 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 	oldKey := findServiceKey(oldEndpointSlice)
 	newKey := findServiceKey(newEndpointSlice)
 	if len(oldEndpointSlice.Endpoints) == 0 && len(newEndpointSlice.Endpoints) == 0 {
+		// Nothing to program; only a slice that moved between services or a port change can still
+		// change the gateway's share DNAT identities.
 		if oldKey != newKey {
 			c.enqueueNftableLbService(oldKey)
 			c.enqueueNftableLbService(newKey)
@@ -114,13 +119,19 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 		return
 	}
 
+	// The nftable LB service feature consumes the EndpointSlice events too; it is enqueued after the
+	// churn filters above, like the OVN load balancer below.
 	if oldKey != newKey {
 		c.enqueueNftableLbService(oldKey)
 	}
+	c.enqueueNftableLbService(newKey)
+	if !c.config.EnableLb {
+		return
+	}
+
 	if newKey != "" {
 		klog.V(3).Infof("enqueue update endpointSlice for service %s", newKey)
 		c.addOrUpdateEndpointSliceQueue.Add(newKey)
-		c.enqueueNftableLbService(newKey)
 	}
 }
 
@@ -238,6 +249,20 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		tcpLb, udpLb, sctpLb, oldTCPLb, oldUDPLb, oldSctpLb = oldTCPLb, oldUDPLb, oldSctpLb, tcpLb, udpLb, sctpLb
 	}
+	// The gateway owns the Service's IPv4 identities in this VPC (see
+	// nftableLbSvcOwnsServiceVipsInVpc): OVN load balancing them would shadow its policy route,
+	// share DNAT and hairpin SNAT. Release whatever an earlier reconcile left behind -- including the
+	// session-affinity load balancers -- and skip those identities below. The rest of the Service's
+	// VIPs (an IPv6 ClusterIP) has no gateway data plane and keeps being programmed here.
+	ownedVipPorts := map[string]struct{}{}
+	if c.nftableLbSvcOwnsServiceVipsInVpc(svc, vpcName) {
+		for _, vipPort := range nftableLbSvcVipPorts(svc) {
+			ownedVipPorts[vipPort] = struct{}{}
+		}
+		if err = c.clearNftableLbSvcVipsFromLBs(svc, tcpLb, udpLb, sctpLb, oldTCPLb, oldUDPLb, oldSctpLb); err != nil {
+			return err
+		}
+	}
 	if err = c.clearLoadBalancerVIPExternalTrafficLocal(svc, tcpLb, udpLb, sctpLb); err != nil {
 		return err
 	}
@@ -246,6 +271,10 @@ func (c *Controller) handleUpdateEndpointSlice(key string) error {
 	}
 	for _, lbVip := range lbVips {
 		for _, port := range svc.Spec.Ports {
+			// The gateway owns this identity in this VPC: OVN must not load balance it.
+			if _, owned := ownedVipPorts[util.JoinHostPort(lbVip, port.Port)]; owned {
+				continue
+			}
 			var lb, oldLb string
 			switch port.Protocol {
 			case v1.ProtocolTCP:

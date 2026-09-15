@@ -56,10 +56,6 @@ func (c *Controller) enqueueAddService(obj any) {
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
-	if !c.config.EnableLb {
-		return
-	}
-
 	var svc *v1.Service
 	switch t := obj.(type) {
 	case *v1.Service:
@@ -76,9 +72,14 @@ func (c *Controller) enqueueDeleteService(obj any) {
 		return
 	}
 
-	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
-
+	// See enqueueUpdateService: the gateway is the only consumer of these events when the OVN load
+	// balancer is disabled, so the reconcile has to be enqueued before the feature gate below.
 	c.enqueueNftableLbService(cache.MetaObjectToName(svc).String())
+	if !c.config.EnableLb {
+		return
+	}
+
+	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
 	ips := getVipIps(svc)
 	if len(ips) != 0 {
@@ -102,10 +103,6 @@ func (c *Controller) enqueueDeleteService(obj any) {
 }
 
 func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
-	if !c.config.EnableLb {
-		return
-	}
-
 	oldSvc := oldObj.(*v1.Service)
 	newSvc := newObj.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
@@ -127,6 +124,18 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 		return
 	}
 
+	// The nftable LB service feature needs the Service events too. Enqueue it after the cheap filter
+	// above, so metadata-only churn does not trigger the gateway reconcile.
+	c.enqueueNftableLbService(cache.MetaObjectToName(newSvc).String())
+	if !c.config.EnableLb {
+		return
+	}
+	// A Service handled by the gateway releases any VIP this VPC's load balancer already programmed,
+	// so reconcile its endpoint slices as well (see nftableLbSvcOwnsServiceVipsInVpc).
+	if c.config.EnableNftableLbSvc && nftableLbSvcQualifies(newSvc) {
+		c.addOrUpdateEndpointSliceQueue.Add(cache.MetaObjectToName(newSvc).String())
+	}
+
 	var ipsToDel []string
 	for _, oldClusterIP := range oldClusterIps {
 		if !slices.Contains(newClusterIps, oldClusterIP) {
@@ -136,8 +145,6 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 
 	key := cache.MetaObjectToName(newSvc).String()
 	klog.V(3).Infof("enqueue update service %s", key)
-
-	c.enqueueNftableLbService(key)
 
 	if len(ipsToDel) != 0 {
 		ipsToDelStr := strings.Join(ipsToDel, ",")
@@ -264,6 +271,13 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		klog.Errorf("failed to get vpc %s of lb, %v", vpcName, err)
 		return err
 	}
+	// The gateway owns the VIPs of a Service handled by the nftable LB service feature in the VPC it
+	// serves; see nftableLbSvcOwnsServiceVipsInVpc. Using the feature's VIP set (and not only
+	// getVipIps) also releases a published LoadBalancer address a previous reconcile programmed.
+	gatewayOwnsVips := c.nftableLbSvcOwnsServiceVipsInVpc(svc, vpcName)
+	if gatewayOwnsVips {
+		ips = nftableLbSvcVips(svc)
+	}
 
 	tcpLb, udpLb, sctpLb := vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
 	oTCPLb, oUDPLb, oSctpLb := vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
@@ -283,6 +297,12 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 				sctpVips = append(sctpVips, util.JoinHostPort(ip, port.Port))
 			}
 		}
+	}
+
+	if gatewayOwnsVips {
+		// No desired VIPs: updateVip then removes the Service's VIPs from this VPC's load balancers
+		// (including the session-affinity ones) instead of programming them.
+		tcpVips, udpVips, sctpVips = nil, nil, nil
 	}
 
 	var (

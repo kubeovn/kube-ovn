@@ -700,8 +700,10 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return err
 	}
 
-	if dnat.Spec.Protocol != "tcp" && dnat.Spec.Protocol != "udp" {
-		err := fmt.Errorf("invalid iptable protocol: %s,supported params: \"tcp\", \"udp\"", dnat.Spec.Protocol)
+	switch dnat.Spec.Protocol {
+	case "tcp", "udp", "sctp":
+	default:
+		err := fmt.Errorf("invalid iptable protocol: %s,supported params: \"tcp\", \"udp\", \"sctp\"", dnat.Spec.Protocol)
 		return err
 	}
 
