@@ -1,0 +1,86 @@
+suite: Release-scoped resource names (v2)
+templates:
+  - central/central-deployment.yaml
+  - central/central-service.yaml
+  - webhook/webhook.yaml
+  - webhook/service.yaml
+  - webhook/certificate.yaml
+tests:
+  - it: scopes central names and raft DNS to the release fullname
+    template: central/central-deployment.yaml
+    set:
+      fullnameOverride: tenant-one
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+      central.hcp.replicas: 2
+    asserts:
+      - equal:
+          path: metadata.name
+          value: tenant-one-ovn-central
+      - equal:
+          path: spec.serviceName
+          value: tenant-one-ovn-central
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NODE_IPS
+            value: tenant-one-ovn-central-0.tenant-one-ovn-central.hcp.svc,tenant-one-ovn-central-1.tenant-one-ovn-central.hcp.svc
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: tenant-one-ovn-central
+
+  - it: scopes webhook service, certificate and admission references
+    template: webhook/webhook.yaml
+    set:
+      fullnameOverride: tenant-one
+      validatingWebhook.enabled: true
+    asserts:
+      - equal:
+          path: metadata.name
+          value: tenant-one-webhook
+      - contains:
+          path: metadata.annotations
+          content:
+            cert-manager.io/inject-ca-from: kube-system/tenant-one-webhook-serving-cert
+      - equal:
+          path: webhooks[0].clientConfig.service.name
+          value: tenant-one-webhook
+      - contains:
+          path: webhooks[0].objectSelector.matchExpressions
+          content:
+            key: app.kubernetes.io/name
+            operator: NotIn
+            values:
+              - tenant-one-webhook
+
+  - it: uses the release-scoped webhook secret in the certificate
+    template: webhook/certificate.yaml
+    set:
+      fullnameOverride: tenant-one
+      validatingWebhook.enabled: true
+    asserts:
+      - equal:
+          path: metadata.name
+          value: tenant-one-webhook-serving-cert
+      - equal:
+          path: spec.secretName
+          value: tenant-one-webhook-secret
+
+  - it: scopes central headless service independently from the release name
+    template: central/central-service.yaml
+    set:
+      fullnameOverride: tenant-two
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: metadata.name
+          value: tenant-two-ovn-central
+      - contains:
+          path: spec.selector
+          content:
+            app.kubernetes.io/name: tenant-two-ovn-central

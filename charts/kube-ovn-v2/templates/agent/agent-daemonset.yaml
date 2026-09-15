@@ -1,8 +1,10 @@
 {{- $agentImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.agent.image) | fromYaml -}}
+{{- $agentName := include "kubeovn.agentName" . -}}
+{{- $agentServiceAccountName := include "kubeovn.agentServiceAccountName" . -}}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: kube-ovn-cni
+  name: {{ $agentName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.agent.annotations }}
   annotations:
@@ -15,7 +17,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-cni
+      app.kubernetes.io/name: {{ $agentName }}
       app.kubernetes.io/part-of: kube-ovn
   template:
     metadata:
@@ -24,13 +26,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-cni
+        app.kubernetes.io/name: {{ $agentName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.agent.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: kube-ovn-cni
+        app: {{ $agentName }}
         component: network
         type: infra
     spec:
@@ -42,7 +44,7 @@ spec:
         - key: CriticalAddonsOnly
           operator: Exists
       priorityClassName: system-node-critical
-      serviceAccountName: kube-ovn-cni
+      serviceAccountName: {{ $agentServiceAccountName }}
       automountServiceAccountToken: true
       hostNetwork: true
       hostPID: true
