@@ -43,12 +43,12 @@ index 36dae91dce..a7203d9c82 100644
      struct ds m       = DS_EMPTY_INITIALIZER;
 +    struct ds m_garp  = DS_EMPTY_INITIALIZER;
      struct ds actions = DS_EMPTY_INITIALIZER;
- 
+
      arp_nd_ns_match(ips, addr_family, &m);
 @@ -8716,17 +8717,28 @@ build_lswitch_rport_arp_req_flow(
                        patch_op->cr_port->json_key);
      }
- 
+
 +    if (addr_family == AF_INET) {
 +        ds_clone(&m_garp, &m);
 +        ds_put_format(&m_garp, " && arp.spa == %s", ips);
@@ -85,13 +85,13 @@ index 36dae91dce..a7203d9c82 100644
              ovn_lflow_add_with_hint(lflows, od, S_SWITCH_IN_L2_LKUP,
                                      priority, ds_cstr(&match),
 @@ -8762,6 +8774,7 @@ build_lswitch_rport_arp_req_flow(
- 
+
      ds_destroy(&m);
      ds_destroy(&match);
 +    ds_destroy(&m_garp);
      ds_destroy(&actions);
  }
- 
+
 @@ -10151,7 +10164,7 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
                         "broadcast-arps-to-all-routers", true)) {
          ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 72,
@@ -100,7 +100,7 @@ index 36dae91dce..a7203d9c82 100644
 +                      "outport = \""MC_UNKNOWN"\"; output;",
                        lflow_ref);
      }
- 
+
 diff --git a/northd/ovn-northd.8.xml b/northd/ovn-northd.8.xml
 index 480d0c151c..548d67f03e 100644
 --- a/northd/ovn-northd.8.xml
@@ -108,7 +108,7 @@ index 480d0c151c..548d67f03e 100644
 @@ -2153,6 +2153,14 @@ output;
          </p>
        </li>
- 
+
 +      <li>
 +        Priority-90 flows for each IPv4 address/VIP/NAT address owned by a
 +        router port connected to the switch. These flows match GARP packets
@@ -129,9 +129,9 @@ index 480d0c151c..548d67f03e 100644
 +        <code>MC_UNKNOWN</code> multicast group which contains all enabled
 +        logical ports that accept unknown destination packets.
        </li>
- 
+
        <li>
-@@ -2240,7 +2248,7 @@ output;
+@@ -2240,6 +2248,6 @@ output;
        <li>
          A priority-72 flow that outputs all ARP requests and ND NS (Neighbor
          Solicitation) packets with an Ethernet broadcast or multicast
@@ -139,4 +139,3 @@ index 480d0c151c..548d67f03e 100644
 +        <code>eth.dst</code> to the <code>MC_UNKNOWN</code> multicast group
          if <code>other_config:broadcast-arps-to-all-routers=false</code>.
        </li>
- 
