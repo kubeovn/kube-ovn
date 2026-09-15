@@ -335,6 +335,8 @@ type Controller struct {
 	addOrUpdateVMIMigrationQueue workqueue.TypedRateLimitingInterface[string]
 	deleteVMQueue                workqueue.TypedRateLimitingInterface[string]
 	kubevirtInformerFactory      informer.KubeVirtInformerFactory
+	// vmiMigrationIndexer tracks migrations by VMI so terminal cleanup can yield to a newer migration.
+	vmiMigrationIndexer cache.Indexer
 
 	netAttachLister          netAttachv1.NetworkAttachmentDefinitionLister
 	netAttachSynced          cache.InformerSynced
@@ -462,6 +464,8 @@ func Run(ctx context.Context, config *Configuration) {
 	kubevirtInformerFactory := informer.NewKubeVirtInformerFactoryWithOptions(config.KubevirtClient.RestClient(), config.KubevirtClient,
 		informer.WithTransform(util.TrimManagedFields),
 	)
+	// Keep the migration indexer used by the informer; it is updated before migration events reach the queue.
+	vmiMigrationIndexer := kubevirtInformerFactory.VirtualMachineInstanceMigration().GetIndexer()
 	// Dedicated factory so that on clusters without the ServiceCIDR API the
 	// failed list/watch does not contaminate the main informer factory.
 	serviceCIDRInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
@@ -703,6 +707,7 @@ func Run(ctx context.Context, config *Configuration) {
 		addOrUpdateVMIMigrationQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVMIMigration", nil),
 		deleteVMQueue:                newTypedRateLimitingQueue[string]("DeleteVM", nil),
 		kubevirtInformerFactory:      kubevirtInformerFactory,
+		vmiMigrationIndexer:          vmiMigrationIndexer,
 
 		netAttachLister:          netAttachInformer.Lister(),
 		netAttachSynced:          netAttachInformer.Informer().HasSynced,
