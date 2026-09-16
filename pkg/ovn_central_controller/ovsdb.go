@@ -297,7 +297,7 @@ func localNorthdActive(ctx context.Context) bool {
 // releasing; without this, ovn-northd elsewhere can't take leadership.
 func stealLock(ctx context.Context, cfg *Config) error {
 	addr := connAddr(cfg.DBClusterAddr, cfg.SBPort, cfg.EnableSSL)
-	args := []string{"-v", "-t", "1"}
+	args := []string{"-v", "-t", "3"}
 	args = append(args, cfg.SSLOptions()...)
 	args = append(args, "steal", addr, "ovn_northd")
 	return run(ctx, execTimeoutCorrective, "ovsdb-client", args...)
