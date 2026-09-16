@@ -290,8 +290,8 @@ true
 
 {{/*
 Render upgrade hooks for both full and data-plane-only installs. The hook
-script skips the local ovn-central rollout in dataPlaneOnly mode and uses the
-external OVN endpoints supplied to the chart.
+script skips the local ovn-central rollout in dataPlaneOnly mode. The hook Job
+also exposes the external OVN endpoints supplied to the chart.
 */}}
 {{- define "kubeovn.renderUpgradeHooks" -}}
 {{- if or (eq .Values.installMode "full") (eq .Values.installMode "dataPlaneOnly") -}}
