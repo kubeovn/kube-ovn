@@ -412,6 +412,13 @@ func TestShouldRestoreProviderNicAddresses(t *testing.T) {
 			bridgeIndex: 10,
 			want:        false,
 		},
+		{
+			name:           "alb bond without macs still enslaved to bridge",
+			nicMasterIndex: 10,
+			bridgeIndex:    10,
+			albBond:        true,
+			want:           true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -420,4 +427,12 @@ func TestShouldRestoreProviderNicAddresses(t *testing.T) {
 			require.Equal(t, tt.want, shouldRestoreProviderNicAddresses(tt.nicMAC, tt.bridgeMAC, tt.nicMasterIndex, tt.bridgeIndex, tt.albBond))
 		})
 	}
+}
+
+func TestProviderNicRestoreAllowedNilNic(t *testing.T) {
+	t.Parallel()
+
+	restore, err := providerNicRestoreAllowed(nil, &netlink.Dummy{Name: "br-provider", Index: 10})
+	require.NoError(t, err)
+	require.False(t, restore)
 }

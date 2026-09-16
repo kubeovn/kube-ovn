@@ -1720,8 +1720,36 @@ func shouldRestoreProviderNicAddresses(nicMAC, bridgeMAC net.HardwareAddr, nicMa
 	return albBond && nicMasterIndex != 0 && nicMasterIndex == bridgeIndex
 }
 
-// Remove host nic from external bridge
-// IP addresses & routes will be transferred to the host nic
+func providerNicRestoreAllowed(nic, bridge netlink.Link) (bool, error) {
+	if nic == nil {
+		return false, nil
+	}
+	albBond, err := linkIsAlbBond(nic)
+	if err != nil {
+		klog.Errorf("failed to check ALB bond for nic %s: %v", nic.Attrs().Name, err)
+		return false, err
+	}
+	restore := shouldRestoreProviderNicAddresses(nic.Attrs().HardwareAddr, bridge.Attrs().HardwareAddr, nic.Attrs().MasterIndex, bridge.Attrs().Index, albBond)
+	if !restore {
+		klog.Warningf("skip restoring addresses from bridge %s to nic %s: nic MAC %s does not match bridge MAC %s", bridge.Attrs().Name, nic.Attrs().Name, nic.Attrs().HardwareAddr, bridge.Attrs().HardwareAddr)
+	}
+	return restore, nil
+}
+
+func deleteProviderBridgeRoute(route netlink.Route, brName string) error {
+	if err := netlink.RouteDel(&route); err != nil {
+		if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ESRCH) {
+			return nil
+		}
+		return fmt.Errorf("failed to delete route %s from bridge %s: %w", route.String(), brName, err)
+	}
+	klog.Infof("route %q has been deleted from OVS bridge %s", route.String(), brName)
+	return nil
+}
+
+// Remove host nic from external bridge.
+// Addresses and routes are moved back only when the nic still belongs to the
+// provider network; otherwise leftover configuration is deleted from the bridge.
 func (c *Controller) removeProviderNic(nicName, brName string) error {
 	c.nmSyncer.RemoveDevice(nicName)
 
@@ -1742,16 +1770,9 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 		return fmt.Errorf("failed to get bridge by name %s: %w", brName, err)
 	}
 
-	restoreToNic := false
-	if nic != nil {
-		albBond, err := linkIsAlbBond(nic)
-		if err != nil {
-			return err
-		}
-		restoreToNic = shouldRestoreProviderNicAddresses(nic.Attrs().HardwareAddr, bridge.Attrs().HardwareAddr, nic.Attrs().MasterIndex, bridge.Attrs().Index, albBond)
-		if !restoreToNic {
-			klog.Warningf("skip restoring addresses from bridge %s to nic %s: nic MAC %s does not match bridge MAC %s", brName, nicName, nic.Attrs().HardwareAddr, bridge.Attrs().HardwareAddr)
-		}
+	restoreToNic, err := providerNicRestoreAllowed(nic, bridge)
+	if err != nil {
+		return err
 	}
 
 	addrs, err := util.AddrList(bridge, netlink.FAMILY_ALL)
@@ -1810,11 +1831,10 @@ func (c *Controller) removeProviderNic(nicName, brName string) error {
 						return fmt.Errorf("failed to add/replace route %s: %w", route.String(), err)
 					}
 					klog.Infof("route %q has been added/replaced to link %s", route.String(), nicName)
-				} else {
-					if err = netlink.RouteDel(&route); err != nil {
-						return fmt.Errorf("failed to delete route %s from bridge %s: %w", route.String(), brName, err)
-					}
-					klog.Infof("route %q has been deleted from OVS bridge %s", route.String(), brName)
+					continue
+				}
+				if err = deleteProviderBridgeRoute(route, brName); err != nil {
+					return err
 				}
 			}
 		}
