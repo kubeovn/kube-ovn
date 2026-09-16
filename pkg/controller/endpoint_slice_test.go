@@ -235,9 +235,9 @@ func TestGetHealthCheckVipWaitsForStatusAllocation(t *testing.T) {
 
 func TestTopologyBackendSubset(t *testing.T) {
 	backends := []topologyBackend{
-		{backend: "10.0.0.1:80", nodeName: "node-a", hints: &discoveryv1.EndpointHints{ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
-		{backend: "10.0.0.2:80", nodeName: "node-b", hints: &discoveryv1.EndpointHints{ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
-		{backend: "10.0.0.3:80", nodeName: "node-c", hints: &discoveryv1.EndpointHints{ForZones: []discoveryv1.ForZone{{Name: "zone-b"}}}},
+		{backend: "10.0.0.1:80", nodeName: "node-a", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-a"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+		{backend: "10.0.0.2:80", nodeName: "node-b", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-b"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+		{backend: "10.0.0.3:80", nodeName: "node-c", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-c"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-b"}}}},
 	}
 	assert.ElementsMatch(t, []string{"10.0.0.1:80"}, topologyBackendSubset(backends, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
 	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(backends, "node-x", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
@@ -248,6 +248,26 @@ func TestTopologyBackendSubset(t *testing.T) {
 
 	noLocal := backends[1:]
 	assert.ElementsMatch(t, []string{"10.0.0.2:80"}, topologyBackendSubset(noLocal, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
+}
+
+func TestTopologyBackendSubsetFallsBackWhenNodeHintsAreIncompleteOrMismatch(t *testing.T) {
+	zoneBackends := []topologyBackend{
+		{backend: "10.0.0.1:80", nodeName: "node-a", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-a"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+		{backend: "10.0.0.2:80", nodeName: "node-b", hints: &discoveryv1.EndpointHints{ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+	}
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(zoneBackends, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
+
+	mismatchedNodeHint := []topologyBackend{
+		{backend: "10.0.0.1:80", nodeName: "node-a", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-b"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+		{backend: "10.0.0.2:80", nodeName: "node-c", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-c"}}, ForZones: []discoveryv1.ForZone{{Name: "zone-a"}}}},
+	}
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(mismatchedNodeHint, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
+
+	withoutZoneHints := []topologyBackend{
+		{backend: "10.0.0.1:80", nodeName: "node-a", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-b"}}}},
+		{backend: "10.0.0.2:80", nodeName: "node-c", hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: "node-c"}}}},
+	}
+	assert.ElementsMatch(t, []string{"10.0.0.1:80", "10.0.0.2:80"}, topologyBackendSubset(withoutZoneHints, "node-a", "zone-a", corev1.ServiceTrafficDistributionPreferSameNode))
 }
 
 func TestGetEndpointTargetLSPNameFromProvider(t *testing.T) {
