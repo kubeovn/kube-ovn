@@ -108,6 +108,7 @@ jobs:
           set -o pipefail
           for node in $(kind get nodes --name kube-ovn); do
             echo "===== ${node}: crictl images ====="
+            echo "IMAGE TAG DIGEST IMAGE ID SIZE"
             docker exec "${node}" crictl images --digests | grep \
               'kubevirt/cirros-container-disk-demo' || true
             echo "===== ${node}: containerd images ====="
@@ -126,6 +127,7 @@ jobs:
             --format 'host containerdisk: Id={{.Id}} RepoDigests={{json .RepoDigests}}'
           for node in $(kind get nodes --name kube-ovn); do
             echo "===== ${node}: crictl images ====="
+            echo "IMAGE TAG DIGEST IMAGE ID SIZE"
             docker exec "${node}" crictl images --digests | grep \
               'kubevirt/cirros-container-disk-demo' || true
             echo "===== ${node}: containerd images ====="
@@ -148,7 +150,7 @@ jobs:
                       .name,
                       .image,
                       .imageID,
-                      .state
+                      (.state | tojson)
                     ] | @tsv'
               } >>"$watcher_log" 2>&1 || true
               sleep 10
@@ -197,6 +199,7 @@ jobs:
           echo "===== Kind node containerd images ====="
           for node in $(kind get nodes --name kube-ovn); do
             echo "===== ${node} ====="
+            echo "IMAGE TAG DIGEST IMAGE ID SIZE"
             docker exec "${node}" crictl images --digests | grep \
               'kubevirt/cirros-container-disk-demo' || true
             docker exec "${node}" ctr -n k8s.io images ls | grep \
