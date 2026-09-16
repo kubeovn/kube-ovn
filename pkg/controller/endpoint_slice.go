@@ -1158,9 +1158,8 @@ type serviceEndpointCandidate struct {
 }
 
 type topologyBackend struct {
-	backend  string
-	nodeName string
-	hints    *discoveryv1.EndpointHints
+	backend string
+	hints   *discoveryv1.EndpointHints
 }
 
 func endpointSlicePort(endpointSlice *discoveryv1.EndpointSlice, servicePort v1.ServicePort) int32 {
@@ -1182,14 +1181,9 @@ func topologyBackends(endpointSlices []*discoveryv1.EndpointSlice, servicePort v
 	var backends []topologyBackend
 	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, false) {
 		for _, address := range candidate.addresses {
-			nodeName := ""
-			if candidate.endpoint.NodeName != nil {
-				nodeName = *candidate.endpoint.NodeName
-			}
 			backends = append(backends, topologyBackend{
-				backend:  util.JoinHostPort(address, candidate.targetPort),
-				nodeName: nodeName,
-				hints:    candidate.endpoint.Hints,
+				backend: util.JoinHostPort(address, candidate.targetPort),
+				hints:   candidate.endpoint.Hints,
 			})
 		}
 	}
@@ -1230,20 +1224,27 @@ func serviceEndpointCandidates(endpointSlices []*discoveryv1.EndpointSlice, serv
 
 func topologyBackendSubset(backends []topologyBackend, nodeName, zoneName, trafficDistribution string) []string {
 	all := make([]string, 0, len(backends))
+	allForNodes := true
 	allForZones := true
 	for _, backend := range backends {
 		all = append(all, backend.backend)
+		if backend.hints == nil || len(backend.hints.ForNodes) == 0 {
+			allForNodes = false
+		}
 		if backend.hints == nil || len(backend.hints.ForZones) == 0 {
 			allForZones = false
 		}
 	}
 	preferNode := trafficDistribution == v1.ServiceTrafficDistributionPreferSameNode
 	preferZone := preferNode || trafficDistribution == v1.ServiceTrafficDistributionPreferSameZone || trafficDistribution == v1.ServiceTrafficDistributionPreferClose
-	if preferNode && nodeName != "" {
+	if preferNode && allForNodes && nodeName != "" {
 		matched := make([]string, 0, len(backends))
 		for _, backend := range backends {
-			if backend.nodeName == nodeName {
-				matched = append(matched, backend.backend)
+			for _, hint := range backend.hints.ForNodes {
+				if hint.Name == nodeName {
+					matched = append(matched, backend.backend)
+					break
+				}
 			}
 		}
 		if len(matched) != 0 {
