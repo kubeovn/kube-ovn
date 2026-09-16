@@ -350,3 +350,74 @@ func TestGatewayForCNIIPFamily(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldRestoreProviderNicAddresses(t *testing.T) {
+	t.Parallel()
+
+	originalMAC := net.HardwareAddr{0xd2, 0x72, 0x65, 0x89, 0xba, 0x01}
+	reusedMAC := net.HardwareAddr{0xe6, 0xef, 0x68, 0x34, 0xb3, 0x9e}
+
+	tests := []struct {
+		name           string
+		nicMAC         net.HardwareAddr
+		bridgeMAC      net.HardwareAddr
+		nicMasterIndex int
+		bridgeIndex    int
+		albBond        bool
+		want           bool
+	}{
+		{
+			name:        "original nic shares bridge mac",
+			nicMAC:      originalMAC,
+			bridgeMAC:   originalMAC,
+			bridgeIndex: 10,
+			want:        true,
+		},
+		{
+			name:           "reused nic name with different mac",
+			nicMAC:         reusedMAC,
+			bridgeMAC:      originalMAC,
+			nicMasterIndex: 0,
+			bridgeIndex:    10,
+			want:           false,
+		},
+		{
+			name:           "reused nic name rebound to leftover bridge",
+			nicMAC:         reusedMAC,
+			bridgeMAC:      originalMAC,
+			nicMasterIndex: 10,
+			bridgeIndex:    10,
+			want:           false,
+		},
+		{
+			name:           "alb bond still enslaved to bridge",
+			nicMAC:         reusedMAC,
+			bridgeMAC:      originalMAC,
+			nicMasterIndex: 10,
+			bridgeIndex:    10,
+			albBond:        true,
+			want:           true,
+		},
+		{
+			name:           "alb bond not enslaved to bridge",
+			nicMAC:         reusedMAC,
+			bridgeMAC:      originalMAC,
+			nicMasterIndex: 0,
+			bridgeIndex:    10,
+			albBond:        true,
+			want:           false,
+		},
+		{
+			name:        "missing macs do not restore",
+			bridgeIndex: 10,
+			want:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, shouldRestoreProviderNicAddresses(tt.nicMAC, tt.bridgeMAC, tt.nicMasterIndex, tt.bridgeIndex, tt.albBond))
+		})
+	}
+}
