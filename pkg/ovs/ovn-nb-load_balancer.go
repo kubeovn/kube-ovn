@@ -1252,13 +1252,11 @@ func (c *OVNNbClient) LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(lbName
 	if err != nil {
 		return err
 	}
-	if len(ipPortMappings) != 0 {
-		mappingOps, err := c.loadBalancerUpdateIPPortMappingOps(lbName, vip, ipPortMappings)
-		if err != nil {
-			return err
-		}
-		ops = append(ops, mappingOps...)
+	mappingOps, err := c.loadBalancerUpdateIPPortMappingOps(lbName, vip, ipPortMappings)
+	if err != nil {
+		return err
 	}
+	ops = append(ops, mappingOps...)
 	if !ignoreHealthCheck {
 		lbhc, err := c.newLoadBalancerHealthCheck(lbName, vip, externals)
 		if err != nil {
