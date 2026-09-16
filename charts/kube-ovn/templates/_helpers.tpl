@@ -279,13 +279,22 @@ true
 Render gate for components that only make sense in a single-cluster install:
 - ovn-dpdk DaemonSet (start-ovs-dpdk-v2.sh still talks to OVN_SB_SERVICE_HOST,
   no externalOvnCentral support yet)
-- pre-upgrade-ovs-ovn / upgrade-ovs-ovn hooks (upgrade-ovs.sh checks a local
-  deploy/ovn-central, so it fails on tenant-only installs)
 Use `kubeovn.renderFullOnly` when the resource is not yet ready for the
 split-cluster hosted ovn-central deployment.
 */}}
 {{- define "kubeovn.renderFullOnly" -}}
 {{- if eq .Values.installMode "full" -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render upgrade hooks for both full and data-plane-only installs. The hook
+script skips the local ovn-central rollout in dataPlaneOnly mode and uses the
+external OVN endpoints supplied to the chart.
+*/}}
+{{- define "kubeovn.renderUpgradeHooks" -}}
+{{- if or (eq .Values.installMode "full") (eq .Values.installMode "dataPlaneOnly") -}}
 true
 {{- end -}}
 {{- end -}}

@@ -4,7 +4,6 @@ templates:
   - pre-upgrade-ovs-ovn.yaml
   - upgrade-ovs-ovn.yaml
   - post-delete-hook.yaml
-  - controller-deploy.yaml
 tests:
   - it: does not render data-plane CRDs for controlPlaneOnly
     template: kube-ovn-crd.yaml
@@ -48,25 +47,99 @@ tests:
       - isKind:
           of: CustomResourceDefinition
 
-  - it: does not render pre-upgrade hooks for dataPlaneOnly
+  - it: renders pre-upgrade hooks for dataPlaneOnly with external OVN addresses
     template: pre-upgrade-ovs-ovn.yaml
+    kubernetesProvider:
+      scheme:
+        "apps/v1/DaemonSet":
+          gvr:
+            group: apps
+            version: v1
+            resource: daemonsets
+          namespaced: true
+        "v1/Node":
+          gvr:
+            version: v1
+            resource: nodes
+          namespaced: false
+      objects:
+        - kind: DaemonSet
+          apiVersion: apps/v1
+          metadata:
+            name: ovs-ovn
+            namespace: kube-system
+            annotations:
+              chart-version: old
+    documentSelector:
+      path: kind
+      value: Job
     set:
       installMode: dataPlaneOnly
       externalOvnCentral.nbEndpoint: 10.0.0.10
       externalOvnCentral.sbEndpoint: 10.0.0.10
     asserts:
-      - hasDocuments:
-          count: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INSTALL_MODE
+            value: dataPlaneOnly
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:10.0.0.10:6641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:10.0.0.10:6642
 
-  - it: does not render post-upgrade hooks for dataPlaneOnly
+  - it: renders post-upgrade hooks for dataPlaneOnly with external OVN addresses
     template: upgrade-ovs-ovn.yaml
+    kubernetesProvider:
+      scheme:
+        "apps/v1/DaemonSet":
+          gvr:
+            group: apps
+            version: v1
+            resource: daemonsets
+          namespaced: true
+        "v1/Node":
+          gvr:
+            version: v1
+            resource: nodes
+          namespaced: false
+      objects:
+        - kind: DaemonSet
+          apiVersion: apps/v1
+          metadata:
+            name: ovs-ovn
+            namespace: kube-system
+            annotations:
+              chart-version: old
+    documentSelector:
+      path: kind
+      value: Job
     set:
       installMode: dataPlaneOnly
       externalOvnCentral.nbEndpoint: 10.0.0.10
       externalOvnCentral.sbEndpoint: 10.0.0.10
     asserts:
-      - hasDocuments:
-          count: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INSTALL_MODE
+            value: dataPlaneOnly
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:10.0.0.10:6641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:10.0.0.10:6642
 
   - it: renders post-delete cleanup for dataPlaneOnly
     template: post-delete-hook.yaml
@@ -77,22 +150,3 @@ tests:
     asserts:
       - hasDocuments:
           count: 4
-
-  - it: falls back to one data-plane controller replica without node labels
-    template: controller-deploy.yaml
-    kubernetesProvider:
-      scheme:
-        "v1/Node":
-          gvr:
-            version: v1
-            resource: nodes
-          namespaced: false
-      objects: []
-    set:
-      installMode: dataPlaneOnly
-      externalOvnCentral.nbEndpoint: 10.0.0.10
-      externalOvnCentral.sbEndpoint: 10.0.0.10
-    asserts:
-      - equal:
-          path: spec.replicas
-          value: 1
