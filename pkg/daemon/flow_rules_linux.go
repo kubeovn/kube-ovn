@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,6 +15,8 @@ import (
 
 const flowKindUnderlayService = "usvc"
 
+var errUnderlayLocalnetPatchNotReady = errors.New("underlay localnet patch port is not ready")
+
 func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string, port uint16, protocol, dstMac, underlayNic, bridgeName, subnetName string) error {
 	inPort, err := c.getPortID(underlayNic)
 	if err != nil {
@@ -23,8 +26,8 @@ func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string
 	patchPortName := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
 	outPort, err := c.getPortID(patchPortName)
 	if err != nil {
-		klog.V(5).Infof("patch-localnet port %s not found on bridge %s, skipping underlay service flow for %s:%d (subnet %s may not have pods on this node yet)", patchPortName, bridgeName, serviceIP, port, subnetName)
-		return nil
+		klog.Infof("patch-localnet port %s not found on bridge %s, retrying underlay service flow for %s:%d", patchPortName, bridgeName, serviceIP, port)
+		return fmt.Errorf("install underlay service flow for %s:%d on %s: %w", serviceIP, port, patchPortName, errUnderlayLocalnetPatchNotReady)
 	}
 
 	isIPv6 := util.CheckProtocol(serviceIP) == kubeovnv1.ProtocolIPv6
@@ -51,12 +54,10 @@ func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string
 		nwDst = "ipv6_dst"
 	}
 
-	flow := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d "+
-		"actions=mod_dl_dst:%s,output:%d",
-		cookie, util.UnderlaySvcLocalOpenFlowPriority, inPort, protoStr, nwDst, serviceIP, port, dstMac, outPort)
+	flows := underlayServiceLocalFlows(cookie, util.UnderlaySvcLocalOpenFlowPriority, inPort, outPort, protoStr, nwDst, serviceIP, dstMac, port)
 
 	key := buildFlowKey(flowKindUnderlayService, serviceIP, port, protocol, "")
-	c.setFlowCache(c.flowCache, bridgeName, key, []string{flow})
+	c.setFlowCache(c.flowCache, bridgeName, key, flows)
 
 	klog.V(5).Infof("updated underlay flow cache for service %s", key)
 	c.requestFlowSync()
@@ -70,6 +71,12 @@ func (c *Controller) deleteUnderlaySubnetSvcLocalFlowCache(bridgeName, serviceIP
 
 	klog.V(5).Infof("deleted underlay flow cache for service %s", key)
 	c.requestFlowSync()
+}
+
+func underlayServiceLocalFlows(cookie string, priority, inPort, outPort int, protoStr, nwDst, serviceIP, dstMac string, port uint16) []string {
+	phy := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d actions=mod_dl_dst:%s,output:%d",
+		cookie, priority, inPort, protoStr, nwDst, serviceIP, port, dstMac, outPort)
+	return []string{phy}
 }
 
 func buildFlowKey(kind, ip string, port uint16, protocol, extra string) string {
