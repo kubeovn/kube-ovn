@@ -66,7 +66,7 @@ func nftableLbSvcQualifies(svc *v1.Service) bool {
 // are enabled. Qualification and cleanup decisions are made in the handler so a
 // Service that stops qualifying still gets its stale rules cleaned up.
 func (c *Controller) enqueueNftableLbService(key string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil || key == "" {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil || key == "" {
 		return
 	}
 	klog.V(3).Infof("enqueue add/update nftable lb service %s", key)
@@ -81,7 +81,7 @@ func (c *Controller) enqueueNftableLbService(key string) {
 // controller was down; this scan only adds owners that can be discovered from the rules that
 // are still present.
 func (c *Controller) enqueueNftableLbSvcOwnersFromRules() error {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil {
 		return nil
 	}
 	rules, err := c.iptablesDnatRulesLister.List(labels.Everything())
@@ -101,7 +101,7 @@ func (c *Controller) enqueueNftableLbSvcOwnersFromRules() error {
 }
 
 func (c *Controller) enqueueNftableLbServicesForPod(pod *v1.Pod) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || pod == nil || c.endpointSlicesLister == nil {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || pod == nil || c.endpointSlicesLister == nil {
 		return
 	}
 	slices, err := c.endpointSlicesLister.EndpointSlices(pod.Namespace).List(labels.Everything())
@@ -127,7 +127,7 @@ func (c *Controller) enqueueNftableLbServicesForPod(pod *v1.Pod) {
 }
 
 func (c *Controller) enqueueNftableLbServicesForNatGw(natGwName string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || natGwName == "" || c.iptablesEipsLister == nil {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || natGwName == "" || c.iptablesEipsLister == nil {
 		return
 	}
 	eips, err := c.iptablesEipsLister.List(labels.Everything())
@@ -143,7 +143,7 @@ func (c *Controller) enqueueNftableLbServicesForNatGw(natGwName string) {
 }
 
 func (c *Controller) enqueueNftableLbServicesForEIP(eipName string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.svcIndexer == nil || eipName == "" {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || c.svcIndexer == nil || eipName == "" {
 		return
 	}
 	services, err := c.svcIndexer.ByIndex(IndexServiceByNftableLbEip, eipName)

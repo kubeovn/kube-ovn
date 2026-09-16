@@ -1010,7 +1010,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			}
 		}
 
-		if (!c.config.EnableLb || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
+		if (!c.config.EnableOvnLB || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.U2OInterconnection &&
 			subnet.Spec.Vlan != "" &&

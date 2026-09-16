@@ -139,7 +139,7 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 	}
 
 	if newSubnet.Spec.EnableLb == nil && newSubnet.Name != c.config.NodeSwitch {
-		newSubnet.Spec.EnableLb = &c.config.EnableLb
+		newSubnet.Spec.EnableLb = &c.config.EnableOvnLB
 	}
 	// set join subnet Spec.EnableLb to nil
 	if newSubnet.Spec.EnableLb != nil && newSubnet.Name == c.config.NodeSwitch {
@@ -746,14 +746,14 @@ func (c *Controller) prepareOvnSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc,
 }
 
 func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *kubeovnv1.Vpc) error {
-	if !c.config.EnableLb || subnet.Name == c.config.NodeSwitch {
+	if !c.config.EnableOvnLB || subnet.Name == c.config.NodeSwitch {
 		return nil
 	}
 	lbs, err := c.serviceScopedLoadBalancerNamesForVPC(vpc.Name)
 	if err != nil {
 		return c.recordResourceError(subnet, "ListServiceLoadBalancersFailed", err)
 	}
-	if subnetEnablesServiceLB(subnet, c.config.EnableLb) {
+	if subnetEnablesServiceLB(subnet, c.config.EnableOvnLB) {
 		if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
 			klog.Error(lbErr)
 			if patchErr := c.patchSubnetStatus(subnet, "AddLbToLogicalSwitchFailed", lbErr.Error()); patchErr != nil {
@@ -1725,7 +1725,7 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 			}
 		}
 
-		if (!c.config.EnableLb || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
+		if (!c.config.EnableOvnLB || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
 			subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
 			if err := c.addPolicyRouteForU2ONoLoadBalancer(subnet); err != nil {
 				klog.Errorf("failed to add policy route for underlay to overlay subnet interconnection without enabling loadbalancer %s %v", subnet.Name, err)
