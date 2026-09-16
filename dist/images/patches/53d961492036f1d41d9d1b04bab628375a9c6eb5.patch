@@ -29,9 +29,7 @@ diff --git a/northd/northd.c b/northd/northd.c
 index 3491ab6222..c489ddf051 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -92,6 +92,10 @@ static bool default_acl_drop;
- 
- static bool bcast_arp_req_flood = true;
+@@ -92,4 +92,8 @@ static bool default_acl_drop;
  
 +static bool compatible_21_06 = false;
 +static bool compatible_22_03 = false;

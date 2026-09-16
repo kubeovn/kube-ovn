@@ -29,9 +29,7 @@ diff --git a/northd/northd.c b/northd/northd.c
 index 6b993258fe..86f92bf01f 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -92,6 +92,9 @@ static bool default_acl_drop;
- 
- static bool bcast_arp_req_flood = true;
+@@ -92,4 +92,7 @@ static bool default_acl_drop;
  
 +static struct sset node_local_dns_ip_v4 = SSET_INITIALIZER(&node_local_dns_ip_v4);
 +static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6);
@@ -67,9 +65,9 @@ index 6b993258fe..86f92bf01f 100644
      }
  }
  
-@@ -17672,6 +17696,34 @@ ovnnb_db_run(struct northd_input *input_data,
-     bcast_arp_req_flood = smap_get_bool(input_data->nb_options,
-                                         "bcast_arp_req_flood", true);
+@@ -17672,4 +17696,32 @@ ovnnb_db_run(struct northd_input *input_data,
+     use_ct_inv_match = smap_get_bool(input_data->nb_options,
+                                      "use_ct_inv_match", true);
  
 +    sset_clear(&node_local_dns_ip_v4);
 +    sset_clear(&node_local_dns_ip_v6);

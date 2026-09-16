@@ -19,7 +19,7 @@ ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
 ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
 ADD patches/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch $SRC_DIR
-ADD patches/5593e614e51a5dce28941e5bf760f9ee5397cede.patch $SRC_DIR
+ADD patches/northd-use-mc-unknown-for-broadcast-arp-requests-24.03.patch $SRC_DIR
 ADD patches/f9e97031b56ab5747b5d73629198331a6daacdfd.patch $SRC_DIR
 ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
 
@@ -60,8 +60,8 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # modify src route priority
     git apply $SRC_DIR/b973ec477b43df1c3ef3cdb69f8646948fcf94ae.patch && \
-    # fix reaching resubmit limit in underlay
-    git apply $SRC_DIR/5593e614e51a5dce28941e5bf760f9ee5397cede.patch && \
+    # northd: use MC_UNKNOWN for broadcast ARP/ND requests
+    git apply $SRC_DIR/northd-use-mc-unknown-for-broadcast-arp-requests-24.03.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     git apply $SRC_DIR/f9e97031b56ab5747b5d73629198331a6daacdfd.patch && \
     # adapt to the compose_nd_ns() signature change in ovs branch-3.3 commit 3430a01a6
