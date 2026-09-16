@@ -74,12 +74,12 @@ jobs:
       - name: Install Kind config generator
         run: pipx install jinjanator
 
-      - name: Build PR Kube-OVN image
+      - name: Pull base images and build PR Kube-OVN image
         run: |
-          make base-amd64
           version=$(cat VERSION)
-          docker tag "kubeovn/kube-ovn-base:${version}-amd64" "kubeovn/kube-ovn-base:${version}"
-          docker tag "kubeovn/kube-ovn-base:${version}-debug-amd64" "kubeovn/kube-ovn-base:${version}-debug"
+          for tag in "${version}" "${version}-debug" "${version}-amd64-legacy"; do
+            docker pull "kubeovn/kube-ovn-base:${tag}"
+          done
           make build-kube-ovn
 
       - name: Inspect host images before cluster setup
