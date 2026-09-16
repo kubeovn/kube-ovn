@@ -1,0 +1,21 @@
+suite: Kube-OVN controller data-plane replica fallback
+templates:
+  - controller-deploy.yaml
+tests:
+  - it: falls back to one replica when no nodes or master labels are available
+    kubernetesProvider:
+      scheme:
+        "v1/Node":
+          gvr:
+            version: v1
+            resource: nodes
+          namespaced: false
+      objects: []
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: 10.0.0.10
+      externalOvnCentral.sbEndpoint: 10.0.0.10
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
