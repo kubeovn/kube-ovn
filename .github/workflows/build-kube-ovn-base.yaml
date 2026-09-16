@@ -57,7 +57,9 @@ jobs:
         env:
           GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
+          IMAGE_REF_NAME: ${{ matrix.branch }}
         run: |
+          export IMAGE_REVISION=$(git rev-parse HEAD)
           make base-${{ matrix.arch }}
           make base-tar-${{ matrix.arch }}
 
