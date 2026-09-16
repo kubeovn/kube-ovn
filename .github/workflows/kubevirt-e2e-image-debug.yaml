@@ -1,0 +1,214 @@
+name: KubeVirt E2E Image Digest Debug
+
+# Temporary workflow for PR #7414. Keep this pull_request-triggered so the
+# diagnostic run is attached to the PR instead of being created by a dispatcher.
+on:
+  pull_request:
+    branches:
+      - master
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - .github/workflows/kubevirt-e2e-image-debug.yaml
+      - Makefile
+      - makefiles/**
+      - pkg/controller/**
+      - test/e2e/framework/**
+      - test/e2e/kubevirt/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubevirt-e2e-image-debug-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  KIND_VERSION: v0.33.0
+  K8S_VERSION: v1.37.0
+  KUBEVIRT_VERSION: v1.9.0
+  KUBEVIRT_CONTAINERDISK_IMAGE: quay.io/kubevirt/cirros-container-disk-demo:v1.9.0
+
+jobs:
+  kubevirt-e2e-image-debug:
+    if: github.event.pull_request.number == 7414
+    name: KubeVirt E2E Image Digest Debug
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out PR
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Free disk space for image builds
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Install Kind config generator
+        run: pipx install jinjanator
+
+      - name: Build PR Kube-OVN image
+        run: |
+          make base-amd64
+          version=$(cat VERSION)
+          docker tag "kubeovn/kube-ovn-base:${version}-amd64" "kubeovn/kube-ovn-base:${version}"
+          docker tag "kubeovn/kube-ovn-base:${version}-debug-amd64" "kubeovn/kube-ovn-base:${version}-debug"
+          make build-kube-ovn
+
+      - name: Inspect host images before cluster setup
+        run: |
+          set -o pipefail
+          kubeovn_image="kubeovn/kube-ovn:$(cat VERSION)"
+          echo "Kube-OVN image: ${kubeovn_image}"
+          docker image inspect "${kubeovn_image}" \
+            --format 'host kube-ovn: Id={{.Id}} RepoDigests={{json .RepoDigests}}'
+          docker pull "${KUBEVIRT_CONTAINERDISK_IMAGE}"
+          docker image inspect "${KUBEVIRT_CONTAINERDISK_IMAGE}" \
+            --format 'host containerdisk: Id={{.Id}} RepoDigests={{json .RepoDigests}}'
+          docker buildx imagetools inspect "${KUBEVIRT_CONTAINERDISK_IMAGE}"
+
+      - name: Create Kind cluster
+        run: make kind-init-ipv4
+
+      - name: Install Kube-OVN
+        run: make kind-install-ipv4
+
+      - name: Install Multus
+        run: make kind-install-multus
+
+      - name: Inspect containerdisk image on every Kind node
+        run: |
+          set -o pipefail
+          for node in $(kind get nodes --name kube-ovn); do
+            echo "===== ${node}: crictl images ====="
+            docker exec "${node}" crictl images --digests | grep \
+              'kubevirt/cirros-container-disk-demo' || true
+            echo "===== ${node}: containerd images ====="
+            docker exec "${node}" ctr -n k8s.io images ls | grep \
+              'kubevirt/cirros-container-disk-demo' || true
+          done
+
+      - name: Install KubeVirt
+        run: make kind-install-kubevirt
+
+      - name: Inspect KubeVirt images after preload
+        run: |
+          set -o pipefail
+          echo "===== host containerdisk image ====="
+          docker image inspect "${KUBEVIRT_CONTAINERDISK_IMAGE}" \
+            --format 'host containerdisk: Id={{.Id}} RepoDigests={{json .RepoDigests}}'
+          for node in $(kind get nodes --name kube-ovn); do
+            echo "===== ${node}: crictl images ====="
+            docker exec "${node}" crictl images --digests | grep \
+              'kubevirt/cirros-container-disk-demo' || true
+            echo "===== ${node}: containerd images ====="
+            docker exec "${node}" ctr -n k8s.io images ls | grep \
+              'kubevirt/cirros-container-disk-demo' || true
+          done
+
+      - name: Start KubeVirt image watcher
+        run: |
+          watcher_log="$RUNNER_TEMP/kubevirt-image-watcher.log"
+          watcher_pid="$RUNNER_TEMP/kubevirt-image-watcher.pid"
+          (
+            while true; do
+              {
+                echo "===== $(date --iso-8601=seconds) ====="
+                kubectl get pods -A -l kubevirt.io=virt-launcher -o json \
+                  | jq -r '.items[] | . as $pod | $pod.status.containerStatuses[]? | [
+                      $pod.metadata.namespace,
+                      $pod.metadata.name,
+                      .name,
+                      .image,
+                      .imageID,
+                      .state
+                    ] | @tsv'
+              } >>"$watcher_log" 2>&1 || true
+              sleep 10
+            done
+          ) &
+          echo "$!" >"$watcher_pid"
+          echo "KubeVirt image watcher PID: $(cat "$watcher_pid")"
+
+      - name: Run KubeVirt E2E only
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-kubevirt-e2e
+
+      - name: Stop KubeVirt image watcher
+        if: always()
+        run: |
+          watcher_pid="$RUNNER_TEMP/kubevirt-image-watcher.pid"
+          if [ -s "$watcher_pid" ]; then
+            kill "$(cat "$watcher_pid")" 2>/dev/null || true
+          fi
+          if [ -f "$RUNNER_TEMP/kubevirt-image-watcher.log" ]; then
+            cat "$RUNNER_TEMP/kubevirt-image-watcher.log"
+            cp "$RUNNER_TEMP/kubevirt-image-watcher.log" kubevirt-image-watcher.log
+          fi
+
+      - name: Dump KubeVirt image IDs and events
+        if: always()
+        run: |
+          set +e
+          exec > >(tee kubevirt-image-diagnostics.txt) 2>&1
+          echo "===== KubeVirt launcher image IDs ====="
+          kubectl get pods -A -l kubevirt.io=virt-launcher -o json \
+            | jq -r '.items[] | . as $pod | $pod.status.containerStatuses[]? | [
+                $pod.metadata.namespace,
+                $pod.metadata.name,
+                .name,
+                .image,
+                .imageID
+              ] | @tsv'
+          echo "===== KubeVirt launcher pods ====="
+          kubectl get pods -A -l kubevirt.io=virt-launcher -o wide || true
+          echo "===== Recent cluster events ====="
+          kubectl get events -A --sort-by=.lastTimestamp | tail -300 || true
+          echo "===== Kind node containerd images ====="
+          for node in $(kind get nodes --name kube-ovn); do
+            echo "===== ${node} ====="
+            docker exec "${node}" crictl images --digests | grep \
+              'kubevirt/cirros-container-disk-demo' || true
+            docker exec "${node}" ctr -n k8s.io images ls | grep \
+              'kubevirt/cirros-container-disk-demo' || true
+          done
+
+      - name: Upload image diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kubevirt-image-diagnostics
+          if-no-files-found: ignore
+          path: |
+            kubevirt-image-watcher.log
+            kubevirt-image-diagnostics.txt
