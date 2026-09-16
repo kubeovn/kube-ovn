@@ -1886,6 +1886,26 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("needs.e2e-executor-result.result == 'success'", blocks["push"])
         self.assertNotIn("github.event_name != 'workflow_dispatch'", blocks["push"])
 
+    def testKubeOvnConformanceTimeoutCoversValgrindDualUnderlay(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        self.assertRegex(
+            blocks["kube-ovn-conformance-e2e"],
+            r"(?m)^    timeout-minutes: 120$",
+        )
+
+        makefile = (repoRoot / "makefiles/e2e.mk").read_text()
+        self.assertIn(
+            "--timeout=60m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test",
+            makefile,
+        )
+
+        scheduled = (repoRoot / ".github/workflows/scheduled-e2e.yaml").read_text()
+        self.assertRegex(
+            scheduled,
+            r"kube-ovn-conformance-e2e:\n    name: Kube-OVN Conformance E2E\n    runs-on: ubuntu-24.04\n    timeout-minutes: 80\n",
+        )
+
     def testKindPullUsesAnonymousGhcrWhenTokenIsAbsent(self):
         makefile = (repoRoot / "makefiles/kind.mk").read_text()
 

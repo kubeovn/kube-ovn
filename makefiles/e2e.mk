@@ -179,7 +179,7 @@ kube-ovn-conformance-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	$(GINKGO_E2E_RUN_PARALLEL) --timeout=35m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=60m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:
