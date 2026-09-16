@@ -29,15 +29,12 @@ diff --git a/northd/northd.c b/northd/northd.c
 index 4a4d75415b..fe895ea151 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -100,6 +100,8 @@ static bool vxlan_ic_mode;
- 
- static bool bcast_arp_req_flood = true;
+@@ -105,2 +105,5 @@ static bool vxlan_ic_mode;
  
 +static struct sset node_local_dns_ip_v4 = SSET_INITIALIZER(&node_local_dns_ip_v4);
 +static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6);
- 
++
  #define MAX_OVN_TAGS 4096
- 
 @@ -6270,6 +6272,27 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
          ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
                        100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;",
@@ -66,9 +63,9 @@ index 4a4d75415b..fe895ea151 100644
      }
  }
  
-@@ -19100,6 +19123,34 @@ ovnnb_db_run(struct northd_input *input_data,
-     bcast_arp_req_flood = smap_get_bool(input_data->nb_options,
-                                         "bcast_arp_req_flood", true);
+@@ -19586,6 +19609,34 @@ ovnnb_db_run(struct northd_input *input_data,
+     acl_ct_translation = smap_get_bool(input_data->nb_options,
+                                        "acl_ct_translation", false);
  
 +    sset_clear(&node_local_dns_ip_v4);
 +    sset_clear(&node_local_dns_ip_v6);
