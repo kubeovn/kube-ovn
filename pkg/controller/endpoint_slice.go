@@ -1158,9 +1158,8 @@ type serviceEndpointCandidate struct {
 }
 
 type topologyBackend struct {
-	backend  string
-	nodeName string
-	hints    *discoveryv1.EndpointHints
+	backend string
+	hints   *discoveryv1.EndpointHints
 }
 
 func endpointSlicePort(endpointSlice *discoveryv1.EndpointSlice, servicePort v1.ServicePort) int32 {
@@ -1182,14 +1181,9 @@ func topologyBackends(endpointSlices []*discoveryv1.EndpointSlice, servicePort v
 	var backends []topologyBackend
 	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, false) {
 		for _, address := range candidate.addresses {
-			nodeName := ""
-			if candidate.endpoint.NodeName != nil {
-				nodeName = *candidate.endpoint.NodeName
-			}
 			backends = append(backends, topologyBackend{
-				backend:  util.JoinHostPort(address, candidate.targetPort),
-				nodeName: nodeName,
-				hints:    candidate.endpoint.Hints,
+				backend: util.JoinHostPort(address, candidate.targetPort),
+				hints:   candidate.endpoint.Hints,
 			})
 		}
 	}
