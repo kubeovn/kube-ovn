@@ -1813,8 +1813,8 @@ class E2EControlTest(unittest.TestCase):
         normalizedWorkflow = " ".join(workflow.split())
         self.assertIn(
             "if: >- steps.lookup-go-cache.outputs.cache-hit != 'true' && "
-            "(github.event_name == 'push' || "
-            "(github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'))",
+            "github.event_name == 'push' && "
+            "github.ref_name == github.event.repository.default_branch",
             normalizedWorkflow,
         )
         self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)

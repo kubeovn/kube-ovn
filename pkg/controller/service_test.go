@@ -5,12 +5,18 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -131,6 +137,102 @@ func Test_getVipIps(t *testing.T) {
 	}
 }
 
+func TestHandleDeleteServiceRuleServiceUsesScopedLoadBalancer(t *testing.T) {
+	svc := &v1.Service{
+		Name:      "slr-rule1",
+		Namespace: metav1.NamespaceDefault,
+		UID:       types.UID("rule-uid"),
+		Annotations: map[string]string{
+			serviceLBOwnerKindAnnotation:    switchLBRuleLBOwnerKind,
+			serviceLBOwnerNameAnnotation:    "rule1",
+			serviceLBOwnerUIDAnnotation:     "rule-uid",
+			util.SwitchLBRuleVipsAnnotation: "10.0.0.10",
+		},
+		Spec: v1.ServiceSpec{
+			ClusterIP: "None",
+			Ports:     []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: 80}},
+		},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*v1.Service{svc}})
+	require.NoError(t, err)
+	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)
+	fakeController.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
+
+	err = fakeController.fakeController.handleDeleteService(&vpcService{
+		Protocol: v1.ProtocolTCP,
+		Vpc:      "vpc1",
+		Vips:     []string{"10.0.0.10:80"},
+		Svc:      svc,
+	})
+	require.NoError(t, err)
+}
+
+func TestHandleDeleteServiceLegacyRuleAnnotationSkipsFixedLoadBalancer(t *testing.T) {
+	svc := &v1.Service{
+		Name:      "rlr-rule1",
+		Namespace: metav1.NamespaceDefault,
+		Annotations: map[string]string{
+			util.RouterLBRuleVipsAnnotation: "192.0.2.10",
+		},
+		Spec: v1.ServiceSpec{
+			ClusterIP: "None",
+			Ports:     []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: 80}},
+		},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*v1.Service{svc}})
+	require.NoError(t, err)
+	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)
+
+	err = fakeController.fakeController.handleDeleteService(&vpcService{
+		Protocol: v1.ProtocolTCP,
+		Vpc:      "vpc1",
+		Vips:     []string{"192.0.2.10:80"},
+		Svc:      svc,
+	})
+	require.NoError(t, err)
+}
+
+func TestHandleDeleteServiceSkipsMissingFixedLoadBalancer(t *testing.T) {
+	svc := &v1.Service{
+		Name:      "lb-svc",
+		Namespace: metav1.NamespaceDefault,
+		Spec: v1.ServiceSpec{
+			Type:      v1.ServiceTypeLoadBalancer,
+			ClusterIP: "10.96.0.10",
+			Ports:     []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: 80}},
+		},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)
+	fakeController.fakeController.config.EnableLb = true
+	fakeController.fakeController.config.EnableLbSvc = true
+
+	_, err = fakeController.fakeController.config.KubeClient.AppsV1().Deployments(svc.Namespace).Create(
+		context.Background(),
+		&appsv1.Deployment{Name: genLbSvcDpName(svc.Name), Namespace: svc.Namespace},
+		metav1.CreateOptions{},
+	)
+	require.NoError(t, err)
+
+	vpcLB := fakeController.fakeController.GenVpcLoadBalancer("vpc1")
+	fakeController.mockOvnClient.EXPECT().LoadBalancerExists(vpcLB.TCPLoadBalancer).Return(false, nil)
+	fakeController.mockOvnClient.EXPECT().LoadBalancerExists(vpcLB.TCPSessLoadBalancer).Return(false, nil)
+
+	err = fakeController.fakeController.handleDeleteService(&vpcService{
+		Protocol: v1.ProtocolTCP,
+		Vpc:      "vpc1",
+		Vips:     []string{"10.96.0.10:80"},
+		Svc:      svc,
+	})
+	require.NoError(t, err)
+	_, err = fakeController.fakeController.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(
+		context.Background(), genLbSvcDpName(svc.Name), metav1.GetOptions{},
+	)
+	require.Error(t, err)
+	require.True(t, k8serrors.IsNotFound(err))
+}
+
 func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 	t.Parallel()
 
@@ -175,6 +277,7 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 		c.enqueueDeleteService(svc)
 		c.enqueueAddEndpointSlice(eps)
 		c.enqueueUpdateEndpointSlice(eps, updatedEps)
+		c.enqueueDeleteEndpointSlice(eps)
 	}
 
 	t.Run("EnableLb=false skips enqueueing", func(t *testing.T) {
@@ -269,6 +372,20 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 			enqueued: true,
 		},
 		{
+			name: "logical router annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.LogicalRouterAnnotation: "custom-vpc"}
+			},
+			enqueued: true,
+		},
+		{
+			name: "logical switch annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.LogicalSwitchAnnotation: "custom-subnet"}
+			},
+			enqueued: true,
+		},
+		{
 			name: "switch lb rule vip annotation change is enqueued",
 			mutate: func(svc *v1.Service) {
 				svc.Annotations = map[string]string{util.SwitchLBRuleVipsAnnotation: "10.0.0.1"}
@@ -322,6 +439,38 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 			} else {
 				require.Zero(t, c.updateServiceQueue.Len())
 			}
+		})
+	}
+}
+
+func TestEnqueueUpdateRuleServiceReconcilesEndpointSliceOnAttachmentChange(t *testing.T) {
+	for _, annotation := range []string{util.VpcAnnotation, util.LogicalRouterAnnotation, util.LogicalSwitchAnnotation} {
+		t.Run(annotation, func(t *testing.T) {
+			oldSvc := &v1.Service{
+				Name:            "slr-rule",
+				Namespace:       metav1.NamespaceDefault,
+				ResourceVersion: "1",
+				Annotations: map[string]string{
+					util.SwitchLBRuleVipsAnnotation: "10.0.0.10",
+					annotation:                      "old",
+				},
+				Spec: v1.ServiceSpec{ClusterIP: v1.ClusterIPNone},
+			}
+			newSvc := oldSvc.DeepCopy()
+			newSvc.ResourceVersion = "2"
+			newSvc.Annotations[annotation] = "new"
+			controller := &Controller{
+				config:                        &Configuration{EnableLb: true},
+				updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
+				addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+			}
+			t.Cleanup(controller.updateServiceQueue.ShutDown)
+			t.Cleanup(controller.addOrUpdateEndpointSliceQueue.ShutDown)
+
+			controller.enqueueUpdateService(oldSvc, newSvc)
+
+			require.Equal(t, 1, controller.updateServiceQueue.Len())
+			require.Equal(t, 1, controller.addOrUpdateEndpointSliceQueue.Len())
 		})
 	}
 }
@@ -564,4 +713,79 @@ func Test_checkServiceLBIPBelongToSubnet(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandleUpdateServiceScopedLoadBalancerAnnotatesExternalSubnet(t *testing.T) {
+	const (
+		ns         = metav1.NamespaceDefault
+		svcName    = "lb-svc"
+		subnetName = "ext-subnet"
+	)
+
+	svc := &v1.Service{
+		Name:      svcName,
+		Namespace: ns,
+		Spec: v1.ServiceSpec{
+			Type:      v1.ServiceTypeLoadBalancer,
+			ClusterIP: "10.96.0.80",
+			Ports:     []v1.ServicePort{{Name: "http", Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+		Status: v1.ServiceStatus{
+			LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: "192.168.1.10"}}},
+		},
+	}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Services: []*v1.Service{svc},
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{CIDRBlock: "192.168.1.0/24"},
+		}},
+	})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	ctrl.svcKeyMutex = keymutex.NewHashed(0)
+	ctrl.config.EnableLb = true
+
+	require.NoError(t, ctrl.handleUpdateService(&updateSvcObject{key: ns + "/" + svcName}))
+
+	got, err := ctrl.config.KubeClient.CoreV1().Services(ns).Get(context.Background(), svcName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, subnetName, got.Annotations[util.ServiceExternalIPFromSubnetAnnotation])
+}
+
+func TestHandleUpdateServiceExternalTrafficPolicyChangeRequeuesEndpointReconcileAfterCleanup(t *testing.T) {
+	svc := &v1.Service{
+		Name:      "lb-svc",
+		Namespace: metav1.NamespaceDefault,
+		UID:       types.UID("lb-svc-uid"),
+		Spec: v1.ServiceSpec{
+			Type:                  v1.ServiceTypeLoadBalancer,
+			ClusterIP:             "10.96.0.80",
+			ClusterIPs:            []string{"10.96.0.80"},
+			ExternalTrafficPolicy: v1.ServiceExternalTrafficPolicyTypeCluster,
+			Ports:                 []v1.ServicePort{{Name: "http", Port: 80, Protocol: v1.ProtocolTCP}},
+		},
+		Status: v1.ServiceStatus{
+			LoadBalancer: v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: "172.19.0.100"}}},
+		},
+	}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*v1.Service{svc}})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	ctrl.svcKeyMutex = keymutex.NewHashed(0)
+	ctrl.config.EnableLb = true
+	ctrl.addOrUpdateEndpointSliceQueue = newTypedRateLimitingQueue[string]("test-endpoint-slice-policy", nil)
+	ctrl.priorityEndpointSliceQueue = newTypedRateLimitingQueue[string]("test-priority-endpoint-slice-policy", nil)
+	t.Cleanup(ctrl.addOrUpdateEndpointSliceQueue.ShutDown)
+	t.Cleanup(ctrl.priorityEndpointSliceQueue.ShutDown)
+
+	fakeCtrl.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return(nil, nil)
+	fakeCtrl.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{}, nil)
+	require.NoError(t, ctrl.handleUpdateService(&updateSvcObject{
+		key:                      "default/lb-svc",
+		oldExternalLocalTemplate: true,
+	}))
+
+	require.Equal(t, 1, ctrl.addOrUpdateEndpointSliceQueue.Len())
+	require.Zero(t, ctrl.priorityEndpointSliceQueue.Len())
 }

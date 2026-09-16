@@ -164,6 +164,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 		client.WithTable(&ovnnb.HAChassis{}),
 		client.WithTable(&ovnnb.HAChassisGroup{}),
 		client.WithTable(&ovnnb.LoadBalancer{}),
+		client.WithTable(&ovnnb.ChassisTemplateVar{}),
 		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
 		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
 		client.WithTable(&ovnnb.LogicalRouterPort{}),

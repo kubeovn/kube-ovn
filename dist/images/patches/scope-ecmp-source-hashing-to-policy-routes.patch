@@ -1,0 +1,21 @@
+From e490f5ac0b644101913c2a3db8e03d85e859deff Mon Sep 17 00:00:00 2001
+From: Mengxin Liu <mengxin@alauda.io>
+Date: Thu, 10 Apr 2025 01:28:59 +0000
+Subject: [PATCH] use source IP hash for policy route ECMP
+
+---
+ northd/northd.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/northd/northd.c b/northd/northd.c
+index 1ca8ded..37623d4 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -11882 +11882 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+-                      "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
++                      "; %s = select(values=(", REG_ECMP_GROUP_ID, ecmp_group_id,
+@@ -11892 +11892 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+-        ds_put_cstr(&actions, ");");
++        ds_put_cstr(&actions, "); hash_fields=\"ip_src\");");
+--
+2.43.0

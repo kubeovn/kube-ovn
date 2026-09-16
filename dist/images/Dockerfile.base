@@ -57,7 +57,7 @@ ADD patches/support-dedicated-bfd-lrp.patch $SRC_DIR
 ADD patches/northd-skip-arp-nd-request-for-lrp-addresses-from-localnet-ports.patch $SRC_DIR
 ADD patches/set-dl-src-for-packets-redirected-by-router-port.patch $SRC_DIR
 ADD patches/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch $SRC_DIR
-ADD patches/change-default-hash-type-from-dp-hash-to-hash-with-field-src-ip.patch $SRC_DIR
+ADD patches/scope-ecmp-source-hashing-to-policy-routes.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -107,8 +107,8 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     git apply --unidiff-zero $SRC_DIR/set-dl-src-for-packets-redirected-by-router-port.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     git apply --unidiff-zero $SRC_DIR/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch && \
-    # change default hash type from dp_hash to hash with field src_ip
-    git apply --unidiff-zero $SRC_DIR/change-default-hash-type-from-dp-hash-to-hash-with-field-src-ip.patch && \
+    # use source IP hashing for policy route ECMP
+    git apply --unidiff-zero $SRC_DIR/scope-ecmp-source-hashing-to-policy-routes.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 
