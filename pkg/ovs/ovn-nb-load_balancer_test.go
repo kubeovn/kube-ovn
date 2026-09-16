@@ -987,6 +987,33 @@ func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
 	require.Contains(t, ls.LoadBalancer, newLB.UUID)
 }
 
+func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIPClearsEmptyMapping() {
+	t := suite.T()
+	t.Parallel()
+
+	const (
+		lbName  = "test-lb-migrate-vip-clear-mapping"
+		vip     = "10.96.0.21:80"
+		backend = "10.0.0.3:8080"
+	)
+	nbClient := suite.ovnNBClient
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.LoadBalancerAddVip(lbName, vip, backend))
+	require.NoError(t, nbClient.LoadBalancerUpdateIPPortMapping(lbName, vip, map[string]string{
+		"10.0.0.3": "backend.default",
+	}))
+
+	// Cluster mode has no distributed backend mapping. Reconcile must still
+	// clear a mapping left behind when the VIP previously used Local mode.
+	require.NoError(t, nbClient.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
+		lbName, vip, []string{backend}, vip, nil, nil, nil, true, nil,
+	))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Empty(t, lb.IPPortMappings)
+}
+
 func (suite *OvnClientTestSuite) testSetLoadBalancerVIPExternalTrafficLocal() {
 	t := suite.T()
 	t.Parallel()
