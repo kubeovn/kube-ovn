@@ -563,6 +563,10 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerMigrateVIP() {
 	suite.testLoadBalancerMigrateVIP()
 }
 
+func (suite *OvnClientTestSuite) Test_LoadBalancerMigrateVIPClearsEmptyMapping() {
+	suite.testLoadBalancerMigrateVIPClearsEmptyMapping()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
 	suite.testDeleteLoadBalancerOp()
 }
