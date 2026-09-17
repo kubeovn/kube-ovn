@@ -55,11 +55,19 @@ func NamedUUID() string {
 	return fmt.Sprintf("u%010d", atomic.AddUint32(&namedUUIDCounter, 1))
 }
 
+type initialMonitorClient interface {
+	NewMonitor(...client.MonitorOption) *client.Monitor
+	Monitor(context.Context, *client.Monitor) (client.MonitorCookie, error)
+}
+
 // monitorWithTimeout bounds the initial monitor RPC so cache update errors cannot block startup forever.
-func monitorWithTimeout(monitor func(context.Context) error, timeout time.Duration) error {
+func monitorWithTimeout(c initialMonitorClient, monitors []client.MonitorOption, timeout time.Duration) error {
+	monitor := c.NewMonitor(monitors...)
+	monitor.Method = ovsdb.ConditionalMonitorRPC
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return monitor(ctx)
+	_, err := c.Monitor(ctx, monitor)
+	return err
 }
 
 // NewOvsDbClient creates a new ovsdb client
@@ -130,12 +138,7 @@ func NewOvsDbClient(
 
 	if len(monitors) != 0 {
 		klog.Infof("setting up monitors for %s database on server %s", db, addr)
-		monitor := c.NewMonitor(monitors...)
-		monitor.Method = ovsdb.ConditionalMonitorRPC
-		if err = monitorWithTimeout(func(ctx context.Context) error {
-			_, err := c.Monitor(ctx, monitor)
-			return err
-		}, connectTimeout); err != nil {
+		if err = monitorWithTimeout(c, monitors, connectTimeout); err != nil {
 			c.Close()
 			klog.Errorf("failed to monitor database on %s server %s: %v", db, addr, err)
 			return nil, err
