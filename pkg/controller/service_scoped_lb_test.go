@@ -118,7 +118,11 @@ func TestRuleScopedLBIdentity(t *testing.T) {
 		{kind: routerLBRuleLBOwnerKind, name: "rlr1", want: "routerlbrule:ns1/rlr1:tcp:external"},
 	} {
 		t.Run(tt.kind, func(t *testing.T) {
-			svc := &corev1.Service{Name: "generated", Namespace: "ns1", UID: types.UID("service-uid")}
+			serviceName := generateSvcName(tt.name)
+			if tt.kind == routerLBRuleLBOwnerKind {
+				serviceName = generateRlrSvcName(tt.name)
+			}
+			svc := &corev1.Service{Name: serviceName, Namespace: "ns1", UID: types.UID("service-uid")}
 			setServiceScopedLBOwner(svc, tt.kind, tt.name, "rule-uid")
 			if got := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic); got != tt.want {
 				t.Fatalf("rule-scoped load balancer name = %q, want %q", got, tt.want)
@@ -126,6 +130,71 @@ func TestRuleScopedLBIdentity(t *testing.T) {
 			ids := serviceScopedLBExternalIDs(svc, "vpc1", serviceLBExternalTraffic)
 			if ids[serviceLBOwnerExternalID] != "rule-uid" || ids[serviceLBOwnerKindID] != tt.kind || ids[serviceLBVPCExternalID] != "vpc1" {
 				t.Fatalf("rule-scoped load balancer metadata = %v", ids)
+			}
+		})
+	}
+}
+
+func TestServiceScopedLBOwnerIgnoresUserAnnotations(t *testing.T) {
+	for _, tt := range []struct {
+		kind string
+		name string
+	}{
+		{kind: serviceLBOwnerKind, name: "victim"},
+		{kind: switchLBRuleLBOwnerKind, name: "victim"},
+		{kind: routerLBRuleLBOwnerKind, name: "victim"},
+	} {
+		t.Run(tt.kind, func(t *testing.T) {
+			svc := &corev1.Service{Name: "web", Namespace: "default", UID: types.UID("service-uid")}
+			setServiceScopedLBOwner(svc, tt.kind, tt.name, "victim-uid")
+			victim := &ovnnb.LoadBalancer{ExternalIDs: map[string]string{
+				serviceLBOwnerExternalID: "victim-uid",
+				serviceLBOwnerKindID:     tt.kind,
+				serviceLBNamespaceID:     svc.Namespace,
+				serviceLBNameExternalID:  tt.name,
+				serviceLBVersionID:       serviceLBVersion,
+			}}
+
+			owner := serviceScopedLBOwner(svc)
+			if owner.kind != serviceLBOwnerKind || owner.namespace != svc.Namespace || owner.name != svc.Name || owner.uid != string(svc.UID) {
+				t.Fatalf("forged owner annotations changed ordinary Service owner to %#v", owner)
+			}
+			if serviceOwnsScopedLB(svc, victim) {
+				t.Fatal("forged owner annotations claimed victim load balancer")
+			}
+			fake := newFakeController(t)
+			fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
+				if filter(victim) {
+					t.Fatal("forged owner annotations selected victim load balancer for deletion")
+				}
+				return nil
+			})
+			if err := fake.fakeController.deleteServiceScopedLoadBalancers(svc); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestServiceScopedLBOwnerAcceptsGeneratedRuleService(t *testing.T) {
+	for _, tt := range []struct {
+		kind string
+		name string
+	}{
+		{kind: switchLBRuleLBOwnerKind, name: "rule1"},
+		{kind: routerLBRuleLBOwnerKind, name: "rule2"},
+	} {
+		t.Run(tt.kind, func(t *testing.T) {
+			serviceName := generateSvcName(tt.name)
+			if tt.kind == routerLBRuleLBOwnerKind {
+				serviceName = generateRlrSvcName(tt.name)
+			}
+			svc := &corev1.Service{Name: serviceName, Namespace: "default", UID: types.UID("service-uid")}
+			setServiceScopedLBOwner(svc, tt.kind, tt.name, "rule-uid")
+
+			owner := serviceScopedLBOwner(svc)
+			if owner.kind != tt.kind || owner.name != tt.name || owner.uid != "rule-uid" {
+				t.Fatalf("generated rule Service owner = %#v", owner)
 			}
 		})
 	}

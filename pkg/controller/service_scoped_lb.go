@@ -78,15 +78,29 @@ func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
 		name:      svc.Name,
 		uid:       string(svc.UID),
 	}
-	if kind := svc.Annotations[serviceLBOwnerKindAnnotation]; kind != "" {
-		owner.kind = kind
+
+	// Owner annotations are controller-managed metadata for generated rule
+	// Services. Never trust them on an ordinary Service: otherwise a user could
+	// point at another Service's owner and take over its deterministic LB name.
+	kind := svc.Annotations[serviceLBOwnerKindAnnotation]
+	name := svc.Annotations[serviceLBOwnerNameAnnotation]
+	uid := svc.Annotations[serviceLBOwnerUIDAnnotation]
+	if name == "" || uid == "" {
+		return owner
 	}
-	if name := svc.Annotations[serviceLBOwnerNameAnnotation]; name != "" {
-		owner.name = name
+	switch kind {
+	case switchLBRuleLBOwnerKind:
+		if svc.Name != generateSvcName(name) {
+			return owner
+		}
+	case routerLBRuleLBOwnerKind:
+		if svc.Name != generateRlrSvcName(name) {
+			return owner
+		}
+	default:
+		return owner
 	}
-	if uid := svc.Annotations[serviceLBOwnerUIDAnnotation]; uid != "" {
-		owner.uid = uid
-	}
+	owner.kind, owner.name, owner.uid = kind, name, uid
 	return owner
 }
 
