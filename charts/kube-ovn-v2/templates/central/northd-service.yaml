@@ -15,7 +15,7 @@ metadata:
   {{- end }}
 spec:
   ports:
-    - name: {{ $serviceName }}
+    - name: ovn-northd
       protocol: TCP
       port: 6643
       targetPort: 6643

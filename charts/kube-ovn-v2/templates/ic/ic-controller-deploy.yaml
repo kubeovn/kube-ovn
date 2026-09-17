@@ -20,11 +20,11 @@ spec:
     type: RollingUpdate
   selector:
     matchLabels:
-      app: {{ $icName }}
+      app: ovn-ic-controller
   template:
     metadata:
       labels:
-        app: {{ $icName }}
+        app: ovn-ic-controller
         component: network
         type: infra
     spec:
@@ -41,7 +41,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app: {{ $icName }}
+                  app: ovn-ic-controller
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
       serviceAccountName: {{ $ovnServiceAccountName }}

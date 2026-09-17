@@ -35,7 +35,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: {{ $pingerName }}
+        app: kube-ovn-pinger
         component: network
         type: infra
     spec:
@@ -95,6 +95,12 @@ spec:
           env:
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
+            - name: OVN_SB_SERVICE_NAME
+              value: {{ include "kubeovn.centralSBName" . | quote }}
+            - name: OVN_SB_SERVICE_HOST
+              value: {{ printf "%s.%s.svc" (include "kubeovn.centralSBName" .) (include "kubeovn.centralNamespace" .) | quote }}
+            - name: OVN_SB_SERVICE_PORT
+              value: "6642"
             - name: POD_IP
               valueFrom:
                 fieldRef:

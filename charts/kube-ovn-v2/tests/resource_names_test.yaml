@@ -40,9 +40,9 @@ tests:
       - equal:
           path: metadata.name
           value: tenant-one-webhook
-      - contains:
+      - equal:
           path: metadata.annotations
-          content:
+          value:
             cert-manager.io/inject-ca-from: kube-system/tenant-one-webhook-serving-cert
       - equal:
           path: webhooks[0].clientConfig.service.name
@@ -60,6 +60,9 @@ tests:
     set:
       fullnameOverride: tenant-one
       validatingWebhook.enabled: true
+    documentSelector:
+      path: kind
+      value: Certificate
     asserts:
       - equal:
           path: metadata.name
@@ -80,7 +83,8 @@ tests:
       - equal:
           path: metadata.name
           value: tenant-two-ovn-central
-      - contains:
+      - equal:
           path: spec.selector
-          content:
+          value:
             app.kubernetes.io/name: tenant-two-ovn-central
+            app.kubernetes.io/part-of: kube-ovn

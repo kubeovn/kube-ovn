@@ -2,6 +2,8 @@
 {{- $controllerName := include "kubeovn.controllerName" . -}}
 {{- $ovnServiceAccountName := include "kubeovn.ovnServiceAccountName" . -}}
 {{- $tlsSecretName := include "kubeovn.tlsSecretName" . -}}
+{{- $natConfigName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-config") -}}
+{{- $natGwConfigName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-gw-config") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,7 +41,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: {{ $controllerName }}
+        app: kube-ovn-controller
         component: network
         type: infra
     spec:
@@ -205,6 +207,14 @@ spec:
               value: "{{ .Values.networking.enableSsl }}"
             - name: KUBE_OVN_TLS_ROTATION_INTERVAL
               value: "{{ .Values.networking.kubeOvnTlsRotationInterval }}"
+            - name: KUBE_OVN_TLS_SECRET_NAME
+              value: {{ $tlsSecretName | quote }}
+            - name: KUBE_OVN_CONTROLLER_LEADER_NAME
+              value: {{ $controllerName | quote }}
+            - name: KUBE_OVN_VPC_NAT_CONFIG
+              value: {{ $natConfigName | quote }}
+            - name: KUBE_OVN_VPC_NAT_GATEWAY_CONFIG
+              value: {{ $natGwConfigName | quote }}
             - name: POD_NAME
               valueFrom:
                 fieldRef:

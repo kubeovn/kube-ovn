@@ -47,7 +47,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: {{ $centralName }}
+        app: ovn-central
         component: network
         type: infra
     spec:
@@ -100,7 +100,7 @@ spec:
             - mountPath: /var/log/ovn
               name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.hcp.enabled }}
       containers:
-        - name: {{ $centralName }}
+        - name: ovn-central
           image: {{ $centralImage.prefix }}{{ $centralImage.repository }}:{{ $centralImage.tag }}
           imagePullPolicy: {{ $centralImage.pullPolicy }}
           command: 
@@ -159,6 +159,8 @@ spec:
               value: "{{ .Values.ovsOvn.probeInterval }}"
             - name: OVN_NORTHD_PROBE_INTERVAL
               value: "{{ .Values.central.ovnNorthdProbeInterval}}"
+            - name: OVN_NORTHD_SERVICE_NAME
+              value: {{ include "kubeovn.centralNorthdName" . | quote }}
             - name: OVN_LEADER_PROBE_INTERVAL
               value: "{{ .Values.central.ovnLeaderProbeInterval }}"
             - name: OVN_NORTHD_N_THREADS
@@ -238,7 +240,7 @@ spec:
         labels:
           app.kubernetes.io/name: {{ $centralName }}
           app.kubernetes.io/part-of: kube-ovn
-          app: {{ $centralName }}
+          app: ovn-central
       spec:
         accessModes:
           - ReadWriteOnce
