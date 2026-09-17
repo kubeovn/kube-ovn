@@ -393,6 +393,44 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted", subnetName)
 	})
 
+	t.Run("forged live service owner uid still cleans owner LB", func(t *testing.T) {
+		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
+
+		svc, err := fc.fakeController.servicesLister.Services(namespace).Get(generateSvcName(slrName))
+		require.NoError(t, err)
+		tampered := svc.DeepCopy()
+		tampered.Annotations[serviceLBOwnerUIDAnnotation] = "other-rule-uid"
+		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Update(tampered))
+
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(
+			[]ovnnb.LoadBalancerHealthCheck{{
+				UUID:        lbhcUUID1,
+				Vip:         vip1,
+				ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: subnetName},
+			}}, nil,
+		)
+		fc.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return(
+			[]ovnnb.LoadBalancer{{
+				Name:        tcpLBName,
+				HealthCheck: []string{lbhcUUID1},
+				ExternalIDs: map[string]string{
+					serviceLBOwnerExternalID: ownerUID,
+					serviceLBOwnerKindID:     switchLBRuleLBOwnerKind,
+					serviceLBNamespaceID:     namespace,
+					serviceLBNameExternalID:  slrName,
+					serviceLBVersionID:       serviceLBVersion,
+				},
+			}}, nil,
+		)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteHealthCheck(tcpLBName, lbhcUUID1).Return(nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping(tcpLBName, vip1).Return(nil)
+		fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+
+		info := &SwitchLBRuleInfo{Name: slrName, Namespace: namespace, UID: ownerUID, Vips: []string{vip1}}
+		require.NoError(t, fc.fakeController.handleDelSwitchLBRule(info))
+	})
+
 	t.Run("LBHC referenced by another owner LB should not be cleaned up", func(t *testing.T) {
 		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
 

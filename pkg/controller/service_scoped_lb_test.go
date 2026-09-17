@@ -135,6 +135,30 @@ func TestRuleScopedLBIdentity(t *testing.T) {
 	}
 }
 
+func generatedRuleServiceName(kind, ruleName string) string {
+	if kind == routerLBRuleLBOwnerKind {
+		return generateRlrSvcName(ruleName)
+	}
+	return generateSvcName(ruleName)
+}
+
+func assertDeleteFilterIgnoresLB(t *testing.T, svc *corev1.Service, lb *ovnnb.LoadBalancer, msg string) {
+	t.Helper()
+	if serviceOwnsScopedLB(svc, lb) {
+		t.Fatal(msg)
+	}
+	fake := newFakeController(t)
+	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
+		if filter(lb) {
+			t.Fatal(msg)
+		}
+		return nil
+	})
+	if err := fake.fakeController.deleteServiceScopedLoadBalancers(svc); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestServiceScopedLBOwnerIgnoresUserAnnotations(t *testing.T) {
 	for _, tt := range []struct {
 		kind string
@@ -159,19 +183,7 @@ func TestServiceScopedLBOwnerIgnoresUserAnnotations(t *testing.T) {
 			if owner.kind != serviceLBOwnerKind || owner.namespace != svc.Namespace || owner.name != svc.Name || owner.uid != string(svc.UID) {
 				t.Fatalf("forged owner annotations changed ordinary Service owner to %#v", owner)
 			}
-			if serviceOwnsScopedLB(svc, victim) {
-				t.Fatal("forged owner annotations claimed victim load balancer")
-			}
-			fake := newFakeController(t)
-			fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
-				if filter(victim) {
-					t.Fatal("forged owner annotations selected victim load balancer for deletion")
-				}
-				return nil
-			})
-			if err := fake.fakeController.deleteServiceScopedLoadBalancers(svc); err != nil {
-				t.Fatal(err)
-			}
+			assertDeleteFilterIgnoresLB(t, svc, victim, "forged owner annotations selected victim load balancer for deletion")
 		})
 	}
 }
@@ -185,17 +197,74 @@ func TestServiceScopedLBOwnerAcceptsGeneratedRuleService(t *testing.T) {
 		{kind: routerLBRuleLBOwnerKind, name: "rule2"},
 	} {
 		t.Run(tt.kind, func(t *testing.T) {
-			serviceName := generateSvcName(tt.name)
-			if tt.kind == routerLBRuleLBOwnerKind {
-				serviceName = generateRlrSvcName(tt.name)
-			}
-			svc := &corev1.Service{Name: serviceName, Namespace: "default", UID: types.UID("service-uid")}
+			svc := &corev1.Service{Name: generatedRuleServiceName(tt.kind, tt.name), Namespace: "default", UID: types.UID("service-uid")}
 			setServiceScopedLBOwner(svc, tt.kind, tt.name, "rule-uid")
 
 			owner := serviceScopedLBOwner(svc)
 			if owner.kind != tt.kind || owner.name != tt.name || owner.uid != "rule-uid" {
 				t.Fatalf("generated rule Service owner = %#v", owner)
 			}
+		})
+	}
+}
+
+func TestServiceScopedLBOwnerRejectsMismatchedRuleService(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		kind string
+		svc  string
+		rule string
+		uid  string
+	}{
+		{name: "switch name mismatch", kind: switchLBRuleLBOwnerKind, svc: generateSvcName("attacker"), rule: "victim", uid: "victim-uid"},
+		{name: "router name mismatch", kind: routerLBRuleLBOwnerKind, svc: generateRlrSvcName("attacker"), rule: "victim", uid: "victim-uid"},
+		{name: "switch service with router owner", kind: routerLBRuleLBOwnerKind, svc: generateSvcName("victim"), rule: "victim", uid: "victim-uid"},
+		{name: "router service with switch owner", kind: switchLBRuleLBOwnerKind, svc: generateRlrSvcName("victim"), rule: "victim", uid: "victim-uid"},
+		{name: "incomplete uid", kind: switchLBRuleLBOwnerKind, svc: generateSvcName("victim"), rule: "victim"},
+		{name: "incomplete name", kind: switchLBRuleLBOwnerKind, svc: generateSvcName("victim"), uid: "victim-uid"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &corev1.Service{Name: tt.svc, Namespace: "default", UID: types.UID("service-uid")}
+			setServiceScopedLBOwner(svc, tt.kind, tt.rule, tt.uid)
+			owner := serviceScopedLBOwner(svc)
+			if owner.kind != serviceLBOwnerKind || owner.name != svc.Name || owner.uid != string(svc.UID) {
+				t.Fatalf("mismatched rule Service owner = %#v", owner)
+			}
+			victim := &ovnnb.LoadBalancer{ExternalIDs: map[string]string{
+				serviceLBOwnerExternalID: "victim-uid",
+				serviceLBOwnerKindID:     tt.kind,
+				serviceLBNamespaceID:     svc.Namespace,
+				serviceLBNameExternalID:  "victim",
+				serviceLBVersionID:       serviceLBVersion,
+			}}
+			assertDeleteFilterIgnoresLB(t, svc, victim, "mismatched rule Service selected victim load balancer for deletion")
+		})
+	}
+}
+
+func TestServiceScopedLBOwnerDeleteIgnoresCrossRuleUID(t *testing.T) {
+	for _, tt := range []struct {
+		kind string
+		name string
+	}{
+		{kind: switchLBRuleLBOwnerKind, name: "attacker"},
+		{kind: routerLBRuleLBOwnerKind, name: "attacker"},
+	} {
+		t.Run(tt.kind, func(t *testing.T) {
+			svc := &corev1.Service{Name: generatedRuleServiceName(tt.kind, tt.name), Namespace: "default", UID: types.UID("service-uid")}
+			setServiceScopedLBOwner(svc, tt.kind, tt.name, "victim-uid")
+			owner := serviceScopedLBOwner(svc)
+			if owner.kind != tt.kind || owner.name != tt.name || owner.uid != "victim-uid" {
+				t.Fatalf("matching generated Service owner = %#v", owner)
+			}
+			victim := &ovnnb.LoadBalancer{ExternalIDs: map[string]string{
+				serviceLBOwnerExternalID: "victim-uid",
+				serviceLBOwnerKindID:     tt.kind,
+				serviceLBNamespaceID:     svc.Namespace,
+				serviceLBNameExternalID:  "victim",
+				serviceLBVersionID:       serviceLBVersion,
+			}}
+			assertDeleteFilterIgnoresLB(t, svc, victim, "forged rule UID selected victim load balancer for deletion")
 		})
 	}
 }
@@ -891,19 +960,27 @@ func TestDeleteStaleServiceScopedLoadBalancers(t *testing.T) {
 	stale := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
 	keep := serviceScopedExternalLBName(svc, corev1.ProtocolTCP, "172.19.0.100")
 	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
-		if !filter(&ovnnb.LoadBalancer{Name: stale, ExternalIDs: map[string]string{
+		ownerIDs := map[string]string{
 			serviceLBOwnerExternalID: string(svc.UID),
 			serviceLBOwnerKindID:     serviceLBOwnerKind,
+			serviceLBNamespaceID:     svc.Namespace,
+			serviceLBNameExternalID:  svc.Name,
 			serviceLBVersionID:       serviceLBVersion,
-		}}) {
+		}
+		if !filter(&ovnnb.LoadBalancer{Name: stale, ExternalIDs: ownerIDs}) {
 			t.Fatalf("stale unsuffixed external LB %q should be deleted", stale)
 		}
-		if filter(&ovnnb.LoadBalancer{Name: keep, ExternalIDs: map[string]string{
+		if filter(&ovnnb.LoadBalancer{Name: keep, ExternalIDs: ownerIDs}) {
+			t.Fatalf("family-scoped external LB %q should be kept", keep)
+		}
+		if filter(&ovnnb.LoadBalancer{Name: stale, ExternalIDs: map[string]string{
 			serviceLBOwnerExternalID: string(svc.UID),
 			serviceLBOwnerKindID:     serviceLBOwnerKind,
+			serviceLBNamespaceID:     svc.Namespace,
+			serviceLBNameExternalID:  "victim",
 			serviceLBVersionID:       serviceLBVersion,
 		}}) {
-			t.Fatalf("family-scoped external LB %q should be kept", keep)
+			t.Fatal("load balancer owned by another name should not be deleted as stale")
 		}
 		return nil
 	})

@@ -333,6 +333,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 	vpcForRlr := info.Vpc
 	if svc, e := c.servicesLister.Services(info.Namespace).Get(svcName); e == nil {
 		ownerSvc = svc.DeepCopy()
+		setServiceScopedLBOwner(ownerSvc, routerLBRuleLBOwnerKind, info.Name, info.UID)
 		// Build ip:port vips for LBHC cleanup from the service annotation IPs + known ports.
 		if vipAnnotation := svc.Annotations[util.RouterLBRuleVipsAnnotation]; vipAnnotation != "" {
 			for ip := range strings.SplitSeq(vipAnnotation, ",") {
