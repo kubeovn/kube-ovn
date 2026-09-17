@@ -393,6 +393,24 @@ func dockerSubnetCIDR(f *framework.Framework, netName string) (cidr, gw string, 
 	return cidr, gw, excludeIPs
 }
 
+func waitProviderNetworkBridgesGone(clusterName string, providerNames ...string) {
+	ginkgo.GinkgoHelper()
+	if len(providerNames) == 0 {
+		return
+	}
+	nodes, err := kind.ListNodes(clusterName, "")
+	framework.ExpectNoError(err, "getting nodes in kind cluster")
+	for _, providerName := range providerNames {
+		brName := util.ExternalBridgeName(providerName)
+		ginkgo.By("Waiting for OVS bridge " + brName + " to disappear")
+		for _, node := range nodes {
+			deadline := time.Now().Add(2 * time.Minute)
+			err = node.WaitLinkToDisappear(brName, time.Second, deadline)
+			framework.ExpectNoError(err, "timed out waiting for ovs bridge %s to disappear in node %s", brName, node.Name())
+		}
+	}
+}
+
 // patchVPCExternal updates EnableExternal and ExtraExternalSubnets on a VPC and waits for ready.
 func patchVPCExternal(vpcClient *framework.VpcClient, vpcName string, enable bool, extras []string) {
 	ginkgo.GinkgoHelper()
@@ -553,6 +571,7 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 			subnetClient.DeleteSync(extraSubnetName)
 			vlanClient.Delete("vlan-gw-extra-" + suffix)
 			providerNetworkClient.DeleteSync("pn-gw-extra")
+			deletedProviders := []string{"pn-gw-extra"}
 			if createdDefaultInfra {
 				// The default external subnet is shared with other suites: remove it only after
 				// every LRP EIP allocated from it is gone, and never fail the spec on cleanup.
@@ -560,11 +579,13 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 				if waitSubnetGoneBestEffort(subnetClient, extDefaultSubnet) {
 					vlanClient.Delete("vlan-gw-main-" + suffix)
 					providerNetworkClient.DeleteSync("pn-gw-main")
+					deletedProviders = append(deletedProviders, "pn-gw-main")
 				} else {
 					framework.Logf("subnet %s was not removed, keeping its provider network, vlan and docker network for the next run", extDefaultSubnet)
 					disconnectMain = nil
 				}
 			}
+			waitProviderNetworkBridgesGone(clusterName, deletedProviders...)
 
 			if disconnectExtra != nil {
 				disconnectExtra()
@@ -726,6 +747,7 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 			vlanClient.Delete("vlan-sub-extra1-" + suffix)
 			providerNetworkClient.DeleteSync("pn-sub-ext2")
 			providerNetworkClient.DeleteSync("pn-sub-ext1")
+			deletedProviders := []string{"pn-sub-ext2", "pn-sub-ext1"}
 			if createdDefaultInfra {
 				// The default external subnet is shared with other suites: remove it only after
 				// every LRP EIP allocated from it is gone, and never fail the spec on cleanup.
@@ -733,11 +755,13 @@ var _ = framework.SerialDescribe("[group:vpc-external]", func() {
 				if waitSubnetGoneBestEffort(subnetClient, extDefaultSubnet) {
 					vlanClient.Delete("vlan-sub-main-" + suffix)
 					providerNetworkClient.DeleteSync("pn-sub-main")
+					deletedProviders = append(deletedProviders, "pn-sub-main")
 				} else {
 					framework.Logf("subnet %s was not removed, keeping its provider network, vlan and docker network for the next run", extDefaultSubnet)
 					disconnectMain = nil
 				}
 			}
+			waitProviderNetworkBridgesGone(clusterName, deletedProviders...)
 
 			if disconnectExtra2 != nil {
 				disconnectExtra2()
