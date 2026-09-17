@@ -143,9 +143,6 @@ func TestHandleDeleteServiceRuleServiceUsesScopedLoadBalancer(t *testing.T) {
 		Namespace: metav1.NamespaceDefault,
 		UID:       types.UID("rule-uid"),
 		Annotations: map[string]string{
-			serviceLBOwnerKindAnnotation:    switchLBRuleLBOwnerKind,
-			serviceLBOwnerNameAnnotation:    "rule1",
-			serviceLBOwnerUIDAnnotation:     "rule-uid",
 			util.SwitchLBRuleVipsAnnotation: "10.0.0.10",
 		},
 		Spec: v1.ServiceSpec{
@@ -153,6 +150,7 @@ func TestHandleDeleteServiceRuleServiceUsesScopedLoadBalancer(t *testing.T) {
 			Ports:     []v1.ServicePort{{Protocol: v1.ProtocolTCP, Port: 80}},
 		},
 	}
+	setServiceScopedLBOwner(svc, switchLBRuleLBOwnerKind, "rule1", "rule-uid")
 	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*v1.Service{svc}})
 	require.NoError(t, err)
 	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)

@@ -105,6 +105,13 @@ func TestGenerateHeadlessServiceExplicitEndpointsHasNoSelector(t *testing.T) {
 	if service.Spec.Selector != nil {
 		t.Fatalf("explicit endpoint service selector = %#v, want nil", service.Spec.Selector)
 	}
+	ref := metav1.GetControllerOf(service)
+	if ref == nil || ref.Kind != util.KindSwitchLBRule || ref.Name != slr.Name {
+		t.Fatalf("generated service controller = %#v", ref)
+	}
+	if _, ok := service.Annotations[serviceLBOwnerKindAnnotation]; ok {
+		t.Fatal("generated service should not keep legacy owner annotations")
+	}
 }
 
 func TestHandleAddOrUpdateSwitchLBRuleClearsSelectorBeforeEndpoints(t *testing.T) {
@@ -294,11 +301,9 @@ func setupHandleDelSLRTest(t *testing.T, vpcName, subnetName, slrName, namespace
 		Annotations: map[string]string{
 			util.LogicalSwitchAnnotation: subnetName,
 			util.VpcAnnotation:           vpcName,
-			serviceLBOwnerKindAnnotation: switchLBRuleLBOwnerKind,
-			serviceLBOwnerNameAnnotation: slrName,
-			serviceLBOwnerUIDAnnotation:  "slr-owner-uid",
 		},
 	}
+	setServiceScopedLBOwner(svc, switchLBRuleLBOwnerKind, slrName, "slr-owner-uid")
 	_, err = ctrl.config.KubeClient.CoreV1().Services(namespace).Create(context.Background(), svc, metav1.CreateOptions{})
 	require.NoError(t, err)
 	require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(svc))
@@ -399,7 +404,9 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		svc, err := fc.fakeController.servicesLister.Services(namespace).Get(generateSvcName(slrName))
 		require.NoError(t, err)
 		tampered := svc.DeepCopy()
-		tampered.Annotations[serviceLBOwnerUIDAnnotation] = "other-rule-uid"
+		ref := metav1.GetControllerOf(tampered)
+		require.NotNil(t, ref)
+		ref.UID = "other-rule-uid"
 		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Update(tampered))
 
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(

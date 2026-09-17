@@ -79,38 +79,73 @@ func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
 		uid:       string(svc.UID),
 	}
 
-	// Owner annotations are controller-managed metadata for generated rule
-	// Services. Never trust them on an ordinary Service: otherwise a user could
-	// point at another Service's owner and take over its deterministic LB name.
-	kind := svc.Annotations[serviceLBOwnerKindAnnotation]
-	name := svc.Annotations[serviceLBOwnerNameAnnotation]
-	uid := svc.Annotations[serviceLBOwnerUIDAnnotation]
-	if name == "" || uid == "" {
+	// Generated rule Services are owned by the cluster-scoped SwitchLBRule or
+	// RouterLBRule. Read the controller owner reference, never user-writable
+	// annotations: otherwise a Service could take over another object's
+	// deterministic load balancer name.
+	ref := metav1.GetControllerOf(svc)
+	if ref == nil || ref.Name == "" || ref.UID == "" {
 		return owner
 	}
-	switch kind {
-	case switchLBRuleLBOwnerKind:
-		if svc.Name != generateSvcName(name) {
+	if ref.APIVersion != kubeovnv1.SchemeGroupVersion.String() {
+		return owner
+	}
+	switch ref.Kind {
+	case util.KindSwitchLBRule:
+		if svc.Name != generateSvcName(ref.Name) {
 			return owner
 		}
-	case routerLBRuleLBOwnerKind:
-		if svc.Name != generateRlrSvcName(name) {
+		owner.kind = switchLBRuleLBOwnerKind
+	case util.KindRouterLBRule:
+		if svc.Name != generateRlrSvcName(ref.Name) {
 			return owner
 		}
+		owner.kind = routerLBRuleLBOwnerKind
 	default:
 		return owner
 	}
-	owner.kind, owner.name, owner.uid = kind, name, uid
+	owner.name, owner.uid = ref.Name, string(ref.UID)
 	return owner
 }
 
 func setServiceScopedLBOwner(svc *v1.Service, kind, name, uid string) {
-	if svc.Annotations == nil {
-		svc.Annotations = make(map[string]string)
+	if svc == nil {
+		return
 	}
-	svc.Annotations[serviceLBOwnerKindAnnotation] = kind
-	svc.Annotations[serviceLBOwnerNameAnnotation] = name
-	svc.Annotations[serviceLBOwnerUIDAnnotation] = uid
+	if svc.Annotations != nil {
+		delete(svc.Annotations, serviceLBOwnerKindAnnotation)
+		delete(svc.Annotations, serviceLBOwnerNameAnnotation)
+		delete(svc.Annotations, serviceLBOwnerUIDAnnotation)
+	}
+	var ownerKind string
+	switch kind {
+	case switchLBRuleLBOwnerKind:
+		ownerKind = util.KindSwitchLBRule
+	case routerLBRuleLBOwnerKind:
+		ownerKind = util.KindRouterLBRule
+	default:
+		return
+	}
+	desired := metav1.OwnerReference{
+		APIVersion:         kubeovnv1.SchemeGroupVersion.String(),
+		Kind:               ownerKind,
+		Name:               name,
+		UID:                types.UID(uid),
+		Controller:         new(true),
+		BlockOwnerDeletion: new(true),
+	}
+	refs := slices.Clone(svc.OwnerReferences)
+	index := slices.IndexFunc(refs, func(ref metav1.OwnerReference) bool {
+		return (ref.Controller != nil && *ref.Controller) ||
+			(ref.APIVersion == kubeovnv1.SchemeGroupVersion.String() &&
+				(ref.Kind == util.KindSwitchLBRule || ref.Kind == util.KindRouterLBRule))
+	})
+	if index >= 0 {
+		refs[index] = desired
+	} else {
+		refs = append(refs, desired)
+	}
+	svc.OwnerReferences = refs
 }
 
 func (owner serviceLBOwner) ownsLoadBalancer(lb *ovnnb.LoadBalancer) bool {

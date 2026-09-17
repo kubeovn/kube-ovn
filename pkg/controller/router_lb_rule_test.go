@@ -129,6 +129,13 @@ func Test_generateRlrHeadlessService(t *testing.T) {
 			require.NotNil(t, svc)
 			assert.Equal(t, tt.svcName, svc.Name)
 			assert.Equal(t, tt.namespace, svc.Namespace)
+			ref := metav1.GetControllerOf(svc)
+			require.NotNil(t, ref)
+			assert.Equal(t, kubeovnv1.SchemeGroupVersion.String(), ref.APIVersion)
+			assert.Equal(t, util.KindRouterLBRule, ref.Kind)
+			assert.Equal(t, tt.rlr.Name, ref.Name)
+			_, hasOwnerKind := svc.Annotations[serviceLBOwnerKindAnnotation]
+			assert.False(t, hasOwnerKind)
 
 			if tt.wantVipAnno != "" {
 				assert.Equal(t, tt.wantVipAnno, svc.Annotations[util.RouterLBRuleVipsAnnotation])
@@ -605,8 +612,12 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "192.168.1.100", svc.Annotations[util.RouterLBRuleVipsAnnotation])
 		assert.Equal(t, "vpc1", svc.Annotations[util.LogicalRouterAnnotation])
-		assert.Equal(t, routerLBRuleLBOwnerKind, svc.Annotations[serviceLBOwnerKindAnnotation])
-		assert.Equal(t, "rlr1", svc.Annotations[serviceLBOwnerNameAnnotation])
+		_, hasOwnerKind := svc.Annotations[serviceLBOwnerKindAnnotation]
+		assert.False(t, hasOwnerKind)
+		ref := metav1.GetControllerOf(svc)
+		require.NotNil(t, ref)
+		assert.Equal(t, util.KindRouterLBRule, ref.Kind)
+		assert.Equal(t, "rlr1", ref.Name)
 		assert.Equal(t, corev1.ClusterIPNone, svc.Spec.ClusterIP)
 
 		// Status must be updated with service reference.
