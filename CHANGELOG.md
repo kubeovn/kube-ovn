@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.16.5 (2026-09-16)
+
+ * [c77eb53e6](https://github.com/kubeovn/kube-ovn/commit/c77eb53e6deb06c76a8d513a8b32bc120a188516) release v1.16.5
+ * [877d314db](https://github.com/kubeovn/kube-ovn/commit/877d314dbb34549c53e0e2736f6b03800eb00e54) ovn: replace underlay ARP flood option with upstream MC_UNKNOWN (#7454)
+ * [206b1d007](https://github.com/kubeovn/kube-ovn/commit/206b1d007397bf0c24ee61c24475dcf92c742875) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.4 (2026-09-14)
 
  * [a9296ef2a](https://github.com/kubeovn/kube-ovn/commit/a9296ef2a37c6519bc0ecb798082ce139c72f8eb) release v1.16.4
@@ -570,6 +581,17 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.26 (2026-09-16)
+
+ * [1671f9740](https://github.com/kubeovn/kube-ovn/commit/1671f97405a35271c9f8f7989eddc1e102c2b383) release v1.15.26
+ * [e190f4aa5](https://github.com/kubeovn/kube-ovn/commit/e190f4aa57859002492ec9292754471eae5fa904) ovn: replace underlay ARP flood option with upstream MC_UNKNOWN (#7453)
+ * [d04e3805d](https://github.com/kubeovn/kube-ovn/commit/d04e3805d8f1684fc20fabafeeb5d3ce73c24230) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
@@ -1648,6 +1670,18 @@
  * renovate[bot]
  * xieyanker
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.14.43 (2026-09-16)
+
+ * [65732d4d1](https://github.com/kubeovn/kube-ovn/commit/65732d4d1374aef4aff6d76b5cf44f4fb3616766) release v1.14.43
+ * [abd1d1ad1](https://github.com/kubeovn/kube-ovn/commit/abd1d1ad1650b85a46908ec69810e6b88b5e4a76) build: add OCI labels to images (#7461)
+ * [a0d4d37d9](https://github.com/kubeovn/kube-ovn/commit/a0d4d37d90fb644fe8da996c84fd18059a1a7f16) ovn: backport MC_UNKNOWN broadcast ARP handling to release-1.14 (#7456)
+ * [d821babeb](https://github.com/kubeovn/kube-ovn/commit/d821babeb9f57fbc7d4709d43081060e321a4715) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
