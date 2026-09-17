@@ -3,13 +3,17 @@
 set -ex
 
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
+OVS_OVN_NAME=${OVS_OVN_NAME:-ovs-ovn}
+OVN_CENTRAL_NAME=${OVN_CENTRAL_NAME:-ovn-central}
+OVN_CENTRAL_KIND=${OVN_CENTRAL_KIND:-deployment}
+OVN_CENTRAL_NAMESPACE=${OVN_CENTRAL_NAMESPACE:-$POD_NAMESPACE}
 
-UPDATE_STRATEGY=`kubectl -n $POD_NAMESPACE get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
+UPDATE_STRATEGY=`kubectl -n $POD_NAMESPACE get ds "$OVS_OVN_NAME" -o jsonpath='{.spec.updateStrategy.type}'`
 
-kubectl -n $POD_NAMESPACE rollout status deploy ovn-central --timeout=120s
+kubectl -n "$OVN_CENTRAL_NAMESPACE" rollout status "$OVN_CENTRAL_KIND/$OVN_CENTRAL_NAME" --timeout=120s
 
 if [ $UPDATE_STRATEGY = OnDelete ]; then
-  dsChartVer=`kubectl get ds -n $POD_NAMESPACE ovs-ovn -o jsonpath={.spec.template.metadata.annotations.chart-version}`
+  dsChartVer=`kubectl get ds -n $POD_NAMESPACE "$OVS_OVN_NAME" -o jsonpath={.spec.template.metadata.annotations.chart-version}`
 
   for node in `kubectl get node -o jsonpath='{.items[*].metadata.name}'`; do
     pods=(`kubectl -n $POD_NAMESPACE get pod -l app=ovs --field-selector spec.nodeName=$node -o name`)
@@ -34,5 +38,5 @@ if [ $UPDATE_STRATEGY = OnDelete ]; then
     kubectl -n $POD_NAMESPACE wait pod --for=condition=ready -l app=ovs --field-selector spec.nodeName=$node
   done
 else
-  kubectl -n $POD_NAMESPACE rollout status ds/ovs-ovn
+  kubectl -n $POD_NAMESPACE rollout status "ds/$OVS_OVN_NAME"
 fi

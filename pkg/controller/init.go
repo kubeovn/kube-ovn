@@ -828,22 +828,24 @@ func (c *Controller) syncVpcNatGatewayCR() error {
 		return nil
 	}
 	// get vpc nat gateway enable state
-	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
+	natGatewayConfigName := vpcNatGatewayConfigName()
+	natConfigName := vpcNatConfigName()
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(natGatewayConfigName)
 	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to get config map %s, %v", util.VpcNatGatewayConfig, err)
+		klog.Errorf("failed to get config map %s, %v", natGatewayConfigName, err)
 		return err
 	}
 	if k8serrors.IsNotFound(err) || cm.Data["enable-vpc-nat-gw"] == "false" {
 		return nil
 	}
 	// get vpc nat gateway image
-	cm, err = c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
+	cm, err = c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(natConfigName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.Errorf("should set config map for vpc-nat-gateway %s, %v", util.VpcNatConfig, err)
+			klog.Errorf("should set config map for vpc-nat-gateway %s, %v", natConfigName, err)
 			return err
 		}
-		klog.Errorf("failed to get config map %s, %v", util.VpcNatConfig, err)
+		klog.Errorf("failed to get config map %s, %v", natConfigName, err)
 		return err
 	}
 

@@ -3,6 +3,8 @@
 {{- $webhookName := include "kubeovn.webhookName" . -}}
 {{- $ovnServiceAccountName := include "kubeovn.ovnServiceAccountName" . -}}
 {{- $webhookSecretName := include "kubeovn.resourceName" (dict "context" . "suffix" "webhook-secret") -}}
+{{- $natConfigName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-config") -}}
+{{- $natGwConfigName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-gw-config") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,6 +70,10 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: status.podIP
+            - name: KUBE_OVN_VPC_NAT_CONFIG
+              value: {{ $natConfigName | quote }}
+            - name: KUBE_OVN_VPC_NAT_GATEWAY_CONFIG
+              value: {{ $natGwConfigName | quote }}
             {{- with .Values.validatingWebhook.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}

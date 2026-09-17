@@ -50,6 +50,7 @@ rules:
       - apps
     resources:
       - deployments
+      - statefulsets
     resourceNames:
       - {{ $centralName }}
     verbs:
@@ -154,6 +155,20 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: OVS_OVN_NAME
+              value: {{ $ovsOvnName | quote }}
+            - name: OVN_CENTRAL_NAME
+              value: {{ $centralName | quote }}
+            - name: OVN_CENTRAL_KIND
+              value: {{ ternary "statefulset" "deployment" .Values.central.hcp.enabled | quote }}
+            - name: OVN_CENTRAL_NAMESPACE
+              value: {{ include "kubeovn.centralNamespace" . | quote }}
+            {{- if .Values.central.hcp.enabled }}
+            - name: OVN_NB_ADDR
+              value: {{ include "kubeovn.ovnNbAddress" . | quote }}
+            - name: OVN_SB_ADDR
+              value: {{ include "kubeovn.ovnSbAddress" . | quote }}
+            {{- end }}
           command:
             - bash
             - -eo

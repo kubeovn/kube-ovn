@@ -75,7 +75,12 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: DB_CLUSTER_ADDR
-            value: $(POD_NAME).ovn-central.$(POD_NAMESPACE).svc
+            value: $(POD_NAME).RELEASE-NAME-kube-ovn-v2-ovn-central.$(POD_NAMESPACE).svc
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NORTHD_SERVICE_NAME
+            value: RELEASE-NAME-kube-ovn-v2-ovn-northd
       - equal:
           path: spec.volumeClaimTemplates[0].spec.resources.requests.storage
           value: 5Gi

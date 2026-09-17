@@ -7,6 +7,11 @@ tests:
       masterNodes:
         - "10.0.0.1"
     asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KUBE_OVN_CONTROLLER_LEADER_NAME
+            value: RELEASE-NAME-kube-ovn-v2-controller
       - notContains:
           path: spec.template.spec.containers[0].args
           content: --leader-elect-lease-duration=30s
@@ -43,3 +48,25 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --leader-elect-retry-period=10s
+
+  - it: passes release-scoped controller dependencies through the environment
+    set:
+      fullnameOverride: tenant-one
+      masterNodes:
+        - "10.0.0.1"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KUBE_OVN_TLS_SECRET_NAME
+            value: tenant-one-tls
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KUBE_OVN_VPC_NAT_CONFIG
+            value: tenant-one-vpc-nat-config
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KUBE_OVN_VPC_NAT_GATEWAY_CONFIG
+            value: tenant-one-vpc-nat-gw-config

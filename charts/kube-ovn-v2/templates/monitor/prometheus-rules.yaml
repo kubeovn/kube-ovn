@@ -20,7 +20,7 @@ spec:
     - name: kube-ovn.controller
       rules:
         - alert: KubeOvnControllerDown
-          expr: up{job="kube-ovn-controller"} == 0
+          expr: up{job=~".*{{ $fullname }}-controller"} == 0
           for: 5m
           labels:
             severity: critical
@@ -28,7 +28,7 @@ spec:
             summary: 'kube-ovn-controller {{`{{ $labels.instance }}`}} is down'
             description: 'kube-ovn-controller instance {{`{{ $labels.instance }}`}} has been failing scrape for more than 5 minutes.'
         - alert: KubeOvnControllerAbsent
-          expr: absent(up{job="kube-ovn-controller"})
+          expr: absent(up{job=~".*{{ $fullname }}-controller"})
           for: 15m
           labels:
             severity: critical
