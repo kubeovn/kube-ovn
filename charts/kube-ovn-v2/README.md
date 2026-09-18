@@ -370,31 +370,54 @@ false
 			<td>Extra environment variables to be added to kube-ovn-cni pods.</td>
 		</tr>
 		<tr>
-			<td>agent.gatewayNetfilterDetectTimeout</td>
-			<td>string</td>
+			<td>agent.image</td>
+			<td>object</td>
 			<td><pre lang="json">
-""
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
 </pre>
 </td>
-			<td>Maximum time to wait for the kube-proxy mode during cold start; leave empty to use the daemon default of 30s.</td>
+			<td>Override image settings for kube-ovn-cni. Empty fields fall back to the global kube-ovn image.</td>
 		</tr>
 		<tr>
-			<td>agent.gatewayNetfilterMode</td>
+			<td>agent.image.pullPolicy</td>
 			<td>string</td>
 			<td><pre lang="json">
 ""
 </pre>
 </td>
-			<td>Gateway netfilter backend: auto, iptables, or nftables; leave empty to use the daemon default of auto.</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
 		</tr>
 		<tr>
-			<td>agent.kubeProxyModeEndpoint</td>
+			<td>agent.image.registry</td>
 			<td>string</td>
 			<td><pre lang="json">
 ""
 </pre>
 </td>
-			<td>Local kube-proxy proxyMode endpoint; leave empty to use the daemon default endpoint.</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>agent.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>agent.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
 		</tr>
 		<tr>
 			<td>agent.labels</td>
@@ -674,6 +697,56 @@ false
 			<td>Extra environment variables to be added to kube-ovn-speaker pods.</td>
 		</tr>
 		<tr>
+			<td>bgpSpeaker.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for kube-ovn-speaker. Empty fields fall back to the global kube-ovn image.</td>
+		</tr>
+		<tr>
+			<td>bgpSpeaker.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>bgpSpeaker.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>bgpSpeaker.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>bgpSpeaker.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
+		</tr>
+		<tr>
 			<td>bgpSpeaker.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -761,6 +834,80 @@ false
 </pre>
 </td>
 			<td>Extra environment variables to be added to ovn-central pods.</td>
+		</tr>
+		<tr>
+			<td>central.hcp</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "namespace": "hcp",
+  "nbAddress": "",
+  "replicas": 3,
+  "sbAddress": "",
+  "service": {
+    "nbNodePort": 30641,
+    "sbNodePort": 30642,
+    "type": "NodePort"
+  },
+  "storage": {
+    "size": "5Gi",
+    "storageClassName": ""
+  }
+}
+</pre>
+</td>
+			<td>Deploy ovn-central as a PVC-backed StatefulSet that can be exposed to workload clusters.</td>
+		</tr>
+		<tr>
+			<td>central.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for ovn-central. Empty fields fall back to the global kube-ovn image.</td>
+		</tr>
+		<tr>
+			<td>central.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>central.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>central.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>central.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
 		</tr>
 		<tr>
 			<td>central.labels</td>
@@ -879,6 +1026,15 @@ false
 			<td>Domain used by the cluster.</td>
 		</tr>
 		<tr>
+			<td>externalOvnCentral</td>
+			<td>object</td>
+			<td><pre lang="">
+"{}"
+</pre>
+</td>
+			<td>When installMode=dataPlaneOnly, the agents and controller cannot rely on a local ovn-central Service. Set nbEndpoint/sbEndpoint to the addresses that expose the management cluster's ovn-nb / ovn-sb Services.</td>
+		</tr>
+		<tr>
 			<td>fullnameOverride</td>
 			<td>string</td>
 			<td><pre lang="json">
@@ -924,6 +1080,15 @@ false
 </pre>
 </td>
 			<td>Pull policy for all images.</td>
+		</tr>
+		<tr>
+			<td>installMode</td>
+			<td>string</td>
+			<td><pre lang="json">
+"full"
+</pre>
+</td>
+			<td>installMode controls which slice of the chart this Helm release renders.   full:             all components in one cluster (default, classic install).   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and                     their RBAC. Use on the management cluster of a                     split-cluster deployment that hosts ovn-central.   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +                     pinger and their RBAC. Use on tenant data-plane                     clusters that connect back to an external ovn-central via                     externalOvnCentral below.</td>
 		</tr>
 		<tr>
 			<td>masterNodes</td>
@@ -1092,6 +1257,56 @@ false
 </pre>
 </td>
 			<td>Extra environment variables to be added to kube-ovn-controller pods.</td>
+		</tr>
+		<tr>
+			<td>controller.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for kube-ovn-controller. Empty fields fall back to the global kube-ovn image.</td>
+		</tr>
+		<tr>
+			<td>controller.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>controller.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>controller.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>controller.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
 		</tr>
 		<tr>
 			<td>controller.labels</td>
@@ -1266,6 +1481,7 @@ false
   "ENABLE_ANP": false,
   "ENABLE_BIND_LOCAL_IP": true,
   "ENABLE_DNS_NAME_RESOLVER": false,
+  "ENABLE_OVN_LB_PREFER_LOCAL": false,
   "LS_CT_SKIP_DST_LPORT_IPS": true,
   "LS_DNAT_MOD_DL_DST": true,
   "OVSDB_CON_TIMEOUT": 3,
@@ -1513,6 +1729,56 @@ false
 			<td>Extra environment variables to be added to ovn-ic-controller pods.</td>
 		</tr>
 		<tr>
+			<td>ic.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for the OVN IC controller. Empty fields fall back to the global kube-ovn image.</td>
+		</tr>
+		<tr>
+			<td>ic.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>ic.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>ic.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>ic.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
+		</tr>
+		<tr>
 			<td>ic.nodeAffinity</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -1619,6 +1885,56 @@ false
 </pre>
 </td>
 			<td>Extra environment variables to be added to kube-ovn-monitor pods.</td>
+		</tr>
+		<tr>
+			<td>monitor.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for kube-ovn-monitor. Empty fields fall back to the global kube-ovn image.</td>
+		</tr>
+		<tr>
+			<td>monitor.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>monitor.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>monitor.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>monitor.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
 		</tr>
 		<tr>
 			<td>monitor.labels</td>
@@ -1973,6 +2289,15 @@ false
 			<td>Namespace where ovn-external-gw-config ConfigMap is located. Empty means it will use the same namespace as the controller (PodNamespace).</td>
 		</tr>
 		<tr>
+			<td>networking.externalGatewaySwitch</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>The name of the external gateway switch (OVS bridge providing external network). Empty means the default "external" is used.</td>
+		</tr>
+		<tr>
 			<td>networking.join</td>
 			<td>object</td>
 			<td><pre lang="">
@@ -2018,13 +2343,13 @@ false
 			<td>Name of the join subnet once it gets generated in the cluster.</td>
 		</tr>
 		<tr>
-			<td>networking.maxMtu</td>
-			<td>int</td>
+			<td>networking.kubeOvnTlsRotationInterval</td>
+			<td>string</td>
 			<td><pre lang="json">
-0
+"8760h"
 </pre>
 </td>
-			<td>Upper bound applied to the auto-detected pod MTU (0 disables the cap). Useful when the underlay uses jumbo frames but pod traffic egresses to a 1500-byte path (e.g. the internet), where the uncapped value would cause fragmentation or PMTUD-dependent blackholes. Ignored when .networking.pods.mtu is set. This applies to custom and default subnets.</td>
+			<td>How often kube-ovn-controller checks kube-ovn-tls for renewal. Set to 0 to disable.</td>
 		</tr>
 		<tr>
 			<td>networking.networkType</td>
@@ -2207,6 +2532,33 @@ false
 			<td>Protocol(s) used by Kube-OVN to allocate IPs to pods and services. Can be either IPv4, IPv6 or Dual.</td>
 		</tr>
 		<tr>
+			<td>networking.tlsCipherSuites</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Go TLS cipher suite names. OVN DB server only supports suites mapped by dist/images/ovn-db-ssl-options.sh.</td>
+		</tr>
+		<tr>
+			<td>networking.tlsMaxVersion</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Maximum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints. Supported values: TLS10, TLS11, TLS12, TLS13. Empty uses the component default.</td>
+		</tr>
+		<tr>
+			<td>networking.tlsMinVersion</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Minimum TLS version for OVN NB/SB database server and kube-ovn secure-serving endpoints. Supported values: TLS10, TLS11, TLS12, TLS13. Empty uses the component default.</td>
+		</tr>
+		<tr>
 			<td>networking.tunnelType</td>
 			<td>string</td>
 			<td><pre lang="json">
@@ -2304,6 +2656,56 @@ false
 			<td>Enables DPDK-hybrid support on OVS.</td>
 		</tr>
 		<tr>
+			<td>ovsOvn.dpdkHybrid.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for ovs-ovn-dpdk. Empty fields fall back to the global kube-ovn image and the DPDK tag below.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.dpdkHybrid.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.dpdkHybrid.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.dpdkHybrid.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.dpdkHybrid.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.ovsOvn.dpdkHybrid.tag`.</td>
+		</tr>
+		<tr>
 			<td>ovsOvn.dpdkHybrid.nodeSelector</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -2352,6 +2754,56 @@ false
 </pre>
 </td>
 			<td>Extra environment variables to be added to ovs-ovn pods.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for ovs-ovn. Empty fields fall back to the global kube-ovn image.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>ovsOvn.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
 		</tr>
 		<tr>
 			<td>ovsOvn.labels</td>
@@ -2455,7 +2907,8 @@ false
 			<td>object</td>
 			<td><pre lang="json">
 {
-  "enabled": true
+  "enabled": true,
+  "versionCompatibility": "25.03"
 }
 </pre>
 </td>
@@ -2545,6 +2998,56 @@ false
 </pre>
 </td>
 			<td>Extra environment variables to be added to kube-ovn-pinger pods.</td>
+		</tr>
+		<tr>
+			<td>pinger.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for kube-ovn-pinger. Empty fields fall back to the global kube-ovn image.</td>
+		</tr>
+		<tr>
+			<td>pinger.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>pinger.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>pinger.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>pinger.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
 		</tr>
 		<tr>
 			<td>pinger.labels</td>
@@ -2804,6 +3307,56 @@ false
 			<td>Extra environment variables to be added to kube-ovn-webhook pods.</td>
 		</tr>
 		<tr>
+			<td>validatingWebhook.image</td>
+			<td>object</td>
+			<td><pre lang="json">
+{
+  "pullPolicy": "",
+  "registry": "",
+  "repository": "",
+  "tag": ""
+}
+</pre>
+</td>
+			<td>Override image settings for kube-ovn-webhook. Empty fields fall back to the global kube-ovn image.</td>
+		</tr>
+		<tr>
+			<td>validatingWebhook.image.pullPolicy</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Pull policy override for this component image. Defaults to `.image.pullPolicy`.</td>
+		</tr>
+		<tr>
+			<td>validatingWebhook.image.registry</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Registry override for this component image. This becomes the rendered image address. Defaults to `.global.registry.address`.</td>
+		</tr>
+		<tr>
+			<td>validatingWebhook.image.repository</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Repository override for this component image. Defaults to `.global.images.kubeovn.repository`.</td>
+		</tr>
+		<tr>
+			<td>validatingWebhook.image.tag</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>Tag override for this component image. Defaults to `.global.images.kubeovn.tag`.</td>
+		</tr>
+		<tr>
 			<td>validatingWebhook.labels</td>
 			<td>object</td>
 			<td><pre lang="json">
@@ -2842,6 +3395,24 @@ false
 		<th>Description</th>
 	</thead>
 	<tbody>
+	<tr>
+		<td>central.hcp.nbAddress</td>
+		<td>string</td>
+		<td><pre lang="json">
+""
+</pre>
+</td>
+		<td>OVN NB address used by workload clusters, for example tcp:ovn-nb.example.com:6641.</td>
+	</tr>
+	<tr>
+		<td>central.hcp.sbAddress</td>
+		<td>string</td>
+		<td><pre lang="json">
+""
+</pre>
+</td>
+		<td>OVN SB address used by workload clusters, for example tcp:ovn-sb.example.com:6642.</td>
+	</tr>
 	<tr>
 		<td>central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
 		<td>list</td>
@@ -2923,5 +3494,15 @@ true
 </td>
 		<td>Enable post-upgrade hooks to run upgrade logic of OVS/OVN.</td>
 	</tr>
+	<tr>
+		<td>ovsOvn.upgrade.versionCompatibility</td>
+		<td>string</td>
+		<td><pre lang="json">
+"25.03"
+</pre>
+</td>
+		<td>Value propagated to ovn-central to handle OVS/OVN compatibility with Kube-OVN. This value must be updated for each new OVN version.</td>
+	</tr>
 	</tbody>
 </table>
+

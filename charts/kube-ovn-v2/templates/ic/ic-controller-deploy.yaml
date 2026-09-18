@@ -1,4 +1,4 @@
-{{- if .Values.features.enableOvnInterconnections }}
+{{- if and .Values.features.enableOvnInterconnections (include "kubeovn.renderControlPlane" .) }}
 {{- $icImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.ic.image) | fromYaml -}}
 kind: Deployment
 apiVersion: apps/v1

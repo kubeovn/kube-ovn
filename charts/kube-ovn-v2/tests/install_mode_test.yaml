@@ -1,0 +1,141 @@
+suite: installMode support (v2)
+templates:
+  - central/central-deployment.yaml
+  - controller/controller-deployment.yaml
+  - hooks/post-delete-hook.yaml
+  - hooks/upgrade-ovs-ovn.yaml
+  - ovs-ovn/ovs-ovn-daemonset.yaml
+  - ovs-ovn/ovs-ovn-dpdk-daemonset.yaml
+tests:
+  - it: renders a single controller replica without master node lookup in dataPlaneOnly
+    template: controller/controller-deployment.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: ovn-nb.example.com
+      externalOvnCentral.sbEndpoint: ovn-sb.example.com
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:ovn-nb.example.com:6641
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+
+  - it: does not render the central deployment in dataPlaneOnly
+    template: central/central-deployment.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: ovn-nb.example.com
+      externalOvnCentral.sbEndpoint: ovn-sb.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: points the upgrade hook at the external OVN NB address in dataPlaneOnly
+    template: hooks/upgrade-ovs-ovn.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: ovn-nb.example.com
+      externalOvnCentral.sbEndpoint: ovn-sb.example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+            value: tcp:ovn-nb.example.com:6641
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_DB_IPS
+          any: true
+
+  - it: does not render the upgrade hook in controlPlaneOnly
+    template: hooks/upgrade-ovs-ovn.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render the post-delete hook in controlPlaneOnly
+    template: hooks/post-delete-hook.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render the controller in controlPlaneOnly
+    template: controller/controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the central deployment in controlPlaneOnly
+    template: central/central-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - isKind:
+          of: Deployment
+
+  - it: renders the upgrade hook with OVN_DB_IPS in full mode
+    template: hooks/upgrade-ovs-ovn.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_DB_IPS
+          any: true
+
+  - it: points ovs-ovn-dpdk at the external OVN SB address in dataPlaneOnly
+    template: ovs-ovn/ovs-ovn-dpdk-daemonset.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: ovn-nb.example.com
+      externalOvnCentral.sbEndpoint: ovn-sb.example.com
+      ovsOvn.dpdkHybrid.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_DB_IPS
+            value: ovn-nb.example.com
+
+  - it: points ovs-ovn at the external OVN SB address in dataPlaneOnly
+    template: ovs-ovn/ovs-ovn-daemonset.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: ovn-nb.example.com
+      externalOvnCentral.sbEndpoint: ovn-sb.example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+            value: tcp:ovn-sb.example.com:6642
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_DB_IPS
+            value: ovn-nb.example.com

@@ -1,9 +1,9 @@
-{{- if .Values.monitor.serviceMonitor.enabled }}
+{{- if and .Values.monitor.serviceMonitor.enabled (include "kubeovn.renderControlPlane" .) }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: kube-ovn-monitor
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.monitor.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
