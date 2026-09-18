@@ -72,11 +72,34 @@ const (
 )
 
 type IptablesDnatRuleSpec struct {
-	// EIP name for DNAT rule
-	EIP string `json:"eip"`
+	// EIP name for DNAT rule: the public address of a Service, allocated by the EIP and
+	// bound on the external interface. It is the identity of the EIP:port nft map, so two
+	// rules that carry the same EIP and port share one backend set.
+	// +optional
+	EIP string `json:"eip,omitempty"`
+	// ClusterIP is the internal VIP this rule serves, held on lo in the gateway. A Service
+	// handled by the nftable LB service feature carries its ingress IP (through EIP) and its
+	// ClusterIP on the same rule, so the two addresses of one Service port stay aligned; a
+	// ClusterIP Service carries only this field.
+	//
+	// The rule's nft identity is programmed on the gateway either way, but the VIP state that
+	// makes the internal VIP reachable (the address held on lo, the per-identity hairpin SNAT rule
+	// and the OVN policy route that steers VPC traffic to the gateway) belongs to the nftable LB
+	// service feature and is programmed only while --enable-gw-nftable-lb-svc is enabled.
+	//
+	// It is only supported for type=share (one address, many backends), and it is immutable:
+	// the identity of a share DNAT rule is its address, so changing it would silently drop
+	// the programmed state. Delete and recreate the rule to move it.
+	// +optional
+	ClusterIP string `json:"clusterIP,omitempty"`
+	// VpcNatGwDp is the gateway that serves this rule. It is required with ClusterIP when
+	// there is no EIP to derive the gateway from, and must name that gateway when both are
+	// set.
+	// +optional
+	VpcNatGwDp string `json:"vpcNatGwDp,omitempty"`
 	// External port number
 	ExternalPort string `json:"externalPort"`
-	// Protocol type (TCP or UDP)
+	// Protocol type (TCP or UDP). See ValidateProtocol for why sctp is not accepted yet.
 	Protocol string `json:"protocol,omitempty"`
 	// Internal IP address to forward traffic to
 	InternalIP string `json:"internalIp"`

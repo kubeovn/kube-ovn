@@ -307,6 +307,15 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 	}
 
 	if dnatNew.Spec != dnatOld.Spec {
+		// A rule serving a ClusterIP is created and deleted together with the Service it comes
+		// from, and never updated: its identity is its address, so any spec change would silently
+		// reprogram a different VIP. Delete and recreate the rule instead.
+		if dnatOld.Spec.ClusterIP != "" {
+			return ctrlwebhook.Errored(http.StatusBadRequest, fmt.Errorf(
+				"dnat %q serves clusterIP %s and is immutable after creation; delete and recreate it to change it",
+				dnatNew.Name, dnatOld.Spec.ClusterIP,
+			))
+		}
 		// Type is immutable after creation
 		oldType := dnatOld.Spec.Type
 		if oldType == "" {
@@ -670,14 +679,63 @@ func (v *ValidatingHook) ValidateIptablesEIP(ctx context.Context, eip *ovnv1.Ipt
 	return nil
 }
 
-func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.IptablesDnatRule) error {
-	if dnat.Spec.EIP == "" {
-		return errors.New("parameter \"eip\" cannot be empty")
+// identitiesOverlap reports whether two share rules program the same nft map. A rule carrying both an
+// EIP and a ClusterIP contributes two identities (EIP:port and ClusterIP:port), so two rules overlap
+// when either of their addresses matches: whichever side is shared, their backends end up in one map.
+func identitiesOverlap(a, b *ovnv1.IptablesDnatRuleSpec) bool {
+	if a.EIP != "" && a.EIP == b.EIP {
+		return true
 	}
-	eip := &ovnv1.IptablesEIP{}
-	key := cli.ObjectKey{Name: dnat.Spec.EIP}
-	if err := v.cache.Get(ctx, key, eip); err != nil {
-		return err
+	return a.ClusterIP != "" && a.ClusterIP == b.ClusterIP
+}
+
+// sameDnatIdentitySpec mirrors the controller's identity rule: an EIP is the identity whenever
+// either side has one, otherwise the ClusterIP is. It is duplicated here because the webhook must
+// reject a conflicting rule before it is created.
+func sameDnatIdentitySpec(a, b *ovnv1.IptablesDnatRuleSpec) bool {
+	if a.EIP != "" || b.EIP != "" {
+		return a.EIP == b.EIP
+	}
+	return a.ClusterIP == b.ClusterIP
+}
+
+func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.IptablesDnatRule) error {
+	// A rule addresses at least one VIP. An EIP is the public one (allocated by the EIP and bound
+	// on the external interface), a ClusterIP is the internal one (held on lo). A Service handled
+	// by the nftable LB service feature carries both on one rule, its ingress IP and its ClusterIP
+	// aligned on the same identity; a ClusterIP Service only carries the ClusterIP.
+	if dnat.Spec.EIP == "" && dnat.Spec.ClusterIP == "" {
+		return errors.New(`parameter "eip" or "clusterIP" cannot be empty`)
+	}
+
+	var eip *ovnv1.IptablesEIP
+	if dnat.Spec.EIP != "" {
+		eip = &ovnv1.IptablesEIP{}
+		key := cli.ObjectKey{Name: dnat.Spec.EIP}
+		if err := v.cache.Get(ctx, key, eip); err != nil {
+			return err
+		}
+		if dnat.Spec.VpcNatGwDp != "" && eip.Spec.NatGwDp != "" && dnat.Spec.VpcNatGwDp != eip.Spec.NatGwDp {
+			return fmt.Errorf("dnat %q: vpcNatGwDp %q does not serve eip %q (natGwDp %q)",
+				dnat.Name, dnat.Spec.VpcNatGwDp, dnat.Spec.EIP, eip.Spec.NatGwDp)
+		}
+	} else {
+		// Without an eip the gateway cannot be derived, and the internal VIP flow only exists for
+		// share rules: the address is shared by all backends through the nft map.
+		if dnat.Spec.VpcNatGwDp == "" {
+			return fmt.Errorf("dnat %q: vpcNatGwDp is required with clusterIP when there is no eip", dnat.Name)
+		}
+		if err := validateNatGwRef(ctx, v.cache, dnat.Spec.VpcNatGwDp); err != nil {
+			return err
+		}
+	}
+	if dnat.Spec.ClusterIP != "" {
+		if net.ParseIP(dnat.Spec.ClusterIP) == nil || util.CheckProtocol(dnat.Spec.ClusterIP) != ovnv1.ProtocolIPv4 {
+			return fmt.Errorf("dnat %q: clusterIP %q must be an IPv4 address", dnat.Name, dnat.Spec.ClusterIP)
+		}
+		if dnat.Spec.Type != ovnv1.DnatRuleTypeShare {
+			return fmt.Errorf("dnat %q: clusterIP requires type=%s", dnat.Name, ovnv1.DnatRuleTypeShare)
+		}
 	}
 	if dnat.Spec.ExternalPort == "" {
 		return errors.New("parameter \"externalPort\" cannot be empty")
@@ -714,7 +772,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 	// Share type DNAT is implemented with IPv4-only nft rules (ip daddr / ip saddr).
 	// Reject it for a v6-only EIP. EIPs that are still being allocated (both addresses
 	// empty) are allowed here; the controller requeues until the IPv4 address is ready.
-	if dnatType == ovnv1.DnatRuleTypeShare && eip.Spec.V4ip == "" && eip.Spec.V6ip != "" {
+	if eip != nil && dnatType == ovnv1.DnatRuleTypeShare && eip.Spec.V4ip == "" && eip.Spec.V6ip != "" {
 		return fmt.Errorf("dnat %q cannot use type=share: EIP %q is IPv6-only, share dnat only supports IPv4", dnat.Name, dnat.Spec.EIP)
 	}
 
@@ -736,11 +794,16 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		return fmt.Errorf("dnat %q has invalid sessionAffinity %q, supported values: \"\", \"ClientIP\"", dnat.Name, dnat.Spec.SessionAffinity)
 	}
 
-	// Check type conflict with existing DNAT rules sharing the same identity
-	if eip.Spec.NatGwDp != "" {
+	// Check type conflict with existing DNAT rules sharing the same identity. The identity is the
+	// VIP the rule addresses, whichever flow it belongs to.
+	gwName := dnat.Spec.VpcNatGwDp
+	if eip != nil {
+		gwName = eip.Spec.NatGwDp
+	}
+	if gwName != "" {
 		dnatList := &ovnv1.IptablesDnatRuleList{}
 		if err := v.cache.List(ctx, dnatList, cli.MatchingLabels{
-			util.VpcNatGatewayNameLabel: eip.Spec.NatGwDp,
+			util.VpcNatGatewayNameLabel: gwName,
 		}); err != nil {
 			return fmt.Errorf("failed to list iptables DNAT rules: %w", err)
 		}
@@ -750,8 +813,9 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 			if existing.Name == dnat.Name {
 				continue
 			}
-			// Only check same identity (EIP + Protocol)
-			if existing.Spec.EIP != dnat.Spec.EIP || strings.ToLower(existing.Spec.Protocol) != dnat.Spec.Protocol || canonicalPort(existing.Spec.ExternalPort) != dnat.Spec.ExternalPort {
+			// Only check same identity (VIP + Protocol)
+			if !sameDnatIdentitySpec(&existing.Spec, &dnat.Spec) ||
+				strings.ToLower(existing.Spec.Protocol) != dnat.Spec.Protocol || canonicalPort(existing.Spec.ExternalPort) != dnat.Spec.ExternalPort {
 				continue
 			}
 
@@ -770,8 +834,9 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 	}
 
 	// Check FIP/DNAT exclusivity: FIP claims all traffic to the EIP (EXCLUSIVE_DNAT),
-	// which shadows any port-specific DNAT rules (SHARED_DNAT) for the same EIP.
-	if eip.Status.IP != "" {
+	// which shadows any port-specific DNAT rules (SHARED_DNAT) for the same EIP. A ClusterIP
+	// rule has no EIP, so the FIP plane cannot shadow it.
+	if eip != nil && eip.Status.IP != "" {
 		fipList := &ovnv1.IptablesFIPRuleList{}
 		if err := v.cache.List(ctx, fipList, cli.MatchingLabels{util.EipUIDLabel: string(eip.UID)}); err != nil {
 			return fmt.Errorf("failed to list iptables FIP rules: %w", err)
@@ -809,22 +874,22 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 			if existingType != ovnv1.DnatRuleTypeShare {
 				continue
 			}
-			if existing.Spec.EIP != dnat.Spec.EIP ||
+			if !identitiesOverlap(&existing.Spec, &dnat.Spec) ||
 				existing.Spec.ExternalPort != dnat.Spec.ExternalPort ||
 				!strings.EqualFold(existing.Spec.Protocol, dnat.Spec.Protocol) {
 				continue
 			}
 			if nftableLbDnatOwnerKey(existing) != newOwner {
-				return fmt.Errorf("dnat %q conflicts with existing share dnat %q: identity (eip=%s, port=%s, protocol=%s) is already in use by %s; a given EIP:port can back only one owner",
-					dnat.Name, existing.Name, dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol, nftableLbDnatOwnerDesc(existing))
+				return fmt.Errorf("dnat %q conflicts with existing share dnat %q: identity (eip=%s, clusterIP=%s, port=%s, protocol=%s) is already in use by %s; a given address:port can back only one owner",
+					dnat.Name, existing.Name, dnat.Spec.EIP, dnat.Spec.ClusterIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol, nftableLbDnatOwnerDesc(existing))
 			}
 			// All backends of one share identity are programmed into a single nft map, so the
 			// session-affinity settings must be consistent across every rule of that identity;
 			// otherwise the map built by the last writer would be non-deterministic.
 			if existing.Spec.SessionAffinity != dnat.Spec.SessionAffinity ||
 				existing.Spec.SessionAffinityTimeoutSeconds != dnat.Spec.SessionAffinityTimeoutSeconds {
-				return fmt.Errorf("dnat %q conflicts with existing share dnat %q: same identity (eip=%s, port=%s, protocol=%s) must use identical sessionAffinity settings",
-					dnat.Name, existing.Name, dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol)
+				return fmt.Errorf("dnat %q conflicts with existing share dnat %q: same identity (eip=%s, clusterIP=%s, port=%s, protocol=%s) must use identical sessionAffinity settings",
+					dnat.Name, existing.Name, dnat.Spec.EIP, dnat.Spec.ClusterIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol)
 			}
 		}
 	}
@@ -878,8 +943,9 @@ func (v *ValidatingHook) ValidateIptablesFip(ctx context.Context, fip *ovnv1.Ipt
 	}
 
 	// Check FIP/DNAT exclusivity: FIP claims all traffic to the EIP (EXCLUSIVE_DNAT),
-	// which shadows any port-specific DNAT rules (SHARED_DNAT) for the same EIP.
-	if eip.Status.IP != "" {
+	// which shadows any port-specific DNAT rules (SHARED_DNAT) for the same EIP. A ClusterIP
+	// rule has no EIP, so the FIP plane cannot shadow it.
+	if eip != nil && eip.Status.IP != "" {
 		dnatList := &ovnv1.IptablesDnatRuleList{}
 		if err := v.cache.List(ctx, dnatList, cli.MatchingLabels{util.EipUIDLabel: string(eip.UID)}); err != nil {
 			return fmt.Errorf("failed to list iptables DNAT rules: %w", err)

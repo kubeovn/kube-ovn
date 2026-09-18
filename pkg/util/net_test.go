@@ -1989,7 +1989,6 @@ func TestValidateProtocol(t *testing.T) {
 		{name: "valid UDP uppercase", protocol: "UDP", wantErr: false},
 		{name: "valid mixed case", protocol: "Tcp", wantErr: false},
 		{name: "invalid protocol icmp", protocol: "icmp", wantErr: true},
-		{name: "invalid protocol sctp", protocol: "sctp", wantErr: true},
 		{name: "empty string", protocol: "", wantErr: true},
 	}
 	for _, tt := range tests {

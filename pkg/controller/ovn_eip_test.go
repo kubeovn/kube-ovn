@@ -198,7 +198,7 @@ func TestEnqueueAddOvnEipRequeuesRouterLBRules(t *testing.T) {
 	})
 	require.NoError(t, err)
 	c := fc.fakeController
-	c.config.EnableLb = true
+	c.config.EnableOvnLB = true
 	c.addRouterLBRuleQueue = newTypedRateLimitingQueue[string]("AddRouterLBRule", nil)
 	c.addOvnEipQueue = newTypedRateLimitingQueue[string]("AddOvnEip", nil)
 	c.updateOvnEipQueue = newTypedRateLimitingQueue[string]("UpdateOvnEip", nil)

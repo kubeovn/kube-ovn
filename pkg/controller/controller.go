@@ -115,6 +115,18 @@ type Controller struct {
 	// HTB root, IFB device and ingress redirect state.
 	qosNatGwKeyMutex     keymutex.KeyMutex
 	vpcNatGwExecKeyMutex keymutex.KeyMutex
+	// natGwVipKeyMutex serializes the two pieces of share DNAT VIP state one gateway shares across
+	// all identities of a Service: the ClusterIPs its instances hold on lo, and its VIP policy
+	// routes. Both are a read-modify-write of state derived from the gateway's DNAT rules, whose
+	// consumers run on independent queues (the DNAT handlers lock by rule name), so without this
+	// the call that lands last would win and a dropped address or route would survive until the
+	// next unrelated event. Per-identity state (the hairpin SNAT rules) needs no lock.
+	//
+	// It is a separate instance because a caller holds a key of vpcNatGwKeyMutex (the DNAT rule)
+	// while taking this lock, and this lock is in turn held while a key of vpcNatGwExecKeyMutex
+	// (the Pod) is taken: nested LockKey calls on one instance deadlock when the two keys hash to
+	// the same bucket.
+	natGwVipKeyMutex keymutex.KeyMutex
 
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
@@ -540,6 +552,7 @@ func Run(ctx context.Context, config *Configuration) {
 		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		qosNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
+		natGwVipKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
 		addOrUpdateVpcEgressGatewayQueue: newTypedRateLimitingQueue("AddOrUpdateVpcEgressGateway", custCrdRateLimiter),
@@ -744,7 +757,7 @@ func Run(ctx context.Context, config *Configuration) {
 	} else {
 		go controller.runDisabledACLSamplingCleanup(ctx)
 	}
-	if config.EnableLb {
+	if config.EnableOvnLB {
 		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
 		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
 		controller.addRouterLBRuleQueue = newTypedRateLimitingQueue("AddRouterLBRule", custCrdRateLimiter)
@@ -884,7 +897,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
-	if controller.config.EnableLb {
+	if controller.config.EnableOvnLB {
 		cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
 	}
 	if controller.config.EnableNP {
@@ -1100,7 +1113,7 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add qos policy event handler")
 	}
 
-	if config.EnableLb {
+	if config.EnableOvnLB {
 		if _, err = routerLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddRouterLBRule,
 			UpdateFunc: controller.enqueueUpdateRouterLBRule,
@@ -1365,7 +1378,7 @@ func (c *Controller) shutdown() {
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
 
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		c.addRouterLBRuleQueue.ShutDown()
 		c.delRouterLBRuleQueue.ShutDown()
 		c.updateRouterLBRuleQueue.ShutDown()
@@ -1541,18 +1554,23 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
-	if c.config.EnableLb {
-		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
-		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
-		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
-
-		if c.config.EnableNftableLbSvc {
-			if err := c.enqueueNftableLbSvcOwnersFromRules(); err != nil {
-				util.LogFatalAndExit(err, "failed to enqueue nftable lb service owners from generated dnat rules")
-			}
-			go wait.Until(runWorker("add/update nftable lb service", c.addOrUpdateNftableLbSvcQueue, c.handleAddOrUpdateNftableLbService), time.Second, ctx.Done())
+	// validateLoadBalancerMode guarantees that only one of the following mode blocks can start.
+	if c.config.EnableGwNftableLbSvc {
+		// Gateway mode consumes Service and EndpointSlice informer events through its own queue.
+		if err := c.enqueueNftableLbSvcOwnersFromRules(); err != nil {
+			util.LogFatalAndExit(err, "failed to enqueue nftable lb service owners from generated dnat rules")
 		}
+		go wait.Until(runWorker("add/update nftable lb service", c.addOrUpdateNftableLbSvcQueue, c.handleAddOrUpdateNftableLbService), time.Second, ctx.Done())
+	}
 
+	if c.config.EnableOvnLB || c.config.EnablePodLbSvc {
+		// OVN and Pod modes share Service queues, but the global mode check makes their handlers
+		// mutually exclusive at runtime.
+		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
+		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
+	}
+
+	if c.config.EnableOvnLB {
 		go wait.Until(runWorker("add/update router lb rule", c.addRouterLBRuleQueue, c.handleAddOrUpdateRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete router lb rule", c.delRouterLBRuleQueue, c.handleDelRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("update router lb rule", c.updateRouterLBRuleQueue, c.handleUpdateRouterLBRule), time.Second, ctx.Done())
@@ -1580,8 +1598,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
 		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
-		if c.config.EnableLb {
+		if c.config.EnableOvnLB || c.config.EnablePodLbSvc {
 			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
+		}
+		if c.config.EnableOvnLB {
 			go wait.Until(runWorker("add/update endpoint slice", c.addOrUpdateEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 		}
 
@@ -1754,7 +1774,7 @@ func (c *Controller) initResourceOnce() {
 	if err := c.initVpcNatGw(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize vpc nat gateways")
 	}
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		if err := c.initVpcDNSConfig(); err != nil {
 			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
 		}

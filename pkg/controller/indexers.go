@@ -19,6 +19,9 @@ const (
 	IndexVpcByBFDPort          = "byBFDPort"
 	IndexVpcBFDPortEnabled     = "enabled"
 	IndexServiceByNftableLbEip = "byNftableLbEip"
+	// IndexServiceByNftableLbGw indexes the Services of a nftable LB service feature gateway by
+	// the gateway they name, so a gateway event only wakes the Services it serves.
+	IndexServiceByNftableLbGw = "byNftableLbGw"
 )
 
 func indexPodByNode(obj any) ([]string, error) {
@@ -91,7 +94,24 @@ func indexServiceByNftableLbEip(obj any) ([]string, error) {
 	if !ok || !nftableLbSvcQualifies(svc) {
 		return nil, nil
 	}
+	// Only a LoadBalancer Service depends on an EIP (its ingress IP). A ClusterIP Service has
+	// none, so it is indexed under the gateway instead (see indexServiceByNftableLbGw), which is
+	// what its data plane depends on.
+	if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+		return nil, nil
+	}
 	return []string{svc.Annotations[util.EipAnnotation]}, nil
+}
+
+// indexServiceByNftableLbGw indexes a handled Service by the gateway that serves it. A gateway
+// being deleted or moved has to wake exactly the Services it serves, whichever kind of Service
+// they are.
+func indexServiceByNftableLbGw(obj any) ([]string, error) {
+	svc, ok := obj.(*v1.Service)
+	if !ok || !nftableLbSvcQualifies(svc) {
+		return nil, nil
+	}
+	return []string{svc.Annotations[util.VpcNatGatewaySvcAnnotation]}, nil
 }
 
 // setupIndexers registers custom informer indexers used by hot-path
@@ -110,7 +130,10 @@ func (c *Controller) setupIndexers(vpcInformer, podInformer, epsInformer, ipInfo
 	if err := ipInformer.AddIndexers(cache.Indexers{IndexIPBySubnet: indexIPBySubnet}); err != nil {
 		return err
 	}
-	if err := svcInformer.AddIndexers(cache.Indexers{IndexServiceByNftableLbEip: indexServiceByNftableLbEip}); err != nil {
+	if err := svcInformer.AddIndexers(cache.Indexers{
+		IndexServiceByNftableLbEip: indexServiceByNftableLbEip,
+		IndexServiceByNftableLbGw:  indexServiceByNftableLbGw,
+	}); err != nil {
 		return err
 	}
 	c.vpcIndexer = vpcInformer.GetIndexer()

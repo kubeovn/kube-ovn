@@ -21,11 +21,20 @@ package v1
 // IptablesDnatRuleSpecApplyConfiguration represents a declarative configuration of the IptablesDnatRuleSpec type for use
 // with apply.
 type IptablesDnatRuleSpecApplyConfiguration struct {
-	// EIP name for DNAT rule
+	// EIP name for DNAT rule: the public address of a Service, allocated by the EIP and bound on
+	// the external interface. A rule may carry it together with ClusterIP (the ingress IP and the
+	// ClusterIP of one Service port are aligned on one rule); a rule must carry at least one of the
+	// two.
 	EIP *string `json:"eip,omitempty"`
+	// ClusterIP is the internal VIP this rule serves, held on lo in the gateway. It is only
+	// meaningful for type=share and is immutable after creation.
+	ClusterIP *string `json:"clusterIP,omitempty"`
+	// VpcNatGwDp is the gateway that serves this rule. It is required with ClusterIP when there is
+	// no EIP to derive the gateway from, and must name that gateway when both are set.
+	VpcNatGwDp *string `json:"vpcNatGwDp,omitempty"`
 	// External port number
 	ExternalPort *string `json:"externalPort,omitempty"`
-	// Protocol type (TCP or UDP)
+	// Protocol type (TCP or UDP).
 	Protocol *string `json:"protocol,omitempty"`
 	// Internal IP address to forward traffic to
 	InternalIP *string `json:"internalIp,omitempty"`
@@ -55,6 +64,22 @@ func IptablesDnatRuleSpec() *IptablesDnatRuleSpecApplyConfiguration {
 // If called multiple times, the EIP field is set to the value of the last call.
 func (b *IptablesDnatRuleSpecApplyConfiguration) WithEIP(value string) *IptablesDnatRuleSpecApplyConfiguration {
 	b.EIP = &value
+	return b
+}
+
+// WithClusterIP sets the ClusterIP field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ClusterIP field is set to the value of the last call.
+func (b *IptablesDnatRuleSpecApplyConfiguration) WithClusterIP(value string) *IptablesDnatRuleSpecApplyConfiguration {
+	b.ClusterIP = &value
+	return b
+}
+
+// WithVpcNatGwDp sets the VpcNatGwDp field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the VpcNatGwDp field is set to the value of the last call.
+func (b *IptablesDnatRuleSpecApplyConfiguration) WithVpcNatGwDp(value string) *IptablesDnatRuleSpecApplyConfiguration {
+	b.VpcNatGwDp = &value
 	return b
 }
 

@@ -27,6 +27,7 @@ import (
 	"go.uber.org/mock/gomock"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
@@ -106,6 +107,7 @@ type FakeControllerOptions struct {
 	Nodes                 []*corev1.Node
 	Namespaces            []*corev1.Namespace
 	Services              []*corev1.Service
+	EndpointSlices        []*discoveryv1.EndpointSlice
 	Vpcs                  []*kubeovnv1.Vpc
 	RouterLBRules         []*kubeovnv1.RouterLBRule
 	SwitchLBRules         []*kubeovnv1.SwitchLBRule
@@ -154,6 +156,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 	for _, svc := range opts.Services {
 		kubeObjects = append(kubeObjects, svc)
+	}
+	for _, slice := range opts.EndpointSlices {
+		kubeObjects = append(kubeObjects, slice)
 	}
 	for _, sts := range opts.StatefulSets {
 		kubeObjects = append(kubeObjects, sts)
@@ -430,6 +435,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		configMapsLister:              configMapInformer.Lister(),
 		vpcNatGwKeyMutex:              keymutex.NewHashed(0),
 		qosNatGwKeyMutex:              keymutex.NewHashed(1),
+		natGwVipKeyMutex:              keymutex.NewHashed(1),
+		epKeyMutex:                    keymutex.NewHashed(0),
+		svcKeyMutex:                   keymutex.NewHashed(0),
 		OVNNbClient:                   mockOvnClient,
 		OVNSbClient:                   mockOvnSbClient,
 		ipam:                          ovnipam.NewIPAM(),

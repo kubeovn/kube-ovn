@@ -312,7 +312,7 @@ func (c *Controller) initDefaultLogicalSwitch() error {
 			NatOutgoing:         true,
 			GatewayType:         kubeovnv1.GWDistributedType,
 			Protocol:            util.CheckProtocol(c.config.DefaultCIDR),
-			EnableLb:            &c.config.EnableLb,
+			EnableLb:            &c.config.EnableOvnLB,
 		},
 	}
 	if c.config.NetworkType == util.NetworkTypeVlan {
