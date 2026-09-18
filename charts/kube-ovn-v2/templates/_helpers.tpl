@@ -1,4 +1,4 @@
-{/*
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "kubeovn.name" -}}
@@ -100,10 +100,15 @@ Uses Exists operator for empty/nil-value labels and In for specific values.
 {{- end -}}
 
 {{/*
-Number of master nodes
+Number of master nodes. In dataPlaneOnly mode there is no local control-plane,
+so no master node lookup is performed and a single replica is assumed.
 */}}
 {{- define "kubeovn.nodeCount" -}}
+  {{- if eq .Values.installMode "dataPlaneOnly" -}}
+1
+  {{- else -}}
   {{- len (split "," ((join "," .Values.masterNodes) | default (include "kubeovn.nodeIPs" .))) }}
+  {{- end -}}
 {{- end -}}
 
 {{/*
@@ -170,21 +175,35 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 {{- end -}}
 
 {{- define "kubeovn.ovnDbAddresses" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{- required "installMode=dataPlaneOnly requires externalOvnCentral.nbEndpoint" .Values.externalOvnCentral.nbEndpoint -}}
+{{- else if .Values.central.hcp.enabled -}}
+{{- include "kubeovn.centralRaftAddresses" . -}}
+{{- else -}}
 {{- include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "kubeovn.ovnNbAddress" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{- include "kubeovn.externalOvnNbAddress" . -}}
+{{- else if .Values.central.hcp.enabled -}}
 {{- if not .Values.central.hcp.nbAddress -}}
 {{- fail "central.hcp.nbAddress must be set when central.hcp.enabled is true" -}}
 {{- end -}}
 {{- .Values.central.hcp.nbAddress -}}
 {{- end -}}
+{{- end -}}
 
 {{- define "kubeovn.ovnSbAddress" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{- include "kubeovn.externalOvnSbAddress" . -}}
+{{- else if .Values.central.hcp.enabled -}}
 {{- if not .Values.central.hcp.sbAddress -}}
 {{- fail "central.hcp.sbAddress must be set when central.hcp.enabled is true" -}}
 {{- end -}}
 {{- .Values.central.hcp.sbAddress -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "kubeovn.ovs-ovn.updateStrategy" -}}
@@ -270,5 +289,84 @@ nodeAffinity:
           {{- toYaml .matchExpressions | nindent 8 }}
       {{- end }}
   {{- end }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render gate for control-plane resources (ovn-central + Services + its RBAC + monitor).
+Emits "true" when this Helm release should render control-plane resources;
+empty otherwise. Use with {{- if include "kubeovn.renderControlPlane" . }}.
+*/}}
+{{- define "kubeovn.renderControlPlane" -}}
+{{- if or (eq .Values.installMode "full") (eq .Values.installMode "controlPlaneOnly") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render gate for data-plane resources (CRDs + kube-ovn-controller + ovs-ovn +
+kube-ovn-cni + kube-ovn-pinger + their RBAC).
+*/}}
+{{- define "kubeovn.renderDataPlane" -}}
+{{- if or (eq .Values.installMode "full") (eq .Values.installMode "dataPlaneOnly") -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render gate for components that only make sense in a single-cluster install.
+*/}}
+{{- define "kubeovn.renderFullOnly" -}}
+{{- if eq .Values.installMode "full" -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+External OVN NB address for dataPlaneOnly mode.
+*/}}
+{{- define "kubeovn.externalOvnNbAddress" -}}
+{{- $endpoint := required "installMode=dataPlaneOnly requires externalOvnCentral.nbEndpoint" .Values.externalOvnCentral.nbEndpoint -}}
+tcp:{{ $endpoint }}:{{ .Values.externalOvnCentral.nbPort | default 6641 }}
+{{- end -}}
+
+{{/*
+External OVN SB address for dataPlaneOnly mode.
+*/}}
+{{- define "kubeovn.externalOvnSbAddress" -}}
+{{- $endpoint := required "installMode=dataPlaneOnly requires externalOvnCentral.sbEndpoint" .Values.externalOvnCentral.sbEndpoint -}}
+tcp:{{ $endpoint }}:{{ .Values.externalOvnCentral.sbPort | default 6642 }}
+{{- end -}}
+
+{{/*
+OVN_NB_PORT for agents/controller. In dataPlaneOnly mode picks up externalOvnCentral.nbPort.
+*/}}
+{{- define "kubeovn.ovnNbPort" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{ .Values.externalOvnCentral.nbPort | default 6641 }}
+{{- else -}}
+6641
+{{- end -}}
+{{- end -}}
+
+{{/*
+OVN_SB_PORT for agents/controller. In dataPlaneOnly mode picks up externalOvnCentral.sbPort.
+*/}}
+{{- define "kubeovn.ovnSbPort" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+{{ .Values.externalOvnCentral.sbPort | default 6642 }}
+{{- else -}}
+6642
+{{- end -}}
+{{- end -}}
+
+{{/*
+Kube-OVN TLS rotation interval. Disabled in dataPlaneOnly installs.
+*/}}
+{{- define "kubeovn.kubeOVNTLSRotationInterval" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" -}}
+0
+{{- else -}}
+{{ .Values.networking.kubeOvnTlsRotationInterval }}
 {{- end -}}
 {{- end -}}

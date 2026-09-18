@@ -17,6 +17,29 @@ image:
   # @section -- Global parameters
   pullPolicy: IfNotPresent
 
+# -- installMode controls which slice of the chart this Helm release renders.
+#   full:             all components in one cluster (default, classic install).
+#   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
+#                     their RBAC. Use on the management cluster of a
+#                     split-cluster deployment that hosts ovn-central.
+#   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +
+#                     pinger and their RBAC. Use on tenant data-plane
+#                     clusters that connect back to an external ovn-central via
+#                     externalOvnCentral below.
+# @section -- Global parameters
+installMode: full
+
+# -- When installMode=dataPlaneOnly, the agents and controller cannot rely on a
+# local ovn-central Service. Set nbEndpoint/sbEndpoint to the addresses that
+# expose the management cluster's ovn-nb / ovn-sb Services.
+# @section -- Global parameters
+# @default -- "{}"
+externalOvnCentral:
+  nbEndpoint: ""
+  sbEndpoint: ""
+  nbPort: 6641
+  sbPort: 6642
+
 # -- Name override.
 # @section -- Global parameters
 nameOverride: ""
