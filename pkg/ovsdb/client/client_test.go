@@ -9,6 +9,8 @@ import (
 	libovsdbclient "github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
 
 type blockingMonitorClient struct {
@@ -17,6 +19,7 @@ type blockingMonitorClient struct {
 	disconnectDone    chan struct{}
 	releaseMonitor    chan struct{}
 	monitorMethod     string
+	monitorOptions    int
 }
 
 func newBlockingMonitorClient() *blockingMonitorClient {
@@ -27,7 +30,8 @@ func newBlockingMonitorClient() *blockingMonitorClient {
 	}
 }
 
-func (*blockingMonitorClient) NewMonitor(...libovsdbclient.MonitorOption) *libovsdbclient.Monitor {
+func (c *blockingMonitorClient) NewMonitor(opts ...libovsdbclient.MonitorOption) *libovsdbclient.Monitor {
+	c.monitorOptions = len(opts)
 	return &libovsdbclient.Monitor{}
 }
 
@@ -55,7 +59,9 @@ func TestMonitorWithTimeoutBreaksReconnectDeadlock(t *testing.T) {
 	c := newBlockingMonitorClient()
 	monitorDone := make(chan error, 1)
 	go func() {
-		monitorDone <- monitorWithTimeout(c, nil, 10*time.Millisecond)
+		monitorDone <- monitorWithTimeout(c, []libovsdbclient.MonitorOption{
+			libovsdbclient.WithTable(&vswitch.Bridge{}),
+		}, 10*time.Millisecond)
 	}()
 
 	var err error
@@ -69,6 +75,7 @@ func TestMonitorWithTimeoutBreaksReconnectDeadlock(t *testing.T) {
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Equal(t, ovsdb.ConditionalMonitorRPC, c.monitorMethod)
+	require.Equal(t, 1, c.monitorOptions)
 	require.Eventually(t, func() bool {
 		select {
 		case <-c.disconnectDone:
