@@ -2018,6 +2018,15 @@ false
 			<td>Name of the join subnet once it gets generated in the cluster.</td>
 		</tr>
 		<tr>
+			<td>networking.maxMtu</td>
+			<td>int</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+			<td>Upper bound applied to the auto-detected pod MTU (0 disables the cap). Useful when the underlay uses jumbo frames but pod traffic egresses to a 1500-byte path (e.g. the internet), where the uncapped value would cause fragmentation or PMTUD-dependent blackholes. Ignored when .networking.pods.mtu is set. This applies to custom and default subnets.</td>
+		</tr>
+		<tr>
 			<td>networking.networkType</td>
 			<td>string</td>
 			<td><pre lang="json">
