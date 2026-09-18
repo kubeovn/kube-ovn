@@ -87,7 +87,7 @@ require (
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29 // indirect
-	github.com/Microsoft/hcsshim v0.15.0-rc.2 // indirect
+	github.com/Microsoft/hcsshim v0.15.0-rc.4 // indirect
 	github.com/Microsoft/hnslib v0.1.3 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
@@ -101,13 +101,12 @@ require (
 	github.com/chai2010/gettext-go v1.0.3 // indirect
 	github.com/container-storage-interface/spec v1.13.0 // indirect
 	github.com/containerd/cgroups/v3 v3.1.3 // indirect
-	github.com/containerd/containerd/api v1.11.1 // indirect
+	github.com/containerd/containerd/api v1.12.0 // indirect
 	github.com/containerd/continuity v0.5.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
-	github.com/containerd/log v0.1.0 // indirect
+	github.com/containerd/log v0.2.0 // indirect
 	github.com/containerd/ttrpc v1.2.9 // indirect
-	github.com/containerd/typeurl/v2 v2.3.0 // indirect
 	github.com/coreos/go-iptables v0.8.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.7.0 // indirect
@@ -129,6 +128,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/gaissmai/bart v0.29.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
+	github.com/go-ini/ini v0.0.0-00010101000000-000000000000 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
@@ -152,7 +152,6 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/cadvisor/lib v0.60.5 // indirect
@@ -172,7 +171,6 @@ require (
 	github.com/k-sone/critbitgo v1.4.0 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kelseyhightower/envconfig v1.4.0 // indirect
-	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
@@ -186,7 +184,7 @@ require (
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/spdystream v0.5.1 // indirect
 	github.com/moby/sys/symlink v0.3.0 // indirect
-	github.com/moby/sys/userns v0.2.0 // indirect
+	github.com/moby/sys/userns v0.2.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
@@ -232,7 +230,6 @@ require (
 	go.etcd.io/etcd/api/v3 v3.7.1 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.7.1 // indirect
 	go.etcd.io/etcd/client/v3 v3.7.1 // indirect
-	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/github.com/emicklei/go-restful/otelrestful v0.71.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.71.0 // indirect
@@ -288,7 +285,7 @@ require (
 	sigs.k8s.io/kustomize/api v0.21.1 // indirect
 	sigs.k8s.io/kustomize/kyaml v0.21.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	tags.cncf.io/container-device-interface/specs-go v1.1.0 // indirect
+	tags.cncf.io/container-device-interface/specs-go v1.1.1 // indirect
 )
 
 replace (
