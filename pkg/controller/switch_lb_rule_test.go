@@ -109,9 +109,6 @@ func TestGenerateHeadlessServiceExplicitEndpointsHasNoSelector(t *testing.T) {
 	if ref == nil || ref.Kind != util.KindSwitchLBRule || ref.Name != slr.Name {
 		t.Fatalf("generated service controller = %#v", ref)
 	}
-	if _, ok := service.Annotations[serviceLBOwnerKindAnnotation]; ok {
-		t.Fatal("generated service should not keep legacy owner annotations")
-	}
 }
 
 func TestHandleAddOrUpdateSwitchLBRuleClearsSelectorBeforeEndpoints(t *testing.T) {

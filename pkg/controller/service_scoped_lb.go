@@ -35,12 +35,9 @@ const (
 	maxOVNLBSessionTimeout   = 65535
 	serviceTemplateVarRoot   = "kube_ovn_svc_"
 
-	serviceLBOwnerKindAnnotation = "kube-ovn.io/lb-owner-kind"
-	serviceLBOwnerNameAnnotation = "kube-ovn.io/lb-owner-name"
-	serviceLBOwnerUIDAnnotation  = "kube-ovn.io/lb-owner-uid"
-	serviceLBOwnerKind           = "service"
-	switchLBRuleLBOwnerKind      = "switchlbrule"
-	routerLBRuleLBOwnerKind      = "routerlbrule"
+	serviceLBOwnerKind      = "service"
+	switchLBRuleLBOwnerKind = "switchlbrule"
+	routerLBRuleLBOwnerKind = "routerlbrule"
 )
 
 type serviceLBOwner struct {
@@ -80,9 +77,9 @@ func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
 	}
 
 	// Generated rule Services are owned by the cluster-scoped SwitchLBRule or
-	// RouterLBRule. Read the controller owner reference, never user-writable
-	// annotations: otherwise a Service could take over another object's
-	// deterministic load balancer name.
+	// RouterLBRule. Read the controller owner reference: a user-writable
+	// annotation could otherwise take over another object's deterministic
+	// load balancer name.
 	ref := metav1.GetControllerOf(svc)
 	if ref == nil || ref.Name == "" || ref.UID == "" {
 		return owner
@@ -111,11 +108,6 @@ func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
 func setServiceScopedLBOwner(svc *v1.Service, kind, name, uid string) {
 	if svc == nil {
 		return
-	}
-	if svc.Annotations != nil {
-		delete(svc.Annotations, serviceLBOwnerKindAnnotation)
-		delete(svc.Annotations, serviceLBOwnerNameAnnotation)
-		delete(svc.Annotations, serviceLBOwnerUIDAnnotation)
 	}
 	var ownerKind string
 	switch kind {

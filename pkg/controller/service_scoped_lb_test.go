@@ -159,46 +159,6 @@ func assertDeleteFilterIgnoresLB(t *testing.T, svc *corev1.Service, lb *ovnnb.Lo
 	}
 }
 
-func TestServiceScopedLBOwnerIgnoresUserAnnotations(t *testing.T) {
-	for _, tt := range []struct {
-		kind        string
-		name        string
-		serviceName string
-	}{
-		{kind: serviceLBOwnerKind, name: "victim", serviceName: "web"},
-		{kind: switchLBRuleLBOwnerKind, name: "victim", serviceName: "web"},
-		{kind: routerLBRuleLBOwnerKind, name: "victim", serviceName: "web"},
-		{kind: switchLBRuleLBOwnerKind, name: "victim", serviceName: generateSvcName("victim")},
-		{kind: routerLBRuleLBOwnerKind, name: "victim", serviceName: generateRlrSvcName("victim")},
-	} {
-		t.Run(tt.kind+"/"+tt.serviceName, func(t *testing.T) {
-			svc := &corev1.Service{
-				Name:      tt.serviceName,
-				Namespace: "default",
-				UID:       types.UID("service-uid"),
-				Annotations: map[string]string{
-					serviceLBOwnerKindAnnotation: tt.kind,
-					serviceLBOwnerNameAnnotation: tt.name,
-					serviceLBOwnerUIDAnnotation:  "victim-uid",
-				},
-			}
-			victim := &ovnnb.LoadBalancer{ExternalIDs: map[string]string{
-				serviceLBOwnerExternalID: "victim-uid",
-				serviceLBOwnerKindID:     tt.kind,
-				serviceLBNamespaceID:     svc.Namespace,
-				serviceLBNameExternalID:  tt.name,
-				serviceLBVersionID:       serviceLBVersion,
-			}}
-
-			owner := serviceScopedLBOwner(svc)
-			if owner.kind != serviceLBOwnerKind || owner.namespace != svc.Namespace || owner.name != svc.Name || owner.uid != string(svc.UID) {
-				t.Fatalf("forged owner annotations changed Service owner to %#v", owner)
-			}
-			assertDeleteFilterIgnoresLB(t, svc, victim, "forged owner annotations selected victim load balancer for deletion")
-		})
-	}
-}
-
 func TestServiceScopedLBOwnerIgnoresForgedControllerRef(t *testing.T) {
 	for _, tt := range []struct {
 		kind string
@@ -236,20 +196,8 @@ func TestServiceScopedLBOwnerAcceptsGeneratedRuleService(t *testing.T) {
 		{kind: routerLBRuleLBOwnerKind, name: "rule2"},
 	} {
 		t.Run(tt.kind, func(t *testing.T) {
-			svc := &corev1.Service{
-				Name:      generatedRuleServiceName(tt.kind, tt.name),
-				Namespace: "default",
-				UID:       types.UID("service-uid"),
-				Annotations: map[string]string{
-					serviceLBOwnerKindAnnotation: "service",
-					serviceLBOwnerNameAnnotation: "victim",
-					serviceLBOwnerUIDAnnotation:  "victim-uid",
-				},
-			}
+			svc := &corev1.Service{Name: generatedRuleServiceName(tt.kind, tt.name), Namespace: "default", UID: types.UID("service-uid")}
 			setServiceScopedLBOwner(svc, tt.kind, tt.name, "rule-uid")
-			if _, ok := svc.Annotations[serviceLBOwnerKindAnnotation]; ok {
-				t.Fatal("legacy owner annotations should be stripped")
-			}
 			ref := metav1.GetControllerOf(svc)
 			if ref == nil || ref.Name != tt.name || string(ref.UID) != "rule-uid" {
 				t.Fatalf("generated rule Service controller = %#v", ref)
