@@ -153,11 +153,13 @@ func NewOvsDbClient(
 		return nil, err
 	}
 
-	klog.Infof("setting up monitors for %s database on server %s", db, addr)
-	if err = monitorWithTimeout(c, monitors, connectTimeout); err != nil {
-		c.Close()
-		klog.Errorf("failed to monitor database on %s server %s: %v", db, addr, err)
-		return nil, err
+	if len(monitors) != 0 {
+		klog.Infof("setting up monitors for %s database on server %s", db, addr)
+		if err = monitorWithTimeout(c, monitors, connectTimeout); err != nil {
+			c.Close()
+			klog.Errorf("failed to monitor database on %s server %s: %v", db, addr, err)
+			return nil, err
+		}
 	}
 	return c, nil
 }
