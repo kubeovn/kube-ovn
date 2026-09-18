@@ -48,7 +48,12 @@ const (
 
 var failCount int
 
-var labelSelector = labels.Set{discoveryv1.LabelServiceName: OvnNorthdServiceName}.AsSelector().String()
+func northdServiceName() string {
+	if name := strings.TrimSpace(os.Getenv(util.EnvOvnNorthdServiceName)); name != "" {
+		return name
+	}
+	return OvnNorthdServiceName
+}
 
 // Configuration is the controller config
 type Configuration struct {
@@ -327,7 +332,10 @@ func checkNorthdEpAvailable(ip string) bool {
 }
 
 func checkNorthdEpAlive(cfg *Configuration, namespace, service string, expectedAddrType discoveryv1.AddressType) bool {
-	epsList, err := cfg.KubeClient.DiscoveryV1().EndpointSlices(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
+	serviceName := northdServiceName()
+	epsList, err := cfg.KubeClient.DiscoveryV1().EndpointSlices(namespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: labels.Set{discoveryv1.LabelServiceName: serviceName}.AsSelector().String(),
+	})
 	if err != nil {
 		klog.Errorf("failed to list endpoint slices for service %s/%s: %v", namespace, service, err)
 		return false
@@ -617,8 +625,8 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			klog.Errorf("failed to patch labels for pod %s/%s: %v", podNamespace, podName, err)
 			return
 		}
-		if sbLeader && checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
-			if !checkNorthdEpAlive(cfg, podNamespace, "ovn-northd", expectedAddrType) {
+		if sbLeader && checkNorthdSvcExist(cfg, podNamespace, northdServiceName()) {
+			if !checkNorthdEpAlive(cfg, podNamespace, northdServiceName(), expectedAddrType) {
 				klog.Warning("no available northd leader, try to release the lock")
 				stealLock()
 			}
