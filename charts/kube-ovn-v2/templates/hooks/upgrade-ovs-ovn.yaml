@@ -1,4 +1,4 @@
-{{- if .Values.ovsOvn.upgrade.enabled -}}
+{{- if and .Values.ovsOvn.upgrade.enabled (include "kubeovn.renderDataPlane" .) -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -151,12 +151,12 @@ spec:
                   fieldPath: metadata.namespace
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
-            {{- if .Values.central.hcp.enabled }}
+            {{- if or .Values.central.hcp.enabled (eq .Values.installMode "dataPlaneOnly") }}
             - name: OVN_NB_ADDR
               value: "{{ include "kubeovn.ovnNbAddress" . }}"
             {{- else }}
             - name: OVN_DB_IPS
-              value: "{{ include "kubeovn.masterNodes" . | default (include "kubeovn.nodeIPs" .) }}"
+              value: "{{ include "kubeovn.ovnDbAddresses" . }}"
             {{- end }}
             - name: OVN_VERSION_COMPATIBILITY
               value: {{ .Values.ovsOvn.upgrade.versionCompatibility | quote }}

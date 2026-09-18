@@ -112,6 +112,52 @@ EOF
   assert_contains "$out" "--db=tcp:nb.example.com:30641"
 }
 
+test_upgrade_ovs_skips_rollout_status_when_ovn_central_missing() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  out="$tmp/args"
+  trap 'rm -rf "$tmp"' RETURN
+
+  cp "$script_dir/upgrade-ovs.sh" "$tmp/"
+  mkdir -p "$tmp/bin"
+  cat > "$tmp/bin/kubectl" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"get deploy ovn-central"* ]]; then
+  exit 1
+fi
+if [[ "$*" == *"jsonpath={.spec.updateStrategy.type}"* ]]; then
+  printf 'RollingUpdate'
+fi
+EOF
+  cat > "$tmp/bin/ovn-nbctl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$OUT"
+if [[ "$*" == *"options:version_compatibility"* ]]; then
+  printf '_25.03\n'
+elif [[ "$*" == *"get NB_Global . options"* ]]; then
+  printf 'version_compatibility='
+fi
+EOF
+  chmod +x "$tmp/bin/kubectl" "$tmp/bin/ovn-nbctl"
+
+  (
+    cd "$tmp"
+    PATH="$tmp/bin:$PATH" \
+    OUT="$out" \
+    ENABLE_SSL=false \
+    OVN_NB_ADDR=tcp:nb.example.com:30641 \
+    OVN_VERSION_COMPATIBILITY=25.03 \
+    bash ./upgrade-ovs.sh
+  )
+
+  assert_contains "$out" "--db=tcp:nb.example.com:30641"
+  if grep -q "rollout status deploy ovn-central" "$out"; then
+    echo "expected rollout status to be skipped when ovn-central is missing" >&2
+    exit 1
+  fi
+}
+
 test_start_controller_uses_explicit_ovn_addresses
 test_start_ic_controller_uses_explicit_ovn_addresses
 test_upgrade_ovs_uses_explicit_ovn_nb_address
+test_upgrade_ovs_skips_rollout_status_when_ovn_central_missing

@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- if .Values.bgpSpeaker.enabled }}
 {{- $bgpSpeakerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.bgpSpeaker.image) | fromYaml -}}
 kind: DaemonSet
@@ -118,4 +119,5 @@ spec:
         - name: kube-ovn-log
           hostPath:
             path: {{ .Values.logging.directory }}/kube-ovn
+{{- end }}
 {{- end }}

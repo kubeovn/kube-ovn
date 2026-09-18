@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- $agentImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.agent.image) | fromYaml -}}
 apiVersion: apps/v1
 kind: DaemonSet
@@ -318,3 +319,4 @@ spec:
           hostPath:
             path: {{ .Values.ovsOvn.ovsIpsecKeysDirectory }}
         {{- end }}
+{{- end }}

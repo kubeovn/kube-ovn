@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- $controllerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.controller.image) | fromYaml -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -212,15 +213,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            {{- if .Values.central.hcp.enabled }}
+            {{- if or .Values.central.hcp.enabled (eq .Values.installMode "dataPlaneOnly") }}
             - name: OVN_NB_ADDR
               value: "{{ include "kubeovn.ovnNbAddress" . }}"
             - name: OVN_SB_ADDR
               value: "{{ include "kubeovn.ovnSbAddress" . }}"
-            {{- else }}
+            {{- end }}
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.ovnDbAddresses" . }}"
-            {{- end }}
             - name: POD_IP
               valueFrom:
                 fieldRef:
@@ -281,3 +281,4 @@ spec:
           secret:
             optional: true
             secretName: kube-ovn-tls
+{{- end }}

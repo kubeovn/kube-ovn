@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 kind: Service
 apiVersion: v1
 metadata:
@@ -23,3 +24,4 @@ spec:
   {{- if eq .Values.networking.stack "Dual" }}
   ipFamilyPolicy: PreferDualStack
   {{- end }}
+{{- end }}

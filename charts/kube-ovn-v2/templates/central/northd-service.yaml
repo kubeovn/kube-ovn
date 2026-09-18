@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderControlPlane" . }}
 kind: Service
 apiVersion: v1
 metadata:
@@ -26,3 +27,4 @@ spec:
     app.kubernetes.io/part-of: kube-ovn
     ovn-northd-leader: "true"
   sessionAffinity: None
+{{- end }}

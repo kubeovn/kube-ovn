@@ -1,4 +1,4 @@
-{{- if .Values.central.hcp.enabled }}
+{{- if include "kubeovn.renderControlPlane" . }}
 kind: Service
 apiVersion: v1
 metadata:

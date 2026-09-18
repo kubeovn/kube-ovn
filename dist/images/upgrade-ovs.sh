@@ -46,7 +46,11 @@ while true; do
   sleep 3
 done
 
-kubectl -n $POD_NAMESPACE rollout status deploy ovn-central --timeout=120s
+if kubectl -n $POD_NAMESPACE get deploy ovn-central &>/dev/null; then
+    kubectl -n $POD_NAMESPACE rollout status deploy ovn-central --timeout=120s
+else
+    echo "ovn-central deployment not found in namespace $POD_NAMESPACE, skipping rollout status"
+fi
 
 if [ $UPDATE_STRATEGY = OnDelete ]; then
   dsChartVer=`kubectl get ds -n $POD_NAMESPACE ovs-ovn -o jsonpath={.spec.template.metadata.annotations.chart-version}`
