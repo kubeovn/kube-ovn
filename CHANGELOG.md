@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.16.6 (2026-09-19)
+
+ * [e414ff2f3](https://github.com/kubeovn/kube-ovn/commit/e414ff2f3dbe87d61526abb8d1cd7b115d68241d) release v1.16.6
+ * [d5a3e8cd8](https://github.com/kubeovn/kube-ovn/commit/d5a3e8cd8df849afe6b7b7f9495635802f0a9ffd) fix: bound initial OVN monitor setup (#7476)
+ * [5061cd397](https://github.com/kubeovn/kube-ovn/commit/5061cd3977033d79c9b164037a4d4d4f373a0388) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.5 (2026-09-16)
 
  * [c77eb53e6](https://github.com/kubeovn/kube-ovn/commit/c77eb53e6deb06c76a8d513a8b32bc120a188516) release v1.16.5
@@ -1670,6 +1681,19 @@
  * renovate[bot]
  * xieyanker
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.14.44 (2026-09-19)
+
+ * [3b84681c5](https://github.com/kubeovn/kube-ovn/commit/3b84681c5a37d022299e8a7f995c35fb54436894) release v1.14.44
+ * [4d5c806d0](https://github.com/kubeovn/kube-ovn/commit/4d5c806d0d12f5b7bde69cfa9af1632f89a4ef2a) fix(deps): bump OpenTelemetry to v1.45.0 (#7474)
+ * [e579cd6af](https://github.com/kubeovn/kube-ovn/commit/e579cd6afb79943644d160daba9c1e10beb9ed9e) test: reproduce OVN monitor reconnect deadlock (#7469)
+ * [8eed59526](https://github.com/kubeovn/kube-ovn/commit/8eed59526708926282bb5ca69a6276366287554c) fix: bound initial OVN monitor setup (#7467)
+ * [59c5ada15](https://github.com/kubeovn/kube-ovn/commit/59c5ada157bf641cd6915382d99f2751011fa0fc) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
