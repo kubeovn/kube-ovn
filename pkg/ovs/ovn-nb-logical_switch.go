@@ -133,6 +133,14 @@ func (c *OVNNbClient) LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.M
 		return nil
 	}
 
+	ls, err := c.GetLogicalSwitch(lsName, true)
+	if err != nil {
+		return err
+	}
+	if ls == nil {
+		return nil
+	}
+
 	lbUUIDs, err := c.loadBalancerUUIDs(lbNames...)
 	if err != nil {
 		return err

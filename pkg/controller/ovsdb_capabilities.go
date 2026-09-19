@@ -11,7 +11,6 @@ import (
 
 	"k8s.io/utils/set"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -88,16 +87,6 @@ func (c *Controller) reconcilePortDHCPOptionsBackend(
 		return c.OVNNbClient.ReconcilePortDHCPOptions(lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
 	}
 	return c.updatePortDHCPOptionsTable(lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
-}
-
-func (c *Controller) updateSubnetDHCPOptionsBackend(subnet *kubeovnv1.Subnet, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
-	if c.OVNNbTables == nil {
-		if c.OVNNbClient == nil {
-			return nil, errors.New("OVN NB table provider is nil")
-		}
-		return c.OVNNbClient.UpdateDHCPOptions(subnet, mtu)
-	}
-	return c.updateSubnetDHCPOptionsTable(subnet, mtu)
 }
 
 func (c *Controller) reconcileGatewayBFDWithCleanupBackend(

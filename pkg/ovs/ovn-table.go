@@ -556,28 +556,6 @@ func (c *OVNNbClient) logicalSwitchPortUUIDs(lspNames ...string) ([]string, erro
 	return lookupUUIDs(lspNames, c.GetLogicalSwitchPort, func(lsp *ovnnb.LogicalSwitchPort) string { return lsp.UUID })
 }
 
-func mapDeleteMutation(field *map[string]string, key, value string) model.Mutation {
-	return model.Mutation{Field: field, Value: map[string]string{key: value}, Mutator: ovsdb.MutateOperationDelete}
-}
-
-func mapInsertMutation(field *map[string]string, key, value string) model.Mutation {
-	return model.Mutation{Field: field, Value: map[string]string{key: value}, Mutator: ovsdb.MutateOperationInsert}
-}
-
-func mapReplaceMutations(field *map[string]string, current map[string]string, key, newValue string) []model.Mutation {
-	if current[key] == newValue {
-		return nil
-	}
-	mutations := make([]model.Mutation, 0, 2)
-	if old, ok := current[key]; ok {
-		mutations = append(mutations, mapDeleteMutation(field, key, old))
-	}
-	if newValue != "" {
-		mutations = append(mutations, mapInsertMutation(field, key, newValue))
-	}
-	return mutations
-}
-
 func pollUntil[T any](db *table.Database, fn func() (T, bool, error), timeoutWrap func(error) error) (T, error) {
 	ctx, cancel := timeoutCtx(db)
 	defer cancel()

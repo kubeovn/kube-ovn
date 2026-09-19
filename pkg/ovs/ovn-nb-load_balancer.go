@@ -1,6 +1,8 @@
 package ovs
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net"
@@ -105,7 +107,7 @@ func (c *OVNNbClient) ReconcileLoadBalancer(config LoadBalancerConfig) error {
 		lb.Options = desiredOptions
 		fields = append(fields, &lb.Options)
 	}
-	ops, err := c.ovsDbClient.Where(lb).Update(lb, fields...)
+	ops, err := c.Database.Where(lb).Update(lb, fields...)
 	if err != nil {
 		return fmt.Errorf("generate operations for updating load balancer %s: %w", config.Name, err)
 	}
@@ -117,7 +119,26 @@ func (c *OVNNbClient) ReconcileLoadBalancer(config LoadBalancerConfig) error {
 
 // CreateLoadBalancer create loadbalancer
 func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
-	lb := &ovnnb.LoadBalancer{
+	var (
+		exist bool
+		err   error
+	)
+
+	if exist, err = c.LoadBalancerExists(lbName); err != nil {
+		klog.Errorf("failed to get lb: %v", err)
+		return err
+	}
+	// found, ignore
+	if exist {
+		return nil
+	}
+
+	var (
+		ops []ovsdb.Operation
+		lb  *ovnnb.LoadBalancer
+	)
+
+	lb = &ovnnb.LoadBalancer{
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
 		Protocol: &protocol,
@@ -130,7 +151,16 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields .
 		lb.SelectionFields = selectFields
 	}
 
-	return logErr(c.loadBalancerTable().createIfAbsent(lbName, "lb-add", lb))
+	if ops, err = c.Create(lb); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("generate operations for creating load balancer %s: %w", lbName, err)
+	}
+
+	if err = c.Transact("lb-add", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("create load balancer %s: %w", lbName, err)
+	}
+	return nil
 }
 
 // SetLoadBalancerSelectionFields updates the fields OVN uses to select a backend.
@@ -151,39 +181,68 @@ func (c *OVNNbClient) SetLoadBalancerSelectionFields(lbName string, selectionFie
 
 // UpdateLoadBalancer update load balancer
 func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...any) error {
-	return c.updateModelLogged("lb-update", lb, func(err error) error {
-		return fmt.Errorf("update load balancer %s: %w", lb.Name, err)
-	}, fields...)
-}
+	var (
+		ops []ovsdb.Operation
+		err error
+	)
 
-// LoadBalancerAddVips adds or updates a vip
-func (c *OVNNbClient) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
-	if _, err := c.GetLoadBalancer(lbName, false); err != nil {
-		klog.Errorf("failed to get lb health check: %v", err)
-		return err
+	if ops, err = c.Database.Where(lb).Update(lb, fields...); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("generate operations for updating load balancer %s: %w", lb.Name, err)
 	}
 
-	sort.Strings(backends)
-	value := strings.Join(backends, ",")
-	if err := c.transactLB(lbName, "lb-add", func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		mutations := make([]model.Mutation, 0, 2)
-		if len(lb.Vips) != 0 {
-			if lb.Vips[vip] == value {
-				return nil
-			}
-			mutations = append(mutations, mapDeleteMutation(&lb.Vips, vip, lb.Vips[vip]))
-		}
-		mutations = append(mutations, mapInsertMutation(&lb.Vips, vip, value))
-		return mutations
-	}); err != nil {
-		return logWrap(err, wrapErr("failed to add vip %s with backends %v to load balancers %s: %w", vip, backends, lbName))
+	if err = c.Transact("lb-update", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("update load balancer %s: %w", lb.Name, err)
 	}
 	return nil
 }
 
-// LoadBalancerDeleteVip deletes load balancer vip
-func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHealthCheck bool) error {
-	lb, lbhc, err := c.GetLoadBalancerHealthCheck(lbName, vipEndpoint, true)
+// LoadBalancerAddVips adds or updates a vip
+func (c *OVNNbClient) LoadBalancerAddVip(lbName, vip string, backends ...string) error {
+	sort.Strings(backends)
+	ops, err := c.loadBalancerSetVIPOps(lbName, vip, strings.Join(backends, ","))
+	if err != nil {
+		return fmt.Errorf("failed to generate operations when adding vip %s with backends %v to load balancers %s: %w", vip, backends, lbName, err)
+	}
+
+	if ops != nil {
+		if err = c.Transact("lb-add", ops); err != nil {
+			klog.Error(err)
+			return fmt.Errorf("failed to add vip %s with backends %v to load balancers %s: %w", vip, backends, lbName, err)
+		}
+	}
+	return nil
+}
+
+func (c *OVNNbClient) loadBalancerSetVIPOps(lbName, vip, value string) ([]ovsdb.Operation, error) {
+	return c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		if lb.Vips[vip] == value {
+			return nil
+		}
+		mutations := make([]model.Mutation, 0, 2)
+		if oldValue, ok := lb.Vips[vip]; ok {
+			mutations = append(mutations, model.Mutation{
+				Field: &lb.Vips, Value: map[string]string{vip: oldValue}, Mutator: ovsdb.MutateOperationDelete,
+			})
+		}
+		return append(mutations, model.Mutation{
+			Field: &lb.Vips, Value: map[string]string{vip: value}, Mutator: ovsdb.MutateOperationInsert,
+		})
+	})
+}
+
+// LoadBalancerMigrateVIP atomically installs a VIP on one load balancer and
+// removes its previous representation from the supplied load balancers.
+func (c *OVNNbClient) LoadBalancerMigrateVIP(lbName, vip string, backends []string, oldVIP string, oldLBNames ...string) error {
+	return c.LoadBalancerMigrateVIPWithAttachments(lbName, vip, backends, oldVIP, oldLBNames, nil)
+}
+
+// LoadBalancerMigrateVIPWithAttachments atomically installs a VIP on a load
+// balancer, updates its logical-switch attachments, and removes its previous
+// representation from the supplied load balancers.
+func (c *OVNNbClient) LoadBalancerMigrateVIPWithAttachments(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []LoadBalancerAttachment) error {
+	ops, err := c.loadBalancerMigrateVIPOps(lbName, vip, backends, oldVIP, oldLBNames, attachments)
 	if err != nil {
 		return err
 	}
@@ -218,17 +277,87 @@ func (c *OVNNbClient) loadBalancerMigrateVIPOps(lbName, vip string, backends []s
 		ops = append(ops, attachmentOps...)
 	}
 
-	if err := c.transactLB(lbName, "lb-add", func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		mutations := []model.Mutation{
-			mapDeleteMutation(&lb.Vips, vipEndpoint, lb.Vips[vipEndpoint]),
+	seen := map[string]struct{}{lbName: {}}
+	for _, oldLBName := range oldLBNames {
+		if oldLBName == "" {
+			continue
 		}
-		key := localExternalVIPKeyPrefix + vipEndpoint
-		if value, ok := lb.ExternalIDs[key]; ok {
-			mutations = append(mutations, mapDeleteMutation(&lb.ExternalIDs, key, value))
+		if _, ok := seen[oldLBName]; ok {
+			continue
 		}
-		return mutations
-	}); err != nil {
-		return logWrap(err, wrapErr("failed to delete vip %s from load balancers %s: %w", vipEndpoint, lbName))
+		seen[oldLBName] = struct{}{}
+		oldLB, err := c.GetLoadBalancer(oldLBName, true)
+		if err != nil {
+			return nil, fmt.Errorf("get old load balancer %s for vip %s migration: %w", oldLBName, oldVIP, err)
+		}
+		if oldLB == nil {
+			continue
+		}
+		oldOps, err := c.loadBalancerDeleteVIPOps(oldLBName, oldVIP, true)
+		if err != nil {
+			return nil, fmt.Errorf("generate operations for deleting vip %s from old load balancer %s: %w", oldVIP, oldLBName, err)
+		}
+		ops = append(ops, oldOps...)
+	}
+	if len(ops) == 0 {
+		return nil, nil
+	}
+	return ops, nil
+}
+
+func (c *OVNNbClient) loadBalancerAttachmentOps(lbName string, attachments []LoadBalancerAttachment) ([]ovsdb.Operation, error) {
+	lb, err := c.GetLoadBalancer(lbName, true)
+	if err != nil {
+		return nil, err
+	}
+	if lb == nil {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, len(attachments))
+	var ops []ovsdb.Operation
+	for _, attachment := range attachments {
+		if attachment.LogicalSwitch == "" {
+			continue
+		}
+		if _, ok := seen[attachment.LogicalSwitch]; ok {
+			continue
+		}
+		seen[attachment.LogicalSwitch] = struct{}{}
+		ls, err := c.GetLogicalSwitch(attachment.LogicalSwitch, true)
+		if err != nil {
+			return nil, err
+		}
+		if ls == nil {
+			continue
+		}
+		mutation := model.Mutation{
+			Field:   &ls.LoadBalancer,
+			Value:   []string{lb.UUID},
+			Mutator: attachment.Operation,
+		}
+		attachmentOps, err := c.Database.Where(ls).Mutate(ls, mutation)
+		if err != nil {
+			return nil, fmt.Errorf("generate operations for logical switch %s: %w", attachment.LogicalSwitch, err)
+		}
+		ops = append(ops, attachmentOps...)
+	}
+	return ops, nil
+}
+
+// LoadBalancerDeleteVip deletes load balancer vip
+func (c *OVNNbClient) LoadBalancerDeleteVip(lbName, vipEndpoint string, ignoreHealthCheck bool) error {
+	ops, err := c.loadBalancerDeleteVIPOps(lbName, vipEndpoint, ignoreHealthCheck)
+	if err != nil {
+		return err
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+
+	if err = c.Transact("lb-add", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to delete vip %s from load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	return nil
 }
@@ -266,7 +395,7 @@ func (c *OVNNbClient) loadBalancerDeleteVIPOps(lbName, vipEndpoint string, ignor
 
 	var ops []ovsdb.Operation
 	if len(mutations) != 0 {
-		ops, err = c.ovsDbClient.Where(lb).Mutate(lb, mutations...)
+		ops, err = c.Database.Where(lb).Mutate(lb, mutations...)
 		if err != nil {
 			return nil, fmt.Errorf("generate operations for deleting vip %s from load balancer %s: %w", vipEndpoint, lbName, err)
 		}
@@ -286,82 +415,395 @@ func (c *OVNNbClient) loadBalancerDeleteVIPOps(lbName, vipEndpoint string, ignor
 // externalTrafficPolicy=Local.
 func (c *OVNNbClient) SetLoadBalancerVIPExternalTrafficLocal(lbName, vip, vipNodeLSP string) error {
 	key := localExternalVIPKeyPrefix + vip
-	if err := c.transactLB(lbName, "lb-update-external-vip", func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		return mapReplaceMutations(&lb.ExternalIDs, lb.ExternalIDs, key, vipNodeLSP)
-	}); err != nil {
+	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		if vipNodeLSP != "" {
+			if lb.ExternalIDs[key] == vipNodeLSP {
+				return nil
+			}
+			mutations := make([]model.Mutation, 0, 2)
+			if oldValue, ok := lb.ExternalIDs[key]; ok {
+				mutations = append(mutations, model.Mutation{
+					Field:   &lb.ExternalIDs,
+					Value:   map[string]string{key: oldValue},
+					Mutator: ovsdb.MutateOperationDelete,
+				})
+			}
+			mutations = append(mutations, model.Mutation{
+				Field:   &lb.ExternalIDs,
+				Value:   map[string]string{key: vipNodeLSP},
+				Mutator: ovsdb.MutateOperationInsert,
+			})
+			return mutations
+		}
+
+		if _, ok := lb.ExternalIDs[key]; !ok {
+			return nil
+		}
+		return []model.Mutation{{
+			Field:   &lb.ExternalIDs,
+			Value:   map[string]string{key: lb.ExternalIDs[key]},
+			Mutator: ovsdb.MutateOperationDelete,
+		}}
+	})
+	if err != nil {
+		return fmt.Errorf("failed to generate operations when updating external traffic local marker for vip %s on load balancer %s: %w", vip, lbName, err)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	if err = c.Transact("lb-update-external-vip", ops); err != nil {
 		return fmt.Errorf("failed to update external traffic local marker for vip %s on load balancer %s: %w", vip, lbName, err)
 	}
 	return nil
 }
 
-func (c *OVNNbClient) transactLB(lbName, method string, mutations func(*ovnnb.LoadBalancer) []model.Mutation) error {
-	ops, err := c.LoadBalancerOp(lbName, mutations)
-	if err != nil {
-		return err
-	}
-	return transactOps(c, method, ops)
-}
+// SetLoadBalancerAffinityTimeout sets the LB's affinity timeout in seconds
+func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) error {
+	var (
+		options map[string]string
+		lb      *ovnnb.LoadBalancer
+		value   string
+		err     error
+	)
 
-func (c *OVNNbClient) setLoadBalancerOption(lbName, key, value string) error {
-	lb, err := c.GetLoadBalancer(lbName, false)
-	if err != nil {
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
 		klog.Errorf("failed to get lb: %v", err)
 		return err
 	}
-	if len(lb.Options) != 0 && lb.Options[key] == value {
+
+	if value = strconv.Itoa(timeout); len(lb.Options) != 0 && lb.Options["affinity_timeout"] == value {
 		return nil
 	}
-	options := make(map[string]string, len(lb.Options)+1)
-	maps.Copy(options, lb.Options)
-	options[key] = value
-	lb.Options = options
-	return c.UpdateLoadBalancer(lb, &lb.Options)
-}
 
-func (c *OVNNbClient) setLoadBalancerOptionLogged(lbName, key, value string, wrap func(error) error) error {
-	if err := c.setLoadBalancerOption(lbName, key, value); err != nil {
+	options = make(map[string]string, len(lb.Options)+1)
+	maps.Copy(options, lb.Options)
+	options["affinity_timeout"] = value
+
+	lb.Options = options
+	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
 		klog.Error(err)
-		return wrap(err)
+		return fmt.Errorf("failed to set affinity timeout of lb %s to %d: %w", lbName, timeout, err)
 	}
 	return nil
 }
 
-func (c *OVNNbClient) SetLoadBalancerAffinityTimeout(lbName string, timeout int) error {
-	return c.setLoadBalancerOptionLogged(lbName, "affinity_timeout", strconv.Itoa(timeout),
-		wrapErr("failed to set affinity timeout of lb %s to %d: %w", lbName, timeout))
+// DeleteLoadBalancerAffinityTimeout removes the LB affinity timeout option.
+func (c *OVNNbClient) DeleteLoadBalancerAffinityTimeout(lbName string) error {
+	return c.deleteLoadBalancerOption(lbName, "affinity_timeout")
+}
+
+func (c *OVNNbClient) SetLoadBalancerDistributed(lbName string, distributed bool) error {
+	if distributed {
+		return c.setLoadBalancerOption(lbName, "distributed", "true")
+	}
+	return c.deleteLoadBalancerOption(lbName, "distributed")
+}
+
+// SetLoadBalancerTemplate enables or disables chassis-specific template values.
+func (c *OVNNbClient) SetLoadBalancerTemplate(lbName string, template bool) error {
+	return c.setLoadBalancerOption(lbName, "template", strconv.FormatBool(template))
+}
+
+// SetLoadBalancerAddressFamily sets the address family used to expand a template load balancer.
+func (c *OVNNbClient) SetLoadBalancerAddressFamily(lbName, family string) error {
+	return c.setLoadBalancerOption(lbName, "address-family", family)
+}
+
+func (c *OVNNbClient) setLoadBalancerOption(lbName, option, value string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	if lb.Options[option] == value {
+		return nil
+	}
+	options := maps.Clone(lb.Options)
+	if options == nil {
+		options = make(map[string]string, 1)
+	}
+	options[option] = value
+	lb.Options = options
+	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		return fmt.Errorf("failed to set %s option of lb %s to %s: %w", option, lbName, value, err)
+	}
+	return nil
+}
+
+func (c *OVNNbClient) deleteLoadBalancerOption(lbName, option string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	if _, ok := lb.Options[option]; !ok {
+		return nil
+	}
+	options := maps.Clone(lb.Options)
+	delete(options, option)
+	lb.Options = options
+	if err := c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		return fmt.Errorf("failed to delete %s option of lb %s: %w", option, lbName, err)
+	}
+	return nil
+}
+
+// SetLoadBalancerTemplateVIP configures a VIP to use a chassis template backend variable.
+func (c *OVNNbClient) SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error {
+	ops, err := c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
+		if lb.Vips[vip] == backendVariable {
+			return nil
+		}
+		mutations := make([]model.Mutation, 0, 2)
+		if oldValue, ok := lb.Vips[vip]; ok {
+			mutations = append(mutations, model.Mutation{
+				Field: &lb.Vips, Value: map[string]string{vip: oldValue}, Mutator: ovsdb.MutateOperationDelete,
+			})
+		}
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.Vips, Value: map[string]string{vip: backendVariable}, Mutator: ovsdb.MutateOperationInsert,
+		})
+		return mutations
+	})
+	if err != nil {
+		return fmt.Errorf("failed to generate operations when setting template VIP %s on lb %s: %w", vip, lbName, err)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	if err := c.Transact("lb-template-vip", ops); err != nil {
+		return fmt.Errorf("failed to set template VIP %s on lb %s: %w", vip, lbName, err)
+	}
+	return nil
+}
+
+// ReconcileChassisTemplateVariables updates only variables owned by prefix.
+func (c *OVNNbClient) ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	var rows []ovnnb.ChassisTemplateVar
+	if err := c.Database.WhereCache(func(row *ovnnb.ChassisTemplateVar) bool {
+		return row.Chassis == chassis
+	}).List(ctx, &rows); err != nil {
+		return fmt.Errorf("list template variables for chassis %s: %w", chassis, err)
+	}
+	if len(rows) == 0 {
+		if len(variables) == 0 {
+			return nil
+		}
+		row := &ovnnb.ChassisTemplateVar{
+			UUID:        ovsclient.NamedUUID(),
+			Chassis:     chassis,
+			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+			Variables:   maps.Clone(variables),
+		}
+		ops, err := c.Create(row)
+		if err != nil {
+			return fmt.Errorf("generate template variable operations for chassis %s: %w", chassis, err)
+		}
+		if err := c.Transact("chassis-template-var-add", ops); err != nil {
+			return fmt.Errorf("create template variables for chassis %s: %w", chassis, err)
+		}
+		return nil
+	}
+	row := &rows[0]
+	current := make(map[string]string)
+	deletes := make(map[string]string)
+	for key, value := range row.Variables {
+		if strings.HasPrefix(key, prefix) {
+			current[key] = value
+			deletes[key] = value
+		}
+	}
+	if maps.Equal(current, variables) {
+		return nil
+	}
+	mutations := make([]model.Mutation, 0, 2)
+	if len(deletes) != 0 {
+		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes})
+	}
+	if len(variables) != 0 {
+		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationInsert, Value: variables})
+	}
+	ops, err := c.Database.Where(row).Mutate(row, mutations...)
+	if err != nil {
+		return fmt.Errorf("generate template variable reconciliation for chassis %s: %w", chassis, err)
+	}
+	if err := c.Transact("chassis-template-var-reconcile", ops); err != nil {
+		return fmt.Errorf("reconcile template variables for chassis %s: %w", chassis, err)
+	}
+	return nil
+}
+
+// DeleteChassisTemplateVariables removes matching variable keys without affecting other owners.
+func (c *OVNNbClient) DeleteChassisTemplateVariables(filter func(name string) bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	var rows []ovnnb.ChassisTemplateVar
+	if err := c.Database.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(ctx, &rows); err != nil {
+		return fmt.Errorf("list chassis template variables: %w", err)
+	}
+	var ops []ovsdb.Operation
+	for i := range rows {
+		row := &rows[i]
+		deletes := make(map[string]string)
+		for name, value := range row.Variables {
+			if filter == nil || filter(name) {
+				deletes[name] = value
+			}
+		}
+		if len(deletes) == 0 {
+			continue
+		}
+		rowOps, err := c.Database.Where(row).Mutate(row, model.Mutation{
+			Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes,
+		})
+		if err != nil {
+			return fmt.Errorf("generate chassis template variable cleanup for chassis %s: %w", row.Chassis, err)
+		}
+		ops = append(ops, rowOps...)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	if err := c.Transact("chassis-template-var-cleanup", ops); err != nil {
+		return fmt.Errorf("delete chassis template variables: %w", err)
+	}
+	return nil
+}
+
+// SetLoadBalancerExternalIDs records ownership metadata on a load balancer.
+func (c *OVNNbClient) SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error {
+	lb, err := c.GetLoadBalancer(lbName, false)
+	if err != nil {
+		return err
+	}
+	ids := maps.Clone(lb.ExternalIDs)
+	if ids == nil {
+		ids = make(map[string]string, len(externalIDs))
+	}
+	desired := maps.Clone(ids)
+	if desired == nil {
+		desired = make(map[string]string, len(externalIDs))
+	}
+	maps.Copy(desired, externalIDs)
+	if maps.Equal(ids, desired) {
+		return nil
+	}
+	lb.ExternalIDs = desired
+	if err := c.UpdateLoadBalancer(lb, &lb.ExternalIDs); err != nil {
+		return fmt.Errorf("failed to set external IDs of lb %s: %w", lbName, err)
+	}
+	return nil
 }
 
 func (c *OVNNbClient) SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error {
-	value := strconv.FormatBool(preferLocalBackend)
-	return c.setLoadBalancerOptionLogged(lbName, "prefer_local_backend", value,
-		wrapErr("failed to set prefer local backend of lb %s to %s: %w", lbName, value))
-}
-
-func (c *OVNNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
-	value := strconv.FormatBool(ctFlush)
-	return c.setLoadBalancerOptionLogged(lbName, "ct_flush", value,
-		wrapErr("failed to set ct_flush of lb %s to %s: %w", lbName, value))
-}
-
-func (c *OVNNbClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error {
-	return deleteWhereCache(
-		c,
-		&ovnnb.LoadBalancer{},
-		"lb-del",
-		filter,
-		func(err error) error { return fmt.Errorf("generate operations for delete load balancers: %w", err) },
-		func(err error) error { return fmt.Errorf("delete load balancers : %w", err) },
+	var (
+		options map[string]string
+		lb      *ovnnb.LoadBalancer
+		value   string
+		err     error
 	)
+
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+		klog.Errorf("failed to get lb: %v", err)
+		return err
+	}
+
+	if preferLocalBackend {
+		value = "true"
+	} else {
+		value = "false"
+	}
+	if len(lb.Options) != 0 && lb.Options["prefer_local_backend"] == value {
+		return nil
+	}
+
+	options = make(map[string]string, len(lb.Options)+1)
+	maps.Copy(options, lb.Options)
+	options["prefer_local_backend"] = value
+
+	lb.Options = options
+	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to set prefer local backend of lb %s to %s: %w", lbName, value, err)
+	}
+	return nil
+}
+
+// SetLoadBalancerCtFlush sets the LB's ct_flush option to flush conntrack entries when backends are removed
+func (c *OVNNbClient) SetLoadBalancerCtFlush(lbName string, ctFlush bool) error {
+	var (
+		options map[string]string
+		lb      *ovnnb.LoadBalancer
+		value   string
+		err     error
+	)
+
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+		klog.Errorf("failed to get lb: %v", err)
+		return err
+	}
+
+	if ctFlush {
+		value = "true"
+	} else {
+		value = "false"
+	}
+	if len(lb.Options) != 0 && lb.Options["ct_flush"] == value {
+		return nil
+	}
+
+	options = make(map[string]string, len(lb.Options)+1)
+	maps.Copy(options, lb.Options)
+	options["ct_flush"] = value
+
+	lb.Options = options
+	if err = c.UpdateLoadBalancer(lb, &lb.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to set ct_flush of lb %s to %s: %w", lbName, value, err)
+	}
+	return nil
+}
+
+// DeleteLoadBalancers delete several loadbalancer once
+func (c *OVNNbClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error {
+	var (
+		ops []ovsdb.Operation
+		err error
+	)
+
+	if ops, err = c.Database.WhereCache(
+		func(lb *ovnnb.LoadBalancer) bool {
+			if filter != nil {
+				return filter(lb)
+			}
+			return true
+		},
+	).Delete(); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("generate operations for delete load balancers: %w", err)
+	}
+
+	if err = c.Transact("lb-del", ops); err != nil {
+		klog.Errorf("failed to del lbs: %v", err)
+		return fmt.Errorf("delete load balancers : %w", err)
+	}
+	return nil
 }
 
 // DeleteLoadBalancer delete loadbalancer
 func (c *OVNNbClient) DeleteLoadBalancer(lbName string) error {
-	ops, err := c.DeleteLoadBalancerOp(lbName)
+	var (
+		ops []ovsdb.Operation
+		err error
+	)
+
+	ops, err = c.DeleteLoadBalancerOp(lbName)
 	if err != nil {
 		klog.Errorf("failed to get delete lb op: %v", err)
 		return err
 	}
-	if err := transactOps(c, "lb-del", ops); err != nil {
+
+	if err = c.Transact("lb-del", ops); err != nil {
 		klog.Errorf("failed to del lb: %v", err)
 		return fmt.Errorf("delete load balancer %s: %w", lbName, err)
 	}
@@ -371,36 +813,124 @@ func (c *OVNNbClient) DeleteLoadBalancer(lbName string) error {
 // GetLoadBalancer get load balancer by name,
 // it is because of lack name index that doesn't use OVNNbClient.Get
 func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
-	return logRet(c.loadBalancerTable().get(lbName, ignoreNotFound))
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	var (
+		lbList []ovnnb.LoadBalancer
+		err    error
+	)
+
+	lbList = make([]ovnnb.LoadBalancer, 0)
+	if err = c.Database.WhereCache(
+		func(lb *ovnnb.LoadBalancer) bool {
+			return lb.Name == lbName
+		},
+	).List(ctx, &lbList); err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("failed to list load balancer %q: %w", lbName, err)
+	}
+
+	switch {
+	// not found
+	case len(lbList) == 0:
+		if ignoreNotFound {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("not found load balancer %q", lbName)
+	case len(lbList) > 1:
+		return nil, fmt.Errorf("more than one load balancer with same name %q", lbName)
+	default:
+		// #nosec G602
+		return &lbList[0], nil
+	}
 }
 
 func (c *OVNNbClient) LoadBalancerExists(lbName string) (bool, error) {
-	return existsByGet(c.GetLoadBalancer, lbName)
+	lrp, err := c.GetLoadBalancer(lbName, true)
+	return lrp != nil, err
 }
 
 // ListLoadBalancers list all load balancers
 func (c *OVNNbClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) ([]ovnnb.LoadBalancer, error) {
-	return logRet(c.loadBalancerTable().list(false, filter))
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	var (
+		lbList []ovnnb.LoadBalancer
+		err    error
+	)
+
+	lbList = make([]ovnnb.LoadBalancer, 0)
+	if err = c.Database.WhereCache(
+		func(lb *ovnnb.LoadBalancer) bool {
+			if filter != nil {
+				return filter(lb)
+			}
+
+			return true
+		},
+	).List(ctx, &lbList); err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("failed to list load balancer: %w", err)
+	}
+	return lbList, nil
 }
 
 func (c *OVNNbClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ovnnb.LoadBalancer) []model.Mutation) ([]ovsdb.Operation, error) {
-	return c.loadBalancerTable().mutateNamedAll(lbName, mutationsFunc...)
+	var (
+		mutations []model.Mutation
+		ops       []ovsdb.Operation
+		lb        *ovnnb.LoadBalancer
+		err       error
+	)
+
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	if len(mutationsFunc) == 0 {
+		return nil, nil
+	}
+
+	mutations = make([]model.Mutation, 0, len(mutationsFunc))
+	for _, f := range mutationsFunc {
+		if mutation := f(lb); mutation != nil {
+			mutations = append(mutations, mutation...)
+		}
+	}
+	if len(mutations) == 0 {
+		return nil, nil
+	}
+
+	if ops, err = c.Database.Where(lb).Mutate(lb, mutations...); err != nil {
+		klog.Error(err)
+		return nil, fmt.Errorf("generate operations for mutating load balancer %s: %w", lb.Name, err)
+	}
+	return ops, nil
 }
 
 // DeleteLoadBalancerOp create operation which delete load balancer
 func (c *OVNNbClient) DeleteLoadBalancerOp(lbName string) ([]ovsdb.Operation, error) {
-	table := c.loadBalancerTable()
-	lb, err := table.get(lbName, true)
-	if err != nil {
-		return nil, logErr(err)
+	var (
+		ops []ovsdb.Operation
+		lb  *ovnnb.LoadBalancer
+		err error
+	)
+
+	if lb, err = c.GetLoadBalancer(lbName, true); err != nil {
+		klog.Error(err)
+		return nil, err
 	}
+	// not found, skip
 	if lb == nil {
 		return nil, nil
 	}
 
-	ops, err := table.delete(lb)
-	if err != nil {
-		return nil, logErr(err)
+	if ops, err = c.Where(lb).Delete(); err != nil {
+		klog.Error(err)
+		return nil, err
 	}
 	return ops, nil
 }
@@ -410,16 +940,31 @@ func (c *OVNNbClient) LoadBalancerAddIPPortMapping(lbName, vipEndpoint string, m
 	if len(mappings) == 0 {
 		return nil
 	}
-	if err := c.transactLB(lbName, "lb-add", func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		return []model.Mutation{
-			{
-				Field:   &lb.IPPortMappings,
-				Value:   mappings,
-				Mutator: ovsdb.MutateOperationInsert,
-			},
-		}
-	}); err != nil {
-		return logWrap(err, wrapErr("failed to add ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName))
+
+	var (
+		ops []ovsdb.Operation
+		err error
+	)
+
+	if ops, err = c.LoadBalancerOp(
+		lbName,
+		func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			return []model.Mutation{
+				{
+					Field:   &lb.IPPortMappings,
+					Value:   mappings,
+					Mutator: ovsdb.MutateOperationInsert,
+				},
+			}
+		},
+	); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to generate operations when adding ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+	}
+
+	if err = c.Transact("lb-add", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to add ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
 	}
 	return nil
 }
@@ -532,16 +1077,29 @@ func (c *OVNNbClient) deleteUnusedIPPortMappings(lbName, vipEndpoint string, unu
 		return nil
 	}
 
-	if err := c.transactLB(lbName, "lb-del", func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		return []model.Mutation{
-			{
-				Field:   &lb.IPPortMappings,
-				Value:   unusedBackendIPs,
-				Mutator: ovsdb.MutateOperationDelete,
-			},
-		}
-	}); err != nil {
-		return logWrap(err, wrapErr("failed to delete IP port mappings for VIP %s from load balancer %s: %w", vipEndpoint, lbName))
+	ops, err := c.LoadBalancerOp(
+		lbName,
+		func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			return []model.Mutation{
+				{
+					Field:   &lb.IPPortMappings,
+					Value:   unusedBackendIPs,
+					Mutator: ovsdb.MutateOperationDelete,
+				},
+			}
+		},
+	)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to generate operations when deleting IP port mappings for VIP %s from load balancer %s: %w", vipEndpoint, lbName, err)
+	}
+
+	if len(ops) == 0 {
+		return nil
+	}
+
+	if err = c.Transact("lb-del", ops); err != nil {
+		return fmt.Errorf("failed to delete IP port mappings for VIP %s from load balancer %s: %w", vipEndpoint, lbName, err)
 	}
 
 	klog.Infof("successfully deleted %d unused backend IPs for VIP %s from load balancer %s",
@@ -564,106 +1122,164 @@ func getMapKeys(m map[string]bool) []string {
 // Existing port mappings will be overwritten if the LSP changed for a particular IP.
 // The orphaned port mappings (for IPs that are not contained in any backend for any VIP) are deleted on update.
 func (c *OVNNbClient) LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint string, ipPortMappings map[string]string) error {
-	if err := c.transactLB(lbName, "lb-update", func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		toDelete := make(map[string]string)
-		toInsert := make(map[string]string)
+	ops, err := c.loadBalancerUpdateIPPortMappingOps(lbName, vipEndpoint, ipPortMappings)
+	if err != nil {
+		return err
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	if err := c.Transact("lb-update", ops); err != nil {
+		return fmt.Errorf("failed to update ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+	}
+	return nil
+}
 
-		// Build set of new backend IPs
-		newBackendIPs := make(map[string]bool, len(ipPortMappings))
-		for ip := range ipPortMappings {
-			cleanIP := strings.Trim(ip, "[]")
-			newBackendIPs[cleanIP] = true
-		}
+func (c *OVNNbClient) loadBalancerUpdateIPPortMappingOps(lbName, vipEndpoint string, ipPortMappings map[string]string) ([]ovsdb.Operation, error) {
+	ops, err := c.LoadBalancerOp(
+		lbName,
+		func(lb *ovnnb.LoadBalancer) []model.Mutation {
+			toDelete := make(map[string]string)
+			toInsert := make(map[string]string)
 
-		// Find orphaned mappings: IPs in current mappings that are not in new mappings
-		// AND not used by any other VIP in the load balancer
-		for mappingKey, mappingValue := range lb.IPPortMappings {
-			cleanKey := strings.Trim(mappingKey, "[]")
+			// Build set of new backend IPs
+			newBackendIPs := make(map[string]bool, len(ipPortMappings))
+			for ip := range ipPortMappings {
+				cleanIP := strings.Trim(ip, "[]")
+				newBackendIPs[cleanIP] = true
+			}
 
-			// If this IP is not in the new mappings, check if it should be deleted
-			if !newBackendIPs[cleanKey] {
-				// Use the existing isBackendIPStillUsed helper to check all VIPs
-				if !c.isBackendIPStillUsed(lb, vipEndpoint, cleanKey) {
-					toDelete[mappingKey] = mappingValue
+			// Find orphaned mappings: IPs in current mappings that are not in new mappings
+			// AND not used by any other VIP in the load balancer
+			for mappingKey, mappingValue := range lb.IPPortMappings {
+				cleanKey := strings.Trim(mappingKey, "[]")
+
+				// If this IP is not in the new mappings, check if it should be deleted
+				if !newBackendIPs[cleanKey] {
+					// Use the existing isBackendIPStillUsed helper to check all VIPs
+					if !c.isBackendIPStillUsed(lb, vipEndpoint, cleanKey) {
+						toDelete[mappingKey] = mappingValue
+					}
 				}
 			}
-		}
 
-		// For each IP in the new mappings, check if it already exists with a different value
-		for ip, newLSP := range ipPortMappings {
-			if len(lb.IPPortMappings) != 0 {
-				// Normalize the IP key for comparison (strip brackets for IPv6)
-				cleanIP := strings.Trim(ip, "[]")
+			// For each IP in the new mappings, check if it already exists with a different value
+			for ip, newLSP := range ipPortMappings {
+				if len(lb.IPPortMappings) != 0 {
+					// Normalize the IP key for comparison (strip brackets for IPv6)
+					cleanIP := strings.Trim(ip, "[]")
 
-				// Check if an existing mapping exists for this IP (in any key format)
-				var existingKey string
-				var existingLSP string
-				var found bool
+					// Check if an existing mapping exists for this IP (in any key format)
+					var existingKey string
+					var existingLSP string
+					var found bool
 
-				// First try exact match
-				if lsp, exists := lb.IPPortMappings[ip]; exists {
-					existingKey = ip
-					existingLSP = lsp
-					found = true
-				} else {
-					// Try to find the IP with normalized key (check both bracketed/unbracketed forms)
-					for mappingKey, mappingValue := range lb.IPPortMappings {
-						if strings.Trim(mappingKey, "[]") == cleanIP {
-							existingKey = mappingKey
-							existingLSP = mappingValue
-							found = true
-							break
+					// First try exact match
+					if lsp, exists := lb.IPPortMappings[ip]; exists {
+						existingKey = ip
+						existingLSP = lsp
+						found = true
+					} else {
+						// Try to find the IP with normalized key (check both bracketed/unbracketed forms)
+						for mappingKey, mappingValue := range lb.IPPortMappings {
+							if strings.Trim(mappingKey, "[]") == cleanIP {
+								existingKey = mappingKey
+								existingLSP = mappingValue
+								found = true
+								break
+							}
 						}
 					}
-				}
 
-				if found {
-					if existingLSP == newLSP {
-						// Mapping is already correct, skip
-						continue
+					if found {
+						if existingLSP == newLSP {
+							// Mapping is already correct, skip
+							continue
+						}
+						// Different value, need to delete old and insert new
+						toDelete[existingKey] = existingLSP
+						toInsert[ip] = newLSP
+					} else {
+						// New mapping
+						toInsert[ip] = newLSP
 					}
-					// Different value, need to delete old and insert new
-					toDelete[existingKey] = existingLSP
-					toInsert[ip] = newLSP
 				} else {
-					// New mapping
+					// No existing mappings, just insert
 					toInsert[ip] = newLSP
 				}
-			} else {
-				// No existing mappings, just insert
-				toInsert[ip] = newLSP
 			}
+
+			mutations := make([]model.Mutation, 0, 2)
+
+			// Create delete mutation if needed
+			if len(toDelete) > 0 {
+				mutations = append(
+					mutations,
+					model.Mutation{
+						Field:   &lb.IPPortMappings,
+						Value:   toDelete,
+						Mutator: ovsdb.MutateOperationDelete,
+					},
+				)
+			}
+
+			// Create insert mutation if needed
+			if len(toInsert) > 0 {
+				mutations = append(
+					mutations,
+					model.Mutation{
+						Field:   &lb.IPPortMappings,
+						Value:   toInsert,
+						Mutator: ovsdb.MutateOperationInsert,
+					},
+				)
+			}
+
+			return mutations
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate operations when updating ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+	}
+	return ops, nil
+}
+
+// LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck reconciles a service VIP,
+// its attachments, backend mapping, and optional health check in one NB
+// transaction.
+func (c *OVNNbClient) LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []LoadBalancerAttachment, ipPortMappings map[string]string, ignoreHealthCheck bool, externals map[string]string) error {
+	ops, err := c.loadBalancerMigrateVIPOps(lbName, vip, backends, oldVIP, oldLBNames, attachments)
+	if err != nil {
+		return err
+	}
+	mappingOps, err := c.loadBalancerUpdateIPPortMappingOps(lbName, vip, ipPortMappings)
+	if err != nil {
+		return err
+	}
+	ops = append(ops, mappingOps...)
+	if !ignoreHealthCheck {
+		lbhc, err := c.newLoadBalancerHealthCheck(lbName, vip, externals)
+		if err != nil {
+			return err
 		}
-
-		mutations := make([]model.Mutation, 0, 2)
-
-		// Create delete mutation if needed
-		if len(toDelete) > 0 {
-			mutations = append(
-				mutations,
-				model.Mutation{
-					Field:   &lb.IPPortMappings,
-					Value:   toDelete,
-					Mutator: ovsdb.MutateOperationDelete,
-				},
-			)
+		if lbhc != nil {
+			createOps, err := c.Create(lbhc)
+			if err != nil {
+				return fmt.Errorf("generate operations for creating health check for vip %s: %w", vip, err)
+			}
+			healthCheckOps, err := c.LoadBalancerUpdateHealthCheckOp(lbName, []string{lbhc.UUID}, ovsdb.MutateOperationInsert)
+			if err != nil {
+				return fmt.Errorf("generate operations for adding health check for vip %s: %w", vip, err)
+			}
+			ops = append(ops, createOps...)
+			ops = append(ops, healthCheckOps...)
 		}
-
-		// Create insert mutation if needed
-		if len(toInsert) > 0 {
-			mutations = append(
-				mutations,
-				model.Mutation{
-					Field:   &lb.IPPortMappings,
-					Value:   toInsert,
-					Mutator: ovsdb.MutateOperationInsert,
-				},
-			)
-		}
-
-		return mutations
-	}); err != nil {
-		return fmt.Errorf("failed to update ip port mapping with vip %v to load balancers %s: %w", vipEndpoint, lbName, err)
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	if err := c.Transact("lb-vip-reconcile", ops); err != nil {
+		return fmt.Errorf("reconcile vip %s on load balancer %s: %w", vip, lbName, err)
 	}
 	return nil
 }
@@ -687,22 +1303,37 @@ func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ign
 
 // LoadBalancerDeleteHealthCheck delete load balancer health check
 func (c *OVNNbClient) LoadBalancerDeleteHealthCheck(lbName, uuid string) error {
-	lb, err := c.GetLoadBalancer(lbName, false)
-	if err != nil {
+	var (
+		ops []ovsdb.Operation
+		lb  *ovnnb.LoadBalancer
+		err error
+	)
+
+	if lb, err = c.GetLoadBalancer(lbName, false); err != nil {
 		klog.Errorf("failed to get lb: %v", err)
 		return err
 	}
 
 	if slices.Contains(lb.HealthCheck, uuid) {
-		if err := c.transactLB(lbName, "lb-hc-del", func(lb *ovnnb.LoadBalancer) []model.Mutation {
-			return []model.Mutation{
-				{
-					Field:   &lb.HealthCheck,
-					Value:   []string{uuid},
-					Mutator: ovsdb.MutateOperationDelete,
-				},
-			}
-		}); err != nil {
+		ops, err = c.LoadBalancerOp(
+			lbName,
+			func(lb *ovnnb.LoadBalancer) []model.Mutation {
+				return []model.Mutation{
+					{
+						Field:   &lb.HealthCheck,
+						Value:   []string{uuid},
+						Mutator: ovsdb.MutateOperationDelete,
+					},
+				}
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to generate operations when deleting health check %s from load balancers %s: %w", uuid, lbName, err)
+		}
+		if len(ops) == 0 {
+			return nil
+		}
+		if err = c.Transact("lb-hc-del", ops); err != nil {
 			return fmt.Errorf("failed to delete health check %s from load balancers %s: %w", uuid, lbName, err)
 		}
 	}
@@ -728,12 +1359,4 @@ func (c *OVNNbClient) LoadBalancerUpdateHealthCheckOp(lbName string, lbhcUUIDs [
 			}
 		},
 	)
-}
-
-func (c *OVNNbClient) loadBalancerTable() namedTable[ovnnb.LoadBalancer] {
-	table := newNamedTable(c.Database, &ovnnb.LoadBalancer{}, "load balancer",
-		func(lb *ovnnb.LoadBalancer) string { return lb.Name },
-		func(lb *ovnnb.LoadBalancer) map[string]string { return lb.ExternalIDs })
-	table.listErrorVerb = "failed to list"
-	return table
 }

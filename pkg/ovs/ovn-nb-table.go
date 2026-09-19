@@ -86,24 +86,6 @@ func (t namedTable[T]) mutate(row *T, mutationFuncs ...func(*T) *model.Mutation)
 	return t.table().MutateOps(row, mutations...)
 }
 
-func (t namedTable[T]) mutateAll(row *T, mutationFuncs ...func(*T) []model.Mutation) ([]ovsdb.Operation, error) {
-	if len(mutationFuncs) == 0 {
-		return nil, nil
-	}
-
-	mutations := make([]model.Mutation, 0, len(mutationFuncs))
-	for _, mutationFunc := range mutationFuncs {
-		if mutation := mutationFunc(row); mutation != nil {
-			mutations = append(mutations, mutation...)
-		}
-	}
-	if len(mutations) == 0 {
-		return nil, nil
-	}
-
-	return t.table().MutateOps(row, mutations...)
-}
-
 func (t namedTable[T]) createIfAbsent(name, method string, row *T) error {
 	existing, err := t.get(name, true)
 	if err != nil {
@@ -159,18 +141,6 @@ func (t namedTable[T]) mutateNamed(name string, mutationsFunc ...func(*T) *model
 		return nil, logWrap(err, wrapErr("get %s %s: %w", t.kind, name))
 	}
 	ops, err := t.mutate(row, mutationsFunc...)
-	if err != nil {
-		return nil, logWrap(err, wrapErr("generate operations for mutating %s %s: %w", t.kind, name))
-	}
-	return ops, nil
-}
-
-func (t namedTable[T]) mutateNamedAll(name string, mutationsFunc ...func(*T) []model.Mutation) ([]ovsdb.Operation, error) {
-	row, err := t.lookup(name, false)
-	if err != nil {
-		return nil, logErr(err)
-	}
-	ops, err := t.mutateAll(row, mutationsFunc...)
 	if err != nil {
 		return nil, logWrap(err, wrapErr("generate operations for mutating %s %s: %w", t.kind, name))
 	}

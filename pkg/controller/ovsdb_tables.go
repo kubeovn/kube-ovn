@@ -574,24 +574,6 @@ func (c *Controller) deleteLogicalSwitchACLOps(ls *ovnnb.LogicalSwitch, directio
 	return c.logicalSwitchACLOps(ls, rowPointers(rows), ovsdb.MutateOperationDelete)
 }
 
-func (c *Controller) deleteLogicalSwitchACLs(lsName, direction string, externalIDs map[string]string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteAcls(lsName, ovs.LogicalSwitchKey, direction, externalIDs)
-	}
-	ls, err := c.getLogicalSwitch(lsName, true)
-	if err != nil || ls == nil {
-		return err
-	}
-	ops, err := c.deleteLogicalSwitchACLOps(ls, direction, externalIDs)
-	if err != nil {
-		return err
-	}
-	if len(ops) == 0 {
-		return nil
-	}
-	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-del", ops...)
-}
-
 func (c *Controller) deletePortGroupACLOps(pgName, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error) {
 	pg, err := c.getPortGroup(pgName, false)
 	if err != nil {
@@ -938,166 +920,11 @@ func (c *Controller) updateLogicalSwitchACLTable(lsName, cidrBlock string, subne
 	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-update", append(removeOps, createOps...)...)
 }
 
-func (c *Controller) setLogicalSwitchPrivateTable(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
-	ls, err := c.getLogicalSwitch(lsName, false)
-	if err != nil {
-		return err
-	}
-	removeOps, err := c.deleteLogicalSwitchACLOps(ls, "", nil)
-	if err != nil {
-		return err
-	}
-	acls := []*ovnnb.ACL{genericACL(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, "ip", ovnnb.ACLActionDrop, util.NetpolACLTier, nil, func(acl *ovnnb.ACL) {
-		acl.Log = true
-		severity := ovnnb.ACLSeverityWarning
-		acl.Severity = &severity
-	})}
-	for cidr := range strings.SplitSeq(cidrBlock, ",") {
-		protocol := util.CheckProtocol(cidr)
-		ipSuffix := "ip4"
-		if protocol == kubeovnv1.ProtocolIPv6 {
-			ipSuffix = "ip6"
-		}
-		sameSubnet := ovs.NewAndACLMatch(ovs.NewACLMatch(ipSuffix+".src", "==", cidr, ""), ovs.NewACLMatch(ipSuffix+".dst", "==", cidr, "")).String()
-		acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, sameSubnet, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
-		for nodeCidr := range strings.SplitSeq(nodeSwitchCIDR, ",") {
-			if util.CheckProtocol(nodeCidr) != protocol {
-				continue
-			}
-			match := ovs.NewACLMatch(ipSuffix+".src", "==", nodeCidr, "").String()
-			acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.NodeAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
-		}
-		for _, allowed := range allowSubnets {
-			allowed = strings.TrimSpace(allowed)
-			if allowed == "" || util.CheckProtocol(allowed) != protocol {
-				continue
-			}
-			match := ovs.NewOrACLMatch(
-				ovs.NewAndACLMatch(ovs.NewACLMatch(ipSuffix+".src", "==", cidr, ""), ovs.NewACLMatch(ipSuffix+".dst", "==", allowed, "")),
-				ovs.NewAndACLMatch(ovs.NewACLMatch(ipSuffix+".src", "==", allowed, ""), ovs.NewACLMatch(ipSuffix+".dst", "==", cidr, "")),
-			).String()
-			acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.SubnetAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
-		}
-	}
-	createOps, err := c.createLogicalSwitchACLTable(ls, acls...)
-	if err != nil {
-		return err
-	}
-	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-private", append(removeOps, createOps...)...)
-}
-
-func (c *Controller) setLogicalSwitchRoutedTable(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
-	if lsName == "" || router == "" || gatewayMAC == "" {
-		return errors.New("logical switch, router and gateway MAC are required for routed mode")
-	}
-	ls, err := c.getLogicalSwitch(lsName, false)
-	if err != nil {
-		return err
-	}
-	removeOps, err := c.deleteLogicalSwitchACLOps(ls, "", nil)
-	if err != nil {
-		return err
-	}
-	acls := make([]*ovnnb.ACL, 0, 16)
-	for gw := range strings.SplitSeq(gateway, ",") {
-		gw = strings.TrimSpace(gw)
-		switch util.CheckProtocol(gw) {
-		case kubeovnv1.ProtocolIPv4:
-			acls = append(acls,
-				genericACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, ovs.NewAndACLMatch(ovs.NewACLMatch("arp", "", "", ""), ovs.NewACLMatch("arp.tpa", "==", gw, "")).String(), ovnnb.ACLActionAllow, util.NetpolACLTier, nil),
-				genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ovs.NewAndACLMatch(ovs.NewACLMatch("arp", "", "", ""), ovs.NewACLMatch("arp.spa", "==", gw, "")).String(), ovnnb.ACLActionAllow, util.NetpolACLTier, nil))
-		case kubeovnv1.ProtocolIPv6:
-			acls = append(acls,
-				genericACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, ovs.NewAndACLMatch(ovs.NewACLMatch("nd_ns", "", "", ""), ovs.NewACLMatch("nd.target", "==", gw, "")).String(), ovnnb.ACLActionAllow, util.NetpolACLTier, nil),
-				genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, ovs.NewAndACLMatch(ovs.NewACLMatch("nd_na", "", "", ""), ovs.NewACLMatch("ip6.src", "==", gw, "")).String(), ovnnb.ACLActionAllow, util.NetpolACLTier, nil))
-		}
-	}
-	routerLSP := ovs.LogicalSwitchPortName(router, lsName)
-	toRouter := ovs.NewAndACLMatch(ovs.NewACLMatch("ip", "", "", ""), ovs.NewACLMatch("eth.dst", "==", gatewayMAC, "")).String()
-	acls = append(acls,
-		genericACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, toRouter, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil),
-		genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, toRouter, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
-	fromRouter := ovs.NewAndACLMatch(ovs.NewACLMatch("ip", "", "", ""), ovs.NewACLMatch("inport", "==", fmt.Sprintf(`"%s"`, routerLSP), ""), ovs.NewACLMatch("eth.src", "==", gatewayMAC, "")).String()
-	acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionFromLport, util.RoutedAllowPriority, fromRouter, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
-	if !private {
-		fromGateway := ovs.NewAndACLMatch(ovs.NewACLMatch("ip", "", "", ""), ovs.NewACLMatch("eth.src", "==", gatewayMAC, "")).String()
-		acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, fromGateway, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
-	} else {
-		for cidr := range strings.SplitSeq(cidrBlock, ",") {
-			if cidr == "" {
-				continue
-			}
-			protocol := util.CheckProtocol(cidr)
-			ipSuffix := "ip4"
-			if protocol == kubeovnv1.ProtocolIPv6 {
-				ipSuffix = "ip6"
-			}
-			for _, source := range append([]string{cidr}, append(strings.Split(nodeSwitchCIDR, ","), allowSubnets...)...) {
-				source = strings.TrimSpace(source)
-				if source == "" || util.CheckProtocol(source) != protocol {
-					continue
-				}
-				match := ovs.NewAndACLMatch(ovs.NewACLMatch("ip", "", "", ""), ovs.NewACLMatch("eth.src", "==", gatewayMAC, ""), ovs.NewACLMatch(ipSuffix+".src", "==", source, "")).String()
-				acls = append(acls, genericACL(lsName, ovnnb.ACLDirectionToLport, util.RoutedAllowPriority, match, ovnnb.ACLActionAllowRelated, util.NetpolACLTier, nil))
-			}
-		}
-	}
-	for _, direction := range []string{ovnnb.ACLDirectionFromLport, ovnnb.ACLDirectionToLport} {
-		for _, match := range []string{"ip", "arp", "nd_ns", "nd_na"} {
-			acls = append(acls, genericACL(lsName, direction, util.RoutedDefaultDropPriority, match, ovnnb.ACLActionDrop, util.NetpolACLTier, nil, func(acl *ovnnb.ACL) {
-				acl.Log = true
-				severity := ovnnb.ACLSeverityWarning
-				acl.Severity = &severity
-			}))
-		}
-	}
-	createOps, err := c.createLogicalSwitchACLTable(ls, acls...)
-	if err != nil {
-		return err
-	}
-	return c.OVNNbTables.Table(&ovnnb.LogicalSwitch{}).Transact(context.Background(), "acls-routed", append(removeOps, createOps...)...)
-}
-
 func (c *Controller) updateLogicalSwitchACL(lsName, cidrBlock string, subnetAcls []kubeovnv1.ACL, allowEWTraffic bool) error {
 	if c.OVNNbTables == nil {
 		return errors.New("OVN NB table provider is nil")
 	}
 	return c.updateLogicalSwitchACLTable(lsName, cidrBlock, subnetAcls, allowEWTraffic)
-}
-
-func (c *Controller) setLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
-	if c.OVNNbTables == nil {
-		return errors.New("OVN NB table provider is nil")
-	}
-	return c.setLogicalSwitchPrivateTable(lsName, cidrBlock, nodeSwitchCIDR, allowSubnets)
-}
-
-func (c *Controller) setLogicalSwitchRouted(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR string, allowSubnets []string, private bool) error {
-	if c.OVNNbTables == nil {
-		return errors.New("OVN NB table provider is nil")
-	}
-	return c.setLogicalSwitchRoutedTable(lsName, router, cidrBlock, gateway, gatewayMAC, nodeSwitchCIDR, allowSubnets, private)
-}
-
-func (c *Controller) updateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.UpdateLogicalRouter(lr, fields...)
-	}
-	return c.updateRow(lr, "lr-update", fields...)
-}
-
-func (c *Controller) deleteLogicalRouter(name string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalRouter(name)
-	}
-	lr, err := c.getLogicalRouter(name, true)
-	if err != nil {
-		return err
-	}
-	if lr == nil {
-		return nil
-	}
-	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Delete(context.Background(), "lr-del", lr)
 }
 
 func (c *Controller) updateLogicalRouterPortNetworks(name string, networks []string) error {
@@ -1113,35 +940,6 @@ func (c *Controller) updateLogicalRouterPortNetworks(name string, networks []str
 	}
 	lrp.Networks = networks
 	return c.updateRow(lrp, "lrp-update", &lrp.Networks)
-}
-
-func (c *Controller) updateLogicalRouterPortOptions(name string, options map[string]string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.UpdateLogicalRouterPortOptions(name, options)
-	}
-	if len(options) == 0 {
-		return nil
-	}
-	lrp, err := c.getLogicalRouterPort(name, false)
-	if err != nil {
-		return err
-	}
-	newOptions := maps.Clone(lrp.Options)
-	for key, value := range options {
-		if value == "" {
-			delete(newOptions, key)
-			continue
-		}
-		if newOptions == nil {
-			newOptions = make(map[string]string)
-		}
-		newOptions[key] = value
-	}
-	if maps.Equal(newOptions, lrp.Options) {
-		return nil
-	}
-	lrp.Options = newOptions
-	return c.updateRow(lrp, "lrp-update", &lrp.Options)
 }
 
 func parseIPv6RAConfigs(raw string) map[string]string {
@@ -1578,28 +1376,6 @@ func (c *Controller) deleteLogicalRouterPort(name string) error {
 		return fmt.Errorf("generate operations for deleting logical router port %s: %w", name, err)
 	}
 	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lrp-del", ops...)
-}
-
-func (c *Controller) deleteLogicalRouterPorts(externalIDs map[string]string, filter func(*ovnnb.LogicalRouterPort) bool) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalRouterPorts(externalIDs, filter)
-	}
-	rows, err := c.listLogicalRouterPorts(externalIDs, filter)
-	if err != nil {
-		return fmt.Errorf("list logical router ports: %w", err)
-	}
-	var operations []ovsdb.Operation
-	for i := range rows {
-		ops, opErr := c.logicalRouterPortDeleteOps(&rows[i])
-		if opErr != nil {
-			return fmt.Errorf("generate operations for deleting logical router port %s: %w", rows[i].Name, opErr)
-		}
-		operations = append(operations, ops...)
-	}
-	if len(operations) == 0 {
-		return nil
-	}
-	return c.OVNNbTables.Table(&ovnnb.LogicalRouter{}).Transact(context.Background(), "lrps-del", operations...)
 }
 
 func (c *Controller) getHAChassisGroup(name string, ignoreNotFound bool) (*ovnnb.HAChassisGroup, error) {
@@ -2542,34 +2318,6 @@ func (c *Controller) updateLogicalSwitchPortOptionsWith(name string, legacy func
 	})
 }
 
-func (c *Controller) setLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error {
-	if c.OVNNbTables == nil {
-		// Keep the legacy call for tests and upgrades that have not installed
-		// the table provider yet. Production wiring always sets OVNNbTables.
-		if c.OVNNbClient == nil {
-			return errors.New("OVN NB table provider is nil")
-		}
-		return c.OVNNbClient.SetLogicalSwitchPortVirtualParents(lsName, parents, ips...)
-	}
-	for _, ip := range ips {
-		lspName := fmt.Sprintf("%s-vip-%s", lsName, ip)
-		if err := c.updateLogicalSwitchPortOptionsWith(lspName, nil, func(options map[string]string) map[string]string {
-			if parents == "" {
-				delete(options, "virtual-parents")
-				return options
-			}
-			if options == nil {
-				options = make(map[string]string, 1)
-			}
-			options["virtual-parents"] = parents
-			return options
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (c *Controller) setVirtualLogicalSwitchPortVirtualParents(name, parents string) error {
 	return c.updateLogicalSwitchPortOptionsWith(name, func() error {
 		return c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(name, parents)
@@ -2731,14 +2479,6 @@ func (c *Controller) deleteBFD(uuid string) error {
 	return table.Delete(context.Background(), c.OVNNbTables, &ovnnb.BFD{}, "bfd-del", &ovnnb.BFD{UUID: uuid})
 }
 
-func (c *Controller) deleteBFDByDestination(logicalPort, destination string) error {
-	return c.deleteFiltered(&ovnnb.BFD{}, "bfd-del",
-		func() error { return c.OVNNbClient.DeleteBFDByDstIP(logicalPort, destination) },
-		func(row *ovnnb.BFD) bool {
-			return row.LogicalPort == logicalPort && (destination == "" || row.DstIP == destination)
-		})
-}
-
 func (c *Controller) createBFD(logicalPort, destination string, minRx, minTx, detectMult int, externalIDs map[string]string) (*ovnnb.BFD, error) {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.CreateBFD(logicalPort, destination, minRx, minTx, detectMult, externalIDs)
@@ -2778,20 +2518,6 @@ func (c *Controller) createBFD(logicalPort, destination string, minRx, minTx, de
 		return row, nil
 	}
 	return &created[0], nil
-}
-
-func (c *Controller) deleteLogicalSwitch(name string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalSwitch(name)
-	}
-	ls, err := c.getLogicalSwitch(name, true)
-	if err != nil {
-		return err
-	}
-	if ls == nil {
-		return nil
-	}
-	return table.Delete(context.Background(), c.OVNNbTables, ls, "ls-del", ls)
 }
 
 func (c *Controller) deleteLogicalGatewaySwitch(lsName, lrName string) error {
@@ -2924,24 +2650,6 @@ func (c *Controller) addLogicalRouterPolicy(lrName string, priority int, match, 
 	return c.transactOps(&ovnnb.LogicalRouterPolicy{}, "lr-policy-reconcile", operations...)
 }
 
-func (c *Controller) batchAddLogicalRouterPolicies(lrName string, policies []*ovnnb.LogicalRouterPolicy) error {
-	if c.OVNNbTables == nil {
-		return errors.New("OVN NB table provider is nil")
-	}
-	if len(policies) == 0 {
-		return nil
-	}
-	for _, policy := range policies {
-		if policy == nil {
-			continue
-		}
-		if err := c.addLogicalRouterPolicy(lrName, policy.Priority, policy.Match, policy.Action, policy.Nexthops, policy.BFDSessions, policy.ExternalIDs); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (c *Controller) batchDeleteLogicalRouterPolicies(lrName string, policies []*ovnnb.LogicalRouterPolicy) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.BatchDeleteLogicalRouterPolicy(lrName, policies)
@@ -2971,31 +2679,6 @@ func (c *Controller) batchDeleteLogicalRouterPolicies(lrName string, policies []
 		uuids = append(uuids, row.UUID)
 	}
 	return c.mutateRouterField(lr, &lr.Policies, slices.Clip(uuids), ovsdb.MutateOperationDelete, "lr-policies-del")
-}
-
-func (c *Controller) deleteLogicalRouterPolicy(lrName string, priority int, match string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.DeleteLogicalRouterPolicy(lrName, priority, match)
-	}
-	policies, err := c.listLogicalRouterPolicies(lrName, priority, nil, false)
-	if err != nil {
-		return err
-	}
-	uuids := make([]string, 0, len(policies))
-	for _, policy := range policies {
-		if policy.Match == match {
-			uuids = append(uuids, policy.UUID)
-		}
-	}
-	if len(uuids) == 0 {
-		return nil
-	}
-	lr, err := c.getLogicalRouter(lrName, false)
-	if err != nil {
-		return err
-	}
-	slices.Sort(uuids)
-	return c.mutateRouterField(lr, &lr.Policies, uuids, ovsdb.MutateOperationDelete, "lr-policy-del")
 }
 
 func (c *Controller) deleteLogicalRouterPolicyByUUID(lrName, uuid string) error {
@@ -3171,7 +2854,10 @@ func (c *Controller) addNat(lrName, natType, externalIP, logicalIP, logicalMac, 
 
 func (c *Controller) ensureSnat(lrName, externalIP, logicalIP string) error {
 	if c.OVNNbTables == nil {
-		return errors.New("OVN NB table provider is nil")
+		if c.OVNNbClient == nil {
+			return errors.New("OVN NB table provider is nil")
+		}
+		return c.OVNNbClient.EnsureSnat(lrName, externalIP, logicalIP)
 	}
 	if externalIP == "" {
 		return errors.New("snat external ip is required")
@@ -3545,20 +3231,6 @@ func (c *Controller) setLogicalSwitchPortVlanTag(name string, vlanID int) error 
 	})
 }
 
-func (c *Controller) deleteChassis(name string) error {
-	if c.OVNSbTables == nil {
-		return c.OVNSbClient.DeleteChassis(name)
-	}
-	chassis, err := c.getChassis(name, true)
-	if err != nil {
-		return err
-	}
-	if chassis == nil {
-		return nil
-	}
-	return table.Delete(context.Background(), c.OVNSbTables, chassis, "chassis-del", chassis)
-}
-
 func (c *Controller) deleteChassisByHost(hostname string) error {
 	if c.OVNSbTables == nil {
 		return c.OVNSbClient.DeleteChassisByHost(hostname)
@@ -3616,12 +3288,6 @@ func (c *Controller) createLoadBalancer(name, protocol string, selectFields ...s
 		row.SelectionFields = selectFields
 	}
 	return c.createIfAbsent(lb, err, "lb-add", row)
-}
-
-func (c *Controller) deleteLoadBalancers(filter func(*ovnnb.LoadBalancer) bool) error {
-	return c.deleteFiltered(&ovnnb.LoadBalancer{}, "lb-del",
-		func() error { return c.OVNNbClient.DeleteLoadBalancers(filter) },
-		func(row *ovnnb.LoadBalancer) bool { return filter == nil || filter(row) })
 }
 
 func (c *Controller) deleteLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) error {
@@ -3942,19 +3608,6 @@ func (c *Controller) portGroupExists(name string) (bool, error) {
 	return row != nil, err
 }
 
-func (c *Controller) listChassis() ([]ovnsb.Chassis, error) {
-	if c.OVNSbTables == nil {
-		rows, err := c.OVNSbClient.ListChassis()
-		if err != nil || rows == nil {
-			return nil, err
-		}
-		return *rows, nil
-	}
-	var rows []ovnsb.Chassis
-	err := c.OVNSbTables.Table(&ovnsb.Chassis{}).List(context.Background(), &rows)
-	return rows, err
-}
-
 func (c *Controller) listLogicalSwitchPorts(needVendorFilter bool, externalIDs map[string]string, filter func(*ovnnb.LogicalSwitchPort) bool) ([]ovnnb.LogicalSwitchPort, error) {
 	return c.listFiltered(&ovnnb.LogicalSwitchPort{},
 		func() ([]ovnnb.LogicalSwitchPort, error) {
@@ -3964,16 +3617,6 @@ func (c *Controller) listLogicalSwitchPorts(needVendorFilter bool, externalIDs m
 			return matchesVendor(row.ExternalIDs, needVendorFilter) &&
 				matchesExternalIDs(row.ExternalIDs, externalIDs) &&
 				(filter == nil || filter(row))
-		})
-}
-
-func (c *Controller) listLogicalRouterPorts(externalIDs map[string]string, filter func(*ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error) {
-	return c.listFiltered(&ovnnb.LogicalRouterPort{},
-		func() ([]ovnnb.LogicalRouterPort, error) {
-			return c.OVNNbClient.ListLogicalRouterPorts(externalIDs, filter)
-		},
-		func(row *ovnnb.LogicalRouterPort) bool {
-			return matchesExternalIDs(row.ExternalIDs, externalIDs) && (filter == nil || filter(row))
 		})
 }
 
@@ -4031,17 +3674,6 @@ func (c *Controller) listLogicalSwitchNames(needVendorFilter bool, filter func(*
 		return nil, err
 	}
 	return rowNames(rows, func(row *ovnnb.LogicalSwitch) string { return row.Name }), nil
-}
-
-func (c *Controller) listLogicalRouterNames(needVendorFilter bool, filter func(*ovnnb.LogicalRouter) bool) ([]string, error) {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.ListLogicalRouterNames(needVendorFilter, filter)
-	}
-	rows, err := c.listLogicalRouters(needVendorFilter, filter)
-	if err != nil {
-		return nil, err
-	}
-	return rowNames(rows, func(row *ovnnb.LogicalRouter) string { return row.Name }), nil
 }
 
 func (c *Controller) getLogicalRouter(name string, ignoreNotFound bool) (*ovnnb.LogicalRouter, error) {
@@ -4193,12 +3825,6 @@ func (c *Controller) listLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalance
 			return c.OVNNbClient.ListLoadBalancerHealthChecks(filter)
 		},
 		func(row *ovnnb.LoadBalancerHealthCheck) bool { return filter == nil || filter(row) })
-}
-
-func (c *Controller) getNATByUUID(uuid string) (*ovnnb.NAT, error) {
-	return c.getIndexed(&ovnnb.NAT{UUID: uuid}, func() (*ovnnb.NAT, error) {
-		return c.OVNNbClient.GetNATByUUID(uuid)
-	})
 }
 
 func (c *Controller) listNATs(lrName, natType, logicalIP string, externalIDs map[string]string) ([]*ovnnb.NAT, error) {

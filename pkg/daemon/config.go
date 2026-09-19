@@ -48,6 +48,7 @@ type Configuration struct {
 	HostTunnelSrc     bool
 	DPDKTunnelIface   string
 	MTU               int
+	MaxMTU            int
 	MSS               int
 	EnableMirror      bool
 	MirrorNic         string
