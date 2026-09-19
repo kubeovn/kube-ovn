@@ -477,7 +477,7 @@ func (c *Controller) reconcileServiceScopedLoadBalancerAttachments(vpcName strin
 		if subnet.Name == c.config.NodeSwitch || !isOvnSubnet(subnet) {
 			continue
 		}
-		if subnet.Spec.Vpc == vpcName && subnetEnablesServiceLB(subnet, c.config.EnableLb) {
+		if subnet.Spec.Vpc == vpcName && subnetEnablesServiceLB(subnet, c.config.EnableOvnLB) {
 			insertSwitches = append(insertSwitches, subnet.Name)
 		} else {
 			deleteSwitches = append(deleteSwitches, subnet.Name)

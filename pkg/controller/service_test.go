@@ -205,8 +205,8 @@ func TestHandleDeleteServiceSkipsMissingFixedLoadBalancer(t *testing.T) {
 	fakeController, err := newFakeControllerWithOptions(t, nil)
 	require.NoError(t, err)
 	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)
-	fakeController.fakeController.config.EnableLb = true
-	fakeController.fakeController.config.EnableLbSvc = true
+	fakeController.fakeController.config.EnableOvnLB = true
+	fakeController.fakeController.config.EnablePodLbSvc = true
 
 	_, err = fakeController.fakeController.config.KubeClient.AppsV1().Deployments(svc.Namespace).Create(
 		context.Background(),
@@ -239,8 +239,8 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 	newController := func(enableLb, enableLbSvc bool) *Controller {
 		return &Controller{
 			config: &Configuration{
-				EnableLb:    enableLb,
-				EnableLbSvc: enableLbSvc,
+				EnableOvnLB:    enableLb,
+				EnablePodLbSvc: enableLbSvc,
 			},
 			addServiceQueue:               newTypedRateLimitingQueue[string]("AddService", nil),
 			deleteServiceQueue:            newTypedRateLimitingQueue[*vpcService]("DeleteService", nil),
@@ -301,7 +301,7 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 		require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
 	})
 
-	t.Run("EnableLbSvc=true feeds addServiceQueue only when EnableLb is set", func(t *testing.T) {
+	t.Run("EnablePodLbSvc=true feeds addServiceQueue only when EnableOvnLB is set", func(t *testing.T) {
 		t.Parallel()
 		c := newController(true, true)
 		c.enqueueAddService(svc)
@@ -321,7 +321,7 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 
 	newController := func() *Controller {
 		return &Controller{
-			config:             &Configuration{EnableLb: true},
+			config:             &Configuration{EnableOvnLB: true},
 			updateServiceQueue: newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		}
 	}
@@ -460,7 +460,7 @@ func TestEnqueueUpdateRuleServiceReconcilesEndpointSliceOnAttachmentChange(t *te
 			newSvc.ResourceVersion = "2"
 			newSvc.Annotations[annotation] = "new"
 			controller := &Controller{
-				config:                        &Configuration{EnableLb: true},
+				config:                        &Configuration{EnableOvnLB: true},
 				updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 				addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 			}
@@ -493,7 +493,7 @@ func TestEnqueueUpdateServiceReconcilesEndpointSliceOnExternalTrafficPolicyChang
 	newSvc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeCluster
 
 	c := &Controller{
-		config:                        &Configuration{EnableLb: true},
+		config:                        &Configuration{EnableOvnLB: true},
 		updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 	}
@@ -515,7 +515,7 @@ func Test_enqueueUpdateEndpointSliceSkipsContentlessUpdates(t *testing.T) {
 
 	newController := func() *Controller {
 		return &Controller{
-			config:                        &Configuration{EnableLb: true},
+			config:                        &Configuration{EnableOvnLB: true},
 			addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 		}
 	}
@@ -744,7 +744,7 @@ func TestHandleUpdateServiceScopedLoadBalancerAnnotatesExternalSubnet(t *testing
 	require.NoError(t, err)
 	ctrl := fakeCtrl.fakeController
 	ctrl.svcKeyMutex = keymutex.NewHashed(0)
-	ctrl.config.EnableLb = true
+	ctrl.config.EnableOvnLB = true
 
 	require.NoError(t, ctrl.handleUpdateService(&updateSvcObject{key: ns + "/" + svcName}))
 
@@ -773,7 +773,7 @@ func TestHandleUpdateServiceExternalTrafficPolicyChangeRequeuesEndpointReconcile
 	require.NoError(t, err)
 	ctrl := fakeCtrl.fakeController
 	ctrl.svcKeyMutex = keymutex.NewHashed(0)
-	ctrl.config.EnableLb = true
+	ctrl.config.EnableOvnLB = true
 	ctrl.addOrUpdateEndpointSliceQueue = newTypedRateLimitingQueue[string]("test-endpoint-slice-policy", nil)
 	ctrl.priorityEndpointSliceQueue = newTypedRateLimitingQueue[string]("test-priority-endpoint-slice-policy", nil)
 	t.Cleanup(ctrl.addOrUpdateEndpointSliceQueue.ShutDown)

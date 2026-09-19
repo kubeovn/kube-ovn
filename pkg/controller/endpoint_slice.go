@@ -83,7 +83,7 @@ func (c *Controller) enqueueEndpointSliceService(key string, services ...*v1.Ser
 }
 
 func (c *Controller) enqueueAddEndpointSlice(obj any) {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return
 	}
 
@@ -96,7 +96,7 @@ func (c *Controller) enqueueAddEndpointSlice(obj any) {
 }
 
 func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return
 	}
 
@@ -138,7 +138,7 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 }
 
 func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return
 	}
 
@@ -460,7 +460,7 @@ func (c *Controller) serviceScopedLBAttachments(vpcName string) ([]ovs.LoadBalan
 			continue
 		}
 		operation := ovsdb.MutateOperationDelete
-		if subnet.Spec.Vpc == vpcName && subnetEnablesServiceLB(subnet, c.config.EnableLb) {
+		if subnet.Spec.Vpc == vpcName && subnetEnablesServiceLB(subnet, c.config.EnableOvnLB) {
 			operation = ovsdb.MutateOperationInsert
 		}
 		attachments = append(attachments, ovs.LoadBalancerAttachment{

@@ -744,7 +744,7 @@ func Run(ctx context.Context, config *Configuration) {
 	} else {
 		go controller.runDisabledACLSamplingCleanup(ctx)
 	}
-	if config.EnableLb {
+	if config.EnableOvnLB {
 		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
 		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
 		controller.addRouterLBRuleQueue = newTypedRateLimitingQueue("AddRouterLBRule", custCrdRateLimiter)
@@ -884,7 +884,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
-	if controller.config.EnableLb {
+	if controller.config.EnableOvnLB {
 		cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
 	}
 	if controller.config.EnableNP {
@@ -1100,7 +1100,7 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add qos policy event handler")
 	}
 
-	if config.EnableLb {
+	if config.EnableOvnLB {
 		if _, err = routerLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddRouterLBRule,
 			UpdateFunc: controller.enqueueUpdateRouterLBRule,
@@ -1365,7 +1365,7 @@ func (c *Controller) shutdown() {
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
 
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		c.addRouterLBRuleQueue.ShutDown()
 		c.delRouterLBRuleQueue.ShutDown()
 		c.updateRouterLBRuleQueue.ShutDown()
@@ -1541,7 +1541,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
@@ -1580,7 +1580,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
 		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
-		if c.config.EnableLb {
+		if c.config.EnableOvnLB {
 			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
 			go wait.Until(runWorker("add/update endpoint slice", c.addOrUpdateEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 		}
@@ -1754,7 +1754,7 @@ func (c *Controller) initResourceOnce() {
 	if err := c.initVpcNatGw(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize vpc nat gateways")
 	}
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		if err := c.initVpcDNSConfig(); err != nil {
 			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
 		}

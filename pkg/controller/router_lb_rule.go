@@ -59,7 +59,7 @@ func newRouterLBRuleInfo(rlr *kubeovnv1.RouterLBRule) *RouterLBRuleInfo {
 }
 
 func (c *Controller) requeueRouterLBRulesForEip(eipName string, isRecreate bool) {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return
 	}
 	rlrs, err := c.routerLBRuleLister.List(labels.Everything())
