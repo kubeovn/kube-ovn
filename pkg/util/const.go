@@ -36,7 +36,12 @@ const (
 	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
-	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
+	VpcNatGatewayAnnotation = "ovn.kubernetes.io/vpc_nat_gw"
+	// VpcNatGatewaySvcAnnotation names the vpc-nat-gw that serves a Service handled by the
+	// nftable LB service feature. A Service selects its gateway with it, for a LoadBalancer
+	// Service (which also carries the eip annotation its ingress IP comes from) and for a
+	// ClusterIP Service alike; without it the Service is not handled.
+	VpcNatGatewaySvcAnnotation  = "ovn.kubernetes.io/vpc-nat-gw"
 	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
 	// VpcNatGatewayInitInstanceAnnotation records the container instance the init command
 	// completed on, so a replacement instance initializes again.
@@ -285,6 +290,7 @@ const (
 	EgressGatewayLocalPolicyPriority = 29150
 	NatGatewayDropPolicyPriority     = 29190
 	NatGatewayPolicyPriority         = 29200
+	NatGatewayVipPolicyPriority      = 29210 // routes VPC traffic destined for a share DNAT VIP to the gateway
 	NorthGatewayRoutePolicyPriority  = 29250
 	U2OSubnetPolicyPriority          = 29400
 	OvnICPolicyPriority              = 29500

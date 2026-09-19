@@ -120,11 +120,10 @@ func TestValidateDnat(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "empty eip",
+			name: "neither eip nor clusterIP",
 			dnat: &kubeovnv1.IptablesDnatRule{
 				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
-					EIP:          "",
 					ExternalPort: "80",
 					InternalPort: "8080",
 					InternalIP:   "10.0.0.1",
@@ -132,7 +131,90 @@ func TestValidateDnat(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "eip cannot be empty",
+			errMsg:  "one of eip and clusterIP must be set",
+		},
+		{
+			// A Service handled by the nftable LB service feature aligns its ingress IP and its
+			// ClusterIP on one rule: both fields together is the normal shape there.
+			name: "eip and clusterIP together",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					EIP:          "test-eip",
+					ClusterIP:    "10.96.1.5",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+					Type:         kubeovnv1.DnatRuleTypeShare,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "clusterIP without a gateway",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					ClusterIP:    "10.96.1.5",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+					Type:         kubeovnv1.DnatRuleTypeShare,
+				},
+			},
+			wantErr: true,
+			errMsg:  "vpcNatGwDp is required",
+		},
+		{
+			name: "clusterIP must be IPv4",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					ClusterIP:    "fd00::1",
+					VpcNatGwDp:   "gw0",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+					Type:         kubeovnv1.DnatRuleTypeShare,
+				},
+			},
+			wantErr: true,
+			errMsg:  "must be IPv4",
+		},
+		{
+			name: "clusterIP requires share type",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					ClusterIP:    "10.96.1.5",
+					VpcNatGwDp:   "gw0",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+				},
+			},
+			wantErr: true,
+			errMsg:  "clusterIP requires type=share",
+		},
+		{
+			name: "valid clusterIP share rule",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					ClusterIP:    "10.96.1.5",
+					VpcNatGwDp:   "gw0",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+					Type:         kubeovnv1.DnatRuleTypeShare,
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "empty externalPort",
@@ -711,7 +793,8 @@ func TestGetShareBackends(t *testing.T) {
 		deleting,
 	)
 
-	backends, affinity, affinityTimeout, err := c.getShareBackends("gw", "eip", "80", "tcp", "self")
+	self := shareDnat("self", "gw", "eip", "80", "tcp", "10.0.0.9", "8080", kubeovnv1.DnatRuleTypeShare)
+	backends, affinity, affinityTimeout, err := c.getShareBackends("gw", self, "80", "tcp")
 	require.NoError(t, err)
 	// Self is excluded; only ready share siblings with the same identity are returned.
 	// Exclusive, other protocol/eip, incomplete spec and deleting rules are filtered out.
@@ -730,7 +813,7 @@ func TestGetShareBackendsUsesLiveSiblingAffinity(t *testing.T) {
 	deleting.DeletionTimestamp = &metav1.Time{Time: time.Unix(1, 0)}
 
 	c := dnatListerController(t, live, deleting)
-	backends, affinity, affinityTimeout, err := c.getShareBackends("gw", "eip", "80", "tcp", "deleting")
+	backends, affinity, affinityTimeout, err := c.getShareBackends("gw", deleting, "80", "tcp")
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"10.0.0.1:8080"}, backends)
 	assert.Equal(t, kubeovnv1.DnatSessionAffinityClientIP, affinity)
@@ -781,7 +864,16 @@ func TestIsDnatDuplicated(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := dnatListerController(t, tt.existing)
-			dup, err := c.isDnatDuplicated("gw", "eip", "new", "80", "tcp", tt.newType)
+			// The incoming rule is hand-managed unless the case labels it, which is what decides
+			// whether it may share an identity with the existing one.
+			newRule := &kubeovnv1.IptablesDnatRule{
+				Name: "new",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					EIP: "eip", ExternalPort: "80", Protocol: "tcp",
+					InternalIP: "10.0.0.9", InternalPort: "8080", Type: tt.newType,
+				},
+			}
+			dup, err := c.isDnatDuplicated("gw", newRule)
 			assert.Equal(t, tt.wantDup, dup)
 			if tt.wantDup {
 				assert.Error(t, err)
@@ -845,7 +937,7 @@ func TestEnqueueUpdateIptablesDnatRuleNotifiesNftableLbService(t *testing.T) {
 	c := &Controller{
 		updateIptablesDnatRuleQueue:  newTypedRateLimitingQueue[string]("UpdateIptablesDnat", nil),
 		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
-		config:                       &Configuration{EnableLb: true, EnableNftableLbSvc: true},
+		config:                       &Configuration{EnableGwNftableLbSvc: true},
 	}
 	t.Cleanup(c.updateIptablesDnatRuleQueue.ShutDown)
 	t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)
@@ -873,7 +965,7 @@ func TestEnqueueDelIptablesDnatRuleNotifiesNftableLbService(t *testing.T) {
 	c := &Controller{
 		delIptablesDnatRuleQueue:     newTypedRateLimitingQueue[string]("DelIptablesDnat", nil),
 		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
-		config:                       &Configuration{EnableLb: true, EnableNftableLbSvc: true},
+		config:                       &Configuration{EnableGwNftableLbSvc: true},
 	}
 	t.Cleanup(c.delIptablesDnatRuleQueue.ShutDown)
 	t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)
@@ -910,4 +1002,551 @@ func TestEnqueueAddIptablesSnatRule(t *testing.T) {
 		&kubeovnv1.IptablesSnatRule{Name: "live-snat"},
 		&kubeovnv1.IptablesSnatRule{Name: "terminating-snat", DeletionTimestamp: &now},
 	)
+}
+
+// Test_resolveDnatAddress pins what each rule shape resolves to: the EIP gives the gateway, the
+// IPv4 address the identity is programmed with and the IPv6 address recorded in the rule status
+// (the CRD prints it), while a rule that serves a ClusterIP has neither an EIP to derive them from
+// nor an IPv6 address to record.
+func Test_resolveDnatAddress(t *testing.T) {
+	t.Parallel()
+
+	eipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, eipIndexer.Add(&kubeovnv1.IptablesEIP{
+		Name:   "eip0",
+		Spec:   kubeovnv1.IptablesEIPSpec{NatGwDp: "gw0", V4ip: "192.0.2.10", V6ip: "fd00::10"},
+		Status: kubeovnv1.IptablesEIPStatus{IP: "192.0.2.10"},
+	}))
+	c := &Controller{iptablesEipsLister: kubeovnlister.NewIptablesEIPLister(eipIndexer)}
+
+	gwName, v4ip, v6ip, err := c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
+		Name: "eip-rule",
+		Spec: kubeovnv1.IptablesDnatRuleSpec{EIP: "eip0", ExternalPort: "80", Protocol: "tcp"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "gw0", gwName)
+	require.Equal(t, "192.0.2.10", v4ip)
+	require.Equal(t, "fd00::10", v6ip, "the IPv6 address of the EIP is recorded in the rule status")
+
+	// A LoadBalancer Service rule carries the gateway as well, and it must agree with the EIP's.
+	gwName, v4ip, v6ip, err = c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
+		Name: "lb-rule",
+		Spec: kubeovnv1.IptablesDnatRuleSpec{
+			EIP: "eip0", ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0",
+			ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "gw0", gwName)
+	require.Equal(t, "192.0.2.10", v4ip, "the programmed address is the public one")
+	require.Equal(t, "fd00::10", v6ip)
+
+	// A ClusterIP Service rule: its own address is the only one it has.
+	gwName, v4ip, v6ip, err = c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
+		Name: "clusterip-rule",
+		Spec: kubeovnv1.IptablesDnatRuleSpec{
+			ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0",
+			ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "gw0", gwName)
+	require.Equal(t, "10.96.1.5", v4ip)
+	require.Empty(t, v6ip)
+
+	// An EIP that does not exist cannot be resolved at all.
+	_, _, _, err = c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
+		Name: "missing",
+		Spec: kubeovnv1.IptablesDnatRuleSpec{EIP: "absent", ExternalPort: "80", Protocol: "tcp"},
+	})
+	require.Error(t, err)
+}
+
+// Test_dnatNeedsSpecCleanup pins the state a crashed spec change leaves behind, for every rule shape:
+// the data plane may hold an identity the status does not point at any more, so both have to be
+// cleaned up. A rule that is ready, or has no programmed identity yet, is not in that state.
+func Test_dnatNeedsSpecCleanup(t *testing.T) {
+	t.Parallel()
+
+	eipOnly := &kubeovnv1.IptablesDnatRule{Spec: kubeovnv1.IptablesDnatRuleSpec{EIP: "eip0", ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare}}
+	clusterIPServed := &kubeovnv1.IptablesDnatRule{Spec: kubeovnv1.IptablesDnatRuleSpec{
+		ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0", ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
+	}}
+
+	// A crashed spec change: the status points at what the data plane was programmed with. Only a
+	// rule that resolves an EIP can be in this state, because that divergent identity is looked up
+	// through the EIP; a ClusterIP rule records no second identity in its status.
+	for _, rule := range []*kubeovnv1.IptablesDnatRule{eipOnly, clusterIPServed} {
+		rule.Status = kubeovnv1.IptablesDnatRuleStatus{V4ip: "192.0.2.10", Ready: false}
+		if dnatUsesEip(&rule.Spec) {
+			require.True(t, dnatNeedsSpecCleanup(rule), "a not-ready EIP rule with a programmed identity needs both cleanups")
+		} else {
+			require.False(t, dnatNeedsSpecCleanup(rule), "a rule without an EIP has no diverging EIP identity to clean")
+		}
+		rule.Status.Ready = true
+		require.False(t, dnatNeedsSpecCleanup(rule), "a ready rule has no diverging identity")
+		rule.Status = kubeovnv1.IptablesDnatRuleStatus{}
+		require.False(t, dnatNeedsSpecCleanup(rule), "a rule that never programmed an identity has none to clean")
+	}
+}
+
+// Test_clusterIPDnatRedoNeeded pins the branch matrix behind "is the data plane of a ClusterIP rule
+// restored after its gateway instance was replaced": the redo replays the status, so it needs a
+// gateway and a complete identity there, and it must not run for a rule that is already ready or for
+// one whose add handler never finished (recovering that is the add handler's job).
+func Test_clusterIPDnatRedoNeeded(t *testing.T) {
+	t.Parallel()
+
+	complete := kubeovnv1.IptablesDnatRuleStatus{
+		NatGwDp: "gw0", V4ip: "10.96.1.5", Protocol: "tcp", ExternalPort: "80",
+	}
+	base := func() *kubeovnv1.IptablesDnatRule {
+		return &kubeovnv1.IptablesDnatRule{
+			Name: "clusterip-rule",
+			Spec: kubeovnv1.IptablesDnatRuleSpec{
+				ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0", ExternalPort: "80", Protocol: "tcp",
+				InternalIP: "10.0.7.2", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
+			},
+			Status: complete,
+		}
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*kubeovnv1.IptablesDnatRule)
+		want   bool
+	}{
+		{name: "not ready with a complete identity", want: true},
+		{name: "already ready", mutate: func(d *kubeovnv1.IptablesDnatRule) { d.Status.Ready = true }},
+		{name: "no gateway in the status", mutate: func(d *kubeovnv1.IptablesDnatRule) { d.Status.NatGwDp = "" }},
+		{name: "no programmed address", mutate: func(d *kubeovnv1.IptablesDnatRule) { d.Status.V4ip = "" }},
+		{name: "no protocol", mutate: func(d *kubeovnv1.IptablesDnatRule) { d.Status.Protocol = "" }},
+		{name: "no external port", mutate: func(d *kubeovnv1.IptablesDnatRule) { d.Status.ExternalPort = "" }},
+		{name: "add handler never finished", mutate: func(d *kubeovnv1.IptablesDnatRule) { d.Status = kubeovnv1.IptablesDnatRuleStatus{} }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dnat := base()
+			if tt.mutate != nil {
+				tt.mutate(dnat)
+			}
+			require.Equal(t, tt.want, clusterIPDnatRedoNeeded(dnat))
+		})
+	}
+}
+
+// TestEnqueueUpdateIptablesDnatRuleAcceptsClusterIPServedRules pins the redo's only entry point: a
+// gateway instance being replaced makes redoDnat patch the rule's status, and the update event it
+// produces is enqueued here. A rule that serves a ClusterIP has no EIP, so rejecting an EIP-less
+// rule would leave its identity, hairpin rule and lo address unprogrammed on the new instance.
+func TestEnqueueUpdateIptablesDnatRuleAcceptsClusterIPServedRules(t *testing.T) {
+	t.Parallel()
+
+	newDnat := func(spec kubeovnv1.IptablesDnatRuleSpec) *kubeovnv1.IptablesDnatRule {
+		return &kubeovnv1.IptablesDnatRule{Name: "rule", Spec: spec}
+	}
+	clusterIPServed := kubeovnv1.IptablesDnatRuleSpec{
+		ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0", ExternalPort: "80", Protocol: "tcp",
+		InternalIP: "10.0.7.2", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
+	}
+	eipServed := clusterIPServed
+	eipServed.ClusterIP, eipServed.EIP = "", "eip0"
+
+	tests := []struct {
+		name     string
+		old, new *kubeovnv1.IptablesDnatRule
+		enqueued bool
+	}{
+		{
+			name:     "a ClusterIP rule whose redo token changed is enqueued",
+			old:      newDnat(clusterIPServed),
+			new:      func() *kubeovnv1.IptablesDnatRule { d := newDnat(clusterIPServed); d.Status.Redo = "new"; return d }(),
+			enqueued: true,
+		},
+		{
+			name:     "an EIP rule whose redo token changed is enqueued",
+			old:      newDnat(eipServed),
+			new:      func() *kubeovnv1.IptablesDnatRule { d := newDnat(eipServed); d.Status.Redo = "new"; return d }(),
+			enqueued: true,
+		},
+		{
+			name: "a rule whose gateway label became visible is enqueued",
+			old:  newDnat(clusterIPServed),
+			new: func() *kubeovnv1.IptablesDnatRule {
+				d := newDnat(clusterIPServed)
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
+				return d
+			}(),
+			enqueued: true,
+		},
+		{
+			name:     "a rule with neither address is still rejected",
+			old:      newDnat(kubeovnv1.IptablesDnatRuleSpec{ExternalPort: "80", Protocol: "tcp", InternalIP: "10.0.7.2", InternalPort: "8080"}),
+			new:      newDnat(kubeovnv1.IptablesDnatRuleSpec{ExternalPort: "80", Protocol: "tcp", InternalIP: "10.0.7.2", InternalPort: "8080"}),
+			enqueued: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queue := newTypedRateLimitingQueue[string]("UpdateIptablesDnatRule", nil)
+			t.Cleanup(queue.ShutDown)
+			c := &Controller{updateIptablesDnatRuleQueue: queue, config: &Configuration{}}
+			c.enqueueUpdateIptablesDnatRule(tt.old, tt.new)
+			if tt.enqueued {
+				require.Equal(t, 1, c.updateIptablesDnatRuleQueue.Len())
+			} else {
+				require.Zero(t, c.updateIptablesDnatRuleQueue.Len())
+			}
+		})
+	}
+}
+
+func TestSyncNatGwVipStateFromCacheDisabled(t *testing.T) {
+	t.Parallel()
+
+	c := &Controller{config: &Configuration{EnableGwNftableLbSvc: false}}
+	require.NoError(t, c.syncNatGwVipStateFromCache("gw0"),
+		"a disabled feature must stop before resolving gateway pods")
+}
+
+func TestDnatReadyUpdateEnqueuesOwningService(t *testing.T) {
+	t.Parallel()
+
+	oldRule := clusterIPServedRule("rule", "gw0", "10.96.1.5")
+	oldRule.Labels[util.NftableLbSvcNsLabel] = "default"
+	oldRule.Labels[util.NftableLbSvcNameLabel] = "web"
+	newRule := oldRule.DeepCopy()
+	newRule.Status.Ready = true
+
+	serviceQueue := newTypedRateLimitingQueue[string]("NftableLbService", nil)
+	updateQueue := newTypedRateLimitingQueue[string]("UpdateIptablesDnatRule", nil)
+	t.Cleanup(serviceQueue.ShutDown)
+	t.Cleanup(updateQueue.ShutDown)
+	c := &Controller{
+		config:                       &Configuration{EnableGwNftableLbSvc: true},
+		addOrUpdateNftableLbSvcQueue: serviceQueue,
+		updateIptablesDnatRuleQueue:  updateQueue,
+	}
+	c.enqueueUpdateIptablesDnatRule(oldRule, newRule)
+	require.Equal(t, 1, serviceQueue.Len())
+	require.Zero(t, updateQueue.Len(), "Ready only completes the Service ownership handoff")
+}
+
+// Test_isDnatDuplicatedSeparatesOwners pins the identity ownership the controller has to enforce by
+// itself when admission could not see the other rule: two share rules may share an nft map only when
+// they belong to the same owner (the backends of one Service, or several hand-managed rules). A
+// dual-address rule contributes two identities, so a collision on either address counts.
+func Test_isDnatDuplicatedAllowsOwnersToShareIdentities(t *testing.T) {
+	t.Parallel()
+
+	const gwName = "gw"
+	owned := func(name, eip, clusterIP, ns, svc string) *kubeovnv1.IptablesDnatRule {
+		rule := &kubeovnv1.IptablesDnatRule{
+			Name: name,
+			Labels: map[string]string{
+				util.VpcNatGatewayNameLabel: gwName,
+				util.VpcDnatEPortLabel:      "80",
+			},
+			Spec: kubeovnv1.IptablesDnatRuleSpec{
+				EIP: eip, ClusterIP: clusterIP, ExternalPort: "80", Protocol: "tcp",
+				InternalIP: "10.0.0.9", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
+			},
+		}
+		if ns != "" {
+			rule.Labels[util.NftableLbSvcNsLabel] = ns
+			rule.Labels[util.NftableLbSvcNameLabel] = svc
+		}
+		return rule
+	}
+
+	tests := []struct {
+		name     string
+		existing *kubeovnv1.IptablesDnatRule
+		incoming *kubeovnv1.IptablesDnatRule
+		wantDup  bool
+	}{
+		{
+			// Allowed rather than rejected: rejecting it would block the loser's reconcile, and after
+			// a redo neither side would have a data plane (only the winner writes the identity).
+			name:     "another owner sharing the internal VIP is left to the winner",
+			existing: owned("a", "eip-a", "10.96.1.5", "default", "web"),
+			incoming: owned("b", "eip-b", "10.96.1.5", "", ""),
+			wantDup:  false,
+		},
+		{
+			name:     "another owner sharing the EIP is left to the winner",
+			existing: owned("a", "eip-a", "10.96.1.5", "default", "web"),
+			incoming: owned("b", "eip-a", "10.96.1.6", "", ""),
+			wantDup:  false,
+		},
+		{
+			name:     "an exclusive rule still conflicts with a share rule",
+			existing: owned("a", "eip-a", "10.96.1.5", "", ""),
+			incoming: func() *kubeovnv1.IptablesDnatRule {
+				rule := owned("b", "eip-a", "10.96.1.5", "", "")
+				rule.Spec.Type = kubeovnv1.DnatRuleTypeExclusive
+				return rule
+			}(),
+			wantDup: true,
+		},
+		{
+			name:     "the backends of one Service share their identities",
+			existing: owned("a", "eip-a", "10.96.1.5", "default", "web"),
+			incoming: owned("b", "eip-a", "10.96.1.5", "default", "web"),
+			wantDup:  false,
+		},
+		{
+			name:     "hand-managed rules keep adding backends to one address",
+			existing: owned("a", "eip-a", "10.96.1.5", "", ""),
+			incoming: owned("b", "eip-a", "10.96.1.5", "", ""),
+			wantDup:  false,
+		},
+		{
+			name:     "hand-managed rules with their own internal VIP stay independent",
+			existing: owned("a", "eip-a", "10.96.1.5", "", ""),
+			incoming: owned("b", "eip-a", "10.96.1.6", "", ""),
+			wantDup:  false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := dnatListerController(t, tt.existing)
+			dup, err := c.isDnatDuplicated(gwName, tt.incoming)
+			require.Equal(t, tt.wantDup, dup)
+			if tt.wantDup {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// Test_identityStillServedByAnotherOwnerEip pins the other half of the teardown guard: two rules of
+// different owners can share the EIP identity while serving different internal VIPs, and releasing
+// the EIP map of the one being deleted would take the other's data plane with it.
+func Test_identityStillServedByAnotherOwnerEip(t *testing.T) {
+	t.Parallel()
+
+	const gwName = "gw0"
+	svcRule := ownedShareRule("svc-rule", "eip-a", "10.96.1.5")
+	manual := clusterIPServedRule("manual-rule", gwName, "10.96.1.6")
+	manual.Spec.EIP = "eip-a"
+	c := dnatListerController(t, svcRule, manual)
+
+	served, err := c.identityStillServedByAnotherOwner(gwName, svcRule, "tcp", "80", "eip-a", "")
+	require.NoError(t, err)
+	require.True(t, served, "the hand-managed rule still programs the shared EIP identity")
+
+	served, err = c.identityStillServedByAnotherOwner(gwName, manual, "tcp", "80", "eip-a", "")
+	require.NoError(t, err)
+	require.True(t, served, "and the Service rule still programs it for the hand-managed one")
+
+	// Their internal VIPs are separate identities and are not served by the other.
+	served, err = c.identityStillServedByAnotherOwner(gwName, svcRule, "tcp", "80", "", "10.96.1.5")
+	require.NoError(t, err)
+	require.False(t, served)
+	served, err = c.identityStillServedByAnotherOwner(gwName, manual, "tcp", "80", "", "10.96.1.6")
+	require.NoError(t, err)
+	require.False(t, served)
+}
+
+// Test_shareIdentityServedByOtherOwner pins the teardown guard: the identity of an internal VIP is
+// only released when no live rule of another owner still programs it, because releasing it would take
+// that owner's data plane with it.
+func Test_shareIdentityServedByOtherOwner(t *testing.T) {
+	t.Parallel()
+
+	// ownedShareRule labels its rule with this gateway, so both fixtures have to use it.
+	const gwName = "gw0"
+	svcRule := ownedShareRule("svc-rule", "eip-a", "10.96.1.5")
+	manual := clusterIPServedRule("manual-rule", gwName, "10.96.1.5")
+	c := dnatListerController(t, svcRule, manual)
+
+	served, err := c.identityStillServedByAnotherOwner(gwName, svcRule, "tcp", "80", "", "10.96.1.5")
+	require.NoError(t, err)
+	require.True(t, served, "the hand-managed rule still programs that identity")
+
+	// Deleting the hand-managed rule sees the Service rule as another owner too.
+	served, err = c.identityStillServedByAnotherOwner(gwName, manual, "tcp", "80", "", "10.96.1.5")
+	require.NoError(t, err)
+	require.True(t, served)
+
+	// Its own siblings are not another owner.
+	served, err = c.identityStillServedByAnotherOwner(gwName, svcRule, "tcp", "80", "", "10.96.1.9")
+	require.NoError(t, err)
+	require.False(t, served)
+}
+
+// Test_releasedHairpinRules pins which hairpin SNAT rules a torn down rule may delete: only the ones
+// whose identity was actually released. The two identities of a rule are independent, so a kept one
+// (another owner still programs that map) must keep its hairpin -- otherwise the surviving rule
+// forwards traffic whose return path is no longer pinned to the instance holding the conntrack.
+func Test_releasedHairpinRules(t *testing.T) {
+	t.Parallel()
+
+	const eip, clusterIP = "172.20.0.5", "10.96.1.5"
+	require.Equal(t,
+		[]string{"172.20.0.5,80,tcp"},
+		releasedHairpinRules("tcp", "80", map[string]bool{eip: true, clusterIP: false}),
+		"a kept identity must not lose its hairpin")
+
+	require.Equal(t,
+		[]string{"10.96.1.5,80,tcp"},
+		releasedHairpinRules("tcp", "80", map[string]bool{eip: false, clusterIP: true}),
+		"the independent internal VIP is released on its own")
+
+	require.Empty(t, releasedHairpinRules("tcp", "80", map[string]bool{eip: false, clusterIP: false}),
+		"nothing released, nothing deleted")
+
+	require.Equal(t,
+		[]string{"10.96.1.5,80,tcp", "172.20.0.5,80,tcp"},
+		releasedHairpinRules("tcp", "80", map[string]bool{eip: true, clusterIP: true}),
+		"both identities released, both hairpins deleted")
+}
+
+// Test_cleanupShareDnatIdentityDecisionsAreIndependent pins the inputs the teardown decides with when a
+// rule's two identities are not in the same state, which is what a conflict with another owner
+// produces: the rule's own surviving backend is what both identities have to be rebuilt with, the
+// shared EIP identity is left to its other owner, and the rule's independent internal VIP is still
+// rebuilt so it cannot keep forwarding to the backend that went away.
+func Test_cleanupShareDnatIdentityDecisionsAreIndependent(t *testing.T) {
+	t.Parallel()
+
+	const gwName = "gw0"
+	// A1 and A2 are the backends of one Service; B is a hand-managed rule of another owner sharing
+	// the EIP identity only.
+	a1 := ownedShareRule("a1", "eip-a", "10.96.1.5")
+	a1.Spec.InternalIP, a1.Spec.InternalPort = "10.0.7.2", "8080"
+	a2 := ownedShareRule("a2", "eip-a", "10.96.1.5")
+	a2.Spec.InternalIP, a2.Spec.InternalPort = "10.0.7.3", "8080"
+	b := clusterIPServedRule("b", gwName, "10.96.1.6")
+	b.Spec.EIP = "eip-a"
+	b.Spec.InternalIP, b.Spec.InternalPort = "10.0.7.9", "8080"
+	c := dnatListerController(t, a1, a2, b)
+
+	// The EIP identity keeps the sibling's backend and is shared with another owner, so it is left
+	// to that owner rather than overwritten.
+	eipBackends, _, _, err := c.getShareBackends(gwName, a1, "80", "tcp")
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.7.3:8080"}, eipBackends)
+	served, err := c.identityStillServedByAnotherOwner(gwName, a1, "tcp", "80", "eip-a", "")
+	require.NoError(t, err)
+	require.True(t, served, "the hand-managed rule of another owner shares the EIP identity")
+
+	// The internal VIP is the Service's own: it is not shared, and it is rebuilt with the surviving
+	// backend of the same owner.
+	clusterIPBackends, _, _, err := c.shareClusterIPBackends(gwName, a1, "80", "tcp", "10.96.1.5")
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.7.3:8080"}, clusterIPBackends)
+	served, err = c.identityStillServedByAnotherOwner(gwName, a1, "tcp", "80", "", "10.96.1.5")
+	require.NoError(t, err)
+	require.False(t, served, "the internal VIP has no other owner, so it still converges")
+}
+
+// Test_dnatIdentityWinnerWithCacheLag covers the normal creation of the first rule of an identity:
+// its gateway label is patched just before the apply, so the informer may not list it yet. The rule
+// being reconciled is a candidate by itself, which both keeps it from being mistaken for a loser and
+// keeps the winner an owner rather than a nil pointer.
+func Test_dnatIdentityWinnerWithCacheLag(t *testing.T) {
+	t.Parallel()
+
+	const gwName = "gw0"
+	rule := ownedShareRule("first-rule", "eip-a", "10.96.1.5")
+	c := dnatListerController(t)
+
+	won, err := c.dnatIdentityWinnerIs(gwName, rule, "tcp", "80", "eip-a", "")
+	require.NoError(t, err)
+	require.True(t, won, "the only rule of an identity owns it, even before the informer sees it")
+
+	// A rule that has not been through the lister at all still loses to a hand-managed rule that is
+	// already cached for the same identity.
+	manual := clusterIPServedRule("manual-rule", gwName, "10.96.1.6")
+	manual.Spec.EIP = "eip-a"
+	c = dnatListerController(t, manual)
+	won, err = c.dnatIdentityWinnerIs(gwName, rule, "tcp", "80", "eip-a", "")
+	require.NoError(t, err)
+	require.False(t, won)
+	won, err = c.dnatIdentityWinnerIs(gwName, manual, "tcp", "80", "eip-a", "")
+	require.NoError(t, err)
+	require.True(t, won)
+}
+
+// Test_dnatIdentityWinnerIsPerOwner pins that the winner is an owner and not one of its rules: a
+// backend added to a Service is a new rule whose name may sort after the existing one, and it still
+// has to be able to write the identity with all of that owner's backends.
+func Test_dnatIdentityWinnerIsPerOwner(t *testing.T) {
+	t.Parallel()
+
+	const gwName = "gw0"
+	first := ownedShareRule("svc-a", "eip-a", "10.96.1.5")
+	second := ownedShareRule("svc-z", "eip-a", "10.96.1.5")
+	second.Spec.InternalIP, second.Spec.InternalPort = "10.0.7.3", "8080"
+	c := dnatListerController(t, first, second)
+
+	for _, rule := range []*kubeovnv1.IptablesDnatRule{first, second} {
+		won, err := c.dnatIdentityWinnerIs(gwName, rule, "tcp", "80", "eip-a", "")
+		require.NoError(t, err)
+		require.True(t, won, "every rule of the winning owner may write its identity")
+	}
+	// The full backend set of the owner (its own rule included), which is what its reconcile writes.
+	backends, _, _, err := c.handOverBackends(gwName, second, "80", "tcp", "")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"10.0.7.2:8080", "10.0.7.3:8080"}, backends)
+}
+
+// Test_handOverShareIdentityPicksTheOwner pins which owner takes an identity over when the last rule
+// of the current owner goes away: the winner among the remaining rules, whose own reconcile is never
+// triggered by this teardown.
+func Test_handOverShareIdentityPicksTheOwner(t *testing.T) {
+	t.Parallel()
+
+	const gwName = "gw0"
+	svcRule := ownedShareRule("svc-rule", "eip-a", "10.96.1.5")
+	manual := clusterIPServedRule("manual-rule", gwName, "10.96.1.6")
+	manual.Spec.EIP = "eip-a"
+	c := dnatListerController(t, manual)
+
+	rules, err := c.shareIdentityRules(gwName, "tcp", "80", "eip-a", "", nil)
+	require.NoError(t, err)
+	winner := dnatIdentityWinnerRule(rules)
+	require.NotNil(t, winner)
+	require.False(t, sameShareOwner(winner, svcRule), "a different owner takes it over")
+	backends, _, _, err := c.handOverBackends(gwName, winner, "80", "tcp", "")
+	require.NoError(t, err)
+	require.Equal(t, []string{manual.Spec.InternalIP + ":" + manual.Spec.InternalPort}, backends)
+
+	// The owner's own sibling keeps the identity: nothing to hand over.
+	c = dnatListerController(t, svcRule)
+	rules, err = c.shareIdentityRules(gwName, "tcp", "80", "eip-a", "", nil)
+	require.NoError(t, err)
+	require.True(t, sameShareOwner(dnatIdentityWinnerRule(rules), svcRule))
+}
+
+// Test_dnatIdentityWinner pins the deterministic choice of who writes a shared identity: one rule per
+// identity, chosen the way the Service conflict resolver chooses (a hand-managed rule wins, then the
+// smallest name), so the choice does not depend on reconcile order and a restart cannot flip it.
+func Test_dnatIdentityWinner(t *testing.T) {
+	t.Parallel()
+
+	const gwName = "gw0"
+	manualSvc := ownedShareRule("svc-rule", "eip-a", "10.96.1.5")
+	sibling := ownedShareRule("svc-rule-2", "eip-a", "10.96.1.6")
+	manual := clusterIPServedRule("manual-rule", gwName, "10.96.1.7")
+	manual.Spec.EIP = "eip-a"
+	c := dnatListerController(t, manualSvc, sibling, manual)
+
+	// A hand-managed rule has no owner key, so it wins over the Service, like chooseNftableLbOwner.
+	won, err := c.dnatIdentityWinnerIs(gwName, manual, "tcp", "80", "eip-a", "")
+	require.NoError(t, err)
+	require.True(t, won)
+	for _, loser := range []*kubeovnv1.IptablesDnatRule{manualSvc, sibling} {
+		won, err = c.dnatIdentityWinnerIs(gwName, loser, "tcp", "80", "eip-a", "")
+		require.NoError(t, err)
+		require.False(t, won, "only the winner writes the identity")
+		// The winner is only about the shared EIP identity: the ClusterIP one is their own.
+		won, err = c.dnatIdentityWinnerIs(gwName, loser, "tcp", "80", "", loser.Spec.ClusterIP)
+		require.NoError(t, err)
+		require.True(t, won, "a rule owns the internal VIP nobody else programs")
+	}
 }

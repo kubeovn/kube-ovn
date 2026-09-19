@@ -894,6 +894,15 @@ func ValidateCanonicalPort(port string) error {
 }
 
 // ValidateProtocol checks if the protocol is valid (tcp or udp).
+//
+// TODO: the nft share DNAT itself is protocol agnostic (the protocol is a key field of the service
+// map and the port comes from the transport header, like kube-proxy's nftables proxier), so sctp is
+// only a whitelist to extend -- here, in the IptablesDnatRule webhook, in the gateway script and in
+// the Service port filter of the nftable LB service feature. It is deliberately not done here: the
+// validation is shared with the exclusive iptables DNAT, whose data plane needs xt_sctp and SCTP
+// conntrack on the node, and which has no sctp traffic test either. Landing it means splitting this
+// validation by rule type (share accepts sctp, exclusive stays tcp/udp) and adding an sctp traffic
+// e2e for the share path.
 func ValidateProtocol(protocol string) error {
 	p := strings.ToLower(protocol)
 	if p != ProtocolTCP && p != ProtocolUDP {

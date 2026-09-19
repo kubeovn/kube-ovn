@@ -59,6 +59,12 @@ const (
 	natGwSubnetRouteAdd   = "subnet-route-add"
 	natGwSubnetRouteDel   = "subnet-route-del"
 
+	// Share DNAT VIP state of a Service handled by the nftable LB service feature: the ClusterIPs
+	// held on lo and the per-identity hairpin SNAT rules (see nft_dnat.go).
+	natGwVipAddrSync   = "vip-addr-sync"
+	natGwVipHairpinAdd = "vip-hairpin-add"
+	natGwVipHairpinDel = "vip-hairpin-del"
+
 	getIptablesVersion = "get-iptables-version"
 )
 
@@ -261,7 +267,13 @@ func (c *Controller) handleDelVpcNatGw(key string) (retErr error) {
 
 	// Reconcile the routes to clean up everything (policies, BFD, ...)
 	// The gateway is being deleted, so no next hop is derived from its Pods and none is needed.
+	// This covers the internal CIDR policies (29200/29190); the share DNAT VIP routes (29210) are
+	// keyed by gateway and are released right after.
 	if err := c.reconcileVpcNatGatewayOVNRoutes(gw, nil); err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.OVNNbClient.DeleteLogicalRouterPolicies(gw.Spec.Vpc, util.NatGatewayVipPolicyPriority, natGwVipRouteExternalIDs(gw.Name)); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -535,6 +547,17 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 			klog.Errorf("failed to reconcile OVN routes for nat gw %s: %v", key, err)
 			return err
 		}
+	}
+
+	// The VIP routes are derived from the gateway's live Pods, and this reconcile is a chance that
+	// they moved. An HA scale down removes an instance without creating a new one: that does change
+	// the redo token (it hashes the running instances), but the DNAT redo loop is only woken by Pod
+	// address and container events, and a removed instance produces neither. Without this the routes
+	// would keep the gone instance as a next hop, dropping the connections the OVN ECMP sends to it.
+	// It is also what converges the ClusterIPs the instances hold on lo.
+	if err = c.syncNatGwVipState(gw.Name, nil); err != nil {
+		klog.Errorf("failed to sync vip state for nat gw %s: %v", gw.Name, err)
+		return err
 	}
 
 	// Handle QoS update (independent of StatefulSet/Deployment changes)
@@ -1245,6 +1268,19 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 	return nil
 }
 
+// execNatGwRulesInPods runs one gateway script command on every given Pod, trying all of them so
+// a failing instance cannot starve the others.
+func (c *Controller) execNatGwRulesInPods(pods []*corev1.Pod, operation string, rules []string) error {
+	var errs []error
+	for _, pod := range pods {
+		if err := c.execNatGwRules(pod, operation, rules); err != nil {
+			klog.Errorf("failed to run %s in nat gw pod %s/%s, err: %v", operation, pod.Namespace, pod.Name, err)
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // setNatGwAPIAccess modifies StatefulSet Pod template annotations to add an interface with API access to the NAT gateway.
 // It attaches the standard externalNetwork to the gateway via a NetworkAttachmentDefinition (NAD) with a provider
 // corresponding to one that is configured on a subnet part of the default VPC (the K8S apiserver runs in the default VPC).
@@ -1807,14 +1843,6 @@ func (c *Controller) cleanUpVpcNatGw() error {
 		c.delVpcNatGatewayQueue.Add(natGwNs + "/" + gw.Name)
 	}
 	return nil
-}
-
-func (c *Controller) getNatGwPod(name, namespace string) (*corev1.Pod, error) {
-	pods, err := c.getNatGwPods(name, namespace, false)
-	if err != nil {
-		return nil, err
-	}
-	return pods[0], nil
 }
 
 // getNatGwPods returns the Pods a rule of the gateway has to be applied to: its running

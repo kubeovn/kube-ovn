@@ -37,7 +37,7 @@ LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-false}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
-ENABLE_NFTABLE_LB_SVC=${ENABLE_NFTABLE_LB_SVC:-true}
+ENABLE_GW_NFTABLE_LB_SVC=${ENABLE_GW_NFTABLE_LB_SVC:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
@@ -1092,8 +1092,27 @@ spec:
             type: object
           spec:
             properties:
+              clusterIP:
+                description: |-
+                  ClusterIP is the internal VIP this rule serves, held on lo in the gateway. A Service
+                  handled by the nftable LB service feature carries its ingress IP (through EIP) and its
+                  ClusterIP on the same rule, so the two addresses of one Service port stay aligned; a
+                  ClusterIP Service carries only this field.
+
+                  The rule's nft identity is programmed on the gateway either way, but the VIP state that
+                  makes the internal VIP reachable (the address held on lo, the per-identity hairpin SNAT rule
+                  and the OVN policy route that steers VPC traffic to the gateway) belongs to the nftable LB
+                  service feature and is programmed only while --enable-gw-nftable-lb-svc is enabled.
+
+                  It is only supported for type=share (one address, many backends), and it is immutable:
+                  the identity of a share DNAT rule is its address, so changing it would silently drop
+                  the programmed state. Delete and recreate the rule to move it.
+                type: string
               eip:
-                description: EIP name for DNAT rule
+                description: |-
+                  EIP name for DNAT rule: the public address of a Service, allocated by the EIP and
+                  bound on the external interface. It is the identity of the EIP:port nft map, so two
+                  rules that carry the same EIP and port share one backend set.
                 type: string
               externalPort:
                 description: External port number
@@ -1105,7 +1124,8 @@ spec:
                 description: Internal port number to forward traffic to
                 type: string
               protocol:
-                description: Protocol type (TCP or UDP)
+                description: Protocol type (TCP or UDP). See ValidateProtocol for
+                  why sctp is not accepted yet.
                 type: string
               sessionAffinity:
                 description: |-
@@ -1145,6 +1165,12 @@ spec:
                 enum:
                 - exclusive
                 - share
+                type: string
+              vpcNatGwDp:
+                description: |-
+                  VpcNatGwDp is the gateway that serves this rule. It is required with ClusterIP when
+                  there is no EIP to derive the gateway from, and must name that gateway when both are
+                  set.
                 type: string
             type: object
           status:
@@ -8952,7 +8978,7 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --enable-lb-svc=$ENABLE_LB_SVC
-          - --enable-nftable-lb-svc=$ENABLE_NFTABLE_LB_SVC
+          - --enable-gw-nftable-lb-svc=$ENABLE_GW_NFTABLE_LB_SVC
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP

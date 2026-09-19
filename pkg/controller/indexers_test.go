@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"sort"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -203,20 +204,30 @@ func TestIndexersLookup(t *testing.T) {
 		t.Fatalf("expected 3 ips for subnet-a (incl. attach), got %d", len(got))
 	}
 
-	svcIdx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexServiceByNftableLbEip: indexServiceByNftableLbEip})
-	lb := func(name, ns, eip string) *v1.Service {
-		s := &v1.Service{Name: name, Namespace: ns, Spec: v1.ServiceSpec{Type: v1.ServiceTypeLoadBalancer}}
+	svcIdx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+		IndexServiceByNftableLbEip: indexServiceByNftableLbEip,
+		IndexServiceByNftableLbGw:  indexServiceByNftableLbGw,
+	})
+	// A Service is handled when it names its gateway; a LoadBalancer Service additionally points
+	// at the EIP its ingress IP comes from.
+	svc := func(name, ns string, svcType v1.ServiceType, gw, eip string) *v1.Service {
+		s := &v1.Service{Name: name, Namespace: ns, Spec: v1.ServiceSpec{Type: svcType}}
+		s.Annotations = map[string]string{}
+		if gw != "" {
+			s.Annotations[util.VpcNatGatewaySvcAnnotation] = gw
+		}
 		if eip != "" {
-			s.Annotations = map[string]string{util.EipAnnotation: eip}
+			s.Annotations[util.EipAnnotation] = eip
 		}
 		return s
 	}
 	for _, svc := range []*v1.Service{
-		lb("a", "ns", "eip0"),
-		lb("b", "other", "eip0"),
-		lb("c", "ns", "eip1"),
-		lb("d", "ns", ""), // LB without eip annotation: not indexed
-		{Name: "e", Namespace: "ns", Annotations: map[string]string{util.EipAnnotation: "eip0"}, Spec: v1.ServiceSpec{Type: v1.ServiceTypeClusterIP}}, // not LB: not indexed
+		svc("a", "ns", v1.ServiceTypeLoadBalancer, "gw0", "eip0"),
+		svc("b", "other", v1.ServiceTypeLoadBalancer, "gw0", "eip0"),
+		svc("c", "ns", v1.ServiceTypeLoadBalancer, "gw1", "eip1"),
+		svc("d", "ns", v1.ServiceTypeLoadBalancer, "gw0", ""),  // LB without eip: not handled
+		svc("e", "ns", v1.ServiceTypeClusterIP, "gw0", "eip0"), // a ClusterIP Service has no EIP
+		svc("f", "ns", v1.ServiceTypeClusterIP, "", ""),        // no gateway: not handled
 	} {
 		if err := svcIdx.Add(svc); err != nil {
 			t.Fatalf("add svc: %v", err)
@@ -228,6 +239,20 @@ func TestIndexersLookup(t *testing.T) {
 	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 lb services for eip0 (cross-namespace), got %d", len(got))
+	}
+	// Every handled Service is indexed by its gateway, so a gateway event wakes the ClusterIP
+	// Services it serves even though they have no EIP to be woken by.
+	got, err = svcIdx.ByIndex(IndexServiceByNftableLbGw, "gw0")
+	if err != nil {
+		t.Fatalf("ByIndex: %v", err)
+	}
+	names := make([]string, 0, len(got))
+	for _, obj := range got {
+		names = append(names, obj.(*v1.Service).Name)
+	}
+	sort.Strings(names)
+	if len(names) != 3 || names[0] != "a" || names[2] != "e" {
+		t.Fatalf("expected the 3 handled services of gw0 (a, b, e), got %v", names)
 	}
 }
 

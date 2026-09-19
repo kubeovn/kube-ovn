@@ -83,23 +83,22 @@ func (c *Controller) enqueueEndpointSliceService(key string, services ...*v1.Ser
 }
 
 func (c *Controller) enqueueAddEndpointSlice(obj any) {
-	if !c.config.EnableLb {
+	key := findServiceKey(obj.(*discoveryv1.EndpointSlice))
+	if key == "" {
+		return
+	}
+	// The nftable LB service feature consumes the EndpointSlice events too, and it works with
+	// --enable-lb=false, so its reconcile is enqueued before the OVN load balancer gate below.
+	c.enqueueNftableLbService(key)
+	if !c.config.EnableOvnLB {
 		return
 	}
 
-	key := findServiceKey(obj.(*discoveryv1.EndpointSlice))
-	if key != "" {
-		klog.V(3).Infof("enqueue add endpointSlice %s", key)
-		c.enqueueEndpointSliceService(key)
-		c.enqueueNftableLbService(key)
-	}
+	klog.V(3).Infof("enqueue add endpointSlice %s", key)
+	c.enqueueEndpointSliceService(key)
 }
 
 func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
-	if !c.config.EnableLb {
-		return
-	}
-
 	oldEndpointSlice := oldObj.(*discoveryv1.EndpointSlice)
 	newEndpointSlice := newObj.(*discoveryv1.EndpointSlice)
 	if oldEndpointSlice.ResourceVersion == newEndpointSlice.ResourceVersion {
@@ -127,21 +126,23 @@ func (c *Controller) enqueueUpdateEndpointSlice(oldObj, newObj any) {
 		return
 	}
 
+	// The feature's reconcile depends on the same fields, so it is enqueued after the churn
+	// filters above but before the OVN load balancer gate: it has to work with --enable-lb=false.
 	if oldKey != newKey {
 		c.enqueueNftableLbService(oldKey)
 	}
+	c.enqueueNftableLbService(newKey)
+	if !c.config.EnableOvnLB {
+		return
+	}
+
 	if newKey != "" {
 		klog.V(3).Infof("enqueue update endpointSlice for service %s", newKey)
 		c.enqueueEndpointSliceService(newKey)
-		c.enqueueNftableLbService(newKey)
 	}
 }
 
 func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
-	if !c.config.EnableLb {
-		return
-	}
-
 	var endpointSlice *discoveryv1.EndpointSlice
 	switch t := obj.(type) {
 	case *discoveryv1.EndpointSlice:
@@ -159,11 +160,17 @@ func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
 	}
 
 	key := findServiceKey(endpointSlice)
-	if key != "" {
-		klog.V(3).Infof("enqueue delete endpointSlice for service %s", key)
-		c.enqueueEndpointSliceService(key)
-		c.enqueueNftableLbService(key)
+	if key == "" {
+		return
 	}
+	// See enqueueAddEndpointSlice: the feature needs the event even without the OVN load balancer.
+	c.enqueueNftableLbService(key)
+	if !c.config.EnableOvnLB {
+		return
+	}
+
+	klog.V(3).Infof("enqueue delete endpointSlice for service %s", key)
+	c.enqueueEndpointSliceService(key)
 }
 
 type endpointSliceServiceProfile struct {
@@ -460,7 +467,7 @@ func (c *Controller) serviceScopedLBAttachments(vpcName string) ([]ovs.LoadBalan
 			continue
 		}
 		operation := ovsdb.MutateOperationDelete
-		if subnet.Spec.Vpc == vpcName && subnetEnablesServiceLB(subnet, c.config.EnableLb) {
+		if subnet.Spec.Vpc == vpcName && subnetEnablesServiceLB(subnet, c.config.EnableOvnLB) {
 			operation = ovsdb.MutateOperationInsert
 		}
 		attachments = append(attachments, ovs.LoadBalancerAttachment{

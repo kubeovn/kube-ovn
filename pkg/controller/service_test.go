@@ -6,10 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
@@ -205,15 +203,7 @@ func TestHandleDeleteServiceSkipsMissingFixedLoadBalancer(t *testing.T) {
 	fakeController, err := newFakeControllerWithOptions(t, nil)
 	require.NoError(t, err)
 	fakeController.fakeController.svcKeyMutex = keymutex.NewHashed(0)
-	fakeController.fakeController.config.EnableLb = true
-	fakeController.fakeController.config.EnableLbSvc = true
-
-	_, err = fakeController.fakeController.config.KubeClient.AppsV1().Deployments(svc.Namespace).Create(
-		context.Background(),
-		&appsv1.Deployment{Name: genLbSvcDpName(svc.Name), Namespace: svc.Namespace},
-		metav1.CreateOptions{},
-	)
-	require.NoError(t, err)
+	fakeController.fakeController.config.EnableOvnLB = true
 
 	vpcLB := fakeController.fakeController.GenVpcLoadBalancer("vpc1")
 	fakeController.mockOvnClient.EXPECT().LoadBalancerExists(vpcLB.TCPLoadBalancer).Return(false, nil)
@@ -226,22 +216,14 @@ func TestHandleDeleteServiceSkipsMissingFixedLoadBalancer(t *testing.T) {
 		Svc:      svc,
 	})
 	require.NoError(t, err)
-	_, err = fakeController.fakeController.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(
-		context.Background(), genLbSvcDpName(svc.Name), metav1.GetOptions{},
-	)
-	require.Error(t, err)
-	require.True(t, k8serrors.IsNotFound(err))
 }
 
-func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
+func Test_enqueueServiceUsesSelectedLoadBalancerMode(t *testing.T) {
 	t.Parallel()
 
-	newController := func(enableLb, enableLbSvc bool) *Controller {
+	newController := func(config *Configuration) *Controller {
 		return &Controller{
-			config: &Configuration{
-				EnableLb:    enableLb,
-				EnableLbSvc: enableLbSvc,
-			},
+			config:                        config,
 			addServiceQueue:               newTypedRateLimitingQueue[string]("AddService", nil),
 			deleteServiceQueue:            newTypedRateLimitingQueue[*vpcService]("DeleteService", nil),
 			updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
@@ -280,9 +262,9 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 		c.enqueueDeleteEndpointSlice(eps)
 	}
 
-	t.Run("EnableLb=false skips enqueueing", func(t *testing.T) {
+	t.Run("all disabled skips enqueueing", func(t *testing.T) {
 		t.Parallel()
-		c := newController(false, false)
+		c := newController(&Configuration{})
 		enqueueAll(c)
 		require.Zero(t, c.addServiceQueue.Len())
 		require.Zero(t, c.deleteServiceQueue.Len())
@@ -290,9 +272,9 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 		require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
 	})
 
-	t.Run("EnableLb=true enqueues", func(t *testing.T) {
+	t.Run("OVN mode enqueues only OVN work", func(t *testing.T) {
 		t.Parallel()
-		c := newController(true, false)
+		c := newController(&Configuration{EnableOvnLB: true})
 		enqueueAll(c)
 		require.Zero(t, c.addServiceQueue.Len())
 		require.Equal(t, 1, c.deleteServiceQueue.Len())
@@ -301,17 +283,26 @@ func Test_enqueueServiceGatedByEnableLb(t *testing.T) {
 		require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
 	})
 
-	t.Run("EnableLbSvc=true feeds addServiceQueue only when EnableLb is set", func(t *testing.T) {
+	t.Run("Pod mode enqueues only Pod LB work", func(t *testing.T) {
 		t.Parallel()
-		c := newController(true, true)
-		c.enqueueAddService(svc)
+		c := newController(&Configuration{EnablePodLbSvc: true})
+		enqueueAll(c)
 		require.Equal(t, 1, c.addServiceQueue.Len())
-		require.Equal(t, 1, c.addOrUpdateEndpointSliceQueue.Len())
+		require.Equal(t, 1, c.deleteServiceQueue.Len())
+		require.Equal(t, 1, c.updateServiceQueue.Len())
+		require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
+	})
 
-		// the add service worker is gated by EnableLb, so the producer must be too
-		c = newController(false, true)
-		c.enqueueAddService(svc)
+	t.Run("gateway mode enqueues only gateway work", func(t *testing.T) {
+		t.Parallel()
+		c := newController(&Configuration{EnableGwNftableLbSvc: true})
+		c.addOrUpdateNftableLbSvcQueue = newTypedRateLimitingQueue[string]("NftableLbService", nil)
+		t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)
+		enqueueAll(c)
 		require.Zero(t, c.addServiceQueue.Len())
+		require.Zero(t, c.deleteServiceQueue.Len())
+		require.Zero(t, c.updateServiceQueue.Len())
+		require.Equal(t, 1, c.addOrUpdateNftableLbSvcQueue.Len())
 		require.Zero(t, c.addOrUpdateEndpointSliceQueue.Len())
 	})
 }
@@ -321,7 +312,7 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 
 	newController := func() *Controller {
 		return &Controller{
-			config:             &Configuration{EnableLb: true},
+			config:             &Configuration{EnableOvnLB: true},
 			updateServiceQueue: newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		}
 	}
@@ -354,6 +345,17 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 			name: "status-only update is skipped",
 			mutate: func(svc *v1.Service) {
 				svc.Status.Conditions = []metav1.Condition{{Type: "Foo", Status: metav1.ConditionTrue}}
+			},
+			enqueued: false,
+		},
+		{
+			name: "managed ingress update skips the service worker",
+			mutateOld: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.NftableLbSvcManagedAnnotation: "true"}
+				svc.Status.LoadBalancer.Ingress = []v1.LoadBalancerIngress{{IP: "203.0.113.10"}}
+			},
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.NftableLbSvcManagedAnnotation: "true"}
 			},
 			enqueued: false,
 		},
@@ -393,11 +395,36 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 			enqueued: true,
 		},
 		{
+			// The nftable LB service feature is driven by these two annotations, so a change to
+			// them has to reconcile even when nothing else about the Service changed: that is all
+			// a ClusterIP Service does when it opts in or out.
+			name: "nftable lb gateway annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.VpcNatGatewaySvcAnnotation: "gw0"}
+			},
+			enqueued: true,
+		},
+		{
+			name: "nftable lb eip annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.EipAnnotation: "eip0"}
+			},
+			enqueued: true,
+		},
+		{
 			name: "cluster ip change is enqueued",
 			mutate: func(svc *v1.Service) {
 				svc.Spec.ClusterIP = "10.96.0.11"
 				svc.Spec.ClusterIPs = []string{"10.96.0.11"}
 			},
+			enqueued: true,
+		},
+		{
+			name: "removing the nftable lb gateway annotation is enqueued",
+			mutateOld: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{util.VpcNatGatewaySvcAnnotation: "gw0"}
+			},
+			mutate:   func(*v1.Service) {},
 			enqueued: true,
 		},
 		{
@@ -460,7 +487,7 @@ func TestEnqueueUpdateRuleServiceReconcilesEndpointSliceOnAttachmentChange(t *te
 			newSvc.ResourceVersion = "2"
 			newSvc.Annotations[annotation] = "new"
 			controller := &Controller{
-				config:                        &Configuration{EnableLb: true},
+				config:                        &Configuration{EnableOvnLB: true},
 				updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 				addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 			}
@@ -493,7 +520,7 @@ func TestEnqueueUpdateServiceReconcilesEndpointSliceOnExternalTrafficPolicyChang
 	newSvc.Spec.ExternalTrafficPolicy = v1.ServiceExternalTrafficPolicyTypeCluster
 
 	c := &Controller{
-		config:                        &Configuration{EnableLb: true},
+		config:                        &Configuration{EnableOvnLB: true},
 		updateServiceQueue:            newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 	}
@@ -515,7 +542,7 @@ func Test_enqueueUpdateEndpointSliceSkipsContentlessUpdates(t *testing.T) {
 
 	newController := func() *Controller {
 		return &Controller{
-			config:                        &Configuration{EnableLb: true},
+			config:                        &Configuration{EnableOvnLB: true},
 			addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
 		}
 	}
@@ -744,7 +771,7 @@ func TestHandleUpdateServiceScopedLoadBalancerAnnotatesExternalSubnet(t *testing
 	require.NoError(t, err)
 	ctrl := fakeCtrl.fakeController
 	ctrl.svcKeyMutex = keymutex.NewHashed(0)
-	ctrl.config.EnableLb = true
+	ctrl.config.EnableOvnLB = true
 
 	require.NoError(t, ctrl.handleUpdateService(&updateSvcObject{key: ns + "/" + svcName}))
 
@@ -773,7 +800,7 @@ func TestHandleUpdateServiceExternalTrafficPolicyChangeRequeuesEndpointReconcile
 	require.NoError(t, err)
 	ctrl := fakeCtrl.fakeController
 	ctrl.svcKeyMutex = keymutex.NewHashed(0)
-	ctrl.config.EnableLb = true
+	ctrl.config.EnableOvnLB = true
 	ctrl.addOrUpdateEndpointSliceQueue = newTypedRateLimitingQueue[string]("test-endpoint-slice-policy", nil)
 	ctrl.priorityEndpointSliceQueue = newTypedRateLimitingQueue[string]("test-priority-endpoint-slice-policy", nil)
 	t.Cleanup(ctrl.addOrUpdateEndpointSliceQueue.ShutDown)

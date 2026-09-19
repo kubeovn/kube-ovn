@@ -8,6 +8,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLoadBalancerModesAreMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		config  Configuration
+		wantErr bool
+	}{
+		{name: "all disabled"},
+		{name: "ovn", config: Configuration{EnableOvnLB: true}},
+		{name: "pod", config: Configuration{EnablePodLbSvc: true}},
+		{name: "gateway", config: Configuration{EnableGwNftableLbSvc: true}},
+		{name: "ovn and pod", config: Configuration{EnableOvnLB: true, EnablePodLbSvc: true}, wantErr: true},
+		{name: "ovn and gateway", config: Configuration{EnableOvnLB: true, EnableGwNftableLbSvc: true}, wantErr: true},
+		{name: "pod and gateway", config: Configuration{EnablePodLbSvc: true, EnableGwNftableLbSvc: true}, wantErr: true},
+		{name: "all enabled", config: Configuration{EnableOvnLB: true, EnablePodLbSvc: true, EnableGwNftableLbSvc: true}, wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.validateLoadBalancerMode()
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestLeaderElectionConfigurationFlags(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -181,7 +181,7 @@ func TestRuleScopedLoadBalancerAttachments(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fake.fakeController.config.EnableLb = true
+		fake.fakeController.config.EnableOvnLB = true
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-nil", ovsdb.MutateOperationInsert, "svc-lb").Return(nil)
 		fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("disabled", ovsdb.MutateOperationDelete, "svc-lb").Return(nil)
 		if err := fake.fakeController.reconcileServiceScopedLoadBalancerAttachments(util.DefaultVpc, "svc-lb"); err != nil {
@@ -998,7 +998,7 @@ func TestUpdateSubnetLoadBalancersIncludesScopedLoadBalancers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fake.fakeController.config.EnableLb = true
+	fake.fakeController.config.EnableOvnLB = true
 	vpc := &kubeovnv1.Vpc{
 		Name: util.DefaultVpc,
 		Status: kubeovnv1.VpcStatus{

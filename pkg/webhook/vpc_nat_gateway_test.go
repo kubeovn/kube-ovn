@@ -511,7 +511,7 @@ func TestValidateIptablesDnatProtocolCanonical(t *testing.T) {
 		"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"}},
 	}}}
 
-	for _, protocol := range []string{"TCP", "Udp", "SCTP"} {
+	for _, protocol := range []string{"TCP", "Udp"} {
 		dnat := &ovnv1.IptablesDnatRule{Spec: ovnv1.IptablesDnatRuleSpec{
 			EIP: "test-eip", ExternalPort: "80", InternalPort: "80", InternalIP: "10.0.0.10", Protocol: protocol,
 		}}
@@ -719,4 +719,166 @@ func TestIptablesDnatAffinityImmutableOnUpdate(t *testing.T) {
 	resp := v.iptablesDnatUpdateHook(context.Background(), req)
 	require.False(t, resp.Allowed)
 	require.Contains(t, resp.Result.Message, "sessionAffinity is immutable")
+}
+
+// TestValidateIptablesDnatClusterIPFlow pins the webhook contract of the two VIP flows: a rule
+// addresses exactly one VIP, and the ClusterIP flow needs its gateway spelled out because there is
+// no EIP to derive it from.
+func TestValidateIptablesDnatClusterIPFlow(t *testing.T) {
+	t.Parallel()
+
+	cache := &mockCache{objects: map[string]runtime.Object{
+		"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1", NatGwDp: "gw1"}},
+		"/gw0":      &ovnv1.VpcNatGateway{Name: "gw0"},
+		"/gw1":      &ovnv1.VpcNatGateway{Name: "gw1"},
+		"/gw-gone":  &ovnv1.VpcNatGateway{Name: "gw-gone"},
+	}}
+	v := &ValidatingHook{cache: cache}
+
+	base := func() *ovnv1.IptablesDnatRule {
+		return &ovnv1.IptablesDnatRule{
+			Name: "test-dnat",
+			Spec: ovnv1.IptablesDnatRuleSpec{
+				ExternalPort: "80", InternalPort: "8080",
+				InternalIP: "10.0.0.10", Protocol: "tcp",
+				Type: ovnv1.DnatRuleTypeShare,
+			},
+		}
+	}
+
+	tests := []struct {
+		name    string
+		mutate  func(d *ovnv1.IptablesDnatRule)
+		wantErr string
+	}{
+		{
+			name:   "clusterIP with an explicit gateway is accepted",
+			mutate: func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "10.96.1.5"; d.Spec.VpcNatGwDp = "gw0" },
+		},
+		{
+			name:    "clusterIP without a gateway is rejected",
+			mutate:  func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "10.96.1.5" },
+			wantErr: "vpcNatGwDp is required with clusterIP when there is no eip",
+		},
+		{
+			// A Service handled by the nftable LB service feature carries its ingress IP and its
+			// ClusterIP aligned on one rule, so both fields together is the normal case there.
+			name: "eip and clusterIP together are accepted",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.EIP = "test-eip"
+				d.Spec.ClusterIP = "10.96.1.5"
+			},
+		},
+		{
+			name: "clusterIP with a gateway that does not serve the eip is rejected",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.EIP = "test-eip"
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Spec.VpcNatGwDp = "gw0"
+			},
+			wantErr: "does not serve eip",
+		},
+		{
+			name:    "clusterIP with a missing gateway is rejected",
+			mutate:  func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "10.96.1.5"; d.Spec.VpcNatGwDp = "absent" },
+			wantErr: "not found",
+		},
+		{
+			name:    "clusterIP must be an IPv4 address",
+			mutate:  func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "fd00::1"; d.Spec.VpcNatGwDp = "gw0" },
+			wantErr: "must be an IPv4 address",
+		},
+		{
+			name: "clusterIP is not accepted on an exclusive rule",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Spec.VpcNatGwDp = "gw0"
+				d.Spec.Type = ""
+			},
+			wantErr: "clusterIP requires type=share",
+		},
+		{
+			name:    "neither eip nor clusterIP is rejected",
+			mutate:  func(*ovnv1.IptablesDnatRule) {},
+			wantErr: `"eip" or "clusterIP" cannot be empty`,
+		},
+		{
+			// An eip plus clusterIP rule derives its gateway from the eip, and spelling out that
+			// same gateway is accepted (it is how a Service-driven rule records its owner).
+			name: "vpcNatGwDp matching the eip gateway is accepted",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.EIP = "test-eip"
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Spec.VpcNatGwDp = "gw1"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dnat := base()
+			tt.mutate(dnat)
+			err := v.ValidateIptablesDnat(context.Background(), dnat)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+// TestValidateIptablesDnatRejectsCrossOwnerClusterIPIdentity pins that a rule carrying both an EIP
+// and a ClusterIP contributes two identities: two rules with different EIPs but the same internal
+// VIP and port still share one nft map, so they must belong to the same owner. Without this the
+// Service's ClusterIP traffic would reach the backends of a hand-managed rule.
+func TestValidateIptablesDnatRejectsCrossOwnerClusterIPIdentity(t *testing.T) {
+	t.Parallel()
+
+	svcRule := &ovnv1.IptablesDnatRule{
+		Name: "svc-rule",
+		Labels: map[string]string{
+			util.NftableLbSvcNsLabel: "default", util.NftableLbSvcNameLabel: "web",
+		},
+		Spec: ovnv1.IptablesDnatRuleSpec{
+			EIP: "eip-a", ClusterIP: "10.96.1.5", ExternalPort: "80", Protocol: "tcp",
+			InternalIP: "10.0.0.10", InternalPort: "8080", Type: ovnv1.DnatRuleTypeShare,
+		},
+	}
+	cache := &mockCache{
+		objects: map[string]runtime.Object{
+			"/test-eip":     &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"}},
+			"/test-eip-two": &ovnv1.IptablesEIP{Name: "test-eip-two", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.2"}},
+			"/gw0":          &ovnv1.VpcNatGateway{Name: "gw0"},
+		},
+		// The unlabelled conflict scan lists the existing rules from here.
+		dnatRules: []ovnv1.IptablesDnatRule{*svcRule},
+	}
+	v := &ValidatingHook{cache: cache}
+
+	// A hand-managed rule with another EIP but the same internal VIP: same nft map, other owner.
+	crossOwner := &ovnv1.IptablesDnatRule{
+		Name: "manual-rule",
+		Spec: ovnv1.IptablesDnatRuleSpec{
+			EIP: "test-eip-two", ClusterIP: "10.96.1.5", ExternalPort: "80", Protocol: "tcp",
+			InternalIP: "10.0.0.11", InternalPort: "8080", Type: ovnv1.DnatRuleTypeShare,
+		},
+	}
+	err := v.ValidateIptablesDnat(context.Background(), crossOwner)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already in use")
+
+	// The same shape with the same owner is the normal Service case and stays accepted.
+	sameOwner := crossOwner.DeepCopy()
+	sameOwner.Name = "svc-rule-2"
+	sameOwner.Labels = map[string]string{util.NftableLbSvcNsLabel: "default", util.NftableLbSvcNameLabel: "web"}
+	require.NoError(t, v.ValidateIptablesDnat(context.Background(), sameOwner))
+
+	// Another internal VIP with the other EIP shares nothing and stays accepted.
+	otherVip := crossOwner.DeepCopy()
+	otherVip.Name = "manual-rule-2"
+	otherVip.Spec.ClusterIP = "10.96.1.6"
+	require.NoError(t, v.ValidateIptablesDnat(context.Background(), otherVip))
 }
