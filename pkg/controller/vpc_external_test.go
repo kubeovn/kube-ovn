@@ -409,6 +409,10 @@ func TestHandleDeleteNodeNotifiesExternalVpcsForGatewayOnly(t *testing.T) {
 				"isLocalDnsCache": "true",
 			}, true).Return(nil, nil)
 			fake.mockOvnClient.EXPECT().DeletePortGroup(strings.ReplaceAll(util.NodeLspName(node.Name), "-", ".")).Return(nil)
+			fake.mockOvnClient.EXPECT().ListLogicalRouterPolicies(ctrl.config.ClusterRouter, util.NodeRouterPolicyPriority, map[string]string{
+				"vendor": util.CniTypeName,
+				"node":   node.Name,
+			}, false).Return(nil, nil)
 			fake.mockOvnClient.EXPECT().DeleteAddressSet(nodeUnderlayAddressSetName(node.Name, 4)).Return(nil)
 			fake.mockOvnClient.EXPECT().DeleteAddressSet(nodeUnderlayAddressSetName(node.Name, 6)).Return(nil)
 
