@@ -135,7 +135,7 @@ jobs:
               'kubevirt/cirros-container-disk-demo' || true
           done
 
-      - name: Add KubeVirt config digest aliases on every Kind node
+      - name: Add KubeVirt repository and config digest aliases on every Kind node
         run: |
           set -euo pipefail
           image="${KUBEVIRT_CONTAINERDISK_IMAGE}"
@@ -143,6 +143,21 @@ jobs:
           image_repository="${image_repository%:*}"
 
           for node in $(kind get nodes --name kube-ovn); do
+            repository_digest="$(
+              docker exec "${node}" crictl inspecti "${image}" |
+                jq -r '.status.repoDigests[]? // empty' |
+                sed -n 's/.*@\(sha256:[^"[:space:]]*\)$/\1/p' |
+                head -n 1
+            )"
+            test -n "${repository_digest}"
+            case "${repository_digest}" in
+              sha256:*) ;;
+              *)
+                echo "Unexpected repository digest for ${node}: ${repository_digest}" >&2
+                exit 1
+                ;;
+            esac
+
             config_digest="$(
               docker exec "${node}" crictl inspecti "${image}" |
                 jq -r '.status.id // .id // empty'
@@ -156,13 +171,19 @@ jobs:
                 ;;
             esac
 
-            alias="${image_repository}@${config_digest}"
-            echo "${node}: ${image} config digest=${config_digest} alias=${alias}"
-            docker exec "${node}" ctr -n k8s.io images tag \
-              --force "${image}" "${alias}"
+            for digest_kind in repository config; do
+              digest="${repository_digest}"
+              if [ "${digest_kind}" = config ]; then
+                digest="${config_digest}"
+              fi
+              alias="${image_repository}@${digest}"
+              echo "${node}: ${image} ${digest_kind} digest=${digest} alias=${alias}"
+              docker exec "${node}" ctr -n k8s.io images tag \
+                --force "${image}" "${alias}"
+            done
           done
 
-      - name: Verify KubeVirt config digest aliases on every Kind node
+      - name: Verify KubeVirt repository and config digest aliases on every Kind node
         run: |
           set -euo pipefail
           image="${KUBEVIRT_CONTAINERDISK_IMAGE}"
@@ -170,14 +191,26 @@ jobs:
           image_repository="${image_repository%:*}"
 
           for node in $(kind get nodes --name kube-ovn); do
+            repository_digest="$(
+              docker exec "${node}" crictl inspecti "${image}" |
+                jq -r '.status.repoDigests[]? // empty' |
+                sed -n 's/.*@\(sha256:[^"[:space:]]*\)$/\1/p' |
+                head -n 1
+            )"
             config_digest="$(
               docker exec "${node}" crictl inspecti "${image}" |
                 jq -r '.status.id // .id // empty'
             )"
-            alias="${image_repository}@${config_digest}"
-            echo "===== ${node}: ${alias} ====="
-            docker exec "${node}" ctr -n k8s.io images ls \
-              | awk -v alias="${alias}" '$1 == alias { found = 1; print } END { exit !found }'
+            for digest_kind in repository config; do
+              digest="${repository_digest}"
+              if [ "${digest_kind}" = config ]; then
+                digest="${config_digest}"
+              fi
+              alias="${image_repository}@${digest}"
+              echo "===== ${node}: ${digest_kind} ${alias} ====="
+              docker exec "${node}" ctr -n k8s.io images ls \
+                | awk -v alias="${alias}" '$1 == alias { found = 1; print } END { exit !found }'
+            done
           done
 
       - name: Start KubeVirt image watcher
