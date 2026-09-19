@@ -45,6 +45,7 @@ rules:
       - apps
     resources:
       - deployments
+      - statefulsets
     resourceNames:
       - ovn-central
     verbs:
@@ -149,6 +150,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: OVN_CENTRAL_KIND
+              value: {{ if or .Values.central.hcp.enabled .Values.central.dynamicPeers.enabled }}statefulset{{ else }}deployment{{ end }}
           command:
             - bash
             - -eo
