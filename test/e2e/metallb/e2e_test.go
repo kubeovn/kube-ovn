@@ -29,6 +29,7 @@ import (
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -37,9 +38,23 @@ import (
 )
 
 const (
-	dockerNetworkName = "kube-ovn-vlan"
-	curlListenPort    = 80
+	dockerNetworkName         = "kube-ovn-vlan"
+	localExternalVIPKeyPrefix = "kube-ovn.io/local-external-vip/"
+	curlListenPort            = 80
 )
+
+// Template load balancers were introduced in v1.17. The MetalLB helpers are
+// package-level functions, while the framework version is available in the
+// suite closure, so the suite records the assertion mode before each case.
+var templateVIPAssertionsEnabled = true
+
+type logicalFlow struct {
+	pipeline string
+	tableID  int
+	priority int
+	match    string
+	actions  string
+}
 
 type underlayTestEnvironment struct {
 	cidrV4          string
@@ -120,6 +135,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 
 	ginkgo.BeforeEach(func() {
 		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14.")
+		templateVIPAssertionsEnabled = !f.VersionPriorTo(1, 17)
 		cs = f.ClientSet
 		deployClient = f.DeploymentClient()
 		serviceClient = f.ServiceClient()
@@ -1182,6 +1198,10 @@ func waitServiceVIPNodeMarkers(lbName string, service *corev1.Service, vipNodes 
 
 func waitLoadBalancerVIPNodeMarker(lbName, vip, expectedNodeLSP string, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
+	if !templateVIPAssertionsEnabled {
+		waitLegacyLoadBalancerVIPNodeMarker(lbName, vip, expectedNodeLSP, timeout)
+		return
+	}
 
 	nodeName := nodeNameFromLSP(expectedNodeLSP)
 	description := fmt.Sprintf("template VIP %s on load balancer %s should be absent from all chassis", vip, lbName)
@@ -1198,6 +1218,48 @@ func waitLoadBalancerVIPNodeMarker(lbName, vip, expectedNodeLSP string, timeout 
 		}
 		return programmed, nil
 	}, description)
+}
+
+func waitLegacyLoadBalancerVIPNodeMarker(lbName, vip, expectedNodeLSP string, timeout time.Duration) {
+	ginkgo.GinkgoHelper()
+
+	key := localExternalVIPKeyPrefix + util.JoinHostPort(vip, curlListenPort)
+	description := fmt.Sprintf("load balancer %s external ID %s should be absent", lbName, key)
+	if expectedNodeLSP != "" {
+		description = fmt.Sprintf("load balancer %s external ID %s should equal %q", lbName, key, expectedNodeLSP)
+	}
+	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
+		exists, err := hasLoadBalancerExternalID(lbName, key, expectedNodeLSP)
+		if err != nil {
+			return false, nil
+		}
+		if expectedNodeLSP == "" {
+			return !exists, nil
+		}
+		return exists, nil
+	}, description)
+}
+
+func hasLoadBalancerExternalID(lbName, key, value string) (bool, error) {
+	condition := fmt.Sprintf(`'external_ids:"%s"!=[]'`, key)
+	if value != "" {
+		condition = fmt.Sprintf(`'external_ids:"%s"="%s"'`, key, value)
+	}
+	stdout, stderr, err := framework.NBExec(
+		"ovn-nbctl",
+		"--data=bare",
+		"--format=csv",
+		"--no-heading",
+		"--columns=_uuid",
+		"find",
+		"Load_Balancer",
+		"name="+lbName,
+		condition,
+	)
+	if err != nil {
+		return false, fmt.Errorf("finding load balancer %s external ID %s: %w, stderr: %s", lbName, key, err, stderr)
+	}
+	return strings.TrimSpace(string(stdout)) != "", nil
 }
 
 func waitLoadBalancerVIPBackendCount(lbName, vip string, port int32, expectedCount int, timeout time.Duration) {
@@ -1235,6 +1297,14 @@ func getLoadBalancerVIPBackends(lbName, vipKey string) (string, error) {
 
 func waitUnderlayVIPBypassLFlow(vip string, port int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
+	if !templateVIPAssertionsEnabled {
+		match := fmt.Sprintf("ct.new && ip4.dst == %s && tcp.dst == %d", vip, port)
+		waitLogicalFlowCount(1, timeout, "exactly one VIP bypass lflow should exist", func(flow logicalFlow) bool {
+			return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 139 &&
+				flow.match == match && flow.actions == "next;"
+		})
+		return
+	}
 
 	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
 		programmed, err := anyChassisHasTemplateVIP(vip)
@@ -1252,6 +1322,14 @@ func expectNoUnderlayVIPBypassLFlow(vip string, port int32) {
 
 func waitUnderlayVIPBypassLFlowCleaned(vip string, port int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
+	if !templateVIPAssertionsEnabled {
+		match := fmt.Sprintf("ct.new && ip4.dst == %s && tcp.dst == %d", vip, port)
+		waitLogicalFlowCount(0, timeout, "VIP bypass lflow should be absent", func(flow logicalFlow) bool {
+			return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 139 &&
+				flow.match == match && flow.actions == "next;"
+		})
+		return
+	}
 
 	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
 		programmed, err := anyChassisHasTemplateVIP(vip)
@@ -1262,13 +1340,38 @@ func waitUnderlayVIPBypassLFlowCleaned(vip string, port int32, timeout time.Dura
 	}, fmt.Sprintf("template VIP %s:%d should be absent from all chassis", vip, port))
 }
 
-func waitUnderlayVIPNodeLFlow(vip, vipNodeLSP string, _ int32, timeout time.Duration) {
+func waitUnderlayVIPNodeLFlow(vip, vipNodeLSP string, port int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
+	if !templateVIPAssertionsEnabled {
+		match := fmt.Sprintf(
+			"ct.new && ip4.dst == %s && tcp.dst == %d && is_chassis_resident(\"%s\")",
+			vip,
+			port,
+			vipNodeLSP,
+		)
+		waitLogicalFlowCount(1, timeout, "exactly one VIP DNAT lflow should be resident on the announcing node", func(flow logicalFlow) bool {
+			return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 140 &&
+				flow.match == match && strings.Contains(flow.actions, "ct_lb_mark")
+		})
+		return
+	}
 	waitLoadBalancerVIPNodeMarker("", vip, vipNodeLSP, timeout)
 }
 
 func waitUnderlayVIPNodeLFlowCleaned(vip, vipNodeLSP string, port int32, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
+	if !templateVIPAssertionsEnabled {
+		match := fmt.Sprintf(
+			"ct.new && ip4.dst == %s && tcp.dst == %d && is_chassis_resident(\"%s\")",
+			vip,
+			port,
+			vipNodeLSP,
+		)
+		waitLogicalFlowCount(0, timeout, "VIP DNAT lflow should be absent from the old announcing node", func(flow logicalFlow) bool {
+			return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 140 && flow.match == match
+		})
+		return
+	}
 
 	nodeName := nodeNameFromLSP(vipNodeLSP)
 	framework.WaitUntil(time.Second, timeout, func(_ context.Context) (bool, error) {
@@ -1306,6 +1409,25 @@ func waitUnderlayVIPBackendLFlowAbsent(backendPods []corev1.Pod, vipNode string,
 
 func waitUnderlayVIPBackendLFlow(backendPod corev1.Pod, vipNode string, expectedCount int, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
+	if !templateVIPAssertionsEnabled {
+		backendIP := podIPv4(backendPod)
+		backendMAC := backendPod.Annotations[util.MacAddressAnnotation]
+		framework.ExpectNotEmpty(backendMAC, "backend Pod %s has no MAC annotation", backendPod.Name)
+		backendLSP := ovs.PodNameToPortName(backendPod.Name, backendPod.Namespace, util.OvnProvider)
+		vipNodeLSP := util.NodeLspName(vipNode)
+		match := fmt.Sprintf(
+			"reg0[2] != 0 && ip4.dst == %s && is_chassis_resident(\"%s\")",
+			backendIP,
+			vipNodeLSP,
+		)
+		actions := fmt.Sprintf("eth.dst = %s; outport = \"%s\"; output;", backendMAC, backendLSP)
+		description := fmt.Sprintf("targeted backend lflow count for Pod %s on VIP node %s should be %d", backendPod.Name, vipNode, expectedCount)
+		waitLogicalFlowCount(expectedCount, timeout, description, func(flow logicalFlow) bool {
+			return flow.pipeline == "ingress" && flow.tableID == 28 && flow.priority == 55 &&
+				flow.match == match && flow.actions == actions
+		})
+		return
+	}
 
 	if expectedCount == 0 {
 		return
@@ -1330,12 +1452,130 @@ func waitUnderlayVIPBackendLFlow(backendPod corev1.Pod, vipNode string, expected
 
 func waitUnderlayVIPAffinityLFlow(vip, vipNodeLSP string, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
+	if !templateVIPAssertionsEnabled {
+		waitLogicalFlowCount(1, timeout, "session affinity lflow should be resident on the announcing node", func(flow logicalFlow) bool {
+			return isLegacyUnderlayVIPAffinityLFlow(flow, vip, vipNodeLSP)
+		})
+		return
+	}
 	waitUnderlayVIPNodeLFlow(vip, vipNodeLSP, curlListenPort, timeout)
 }
 
 func waitUnderlayVIPAffinityLFlowCleaned(vip, vipNodeLSP string, timeout time.Duration) {
 	ginkgo.GinkgoHelper()
+	if !templateVIPAssertionsEnabled {
+		waitLogicalFlowCount(0, timeout, "session affinity lflow should be absent from the old announcing node", func(flow logicalFlow) bool {
+			return isLegacyUnderlayVIPAffinityLFlow(flow, vip, vipNodeLSP)
+		})
+		return
+	}
 	waitUnderlayVIPNodeLFlowCleaned(vip, vipNodeLSP, curlListenPort, timeout)
+}
+
+func isLegacyUnderlayVIPAffinityLFlow(flow logicalFlow, vip, vipNodeLSP string) bool {
+	return flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority == 150 &&
+		strings.Contains(flow.match, fmt.Sprintf("ip4.dst == %s", vip)) &&
+		strings.Contains(flow.match, fmt.Sprintf("is_chassis_resident(\"%s\")", vipNodeLSP)) &&
+		strings.Contains(flow.actions, "ct_lb_mark")
+}
+
+func waitLogicalFlowCount(expectedCount int, timeout time.Duration, description string, match func(logicalFlow) bool) {
+	ginkgo.GinkgoHelper()
+
+	matched := 0
+	err := func() error {
+		deadline := time.Now().Add(timeout)
+		for {
+			flows, err := listLogicalFlows()
+			if err == nil {
+				matched = 0
+				for _, flow := range flows {
+					if match(flow) {
+						matched++
+					}
+				}
+				if matched == expectedCount {
+					return nil
+				}
+			}
+			if time.Now().After(deadline) {
+				if err != nil {
+					return err
+				}
+				framework.Logf("timed out waiting for %s: matched %d flows, expected %d; related logical flows:\n%s",
+					description, matched, expectedCount, dumpUnderlayVIPRelatedLFlows(flows))
+				return fmt.Errorf("timed out waiting for %s", description)
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+	framework.ExpectNoError(err)
+}
+
+// dumpUnderlayVIPRelatedLFlows prints the logical flows related to underlay VIP
+// load balancing (ingress LB table 13 with priority >= 130 and L2 lookup table 28
+// with priority 55) to ease diagnosis when a flow assertion times out.
+func dumpUnderlayVIPRelatedLFlows(flows []logicalFlow) string {
+	const maxDump = 100
+	var builder strings.Builder
+	count := 0
+	for _, flow := range flows {
+		related := (flow.pipeline == "ingress" && flow.tableID == 13 && flow.priority >= 130) ||
+			(flow.pipeline == "ingress" && flow.tableID == 28 && flow.priority == 55)
+		if !related {
+			continue
+		}
+		if count++; count > maxDump {
+			fmt.Fprintf(&builder, "... and more\n")
+			break
+		}
+		fmt.Fprintf(&builder, "table=%d priority=%d match=%q actions=%q\n", flow.tableID, flow.priority, flow.match, flow.actions)
+	}
+	if count == 0 {
+		return "(none found)\n"
+	}
+	return builder.String()
+}
+
+func listLogicalFlows() ([]logicalFlow, error) {
+	output, err := exec.Command(
+		"kubectl", "ko", "sbctl",
+		"--format=csv",
+		"--data=bare",
+		"--no-heading",
+		"--columns=pipeline,table_id,priority,match,actions",
+		"find", "Logical_Flow",
+	).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("listing OVN logical flows: %w, output: %s", err, output)
+	}
+
+	records, err := csv.NewReader(strings.NewReader(string(output))).ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("parsing OVN logical flows: %w", err)
+	}
+	flows := make([]logicalFlow, 0, len(records))
+	for _, record := range records {
+		if len(record) != 5 {
+			return nil, fmt.Errorf("unexpected logical flow record with %d columns: %q", len(record), record)
+		}
+		tableID, err := strconv.Atoi(record[1])
+		if err != nil {
+			return nil, fmt.Errorf("parsing logical flow table ID %q: %w", record[1], err)
+		}
+		priority, err := strconv.Atoi(record[2])
+		if err != nil {
+			return nil, fmt.Errorf("parsing logical flow priority %q: %w", record[2], err)
+		}
+		flows = append(flows, logicalFlow{
+			pipeline: record[0],
+			tableID:  tableID,
+			priority: priority,
+			match:    record[3],
+			actions:  record[4],
+		})
+	}
+	return flows, nil
 }
 
 func nodeNameFromLSP(lsp string) string {
@@ -1761,10 +2001,11 @@ func serviceExternalLoadBalancerName(f *framework.Framework, service *corev1.Ser
 
 func serviceExternalLoadBalancerNameForVIP(f *framework.Framework, service *corev1.Service, protocol corev1.Protocol, vip string) string {
 	ginkgo.GinkgoHelper()
-	name := fmt.Sprintf("service:%s/%s:%s:external", service.Namespace, service.Name, strings.ToLower(string(protocol)))
 	if f.VersionPriorTo(1, 17) {
-		return name
+		return legacyServiceExternalLoadBalancerName(f, service, protocol)
 	}
+
+	name := fmt.Sprintf("service:%s/%s:%s:external", service.Namespace, service.Name, strings.ToLower(string(protocol)))
 	family := strings.ToLower(util.CheckProtocol(vip))
 	if family == "" {
 		for _, ingress := range service.Status.LoadBalancer.Ingress {
@@ -1786,6 +2027,34 @@ func serviceExternalLoadBalancerNameForVIP(f *framework.Framework, service *core
 		return name
 	}
 	return name + ":" + family
+}
+
+func legacyServiceExternalLoadBalancerName(f *framework.Framework, service *corev1.Service, protocol corev1.Protocol) string {
+	vpc := f.VpcClient().Get(util.DefaultVpc)
+	sessionAffinity := service.Spec.SessionAffinity == corev1.ServiceAffinityClientIP
+	var name string
+	switch protocol {
+	case corev1.ProtocolTCP:
+		if sessionAffinity {
+			name = vpc.Status.TCPSessionLoadBalancer
+		} else {
+			name = vpc.Status.TCPLoadBalancer
+		}
+	case corev1.ProtocolUDP:
+		if sessionAffinity {
+			name = vpc.Status.UDPSessionLoadBalancer
+		} else {
+			name = vpc.Status.UDPLoadBalancer
+		}
+	case corev1.ProtocolSCTP:
+		if sessionAffinity {
+			name = vpc.Status.SctpSessionLoadBalancer
+		} else {
+			name = vpc.Status.SctpLoadBalancer
+		}
+	}
+	framework.ExpectNotEmpty(name, "default VPC load balancer should be set for protocol %s", protocol)
+	return name
 }
 
 func waitVIPNodeFromService(f *framework.Framework, serviceName, expectedNode string, timeout time.Duration) {
