@@ -285,6 +285,11 @@ func (c *Controller) handleUpdateIP(key string) error {
 			}
 		}
 		podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
+		if cachedIP.Spec.Namespace == "" && portName == util.NodeLspName(cachedIP.Spec.NodeName) {
+			// a node address is allocated under its port name, not a pod key: releasing it under
+			// another key frees the address but leaves the node's entry behind with a nil address
+			podKey = portName
+		}
 		klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
 		c.ipam.ReleaseAddressByNic(podKey, portName, cachedIP.Spec.Subnet)
 		if err = c.handleDelIPFinalizer(cachedIP); err != nil {

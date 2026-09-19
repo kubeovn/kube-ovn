@@ -120,3 +120,16 @@ func TestHandleDeleteNodeRemovesPolicyWhenIPIsReleasedFirst(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleUpdateIPReleasesNodeAddressWithNodeKey(t *testing.T) {
+	fc, node, _ := nodeWithJoinPolicy(t)
+	ctrl := fc.fakeController
+	portName := util.NodeLspName(node.Name)
+	require.Len(t, ctrl.ipam.GetPodAddress(portName), 1)
+
+	require.NoError(t, ctrl.handleUpdateIP(portName))
+
+	// node addresses are allocated under the port name; releasing under another key left the
+	// entry behind with a nil address, which reads back as the nexthop "<nil>"
+	require.Empty(t, ctrl.ipam.GetPodAddress(portName))
+}
