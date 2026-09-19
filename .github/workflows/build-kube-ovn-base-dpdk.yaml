@@ -31,7 +31,7 @@ jobs:
           - release-1.14
           - release-1.13
     name: Build AMD64
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
@@ -71,7 +71,7 @@ jobs:
     needs:
       - build-amd64
     name: push
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
