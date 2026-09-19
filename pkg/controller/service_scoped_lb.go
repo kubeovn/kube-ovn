@@ -119,12 +119,11 @@ func setServiceScopedLBOwner(svc *v1.Service, kind, name, uid string) {
 		return
 	}
 	desired := metav1.OwnerReference{
-		APIVersion:         kubeovnv1.SchemeGroupVersion.String(),
-		Kind:               ownerKind,
-		Name:               name,
-		UID:                types.UID(uid),
-		Controller:         new(true),
-		BlockOwnerDeletion: new(true),
+		APIVersion: kubeovnv1.SchemeGroupVersion.String(),
+		Kind:       ownerKind,
+		Name:       name,
+		UID:        types.UID(uid),
+		Controller: new(true),
 	}
 	refs := slices.Clone(svc.OwnerReferences)
 	index := slices.IndexFunc(refs, func(ref metav1.OwnerReference) bool {

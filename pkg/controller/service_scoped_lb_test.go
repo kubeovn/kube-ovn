@@ -202,6 +202,9 @@ func TestServiceScopedLBOwnerAcceptsGeneratedRuleService(t *testing.T) {
 			if ref == nil || ref.Name != tt.name || string(ref.UID) != "rule-uid" {
 				t.Fatalf("generated rule Service controller = %#v", ref)
 			}
+			if ref.BlockOwnerDeletion != nil {
+				t.Fatalf("generated rule Service must not require owner finalizer permission, got BlockOwnerDeletion=%t", *ref.BlockOwnerDeletion)
+			}
 
 			owner := serviceScopedLBOwner(svc)
 			if owner.kind != tt.kind || owner.name != tt.name || owner.uid != "rule-uid" {
