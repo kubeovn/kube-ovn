@@ -139,6 +139,8 @@ jobs:
         run: |
           set -euo pipefail
           image="${KUBEVIRT_CONTAINERDISK_IMAGE}"
+          image_repository="${image%%@*}"
+          image_repository="${image_repository%:*}"
 
           for node in $(kind get nodes --name kube-ovn); do
             config_digest="$(
@@ -154,7 +156,7 @@ jobs:
                 ;;
             esac
 
-            alias="${image%@*}@${config_digest}"
+            alias="${image_repository}@${config_digest}"
             echo "${node}: ${image} config digest=${config_digest} alias=${alias}"
             docker exec "${node}" ctr -n k8s.io images tag \
               --force "${image}" "${alias}"
@@ -164,13 +166,15 @@ jobs:
         run: |
           set -euo pipefail
           image="${KUBEVIRT_CONTAINERDISK_IMAGE}"
+          image_repository="${image%%@*}"
+          image_repository="${image_repository%:*}"
 
           for node in $(kind get nodes --name kube-ovn); do
             config_digest="$(
               docker exec "${node}" crictl inspecti "${image}" |
                 jq -r '.status.id // .id // empty'
             )"
-            alias="${image%@*}@${config_digest}"
+            alias="${image_repository}@${config_digest}"
             echo "===== ${node}: ${alias} ====="
             docker exec "${node}" ctr -n k8s.io images ls \
               | awk -v alias="${alias}" '$1 == alias { found = 1; print } END { exit !found }'
