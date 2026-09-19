@@ -3232,6 +3232,21 @@ func (mr *MockLogicalRouterPolicyMockRecorder) DeleteLogicalRouterPolicyByUUID(l
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicyByUUID", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).DeleteLogicalRouterPolicyByUUID), lrName, uuid)
 }
 
+// DeleteLogicalRouterPolicyIfUnchanged mocks base method.
+func (m *MockLogicalRouterPolicy) DeleteLogicalRouterPolicyIfUnchanged(lrName string, observed *ovnnb.LogicalRouterPolicy) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLogicalRouterPolicyIfUnchanged", lrName, observed)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteLogicalRouterPolicyIfUnchanged indicates an expected call of DeleteLogicalRouterPolicyIfUnchanged.
+func (mr *MockLogicalRouterPolicyMockRecorder) DeleteLogicalRouterPolicyIfUnchanged(lrName, observed any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicyIfUnchanged", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).DeleteLogicalRouterPolicyIfUnchanged), lrName, observed)
+}
+
 // GetLogicalRouterPoliciesByExtID mocks base method.
 func (m *MockLogicalRouterPolicy) GetLogicalRouterPoliciesByExtID(lrName, key, value string) ([]*ovnnb.LogicalRouterPolicy, error) {
 	m.ctrl.T.Helper()
@@ -4575,6 +4590,21 @@ func (m *MockNbClient) DeleteLogicalRouterPolicyByUUID(lrName, uuid string) erro
 func (mr *MockNbClientMockRecorder) DeleteLogicalRouterPolicyByUUID(lrName, uuid any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicyByUUID", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalRouterPolicyByUUID), lrName, uuid)
+}
+
+// DeleteLogicalRouterPolicyIfUnchanged mocks base method.
+func (m *MockNbClient) DeleteLogicalRouterPolicyIfUnchanged(lrName string, observed *ovnnb.LogicalRouterPolicy) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLogicalRouterPolicyIfUnchanged", lrName, observed)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteLogicalRouterPolicyIfUnchanged indicates an expected call of DeleteLogicalRouterPolicyIfUnchanged.
+func (mr *MockNbClientMockRecorder) DeleteLogicalRouterPolicyIfUnchanged(lrName, observed any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicyIfUnchanged", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalRouterPolicyIfUnchanged), lrName, observed)
 }
 
 // DeleteLogicalRouterPort mocks base method.

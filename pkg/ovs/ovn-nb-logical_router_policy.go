@@ -73,14 +73,42 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 			return err
 		}
 
-		if err = c.Transact("lr-policy-update", ops); err != nil {
+		updated, err := c.transactCount(ops)
+		if err != nil {
 			err := fmt.Errorf("failed to update logical router policy: %w", err)
 			klog.Error(err)
 			return err
 		}
+		if updated == 0 {
+			// the policy was deleted after it was listed, e.g. by gc: create it instead of reporting success with none installed
+			klog.Infof("lr policy %s is gone, creating it with priority = %d, match = %q, action = %q, nextHops = %q", policyFound.UUID, priority, match, action, nextHops)
+			policy := c.newLogicalRouterPolicy(priority, match, action, nextHops, bfdSessions, externalIDs)
+			if err := c.CreateLogicalRouterPolicies(lrName, policy); err != nil {
+				klog.Error(err)
+				return fmt.Errorf("add policy to logical router %s: %w", lrName, err)
+			}
+		}
 	}
 
 	return nil
+}
+
+// transactCount runs the operations and returns how many rows they affected. Transact does not expose it.
+func (c *OVNNbClient) transactCount(ops []ovsdb.Operation) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	results, err := c.Client.Transact(ctx, ops...)
+	if err != nil {
+		return 0, err
+	}
+	if opErrors, err := ovsdb.CheckOperationResults(results, ops); err != nil {
+		return 0, fmt.Errorf("%w: operation errors %+v", err, opErrors)
+	}
+	count := 0
+	for _, result := range results {
+		count += result.Count
+	}
+	return count, nil
 }
 
 // BatchAddLogicalRouterPolicy  batch add a policy route to logical router
@@ -254,6 +282,54 @@ func (c *OVNNbClient) DeleteLogicalRouterPolicies(lrName string, priority int, e
 		return fmt.Errorf("delete logical router policy %v from logical router %s: %w", policiesUUIDs, lrName, err)
 	}
 	return nil
+}
+
+// DeleteLogicalRouterPolicyIfUnchanged deletes the observed policy only if its external IDs are still the observed ones.
+// The check and the delete share one transaction, so a policy replaced or relabelled since it was
+// listed is left alone. It returns false when nothing was deleted.
+func (c *OVNNbClient) DeleteLogicalRouterPolicyIfUnchanged(lrName string, observed *ovnnb.LogicalRouterPolicy) (bool, error) {
+	externalIDs, err := ovsdb.NewOvsMap(observed.ExternalIDs)
+	if err != nil {
+		klog.Error(err)
+		return false, fmt.Errorf("convert external ids of policy %s: %w", observed.UUID, err)
+	}
+	timeout := 0
+	wait := ovsdb.Operation{
+		Op:      ovsdb.OperationWait,
+		Table:   ovnnb.LogicalRouterPolicyTable,
+		Timeout: &timeout,
+		Where:   []ovsdb.Condition{{Column: "_uuid", Function: ovsdb.ConditionEqual, Value: ovsdb.UUID{GoUUID: observed.UUID}}},
+		Columns: []string{"external_ids"},
+		Until:   string(ovsdb.WaitConditionEqual),
+		Rows:    []ovsdb.Row{{"external_ids": externalIDs}},
+	}
+
+	ops, err := c.LogicalRouterUpdatePolicyOp(lrName, []string{observed.UUID}, ovsdb.MutateOperationDelete)
+	if err != nil {
+		klog.Error(err)
+		return false, fmt.Errorf("generate operations for removing policy '%s' from logical router %s: %w", observed.UUID, lrName, err)
+	}
+	ops = append([]ovsdb.Operation{wait}, ops...)
+
+	// Transact hides the per-operation errors, and a failed wait is an expected outcome here
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	results, err := c.Client.Transact(ctx, ops...)
+	if err != nil {
+		klog.Error(err)
+		return false, fmt.Errorf("delete logical router policy '%s' from logical router %s: %w", observed.UUID, lrName, err)
+	}
+	opErrors, err := ovsdb.CheckOperationResults(results, ops)
+	if err != nil {
+		var timedOut *ovsdb.TimedOut
+		if len(opErrors) != 0 && errors.As(opErrors[0], &timedOut) {
+			klog.Infof("logical router policy %s changed since it was listed, skip deleting it", observed.UUID)
+			return false, nil
+		}
+		klog.Errorf("failed to delete logical router policy %s: %v, operation errors %+v", observed.UUID, err, opErrors)
+		return false, fmt.Errorf("delete logical router policy '%s' from logical router %s: %w", observed.UUID, lrName, err)
+	}
+	return true, nil
 }
 
 func (c *OVNNbClient) DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error {

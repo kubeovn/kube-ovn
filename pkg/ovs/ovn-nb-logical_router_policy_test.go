@@ -1,9 +1,12 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
+	"github.com/ovn-kubernetes/libovsdb/client"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -953,4 +956,123 @@ func (suite *OvnClientTestSuite) testBatchDeleteLogicalRouterPolicyByUUID() {
 		err = nbClient.BatchDeleteLogicalRouterPolicyByUUID(lrName, uuidList...)
 		require.NoError(t, err)
 	})
+}
+
+func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicyIfUnchanged() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-del-policy-if-unchanged-lr"
+	priority := 30000
+	action := ovnnb.LogicalRouterPolicyActionReroute
+	nextHops := []string{"100.64.0.2"}
+
+	require.NoError(t, nbClient.CreateLogicalRouter(lrName))
+
+	observe := func(match string, externalIDs map[string]string) *ovnnb.LogicalRouterPolicy {
+		require.NoError(t, nbClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil, externalIDs))
+		policyList, err := nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.NoError(t, err)
+		require.Len(t, policyList, 1)
+		return policyList[0]
+	}
+
+	t.Run("deletes the policy when it is still the observed one", func(t *testing.T) {
+		match := "ip4.dst == 10.0.0.1"
+		observed := observe(match, map[string]string{"vendor": "kube-ovn", "node": "old-node"})
+
+		deleted, err := nbClient.DeleteLogicalRouterPolicyIfUnchanged(lrName, observed)
+		require.NoError(t, err)
+		require.True(t, deleted)
+
+		_, err = nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.ErrorContains(t, err, "not found policy")
+	})
+
+	t.Run("keeps the policy when another node took it over after it was observed", func(t *testing.T) {
+		match := "ip4.dst == 10.0.0.2"
+		observed := observe(match, map[string]string{"vendor": "kube-ovn", "node": "old-node"})
+
+		// a new node reuses the IP and the join IP: same row, relabelled in place
+		require.NoError(t, nbClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil, map[string]string{"vendor": "kube-ovn", "node": "new-node"}))
+
+		deleted, err := nbClient.DeleteLogicalRouterPolicyIfUnchanged(lrName, observed)
+		require.NoError(t, err)
+		require.False(t, deleted)
+
+		policyList, err := nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+		require.NoError(t, err)
+		require.Len(t, policyList, 1)
+		require.Equal(t, observed.UUID, policyList[0].UUID)
+		require.Equal(t, "new-node", policyList[0].ExternalIDs["node"])
+	})
+
+	t.Run("no err when the observed policy is already gone", func(t *testing.T) {
+		match := "ip4.dst == 10.0.0.3"
+		observed := observe(match, map[string]string{"vendor": "kube-ovn", "node": "old-node"})
+		require.NoError(t, nbClient.DeleteLogicalRouterPolicyByUUID(lrName, observed.UUID))
+
+		deleted, err := nbClient.DeleteLogicalRouterPolicyIfUnchanged(lrName, observed)
+		require.NoError(t, err)
+		require.False(t, deleted)
+	})
+}
+
+// beforePolicyUpdateClient runs a hook right before the first update of a logical router policy,
+// which is after AddLogicalRouterPolicy has read the row it is about to relabel.
+type beforePolicyUpdateClient struct {
+	client.Client
+	beforeUpdate func()
+}
+
+func (c *beforePolicyUpdateClient) Transact(ctx context.Context, ops ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	for _, op := range ops {
+		if op.Op == ovsdb.OperationUpdate && op.Table == ovnnb.LogicalRouterPolicyTable && c.beforeUpdate != nil {
+			before := c.beforeUpdate
+			c.beforeUpdate = nil
+			before()
+			break
+		}
+	}
+	return c.Client.Transact(ctx, ops...)
+}
+
+func (suite *OvnClientTestSuite) testAddLogicalRouterPolicyRecreatesVanishedPolicy() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lrName := "test-add-policy-vanished-lr"
+	priority := 30000
+	match := "ip4.dst == 10.0.0.9"
+	action := ovnnb.LogicalRouterPolicyActionReroute
+	nextHops := []string{"100.64.0.2"}
+
+	require.NoError(t, nbClient.CreateLogicalRouter(lrName))
+	require.NoError(t, nbClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil, map[string]string{"vendor": "kube-ovn", "node": "old-node"}))
+	policyList, err := nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+	require.NoError(t, err)
+	require.Len(t, policyList, 1)
+	observed := policyList[0]
+
+	// gc deletes the policy after the new node read it and before the new node relabels it
+	gcRan := false
+	takeover := &OVNNbClient{
+		Client: &beforePolicyUpdateClient{Client: nbClient.Client, beforeUpdate: func() {
+			gcRan = true
+			deleted, err := nbClient.DeleteLogicalRouterPolicyIfUnchanged(lrName, observed)
+			require.NoError(t, err)
+			require.True(t, deleted)
+		}},
+		Timeout: nbClient.Timeout,
+	}
+	require.NoError(t, takeover.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil, map[string]string{"vendor": "kube-ovn", "node": "new-node"}))
+	require.True(t, gcRan)
+
+	policyList, err = nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
+	require.NoError(t, err)
+	require.Len(t, policyList, 1)
+	require.Equal(t, "new-node", policyList[0].ExternalIDs["node"])
+	require.Equal(t, nextHops, policyList[0].Nexthops)
 }
