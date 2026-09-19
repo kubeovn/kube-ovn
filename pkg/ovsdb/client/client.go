@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -70,15 +71,24 @@ func monitorWithTimeout(c initialMonitorClient, monitors []client.MonitorOption,
 	return err
 }
 
+func monitorBackendWithTimeout(c table.Backend, monitors []table.MonitorOption, timeout time.Duration) error {
+	monitor := c.NewMonitor(monitors...)
+	monitor.Method = ovsdb.ConditionalMonitorRPC
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	_, err := c.Monitor(ctx, monitor)
+	return err
+}
+
 // NewOvsDbClient creates a new ovsdb client
 func NewOvsDbClient(
 	db string,
 	addr string,
 	dbModel model.ClientDBModel,
-	monitors []client.MonitorOption,
+	monitors []table.MonitorOption,
 	ovsDbConTimeout int,
 	ovsDbInactivityTimeout int,
-) (client.Client, error) {
+) (table.Backend, error) {
 	klog.Infof("creating ovsdb client for %s database at %s", db, addr)
 
 	var ssl bool
@@ -135,17 +145,18 @@ func NewOvsDbClient(
 		klog.Errorf("failed to connect to %s database server %s: %v", db, addr, err)
 		return nil, err
 	}
+	backend := table.Wrap(c)
 
 	if len(monitors) != 0 {
 		klog.Infof("setting up monitors for %s database on server %s", db, addr)
-		if err = monitorWithTimeout(c, monitors, connectTimeout); err != nil {
-			c.Close()
+		if err = monitorBackendWithTimeout(backend, monitors, connectTimeout); err != nil {
+			backend.Close()
 			klog.Errorf("failed to monitor database on %s server %s: %v", db, addr, err)
 			return nil, err
 		}
 	}
 
-	return c, nil
+	return backend, nil
 }
 
 func newKubeOVNTLSConfig() (*tls.Config, error) {

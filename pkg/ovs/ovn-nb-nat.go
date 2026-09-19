@@ -1,15 +1,11 @@
 package ovs
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"maps"
 
-	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -33,13 +29,7 @@ func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac,
 	}
 
 	nat, err := c.newNat(lrName, natType, externalIP, logicalIP, logicalMac, port, func(nat *ovnnb.NAT) {
-		if len(options) == 0 {
-			return
-		}
-		if len(nat.Options) == 0 {
-			nat.Options = make(map[string]string, len(options))
-		}
-		maps.Copy(nat.Options, options)
+		copyStringMapInto(&nat.Options, options)
 	})
 	if err != nil {
 		klog.Errorf("failed to new nat: %v", err)
@@ -54,9 +44,7 @@ func (c *OVNNbClient) AddNat(lrName, natType, externalIP, logicalIP, logicalMac,
 // Create. This avoids libovsdb cache staleness. We bypass newNat to skip
 // the stale "found, ignore".
 func (c *OVNNbClient) addOrUpdateDnatAndSnat(lrName, externalIP, logicalIP, logicalMac, port string, options map[string]string) error {
-	if externalIP == "" {
-		err := fmt.Errorf("external ip is required when nat type is %s", ovnnb.NATTypeDNATAndSNAT)
-		klog.Error(err)
+	if err := requireValue(externalIP, fmt.Errorf("external ip is required when nat type is %s", ovnnb.NATTypeDNATAndSNAT)); err != nil {
 		return err
 	}
 
@@ -79,10 +67,7 @@ func (c *OVNNbClient) addOrUpdateDnatAndSnat(lrName, externalIP, logicalIP, logi
 	if port != "" {
 		nat.LogicalPort = &port
 	}
-	if len(options) > 0 {
-		nat.Options = make(map[string]string, len(options))
-		maps.Copy(nat.Options, options)
-	}
+	copyStringMapInto(&nat.Options, options)
 
 	klog.V(2).Infof("installing dnat_and_snat external_ip=%s logical_ip=%s logical_port=%s",
 		externalIP, logicalIP, port)
@@ -93,62 +78,32 @@ func (c *OVNNbClient) addOrUpdateDnatAndSnat(lrName, externalIP, logicalIP, logi
 func (c *OVNNbClient) CreateNats(lrName string, nats ...*ovnnb.NAT) error {
 	if len(nats) == 0 {
 		err := errors.New("nats is empty")
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
-
-	models := make([]model.Model, 0, len(nats))
-	natUUIDs := make([]string, 0, len(nats))
-	for _, nat := range nats {
-		if nat != nil {
-			models = append(models, model.Model(nat))
-			natUUIDs = append(natUUIDs, nat.UUID)
-		}
-	}
-
-	createNatsOp, err := c.Create(models...)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("generate operations for creating nats: %w", err)
-	}
-
-	natAddOp, err := c.LogicalRouterUpdateNatOp(lrName, natUUIDs, ovsdb.MutateOperationInsert)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("generate operations for adding nats to logical router %s: %w", lrName, err)
-	}
-
-	ops := make([]ovsdb.Operation, 0, len(createNatsOp)+len(natAddOp))
-	ops = append(ops, createNatsOp...)
-	ops = append(ops, natAddOp...)
-
-	if err = c.Transact("lr-nats-add", ops); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("add nats to %s: %w", lrName, err)
-	}
-
-	return nil
+	models, uuids := modelsAndUUIDs(nats, func(nat *ovnnb.NAT) string { return nat.UUID })
+	ops, err := createAndAttachOps(c, &ovnnb.NAT{}, models, func(ids []string) ([]ovsdb.Operation, error) {
+		return c.LogicalRouterUpdateNatOp(lrName, ids, ovsdb.MutateOperationInsert)
+	}, uuids)
+	return c.transactGenerated("lr-nats-add", ops, err,
+		wrapErr("generate operations for adding nats to logical router %s: %w", lrName),
+		wrapErr("add nats to %s: %w", lrName),
+	)
 }
 
 // EnsureSnat ensures a SNAT rule exists for the given (externalIP, logicalIP) pair.
 // If the rule already exists, it is a no-op; otherwise a new rule is created.
 func (c *OVNNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
-	if externalIP == "" {
-		err := errors.New("snat external ip is required")
-		klog.Error(err)
+	if err := requireName(externalIP, "snat external ip is required"); err != nil {
 		return err
 	}
-	if logicalIP == "" {
-		err := errors.New("snat logical ip is required")
-		klog.Error(err)
+	if err := requireName(logicalIP, "snat logical ip is required"); err != nil {
 		return err
 	}
 
 	natType := ovnnb.NATTypeSNAT
 	nat, err := c.GetNat(lrName, natType, externalIP, logicalIP, true)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 
 	// nat already exists with the correct external_ip, nothing to update
@@ -158,13 +113,11 @@ func (c *OVNNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
 
 	/* create nat */
 	if nat, err = c.newNat(lrName, natType, externalIP, logicalIP, "", ""); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("new logical router %s nat 'type %s external ip %s logical ip %s': %w", lrName, natType, externalIP, logicalIP, err)
+		return logWrap(err, wrapErr("new logical router %s nat 'type %s external ip %s logical ip %s': %w", lrName, natType, externalIP, logicalIP))
 	}
 
 	if err := c.CreateNats(lrName, nat); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("add nat 'type %s external ip %s logical ip %s' to logical router %s: %w", natType, externalIP, logicalIP, lrName, err)
+		return logWrap(err, wrapErr("add nat 'type %s external ip %s logical ip %s' to logical router %s: %w", natType, externalIP, logicalIP, lrName))
 	}
 
 	return nil
@@ -172,22 +125,17 @@ func (c *OVNNbClient) EnsureSnat(lrName, externalIP, logicalIP string) error {
 
 // UpdateDnatAndSnat update dnat_and_snat rule
 func (c *OVNNbClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, externalMac, gatewayType string) error {
-	if externalIP == "" {
-		err := errors.New("nat external ip is required")
-		klog.Error(err)
+	if err := requireName(externalIP, "nat external ip is required"); err != nil {
 		return err
 	}
-	if logicalIP == "" {
-		err := errors.New("nat logical ip is required")
-		klog.Error(err)
+	if err := requireName(logicalIP, "nat logical ip is required"); err != nil {
 		return err
 	}
 	natType := ovnnb.NATTypeDNATAndSNAT
 
 	nat, err := c.GetNat(lrName, natType, externalIP, "", true)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 
 	// update logical port and external mac when nat exists
@@ -215,13 +163,11 @@ func (c *OVNNbClient) UpdateDnatAndSnat(lrName, externalIP, logicalIP, lspName, 
 
 	/* create nat */
 	if nat, err = c.newNat(lrName, natType, externalIP, logicalIP, "", "", options); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("new logical router %s nat 'type %s external ip %s logical ip %s logical port %s external mac %s': %w", lrName, natType, externalIP, logicalIP, lspName, externalMac, err)
+		return logWrap(err, wrapErr("new logical router %s nat 'type %s external ip %s logical ip %s logical port %s external mac %s': %w", lrName, natType, externalIP, logicalIP, lspName, externalMac))
 	}
 
 	if err := c.CreateNats(lrName, nat); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("add nat 'type %s external ip %s logical ip %s logical port %s external mac %s' to logical router %s: %w", natType, externalIP, logicalIP, lspName, externalMac, lrName, err)
+		return logWrap(err, wrapErr("add nat 'type %s external ip %s logical ip %s logical port %s external mac %s' to logical router %s: %w", natType, externalIP, logicalIP, lspName, externalMac, lrName))
 	}
 
 	return nil
@@ -233,53 +179,25 @@ func (c *OVNNbClient) UpdateNat(nat *ovnnb.NAT, fields ...any) error {
 		return errors.New("nat is nil")
 	}
 
-	op, err := c.ovsDbClient.Where(nat).Update(nat, fields...)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("generate operations for updating nat 'type %s external ip %s logical ip %s': %w", nat.Type, nat.ExternalIP, nat.LogicalIP, err)
-	}
-
-	if err = c.Transact("net-update", op); err != nil {
-		klog.Error(err)
+	return c.updateModelLogged("net-update", nat, func(err error) error {
 		return fmt.Errorf("update nat 'type %s external ip %s logical ip %s': %w", nat.Type, nat.ExternalIP, nat.LogicalIP, err)
-	}
-
-	return nil
+	}, fields...)
 }
 
 // DeleteNat delete several nat rule once
 func (c *OVNNbClient) DeleteNats(lrName, natType, logicalIP string) error {
-	/* delete nats from logical router */
 	nats, err := c.ListNats(lrName, natType, logicalIP, nil)
 	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("list logical router %s nats 'type %s logical ip %s': %w", lrName, natType, logicalIP, err)
+		return logWrap(err, wrapErr("list logical router %s nats 'type %s logical ip %s': %w", lrName, natType, logicalIP))
 	}
-
-	natsUUIDs := make([]string, 0, len(nats))
-	for _, nat := range nats {
-		natsUUIDs = append(natsUUIDs, nat.UUID)
-	}
-
-	ops, err := c.LogicalRouterUpdateNatOp(lrName, natsUUIDs, ovsdb.MutateOperationDelete)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("generate operations for deleting nats from logical router %s: %w", lrName, err)
-	}
-	if err = c.Transact("nats-del", ops); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("del nats from logical router %s: %w", lrName, err)
-	}
-
-	return nil
+	uuids := rowUUIDs(nats, func(nat *ovnnb.NAT) string { return nat.UUID })
+	return c.detachRouterUUIDs(lrName, uuids, "nats-del", "nats", c.LogicalRouterUpdateNatOp)
 }
 
-// DeleteNat delete nat rule
 func (c *OVNNbClient) DeleteNat(lrName, natType, externalIP, logicalIP string) error {
 	nat, err := c.GetNat(lrName, natType, externalIP, logicalIP, true)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return logErr(err)
 	}
 	if nat == nil {
 		// The NAT row may have already been removed (by another reconcile
@@ -287,33 +205,30 @@ func (c *OVNNbClient) DeleteNat(lrName, natType, externalIP, logicalIP string) e
 		// can clear their finalizer without requeuing forever.
 		return nil
 	}
-
-	// remove nat from logical router
-	ops, err := c.LogicalRouterUpdateNatOp(lrName, []string{nat.UUID}, ovsdb.MutateOperationDelete)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("generate operations for deleting nat from logical router %s: %w", lrName, err)
-	}
-	if err = c.Transact("lr-nat-del", ops); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("del nat from logical router %s: %w", lrName, err)
-	}
-
-	return nil
+	return c.detachRouterUUIDs(lrName, []string{nat.UUID}, "lr-nat-del", "nat", c.LogicalRouterUpdateNatOp)
 }
 
-// GetNATByUUID get NAT by UUID
 func (c *OVNNbClient) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
+	return getIndexedLogged(c.Database, &ovnnb.NAT{UUID: uuid})
+}
 
-	nat := &ovnnb.NAT{UUID: uuid}
-	if err := c.Get(ctx, nat); err != nil {
-		klog.Error(err)
-		return nil, err
+func requireNatSpec(lrName, natType, externalIP, logicalIP string) error {
+	if err := requireName(lrName, "the logical router name is required"); err != nil {
+		return err
 	}
-
-	return nat, nil
+	switch natType {
+	case ovnnb.NATTypeDNAT:
+		return logErr(errors.New("does not support dnat for now"))
+	case ovnnb.NATTypeSNAT:
+		if err := requireValue(logicalIP, fmt.Errorf("logical ip is required when nat type is %s", natType)); err != nil {
+			return err
+		}
+		return requireValue(externalIP, fmt.Errorf("external ip is required when nat type is %s", natType))
+	case ovnnb.NATTypeDNATAndSNAT:
+		return requireValue(externalIP, fmt.Errorf("external ip is required when nat type is %s", natType))
+	default:
+		return logErr(errors.New("nat type must be one of [ snat, dnat_and_snat ]"))
+	}
 }
 
 // GetNat retrieves a NAT rule by its identifying attributes.
@@ -322,41 +237,8 @@ func (c *OVNNbClient) GetNATByUUID(uuid string) (*ovnnb.NAT, error) {
 // DNATAndSNAT rules are uniquely identified by (lrName, natType, external_ip).
 func (c *OVNNbClient) GetNat(lrName, natType, externalIP, logicalIP string, ignoreNotFound bool) (*ovnnb.NAT, error) {
 	// this is necessary because may exist same nat rule in different logical router
-	if len(lrName) == 0 {
-		err := errors.New("the logical router name is required")
-		klog.Error(err)
+	if err := requireNatSpec(lrName, natType, externalIP, logicalIP); err != nil {
 		return nil, err
-	}
-	if natType == ovnnb.NATTypeDNAT {
-		err := errors.New("does not support dnat for now")
-		klog.Error(err)
-		return nil, err
-	}
-
-	if natType != ovnnb.NATTypeSNAT && natType != ovnnb.NATTypeDNATAndSNAT {
-		err := errors.New("nat type must be one of [ snat, dnat_and_snat ]")
-		klog.Error(err)
-		return nil, err
-	}
-
-	if natType == ovnnb.NATTypeSNAT {
-		if logicalIP == "" {
-			err := fmt.Errorf("logical ip is required when nat type is %s", natType)
-			klog.Error(err)
-			return nil, err
-		}
-		if externalIP == "" {
-			err := fmt.Errorf("external ip is required when nat type is %s", natType)
-			klog.Error(err)
-			return nil, err
-		}
-	}
-	if natType == ovnnb.NATTypeDNATAndSNAT {
-		if externalIP == "" {
-			err := fmt.Errorf("external ip is required when nat type is %s", natType)
-			klog.Error(err)
-			return nil, err
-		}
 	}
 
 	fnFilter := func(nat *ovnnb.NAT) bool {
@@ -382,27 +264,13 @@ func (c *OVNNbClient) GetNat(lrName, natType, externalIP, logicalIP string, igno
 	}
 	natList, err := c.listLogicalRouterNatByFilter(lrName, fnFilter)
 	if err != nil {
-		klog.Error(err)
-		return nil, fmt.Errorf("get logical router %s nat 'type %s external ip %s logical ip %s': %w", lrName, natType, externalIP, logicalIP, err)
+		return nil, logWrap(err, wrapErr("get logical router %s nat 'type %s external ip %s logical ip %s': %w", lrName, natType, externalIP, logicalIP))
 	}
 
-	// not found
-	if len(natList) == 0 {
-		if ignoreNotFound {
-			return nil, nil
-		}
-		err := fmt.Errorf("not found logical router %s nat 'type %s external ip %s logical ip %s'", lrName, natType, externalIP, logicalIP)
-		klog.Error(err)
-		return nil, err
-	}
-
-	if len(natList) > 1 {
-		err := fmt.Errorf("more than one nat 'type %s external ip %s logical ip %s' in logical router %s", natType, externalIP, logicalIP, lrName)
-		klog.Error(err)
-		return nil, err
-	}
-
-	return natList[0], nil
+	return uniquePtrs(natList, ignoreNotFound,
+		fmt.Errorf("not found logical router %s nat 'type %s external ip %s logical ip %s'", lrName, natType, externalIP, logicalIP),
+		fmt.Errorf("more than one nat 'type %s external ip %s logical ip %s' in logical router %s", natType, externalIP, logicalIP, lrName),
+	)
 }
 
 // ListNats list acls which match the given externalIDs
@@ -419,48 +287,13 @@ func (c *OVNNbClient) NatExists(lrName, natType, externalIP, logicalIP string) (
 // SNAT rules are uniquely identified by (lrName, natType, external_ip, logical_ip).
 // DNATAndSNAT rules are uniquely identified by (lrName, natType, external_ip).
 func (c *OVNNbClient) newNat(lrName, natType, externalIP, logicalIP, logicalMac, port string, options ...func(nat *ovnnb.NAT)) (*ovnnb.NAT, error) {
-	if len(lrName) == 0 {
-		err := errors.New("the logical router name is required")
-		klog.Error(err)
+	if err := requireNatSpec(lrName, natType, externalIP, logicalIP); err != nil {
 		return nil, err
-	}
-
-	if natType == ovnnb.NATTypeDNAT {
-		err := errors.New("does not support dnat for now")
-		klog.Error(err)
-		return nil, err
-	}
-
-	if natType != ovnnb.NATTypeSNAT && natType != ovnnb.NATTypeDNATAndSNAT {
-		err := errors.New("nat type must be one of [ snat, dnat_and_snat ]")
-		klog.Error(err)
-		return nil, err
-	}
-
-	if natType == ovnnb.NATTypeSNAT {
-		if logicalIP == "" {
-			err := fmt.Errorf("logical ip is required when nat type is %s", natType)
-			klog.Error(err)
-			return nil, err
-		}
-		if externalIP == "" {
-			err := fmt.Errorf("external ip is required when nat type is %s", natType)
-			klog.Error(err)
-			return nil, err
-		}
-	}
-	if natType == ovnnb.NATTypeDNATAndSNAT {
-		if externalIP == "" {
-			err := fmt.Errorf("external ip is required when nat type is %s", natType)
-			klog.Error(err)
-			return nil, err
-		}
 	}
 
 	exists, err := c.NatExists(lrName, natType, externalIP, logicalIP)
 	if err != nil {
-		klog.Error(err)
-		return nil, fmt.Errorf("get logical router %s nat: %w", lrName, err)
+		return nil, logWrap(err, wrapErr("get logical router %s nat: %w", lrName))
 	}
 
 	// found, ignore
@@ -494,64 +327,19 @@ func (c *OVNNbClient) newNat(lrName, natType, externalIP, logicalIP, logicalMac,
 // result should include all nats which externalIDs[key] is not empty when externalIDs[key] is ""
 func natFilter(natType, logicalIP string, externalIDs map[string]string) func(nat *ovnnb.NAT) bool {
 	return func(nat *ovnnb.NAT) bool {
-		if len(nat.ExternalIDs) < len(externalIDs) {
+		if !matchExternalIDs(nat.ExternalIDs, externalIDs) {
 			return false
 		}
-
-		if len(nat.ExternalIDs) != 0 {
-			for k, v := range externalIDs {
-				// if only key exist but not value in externalIDs, we should include this lsp,
-				// it's equal to shell command `ovn-nbctl --columns=xx find nat external_ids:key!=\"\"`
-				if len(v) == 0 {
-					if len(nat.ExternalIDs[k]) == 0 {
-						return false
-					}
-				} else {
-					if nat.ExternalIDs[k] != v {
-						return false
-					}
-				}
-			}
-		}
-
 		if len(natType) != 0 && nat.Type != natType {
 			return false
 		}
-
 		if len(logicalIP) != 0 && nat.LogicalIP != logicalIP {
 			return false
 		}
-
 		return true
 	}
 }
 
 func (c *OVNNbClient) listLogicalRouterNatByFilter(lrName string, filter func(route *ovnnb.NAT) bool) ([]*ovnnb.NAT, error) {
-	lr, err := c.GetLogicalRouter(lrName, false)
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	if len(lr.Nat) == 0 {
-		return nil, nil
-	}
-
-	uuidSet := set.New(lr.Nat...)
-	predicate := func(nat *ovnnb.NAT) bool {
-		if !uuidSet.Has(nat.UUID) {
-			return false
-		}
-		return filter == nil || filter(nat)
-	}
-
-	natList := make([]*ovnnb.NAT, 0, len(lr.Nat))
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-	if err := c.WhereCache(predicate).List(ctx, &natList); err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	return natList, nil
+	return c.listRouterChildren(lrName, func(lr *ovnnb.LogicalRouter) []string { return lr.Nat }, &ovnnb.NAT{}, func(nat *ovnnb.NAT) string { return nat.UUID }, filter)
 }

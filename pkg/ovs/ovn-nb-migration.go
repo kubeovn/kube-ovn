@@ -1,12 +1,10 @@
 package ovs
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
 
-	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -195,125 +193,41 @@ func (c *OVNNbClient) MigrateVendorExternalIDs() error {
 
 // getKubeOvnRouterNames returns names of logical routers that belong to kube-ovn
 func (c *OVNNbClient) getKubeOvnRouterNames() (map[string]bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	var lrList []ovnnb.LogicalRouter
-	if err := c.ovsDbClient.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
-		// Include routers that already have vendor=kube-ovn
-		if len(lr.ExternalIDs) > 0 && lr.ExternalIDs["vendor"] == util.CniTypeName {
-			return true
-		}
-		return false
-	}).List(ctx, &lrList); err != nil {
-		return nil, fmt.Errorf("failed to list logical routers: %w", err)
-	}
-
-	names := make(map[string]bool, len(lrList))
-	for _, lr := range lrList {
-		names[lr.Name] = true
-	}
-	return names, nil
+	return kubeOvnNames(c.Database, &ovnnb.LogicalRouter{},
+		func(lr *ovnnb.LogicalRouter) string { return lr.Name },
+		func(lr *ovnnb.LogicalRouter) map[string]string { return lr.ExternalIDs },
+		"failed to list logical routers")
 }
 
-// getKubeOvnSwitchNames returns names of logical switches that belong to kube-ovn
 func (c *OVNNbClient) getKubeOvnSwitchNames() (map[string]bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
+	return kubeOvnNames(c.Database, &ovnnb.LogicalSwitch{},
+		func(ls *ovnnb.LogicalSwitch) string { return ls.Name },
+		func(ls *ovnnb.LogicalSwitch) map[string]string { return ls.ExternalIDs },
+		"failed to list logical switches")
+}
 
-	var lsList []ovnnb.LogicalSwitch
-	if err := c.ovsDbClient.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
-		// Include switches that already have vendor=kube-ovn
-		if len(ls.ExternalIDs) > 0 && ls.ExternalIDs["vendor"] == util.CniTypeName {
+func (c *OVNNbClient) migrateLogicalRouterPorts(kubeOvnRouters map[string]bool) error {
+	return migrateVendorRows(c, &ovnnb.LogicalRouterPort{}, func(lrp *ovnnb.LogicalRouterPort) bool {
+		if hasVendor(lrp.ExternalIDs) {
+			return false
+		}
+		if lrName, ok := lrp.ExternalIDs[logicalRouterKey]; ok && kubeOvnRouters[lrName] {
 			return true
 		}
 		return false
-	}).List(ctx, &lsList); err != nil {
-		return nil, fmt.Errorf("failed to list logical switches: %w", err)
-	}
-
-	names := make(map[string]bool, len(lsList))
-	for _, ls := range lsList {
-		names[ls.Name] = true
-	}
-	return names, nil
+	}, "lrp-vendor-migrate", "logical router ports",
+		func(lrp *ovnnb.LogicalRouterPort) string { return lrp.Name },
+		func(lrp *ovnnb.LogicalRouterPort) *map[string]string { return &lrp.ExternalIDs })
 }
 
-// migrateLogicalRouterPorts adds vendor tag to LRPs that belong to kube-ovn routers
-func (c *OVNNbClient) migrateLogicalRouterPorts(kubeOvnRouters map[string]bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	var lrpList []ovnnb.LogicalRouterPort
-	if err := c.ovsDbClient.WhereCache(func(lrp *ovnnb.LogicalRouterPort) bool {
-		// Skip if already has vendor tag
-		if len(lrp.ExternalIDs) > 0 && lrp.ExternalIDs["vendor"] == util.CniTypeName {
-			return false
-		}
-		// Include if it has 'lr' externalID pointing to a kube-ovn router
-		if len(lrp.ExternalIDs) > 0 {
-			if lrName, ok := lrp.ExternalIDs[logicalRouterKey]; ok && kubeOvnRouters[lrName] {
-				return true
-			}
-		}
-		return false
-	}).List(ctx, &lrpList); err != nil {
-		return fmt.Errorf("failed to list logical router ports for migration: %w", err)
-	}
-
-	if len(lrpList) == 0 {
-		klog.Info("no logical router ports need vendor migration")
-		return nil
-	}
-
-	klog.Infof("migrating %d logical router ports to add vendor tag", len(lrpList))
-
-	ops := make([]ovsdb.Operation, 0, len(lrpList))
-	for i := range lrpList {
-		lrp := &lrpList[i]
-		if lrp.ExternalIDs == nil {
-			lrp.ExternalIDs = make(map[string]string)
-		}
-		lrp.ExternalIDs["vendor"] = util.CniTypeName
-
-		op, err := c.Where(lrp).Update(lrp, &lrp.ExternalIDs)
-		if err != nil {
-			klog.Errorf("failed to generate update operation for LRP %s: %v", lrp.Name, err)
-			continue
-		}
-		ops = append(ops, op...)
-	}
-
-	if len(ops) == 0 {
-		return nil
-	}
-
-	if err := c.Transact("lrp-vendor-migrate", ops); err != nil {
-		return fmt.Errorf("failed to migrate logical router port vendor tags: %w", err)
-	}
-
-	klog.Infof("successfully migrated %d logical router ports", len(lrpList))
-	return nil
-}
-
-// migratePortGroups adds vendor tag to port groups that match kube-ovn patterns
 func (c *OVNNbClient) migratePortGroups() error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	var pgList []ovnnb.PortGroup
-	if err := c.ovsDbClient.WhereCache(func(pg *ovnnb.PortGroup) bool {
-		// Skip if already has vendor tag
-		if len(pg.ExternalIDs) > 0 && pg.ExternalIDs["vendor"] == util.CniTypeName {
+	return migrateVendorRows(c, &ovnnb.PortGroup{}, func(pg *ovnnb.PortGroup) bool {
+		if hasVendor(pg.ExternalIDs) {
 			return false
 		}
-
-		// Security group port groups: ovn.sg.{name}
 		if sgPortGroupPattern.MatchString(pg.Name) {
 			return true
 		}
-
-		// Port groups with 'sg' or 'type' externalID (kube-ovn specific)
 		if len(pg.ExternalIDs) > 0 {
 			if _, hasSg := pg.ExternalIDs[sgKey]; hasSg {
 				return true
@@ -322,274 +236,72 @@ func (c *OVNNbClient) migratePortGroups() error {
 				return true
 			}
 		}
-
-		// Network policy port groups have kube-ovn specific externalIDs
-		// Don't use name patterns alone as they're too broad and risk mis-tagging
-		// resources from other systems
-
 		return false
-	}).List(ctx, &pgList); err != nil {
-		return fmt.Errorf("failed to list port groups for migration: %w", err)
-	}
-
-	if len(pgList) == 0 {
-		klog.Info("no port groups need vendor migration")
-		return nil
-	}
-
-	klog.Infof("migrating %d port groups to add vendor tag", len(pgList))
-
-	ops := make([]ovsdb.Operation, 0, len(pgList))
-	for i := range pgList {
-		pg := &pgList[i]
-		if pg.ExternalIDs == nil {
-			pg.ExternalIDs = make(map[string]string)
-		}
-		pg.ExternalIDs["vendor"] = util.CniTypeName
-
-		op, err := c.Where(pg).Update(pg, &pg.ExternalIDs)
-		if err != nil {
-			klog.Errorf("failed to generate update operation for PortGroup %s: %v", pg.Name, err)
-			continue
-		}
-		ops = append(ops, op...)
-	}
-
-	if len(ops) == 0 {
-		return nil
-	}
-
-	if err := c.Transact("pg-vendor-migrate", ops); err != nil {
-		return fmt.Errorf("failed to migrate port group vendor tags: %w", err)
-	}
-
-	klog.Infof("successfully migrated %d port groups", len(pgList))
-	return nil
+	}, "pg-vendor-migrate", "port groups",
+		func(pg *ovnnb.PortGroup) string { return pg.Name },
+		func(pg *ovnnb.PortGroup) *map[string]string { return &pg.ExternalIDs })
 }
 
-// migrateAddressSets adds vendor tag to address sets that match kube-ovn patterns
 func (c *OVNNbClient) migrateAddressSets() error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	var asList []ovnnb.AddressSet
-	if err := c.ovsDbClient.WhereCache(func(as *ovnnb.AddressSet) bool {
-		// Skip if already has vendor tag
-		if len(as.ExternalIDs) > 0 && as.ExternalIDs["vendor"] == util.CniTypeName {
+	return migrateVendorRows(c, &ovnnb.AddressSet{}, func(as *ovnnb.AddressSet) bool {
+		if hasVendor(as.ExternalIDs) {
 			return false
 		}
-
-		// Security group address sets: ovn.sg.{name}.associated.v4/v6
 		if sgAddressSetPattern.MatchString(as.Name) {
 			return true
 		}
-
-		// Network policy address sets: {name}.{namespace}.{direction}.{type}.{protocol}
 		if npAddressSetPattern.MatchString(as.Name) {
 			return true
 		}
-
-		// Address sets with 'sg' externalID (kube-ovn specific)
-		if len(as.ExternalIDs) > 0 {
-			if _, hasSg := as.ExternalIDs[sgKey]; hasSg {
-				return true
-			}
+		if _, hasSg := as.ExternalIDs[sgKey]; hasSg {
+			return true
 		}
-
 		return false
-	}).List(ctx, &asList); err != nil {
-		return fmt.Errorf("failed to list address sets for migration: %w", err)
-	}
-
-	if len(asList) == 0 {
-		klog.Info("no address sets need vendor migration")
-		return nil
-	}
-
-	klog.Infof("migrating %d address sets to add vendor tag", len(asList))
-
-	ops := make([]ovsdb.Operation, 0, len(asList))
-	for i := range asList {
-		as := &asList[i]
-		if as.ExternalIDs == nil {
-			as.ExternalIDs = make(map[string]string)
-		}
-		as.ExternalIDs["vendor"] = util.CniTypeName
-
-		op, err := c.Where(as).Update(as, &as.ExternalIDs)
-		if err != nil {
-			klog.Errorf("failed to generate update operation for AddressSet %s: %v", as.Name, err)
-			continue
-		}
-		ops = append(ops, op...)
-	}
-
-	if len(ops) == 0 {
-		return nil
-	}
-
-	if err := c.Transact("as-vendor-migrate", ops); err != nil {
-		return fmt.Errorf("failed to migrate address set vendor tags: %w", err)
-	}
-
-	klog.Infof("successfully migrated %d address sets", len(asList))
-	return nil
+	}, "as-vendor-migrate", "address sets",
+		func(as *ovnnb.AddressSet) string { return as.Name },
+		func(as *ovnnb.AddressSet) *map[string]string { return &as.ExternalIDs })
 }
 
-// migrateLoadBalancers adds vendor tag to load balancers that match kube-ovn patterns
 func (c *OVNNbClient) migrateLoadBalancers() error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	var lbList []ovnnb.LoadBalancer
-	if err := c.ovsDbClient.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
-		// Skip if already has vendor tag
-		if len(lb.ExternalIDs) > 0 && lb.ExternalIDs["vendor"] == util.CniTypeName {
+	return migrateVendorRows(c, &ovnnb.LoadBalancer{}, func(lb *ovnnb.LoadBalancer) bool {
+		if hasVendor(lb.ExternalIDs) {
 			return false
 		}
-
-		// Cluster load balancers: cluster-{protocol}-loadbalancer or cluster-{protocol}-session-loadbalancer
-		if clusterLBPattern.MatchString(lb.Name) {
-			return true
-		}
-
-		// VPC load balancers: vpc-{name}-{protocol}-load or vpc-{name}-{protocol}-sess-load
-		if vpcLBPattern.MatchString(lb.Name) {
-			return true
-		}
-
-		return false
-	}).List(ctx, &lbList); err != nil {
-		return fmt.Errorf("failed to list load balancers for migration: %w", err)
-	}
-
-	if len(lbList) == 0 {
-		klog.Info("no load balancers need vendor migration")
-		return nil
-	}
-
-	klog.Infof("migrating %d load balancers to add vendor tag", len(lbList))
-
-	ops := make([]ovsdb.Operation, 0, len(lbList))
-	for i := range lbList {
-		lb := &lbList[i]
-		if lb.ExternalIDs == nil {
-			lb.ExternalIDs = make(map[string]string)
-		}
-		lb.ExternalIDs["vendor"] = util.CniTypeName
-
-		op, err := c.Where(lb).Update(lb, &lb.ExternalIDs)
-		if err != nil {
-			klog.Errorf("failed to generate update operation for LoadBalancer %s: %v", lb.Name, err)
-			continue
-		}
-		ops = append(ops, op...)
-	}
-
-	if len(ops) == 0 {
-		return nil
-	}
-
-	if err := c.Transact("lb-vendor-migrate", ops); err != nil {
-		return fmt.Errorf("failed to migrate load balancer vendor tags: %w", err)
-	}
-
-	klog.Infof("successfully migrated %d load balancers", len(lbList))
-	return nil
+		return clusterLBPattern.MatchString(lb.Name) || vpcLBPattern.MatchString(lb.Name)
+	}, "lb-vendor-migrate", "load balancers",
+		func(lb *ovnnb.LoadBalancer) string { return lb.Name },
+		func(lb *ovnnb.LoadBalancer) *map[string]string { return &lb.ExternalIDs })
 }
 
-// migrateACLs adds vendor tag to ACLs that belong to kube-ovn
 func (c *OVNNbClient) migrateACLs(kubeOvnSwitches map[string]bool) error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	// First, get all port groups that belong to kube-ovn (either already tagged or matching patterns)
-	kubeOvnPortGroups := make(map[string]bool)
-	var pgList []ovnnb.PortGroup
-	if err := c.ovsDbClient.WhereCache(func(pg *ovnnb.PortGroup) bool {
-		// Include port groups with vendor tag
-		if len(pg.ExternalIDs) > 0 && pg.ExternalIDs["vendor"] == util.CniTypeName {
+	pgList, err := filterTimeout(c.Database, &ovnnb.PortGroup{}, func(pg *ovnnb.PortGroup) bool {
+		if hasVendor(pg.ExternalIDs) || sgPortGroupPattern.MatchString(pg.Name) {
 			return true
 		}
-		// Include port groups matching kube-ovn patterns
-		if sgPortGroupPattern.MatchString(pg.Name) {
+		if _, hasSg := pg.ExternalIDs[sgKey]; hasSg {
 			return true
 		}
-		if len(pg.ExternalIDs) > 0 {
-			if _, hasSg := pg.ExternalIDs[sgKey]; hasSg {
-				return true
-			}
-			if _, hasType := pg.ExternalIDs["type"]; hasType {
-				return true
-			}
-		}
-		// Network policy port groups have kube-ovn specific externalIDs
-		// Don't use name patterns alone as they're too broad
-		return false
-	}).List(ctx, &pgList); err != nil {
+		_, hasType := pg.ExternalIDs["type"]
+		return hasType
+	})
+	if err != nil {
 		return fmt.Errorf("failed to list port groups: %w", err)
 	}
-
+	kubeOvnPortGroups := make(map[string]bool, len(pgList))
 	for _, pg := range pgList {
 		kubeOvnPortGroups[pg.Name] = true
 	}
 
-	var aclList []ovnnb.ACL
-	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
-		// Skip if already has vendor tag
-		if len(acl.ExternalIDs) > 0 && acl.ExternalIDs["vendor"] == util.CniTypeName {
+	return migrateVendorRows(c, &ovnnb.ACL{}, func(acl *ovnnb.ACL) bool {
+		if hasVendor(acl.ExternalIDs) {
 			return false
 		}
-
-		// ACLs with 'parent' externalID pointing to kube-ovn port group or switch
-		if len(acl.ExternalIDs) > 0 {
-			if parent, ok := acl.ExternalIDs[aclParentKey]; ok {
-				if kubeOvnPortGroups[parent] || kubeOvnSwitches[parent] {
-					return true
-				}
-			}
-			// ACLs with 'subnet' externalID pointing to kube-ovn switch
-			if subnet, ok := acl.ExternalIDs["subnet"]; ok && kubeOvnSwitches[subnet] {
-				return true
-			}
+		if parent, ok := acl.ExternalIDs[aclParentKey]; ok && (kubeOvnPortGroups[parent] || kubeOvnSwitches[parent]) {
+			return true
 		}
-
-		return false
-	}).List(ctx, &aclList); err != nil {
-		return fmt.Errorf("failed to list ACLs for migration: %w", err)
-	}
-
-	if len(aclList) == 0 {
-		klog.Info("no ACLs need vendor migration")
-		return nil
-	}
-
-	klog.Infof("migrating %d ACLs to add vendor tag", len(aclList))
-
-	ops := make([]ovsdb.Operation, 0, len(aclList))
-	for i := range aclList {
-		acl := &aclList[i]
-		if acl.ExternalIDs == nil {
-			acl.ExternalIDs = make(map[string]string)
-		}
-		acl.ExternalIDs["vendor"] = util.CniTypeName
-
-		op, err := c.Where(acl).Update(acl, &acl.ExternalIDs)
-		if err != nil {
-			klog.Errorf("failed to generate update operation for ACL %s: %v", acl.UUID, err)
-			continue
-		}
-		ops = append(ops, op...)
-	}
-
-	if len(ops) == 0 {
-		return nil
-	}
-
-	if err := c.Transact("acl-vendor-migrate", ops); err != nil {
-		return fmt.Errorf("failed to migrate ACL vendor tags: %w", err)
-	}
-
-	klog.Infof("successfully migrated %d ACLs", len(aclList))
-	return nil
+		subnet, ok := acl.ExternalIDs["subnet"]
+		return ok && kubeOvnSwitches[subnet]
+	}, "acl-vendor-migrate", "ACLs",
+		func(acl *ovnnb.ACL) string { return acl.UUID },
+		func(acl *ovnnb.ACL) *map[string]string { return &acl.ExternalIDs })
 }

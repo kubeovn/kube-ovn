@@ -1,6 +1,7 @@
 package pinger
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
 
 // IncrementErrorCounter increases the counter of failed queries to OVN server.
@@ -144,14 +146,55 @@ func (e *Exporter) ovsDatapathPortMetrics(line, datapath string) {
 }
 
 func (e *Exporter) getInterfaceInfo() ([]*ovsdb.OvsInterface, error) {
-	intfs, err := e.Client.GetDbInterfaces()
-	if err != nil {
-		klog.Errorf("GetDbInterfaces error: %v", err)
+	if err := e.connectVswitchTables(); err != nil {
+		err = fmt.Errorf("failed to connect generic OVSDB client: %w", err)
+		klog.Errorf("failed to list OVS interfaces: %v", err)
 		e.IncrementErrorCounter()
 		return nil, err
 	}
+	var rows []vswitch.Interface
+	if err := e.VswitchTables.Table(&vswitch.Interface{}).List(context.Background(), &rows); err != nil {
+		err = fmt.Errorf("failed to list OVS interfaces from generic client: %w", err)
+		klog.Errorf("%v", err)
+		e.IncrementErrorCounter()
+		return nil, err
+	}
+	return convertVswitchInterfaces(rows), nil
+}
 
-	return intfs, nil
+func convertVswitchInterfaces(rows []vswitch.Interface) []*ovsdb.OvsInterface {
+	interfaces := make([]*ovsdb.OvsInterface, 0, len(rows))
+	for i := range rows {
+		row := &rows[i]
+		interfaces = append(interfaces, &ovsdb.OvsInterface{
+			UUID:        row.UUID,
+			Name:        row.Name,
+			ExternalIDs: row.ExternalIDs,
+			Options:     row.Options,
+			Statistics:  row.Statistics,
+			AdminState:  stringValue(row.AdminState),
+			LinkState:   stringValue(row.LinkState),
+			MacInUse:    stringValue(row.MACInUse),
+			Mtu:         floatValue(row.MTU),
+			OfPort:      floatValue(row.Ofport),
+			IfIndex:     floatValue(row.Ifindex),
+		})
+	}
+	return interfaces
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func floatValue(value *int) float64 {
+	if value == nil {
+		return 0
+	}
+	return float64(*value)
 }
 
 func (e *Exporter) setOvsInterfaceMetric(intf *ovsdb.OvsInterface) {

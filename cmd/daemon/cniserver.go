@@ -49,9 +49,17 @@ func main() {
 	util.InitLogFilePerm("kube-ovn-cni", os.FileMode(perm))
 	printCaps()
 
-	ovs.UpdateOVSVsctlLimiter(config.OVSVsctlConcurrency)
+	ovsDBAddr := config.OvsSocket
+	if ovsDBAddr == "" {
+		ovsDBAddr = "unix:/var/run/openvswitch/db.sock"
+	}
+	vswitchClient, err := ovs.NewVswitchClient(ovsDBAddr, 1, 3)
+	if err != nil {
+		util.LogFatalAndExit(err, "failed to create vswitch client")
+	}
+	config.VswitchTables = vswitchClient
 
-	nicBridgeMappings, err := daemon.InitOVSBridges()
+	nicBridgeMappings, err := daemon.InitOVSBridges(config.VswitchTables)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to initialize OVS bridges")
 	}
