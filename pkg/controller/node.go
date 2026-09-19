@@ -1129,6 +1129,20 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 			return err
 		}
 	}
+	// IPAM may no longer hold the node address, so also delete by node name. Each listed row is deleted
+	// only if it still belongs to this node: a node reusing the address may take the row over meanwhile.
+	externalIDs := map[string]string{"vendor": util.CniTypeName, "node": nodeName}
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NodeRouterPolicyPriority, externalIDs, false)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies of node %s on %s: %v", nodeName, c.config.ClusterRouter, err)
+		return err
+	}
+	for _, policy := range policies {
+		if _, err = c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
+			klog.Errorf("failed to delete logical router policy %q of node %s from %s: %v", policy.Match, nodeName, c.config.ClusterRouter, err)
+			return err
+		}
+	}
 
 	for _, subnet := range subnets {
 		if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter || subnet.Name == c.config.NodeSwitch {
