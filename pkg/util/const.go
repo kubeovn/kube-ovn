@@ -460,6 +460,8 @@ var (
 	KindOvnSnatRule      = ObjectKind[*kubeovnv1.OvnSnatRule]()
 	KindSubnet           = ObjectKind[*kubeovnv1.Subnet]()
 	KindVip              = ObjectKind[*kubeovnv1.Vip]()
+	KindRouterLBRule     = ObjectKind[*kubeovnv1.RouterLBRule]()
+	KindSwitchLBRule     = ObjectKind[*kubeovnv1.SwitchLBRule]()
 	KindVpc              = ObjectKind[*kubeovnv1.Vpc]()
 	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
 	KindVpcNatGateway    = ObjectKind[*kubeovnv1.VpcNatGateway]()
