@@ -1835,7 +1835,10 @@ class E2EControlTest(unittest.TestCase):
         self.assertNotIn("e2eSelector.expandWorkflow(workflow)", workflow)
         validationBlock = blocks["e2e-control-validation"]
         self.assertIn("permissions:\n      contents: read", validationBlock)
-        self.assertIn("python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py", validationBlock)
+        self.assertIn(
+            "python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py hack/test_publish_workflow.py",
+            validationBlock,
+        )
         resultBlock = blocks["e2e-executor-result"]
         self.assertIn("if: always() && github.event_name != 'pull_request'", resultBlock)
         self.assertIn("permissions: {}", resultBlock)
@@ -1867,7 +1870,11 @@ class E2EControlTest(unittest.TestCase):
             testJobs | {"e2e-selection", "e2e-control-validation"},
         )
         pushNeeds = set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", blocks["push"]))
-        self.assertEqual(pushNeeds, {"e2e-executor-result"})
+        self.assertEqual(pushNeeds, {"build-kube-ovn"})
+        self.assertEqual(
+            set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", blocks["push-vpc-nat-gateway"])),
+            {"build-vpc-nat-gateway"},
+        )
         for jobId in testJobs:
             with self.subTest(jobId=jobId):
                 self.assertIn(f"      - {jobId}\n", resultBlock)
@@ -1883,7 +1890,7 @@ class E2EControlTest(unittest.TestCase):
                 self.assertIn("ref: ${{ env.EXECUTION_SHA }}", block)
                 self.assertIn("persist-credentials: false", block)
         self.assertIn("github.event_name == 'push'", blocks["push"])
-        self.assertIn("needs.e2e-executor-result.result == 'success'", blocks["push"])
+        self.assertNotIn("needs.e2e-executor-result.result == 'success'", blocks["push"])
         self.assertNotIn("github.event_name != 'workflow_dispatch'", blocks["push"])
 
     def testKindPullUsesAnonymousGhcrWhenTokenIsAbsent(self):
