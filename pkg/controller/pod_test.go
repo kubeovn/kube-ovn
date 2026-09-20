@@ -2712,6 +2712,9 @@ func TestNeedAllocateSubnets(t *testing.T) {
 		pod := &corev1.Pod{
 			Name:      "virt-launcher-vm",
 			Namespace: "ns",
+			Labels: map[string]string{
+				kubevirtv1.MigrationJobLabel: "mig-uid",
+			},
 			Annotations: map[string]string{
 				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
 				allocatedKey:                          "true",
@@ -2719,6 +2722,19 @@ func TestNeedAllocateSubnets(t *testing.T) {
 			Status: corev1.PodStatus{Phase: corev1.PodRunning},
 		}
 		require.Equal(t, nets, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("source migration pod does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "virt-launcher-vm-source",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
 	})
 
 	t.Run("allocated pod without migration annotation does not reallocate", func(t *testing.T) {
