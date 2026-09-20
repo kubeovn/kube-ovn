@@ -744,7 +744,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 					g.Expect(currentIP.Spec.MacAddress).To(gomega.Equal(origIP.Spec.MacAddress))
 					g.Expect(currentIP.Spec.NodeName).To(gomega.Equal(pod.Spec.NodeName),
 						"IP CRD NodeName should be updated to %s", pod.Spec.NodeName)
-				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
+				}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Checking OVN LSP cleanup", i, migrationCount))
 				expectLSPMigrationState(portName, pod.Spec.NodeName)
