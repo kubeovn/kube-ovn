@@ -60,7 +60,7 @@ index 1ca8ded..19f93dc 100644
 +                            "); hash_fields=\"ip_src,ip_dst,ipv6_src,"
 +                            "ipv6_dst,ip_proto\");");
 +                ds_put_format(&proto_match,
-+                              "(%s) && ip && !tcp && !udp && !sctp",
++                              "(%s) && (ip || ip6) && !tcp && !udp && !sctp",
 +                              rule->match);
 +            }
 +            ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, rule->priority,
