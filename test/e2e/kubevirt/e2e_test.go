@@ -57,15 +57,18 @@ func expectVMAnnotations(pod *corev1.Pod, vmName string) {
 	framework.ExpectHaveKeyWithValue(pod.Annotations, util.VMAnnotation, vmName)
 }
 
-func expectLSPMigrationCleanup(portName string) {
+func expectLSPMigrationState(portName, expectedChassis string) {
 	ginkgo.GinkgoHelper()
 	cmd := "ovn-nbctl --format=csv --data=bare --no-heading --columns=options list Logical_Switch_Port " + portName
 	gomega.Eventually(func(g gomega.Gomega) {
 		output, _, err := framework.NBExec(cmd)
 		g.Expect(err).NotTo(gomega.HaveOccurred())
-		outputStr := string(output)
+		outputStr := strings.TrimSpace(string(output))
 		g.Expect(outputStr).NotTo(gomega.ContainSubstring("activation-strategy"))
-		g.Expect(outputStr).NotTo(gomega.ContainSubstring("requested-chassis"))
+		g.Expect(outputStr).To(gomega.SatisfyAny(
+			gomega.Equal(""),
+			gomega.Equal("requested-chassis="+expectedChassis),
+		))
 	}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 }
 
@@ -562,7 +565,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.ExpectEqual(pod.Annotations[util.MacAddressAnnotation], origMAC)
 		})
 
-		framework.ConformanceIt("should clean up OVN LSP migrate options after successful migration", func() {
+		framework.ConformanceIt("should remove the OVN LSP activation strategy after successful migration", func() {
 			portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
 
 			migrationName := "mig-" + framework.RandomSuffix()
@@ -578,8 +581,9 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			err = vmClient.WaitToBeReady(vmName, 2*time.Minute)
 			framework.ExpectNoError(err)
 
+			pod := getVMPod(podClient, vmName)
 			ginkgo.By("Checking OVN LSP options for " + portName)
-			expectLSPMigrationCleanup(portName)
+			expectLSPMigrationState(portName, pod.Spec.NodeName)
 		})
 
 		framework.ConformanceIt("should preserve IP CRD resource through live migration", func() {
@@ -656,7 +660,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 			portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
 			ginkgo.By("Checking OVN LSP options for " + portName)
-			expectLSPMigrationCleanup(portName)
+			expectLSPMigrationState(portName, pod.Spec.NodeName)
 		})
 
 		framework.ConformanceIt("should maintain network connectivity through multiple sequential migrations", func() {
@@ -743,7 +747,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Checking OVN LSP cleanup", i, migrationCount))
-				expectLSPMigrationCleanup(portName)
+				expectLSPMigrationState(portName, pod.Spec.NodeName)
 
 				framework.Logf("[migration %d/%d] PASSED — node: %s, IP: %v, MAC: %s, lost packets: %d", i, migrationCount, pod.Spec.NodeName, pod.Status.PodIPs, origMAC, lost)
 			}
@@ -938,11 +942,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		ginkgo.By("Checking default NIC OVN LSP cleanup")
 		portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
-		expectLSPMigrationCleanup(portName)
+		expectLSPMigrationState(portName, pod.Spec.NodeName)
 
 		ginkgo.By("Checking secondary NIC OVN LSP cleanup")
 		secondaryPortName := ovs.PodNameToPortName(vmName, namespaceName, provider)
-		expectLSPMigrationCleanup(secondaryPortName)
+		expectLSPMigrationState(secondaryPortName, pod.Spec.NodeName)
 
 		framework.Logf("After migration — default IP: %v, MAC: %s, secondary IP: %s, MAC: %s",
 			pod.Status.PodIPs, pod.Annotations[util.MacAddressAnnotation],
