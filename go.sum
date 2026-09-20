@@ -69,8 +69,8 @@ github.com/containerd/errdefs/pkg v0.3.0 h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151X
 github.com/containerd/errdefs/pkg v0.3.0/go.mod h1:NJw6s9HwNuRhnjJhM7pylWwMyAkmCQvQ4GpJHEqRLVk=
 github.com/containerd/log v0.2.0 h1:BewD/umNgVnoczglOpX8eRMyEy5t5iPlu5AIpnWDONc=
 github.com/containerd/log v0.2.0/go.mod h1:/M7L7CXKcPTfNC74XzaK+5H5KbO5+4lJVpuVI6vRLoM=
-github.com/containerd/nerdctl/v2 v2.3.5 h1:auYeWpIM29NUvqWxFvar8HIbSVrGBn6dRPx45rrUApY=
-github.com/containerd/nerdctl/v2 v2.3.5/go.mod h1:j2i2sTqQ0Z9YaZDI8XroU+NYtP5C1jC4mjtuvYvV0TE=
+github.com/containerd/nerdctl/v2 v2.4.0 h1:5m7uhiSwivsd1C5tWbtQTnULviGLNCb67N3FTjhle4E=
+github.com/containerd/nerdctl/v2 v2.4.0/go.mod h1:y0RNirYkqoZuKoSZiXYmNVUnyisCJl9BbtjHWOvyus4=
 github.com/containerd/ttrpc v1.2.9 h1:ha0ak962T0s3CA/RoZ6S6xiWZQF24GrBaEpiGX1uihg=
 github.com/containerd/ttrpc v1.2.9/go.mod h1:jjtQRwXm4DL3KsHKW8vDiUOV6wO0hi6IPhmJhxU7aEs=
 github.com/containerd/typeurl/v2 v2.3.0 h1:HZHPhRWo5XMy3QGQoPrUzbW/2ckwjfweHmOwlkIrPAQ=
