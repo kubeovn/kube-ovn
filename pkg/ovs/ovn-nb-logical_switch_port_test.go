@@ -533,6 +533,16 @@ func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents()
 		require.Equal(t, parents, lsp.Options["virtual-parents"])
 	})
 
+	t.Run("set virtual port addresses", func(t *testing.T) {
+		addresses := "2e:a5:9b:20:42:d2 192.168.211.31"
+		err = nbClient.SetVirtualLogicalSwitchPortAddresses(lspName, addresses)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, []string{addresses}, lsp.Addresses)
+	})
+
 	t.Run("failed client set virtual-parents option", func(t *testing.T) {
 		err := failedNbClient.CreateBareLogicalSwitch(lsName)
 		require.Error(t, err)

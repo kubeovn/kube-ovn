@@ -253,8 +253,25 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string)
 		return err
 	}
 
-	// ignore
 	if exist {
+		lsp, err := c.GetLogicalSwitchPort(lspName, true)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		if lsp == nil {
+			return fmt.Errorf("logical switch port %s not found", lspName)
+		}
+		if lsp.Options == nil {
+			lsp.Options = make(map[string]string)
+		}
+		if lsp.Options["virtual-ip"] != ip {
+			lsp.Options["virtual-ip"] = ip
+			if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+				klog.Error(err)
+				return fmt.Errorf("update virtual logical switch port %s: %w", lspName, err)
+			}
+		}
 		return nil
 	}
 
@@ -278,6 +295,27 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string)
 		return fmt.Errorf("create virtual logical switch port %s for logical switch %s: %w", lspName, lsName, err)
 	}
 
+	return nil
+}
+
+// SetVirtualLogicalSwitchPortAddresses updates the addresses advertised by a
+// virtual logical switch port. Virtual ports do not install an ARP responder,
+// so the address can safely participate in the distributed subnet address set.
+func (c *OVNNbClient) SetVirtualLogicalSwitchPortAddresses(lspName, addresses string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil {
+		return fmt.Errorf("logical switch port %s not found", lspName)
+	}
+
+	lsp.Addresses = []string{addresses}
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("set logical switch port %s addresses: %w", lspName, err)
+	}
 	return nil
 }
 

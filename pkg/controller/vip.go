@@ -205,9 +205,15 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			}
 		}
 		// delete virtual ports
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(vip.Name); err != nil {
-			klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", vip.Name, vip.Spec.Subnet, err)
-			return err
+		virtualPorts := virtualVipPorts(vip)
+		if len(virtualPorts) == 0 {
+			virtualPorts = []virtualVipPort{{name: vip.Name}}
+		}
+		for _, virtualPort := range virtualPorts {
+			if err := c.OVNNbClient.DeleteLogicalSwitchPort(virtualPort.name); err != nil {
+				klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", virtualPort.name, vip.Spec.Subnet, err)
+				return err
+			}
 		}
 		// Release IP from IPAM before removing finalizer
 		c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
@@ -290,11 +296,11 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		return nil
 	}
 
-	// add new virtual port if not exist
-	ipStr := util.GetStringIP(cachedVip.Status.V4ip, cachedVip.Status.V6ip)
-	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPort(cachedVip.Name, cachedVip.Spec.Subnet, ipStr); err != nil {
-		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", cachedVip.Name, cachedVip.Spec.Subnet, err)
-		return err
+	virtualPorts := virtualVipPorts(cachedVip)
+	for _, virtualPort := range virtualPorts {
+		if err = c.ensureVirtualVipPort(cachedVip, virtualPort); err != nil {
+			return err
+		}
 	}
 
 	// update virtual parents
@@ -303,9 +309,75 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		return nil
 	}
 
+	virtualParents, parentNodes, err := c.virtualVipParents(cachedVip)
+	if err != nil {
+		return err
+	}
+	parents := strings.Join(virtualParents, ",")
+	for _, virtualPort := range virtualPorts {
+		if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(virtualPort.name, parents); err != nil {
+			klog.Errorf("set vip %s virtual parents %s: %v", virtualPort.name, parents, err)
+			return err
+		}
+	}
+	if err = c.syncVirtualVipPortGroups(cachedVip, virtualPorts, parentNodes); err != nil {
+		klog.Errorf("sync virtual port %s distributed subnet port groups: %v", cachedVip.Name, err)
+		return err
+	}
+
+	return nil
+}
+
+type virtualVipPort struct {
+	name string
+	ip   string
+}
+
+func virtualVipPorts(vip *kubeovnv1.Vip) []virtualVipPort {
+	v4ip, v6ip := vip.Status.V4ip, vip.Status.V6ip
+	if v4ip == "" {
+		v4ip = vip.Spec.V4ip
+	}
+	if v6ip == "" {
+		v6ip = vip.Spec.V6ip
+	}
+	ipStr := util.GetStringIP(v4ip, v6ip)
+	ips := strings.Split(ipStr, ",")
+	ports := make([]virtualVipPort, 0, len(ips))
+	for i, ip := range ips {
+		if ip == "" {
+			continue
+		}
+		name := vip.Name
+		if i > 0 {
+			name = fmt.Sprintf("%s-vip-%s", vip.Name, ip)
+		}
+		ports = append(ports, virtualVipPort{name: name, ip: ip})
+	}
+	return ports
+}
+
+func (c *Controller) ensureVirtualVipPort(vip *kubeovnv1.Vip, virtualPort virtualVipPort) error {
+	if err := c.OVNNbClient.CreateVirtualLogicalSwitchPort(virtualPort.name, vip.Spec.Subnet, virtualPort.ip); err != nil {
+		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", virtualPort.name, vip.Spec.Subnet, err)
+		return err
+	}
+	if vip.Spec.Type == util.SwitchLBRuleVip {
+		return nil
+	}
+
+	addresses := strings.TrimSpace(strings.Join([]string{vip.Status.Mac, virtualPort.ip}, " "))
+	if err := c.OVNNbClient.SetVirtualLogicalSwitchPortAddresses(virtualPort.name, addresses); err != nil {
+		klog.Errorf("set virtual port %s addresses %s: %v", virtualPort.name, addresses, err)
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) virtualVipParents(vip *kubeovnv1.Vip) ([]string, map[string]struct{}, error) {
 	// vip cloud use selector to select pods as its virtual parents
 	matchLabels := make(map[string]string)
-	for _, v := range cachedVip.Spec.Selector {
+	for _, v := range vip.Spec.Selector {
 		parts := strings.Split(strings.TrimSpace(v), ":")
 		if len(parts) != 2 {
 			continue
@@ -315,21 +387,22 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: matchLabels})
 	if err != nil {
 		klog.Errorf("failed to convert label selector %v: %v", matchLabels, err)
-		return err
+		return nil, nil, err
 	}
-	pods, err := c.podsLister.Pods(cachedVip.Spec.Namespace).List(selector)
+	pods, err := c.podsLister.Pods(vip.Spec.Namespace).List(selector)
 	if err != nil {
 		klog.Errorf("failed to list pods that meet selector requirements, %v", err)
-		return err
+		return nil, nil, err
 	}
 
 	var virtualParents []string
+	parentNodes := make(map[string]struct{})
 	for _, pod := range pods {
 		if pod.Annotations == nil {
 			// pod has no annotations
 			continue
 		}
-		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, cachedVip.Name) {
+		if aaps := strings.Split(pod.Annotations[util.AAPsAnnotation], ","); !slices.Contains(aaps, vip.Name) {
 			continue
 		}
 		podName := c.getNameByPod(pod)
@@ -343,9 +416,12 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 				continue
 			}
 
-			if podNet.Subnet.Name == cachedVip.Spec.Subnet {
+			if podNet.Subnet.Name == vip.Spec.Subnet {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
 				virtualParents = append(virtualParents, portName)
+				if pod.Spec.NodeName != "" {
+					parentNodes[pod.Spec.NodeName] = struct{}{}
+				}
 				key := cache.MetaObjectToName(pod).String()
 				klog.Infof("enqueue update pod security for %s", key)
 				c.updatePodSecurityQueue.Add(key)
@@ -353,13 +429,57 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 			}
 		}
 	}
+	return virtualParents, parentNodes, nil
+}
 
-	parents := strings.Join(virtualParents, ",")
-	if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(cachedVip.Name, parents); err != nil {
-		klog.Errorf("set vip %s virtual parents %s: %v", cachedVip.Name, parents, err)
-		return err
+func (c *Controller) syncVirtualVipPortGroups(vip *kubeovnv1.Vip, virtualPorts []virtualVipPort, parentNodes map[string]struct{}) error {
+	subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+	if err != nil {
+		return fmt.Errorf("get subnet %s: %w", vip.Spec.Subnet, err)
+	}
+	if subnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
+		subnet.Spec.Vpc != c.config.ClusterRouter ||
+		(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) ||
+		subnet.Name == c.config.NodeSwitch {
+		return nil
 	}
 
+	portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{
+		"subnet":         subnet.Name,
+		"node":           "",
+		networkPolicyKey: "",
+	})
+	if err != nil {
+		return fmt.Errorf("list port groups for subnet %s: %w", subnet.Name, err)
+	}
+
+	portGroupNames := make([]string, 0, len(portGroups))
+	portGroupsByNode := make(map[string]string, len(portGroups))
+	for _, portGroup := range portGroups {
+		portGroupNames = append(portGroupNames, portGroup.Name)
+		if nodeName := portGroup.ExternalIDs["node"]; nodeName != "" {
+			portGroupsByNode[nodeName] = portGroup.Name
+		}
+	}
+	if len(portGroupNames) > 0 {
+		for _, virtualPort := range virtualPorts {
+			if err = c.OVNNbClient.RemovePortFromPortGroups(virtualPort.name, portGroupNames...); err != nil {
+				return fmt.Errorf("remove virtual port %s from old port groups: %w", virtualPort.name, err)
+			}
+		}
+	}
+
+	for _, virtualPort := range virtualPorts {
+		for nodeName := range parentNodes {
+			pgName, ok := portGroupsByNode[nodeName]
+			if !ok {
+				continue
+			}
+			if err = c.OVNNbClient.PortGroupAddPorts(pgName, virtualPort.name); err != nil {
+				return fmt.Errorf("add virtual port %s to port group %s: %w", virtualPort.name, pgName, err)
+			}
+		}
+	}
 	return nil
 }
 
