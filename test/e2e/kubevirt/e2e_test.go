@@ -494,7 +494,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var migrationClient *framework.VMIMigrationClient
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 14, "Live migration e2e tests require v1.14 or later.")
+		f.SkipVersionPriorTo(1, 16, "Live migration e2e tests require v1.16 or later.")
 
 		nodes, err := e2enode.GetReadySchedulableNodes(context.TODO(), f.ClientSet)
 		framework.ExpectNoError(err)
@@ -835,7 +835,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var migrationClient *framework.VMIMigrationClient
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 14, "Multus live migration e2e tests require v1.14 or later.")
+		f.SkipVersionPriorTo(1, 16, "Multus live migration e2e tests require v1.16 or later.")
 
 		nodes, err := e2enode.GetReadySchedulableNodes(context.TODO(), f.ClientSet)
 		framework.ExpectNoError(err)

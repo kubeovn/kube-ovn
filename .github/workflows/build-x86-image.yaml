@@ -1807,7 +1807,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:

@@ -1893,6 +1893,10 @@ class E2EControlTest(unittest.TestCase):
             blocks["kube-ovn-conformance-e2e"],
             r"(?m)^    timeout-minutes: 120$",
         )
+        self.assertRegex(
+            blocks["kubevirt-e2e"],
+            r"(?m)^    timeout-minutes: 45$",
+        )
 
         makefile = (repoRoot / "makefiles/e2e.mk").read_text()
         self.assertIn(
