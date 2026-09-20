@@ -12,7 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -317,8 +316,8 @@ func MakeVMBridge(name, image, size string, runStrategy *v1.VirtualMachineRunStr
 // increases memory to 128Mi to ensure the guest OS can fully boot and
 // configure networking.
 func MakeVMLiveMigratable(name, image, size string) *v1.VirtualMachine {
-	vm := MakeVM(name, image, size, ptr.To(v1.RunStrategyAlways))
-	vm.Spec.Template.Spec.EvictionStrategy = ptr.To(v1.EvictionStrategyLiveMigrate)
+	vm := MakeVM(name, image, size, new(v1.RunStrategyAlways))
+	vm.Spec.Template.Spec.EvictionStrategy = new(v1.EvictionStrategyLiveMigrate)
 	vm.Spec.Template.Spec.Domain.Resources.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
 	return vm
 }
@@ -327,8 +326,8 @@ func MakeVMLiveMigratable(name, image, size string) *v1.VirtualMachine {
 // a bridge interface instead of masquerade. Bridge mode requires the
 // AllowPodBridgeNetworkLiveMigrationAnnotation annotation on the VMI template.
 func MakeVMLiveMigratableBridge(name, image, size string) *v1.VirtualMachine {
-	vm := MakeVMBridge(name, image, size, ptr.To(v1.RunStrategyAlways))
-	vm.Spec.Template.Spec.EvictionStrategy = ptr.To(v1.EvictionStrategyLiveMigrate)
+	vm := MakeVMBridge(name, image, size, new(v1.RunStrategyAlways))
+	vm.Spec.Template.Spec.EvictionStrategy = new(v1.EvictionStrategyLiveMigrate)
 	vm.Spec.Template.Spec.Domain.Resources.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
 	if vm.Spec.Template.ObjectMeta.Annotations == nil {
 		vm.Spec.Template.ObjectMeta.Annotations = make(map[string]string)

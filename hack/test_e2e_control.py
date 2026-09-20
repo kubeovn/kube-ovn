@@ -1721,7 +1721,7 @@ class E2EControlTest(unittest.TestCase):
             "inputs.headSHA || github.event.repository.default_branch }}",
             workflow,
         )
-        self.assertEqual(workflow.count("ref: ${{ env.E2E_SOURCE_REF }}"), 24)
+        self.assertEqual(workflow.count("ref: ${{ env.E2E_SOURCE_REF }}"), 25)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
         self.assertNotIn("github.event.pull_request.head.sha || inputs.headSHA", workflow.replace(
             "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "

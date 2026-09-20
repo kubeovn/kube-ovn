@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedRunnerJobs": 84,
+  "expectedRunnerJobs": 85,
   "forceFull": false,
   "fullThreshold": 3,
   "productionPrefixes": ["cmd/", "fastpath/", "pkg/", "versions/"],
@@ -40,7 +40,6 @@
     "pkg/ovsdb/**",
     "pkg/util/**",
     "test/e2e/framework/**",
-    "test/e2e/kubevirt/**",
     "test/e2e/single-replica/**",
     "cmd/cni/**",
     "cmd/controller/**",
@@ -54,6 +53,12 @@
       "groups": ["core", "service-lb-underlay"],
       "owner": "networking-e2e",
       "reason": "Kube-OVN conformance and router load balancer suites"
+    },
+    {
+      "patterns": ["test/e2e/kubevirt/**"],
+      "groups": ["kubevirt"],
+      "owner": "networking-e2e",
+      "reason": "KubeVirt virtual machine and live migration suites"
     },
     {
       "patterns": ["test/e2e/k8s-network/**"],
@@ -165,6 +170,11 @@
     }
   ],
   "groups": {
+    "kubevirt": {
+      "jobs": [
+        {"id": "kubevirt-e2e"}
+      ]
+    },
     "core": {
       "jobs": [
         {"id": "k8s-conformance-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]}},
