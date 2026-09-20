@@ -1,21 +1,84 @@
-From e490f5ac0b644101913c2a3db8e03d85e859deff Mon Sep 17 00:00:00 2001
-From: Mengxin Liu <mengxin@alauda.io>
-Date: Thu, 10 Apr 2025 01:28:59 +0000
-Subject: [PATCH] use source IP hash for policy route ECMP
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Sat, 20 Sep 2026 00:00:00 +0000
+Subject: [PATCH] use L4 tuple hash for policy route ECMP
 
+Hash policy ECMP the same way as static-route selection_fields
+tp_src/tp_dst: TCP/UDP/SCTP include L4 ports, other IP traffic
+hashes on addresses and ip_proto.
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
- northd/northd.c | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
+ northd/northd.c | 46 +40 -6
+ 1 file changed, 40 insertions(+), 6 deletions(-)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index 1ca8ded..37623d4 100644
+index 1ca8ded..19f93dc 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -11882 +11882 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+@@ -11878,10 +11878,16 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+ 
+     ds_clear(&actions);
+     if (rp->n_valid_nexthops > 1) {
+-        ds_put_format(&actions, "%s = %"PRIu16
 -                      "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
-+                      "; %s = select(values=(", REG_ECMP_GROUP_ID, ecmp_group_id,
-@@ -11892 +11892 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+-                      REG_ECMP_MEMBER_ID);
++        /* Hash on L4 ports like static-route selection_fields={tp_src,tp_dst}.
++         * Install protocol-specific flows so tcp/udp/sctp use their own
++         * port fields, and other IP traffic hashes on L3/proto only. */
++        struct ds proto_match = DS_EMPTY_INITIALIZER;
++        struct ds proto_actions = DS_EMPTY_INITIALIZER;
++        static const char *protocols[] = {NULL, "tcp", "udp", "sctp"};
+ 
++        ds_put_format(&actions, "%s = %"PRIu16
++                      "; %s = select(values=(", REG_ECMP_GROUP_ID,
++                      ecmp_group_id, REG_ECMP_MEMBER_ID);
+         for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
+             if (i > 0) {
+                 ds_put_cstr(&actions, ", ");
+@@ -11889,14 +11895,42 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+ 
+             ds_put_format(&actions, "%"PRIuSIZE, i + 1);
+         }
 -        ds_put_cstr(&actions, ");");
-+        ds_put_cstr(&actions, "); hash_fields=\"ip_src\");");
---
-2.43.0
++
++        for (size_t i = 0; i < ARRAY_SIZE(protocols); i++) {
++            const char *protocol = protocols[i];
++
++            ds_clear(&proto_actions);
++            ds_put_cstr(&proto_actions, ds_cstr(&actions));
++            ds_clear(&proto_match);
++            if (protocol) {
++                ds_put_format(&proto_actions,
++                              "); hash_fields=\"ip_src,ip_dst,ipv6_src,"
++                              "ipv6_dst,ip_proto,%s_src,%s_dst\");",
++                              protocol, protocol);
++                ds_put_format(&proto_match, "(%s) && %s",
++                              rule->match, protocol);
++            } else {
++                ds_put_cstr(&proto_actions,
++                            "); hash_fields=\"ip_src,ip_dst,ipv6_src,"
++                            "ipv6_dst,ip_proto\");");
++                ds_put_format(&proto_match,
++                              "(%s) && ip && !tcp && !udp && !sctp",
++                              rule->match);
++            }
++            ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, rule->priority,
++                          ds_cstr(&proto_match), ds_cstr(&proto_actions),
++                          lflow_ref, WITH_HINT(&rule->header_));
++        }
++        ds_destroy(&proto_match);
++        ds_destroy(&proto_actions);
+     } else {
+         ds_put_format(&actions, "%s = %"PRIu16
+                       "; %s = 1; next;", REG_ECMP_GROUP_ID,
+                       ecmp_group_id, REG_ECMP_MEMBER_ID);
++        ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, rule->priority,
++                      rule->match, ds_cstr(&actions), lflow_ref,
++                      WITH_HINT(&rule->header_));
+     }
+-    ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, rule->priority, rule->match,
+-                  ds_cstr(&actions), lflow_ref, WITH_HINT(&rule->header_));
+ cleanup:
+     ds_destroy(&match);
+     ds_destroy(&actions);
