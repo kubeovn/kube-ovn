@@ -1891,7 +1891,7 @@ class E2EControlTest(unittest.TestCase):
         blocks = e2eSelector.workflowJobBlocks(workflow)
         self.assertRegex(
             blocks["kube-ovn-conformance-e2e"],
-            r"(?m)^    timeout-minutes: 120$",
+            r"(?m)^    timeout-minutes: 60$",
         )
         self.assertRegex(
             blocks["kubevirt-e2e"],
