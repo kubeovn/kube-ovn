@@ -2758,3 +2758,45 @@ func TestNeedAllocateSubnets(t *testing.T) {
 		require.Equal(t, nets, needAllocateSubnets(pod, nets))
 	})
 }
+
+func TestIsMigrationSourcePod(t *testing.T) {
+	tests := []struct {
+		name    string
+		podName string
+		state   *kubevirtv1.VirtualMachineInstanceMigrationState
+		want    bool
+	}{
+		{
+			name:    "current source pod",
+			podName: "source",
+			state: &kubevirtv1.VirtualMachineInstanceMigrationState{
+				SourcePod: "source",
+				TargetPod: "target",
+			},
+			want: true,
+		},
+		{
+			name:    "current target pod",
+			podName: "target",
+			state: &kubevirtv1.VirtualMachineInstanceMigrationState{
+				SourcePod: "source",
+				TargetPod: "target",
+			},
+		},
+		{
+			name:    "stale state without target pod",
+			podName: "source",
+			state:   &kubevirtv1.VirtualMachineInstanceMigrationState{SourcePod: "source"},
+		},
+		{
+			name:  "missing migration state",
+			state: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isMigrationSourcePod(tt.podName, tt.state))
+		})
+	}
+}

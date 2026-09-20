@@ -551,6 +551,9 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		return nil
 	}
 	needAllocatePodNets := needAllocateSubnets(pod, podNets)
+	if len(needAllocatePodNets) != 0 && c.isCurrentMigrationSourcePod(pod) {
+		needAllocatePodNets = nil
+	}
 	if len(needAllocatePodNets) != 0 {
 		if pod, err = c.reconcileAllocateSubnets(pod, needAllocatePodNets); err != nil {
 			klog.Error(err)
@@ -590,6 +593,28 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkUpdated", "%s", strings.TrimPrefix(strings.Join(details, "; "), "; "))
 	}
 	return nil
+}
+
+// isCurrentMigrationSourcePod reports whether a virt-launcher pod is the source
+// of the migration currently recorded on its VMI. A completed migration target
+// keeps its old migration labels and annotations, so those metadata alone cannot
+// distinguish it from the target of a later migration.
+func (c *Controller) isCurrentMigrationSourcePod(pod *v1.Pod) bool {
+	isVM, vmName := isVMPod(pod)
+	if !isVM || c.config.KubevirtClient == nil || pod.Annotations[kubevirtv1.MigrationJobNameAnnotation] == "" {
+		return false
+	}
+
+	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(context.Background(), vmName, metav1.GetOptions{})
+	if err != nil {
+		klog.V(3).Infof("failed to get VMI %s/%s while checking migration source pod: %v", pod.Namespace, vmName, err)
+		return false
+	}
+	return isMigrationSourcePod(pod.Name, vmi.Status.MigrationState)
+}
+
+func isMigrationSourcePod(podName string, state *kubevirtv1.VirtualMachineInstanceMigrationState) bool {
+	return state != nil && state.SourcePod == podName && state.TargetPod != "" && state.TargetPod != podName
 }
 
 // subnetDHCPOptionsUUIDs returns the subnet-level DHCP option UUIDs from the subnet status.
