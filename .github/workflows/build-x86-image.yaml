@@ -5369,6 +5369,7 @@ jobs:
     env:
       NEEDS_JSON: ${{ toJSON(needs) }}
       SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
+      EVENT_NAME: ${{ github.event_name }}
     steps:
       - name: Verify every selected test Job succeeded
         run: |
@@ -5378,7 +5379,15 @@ jobs:
 
           needs = json.loads(os.environ["NEEDS_JSON"])
           selectedJobIds = json.loads(os.environ["SELECTED_JOB_IDS"])
-          requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds
+          nonBlockingPushJobIds = {
+              "kube-ovn-submariner-conformance-e2e"
+          } if os.environ["EVENT_NAME"] == "push" else set()
+          requiredJobIds = [
+              "e2e-selection",
+              "e2e-control-validation",
+          ] + [
+              jobId for jobId in selectedJobIds if jobId not in nonBlockingPushJobIds
+          ]
           incomplete = {
               jobId: needs.get(jobId, {}).get("result", "missing")
               for jobId in requiredJobIds

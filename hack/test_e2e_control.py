@@ -1855,8 +1855,14 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("HEAD_SHA: ${{ inputs.headSHA }}", publish)
         self.assertIn("- e2e-selection\n", publish)
         self.assertNotIn("- e2e-executor-result", publish)
+        self.assertIn("EVENT_NAME: ${{ github.event_name }}", resultBlock)
         self.assertIn(
-            'requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds',
+            '"kube-ovn-submariner-conformance-e2e"\n'
+            '          } if os.environ["EVENT_NAME"] == "push" else set()',
+            resultBlock,
+        )
+        self.assertIn(
+            "jobId for jobId in selectedJobIds if jobId not in nonBlockingPushJobIds",
             resultBlock,
         )
         self.assertIn("required x86 E2E Jobs did not succeed", resultBlock)
