@@ -35,12 +35,9 @@ const (
 	maxOVNLBSessionTimeout   = 65535
 	serviceTemplateVarRoot   = "kube_ovn_svc_"
 
-	serviceLBOwnerKindAnnotation = "kube-ovn.io/lb-owner-kind"
-	serviceLBOwnerNameAnnotation = "kube-ovn.io/lb-owner-name"
-	serviceLBOwnerUIDAnnotation  = "kube-ovn.io/lb-owner-uid"
-	serviceLBOwnerKind           = "service"
-	switchLBRuleLBOwnerKind      = "switchlbrule"
-	routerLBRuleLBOwnerKind      = "routerlbrule"
+	serviceLBOwnerKind      = "service"
+	switchLBRuleLBOwnerKind = "switchlbrule"
+	routerLBRuleLBOwnerKind = "routerlbrule"
 )
 
 type serviceLBOwner struct {
@@ -78,34 +75,81 @@ func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
 		name:      svc.Name,
 		uid:       string(svc.UID),
 	}
-	if kind := svc.Annotations[serviceLBOwnerKindAnnotation]; kind != "" {
-		owner.kind = kind
+
+	// Generated rule Services are owned by the cluster-scoped SwitchLBRule or
+	// RouterLBRule. Read the controller owner reference: a user-writable
+	// annotation could otherwise take over another object's deterministic
+	// load balancer name.
+	ref := metav1.GetControllerOf(svc)
+	if ref == nil || ref.Name == "" || ref.UID == "" {
+		return owner
 	}
-	if name := svc.Annotations[serviceLBOwnerNameAnnotation]; name != "" {
-		owner.name = name
+	if ref.APIVersion != kubeovnv1.SchemeGroupVersion.String() {
+		return owner
 	}
-	if uid := svc.Annotations[serviceLBOwnerUIDAnnotation]; uid != "" {
-		owner.uid = uid
+	switch ref.Kind {
+	case util.KindSwitchLBRule:
+		if svc.Name != generateSvcName(ref.Name) {
+			return owner
+		}
+		owner.kind = switchLBRuleLBOwnerKind
+	case util.KindRouterLBRule:
+		if svc.Name != generateRlrSvcName(ref.Name) {
+			return owner
+		}
+		owner.kind = routerLBRuleLBOwnerKind
+	default:
+		return owner
 	}
+	owner.name, owner.uid = ref.Name, string(ref.UID)
 	return owner
 }
 
 func setServiceScopedLBOwner(svc *v1.Service, kind, name, uid string) {
-	if svc.Annotations == nil {
-		svc.Annotations = make(map[string]string)
+	if svc == nil {
+		return
 	}
-	svc.Annotations[serviceLBOwnerKindAnnotation] = kind
-	svc.Annotations[serviceLBOwnerNameAnnotation] = name
-	svc.Annotations[serviceLBOwnerUIDAnnotation] = uid
+	var ownerKind string
+	switch kind {
+	case switchLBRuleLBOwnerKind:
+		ownerKind = util.KindSwitchLBRule
+	case routerLBRuleLBOwnerKind:
+		ownerKind = util.KindRouterLBRule
+	default:
+		return
+	}
+	desired := metav1.OwnerReference{
+		APIVersion: kubeovnv1.SchemeGroupVersion.String(),
+		Kind:       ownerKind,
+		Name:       name,
+		UID:        types.UID(uid),
+		Controller: new(true),
+	}
+	refs := slices.Clone(svc.OwnerReferences)
+	index := slices.IndexFunc(refs, func(ref metav1.OwnerReference) bool {
+		return (ref.Controller != nil && *ref.Controller) ||
+			(ref.APIVersion == kubeovnv1.SchemeGroupVersion.String() &&
+				(ref.Kind == util.KindSwitchLBRule || ref.Kind == util.KindRouterLBRule))
+	})
+	if index >= 0 {
+		refs[index] = desired
+	} else {
+		refs = append(refs, desired)
+	}
+	svc.OwnerReferences = refs
 }
 
-func serviceOwnsScopedLB(svc *v1.Service, lb *ovnnb.LoadBalancer) bool {
-	owner := serviceScopedLBOwner(svc)
-	return owner.uid != "" && lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
+func (owner serviceLBOwner) ownsLoadBalancer(lb *ovnnb.LoadBalancer) bool {
+	return owner.uid != "" &&
+		lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
 		lb.ExternalIDs[serviceLBOwnerKindID] == owner.kind &&
 		lb.ExternalIDs[serviceLBNamespaceID] == owner.namespace &&
 		lb.ExternalIDs[serviceLBNameExternalID] == owner.name &&
 		lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
+}
+
+func serviceOwnsScopedLB(svc *v1.Service, lb *ovnnb.LoadBalancer) bool {
+	return serviceScopedLBOwner(svc).ownsLoadBalancer(lb)
 }
 
 func serviceUsesDistributedLB(svc *v1.Service) bool {
@@ -615,11 +659,7 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 	if owner.uid == "" {
 		return nil
 	}
-	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
-			lb.ExternalIDs[serviceLBOwnerKindID] == owner.kind &&
-			lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
-	}); err != nil {
+	if err := c.OVNNbClient.DeleteLoadBalancers(owner.ownsLoadBalancer); err != nil {
 		return fmt.Errorf("delete service-scoped load balancers for %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
 	if serviceUsesTrafficDistribution(svc) {
@@ -642,9 +682,7 @@ func (c *Controller) deleteServiceScopedLBTrafficClass(svc *v1.Service, protocol
 	}
 	name := serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass)
 	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.Name == name && lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
-			lb.ExternalIDs[serviceLBOwnerKindID] == owner.kind &&
-			lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
+		return lb.Name == name && owner.ownsLoadBalancer(lb)
 	}); err != nil {
 		return fmt.Errorf("delete %s service-scoped load balancer for %s/%s: %w", trafficClass, svc.Namespace, svc.Name, err)
 	}
@@ -789,9 +827,7 @@ func (c *Controller) deleteStaleServiceScopedLoadBalancers(svc *v1.Service) erro
 		desired[name] = struct{}{}
 	}
 	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		if lb.ExternalIDs[serviceLBOwnerExternalID] != owner.uid ||
-			lb.ExternalIDs[serviceLBOwnerKindID] != owner.kind ||
-			lb.ExternalIDs[serviceLBVersionID] != serviceLBVersion {
+		if !owner.ownsLoadBalancer(lb) {
 			return false
 		}
 		_, ok := desired[lb.Name]
@@ -804,11 +840,7 @@ func (c *Controller) deleteStaleServiceScopedLoadBalancers(svc *v1.Service) erro
 
 func (c *Controller) cleanupServiceScopedLBVIPs(svc *v1.Service, desired map[string]map[string]struct{}) error {
 	owner := serviceScopedLBOwner(svc)
-	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.ExternalIDs[serviceLBOwnerExternalID] == owner.uid &&
-			lb.ExternalIDs[serviceLBOwnerKindID] == owner.kind &&
-			lb.ExternalIDs[serviceLBVersionID] == serviceLBVersion
-	})
+	lbs, err := c.OVNNbClient.ListLoadBalancers(owner.ownsLoadBalancer)
 	if err != nil {
 		return fmt.Errorf("list service-scoped load balancers for %s/%s: %w", svc.Namespace, svc.Name, err)
 	}

@@ -238,6 +238,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	vpcForSlr := ""
 	if svc, e := c.servicesLister.Services(info.Namespace).Get(name); e == nil {
 		ownerSvc = svc.DeepCopy()
+		setServiceScopedLBOwner(ownerSvc, switchLBRuleLBOwnerKind, info.Name, info.UID)
 		subnetForVip = svc.Annotations[util.LogicalSwitchAnnotation]
 		// Prefer VpcAnnotation (set by the endpoint_slice controller) but fall
 		// back to LogicalRouterAnnotation (set synchronously by the SLR
