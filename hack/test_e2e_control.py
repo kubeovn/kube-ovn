@@ -1907,7 +1907,7 @@ class E2EControlTest(unittest.TestCase):
         scheduled = (repoRoot / ".github/workflows/scheduled-e2e.yaml").read_text()
         self.assertRegex(
             scheduled,
-            r"kube-ovn-conformance-e2e:\n    name: Kube-OVN Conformance E2E\n    runs-on: ubuntu-24.04\n    timeout-minutes: 80\n",
+            r"kube-ovn-conformance-e2e:\n    name: Kube-OVN Conformance E2E\n    runs-on: ubuntu-26.04\n    timeout-minutes: 40\n",
         )
 
     def testKindPullUsesAnonymousGhcrWhenTokenIsAbsent(self):
