@@ -908,10 +908,6 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPolicies() {
 	suite.testDeleteLogicalRouterPolicies()
 }
 
-func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPoliciesByNexthop() {
-	suite.testDeleteLogicalRouterPolicyByNexthop()
-}
-
 func (suite *OvnClientTestSuite) Test_DeleteRouterPolicy() {
 	suite.testDeleteRouterPolicy()
 }

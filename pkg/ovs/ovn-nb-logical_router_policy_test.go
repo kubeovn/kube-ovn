@@ -675,43 +675,6 @@ func (suite *OvnClientTestSuite) testDeleteRouterPolicy() {
 	require.NoError(t, err)
 }
 
-func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicyByNexthop() {
-	t := suite.T()
-	t.Parallel()
-
-	nbClient := suite.ovnNBClient
-	lrName := "test-delete-policy-by-next-hop-lr"
-	priority := 11011
-	match := "ip4.src == $ovn.default.lm2_ip4"
-	action := ovnnb.LogicalRouterPolicyActionAllow
-	nextHops := []string{"100.64.0.2"}
-
-	err := nbClient.CreateLogicalRouter(lrName)
-	require.NoError(t, err)
-
-	err = nbClient.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil, nil)
-	require.NoError(t, err)
-
-	lr, err := nbClient.GetLogicalRouter(lrName, false)
-	require.NoError(t, err)
-
-	policyList, err := nbClient.GetLogicalRouterPolicy(lrName, priority, match, false)
-	require.NoError(t, err)
-	require.Len(t, policyList, 1)
-	require.Contains(t, lr.Policies, policyList[0].UUID)
-
-	err = nbClient.DeleteLogicalRouterPolicyByNexthop(lrName, priority, nextHops[0])
-	require.NoError(t, err)
-
-	err = nbClient.DeleteLogicalRouterPolicyByNexthop(lrName, priority+1, nextHops[0])
-	require.NoError(t, err)
-
-	t.Run("should log err when logical router does not exist", func(t *testing.T) {
-		err = nbClient.DeleteLogicalRouterPolicyByNexthop("test-nonexist-lr", priority, nextHops[0])
-		require.Error(t, err)
-	})
-}
-
 func (suite *OvnClientTestSuite) testBatchAddLogicalRouterPolicy() {
 	t := suite.T()
 	t.Parallel()

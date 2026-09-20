@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
 	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
@@ -367,26 +366,6 @@ func (c *OVNNbClient) BatchDeleteLogicalRouterPolicyByUUID(lrName string, uuidLi
 		return err
 	}
 	klog.V(3).Infof("take to %vms batch delete logical router policies %s uuid %v", time.Since(start).Milliseconds(), lrName, uuidList)
-	return nil
-}
-
-func (c *OVNNbClient) DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error {
-	policyList, err := c.listLogicalRouterPoliciesByFilter(lrName, func(route *ovnnb.LogicalRouterPolicy) bool {
-		if route.Priority != priority {
-			return false
-		}
-		return (route.Nexthop != nil && *route.Nexthop == nexthop) || slices.Contains(route.Nexthops, nexthop)
-	})
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	for _, policy := range policyList {
-		if err = c.DeleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
 	return nil
 }
 

@@ -121,6 +121,25 @@ func TestHandleDeleteNodeRemovesPolicyWhenIPIsReleasedFirst(t *testing.T) {
 	}
 }
 
+func TestDeletePolicyRouteForNodeKeepsPolicyOfNodeReusingJoinAddress(t *testing.T) {
+	fc, node, _ := nodeWithJoinPolicy(t)
+	ctrl := fc.fakeController
+	portName := util.NodeLspName(node.Name)
+	addresses := ctrl.ipam.GetPodAddress(portName)
+	require.Len(t, addresses, 1)
+
+	// the deleted node's join address is still read from IPAM while a replacement node already reuses it as nexthop
+	replacementMatch := "ip4.dst == 172.15.2.17"
+	replacementIDs := map[string]string{"vendor": util.CniTypeName, "node": "node-b", "address-family": "4"}
+	require.NoError(t, ctrl.OVNNbClient.AddLogicalRouterPolicy(util.DefaultVpc, util.NodeRouterPolicyPriority, replacementMatch, ovnnb.LogicalRouterPolicyActionReroute, []string{addresses[0].IP}, nil, replacementIDs))
+
+	require.NoError(t, ctrl.deletePolicyRouteForNode(node.Name))
+
+	remaining, err := ctrl.OVNNbClient.GetLogicalRouterPolicy(util.DefaultVpc, util.NodeRouterPolicyPriority, replacementMatch, true)
+	require.NoError(t, err)
+	require.Len(t, remaining, 1, "a policy owned by another node must survive, even with the deleted node's join address as nexthop")
+}
+
 func TestHandleUpdateIPReleasesNodeAddressWithNodeKey(t *testing.T) {
 	fc, node, _ := nodeWithJoinPolicy(t)
 	ctrl := fc.fakeController

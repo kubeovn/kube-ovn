@@ -550,7 +550,7 @@ func TestGetPolicyRouteParams_ClonedExternalIDs(t *testing.T) {
 func TestDeletePolicyRouteForNodeDeletesPoliciesByNodeExternalID(t *testing.T) {
 	t.Parallel()
 
-	// IPAM holds no address for the node port, so deletion by nexthop matches nothing
+	// the node's policies are found by owner: IPAM holds no address for the node port
 	fc := newFakeController(t)
 	nodeName := "node-1"
 	policy := &ovnnb.LogicalRouterPolicy{
@@ -569,5 +569,5 @@ func TestDeletePolicyRouteForNodeDeletesPoliciesByNodeExternalID(t *testing.T) {
 	fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyIfUnchanged(util.DefaultVpc, policy).Return(true, nil)
 	fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
-	require.NoError(t, fc.fakeController.deletePolicyRouteForNode(nodeName, util.NodeLspName(nodeName)))
+	require.NoError(t, fc.fakeController.deletePolicyRouteForNode(nodeName))
 }

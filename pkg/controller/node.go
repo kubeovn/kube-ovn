@@ -574,7 +574,7 @@ func (c *Controller) deleteNode(key string) error {
 		return err
 	}
 
-	if err := c.deletePolicyRouteForNode(key, portName); err != nil {
+	if err := c.deletePolicyRouteForNode(key); err != nil {
 		klog.Errorf("failed to delete policy route for node %s: %v", key, err)
 		return err
 	}
@@ -1111,26 +1111,16 @@ func (c *Controller) getPolicyRouteParams(cidr string, priority int) (*strset.Se
 	return strset.New(policyList[0].Nexthops...), maps.Clone(policyList[0].ExternalIDs), nil
 }
 
-func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
+func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("get subnets: %v", err)
 		return err
 	}
 
-	addresses := c.ipam.GetPodAddress(portName)
-	for _, addr := range addresses {
-		if addr.IP == "" {
-			continue
-		}
-		klog.Infof("deleting logical router policy with nexthop %q from %s for node %s", addr.IP, c.config.ClusterRouter, nodeName)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.IP); err != nil {
-			klog.Errorf("failed to delete logical router policy with nexthop %q from %s for node %s: %v", addr.IP, c.config.ClusterRouter, nodeName, err)
-			return err
-		}
-	}
-	// IPAM may no longer hold the node address, so also delete by node name. Each listed row is deleted
-	// only if it still belongs to this node: a node reusing the address may take the row over meanwhile.
+	// Delete the node's policies by owner, not by join address: IPAM may no longer hold the address, and
+	// a node reusing it has policies with the same nexthop. Each listed row is deleted only if it still
+	// belongs to this node: a node reusing the address may take the row over meanwhile.
 	externalIDs := map[string]string{"vendor": util.CniTypeName, "node": nodeName}
 	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NodeRouterPolicyPriority, externalIDs, false)
 	if err != nil {
@@ -1164,51 +1154,50 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 		}
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-			c.subnetKeyMutex.LockKey(subnet.Name)
-			err = func() error {
-				defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
-				if subnet.Spec.EnableEcmp {
-					for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-						nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
-						if err != nil {
-							klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
-							continue
-						}
+			if err = c.deletePolicyRouteForCentralizedSubnetOnNode(subnet, nodeName); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
-						exist := false
-						if _, ok := nameIPMap[nodeName]; ok {
-							exist = true
-						}
+func (c *Controller) deletePolicyRouteForCentralizedSubnetOnNode(subnet *kubeovnv1.Subnet, nodeName string) error {
+	c.subnetKeyMutex.LockKey(subnet.Name)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
 
-						if exist {
-							nextHops.Remove(nameIPMap[nodeName])
-							delete(nameIPMap, nodeName)
+	if !subnet.Spec.EnableEcmp {
+		klog.Infof("reconcile policy route for centralized subnet %s", subnet.Name)
+		if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet); err != nil {
+			klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
+			return err
+		}
+		return nil
+	}
 
-							if nextHops.Size() == 0 {
-								klog.Infof("delete policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-								if err := c.deletePolicyRouteForCentralizedSubnet(subnet); err != nil {
-									klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
-									return err
-								}
-							} else {
-								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-								if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
-									klog.Errorf("failed to update policy route for subnet %s on node %s, %v", subnet.Name, nodeName, err)
-									return err
-								}
-							}
-						}
-					}
-				} else {
-					klog.Infof("reconcile policy route for centralized subnet %s", subnet.Name)
-					if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet); err != nil {
-						klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
-						return err
-					}
-				}
-				return nil
-			}()
-			if err != nil {
+	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+		nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
+		if err != nil {
+			klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
+			continue
+		}
+		if _, ok := nameIPMap[nodeName]; !ok {
+			continue
+		}
+
+		nextHops.Remove(nameIPMap[nodeName])
+		delete(nameIPMap, nodeName)
+
+		if nextHops.Size() == 0 {
+			klog.Infof("delete policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+			if err := c.deletePolicyRouteForCentralizedSubnet(subnet); err != nil {
+				klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
+				return err
+			}
+		} else {
+			klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+			if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
+				klog.Errorf("failed to update policy route for subnet %s on node %s, %v", subnet.Name, nodeName, err)
 				return err
 			}
 		}

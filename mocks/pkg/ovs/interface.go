@@ -3204,20 +3204,6 @@ func (mr *MockLogicalRouterPolicyMockRecorder) DeleteLogicalRouterPolicy(lrName,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicy", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).DeleteLogicalRouterPolicy), lrName, priority, match)
 }
 
-// DeleteLogicalRouterPolicyByNexthop mocks base method.
-func (m *MockLogicalRouterPolicy) DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteLogicalRouterPolicyByNexthop", lrName, priority, nexthop)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteLogicalRouterPolicyByNexthop indicates an expected call of DeleteLogicalRouterPolicyByNexthop.
-func (mr *MockLogicalRouterPolicyMockRecorder) DeleteLogicalRouterPolicyByNexthop(lrName, priority, nexthop any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicyByNexthop", reflect.TypeOf((*MockLogicalRouterPolicy)(nil).DeleteLogicalRouterPolicyByNexthop), lrName, priority, nexthop)
-}
-
 // DeleteLogicalRouterPolicyByUUID mocks base method.
 func (m *MockLogicalRouterPolicy) DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error {
 	m.ctrl.T.Helper()
@@ -4562,20 +4548,6 @@ func (m *MockNbClient) DeleteLogicalRouterPolicy(lrName string, priority int, ma
 func (mr *MockNbClientMockRecorder) DeleteLogicalRouterPolicy(lrName, priority, match any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicy", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalRouterPolicy), lrName, priority, match)
-}
-
-// DeleteLogicalRouterPolicyByNexthop mocks base method.
-func (m *MockNbClient) DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteLogicalRouterPolicyByNexthop", lrName, priority, nexthop)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteLogicalRouterPolicyByNexthop indicates an expected call of DeleteLogicalRouterPolicyByNexthop.
-func (mr *MockNbClientMockRecorder) DeleteLogicalRouterPolicyByNexthop(lrName, priority, nexthop any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalRouterPolicyByNexthop", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalRouterPolicyByNexthop), lrName, priority, nexthop)
 }
 
 // DeleteLogicalRouterPolicyByUUID mocks base method.
