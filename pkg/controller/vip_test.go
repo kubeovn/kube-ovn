@@ -35,7 +35,7 @@ func TestEnqueueUpdateVirtualIPOnStatusChange(t *testing.T) {
 	defer queue.ShutDown()
 
 	ctrl := &Controller{updateVirtualParentsQueue: queue}
-	oldVip := &kubeovnv1.Vip{ObjectMeta: metav1.ObjectMeta{Name: "keepalived-vip"}}
+	oldVip := &kubeovnv1.Vip{Name: "keepalived-vip"}
 	newVip := oldVip.DeepCopy()
 	newVip.Status.V4ip = "192.168.255.100"
 
