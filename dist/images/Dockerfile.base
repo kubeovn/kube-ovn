@@ -107,7 +107,7 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     git apply --unidiff-zero $SRC_DIR/set-dl-src-for-packets-redirected-by-router-port.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     git apply --unidiff-zero $SRC_DIR/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch && \
-    # use source IP hashing for policy route ECMP
+    # use L4 tuple hashing for policy route ECMP
     git apply --unidiff-zero $SRC_DIR/scope-ecmp-source-hashing-to-policy-routes.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
