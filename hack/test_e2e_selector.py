@@ -682,6 +682,7 @@ class E2ESelectorTest(unittest.TestCase):
     def testEveryPathMappingHasARegressionCase(self):
         cases = [
             ("test/e2e/kube-ovn/subnet/subnet.go", "core"),
+            ("test/e2e/kubevirt/e2e_test.go", "kubevirt"),
             ("test/e2e/k8s-network/e2e_test.go", "policy"),
             ("test/e2e/connectivity/e2e_test.go", "core"),
             ("test/e2e/cnp-domain/e2e_test.go", "policy"),

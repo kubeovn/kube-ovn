@@ -1716,45 +1716,28 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make kube-ovn-conformance-e2e
 
-      - name: Install Multus
-        id: install-multus
-        run: make kind-install-multus
-
-      - name: Install KubeVirt
-        id: install-kubevirt
-        run: make kind-install-kubevirt
-
-      - name: Run KubeVirt E2E
-        id: kubevirt-e2e
-        working-directory: ${{ env.E2E_DIR }}
-        env:
-          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
-          E2E_IP_FAMILY: ${{ matrix.ip-family }}
-          E2E_NETWORK_MODE: ${{ matrix.mode }}
-        run: make kube-ovn-kubevirt-e2e
-
       - name: Collect k8s events
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           kubectl get events -A -o yaml > kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
           tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Collect apiserver audit logs
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
           tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz
@@ -1762,18 +1745,18 @@ jobs:
 
       - name: Check kube ovn pod restarts
         id: check-restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')) }}
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: kubectl ko log
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
@@ -1811,6 +1794,167 @@ jobs:
               exit 1
             fi;
           done
+
+      - name: Cleanup
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+
+  kubevirt-e2e:
+    name: KubeVirt E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kubevirt-e2e')
+    needs:
+      - e2e-selection
+      - prepare-kind-node-images
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.E2E_SOURCE_REF }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-ipv4
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-ipv4
+
+      - name: Install Multus
+        id: install-multus
+        run: make kind-install-multus
+
+      - name: Install KubeVirt
+        id: install-kubevirt
+        run: make kind-install-kubevirt
+
+      - name: Run KubeVirt E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-kubevirt-e2e
+
+      - name: Collect k8s events
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          kubectl get events -A -o yaml > kubevirt-e2e-events.yaml
+          tar zcf kubevirt-e2e-events.tar.gz kubevirt-e2e-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-events
+          path: kubevirt-e2e-events.tar.gz
+
+      - name: Collect apiserver audit logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf kubevirt-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-audit-log
+          path: kubevirt-e2e-audit-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          bash .github/scripts/collect-kubectl-ko-log.sh
+          mv kubectl-ko-log.tar.gz kubevirt-e2e-ko-log.tar.gz
+
+      - name: Upload kubectl ko log
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-ko-log
+          path: kubevirt-e2e-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -5354,6 +5498,7 @@ jobs:
       - kube-ovn-ipsec-e2e
       - kube-ovn-submariner-conformance-e2e
       - kube-ovn-underlay-metallb-e2e
+      - kubevirt-e2e
       - lb-svc-e2e
       - multus-conformance-e2e
       - no-np-test
