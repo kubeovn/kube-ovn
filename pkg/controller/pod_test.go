@@ -2453,3 +2453,116 @@ func assertRecordedPodEvent(t *testing.T, events <-chan *corev1.Event, pod *core
 		t.Fatal("expected pod event")
 	}
 }
+
+func TestNeedAllocateSubnets(t *testing.T) {
+	nets := []*kubeovnNet{{ProviderName: util.OvnProvider}}
+	allocatedKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider)
+	now := metav1.Now()
+
+	t.Run("terminating migration pod does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:                       "virt-launcher-vm",
+			Namespace:                  "ns",
+			DeletionTimestamp:          &now,
+			DeletionGracePeriodSeconds: new(int64(30)),
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("live migration pod reallocates", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "virt-launcher-vm",
+			Namespace: "ns",
+			Labels: map[string]string{
+				kubevirtv1.MigrationJobLabel: "mig-uid",
+			},
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Equal(t, nets, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("source migration pod does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "virt-launcher-vm-source",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("allocated pod without migration annotation does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "pod",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				allocatedKey: "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("unallocated live pod allocates", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "pod",
+			Namespace: "ns",
+			Status:    corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Equal(t, nets, needAllocateSubnets(pod, nets))
+	})
+}
+
+func TestIsMigrationSourcePod(t *testing.T) {
+	tests := []struct {
+		name    string
+		podName string
+		state   *kubevirtv1.VirtualMachineInstanceMigrationState
+		want    bool
+	}{
+		{
+			name:    "current source pod",
+			podName: "source",
+			state: &kubevirtv1.VirtualMachineInstanceMigrationState{
+				SourcePod: "source",
+				TargetPod: "target",
+			},
+			want: true,
+		},
+		{
+			name:    "current target pod",
+			podName: "target",
+			state: &kubevirtv1.VirtualMachineInstanceMigrationState{
+				SourcePod: "source",
+				TargetPod: "target",
+			},
+		},
+		{
+			name:    "stale state without target pod",
+			podName: "source",
+			state:   &kubevirtv1.VirtualMachineInstanceMigrationState{SourcePod: "source"},
+		},
+		{
+			name:  "missing migration state",
+			state: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isMigrationSourcePod(tt.podName, tt.state))
+		})
+	}
+}
