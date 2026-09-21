@@ -97,6 +97,10 @@ if [ "${ENABLE_EVPN}" = "true" ] && [ -n "${VNI}" ]; then
   vxlan_name="vxlan-vpn"
   vrf_table=2000
 
+  # Keep IPv6 addresses when eth0 is enslaved to the VRF. Otherwise the
+  # kernel removes them during the enslavement and the IPv6 VRF routes fail.
+  sysctl -w net.ipv6.conf.all.keep_addr_on_down=1
+
   if ! ip link show "${vrf_name}" &>/dev/null; then
     ip link add "${vrf_name}" type vrf table "${vrf_table}"
     ip link set "${vrf_name}" up
