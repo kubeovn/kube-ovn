@@ -115,7 +115,7 @@ jobs:
   e2e-selection:
     name: x86 E2E Selection
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       GH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && github.token || '' }}
       PYTHONDONTWRITEBYTECODE: "1"
@@ -424,7 +424,7 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     permissions:
       contents: read
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -443,7 +443,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -474,7 +474,7 @@ jobs:
   build-kube-ovn-base:
     name: Build kube-ovn-base
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       build-base: ${{ steps.check.outputs.build-base }}
     steps:
@@ -506,7 +506,7 @@ jobs:
           fi
           rm -frv "$tmp_dir"
 
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         if: steps.check.outputs.build-base == 1
         with:
           android: true
@@ -549,7 +549,7 @@ jobs:
   build-kube-ovn-dpdk-base:
     name: Build kube-ovn-dpdk-base
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       build-dpdk-base: ${{ steps.check.outputs.build-dpdk-base }}
     steps:
@@ -578,7 +578,7 @@ jobs:
           fi
           rm -frv "$tmp_dir"
 
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         if: steps.check.outputs.build-dpdk-base == 1
         with:
           android: true
@@ -609,13 +609,13 @@ jobs:
   build-kube-ovn:
     name: Build kube-ovn
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs:
       - e2e-selection
       - build-kube-ovn-base
       - build-kube-ovn-dpdk-base
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -804,9 +804,9 @@ jobs:
     name: Build vpc-nat-gateway
     needs: e2e-selection
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -836,7 +836,7 @@ jobs:
     name: Build E2E Binaries
     needs: e2e-selection
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -886,7 +886,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
           lookup-only: true
 
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
         with:
           android: true
@@ -923,13 +923,13 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.e2e-selection.outputs.k8sConformanceMatrix) }}
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1128,10 +1128,10 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1220,7 +1220,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -1233,7 +1233,7 @@ jobs:
           - standard
           - lax
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1425,7 +1425,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1438,7 +1438,7 @@ jobs:
           - standard
           - lax
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1607,13 +1607,13 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1716,45 +1716,28 @@ jobs:
           E2E_NETWORK_MODE: ${{ matrix.mode }}
         run: make kube-ovn-conformance-e2e
 
-      - name: Install Multus
-        id: install-multus
-        run: make kind-install-multus
-
-      - name: Install KubeVirt
-        id: install-kubevirt
-        run: make kind-install-kubevirt
-
-      - name: Run KubeVirt E2E
-        id: kubevirt-e2e
-        working-directory: ${{ env.E2E_DIR }}
-        env:
-          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
-          E2E_IP_FAMILY: ${{ matrix.ip-family }}
-          E2E_NETWORK_MODE: ${{ matrix.mode }}
-        run: make kube-ovn-kubevirt-e2e
-
       - name: Collect k8s events
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           kubectl get events -A -o yaml > kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
           tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Collect apiserver audit logs
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
           tar zcf kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-audit-log.tar.gz
@@ -1762,18 +1745,18 @@ jobs:
 
       - name: Check kube ovn pod restarts
         id: check-restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure')) }}
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: kubectl ko log
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko log
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.kubevirt-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
@@ -1815,6 +1798,167 @@ jobs:
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
+  kubevirt-e2e:
+    name: KubeVirt E2E
+    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kubevirt-e2e')
+    needs:
+      - e2e-selection
+      - prepare-kind-node-images
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.E2E_SOURCE_REF }}
+          persist-credentials: false
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-ipv4
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-ipv4
+
+      - name: Install Multus
+        id: install-multus
+        run: make kind-install-multus
+
+      - name: Install KubeVirt
+        id: install-kubevirt
+        run: make kind-install-kubevirt
+
+      - name: Run KubeVirt E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-kubevirt-e2e
+
+      - name: Collect k8s events
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          kubectl get events -A -o yaml > kubevirt-e2e-events.yaml
+          tar zcf kubevirt-e2e-events.tar.gz kubevirt-e2e-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-events
+          path: kubevirt-e2e-events.tar.gz
+
+      - name: Collect apiserver audit logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf kubevirt-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-audit-log
+          path: kubevirt-e2e-audit-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko log
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          bash .github/scripts/collect-kubectl-ko-log.sh
+          mv kubectl-ko-log.tar.gz kubevirt-e2e-ko-log.tar.gz
+
+      - name: Upload kubectl ko log
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-ko-log
+          path: kubevirt-e2e-ko-log.tar.gz
+
+      - name: Cleanup
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+
   kube-ovn-ic-conformance-e2e:
     name: Kube-OVN IC Conformance E2E
     if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ic-conformance-e2e')
@@ -1823,7 +1967,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -1833,7 +1977,7 @@ jobs:
           - dual
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1993,7 +2137,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -2003,7 +2147,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2153,7 +2297,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -2161,7 +2305,7 @@ jobs:
         ip-family:
           - ipv4
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2325,7 +2469,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -2335,7 +2479,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2487,7 +2631,7 @@ jobs:
       - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -2512,7 +2656,7 @@ jobs:
             tenant-control-plane: ha
             tenant-control-plane-replicas: 3
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2646,7 +2790,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -2655,7 +2799,7 @@ jobs:
           - "false"
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2731,10 +2875,10 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2808,10 +2952,10 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2887,10 +3031,10 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2968,10 +3112,10 @@ jobs:
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3124,10 +3268,10 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3259,7 +3403,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3341,7 +3485,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -3351,7 +3495,7 @@ jobs:
         mode:
           - overlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3502,7 +3646,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -3512,7 +3656,7 @@ jobs:
         mode:
           - overlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3663,7 +3807,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -3676,7 +3820,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3840,7 +3984,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -3856,7 +4000,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3988,10 +4132,10 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4099,7 +4243,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -4109,7 +4253,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4295,10 +4439,10 @@ jobs:
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4451,10 +4595,10 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4607,10 +4751,10 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4758,10 +4902,10 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4907,7 +5051,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -4916,7 +5060,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -5031,7 +5175,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -5041,7 +5185,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -5188,10 +5332,10 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -5354,6 +5498,7 @@ jobs:
       - kube-ovn-ipsec-e2e
       - kube-ovn-submariner-conformance-e2e
       - kube-ovn-underlay-metallb-e2e
+      - kubevirt-e2e
       - lb-svc-e2e
       - multus-conformance-e2e
       - no-np-test
@@ -5365,7 +5510,7 @@ jobs:
       - underlay-logical-gateway-installation-test
       - vpc-egress-gateway-e2e
       - webhook-e2e
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       NEEDS_JSON: ${{ toJSON(needs) }}
       SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
@@ -5401,7 +5546,7 @@ jobs:
     permissions:
       actions: write
       contents: read
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -5449,7 +5594,7 @@ jobs:
       contents: read
     needs:
       - e2e-selection
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 360
     env:
       GH_TOKEN: ${{ github.token }}
@@ -5559,9 +5704,9 @@ jobs:
     needs:
       - e2e-executor-result
     if: github.event_name == 'push' && needs.e2e-executor-result.result == 'success'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.2
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true

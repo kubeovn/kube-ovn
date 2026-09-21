@@ -102,7 +102,7 @@ jobs:
       automatic: ${{ steps.context.outputs.automatic }}
       controlledLabels: ${{ steps.context.outputs.controlledLabels }}
       notifiedCompletion: ${{ steps.context.outputs.notifiedCompletion }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       GH_TOKEN: ${{ github.token }}
       PYTHONPATH: hack
@@ -739,7 +739,7 @@ jobs:
       runURL: ${{ steps.request.outputs.runURL }}
       runEvent: workflow_dispatch
       trustedRef: ${{ steps.request.outputs.baseSHA }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       GH_TOKEN: ${{ github.token }}
       PYTHONPATH: hack
@@ -915,7 +915,7 @@ jobs:
     concurrency:
       group: x86-e2e-required-gate-${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.prNumber || needs.approval.outputs.prNumber }}-${{ needs.gate.outputs.mutate == 'true' && needs.gate.outputs.headSHA || needs.approval.outputs.headSHA }}
       cancel-in-progress: false
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       actions: write
       checks: write
