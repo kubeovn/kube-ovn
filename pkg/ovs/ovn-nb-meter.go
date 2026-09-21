@@ -1,11 +1,9 @@
 package ovs
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
@@ -20,51 +18,28 @@ func (c *OVNNbClient) GetMeter(name string, ignoreNotFound bool) (*ovnnb.Meter, 
 		return nil, errors.New("meter name is empty")
 	}
 
-	if c.Client == nil {
-		return nil, errors.New("underlying libovsdb client is nil")
+	if c.Database == nil {
+		return nil, errors.New("underlying ovsdb call layer is nil")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	meter := &ovnnb.Meter{Name: name}
-
-	if err := c.Get(ctx, meter); err != nil {
-		if ignoreNotFound && errors.Is(err, client.ErrNotFound) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("get meter %s: %w", name, err)
-	}
-
-	return meter, nil
+	return getIndexedFmt(c.Database, &ovnnb.Meter{Name: name}, ignoreNotFound, func(err error) error {
+		return fmt.Errorf("get meter %s: %w", name, err)
+	})
 }
 
 // ListAllMeters retrieves all meters from the database for debugging
 func (c *OVNNbClient) ListAllMeters() ([]*ovnnb.Meter, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	var meters []*ovnnb.Meter
-
-	// Use cached listing to retrieve all meters
-	meterList := make([]ovnnb.Meter, 0)
-	if err := c.ovsDbClient.WhereCache(func(_ *ovnnb.Meter) bool {
-		return true
-	}).List(ctx, &meterList); err != nil {
-		return nil, fmt.Errorf("failed to list meters: %w", err)
+	meterList, err := filterAll[ovnnb.Meter](c.Database, &ovnnb.Meter{}, func(err error) error {
+		return fmt.Errorf("failed to list meters: %w", err)
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	for i := range meterList {
-		meters = append(meters, &meterList[i])
-	}
-
-	return meters, nil
+	return pointersOf(meterList), nil
 }
 
-// MeterExists check meter exists by name
 func (c *OVNNbClient) MeterExists(name string) (bool, error) {
-	meter, err := c.GetMeter(name, true)
-	return meter != nil, err
+	return existsByGet(c.GetMeter, name)
 }
 
 // CreateOrUpdateMeter ensures a single-band meter exists with the given rate/burst.
@@ -107,23 +82,19 @@ func (c *OVNNbClient) createMeterWithBand(name string, unit ovnnb.MeterUnit, rat
 	}
 
 	ops := make([]ovsdb.Operation, 0, 2)
-	bandOps, err := c.Create(band)
+	bandOps, err := c.Database.Table(&ovnnb.MeterBand{}).CreateOps(band)
 	if err != nil {
 		return fmt.Errorf("build meter band ops %s: %w", name, err)
 	}
 	ops = append(ops, bandOps...)
 
-	meterOps, err := c.Create(meter)
+	meterOps, err := c.Database.Table(&ovnnb.Meter{}).CreateOps(meter)
 	if err != nil {
 		return fmt.Errorf("build meter ops %s: %w", name, err)
 	}
 	ops = append(ops, meterOps...)
 
-	if err := c.Transact("meter-create", ops); err != nil {
-		return fmt.Errorf("create meter %s: %w", name, err)
-	}
-
-	return nil
+	return c.transactGenerated("meter-create", ops, nil, nil, wrapErr("create meter %s: %w", name))
 }
 
 func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUnit, rate, burst int) error {
@@ -140,17 +111,14 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 		err           error
 	)
 	if bandUUID != "" {
-		band := &ovnnb.MeterBand{UUID: bandUUID}
-		ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-		defer cancel()
-		if err := c.Get(ctx, band); err != nil {
-			if !errors.Is(err, client.ErrNotFound) {
-				return fmt.Errorf("get meter band %s for %s: %w", bandUUID, meter.Name, err)
-			}
-		} else {
+		band, err := getIndexed(c.Database, &ovnnb.MeterBand{UUID: bandUUID}, true)
+		if err != nil {
+			return fmt.Errorf("get meter band %s for %s: %w", bandUUID, meter.Name, err)
+		}
+		if band != nil {
 			band.Rate = rate
 			band.BurstSize = burst
-			bandUpdateOps, err = c.Where(band).Update(band, &band.Rate, &band.BurstSize)
+			bandUpdateOps, err = c.Database.Table(&ovnnb.MeterBand{}).UpdateOps(band, band, &band.Rate, &band.BurstSize)
 			if err != nil {
 				return fmt.Errorf("update meter band %s for %s: %w", bandUUID, meter.Name, err)
 			}
@@ -167,13 +135,13 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 			BurstSize:   burst,
 			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 		}
-		createBandOps, err := c.Create(band)
+		createBandOps, err := c.Database.Table(&ovnnb.MeterBand{}).CreateOps(band)
 		if err != nil {
 			return fmt.Errorf("build meter band ops %s: %w", meter.Name, err)
 		}
 		ops = append(ops, createBandOps...)
 
-		mutateOps, err := c.Where(meter).Mutate(meter, model.Mutation{
+		mutateOps, err := c.Database.Table(&ovnnb.Meter{}).MutateOps(meter, model.Mutation{
 			Field:   &meter.Bands,
 			Value:   []string{bandUUID},
 			Mutator: ovsdb.MutateOperationInsert,
@@ -185,7 +153,7 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 	}
 
 	meter.Unit = unit
-	updateMeterOps, err := c.Where(meter).Update(meter, &meter.Unit)
+	updateMeterOps, err := c.Database.Table(&ovnnb.Meter{}).UpdateOps(meter, meter, &meter.Unit)
 	if err != nil {
 		return fmt.Errorf("update meter %s: %w", meter.Name, err)
 	}
@@ -195,43 +163,34 @@ func (c *OVNNbClient) updateMeterAndBand(meter *ovnnb.Meter, unit ovnnb.MeterUni
 		return nil
 	}
 
-	if err := c.Transact("meter-update", ops); err != nil {
-		return fmt.Errorf("update meter %s: %w", meter.Name, err)
-	}
-
-	return nil
+	return c.transactGenerated("meter-update", ops, nil, nil, wrapErr("update meter %s: %w", meter.Name))
 }
 
 // DeleteMeter removes the meter and its bands if present.
 func (c *OVNNbClient) DeleteMeter(name string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-
-	meter := &ovnnb.Meter{Name: name}
-	if err := c.Get(ctx, meter); err != nil {
-		if errors.Is(err, client.ErrNotFound) {
-			return nil
-		}
+	meter, err := getIndexedFmt(c.Database, &ovnnb.Meter{Name: name}, true, func(err error) error {
 		return fmt.Errorf("failed to get meter %s: %w", name, err)
+	})
+	if err != nil {
+		return err
+	}
+	if meter == nil {
+		return nil
 	}
 
-	ops, err := c.Where(meter).Delete()
+	ops, err := c.Database.Table(&ovnnb.Meter{}).DeleteOps(meter)
 	if err != nil {
 		return fmt.Errorf("failed to build delete operations for meter %s: %w", name, err)
 	}
 
 	for _, bandUUID := range meter.Bands {
 		band := &ovnnb.MeterBand{UUID: bandUUID}
-		bandOps, err := c.Where(band).Delete()
+		bandOps, err := c.Database.Table(&ovnnb.MeterBand{}).DeleteOps(band)
 		if err != nil {
 			return fmt.Errorf("failed to remove meter band %s for %s: %w", bandUUID, name, err)
 		}
 		ops = append(ops, bandOps...)
 	}
 
-	if err := c.Transact("meter-del", ops); err != nil {
-		return fmt.Errorf("failed to delete meter %s: %w", name, err)
-	}
-
-	return nil
+	return c.transactGenerated("meter-del", ops, nil, nil, wrapErr("failed to delete meter %s: %w", name))
 }

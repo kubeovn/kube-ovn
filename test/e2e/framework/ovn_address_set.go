@@ -77,7 +77,7 @@ func WaitForAddressSetCondition(condition func(rows any) (bool, error)) {
 		defer cancel()
 
 		result := reflect.New(reflect.SliceOf(reflect.TypeOf(model).Elem())).Interface()
-		if err := client.List(ctx, result); err != nil {
+		if err := client.ListDynamic(ctx, result); err != nil {
 			// Transient errors (e.g. "not connected" during leader failover)
 			// should be retried rather than immediately failing the poll.
 			Logf("Failed to list address sets (will retry): %v", err)
