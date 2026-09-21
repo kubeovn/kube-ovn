@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -337,25 +338,18 @@ type virtualVipPort struct {
 }
 
 func virtualVipPorts(vip *kubeovnv1.Vip) []virtualVipPort {
-	v4ip, v6ip := vip.Status.V4ip, vip.Status.V6ip
-	if v4ip == "" {
-		v4ip = vip.Spec.V4ip
+	v4ip := cmp.Or(vip.Status.V4ip, vip.Spec.V4ip)
+	v6ip := cmp.Or(vip.Status.V6ip, vip.Spec.V6ip)
+	ports := make([]virtualVipPort, 0, 2)
+	if util.IsValidIP(v4ip) {
+		ports = append(ports, virtualVipPort{name: vip.Name, ip: v4ip})
 	}
-	if v6ip == "" {
-		v6ip = vip.Spec.V6ip
-	}
-	ipStr := util.GetStringIP(v4ip, v6ip)
-	ips := strings.Split(ipStr, ",")
-	ports := make([]virtualVipPort, 0, len(ips))
-	for i, ip := range ips {
-		if ip == "" {
-			continue
-		}
+	if util.IsValidIP(v6ip) {
 		name := vip.Name
-		if i > 0 {
-			name = fmt.Sprintf("%s-vip-%s", vip.Name, ip)
+		if len(ports) > 0 {
+			name = vip.Name + "-ipv6"
 		}
-		ports = append(ports, virtualVipPort{name: name, ip: ip})
+		ports = append(ports, virtualVipPort{name: name, ip: v6ip})
 	}
 	return ports
 }
@@ -365,11 +359,11 @@ func (c *Controller) ensureVirtualVipPort(vip *kubeovnv1.Vip, virtualPort virtua
 		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", virtualPort.name, vip.Spec.Subnet, err)
 		return err
 	}
-	if vip.Spec.Type == util.SwitchLBRuleVip {
+	if vip.Spec.Type == util.SwitchLBRuleVip || vip.Status.Mac == "" {
 		return nil
 	}
 
-	addresses := strings.TrimSpace(strings.Join([]string{vip.Status.Mac, virtualPort.ip}, " "))
+	addresses := vip.Status.Mac + " " + virtualPort.ip
 	if err := c.OVNNbClient.SetVirtualLogicalSwitchPortAddresses(virtualPort.name, addresses); err != nil {
 		klog.Errorf("set virtual port %s addresses %s: %v", virtualPort.name, addresses, err)
 		return err
@@ -381,11 +375,11 @@ func (c *Controller) virtualVipParents(vip *kubeovnv1.Vip) ([]string, map[string
 	// vip cloud use selector to select pods as its virtual parents
 	matchLabels := make(map[string]string)
 	for _, v := range vip.Spec.Selector {
-		parts := strings.Split(strings.TrimSpace(v), ":")
-		if len(parts) != 2 {
+		key, value, ok := strings.Cut(strings.TrimSpace(v), ":")
+		if !ok {
 			continue
 		}
-		matchLabels[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		matchLabels[strings.TrimSpace(key)] = strings.TrimSpace(value)
 	}
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: matchLabels})
 	if err != nil {
@@ -412,6 +406,7 @@ func (c *Controller) virtualVipParents(vip *kubeovnv1.Vip) ([]string, map[string
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
 			klog.Errorf("failed to get pod nets %v", err)
+			return nil, nil, err
 		}
 		for _, podNet := range podNets {
 			// Skip non-OVN subnets that don't create OVN logical switch ports

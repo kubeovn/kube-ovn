@@ -393,6 +393,18 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 		require.NoError(t, err)
 	})
 
+	t.Run("update virtual-ip when logical switch port exists", func(t *testing.T) {
+		updatedVIP := "192.168.33.11"
+		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, updatedVIP)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, map[string]string{
+			"virtual-ip": updatedVIP,
+		}, lsp.Options)
+	})
+
 	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPort("", "", "")
 		require.Error(t, err)
@@ -541,6 +553,14 @@ func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents()
 		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
 		require.Equal(t, []string{addresses}, lsp.Addresses)
+
+		err = nbClient.SetVirtualLogicalSwitchPortAddresses(lspName, addresses)
+		require.NoError(t, err)
+	})
+
+	t.Run("set virtual port addresses for missing port", func(t *testing.T) {
+		err := nbClient.SetVirtualLogicalSwitchPortAddresses("missing-virtual-port", "2e:a5:9b:20:42:d2 192.168.211.31")
+		require.Error(t, err)
 	})
 
 	t.Run("failed client set virtual-parents option", func(t *testing.T) {

@@ -260,7 +260,9 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string)
 			return err
 		}
 		if lsp == nil {
-			return fmt.Errorf("logical switch port %s not found", lspName)
+			err := fmt.Errorf("logical switch port %s not found", lspName)
+			klog.Error(err)
+			return err
 		}
 		if lsp.Options == nil {
 			lsp.Options = make(map[string]string)
@@ -308,7 +310,12 @@ func (c *OVNNbClient) SetVirtualLogicalSwitchPortAddresses(lspName, addresses st
 		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
 	}
 	if lsp == nil {
-		return fmt.Errorf("logical switch port %s not found", lspName)
+		err := fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+	if len(lsp.Addresses) == 1 && lsp.Addresses[0] == addresses {
+		return nil
 	}
 
 	lsp.Addresses = []string{addresses}

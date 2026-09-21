@@ -26,8 +26,21 @@ func TestVirtualVipPortsSplitsDualStackAddresses(t *testing.T) {
 	ports := virtualVipPorts(vip)
 	require.Equal(t, []virtualVipPort{
 		{name: "keepalived-vip", ip: "192.168.255.100"},
-		{name: "keepalived-vip-vip-2001:db8:1203:9::f", ip: "2001:db8:1203:9::f"},
+		{name: "keepalived-vip-ipv6", ip: "2001:db8:1203:9::f"},
 	}, ports)
+}
+
+func TestVirtualVipPortsUsesVipNameForIPv6Only(t *testing.T) {
+	vip := &kubeovnv1.Vip{
+		Name: "keepalived-vip",
+		Status: kubeovnv1.VipStatus{
+			V6ip: "2001:db8:1203:9::f",
+		},
+	}
+
+	require.Equal(t, []virtualVipPort{
+		{name: "keepalived-vip", ip: "2001:db8:1203:9::f"},
+	}, virtualVipPorts(vip))
 }
 
 func TestEnqueueUpdateVirtualIPOnStatusChange(t *testing.T) {
@@ -46,13 +59,33 @@ func TestEnqueueUpdateVirtualIPOnStatusChange(t *testing.T) {
 	queue.Done(key)
 }
 
-func TestHandleUpdateVirtualParentsSyncsDistributedVipPortGroup(t *testing.T) {
-	const (
-		subnetName = "public-subnet"
-		vipName    = "keepalived-vip"
-	)
+func newVipParentsTestController(t *testing.T, subnet *kubeovnv1.Subnet, vip *kubeovnv1.Vip, pods ...*corev1.Pod) *fakeController {
+	t.Helper()
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Pods:    pods,
+	})
+	require.NoError(t, err)
+	fakeController.fakeController.updatePodSecurityQueue = newTypedRateLimitingQueue[string]("UpdatePodSecurity", nil)
+	vipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, vipIndexer.Add(vip))
+	fakeController.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(vipIndexer)
+	return fakeController
+}
 
-	pod := &corev1.Pod{
+func distributedAAPSubnet(name string) *kubeovnv1.Subnet {
+	return &kubeovnv1.Subnet{
+		Name: name,
+		Spec: kubeovnv1.SubnetSpec{
+			Provider:    util.OvnProvider,
+			Vpc:         util.DefaultVpc,
+			GatewayType: kubeovnv1.GWDistributedType,
+		},
+	}
+}
+
+func keepalivedAAPPod(subnetName, vipName, nodeName string) *corev1.Pod {
+	return &corev1.Pod{
 		Name:      "keepalived-0",
 		Namespace: metav1.NamespaceDefault,
 		Labels:    map[string]string{"app": "keepalived"},
@@ -60,16 +93,17 @@ func TestHandleUpdateVirtualParentsSyncsDistributedVipPortGroup(t *testing.T) {
 			util.LogicalSwitchAnnotation: subnetName,
 			util.AAPsAnnotation:          vipName,
 		},
-		Spec: corev1.PodSpec{NodeName: "node-1"},
+		Spec: corev1.PodSpec{NodeName: nodeName},
 	}
-	subnet := &kubeovnv1.Subnet{
-		Name: subnetName,
-		Spec: kubeovnv1.SubnetSpec{
-			Provider:    util.OvnProvider,
-			Vpc:         util.DefaultVpc,
-			GatewayType: kubeovnv1.GWDistributedType,
-		},
-	}
+}
+
+func TestHandleUpdateVirtualParentsSyncsDistributedVipPortGroup(t *testing.T) {
+	const (
+		subnetName = "public-subnet"
+		vipName    = "keepalived-vip"
+	)
+
+	subnet := distributedAAPSubnet(subnetName)
 	vip := &kubeovnv1.Vip{
 		Name: vipName,
 		Spec: kubeovnv1.VipSpec{
@@ -82,18 +116,8 @@ func TestHandleUpdateVirtualParentsSyncsDistributedVipPortGroup(t *testing.T) {
 			Mac:  "2e:a5:9b:20:42:d2",
 		},
 	}
-
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		Subnets: []*kubeovnv1.Subnet{subnet},
-		Pods:    []*corev1.Pod{pod},
-	})
-	require.NoError(t, err)
+	fakeController := newVipParentsTestController(t, subnet, vip, keepalivedAAPPod(subnetName, vipName, "node-1"))
 	ctrl := fakeController.fakeController
-	ctrl.updatePodSecurityQueue = newTypedRateLimitingQueue[string]("UpdatePodSecurity", nil)
-	vipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	require.NoError(t, vipIndexer.Add(vip))
-	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(vipIndexer)
-
 	mockOvnClient := fakeController.mockOvnClient
 	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(vipName, subnetName, vip.Status.V4ip).Return(nil)
 	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortAddresses(vipName, vip.Status.Mac+" "+vip.Status.V4ip).Return(nil)
@@ -113,27 +137,12 @@ func TestHandleUpdateVirtualParentsSyncsDistributedVipPortGroup(t *testing.T) {
 }
 
 func TestHandleUpdateVirtualParentsSplitsDualStackVipPorts(t *testing.T) {
-	const subnetName = "public-subnet-dual"
-	const vipName = "keepalived-vip-dual"
+	const (
+		subnetName = "public-subnet-dual"
+		vipName    = "keepalived-vip-dual"
+	)
 
-	pod := &corev1.Pod{
-		Name:      "keepalived-0",
-		Namespace: metav1.NamespaceDefault,
-		Labels:    map[string]string{"app": "keepalived"},
-		Annotations: map[string]string{
-			util.LogicalSwitchAnnotation: subnetName,
-			util.AAPsAnnotation:          vipName,
-		},
-		Spec: corev1.PodSpec{NodeName: "node-1"},
-	}
-	subnet := &kubeovnv1.Subnet{
-		Name: subnetName,
-		Spec: kubeovnv1.SubnetSpec{
-			Provider:    util.OvnProvider,
-			Vpc:         util.DefaultVpc,
-			GatewayType: kubeovnv1.GWDistributedType,
-		},
-	}
+	subnet := distributedAAPSubnet(subnetName)
 	vip := &kubeovnv1.Vip{
 		Name: vipName,
 		Spec: kubeovnv1.VipSpec{
@@ -147,20 +156,10 @@ func TestHandleUpdateVirtualParentsSplitsDualStackVipPorts(t *testing.T) {
 			Mac:  "2e:a5:9b:20:42:d2",
 		},
 	}
-
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		Subnets: []*kubeovnv1.Subnet{subnet},
-		Pods:    []*corev1.Pod{pod},
-	})
-	require.NoError(t, err)
+	fakeController := newVipParentsTestController(t, subnet, vip, keepalivedAAPPod(subnetName, vipName, "node-1"))
 	ctrl := fakeController.fakeController
-	ctrl.updatePodSecurityQueue = newTypedRateLimitingQueue[string]("UpdatePodSecurity", nil)
-	vipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	require.NoError(t, vipIndexer.Add(vip))
-	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(vipIndexer)
-
 	primaryPort := vipName
-	secondaryPort := vipName + "-vip-2001:db8:1203:9::f"
+	secondaryPort := vipName + "-ipv6"
 	mockOvnClient := fakeController.mockOvnClient
 	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(primaryPort, subnetName, "192.168.255.100").Return(nil)
 	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortAddresses(primaryPort, "2e:a5:9b:20:42:d2 192.168.255.100").Return(nil)
@@ -180,6 +179,80 @@ func TestHandleUpdateVirtualParentsSplitsDualStackVipPorts(t *testing.T) {
 	mockOvnClient.EXPECT().RemovePortFromPortGroups(secondaryPort, "public.subnet.dual.node.1", "public.subnet.dual.node.2").Return(nil)
 	mockOvnClient.EXPECT().PortGroupAddPorts("public.subnet.dual.node.1", primaryPort).Return(nil)
 	mockOvnClient.EXPECT().PortGroupAddPorts("public.subnet.dual.node.1", secondaryPort).Return(nil)
+
+	require.NoError(t, ctrl.handleUpdateVirtualParents(vipName))
+}
+
+func TestHandleUpdateVirtualParentsRemovesStalePortGroups(t *testing.T) {
+	const (
+		subnetName = "public-subnet"
+		vipName    = "keepalived-vip"
+	)
+
+	subnet := distributedAAPSubnet(subnetName)
+	vip := &kubeovnv1.Vip{
+		Name: vipName,
+		Spec: kubeovnv1.VipSpec{
+			Namespace: metav1.NamespaceDefault,
+			Subnet:    subnetName,
+			Selector:  []string{"app: keepalived"},
+		},
+		Status: kubeovnv1.VipStatus{
+			V4ip: "192.168.255.100",
+			Mac:  "2e:a5:9b:20:42:d2",
+		},
+	}
+	fakeController := newVipParentsTestController(t, subnet, vip)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(vipName, subnetName, vip.Status.V4ip).Return(nil)
+	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortAddresses(vipName, vip.Status.Mac+" "+vip.Status.V4ip).Return(nil)
+	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortVirtualParents(vipName, "").Return(nil)
+	mockOvnClient.EXPECT().ListPortGroups(map[string]string{
+		"subnet":         subnetName,
+		"node":           "",
+		networkPolicyKey: "",
+	}).Return([]ovnnb.PortGroup{
+		{Name: "public.subnet.node.1", ExternalIDs: map[string]string{"node": "node-1"}},
+		{Name: "public.subnet.node.2", ExternalIDs: map[string]string{"node": "node-2"}},
+	}, nil)
+	mockOvnClient.EXPECT().RemovePortFromPortGroups(vipName, "public.subnet.node.1", "public.subnet.node.2").Return(nil)
+
+	require.NoError(t, ctrl.handleUpdateVirtualParents(vipName))
+}
+
+func TestHandleUpdateVirtualParentsSkipsAddressesWithoutMAC(t *testing.T) {
+	const (
+		subnetName = "public-subnet"
+		vipName    = "keepalived-vip"
+	)
+
+	subnet := distributedAAPSubnet(subnetName)
+	vip := &kubeovnv1.Vip{
+		Name: vipName,
+		Spec: kubeovnv1.VipSpec{
+			Namespace: metav1.NamespaceDefault,
+			Subnet:    subnetName,
+			Selector:  []string{"app: keepalived"},
+		},
+		Status: kubeovnv1.VipStatus{
+			V4ip: "192.168.255.100",
+		},
+	}
+	fakeController := newVipParentsTestController(t, subnet, vip, keepalivedAAPPod(subnetName, vipName, "node-1"))
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(vipName, subnetName, vip.Status.V4ip).Return(nil)
+	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortVirtualParents(vipName, "keepalived-0.default").Return(nil)
+	mockOvnClient.EXPECT().ListPortGroups(map[string]string{
+		"subnet":         subnetName,
+		"node":           "",
+		networkPolicyKey: "",
+	}).Return([]ovnnb.PortGroup{
+		{Name: "public.subnet.node.1", ExternalIDs: map[string]string{"node": "node-1"}},
+	}, nil)
+	mockOvnClient.EXPECT().RemovePortFromPortGroups(vipName, "public.subnet.node.1").Return(nil)
+	mockOvnClient.EXPECT().PortGroupAddPorts("public.subnet.node.1", vipName).Return(nil)
 
 	require.NoError(t, ctrl.handleUpdateVirtualParents(vipName))
 }
