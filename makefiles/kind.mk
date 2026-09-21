@@ -74,18 +74,27 @@ define kind_alias_image_digests
 	image="$(2)"; \
 	image_repository="$${image%%@*}"; \
 	image_repository="$${image_repository%:*}"; \
+	host_repository_digest="$$(docker image inspect "$$image" --format '{{range .RepoDigests}}{{println .}}{{end}}' | \
+		sed -n 's/.*@\(sha256:[^"[:space:]]*\)$$/\1/p' | head -n 1)"; \
 	for node in $$(kind get nodes --name $(1)); do \
-		repository_digest="$$(docker exec "$$node" crictl inspecti "$$image" | \
+		inspect_json="$$(docker exec "$$node" crictl inspecti "$$image")"; \
+		repository_digest="$$(printf '%s\n' "$$inspect_json" | \
 			jq -r '.status.repoDigests[]? // empty' | \
 			sed -n 's/.*@\(sha256:[^"[:space:]]*\)$$/\1/p' | head -n 1)"; \
-		config_digest="$$(docker exec "$$node" crictl inspecti "$$image" | \
-			jq -r '.status.id // .id // empty')"; \
+		if [ -z "$$repository_digest" ]; then \
+			echo "$$node: crictl repoDigests empty, falling back to docker RepoDigests"; \
+			repository_digest="$$host_repository_digest"; \
+		fi; \
+		config_digest="$$(printf '%s\n' "$$inspect_json" | jq -r '.status.id // .id // empty')"; \
 		for digest_kind in repository config; do \
 			digest="$$repository_digest"; \
 			if [ "$$digest_kind" = config ]; then digest="$$config_digest"; fi; \
 			case "$$digest" in \
 				sha256:*) ;; \
-				*) echo "Unexpected $$digest_kind digest for $$node: $$digest" >&2; exit 1 ;; \
+				*) \
+					echo "Unexpected $$digest_kind digest for $$node: $$digest" >&2; \
+					printf '%s\n' "$$inspect_json" >&2; \
+					exit 1 ;; \
 			esac; \
 			alias="$${image_repository}@$$digest"; \
 			echo "$$node: $$digest_kind digest=$$digest alias=$$alias"; \
