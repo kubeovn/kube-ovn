@@ -39,7 +39,10 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
-	if !slices.Equal(oldVip.Spec.Selector, newVip.Spec.Selector) {
+	if !slices.Equal(oldVip.Spec.Selector, newVip.Spec.Selector) ||
+		oldVip.Status.Mac != newVip.Status.Mac ||
+		oldVip.Status.V4ip != newVip.Status.V4ip ||
+		oldVip.Status.V6ip != newVip.Status.V6ip {
 		klog.Infof("enqueue update virtual parents for %s", key)
 		c.updateVirtualParentsQueue.Add(key)
 	}

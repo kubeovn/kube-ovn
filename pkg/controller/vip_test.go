@@ -30,6 +30,22 @@ func TestVirtualVipPortsSplitsDualStackAddresses(t *testing.T) {
 	}, ports)
 }
 
+func TestEnqueueUpdateVirtualIPOnStatusChange(t *testing.T) {
+	queue := newTypedRateLimitingQueue[string]("UpdateVirtualParents", nil)
+	defer queue.ShutDown()
+
+	ctrl := &Controller{updateVirtualParentsQueue: queue}
+	oldVip := &kubeovnv1.Vip{ObjectMeta: metav1.ObjectMeta{Name: "keepalived-vip"}}
+	newVip := oldVip.DeepCopy()
+	newVip.Status.V4ip = "192.168.255.100"
+
+	ctrl.enqueueUpdateVirtualIP(oldVip, newVip)
+	key, shutdown := queue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "keepalived-vip", key)
+	queue.Done(key)
+}
+
 func TestHandleUpdateVirtualParentsSyncsDistributedVipPortGroup(t *testing.T) {
 	const (
 		subnetName = "public-subnet"
