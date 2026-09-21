@@ -13,13 +13,10 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
  1 file changed, 40 insertions(+), 6 deletions(-)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index 1ca8ded..19f93dc 100644
+index 1ca8dedafa..2522df5b20 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -11878,10 +11878,16 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
- 
-     ds_clear(&actions);
-     if (rp->n_valid_nexthops > 1) {
+@@ -11881,3 +11881,6 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
 -        ds_put_format(&actions, "%s = %"PRIu16
 -                      "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
 -                      REG_ECMP_MEMBER_ID);
@@ -29,17 +26,11 @@ index 1ca8ded..19f93dc 100644
 +        struct ds proto_match = DS_EMPTY_INITIALIZER;
 +        struct ds proto_actions = DS_EMPTY_INITIALIZER;
 +        static const char *protocols[] = {NULL, "tcp", "udp", "sctp"};
- 
+@@ -11884,0 +11888,3 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
 +        ds_put_format(&actions, "%s = %"PRIu16
 +                      "; %s = select(values=(", REG_ECMP_GROUP_ID,
 +                      ecmp_group_id, REG_ECMP_MEMBER_ID);
-         for (size_t i = 0; i < rp->n_valid_nexthops; i++) {
-             if (i > 0) {
-                 ds_put_cstr(&actions, ", ");
-@@ -11889,14 +11895,42 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
- 
-             ds_put_format(&actions, "%"PRIuSIZE, i + 1);
-         }
+@@ -11892 +11898,28 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
 -        ds_put_cstr(&actions, ");");
 +
 +        for (size_t i = 0; i < ARRAY_SIZE(protocols); i++) {
@@ -69,16 +60,10 @@ index 1ca8ded..19f93dc 100644
 +        }
 +        ds_destroy(&proto_match);
 +        ds_destroy(&proto_actions);
-     } else {
-         ds_put_format(&actions, "%s = %"PRIu16
-                       "; %s = 1; next;", REG_ECMP_GROUP_ID,
-                       ecmp_group_id, REG_ECMP_MEMBER_ID);
+@@ -11896,0 +11930,3 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
 +        ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, rule->priority,
 +                      rule->match, ds_cstr(&actions), lflow_ref,
 +                      WITH_HINT(&rule->header_));
-     }
+@@ -11898,2 +11933,0 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
 -    ovn_lflow_add(lflows, od, S_ROUTER_IN_POLICY, rule->priority, rule->match,
 -                  ds_cstr(&actions), lflow_ref, WITH_HINT(&rule->header_));
- cleanup:
-     ds_destroy(&match);
-     ds_destroy(&actions);
