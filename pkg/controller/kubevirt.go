@@ -115,19 +115,7 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is nil, skipping", key)
 		return nil
 	}
-
-	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) && vmiMigration.Status.Phase == kubevirtv1.MigrationFailed && vmiMigration.Status.MigrationState == nil {
-			return c.cleanupFailedVMIMigrationWithoutVMI(vmiMigration)
-		}
-		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %w", vmiMigration.Spec.VMIName, err))
-		return err
-	}
-
 	if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
-		// The VMI may still reference this failed migration after a newer migration
-		// has pinned the same ports. Check regardless of the VMI's MigrationState.
 		hasUnfinishedMigration, err := c.hasUnfinishedVMIMigration(vmiMigration)
 		if err != nil {
 			return err
@@ -137,6 +125,15 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 				key, vmiMigration.Spec.VMIName)
 			return nil
 		}
+	}
+
+	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) && vmiMigration.Status.Phase == kubevirtv1.MigrationFailed && vmiMigration.Status.MigrationState == nil {
+			return c.cleanupFailedVMIMigrationWithoutVMI(vmiMigration)
+		}
+		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %w", vmiMigration.Spec.VMIName, err))
+		return err
 	}
 
 	// use VirtualMachineInstance's MigrationState because VirtualMachineInstanceMigration's MigrationState is not updated until migration finished
@@ -273,14 +270,6 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 // cleanupFailedVMIMigrationWithoutVMI rolls back options left by a Pending migration
 // when the VMI is gone before its Failed event is processed.
 func (c *Controller) cleanupFailedVMIMigrationWithoutVMI(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration) error {
-	hasUnfinishedMigration, err := c.hasUnfinishedVMIMigration(vmiMigration)
-	if err != nil {
-		return err
-	}
-	if hasUnfinishedMigration {
-		return nil
-	}
-
 	vmKey := fmt.Sprintf("%s/%s", vmiMigration.Namespace, vmiMigration.Spec.VMIName)
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": vmKey})
 	if err != nil {
@@ -305,22 +294,15 @@ func (c *Controller) cleanupFailedVMIMigrationWithoutVMI(vmiMigration *kubevirtv
 // hasUnfinishedVMIMigration reports whether another migration for the same VMI is still active.
 // Terminal cleanup must yield to any such migration because its OVN options may already own the ports.
 func (c *Controller) hasUnfinishedVMIMigration(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration) (bool, error) {
-	if c.vmiMigrationIndexer == nil {
-		return false, nil
-	}
-
-	key := fmt.Sprintf("%s/%s", vmiMigration.Namespace, vmiMigration.Spec.VMIName)
-	migrations, err := c.vmiMigrationIndexer.ByIndex(informer.ByVMINameIndex, key)
+	migrations, err := c.config.KubevirtClient.VirtualMachineInstanceMigration(vmiMigration.Namespace).
+		List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		return false, fmt.Errorf("failed to find migrations for VMI %s: %w", key, err)
+		return false, fmt.Errorf("failed to list migrations in namespace %s: %w", vmiMigration.Namespace, err)
 	}
 
-	for _, obj := range migrations {
-		migration, ok := obj.(*kubevirtv1.VirtualMachineInstanceMigration)
-		if !ok {
-			return false, fmt.Errorf("unexpected object type %T in VMI migration index", obj)
-		}
-		if migration.UID != vmiMigration.UID && !migration.IsFinal() {
+	for i := range migrations.Items {
+		migration := &migrations.Items[i]
+		if migration.Spec.VMIName == vmiMigration.Spec.VMIName && migration.UID != vmiMigration.UID && !migration.IsFinal() {
 			return true, nil
 		}
 	}

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,12 +10,10 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/cache"
 	"kubevirt.io/client-go/kubecli"
 
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
-	"github.com/kubeovn/kube-ovn/pkg/informer"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
@@ -161,8 +160,15 @@ func TestHandleAddOrUpdateVMIMigrationCleansFailedMigrationWithoutMigrationState
 		Status: kubevirtv1.VirtualMachineInstanceStatus{NodeName: sourceNode},
 	}
 
-	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(2)
+	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(3)
 	migrationClient.EXPECT().Get(gomock.Any(), migration, metav1.GetOptions{}).Return(vmiMigration, nil).Times(2)
+	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+		Return(&kubevirtv1.VirtualMachineInstanceMigrationList{
+			Items: []kubevirtv1.VirtualMachineInstanceMigration{{
+				Spec:   kubevirtv1.VirtualMachineInstanceMigrationSpec{VMIName: "other-vmi"},
+				Status: kubevirtv1.VirtualMachineInstanceMigrationStatus{Phase: kubevirtv1.MigrationPending},
+			}},
+		}, nil)
 	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient).Times(2)
 	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).Return(vmi, nil).Times(2)
 	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, map[string]string{"pod": namespace + "/" + vmiName}).
@@ -214,8 +220,10 @@ func TestHandleAddOrUpdateVMIMigrationCleansFailedMigrationAfterVMIDeletion(t *t
 		Status: kubevirtv1.VirtualMachineInstanceStatus{NodeName: sourceNode},
 	}
 
-	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(2)
+	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(3)
 	migrationClient.EXPECT().Get(gomock.Any(), migration, metav1.GetOptions{}).Return(vmiMigration, nil).Times(2)
+	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+		Return(&kubevirtv1.VirtualMachineInstanceMigrationList{}, nil)
 	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient).Times(2)
 	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).Return(vmi, nil)
 	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).
@@ -256,20 +264,16 @@ func TestHandleAddOrUpdateVMIMigrationSkipsMissingVMIWithActiveMigration(t *test
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
 	require.NoError(t, err)
-	fc.fakeController.vmiMigrationIndexer = cache.NewIndexer(cache.MetaNamespaceKeyFunc, informer.GetVirtualMachineInstanceMigrationInformerIndexers())
-	require.NoError(t, fc.fakeController.vmiMigrationIndexer.Add(failedMigration))
-	require.NoError(t, fc.fakeController.vmiMigrationIndexer.Add(pendingMigration))
-
 	mockCtrl := gomock.NewController(t)
 	kubevirtClient := kubecli.NewMockKubevirtClient(mockCtrl)
 	migrationClient := kubecli.NewMockVirtualMachineInstanceMigrationInterface(mockCtrl)
-	vmiClient := kubecli.NewMockVirtualMachineInstanceInterface(mockCtrl)
 	fc.fakeController.config.KubevirtClient = kubevirtClient
-	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient)
+	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(2)
 	migrationClient.EXPECT().Get(gomock.Any(), failedMigration.Name, metav1.GetOptions{}).Return(failedMigration, nil)
-	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient)
-	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).
-		Return(nil, k8serrors.NewNotFound(kubevirtv1.Resource("virtualmachineinstances"), vmiName))
+	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+		Return(&kubevirtv1.VirtualMachineInstanceMigrationList{
+			Items: []kubevirtv1.VirtualMachineInstanceMigration{*failedMigration, *pendingMigration},
+		}, nil)
 
 	require.NoError(t, fc.fakeController.handleAddOrUpdateVMIMigration(namespace+"/"+failedMigration.Name))
 }
@@ -294,8 +298,10 @@ func TestHandleAddOrUpdateVMIMigrationPreservesNonMigrationPortOptionsWithoutVMI
 	migrationClient := kubecli.NewMockVirtualMachineInstanceMigrationInterface(mockCtrl)
 	vmiClient := kubecli.NewMockVirtualMachineInstanceInterface(mockCtrl)
 	fc.fakeController.config.KubevirtClient = kubevirtClient
-	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient)
+	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(2)
 	migrationClient.EXPECT().Get(gomock.Any(), vmiMigration.Name, metav1.GetOptions{}).Return(vmiMigration, nil)
+	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+		Return(&kubevirtv1.VirtualMachineInstanceMigrationList{}, nil)
 	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient)
 	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).
 		Return(nil, k8serrors.NewNotFound(kubevirtv1.Resource("virtualmachineinstances"), vmiName))
@@ -342,10 +348,6 @@ func TestHandleAddOrUpdateVMIMigrationSkipsStaleFailedMigrationCleanup(t *testin
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{targetLauncherPod}})
 	require.NoError(t, err)
-	fc.fakeController.vmiMigrationIndexer = cache.NewIndexer(cache.MetaNamespaceKeyFunc, informer.GetVirtualMachineInstanceMigrationInformerIndexers())
-	require.NoError(t, fc.fakeController.vmiMigrationIndexer.Add(failedMigration))
-	require.NoError(t, fc.fakeController.vmiMigrationIndexer.Add(pendingMigration))
-
 	mockCtrl := gomock.NewController(t)
 	kubevirtClient := kubecli.NewMockKubevirtClient(mockCtrl)
 	migrationClient := kubecli.NewMockVirtualMachineInstanceMigrationInterface(mockCtrl)
@@ -356,11 +358,15 @@ func TestHandleAddOrUpdateVMIMigrationSkipsStaleFailedMigrationCleanup(t *testin
 		Status: kubevirtv1.VirtualMachineInstanceStatus{NodeName: sourceNode},
 	}
 
-	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(2)
+	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(3)
 	migrationClient.EXPECT().Get(gomock.Any(), pendingMigration.Name, metav1.GetOptions{}).Return(pendingMigration, nil)
 	migrationClient.EXPECT().Get(gomock.Any(), failedMigration.Name, metav1.GetOptions{}).Return(failedMigration, nil)
-	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient).Times(2)
-	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).Return(vmi, nil).Times(2)
+	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+		Return(&kubevirtv1.VirtualMachineInstanceMigrationList{
+			Items: []kubevirtv1.VirtualMachineInstanceMigration{*failedMigration, *pendingMigration},
+		}, nil)
+	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient)
+	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).Return(vmi, nil)
 	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, map[string]string{"pod": namespace + "/" + vmiName}).
 		Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
 	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetNode).Return(nil)
@@ -399,10 +405,6 @@ func TestHandleAddOrUpdateVMIMigrationSkipsStaleFailedMigrationWithMatchingVMISt
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{targetLauncherPod}})
 	require.NoError(t, err)
-	fc.fakeController.vmiMigrationIndexer = cache.NewIndexer(cache.MetaNamespaceKeyFunc, informer.GetVirtualMachineInstanceMigrationInformerIndexers())
-	require.NoError(t, fc.fakeController.vmiMigrationIndexer.Add(failedMigration))
-	require.NoError(t, fc.fakeController.vmiMigrationIndexer.Add(pendingMigration))
-
 	mockCtrl := gomock.NewController(t)
 	kubevirtClient := kubecli.NewMockKubevirtClient(mockCtrl)
 	migrationClient := kubecli.NewMockVirtualMachineInstanceMigrationInterface(mockCtrl)
@@ -418,11 +420,15 @@ func TestHandleAddOrUpdateVMIMigrationSkipsStaleFailedMigrationWithMatchingVMISt
 		},
 	}
 
-	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(2)
+	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(3)
 	migrationClient.EXPECT().Get(gomock.Any(), pendingMigration.Name, metav1.GetOptions{}).Return(pendingMigration, nil)
 	migrationClient.EXPECT().Get(gomock.Any(), failedMigration.Name, metav1.GetOptions{}).Return(failedMigration, nil)
-	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient).Times(2)
-	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).Return(vmi, nil).Times(2)
+	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+		Return(&kubevirtv1.VirtualMachineInstanceMigrationList{
+			Items: []kubevirtv1.VirtualMachineInstanceMigration{*failedMigration, *pendingMigration},
+		}, nil)
+	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient)
+	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).Return(vmi, nil)
 	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, map[string]string{"pod": namespace + "/" + vmiName}).
 		Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
 	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetNode).Return(nil)
@@ -430,4 +436,58 @@ func TestHandleAddOrUpdateVMIMigrationSkipsStaleFailedMigrationWithMatchingVMISt
 
 	require.NoError(t, fc.fakeController.handleAddOrUpdateVMIMigration(namespace+"/"+pendingMigration.Name))
 	require.NoError(t, fc.fakeController.handleAddOrUpdateVMIMigration(namespace+"/"+failedMigration.Name))
+}
+
+func TestHandleAddOrUpdateVMIMigrationSkipsFailedCleanupWhenInformerLags(t *testing.T) {
+	const (
+		namespace = "test"
+		vmiName   = "test-vmi"
+	)
+	failedMigration := &kubevirtv1.VirtualMachineInstanceMigration{
+		Name: "failed-migration", Namespace: namespace, UID: types.UID("failed-uid"),
+		Spec:   kubevirtv1.VirtualMachineInstanceMigrationSpec{VMIName: vmiName},
+		Status: kubevirtv1.VirtualMachineInstanceMigrationStatus{Phase: kubevirtv1.MigrationFailed},
+	}
+	pendingMigration := &kubevirtv1.VirtualMachineInstanceMigration{
+		Name: "pending-migration", Namespace: namespace, UID: types.UID("pending-uid"),
+		Spec:   kubevirtv1.VirtualMachineInstanceMigrationSpec{VMIName: vmiName},
+		Status: kubevirtv1.VirtualMachineInstanceMigrationStatus{Phase: kubevirtv1.MigrationPending},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+	require.NoError(t, err)
+	mockCtrl := gomock.NewController(t)
+	kubevirtClient := kubecli.NewMockKubevirtClient(mockCtrl)
+	migrationClient := kubecli.NewMockVirtualMachineInstanceMigrationInterface(mockCtrl)
+	fc.fakeController.config.KubevirtClient = kubevirtClient
+	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(2)
+	migrationClient.EXPECT().Get(gomock.Any(), failedMigration.Name, metav1.GetOptions{}).Return(failedMigration, nil)
+	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+		Return(&kubevirtv1.VirtualMachineInstanceMigrationList{
+			Items: []kubevirtv1.VirtualMachineInstanceMigration{*failedMigration, *pendingMigration},
+		}, nil)
+
+	require.NoError(t, fc.fakeController.handleAddOrUpdateVMIMigration(namespace+"/"+failedMigration.Name))
+}
+
+func TestHandleAddOrUpdateVMIMigrationRetriesFailedCleanupWhenMigrationListFails(t *testing.T) {
+	const namespace = "test"
+	failedMigration := &kubevirtv1.VirtualMachineInstanceMigration{
+		Name: "failed-migration", Namespace: namespace, UID: types.UID("failed-uid"),
+		Spec:   kubevirtv1.VirtualMachineInstanceMigrationSpec{VMIName: "test-vmi"},
+		Status: kubevirtv1.VirtualMachineInstanceMigrationStatus{Phase: kubevirtv1.MigrationFailed},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+	require.NoError(t, err)
+	mockCtrl := gomock.NewController(t)
+	kubevirtClient := kubecli.NewMockKubevirtClient(mockCtrl)
+	migrationClient := kubecli.NewMockVirtualMachineInstanceMigrationInterface(mockCtrl)
+	fc.fakeController.config.KubevirtClient = kubevirtClient
+	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(2)
+	migrationClient.EXPECT().Get(gomock.Any(), failedMigration.Name, metav1.GetOptions{}).Return(failedMigration, nil)
+	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).Return(nil, errors.New("API unavailable"))
+
+	err = fc.fakeController.handleAddOrUpdateVMIMigration(namespace + "/" + failedMigration.Name)
+	require.ErrorContains(t, err, "failed to list migrations in namespace test: API unavailable")
 }
