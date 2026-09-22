@@ -48,7 +48,7 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
      } else {
          ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
                        "outport == \"none\"",  debug_drop_action(),
-@@ -9432,6 +9439,49 @@
+@@ -9432,6 +9439,52 @@
                    lflow_ref);
  }
  
@@ -68,6 +68,9 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 +        return;
 +    }
 +    if (is_vlan_transparent(op->od)) {
++        return;
++    }
++    if (lsp_is_router(op->nbsp)) {
 +        return;
 +    }
 +
@@ -98,7 +101,7 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
  /* Ingress table 19: ARP/ND responder for service monitor source ip.
   * (priority 110)*/
  static void
-@@ -16419,6 +16469,7 @@
+@@ -16419,6 +16472,7 @@
      /* Build Logical Switch Flows. */
      build_lswitch_port_sec_op(op, lflows, actions, match);
      build_lswitch_learn_fdb_op(op, lflows, actions, match);
@@ -106,7 +109,7 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
      build_lswitch_arp_nd_responder_skip_local(op, lflows, match);
      build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
                                               meter_groups, actions, match);
-@@ -18043,3 +18094,5 @@ ovnnb_db_run
+@@ -18043,3 +18097,5 @@ ovnnb_db_run
      use_ct_inv_match = smap_get_bool(input_data->nb_options,
                                       "use_ct_inv_match", true);
 +    bcast_arp_req_flood = smap_get_bool(input_data->nb_options,
