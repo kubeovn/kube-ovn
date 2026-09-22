@@ -408,6 +408,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		routerLBRuleLister:            routerLBRuleInformer.Lister(),
 		switchLBRuleLister:            switchLBRuleInformer.Lister(),
 		routerLBRuleSynced:            alwaysReady,
+		switchLBRuleLister:            switchLBRuleInformer.Lister(),
+		switchLBRuleSynced:            alwaysReady,
 		ovnEipsLister:                 ovnEipInformer.Lister(),
 		ovnEipSynced:                  alwaysReady,
 		ovnDnatRulesLister:            ovnDnatRuleInformer.Lister(),
