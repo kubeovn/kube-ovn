@@ -369,10 +369,12 @@ func setupFRRPeerNetworkingViaPod(f *framework.Framework, namespace, podName, lo
 		"ip link add br-vpn type bridge",
 		"ip link set br-vpn master vrf-vpn",
 		"ip link set br-vpn up",
-		fmt.Sprintf("ip link add vxlan-vpn type vxlan id %d dstport 4789 local %s", evpnVNI, localIP),
+		fmt.Sprintf("ip link add vxlan-vpn type vxlan id %d dstport 4789 local %s nolearning", evpnVNI, localIP),
 		"ip link set vxlan-vpn master br-vpn",
 		"ip link set vxlan-vpn up",
-		"ip addr add " + backendIP + " dev vrf-vpn",
+		// The backend address is an EVPN SVI and must live on the bridge
+		// attached to the VRF, not on the VRF device itself.
+		"ip addr add " + backendIP + " dev br-vpn",
 	}
 
 	for _, cmd := range cmds {
