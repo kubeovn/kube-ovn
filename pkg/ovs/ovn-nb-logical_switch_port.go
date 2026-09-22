@@ -342,23 +342,23 @@ func (c *OVNNbClient) migrateLegacyVirtualLogicalSwitchPort(lspName, lsName, ip 
 
 	var ops []ovsdb.Operation
 	if targetLsp != nil {
-		legacySubnet := legacyLsp.ExternalIDs[LogicalSwitchKey]
-		if legacySubnet == "" {
-			legacySubnet = lsName
+		targetSubnet := targetLsp.ExternalIDs[LogicalSwitchKey]
+		if targetSubnet == "" {
+			targetSubnet = lsName
 		}
-		deleteOps, err := c.DeleteLogicalSwitchPortOp(legacySubnet, legacyLsp.UUID)
+		deleteOps, err := c.DeleteLogicalSwitchPortOp(targetSubnet, targetLsp.UUID)
 		if err != nil {
-			return fmt.Errorf("generate operations for deleting legacy virtual logical switch port %s: %w", oldName, err)
+			return fmt.Errorf("generate operations for deleting conflicting virtual logical switch port %s: %w", lspName, err)
 		}
 		ops = append(ops, deleteOps...)
-	} else {
-		legacyLsp.Name = lspName
-		updateOps, err := c.Where(&ovnnb.LogicalSwitchPort{UUID: legacyLsp.UUID}).Update(legacyLsp, &legacyLsp.Name)
-		if err != nil {
-			return fmt.Errorf("generate operations for renaming legacy virtual logical switch port %s: %w", oldName, err)
-		}
-		ops = append(ops, updateOps...)
 	}
+
+	legacyLsp.Name = lspName
+	updateOps, err := c.Where(&ovnnb.LogicalSwitchPort{UUID: legacyLsp.UUID}).Update(legacyLsp, &legacyLsp.Name)
+	if err != nil {
+		return fmt.Errorf("generate operations for renaming legacy virtual logical switch port %s: %w", oldName, err)
+	}
+	ops = append(ops, updateOps...)
 
 	if err := c.Transact("lsp-vip-migrate", ops); err != nil {
 		return fmt.Errorf("migrate legacy virtual logical switch port %s to %s: %w", oldName, lspName, err)

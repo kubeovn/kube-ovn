@@ -443,6 +443,40 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 		require.Nil(t, legacyLsp)
 	})
 
+	t.Run("preserve legacy metadata when target port already exists", func(t *testing.T) {
+		legacyName := "legacy-vip-conflict"
+		newName := "vip:legacy-vip-conflict:ipv4"
+		legacyIP := "192.168.33.21"
+		pgName := "legacy-vip-conflict-pg"
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, "192.168.33.22")
+		require.NoError(t, err)
+		err = nbClient.CreateVirtualLogicalSwitchPort(legacyName, lsName, legacyIP)
+		require.NoError(t, err)
+		legacyLsp, err := nbClient.GetLogicalSwitchPort(legacyName, false)
+		require.NoError(t, err)
+		err = nbClient.SetVirtualLogicalSwitchPortVirtualParents(legacyName, "parent-port")
+		require.NoError(t, err)
+		err = nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+		err = nbClient.PortGroupAddPorts(pgName, legacyName)
+		require.NoError(t, err)
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, legacyIP)
+		require.NoError(t, err)
+		migratedLsp, err := nbClient.GetLogicalSwitchPort(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, legacyLsp.UUID, migratedLsp.UUID)
+		require.Equal(t, legacyIP, migratedLsp.Options["virtual-ip"])
+		require.Equal(t, "parent-port", migratedLsp.Options["virtual-parents"])
+		legacyLsp, err = nbClient.GetLogicalSwitchPort(legacyName, true)
+		require.NoError(t, err)
+		require.Nil(t, legacyLsp)
+		pg, err := nbClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Contains(t, pg.Ports, migratedLsp.UUID)
+	})
+
 	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPort("", "", "")
 		require.Error(t, err)

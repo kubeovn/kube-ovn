@@ -473,10 +473,8 @@ func (c *Controller) syncVirtualVipPortGroups(vip *kubeovnv1.Vip, virtualPorts [
 
 func (c *Controller) deleteVirtualVipPorts(vip *kubeovnv1.Vip) error {
 	portNames := make(map[string]struct{})
-	virtualIPs := make(map[string]struct{})
 	for _, virtualPort := range virtualVipPorts(vip) {
 		portNames[virtualPort.name] = struct{}{}
-		virtualIPs[virtualPort.ip] = struct{}{}
 	}
 
 	if vip.Spec.Subnet != "" {
@@ -487,14 +485,7 @@ func (c *Controller) deleteVirtualVipPorts(vip *kubeovnv1.Vip) error {
 			if lsp.Name == vip.Name || lsp.Name == "vip:"+vip.Name+":ipv4" || lsp.Name == "vip:"+vip.Name+":ipv6" {
 				return true
 			}
-			if !strings.HasPrefix(lsp.Name, vip.Name+"-ipv6-") {
-				return false
-			}
-			if len(virtualIPs) == 0 {
-				return true
-			}
-			_, ok := virtualIPs[lsp.Options["virtual-ip"]]
-			return ok
+			return false
 		})
 		if err != nil {
 			return fmt.Errorf("list virtual ports for vip %s from subnet %s: %w", vip.Name, vip.Spec.Subnet, err)
