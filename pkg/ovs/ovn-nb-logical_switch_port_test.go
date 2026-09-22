@@ -443,6 +443,30 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 		require.Nil(t, legacyLsp)
 	})
 
+	t.Run("migrate legacy dual-stack vip port by address", func(t *testing.T) {
+		legacyName := "legacy-dual-vip"
+		newName := "vip:legacy-dual-vip:ipv4"
+		v4IP := "192.168.33.30"
+		v6IP := "2001:db8::30"
+		err = nbClient.CreateVirtualLogicalSwitchPort(legacyName, lsName, v4IP)
+		require.NoError(t, err)
+		legacyLsp, err := nbClient.GetLogicalSwitchPort(legacyName, false)
+		require.NoError(t, err)
+		legacyLsp.Options["virtual-ip"] = v4IP + "," + v6IP
+		err = nbClient.UpdateLogicalSwitchPort(legacyLsp, &legacyLsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, v4IP)
+		require.NoError(t, err)
+		migratedLsp, err := nbClient.GetLogicalSwitchPort(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, legacyLsp.UUID, migratedLsp.UUID)
+		require.Equal(t, v4IP, migratedLsp.Options["virtual-ip"])
+		legacyLsp, err = nbClient.GetLogicalSwitchPort(legacyName, true)
+		require.NoError(t, err)
+		require.Nil(t, legacyLsp)
+	})
+
 	t.Run("preserve legacy metadata when target port already exists", func(t *testing.T) {
 		legacyName := "legacy-vip-conflict"
 		newName := "vip:legacy-vip-conflict:ipv4"

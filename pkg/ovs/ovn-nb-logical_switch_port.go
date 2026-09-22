@@ -328,7 +328,9 @@ func (c *OVNNbClient) migrateLegacyVirtualLogicalSwitchPort(lspName, lsName, ip 
 	if err != nil {
 		return fmt.Errorf("get legacy virtual logical switch port %s: %w", oldName, err)
 	}
-	if legacyLsp == nil || legacyLsp.Type != "virtual" || legacyLsp.Options["virtual-ip"] != ip {
+	if legacyLsp == nil || legacyLsp.Type != "virtual" || !slices.ContainsFunc(strings.Split(legacyLsp.Options["virtual-ip"], ","), func(address string) bool {
+		return strings.TrimSpace(address) == ip
+	}) {
 		return nil
 	}
 	if legacySubnet := legacyLsp.ExternalIDs[LogicalSwitchKey]; legacySubnet != "" && legacySubnet != lsName {
