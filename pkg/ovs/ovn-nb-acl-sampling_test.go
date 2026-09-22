@@ -349,16 +349,16 @@ func TestOvnNBMonitorOptionsIncludesSwitchPortGroupAndSampling(t *testing.T) {
 	require.Contains(t, tables, ovnnb.SamplingAppTable)
 }
 
-func TestEnsureACLSamplingMonitorDoesNotStartSecondMonitor(t *testing.T) {
+func TestEnsureACLSamplingMonitorSupportDoesNotStartMonitor(t *testing.T) {
 	nbClient := newACLSamplingTestClient(t, "no-second-monitor")
 	counter := &monitorCountingClient{Client: nbClient.Client}
 	nbClient.Client = counter
 
-	require.NoError(t, nbClient.ensureACLSamplingMonitor())
+	require.NoError(t, nbClient.ensureACLSamplingMonitorSupport())
 	require.Equal(t, 0, counter.calls)
-	require.True(t, nbClient.aclSamplingMonitored)
+	require.True(t, nbClient.aclSamplingMonitorSupport)
 
-	require.NoError(t, nbClient.ensureACLSamplingMonitor())
+	require.NoError(t, nbClient.ensureACLSamplingMonitorSupport())
 	require.Equal(t, 0, counter.calls)
 }
 
@@ -369,7 +369,7 @@ func TestACLSamplingMonitorPreservesLogicalSwitchAfterReconnect(t *testing.T) {
 		"node":   "node-1",
 		"subnet": "ovn-default",
 	}))
-	require.NoError(t, nbClient.ensureACLSamplingMonitor())
+	require.NoError(t, nbClient.ensureACLSamplingMonitorSupport())
 
 	ls, err := nbClient.GetLogicalSwitch("ovn-default", false)
 	require.NoError(t, err)

@@ -1439,7 +1439,6 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		return nil, err
 	}
 
-<<<<<<< HEAD
 	if _, err = c.Monitor(context.TODO(), c.NewMonitor(ovnNBMonitorOptions()...)); err != nil {
 		klog.Error(err)
 		return nil, err
