@@ -109,6 +109,8 @@ type LogicalSwitchPort interface {
 	CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error
 	// create virtual type logical switch port for allowed-address-pair
 	CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error
+	// set addresses on a virtual type logical switch port for allowed-address-pair
+	SetVirtualLogicalSwitchPortAddresses(lspName, addresses string) error
 	// update virtual type logical switch port virtual-parents for allowed-address-pair
 	SetVirtualLogicalSwitchPortVirtualParents(lsName, parents string) error
 	SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *DHCPOptionsUUIDs) error
