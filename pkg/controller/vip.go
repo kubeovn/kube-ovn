@@ -335,14 +335,10 @@ func virtualVipPorts(vip *kubeovnv1.Vip) []virtualVipPort {
 	v6ip := cmp.Or(vip.Status.V6ip, vip.Spec.V6ip)
 	ports := make([]virtualVipPort, 0, 2)
 	if util.IsValidIP(v4ip) {
-		ports = append(ports, virtualVipPort{name: vip.Name, ip: v4ip})
+		ports = append(ports, virtualVipPort{name: "vip:" + vip.Name + ":ipv4", ip: v4ip})
 	}
 	if util.IsValidIP(v6ip) {
-		name := vip.Name
-		if len(ports) > 0 {
-			name = fmt.Sprintf("%s-ipv6-%s", vip.Name, util.Sha256Hash([]byte(v6ip))[:8])
-		}
-		ports = append(ports, virtualVipPort{name: name, ip: v6ip})
+		ports = append(ports, virtualVipPort{name: "vip:" + vip.Name + ":ipv6", ip: v6ip})
 	}
 	return ports
 }
@@ -488,7 +484,7 @@ func (c *Controller) deleteVirtualVipPorts(vip *kubeovnv1.Vip) error {
 			if lsp.Type != "virtual" {
 				return false
 			}
-			if lsp.Name == vip.Name {
+			if lsp.Name == vip.Name || lsp.Name == "vip:"+vip.Name+":ipv4" || lsp.Name == "vip:"+vip.Name+":ipv6" {
 				return true
 			}
 			if !strings.HasPrefix(lsp.Name, vip.Name+"-ipv6-") {

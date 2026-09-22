@@ -26,23 +26,22 @@ func TestVirtualVipPortsSplitsDualStackAddresses(t *testing.T) {
 
 	ports := virtualVipPorts(vip)
 	require.Equal(t, []virtualVipPort{
-		{name: "keepalived-vip", ip: "192.168.255.100"},
-		{name: "keepalived-vip-ipv6-327d2288", ip: "2001:db8:1203:9::f"},
+		{name: "vip:keepalived-vip:ipv4", ip: "192.168.255.100"},
+		{name: "vip:keepalived-vip:ipv6", ip: "2001:db8:1203:9::f"},
 	}, ports)
 }
 
-func TestVirtualVipPortsDoesNotCollideWithVipName(t *testing.T) {
+func TestVirtualVipPortsUsesAddressFamilyNames(t *testing.T) {
 	vip := &kubeovnv1.Vip{
 		Name:   "foo",
 		Status: kubeovnv1.VipStatus{V4ip: "192.168.255.100", V6ip: "2001:db8::f"},
 	}
 
 	ports := virtualVipPorts(vip)
-	require.NotEqual(t, "foo-ipv6", ports[1].name)
-	require.Contains(t, ports[1].name, "foo-ipv6-")
+	require.Equal(t, "vip:foo:ipv6", ports[1].name)
 }
 
-func TestVirtualVipPortsUsesVipNameForIPv6Only(t *testing.T) {
+func TestVirtualVipPortsUsesAddressFamilyNameForIPv6Only(t *testing.T) {
 	vip := &kubeovnv1.Vip{
 		Name: "keepalived-vip",
 		Status: kubeovnv1.VipStatus{
@@ -51,7 +50,7 @@ func TestVirtualVipPortsUsesVipNameForIPv6Only(t *testing.T) {
 	}
 
 	require.Equal(t, []virtualVipPort{
-		{name: "keepalived-vip", ip: "2001:db8:1203:9::f"},
+		{name: "vip:keepalived-vip:ipv6", ip: "2001:db8:1203:9::f"},
 	}, virtualVipPorts(vip))
 }
 
@@ -62,10 +61,10 @@ func TestDeleteVirtualVipPortsFindsSecondaryPortWithoutIPStatus(t *testing.T) {
 
 	fakeController.mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: vip.Spec.Subnet}, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{
 		{Name: vip.Name, Type: "virtual"},
-		{Name: "foo-ipv6-6029e1b4", Type: "virtual"},
+		{Name: "vip:foo:ipv6", Type: "virtual"},
 	}, nil)
 	fakeController.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(vip.Name).Return(nil)
-	fakeController.mockOvnClient.EXPECT().DeleteLogicalSwitchPort("foo-ipv6-6029e1b4").Return(nil)
+	fakeController.mockOvnClient.EXPECT().DeleteLogicalSwitchPort("vip:foo:ipv6").Return(nil)
 
 	require.NoError(t, fakeController.fakeController.deleteVirtualVipPorts(vip))
 }
@@ -146,9 +145,10 @@ func TestHandleUpdateVirtualParentsSyncsDistributedVipPortGroup(t *testing.T) {
 	fakeController := newVipParentsTestController(t, subnet, vip, keepalivedAAPPod(subnetName, vipName, "node-1"))
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
-	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(vipName, subnetName, vip.Status.V4ip).Return(nil)
-	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortAddresses(vipName, vip.Status.Mac+" "+vip.Status.V4ip).Return(nil)
-	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortVirtualParents(vipName, "keepalived-0.default").Return(nil)
+	primaryPort := "vip:" + vipName + ":ipv4"
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(primaryPort, subnetName, vip.Status.V4ip).Return(nil)
+	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortAddresses(primaryPort, vip.Status.Mac+" "+vip.Status.V4ip).Return(nil)
+	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortVirtualParents(primaryPort, "keepalived-0.default").Return(nil)
 	mockOvnClient.EXPECT().ListPortGroups(map[string]string{
 		"subnet":         subnetName,
 		"node":           "",
@@ -157,8 +157,8 @@ func TestHandleUpdateVirtualParentsSyncsDistributedVipPortGroup(t *testing.T) {
 		{Name: "public.subnet.node.1", ExternalIDs: map[string]string{"node": "node-1"}},
 		{Name: "public.subnet.node.2", ExternalIDs: map[string]string{"node": "node-2"}},
 	}, nil)
-	mockOvnClient.EXPECT().PortGroupAddPorts("public.subnet.node.1", vipName).Return(nil)
-	mockOvnClient.EXPECT().RemovePortFromPortGroups(vipName, "public.subnet.node.2").Return(nil)
+	mockOvnClient.EXPECT().PortGroupAddPorts("public.subnet.node.1", primaryPort).Return(nil)
+	mockOvnClient.EXPECT().RemovePortFromPortGroups(primaryPort, "public.subnet.node.2").Return(nil)
 
 	require.NoError(t, ctrl.handleUpdateVirtualParents(vipName))
 }
@@ -185,8 +185,8 @@ func TestHandleUpdateVirtualParentsSplitsDualStackVipPorts(t *testing.T) {
 	}
 	fakeController := newVipParentsTestController(t, subnet, vip, keepalivedAAPPod(subnetName, vipName, "node-1"))
 	ctrl := fakeController.fakeController
-	primaryPort := vipName
-	secondaryPort := vipName + "-ipv6-327d2288"
+	primaryPort := "vip:" + vipName + ":ipv4"
+	secondaryPort := "vip:" + vipName + ":ipv6"
 	mockOvnClient := fakeController.mockOvnClient
 	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(primaryPort, subnetName, "192.168.255.100").Return(nil)
 	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortAddresses(primaryPort, "2e:a5:9b:20:42:d2 192.168.255.100").Return(nil)
@@ -232,9 +232,10 @@ func TestHandleUpdateVirtualParentsRemovesStalePortGroups(t *testing.T) {
 	fakeController := newVipParentsTestController(t, subnet, vip)
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
-	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(vipName, subnetName, vip.Status.V4ip).Return(nil)
-	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortAddresses(vipName, vip.Status.Mac+" "+vip.Status.V4ip).Return(nil)
-	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortVirtualParents(vipName, "").Return(nil)
+	primaryPort := "vip:" + vipName + ":ipv4"
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(primaryPort, subnetName, vip.Status.V4ip).Return(nil)
+	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortAddresses(primaryPort, vip.Status.Mac+" "+vip.Status.V4ip).Return(nil)
+	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortVirtualParents(primaryPort, "").Return(nil)
 	mockOvnClient.EXPECT().ListPortGroups(map[string]string{
 		"subnet":         subnetName,
 		"node":           "",
@@ -243,7 +244,7 @@ func TestHandleUpdateVirtualParentsRemovesStalePortGroups(t *testing.T) {
 		{Name: "public.subnet.node.1", ExternalIDs: map[string]string{"node": "node-1"}},
 		{Name: "public.subnet.node.2", ExternalIDs: map[string]string{"node": "node-2"}},
 	}, nil)
-	mockOvnClient.EXPECT().RemovePortFromPortGroups(vipName, "public.subnet.node.1", "public.subnet.node.2").Return(nil)
+	mockOvnClient.EXPECT().RemovePortFromPortGroups(primaryPort, "public.subnet.node.1", "public.subnet.node.2").Return(nil)
 
 	require.NoError(t, ctrl.handleUpdateVirtualParents(vipName))
 }
@@ -269,8 +270,9 @@ func TestHandleUpdateVirtualParentsSkipsAddressesWithoutMAC(t *testing.T) {
 	fakeController := newVipParentsTestController(t, subnet, vip, keepalivedAAPPod(subnetName, vipName, "node-1"))
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
-	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(vipName, subnetName, vip.Status.V4ip).Return(nil)
-	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortVirtualParents(vipName, "keepalived-0.default").Return(nil)
+	primaryPort := "vip:" + vipName + ":ipv4"
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPort(primaryPort, subnetName, vip.Status.V4ip).Return(nil)
+	mockOvnClient.EXPECT().SetVirtualLogicalSwitchPortVirtualParents(primaryPort, "keepalived-0.default").Return(nil)
 	mockOvnClient.EXPECT().ListPortGroups(map[string]string{
 		"subnet":         subnetName,
 		"node":           "",
@@ -278,7 +280,7 @@ func TestHandleUpdateVirtualParentsSkipsAddressesWithoutMAC(t *testing.T) {
 	}).Return([]ovnnb.PortGroup{
 		{Name: "public.subnet.node.1", ExternalIDs: map[string]string{"node": "node-1"}},
 	}, nil)
-	mockOvnClient.EXPECT().PortGroupAddPorts("public.subnet.node.1", vipName).Return(nil)
+	mockOvnClient.EXPECT().PortGroupAddPorts("public.subnet.node.1", primaryPort).Return(nil)
 
 	require.NoError(t, ctrl.handleUpdateVirtualParents(vipName))
 }

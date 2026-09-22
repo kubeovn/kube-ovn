@@ -247,6 +247,10 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...stri
 
 // CreateVirtualLogicalSwitchPort create one virtual type logical switch port for allowed-address-pair
 func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	if err := c.migrateLegacyVirtualLogicalSwitchPort(lspName, lsName, ip); err != nil {
+		return err
+	}
+
 	exist, err := c.LogicalSwitchPortExists(lspName)
 	if err != nil {
 		klog.Error(err)
@@ -297,6 +301,68 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string)
 		return fmt.Errorf("create virtual logical switch port %s for logical switch %s: %w", lspName, lsName, err)
 	}
 
+	return nil
+}
+
+// migrateLegacyVirtualLogicalSwitchPort atomically renames the pre-dual-stack
+// VIP port when the desired port uses the address-family suffix. Older
+// releases used the VIP name itself for both IPv4-only and IPv6-only ports.
+func (c *OVNNbClient) migrateLegacyVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	var oldName string
+	for _, suffix := range []string{":ipv4", ":ipv6"} {
+		baseName, ok := strings.CutSuffix(lspName, suffix)
+		if !ok {
+			continue
+		}
+		baseName, ok = strings.CutPrefix(baseName, "vip:")
+		if ok && baseName != "" {
+			oldName = baseName
+			break
+		}
+	}
+	if oldName == "" {
+		return nil
+	}
+
+	legacyLsp, err := c.GetLogicalSwitchPort(oldName, true)
+	if err != nil {
+		return fmt.Errorf("get legacy virtual logical switch port %s: %w", oldName, err)
+	}
+	if legacyLsp == nil || legacyLsp.Type != "virtual" || legacyLsp.Options["virtual-ip"] != ip {
+		return nil
+	}
+	if legacySubnet := legacyLsp.ExternalIDs[LogicalSwitchKey]; legacySubnet != "" && legacySubnet != lsName {
+		return nil
+	}
+
+	targetLsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		return fmt.Errorf("get virtual logical switch port %s: %w", lspName, err)
+	}
+
+	var ops []ovsdb.Operation
+	if targetLsp != nil {
+		legacySubnet := legacyLsp.ExternalIDs[LogicalSwitchKey]
+		if legacySubnet == "" {
+			legacySubnet = lsName
+		}
+		deleteOps, err := c.DeleteLogicalSwitchPortOp(legacySubnet, legacyLsp.UUID)
+		if err != nil {
+			return fmt.Errorf("generate operations for deleting legacy virtual logical switch port %s: %w", oldName, err)
+		}
+		ops = append(ops, deleteOps...)
+	} else {
+		legacyLsp.Name = lspName
+		updateOps, err := c.Where(&ovnnb.LogicalSwitchPort{UUID: legacyLsp.UUID}).Update(legacyLsp, &legacyLsp.Name)
+		if err != nil {
+			return fmt.Errorf("generate operations for renaming legacy virtual logical switch port %s: %w", oldName, err)
+		}
+		ops = append(ops, updateOps...)
+	}
+
+	if err := c.Transact("lsp-vip-migrate", ops); err != nil {
+		return fmt.Errorf("migrate legacy virtual logical switch port %s to %s: %w", oldName, lspName, err)
+	}
 	return nil
 }
 

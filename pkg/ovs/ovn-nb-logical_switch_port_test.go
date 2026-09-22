@@ -405,6 +405,44 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 		}, lsp.Options)
 	})
 
+	t.Run("atomically migrate legacy vip port", func(t *testing.T) {
+		legacyName := "legacy-vip"
+		newName := "vip:legacy-vip:ipv4"
+		legacyIP := "192.168.33.20"
+		err = nbClient.CreateVirtualLogicalSwitchPort(legacyName, lsName, legacyIP)
+		require.NoError(t, err)
+		legacyLsp, err := nbClient.GetLogicalSwitchPort(legacyName, false)
+		require.NoError(t, err)
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, legacyIP)
+		require.NoError(t, err)
+		migratedLsp, err := nbClient.GetLogicalSwitchPort(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, legacyLsp.UUID, migratedLsp.UUID)
+		legacyLsp, err = nbClient.GetLogicalSwitchPort(legacyName, true)
+		require.NoError(t, err)
+		require.Nil(t, legacyLsp)
+	})
+
+	t.Run("atomically migrate legacy ipv6 vip port", func(t *testing.T) {
+		legacyName := "legacy-vip-v6"
+		newName := "vip:legacy-vip-v6:ipv6"
+		legacyIP := "2001:db8::20"
+		err = nbClient.CreateVirtualLogicalSwitchPort(legacyName, lsName, legacyIP)
+		require.NoError(t, err)
+		legacyLsp, err := nbClient.GetLogicalSwitchPort(legacyName, false)
+		require.NoError(t, err)
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, legacyIP)
+		require.NoError(t, err)
+		migratedLsp, err := nbClient.GetLogicalSwitchPort(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, legacyLsp.UUID, migratedLsp.UUID)
+		legacyLsp, err = nbClient.GetLogicalSwitchPort(legacyName, true)
+		require.NoError(t, err)
+		require.Nil(t, legacyLsp)
+	})
+
 	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPort("", "", "")
 		require.Error(t, err)
