@@ -20,6 +20,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -208,16 +209,8 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 				return err
 			}
 		}
-		// delete virtual ports
-		virtualPorts := virtualVipPorts(vip)
-		if len(virtualPorts) == 0 {
-			virtualPorts = []virtualVipPort{{name: vip.Name}}
-		}
-		for _, virtualPort := range virtualPorts {
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(virtualPort.name); err != nil {
-				klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", virtualPort.name, vip.Spec.Subnet, err)
-				return err
-			}
+		if err := c.deleteVirtualVipPorts(vip); err != nil {
+			return err
 		}
 		// Release IP from IPAM before removing finalizer
 		c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
@@ -347,7 +340,7 @@ func virtualVipPorts(vip *kubeovnv1.Vip) []virtualVipPort {
 	if util.IsValidIP(v6ip) {
 		name := vip.Name
 		if len(ports) > 0 {
-			name = vip.Name + "-ipv6"
+			name = fmt.Sprintf("%s-ipv6-%s", vip.Name, util.Sha256Hash([]byte(v6ip))[:8])
 		}
 		ports = append(ports, virtualVipPort{name: name, ip: v6ip})
 	}
@@ -451,19 +444,15 @@ func (c *Controller) syncVirtualVipPortGroups(vip *kubeovnv1.Vip, virtualPorts [
 		return fmt.Errorf("list port groups for subnet %s: %w", subnet.Name, err)
 	}
 
-	portGroupNames := make([]string, 0, len(portGroups))
 	portGroupsByNode := make(map[string]string, len(portGroups))
+	stalePortGroupNames := make([]string, 0, len(portGroups))
 	for _, portGroup := range portGroups {
-		portGroupNames = append(portGroupNames, portGroup.Name)
-		if nodeName := portGroup.ExternalIDs["node"]; nodeName != "" {
+		nodeName := portGroup.ExternalIDs["node"]
+		if nodeName != "" {
 			portGroupsByNode[nodeName] = portGroup.Name
 		}
-	}
-	if len(portGroupNames) > 0 {
-		for _, virtualPort := range virtualPorts {
-			if err = c.OVNNbClient.RemovePortFromPortGroups(virtualPort.name, portGroupNames...); err != nil {
-				return fmt.Errorf("remove virtual port %s from old port groups: %w", virtualPort.name, err)
-			}
+		if _, desired := parentNodes[nodeName]; !desired {
+			stalePortGroupNames = append(stalePortGroupNames, portGroup.Name)
 		}
 	}
 
@@ -476,6 +465,61 @@ func (c *Controller) syncVirtualVipPortGroups(vip *kubeovnv1.Vip, virtualPorts [
 			if err = c.OVNNbClient.PortGroupAddPorts(pgName, virtualPort.name); err != nil {
 				return fmt.Errorf("add virtual port %s to port group %s: %w", virtualPort.name, pgName, err)
 			}
+		}
+		if len(stalePortGroupNames) > 0 {
+			if err = c.OVNNbClient.RemovePortFromPortGroups(virtualPort.name, stalePortGroupNames...); err != nil {
+				return fmt.Errorf("remove virtual port %s from old port groups: %w", virtualPort.name, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) deleteVirtualVipPorts(vip *kubeovnv1.Vip) error {
+	portNames := make(map[string]struct{})
+	virtualIPs := make(map[string]struct{})
+	for _, virtualPort := range virtualVipPorts(vip) {
+		portNames[virtualPort.name] = struct{}{}
+		virtualIPs[virtualPort.ip] = struct{}{}
+	}
+
+	if vip.Spec.Subnet != "" {
+		lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: vip.Spec.Subnet}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+			if lsp.Type != "virtual" {
+				return false
+			}
+			if lsp.Name == vip.Name {
+				return true
+			}
+			if !strings.HasPrefix(lsp.Name, vip.Name+"-ipv6-") {
+				return false
+			}
+			if len(virtualIPs) == 0 {
+				return true
+			}
+			_, ok := virtualIPs[lsp.Options["virtual-ip"]]
+			return ok
+		})
+		if err != nil {
+			return fmt.Errorf("list virtual ports for vip %s from subnet %s: %w", vip.Name, vip.Spec.Subnet, err)
+		}
+		for _, lsp := range lsps {
+			portNames[lsp.Name] = struct{}{}
+		}
+	}
+
+	if len(portNames) == 0 {
+		portNames[vip.Name] = struct{}{}
+	}
+	names := make([]string, 0, len(portNames))
+	for name := range portNames {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		if err := c.OVNNbClient.DeleteLogicalSwitchPort(name); err != nil {
+			klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", name, vip.Spec.Subnet, err)
+			return err
 		}
 	}
 	return nil
