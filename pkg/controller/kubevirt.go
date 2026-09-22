@@ -125,6 +125,20 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return err
 	}
 
+	if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
+		// The VMI may still reference this failed migration after a newer migration
+		// has pinned the same ports. Check regardless of the VMI's MigrationState.
+		hasUnfinishedMigration, err := c.hasUnfinishedVMIMigration(vmiMigration)
+		if err != nil {
+			return err
+		}
+		if hasUnfinishedMigration {
+			klog.Infof("VirtualMachineInstanceMigration %s is stale because another migration for VMI %s is unfinished, skipping cleanup",
+				key, vmiMigration.Spec.VMIName)
+			return nil
+		}
+	}
+
 	// use VirtualMachineInstance's MigrationState because VirtualMachineInstanceMigration's MigrationState is not updated until migration finished
 	var srcNodeName, targetNodeName string
 	if vmi.Status.MigrationState != nil && vmi.Status.MigrationState.MigrationUID == vmiMigration.UID {
@@ -147,17 +161,6 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		// needed to roll back those options.
 		switch vmiMigration.Status.Phase {
 		case kubevirtv1.MigrationFailed:
-			// A stale Failed event can be processed after a newer migration has already
-			// pinned the same ports. Do not let the old event roll back the newer options.
-			hasUnfinishedMigration, err := c.hasUnfinishedVMIMigration(vmiMigration)
-			if err != nil {
-				return err
-			}
-			if hasUnfinishedMigration {
-				klog.Infof("VirtualMachineInstanceMigration %s is stale because another migration for VMI %s is unfinished, skipping cleanup",
-					key, vmiMigration.Spec.VMIName)
-				return nil
-			}
 			srcNodeName = vmi.Status.NodeName
 		case kubevirtv1.MigrationSucceeded:
 			klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded but VMI migration state is stale or nil, skipping", key)
