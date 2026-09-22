@@ -912,9 +912,9 @@ func TestVpcEndpointProviderMappingsIPv6FirstDualStack(t *testing.T) {
 	tcp := corev1.ProtocolTCP
 	portNum := int32(80)
 	slice := &discoveryv1.EndpointSlice{
-		Name:      "svc-a",
-		Namespace: "ns-a",
-		Labels:    map[string]string{discoveryv1.LabelServiceName: "svc-a"},
+		Name:        "svc-a",
+		Namespace:   "ns-a",
+		Labels:      map[string]string{discoveryv1.LabelServiceName: "svc-a"},
 		AddressType: discoveryv1.AddressTypeIPv4,
 		Ports: []discoveryv1.EndpointPort{{
 			Port:     &portNum,
