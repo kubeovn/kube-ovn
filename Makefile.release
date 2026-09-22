@@ -1,0 +1,11 @@
+SHELL := /bin/bash
+
+RELEASE_TAG ?= $(shell cat VERSION)
+BASE_TAG ?= $(shell cat VERSION)
+REGISTRY ?= kubeovn
+
+.PHONY: release-images
+release-images:
+	$(MAKE) -f Makefile RELEASE_TAG=$(RELEASE_TAG) build-go
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_TAG=$(BASE_TAG) --build-arg ARCH=amd64 -o type=docker -f dist/images/Dockerfile dist/images/
+	docker buildx build --platform linux/amd64 -t $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG) -o type=docker -f dist/images/vpcnatgateway/Dockerfile dist/images/vpcnatgateway

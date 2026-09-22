@@ -8,6 +8,7 @@ on:
 
 jobs:
   release:
+    if: github.repository != 'qiniu/kube-ovn'
     permissions:
       contents: write # to push chart release and create a release (helm/chart-releaser-action)
       packages: write # to push chart to GitHub Container Registry (ghcr.io)

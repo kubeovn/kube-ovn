@@ -1,0 +1,186 @@
+name: Publish tagged release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+concurrency:
+  group: publish-tagged-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_REGISTRY: ghcr.io/qiniu
+
+jobs:
+  prepare:
+    name: Validate release tag
+    if: github.repository == 'qiniu/kube-ovn'
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      base_tag: ${{ steps.release.outputs.base_tag }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate release tag
+        id: release
+        run: |
+          set -euo pipefail
+          semver_identifier='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          release_tag_regex="^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-$semver_identifier(\.$semver_identifier)*)?$"
+          if [[ ! "$GITHUB_REF_NAME" =~ $release_tag_regex ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not a valid release tag"
+            exit 1
+          fi
+          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          base_tag=$(<VERSION)
+          if [[ ! "$base_tag" =~ $release_tag_regex ]]; then
+            echo "::error file=VERSION::Base image tag $base_tag is not a valid release version"
+            exit 1
+          fi
+          echo "base_tag=$base_tag" >> "$GITHUB_OUTPUT"
+
+  build-release-images:
+    name: Build and publish x86 release images
+    needs: prepare
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build release images
+        env:
+          BASE_TAG: ${{ needs.prepare.outputs.base_tag }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          make -f Makefile.release \
+            REGISTRY=kubeovn \
+            RELEASE_TAG="$TAG" \
+            BASE_TAG="$BASE_TAG" \
+            release-images
+
+      - name: Publish release images
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker tag "kubeovn/kube-ovn:$TAG" "$IMAGE_REGISTRY/kube-ovn:$TAG"
+          docker push "$IMAGE_REGISTRY/kube-ovn:$TAG"
+          docker tag "kubeovn/vpc-nat-gateway:$TAG" "$IMAGE_REGISTRY/vpc-nat-gateway:$TAG"
+          docker push "$IMAGE_REGISTRY/vpc-nat-gateway:$TAG"
+
+  release:
+    name: Publish charts, YAML, and GitHub release
+    needs:
+      - prepare
+      - build-release-images
+    permissions:
+      contents: write
+      packages: write
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v4.0.4
+
+      - name: Build release assets
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: hack/package-release.sh "$TAG" _out/release
+
+      - name: Publish charts to GitHub Container Registry
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" |
+            helm registry login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          chart_version=${TAG#v}
+          helm push "_out/release/kube-ovn-$chart_version.tgz" oci://ghcr.io/qiniu/charts
+          helm push "_out/release/kube-ovn-v2-$chart_version.tgz" oci://ghcr.io/qiniu/charts
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          chart_version=${TAG#v}
+          release_assets=(
+            _out/release/install.sh
+            _out/release/kube-ovn-crd.yaml
+            _out/release/kube-ovn.yaml
+            _out/release/kube-ovn-v2.yaml
+            "_out/release/kube-ovn-$chart_version.tgz"
+            "_out/release/kube-ovn-v2-$chart_version.tgz"
+          )
+
+          for asset in "${release_assets[@]}"; do
+            if [[ ! -s "$asset" ]]; then
+              echo "::error file=$asset::Release asset is missing or empty"
+              exit 1
+            fi
+          done
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            published_assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+            for asset in "${release_assets[@]}"; do
+              if ! grep -Fxq "$(basename "$asset")" <<< "$published_assets"; then
+                echo "::error::Immutable release $TAG is missing $(basename "$asset")"
+                exit 1
+              fi
+            done
+          else
+            git for-each-ref "refs/tags/$TAG" --format='%(contents)' > /tmp/tag-notes
+            if [[ ! -s /tmp/tag-notes ]]; then
+              git log -1 --pretty=%B "$TAG" > /tmp/tag-notes
+            fi
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --notes-file /tmp/tag-notes \
+              "${release_assets[@]}"
+          fi
+
+      - name: Log out from GitHub Container Registry
+        if: always()
+        run: helm registry logout ghcr.io
