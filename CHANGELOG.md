@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.16.7 (2026-09-22)
+
+ * [71a484769](https://github.com/kubeovn/kube-ovn/commit/71a484769569163d26596a7aceacacdf6c28224a) release v1.16.7
+ * [6295b7f97](https://github.com/kubeovn/kube-ovn/commit/6295b7f9736b858fb6bf88d9c21c15beda137f30) ovn: restore bcast_arp_req_flood with default false (#7501)
+ * [317930749](https://github.com/kubeovn/kube-ovn/commit/31793074939185e24591cd5ebbf4cb08f6cf636c) [release-1.16] Add KubeVirt live migration network identity coverage (#7495)
+ * [a649b1dca](https://github.com/kubeovn/kube-ovn/commit/a649b1dcaeb94ae6794fbb2af1c7bb8a61626f26) fix: preserve IPv6 addresses for EVPN gateway VRF (#7494)
+ * [7038dd682](https://github.com/kubeovn/kube-ovn/commit/7038dd682cc373a72c53bc9b11e1111ce621e312) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.6 (2026-09-19)
 
  * [e414ff2f3](https://github.com/kubeovn/kube-ovn/commit/e414ff2f3dbe87d61526abb8d1cd7b115d68241d) release v1.16.6
@@ -592,6 +605,17 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.28 (2026-09-22)
+
+ * [6c918a528](https://github.com/kubeovn/kube-ovn/commit/6c918a528001daf6cd46d610d4211f6ad296b4ce) release v1.15.28
+ * [acc9b247d](https://github.com/kubeovn/kube-ovn/commit/acc9b247d44602a1c88938b10665a6a445c497b9) ovn: restore bcast_arp_req_flood with default false (#7500)
+ * [1f0fcdebe](https://github.com/kubeovn/kube-ovn/commit/1f0fcdebec210d797ce8db296c9ace8c2b29a02c) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
@@ -1693,6 +1717,17 @@
  * renovate[bot]
  * xieyanker
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.14.45 (2026-09-22)
+
+ * [a92e0376b](https://github.com/kubeovn/kube-ovn/commit/a92e0376b8517e50394061bce341f7fd539c9a45) release v1.14.45
+ * [c35aba239](https://github.com/kubeovn/kube-ovn/commit/c35aba2395d064ac57f5077ef58e1844b907193f) ovn: restore bcast_arp_req_flood with default false (#7499)
+ * [db851901d](https://github.com/kubeovn/kube-ovn/commit/db851901d98c614113080f3de81d665ec9ebafbb) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
