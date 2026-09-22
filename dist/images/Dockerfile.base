@@ -67,6 +67,7 @@ ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
 ADD patches/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch $SRC_DIR
 ADD patches/fb0108d8fc29c1bd29666f1eb2a27bf34628fa11.patch $SRC_DIR
 ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
+ADD patches/northd-bcast-arp-req-flood-default-false.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -141,7 +142,9 @@ RUN cd /usr/src/ && \
     # set dl_src for packets redirected by router port
     git apply $SRC_DIR/fb0108d8fc29c1bd29666f1eb2a27bf34628fa11.patch && \
     # adapt to the compose_nd_ns() signature change in ovs branch-3.3 commit 3430a01a6
-    git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch
+    git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch && \
+    # northd: restore bcast_arp_req_flood (default false) to skip underlay ARP flood
+    git apply $SRC_DIR/northd-bcast-arp-req-flood-default-false.patch
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
