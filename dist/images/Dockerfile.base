@@ -67,6 +67,7 @@ ADD patches/737d9f932edada5a91f315b5f382daada8dee952.patch $SRC_DIR
 ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
 ADD patches/sbrec-delete-null-check.patch $SRC_DIR
 ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
+ADD patches/northd-bcast-arp-req-flood-default-false.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -140,6 +141,8 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     git apply $SRC_DIR/sbrec-delete-null-check.patch && \
     # adapt to the compose_nd_ns() signature change in ovs branch-3.5 commit 33825c273
     git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch && \
+    # northd: restore bcast_arp_req_flood (default false) to skip underlay ARP flood
+    git apply $SRC_DIR/northd-bcast-arp-req-flood-default-false.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 
