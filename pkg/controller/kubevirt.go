@@ -118,6 +118,9 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 
 	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
 	if err != nil {
+		if k8serrors.IsNotFound(err) && vmiMigration.Status.Phase == kubevirtv1.MigrationFailed && vmiMigration.Status.MigrationState == nil {
+			return c.cleanupFailedVMIMigrationWithoutVMI(vmiMigration)
+		}
 		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %w", vmiMigration.Spec.VMIName, err))
 		return err
 	}
@@ -259,6 +262,38 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 				klog.Error(err)
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// cleanupFailedVMIMigrationWithoutVMI rolls back options left by a Pending migration
+// when the VMI is gone before its Failed event is processed.
+func (c *Controller) cleanupFailedVMIMigrationWithoutVMI(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration) error {
+	hasUnfinishedMigration, err := c.hasUnfinishedVMIMigration(vmiMigration)
+	if err != nil {
+		return err
+	}
+	if hasUnfinishedMigration {
+		return nil
+	}
+
+	vmKey := fmt.Sprintf("%s/%s", vmiMigration.Namespace, vmiMigration.Spec.VMIName)
+	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": vmKey})
+	if err != nil {
+		return fmt.Errorf("failed to list logical switch ports for VMI %s: %w", vmKey, err)
+	}
+
+	for _, lsp := range lsps {
+		if lsp.Options["activation-strategy"] != "rarp" {
+			continue
+		}
+		nodes := strings.Split(lsp.Options["requested-chassis"], ",")
+		if len(nodes) != 2 || nodes[0] == "" || nodes[1] == "" || nodes[0] == nodes[1] {
+			continue
+		}
+		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(lsp.Name, nodes[0], "", true); err != nil {
+			return fmt.Errorf("failed to clean migrate options for LSP %s: %w", lsp.Name, err)
 		}
 	}
 	return nil
