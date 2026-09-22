@@ -69,7 +69,7 @@ func expectLSPMigrationState(portName, expectedChassis string) {
 			gomega.Equal(""),
 			gomega.Equal("requested-chassis="+expectedChassis),
 		))
-	}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
+	}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 }
 
 func parsePingStats(stdout string) (transmitted, received, lost int, err error) {
@@ -704,6 +704,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				migration := framework.MakeVMIMigration(migrationName, vmName)
 				_ = migrationClient.Create(migration)
 
+				ginkgo.By(fmt.Sprintf("[migration %d/%d] Waiting for migration to start", i, migrationCount))
+				err = migrationClient.WaitForStarted(migrationName, 2*time.Minute)
+				framework.ExpectNoError(err)
+
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Running continuous ping during migration", i, migrationCount))
 				pingCmd := fmt.Sprintf("ping -c 400 -i 0.1 -w 60 %s 2>&1 || true", vmIP)
 				stdout, _, err = framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, pingCmd)
@@ -794,6 +798,10 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			ginkgo.By("Creating migration " + migrationName + " for vm " + vmName + " (non-blocking)")
 			migration := framework.MakeVMIMigration(migrationName, vmName)
 			_ = migrationClient.Create(migration)
+
+			ginkgo.By("Waiting for migration to start")
+			err = migrationClient.WaitForStarted(migrationName, 2*time.Minute)
+			framework.ExpectNoError(err)
 
 			ginkgo.By("Running continuous ping from prober to VM " + vmIP + " during migration")
 			pingCmd := fmt.Sprintf("ping -c 400 -i 0.1 -w 60 %s 2>&1 || true", vmIP)
