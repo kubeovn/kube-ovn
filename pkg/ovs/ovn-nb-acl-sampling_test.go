@@ -1,11 +1,13 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"testing"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
@@ -319,6 +321,70 @@ func seedSampledNetworkPolicyACL(t *testing.T, client *OVNNbClient, config aclsa
 		return sampled.SampleNew != nil && sampled.SampleEst != nil
 	}, time.Second, 10*time.Millisecond)
 	return sampled
+}
+
+type monitorCountingClient struct {
+	client.Client
+	calls int
+}
+
+func (c *monitorCountingClient) Monitor(ctx context.Context, monitor *client.Monitor) (client.MonitorCookie, error) {
+	c.calls++
+	return c.Client.Monitor(ctx, monitor)
+}
+
+func TestOvnNBMonitorOptionsIncludesSwitchPortGroupAndSampling(t *testing.T) {
+	nbClient := newACLSamplingTestClient(t, "monitor-options")
+	monitor := nbClient.NewMonitor(ovnNBMonitorOptions()...)
+	require.Empty(t, monitor.Errors)
+
+	tables := make([]string, 0, len(monitor.Tables))
+	for _, table := range monitor.Tables {
+		tables = append(tables, table.Table)
+	}
+	require.Contains(t, tables, ovnnb.LogicalSwitchTable)
+	require.Contains(t, tables, ovnnb.PortGroupTable)
+	require.Contains(t, tables, ovnnb.SampleTable)
+	require.Contains(t, tables, ovnnb.SampleCollectorTable)
+	require.Contains(t, tables, ovnnb.SamplingAppTable)
+}
+
+func TestEnsureACLSamplingMonitorDoesNotStartSecondMonitor(t *testing.T) {
+	nbClient := newACLSamplingTestClient(t, "no-second-monitor")
+	counter := &monitorCountingClient{Client: nbClient.Client}
+	nbClient.Client = counter
+
+	require.NoError(t, nbClient.ensureACLSamplingMonitor())
+	require.Equal(t, 0, counter.calls)
+	require.True(t, nbClient.aclSamplingMonitored)
+
+	require.NoError(t, nbClient.ensureACLSamplingMonitor())
+	require.Equal(t, 0, counter.calls)
+}
+
+func TestACLSamplingMonitorPreservesLogicalSwitchAfterReconnect(t *testing.T) {
+	nbClient := newACLSamplingTestClient(t, "reconnect-cache")
+	require.NoError(t, nbClient.CreateBareLogicalSwitch("ovn-default"))
+	require.NoError(t, nbClient.CreatePortGroup("ovn.default.node.1", map[string]string{
+		"node":   "node-1",
+		"subnet": "ovn-default",
+	}))
+	require.NoError(t, nbClient.ensureACLSamplingMonitor())
+
+	ls, err := nbClient.GetLogicalSwitch("ovn-default", false)
+	require.NoError(t, err)
+	require.Equal(t, "ovn-default", ls.Name)
+
+	nbClient.Disconnect()
+	require.Eventually(t, func() bool {
+		ls, err := nbClient.GetLogicalSwitch("ovn-default", true)
+		return err == nil && ls != nil && ls.Name == "ovn-default"
+	}, 5*time.Second, 50*time.Millisecond)
+
+	pg, err := nbClient.GetPortGroup("ovn.default.node.1", true)
+	require.NoError(t, err)
+	require.NotNil(t, pg)
+	require.Equal(t, "ovn.default.node.1", pg.Name)
 }
 
 func waitForACLSamplingObjects(t *testing.T, client *OVNNbClient) ([]ovnnb.SamplingApp, []ovnnb.SampleCollector) {
