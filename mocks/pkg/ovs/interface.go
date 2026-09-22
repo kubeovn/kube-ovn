@@ -1621,6 +1621,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortsSecurityGroup(
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortsSecurityGroup", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortsSecurityGroup), sgName, op)
 }
 
+// SetVirtualLogicalSwitchPortAddresses mocks base method.
+func (m *MockLogicalSwitchPort) SetVirtualLogicalSwitchPortAddresses(lspName, addresses string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetVirtualLogicalSwitchPortAddresses", lspName, addresses)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetVirtualLogicalSwitchPortAddresses indicates an expected call of SetVirtualLogicalSwitchPortAddresses.
+func (mr *MockLogicalSwitchPortMockRecorder) SetVirtualLogicalSwitchPortAddresses(lspName, addresses any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVirtualLogicalSwitchPortAddresses", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetVirtualLogicalSwitchPortAddresses), lspName, addresses)
+}
+
 // SetVirtualLogicalSwitchPortVirtualParents mocks base method.
 func (m *MockLogicalSwitchPort) SetVirtualLogicalSwitchPortVirtualParents(lsName, parents string) error {
 	m.ctrl.T.Helper()
@@ -6391,6 +6405,20 @@ func (m *MockNbClient) SetUseCtInvMatch() error {
 func (mr *MockNbClientMockRecorder) SetUseCtInvMatch() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUseCtInvMatch", reflect.TypeOf((*MockNbClient)(nil).SetUseCtInvMatch))
+}
+
+// SetVirtualLogicalSwitchPortAddresses mocks base method.
+func (m *MockNbClient) SetVirtualLogicalSwitchPortAddresses(lspName, addresses string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetVirtualLogicalSwitchPortAddresses", lspName, addresses)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetVirtualLogicalSwitchPortAddresses indicates an expected call of SetVirtualLogicalSwitchPortAddresses.
+func (mr *MockNbClientMockRecorder) SetVirtualLogicalSwitchPortAddresses(lspName, addresses any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVirtualLogicalSwitchPortAddresses", reflect.TypeOf((*MockNbClient)(nil).SetVirtualLogicalSwitchPortAddresses), lspName, addresses)
 }
 
 // SetVirtualLogicalSwitchPortVirtualParents mocks base method.
