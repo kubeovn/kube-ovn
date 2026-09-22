@@ -52,7 +52,7 @@ func (c *OVNNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) 
 	if err := config.Validate(); err != nil {
 		return fmt.Errorf("invalid ACL sampling configuration: %w", err)
 	}
-	if err := c.ensureACLSamplingMonitor(); err != nil {
+	if err := c.ensureACLSamplingMonitorSupport(); err != nil {
 		return err
 	}
 
@@ -124,17 +124,19 @@ func (c *OVNNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) 
 	return nil
 }
 
-func (c *OVNNbClient) ensureACLSamplingMonitor() error {
+// ensureACLSamplingMonitorSupport verifies that the initial NB monitor covers
+// the ACL sampling schema before sampling operations use the cache.
+func (c *OVNNbClient) ensureACLSamplingMonitorSupport() error {
 	c.aclSamplingMonitorMu.Lock()
 	defer c.aclSamplingMonitorMu.Unlock()
 
-	if c.aclSamplingMonitored {
+	if c.aclSamplingMonitorSupport {
 		return nil
 	}
 	if err := validateACLSamplingSchema(c.Schema()); err != nil {
 		return err
 	}
-	c.aclSamplingMonitored = true
+	c.aclSamplingMonitorSupport = true
 	return nil
 }
 
@@ -311,7 +313,7 @@ func (c *OVNNbClient) cleanupACLSampling() error {
 		}
 		return err
 	}
-	if err := c.ensureACLSamplingMonitor(); err != nil {
+	if err := c.ensureACLSamplingMonitorSupport(); err != nil {
 		return err
 	}
 

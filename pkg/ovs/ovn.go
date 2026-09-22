@@ -31,8 +31,8 @@ type LegacyClient struct {
 
 type OVNNbClient struct {
 	ovsDbClient
-	aclSamplingMonitorMu sync.Mutex
-	aclSamplingMonitored bool
+	aclSamplingMonitorMu      sync.Mutex
+	aclSamplingMonitorSupport bool
 }
 
 type OVNSbClient struct {
