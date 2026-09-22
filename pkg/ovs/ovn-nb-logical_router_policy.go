@@ -56,12 +56,7 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 	}
 
 	if policyFound == nil {
-		klog.Infof("creating lr policy with priority = %d, match = %q, action = %q, nextHops = %q", priority, match, action, nextHops)
-		policy := c.newLogicalRouterPolicy(priority, match, action, nextHops, bfdSessions, externalIDs)
-		if err := c.CreateLogicalRouterPolicies(lrName, policy); err != nil {
-			klog.Error(err)
-			return fmt.Errorf("add policy to logical router %s: %w", lrName, err)
-		}
+		return c.createLogicalRouterPolicy(lrName, priority, match, action, nextHops, bfdSessions, externalIDs)
 	} else if !maps.Equal(policyFound.ExternalIDs, externalIDs) {
 		policy := new(*policyFound)
 		policy.ExternalIDs = externalIDs
@@ -80,15 +75,21 @@ func (c *OVNNbClient) AddLogicalRouterPolicy(lrName string, priority int, match,
 		}
 		if updated == 0 {
 			// the policy was deleted after it was listed, e.g. by gc: create it instead of reporting success with none installed
-			klog.Infof("lr policy %s is gone, creating it with priority = %d, match = %q, action = %q, nextHops = %q", policyFound.UUID, priority, match, action, nextHops)
-			policy := c.newLogicalRouterPolicy(priority, match, action, nextHops, bfdSessions, externalIDs)
-			if err := c.CreateLogicalRouterPolicies(lrName, policy); err != nil {
-				klog.Error(err)
-				return fmt.Errorf("add policy to logical router %s: %w", lrName, err)
-			}
+			klog.Infof("lr policy %s is gone, creating it instead", policyFound.UUID)
+			return c.createLogicalRouterPolicy(lrName, priority, match, action, nextHops, bfdSessions, externalIDs)
 		}
 	}
 
+	return nil
+}
+
+func (c *OVNNbClient) createLogicalRouterPolicy(lrName string, priority int, match, action string, nextHops, bfdSessions []string, externalIDs map[string]string) error {
+	klog.Infof("creating lr policy with priority = %d, match = %q, action = %q, nextHops = %q", priority, match, action, nextHops)
+	policy := c.newLogicalRouterPolicy(priority, match, action, nextHops, bfdSessions, externalIDs)
+	if err := c.CreateLogicalRouterPolicies(lrName, policy); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("add policy to logical router %s: %w", lrName, err)
+	}
 	return nil
 }
 

@@ -454,3 +454,40 @@ func TestHandleDeleteNpReturnsMeterError(t *testing.T) {
 	})
 	require.ErrorIs(t, err, meterErr)
 }
+
+func TestGcNodeKeepsPolicyOfNodeCreatedDuringGc(t *testing.T) {
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{Name: "node-live"}},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+
+	newPolicy := func(node, ip string) *ovnnb.LogicalRouterPolicy {
+		return &ovnnb.LogicalRouterPolicy{
+			UUID:        "policy-" + node,
+			Priority:    util.NodeRouterPolicyPriority,
+			Match:       "ip4.dst == " + ip,
+			ExternalIDs: map[string]string{"vendor": util.CniTypeName, "node": node},
+		}
+	}
+	livePolicy := newPolicy("node-live", "10.0.0.1")
+	latePolicy := newPolicy("node-late", "10.0.0.2")
+	orphanPolicy := newPolicy("node-gone", "10.0.0.3")
+
+	// workers run while gc lists: node-late joins after the node snapshot and before the policy list
+	fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(
+		ctrl.config.ClusterRouter, util.NodeRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false,
+	).DoAndReturn(func(string, int, map[string]string, bool) ([]*ovnnb.LogicalRouterPolicy, error) {
+		lateNode := &corev1.Node{Name: "node-late"}
+		require.NoError(t, fc.fakeInformers.nodeInformer.Informer().GetIndexer().Add(lateNode))
+		return []*ovnnb.LogicalRouterPolicy{livePolicy, latePolicy, orphanPolicy}, nil
+	})
+	fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(
+		ctrl.config.ClusterRouter, util.GatewayRouterPolicyPriority, map[string]string{"vendor": util.CniTypeName}, false,
+	).Return(nil, nil)
+	// only the orphan goes, and only under the ownership guard so a takeover after the list survives
+	fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyIfUnchanged(ctrl.config.ClusterRouter, orphanPolicy).Return(true, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	require.NoError(t, ctrl.gcNode())
+}

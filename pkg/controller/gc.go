@@ -256,15 +256,21 @@ func (c *Controller) gcNode() error {
 	policies = append(policies, gatewayRouterPolicies...)
 	for _, policy := range policies {
 		// skip the policy for centralized subnet
-		if _, ok := policy.ExternalIDs["node"]; !ok {
+		owner, ok := policy.ExternalIDs["node"]
+		if !ok {
 			continue
 		}
-		if nodeNames.Has(policy.ExternalIDs["node"]) {
+		// workers run while gc lists: re-read the owner instead of trusting the node snapshot taken above
+		if _, err = c.nodesLister.Get(owner); err == nil {
 			continue
+		} else if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get node %s: %v", owner, err)
+			return err
 		}
 		klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
-			klog.Errorf("failed to delete logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
+		// delete the listed row only: a node reusing the join address may have taken it over since the list
+		if _, err = c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
+			klog.Errorf("failed to delete logical router policy %q on lr %s: %v", policy.Match, c.config.ClusterRouter, err)
 			return err
 		}
 	}
