@@ -7,7 +7,6 @@ import (
 	"maps"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
@@ -53,7 +52,7 @@ func (c *OVNNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) 
 	if err := config.Validate(); err != nil {
 		return fmt.Errorf("invalid ACL sampling configuration: %w", err)
 	}
-	if err := c.ensureACLSamplingMonitor(); err != nil {
+	if err := c.ensureACLSamplingMonitorSupport(); err != nil {
 		return err
 	}
 
@@ -125,31 +124,19 @@ func (c *OVNNbClient) ReconcileACLSampling(config aclsampling.ControllerConfig) 
 	return nil
 }
 
-func (c *OVNNbClient) ensureACLSamplingMonitor() error {
+// ensureACLSamplingMonitorSupport verifies that the initial NB monitor covers
+// the ACL sampling schema before sampling operations use the cache.
+func (c *OVNNbClient) ensureACLSamplingMonitorSupport() error {
 	c.aclSamplingMonitorMu.Lock()
 	defer c.aclSamplingMonitorMu.Unlock()
 
-	if c.aclSamplingMonitored {
+	if c.aclSamplingMonitorSupport {
 		return nil
 	}
 	if err := validateACLSamplingSchema(c.Schema()); err != nil {
 		return err
 	}
-
-	monitor := c.NewMonitor(
-		client.WithTable(&ovnnb.SamplingApp{}),
-		client.WithTable(&ovnnb.SampleCollector{}),
-		client.WithTable(&ovnnb.Sample{}),
-	)
-	if len(monitor.Errors) != 0 {
-		return fmt.Errorf("build OVN ACL sampling monitor: %w", errors.Join(monitor.Errors...))
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
-	defer cancel()
-	if _, err := c.Monitor(ctx, monitor); err != nil {
-		return fmt.Errorf("monitor OVN ACL sampling tables: %w", err)
-	}
-	c.aclSamplingMonitored = true
+	c.aclSamplingMonitorSupport = true
 	return nil
 }
 
@@ -326,7 +313,7 @@ func (c *OVNNbClient) cleanupACLSampling() error {
 		}
 		return err
 	}
-	if err := c.ensureACLSamplingMonitor(); err != nil {
+	if err := c.ensureACLSamplingMonitorSupport(); err != nil {
 		return err
 	}
 
