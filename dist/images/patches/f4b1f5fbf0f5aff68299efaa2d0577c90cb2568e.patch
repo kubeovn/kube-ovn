@@ -11,10 +11,10 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
  2 files changed, 59 insertions(+)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index 8ec0be0d13..f3fe40f5a4 100644
+index 3079abf..9f7172c 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -563,6 +563,11 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
+@@ -573,6 +573,11 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
          return true;
      }
  
@@ -27,10 +27,10 @@ index 8ec0be0d13..f3fe40f5a4 100644
  }
  
 diff --git a/northd/northd.c b/northd/northd.c
-index b4364f8698..3518c9563b 100644
+index 42c1f7a..753bc6b 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -101,6 +101,8 @@ static bool compatible_22_12 = false;
+@@ -105,6 +105,8 @@ static bool compatible_22_12 = false;
  
  static bool ls_ct_skip_dst_lport_ips = false;
  
@@ -39,7 +39,7 @@ index b4364f8698..3518c9563b 100644
  #define MAX_OVN_TAGS 4096
  
  
-@@ -7885,6 +7887,55 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
+@@ -8110,6 +8112,55 @@ build_lb_rules(struct lflow_table *lflows, struct ovn_lb_datapaths *lb_dps,
      }
  }
  
@@ -95,15 +95,15 @@ index b4364f8698..3518c9563b 100644
  static void
  build_stateful(struct ovn_datapath *od,
                 const struct chassis_features *features,
-@@ -16152,6 +16203,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
-     build_lswitch_arp_nd_responder_skip_local(op, lflows, match);
+@@ -16694,6 +16745,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
+     build_lswitch_from_localnet_op(op, lflows, match);
      build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
                                               meter_groups, actions, match);
 +    build_lswitch_dnat_mod_dl_dst_rules(op, lflows, lr_ports, actions, match);
      build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
      build_lswitch_external_port(op, lflows);
      build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
-@@ -17841,6 +17893,8 @@ ovnnb_db_run(struct northd_input *input_data,
+@@ -18363,6 +18415,8 @@ ovnnb_db_run(struct northd_input *input_data,
      ls_ct_skip_dst_lport_ips = smap_get_bool(input_data->nb_options,
                                               "ls_ct_skip_dst_lport_ips",
                                               false);
