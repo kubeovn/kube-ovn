@@ -216,15 +216,6 @@ func (c *Controller) gcCustomLogicalRouter() error {
 
 func (c *Controller) gcNode() error {
 	klog.Infof("start to gc nodes")
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list node, %v", err)
-		return err
-	}
-	nodeNames := strset.NewWithSize(len(nodes))
-	for _, node := range nodes {
-		nodeNames.Add(node.Name)
-	}
 	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ip, %v", err)
@@ -232,14 +223,11 @@ func (c *Controller) gcNode() error {
 	}
 
 	for _, ip := range ips {
-		if strings.HasPrefix(ip.Name, util.NodeLspPrefix) && !strings.Contains(ip.Name, ".") {
-			if node := ip.Name[len(util.NodeLspPrefix):]; !nodeNames.Has(node) {
-				klog.Infof("gc node %s", node)
-				if err := c.deleteNode(node); err != nil {
-					klog.Errorf("failed to gc node %s: %v", node, err)
-					return err
-				}
-			}
+		if !strings.HasPrefix(ip.Name, util.NodeLspPrefix) || strings.Contains(ip.Name, ".") {
+			continue
+		}
+		if err := c.gcStaleNode(ip.Name[len(util.NodeLspPrefix):]); err != nil {
+			return err
 		}
 	}
 
@@ -260,7 +248,7 @@ func (c *Controller) gcNode() error {
 		if !ok {
 			continue
 		}
-		// workers run while gc lists: re-read the owner instead of trusting the node snapshot taken above
+		// workers run while gc lists: read the owner per policy, it may have joined since the policy list
 		if _, err = c.nodesLister.Get(owner); err == nil {
 			continue
 		} else if !k8serrors.IsNotFound(err) {
@@ -276,6 +264,26 @@ func (c *Controller) gcNode() error {
 	}
 
 	klog.Infof("finish to gc nodes")
+	return nil
+}
+
+// gcStaleNode deletes the resources of a node that no longer exists. Workers run while gc lists, so the node
+// is read under the lock its handlers hold: a node joining meanwhile keeps what its add handler creates.
+func (c *Controller) gcStaleNode(node string) error {
+	c.nodeKeyMutex.LockKey(node)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(node) }()
+
+	if _, err := c.nodesLister.Get(node); err == nil {
+		return nil
+	} else if !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get node %s: %v", node, err)
+		return err
+	}
+	klog.Infof("gc node %s", node)
+	if err := c.deleteNode(node); err != nil {
+		klog.Errorf("failed to gc node %s: %v", node, err)
+		return err
+	}
 	return nil
 }
 

@@ -1349,8 +1349,8 @@ func (c *Controller) deletePolicyRouteForLocalDNSCacheOnNode(nodeName string, af
 
 	for _, policy := range policies {
 		klog.Infof("delete node local dns cache policy route for router %s with match %s", c.config.ClusterRouter, policy.Match)
-
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+		// delete the listed row only if it still belongs to this node: another node may take it over after the list
+		if _, err := c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
 			klog.Errorf("failed to delete policy route for node local dns in router %s with match %s: %v", c.config.ClusterRouter, policy.Match, err)
 			return err
 		}

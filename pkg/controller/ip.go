@@ -525,7 +525,8 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		newIPCR.Spec.AttachMacs = []string{}
 		newIPCR.Spec.AttachSubnets = []string{}
 		newIPCR.Spec.PodType = podType
-		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
+		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) &&
+			reflect.DeepEqual(newIPCR.OwnerReferences, ipCR.OwnerReferences) {
 			return nil
 		}
 		controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
