@@ -2,6 +2,9 @@
 
 UNTAINT_CONTROL_PLANE ?= true
 TENANT_CONTROL_PLANE_REPLICAS ?= 1
+# Trusted PR jobs load workflow YAML from the base branch but run Make targets
+# from the PR head, so keep the conformance cluster requirements here as well.
+KIND_WORKER_COUNT ?= $(if $(filter k8s-conformance-e2e,$(GITHUB_JOB)),6,1)
 
 VPC_NAT_GW_IMG = $(REGISTRY)/vpc-nat-gateway:$(VERSION)
 
@@ -64,6 +67,34 @@ define kind_load_image
 			done; \
 		fi; \
 	fi
+endef
+
+# KubeVirt resolves container disk images by digest when it creates a
+# virt-launcher pod. Images loaded into Kind can have repository and config
+# digests that are not registered under the corresponding digest references.
+define kind_alias_image_digests
+	@set -e; \
+	image="$(2)"; \
+	image_repository="$${image%%@*}"; \
+	image_repository="$${image_repository%:*}"; \
+	for node in $$(kind get nodes --name $(1)); do \
+		repository_digest="$$(docker exec "$$node" crictl inspecti "$$image" | \
+			jq -r '.status.repoDigests[]? // empty' | \
+			sed -n 's/.*@\(sha256:[^"[:space:]]*\)$$/\1/p' | head -n 1)"; \
+		config_digest="$$(docker exec "$$node" crictl inspecti "$$image" | \
+			jq -r '.status.id // .id // empty')"; \
+		for digest_kind in repository config; do \
+			digest="$$repository_digest"; \
+			if [ "$$digest_kind" = config ]; then digest="$$config_digest"; fi; \
+			case "$$digest" in \
+				sha256:*) ;; \
+				*) echo "Unexpected $$digest_kind digest for $$node: $$digest" >&2; exit 1 ;; \
+			esac; \
+			alias="$${image_repository}@$$digest"; \
+			echo "$$node: $$digest_kind digest=$$digest alias=$$alias"; \
+			docker exec "$$node" ctr -n k8s.io images tag --force "$$image" "$$alias"; \
+		done; \
+	done
 endef
 
 define kind_load_submariner_images
@@ -155,8 +186,15 @@ kind-init: kind-init-ipv4
 
 .PHONY: kind-init-%
 kind-init-%: kind-clean
-	@auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
+	@n_worker=$(if $(n_worker),$(n_worker),$(KIND_WORKER_COUNT)) auditing=$(KIND_AUDITING) ip_family=$* $(MAKE) kind-generate-config
 	@$(MAKE) kind-create
+	@if [ "$(GITHUB_JOB)" = "k8s-conformance-e2e" ]; then \
+		zones=(zone-a zone-b zone-c); \
+		mapfile -t nodes < <(kubectl get nodes -o name | sort); \
+		for i in "$${!nodes[@]}"; do \
+			kubectl label --overwrite "$${nodes[$$i]}" topology.kubernetes.io/zone="$${zones[$$((i % $${#zones[@]}))]}"; \
+		done; \
+	fi
 
 .PHONY: kind-init-ovn-ic
 kind-init-ovn-ic: kind-init-ovn-ic-ipv4
@@ -592,6 +630,7 @@ kind-install-kubevirt:
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_HANDLER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_LAUNCHER_IMAGE),1)
 	$(call kind_load_image,kube-ovn,$(KUBEVIRT_CONTAINERDISK_IMAGE),1)
+	$(call kind_alias_image_digests,kube-ovn,$(KUBEVIRT_CONTAINERDISK_IMAGE))
 
 	kubectl apply -f "$(KUBEVIRT_OPERATOR_YAML)"
 	kubectl -n kubevirt scale deploy virt-operator --replicas=1

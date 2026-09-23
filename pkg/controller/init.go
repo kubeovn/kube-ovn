@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -14,7 +13,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,9 +21,170 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+// syncNatUIDLabels migrates legacy name/address references to UID labels. A reference is
+// identified by the UID of the object it points at, so objects created before the UID
+// labels existed have to be labeled before the referenced object can be deleted again.
+//
+// The migration is best effort: an object that cannot be updated keeps its previous labels
+// and is migrated on the next start instead of holding up the whole controller. Every
+// failure is reported so it stays visible.
+func (c *Controller) syncNatUIDLabels() error {
+	ctx := context.Background()
+	qos, err := c.config.KubeOvnClient.KubeovnV1().QoSPolicies().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	qosUID := make(map[string]string, len(qos.Items))
+	for i := range qos.Items {
+		qosUID[qos.Items[i].Name] = string(qos.Items[i].UID)
+	}
+
+	var errs []error
+	eips, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range eips.Items {
+		eip := eips.Items[i].DeepCopy()
+		uid := qosUID[eip.Spec.QoSPolicy]
+		hasBinding := eip.Labels[util.QoSLabel] == eip.Spec.QoSPolicy || eip.Status.QoSPolicy == eip.Spec.QoSPolicy
+		if !eip.DeletionTimestamp.IsZero() && !hasBinding {
+			continue
+		}
+		if uid == "" && eip.Spec.QoSPolicy == "" && eip.Labels[util.QoSLabel] == "" && eip.Labels[util.QoSPolicyUIDLabel] == "" {
+			continue
+		}
+		if eip.Labels == nil {
+			eip.Labels = map[string]string{}
+		}
+		if uid == "" && eip.Spec.QoSPolicy != "" {
+			continue
+		}
+		if uid == "" {
+			delete(eip.Labels, util.QoSLabel)
+			delete(eip.Labels, util.QoSPolicyUIDLabel)
+		} else {
+			if eip.Labels[util.QoSLabel] == eip.Spec.QoSPolicy && eip.Labels[util.QoSPolicyUIDLabel] == uid {
+				continue
+			}
+			eip.Labels[util.QoSLabel] = eip.Spec.QoSPolicy
+			eip.Labels[util.QoSPolicyUIDLabel] = uid
+		}
+
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(ctx, eip, metav1.UpdateOptions{}); err != nil {
+			errs = append(errs, fmt.Errorf("failed to migrate qos claim of iptables eip %s: %w", eip.Name, err))
+		}
+	}
+
+	gws, err := c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range gws.Items {
+		gw := gws.Items[i].DeepCopy()
+		uid := qosUID[gw.Spec.QoSPolicy]
+		hasBinding := gw.Labels[util.QoSLabel] == gw.Spec.QoSPolicy || gw.Status.QoSPolicy == gw.Spec.QoSPolicy
+		if !gw.DeletionTimestamp.IsZero() && !hasBinding {
+			continue
+		}
+		if uid == "" && gw.Spec.QoSPolicy == "" && gw.Labels[util.QoSLabel] == "" && gw.Labels[util.QoSPolicyUIDLabel] == "" {
+			continue
+		}
+		if gw.Labels == nil {
+			gw.Labels = map[string]string{}
+		}
+		if uid == "" && gw.Spec.QoSPolicy != "" {
+			continue
+		}
+		if uid == "" {
+			delete(gw.Labels, util.QoSLabel)
+			delete(gw.Labels, util.QoSPolicyUIDLabel)
+		} else {
+			if gw.Labels[util.QoSLabel] == gw.Spec.QoSPolicy && gw.Labels[util.QoSPolicyUIDLabel] == uid {
+				continue
+			}
+			gw.Labels[util.QoSLabel] = gw.Spec.QoSPolicy
+			gw.Labels[util.QoSPolicyUIDLabel] = uid
+		}
+
+		if _, err = c.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Update(ctx, gw, metav1.UpdateOptions{}); err != nil {
+			errs = append(errs, fmt.Errorf("failed to migrate qos claim of vpc nat gateway %s: %w", gw.Name, err))
+		}
+	}
+	return errors.Join(append(errs, c.syncNatRuleUIDLabels(ctx, eips.Items))...)
+}
+
+func (c *Controller) syncNatRuleUIDLabels(ctx context.Context, eips []kubeovnv1.IptablesEIP) error {
+	eipUID := make(map[string]string, len(eips))
+	for i := range eips {
+		eipUID[eips[i].Name] = string(eips[i].UID)
+	}
+	fips, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range fips.Items {
+		if err = c.syncNatRuleUID(ctx, &fips.Items[i], eipUID); err != nil {
+			return err
+		}
+	}
+	dnats, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range dnats.Items {
+		if err = c.syncNatRuleUID(ctx, &dnats.Items[i], eipUID); err != nil {
+			return err
+		}
+	}
+	snats, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range snats.Items {
+		if err = c.syncNatRuleUID(ctx, &snats.Items[i], eipUID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) syncNatRuleUID(ctx context.Context, rule client.Object, eips map[string]string) error {
+	// The concrete rule types expose Spec.EIP; use the existing label when no migration target exists.
+	var eipName string
+	switch obj := rule.(type) {
+	case *kubeovnv1.IptablesFIPRule:
+		eipName = obj.Spec.EIP
+	case *kubeovnv1.IptablesDnatRule:
+		eipName = obj.Spec.EIP
+	case *kubeovnv1.IptablesSnatRule:
+		eipName = obj.Spec.EIP
+	}
+	uid := eips[eipName]
+	if uid == "" || (!rule.GetDeletionTimestamp().IsZero() && rule.GetLabels()[util.EipV4IpLabel] == "") || rule.GetLabels()[util.EipUIDLabel] == uid {
+		return nil
+	}
+	updated := rule.DeepCopyObject().(client.Object)
+	labelsCopy := maps.Clone(rule.GetLabels())
+	if labelsCopy == nil {
+		labelsCopy = map[string]string{}
+	}
+	labelsCopy[util.EipUIDLabel] = uid
+	updated.SetLabels(labelsCopy)
+	var err error
+	switch obj := updated.(type) {
+	case *kubeovnv1.IptablesFIPRule:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Update(ctx, obj, metav1.UpdateOptions{})
+	case *kubeovnv1.IptablesDnatRule:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Update(ctx, obj, metav1.UpdateOptions{})
+	case *kubeovnv1.IptablesSnatRule:
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Update(ctx, obj, metav1.UpdateOptions{})
+	}
+	return err
+}
 
 func (c *Controller) InitOVN() error {
 	var err error
@@ -59,13 +218,6 @@ func (c *Controller) InitOVN() error {
 	if err = c.initClusterRouter(); err != nil {
 		klog.Errorf("init cluster router failed: %v", err)
 		return err
-	}
-
-	if c.config.EnableLb {
-		if err = c.initLoadBalancer(); err != nil {
-			klog.Errorf("init load balancer failed: %v", err)
-			return err
-		}
 	}
 
 	if err = c.initDefaultVlan(); err != nil {
@@ -252,132 +404,6 @@ func (c *Controller) initClusterRouter() error {
 	}
 
 	return nil
-}
-
-func (c *Controller) initLB(name, protocol string, sessionAffinity bool) error {
-	protocol = strings.ToLower(protocol)
-
-	var (
-		selectFields []string
-		err          error
-	)
-
-	if sessionAffinity {
-		selectFields = []string{
-			ovnnb.LoadBalancerSelectionFieldsIPSrc,
-			ovnnb.LoadBalancerSelectionFieldsIpv6Src,
-		}
-	}
-
-	if err = c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields...); err != nil {
-		klog.Errorf("create load balancer %s: %v", name, err)
-		return err
-	}
-
-	if sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerAffinityTimeout(name, util.DefaultServiceSessionStickinessTimeout); err != nil {
-			klog.Errorf("failed to set affinity timeout of %s load balancer %s: %v", protocol, name, err)
-			return err
-		}
-	}
-
-	// ct_flush wipes all conntrack entries on the LB's datapath whenever a vip
-	// is mutated. Session-affinity LBs are shared across services, and their
-	// per-client affinity binding is carried in conntrack; enabling ct_flush on
-	// those LBs lets an unrelated service's backend change invalidate another
-	// service's active affinity. Only enable ct_flush on non-session UDP LBs.
-	if protocol == "udp" && !sessionAffinity {
-		if err = c.OVNNbClient.SetLoadBalancerCtFlush(name, true); err != nil {
-			klog.Errorf("failed to set ct_flush for load balancer %s: %v", name, err)
-			return err
-		}
-	}
-
-	return nil
-}
-
-// InitLoadBalancer creates the default TCP/UDP/SCTP cluster load balancers in
-// OVN for every existing VPC and records their names in each VPC's status so
-// the subnet worker can attach them to its logical switch on its first
-// reconcile.
-//
-// The status write uses a targeted merge patch that contains only the six
-// LB-name fields. An earlier version serialized the whole VpcStatus via
-// vpc.Status.Bytes() and raced InitDefaultVpc: if the VPC lister cache still
-// held the pre-UpdateStatus copy (Standby=false) the whole-status merge patch
-// would silently overwrite the Standby/Default/Router/DefaultLogicalSwitch
-// fields that InitDefaultVpc had just written, deadlocking the subnet worker.
-// A field-scoped patch avoids that class of overwrite entirely.
-func (c *Controller) initLoadBalancer() error {
-	vpcs, err := c.vpcsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list vpc: %v", err)
-		return err
-	}
-
-	for _, cachedVpc := range vpcs {
-		vpcLb := c.GenVpcLoadBalancer(cachedVpc.Name)
-		if err = c.initLB(vpcLb.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = c.initLB(vpcLb.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		body, err := buildVpcLBStatusPatch(vpcLb)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), cachedVpc.Name, types.MergePatchType, body, metav1.PatchOptions{}, "status"); err != nil {
-			klog.Error(err)
-			return err
-		}
-	}
-	return nil
-}
-
-// buildVpcLBStatusPatch builds a merge-patch body that updates only the six
-// LB-name fields of VpcStatus. It deliberately excludes every other field so
-// the merge patch cannot overwrite state owned by InitDefaultVpc (Standby,
-// Default, Router, DefaultLogicalSwitch) when the caller reads from a stale
-// lister cache.
-func buildVpcLBStatusPatch(vpcLb *VpcLoadBalancer) ([]byte, error) {
-	patch := struct {
-		Status struct {
-			TCPLoadBalancer         string `json:"tcpLoadBalancer"`
-			TCPSessionLoadBalancer  string `json:"tcpSessionLoadBalancer"`
-			UDPLoadBalancer         string `json:"udpLoadBalancer"`
-			UDPSessionLoadBalancer  string `json:"udpSessionLoadBalancer"`
-			SctpLoadBalancer        string `json:"sctpLoadBalancer"`
-			SctpSessionLoadBalancer string `json:"sctpSessionLoadBalancer"`
-		} `json:"status"`
-	}{}
-	patch.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-	patch.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
-	patch.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-	patch.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
-	patch.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
-	patch.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
-	return json.Marshal(patch)
 }
 
 func (c *Controller) InitIPAM() error {

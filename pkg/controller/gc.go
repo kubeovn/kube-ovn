@@ -216,15 +216,6 @@ func (c *Controller) gcCustomLogicalRouter() error {
 
 func (c *Controller) gcNode() error {
 	klog.Infof("start to gc nodes")
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list node, %v", err)
-		return err
-	}
-	nodeNames := strset.NewWithSize(len(nodes))
-	for _, node := range nodes {
-		nodeNames.Add(node.Name)
-	}
 	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ip, %v", err)
@@ -232,14 +223,11 @@ func (c *Controller) gcNode() error {
 	}
 
 	for _, ip := range ips {
-		if strings.HasPrefix(ip.Name, util.NodeLspPrefix) && !strings.Contains(ip.Name, ".") {
-			if node := ip.Name[len(util.NodeLspPrefix):]; !nodeNames.Has(node) {
-				klog.Infof("gc node %s", node)
-				if err := c.deleteNode(node); err != nil {
-					klog.Errorf("failed to gc node %s: %v", node, err)
-					return err
-				}
-			}
+		if !strings.HasPrefix(ip.Name, util.NodeLspPrefix) || strings.Contains(ip.Name, ".") {
+			continue
+		}
+		if err := c.gcStaleNode(ip.Name[len(util.NodeLspPrefix):]); err != nil {
+			return err
 		}
 	}
 
@@ -256,20 +244,58 @@ func (c *Controller) gcNode() error {
 	policies = append(policies, gatewayRouterPolicies...)
 	for _, policy := range policies {
 		// skip the policy for centralized subnet
-		if _, ok := policy.ExternalIDs["node"]; !ok {
+		owner, ok := policy.ExternalIDs["node"]
+		if !ok {
 			continue
 		}
-		if nodeNames.Has(policy.ExternalIDs["node"]) {
-			continue
-		}
-		klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
-			klog.Errorf("failed to delete logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
+		if err := c.gcStaleNodeRouterPolicy(owner, policy); err != nil {
 			return err
 		}
 	}
 
 	klog.Infof("finish to gc nodes")
+	return nil
+}
+
+// gcStaleNode deletes the resources of a node that no longer exists. Workers run while gc lists, so the node
+// is read under the lock its handlers hold: a node joining meanwhile keeps what its add handler creates.
+func (c *Controller) gcStaleNode(node string) error {
+	c.nodeKeyMutex.LockKey(node)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(node) }()
+
+	if _, err := c.nodesLister.Get(node); err == nil {
+		return nil
+	} else if !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get node %s: %v", node, err)
+		return err
+	}
+	klog.Infof("gc node %s", node)
+	if err := c.deleteNode(node); err != nil {
+		klog.Errorf("failed to gc node %s: %v", node, err)
+		return err
+	}
+	return nil
+}
+
+// gcStaleNodeRouterPolicy deletes a router policy whose owning node no longer exists. Workers run while gc
+// lists, so the owner is read under the lock its handlers hold: a same-name replacement adopts the row with
+// the same external IDs, and the unchanged-row guard alone would not keep it.
+func (c *Controller) gcStaleNodeRouterPolicy(owner string, policy *ovnnb.LogicalRouterPolicy) error {
+	c.nodeKeyMutex.LockKey(owner)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(owner) }()
+
+	if _, err := c.nodesLister.Get(owner); err == nil {
+		return nil
+	} else if !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get node %s: %v", owner, err)
+		return err
+	}
+	klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
+	// delete the listed row only: a node reusing the join address may have taken it over since the list
+	if _, err := c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
+		klog.Errorf("failed to delete logical router policy %q on lr %s: %v", policy.Match, c.config.ClusterRouter, err)
+		return err
+	}
 	return nil
 }
 
@@ -662,6 +688,9 @@ func (c *Controller) gcLoadBalancer() error {
 			klog.Errorf("delete all load balancers: %v", err)
 			return err
 		}
+		if err := c.gcServiceTrafficDistributionVariables(nil); err != nil {
+			return err
+		}
 		klog.Infof("finish to gc load balancers")
 		return nil
 	}
@@ -671,41 +700,13 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
-
-	var (
-		tcpVips         = strset.NewWithSize(len(svcs) * 2)
-		udpVips         = strset.NewWithSize(len(svcs) * 2)
-		sctpVips        = strset.NewWithSize(len(svcs) * 2)
-		tcpSessionVips  = strset.NewWithSize(len(svcs) * 2)
-		udpSessionVips  = strset.NewWithSize(len(svcs) * 2)
-		sctpSessionVips = strset.NewWithSize(len(svcs) * 2)
-	)
+	if err := c.gcServiceTrafficDistributionVariables(svcs); err != nil {
+		return err
+	}
 
 	for _, svc := range svcs {
-		for _, ip := range getVipIps(svc) {
-			for _, port := range svc.Spec.Ports {
-				vip := util.JoinHostPort(ip, port.Port)
-				switch port.Protocol {
-				case corev1.ProtocolTCP:
-					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						tcpSessionVips.Add(vip)
-					} else {
-						tcpVips.Add(vip)
-					}
-				case corev1.ProtocolUDP:
-					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						udpSessionVips.Add(vip)
-					} else {
-						udpVips.Add(vip)
-					}
-				case corev1.ProtocolSCTP:
-					if svc.Spec.SessionAffinity == corev1.ServiceAffinityClientIP {
-						sctpSessionVips.Add(vip)
-					} else {
-						sctpVips.Add(vip)
-					}
-				}
-			}
+		if serviceUsesScopedLB(svc) {
+			vpcLbs.Add(serviceScopedLBNames(svc)...)
 		}
 	}
 
@@ -715,71 +716,16 @@ func (c *Controller) gcLoadBalancer() error {
 		return err
 	}
 
-	var (
-		removeVip         func(lbName string, svcVips *strset.Set) error
-		ignoreHealthCheck = true
-	)
-
-	removeVip = func(lbName string, svcVips *strset.Set) error {
-		if lbName == "" {
-			return nil
-		}
-
-		var (
-			lb  *ovnnb.LoadBalancer
-			err error
-		)
-
-		if lb, err = c.OVNNbClient.GetLoadBalancer(lbName, true); err != nil {
-			klog.Errorf("get LB %s: %v", lbName, err)
-			return err
-		}
-
-		if lb == nil {
-			klog.Infof("load balancer %q already deleted", lbName)
-			return nil
-		}
-
-		for vip := range lb.Vips {
-			if !svcVips.Has(vip) {
-				if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck); err != nil {
-					klog.Errorf("failed to delete vip %s from LB %s: %v", vip, lbName, err)
-					return err
+	for _, vpc := range vpcs {
+		regular, session := c.legacyVpcLoadBalancerNames(vpc)
+		for _, loadBalancers := range []map[corev1.Protocol]string{regular, session} {
+			for _, name := range loadBalancers {
+				if name != "" {
+					vpcLbs.Add(name)
 				}
 			}
 		}
-		return nil
-	}
-
-	for _, vpc := range vpcs {
-		var (
-			tcpLb, udpLb, sctpLb             = vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer, vpc.Status.SctpLoadBalancer
-			tcpSessLb, udpSessLb, sctpSessLb = vpc.Status.TCPSessionLoadBalancer, vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer
-		)
-
-		vpcLbs.Add(tcpLb, udpLb, sctpLb, tcpSessLb, udpSessLb, sctpSessLb)
-		if err = removeVip(tcpLb, tcpVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(tcpSessLb, tcpSessionVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(udpLb, udpVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(udpSessLb, udpSessionVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(sctpLb, sctpVips); err != nil {
-			klog.Error(err)
-			return err
-		}
-		if err = removeVip(sctpSessLb, sctpSessionVips); err != nil {
-			klog.Error(err)
+		if err := c.cleanupLegacyVpcLoadBalancers(vpc); err != nil {
 			return err
 		}
 	}
@@ -787,7 +733,7 @@ func (c *Controller) gcLoadBalancer() error {
 	// delete lbs
 	if err = c.OVNNbClient.DeleteLoadBalancers(
 		func(lb *ovnnb.LoadBalancer) bool {
-			return !vpcLbs.Has(lb.Name)
+			return lb.ExternalIDs["vendor"] == util.CniTypeName && !vpcLbs.Has(lb.Name)
 		},
 	); err != nil {
 		klog.Errorf("delete load balancers: %v", err)

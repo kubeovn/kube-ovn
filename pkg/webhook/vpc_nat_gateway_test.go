@@ -44,6 +44,8 @@ func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Obje
 		*t = *o.(*ovnv1.QoSPolicy)
 	case *ovnv1.IptablesEIP:
 		*t = *o.(*ovnv1.IptablesEIP)
+	case *ovnv1.VpcNatGateway:
+		*t = *o.(*ovnv1.VpcNatGateway)
 	default:
 		return fmt.Errorf("unsupported type in mock cache: %T", obj)
 	}

@@ -32,7 +32,7 @@ func (c *OVNNbClient) ResolveNetworkPolicyACLSample(reference aclsampling.Sample
 	if err := reference.Validate(); err != nil {
 		return nil, err
 	}
-	if err := c.ensureACLSamplingMonitor(); err != nil {
+	if err := c.ensureACLSamplingMonitorSupport(); err != nil {
 		return nil, err
 	}
 

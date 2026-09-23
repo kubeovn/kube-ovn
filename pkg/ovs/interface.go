@@ -62,6 +62,8 @@ type LogicalRouterPort interface {
 	GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error)
 	ListLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error)
 	ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error)
+	CreateGatewayChassises(lrpName string, chassises ...string) error
+	DeleteGatewayChassises(lrpName string, chassises []string) error
 	LogicalRouterPortExists(lrpName string) (bool, error)
 }
 
@@ -109,6 +111,8 @@ type LogicalSwitchPort interface {
 	CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error
 	// create virtual type logical switch port for allowed-address-pair
 	CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error
+	// set addresses on a virtual type logical switch port for allowed-address-pair
+	SetVirtualLogicalSwitchPortAddresses(lspName, addresses string) error
 	// update virtual type logical switch port virtual-parents for allowed-address-pair
 	SetVirtualLogicalSwitchPortVirtualParents(lsName, parents string) error
 	SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *DHCPOptionsUUIDs) error
@@ -137,7 +141,10 @@ type LogicalSwitchPort interface {
 
 type LoadBalancer interface {
 	CreateLoadBalancer(lbName, protocol string, selectFields ...string) error
+	SetLoadBalancerSelectionFields(lbName string, selectionFields []string) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
+	LoadBalancerMigrateVIP(lbName, vip string, backends []string, oldVIP string, oldLBNames ...string) error
+	LoadBalancerMigrateVIPWithAttachments(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []LoadBalancerAttachment) error
 	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
@@ -146,6 +153,14 @@ type LoadBalancer interface {
 	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
+	DeleteLoadBalancerAffinityTimeout(lbName string) error
+	SetLoadBalancerDistributed(lbName string, distributed bool) error
+	SetLoadBalancerTemplate(lbName string, template bool) error
+	SetLoadBalancerAddressFamily(lbName, family string) error
+	SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error
+	ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error
+	DeleteChassisTemplateVariables(filter func(name string) bool) error
+	SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
@@ -235,7 +250,7 @@ type LogicalRouterPolicy interface {
 	DeleteLogicalRouterPolicy(lrName string, priority int, match string) error
 	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
 	DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error
-	DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error
+	DeleteLogicalRouterPolicyIfUnchanged(lrName string, observed *ovnnb.LogicalRouterPolicy) (bool, error)
 	ClearLogicalRouterPolicy(lrName string) error
 	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)

@@ -43,6 +43,7 @@ type Configuration struct {
 	HostTunnelSrc                 bool
 	DPDKTunnelIface               string
 	MTU                           int
+	MaxMTU                        int
 	MSS                           int
 	EnableMirror                  bool
 	MirrorNic                     string
@@ -114,6 +115,7 @@ func ParseFlags() *Configuration {
 		argHostTunnelSrc         = pflag.Bool("host-tunnel-src", false, "Enable /32 address selection for the tunnel source, excludes localhost addresses unless explicitly allowed.")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks (default iface MTU - 100)")
+		argMaxMTU                = pflag.Int("max-mtu", 0, "Upper bound applied to the auto-computed pod MTU (0 disables the cap). Useful when the underlay uses jumbo frames but pod traffic egresses to a 1500-byte path (e.g. the internet), where the uncapped value would cause fragmentation or PMTUD-dependent blackholes. Ignored when --mtu is set explicitly.")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror (default false)")
 		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn")
 		argBindSocket            = pflag.String("bind-socket", defaultBindSocket, "The socket daemon bind to.")
@@ -190,6 +192,7 @@ func ParseFlags() *Configuration {
 		HostTunnelSrc:             *argHostTunnelSrc,
 		DPDKTunnelIface:           *argDPDKTunnelIface,
 		MTU:                       *argMTU,
+		MaxMTU:                    *argMaxMTU,
 		EnableMirror:              *argEnableMirror,
 		MirrorNic:                 *argMirrorNic,
 		BindSocket:                *argBindSocket,
@@ -272,6 +275,38 @@ func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
 	return nil
 }
 
+// computePodMTU derives the pod MTU from the tunnel interface MTU and network
+// type. When maxMTU > 0, the result is capped at maxMTU. This guards against
+// jumbo-frame underlays (e.g. 9000) producing pod MTUs that trigger
+// fragmentation or PMTUD blackholes on egress paths clamped to 1500.
+func computePodMTU(ifaceMTU int, networkType string, encapIsIPv6 bool, maxMTU int) (int, error) {
+	var podMTU int
+
+	// Compute the MTU based on the tunnel overhead
+	switch networkType {
+	case util.NetworkTypeGeneve, util.NetworkTypeVlan:
+		podMTU = ifaceMTU - util.GeneveHeaderLength
+	case util.NetworkTypeVxlan:
+		podMTU = ifaceMTU - util.VxlanHeaderLength
+	case util.NetworkTypeStt:
+		podMTU = ifaceMTU - util.SttHeaderLength
+	default:
+		return 0, fmt.Errorf("invalid network type: %s", networkType)
+	}
+
+	if encapIsIPv6 {
+		// IPv6 header size is 40
+		podMTU -= 20
+	}
+
+	// If maxMTU is specified, clamp MTU to the value provided
+	if maxMTU > 0 && podMTU > maxMTU {
+		podMTU = maxMTU
+	}
+
+	return podMTU, nil
+}
+
 func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) error {
 	// Support to specify node network card separately
 	node, err := config.KubeClient.CoreV1().Nodes().Get(context.Background(), config.NodeName, metav1.GetOptions{})
@@ -331,20 +366,11 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
 
 	if config.MTU == 0 {
-		switch config.NetworkType {
-		case util.NetworkTypeGeneve, util.NetworkTypeVlan:
-			config.MTU = mtu - util.GeneveHeaderLength
-		case util.NetworkTypeVxlan:
-			config.MTU = mtu - util.VxlanHeaderLength
-		case util.NetworkTypeStt:
-			config.MTU = mtu - util.SttHeaderLength
-		default:
-			return fmt.Errorf("invalid network type: %s", config.NetworkType)
+		podMTU, err := computePodMTU(mtu, config.NetworkType, encapIsIPv6, config.MaxMTU)
+		if err != nil {
+			return err
 		}
-		if encapIsIPv6 {
-			// IPv6 header size is 40
-			config.MTU -= 20
-		}
+		config.MTU = podMTU
 		// Warn but do not raise: the path MTU is dictated by the underlying
 		// link, and forcing the value above it would replace silent IPv6
 		// drops with silent IPv4 fragmentation/blackholing.

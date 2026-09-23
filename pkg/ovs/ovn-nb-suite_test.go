@@ -519,6 +519,10 @@ func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 	suite.testCreateLoadBalancer()
 }
 
+func (suite *OvnClientTestSuite) Test_ReconcileLoadBalancer() {
+	suite.testReconcileLoadBalancer()
+}
+
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancer() {
 	suite.testUpdateLoadBalancer()
 }
@@ -555,12 +559,48 @@ func (suite *OvnClientTestSuite) Test_LoadBalancerAddVip() {
 	suite.testLoadBalancerAddVip()
 }
 
+func (suite *OvnClientTestSuite) Test_LoadBalancerMigrateVIP() {
+	suite.testLoadBalancerMigrateVIP()
+}
+
+func (suite *OvnClientTestSuite) Test_LoadBalancerMigrateVIPClearsEmptyMapping() {
+	suite.testLoadBalancerMigrateVIPClearsEmptyMapping()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerOp() {
 	suite.testDeleteLoadBalancerOp()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLoadBalancerAffinityTimeout() {
 	suite.testSetLoadBalancerAffinityTimeout()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLoadBalancerAffinityTimeout() {
+	suite.testDeleteLoadBalancerAffinityTimeout()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerSelectionFields() {
+	suite.testSetLoadBalancerSelectionFields()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerDistributed() {
+	suite.testSetLoadBalancerDistributed()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerAddressFamily() {
+	suite.testSetLoadBalancerAddressFamily()
+}
+
+func (suite *OvnClientTestSuite) Test_SetLoadBalancerExternalIDs() {
+	suite.testSetLoadBalancerExternalIDs()
+}
+
+func (suite *OvnClientTestSuite) Test_ReconcileChassisTemplateVariables() {
+	suite.testReconcileChassisTemplateVariables()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteChassisTemplateVariables() {
+	suite.testDeleteChassisTemplateVariables()
 }
 
 func (suite *OvnClientTestSuite) Test_SetLoadBalancerCtFlush() {
@@ -856,12 +896,16 @@ func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPolicy() {
 	suite.testDeleteLogicalRouterPolicy()
 }
 
-func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPolicies() {
-	suite.testDeleteLogicalRouterPolicies()
+func (suite *OvnClientTestSuite) Test_AddLogicalRouterPolicyRecreatesVanishedPolicy() {
+	suite.testAddLogicalRouterPolicyRecreatesVanishedPolicy()
 }
 
-func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPoliciesByNexthop() {
-	suite.testDeleteLogicalRouterPolicyByNexthop()
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPolicyIfUnchanged() {
+	suite.testDeleteLogicalRouterPolicyIfUnchanged()
+}
+
+func (suite *OvnClientTestSuite) Test_DeleteLogicalRouterPolicies() {
+	suite.testDeleteLogicalRouterPolicies()
 }
 
 func (suite *OvnClientTestSuite) Test_DeleteRouterPolicy() {
@@ -1455,29 +1499,7 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		return nil, err
 	}
 
-	monitorOpts := []client.MonitorOption{
-		client.WithTable(&ovnnb.ACL{}),
-		client.WithTable(&ovnnb.AddressSet{}),
-		client.WithTable(&ovnnb.BFD{}),
-		client.WithTable(&ovnnb.DHCPOptions{}),
-		client.WithTable(&ovnnb.GatewayChassis{}),
-		client.WithTable(&ovnnb.HAChassis{}),
-		client.WithTable(&ovnnb.HAChassisGroup{}),
-		client.WithTable(&ovnnb.LoadBalancer{}),
-		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
-		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
-		client.WithTable(&ovnnb.LogicalRouterPort{}),
-		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		client.WithTable(&ovnnb.LogicalRouter{}),
-		client.WithTable(&ovnnb.LogicalSwitchPort{}),
-		client.WithTable(&ovnnb.LogicalSwitch{}),
-		client.WithTable(&ovnnb.NAT{}),
-		client.WithTable(&ovnnb.NBGlobal{}),
-		client.WithTable(&ovnnb.PortGroup{}),
-		client.WithTable(&ovnnb.Meter{}),
-		client.WithTable(&ovnnb.MeterBand{}),
-	}
-	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
+	if _, err = c.Monitor(context.TODO(), c.NewMonitor(ovnNBMonitorOptions()...)); err != nil {
 		klog.Error(err)
 		return nil, err
 	}

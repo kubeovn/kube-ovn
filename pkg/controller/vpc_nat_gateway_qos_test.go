@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestNatGwRedoTokenUsesContainerInstancesPerGateway(t *testing.T) {
@@ -112,4 +113,127 @@ func TestNatGwInitTargets(t *testing.T) {
 	terminatingGateway := gateway.DeepCopy()
 	terminatingGateway.DeletionTimestamp = &now
 	require.False(t, natGwInitPending(terminatingGateway, nil))
+}
+
+// TestUpdateCrdNatGwLabelsQoSClaim pins the claim the gateway label carries: the UID of the
+// policy generation it references. A terminating policy must not be taken by a new binding,
+// while a gateway that already references it keeps the claim it had, so that the referenced
+// policy generation is still recognized while the gateway cleans up.
+// TestNatGwQoSClaimIsWrittenBeforeRestore pins that a gateway re-asserts the claim of the policy
+// generation whose rules it re-applies when its pod is (re)initialized.
+func TestNatGwQoSClaimIsWrittenBeforeRestore(t *testing.T) {
+	rules := kubeovnv1.QoSPolicyBandwidthLimitRules{{Direction: kubeovnv1.QoSDirectionEgress, Interface: "net1"}}
+	qos := &kubeovnv1.QoSPolicy{
+		Name: "qos", UID: "qos-uid",
+		Spec: kubeovnv1.QoSPolicySpec{
+			Shared: true, BindingType: kubeovnv1.QoSBindingTypeNatGw, BandwidthLimitRules: rules,
+		},
+		Status: kubeovnv1.QoSPolicyStatus{
+			Shared: true, BindingType: kubeovnv1.QoSBindingTypeNatGw, BandwidthLimitRules: rules,
+		},
+	}
+	gw := &kubeovnv1.VpcNatGateway{
+		Name: "gw",
+		Labels: map[string]string{
+			util.SubnetNameLabel: "test-subnet", util.VpcNameLabel: "test-vpc",
+		},
+		Spec: kubeovnv1.VpcNatGatewaySpec{Vpc: "test-vpc", Subnet: "test-subnet", QoSPolicy: "qos"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		QoSPolicies: []*kubeovnv1.QoSPolicy{qos}, VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
+	})
+	require.NoError(t, err)
+
+	// The gateway has no pod, so the rules cannot be re-applied and the call fails.
+	require.Error(t, fc.fakeController.claimAndRestoreVpcNatGwQoS(gw))
+	got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(
+		context.Background(), "gw", metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "qos-uid", got.Labels[util.QoSPolicyUIDLabel])
+}
+
+func TestUpdateCrdNatGwLabelsQoSClaim(t *testing.T) {
+	now := metav1.Now()
+	policy := func(name, uid string, terminating bool) *kubeovnv1.QoSPolicy {
+		qos := &kubeovnv1.QoSPolicy{Name: name, UID: types.UID(uid)}
+		if terminating {
+			qos.DeletionTimestamp = &now
+		}
+		return qos
+	}
+	gateway := func(labels map[string]string, terminating bool) *kubeovnv1.VpcNatGateway {
+		gw := &kubeovnv1.VpcNatGateway{
+			Name: "gw", Labels: labels,
+			Spec: kubeovnv1.VpcNatGatewaySpec{Vpc: "test-vpc", Subnet: "test-subnet"},
+		}
+		if terminating {
+			gw.DeletionTimestamp = &now
+		}
+		return gw
+	}
+	bound := func() map[string]string {
+		return map[string]string{
+			util.SubnetNameLabel: "test-subnet", util.VpcNameLabel: "test-vpc",
+			util.QoSLabel: "qos", util.QoSPolicyUIDLabel: "qos-uid",
+		}
+	}
+
+	tests := []struct {
+		name      string
+		qos       string
+		policies  []*kubeovnv1.QoSPolicy
+		gateway   *kubeovnv1.VpcNatGateway
+		wantErr   string
+		wantClaim string
+	}{
+		{
+			name: "healthy policy claims its generation", qos: "qos",
+			policies:  []*kubeovnv1.QoSPolicy{policy("qos", "qos-uid", false)},
+			gateway:   gateway(map[string]string{util.SubnetNameLabel: "test-subnet", util.VpcNameLabel: "test-vpc"}, false),
+			wantClaim: "qos-uid",
+		},
+		{
+			name: "terminating policy is rejected for a new binding", qos: "qos",
+			policies: []*kubeovnv1.QoSPolicy{policy("qos", "qos-uid", true)},
+			gateway:  gateway(nil, false), wantErr: "is terminating",
+		},
+		{
+			name: "terminating policy keeps the claim of a bound gateway", qos: "qos",
+			policies: []*kubeovnv1.QoSPolicy{policy("qos", "qos-uid", true)},
+			gateway:  gateway(bound(), false), wantClaim: "qos-uid",
+		},
+		{
+			name: "missing policy keeps the claim of a terminating gateway", qos: "qos",
+			gateway: gateway(bound(), true), wantClaim: "qos-uid",
+		},
+		{
+			name: "missing policy is reported for a live gateway", qos: "qos",
+			gateway: gateway(bound(), false), wantErr: "failed to get qos policy",
+		},
+		{
+			name: "unbinding drops the claim", qos: "",
+			gateway: gateway(bound(), false), wantClaim: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				QoSPolicies: tt.policies, VpcNatGateways: []*kubeovnv1.VpcNatGateway{tt.gateway},
+			})
+			require.NoError(t, err)
+
+			err = fc.fakeController.updateCrdNatGwLabels("gw", tt.qos)
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().VpcNatGateways().Get(
+				context.Background(), "gw", metav1.GetOptions{},
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantClaim, got.Labels[util.QoSPolicyUIDLabel])
+		})
+	}
 }

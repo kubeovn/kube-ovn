@@ -39,6 +39,46 @@ func (c *Controller) enqueueAddNode(obj any) {
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(nil, node)
+	c.enqueueTrafficDistributionServices()
+}
+
+func (c *Controller) enqueueTrafficDistributionServices() {
+	if !c.config.EnableLb {
+		return
+	}
+	services, err := c.servicesLister.Services(metav1.NamespaceAll).List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services for traffic distribution update: %v", err)
+		return
+	}
+	for _, svc := range services {
+		if serviceUsesTrafficDistribution(svc) {
+			c.enqueueEndpointSliceService(cache.MetaObjectToName(svc).String(), svc)
+		}
+	}
+}
+
+// nodeIsExternalGateway reports whether the node is configured as an external gateway node.
+func nodeIsExternalGateway(node *v1.Node) bool {
+	return node.Labels[util.ExGatewayLabel] == "true"
+}
+
+// enqueueExternalVpcsForReconcile re-queues all custom VPCs that use external subnets
+// so their LRP gateway-chassis lists are kept in sync with external-gateway nodes.
+func (c *Controller) enqueueExternalVpcsForReconcile() {
+	vpcs, err := c.vpcsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vpcs for external reconcile: %v", err)
+		return
+	}
+	for _, vpc := range vpcs {
+		if _, ok := vpc.Labels[util.VpcExternalLabel]; ok {
+			continue
+		}
+		if vpc.Spec.EnableExternal || vpc.Status.EnableExternal {
+			c.addOrUpdateVpcQueue.Add(vpc.Name)
+		}
+	}
 }
 
 func nodeReady(node *v1.Node) bool {
@@ -145,6 +185,12 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	if nodeReadyChanged || nodeLabelsChanged {
 		c.enqueueVpcBFDPortByNodeChange(oldNode, newNode)
 	}
+	if nodeIsExternalGateway(oldNode) != nodeIsExternalGateway(newNode) {
+		c.enqueueExternalVpcsForReconcile()
+	}
+	if (nodeReadyChanged || nodeLabelsChanged) && c.config.EnableLb {
+		c.enqueueTrafficDistributionServices()
+	}
 }
 
 func (c *Controller) enqueueDeleteNode(obj any) {
@@ -169,6 +215,7 @@ func (c *Controller) enqueueDeleteNode(obj any) {
 	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(node, nil)
+	c.enqueueTrafficDistributionServices()
 }
 
 func nodeUnderlayAddressSetName(node string, af int) string {
@@ -204,6 +251,13 @@ func (c *Controller) handleAddNode(key string) (err error) {
 	defer func() { c.recordNodeReconcileFailure(node, "AddNodeFailed", err) }()
 	klog.Infof("handle add node %s", node.Name)
 
+	// Notify the external VPCs early: the notification only enqueues the VPCs which then converge on
+	// their own based on the latest state, and it must not depend on the join network setup below
+	// nor on the node chassis being registered yet (the node update handler covers that case).
+	if nodeIsExternalGateway(node) {
+		c.enqueueExternalVpcsForReconcile()
+	}
+
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
@@ -234,6 +288,7 @@ func (c *Controller) handleAddNode(key string) (err error) {
 		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
+	c.enqueueTrafficDistributionServices()
 
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
@@ -484,7 +539,13 @@ func (c *Controller) handleDeleteNode(key string) (err error) {
 		klog.Warningf("Node %s is adding, skip the node delete handler, but it may leave some gc resources behind", key)
 		return nil
 	}
-	return c.deleteNode(key)
+	if err = c.deleteNode(key); err != nil {
+		return err
+	}
+	if nodeIsExternalGateway(node) {
+		c.enqueueExternalVpcsForReconcile()
+	}
+	return nil
 }
 
 func (c *Controller) deleteNode(key string) error {
@@ -513,7 +574,7 @@ func (c *Controller) deleteNode(key string) error {
 		return err
 	}
 
-	if err := c.deletePolicyRouteForNode(key, portName); err != nil {
+	if err := c.deletePolicyRouteForNode(key); err != nil {
 		klog.Errorf("failed to delete policy route for node %s: %v", key, err)
 		return err
 	}
@@ -632,9 +693,18 @@ func (c *Controller) handleUpdateNode(key string) (err error) {
 		klog.Errorf("failed to update chassis tag for node %s: %v", node.Name, err)
 		return err
 	}
+	c.enqueueTrafficDistributionServices()
 	if err := c.retryDelDupChassis(util.ChassisRetryMaxTimes, util.ChassisControllerRetryInterval, c.cleanDuplicatedChassis, node); err != nil {
 		klog.Errorf("failed to clean duplicated chassis for node %s: %v", node.Name, err)
 		return err
+	}
+
+	// A node that joins with the external gateway label already set registers its chassis only
+	// after the CNI starts, so the first reconcile may have run before the chassis was available.
+	// The chassis annotation is present and UpdateChassisTag verified its SB entry above, so the
+	// external VPCs are enqueued to make sure that the LRP chassis lists include this node.
+	if node.Annotations[util.ChassisAnnotation] != "" && nodeIsExternalGateway(node) {
+		c.enqueueExternalVpcsForReconcile()
 	}
 
 	c.distributedSubnetNeedSync.Store(true)
@@ -1041,21 +1111,25 @@ func (c *Controller) getPolicyRouteParams(cidr string, priority int) (*strset.Se
 	return strset.New(policyList[0].Nexthops...), maps.Clone(policyList[0].ExternalIDs), nil
 }
 
-func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
+func (c *Controller) deletePolicyRouteForNode(nodeName string) error {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("get subnets: %v", err)
 		return err
 	}
 
-	addresses := c.ipam.GetPodAddress(portName)
-	for _, addr := range addresses {
-		if addr.IP == "" {
-			continue
-		}
-		klog.Infof("deleting logical router policy with nexthop %q from %s for node %s", addr.IP, c.config.ClusterRouter, nodeName)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicyByNexthop(c.config.ClusterRouter, util.NodeRouterPolicyPriority, addr.IP); err != nil {
-			klog.Errorf("failed to delete logical router policy with nexthop %q from %s for node %s: %v", addr.IP, c.config.ClusterRouter, nodeName, err)
+	// Delete the node's policies by owner, not by join address: IPAM may no longer hold the address, and
+	// a node reusing it has policies with the same nexthop. Each listed row is deleted only if it still
+	// belongs to this node: a node reusing the address may take the row over meanwhile.
+	externalIDs := map[string]string{"vendor": util.CniTypeName, "node": nodeName}
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, util.NodeRouterPolicyPriority, externalIDs, false)
+	if err != nil {
+		klog.Errorf("failed to list logical router policies of node %s on %s: %v", nodeName, c.config.ClusterRouter, err)
+		return err
+	}
+	for _, policy := range policies {
+		if _, err = c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
+			klog.Errorf("failed to delete logical router policy %q of node %s from %s: %v", policy.Match, nodeName, c.config.ClusterRouter, err)
 			return err
 		}
 	}
@@ -1080,51 +1154,50 @@ func (c *Controller) deletePolicyRouteForNode(nodeName, portName string) error {
 		}
 
 		if subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-			c.subnetKeyMutex.LockKey(subnet.Name)
-			err = func() error {
-				defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
-				if subnet.Spec.EnableEcmp {
-					for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-						nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
-						if err != nil {
-							klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
-							continue
-						}
+			if err = c.deletePolicyRouteForCentralizedSubnetOnNode(subnet, nodeName); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
-						exist := false
-						if _, ok := nameIPMap[nodeName]; ok {
-							exist = true
-						}
+func (c *Controller) deletePolicyRouteForCentralizedSubnetOnNode(subnet *kubeovnv1.Subnet, nodeName string) error {
+	c.subnetKeyMutex.LockKey(subnet.Name)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
 
-						if exist {
-							nextHops.Remove(nameIPMap[nodeName])
-							delete(nameIPMap, nodeName)
+	if !subnet.Spec.EnableEcmp {
+		klog.Infof("reconcile policy route for centralized subnet %s", subnet.Name)
+		if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet); err != nil {
+			klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
+			return err
+		}
+		return nil
+	}
 
-							if nextHops.Size() == 0 {
-								klog.Infof("delete policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-								if err := c.deletePolicyRouteForCentralizedSubnet(subnet); err != nil {
-									klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
-									return err
-								}
-							} else {
-								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
-								if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
-									klog.Errorf("failed to update policy route for subnet %s on node %s, %v", subnet.Name, nodeName, err)
-									return err
-								}
-							}
-						}
-					}
-				} else {
-					klog.Infof("reconcile policy route for centralized subnet %s", subnet.Name)
-					if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet); err != nil {
-						klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
-						return err
-					}
-				}
-				return nil
-			}()
-			if err != nil {
+	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+		nextHops, nameIPMap, err := c.getPolicyRouteParams(cidrBlock, util.GatewayRouterPolicyPriority)
+		if err != nil {
+			klog.Errorf("get ecmp policy route paras for subnet %v, error %v", subnet.Name, err)
+			continue
+		}
+		if _, ok := nameIPMap[nodeName]; !ok {
+			continue
+		}
+
+		nextHops.Remove(nameIPMap[nodeName])
+		delete(nameIPMap, nodeName)
+
+		if nextHops.Size() == 0 {
+			klog.Infof("delete policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+			if err := c.deletePolicyRouteForCentralizedSubnet(subnet); err != nil {
+				klog.Errorf("failed to delete policy route for centralized subnet %s, %v", subnet.Name, err)
+				return err
+			}
+		} else {
+			klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+			if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
+				klog.Errorf("failed to update policy route for subnet %s on node %s, %v", subnet.Name, nodeName, err)
 				return err
 			}
 		}
@@ -1276,8 +1349,8 @@ func (c *Controller) deletePolicyRouteForLocalDNSCacheOnNode(nodeName string, af
 
 	for _, policy := range policies {
 		klog.Infof("delete node local dns cache policy route for router %s with match %s", c.config.ClusterRouter, policy.Match)
-
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+		// delete the listed row only if it still belongs to this node: another node may take it over after the list
+		if _, err := c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
 			klog.Errorf("failed to delete policy route for node local dns in router %s with match %s: %v", c.config.ClusterRouter, policy.Match, err)
 			return err
 		}

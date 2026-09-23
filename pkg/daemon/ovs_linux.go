@@ -280,6 +280,9 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			klog.Error(err)
 			return nil, err
 		}
+		if csh.Controller != nil {
+			csh.Controller.enqueueServicesForUnderlaySubnet(localnetSubnet)
+		}
 	}
 
 	podNS, err := ns.GetNS(netns)

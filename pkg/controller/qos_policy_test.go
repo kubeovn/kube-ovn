@@ -8,10 +8,77 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestQoSPolicyDeleteHonorsUIDClaim(t *testing.T) {
+	makePolicy := func() *kubeovnv1.QoSPolicy {
+		now := metav1.Now()
+		return &kubeovnv1.QoSPolicy{
+			Name:              "qos-delete",
+			UID:               "qos-delete-uid",
+			DeletionTimestamp: &now,
+			Finalizers:        []string{util.KubeOVNControllerFinalizer},
+			Spec:              kubeovnv1.QoSPolicySpec{BindingType: kubeovnv1.QoSBindingTypeEIP},
+		}
+	}
+
+	t.Run("referencing EIP blocks finalizer removal", func(t *testing.T) {
+		qos := makePolicy()
+		eip := &kubeovnv1.IptablesEIP{
+			Name: "eip", UID: "eip-uid", Labels: map[string]string{util.QoSPolicyUIDLabel: string(qos.UID)},
+			Spec: kubeovnv1.IptablesEIPSpec{QoSPolicy: qos.Name},
+		}
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{QoSPolicies: []*kubeovnv1.QoSPolicy{qos}, IptablesEips: []*kubeovnv1.IptablesEIP{eip}})
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeController.handleUpdateQoSPolicy(qos.Name))
+		got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), qos.Name, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Contains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+	})
+
+	t.Run("without claim removes finalizer", func(t *testing.T) {
+		qos := makePolicy()
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{QoSPolicies: []*kubeovnv1.QoSPolicy{qos}})
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeController.handleUpdateQoSPolicy(qos.Name))
+		got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(context.Background(), qos.Name, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.NotContains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+	})
+}
+
+func TestEnqueueQoSPolicyRelease(t *testing.T) {
+	t.Parallel()
+	q := newTypedRateLimitingQueue[string]("UpdateQoSPolicy", nil)
+	t.Cleanup(q.ShutDown)
+	c := &Controller{updateQoSPolicyQueue: q}
+
+	c.enqueueQoSPolicyRelease("old", "", "new", "")
+	require.Equal(t, 1, q.Len())
+	got, shutdown := q.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "old", got)
+	q.Done(got)
+
+	c.enqueueQoSPolicyRelease("old", "", "old", "")
+	require.Equal(t, 0, q.Len())
+
+	// A reference that is still applied keeps the policy enqueued until the referring
+	// resource has cleaned up its data plane, even though the desired reference is gone.
+	c.enqueueQoSPolicyRelease("", "applied", "", "")
+	require.Equal(t, 1, q.Len())
+	got, shutdown = q.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "applied", got)
+	q.Done(got)
+
+	c.enqueueQoSPolicyRelease("unchanged", "unchanged", "unchanged", "unchanged")
+	require.Equal(t, 0, q.Len())
+}
 
 func TestValidateRateValue(t *testing.T) {
 	t.Parallel()
@@ -989,7 +1056,7 @@ func makeQoSPolicyForUpdate(name string, shared bool, bindingType kubeovnv1.QoSP
 	statusRules, specRules kubeovnv1.QoSPolicyBandwidthLimitRules,
 ) *kubeovnv1.QoSPolicy {
 	return &kubeovnv1.QoSPolicy{
-		Name: name,
+		Name: name, UID: types.UID(name + "-uid"),
 		Spec: kubeovnv1.QoSPolicySpec{
 			Shared:              shared,
 			BindingType:         bindingType,
@@ -1075,20 +1142,39 @@ func TestEnqueueQoSPolicyReleaseWaitsForAppliedStatus(t *testing.T) {
 	require.Equal(t, 1, ctrl.updateQoSPolicyQueue.Len())
 }
 
-func TestDeletingQoSPolicyKeepsFinalizerWhileReferenced(t *testing.T) {
+func TestDeletingQoSPolicyKeepsFinalizerWhileClaimed(t *testing.T) {
+	// Spec and Status only carry names, so only the UID the referrer was labeled with
+	// tells the generation of the policy it claims. A leftover reference of an earlier
+	// policy that used the same name must neither block nor delay the claim of this one.
+	const qosUID = "terminating-qos-uid"
 	tests := []struct {
-		name        string
-		bindingType kubeovnv1.QoSPolicyBindingType
-		eip         *kubeovnv1.IptablesEIP
+		name           string
+		bindingType    kubeovnv1.QoSPolicyBindingType
+		eip            *kubeovnv1.IptablesEIP
+		keepsFinalizer bool
 	}{
 		{name: "desired spec reference", bindingType: kubeovnv1.QoSBindingTypeEIP, eip: &kubeovnv1.IptablesEIP{
-			Name: "pending-eip", Spec: kubeovnv1.IptablesEIPSpec{QoSPolicy: "terminating-qos"},
-		}},
+			Name: "pending-eip", Labels: map[string]string{util.QoSPolicyUIDLabel: qosUID},
+			Spec: kubeovnv1.IptablesEIPSpec{QoSPolicy: "terminating-qos"},
+		}, keepsFinalizer: true},
 		{name: "applied status credential", bindingType: kubeovnv1.QoSBindingTypeEIP, eip: &kubeovnv1.IptablesEIP{
-			Name: "cleaning-eip", Status: kubeovnv1.IptablesEIPStatus{QoSPolicy: "terminating-qos"},
-		}},
+			Name: "cleaning-eip", Labels: map[string]string{util.QoSPolicyUIDLabel: qosUID},
+			Status: kubeovnv1.IptablesEIPStatus{QoSPolicy: "terminating-qos"},
+		}, keepsFinalizer: true},
 		{name: "binding type drift", bindingType: kubeovnv1.QoSBindingTypeNatGw, eip: &kubeovnv1.IptablesEIP{
-			Name: "old-eip", Status: kubeovnv1.IptablesEIPStatus{QoSPolicy: "terminating-qos"},
+			Name: "old-eip", Labels: map[string]string{util.QoSPolicyUIDLabel: qosUID},
+			Status: kubeovnv1.IptablesEIPStatus{QoSPolicy: "terminating-qos"},
+		}, keepsFinalizer: true},
+		{
+			name: "reference of an earlier policy with the same name", bindingType: kubeovnv1.QoSBindingTypeEIP,
+			eip: &kubeovnv1.IptablesEIP{
+				Name: "stale-eip", Labels: map[string]string{util.QoSPolicyUIDLabel: "replaced-qos-uid"},
+				Spec:   kubeovnv1.IptablesEIPSpec{QoSPolicy: "terminating-qos"},
+				Status: kubeovnv1.IptablesEIPStatus{QoSPolicy: "terminating-qos"},
+			},
+		},
+		{name: "reference without a claim", bindingType: kubeovnv1.QoSBindingTypeEIP, eip: &kubeovnv1.IptablesEIP{
+			Name: "unclaimed-eip", Spec: kubeovnv1.IptablesEIPSpec{QoSPolicy: "terminating-qos"},
 		}},
 	}
 	for _, tt := range tests {
@@ -1096,6 +1182,7 @@ func TestDeletingQoSPolicyKeepsFinalizerWhileReferenced(t *testing.T) {
 			now := metav1.Now()
 			qos := &kubeovnv1.QoSPolicy{
 				Name:              "terminating-qos",
+				UID:               qosUID,
 				DeletionTimestamp: &now,
 				Finalizers:        []string{util.KubeOVNControllerFinalizer},
 				Spec:              kubeovnv1.QoSPolicySpec{BindingType: tt.bindingType},
@@ -1110,32 +1197,54 @@ func TestDeletingQoSPolicyKeepsFinalizerWhileReferenced(t *testing.T) {
 				context.Background(), qos.Name, metav1.GetOptions{},
 			)
 			require.NoError(t, err)
-			require.Contains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+			if tt.keepsFinalizer {
+				require.Contains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+			} else {
+				require.NotContains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+			}
 		})
 	}
 }
 
-func TestDeletingNatGwQoSPolicyKeepsFinalizerForAppliedStatus(t *testing.T) {
-	now := metav1.Now()
-	qos := &kubeovnv1.QoSPolicy{
-		Name: "terminating-qos", DeletionTimestamp: &now,
-		Finalizers: []string{util.KubeOVNControllerFinalizer},
-		Spec:       kubeovnv1.QoSPolicySpec{BindingType: kubeovnv1.QoSBindingTypeNatGw},
+func TestDeletingNatGwQoSPolicyKeepsFinalizerWhileClaimed(t *testing.T) {
+	const qosUID = "terminating-qos-uid"
+	tests := []struct {
+		name           string
+		labels         map[string]string
+		keepsFinalizer bool
+	}{
+		{name: "applied status credential", labels: map[string]string{util.QoSPolicyUIDLabel: qosUID}, keepsFinalizer: true},
+		{name: "claim of an earlier policy with the same name", labels: map[string]string{util.QoSPolicyUIDLabel: "replaced-qos-uid"}},
 	}
-	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		QoSPolicies: []*kubeovnv1.QoSPolicy{qos},
-		VpcNatGateways: []*kubeovnv1.VpcNatGateway{{
-			Name: "cleaning-gateway", Status: kubeovnv1.VpcNatGatewayStatus{QoSPolicy: qos.Name},
-		}},
-	})
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			now := metav1.Now()
+			qos := &kubeovnv1.QoSPolicy{
+				Name: "terminating-qos", UID: qosUID, DeletionTimestamp: &now,
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
+				Spec:       kubeovnv1.QoSPolicySpec{BindingType: kubeovnv1.QoSBindingTypeNatGw},
+			}
+			fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				QoSPolicies: []*kubeovnv1.QoSPolicy{qos},
+				VpcNatGateways: []*kubeovnv1.VpcNatGateway{{
+					Name: "cleaning-gateway", Labels: tt.labels,
+					Status: kubeovnv1.VpcNatGatewayStatus{QoSPolicy: qos.Name},
+				}},
+			})
+			require.NoError(t, err)
 
-	require.NoError(t, fakeCtrl.fakeController.handleUpdateQoSPolicy(qos.Name))
-	got, err := fakeCtrl.fakeController.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(
-		context.Background(), qos.Name, metav1.GetOptions{},
-	)
-	require.NoError(t, err)
-	require.Contains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+			require.NoError(t, fakeCtrl.fakeController.handleUpdateQoSPolicy(qos.Name))
+			got, err := fakeCtrl.fakeController.config.KubeOvnClient.KubeovnV1().QoSPolicies().Get(
+				context.Background(), qos.Name, metav1.GetOptions{},
+			)
+			require.NoError(t, err)
+			if tt.keepsFinalizer {
+				require.Contains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+			} else {
+				require.NotContains(t, got.Finalizers, util.KubeOVNControllerFinalizer)
+			}
+		})
+	}
 }
 
 func TestHandleUpdateQoSPolicy(t *testing.T) {
@@ -1168,7 +1277,11 @@ func TestHandleUpdateQoSPolicy(t *testing.T) {
 	eips := make([]*kubeovnv1.IptablesEIP, 0, 2)
 	for _, name := range []string{"eip-1", "eip-2"} {
 		eips = append(eips, &kubeovnv1.IptablesEIP{
-			Name:   name,
+			Name: name,
+			Labels: map[string]string{
+				util.QoSLabel:          multiEIPQoS.Name,
+				util.QoSPolicyUIDLabel: string(multiEIPQoS.UID),
+			},
 			Spec:   kubeovnv1.IptablesEIPSpec{QoSPolicy: multiEIPQoS.Name},
 			Status: kubeovnv1.IptablesEIPStatus{IP: "172.20.0.10"},
 		})

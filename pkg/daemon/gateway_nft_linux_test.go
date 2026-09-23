@@ -435,6 +435,34 @@ func TestNFTAuditRepairsObjectDefinitionDrift(t *testing.T) {
 	require.Equal(t, before+1, testutil.ToFloat64(metricGatewayNFTRepairs))
 }
 
+func TestNFTAuditFlushesChainReferencesBeforeDeletingChains(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	reader := &orderedNFTReader{
+		Interface: fake,
+		objects: map[string][]string{
+			"chain": {"nat-policy", "nat-postrouting"},
+		},
+	}
+	backend := &nftGatewayBackend{
+		writer:  fake,
+		readers: map[knftables.Family]knftables.Interface{knftables.IPv6Family: reader},
+	}
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{
+		Family: knftables.IPv6Family,
+		Table:  nftGatewayTable,
+	}}}
+
+	tx, repaired, err := backend.renderAuditRepair(t.Context(), desired)
+	require.NoError(t, err)
+	require.True(t, repaired)
+	dump := tx.String()
+	policyDelete := strings.Index(dump, "delete chain ip6 kube-ovn nat-policy")
+	postroutingFlush := strings.Index(dump, "flush chain ip6 kube-ovn nat-postrouting")
+	require.NotEqual(t, -1, policyDelete)
+	require.NotEqual(t, -1, postroutingFlush)
+	require.Less(t, postroutingFlush, policyDelete)
+}
+
 func TestParseNFTDefinitions(t *testing.T) {
 	data := []byte(`{"nftables":[
 		{"set":{"name":"subnets","type":"ipv4_addr","flags":["interval"]}},
@@ -533,6 +561,15 @@ func TestNFTCleanupBothFamilies(t *testing.T) {
 type failingNFTInterface struct {
 	knftables.Interface
 	fail bool
+}
+
+type orderedNFTReader struct {
+	knftables.Interface
+	objects map[string][]string
+}
+
+func (r *orderedNFTReader) ListAll(context.Context) (map[string][]string, error) {
+	return r.objects, nil
 }
 
 func (f *failingNFTInterface) Run(ctx context.Context, tx *knftables.Transaction) error {

@@ -90,8 +90,10 @@ networking:
     enableLogicalGateways: false
     # -- MTU of the subnet.
     # If set to 0, the MTU is auto-detected.
+    # Refer to .networking.maxMtu to cap the MTU.
     # @section -- Network parameters of the CNI
     mtu: 0
+
   # -- Configuration for the service subnet.
   # If .networking.stack is set to IPv4, only the .v4 key is used.
   # If .networking.stack is set to IPv6, only the .v6 key is used.
@@ -181,6 +183,14 @@ networking:
   # -- Enable listening on the metrics endpoint for the CNI daemons.
   # @section -- Network parameters of the CNI
   enableMetrics: true
+
+  # -- Upper bound applied to the auto-detected pod MTU (0 disables the cap).
+  # Useful when the underlay uses jumbo frames but pod traffic egresses to a
+  # 1500-byte path (e.g. the internet), where the uncapped value would cause
+  # fragmentation or PMTUD-dependent blackholes. Ignored when .networking.pods.mtu is set.
+  # This applies to custom and default subnets.
+  # @section -- Network parameters of the CNI
+  maxMtu: 0
 
   # -- Configuration if we're running on top of a VLAN.
   # @section -- Network parameters of the CNI

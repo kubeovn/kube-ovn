@@ -31,8 +31,8 @@ type LegacyClient struct {
 
 type OVNNbClient struct {
 	ovsDbClient
-	aclSamplingMonitorMu sync.Mutex
-	aclSamplingMonitored bool
+	aclSamplingMonitorMu      sync.Mutex
+	aclSamplingMonitorSupport bool
 }
 
 type OVNSbClient struct {
@@ -139,6 +139,35 @@ func NewDynamicOvnNbClient(
 	return c, models, nil
 }
 
+func ovnNBMonitorOptions() []client.MonitorOption {
+	return []client.MonitorOption{
+		client.WithTable(&ovnnb.ACL{}),
+		client.WithTable(&ovnnb.AddressSet{}),
+		client.WithTable(&ovnnb.BFD{}),
+		client.WithTable(&ovnnb.DHCPOptions{}),
+		client.WithTable(&ovnnb.GatewayChassis{}),
+		client.WithTable(&ovnnb.HAChassis{}),
+		client.WithTable(&ovnnb.HAChassisGroup{}),
+		client.WithTable(&ovnnb.LoadBalancer{}),
+		client.WithTable(&ovnnb.ChassisTemplateVar{}),
+		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
+		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
+		client.WithTable(&ovnnb.LogicalRouterPort{}),
+		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
+		client.WithTable(&ovnnb.LogicalRouter{}),
+		client.WithTable(&ovnnb.LogicalSwitchPort{}),
+		client.WithTable(&ovnnb.LogicalSwitch{}),
+		client.WithTable(&ovnnb.NAT{}),
+		client.WithTable(&ovnnb.NBGlobal{}),
+		client.WithTable(&ovnnb.PortGroup{}),
+		client.WithTable(&ovnnb.Meter{}),
+		client.WithTable(&ovnnb.MeterBand{}),
+		client.WithTable(&ovnnb.SamplingApp{}),
+		client.WithTable(&ovnnb.SampleCollector{}),
+		client.WithTable(&ovnnb.Sample{}),
+	}
+}
+
 func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int) (*OVNNbClient, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
@@ -155,28 +184,7 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 	})
 	klog.Infof("ovn nb table %s client index %#v", ovnnb.LogicalRouterPolicyTable, dbModel.Indexes(ovnnb.LogicalRouterPolicyTable))
 
-	monitors := []client.MonitorOption{
-		client.WithTable(&ovnnb.ACL{}),
-		client.WithTable(&ovnnb.AddressSet{}),
-		client.WithTable(&ovnnb.BFD{}),
-		client.WithTable(&ovnnb.DHCPOptions{}),
-		client.WithTable(&ovnnb.GatewayChassis{}),
-		client.WithTable(&ovnnb.HAChassis{}),
-		client.WithTable(&ovnnb.HAChassisGroup{}),
-		client.WithTable(&ovnnb.LoadBalancer{}),
-		client.WithTable(&ovnnb.LoadBalancerHealthCheck{}),
-		client.WithTable(&ovnnb.LogicalRouterPolicy{}),
-		client.WithTable(&ovnnb.LogicalRouterPort{}),
-		client.WithTable(&ovnnb.LogicalRouterStaticRoute{}),
-		client.WithTable(&ovnnb.LogicalRouter{}),
-		client.WithTable(&ovnnb.LogicalSwitchPort{}),
-		client.WithTable(&ovnnb.LogicalSwitch{}),
-		client.WithTable(&ovnnb.NAT{}),
-		client.WithTable(&ovnnb.NBGlobal{}),
-		client.WithTable(&ovnnb.PortGroup{}),
-		client.WithTable(&ovnnb.Meter{}),
-		client.WithTable(&ovnnb.MeterBand{}),
-	}
+	monitors := ovnNBMonitorOptions()
 
 	try := 0
 	var nbClient client.Client

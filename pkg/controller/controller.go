@@ -265,6 +265,7 @@ type Controller struct {
 	endpointSlicesSynced          cache.InformerSynced
 	epsIndexer                    cache.Indexer
 	addOrUpdateEndpointSliceQueue workqueue.TypedRateLimitingInterface[string]
+	priorityEndpointSliceQueue    workqueue.TypedRateLimitingInterface[string]
 	epKeyMutex                    keymutex.KeyMutex
 	serviceL2StatusMutex          sync.RWMutex
 	serviceL2StatusIndexer        cache.Indexer
@@ -648,6 +649,7 @@ func Run(ctx context.Context, config *Configuration) {
 		endpointSlicesLister:          endpointSliceInformer.Lister(),
 		endpointSlicesSynced:          endpointSliceInformer.Informer().HasSynced,
 		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+		priorityEndpointSliceQueue:    newTypedRateLimitingQueue[string]("PriorityUpdateEndpointSlice", nil),
 		epKeyMutex:                    keymutex.NewHashed(numKeyLocks),
 
 		deploymentsLister:  deploymentInformer.Lister(),
@@ -1232,6 +1234,12 @@ func (c *Controller) Run(ctx context.Context) {
 	if err := c.syncFinalizers(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize crd finalizers")
 	}
+	if err := c.syncNatUIDLabels(); err != nil {
+		// References that could not be migrated keep their previous labels and are migrated on
+		// the next start, but the controller must stay up: a single object that a webhook or an
+		// inconsistent spec rejects would otherwise restart the controller in a loop.
+		klog.Errorf("failed to migrate NAT UID labels: %v", err)
+	}
 
 	if err := c.InitIPAM(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
@@ -1335,6 +1343,7 @@ func (c *Controller) shutdown() {
 	c.updateServiceQueue.ShutDown()
 	c.addOrUpdateNftableLbSvcQueue.ShutDown()
 	c.addOrUpdateEndpointSliceQueue.ShutDown()
+	c.priorityEndpointSliceQueue.ShutDown()
 
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
@@ -1557,6 +1566,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(func() {
 			c.resyncVpcDNSConfig()
 		}, 5*time.Second, ctx.Done())
+		go wait.Until(runWorker("priority add/update endpoint slice", c.priorityEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 	}
 
 	for range c.config.WorkerNum {

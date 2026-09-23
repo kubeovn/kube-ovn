@@ -1721,7 +1721,7 @@ class E2EControlTest(unittest.TestCase):
             "inputs.headSHA || github.event.repository.default_branch }}",
             workflow,
         )
-        self.assertEqual(workflow.count("ref: ${{ env.E2E_SOURCE_REF }}"), 24)
+        self.assertEqual(workflow.count("ref: ${{ env.E2E_SOURCE_REF }}"), 25)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
         self.assertNotIn("github.event.pull_request.head.sha || inputs.headSHA", workflow.replace(
             "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "
@@ -1813,8 +1813,8 @@ class E2EControlTest(unittest.TestCase):
         normalizedWorkflow = " ".join(workflow.split())
         self.assertIn(
             "if: >- steps.lookup-go-cache.outputs.cache-hit != 'true' && "
-            "(github.event_name == 'push' || "
-            "(github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'))",
+            "github.event_name == 'push' && "
+            "github.ref_name == github.event.repository.default_branch",
             normalizedWorkflow,
         )
         self.assertIn("--force-full-reason \"$FORCE_FULL_REASON\"", workflow)
@@ -1885,6 +1885,30 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("github.event_name == 'push'", blocks["push"])
         self.assertIn("needs.e2e-executor-result.result == 'success'", blocks["push"])
         self.assertNotIn("github.event_name != 'workflow_dispatch'", blocks["push"])
+
+    def testKubeOvnConformanceTimeoutCoversValgrindDualUnderlay(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        self.assertRegex(
+            blocks["kube-ovn-conformance-e2e"],
+            r"(?m)^    timeout-minutes: 60$",
+        )
+        self.assertRegex(
+            blocks["kubevirt-e2e"],
+            r"(?m)^    timeout-minutes: 45$",
+        )
+
+        makefile = (repoRoot / "makefiles/e2e.mk").read_text()
+        self.assertIn(
+            "--timeout=60m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test",
+            makefile,
+        )
+
+        scheduled = (repoRoot / ".github/workflows/scheduled-e2e.yaml").read_text()
+        self.assertRegex(
+            scheduled,
+            r"kube-ovn-conformance-e2e:\n    name: Kube-OVN Conformance E2E\n    runs-on: ubuntu-26.04\n    timeout-minutes: 40\n",
+        )
 
     def testKindPullUsesAnonymousGhcrWhenTokenIsAbsent(self):
         makefile = (repoRoot / "makefiles/kind.mk").read_text()
