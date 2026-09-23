@@ -137,13 +137,17 @@ type Configuration struct {
 	LsDnatModDlDst          bool
 	LsCtSkipDstLportIPs     bool
 
-	EnableLb                    bool
-	EnableNP                    bool
-	EnableEipSnat               bool
-	EnableExternalVpc           bool
-	EnableEcmp                  bool
-	EnableKeepVMIP              bool
-	EnableLbSvc                 bool
+	// EnableOvnLB enables the OVN load balancer implementation. The flag that sets it keeps its
+	// historical name (--enable-lb), which is a user-facing interface.
+	EnableOvnLB       bool
+	EnableNP          bool
+	EnableEipSnat     bool
+	EnableExternalVpc bool
+	EnableEcmp        bool
+	EnableKeepVMIP    bool
+	// EnablePodLbSvc runs one Pod per LoadBalancer Service, which forwards the Service's EIP to its
+	// backends with iptables. The flag that sets it keeps its historical name (--enable-lb-svc).
+	EnablePodLbSvc              bool
 	EnableNftableLbSvc          bool
 	EnableOVNLBPreferLocal      bool
 	EnableMetrics               bool
@@ -247,7 +251,7 @@ func ParseFlags() (*Configuration, error) {
 		argLsDnatModDlDst              = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
 		argLsCtSkipDstLportIPs         = pflag.Bool("ls-ct-skip-dst-lport-ips", true, "Skip conntrack for direct traffic between lports")
 		argPodNicType                  = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
-		argEnableLb                    = pflag.Bool("enable-lb", true, "Enable load balancer")
+		argEnableOvnLB                 = pflag.Bool("enable-lb", true, "Enable the OVN load balancer")
 		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
 		argNPEnforcement               = pflag.String("np-enforcement", "standard", "Network policy enforcement mode: standard or lax")
 		argEnableACLSampling           = pflag.Bool("enable-acl-sampling", false, "Enable experimental ACL sampling for NetworkPolicy events")
@@ -262,7 +266,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableExternalVpc           = pflag.Bool("enable-external-vpc", false, "Enable external vpc support")
 		argEnableEcmp                  = pflag.Bool("enable-ecmp", false, "Enable ecmp route for centralized subnet")
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
-		argEnableLbSvc                 = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
+		argEnablePodLbSvc              = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableNftableLbSvc          = pflag.Bool("enable-nftable-lb-svc", true, "Whether to support loadbalancer service backed by vpc nat gateway nftable share DNAT")
 		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
@@ -362,7 +366,7 @@ func ParseFlags() (*Configuration, error) {
 		PodNamespace:                   os.Getenv(util.EnvPodNamespace),
 		PodNicType:                     *argPodNicType,
 		LeaderElection:                 leaderElectionConfig,
-		EnableLb:                       *argEnableLb,
+		EnableOvnLB:                    *argEnableOvnLB,
 		EnableNP:                       *argEnableNP,
 		ACLSampling: aclsampling.ControllerConfig{
 			Enabled:                       *argEnableACLSampling,
@@ -385,7 +389,7 @@ func ParseFlags() (*Configuration, error) {
 		NodePgProbeTime:             *argNodePgProbeTime,
 		GCInterval:                  *argGCInterval,
 		InspectInterval:             *argInspectInterval,
-		EnableLbSvc:                 *argEnableLbSvc,
+		EnablePodLbSvc:              *argEnablePodLbSvc,
 		EnableNftableLbSvc:          *argEnableNftableLbSvc,
 		EnableOVNLBPreferLocal:      *argEnableOVNLBPreferLocal,
 		EnableMetrics:               *argEnableMetrics,
@@ -418,14 +422,14 @@ func ParseFlags() (*Configuration, error) {
 		return nil, errors.New("no host nic for vlan")
 	}
 
-	if config.EnableLbSvc && !config.EnableLb {
+	if config.EnablePodLbSvc && !config.EnableOvnLB {
 		klog.Warning("--enable-lb-svc requires --enable-lb, the loadbalancer service feature will not work")
 	}
 	if err := config.ACLSampling.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid ACL sampling configuration: %w", err)
 	}
 
-	if config.EnableNftableLbSvc && !config.EnableLb {
+	if config.EnableNftableLbSvc && !config.EnableOvnLB {
 		klog.Warning("--enable-nftable-lb-svc requires --enable-lb, the nftable loadbalancer service feature will not work")
 	}
 

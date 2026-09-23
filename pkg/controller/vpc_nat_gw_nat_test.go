@@ -845,7 +845,7 @@ func TestEnqueueUpdateIptablesDnatRuleNotifiesNftableLbService(t *testing.T) {
 	c := &Controller{
 		updateIptablesDnatRuleQueue:  newTypedRateLimitingQueue[string]("UpdateIptablesDnat", nil),
 		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
-		config:                       &Configuration{EnableLb: true, EnableNftableLbSvc: true},
+		config:                       &Configuration{EnableOvnLB: true, EnableNftableLbSvc: true},
 	}
 	t.Cleanup(c.updateIptablesDnatRuleQueue.ShutDown)
 	t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)
@@ -873,7 +873,7 @@ func TestEnqueueDelIptablesDnatRuleNotifiesNftableLbService(t *testing.T) {
 	c := &Controller{
 		delIptablesDnatRuleQueue:     newTypedRateLimitingQueue[string]("DelIptablesDnat", nil),
 		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
-		config:                       &Configuration{EnableLb: true, EnableNftableLbSvc: true},
+		config:                       &Configuration{EnableOvnLB: true, EnableNftableLbSvc: true},
 	}
 	t.Cleanup(c.delIptablesDnatRuleQueue.ShutDown)
 	t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)

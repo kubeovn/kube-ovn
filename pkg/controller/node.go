@@ -43,7 +43,7 @@ func (c *Controller) enqueueAddNode(obj any) {
 }
 
 func (c *Controller) enqueueTrafficDistributionServices() {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return
 	}
 	services, err := c.servicesLister.Services(metav1.NamespaceAll).List(labels.Everything())
@@ -188,7 +188,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	if nodeIsExternalGateway(oldNode) != nodeIsExternalGateway(newNode) {
 		c.enqueueExternalVpcsForReconcile()
 	}
-	if (nodeReadyChanged || nodeLabelsChanged) && c.config.EnableLb {
+	if (nodeReadyChanged || nodeLabelsChanged) && c.config.EnableOvnLB {
 		c.enqueueTrafficDistributionServices()
 	}
 }

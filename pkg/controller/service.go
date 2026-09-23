@@ -41,15 +41,15 @@ func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
 
-	// the queue consumers only run when EnableLb is set, so skip
+	// the queue consumers only run when EnableOvnLB is set, so skip
 	// enqueueing to avoid unbounded accumulation when it is not
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		klog.V(3).Infof("enqueue add service %s", key)
 		c.enqueueEndpointSliceService(key, svc)
 	}
 
-	// the add service worker also only runs when EnableLb is set
-	if c.config.EnableLb && c.config.EnableLbSvc {
+	// the add service worker also only runs when EnableOvnLB is set
+	if c.config.EnableOvnLB && c.config.EnablePodLbSvc {
 		klog.V(3).Infof("enqueue add lb service %s", key)
 		c.addServiceQueue.Add(key)
 	}
@@ -58,7 +58,7 @@ func (c *Controller) enqueueAddService(obj any) {
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return
 	}
 
@@ -104,7 +104,7 @@ func (c *Controller) enqueueDeleteService(obj any) {
 }
 
 func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return
 	}
 
@@ -255,7 +255,7 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		return err
 	}
 
-	if service.Svc.Spec.Type == v1.ServiceTypeLoadBalancer && c.config.EnableLbSvc {
+	if service.Svc.Spec.Type == v1.ServiceTypeLoadBalancer && c.config.EnablePodLbSvc {
 		if err := c.deleteLbSvc(service.Svc); err != nil {
 			klog.Errorf("failed to delete service %s, %v", service.Svc.Name, err)
 			return err
@@ -448,7 +448,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		}
 	}
 
-	if c.config.EnableLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
+	if c.config.EnablePodLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
 		changed, err := c.checkLbSvcDeployAnnotationChanged(svc)
 		if err != nil {
 			klog.Errorf("failed to check annotation change for lb svc %s: %v", key, err)
@@ -493,7 +493,7 @@ func parseVipAddr(vip string) string {
 }
 
 func (c *Controller) handleAddService(key string) error {
-	if !c.config.EnableLbSvc {
+	if !c.config.EnablePodLbSvc {
 		return nil
 	}
 
