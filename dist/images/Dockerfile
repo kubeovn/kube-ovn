@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 ARG VERSION=latest
 ARG BASE_TAG=$VERSION
-FROM kubeovn/kube-ovn-base:$BASE_TAG AS setcap
+ARG BASE_IMAGE=kubeovn/kube-ovn-base
+FROM ${BASE_IMAGE}:$BASE_TAG AS setcap
 
 COPY *.sh /kube-ovn/
 COPY kubectl-ko /kube-ovn/kubectl-ko
@@ -25,7 +26,7 @@ RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip /kube-ovn/kube-ovn-daemon && \
     setcap CAP_NET_ADMIN+eip /kube-ovn/vpc-egress-gateway-observer
 
-FROM kubeovn/kube-ovn-base:$BASE_TAG
+FROM ${BASE_IMAGE}:$BASE_TAG
 
 COPY --chmod=0644 logrotate/* /etc/logrotate.d/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
