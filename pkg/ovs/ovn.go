@@ -31,8 +31,8 @@ type LegacyClient struct {
 
 type OVNNbClient struct {
 	ovsDbClient
-	aclSamplingMonitorMu sync.Mutex
-	aclSamplingMonitored bool
+	aclSamplingMonitorMu      sync.Mutex
+	aclSamplingMonitorSupport bool
 }
 
 type OVNSbClient struct {
@@ -138,23 +138,8 @@ func NewDynamicOvnNbClient(
 	return c, models, nil
 }
 
-func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int) (*OVNNbClient, error) {
-	dbModel, err := ovnnb.FullDatabaseModel()
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	dbModel.SetIndexes(map[string][]model.ClientIndex{
-		ovnnb.LogicalRouterPolicyTable: {
-			{Columns: []model.ColumnKey{{Column: "match"}, {Column: "priority"}}},
-			{Columns: []model.ColumnKey{{Column: "priority"}}},
-			{Columns: []model.ColumnKey{{Column: "match"}}},
-		},
-	})
-	klog.Infof("ovn nb table %s client index %#v", ovnnb.LogicalRouterPolicyTable, dbModel.Indexes(ovnnb.LogicalRouterPolicyTable))
-
-	monitors := []client.MonitorOption{
+func ovnNBMonitorOptions() []client.MonitorOption {
+	return []client.MonitorOption{
 		client.WithTable(&ovnnb.ACL{}),
 		client.WithTable(&ovnnb.AddressSet{}),
 		client.WithTable(&ovnnb.BFD{}),
@@ -175,7 +160,29 @@ func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInacti
 		client.WithTable(&ovnnb.PortGroup{}),
 		client.WithTable(&ovnnb.Meter{}),
 		client.WithTable(&ovnnb.MeterBand{}),
+		client.WithTable(&ovnnb.SamplingApp{}),
+		client.WithTable(&ovnnb.SampleCollector{}),
+		client.WithTable(&ovnnb.Sample{}),
 	}
+}
+
+func NewOvnNbClient(ovnNbAddr string, ovnNbTimeout, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry int) (*OVNNbClient, error) {
+	dbModel, err := ovnnb.FullDatabaseModel()
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+
+	dbModel.SetIndexes(map[string][]model.ClientIndex{
+		ovnnb.LogicalRouterPolicyTable: {
+			{Columns: []model.ColumnKey{{Column: "match"}, {Column: "priority"}}},
+			{Columns: []model.ColumnKey{{Column: "priority"}}},
+			{Columns: []model.ColumnKey{{Column: "match"}}},
+		},
+	})
+	klog.Infof("ovn nb table %s client index %#v", ovnnb.LogicalRouterPolicyTable, dbModel.Indexes(ovnnb.LogicalRouterPolicyTable))
+
+	monitors := ovnNBMonitorOptions()
 
 	try := 0
 	var nbClient client.Client
