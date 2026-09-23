@@ -464,6 +464,7 @@ func TestGcNodeKeepsPolicyOfNodeCreatedDuringGc(t *testing.T) {
 	})
 	require.NoError(t, err)
 	ctrl := fc.fakeController
+	ctrl.nodeKeyMutex = keymutex.NewHashed(0)
 
 	newPolicy := func(node, ip string) *ovnnb.LogicalRouterPolicy {
 		return &ovnnb.LogicalRouterPolicy{
@@ -574,6 +575,7 @@ func TestGcNodeKeepsPolicyTakenOverAfterList(t *testing.T) {
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: []*corev1.Node{{Name: "node-b"}}})
 	require.NoError(t, err)
 	ctrl := fc.fakeController
+	ctrl.nodeKeyMutex = keymutex.NewHashed(0)
 
 	nbClient := newInMemoryOVNNbClient(t)
 	require.NoError(t, nbClient.CreateLogicalRouter(ctrl.config.ClusterRouter))
@@ -589,4 +591,55 @@ func TestGcNodeKeepsPolicyTakenOverAfterList(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, remaining, 1, "a policy taken over by a live node after the gc list must survive")
 	require.Equal(t, "node-b", remaining[0].ExternalIDs["node"])
+}
+
+// nodeListerRunningReplacement starts a same-name replacement of a node the moment gc reads the node as gone,
+// the way its add handler would run: under the node lock, adding the node and adopting its policies.
+type nodeListerRunningReplacement struct {
+	corelisters.NodeLister
+	node        string
+	replacement func()
+	started     sync.WaitGroup
+}
+
+func (l *nodeListerRunningReplacement) Get(name string) (*corev1.Node, error) {
+	node, err := l.NodeLister.Get(name)
+	if name == l.node && k8serrors.IsNotFound(err) {
+		l.started.Go(l.replacement)
+		// leave the replacement time to run now, if nothing holds it back
+		time.Sleep(50 * time.Millisecond)
+	}
+	return node, err
+}
+
+func TestGcNodeKeepsPolicyAdoptedBySameNameReplacement(t *testing.T) {
+	fc := newFakeController(t)
+	ctrl := fc.fakeController
+	ctrl.nodeKeyMutex = keymutex.NewHashed(0)
+
+	nbClient := newInMemoryOVNNbClient(t)
+	ctrl.OVNNbClient = nbClient
+	require.NoError(t, nbClient.CreateLogicalRouter(ctrl.config.ClusterRouter))
+	match := "ip4.dst == 172.15.2.16"
+	ids := map[string]string{"vendor": util.CniTypeName, "node": "node-a", "address-family": "4"}
+	addPolicy := func() error {
+		return nbClient.AddLogicalRouterPolicy(ctrl.config.ClusterRouter, util.NodeRouterPolicyPriority, match, ovnnb.LogicalRouterPolicyActionReroute, []string{"100.64.0.2"}, nil, ids)
+	}
+	require.NoError(t, addPolicy())
+
+	// the replacement keeps the name, so it adopts the row unchanged: same UUID, same external IDs
+	replacement := &nodeListerRunningReplacement{NodeLister: ctrl.nodesLister, node: "node-a", replacement: func() {
+		ctrl.nodeKeyMutex.LockKey("node-a")
+		defer func() { _ = ctrl.nodeKeyMutex.UnlockKey("node-a") }()
+		require.NoError(t, fc.fakeInformers.nodeInformer.Informer().GetIndexer().Add(&corev1.Node{Name: "node-a", UID: "replacement"}))
+		require.NoError(t, addPolicy())
+	}}
+	ctrl.nodesLister = replacement
+
+	require.NoError(t, ctrl.gcNode())
+	replacement.started.Wait()
+
+	remaining, err := nbClient.GetLogicalRouterPolicy(ctrl.config.ClusterRouter, util.NodeRouterPolicyPriority, match, true)
+	require.NoError(t, err)
+	require.Len(t, remaining, 1, "the policy of a same-name replacement node must survive gc")
 }

@@ -248,17 +248,7 @@ func (c *Controller) gcNode() error {
 		if !ok {
 			continue
 		}
-		// workers run while gc lists: read the owner per policy, it may have joined since the policy list
-		if _, err = c.nodesLister.Get(owner); err == nil {
-			continue
-		} else if !k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to get node %s: %v", owner, err)
-			return err
-		}
-		klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
-		// delete the listed row only: a node reusing the join address may have taken it over since the list
-		if _, err = c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
-			klog.Errorf("failed to delete logical router policy %q on lr %s: %v", policy.Match, c.config.ClusterRouter, err)
+		if err := c.gcStaleNodeRouterPolicy(owner, policy); err != nil {
 			return err
 		}
 	}
@@ -282,6 +272,28 @@ func (c *Controller) gcStaleNode(node string) error {
 	klog.Infof("gc node %s", node)
 	if err := c.deleteNode(node); err != nil {
 		klog.Errorf("failed to gc node %s: %v", node, err)
+		return err
+	}
+	return nil
+}
+
+// gcStaleNodeRouterPolicy deletes a router policy whose owning node no longer exists. Workers run while gc
+// lists, so the owner is read under the lock its handlers hold: a same-name replacement adopts the row with
+// the same external IDs, and the unchanged-row guard alone would not keep it.
+func (c *Controller) gcStaleNodeRouterPolicy(owner string, policy *ovnnb.LogicalRouterPolicy) error {
+	c.nodeKeyMutex.LockKey(owner)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(owner) }()
+
+	if _, err := c.nodesLister.Get(owner); err == nil {
+		return nil
+	} else if !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get node %s: %v", owner, err)
+		return err
+	}
+	klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
+	// delete the listed row only: a node reusing the join address may have taken it over since the list
+	if _, err := c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
+		klog.Errorf("failed to delete logical router policy %q on lr %s: %v", policy.Match, c.config.ClusterRouter, err)
 		return err
 	}
 	return nil
