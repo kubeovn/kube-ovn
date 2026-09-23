@@ -250,7 +250,7 @@ type LogicalRouterPolicy interface {
 	DeleteLogicalRouterPolicy(lrName string, priority int, match string) error
 	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
 	DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error
-	DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error
+	DeleteLogicalRouterPolicyIfUnchanged(lrName string, observed *ovnnb.LogicalRouterPolicy) (bool, error)
 	ClearLogicalRouterPolicy(lrName string) error
 	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
