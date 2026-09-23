@@ -181,7 +181,7 @@ func (suite *OvnClientTestSuite) testListChassis() {
 				names[chassis.Name] = true
 			}
 			return names["chassis-1"] && names["chassis-2"]
-		}, sbClient.Timeout, 100*time.Millisecond)
+		}, 5*time.Second, 100*time.Millisecond)
 	})
 
 	t.Run("test list chassis with no entries", func(t *testing.T) {
@@ -484,5 +484,5 @@ func (suite *OvnClientTestSuite) testGetKubeOvnChassises() {
 		}
 		return names["kube-ovn-chassis-1"] && names["kube-ovn-chassis-2"] &&
 			!names["non-kube-ovn-chassis"] && names["mixed-chassis"]
-	}, sbClient.Timeout, 100*time.Millisecond)
+	}, 5*time.Second, 100*time.Millisecond)
 }
