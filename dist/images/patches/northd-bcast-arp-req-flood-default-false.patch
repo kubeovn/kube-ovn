@@ -4,9 +4,9 @@ Date: Tue, 22 Sep 2026 07:00:00 +0000
 Subject: [PATCH] northd: restore bcast_arp_req_flood with default false
 
 Restore the Kube-OVN NB option that skips L2 flooding of broadcast ARP
-requests and unicasts localnet ARP for known LSP IPs. Default the option
-to false so large underlay broadcast domains do not hit OVS' 4096
-resubmit limit. Skip router LSPs so priority-110 forwarding does not
+and IPv6 ND requests and unicasts localnet ARP for known LSP IPs. Default
+the option to false so large underlay broadcast domains do not hit OVS'
+4096 resubmit limit. Skip router LSPs so priority-110 forwarding does not
 override the priority-105 drop of ARP/ND to LRP addresses from localnet.
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
@@ -41,13 +41,14 @@ index 2485ab5..9e525df 100644
  /* Due to various hard-coded priorities need to implement ACLs, the
   * northbound database supports a smaller range of ACL priorities than
   * are available to logical flows.  This value is added to an ACL
-@@ -10462,6 +10464,11 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
+@@ -10462,6 +10464,12 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
                        "outport == \"none\"",
                        "outport = \""MC_UNKNOWN "\"; output;",
                        lflow_ref);
 +        if (!bcast_arp_req_flood) {
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 90,
-+                          "eth.bcast && arp.op == 1", "next;",
++                          "(eth.bcast && arp.op == 1) || (eth.mcast && nd_ns)",
++                          "next;",
 +                          lflow_ref);
 +        }
      } else {
