@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -391,6 +392,30 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 		require.NoError(t, err)
 		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, "test-create-virtual-port-ls2", vip)
 		require.NoError(t, err)
+	})
+
+	t.Run("concurrent creation is idempotent", func(t *testing.T) {
+		const callers = 8
+		concurrentLSPName := "test-create-concurrent-virtual-port-lsp"
+		start := make(chan struct{})
+		errs := make(chan error, callers)
+		var wg sync.WaitGroup
+		for range callers {
+			wg.Go(func() {
+				<-start
+				errs <- nbClient.CreateVirtualLogicalSwitchPort(concurrentLSPName, lsName, vip)
+			})
+		}
+		close(start)
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+		lsp, err := nbClient.GetLogicalSwitchPort(concurrentLSPName, false)
+		require.NoError(t, err)
+		require.Equal(t, "virtual", lsp.Type)
+		require.Equal(t, vip, lsp.Options["virtual-ip"])
 	})
 
 	t.Run("update virtual-ip when logical switch port exists", func(t *testing.T) {
