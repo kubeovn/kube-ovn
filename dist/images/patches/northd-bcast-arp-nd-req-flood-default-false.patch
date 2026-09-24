@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Tue, 22 Sep 2026 07:00:00 +0000
+Subject: [PATCH] northd: add bcast_arp_nd_req_flood with default false
+
+Add the Kube-OVN NB option bcast_arp_nd_req_flood
+that skips L2 flooding of broadcast ARP and IPv6 ND requests. Default the
+option to false so large underlay broadcast domains do not hit OVS' 4096
+resubmit limit.
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+
+diff --git a/northd/en-global-config.c b/northd/en-global-config.c
+index bde7806..cd14778 100644
+--- a/northd/en-global-config.c
++++ b/northd/en-global-config.c
+@@ -710,6 +710,11 @@ check_nb_options_out_of_sync(
+         return true;
+     }
+ 
++    if (config_out_of_sync(&nb->options, &config_data->nb_options,
++                           "bcast_arp_nd_req_flood", false)) {
++        return true;
++    }
++
+     if (config_out_of_sync(&nb->options, &config_data->nb_options,
+                            "install_ls_lb_from_router", false)) {
+         return true;
+diff --git a/northd/northd.c b/northd/northd.c
+index 2485ab5..9e525df 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -119,6 +119,8 @@ static bool ls_ct_skip_dst_lport_ips = false;
+ 
+ #define MAX_OVN_NF_GROUP_IDS 256
+ 
++static bool bcast_arp_nd_req_flood = false;
++
+ /* Due to various hard-coded priorities need to implement ACLs, the
+  * northbound database supports a smaller range of ACL priorities than
+  * are available to logical flows.  This value is added to an ACL
+@@ -10462,6 +10464,12 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
+                       "outport == \"none\"",
+                       "outport = \""MC_UNKNOWN "\"; output;",
+                       lflow_ref);
++        if (!bcast_arp_nd_req_flood) {
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 90,
++                          "(eth.bcast && arp.op == 1) || nd_ns_mcast",
++                          "next;",
++                          lflow_ref);
++        }
+     } else {
+         ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
+                       "outport == \"none\"", debug_drop_action(), lflow_ref,
+@@ -21407,5 +21462,7 @@ ovnnb_db_run(struct northd_input *input_data,
+ 
+     use_ct_inv_match = smap_get_bool(input_data->nb_options,
+                                      "use_ct_inv_match", true);
++    bcast_arp_nd_req_flood = smap_get_bool(input_data->nb_options,
++                                        "bcast_arp_nd_req_flood", false);
+     acl_ct_translation = smap_get_bool(input_data->nb_options,
+                                        "acl_ct_translation", false);

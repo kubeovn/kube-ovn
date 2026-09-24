@@ -16,9 +16,7 @@ ADD patches/ovsdb-tool-add-optional-server-id-parameter-for-join-cluster-command
 ADD patches/fix-memory-leak-in-qos.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-command-fix-cluster.patch $SRC_DIR
 ADD patches/increase-the-default-probe-to-60s.patch $SRC_DIR
-ADD patches/modify-src-route-priority.patch $SRC_DIR
 ADD patches/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch $SRC_DIR
-ADD patches/northd-bcast-arp-req-flood-default-false.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
 
@@ -47,12 +45,8 @@ RUN cd /usr/src/ && \
 
 RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    # modify src route priority
-    git apply --unidiff-zero $SRC_DIR/modify-src-route-priority.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     git apply --unidiff-zero $SRC_DIR/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch && \
-    # northd: restore bcast_arp_req_flood (default false) to skip underlay ARP flood
-    git apply --unidiff-zero $SRC_DIR/northd-bcast-arp-req-flood-default-false.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 
