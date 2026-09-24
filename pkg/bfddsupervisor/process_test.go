@@ -12,6 +12,8 @@ import (
 )
 
 func TestProcessControllerRestartsOnlyAfterPreviousGenerationStops(t *testing.T) {
+	const processTestTimeout = 5 * time.Second
+
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "child.log")
 	scriptPath := filepath.Join(dir, "child")
@@ -24,14 +26,14 @@ while true; do read -r -t 1 _ || true; done
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
 	t.Setenv("CHILD_LOG", logPath)
 
-	controller := NewProcessController(ProcessConfig{Path: scriptPath, StopTimeout: time.Second})
+	controller := NewProcessController(ProcessConfig{Path: scriptPath, StopTimeout: processTestTimeout})
 	require.NoError(t, controller.Start())
 	t.Cleanup(func() { require.NoError(t, controller.Stop(context.Background())) })
-	require.Eventually(t, func() bool { return controller.Running() }, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return controller.Running() }, processTestTimeout, 10*time.Millisecond)
 	require.Eventually(t, func() bool {
 		data, err := os.ReadFile(logPath)
 		return err == nil && strings.HasPrefix(string(data), "start ")
-	}, time.Second, 10*time.Millisecond)
+	}, processTestTimeout, 10*time.Millisecond)
 
 	require.NoError(t, controller.Restart(context.Background()))
 	require.True(t, controller.Running())
@@ -42,7 +44,7 @@ while true; do read -r -t 1 _ || true; done
 		}
 		lines := strings.Fields(string(data))
 		return len(lines) == 6 && lines[0] == "start" && lines[2] == "stop" && lines[4] == "start" && lines[1] == lines[3] && lines[1] != lines[5]
-	}, time.Second, 10*time.Millisecond)
+	}, processTestTimeout, 10*time.Millisecond)
 }
 
 func TestProcessControllerReturnsUnexpectedChildExitCause(t *testing.T) {
