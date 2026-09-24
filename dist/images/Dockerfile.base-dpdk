@@ -49,11 +49,8 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch
 
 RUN cd /usr/src/ && \
-    git init ovn && \
+    git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    git remote add origin https://github.com/ovn-org/ovn.git && \
-    git fetch --depth=1 origin ef8f5c1ac63e8094eaf13507013e310991db45a2 && \
-    git checkout FETCH_HEAD && \
     # change hash type from dp_hash to hash with field src_ip
     git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports

@@ -10,10 +10,10 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
  2 files changed, 57 insertions(+)
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index 6b45a14fe4..b73c14517a 100644
+index 7135a02..c82d35f 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -553,6 +553,11 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
+@@ -563,6 +563,11 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
          return true;
      }
  
@@ -26,10 +26,12 @@ index 6b45a14fe4..b73c14517a 100644
  }
  
 diff --git a/northd/northd.c b/northd/northd.c
-index 6b993258fe..86f92bf01f 100644
+index 173caa0..056aea3 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -92,4 +92,7 @@ static bool default_acl_drop;
+@@ -96,6 +96,9 @@ static bool acl_ct_translation = false;
+  */
+ static bool default_acl_drop;
  
 +static struct sset node_local_dns_ip_v4 = SSET_INITIALIZER(&node_local_dns_ip_v4);
 +static struct sset node_local_dns_ip_v6 = SSET_INITIALIZER(&node_local_dns_ip_v6);
@@ -37,7 +39,7 @@ index 6b993258fe..86f92bf01f 100644
  static bool compatible_21_06 = false;
  static bool compatible_22_03 = false;
  static bool compatible_22_12 = false;
-@@ -6242,6 +6245,27 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
+@@ -6451,6 +6454,27 @@ build_ls_stateful_rec_pre_lb(const struct ls_stateful_record *ls_stateful_rec,
          ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_LB,
                        100, "ip", REGBIT_CONNTRACK_NAT" = 1; next;",
                        lflow_ref);
@@ -65,9 +67,9 @@ index 6b993258fe..86f92bf01f 100644
      }
  }
  
-@@ -17672,4 +17696,32 @@ ovnnb_db_run(struct northd_input *input_data,
-     use_ct_inv_match = smap_get_bool(input_data->nb_options,
-                                      "use_ct_inv_match", true);
+@@ -18194,6 +18218,34 @@ ovnnb_db_run(struct northd_input *input_data,
+     acl_ct_translation = smap_get_bool(input_data->nb_options,
+                                        "acl_ct_translation", false);
  
 +    sset_clear(&node_local_dns_ip_v4);
 +    sset_clear(&node_local_dns_ip_v6);

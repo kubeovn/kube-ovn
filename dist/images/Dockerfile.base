@@ -67,7 +67,6 @@ ADD patches/e7d3ba53cdcbc524bb29c54ddb07b83cc4258ed7.patch $SRC_DIR
 ADD patches/a9e009136a42cf6d985f97e2bf1ec41df6b5ca29.patch $SRC_DIR
 ADD patches/fb0108d8fc29c1bd29666f1eb2a27bf34628fa11.patch $SRC_DIR
 ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
-ADD patches/northd-localnet-arp-nd-responder.patch $SRC_DIR
 ADD patches/northd-bcast-arp-nd-req-flood-default-false.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -103,11 +102,8 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/54b767822916606dbb78335a3197983f435b5b8a.patch
 
 RUN cd /usr/src/ && \
-    git init ovn && \
+    git clone -b branch-24.03 --depth=1 https://github.com/ovn-org/ovn.git && \
     cd ovn && \
-    git remote add origin https://github.com/ovn-org/ovn.git && \
-    git fetch --depth=1 origin ef8f5c1ac63e8094eaf13507013e310991db45a2 && \
-    git checkout FETCH_HEAD && \
     # change hash type from dp_hash to hash with field src_ip
     git apply $SRC_DIR/e490f5ac0b644101913c2a3db8e03d85e859deff.patch && \
     # modify route offset 
@@ -144,8 +140,6 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/fb0108d8fc29c1bd29666f1eb2a27bf34628fa11.patch && \
     # adapt to the compose_nd_ns() signature change in ovs branch-3.3 commit 3430a01a6
     git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch && \
-    # northd: enable ARP/ND responder for localnet-sourced requests
-    git apply $SRC_DIR/northd-localnet-arp-nd-responder.patch && \
     # northd: skip underlay ARP/ND request flood by default
     git apply $SRC_DIR/northd-bcast-arp-nd-req-flood-default-false.patch
 

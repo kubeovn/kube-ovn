@@ -1,47 +1,51 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: zhangzujian <zhangzujian.7@gmail.com>
-Date: Tue, 22 Sep 2026 02:00:00 +0000
-Subject: [PATCH] northd: add bcast_arp_nd_req_flood with default false
-
-Add the Kube-OVN NB option bcast_arp_nd_req_flood
-that skips L2 flooding of broadcast ARP and IPv6 ND requests and lets the
-native OVN ARP/ND responder handle localnet requests. Default the option to
-false so large underlay broadcast domains do not hit OVS' 4096 resubmit limit.
-
-Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
----
-
+diff --git a/northd/en-global-config.c b/northd/en-global-config.c
+index 9f7172c..1055b3a 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -551,2 +551,7 @@
+@@ -578,6 +578,11 @@ check_nb_options_out_of_sync(const struct nbrec_nb_global *nb,
+         return true;
+     }
+ 
 +    if (config_out_of_sync(&nb->options, &config_data->nb_options,
 +                           "bcast_arp_nd_req_flood", false)) {
 +        return true;
 +    }
 +
-     if (config_out_of_sync(&nb->options, &config_data->nb_options,
-                            "install_ls_lb_from_router", false)) {
+     return false;
+ }
+ 
+diff --git a/northd/northd.c b/northd/northd.c
+index e39e64e..177d274 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -8964,6 +8965,12 @@
-                       "outport == \"none\"",
-                       "outport = \""MC_UNKNOWN "\"; output;",
-                       lflow_ref);
-+        if (!bcast_arp_nd_req_flood) {
-+            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 90,
-+                          "(eth.bcast && arp.op == 1) || nd_ns_mcast",
-+                          "next;",
-+                          lflow_ref);
-+        }
-     } else {
-         ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
-                       "outport == \"none\"",  debug_drop_action(),
-@@ -18617,6 +18617,8 @@
+@@ -107,6 +107,8 @@ static bool ls_ct_skip_dst_lport_ips = false;
  
-     use_ct_inv_match = smap_get_bool(input_data->nb_options,
-                                      "use_ct_inv_match", true);
+ static bool ls_dnat_mod_dl_dst = false;
+ 
++static bool bcast_arp_nd_req_flood = false;
++
+ #define MAX_OVN_TAGS 4096
+ 
+ 
+@@ -10268,6 +10270,12 @@ build_lswitch_destination_lookup_bmcast(struct ovn_datapath *od,
+                       lflow_ref);
+     }
+ 
++    if (!bcast_arp_nd_req_flood) {
++        ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 90,
++                      "(eth.bcast && arp.op == 1) || nd_ns_mcast",
++                      "next;", lflow_ref);
++    }
++
+     /* ND NA, Router Solicitation and Router Advertisement should be
+      * flooded to all ports including routers.  ND NA is needed for
+      * neighbor learning; ND RS must reach routers so they can respond
+@@ -18756,6 +18764,8 @@ ovnnb_db_run(struct northd_input *input_data,
+                                              false);
+     ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,
+                                        "ls_dnat_mod_dl_dst", false);
 +    bcast_arp_nd_req_flood = smap_get_bool(input_data->nb_options,
 +                                           "bcast_arp_nd_req_flood", false);
  
-     sset_clear(&node_local_dns_ip_v4);
-     sset_clear(&node_local_dns_ip_v6);
+     const char *s = smap_get_def(input_data->nb_options,
+                                  "version_compatibility", "");

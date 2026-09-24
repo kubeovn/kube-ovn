@@ -9,12 +9,12 @@ Signed-off-by: clyi <clyi@alauda.io>
  1 file changed, 30 insertions(+)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index 53510bf5fd..a58db7dbde 100644
+index d61d914..05890cb 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -6020,6 +6020,36 @@ build_ls_stateful_rec_pre_acls(
-         ovn_lflow_add(lflows, od, S_SWITCH_OUT_PRE_ACL, 110, "eth.mcast",
-                       "next;", lflow_ref);
+@@ -6232,6 +6232,36 @@ build_ls_stateful_rec_pre_acls(
+                           "next;", lflow_ref);
+         }
  
 +        // skip conntrack when access node local dns ip
 +        char *match = NULL;
