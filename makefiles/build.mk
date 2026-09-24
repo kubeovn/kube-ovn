@@ -10,6 +10,11 @@ IMAGE_REVISION := $(IMAGE_REVISION)
 IMAGE_REF_NAME := $(IMAGE_REF_NAME)
 endif
 IMAGE_LABELS = --label "org.opencontainers.image.source=github.com/kubeovn/kube-ovn" --label "org.opencontainers.image.revision=$(IMAGE_REVISION)" --label "org.opencontainers.image.ref.name=$(IMAGE_REF_NAME)"
+DOCKER_BUILD_ARGS ?= --pull=false
+DOCKER_BUILD_ENV ?= BUILDX_BUILDER=default
+BASE_IMAGE ?= kubeovn/kube-ovn-base
+LOCAL_BASE_REGISTRY ?= localhost:5000
+LOCAL_BASE_TAGS ?= $(RELEASE_TAG) $(DEBUG_TAG) $(LEGACY_TAG)
 
 GOLDFLAGS = -extldflags '-z now' -X github.com/kubeovn/kube-ovn/versions.COMMIT=$(COMMIT) -X github.com/kubeovn/kube-ovn/versions.VERSION=$(RELEASE_TAG) -X github.com/kubeovn/kube-ovn/versions.BUILDDATE=$(DATE)
 ifdef DEBUG
@@ -55,22 +60,54 @@ build-go-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/vpc-egress-gateway-observer -v ./cmd/vpc-egress-gateway-observer
 
 .PHONY: build-kube-ovn
-build-kube-ovn: gen-crd build-debug build-go
-	docker build $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
-	docker build $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(LEGACY_TAG) --build-arg VERSION=$(LEGACY_TAG) -f dist/images/Dockerfile dist/images/
+ifeq ($(GITHUB_ACTIONS),true)
+build-kube-ovn: BASE_IMAGE=$(LOCAL_BASE_REGISTRY)/kube-ovn-base
+build-kube-ovn: LOCAL_BASE_TAGS=$(RELEASE_TAG) $(DEBUG_TAG) $(LEGACY_TAG)
+endif
+build-kube-ovn: gen-crd prepare-local-base build-debug build-go
+	$(DOCKER_BUILD_ENV) docker build $(DOCKER_BUILD_ARGS) $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) --build-arg BASE_IMAGE=$(BASE_IMAGE) -f dist/images/Dockerfile dist/images/
+	$(DOCKER_BUILD_ENV) docker build $(DOCKER_BUILD_ARGS) $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(LEGACY_TAG) --build-arg VERSION=$(LEGACY_TAG) --build-arg BASE_IMAGE=$(BASE_IMAGE) -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-kube-ovn-dpdk
-build-kube-ovn-dpdk: gen-crd build-go
-	docker build $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg BASE_TAG=$(RELEASE_TAG)-dpdk -f dist/images/Dockerfile dist/images/
+ifeq ($(GITHUB_ACTIONS),true)
+build-kube-ovn-dpdk: BASE_IMAGE=$(LOCAL_BASE_REGISTRY)/kube-ovn-base
+build-kube-ovn-dpdk: LOCAL_BASE_TAGS=$(RELEASE_TAG)-dpdk
+endif
+build-kube-ovn-dpdk: gen-crd prepare-local-base build-go
+	$(DOCKER_BUILD_ENV) docker build $(DOCKER_BUILD_ARGS) $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG)-dpdk --build-arg BASE_TAG=$(RELEASE_TAG)-dpdk --build-arg BASE_IMAGE=$(BASE_IMAGE) -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-dev
 build-dev: gen-crd build-go
-	docker build $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(DEV_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
+	$(DOCKER_BUILD_ENV) docker build $(DOCKER_BUILD_ARGS) $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(DEV_TAG) --build-arg VERSION=$(RELEASE_TAG) -f dist/images/Dockerfile dist/images/
 
 .PHONY: build-debug
 build-debug: gen-crd
 	@DEBUG=1 $(MAKE) build-go
-	docker build $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) -f dist/images/Dockerfile dist/images/
+	$(DOCKER_BUILD_ENV) docker build $(DOCKER_BUILD_ARGS) $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(DEBUG_TAG) --build-arg BASE_TAG=$(DEBUG_TAG) --build-arg BASE_IMAGE=$(BASE_IMAGE) -f dist/images/Dockerfile dist/images/
+
+.PHONY: prepare-local-base
+prepare-local-base:
+ifeq ($(GITHUB_ACTIONS),true)
+	@set -eu; \
+	for tag in $(LOCAL_BASE_TAGS); do \
+		if ! docker image inspect $(REGISTRY)/kube-ovn-base:$$tag >/dev/null 2>&1; then \
+			echo "missing rebuilt base image $(REGISTRY)/kube-ovn-base:$$tag" >&2; \
+			exit 1; \
+		fi; \
+	done; \
+	running=$$(docker inspect -f '{{.State.Running}}' kube-ovn-base-registry 2>/dev/null || true); \
+	if [ "$$running" != true ]; then \
+		if [ -n "$$running" ]; then docker start kube-ovn-base-registry >/dev/null; \
+		else docker run -d --name kube-ovn-base-registry --restart=always -p 5000:5000 registry:2 >/dev/null; fi; \
+	fi; \
+	until curl -fsS http://$(LOCAL_BASE_REGISTRY)/v2/ >/dev/null; do sleep 1; done; \
+	for tag in $(LOCAL_BASE_TAGS); do \
+		docker tag $(REGISTRY)/kube-ovn-base:$$tag $(BASE_IMAGE):$$tag; \
+		docker push $(BASE_IMAGE):$$tag; \
+	done
+else
+	@:
+endif
 
 .PHONY: base-amd64
 base-amd64:
@@ -89,7 +126,7 @@ base-arm64:
 
 .PHONY: build-kit
 build-kit: gen-crd build-go
-	DOCKER_BUILDKIT=1 docker build $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
+	DOCKER_BUILDKIT=1 $(DOCKER_BUILD_ENV) docker build $(DOCKER_BUILD_ARGS) $(IMAGE_LABELS) -t $(REGISTRY)/kube-ovn:$(RELEASE_TAG) --build-arg VERSION=$(RELEASE_TAG) -o type=docker -f dist/images/Dockerfile dist/images/
 
 .PHONY: image-kube-ovn
 image-kube-ovn: gen-crd image-kube-ovn-debug build-go

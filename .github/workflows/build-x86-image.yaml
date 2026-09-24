@@ -766,22 +766,26 @@ jobs:
           done
 
       - name: Build
+        env:
+          BUILDX_BUILDER: default
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum
           make verify-crd
           make lint
           if [ ${{ needs.build-kube-ovn-base.outputs.build-base || 0 }} = 1 ]; then
-            make build-kube-ovn
+            DOCKER_BUILD_ARGS=--pull=false make build-kube-ovn
           else
             make image-kube-ovn
           fi
           make tar-kube-ovn
 
       - name: Build dpdk
+        env:
+          BUILDX_BUILDER: default
         run: |
           if [ ${{ needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base || 0 }} = 1 ]; then
-            make build-kube-ovn-dpdk
+            DOCKER_BUILD_ARGS=--pull=false make build-kube-ovn-dpdk
           else
             make image-kube-ovn-dpdk
           fi
