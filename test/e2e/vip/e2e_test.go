@@ -104,7 +104,7 @@ func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupNa
 	// AAP does not work fine with security group in kind test env for now
 }
 
-func expectVirtualVipParents(f *framework.Framework, name, ip string, expectedParents []string) {
+func expectVirtualVipParents(name, ip string, expectedParents []string) {
 	ginkgo.GinkgoHelper()
 
 	conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=%q", name, ip)
@@ -488,7 +488,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		sort.Strings(expectVirtualParents)
 		if f.VersionPriorTo(1, 16) {
 			// Before v1.16, a VIP used one virtual port with the combined addresses.
-			expectVirtualVipParents(f, vip1Name, virtualIP1, expectVirtualParents)
+			expectVirtualVipParents(vip1Name, virtualIP1, expectVirtualParents)
 		} else {
 			// v1.16 and master use one virtual port per address family.
 			for _, virtualPort := range []struct {
@@ -499,7 +499,7 @@ var _ = framework.Describe("[group:vip]", func() {
 				{name: "vip:" + vip1Name + ":ipv6", ip: vip1.Status.V6ip},
 			} {
 				if virtualPort.ip != "" {
-					expectVirtualVipParents(f, virtualPort.name, virtualPort.ip, expectVirtualParents)
+					expectVirtualVipParents(virtualPort.name, virtualPort.ip, expectVirtualParents)
 				}
 			}
 		}
