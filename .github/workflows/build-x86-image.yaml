@@ -2588,6 +2588,12 @@ jobs:
             docker exec clab-bgp-router vtysh -c "show bgp $afi unicast summary json" > "bgp-speaker-e2e-diagnostics/frr-summary-$afi.json" || true
             docker exec clab-bgp-router vtysh -c "show bgp $afi unicast json" > "bgp-speaker-e2e-diagnostics/frr-routes-$afi.json" || true
           done
+          docker inspect clab-bgp-router > bgp-speaker-e2e-diagnostics/frr-container-inspect.json || true
+          docker logs clab-bgp-router > bgp-speaker-e2e-diagnostics/frr-container.log 2>&1 || true
+          docker exec clab-bgp-router sh -c 'ps -ef' > bgp-speaker-e2e-diagnostics/frr-processes.txt 2>&1 || true
+          docker exec clab-bgp-router vtysh -c 'show bgp summary json' > bgp-speaker-e2e-diagnostics/frr-summary.json 2>&1 || true
+          docker exec clab-bgp-router vtysh -c 'show running-config' > bgp-speaker-e2e-diagnostics/frr-running-config.txt 2>&1 || true
+          docker exec clab-bgp-router sh -c 'for file in /var/log/frr/*; do test -f "$file" || continue; echo "===== $file"; cat "$file"; done' > bgp-speaker-e2e-diagnostics/frr-logs.txt 2>&1 || true
           kubectl -n kube-system get ds kube-ovn-speaker -o yaml > bgp-speaker-e2e-diagnostics/speaker-daemonset.yaml || true
           kubectl -n kube-system get pods -l app=kube-ovn-speaker -o wide > bgp-speaker-e2e-diagnostics/speaker-pods.txt || true
           kubectl -n kube-system logs -l app=kube-ovn-speaker --all-containers --prefix > bgp-speaker-e2e-diagnostics/speaker.log || true
