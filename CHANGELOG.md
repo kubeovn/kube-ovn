@@ -608,6 +608,17 @@
  * zhangzujian
  * 张祖建
 
+## v1.15.29 (2026-09-24)
+
+ * [aea8ec49a](https://github.com/kubeovn/kube-ovn/commit/aea8ec49a08da283f89c2a454d34ec15ba212302) release v1.15.29
+ * [dcd55969a](https://github.com/kubeovn/kube-ovn/commit/dcd55969ab78b3f9091e32a7d1d97b832720b459) fix: avoid flooding IPv6 neighbor solicitations in underlay (#7517)
+ * [e3b6182f4](https://github.com/kubeovn/kube-ovn/commit/e3b6182f4e83144cdb827776187823146fa11496) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
 ## v1.15.28 (2026-09-22)
 
  * [6c918a528](https://github.com/kubeovn/kube-ovn/commit/6c918a528001daf6cd46d610d4211f6ad296b4ce) release v1.15.28
@@ -1717,6 +1728,17 @@
  * renovate[bot]
  * xieyanker
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.14.46 (2026-09-23)
+
+ * [6bc5cdfaf](https://github.com/kubeovn/kube-ovn/commit/6bc5cdfafb6e2f67fd115f3a2757e2f8e2c392f1) release v1.14.46
+ * [de2bca6bf](https://github.com/kubeovn/kube-ovn/commit/de2bca6bfccfa5e7f720e471a6a7c797dd2cb290) fix: use native OVN localnet ARP/ND responder (#7518)
+ * [16a2b8bde](https://github.com/kubeovn/kube-ovn/commit/16a2b8bde15ff705912291886cd4106fb1dd5435) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
