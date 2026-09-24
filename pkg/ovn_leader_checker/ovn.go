@@ -566,10 +566,17 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 		util.LogFatalAndExit(nil, "preValidChkCfg: invalid cfg")
 	}
 
-	// Determine the expected AddressType based on pod IP protocol
+	// Determine the expected AddressType based on pod IP protocol.
+	// In HCP mode POD_IP is a headless-Service hostname (e.g.
+	// ovn-central-0.ovn-central.kube-system.svc) rather than a literal IP,
+	// so it must be resolved to determine the address family.
 	podIP := os.Getenv(util.EnvPodIP)
+	protocol, err := util.ResolveProtocol(podIP)
+	if err != nil {
+		klog.Warningf("failed to resolve POD_IP %q to an address family, defaulting to %s: %v", podIP, kubeovnv1.ProtocolIPv4, err)
+	}
 	var expectedAddrType discoveryv1.AddressType
-	if util.CheckProtocol(podIP) == kubeovnv1.ProtocolIPv6 {
+	if err == nil && protocol == kubeovnv1.ProtocolIPv6 {
 		expectedAddrType = discoveryv1.AddressTypeIPv6
 	} else {
 		expectedAddrType = discoveryv1.AddressTypeIPv4
