@@ -104,6 +104,28 @@ func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupNa
 	// AAP does not work fine with security group in kind test env for now
 }
 
+func expectVirtualVipParents(f *framework.Framework, name, ip string, expectedParents []string) {
+	ginkgo.GinkgoHelper()
+
+	conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=%q", name, ip)
+	nbctlCmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=options find logical-switch-port " + conditions
+	output, _, err := framework.NBExec(nbctlCmd)
+	framework.ExpectNoError(err)
+	framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
+
+	pairs := strings.Split(string(output), " ")
+	options := make(map[string]string)
+	for _, pair := range pairs {
+		keyValue := strings.Split(pair, "=")
+		if len(keyValue) == 2 {
+			options[keyValue[0]] = strings.ReplaceAll(keyValue[1], "\n", "")
+		}
+	}
+	virtualParents := strings.Split(options["virtual-parents"], ",")
+	sort.Strings(virtualParents)
+	framework.ExpectEqual(expectedParents, virtualParents)
+}
+
 var _ = framework.Describe("[group:vip]", func() {
 	f := framework.NewDefaultFramework("vip")
 
@@ -464,36 +486,22 @@ var _ = framework.Describe("[group:vip]", func() {
 		_ = podClient.CreateSync(aapPod2)
 		expectVirtualParents := []string{fmt.Sprintf("%s.%s", aapPodName1, namespaceName), fmt.Sprintf("%s.%s", aapPodName2, namespaceName)}
 		sort.Strings(expectVirtualParents)
-		for _, virtualPort := range []struct {
-			name string
-			ip   string
-		}{
-			{name: "vip:" + vip1Name + ":ipv4", ip: vip1.Status.V4ip},
-			{name: "vip:" + vip1Name + ":ipv6", ip: vip1.Status.V6ip},
-		} {
-			if virtualPort.ip == "" {
-				continue
-			}
-
-			// Each address family has its own virtual logical switch port.
-			conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=%q", virtualPort.name, virtualPort.ip)
-			nbctlCmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=options find logical-switch-port " + conditions
-			output, _, err := framework.NBExec(nbctlCmd)
-			framework.ExpectNoError(err)
-			framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
-
-			// Virtual parents should be set correctly on every address-family port.
-			pairs := strings.Split(string(output), " ")
-			options := make(map[string]string)
-			for _, pair := range pairs {
-				keyValue := strings.Split(pair, "=")
-				if len(keyValue) == 2 {
-					options[keyValue[0]] = strings.ReplaceAll(keyValue[1], "\n", "")
+		if f.VersionPriorTo(1, 16) {
+			// Before v1.16, a VIP used one virtual port with the combined addresses.
+			expectVirtualVipParents(f, vip1Name, virtualIP1, expectVirtualParents)
+		} else {
+			// v1.16 and master use one virtual port per address family.
+			for _, virtualPort := range []struct {
+				name string
+				ip   string
+			}{
+				{name: "vip:" + vip1Name + ":ipv4", ip: vip1.Status.V4ip},
+				{name: "vip:" + vip1Name + ":ipv6", ip: vip1.Status.V6ip},
+			} {
+				if virtualPort.ip != "" {
+					expectVirtualVipParents(f, virtualPort.name, virtualPort.ip, expectVirtualParents)
 				}
 			}
-			virtualParents := strings.Split(options["virtual-parents"], ",")
-			sort.Strings(virtualParents)
-			framework.ExpectEqual(expectVirtualParents, virtualParents)
 		}
 
 		ginkgo.By("Test allow address pair connectivity")
