@@ -260,17 +260,7 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string)
 			klog.Error(err)
 			return err
 		}
-		if lsp.Options == nil {
-			lsp.Options = make(map[string]string)
-		}
-		if lsp.Options["virtual-ip"] != ip {
-			lsp.Options["virtual-ip"] = ip
-			if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
-				klog.Error(err)
-				return fmt.Errorf("update virtual logical switch port %s: %w", lspName, err)
-			}
-		}
-		return nil
+		return c.updateVirtualLogicalSwitchPort(lsp, ip)
 	}
 
 	lsp := &ovnnb.LogicalSwitchPort{
@@ -290,9 +280,32 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string)
 
 	if err := c.Transact("lsp-add", op); err != nil {
 		klog.Error(err)
+		// Another worker may have inserted the same named port after the
+		// existence check above. Re-read it and reconcile the desired option so
+		// concurrent create calls are idempotent.
+		lsp, getErr := c.GetLogicalSwitchPort(lspName, true)
+		if getErr == nil && lsp != nil {
+			return c.updateVirtualLogicalSwitchPort(lsp, ip)
+		}
 		return fmt.Errorf("create virtual logical switch port %s for logical switch %s: %w", lspName, lsName, err)
 	}
 
+	return nil
+}
+
+func (c *OVNNbClient) updateVirtualLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, ip string) error {
+	if lsp.Options == nil {
+		lsp.Options = make(map[string]string)
+	}
+	if lsp.Options["virtual-ip"] == ip {
+		return nil
+	}
+
+	lsp.Options["virtual-ip"] = ip
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("update virtual logical switch port %s: %w", lsp.Name, err)
+	}
 	return nil
 }
 

@@ -169,14 +169,13 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Infof("created host network pod vm ip %s", key)
 		return nil
 	}
-	if err := c.handleUpdateVirtualParents(key); err != nil {
-		err := fmt.Errorf("error syncing virtual parents for vip '%s': %s", key, err.Error())
-		klog.Error(err)
-		return err
-	}
+	// Status updates enqueue the same reconciliation. Keep parent updates on
+	// their dedicated queue so the add and status workers cannot create the
+	// same virtual port concurrently.
+	c.updateVirtualParentsQueue.Add(key)
 
-	// Trigger subnet status update after all operations complete
-	// At this point: IPAM allocated, VIP CR created with labels+status+finalizer
+	// Trigger subnet status update after IPAM allocation and VIP persistence.
+	// Parent reconciliation is queued above and runs independently.
 	c.updateSubnetStatusQueue.Add(subnetName)
 	return nil
 }
