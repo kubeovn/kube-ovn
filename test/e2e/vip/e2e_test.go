@@ -462,26 +462,39 @@ var _ = framework.Describe("[group:vip]", func() {
 		ginkgo.By("Creating pod2 support allowed address pair using " + vip1Name)
 		aapPod2 := framework.MakePrivilegedPod(namespaceName, aapPodName2, nil, annotations, f.KubeOVNImage, cmd, nil)
 		_ = podClient.CreateSync(aapPod2)
-		// logical switch port with type virtual should be created
-		conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=%q", vip1Name, virtualIP1)
-		nbctlCmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=options find logical-switch-port " + conditions
-		output, _, err := framework.NBExec(nbctlCmd)
-		framework.ExpectNoError(err)
-		framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
-		// virtual parents should be set correctly
-		pairs := strings.Split(string(output), " ")
-		options := make(map[string]string)
-		for _, pair := range pairs {
-			keyValue := strings.Split(pair, "=")
-			if len(keyValue) == 2 {
-				options[keyValue[0]] = strings.ReplaceAll(keyValue[1], "\n", "")
-			}
-		}
-		virtualParents := strings.Split(options["virtual-parents"], ",")
-		sort.Strings(virtualParents)
 		expectVirtualParents := []string{fmt.Sprintf("%s.%s", aapPodName1, namespaceName), fmt.Sprintf("%s.%s", aapPodName2, namespaceName)}
 		sort.Strings(expectVirtualParents)
-		framework.ExpectEqual(expectVirtualParents, virtualParents)
+		for _, virtualPort := range []struct {
+			name string
+			ip   string
+		}{
+			{name: "vip:" + vip1Name + ":ipv4", ip: vip1.Status.V4ip},
+			{name: "vip:" + vip1Name + ":ipv6", ip: vip1.Status.V6ip},
+		} {
+			if virtualPort.ip == "" {
+				continue
+			}
+
+			// Each address family has its own virtual logical switch port.
+			conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=%q", virtualPort.name, virtualPort.ip)
+			nbctlCmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=options find logical-switch-port " + conditions
+			output, _, err := framework.NBExec(nbctlCmd)
+			framework.ExpectNoError(err)
+			framework.ExpectNotEmpty(strings.TrimSpace(string(output)))
+
+			// Virtual parents should be set correctly on every address-family port.
+			pairs := strings.Split(string(output), " ")
+			options := make(map[string]string)
+			for _, pair := range pairs {
+				keyValue := strings.Split(pair, "=")
+				if len(keyValue) == 2 {
+					options[keyValue[0]] = strings.ReplaceAll(keyValue[1], "\n", "")
+				}
+			}
+			virtualParents := strings.Split(options["virtual-parents"], ",")
+			sort.Strings(virtualParents)
+			framework.ExpectEqual(expectVirtualParents, virtualParents)
+		}
 
 		ginkgo.By("Test allow address pair connectivity")
 		if f.HasIPv4() {
