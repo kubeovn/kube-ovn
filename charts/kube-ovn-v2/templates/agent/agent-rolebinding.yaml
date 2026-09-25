@@ -1,8 +1,10 @@
+{{- $agentName := include "kubeovn.agentName" . -}}
+{{- $agentServiceAccountName := include "kubeovn.agentServiceAccountName" . -}}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: kube-ovn-cni
+  name: {{ $agentName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.agent.annotations }}
   annotations:
@@ -18,5 +20,5 @@ roleRef:
   name: extension-apiserver-authentication-reader
 subjects:
   - kind: ServiceAccount
-    name: kube-ovn-cni
+    name: {{ $agentServiceAccountName }}
     namespace: {{ .Values.namespace }}

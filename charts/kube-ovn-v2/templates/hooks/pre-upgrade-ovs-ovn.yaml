@@ -1,9 +1,11 @@
 {{- if .Values.ovsOvn.upgrade.enabled -}}
+{{- $hookName := include "kubeovn.resourceName" (dict "context" . "suffix" "ovs-ovn-pre-upgrade") -}}
+{{- $hookRoleName := include "kubeovn.resourceName" (dict "context" . "suffix" "system-ovs-ovn-pre-upgrade") -}}
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ovs-ovn-pre-upgrade
+  name: {{ $hookName }}
   namespace: {{ .Values.namespace }}
   annotations:
     "helm.sh/hook": pre-upgrade
@@ -19,7 +21,7 @@ metadata:
     "helm.sh/hook": pre-upgrade
     "helm.sh/hook-weight": "2"
     "helm.sh/hook-delete-policy": hook-succeeded
-  name: system:ovs-ovn-pre-upgrade
+  name: {{ $hookRoleName }}
 rules:
   - apiGroups:
       - ""
@@ -38,24 +40,24 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: ovs-ovn-pre-upgrade
+  name: {{ $hookName }}
   annotations:
     "helm.sh/hook": pre-upgrade
     "helm.sh/hook-weight": "3"
     "helm.sh/hook-delete-policy": hook-succeeded
 roleRef:
-  name: system:ovs-ovn-pre-upgrade
+  name: {{ $hookRoleName }}
   kind: ClusterRole
   apiGroup: rbac.authorization.k8s.io
 subjects:
   - kind: ServiceAccount
-    name: ovs-ovn-pre-upgrade
+    name: {{ $hookName }}
     namespace: {{ .Values.namespace }}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: "{{ .Chart.Name }}-pre-upgrade-hook"
+  name: {{ $hookName }}
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
@@ -100,13 +102,13 @@ spec:
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: "linux"
-      serviceAccountName: ovs-ovn-pre-upgrade
+      serviceAccountName: {{ $hookName }}
       automountServiceAccountToken: true
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: ovs-ovn-pre-upgrade
+        - name: {{ $hookName }}
           image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"
           env:
             - name: POD_NAMESPACE

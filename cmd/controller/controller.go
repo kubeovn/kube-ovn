@@ -6,6 +6,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 
 	v1 "k8s.io/api/authorization/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -30,6 +31,13 @@ import (
 
 const ovnLeaderResource = "kube-ovn-controller"
 
+func leaderResourceName() string {
+	if name := strings.TrimSpace(os.Getenv(util.EnvControllerLeaderName)); name != "" {
+		return name
+	}
+	return ovnLeaderResource
+}
+
 func CmdMain() {
 	defer klog.Flush()
 
@@ -53,6 +61,7 @@ func CmdMain() {
 		util.LogFatalAndExit(err, "failed to check permission")
 	}
 	utilruntime.Must(kubeovnv1.AddToScheme(scheme.Scheme))
+	leaderName := leaderResourceName()
 
 	ctrl.SetLogger(klog.NewKlogr())
 	ctx := signals.SetupSignalHandler()
@@ -66,12 +75,12 @@ func CmdMain() {
 	}()
 
 	recorder := record.NewBroadcaster().NewRecorder(scheme.Scheme, apiv1.EventSource{
-		Component: ovnLeaderResource,
+		Component: leaderName,
 		Host:      os.Getenv(util.EnvNodeName),
 	})
 	rl, err := resourcelock.NewFromKubeconfig(resourcelock.LeasesResourceLock,
 		config.PodNamespace,
-		ovnLeaderResource,
+		leaderName,
 		resourcelock.ResourceLockConfig{
 			Identity:      config.PodName,
 			EventRecorder: recorder,
@@ -104,7 +113,7 @@ func CmdMain() {
 		},
 		WatchDog:        nil,
 		ReleaseOnCancel: true,
-		Name:            ovnLeaderResource,
+		Name:            leaderName,
 	})
 }
 

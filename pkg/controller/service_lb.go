@@ -462,15 +462,16 @@ func (c *Controller) delDnatRules(pod *corev1.Pod, toDel []corev1.ServicePort, s
 }
 
 func (c *Controller) getNodeSelectorFromCm() map[string]string {
-	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
+	configName := vpcNatConfigName()
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(configName)
 	if err != nil {
-		err = fmt.Errorf("failed to get ovn-vpc-nat-config, %w", err)
+		err = fmt.Errorf("failed to get %s, %w", configName, err)
 		klog.Error(err)
 		return nil
 	}
 
 	if cm.Data["nodeSelector"] == "" {
-		klog.Error(errors.New("there's no nodeSelector field in ovn-vpc-nat-config"))
+		klog.Errorf("there's no nodeSelector field in %s", configName)
 		return nil
 	}
 	// nodeSelector used for lb-svc deployment

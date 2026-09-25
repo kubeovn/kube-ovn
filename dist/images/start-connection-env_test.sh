@@ -95,11 +95,15 @@ EOF
     cd "$tmp"
     PATH="$tmp/bin:$PATH" \
     OUT="$out" \
+    OVS_OVN_NAME=tenant-ovs-ovn \
+    OVN_CENTRAL_NAME=tenant-ovn-central \
+    OVN_CENTRAL_KIND=statefulset \
+    OVN_CENTRAL_NAMESPACE=hcp \
     bash ./upgrade-ovs.sh
   )
 
-  assert_contains "$out" "rollout status deploy ovn-central --timeout=120s"
-  assert_contains "$out" "rollout status ds/ovs-ovn"
+  assert_contains "$out" "rollout status statefulset/tenant-ovn-central --timeout=120s"
+  assert_contains "$out" "rollout status ds/tenant-ovs-ovn"
 }
 
 test_start_controller_uses_explicit_ovn_addresses

@@ -30,6 +30,13 @@ const (
 	kubeOVNTLSCertHashAnnotation = "kube-ovn.io/kube-ovn-tls-cert-hash"
 )
 
+func kubeOVNTLSSecretResourceName() string {
+	if name := strings.TrimSpace(os.Getenv(util.EnvKubeOVNTLSSecretName)); name != "" {
+		return name
+	}
+	return kubeOVNTLSSecretName
+}
+
 func (c *Controller) startKubeOVNTLSManager(ctx context.Context) {
 	if os.Getenv(util.EnvSSLEnabled) != "true" {
 		return
@@ -63,14 +70,15 @@ func kubeOVNTLSRotationInterval() (time.Duration, error) {
 }
 
 func (c *Controller) reconcileKubeOVNTLS(ctx context.Context) error {
-	secret, err := c.config.KubeClient.CoreV1().Secrets(c.config.PodNamespace).Get(ctx, kubeOVNTLSSecretName, metav1.GetOptions{})
+	secretName := kubeOVNTLSSecretResourceName()
+	secret, err := c.config.KubeClient.CoreV1().Secrets(c.config.PodNamespace).Get(ctx, secretName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		data, hash, genErr := generateKubeOVNTLSData(time.Now(), kubeOVNTLSCADuration, kubeOVNTLSCertDuration)
 		if genErr != nil {
 			return genErr
 		}
 		secret = &corev1.Secret{
-			Name:      kubeOVNTLSSecretName,
+			Name:      secretName,
 			Namespace: c.config.PodNamespace,
 			Annotations: map[string]string{
 				kubeOVNTLSCertHashAnnotation: hash,
@@ -165,7 +173,7 @@ func kubeOVNTLSHash(data map[string][]byte) (string, error) {
 func (c *Controller) updateKubeOVNTLSSecretData(ctx context.Context, data map[string][]byte, hash string) error {
 	secrets := c.config.KubeClient.CoreV1().Secrets(c.config.PodNamespace)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		secret, err := secrets.Get(ctx, kubeOVNTLSSecretName, metav1.GetOptions{})
+		secret, err := secrets.Get(ctx, kubeOVNTLSSecretResourceName(), metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -180,7 +188,7 @@ func (c *Controller) updateKubeOVNTLSSecretData(ctx context.Context, data map[st
 func (c *Controller) setKubeOVNTLSHash(ctx context.Context, hash string) error {
 	secrets := c.config.KubeClient.CoreV1().Secrets(c.config.PodNamespace)
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		secret, err := secrets.Get(ctx, kubeOVNTLSSecretName, metav1.GetOptions{})
+		secret, err := secrets.Get(ctx, kubeOVNTLSSecretResourceName(), metav1.GetOptions{})
 		if err != nil {
 			return err
 		}

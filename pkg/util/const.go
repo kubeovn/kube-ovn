@@ -404,6 +404,12 @@ const (
 
 	EnvSSLEnabled                 = "ENABLE_SSL"
 	EnvKubeOVNTLSRotationInterval = "KUBE_OVN_TLS_ROTATION_INTERVAL"
+	EnvKubeOVNTLSSecretName       = "KUBE_OVN_TLS_SECRET_NAME"
+	EnvControllerLeaderName       = "KUBE_OVN_CONTROLLER_LEADER_NAME"
+	EnvVpcNatConfig               = "KUBE_OVN_VPC_NAT_CONFIG"
+	EnvVpcNatGatewayConfig        = "KUBE_OVN_VPC_NAT_GATEWAY_CONFIG"
+	EnvOvnSBServiceName           = "OVN_SB_SERVICE_NAME"
+	EnvOvnNorthdServiceName       = "OVN_NORTHD_SERVICE_NAME"
 	EnvGatewayName                = "GATEWAY_NAME"
 )
 
