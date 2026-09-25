@@ -1,6 +1,15 @@
 #!/bin/bash
 set -eo pipefail
 
+# DYNAMIC_PEERS short-circuit: hand off the entire lifecycle (preflight,
+# bring-up, runtime watchdog/kicker) to the ovn-central-controller binary,
+# which replaces both this script's dynamic-peers branch and the legacy
+# kube-ovn-leader-checker. The static (NODE_IPS-based) flow below is
+# unchanged.
+if [[ "${DYNAMIC_PEERS:-false}" == "true" ]]; then
+    exec /kube-ovn/ovn-central-controller
+fi
+
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 PROBE_INTERVAL=${PROBE_INTERVAL:-180000}
