@@ -1836,8 +1836,12 @@ func (c *Controller) setExGateway() error {
 	if enable == "true" {
 		cm, err := c.config.KubeClient.CoreV1().ConfigMaps(c.config.ExternalGatewayConfigNS).Get(context.Background(), util.ExternalGatewayConfig, metav1.GetOptions{})
 		if err != nil {
-			klog.Errorf("failed to get ovn-external-gw-config, %v", err)
-			return err
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get ovn-external-gw-config, %v", err)
+				return err
+			}
+			klog.V(3).Infof("configmap %s/%s not found, no cluster default external gateway configured", c.config.ExternalGatewayConfigNS, util.ExternalGatewayConfig)
+			return c.disableExGateway(externalBridge, isUserspaceDP)
 		}
 
 		linkName, exist := cm.Data["external-gw-nic"]
@@ -1889,49 +1893,54 @@ func (c *Controller) setExGateway() error {
 			klog.Error(err)
 			return err
 		}
-	} else {
-		brExists, err := ovs.BridgeExists(externalBridge)
-		if err != nil {
-			return fmt.Errorf("failed to check OVS bridge existence: %w", err)
-		}
-		if !brExists {
+		return nil
+	}
+
+	return c.disableExGateway(externalBridge, isUserspaceDP)
+}
+
+func (c *Controller) disableExGateway(externalBridge string, isUserspaceDP bool) error {
+	brExists, err := ovs.BridgeExists(externalBridge)
+	if err != nil {
+		return fmt.Errorf("failed to check OVS bridge existence: %w", err)
+	}
+	if !brExists {
+		return nil
+	}
+
+	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to list provider networks: %v", err)
+		return err
+	}
+
+	for _, pn := range providerNetworks {
+		if util.ExternalBridgeName(pn.Name) == externalBridge {
 			return nil
 		}
+	}
 
-		providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
-		if err != nil && !k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to list provider networks: %v", err)
+	keepExternalSubnet := false
+	externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
 			return err
 		}
-
-		for _, pn := range providerNetworks {
-			if util.ExternalBridgeName(pn.Name) == externalBridge {
-				return nil
-			}
+	} else {
+		if externalSubnet.Spec.Vlan != "" {
+			keepExternalSubnet = true
 		}
+	}
 
-		keepExternalSubnet := false
-		externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
-		if err != nil {
-			if !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
-				return err
-			}
-		} else {
-			if externalSubnet.Spec.Vlan != "" {
-				keepExternalSubnet = true
-			}
-		}
-
-		if !isUserspaceDP && !keepExternalSubnet {
-			klog.Infof("delete external bridge %s", externalBridge)
-			if _, err := ovs.Exec(
-				ovs.IfExists, "del-br", externalBridge,
-			); err != nil {
-				err = fmt.Errorf("failed to disable external gateway, %w", err)
-				klog.Error(err)
-				return err
-			}
+	if !isUserspaceDP && !keepExternalSubnet {
+		klog.Infof("delete external bridge %s", externalBridge)
+		if _, err := ovs.Exec(
+			ovs.IfExists, "del-br", externalBridge,
+		); err != nil {
+			err = fmt.Errorf("failed to disable external gateway, %w", err)
+			klog.Error(err)
+			return err
 		}
 	}
 	return nil
