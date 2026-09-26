@@ -83,10 +83,6 @@ type IptablesDnatRuleSpec struct {
 	// and recreate the rule to serve another address.
 	// +optional
 	ClusterIP string `json:"clusterIP,omitempty"`
-	// Name of the VPC NAT gateway serving this rule. It is required when no EIP is set, and
-	// must name the gateway the EIP belongs to otherwise.
-	// +optional
-	VpcNatGwDp string `json:"vpcNatGwDp,omitempty"`
 	// External port number
 	ExternalPort string `json:"externalPort"`
 	// Protocol type (TCP or UDP)

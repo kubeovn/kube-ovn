@@ -643,7 +643,7 @@ func dnatNeedsSpecCleanup(dnat *kubeovnv1.IptablesDnatRule) bool {
 // can carry one). A rule that serves a ClusterIP has no EIP, so its address is its own.
 func (c *Controller) resolveDnatAddress(dnat *kubeovnv1.IptablesDnatRule) (gwName, v4ip, v6ip string, err error) {
 	if !dnatUsesEip(&dnat.Spec) && dnatServesClusterIP(&dnat.Spec) {
-		return dnat.Spec.VpcNatGwDp, dnat.Spec.ClusterIP, "", nil
+		return dnat.Labels[util.VpcNatGatewayNameLabel], dnat.Spec.ClusterIP, "", nil
 	}
 	eip, err := c.GetEip(dnat.Spec.EIP)
 	if err != nil {
@@ -719,7 +719,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		return err
 	}
 
-	gwName := cachedDnat.Spec.VpcNatGwDp
+	gwName := cachedDnat.Labels[util.VpcNatGatewayNameLabel]
 	var eip *kubeovnv1.IptablesEIP
 	if dnatUsesEip(&cachedDnat.Spec) {
 		eip, err = c.GetEip(cachedDnat.Spec.EIP)
@@ -1491,7 +1491,7 @@ func (c *Controller) redoFip(key, redo string, eipReady bool) error {
 // the eip generation it uses (ovn.kubernetes.io/eip_uid). The claim is written before the rule is
 // created in the pod, and rewritten only after the rule of the previous eip generation is gone.
 // patchDnatLabel records who owns the rule: for an EIP rule the gateway, port, EIP address and EIP
-// UID, all derived from the EIP; for a ClusterIP rule the gateway and port it carries itself. The
+// UID, all derived from the EIP; for a ClusterIP rule the serving gateway comes from its label. The
 // labels are what the rule consumers (share backend aggregation, redo, VIP state) select on, so
 // they are reconciled on every pass rather than only at creation.
 func (c *Controller) patchDnatLabel(key string, rule *kubeovnv1.IptablesDnatRule) error {
@@ -1507,7 +1507,8 @@ func (c *Controller) patchDnatLabel(key string, rule *kubeovnv1.IptablesDnatRule
 	var needUpdateLabel, needUpdateAnno bool
 	var op string
 	if dnat.Spec.EIP == "" {
-		if dnat.Labels[util.VpcNatGatewayNameLabel] == rule.Spec.VpcNatGwDp &&
+		gateway := rule.Labels[util.VpcNatGatewayNameLabel]
+		if dnat.Labels[util.VpcNatGatewayNameLabel] == gateway &&
 			dnat.Labels[util.VpcDnatEPortLabel] == rule.Spec.ExternalPort {
 			return nil
 		}
@@ -1519,7 +1520,7 @@ func (c *Controller) patchDnatLabel(key string, rule *kubeovnv1.IptablesDnatRule
 		if dnat.Labels == nil {
 			dnat.Labels = map[string]string{}
 		}
-		dnat.Labels[util.VpcNatGatewayNameLabel] = rule.Spec.VpcNatGwDp
+		dnat.Labels[util.VpcNatGatewayNameLabel] = gateway
 		dnat.Labels[util.VpcDnatEPortLabel] = rule.Spec.ExternalPort
 		if err := c.updateIptableLabels(dnat.Name, op, util.DnatUsingEip, dnat.Labels); err != nil {
 			klog.Error(err)
@@ -1908,7 +1909,7 @@ func (c *Controller) finalDeleteDnatInPod(key string, cachedDnat *kubeovnv1.Ipta
 		klog.Warningf("dnat %s has empty Status.V4ip, fallback to clusterIP %s", key, cachedDnat.Spec.ClusterIP)
 		statusV4ip = cachedDnat.Spec.ClusterIP
 		if statusNatGwDp == "" {
-			statusNatGwDp = cachedDnat.Spec.VpcNatGwDp
+			statusNatGwDp = cachedDnat.Labels[util.VpcNatGatewayNameLabel]
 		}
 	} else if statusV4ip == "" {
 		klog.Warningf("dnat %s has empty Status.V4ip, fallback to eip %s", key, cachedDnat.Spec.EIP)
@@ -2291,8 +2292,8 @@ func (c *Controller) validateDnatRule(dnat *kubeovnv1.IptablesDnatRule) error {
 		return err
 	}
 	if dnatServesClusterIP(&dnat.Spec) {
-		if !dnatUsesEip(&dnat.Spec) && dnat.Spec.VpcNatGwDp == "" {
-			err = fmt.Errorf("%s: vpcNatGwDp is required with clusterIP when there is no eip", dnat.Name)
+		if !dnatUsesEip(&dnat.Spec) && dnat.Labels[util.VpcNatGatewayNameLabel] == "" {
+			err = fmt.Errorf("%s: gateway label is required with clusterIP when there is no eip", dnat.Name)
 			klog.Error(err)
 			return err
 		}

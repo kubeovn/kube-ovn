@@ -28,9 +28,6 @@ type IptablesDnatRuleSpecApplyConfiguration struct {
 	// gateway. Only IPv4 addresses and type=share rules support it. It is immutable: delete
 	// and recreate the rule to serve another address.
 	ClusterIP *string `json:"clusterIP,omitempty"`
-	// Name of the VPC NAT gateway serving this rule. It is required when no EIP is set, and
-	// must name the gateway the EIP belongs to otherwise.
-	VpcNatGwDp *string `json:"vpcNatGwDp,omitempty"`
 	// External port number
 	ExternalPort *string `json:"externalPort,omitempty"`
 	// Protocol type (TCP or UDP).
@@ -71,14 +68,6 @@ func (b *IptablesDnatRuleSpecApplyConfiguration) WithEIP(value string) *Iptables
 // If called multiple times, the ClusterIP field is set to the value of the last call.
 func (b *IptablesDnatRuleSpecApplyConfiguration) WithClusterIP(value string) *IptablesDnatRuleSpecApplyConfiguration {
 	b.ClusterIP = &value
-	return b
-}
-
-// WithVpcNatGwDp sets the VpcNatGwDp field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the VpcNatGwDp field is set to the value of the last call.
-func (b *IptablesDnatRuleSpecApplyConfiguration) WithVpcNatGwDp(value string) *IptablesDnatRuleSpecApplyConfiguration {
-	b.VpcNatGwDp = &value
 	return b
 }
 

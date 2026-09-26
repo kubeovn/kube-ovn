@@ -164,15 +164,15 @@ func TestValidateDnat(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "vpcNatGwDp is required",
+			errMsg:  "gateway label is required",
 		},
 		{
 			name: "clusterIP must be IPv4",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				Name: "test-dnat",
+				Name:   "test-dnat",
+				Labels: map[string]string{util.VpcNatGatewayNameLabel: "gw0"},
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					ClusterIP:    "fd00::1",
-					VpcNatGwDp:   "gw0",
 					ExternalPort: "80",
 					InternalPort: "8080",
 					InternalIP:   "10.0.0.1",
@@ -186,10 +186,10 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "clusterIP requires share type",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				Name: "test-dnat",
+				Name:   "test-dnat",
+				Labels: map[string]string{util.VpcNatGatewayNameLabel: "gw0"},
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					ClusterIP:    "10.96.1.5",
-					VpcNatGwDp:   "gw0",
 					ExternalPort: "80",
 					InternalPort: "8080",
 					InternalIP:   "10.0.0.1",
@@ -202,10 +202,10 @@ func TestValidateDnat(t *testing.T) {
 		{
 			name: "valid clusterIP share rule",
 			dnat: &kubeovnv1.IptablesDnatRule{
-				Name: "test-dnat",
+				Name:   "test-dnat",
+				Labels: map[string]string{util.VpcNatGatewayNameLabel: "gw0"},
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
 					ClusterIP:    "10.96.1.5",
-					VpcNatGwDp:   "gw0",
 					ExternalPort: "80",
 					InternalPort: "8080",
 					InternalIP:   "10.0.0.1",
@@ -937,11 +937,11 @@ func Test_resolveDnatAddress(t *testing.T) {
 	require.Equal(t, "192.0.2.10", v4ip)
 	require.Equal(t, "fd00::10", v6ip, "the IPv6 address of the EIP is recorded in the rule status")
 
-	// A LoadBalancer Service rule carries the gateway as well, and it must agree with the EIP's.
+	// A LoadBalancer Service rule derives its gateway from the referenced EIP.
 	gwName, v4ip, v6ip, err = c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
 		Name: "lb-rule",
 		Spec: kubeovnv1.IptablesDnatRuleSpec{
-			EIP: "eip0", ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0",
+			EIP: "eip0", ClusterIP: "10.96.1.5",
 			ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
 		},
 	})
@@ -952,9 +952,9 @@ func Test_resolveDnatAddress(t *testing.T) {
 
 	// A ClusterIP Service rule: its own address is the only one it has.
 	gwName, v4ip, v6ip, err = c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
-		Name: "clusterip-rule",
+		Name: "clusterip-rule", Labels: map[string]string{util.VpcNatGatewayNameLabel: "gw0"},
 		Spec: kubeovnv1.IptablesDnatRuleSpec{
-			ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0",
+			ClusterIP:    "10.96.1.5",
 			ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
 		},
 	})
@@ -979,7 +979,7 @@ func Test_dnatNeedsSpecCleanup(t *testing.T) {
 
 	eipOnly := &kubeovnv1.IptablesDnatRule{Spec: kubeovnv1.IptablesDnatRuleSpec{EIP: "eip0", ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare}}
 	clusterIPServed := &kubeovnv1.IptablesDnatRule{Spec: kubeovnv1.IptablesDnatRuleSpec{
-		ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0", ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
+		ClusterIP: "10.96.1.5", ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
 	}}
 
 	// A crashed spec change: the status points at what the data plane was programmed with. Only a
@@ -1010,7 +1010,7 @@ func TestEnqueueUpdateIptablesDnatRuleSkipsShareRecords(t *testing.T) {
 		return &kubeovnv1.IptablesDnatRule{Name: "rule", Spec: spec}
 	}
 	clusterIPServed := kubeovnv1.IptablesDnatRuleSpec{
-		ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0", ExternalPort: "80", Protocol: "tcp",
+		ClusterIP: "10.96.1.5", ExternalPort: "80", Protocol: "tcp",
 		InternalIP: "10.0.7.2", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
 	}
 	eipServed := clusterIPServed

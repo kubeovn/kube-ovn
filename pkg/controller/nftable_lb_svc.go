@@ -234,7 +234,6 @@ func (c *Controller) handleAddOrUpdateNftableLbService(key string) error {
 
 	desired := buildDesiredNftableLbDnatRules(cachedSvc, eipName, gwName, endpointSlices, c.nftableLbBackendResolver(cachedSvc, natGw.Spec.Vpc))
 	for _, record := range desired {
-		record.Labels[util.VpcNatGatewayNameLabel] = gwName
 		record.Labels[util.VpcDnatEPortLabel] = record.Spec.ExternalPort
 		if eip != nil {
 			record.Labels[util.EipV4IpLabel] = eipIP
@@ -523,7 +522,6 @@ func nftableLbSvcClusterIP(svc *v1.Service) string {
 func nftableLbDnatSpecEqual(a, b *kubeovnv1.IptablesDnatRuleSpec) bool {
 	return a.EIP == b.EIP &&
 		a.ClusterIP == b.ClusterIP &&
-		a.VpcNatGwDp == b.VpcNatGwDp &&
 		a.ExternalPort == b.ExternalPort &&
 		a.Protocol == b.Protocol &&
 		a.InternalIP == b.InternalIP &&
@@ -590,9 +588,6 @@ func (c *Controller) cleanupNftableLbService(svc *v1.Service, namespace, name st
 	byGateway := make(map[string][]*kubeovnv1.IptablesDnatRule)
 	for _, rule := range rules {
 		gw := rule.Labels[util.VpcNatGatewayNameLabel]
-		if gw == "" {
-			gw = rule.Spec.VpcNatGwDp
-		}
 		if gw == "" {
 			gw = rule.Status.NatGwDp
 		}
@@ -866,16 +861,15 @@ func buildDesiredNftableLbDnatRules(svc *v1.Service, eipName, gateway string, en
 						util.NftableLbSvcNameLabel:   svc.Name,
 						util.NftableLbSvcUIDLabel:    string(svc.UID),
 						util.NftableLbSvcRecordLabel: "true",
+						util.VpcNatGatewayNameLabel:  gateway,
 					},
 					Spec: kubeovnv1.IptablesDnatRuleSpec{
 						// Both addresses of the Service port are recorded on the rule: the
 						// ClusterIP is the internal VIP the gateway holds on lo, EIP is the public
 						// one a LoadBalancer Service publishes. A ClusterIP Service has no EIP,
-						// so its rule carries only the ClusterIP; the gateway is spelled out
-						// because a rule without an EIP cannot derive it.
+						// so its rule carries only the ClusterIP; the gateway is recorded in its label.
 						EIP:                           eipName,
 						ClusterIP:                     clusterIP,
-						VpcNatGwDp:                    gateway,
 						ExternalPort:                  externalPort,
 						Protocol:                      protocol,
 						InternalIP:                    address,

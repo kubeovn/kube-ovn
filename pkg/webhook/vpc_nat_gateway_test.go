@@ -674,7 +674,7 @@ func TestIptablesDnatAffinityImmutableOnUpdate(t *testing.T) {
 }
 
 // TestValidateIptablesDnatClusterIPFlow pins the webhook contract of the two VIP flows: a rule
-// addresses exactly one VIP, and the ClusterIP flow needs its gateway spelled out because there is
+// addresses one or both VIPs, and a ClusterIP-only record uses its gateway label because there is
 // no EIP to derive it from.
 func TestValidateIptablesDnatClusterIPFlow(t *testing.T) {
 	t.Parallel()
@@ -704,13 +704,16 @@ func TestValidateIptablesDnatClusterIPFlow(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:   "clusterIP with an explicit gateway is accepted",
-			mutate: func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "10.96.1.5"; d.Spec.VpcNatGwDp = "gw0" },
+			name: "clusterIP with an explicit gateway label is accepted",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
+			},
 		},
 		{
-			name:    "clusterIP without a gateway is rejected",
+			name:    "clusterIP without a gateway label is rejected",
 			mutate:  func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "10.96.1.5" },
-			wantErr: "vpcNatGwDp is required with clusterIP when there is no eip",
+			wantErr: "gateway label is required with clusterIP when there is no eip",
 		},
 		{
 			// A Service handled by the nftable LB service feature carries its ingress IP and its
@@ -722,29 +725,35 @@ func TestValidateIptablesDnatClusterIPFlow(t *testing.T) {
 			},
 		},
 		{
-			name: "clusterIP with a gateway that does not serve the eip is rejected",
+			name: "clusterIP with a gateway label that does not serve the eip is rejected",
 			mutate: func(d *ovnv1.IptablesDnatRule) {
 				d.Spec.EIP = "test-eip"
 				d.Spec.ClusterIP = "10.96.1.5"
-				d.Spec.VpcNatGwDp = "gw0"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
 			},
 			wantErr: "does not serve eip",
 		},
 		{
-			name:    "clusterIP with a missing gateway is rejected",
-			mutate:  func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "10.96.1.5"; d.Spec.VpcNatGwDp = "absent" },
+			name: "clusterIP with a missing gateway label target is rejected",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "absent"}
+			},
 			wantErr: "not found",
 		},
 		{
-			name:    "clusterIP must be an IPv4 address",
-			mutate:  func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "fd00::1"; d.Spec.VpcNatGwDp = "gw0" },
+			name: "clusterIP must be an IPv4 address",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.ClusterIP = "fd00::1"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
+			},
 			wantErr: "must be an IPv4 address",
 		},
 		{
 			name: "clusterIP is not accepted on an exclusive rule",
 			mutate: func(d *ovnv1.IptablesDnatRule) {
 				d.Spec.ClusterIP = "10.96.1.5"
-				d.Spec.VpcNatGwDp = "gw0"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
 				d.Spec.Type = ""
 			},
 			wantErr: "clusterIP requires type=share",
@@ -755,13 +764,12 @@ func TestValidateIptablesDnatClusterIPFlow(t *testing.T) {
 			wantErr: `"eip" or "clusterIP" cannot be empty`,
 		},
 		{
-			// An eip plus clusterIP rule derives its gateway from the eip, and spelling out that
-			// same gateway is accepted (it is how a Service-driven rule records its owner).
-			name: "vpcNatGwDp matching the eip gateway is accepted",
+			// An EIP plus ClusterIP record identifies its gateway with the controller-owned label.
+			name: "gateway label matching the eip gateway is accepted",
 			mutate: func(d *ovnv1.IptablesDnatRule) {
 				d.Spec.EIP = "test-eip"
 				d.Spec.ClusterIP = "10.96.1.5"
-				d.Spec.VpcNatGwDp = "gw1"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw1"}
 			},
 		},
 	}
@@ -888,9 +896,9 @@ func TestVpcNatGwDeleteHookBlocksClusterIPRules(t *testing.T) {
 	require.NoError(t, ovnv1.AddToScheme(scheme))
 
 	clusterIPRule := &ovnv1.IptablesDnatRule{
-		Name: "lb-web-abc",
+		Name: "lb-web-abc", Labels: map[string]string{util.VpcNatGatewayNameLabel: "gw0"},
 		Spec: ovnv1.IptablesDnatRuleSpec{
-			Type: ovnv1.DnatRuleTypeShare, ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0",
+			Type: ovnv1.DnatRuleTypeShare, ClusterIP: "10.96.1.5",
 			ExternalPort: "80", InternalPort: "8080", InternalIP: "10.0.7.2", Protocol: "tcp",
 		},
 	}
@@ -906,9 +914,9 @@ func TestVpcNatGwDeleteHookBlocksClusterIPRules(t *testing.T) {
 
 	// Another gateway's rule, and a rule reached through an EIP (covered by the EIP check), do not block.
 	otherGw := clusterIPRule.DeepCopy()
-	otherGw.Name, otherGw.Spec.VpcNatGwDp = "lb-web-other", "gw1"
+	otherGw.Name, otherGw.Labels[util.VpcNatGatewayNameLabel] = "lb-web-other", "gw1"
 	eipRule := clusterIPRule.DeepCopy()
-	eipRule.Name, eipRule.Spec.VpcNatGwDp, eipRule.Spec.EIP = "lb-web-eip", "gw0", "eip0"
+	eipRule.Name, eipRule.Spec.EIP = "lb-web-eip", "eip0"
 	require.True(t, hook(otherGw, eipRule).VpcNatGwDeleteHook(context.Background(), req).Allowed)
 
 	// A rule that is already terminating must not block the gateway forever.

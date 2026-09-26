@@ -1154,11 +1154,6 @@ spec:
                 - exclusive
                 - share
                 type: string
-              vpcNatGwDp:
-                description: |-
-                  Name of the VPC NAT gateway serving this rule. It is required when no EIP is set, and
-                  must name the gateway the EIP belongs to otherwise.
-                type: string
             type: object
           status:
             properties:

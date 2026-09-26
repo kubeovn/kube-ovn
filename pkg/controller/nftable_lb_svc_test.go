@@ -1213,7 +1213,7 @@ func TestHandleAddOrUpdateVpcNatGwSyncsVipRoutes(t *testing.T) {
 			util.VpcNatGatewayNameLabel: gwName,
 		},
 		Spec: kubeovnv1.IptablesDnatRuleSpec{
-			EIP: eipName, ClusterIP: clusterIP, VpcNatGwDp: gwName,
+			EIP: eipName, ClusterIP: clusterIP,
 			ExternalPort: "80", Protocol: "tcp",
 			InternalIP: "10.0.7.2", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
 		},
@@ -1381,7 +1381,7 @@ func clusterIPServedRule(name, gateway, clusterIP string) *kubeovnv1.IptablesDna
 			util.VpcDnatEPortLabel:       "80",
 		},
 		Spec: kubeovnv1.IptablesDnatRuleSpec{
-			ClusterIP: clusterIP, VpcNatGwDp: gateway,
+			ClusterIP:    clusterIP,
 			ExternalPort: "80", Protocol: "tcp",
 			InternalIP: "10.0.7.2", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
 		},
@@ -1436,9 +1436,9 @@ func Test_sameDnatIdentity(t *testing.T) {
 	eipB := &kubeovnv1.IptablesDnatRuleSpec{EIP: "eip-b"}
 	// A Service-driven rule aligns the ingress IP and the ClusterIP on one identity.
 	eipASvc := &kubeovnv1.IptablesDnatRuleSpec{EIP: "eip-a", ClusterIP: "10.96.1.5"}
-	cipA := &kubeovnv1.IptablesDnatRuleSpec{ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0"}
-	cipA2 := &kubeovnv1.IptablesDnatRuleSpec{ClusterIP: "10.96.1.5", VpcNatGwDp: "gw1"}
-	cipB := &kubeovnv1.IptablesDnatRuleSpec{ClusterIP: "10.96.1.6", VpcNatGwDp: "gw0"}
+	cipA := &kubeovnv1.IptablesDnatRuleSpec{ClusterIP: "10.96.1.5"}
+	cipA2 := &kubeovnv1.IptablesDnatRuleSpec{ClusterIP: "10.96.1.5"}
+	cipB := &kubeovnv1.IptablesDnatRuleSpec{ClusterIP: "10.96.1.6"}
 
 	require.True(t, sameDnatIdentity(eipA, eipA))
 	require.False(t, sameDnatIdentity(eipA, eipB))
@@ -1479,13 +1479,12 @@ func Test_buildDesiredNftableLbDnatRules_clusterIPService(t *testing.T) {
 		}
 	}
 
-	// ClusterIP Service: no EIP at all, so the rule carries the internal VIP and the gateway.
+	// ClusterIP Service: no EIP at all, so its record carries the internal VIP.
 	desired := buildDesiredNftableLbDnatRules(newSvc(v1.ServiceTypeClusterIP, ""), "", "gw0", endpointSlices, testNftableLbBackendIP)
 	require.Len(t, desired, 1)
 	for _, rule := range desired {
 		require.Empty(t, rule.Spec.EIP, "a ClusterIP Service has no public address")
 		require.Equal(t, "10.96.1.5", rule.Spec.ClusterIP)
-		require.Equal(t, "gw0", rule.Spec.VpcNatGwDp, "without an EIP the gateway cannot be derived")
 		require.Equal(t, kubeovnv1.DnatRuleTypeShare, rule.Spec.Type)
 	}
 
@@ -1496,7 +1495,6 @@ func Test_buildDesiredNftableLbDnatRules_clusterIPService(t *testing.T) {
 	for _, rule := range desired {
 		require.Equal(t, "eip0", rule.Spec.EIP)
 		require.Equal(t, "10.96.1.5", rule.Spec.ClusterIP)
-		require.Equal(t, "gw0", rule.Spec.VpcNatGwDp)
 	}
 }
 

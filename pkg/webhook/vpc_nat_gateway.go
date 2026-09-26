@@ -144,11 +144,10 @@ func (v *ValidatingHook) VpcNatGwDeleteHook(ctx context.Context, req admission.R
 		return ctrlwebhook.Errored(http.StatusBadRequest, err)
 	}
 
-	// A rule serving a ClusterIP has no EIP, so it names its gateway itself and the EIP check
+	// A rule serving a ClusterIP has no EIP, so its gateway label supplements the EIP check
 	// above cannot see it. Without this the gateway could be deleted while such rules still
 	// program its data plane, leaving rules (and the VPC routes of their VIPs) behind with no
-	// gateway left to clean them up. Rules are matched on the spec rather than on the gateway
-	// label, which the controller only patches after the rule was created.
+	// gateway left to clean them up. Service accounting records carry the gateway label when created.
 	dnatList := ovnv1.IptablesDnatRuleList{}
 	if err := v.client.List(ctx, &dnatList); err != nil {
 		return ctrlwebhook.Errored(http.StatusInternalServerError, err)
@@ -156,7 +155,7 @@ func (v *ValidatingHook) VpcNatGwDeleteHook(ctx context.Context, req admission.R
 	for i := range dnatList.Items {
 		dnat := &dnatList.Items[i]
 		// A terminating rule is already on its way out and must not block the gateway forever.
-		if dnat.Spec.EIP != "" || dnat.Spec.VpcNatGwDp != req.Name || !dnat.DeletionTimestamp.IsZero() {
+		if dnat.Spec.EIP != "" || dnat.Labels[util.VpcNatGatewayNameLabel] != req.Name || !dnat.DeletionTimestamp.IsZero() {
 			continue
 		}
 		err := fmt.Errorf("vpc-nat-gateway %q cannot be deleted while dnat rule %q serves clusterIP %s on it",
@@ -768,17 +767,19 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 		if err := v.cache.Get(ctx, key, eip); err != nil {
 			return err
 		}
-		if dnat.Spec.VpcNatGwDp != "" && eip.Spec.NatGwDp != "" && dnat.Spec.VpcNatGwDp != eip.Spec.NatGwDp {
-			return fmt.Errorf("dnat %q: vpcNatGwDp %q does not serve eip %q (natGwDp %q)",
-				dnat.Name, dnat.Spec.VpcNatGwDp, dnat.Spec.EIP, eip.Spec.NatGwDp)
+		gateway := dnat.Labels[util.VpcNatGatewayNameLabel]
+		if gateway != "" && eip.Spec.NatGwDp != "" && gateway != eip.Spec.NatGwDp {
+			return fmt.Errorf("dnat %q: gateway label %q does not serve eip %q (natGwDp %q)",
+				dnat.Name, gateway, dnat.Spec.EIP, eip.Spec.NatGwDp)
 		}
 	} else {
-		// Without an eip the gateway cannot be derived, and the internal VIP flow only exists for
-		// share rules: the address is shared by all backends through the nft map.
-		if dnat.Spec.VpcNatGwDp == "" {
-			return fmt.Errorf("dnat %q: vpcNatGwDp is required with clusterIP when there is no eip", dnat.Name)
+		// Without an eip the gateway comes from the controller-owned label, and the internal VIP
+		// flow only exists for Service share records.
+		gateway := dnat.Labels[util.VpcNatGatewayNameLabel]
+		if gateway == "" {
+			return fmt.Errorf("dnat %q: gateway label is required with clusterIP when there is no eip", dnat.Name)
 		}
-		if err := validateNatGwRef(ctx, v.cache, dnat.Spec.VpcNatGwDp); err != nil {
+		if err := validateNatGwRef(ctx, v.cache, gateway); err != nil {
 			return err
 		}
 	}
@@ -849,7 +850,7 @@ func (v *ValidatingHook) ValidateIptablesDnat(ctx context.Context, dnat *ovnv1.I
 
 	// Check type conflict with existing DNAT rules sharing the same identity. The identity is the
 	// VIP the rule addresses, whichever flow it belongs to.
-	gwName := dnat.Spec.VpcNatGwDp
+	gwName := dnat.Labels[util.VpcNatGatewayNameLabel]
 	if eip != nil {
 		gwName = eip.Spec.NatGwDp
 	}

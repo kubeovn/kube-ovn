@@ -2265,7 +2265,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		for _, rule := range ownedRules() {
 			gomega.Expect(rule.Spec.ClusterIP).To(gomega.Equal(clusterIP), "the rule serves the internal VIP")
 			gomega.Expect(rule.Spec.EIP).To(gomega.BeEmpty(), "a ClusterIP service has no public address")
-			gomega.Expect(rule.Spec.VpcNatGwDp).To(gomega.Equal(vpcNatGwName), "without an eip the gateway is spelled out")
+			gomega.Expect(rule.Labels[util.VpcNatGatewayNameLabel]).To(gomega.Equal(vpcNatGwName), "the accounting label identifies the serving gateway")
 			gomega.Expect(rule.Spec.Type).To(gomega.Equal(apiv1.DnatRuleTypeShare))
 			gomega.Expect(rule.Spec.ExternalPort).To(gomega.Equal("80"))
 			gomega.Expect(rule.Spec.InternalPort).To(gomega.Equal("8080"))
