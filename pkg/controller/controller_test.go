@@ -72,6 +72,7 @@ type fakeControllerInformers struct {
 	subnetInformer    kubeovninformer.SubnetInformer
 	ipInformer        kubeovninformer.IPInformer
 	vlanInformer      kubeovninformer.VlanInformer
+	configMapInformer coreinformers.ConfigMapInformer
 	serviceInformer   coreinformers.ServiceInformer
 	namespaceInformer coreinformers.NamespaceInformer
 	nodeInformer      coreinformers.NodeInformer
@@ -90,6 +91,7 @@ func alwaysReady() bool { return true }
 // FakeControllerOptions holds optional parameters for creating a fake controller
 type FakeControllerOptions struct {
 	Subnets            []*kubeovnv1.Subnet
+	Vpcs               []*kubeovnv1.Vpc
 	VpcNatGateways     []*kubeovnv1.VpcNatGateway
 	IPs                []*kubeovnv1.IP
 	Vlans              []*kubeovnv1.Vlan
@@ -147,6 +149,13 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 
 	// Create fake KubeOVN client
 	kubeovnClient := kubeovnfake.NewSimpleClientset()
+	for _, vpc := range opts.Vpcs {
+		if _, err := kubeovnClient.KubeovnV1().Vpcs().Create(
+			context.Background(), vpc, metav1.CreateOptions{},
+		); err != nil {
+			return nil, err
+		}
+	}
 	for _, subnet := range opts.Subnets {
 		_, err := kubeovnClient.KubeovnV1().Subnets().Create(
 			context.Background(), subnet, metav1.CreateOptions{},
@@ -232,6 +241,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		subnetInformer:    subnetInformer,
 		ipInformer:        ipInformer,
 		vlanInformer:      vlanInformer,
+		configMapInformer: configMapInformer,
 		serviceInformer:   serviceInformer,
 		namespaceInformer: namespaceInformer,
 		nodeInformer:      nodeInformer,
@@ -263,6 +273,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		providerNetworksLister:  providerNetworkInformer.Lister(),
 		netAttachLister:         nadInformer.Lister(),
 		netAttachSynced:         alwaysReady,
+		vpcNatGatewayLister:     vpcNatGwInformer.Lister(),
 		OVNNbClient:             mockOvnClient,
 		OVNSbClient:             mockOvnSbClient,
 		ipam:                    ovnipam.NewIPAM(),
@@ -273,6 +284,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		configMapsSynced:        alwaysReady,
+		vpcNatGwKeyMutex:        keymutex.NewHashed(0),
 	}
 
 	ctrl.config = &Configuration{
