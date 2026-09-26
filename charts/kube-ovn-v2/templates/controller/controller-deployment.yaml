@@ -142,7 +142,7 @@ spec:
           - --ls-dnat-mod-dl-dst={{- .Values.features.LS_DNAT_MOD_DL_DST }}
           - --ls-ct-skip-dst-lport-ips={{- .Values.features.LS_CT_SKIP_DST_LPORT_IPS }}
           - --pod-nic-type={{- .Values.networking.podNicType }}
-          - --enable-lb={{- .Values.features.enableLoadbalancer }}
+          - --enable-lb={{ ternary false .Values.features.enableLoadbalancer .Values.features.enableGwNftableLoadbalancerService }}
           - --enable-np={{- .Values.features.enableNetworkPolicies }}
           {{- if .Values.aclSampling.enabled }}
           - --enable-acl-sampling=true
@@ -170,8 +170,8 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --enable-lb-svc={{- .Values.features.enableLoadbalancerService }}
-          {{- if .Values.features.enableNftableLoadbalancerService }}
-          - --enable-nftable-lb-svc={{- .Values.features.enableNftableLoadbalancerService }}
+          {{- if .Values.features.enableGwNftableLoadbalancerService }}
+          - --enable-gw-nftable-lb-svc={{- .Values.features.enableGwNftableLoadbalancerService }}
           {{- end }}
           - --keep-vm-ip={{- .Values.features.enableKeepVmIps }}
           - --enable-metrics={{- .Values.networking.enableMetrics }}

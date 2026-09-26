@@ -191,7 +191,6 @@ func isPodStatusPhaseAlive(p *v1.Pod) bool {
 
 func (c *Controller) enqueueAddPod(obj any) {
 	p := obj.(*v1.Pod)
-	c.enqueueNftableLbServicesForPod(p)
 	if p.Spec.HostNetwork {
 		return
 	}
@@ -278,7 +277,6 @@ func (c *Controller) enqueueDeletePod(obj any) {
 		return
 	}
 
-	c.enqueueNftableLbServicesForPod(p)
 	if p.Spec.HostNetwork {
 		return
 	}
@@ -309,13 +307,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	c.enqueueVpcNatGatewayRestart(oldPod, newPod)
-	// Only kube-ovn network annotations can change the backend NIC resolution without an
-	// EndpointSlice update (the k8s endpointslice controller already emits EndpointSlice
-	// updates for readiness, deletion, PodIP and label changes). Re-checking every status
-	// update would scan EndpointSlices for container/phase churn that cannot affect rules.
-	if !maps.Equal(oldPod.Annotations, newPod.Annotations) {
-		c.enqueueNftableLbServicesForPod(newPod)
-	}
+	// EndpointSlice is the only backend event source for share-DNAT Services.
 
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(oldPod.Namespace)

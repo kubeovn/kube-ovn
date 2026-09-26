@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/pflag"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -21,6 +22,19 @@ import (
 )
 
 const hookServerCertDir = "/tmp/k8s-webhook-server/serving-certs"
+
+// controllerServiceAccount is the service account the kube-ovn controller runs with. The
+// webhook runs with the same one, so its own namespace yields the controller identity.
+const controllerServiceAccount = "ovn"
+
+// defaultControllerIdentity returns the user name the kube-ovn controller authenticates as.
+func defaultControllerIdentity() string {
+	namespace := os.Getenv(util.EnvPodNamespace)
+	if namespace == "" {
+		namespace = metav1.NamespaceSystem
+	}
+	return "system:serviceaccount:" + namespace + ":" + controllerServiceAccount
+}
 
 var scheme = runtime.NewScheme()
 
@@ -41,6 +55,8 @@ func CmdMain() {
 
 	port := pflag.Int("port", 8443, "The port webhook listen on.")
 	healthProbePort := pflag.Int32("health-probe-port", 8080, "The port health probes listen on.")
+	controllerIdentity := pflag.String("controller-identity", defaultControllerIdentity(),
+		"The user name the kube-ovn controller authenticates as. It is the only identity allowed to write controller-owned labels. Empty disables the check.")
 
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -81,7 +97,7 @@ func CmdMain() {
 		panic(err)
 	}
 
-	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetClient(), mgr.GetScheme(), mgr.GetCache())
+	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetClient(), mgr.GetScheme(), mgr.GetCache(), *controllerIdentity)
 	if err != nil {
 		panic(err)
 	}

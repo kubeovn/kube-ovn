@@ -41,6 +41,10 @@ func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
 
+	if c.config.EnableGwNftableLbSvc {
+		c.enqueueNftableLbService(key)
+	}
+
 	// the queue consumers only run when EnableOvnLB is set, so skip
 	// enqueueing to avoid unbounded accumulation when it is not
 	if c.config.EnableOvnLB {
@@ -53,15 +57,24 @@ func (c *Controller) enqueueAddService(obj any) {
 		klog.V(3).Infof("enqueue add lb service %s", key)
 		c.addServiceQueue.Add(key)
 	}
-
-	c.enqueueNftableLbService(key)
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
 	if !c.config.EnableOvnLB {
+		if c.config.EnableGwNftableLbSvc {
+			var svc *v1.Service
+			switch t := obj.(type) {
+			case *v1.Service:
+				svc = t
+			case cache.DeletedFinalStateUnknown:
+				svc, _ = t.Obj.(*v1.Service)
+			}
+			if svc != nil {
+				c.enqueueNftableLbService(cache.MetaObjectToName(svc).String())
+			}
+		}
 		return
 	}
-
 	var svc *v1.Service
 	switch t := obj.(type) {
 	case *v1.Service:
@@ -78,9 +91,12 @@ func (c *Controller) enqueueDeleteService(obj any) {
 		return
 	}
 
-	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
+	key := cache.MetaObjectToName(svc).String()
+	if c.config.EnableGwNftableLbSvc {
+		c.enqueueNftableLbService(key)
+	}
 
-	c.enqueueNftableLbService(cache.MetaObjectToName(svc).String())
+	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
 	ips := getVipIps(svc)
 	if len(ips) != 0 {
@@ -105,9 +121,15 @@ func (c *Controller) enqueueDeleteService(obj any) {
 
 func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	if !c.config.EnableOvnLB {
+		if c.config.EnableGwNftableLbSvc {
+			oldSvc := oldObj.(*v1.Service)
+			newSvc := newObj.(*v1.Service)
+			if newSvc.ResourceVersion != oldSvc.ResourceVersion && nftableLbSvcChanged(oldSvc, newSvc) {
+				c.enqueueNftableLbService(cache.MetaObjectToName(newSvc).String())
+			}
+		}
 		return
 	}
-
 	oldSvc := oldObj.(*v1.Service)
 	newSvc := newObj.(*v1.Service)
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
@@ -121,11 +143,17 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	// e.g. status noise or third-party annotation churn bumping the resource version.
 	// LoadBalancer services are always enqueued: their reconcile also depends on
 	// status.loadBalancer.ingress and the lb-svc attachment deployment.
+	//
+	// The nftable LB service annotations are compared too: they are all that changes when a
+	// ClusterIP Service opts in or out, so without them such a Service would never be reconciled
+	// and its rules would be neither created nor released.
 	if newSvc.Spec.Type != v1.ServiceTypeLoadBalancer &&
 		oldSvc.DeletionTimestamp.Equal(newSvc.DeletionTimestamp) &&
 		oldSvc.Annotations[util.VpcAnnotation] == newSvc.Annotations[util.VpcAnnotation] &&
 		oldSvc.Annotations[util.LogicalRouterAnnotation] == newSvc.Annotations[util.LogicalRouterAnnotation] &&
 		oldSvc.Annotations[util.LogicalSwitchAnnotation] == newSvc.Annotations[util.LogicalSwitchAnnotation] &&
+		oldSvc.Annotations[util.VpcNatGatewayAnnotation] == newSvc.Annotations[util.VpcNatGatewayAnnotation] &&
+		oldSvc.Annotations[util.EipAnnotation] == newSvc.Annotations[util.EipAnnotation] &&
 		slices.Equal(oldClusterIps, newClusterIps) &&
 		reflect.DeepEqual(oldSvc.Spec, newSvc.Spec) {
 		return
@@ -139,9 +167,10 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	}
 
 	key := cache.MetaObjectToName(newSvc).String()
+	if c.config.EnableGwNftableLbSvc {
+		c.enqueueNftableLbService(key)
+	}
 	klog.V(3).Infof("enqueue update service %s", key)
-
-	c.enqueueNftableLbService(key)
 
 	if len(ipsToDel) != 0 {
 		ipsToDelStr := strings.Join(ipsToDel, ",")
@@ -161,7 +190,9 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	endpointReconcile := !reflect.DeepEqual(oldSpec, newSpec) ||
 		oldSvc.Annotations[util.VpcAnnotation] != newSvc.Annotations[util.VpcAnnotation] ||
 		oldSvc.Annotations[util.LogicalRouterAnnotation] != newSvc.Annotations[util.LogicalRouterAnnotation] ||
-		oldSvc.Annotations[util.LogicalSwitchAnnotation] != newSvc.Annotations[util.LogicalSwitchAnnotation]
+		oldSvc.Annotations[util.LogicalSwitchAnnotation] != newSvc.Annotations[util.LogicalSwitchAnnotation] ||
+		oldSvc.Annotations[util.VpcNatGatewayAnnotation] != newSvc.Annotations[util.VpcNatGatewayAnnotation] ||
+		oldSvc.Annotations[util.EipAnnotation] != newSvc.Annotations[util.EipAnnotation]
 	if endpointReconcile && (serviceUsesScopedLB(oldSvc) || serviceUsesScopedLB(newSvc)) && c.addOrUpdateEndpointSliceQueue != nil {
 		c.enqueueEndpointSliceService(cache.MetaObjectToName(newSvc).String(), oldSvc, newSvc)
 	}
@@ -255,6 +286,7 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		return err
 	}
 
+	// TODO: Decouple Pod LB lifecycle only after it no longer requires the OVN LB path.
 	if service.Svc.Spec.Type == v1.ServiceTypeLoadBalancer && c.config.EnablePodLbSvc {
 		if err := c.deleteLbSvc(service.Svc); err != nil {
 			klog.Errorf("failed to delete service %s, %v", service.Svc.Name, err)
@@ -448,6 +480,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		}
 	}
 
+	// TODO: Decouple Pod LB lifecycle only after it no longer requires the OVN LB path.
 	if c.config.EnablePodLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
 		changed, err := c.checkLbSvcDeployAnnotationChanged(svc)
 		if err != nil {
@@ -523,7 +556,6 @@ func (c *Controller) handleAddService(key string) error {
 	if _, ok := svc.Annotations[util.AttachmentProvider]; !ok {
 		return nil
 	}
-
 	klog.Infof("handle add loadbalancer service %s", key)
 
 	if err = c.validateSvc(svc); err != nil {

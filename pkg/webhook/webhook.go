@@ -23,13 +23,18 @@ type ValidatingHook struct {
 	client  client.Client
 	decoder admission.Decoder
 	cache   cache.Cache
+	// controllerIdentity is the user the kube-ovn controller authenticates as. It is the only
+	// identity allowed to write the labels that decide which share DNAT rules program one nft
+	// map (see validateNftableLbOwnerLabels).
+	controllerIdentity string
 }
 
-func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache.Cache) (*ValidatingHook, error) {
+func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache.Cache, controllerIdentity string) (*ValidatingHook, error) {
 	v := &ValidatingHook{
-		client:  client,
-		decoder: admission.NewDecoder(scheme),
-		cache:   cache,
+		client:             client,
+		decoder:            admission.NewDecoder(scheme),
+		cache:              cache,
+		controllerIdentity: controllerIdentity,
 	}
 
 	// initialize hook handlers mapping
@@ -39,6 +44,7 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	createHooks[cronJobGVK] = v.CronJobCreateHook
 	createHooks[jobGVK] = v.JobCreateHook
 	createHooks[podGVK] = v.PodCreateHook
+	updateHooks[serviceGVK] = v.ServiceUpdateHook
 
 	createHooks[subnetGVK] = v.SubnetCreateHook
 	updateHooks[subnetGVK] = v.SubnetUpdateHook

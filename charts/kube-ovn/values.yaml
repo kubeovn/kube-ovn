@@ -105,13 +105,14 @@ networking:
   ENABLE_COMPACT: false
 
 func:
+  # ENABLE_LB_SVC requires ENABLE_LB. ENABLE_GW_NFTABLE_LB_SVC is mutually exclusive with ENABLE_LB.
   ENABLE_LB: true
   ENABLE_NP: true
   NP_ENFORCEMENT: standard
   ENABLE_EXTERNAL_VPC: false
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
-  ENABLE_NFTABLE_LB_SVC: true
+  ENABLE_GW_NFTABLE_LB_SVC: false
   ENABLE_KEEP_VM_IP: true
   LS_DNAT_MOD_DL_DST: true
   LS_CT_SKIP_DST_LPORT_IPS: true
