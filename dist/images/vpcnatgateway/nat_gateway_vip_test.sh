@@ -93,6 +93,7 @@ iptables() {
 
 iptables_save() {
     while IFS= read -r rule; do
+        rule=$(echo "$rule" | sed -E 's/(--comment )([^ ]+)/\1"\2"/')
         printf -- '-A HAIRPIN_SNAT %s --random-fully\n' "$rule"
     done < "$hairpin_state"
 }

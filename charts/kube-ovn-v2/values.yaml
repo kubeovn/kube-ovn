@@ -225,12 +225,12 @@ features:
   # -- Enable hardware offloads
   # @section -- Opt-in/out Features
   enableHardwareOffload: false
-  # -- Enable Kube-OVN loadbalancer services. Mutually exclusive with enableLoadbalancer and enableNftableLoadbalancerService.
+  # -- Enable Kube-OVN loadbalancer services. Mutually exclusive with enableLoadbalancer and enableGwNftableLoadbalancerService.
   # @section -- Opt-in/out Features
   enableLoadbalancerService: false
   # -- Enable Kube-OVN nftable share DNAT based loadbalancer services on vpc nat gateway. Mutually exclusive with enableLoadbalancer and enableLoadbalancerService.
   # @section -- Opt-in/out Features
-  enableNftableLoadbalancerService: false
+  enableGwNftableLoadbalancerService: false
   # -- Enable persistent VM IPs
   # @section -- Opt-in/out Features
   enableKeepVmIps: true

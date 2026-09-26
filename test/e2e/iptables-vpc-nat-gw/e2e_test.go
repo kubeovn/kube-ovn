@@ -399,7 +399,7 @@ func vipHairpinRuleExists(natGwPodName, vip, port, protocol, sourceIP string) bo
 		return false
 	}
 	pattern := fmt.Sprintf(
-		`-A HAIRPIN_SNAT .*-p %s .*-m conntrack --ctstate DNAT --ctorigdst \b%s\b --ctorigdstport \b%s\b -j SNAT --to-source \b%s\b`,
+		`-A HAIRPIN_SNAT .*-p %s .*-m conntrack --ctstate DNAT --ctorigdst \b%s\b --ctorigdstport \b%s\b .* -j SNAT --to-source \b%s\b`,
 		protocol, regexp.QuoteMeta(vip), port, regexp.QuoteMeta(sourceIP),
 	)
 	return regexp.MustCompile(pattern).MatchString(output)
@@ -1359,6 +1359,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 	framework.ConformanceIt("[share-dnat] manage share type DNAT rules with nft map-based LB", func() {
 		f.SkipVersionPriorTo(1, 17, "Share type DNAT was introduced in v1.17")
+		ginkgo.Skip("manual share DNAT is unsupported; Service-owned E2E covers share DNAT")
 
 		// Test-specific variables
 		randomSuffix := framework.RandomSuffix()
@@ -1490,6 +1491,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 	framework.ConformanceIt("[share-dnat-dataplane] share DNAT distributes traffic and manages conntrack", func() {
 		f.SkipVersionPriorTo(1, 17, "Share type DNAT was introduced in v1.17")
+		ginkgo.Skip("manual share DNAT is unsupported; Service-owned E2E covers share DNAT")
 
 		randomSuffix := framework.RandomSuffix()
 		dpEipName := "share-dp-eip-" + randomSuffix
@@ -1647,6 +1649,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 	framework.ConformanceIt("[share-dnat-conflict] verify type conflict between exclusive and share DNAT", func() {
 		f.SkipVersionPriorTo(1, 17, "Share type DNAT was introduced in v1.17")
+		ginkgo.Skip("manual share DNAT is unsupported; Service conflict E2E covers identity arbitration")
 
 		// Test-specific variables
 		randomSuffix := framework.RandomSuffix()
@@ -1840,8 +1843,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				return -1
 			}
 			return len(rules.Items)
-		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(4),
-			"controller should create one share DNAT rule per (service port, ready backend)")
+		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(2),
+			"controller should create one accounting record per service port and ready backend; each record describes both VIPs")
 
 		ginkgo.By("Verifying the service reports the EIP as its LoadBalancer ingress IP")
 		gomega.Eventually(func() string {
@@ -1932,7 +1935,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				return -1
 			}
 			return len(rules.Items)
-		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(2),
+		}, 60*time.Second, 2*time.Second).Should(gomega.Equal(1),
 			"controller should remove the share DNAT rules of the deleted backend")
 
 		gomega.Eventually(func() bool {
@@ -2295,13 +2298,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 120*time.Second, 5*time.Second).Should(gomega.BeTrue(),
 			"20 consecutive requests to the ClusterIP must all succeed and reach both backends")
 
-		ginkgo.By("Verifying a hand-managed share rule of the same gateway leaves the internal VIP alone")
-		// The gateway's address set is the set of the gateway, so a rule that does not spell its
-		// gateway out (an EIP rule derives it from the EIP) must still be reconciled under that
-		// gateway: looking it up under the empty name the rule carries would find nothing, and the
-		// resulting empty set makes vip-addr-sync drop every labeled address the gateway holds,
-		// taking this ClusterIP with it. This is the end-to-end check for that, because the address
-		// set is only observable in the gateway.
+		ginkgo.By("Verifying a manual share record is rejected or stays inert")
 		manualEipName := "nftcip-eip-" + randomSuffix
 		manualRuleName := "nftcip-manual-" + randomSuffix
 		manualEip := framework.MakeIptablesEIP(manualEipName, "", "", "", vpcNatGwName, "", "")
@@ -2313,19 +2310,28 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		manualEip = iptablesEIPClient.Get(manualEipName)
 		framework.ExpectNotEmpty(manualEip.Status.IP, "the hand-managed eip should have an IPv4 address")
 		manualRule := framework.MakeShareIptablesDnatRule(manualRuleName, manualEipName, "8081", "tcp", srvIPs[srv1Name], "8080")
-		_ = iptablesDnatRuleClient.CreateSync(manualRule)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up the hand-managed share dnat rule " + manualRuleName)
-			iptablesDnatRuleClient.DeleteSync(manualRuleName)
-		})
+		_, createErr := iptablesDnatRuleClient.CreateRaw(manualRule)
+		if createErr != nil {
+			gomega.Expect(createErr.Error()).To(gomega.ContainSubstring("reserved for nftable LB Service accounting records"))
+		} else {
+			ginkgo.DeferCleanup(func() {
+				ginkgo.By("Cleaning up the inert hand-managed share dnat record " + manualRuleName)
+				iptablesDnatRuleClient.DeleteSync(manualRuleName)
+			})
+			gomega.Consistently(func() bool {
+				rule := iptablesDnatRuleClient.Get(manualRuleName)
+				return rule.Status.Ready
+			}, 10*time.Second, time.Second).Should(gomega.BeFalse(),
+				"a hand-created share record must not program gateway NAT")
+		}
 		gomega.Consistently(func() bool {
 			return natGwLoAddrExists(vpcNatGwPodName, clusterIP)
 		}, 15*time.Second, 3*time.Second).Should(gomega.BeTrue(),
-			"a rule that leaves its gateway to the EIP must not release the addresses of the gateway that serves it")
+			"the Service ClusterIP must remain held on its gateway")
 		gomega.Eventually(func() bool {
 			return natGwVipPolicyRouteExists(vpcName, clusterIP, lanIP)
 		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
-			"the internal VIP route has to survive next to the hand-managed rule")
+			"the Service VIP route must remain programmed")
 
 		ginkgo.By("Removing the gateway annotation and verifying every piece of state is released")
 		curSvc := serviceClient.Get(svcName)
@@ -2728,6 +2734,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 	framework.ConformanceIt("[nftable-lb-svc-manual-conflict] a service yields the EIP:port identity to a manually-created share DNAT rule", func() {
 		f.SkipVersionPriorTo(1, 17, "nftable LoadBalancer service on vpc nat gateway (--enable-gw-nftable-lb-svc) was introduced in v1.17")
+		ginkgo.Skip("manual share DNAT does not own identities; Service-to-Service conflict E2E covers arbitration")
 
 		randomSuffix := framework.RandomSuffix()
 		lbEipName := "nftlbm-eip-" + randomSuffix

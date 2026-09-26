@@ -1093,15 +1093,12 @@ spec:
           spec:
             properties:
               clusterIP:
-                description: |-
-                  Internal virtual IP the rule serves, reachable from inside the VPC through the VPC NAT
-                  gateway. Only IPv4 addresses and type=share rules support it. It is immutable: delete
-                  and recreate the rule to serve another address.
+                description: Kubernetes Service ClusterIP served by this rule for
+                  traffic from within the VPC.
                 type: string
               eip:
-                description: |-
-                  Name of the EIP the rule exposes its backends on. It may be omitted only when
-                  ClusterIP is set, i.e. the rule is reachable from inside the VPC only.
+                description: Name of the EIP used as the rule's external address.
+                  Optional when ClusterIP is set.
                 type: string
               externalPort:
                 description: External port number

@@ -478,7 +478,15 @@ function vip_hairpin_del() {
         do
             [ -z "$saved_rule" ] && continue
             saved_rule=$(echo "$saved_rule" | sed 's/^-A //')
-            exec_cmd "$iptables_cmd -t nat -D $saved_rule"
+            saved_rule=${saved_rule//\"/}
+            if ! $iptables_cmd -t nat -D $saved_rule; then
+                # Another reconcile may have deleted the same rule after iptables-save.
+                # Only suppress the error when the desired absent state was reached.
+                if $iptables_cmd -t nat -C $saved_rule >/dev/null 2>&1; then
+                    >&2 echo "failed to delete hairpin rule \"$saved_rule\""
+                    exit 1
+                fi
+            fi
         done <<< "$saved_rules"
     done
 }

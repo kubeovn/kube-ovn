@@ -74,13 +74,10 @@ const (
 )
 
 type IptablesDnatRuleSpec struct {
-	// Name of the EIP the rule exposes its backends on. It may be omitted only when
-	// ClusterIP is set, i.e. the rule is reachable from inside the VPC only.
+	// Name of the EIP used as the rule's external address. Optional when ClusterIP is set.
 	// +optional
 	EIP string `json:"eip,omitempty"`
-	// Internal virtual IP the rule serves, reachable from inside the VPC through the VPC NAT
-	// gateway. Only IPv4 addresses and type=share rules support it. It is immutable: delete
-	// and recreate the rule to serve another address.
+	// Kubernetes Service ClusterIP served by this rule for traffic from within the VPC.
 	// +optional
 	ClusterIP string `json:"clusterIP,omitempty"`
 	// External port number
