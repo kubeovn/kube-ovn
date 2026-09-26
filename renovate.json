@@ -86,6 +86,16 @@
         "sigs.k8s.io/network-policy-api"
       ],
       "enabled": false
+    },
+    {
+      "description": "Keep GitHub-hosted Ubuntu runners on 24.04: kind-based E2E jobs are unstable on ubuntu-26.04 runners",
+      "matchDatasources": [
+        "github-runners"
+      ],
+      "matchPackageNames": [
+        "ubuntu"
+      ],
+      "enabled": false
     }
   ]
 }

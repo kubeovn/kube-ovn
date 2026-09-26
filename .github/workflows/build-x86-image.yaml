@@ -115,7 +115,7 @@ jobs:
   e2e-selection:
     name: x86 E2E Selection
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && github.token || '' }}
       PYTHONDONTWRITEBYTECODE: "1"
@@ -424,7 +424,7 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     permissions:
       contents: read
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -443,7 +443,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -474,7 +474,7 @@ jobs:
   build-kube-ovn-base:
     name: Build kube-ovn-base
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     outputs:
       build-base: ${{ steps.check.outputs.build-base }}
     steps:
@@ -549,7 +549,7 @@ jobs:
   build-kube-ovn-dpdk-base:
     name: Build kube-ovn-dpdk-base
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     outputs:
       build-dpdk-base: ${{ steps.check.outputs.build-dpdk-base }}
     steps:
@@ -609,7 +609,7 @@ jobs:
   build-kube-ovn:
     name: Build kube-ovn
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     needs:
       - e2e-selection
       - build-kube-ovn-base
@@ -804,7 +804,7 @@ jobs:
     name: Build vpc-nat-gateway
     needs: e2e-selection
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:
@@ -836,7 +836,7 @@ jobs:
     name: Build E2E Binaries
     needs: e2e-selection
     if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -1128,7 +1128,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -1220,7 +1220,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -1425,7 +1425,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1607,7 +1607,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1806,7 +1806,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -2137,7 +2137,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -2297,7 +2297,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -2469,7 +2469,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -2790,7 +2790,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -2875,7 +2875,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -2952,7 +2952,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -3031,7 +3031,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -3112,7 +3112,7 @@ jobs:
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -3268,7 +3268,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -3485,7 +3485,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -3646,7 +3646,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -3807,7 +3807,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -3984,7 +3984,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -4132,7 +4132,7 @@ jobs:
       - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -4243,7 +4243,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -4439,7 +4439,7 @@ jobs:
       - build-kube-ovn
       - build-vpc-nat-gateway
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -4595,7 +4595,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -4751,7 +4751,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -4902,7 +4902,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -5051,7 +5051,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -5175,7 +5175,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -5332,7 +5332,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
@@ -5510,7 +5510,7 @@ jobs:
       - underlay-logical-gateway-installation-test
       - vpc-egress-gateway-e2e
       - webhook-e2e
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     env:
       NEEDS_JSON: ${{ toJSON(needs) }}
       SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
@@ -5546,7 +5546,7 @@ jobs:
     permissions:
       actions: write
       contents: read
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -5594,7 +5594,7 @@ jobs:
       contents: read
     needs:
       - e2e-selection
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
       GH_TOKEN: ${{ github.token }}
@@ -5704,7 +5704,7 @@ jobs:
     needs:
       - e2e-executor-result
     if: github.event_name == 'push' && needs.e2e-executor-result.result == 'success'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:
