@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -32,6 +33,18 @@ func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj any) {
 		key := cache.MetaObjectToName(newVmi).String()
 		klog.Infof("enqueue update VMI migration %s", key)
 		c.addOrUpdateVMIMigrationQueue.Add(key)
+	}
+}
+
+// enqueueVMIMigrationForBoundLauncher requeues a migration once its target virt-launcher is bound.
+// With hotplug volumes the VMIM stays Pending until that launcher is ready, so no phase event follows.
+func (c *Controller) enqueueVMIMigrationForBoundLauncher(oldPod, newPod *corev1.Pod) {
+	if !c.config.EnableLiveMigrationOptimize || oldPod.Spec.NodeName != "" || newPod.Spec.NodeName == "" ||
+		newPod.Labels[kubevirtv1.AppLabel] != "virt-launcher" {
+		return
+	}
+	if name := newPod.Annotations[kubevirtv1.MigrationJobNameAnnotation]; name != "" {
+		c.addOrUpdateVMIMigrationQueue.Add(newPod.Namespace + "/" + name)
 	}
 }
 
@@ -116,6 +129,8 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return nil
 	}
 	if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
+		// Only this handler installs migration options, and its queue has a single worker, so a
+		// migration that is not yet visible here cannot install options before the reset below.
 		hasUnfinishedMigration, err := c.hasUnfinishedVMIMigration(vmiMigration)
 		if err != nil {
 			return err
@@ -129,7 +144,8 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 
 	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
 	if err != nil {
-		if k8serrors.IsNotFound(err) && vmiMigration.Status.Phase == kubevirtv1.MigrationFailed && vmiMigration.Status.MigrationState == nil {
+		// KubeVirt fills status.migrationState.sourcePod while Pending, so cleanup must not depend on it.
+		if k8serrors.IsNotFound(err) && vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
 			return c.cleanupFailedVMIMigrationWithoutVMI(vmiMigration)
 		}
 		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %w", vmiMigration.Spec.VMIName, err))
@@ -180,95 +196,100 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 
 	switch vmiMigration.Status.Phase {
 	case kubevirtv1.MigrationPending, kubevirtv1.MigrationScheduling:
-		// KubeVirt creates the target virt-launcher in Pending and, for hotplug volumes,
-		// creates its attachment pod only after the launcher is ready. An attachment pod
-		// then gates Pending -> Scheduling, and both pods gate Scheduling -> Scheduled.
-		// Configure Pending to unblock launcher CNI and keep Scheduling for retries.
-		// Hotplug attachment pods share MigrationJobLabel, so AppLabel must distinguish
-		// the target virt-launcher whose NodeName identifies the migration target.
-		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-			MatchLabels: map[string]string{
-				kubevirtv1.MigrationJobLabel: string(vmiMigration.UID),
-				kubevirtv1.AppLabel:          "virt-launcher",
-			},
-		})
-		if err != nil {
-			err = fmt.Errorf("failed to create label selector for migration job UID %s: %w", vmiMigration.UID, err)
-			klog.Error(err)
-			return err
-		}
-
-		launcherPods, err := c.podsLister.Pods(vmiMigration.Namespace).List(selector)
-		if err != nil {
-			err = fmt.Errorf("failed to list target launcher pods with migration job UID %s: %w", vmiMigration.UID, err)
-			klog.Error(err)
-			return err
-		}
-
-		if len(launcherPods) > 0 {
-			targetLauncherPod := launcherPods[0]
-			// Before MigrationState is synchronized, use the VMI's current node as the source.
-			sourceNode := srcNodeName
-			if sourceNode == "" {
-				sourceNode = vmi.Status.NodeName
-			}
-
-			if sourceNode == "" || targetLauncherPod.Spec.NodeName == "" {
-				klog.Warningf("target launcher pod %s/%s migration setup skipped, source node: %s, target node: %s (migration job UID: %s)",
-					targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, targetLauncherPod.Spec.NodeName, vmiMigration.UID)
-				// Pod scheduling may complete without another VMIM phase update. Requeue until
-				// both node assignments are visible instead of dropping the pending setup.
-				return fmt.Errorf("target launcher pod %s/%s migration setup deferred, source node %q, target node %q not ready yet (migration job UID %s)",
-					targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, targetLauncherPod.Spec.NodeName, vmiMigration.UID)
-			}
-			if sourceNode == targetLauncherPod.Spec.NodeName {
-				klog.Warningf("target launcher pod %s/%s migration setup skipped, source and target node are both %s (migration job UID: %s)",
-					targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, vmiMigration.UID)
-				return nil
-			}
-
-			klog.Infof("target launcher pod %s/%s is migrating from %s to %s (migration job UID: %s)",
-				targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, targetLauncherPod.Spec.NodeName, vmiMigration.UID)
-
-			for _, portName := range portNames {
-				if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetLauncherPod.Spec.NodeName); err != nil {
-					err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
-					klog.Error(err)
-					return err
-				}
-				klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetLauncherPod.Spec.NodeName)
-			}
-		} else {
-			klog.Warningf("target launcher pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
-				vmiMigration.UID, vmiMigration.Status.Phase)
-			// Target launcher pod creation does not necessarily change the VMIM phase.
-			// Requeue so the same Pending migration is retried after the pod appears.
-			return fmt.Errorf("target launcher pod not yet created for migration job UID %s in phase %s", vmiMigration.UID, vmiMigration.Status.Phase)
-		}
+		return c.setVMIMigrationOptions(vmiMigration, vmi, srcNodeName, portNames)
 	case kubevirtv1.MigrationSucceeded:
-		for _, portName := range portNames {
-			klog.Infof("migrate end reset options for lsp %s from %s to %s, migration succeeded", portName, srcNodeName, targetNodeName)
-			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, false); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-				klog.Error(err)
-				return err
-			}
-		}
+		return c.resetVMIMigrationOptions(portNames, srcNodeName, targetNodeName, false)
 	case kubevirtv1.MigrationFailed:
-		for _, portName := range portNames {
-			klog.Infof("migrate end reset options for lsp %s from %s to %s, migration failed", portName, srcNodeName, targetNodeName)
-			if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, true); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
-				klog.Error(err)
-				return err
-			}
+		return c.resetVMIMigrationOptions(portNames, srcNodeName, targetNodeName, true)
+	}
+	return nil
+}
+
+// setVMIMigrationOptions requests both the source and the target launcher chassis for the VMI ports.
+func (c *Controller) setVMIMigrationOptions(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration, vmi *kubevirtv1.VirtualMachineInstance, sourceNode string, portNames []string) error {
+	// Before MigrationState is synchronized, use the VMI's current node as the source.
+	if sourceNode == "" {
+		sourceNode = vmi.Status.NodeName
+	}
+
+	// KubeVirt creates the target virt-launcher in Pending and, for hotplug volumes,
+	// creates its attachment pod only after the launcher is ready. An attachment pod
+	// then gates Pending -> Scheduling, and both pods gate Scheduling -> Scheduled.
+	// Configure Pending to unblock launcher CNI and keep Scheduling for retries.
+	// Hotplug attachment pods share MigrationJobLabel, so AppLabel must distinguish
+	// the target virt-launcher whose NodeName identifies the migration target.
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			kubevirtv1.MigrationJobLabel: string(vmiMigration.UID),
+			kubevirtv1.AppLabel:          "virt-launcher",
+		},
+	})
+	if err != nil {
+		err = fmt.Errorf("failed to create label selector for migration job UID %s: %w", vmiMigration.UID, err)
+		klog.Error(err)
+		return err
+	}
+
+	launcherPods, err := c.podsLister.Pods(vmiMigration.Namespace).List(selector)
+	if err != nil {
+		err = fmt.Errorf("failed to list target launcher pods with migration job UID %s: %w", vmiMigration.UID, err)
+		klog.Error(err)
+		return err
+	}
+	if len(launcherPods) == 0 {
+		klog.Warningf("target launcher pod not yet created for migration job UID %s in phase %s, waiting for pod creation",
+			vmiMigration.UID, vmiMigration.Status.Phase)
+		// Target launcher pod creation does not necessarily change the VMIM phase.
+		// Requeue so the same Pending migration is retried after the pod appears.
+		return fmt.Errorf("target launcher pod not yet created for migration job UID %s in phase %s", vmiMigration.UID, vmiMigration.Status.Phase)
+	}
+
+	targetLauncherPod := launcherPods[0]
+	targetNode := targetLauncherPod.Spec.NodeName
+	if sourceNode == "" || targetNode == "" {
+		klog.Warningf("target launcher pod %s/%s migration setup skipped, source node: %s, target node: %s (migration job UID: %s)",
+			targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, targetNode, vmiMigration.UID)
+		// Pod scheduling may complete without another VMIM phase update. Requeue until
+		// both node assignments are visible instead of dropping the pending setup.
+		return fmt.Errorf("target launcher pod %s/%s migration setup deferred, source node %q, target node %q not ready yet (migration job UID %s)",
+			targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, targetNode, vmiMigration.UID)
+	}
+	if sourceNode == targetNode {
+		klog.Warningf("target launcher pod %s/%s migration setup skipped, source and target node are both %s (migration job UID: %s)",
+			targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, vmiMigration.UID)
+		return nil
+	}
+
+	klog.Infof("target launcher pod %s/%s is migrating from %s to %s (migration job UID: %s)",
+		targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, targetNode, vmiMigration.UID)
+	for _, portName := range portNames {
+		if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetNode); err != nil {
+			err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
+			klog.Error(err)
+			return err
+		}
+		klog.Infof("successfully set migrate options for lsp %s from %s to %s", portName, sourceNode, targetNode)
+	}
+	return nil
+}
+
+// resetVMIMigrationOptions pins the VMI ports to the target node after success, or back to the
+// source node after failure.
+func (c *Controller) resetVMIMigrationOptions(portNames []string, srcNodeName, targetNodeName string, migrationFailed bool) error {
+	for _, portName := range portNames {
+		klog.Infof("migrate end reset options for lsp %s from %s to %s, migration failed: %t", portName, srcNodeName, targetNodeName, migrationFailed)
+		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migrationFailed); err != nil {
+			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
+			klog.Error(err)
+			return err
 		}
 	}
 	return nil
 }
 
-// cleanupFailedVMIMigrationWithoutVMI rolls back options left by a Pending migration
-// when the VMI is gone before its Failed event is processed.
+// cleanupFailedVMIMigrationWithoutVMI removes options left by a failed migration when the VMI
+// is gone. There is no node to pin the ports to, and CreateLogicalSwitchPort keeps existing
+// options, so a leftover requested-chassis would block the next VMI on any other node.
 func (c *Controller) cleanupFailedVMIMigrationWithoutVMI(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration) error {
 	vmKey := fmt.Sprintf("%s/%s", vmiMigration.Namespace, vmiMigration.Spec.VMIName)
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": vmKey})
@@ -284,7 +305,7 @@ func (c *Controller) cleanupFailedVMIMigrationWithoutVMI(vmiMigration *kubevirtv
 		if len(nodes) != 2 || nodes[0] == "" || nodes[1] == "" || nodes[0] == nodes[1] {
 			continue
 		}
-		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(lsp.Name, nodes[0], "", true); err != nil {
+		if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(lsp.Name); err != nil {
 			return fmt.Errorf("failed to clean migrate options for LSP %s: %w", lsp.Name, err)
 		}
 	}

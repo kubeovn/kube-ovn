@@ -201,49 +201,60 @@ func TestHandleAddOrUpdateVMIMigrationCleansFailedMigrationAfterVMIDeletion(t *t
 		Spec: corev1.PodSpec{NodeName: targetNode},
 	}
 
-	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{targetPod}})
-	require.NoError(t, err)
+	// KubeVirt usually records the source pod while Pending, so both variants reach Failed.
+	for name, migrationState := range map[string]*kubevirtv1.VirtualMachineInstanceMigrationState{
+		"nil migration state": nil,
+		"source pod state":    {SourcePod: "virt-launcher-test-vmi-source"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{targetPod}})
+			require.NoError(t, err)
 
-	mockCtrl := gomock.NewController(t)
-	kubevirtClient := kubecli.NewMockKubevirtClient(mockCtrl)
-	migrationClient := kubecli.NewMockVirtualMachineInstanceMigrationInterface(mockCtrl)
-	vmiClient := kubecli.NewMockVirtualMachineInstanceInterface(mockCtrl)
-	fc.fakeController.config.KubevirtClient = kubevirtClient
+			mockCtrl := gomock.NewController(t)
+			kubevirtClient := kubecli.NewMockKubevirtClient(mockCtrl)
+			migrationClient := kubecli.NewMockVirtualMachineInstanceMigrationInterface(mockCtrl)
+			vmiClient := kubecli.NewMockVirtualMachineInstanceInterface(mockCtrl)
+			fc.fakeController.config.KubevirtClient = kubevirtClient
 
-	vmiMigration := &kubevirtv1.VirtualMachineInstanceMigration{
-		Name: migration, Namespace: namespace, UID: migrationUID,
-		Spec:   kubevirtv1.VirtualMachineInstanceMigrationSpec{VMIName: vmiName},
-		Status: kubevirtv1.VirtualMachineInstanceMigrationStatus{Phase: kubevirtv1.MigrationPending},
+			vmiMigration := &kubevirtv1.VirtualMachineInstanceMigration{
+				Name: migration, Namespace: namespace, UID: migrationUID,
+				Spec: kubevirtv1.VirtualMachineInstanceMigrationSpec{VMIName: vmiName},
+				Status: kubevirtv1.VirtualMachineInstanceMigrationStatus{
+					Phase:          kubevirtv1.MigrationPending,
+					MigrationState: migrationState,
+				},
+			}
+			vmi := &kubevirtv1.VirtualMachineInstance{
+				Name: vmiName, Namespace: namespace,
+				Status: kubevirtv1.VirtualMachineInstanceStatus{NodeName: sourceNode},
+			}
+
+			kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(3)
+			migrationClient.EXPECT().Get(gomock.Any(), migration, metav1.GetOptions{}).Return(vmiMigration, nil).Times(2)
+			migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+				Return(&kubevirtv1.VirtualMachineInstanceMigrationList{}, nil)
+			kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient).Times(2)
+			vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).Return(vmi, nil)
+			vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).
+				Return(nil, k8serrors.NewNotFound(kubevirtv1.Resource("virtualmachineinstances"), vmiName))
+			fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, map[string]string{"pod": namespace + "/" + vmiName}).
+				Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
+			fc.mockOvnClient.EXPECT().SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetNode).Return(nil)
+			fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, map[string]string{"pod": namespace + "/" + vmiName}).
+				Return([]ovnnb.LogicalSwitchPort{{
+					Name: portName,
+					Options: map[string]string{
+						"requested-chassis":   sourceNode + "," + targetNode,
+						"activation-strategy": "rarp",
+					},
+				}}, nil)
+			fc.mockOvnClient.EXPECT().CleanLogicalSwitchPortMigrateOptions(portName).Return(nil)
+
+			require.NoError(t, fc.fakeController.handleAddOrUpdateVMIMigration(namespace+"/"+migration))
+			vmiMigration.Status.Phase = kubevirtv1.MigrationFailed
+			require.NoError(t, fc.fakeController.handleAddOrUpdateVMIMigration(namespace+"/"+migration))
+		})
 	}
-	vmi := &kubevirtv1.VirtualMachineInstance{
-		Name: vmiName, Namespace: namespace,
-		Status: kubevirtv1.VirtualMachineInstanceStatus{NodeName: sourceNode},
-	}
-
-	kubevirtClient.EXPECT().VirtualMachineInstanceMigration(namespace).Return(migrationClient).Times(3)
-	migrationClient.EXPECT().Get(gomock.Any(), migration, metav1.GetOptions{}).Return(vmiMigration, nil).Times(2)
-	migrationClient.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
-		Return(&kubevirtv1.VirtualMachineInstanceMigrationList{}, nil)
-	kubevirtClient.EXPECT().VirtualMachineInstance(namespace).Return(vmiClient).Times(2)
-	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).Return(vmi, nil)
-	vmiClient.EXPECT().Get(gomock.Any(), vmiName, metav1.GetOptions{}).
-		Return(nil, k8serrors.NewNotFound(kubevirtv1.Resource("virtualmachineinstances"), vmiName))
-	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, map[string]string{"pod": namespace + "/" + vmiName}).
-		Return([]ovnnb.LogicalSwitchPort{{Name: portName}}, nil)
-	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetNode).Return(nil)
-	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, map[string]string{"pod": namespace + "/" + vmiName}).
-		Return([]ovnnb.LogicalSwitchPort{{
-			Name: portName,
-			Options: map[string]string{
-				"requested-chassis":   sourceNode + "," + targetNode,
-				"activation-strategy": "rarp",
-			},
-		}}, nil)
-	fc.mockOvnClient.EXPECT().ResetLogicalSwitchPortMigrateOptions(portName, sourceNode, "", true).Return(nil)
-
-	require.NoError(t, fc.fakeController.handleAddOrUpdateVMIMigration(namespace+"/"+migration))
-	vmiMigration.Status.Phase = kubevirtv1.MigrationFailed
-	require.NoError(t, fc.fakeController.handleAddOrUpdateVMIMigration(namespace+"/"+migration))
 }
 
 func TestHandleAddOrUpdateVMIMigrationSkipsMissingVMIWithActiveMigration(t *testing.T) {
@@ -490,4 +501,31 @@ func TestHandleAddOrUpdateVMIMigrationRetriesFailedCleanupWhenMigrationListFails
 
 	err = fc.fakeController.handleAddOrUpdateVMIMigration(namespace + "/" + failedMigration.Name)
 	require.ErrorContains(t, err, "failed to list migrations in namespace test: API unavailable")
+}
+
+func TestEnqueueVMIMigrationForBoundLauncher(t *testing.T) {
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.config.EnableLiveMigrationOptimize = true
+	c.addOrUpdateVMIMigrationQueue = newTypedRateLimitingQueue[string]("test", nil)
+
+	unbound := &corev1.Pod{
+		Name: "virt-launcher-vm-target", Namespace: "test",
+		Labels:      map[string]string{kubevirtv1.AppLabel: "virt-launcher"},
+		Annotations: map[string]string{kubevirtv1.MigrationJobNameAnnotation: "vm-migration"},
+	}
+	bound := unbound.DeepCopy()
+	bound.Spec.NodeName = "target-node"
+	attachment := bound.DeepCopy()
+	attachment.Labels[kubevirtv1.AppLabel] = "hotplug-disk"
+
+	c.enqueueVMIMigrationForBoundLauncher(bound, bound)
+	c.enqueueVMIMigrationForBoundLauncher(unbound, attachment)
+	require.Zero(t, c.addOrUpdateVMIMigrationQueue.Len())
+
+	c.enqueueVMIMigrationForBoundLauncher(unbound, bound)
+	require.Equal(t, 1, c.addOrUpdateVMIMigrationQueue.Len())
+	key, _ := c.addOrUpdateVMIMigrationQueue.Get()
+	require.Equal(t, "test/vm-migration", key)
 }

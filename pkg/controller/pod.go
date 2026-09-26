@@ -309,6 +309,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	c.enqueueVpcNatGatewayRestart(oldPod, newPod)
+	c.enqueueVMIMigrationForBoundLauncher(oldPod, newPod)
 	// Only kube-ovn network annotations can change the backend NIC resolution without an
 	// EndpointSlice update (the k8s endpointslice controller already emits EndpointSlice
 	// updates for readiness, deletion, PodIP and label changes). Re-checking every status
