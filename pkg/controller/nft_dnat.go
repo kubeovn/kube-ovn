@@ -3,15 +3,20 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 
+	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 )
 
 // nft share DNAT architecture (follows kube-proxy nftables pattern):
@@ -62,21 +67,9 @@ const (
 	natGwNftDnatMapDel = "nft-dnat-map-del"
 )
 
-// createNftDnatMapInPod creates or updates an nftables map-based DNAT rule for Share type.
-// This is the core function for the nft LB feature: it builds an nft transaction that
-// atomically updates the per-identity chain with the full set of backends.
-//
-// The transaction (submitted via nft -f) contains:
-//  1. Ensure table, base chain, and vmap exist
-//  2. Flush the per-identity chain (remove old rule)
-//  3. Add new rule with numgen random mod N map { all backends }
-//  4. Ensure vmap element dispatches to this chain
-//
-// The backends format passed to the gateway script is "ip1:port1@ip2:port2@...".
-// '@' is used as the separator (not ';') because the rule string is passed as a single
-// argument through the pod-exec API into a shell context, where ';' would be interpreted
-// as a command separator; '@' never appears in an ip:port and is shell-safe.
-func (c *Controller) createNftDnatMapInPod(dp, protocol, v4ip, externalPort string, backends []string, sessionAffinity string, affinityTimeoutSeconds int32) error {
+// createNftDnatMapInPods atomically creates or updates one share DNAT identity on the
+// gateway instances already resolved by the Service controller.
+func (c *Controller) createNftDnatMapInPods(gwPods []*corev1.Pod, protocol, v4ip, externalPort string, backends []string, sessionAffinity string, affinityTimeoutSeconds int32) error {
 	if v4ip == "" {
 		// Share DNAT is implemented with `ip daddr`/`ip saddr` nft rules and only supports IPv4.
 		return errors.New("cannot create nft dnat map: empty IPv4 EIP (share dnat does not support IPv6)")
@@ -89,12 +82,6 @@ func (c *Controller) createNftDnatMapInPod(dp, protocol, v4ip, externalPort stri
 	backends = dedupSortedBackends(backends)
 	if len(backends) == 0 {
 		return fmt.Errorf("cannot create nft dnat map for %s:%s (%s): no backends", v4ip, externalPort, protocol)
-	}
-
-	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
-	if err != nil {
-		klog.Errorf("failed to get nat gw pod, %v", err)
-		return err
 	}
 
 	// Encode client-IP session affinity for the gateway script. "none" keeps the original
@@ -112,36 +99,52 @@ func (c *Controller) createNftDnatMapInPod(dp, protocol, v4ip, externalPort stri
 
 	backendStr := strings.Join(backends, "@")
 	rule := fmt.Sprintf("%s,%s,%s,%s,%d,%s", v4ip, externalPort, protocol, affinity, timeout, backendStr)
-	if err = c.execNatGwRules(gwPod, natGwNftDnatMapAdd, []string{rule}); err != nil {
-		klog.Errorf("failed to create nft dnat map, err: %v", err)
-		return err
-	}
-	return nil
+	return c.execNatGwRulesInPods(gwPods, natGwNftDnatMapAdd, []string{rule})
 }
 
-// deleteNftDnatMapInPod deletes an nftables map-based DNAT rule by identity.
-// It removes the vmap element and the per-identity chain atomically.
-func (c *Controller) deleteNftDnatMapInPod(dp, protocol, v4ip, externalPort string) error {
-	deleted, err := c.natGwDeleted(dp)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if deleted {
-		return nil
-	}
-	gwPod, err := c.getNatGwPod(dp, c.natGwNamespaceByName(dp))
-	if err != nil {
-		klog.Errorf("failed to get nat gw pod, %v", err)
-		return err
-	}
-
+// deleteNftDnatMapInPods deletes an nftables map-based DNAT rule by identity, on an already resolved
+// set of gateway instances: it removes the vmap element and the per-identity chain atomically (see
+// createNftDnatMapInPods). The caller resolves the gateway and its Pods once, so removing several
+// identities of one gateway costs one live list instead of one per identity (and an empty result
+// even sleeps before failing, so the saving is not only round trips).
+func (c *Controller) deleteNftDnatMapInPods(gwPods []*corev1.Pod, protocol, v4ip, externalPort string) error {
 	rule := fmt.Sprintf("%s,%s,%s", v4ip, externalPort, protocol)
-	if err = c.execNatGwRules(gwPod, natGwNftDnatMapDel, []string{rule}); err != nil {
-		klog.Errorf("failed to delete nft dnat map, err: %v", err)
-		return err
+	return c.execNatGwRulesInPods(gwPods, natGwNftDnatMapDel, []string{rule})
+}
+
+// dnatUsesEip reports whether a rule addresses a public IP through an EIP: the address is
+// allocated by the EIP and bound on the external interface.
+func dnatUsesEip(spec *kubeovnv1.IptablesDnatRuleSpec) bool {
+	return spec.EIP != ""
+}
+
+// dnatServesClusterIP reports whether a rule also serves an internal VIP: the address is held on lo
+// in the gateway. A Service handled by the nftable LB service feature carries both addresses on one
+// rule (its ingress IP through the EIP and its ClusterIP), a ClusterIP Service only the ClusterIP.
+func dnatServesClusterIP(spec *kubeovnv1.IptablesDnatRuleSpec) bool {
+	return spec.ClusterIP != ""
+}
+
+// sameDnatIdentity reports whether two rules address the same share DNAT identity, i.e. the same
+// address, port and protocol.
+//
+// An EIP is the identity whenever either side has one: the nft map of an EIP:port is shared by
+// every rule of that EIP, so a rule that only differs by not carrying the ClusterIP of the Service
+// still programs the same map and must be treated as the same identity. Only rules that have no EIP
+// at all are identified by their ClusterIP.
+func sameDnatIdentity(a, b *kubeovnv1.IptablesDnatRuleSpec) bool {
+	if a.EIP != "" || b.EIP != "" {
+		return a.EIP == b.EIP
 	}
-	return nil
+	return a.ClusterIP == b.ClusterIP
+}
+
+// dnatIdentityName names the identity for logs and errors.
+func dnatIdentityName(spec *kubeovnv1.IptablesDnatRuleSpec) string {
+	if dnatUsesEip(spec) {
+		return "eip " + spec.EIP
+	}
+	return "clusterIP " + spec.ClusterIP
 }
 
 // dedupSortedBackends returns the unique backends in sorted order, dropping empty entries.
@@ -168,141 +171,268 @@ func dedupSortedBackends(backends []string) []string {
 	return uniq
 }
 
-// getShareBackends queries all Share-type DNAT rules with the same identity (eip, externalPort, protocol)
-// and returns their backends. The current DNAT (identified by dnatName) is excluded from the results.
-//
-// Backends are derived from each sibling's Spec (not Status) on purpose: the nft map for a given
-// identity is global and is rebuilt in full by whichever sibling reconciles last. Relying on
-// Status.Ready would create a race across the add/update/delete queues, where a sibling that is
-// momentarily not-yet-Ready gets excluded and silently dropped from the map by the last writer.
-// A sibling's Spec backend is populated as soon as it exists, so using it makes the rebuild
-// order-independent. Siblings that are being deleted are skipped so their backend is not re-added.
-//
-// This relies on the informer cache being in sync: a sibling's Spec must already be visible in
-// the lister for its backend to be included. If a sibling was just created and its create event
-// has not yet propagated to this lister cache, the last writer will build a map that temporarily
-// omits that backend. This is not a bug: the missing sibling's own add/update event triggers a
-// later reconcile that rebuilds the full map, so the set self-heals to the complete backend list.
-// getShareBackends returns the live backend list for a share DNAT identity (excluding dnatName)
-// together with the session-affinity settings carried by those live rules. The affinity is read
-// from a remaining rule instead of the rule being deleted: during a takeover or an affinity
-// change the old rule may still be terminating while newer live rules already carry the new
-// affinity, and the nft map must always be rebuilt with the live rules' settings.
-func (c *Controller) getShareBackends(gwName, eipName, externalPort, protocol, dnatName string) ([]string, string, int32, error) {
-	// The label selector only coarse-filters by gateway name; the EIP, port and protocol
-	// identity is intentionally enforced as a Spec post-filter below (d.Spec.EIP != eipName)
-	// rather than added to the selector:
-	//   - EIP name cannot be a label value: IptablesEIP is a cluster-scoped CR whose name may be
-	//     up to 253 chars, exceeding the 63-char Kubernetes label-value limit, which would make
-	//     patchDnatLabel fail and stall reconcile. The authoritative identity is therefore matched
-	//     by name in the Spec post-filter, which has no length limit.
-	//   - EIP IP (EipV4IpLabel) could technically be added to the selector, but it gives no real
-	//     benefit. The informer registers only a namespace indexer (no label index), so
-	//     lister.List(selector) always does cache.ListAll: a full O(all-DNATs) scan that applies
-	//     selector.Matches per object. Adding EipV4IpLabel does not shrink that scan; it only moves
-	//     the EIP comparison from the post-filter loop into the per-object selector match during the
-	//     same full scan, so total work is unchanged (arguably a hair more). It would also couple
-	//     every call site (including the redo path, which only has cachedDnat.Status.V4ip and no eip
-	//     object) to the Spec.V4ip == Status.IP backfill invariant. We keep EIP as a single-source
-	//     Spec post-filter. A genuine speedup would require a dedicated label indexer, which is
-	//     over-engineering for this small per-(gw,eport) set.
-	// gwName is a safe selector dimension: it is always populated, immutable (NatGwDp is
-	// webhook-immutable), and short.
-	// gwName is explicitly length-validated by the VpcNatGateway webhook via
-	// ValidateNatGwStatefulSetNameLength (<=52 chars, derived from the 63-char label-value limit
-	// minus the StatefulSet revision-hash suffix), so it always fits in a label value; IptablesEIP
-	// has no such name-length webhook, which is the real reason its name cannot be used as a label.
-	dnats, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
-		util.VpcNatGatewayNameLabel: gwName,
-	}))
-	if err != nil {
-		return nil, "", 0, err
-	}
-
-	var backends []string
-	var affinity string
-	var affinityTimeout int32
-	affinitySet := false
-	canonicalExternalPort := canonicalDnatPort(externalPort)
-	canonicalProtocol := strings.ToLower(protocol)
-	for _, d := range dnats {
-		if d.Name == dnatName {
-			continue
-		}
-		if d.Spec.EIP != eipName || strings.ToLower(d.Spec.Protocol) != canonicalProtocol || canonicalDnatPort(d.Spec.ExternalPort) != canonicalExternalPort {
-			continue
-		}
-		if d.Spec.Type != kubeovnv1.DnatRuleTypeShare {
-			continue
-		}
-		if !d.DeletionTimestamp.IsZero() {
-			klog.V(4).Infof("skipping share dnat %s: being deleted", d.Name)
-			continue
-		}
-		if d.Spec.InternalIP == "" || d.Spec.InternalPort == "" {
-			klog.V(4).Infof("skipping share dnat %s: incomplete spec", d.Name)
-			continue
-		}
-		backends = append(backends, fmt.Sprintf("%s:%s", d.Spec.InternalIP, d.Spec.InternalPort))
-		if !affinitySet {
-			affinity = d.Spec.SessionAffinity
-			affinityTimeout = d.Spec.SessionAffinityTimeoutSeconds
-			affinitySet = true
-		}
-	}
-	return backends, affinity, affinityTimeout, nil
+// gwNftableLbSvcEnabled reports whether this feature is enabled. It gates everything the feature
+// owns beyond the share DNAT identity itself: the per-identity hairpin SNAT rules, the addresses
+// held on lo, and the VIP routes.
+func (c *Controller) gwNftableLbSvcEnabled() bool {
+	return c.config != nil && c.config.EnableGwNftableLbSvc
 }
 
-// cleanupShareDnatInPod rebuilds the share nft map with the remaining backends for the given
-// identity, or deletes the rule entirely when no backend is left after excluding dnatName.
-//
-// When a single backend is removed while the identity still has other backends, this rebuilds
-// the per-identity map in place without deleting the identity or flushing conntrack. Backends are
-// balanced with numgen random, so established connections are pinned by conntrack: connections to
-// surviving backends are unaffected, and connections to the removed backend are not flushed here
-// (they simply break once that backend is gone). New connections are distributed by the rebuilt
-// numgen random map. This is the expected behavior when detaching a backend from a load balancer.
-// Conntrack is only cleared on full identity deletion (see deleteNftDnatMapInPod /
-// del_nft_dnat_map in the gateway script).
-func (c *Controller) cleanupShareDnatInPod(key, gwName, eipName, protocol, v4ip, externalPort, dnatName string) error {
-	remainingBackends, affinity, affinityTimeout, err := c.getShareBackends(gwName, eipName, externalPort, protocol, dnatName)
-	if err != nil {
-		return fmt.Errorf("failed to get share backends for dnat %s: %w", key, err)
+// natGwVipRouteExternalIDs identifies the VPC policy routes this feature owns for one gateway.
+// The routes are keyed by gateway so the desired set of one gateway can never be claimed by
+// another, and the priority keeps them apart from the NAT gateway's internal CIDR policies.
+func natGwVipRouteExternalIDs(gwName string) map[string]string {
+	return map[string]string{
+		ovs.ExternalIDVendor:        util.CniTypeName,
+		ovs.ExternalIDVpcNatGateway: gwName,
+		"vipRoute":                  "true",
 	}
-	if len(remainingBackends) == 0 {
-		// No remaining backends, delete the nft rule
-		if err := c.deleteNftDnatMapInPod(gwName, protocol, v4ip, externalPort); err != nil {
-			return fmt.Errorf("failed to delete nft dnat map for %s: %w", key, err)
+}
+
+// natGwVipRouteMatch is the policy route match of one VIP: VPC traffic destined for the VIP is
+// rerouted to the gateway, which is what makes a Service reachable from inside the VPC through
+// its EIP and its ClusterIP alike. The match is on the destination (unlike the NAT gateway's
+// outbound policies, which match the client range) because the VIP is a destination.
+func natGwVipRouteMatch(vip string) string {
+	return "ip4.dst == " + vip
+}
+
+// desiredNatGwVipState returns the VIPs the given gateway has to route, keyed by policy route
+// match, and the ClusterIPs among them, which it also has to hold on lo.
+//
+// Every share rule contributes the addresses it serves, whether the feature generated it or an
+// operator created it by hand: the rule describes what it forwards, so it is the same rule shape,
+// the same identity and the same state in both cases. There is no per-rule bookkeeping and no
+// owner label involved -- a rule that is gone simply stops contributing, and the state converges
+// to what the live rules ask for.
+//
+// applying is the rule whose reconcile is running, or nil. It overrides what the informer cache
+// says about that one rule, because the caller knows better and the cache can be behind: the DNAT
+// handler patches the gateway label (patchDnatLabel) and then programs the rule in the same pass,
+// so the first rule of a Service is regularly still invisible to this List, and a terminating rule
+// can still look live. Without the override the gateway would be left with the nft identity but no
+// route and no lo address, and nothing bounds when a later event would repair it.
+func (c *Controller) desiredNatGwVipState(gwName string, applying *kubeovnv1.IptablesDnatRule) (map[string]string, []string, error) {
+	return c.desiredNatGwVipStateForService(gwName, applying, "", nil, "")
+}
+
+// desiredNatGwVipStateForService computes the complete gateway VIP state while replacing one
+// Service's cached accounting records with its current desired records. The Service controller
+// uses this immediately after programming the gateway, before the informer can observe record
+// creates/deletes; other Services and exclusive DNAT state remain cache-derived.
+func (c *Controller) desiredNatGwVipStateForService(gwName string, applying *kubeovnv1.IptablesDnatRule,
+	owner string, desired map[string]*kubeovnv1.IptablesDnatRule, eipIP string,
+) (map[string]string, []string, error) {
+	rules, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{util.VpcNatGatewayNameLabel: gwName}))
+	if err != nil {
+		return nil, nil, err
+	}
+	if applying != nil {
+		// The override carries its own DeletionTimestamp, so one substitution covers both
+		// directions: the loop below keeps a live rule and skips a terminating one.
+		rules = append(slices.DeleteFunc(rules, func(rule *kubeovnv1.IptablesDnatRule) bool {
+			return rule.Name == applying.Name
+		}), applying)
+	}
+	if owner != "" {
+		rules = slices.DeleteFunc(rules, func(rule *kubeovnv1.IptablesDnatRule) bool {
+			return util.NftableLbSvcOwnerKey(rule.Labels) == owner
+		})
+	}
+
+	vips := make(map[string]string)
+	clusterIPs := set.New[string]()
+	eipIPs := make(map[string]string)
+	for _, rule := range rules {
+		// Only Service accounting records contribute share VIP state. A manually created share CR
+		// has no forwarding semantics even if admission is bypassed.
+		if !rule.DeletionTimestamp.IsZero() || rule.Spec.Type != kubeovnv1.DnatRuleTypeShare ||
+			!util.IsNftableLbSvcRecord(rule.Labels) {
+			continue
 		}
+		// The internal VIP of a rule is held on lo and routed to the gateway. A rule that only
+		// serves a ClusterIP is self-describing, so it needs no owner label to contribute it.
+		if clusterIP := rule.Spec.ClusterIP; util.CheckProtocol(clusterIP) == kubeovnv1.ProtocolIPv4 {
+			vips[natGwVipRouteMatch(clusterIP)] = clusterIP
+			clusterIPs.Insert(clusterIP)
+		}
+		// The public VIP of a rule is the address of the EIP it serves. Resolving it here (instead
+		// of at creation) keeps the two addresses of one rule in one place and lets a rule that has
+		// no internal VIP, like a hand-managed one, contribute its public address alone.
+		if !dnatUsesEip(&rule.Spec) {
+			continue
+		}
+		ip, resolved := eipIPs[rule.Spec.EIP]
+		if !resolved {
+			// The lister is read directly: an EIP that exists but has no address yet contributes no
+			// route (its own update re-triggers this sync), while a lister failure must not silently
+			// narrow the desired set and delete a route that is still wanted.
+			eip, err := c.iptablesEipsLister.Get(rule.Spec.EIP)
+			switch {
+			case err == nil:
+				ip = eip.Status.IP
+			case k8serrors.IsNotFound(err):
+				klog.Infof("nat gw %s: eip %s of dnat %s is gone, dropping its vip route", gwName, rule.Spec.EIP, rule.Name)
+			default:
+				return nil, nil, fmt.Errorf("nat gw %s: failed to resolve eip %s of dnat %s for its vip route: %w", gwName, rule.Spec.EIP, rule.Name, err)
+			}
+			eipIPs[rule.Spec.EIP] = ip
+		}
+		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 {
+			vips[natGwVipRouteMatch(ip)] = ip
+		}
+	}
+	for _, rule := range desired {
+		if clusterIP := rule.Spec.ClusterIP; util.CheckProtocol(clusterIP) == kubeovnv1.ProtocolIPv4 {
+			vips[natGwVipRouteMatch(clusterIP)] = clusterIP
+			clusterIPs.Insert(clusterIP)
+		}
+		if rule.Spec.EIP != "" && util.CheckProtocol(eipIP) == kubeovnv1.ProtocolIPv4 {
+			vips[natGwVipRouteMatch(eipIP)] = eipIP
+		}
+	}
+	return vips, clusterIPs.SortedList(), nil
+}
+
+// natGwVipRouteNextHops returns the sorted LAN addresses of the gateway instances that can serve
+// the VIPs, which are the next hops of its VIP routes.
+//
+// An instance that still needs initialization is excluded: the vpc-nat-gw container has no
+// readiness probe, so the kubelet reports it ready as soon as it runs, well before the controller
+// has programmed its chains and share DNAT identities. Routing to it would drop the connections
+// ECMP hashes there. This narrows the window rather than closing it: the annotation only proves
+// that initialization finished, not that the DNAT redo has re-applied every identity.
+func natGwVipRouteNextHops(gw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) ([]string, error) {
+	configured := make([]*corev1.Pod, 0, len(pods))
+	for _, pod := range pods {
+		if natGwPodPendingInit(pod) {
+			klog.V(3).Infof("nat gw %s: instance %s/%s is not initialized yet, not a vip route next hop", gw.Name, pod.Namespace, pod.Name)
+			continue
+		}
+		configured = append(configured, pod)
+	}
+	nextHopByNode, err := getNatGwNextHops(gw, configured)
+	if err != nil {
+		return nil, err
+	}
+	nextHops := make([]string, 0, len(nextHopByNode))
+	for _, ip := range nextHopByNode {
+		// Share DNAT is IPv4 only: an IPv6 next hop must not be programmed into an ip4.dst route.
+		if util.CheckProtocol(ip) != kubeovnv1.ProtocolIPv4 {
+			continue
+		}
+		nextHops = append(nextHops, ip)
+	}
+	sort.Strings(nextHops)
+	return nextHops, nil
+}
+
+// syncNatGwVipState reconciles the VPC policy routes that send traffic destined for a share DNAT
+// VIP to the gateway, so a Service handled by the nftable LB service feature is reachable from
+// inside the VPC through both its EIP and its ClusterIP, not only through the external network.
+// The ClusterIPs the instances hold on lo are the in-pod half of the same state; they are synced
+// from the paths that already exec into the gateway (see syncNatGwVipAddrs).
+//
+// The desired set is derived from the gateway's DNAT rules, which are the durable record: a
+// deleted rule stops contributing its VIP, and the route is removed once no rule references it.
+// Reconciling by set (rather than by reference counting each teardown) is what makes the state
+// converge: a route that was missed once is removed by the next sync of its gateway.
+func (c *Controller) syncNatGwVipState(gwName string, applying *kubeovnv1.IptablesDnatRule) error {
+	return c.syncNatGwVipStateForService(gwName, applying, "", nil, "")
+}
+
+func (c *Controller) syncNatGwVipStateForService(gwName string, applying *kubeovnv1.IptablesDnatRule,
+	owner string, records map[string]*kubeovnv1.IptablesDnatRule, eipIP string,
+) error {
+	if !c.gwNftableLbSvcEnabled() {
+		// The feature owns the VIP state exclusively, and with it disabled it programs nothing: the
+		// rules it generated are not reconciled either.
 		return nil
 	}
-	// Rebuild nft rule with remaining backends
-	if err := c.createNftDnatMapInPod(gwName, protocol, v4ip, externalPort, remainingBackends, affinity, affinityTimeout); err != nil {
-		return fmt.Errorf("failed to rebuild nft dnat map for %s: %w", key, err)
+	gw, err := c.vpcNatGatewayLister.Get(gwName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// The gateway is gone and its VPC routes went with it.
+			return nil
+		}
+		return err
+	}
+
+	desired, _, err := c.desiredNatGwVipStateForService(gwName, applying, owner, records, eipIP)
+	if err != nil {
+		return err
+	}
+	pods, err := c.listNatGwPods(gw)
+	if err != nil {
+		return err
+	}
+	nextHops, err := natGwVipRouteNextHops(gw, pods)
+	if err != nil {
+		return err
+	}
+	if len(nextHops) == 0 {
+		// A reroute policy without next hops is rejected by OVN, so the routes have to go while no
+		// instance is reachable. The routes come back with the first ready instance, which the
+		// gateway reconcile syncs.
+		desired = map[string]string{}
+	}
+
+	existing, err := c.OVNNbClient.ListLogicalRouterPolicies(gw.Spec.Vpc, util.NatGatewayVipPolicyPriority, natGwVipRouteExternalIDs(gwName), false)
+	if err != nil {
+		return fmt.Errorf("failed to list vip routes of nat gw %s: %w", gwName, err)
+	}
+	for _, policy := range existing {
+		if _, wanted := desired[policy.Match]; !wanted {
+			if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(gw.Spec.Vpc, policy.UUID); err != nil {
+				return fmt.Errorf("failed to delete vip route %s of nat gw %s: %w", policy.Match, gwName, err)
+			}
+			klog.Infof("nat gw %s: removed vip route %s", gwName, policy.Match)
+			continue
+		}
+		current := append([]string(nil), policy.Nexthops...)
+		sort.Strings(current)
+		if policy.Action != string(kubeovnv1.PolicyRouteActionReroute) || !slices.Equal(current, nextHops) {
+			policy.Action, policy.Nexthops, policy.BFDSessions = string(kubeovnv1.PolicyRouteActionReroute), nextHops, nil
+			if err = c.OVNNbClient.UpdateLogicalRouterPolicy(policy, &policy.Action, &policy.Nexthops, &policy.BFDSessions); err != nil {
+				return fmt.Errorf("failed to update vip route %s of nat gw %s: %w", policy.Match, gwName, err)
+			}
+			klog.Infof("nat gw %s: restored vip route %s action reroute and nexthops %v", gwName, policy.Match, nextHops)
+		}
+		delete(desired, policy.Match)
+	}
+
+	for match := range desired {
+		if err = c.addPolicyRouteToVpc(gw.Spec.Vpc, &kubeovnv1.PolicyRoute{
+			Priority:  util.NatGatewayVipPolicyPriority,
+			Match:     match,
+			Action:    kubeovnv1.PolicyRouteActionReroute,
+			NextHopIP: strings.Join(nextHops, ","),
+		}, natGwVipRouteExternalIDs(gwName)); err != nil {
+			return fmt.Errorf("failed to add vip route %s to nat gw %s: %w", match, gwName, err)
+		}
+		klog.Infof("nat gw %s: routed vip %s to %v", gwName, desired[match], nextHops)
 	}
 	return nil
 }
 
-// isDnatDuplicated checks if a DNAT rule with the same identity already exists.
-// For Share type rules, multiple rules with the same identity can coexist.
-// For Exclusive type, only one rule per identity is allowed.
-//
-// Consistency note: this check (and the equivalent webhook check in ValidateIptablesDnat) reads
-// the informer lister / controller-runtime cache, which is only eventually consistent. If two
-// conflicting exclusive rules are created concurrently before either is visible in the cache,
-// both can pass this check and be admitted. This is a pre-existing limitation of the cache-based
-// duplicate detection, not specific to the share feature (the share feature only widens the set
-// of legitimately-coexisting objects under one identity). The reconcile loop is the eventual
-// authority: it re-runs this check on every sync, so a conflict that slipped through is detected
-// on a subsequent reconcile and the offending rule fails to become Ready (last-writer-wins /
-// eventual consistency). The webhook is best-effort admission-time protection, not a hard guarantee.
-func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort, protocol, dnatType string) (bool, error) {
-	// Check if the tuple "eip:external port:protocol" is already used by another DNAT rule.
-	// EIP identity is enforced via the Spec post-filter (d.Spec.EIP != eipName) below rather
-	// than in the selector; see getShareBackends for why EIP name/IP cannot be used as labels.
+// sameDnatVip reports whether two exclusive rules use the same VIP. Share records are owned and
+// programmed by the Service controller and never reach this duplicate check.
+func sameDnatVip(a, b *kubeovnv1.IptablesDnatRuleSpec) bool {
+	if a.EIP != "" && a.EIP == b.EIP {
+		return true
+	}
+	return a.ClusterIP != "" && a.ClusterIP == b.ClusterIP
+}
+
+func (c *Controller) isDnatDuplicated(gwName string, rule *kubeovnv1.IptablesDnatRule) (bool, error) {
+	spec := &rule.Spec
+	dnatName := rule.Name
+	// Check if the tuple "vip:external port:protocol" is already used by another DNAT rule.
+	// VIP remains a Spec post-filter because the gateway and external-port labels are the only
+	// indexed parts of the exclusive DNAT identity.
 	dnats, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
 		util.VpcNatGatewayNameLabel: gwName,
-		util.VpcDnatEPortLabel:      externalPort,
+		util.VpcDnatEPortLabel:      spec.ExternalPort,
 	}))
 	if err != nil {
 		return false, err
@@ -311,20 +441,14 @@ func (c *Controller) isDnatDuplicated(gwName, eipName, dnatName, externalPort, p
 		return false, nil
 	}
 
-	canonicalExternalPort := canonicalDnatPort(externalPort)
-	canonicalProtocol := strings.ToLower(protocol)
+	canonicalExternalPort := canonicalDnatPort(spec.ExternalPort)
+	canonicalProtocol := strings.ToLower(spec.Protocol)
 	for _, d := range dnats {
-		if d.Name == dnatName || d.Spec.EIP != eipName || strings.ToLower(d.Spec.Protocol) != canonicalProtocol || canonicalDnatPort(d.Spec.ExternalPort) != canonicalExternalPort {
+		if d.Name == dnatName || !sameDnatVip(&d.Spec, spec) || strings.ToLower(d.Spec.Protocol) != canonicalProtocol || canonicalDnatPort(d.Spec.ExternalPort) != canonicalExternalPort {
 			continue
 		}
-		// Found a DNAT with same identity
-		if dnatType == kubeovnv1.DnatRuleTypeShare && d.Spec.Type == kubeovnv1.DnatRuleTypeShare {
-			// Both are Share type, allow coexistence
-			continue
-		}
-		// Type conflict: Exclusive vs Share, or Exclusive vs Exclusive
-		err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s', same protocol '%s' is used by dnat %s (type=%s)",
-			dnatName, eipName, externalPort, protocol, d.Name, d.Spec.Type)
+		err = fmt.Errorf("failed to create dnat %s, duplicate, same %s, same external port '%s', same protocol '%s' is used by dnat %s (type=%s)",
+			dnatName, dnatIdentityName(spec), spec.ExternalPort, spec.Protocol, d.Name, d.Spec.Type)
 		return true, err
 	}
 	return false, nil

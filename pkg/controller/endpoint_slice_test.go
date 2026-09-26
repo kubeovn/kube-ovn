@@ -115,6 +115,27 @@ func TestEnqueueEndpointSliceServicePriority(t *testing.T) {
 	}
 }
 
+func TestEnqueueEndpointSliceGatewayAddDelete(t *testing.T) {
+	t.Parallel()
+
+	queue := newTypedRateLimitingQueue[string]("NftableLbService", nil)
+	defer queue.ShutDown()
+	c := &Controller{
+		config:                       &Configuration{EnableGwNftableLbSvc: true},
+		addOrUpdateNftableLbSvcQueue: queue,
+	}
+	eps := &discoveryv1.EndpointSlice{
+		Name: "svc-abc", Namespace: metav1.NamespaceDefault,
+		Labels: map[string]string{discoveryv1.LabelServiceName: "svc"},
+	}
+	c.enqueueAddEndpointSlice(eps)
+	c.enqueueDeleteEndpointSlice(eps)
+	require.Equal(t, 1, queue.Len())
+	item, _ := queue.Get()
+	require.Equal(t, "default/svc", item)
+	queue.Done(item)
+}
+
 func TestEndpointReady(t *testing.T) {
 	trueVal := true
 	falseVal := false

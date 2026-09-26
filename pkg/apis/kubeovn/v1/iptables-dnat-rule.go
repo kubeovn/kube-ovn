@@ -47,7 +47,9 @@ const (
 	// Creating another DNAT rule with the same identity is rejected.
 	DnatRuleTypeExclusive = "exclusive"
 
-	// DnatRuleTypeShare means multiple DNAT rules can share the same EIP:Port.
+	// DnatRuleTypeShare means multiple DNAT rules can share the same EIP:Port identity.
+	// Each rule contributes one backend, so traffic to that address and port is load-balanced
+	// across the internal backends instead of being limited to one internal destination.
 	// Different internal IP:Port backends are allowed to coexist under the same identity,
 	// enabling load-balancing across backends. Implemented via nftables numgen random
 	// map-based DNAT: new connections are distributed randomly across backends and then
@@ -72,8 +74,19 @@ const (
 )
 
 type IptablesDnatRuleSpec struct {
-	// EIP name for DNAT rule
-	EIP string `json:"eip"`
+	// Name of the EIP the rule exposes its backends on. It may be omitted only when
+	// ClusterIP is set, i.e. the rule is reachable from inside the VPC only.
+	// +optional
+	EIP string `json:"eip,omitempty"`
+	// Internal virtual IP the rule serves, reachable from inside the VPC through the VPC NAT
+	// gateway. Only IPv4 addresses and type=share rules support it. It is immutable: delete
+	// and recreate the rule to serve another address.
+	// +optional
+	ClusterIP string `json:"clusterIP,omitempty"`
+	// Name of the VPC NAT gateway serving this rule. It is required when no EIP is set, and
+	// must name the gateway the EIP belongs to otherwise.
+	// +optional
+	VpcNatGwDp string `json:"vpcNatGwDp,omitempty"`
 	// External port number
 	ExternalPort string `json:"externalPort"`
 	// Protocol type (TCP or UDP)

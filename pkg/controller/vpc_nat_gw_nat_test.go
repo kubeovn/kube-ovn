@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -120,11 +119,10 @@ func TestValidateDnat(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "empty eip",
+			name: "neither eip nor clusterIP",
 			dnat: &kubeovnv1.IptablesDnatRule{
 				Name: "test-dnat",
 				Spec: kubeovnv1.IptablesDnatRuleSpec{
-					EIP:          "",
 					ExternalPort: "80",
 					InternalPort: "8080",
 					InternalIP:   "10.0.0.1",
@@ -132,7 +130,90 @@ func TestValidateDnat(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "eip cannot be empty",
+			errMsg:  "one of eip and clusterIP must be set",
+		},
+		{
+			// A Service handled by the nftable LB service feature aligns its ingress IP and its
+			// ClusterIP on one rule: both fields together is the normal shape there.
+			name: "eip and clusterIP together",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					EIP:          "test-eip",
+					ClusterIP:    "10.96.1.5",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+					Type:         kubeovnv1.DnatRuleTypeShare,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "clusterIP without a gateway",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					ClusterIP:    "10.96.1.5",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+					Type:         kubeovnv1.DnatRuleTypeShare,
+				},
+			},
+			wantErr: true,
+			errMsg:  "vpcNatGwDp is required",
+		},
+		{
+			name: "clusterIP must be IPv4",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					ClusterIP:    "fd00::1",
+					VpcNatGwDp:   "gw0",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+					Type:         kubeovnv1.DnatRuleTypeShare,
+				},
+			},
+			wantErr: true,
+			errMsg:  "must be IPv4",
+		},
+		{
+			name: "clusterIP requires share type",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					ClusterIP:    "10.96.1.5",
+					VpcNatGwDp:   "gw0",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+				},
+			},
+			wantErr: true,
+			errMsg:  "clusterIP requires type=share",
+		},
+		{
+			name: "valid clusterIP share rule",
+			dnat: &kubeovnv1.IptablesDnatRule{
+				Name: "test-dnat",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					ClusterIP:    "10.96.1.5",
+					VpcNatGwDp:   "gw0",
+					ExternalPort: "80",
+					InternalPort: "8080",
+					InternalIP:   "10.0.0.1",
+					Protocol:     "tcp",
+					Type:         kubeovnv1.DnatRuleTypeShare,
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "empty externalPort",
@@ -579,16 +660,16 @@ func TestDeleteFipInPod_NatGwGone(t *testing.T) {
 	require.NoError(t, err, "should skip cleanup when gateway CRD is gone")
 }
 
-// TestDeleteFipInPod_NatGwExistsPodMissing verifies that deleteFipInPod returns
-// an error to trigger a retry when the gateway CRD exists but the pod is absent.
-func TestDeleteFipInPod_NatGwExistsPodMissing(t *testing.T) {
+// TestDeleteFipInPod_NatGwNoRunningInstance verifies that deleteFipInPod skips the cleanup
+// when the gateway has no running instance: the rules live in the gateway container.
+func TestDeleteFipInPod_NatGwNoRunningInstance(t *testing.T) {
 	t.Parallel()
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
 	})
 	require.NoError(t, err)
 	err = fc.fakeController.deleteFipInPod("test-gw", "10.0.0.1")
-	require.Error(t, err, "should return error to retry when pod is temporarily absent")
+	require.NoError(t, err, "should skip cleanup when the gateway has no running instance")
 }
 
 // TestDeleteDnatInPod_NatGwGone verifies that deleteDnatInPod returns nil when
@@ -601,16 +682,16 @@ func TestDeleteDnatInPod_NatGwGone(t *testing.T) {
 	require.NoError(t, err, "should skip cleanup when gateway CRD is gone")
 }
 
-// TestDeleteDnatInPod_NatGwExistsPodMissing verifies that deleteDnatInPod
-// returns an error to trigger a retry when the pod is absent.
-func TestDeleteDnatInPod_NatGwExistsPodMissing(t *testing.T) {
+// TestDeleteDnatInPod_NatGwNoRunningInstance verifies that deleteDnatInPod skips the cleanup
+// when the gateway has no running instance.
+func TestDeleteDnatInPod_NatGwNoRunningInstance(t *testing.T) {
 	t.Parallel()
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
 	})
 	require.NoError(t, err)
 	err = fc.fakeController.deleteDnatInPod("test-gw", "tcp", "10.0.0.1", "80")
-	require.Error(t, err, "should return error to retry when pod is temporarily absent")
+	require.NoError(t, err, "should skip cleanup when the gateway has no running instance")
 }
 
 // TestDeleteSnatInPod_NatGwGone verifies that deleteSnatInPod returns nil when
@@ -623,16 +704,16 @@ func TestDeleteSnatInPod_NatGwGone(t *testing.T) {
 	require.NoError(t, err, "should skip cleanup when gateway CRD is gone")
 }
 
-// TestDeleteSnatInPod_NatGwExistsPodMissing verifies that deleteSnatInPod
-// returns an error to trigger a retry when the pod is absent.
-func TestDeleteSnatInPod_NatGwExistsPodMissing(t *testing.T) {
+// TestDeleteSnatInPod_NatGwNoRunningInstance verifies that deleteSnatInPod skips the cleanup
+// when the gateway has no running instance.
+func TestDeleteSnatInPod_NatGwNoRunningInstance(t *testing.T) {
 	t.Parallel()
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
 	})
 	require.NoError(t, err)
 	err = fc.fakeController.deleteSnatInPod("test-gw", "10.0.0.1", "192.168.1.0/24")
-	require.Error(t, err, "should return error to retry when pod is temporarily absent")
+	require.NoError(t, err, "should skip cleanup when the gateway has no running instance")
 }
 
 // shareDnat builds an IptablesDnatRule with the identity labels that getShareBackends
@@ -694,86 +775,22 @@ func TestDedupSortedBackends(t *testing.T) {
 	}
 }
 
-func TestGetShareBackends(t *testing.T) {
-	t.Parallel()
-
-	deleting := shareDnat("deleting", "gw", "eip", "80", "tcp", "10.0.0.5", "8080", kubeovnv1.DnatRuleTypeShare)
-	deleting.DeletionTimestamp = &metav1.Time{Time: time.Unix(1, 0)}
-
-	c := dnatListerController(t,
-		shareDnat("self", "gw", "eip", "80", "tcp", "10.0.0.9", "8080", kubeovnv1.DnatRuleTypeShare),
-		shareDnat("d1", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeShare),
-		shareDnat("d2", "gw", "eip", "80", "tcp", "10.0.0.2", "8080", kubeovnv1.DnatRuleTypeShare),
-		shareDnat("exclusive", "gw", "eip", "80", "tcp", "10.0.0.3", "8080", kubeovnv1.DnatRuleTypeExclusive),
-		shareDnat("other-proto", "gw", "eip", "80", "udp", "10.0.0.4", "8080", kubeovnv1.DnatRuleTypeShare),
-		shareDnat("other-eip", "gw", "eip2", "80", "tcp", "10.0.0.6", "8080", kubeovnv1.DnatRuleTypeShare),
-		shareDnat("incomplete", "gw", "eip", "80", "tcp", "", "8080", kubeovnv1.DnatRuleTypeShare),
-		deleting,
-	)
-
-	backends, affinity, affinityTimeout, err := c.getShareBackends("gw", "eip", "80", "tcp", "self")
-	require.NoError(t, err)
-	// Self is excluded; only ready share siblings with the same identity are returned.
-	// Exclusive, other protocol/eip, incomplete spec and deleting rules are filtered out.
-	assert.ElementsMatch(t, []string{"10.0.0.1:8080", "10.0.0.2:8080"}, backends)
-	assert.Empty(t, affinity)
-	assert.Zero(t, affinityTimeout)
-}
-
-func TestGetShareBackendsUsesLiveSiblingAffinity(t *testing.T) {
-	t.Parallel()
-
-	live := shareDnat("live", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeShare)
-	live.Spec.SessionAffinity = kubeovnv1.DnatSessionAffinityClientIP
-	live.Spec.SessionAffinityTimeoutSeconds = 600
-	deleting := shareDnat("deleting", "gw", "eip", "80", "tcp", "10.0.0.9", "8080", kubeovnv1.DnatRuleTypeShare)
-	deleting.DeletionTimestamp = &metav1.Time{Time: time.Unix(1, 0)}
-
-	c := dnatListerController(t, live, deleting)
-	backends, affinity, affinityTimeout, err := c.getShareBackends("gw", "eip", "80", "tcp", "deleting")
-	require.NoError(t, err)
-	assert.ElementsMatch(t, []string{"10.0.0.1:8080"}, backends)
-	assert.Equal(t, kubeovnv1.DnatSessionAffinityClientIP, affinity)
-	assert.Equal(t, int32(600), affinityTimeout)
-}
-
 func TestIsDnatDuplicated(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
 		existing *kubeovnv1.IptablesDnatRule
-		newType  string
 		wantDup  bool
 	}{
 		{
-			name:     "exclusive vs existing exclusive is duplicate",
+			name:     "same exclusive identity is duplicate",
 			existing: shareDnat("other", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeExclusive),
-			newType:  kubeovnv1.DnatRuleTypeExclusive,
-			wantDup:  true,
-		},
-		{
-			name:     "share vs existing share coexist",
-			existing: shareDnat("other", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeShare),
-			newType:  kubeovnv1.DnatRuleTypeShare,
-			wantDup:  false,
-		},
-		{
-			name:     "exclusive vs existing share is duplicate",
-			existing: shareDnat("other", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeShare),
-			newType:  kubeovnv1.DnatRuleTypeExclusive,
-			wantDup:  true,
-		},
-		{
-			name:     "share vs existing exclusive is duplicate",
-			existing: shareDnat("other", "gw", "eip", "80", "tcp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeExclusive),
-			newType:  kubeovnv1.DnatRuleTypeShare,
 			wantDup:  true,
 		},
 		{
 			name:     "different protocol is not duplicate",
 			existing: shareDnat("other", "gw", "eip", "80", "udp", "10.0.0.1", "8080", kubeovnv1.DnatRuleTypeExclusive),
-			newType:  kubeovnv1.DnatRuleTypeExclusive,
 			wantDup:  false,
 		},
 	}
@@ -781,7 +798,16 @@ func TestIsDnatDuplicated(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			c := dnatListerController(t, tt.existing)
-			dup, err := c.isDnatDuplicated("gw", "eip", "new", "80", "tcp", tt.newType)
+			// The incoming rule is hand-managed unless the case labels it, which is what decides
+			// whether it may share an identity with the existing one.
+			newRule := &kubeovnv1.IptablesDnatRule{
+				Name: "new",
+				Spec: kubeovnv1.IptablesDnatRuleSpec{
+					EIP: "eip", ExternalPort: "80", Protocol: "tcp",
+					InternalIP: "10.0.0.9", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeExclusive,
+				},
+			}
+			dup, err := c.isDnatDuplicated("gw", newRule)
 			assert.Equal(t, tt.wantDup, dup)
 			if tt.wantDup {
 				assert.Error(t, err)
@@ -840,61 +866,36 @@ func TestEnqueueAddIptablesDnatRule(t *testing.T) {
 	)
 }
 
-func TestEnqueueUpdateIptablesDnatRuleNotifiesNftableLbService(t *testing.T) {
+func TestNftableLbRecordEventsEnqueueNothing(t *testing.T) {
 	t.Parallel()
+	addQueue := newTypedRateLimitingQueue[string]("AddIptablesDnat", nil)
+	updateQueue := newTypedRateLimitingQueue[string]("UpdateIptablesDnat", nil)
+	deleteQueue := newTypedRateLimitingQueue[string]("DelIptablesDnat", nil)
+	serviceQueue := newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil)
+	t.Cleanup(addQueue.ShutDown)
+	t.Cleanup(updateQueue.ShutDown)
+	t.Cleanup(deleteQueue.ShutDown)
+	t.Cleanup(serviceQueue.ShutDown)
 	c := &Controller{
-		updateIptablesDnatRuleQueue:  newTypedRateLimitingQueue[string]("UpdateIptablesDnat", nil),
-		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
-		config:                       &Configuration{EnableOvnLB: true, EnableNftableLbSvc: true},
+		addIptablesDnatRuleQueue:    addQueue,
+		updateIptablesDnatRuleQueue: updateQueue, delIptablesDnatRuleQueue: deleteQueue,
+		addOrUpdateNftableLbSvcQueue: serviceQueue, config: &Configuration{EnableGwNftableLbSvc: true},
 	}
-	t.Cleanup(c.updateIptablesDnatRuleQueue.ShutDown)
-	t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)
-
-	oldDnat := &kubeovnv1.IptablesDnatRule{
-		Name: "lb-default-abc",
-		Labels: map[string]string{
-			util.NftableLbSvcNsLabel:   "ns1",
-			util.NftableLbSvcNameLabel: "svc1",
-		},
-		Spec: kubeovnv1.IptablesDnatRuleSpec{Type: kubeovnv1.DnatRuleTypeShare},
-	}
-	newDnat := oldDnat.DeepCopy()
-	newDnat.Spec.SessionAffinity = kubeovnv1.DnatSessionAffinityClientIP
-
-	c.enqueueUpdateIptablesDnatRule(oldDnat, newDnat)
-	require.Equal(t, 1, c.addOrUpdateNftableLbSvcQueue.Len(), "out-of-band spec drift must notify the owning nftable LB service")
-	item, _ := c.addOrUpdateNftableLbSvcQueue.Get()
-	require.Equal(t, "ns1/svc1", item)
-	c.addOrUpdateNftableLbSvcQueue.Done(item)
-}
-
-func TestEnqueueDelIptablesDnatRuleNotifiesNftableLbService(t *testing.T) {
-	t.Parallel()
-	c := &Controller{
-		delIptablesDnatRuleQueue:     newTypedRateLimitingQueue[string]("DelIptablesDnat", nil),
-		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
-		config:                       &Configuration{EnableOvnLB: true, EnableNftableLbSvc: true},
-	}
-	t.Cleanup(c.delIptablesDnatRuleQueue.ShutDown)
-	t.Cleanup(c.addOrUpdateNftableLbSvcQueue.ShutDown)
-
-	owned := &kubeovnv1.IptablesDnatRule{
-		Name: "lb-default-abc",
-		Labels: map[string]string{
-			util.NftableLbSvcNsLabel:   "ns1",
-			util.NftableLbSvcNameLabel: "svc1",
-		},
-	}
-	c.enqueueDelIptablesDnatRule(owned)
-	require.Equal(t, 1, c.delIptablesDnatRuleQueue.Len())
-	require.Equal(t, 1, c.addOrUpdateNftableLbSvcQueue.Len(), "deleting a generated rule must notify its owning service")
-	item, _ := c.addOrUpdateNftableLbSvcQueue.Get()
-	require.Equal(t, "ns1/svc1", item)
-	c.addOrUpdateNftableLbSvcQueue.Done(item)
+	record := &kubeovnv1.IptablesDnatRule{Name: "record", Labels: map[string]string{
+		util.NftableLbSvcRecordLabel: "true", util.NftableLbSvcNsLabel: "ns1", util.NftableLbSvcNameLabel: "svc1",
+	}, Spec: kubeovnv1.IptablesDnatRuleSpec{Type: kubeovnv1.DnatRuleTypeShare}}
+	ready := record.DeepCopy()
+	ready.Status.Ready = true
+	c.enqueueAddIptablesDnatRule(record)
+	c.enqueueUpdateIptablesDnatRule(record, ready)
+	require.Zero(t, addQueue.Len())
+	c.enqueueDelIptablesDnatRule(record)
+	require.Zero(t, updateQueue.Len())
+	require.Zero(t, deleteQueue.Len())
+	require.Zero(t, serviceQueue.Len())
 
 	c.enqueueDelIptablesDnatRule(&kubeovnv1.IptablesDnatRule{Name: "manual"})
-	require.Equal(t, 2, c.delIptablesDnatRuleQueue.Len())
-	require.Equal(t, 0, c.addOrUpdateNftableLbSvcQueue.Len(), "manual rules must not trigger nftable LB service reconciliation")
+	require.Equal(t, 1, deleteQueue.Len(), "exclusive DNAT keeps the ordinary writer")
 }
 
 func TestEnqueueAddIptablesSnatRule(t *testing.T) {
@@ -911,3 +912,176 @@ func TestEnqueueAddIptablesSnatRule(t *testing.T) {
 		&kubeovnv1.IptablesSnatRule{Name: "terminating-snat", DeletionTimestamp: &now},
 	)
 }
+
+// Test_resolveDnatAddress pins what each rule shape resolves to: the EIP gives the gateway, the
+// IPv4 address the identity is programmed with and the IPv6 address recorded in the rule status
+// (the CRD prints it), while a rule that serves a ClusterIP has neither an EIP to derive them from
+// nor an IPv6 address to record.
+func Test_resolveDnatAddress(t *testing.T) {
+	t.Parallel()
+
+	eipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, eipIndexer.Add(&kubeovnv1.IptablesEIP{
+		Name:   "eip0",
+		Spec:   kubeovnv1.IptablesEIPSpec{NatGwDp: "gw0", V4ip: "192.0.2.10", V6ip: "fd00::10"},
+		Status: kubeovnv1.IptablesEIPStatus{IP: "192.0.2.10"},
+	}))
+	c := &Controller{iptablesEipsLister: kubeovnlister.NewIptablesEIPLister(eipIndexer)}
+
+	gwName, v4ip, v6ip, err := c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
+		Name: "eip-rule",
+		Spec: kubeovnv1.IptablesDnatRuleSpec{EIP: "eip0", ExternalPort: "80", Protocol: "tcp"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "gw0", gwName)
+	require.Equal(t, "192.0.2.10", v4ip)
+	require.Equal(t, "fd00::10", v6ip, "the IPv6 address of the EIP is recorded in the rule status")
+
+	// A LoadBalancer Service rule carries the gateway as well, and it must agree with the EIP's.
+	gwName, v4ip, v6ip, err = c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
+		Name: "lb-rule",
+		Spec: kubeovnv1.IptablesDnatRuleSpec{
+			EIP: "eip0", ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0",
+			ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "gw0", gwName)
+	require.Equal(t, "192.0.2.10", v4ip, "the programmed address is the public one")
+	require.Equal(t, "fd00::10", v6ip)
+
+	// A ClusterIP Service rule: its own address is the only one it has.
+	gwName, v4ip, v6ip, err = c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
+		Name: "clusterip-rule",
+		Spec: kubeovnv1.IptablesDnatRuleSpec{
+			ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0",
+			ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "gw0", gwName)
+	require.Equal(t, "10.96.1.5", v4ip)
+	require.Empty(t, v6ip)
+
+	// An EIP that does not exist cannot be resolved at all.
+	_, _, _, err = c.resolveDnatAddress(&kubeovnv1.IptablesDnatRule{
+		Name: "missing",
+		Spec: kubeovnv1.IptablesDnatRuleSpec{EIP: "absent", ExternalPort: "80", Protocol: "tcp"},
+	})
+	require.Error(t, err)
+}
+
+// Test_dnatNeedsSpecCleanup pins the state a crashed spec change leaves behind, for every rule shape:
+// the data plane may hold an identity the status does not point at any more, so both have to be
+// cleaned up. A rule that is ready, or has no programmed identity yet, is not in that state.
+func Test_dnatNeedsSpecCleanup(t *testing.T) {
+	t.Parallel()
+
+	eipOnly := &kubeovnv1.IptablesDnatRule{Spec: kubeovnv1.IptablesDnatRuleSpec{EIP: "eip0", ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare}}
+	clusterIPServed := &kubeovnv1.IptablesDnatRule{Spec: kubeovnv1.IptablesDnatRuleSpec{
+		ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0", ExternalPort: "80", Protocol: "tcp", Type: kubeovnv1.DnatRuleTypeShare,
+	}}
+
+	// A crashed spec change: the status points at what the data plane was programmed with. Only a
+	// rule that resolves an EIP can be in this state, because that divergent identity is looked up
+	// through the EIP; a ClusterIP rule records no second identity in its status.
+	for _, rule := range []*kubeovnv1.IptablesDnatRule{eipOnly, clusterIPServed} {
+		rule.Status = kubeovnv1.IptablesDnatRuleStatus{V4ip: "192.0.2.10", Ready: false}
+		if dnatUsesEip(&rule.Spec) {
+			require.True(t, dnatNeedsSpecCleanup(rule), "a not-ready EIP rule with a programmed identity needs both cleanups")
+		} else {
+			require.False(t, dnatNeedsSpecCleanup(rule), "a rule without an EIP has no diverging EIP identity to clean")
+		}
+		rule.Status.Ready = true
+		require.False(t, dnatNeedsSpecCleanup(rule), "a ready rule has no diverging identity")
+		rule.Status = kubeovnv1.IptablesDnatRuleStatus{}
+		require.False(t, dnatNeedsSpecCleanup(rule), "a rule that never programmed an identity has none to clean")
+	}
+}
+
+// Test_clusterIPDnatRedoNeeded pins the branch matrix behind "is the data plane of a ClusterIP rule
+// restored after its gateway instance was replaced": the redo replays the status, so it needs a
+// gateway and a complete identity there, and it must not run for a rule that is already ready or for
+// one whose add handler never finished (recovering that is the add handler's job).
+func TestEnqueueUpdateIptablesDnatRuleSkipsShareRecords(t *testing.T) {
+	t.Parallel()
+
+	newDnat := func(spec kubeovnv1.IptablesDnatRuleSpec) *kubeovnv1.IptablesDnatRule {
+		return &kubeovnv1.IptablesDnatRule{Name: "rule", Spec: spec}
+	}
+	clusterIPServed := kubeovnv1.IptablesDnatRuleSpec{
+		ClusterIP: "10.96.1.5", VpcNatGwDp: "gw0", ExternalPort: "80", Protocol: "tcp",
+		InternalIP: "10.0.7.2", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
+	}
+	eipServed := clusterIPServed
+	eipServed.ClusterIP, eipServed.EIP = "", "eip0"
+
+	tests := []struct {
+		name     string
+		old, new *kubeovnv1.IptablesDnatRule
+		enqueued bool
+	}{
+		{
+			name: "a ClusterIP record whose redo token changed is skipped",
+			old:  newDnat(clusterIPServed),
+			new:  func() *kubeovnv1.IptablesDnatRule { d := newDnat(clusterIPServed); d.Status.Redo = "new"; return d }(),
+		},
+		{
+			name: "an EIP record whose redo token changed is skipped",
+			old:  newDnat(eipServed),
+			new:  func() *kubeovnv1.IptablesDnatRule { d := newDnat(eipServed); d.Status.Redo = "new"; return d }(),
+		},
+		{
+			name: "a record whose gateway label became visible is skipped",
+			old:  newDnat(clusterIPServed),
+			new: func() *kubeovnv1.IptablesDnatRule {
+				d := newDnat(clusterIPServed)
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
+				return d
+			}(),
+		},
+		{
+			name:     "a rule with neither address is still rejected",
+			old:      newDnat(kubeovnv1.IptablesDnatRuleSpec{ExternalPort: "80", Protocol: "tcp", InternalIP: "10.0.7.2", InternalPort: "8080"}),
+			new:      newDnat(kubeovnv1.IptablesDnatRuleSpec{ExternalPort: "80", Protocol: "tcp", InternalIP: "10.0.7.2", InternalPort: "8080"}),
+			enqueued: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queue := newTypedRateLimitingQueue[string]("UpdateIptablesDnatRule", nil)
+			t.Cleanup(queue.ShutDown)
+			c := &Controller{updateIptablesDnatRuleQueue: queue, config: &Configuration{}}
+			c.enqueueUpdateIptablesDnatRule(tt.old, tt.new)
+			if tt.enqueued {
+				require.Equal(t, 1, c.updateIptablesDnatRuleQueue.Len())
+			} else {
+				require.Zero(t, c.updateIptablesDnatRuleQueue.Len())
+			}
+		})
+	}
+}
+
+func TestDnatRecordReadyUpdateEnqueuesNothing(t *testing.T) {
+	t.Parallel()
+	record := clusterIPServedRule("record", "gw0", "10.96.1.5")
+	record.Labels[util.NftableLbSvcRecordLabel] = "true"
+	record.Labels[util.NftableLbSvcNsLabel] = "default"
+	record.Labels[util.NftableLbSvcNameLabel] = "web"
+	ready := record.DeepCopy()
+	ready.Status.Ready = true
+	serviceQueue := newTypedRateLimitingQueue[string]("NftableLbService", nil)
+	updateQueue := newTypedRateLimitingQueue[string]("UpdateIptablesDnatRule", nil)
+	t.Cleanup(serviceQueue.ShutDown)
+	t.Cleanup(updateQueue.ShutDown)
+	c := &Controller{
+		config: &Configuration{EnableGwNftableLbSvc: true}, addOrUpdateNftableLbSvcQueue: serviceQueue,
+		updateIptablesDnatRuleQueue: updateQueue,
+	}
+	c.enqueueUpdateIptablesDnatRule(record, ready)
+	require.Zero(t, serviceQueue.Len())
+	require.Zero(t, updateQueue.Len())
+}
+
+// Test_isDnatDuplicatedRejectsDifferentOwners allows one Service's backends or hand-managed share
+// rules to aggregate, but rejects different owners that escaped admission validation.

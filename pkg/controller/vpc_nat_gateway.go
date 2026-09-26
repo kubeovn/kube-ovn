@@ -59,6 +59,12 @@ const (
 	natGwSubnetRouteAdd   = "subnet-route-add"
 	natGwSubnetRouteDel   = "subnet-route-del"
 
+	// Share DNAT VIP state of a Service handled by the nftable LB service feature: the ClusterIPs
+	// held on lo and the per-identity hairpin SNAT rules (see nft_dnat.go).
+	natGwVipAddrSync   = "vip-addr-sync"
+	natGwVipHairpinAdd = "vip-hairpin-add"
+	natGwVipHairpinDel = "vip-hairpin-del"
+
 	getIptablesVersion = "get-iptables-version"
 )
 
@@ -129,7 +135,6 @@ func (c *Controller) resyncVpcNatGwConfig() {
 
 func (c *Controller) enqueueAddVpcNatGw(obj any) {
 	gw := obj.(*kubeovnv1.VpcNatGateway)
-	c.enqueueNftableLbServicesForNatGw(gw.Name)
 	key := cache.MetaObjectToName(gw).String()
 	if !gw.DeletionTimestamp.IsZero() {
 		c.delVpcNatGatewayQueue.Add(key)
@@ -152,9 +157,8 @@ func (c *Controller) enqueueUpdateVpcNatGw(oldObj, newObj any) {
 	newGw := newObj.(*kubeovnv1.VpcNatGateway)
 	// Only VPC placement and termination affect nftable LB rules; status/ready churn is
 	// handled by the DNAT rule workers themselves, so avoid scanning EIPs on every update.
-	if oldGw.Spec.Vpc != newGw.Spec.Vpc || !oldGw.DeletionTimestamp.Equal(newGw.DeletionTimestamp) {
-		c.enqueueNftableLbServicesForNatGw(newGw.Name)
-	}
+	// Service reconcile is the only share-DNAT writer. Gateway changes do not directly execute
+	// Service data-plane reconciliation.
 	key := cache.MetaObjectToName(newGw).String()
 	if !newGw.DeletionTimestamp.IsZero() {
 		c.delVpcNatGatewayQueue.Add(key)
@@ -190,7 +194,6 @@ func (c *Controller) enqueueDeleteVpcNatGw(obj any) {
 		natGwNs = c.config.PodNamespace
 	}
 	key := natGwNs + "/" + gw.Name
-	c.enqueueNftableLbServicesForNatGw(gw.Name)
 	klog.V(3).Infof("enqueue del vpc-nat-gw %s", key)
 	c.delVpcNatGatewayQueue.Add(key)
 
@@ -261,7 +264,13 @@ func (c *Controller) handleDelVpcNatGw(key string) (retErr error) {
 
 	// Reconcile the routes to clean up everything (policies, BFD, ...)
 	// The gateway is being deleted, so no next hop is derived from its Pods and none is needed.
+	// This covers the internal CIDR policies (29200/29190); the share DNAT VIP routes (29210) are
+	// keyed by gateway and are released right after.
 	if err := c.reconcileVpcNatGatewayOVNRoutes(gw, nil); err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.OVNNbClient.DeleteLogicalRouterPolicies(gw.Spec.Vpc, util.NatGatewayVipPolicyPriority, natGwVipRouteExternalIDs(gw.Name)); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -536,6 +545,9 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 			return err
 		}
 	}
+
+	// Share-DNAT VIP state is written by Service reconcile only. Instance replacement is replayed
+	// through handleUpdateVpcDnat, which enqueues the Services after the gateway is ready.
 
 	// Handle QoS update (independent of StatefulSet/Deployment changes)
 	if gw.Spec.QoSPolicy != gw.Status.QoSPolicy {
@@ -976,6 +988,11 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		return err
 	}
 	for _, dnat := range dnats {
+		// Every share object is an accounting record. This includes objects created by the old
+		// implementation before the record label existed; the Service reconcile migrates them.
+		if dnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
+			continue
+		}
 		if dnat.Status.Redo != redoToken {
 			klog.V(3).Infof("redo dnat %s", dnat.Name)
 			if err = c.redoDnat(dnat.Name, redoToken, false); err != nil {
@@ -985,6 +1002,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 			}
 		}
 	}
+	// Service records never redo themselves. Reconcile the Services bound to this gateway so the
+	// only share-DNAT writer restores the new gateway instance.
+	c.enqueueNftableLbServicesForNatGw(natGwKey)
 	return nil
 }
 
@@ -1243,6 +1263,19 @@ func (c *Controller) execNatGwRules(pod *corev1.Pod, operation string, rules []s
 		klog.Warningf("nat gateway %s command wrote to stderr: %v", operation, errOutput)
 	}
 	return nil
+}
+
+// execNatGwRulesInPods runs one gateway script command on every given Pod, trying all of them so
+// a failing instance cannot starve the others.
+func (c *Controller) execNatGwRulesInPods(pods []*corev1.Pod, operation string, rules []string) error {
+	var errs []error
+	for _, pod := range pods {
+		if err := c.execNatGwRules(pod, operation, rules); err != nil {
+			klog.Errorf("failed to run %s in nat gw pod %s/%s, err: %v", operation, pod.Namespace, pod.Name, err)
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // setNatGwAPIAccess modifies StatefulSet Pod template annotations to add an interface with API access to the NAT gateway.
@@ -1807,14 +1840,6 @@ func (c *Controller) cleanUpVpcNatGw() error {
 		c.delVpcNatGatewayQueue.Add(natGwNs + "/" + gw.Name)
 	}
 	return nil
-}
-
-func (c *Controller) getNatGwPod(name, namespace string) (*corev1.Pod, error) {
-	pods, err := c.getNatGwPods(name, namespace, false)
-	if err != nil {
-		return nil, err
-	}
-	return pods[0], nil
 }
 
 // getNatGwPods returns the Pods a rule of the gateway has to be applied to: its running

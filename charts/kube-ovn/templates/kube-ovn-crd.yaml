@@ -674,8 +674,16 @@ spec:
             type: object
           spec:
             properties:
+              clusterIP:
+                description: |-
+                  Internal virtual IP the rule serves, reachable from inside the VPC through the VPC NAT
+                  gateway. Only IPv4 addresses and type=share rules support it. It is immutable: delete
+                  and recreate the rule to serve another address.
+                type: string
               eip:
-                description: EIP name for DNAT rule
+                description: |-
+                  Name of the EIP the rule exposes its backends on. It may be omitted only when
+                  ClusterIP is set, i.e. the rule is reachable from inside the VPC only.
                 type: string
               externalPort:
                 description: External port number
@@ -727,6 +735,11 @@ spec:
                 enum:
                 - exclusive
                 - share
+                type: string
+              vpcNatGwDp:
+                description: |-
+                  Name of the VPC NAT gateway serving this rule. It is required when no EIP is set, and
+                  must name the gateway the EIP belongs to otherwise.
                 type: string
             type: object
           status:

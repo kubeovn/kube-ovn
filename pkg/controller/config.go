@@ -147,8 +147,10 @@ type Configuration struct {
 	EnableKeepVMIP    bool
 	// EnablePodLbSvc runs one Pod per LoadBalancer Service, which forwards the Service's EIP to its
 	// backends with iptables. The flag that sets it keeps its historical name (--enable-lb-svc).
-	EnablePodLbSvc              bool
-	EnableNftableLbSvc          bool
+	EnablePodLbSvc     bool
+	EnableNftableLbSvc bool
+	// EnableGwNftableLbSvc runs the gateway nftable load balancer implementation instead of OVN LB.
+	EnableGwNftableLbSvc        bool
 	EnableOVNLBPreferLocal      bool
 	EnableMetrics               bool
 	EnableANP                   bool
@@ -196,8 +198,7 @@ type Configuration struct {
 	SkipConntrackDstCidrs string
 }
 
-// ParseFlags parses cmd args then init kubeclient and conf
-// TODO: validate configuration
+// ParseFlags parses cmd args then init kubeclient and conf.
 func ParseFlags() (*Configuration, error) {
 	leaderElectionConfig := defaultLeaderElectionConfiguration()
 	leaderElectionConfig.addFlags(pflag.CommandLine)
@@ -268,6 +269,7 @@ func ParseFlags() (*Configuration, error) {
 		argKeepVMIP                    = pflag.Bool("keep-vm-ip", true, "Whether to keep ip for kubevirt pod when pod is rebuild")
 		argEnablePodLbSvc              = pflag.Bool("enable-lb-svc", false, "Whether to support loadbalancer service")
 		argEnableNftableLbSvc          = pflag.Bool("enable-nftable-lb-svc", true, "Whether to support loadbalancer service backed by vpc nat gateway nftable share DNAT")
+		argEnableGwNftableLbSvc        = pflag.Bool("enable-gw-nftable-lb-svc", false, "Whether to support loadbalancer service backed by vpc nat gateway nftable share DNAT")
 		argEnableOVNLBPreferLocal      = pflag.Bool("enable-ovn-lb-prefer-local", false, "Whether to support ovn loadbalancer prefer local")
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
@@ -391,6 +393,7 @@ func ParseFlags() (*Configuration, error) {
 		InspectInterval:             *argInspectInterval,
 		EnablePodLbSvc:              *argEnablePodLbSvc,
 		EnableNftableLbSvc:          *argEnableNftableLbSvc,
+		EnableGwNftableLbSvc:        *argEnableGwNftableLbSvc,
 		EnableOVNLBPreferLocal:      *argEnableOVNLBPreferLocal,
 		EnableMetrics:               *argEnableMetrics,
 		EnableOVNIPSec:              *argEnableOVNIPSec,
@@ -425,12 +428,14 @@ func ParseFlags() (*Configuration, error) {
 	if config.EnablePodLbSvc && !config.EnableOvnLB {
 		klog.Warning("--enable-lb-svc requires --enable-lb, the loadbalancer service feature will not work")
 	}
-	if err := config.ACLSampling.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid ACL sampling configuration: %w", err)
-	}
-
 	if config.EnableNftableLbSvc && !config.EnableOvnLB {
 		klog.Warning("--enable-nftable-lb-svc requires --enable-lb, the nftable loadbalancer service feature will not work")
+	}
+	if config.EnableGwNftableLbSvc && config.EnableOvnLB {
+		return nil, errors.New("--enable-gw-nftable-lb-svc and --enable-lb are mutually exclusive")
+	}
+	if err := config.ACLSampling.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid ACL sampling configuration: %w", err)
 	}
 
 	if config.DefaultGateway == "" {
