@@ -64,7 +64,7 @@ func TestNftableLbEventHelpersRespectFeatureGate(t *testing.T) {
 	// Feature disabled: pod/EIP/NAT-GW event helpers must be no-ops even when their
 	// listers/indexers are not initialized, so the shared pod/EIP/NAT-GW informer hot paths
 	// do not pay for the nftable LB feature when it is off.
-	c := &Controller{config: &Configuration{EnableLb: true}}
+	c := &Controller{config: &Configuration{EnableOvnLB: true}}
 	require.NotPanics(t, func() {
 		c.enqueueNftableLbServicesForPod(&v1.Pod{Namespace: "ns", Name: "pod"})
 		c.enqueueNftableLbServicesForEIP("eip0")
@@ -86,7 +86,7 @@ func TestEnqueueNftableLbSvcOwnersFromRules(t *testing.T) {
 	}
 
 	c := &Controller{
-		config:                       &Configuration{EnableLb: true, EnableNftableLbSvc: true},
+		config:                       &Configuration{EnableOvnLB: true, EnableNftableLbSvc: true},
 		iptablesDnatRulesLister:      kubeovnlister.NewIptablesDnatRuleLister(indexer),
 		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
 	}

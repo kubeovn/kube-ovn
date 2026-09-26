@@ -7,7 +7,6 @@ on:
     types: [opened, reopened, synchronize, labeled, unlabeled, closed]
   push:
     branches:
-      - master
       - 'release-*'
   workflow_dispatch:
     inputs:

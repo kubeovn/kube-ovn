@@ -725,7 +725,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1"},
 					Provider:    util.OvnProvider,
 					GatewayType: kubeovnv1.GWDistributedType,
-					EnableLb:    new(ctrl.config.EnableLb),
+					EnableLb:    new(ctrl.config.EnableOvnLB),
 				},
 			},
 		},

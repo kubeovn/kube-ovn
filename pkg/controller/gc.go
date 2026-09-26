@@ -216,15 +216,6 @@ func (c *Controller) gcCustomLogicalRouter() error {
 
 func (c *Controller) gcNode() error {
 	klog.Infof("start to gc nodes")
-	nodes, err := c.nodesLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list node, %v", err)
-		return err
-	}
-	nodeNames := strset.NewWithSize(len(nodes))
-	for _, node := range nodes {
-		nodeNames.Add(node.Name)
-	}
 	ips, err := c.ipsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list ip, %v", err)
@@ -232,14 +223,11 @@ func (c *Controller) gcNode() error {
 	}
 
 	for _, ip := range ips {
-		if strings.HasPrefix(ip.Name, util.NodeLspPrefix) && !strings.Contains(ip.Name, ".") {
-			if node := ip.Name[len(util.NodeLspPrefix):]; !nodeNames.Has(node) {
-				klog.Infof("gc node %s", node)
-				if err := c.deleteNode(node); err != nil {
-					klog.Errorf("failed to gc node %s: %v", node, err)
-					return err
-				}
-			}
+		if !strings.HasPrefix(ip.Name, util.NodeLspPrefix) || strings.Contains(ip.Name, ".") {
+			continue
+		}
+		if err := c.gcStaleNode(ip.Name[len(util.NodeLspPrefix):]); err != nil {
+			return err
 		}
 	}
 
@@ -256,20 +244,58 @@ func (c *Controller) gcNode() error {
 	policies = append(policies, gatewayRouterPolicies...)
 	for _, policy := range policies {
 		// skip the policy for centralized subnet
-		if _, ok := policy.ExternalIDs["node"]; !ok {
+		owner, ok := policy.ExternalIDs["node"]
+		if !ok {
 			continue
 		}
-		if nodeNames.Has(policy.ExternalIDs["node"]) {
-			continue
-		}
-		klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
-		if err = c.OVNNbClient.DeleteLogicalRouterPolicy(c.config.ClusterRouter, policy.Priority, policy.Match); err != nil {
-			klog.Errorf("failed to delete logical router policy %q on lr %s", policy.Match, c.config.ClusterRouter)
+		if err := c.gcStaleNodeRouterPolicy(owner, policy); err != nil {
 			return err
 		}
 	}
 
 	klog.Infof("finish to gc nodes")
+	return nil
+}
+
+// gcStaleNode deletes the resources of a node that no longer exists. Workers run while gc lists, so the node
+// is read under the lock its handlers hold: a node joining meanwhile keeps what its add handler creates.
+func (c *Controller) gcStaleNode(node string) error {
+	c.nodeKeyMutex.LockKey(node)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(node) }()
+
+	if _, err := c.nodesLister.Get(node); err == nil {
+		return nil
+	} else if !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get node %s: %v", node, err)
+		return err
+	}
+	klog.Infof("gc node %s", node)
+	if err := c.deleteNode(node); err != nil {
+		klog.Errorf("failed to gc node %s: %v", node, err)
+		return err
+	}
+	return nil
+}
+
+// gcStaleNodeRouterPolicy deletes a router policy whose owning node no longer exists. Workers run while gc
+// lists, so the owner is read under the lock its handlers hold: a same-name replacement adopts the row with
+// the same external IDs, and the unchanged-row guard alone would not keep it.
+func (c *Controller) gcStaleNodeRouterPolicy(owner string, policy *ovnnb.LogicalRouterPolicy) error {
+	c.nodeKeyMutex.LockKey(owner)
+	defer func() { _ = c.nodeKeyMutex.UnlockKey(owner) }()
+
+	if _, err := c.nodesLister.Get(owner); err == nil {
+		return nil
+	} else if !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to get node %s: %v", owner, err)
+		return err
+	}
+	klog.Infof("gc logical router policy %q priority %d on lr %s", policy.Match, policy.Priority, c.config.ClusterRouter)
+	// delete the listed row only: a node reusing the join address may have taken it over since the list
+	if _, err := c.OVNNbClient.DeleteLogicalRouterPolicyIfUnchanged(c.config.ClusterRouter, policy); err != nil {
+		klog.Errorf("failed to delete logical router policy %q on lr %s: %v", policy.Match, c.config.ClusterRouter, err)
+		return err
+	}
 	return nil
 }
 
@@ -605,7 +631,7 @@ func (c *Controller) gcLoadBalancer() error {
 		vpcLbs.Add(dnat.Name)
 	}
 
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		// remove lb from logical switch
 		vpcs, err := c.vpcsLister.List(labels.Everything())
 		if err != nil {
@@ -1253,7 +1279,7 @@ func (c *Controller) gcLbSvcPods() error {
 }
 
 func (c *Controller) gcVPCDNS() error {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return nil
 	}
 
@@ -1321,7 +1347,7 @@ func (c *Controller) gcVPCDNS() error {
 }
 
 func (c *Controller) gcRouterLBRules() error {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return nil
 	}
 

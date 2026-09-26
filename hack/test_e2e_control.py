@@ -1289,7 +1289,7 @@ class E2EControlTest(unittest.TestCase):
             "pull_request_target:\n    types: [opened, reopened, synchronize, labeled, unlabeled, closed]",
             workflow,
         )
-        self.assertIn("push:\n    branches:", workflow)
+        self.assertIn("push:\n    branches:\n      - 'release-*'", workflow)
         self.assertIn("name: Invalidate x86 E2E gates after a base update", workflow)
         self.assertIn("inputs[baseRefresh]=true", workflow)
         self.assertIn("inputs[baseSHA]=$GITHUB_SHA", workflow)
@@ -1421,22 +1421,26 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("id: coverage", automatic)
         self.assertIn("echo 'durableApproval=true' >> \"$GITHUB_OUTPUT\"", automatic)
 
-    def testBaseRefreshDurableApprovalsReachReducerMatrix(self):
+    def testMasterPushDoesNotRefreshOtherPullRequestGates(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
-        invalidate = blocks["invalidate-base"]
         reduce = blocks["reduce"]
 
-        self.assertIn("approvedPullRequests: ${{ steps.invalidate.outputs.approvedPullRequests }}", invalidate)
-        self.assertIn("id: invalidate", invalidate)
-        self.assertIn("approved-pulls.txt", invalidate)
-        self.assertIn("approvedPullRequests=$approvedPullRequests", invalidate)
-        self.assertIn("- invalidate-base", reduce)
+        self.assertIn("invalidate-base", blocks)
         self.assertIn("github.event_name == 'push'", reduce)
-        self.assertIn("needs.invalidate-base.result == 'success'", reduce)
-        self.assertIn("needs.invalidate-base.outputs.approvedPullRequests != '[]'", reduce)
-        self.assertIn("matrix:", reduce)
+        self.assertNotIn("- master", workflow.split("\non:\n", 1)[1].split("\n  workflow_dispatch:", 1)[0])
+        self.assertIn(
+            "needs:\n      - dispatch\n      - automatic\n      - invalidate-base",
+            reduce,
+        )
         self.assertIn("needs.invalidate-base.outputs.approvedPullRequests", reduce)
+        self.assertIn(
+            "github.event_name == 'push' && "
+            "needs.invalidate-base.outputs.approvedPullRequests || "
+            "format('[{0}]', inputs.prNumber || github.event.issue.number || "
+            "github.event.pull_request.number)",
+            reduce,
+        )
         self.assertIn("PR_NUMBER: ${{ matrix.prNumber }}", reduce)
 
     def testApprovedExecutorDoesNotCarryAutomaticControlledLabels(self):
