@@ -43,7 +43,8 @@ func (c *Controller) enqueueUpdateVMIMigration(oldObj, newObj any) {
 // enqueueVMIMigrationForBoundLauncher requeues a migration once its target virt-launcher is bound.
 // With hotplug volumes the VMIM stays Pending until that launcher is ready, so no phase event follows.
 func (c *Controller) enqueueVMIMigrationForBoundLauncher(oldPod, newPod *corev1.Pod) {
-	if !c.config.EnableLiveMigrationOptimize || oldPod.Spec.NodeName != "" || newPod.Spec.NodeName == "" ||
+	if !c.config.EnableLiveMigrationOptimize || newPod == nil || newPod.Spec.NodeName == "" ||
+		(oldPod != nil && oldPod.Spec.NodeName != "") ||
 		newPod.Labels[kubevirtv1.AppLabel] != "virt-launcher" {
 		return
 	}
@@ -156,8 +157,25 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return err
 	}
 
+	srcNodeName, targetNodeName, skip, err := c.vmiMigrationNodes(vmiMigration, vmi, key)
+	if err != nil {
+		return err
+	}
+	if skip {
+		return nil
+	}
+
+	portNames, err := c.vmiMigrationPortNames(vmi)
+	if err != nil {
+		return err
+	}
+
+	klog.Infof("collected port names of vmi %s, port names are %v", vmi.Name, strings.Join(portNames, ", "))
+	return c.handleVMIMigrationPhase(vmiMigration, vmi, key, portNames, srcNodeName, targetNodeName)
+}
+
+func (c *Controller) vmiMigrationNodes(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration, vmi *kubevirtv1.VirtualMachineInstance, key string) (string, string, bool, error) {
 	// use VirtualMachineInstance's MigrationState because VirtualMachineInstanceMigration's MigrationState is not updated until migration finished
-	var srcNodeName, targetNodeName string
 	if vmi.Status.MigrationState != nil && vmi.Status.MigrationState.MigrationUID == vmiMigration.UID {
 		klog.Infof("current vmiMigration %s status %s, target Node %s, source Node %s, target Pod %s, source Pod %s", key,
 			vmiMigration.Status.Phase,
@@ -165,49 +183,52 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 			vmi.Status.MigrationState.SourceNode,
 			vmi.Status.MigrationState.TargetPod,
 			vmi.Status.MigrationState.SourcePod)
-		srcNodeName = vmi.Status.MigrationState.SourceNode
-		targetNodeName = vmi.Status.MigrationState.TargetNode
-	} else {
-		if vmi.Status.MigrationState != nil {
-			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is stale", key, vmiMigration.Status.Phase)
-		} else {
-			klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
-		}
-		// A failed migration may have configured options while Pending, before the VMI
-		// migration state was populated. Recover its target from the launcher pod so
-		// cleanup is scoped to the migration that wrote the options.
-		if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
-			if srcNodeName, targetNodeName, err = c.recoverVMIMigrationNodes(vmiMigration, vmi); err != nil {
-				return err
-			}
-		}
-		// A succeeded migration with stale state was taken over by a newer one, which owns
-		// the ports. A failed migration still has its own options to release below.
-		if (srcNodeName == "" || targetNodeName == "") && vmiMigration.Status.Phase == kubevirtv1.MigrationSucceeded {
-			klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded but VMI migration state is stale or nil, skipping", key)
-			return nil
-		}
+		return vmi.Status.MigrationState.SourceNode, vmi.Status.MigrationState.TargetNode, false, nil
 	}
 
+	if vmi.Status.MigrationState != nil {
+		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is stale", key, vmiMigration.Status.Phase)
+	} else {
+		klog.Infof("current vmiMigration %s status %s, vmi MigrationState is nil", key, vmiMigration.Status.Phase)
+	}
+	// A failed migration may have configured options while Pending, before the VMI
+	// migration state was populated. Recover its target from the launcher pod so
+	// cleanup is scoped to the migration that wrote the options.
+	if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
+		srcNodeName, targetNodeName, err := c.recoverVMIMigrationNodes(vmiMigration, vmi)
+		return srcNodeName, targetNodeName, false, err
+	}
+	// A succeeded migration with stale state was taken over by a newer one, which owns
+	// the ports. A failed migration still has its own options to release below.
+	if vmiMigration.Status.Phase == kubevirtv1.MigrationSucceeded {
+		klog.V(3).Infof("VirtualMachineInstanceMigration %s migration state is Succeeded but VMI migration state is stale or nil, skipping", key)
+		return "", "", true, nil
+	}
+	return "", "", false, nil
+}
+
+func (c *Controller) vmiMigrationPortNames(vmi *kubevirtv1.VirtualMachineInstance) ([]string, error) {
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)})
 	if err != nil {
-		klog.Errorf("failed to list logical switch ports for vmi %s/%s, %v", vmi.Namespace, vmi.Name, err)
-		return err
+		err = fmt.Errorf("failed to list logical switch ports for vmi %s/%s: %w", vmi.Namespace, vmi.Name, err)
+		klog.Error(err)
+		return nil, err
 	}
 
 	portNames := make([]string, 0, len(lsps))
 	for _, lsp := range lsps {
 		portNames = append(portNames, lsp.Name)
 	}
+	return portNames, nil
+}
 
-	klog.Infof("collected port names of vmi %s, port names are %v", vmi.Name, strings.Join(portNames, ", "))
-
+func (c *Controller) handleVMIMigrationPhase(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration, vmi *kubevirtv1.VirtualMachineInstance, key string, portNames []string, srcNodeName, targetNodeName string) error {
 	switch vmiMigration.Status.Phase {
 	case kubevirtv1.MigrationPending, kubevirtv1.MigrationScheduling:
 		return c.setVMIMigrationOptions(vmiMigration, vmi, srcNodeName, portNames)
 	case kubevirtv1.MigrationScheduled, kubevirtv1.MigrationPreparingTarget, kubevirtv1.MigrationTargetReady:
 		// Re-assert options while the migration is preparing. A target pod may not exist
-		// yet; unlike Pending/Scheduling this phase will produce another migration event.
+		// yet; Pod Add/Update handlers requeue this migration when it appears or binds.
 		targetPod, err := c.vmiMigrationTargetPod(vmiMigration)
 		if err != nil {
 			return err
@@ -415,12 +436,13 @@ func (c *Controller) recoverVMIMigrationNodes(vmiMigration *kubevirtv1.VirtualMa
 }
 
 // listVMIMigrations returns cached migrations for a VMI.
-func (c *Controller) listVMIMigrations(vmiKey string) []*kubevirtv1.VirtualMachineInstanceMigration {
+func (c *Controller) listVMIMigrations(vmiKey string) ([]*kubevirtv1.VirtualMachineInstanceMigration, error) {
 	indexer := c.kubevirtInformerFactory.VirtualMachineInstanceMigration().GetIndexer()
 	objects, err := indexer.ByIndex(informer.ByVMINameIndex, vmiKey)
 	if err != nil {
-		klog.Errorf("failed to list migrations of vmi %s: %v", vmiKey, err)
-		return nil
+		err = fmt.Errorf("failed to list migrations of vmi %s: %w", vmiKey, err)
+		klog.Error(err)
+		return nil, err
 	}
 	migrations := make([]*kubevirtv1.VirtualMachineInstanceMigration, 0, len(objects))
 	for _, object := range objects {
@@ -428,7 +450,7 @@ func (c *Controller) listVMIMigrations(vmiKey string) []*kubevirtv1.VirtualMachi
 			migrations = append(migrations, migration)
 		}
 	}
-	return migrations
+	return migrations, nil
 }
 
 // vmiMigrationHasTargetPod reports whether a migration has created its target launcher.
@@ -475,7 +497,11 @@ func podFromEarlierVMI(pod *corev1.Pod, vmi *kubevirtv1.VirtualMachineInstance) 
 
 // hasActiveVMIMigrationWithTarget reports whether another active migration owns a target pod.
 func (c *Controller) hasActiveVMIMigrationWithTarget(namespace, vmName string) (bool, error) {
-	for _, migration := range c.listVMIMigrations(fmt.Sprintf("%s/%s", namespace, vmName)) {
+	migrations, err := c.listVMIMigrations(fmt.Sprintf("%s/%s", namespace, vmName))
+	if err != nil {
+		return false, err
+	}
+	for _, migration := range migrations {
 		if migration.IsFinal() {
 			continue
 		}
@@ -517,7 +543,11 @@ func (c *Controller) deletedPodOwnsMigrateOptions(pod *corev1.Pod, vmName string
 	if podMigrationUID == "" {
 		return false, nil
 	}
-	for _, migration := range c.listVMIMigrations(fmt.Sprintf("%s/%s", pod.Namespace, vmName)) {
+	migrations, err := c.listVMIMigrations(fmt.Sprintf("%s/%s", pod.Namespace, vmName))
+	if err != nil {
+		return false, err
+	}
+	for _, migration := range migrations {
 		if !migration.IsFinal() && podMigrationUID == string(migration.UID) {
 			return true, nil
 		}
@@ -528,7 +558,11 @@ func (c *Controller) deletedPodOwnsMigrateOptions(pod *corev1.Pod, vmName string
 // hasNewerActiveVMIMigration reports whether a newer migration has a target pod and owns ports.
 func (c *Controller) hasNewerActiveVMIMigration(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration) (bool, error) {
 	vmiKey := fmt.Sprintf("%s/%s", vmiMigration.Namespace, vmiMigration.Spec.VMIName)
-	for _, migration := range c.listVMIMigrations(vmiKey) {
+	migrations, err := c.listVMIMigrations(vmiKey)
+	if err != nil {
+		return false, err
+	}
+	for _, migration := range migrations {
 		if migration.UID == vmiMigration.UID || migration.IsFinal() || migration.CreationTimestamp.Before(&vmiMigration.CreationTimestamp) {
 			continue
 		}

@@ -1476,4 +1476,10 @@ func TestEnqueueVMIMigrationForBoundLauncher(t *testing.T) {
 	require.Equal(t, 1, c.addOrUpdateVMIMigrationQueue.Len())
 	key, _ := c.addOrUpdateVMIMigrationQueue.Get()
 	require.Equal(t, "test/vm-migration", key)
+	c.addOrUpdateVMIMigrationQueue.Done(key)
+
+	c.enqueueVMIMigrationForBoundLauncher(nil, bound)
+	require.Equal(t, 1, c.addOrUpdateVMIMigrationQueue.Len())
+	key, _ = c.addOrUpdateVMIMigrationQueue.Get()
+	require.Equal(t, "test/vm-migration", key)
 }
