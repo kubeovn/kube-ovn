@@ -338,6 +338,33 @@ func Test_handleAddVirtualIPRetriesAttachAfterStatusAllocation(t *testing.T) {
 	require.NoError(t, fc.fakeController.handleAddVirtualIP(vip.Name))
 }
 
+func Test_handleUpdateVirtualIPTypeChangeDetachesAttachSubnets(t *testing.T) {
+	vip := &kubeovnv1.Vip{
+		Name:        "vip1",
+		Finalizers:  []string{util.KubeOVNControllerFinalizer},
+		Annotations: map[string]string{util.VipAttachSubnetsAnnotation: "target"},
+		Spec:        kubeovnv1.VipSpec{Type: "router_lb_vip", Subnet: "home", MacAddress: "00:00:00:00:00:01", AttachSubnets: []string{"target"}},
+		Status:      kubeovnv1.VipStatus{Mac: "00:00:00:00:00:01", Type: util.SwitchLBRuleVip},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{vipAttachTestSubnet("home", "vpc1")},
+		Vpcs:    []*kubeovnv1.Vpc{vipAttachTestVpc("vpc1", "tcp-lb")},
+	})
+	require.NoError(t, err)
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Create(
+		context.Background(), vip, metav1.CreateOptions{},
+	)
+	require.NoError(t, err)
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(vip))
+	fc.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(indexer)
+	fc.mockOvnClient.EXPECT().
+		LogicalSwitchUpdateLoadBalancers("target", ovsdb.MutateOperationDelete, "tcp-lb").
+		Return(nil)
+
+	require.NoError(t, fc.fakeController.handleUpdateVirtualIP(vip.Name))
+}
+
 func Test_enqueueUpdateVpcLoadBalancerChangeRequeuesVips(t *testing.T) {
 	vip := &kubeovnv1.Vip{
 		Name: "vip1",
