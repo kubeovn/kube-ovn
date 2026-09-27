@@ -602,15 +602,26 @@ var _ = framework.Describe("[group:vip]", func() {
 		attachSubnetName1 := "attach-subnet1-" + randomSuffix
 		attachSubnetName2 := "attach-subnet2-" + randomSuffix
 		peerVpcName := "peer-vpc-" + randomSuffix
+		peerCIDR := framework.RandomCIDR(f.ClusterIPFamily)
 
 		ginkgo.By("Creating a peered VPC for the remote attach subnet")
 		peerVpc := framework.MakeVpc(peerVpcName, "", false, false, []string{namespaceName})
 		peerVpc = vpcClient.CreateSync(peerVpc)
 		updatedVpc := vpc.DeepCopy()
 		updatedVpc.Spec.VpcPeerings = []*apiv1.VpcPeering{{RemoteVpc: peerVpcName, LocalConnectIP: "169.254.100.1/30"}}
+		updatedVpc.Spec.StaticRoutes = []*apiv1.StaticRoute{{
+			Policy:    apiv1.PolicyDst,
+			CIDR:      peerCIDR,
+			NextHopIP: "169.254.100.2",
+		}}
 		vpc = vpcClient.PatchSync(vpc, updatedVpc, 30*time.Second)
 		updatedPeerVpc := peerVpc.DeepCopy()
 		updatedPeerVpc.Spec.VpcPeerings = []*apiv1.VpcPeering{{RemoteVpc: vpcName, LocalConnectIP: "169.254.100.2/30"}}
+		updatedPeerVpc.Spec.StaticRoutes = []*apiv1.StaticRoute{{
+			Policy:    apiv1.PolicyDst,
+			CIDR:      cidr,
+			NextHopIP: "169.254.100.1",
+		}}
 		_ = vpcClient.PatchSync(peerVpc, updatedPeerVpc, 30*time.Second)
 		ginkgo.DeferCleanup(func() {
 			vpcClient.DeleteSync(peerVpcName)
@@ -621,7 +632,7 @@ var _ = framework.Describe("[group:vip]", func() {
 		_ = subnetClient.CreateSync(attachSubnet1)
 
 		ginkgo.By("Creating attach subnet " + attachSubnetName2)
-		attachSubnet2 := framework.MakeSubnet(attachSubnetName2, "", framework.RandomCIDR(f.ClusterIPFamily), "", peerVpcName, "", nil, nil, []string{namespaceName})
+		attachSubnet2 := framework.MakeSubnet(attachSubnetName2, "", peerCIDR, "", peerVpcName, "", nil, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(attachSubnet2)
 
 		ginkgo.By("Getting VPC load balancer names")
