@@ -7,7 +7,7 @@ require (
 	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/cert-manager/cert-manager v1.21.2
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
-	github.com/containerd/containerd/v2 v2.4.0
+	github.com/containerd/containerd/v2 v2.4.1
 	github.com/containerd/nerdctl/v2 v2.4.0
 	github.com/containernetworking/cni v1.3.1
 	github.com/containernetworking/plugins v1.9.1
@@ -124,7 +124,7 @@ require (
 	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.3 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/gaissmai/bart v0.29.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
