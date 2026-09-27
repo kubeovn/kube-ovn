@@ -308,6 +308,7 @@ func (c *Controller) enqueueDeletePod(obj any) {
 func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+	c.enqueueVMIMigrationForBoundLauncher(oldPod, newPod)
 
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(oldPod.Namespace)
