@@ -72,7 +72,67 @@ done < "$CONFIG_FILE"
 ovs-ctl restart --no-ovsdb-server --system-id=random
 ovs-ctl --protocol=udp --dport=6081 enable-protocol
 
+function restore_provider_bridge_default_flow() {
+  local mappings br flows restored rc i
+  for i in $(seq 1 10); do
+    if mappings=$(ovs-vsctl --if-exists get open . external-ids:ovn-bridge-mappings); then
+      break
+    fi
+    if [ "$i" -eq 10 ]; then
+      echo "failed to get ovn-bridge-mappings"
+      return 1
+    fi
+    echo "failed to get ovn-bridge-mappings, retrying"
+    sleep 1
+  done
 
+  mappings=$(echo "$mappings" | tr -d '"')
+  if [ -z "$mappings" ]; then
+    echo "no provider bridge mapping found, skip restoring default flows"
+    return 0
+  fi
+
+  for br in $(echo "$mappings" | tr ',' '\n' | awk -F: 'NF == 2 && $2 != "" {print $2}' | sort -u); do
+    if ovs-vsctl br-exists "$br"; then
+      :
+    else
+      rc=$?
+      if [ "$rc" -eq 2 ]; then
+        continue
+      fi
+      echo "failed to check whether bridge $br exists"
+      return 1
+    fi
+    if ! ovs-vsctl --timeout=30 wait-until bridge "$br" datapath_id!='[]'; then
+      echo "bridge $br is not ready"
+      return 1
+    fi
+
+    restored=false
+    for i in $(seq 1 11); do
+      if flows=$(ovs-ofctl dump-flows "$br" table=0); then
+        if echo "$flows" | grep -qE 'priority=0,? actions=NORMAL$'; then
+          restored=true
+          break
+        fi
+        if [ "$i" -eq 11 ]; then
+          break
+        fi
+        echo "restoring default flow on provider bridge $br"
+        ovs-ofctl add-flow "$br" "priority=0,actions=NORMAL" || true
+      else
+        echo "failed to dump flows of bridge $br, retrying"
+      fi
+      sleep 1
+    done
+    if [ "$restored" != true ]; then
+      echo "failed to restore default flow on bridge $br"
+      return 1
+    fi
+  done
+}
+
+restore_provider_bridge_default_flow
 
 if ! ovs-vsctl br-exists ${DPDK_TUNNEL_IFACE}; then
 ovs-vsctl --may-exist add-br ${DPDK_TUNNEL_IFACE} \
