@@ -248,7 +248,7 @@ var _ = framework.SerialDescribe("[group:veg-evpn]", func() {
 			framework.ExpectNoError(err, "checking eth0 VRF membership in pod %s", pod.Name)
 			framework.ExpectContainSubstring(stdout, "master vrf-vpn")
 
-			stdout, _, err = framework.ExecShellInContainer(f, namespaceName, pod.Name, mainContainer, "bridge link show dev vxlan-vpn")
+			stdout, _, err = framework.ExecShellInContainer(f, namespaceName, pod.Name, mainContainer, "bridge -d link show dev vxlan-vpn")
 			framework.ExpectNoError(err, "checking VXLAN bridge learning in pod %s", pod.Name)
 			framework.ExpectContainSubstring(stdout, "learning off")
 		}
