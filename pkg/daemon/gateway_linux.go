@@ -1840,8 +1840,14 @@ func (c *Controller) setExGateway() error {
 				klog.Errorf("failed to get ovn-external-gw-config, %v", err)
 				return err
 			}
-			klog.V(3).Infof("configmap %s/%s not found, no cluster default external gateway configured", c.config.ExternalGatewayConfigNS, util.ExternalGatewayConfig)
+			if !c.exGatewayConfigMissing.Swap(true) {
+				klog.Infof("configmap %s/%s not found, no cluster default external gateway configured", c.config.ExternalGatewayConfigNS, util.ExternalGatewayConfig)
+			}
 			return c.disableExGateway(externalBridge, isUserspaceDP)
+		}
+
+		if c.exGatewayConfigMissing.Swap(false) {
+			klog.Infof("configmap %s/%s found, configuring cluster default external gateway", c.config.ExternalGatewayConfigNS, util.ExternalGatewayConfig)
 		}
 
 		linkName, exist := cm.Data["external-gw-nic"]
