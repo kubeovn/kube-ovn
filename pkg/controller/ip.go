@@ -117,8 +117,13 @@ func (c *Controller) enqueueDelIP(obj any) {
 		return
 	}
 
-	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) ||
-		strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
+	if strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
+		// Recheck deletion only after the informer has removed the querier IP
+		// from its cache, so stale usage cannot keep the subnet finalizer.
+		c.addOrUpdateSubnetQueue.Add(ipObj.Spec.Subnet)
+		return
+	}
+	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) {
 		return
 	}
 

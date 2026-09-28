@@ -353,6 +353,15 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	}
 
 	if !subnet.DeletionTimestamp.IsZero() {
+		// Normal reconciliation stops during deletion, but disabling multicast
+		// must still release the querier IP that would otherwise hold the finalizer.
+		// The IP deletion event refreshes usage before the next finalizer check.
+		if !subnet.Spec.EnableMulticastSnoop {
+			subnet = subnet.DeepCopy()
+			if _, err := c.releaseMcastQuerierIP(subnet); err != nil {
+				return subnet, false, err
+			}
+		}
 		if err := c.deleteSubnetHealthCheckVip(subnet); err != nil {
 			return subnet, false, err
 		}
