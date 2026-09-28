@@ -107,7 +107,7 @@ func testVipWithSG(ip, namespaceName, allowPod, denyPod, aapPod, securityGroupNa
 func expectVirtualVipParents(name, ip string, expectedParents []string) {
 	ginkgo.GinkgoHelper()
 
-	conditions := fmt.Sprintf("type=virtual name=%s options:virtual-ip=%q", name, ip)
+	conditions := virtualVipFindConditions(name, ip)
 	nbctlCmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=options find logical-switch-port " + conditions
 	output, _, err := framework.NBExec(nbctlCmd)
 	framework.ExpectNoError(err)
