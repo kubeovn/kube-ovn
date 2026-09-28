@@ -39,6 +39,79 @@ targeting different `--kube-context`s.
 | Kube-OVN CRDs (`kubeovn.io/v1` …) | Tenant apiserver | Tenants `kubectl create subnet` against their own apiserver |
 | `kube-ovn-tls` Secret | **Both clusters** | ovn-central serves SSL listeners (mgmt); controller / ovs-ovn use client certs (tenant) |
 
+The table above assumes the generic split: the tenant apiserver is a separate
+cluster, so `kube-ovn-controller` runs there. In a true Kamaji topology — the
+tenant apiserver itself runs as a pod **in the management cluster** — hosting
+the controller next to ovn-central is strictly better: every leg of the
+controller (apiserver watches plus NB writes) stays inside the management
+cluster, and only the unavoidable cross-cluster legs remain (the CNI daemon
+reaching the tenant apiserver's LB, and the chassis agents reaching ovn-sb).
+See [Hosted controllers in the management cluster](#hosted-controllers-in-the-management-cluster-chart-v2).
+
+## Hosted controllers in the management cluster (chart v2)
+
+With `charts/kube-ovn-v2`, a `controlPlaneOnly` release can render one
+`kube-ovn-controller-<name>` Deployment per tenant. Each hosted controller:
+
+- authenticates to the tenant apiserver with a mounted kubeconfig Secret
+  (`--kubeconfig`; no local ServiceAccount is used),
+- writes to the local ovn-central Services (`OVN_DB_IPS` empty in
+  single-replica mode falls back to the in-cluster `ovn-nb` / `ovn-sb`
+  Services; master node IPs in raft mode),
+- does not rotate `kube-ovn-tls` (owned by the management release),
+- runs with an explicit `POD_NAMESPACE` pointing at the tenant-side
+  namespace, because the controller uses it for namespaced informers, the
+  TLS Secret, and workloads it manages (`vpc-nat-gw`, `vpc-lb`, `vpc-dns`).
+
+```yaml
+# mgmt-values.yaml (charts/kube-ovn-v2)
+installMode: controlPlaneOnly
+
+controller:
+  hostedTenants:
+    - name: tenant-a
+      kubeconfigSecret: tenant-a-kubeconfig   # Secret with the tenant apiserver kubeconfig
+      kubeconfigKey: kubeconfig               # optional, default "kubeconfig"
+      namespace: kube-system                  # optional, tenant-side namespace (default: release namespace)
+      replicas: 2                             # optional, default 2
+      networking: {}                          # optional, deep-merged over the release networking values (per-tenant CIDRs)
+      features: {}                            # optional, deep-merged over the release features values
+```
+
+On each tenant data-plane release, disable the local controller since it is
+hosted in the management cluster:
+
+```yaml
+# tenant-values.yaml (charts/kube-ovn-v2)
+installMode: dataPlaneOnly
+controller:
+  enabled: false
+externalOvnCentral:
+  nbEndpoint: 10.99.99.99
+  sbEndpoint: 10.99.99.99
+```
+
+The data-plane release still renders the CRDs, the `ovn` ServiceAccount /
+ClusterRole / binding (a kubeconfig bound to that identity works, as does a
+Kamaji admin kubeconfig), and the `ovs-ovn` / `kube-ovn-cni` / `kube-ovn-pinger`
+DaemonSets.
+
+Requirements and caveats:
+
+- Install the `dataPlaneOnly` release first so the Kube-OVN CRDs exist in the
+  tenant apiserver before the hosted controller starts; otherwise the
+  controller spams "CRD not found" until they land.
+- Distribute one kubeconfig Secret per tenant into the management cluster
+  (external-secrets / sealed-secrets / Argo CD secret sync). The identity must
+  carry the tenant-side `ovn` ClusterRole permissions.
+- Keep the release namespace name identical on both sides (default
+  `kube-system`): the hosted controller's `POD_NAMESPACE` must resolve to the
+  tenant-side namespace where `kube-ovn-tls` and the controller-managed
+  workloads live, or set `namespace` per tenant explicitly.
+- TLS rotation stays disabled on hosted controllers; the management release
+  owns the shared `kube-ovn-tls` Secret.
+- Leader election leases are taken against the tenant apiserver.
+
 ## Prerequisites
 
 - Two reachable clusters with separate kubeconfigs / contexts (`mgmt`, `tenant`).

@@ -370,3 +370,47 @@ Kube-OVN TLS rotation interval. Disabled in dataPlaneOnly installs.
 {{ .Values.networking.kubeOvnTlsRotationInterval }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Replica count for a Kamaji-hosted kube-ovn-controller. Defaults to two for
+availability; an explicit tenant replicas value is honored as-is.
+*/}}
+{{- define "kubeovn.hostedControllerReplicas" -}}
+{{- .replicas | default 2 -}}
+{{- end -}}
+
+{{/*
+Validate controller placement combinations. Called from
+templates/misc/validation.yaml (rendered on every install) so invalid
+configurations fail regardless of installMode:
+- controller.hostedTenants only with installMode=controlPlaneOnly
+- controller.enabled=false only with installMode=dataPlaneOnly
+- hostedTenants entries require a unique RFC-1123 name and a kubeconfigSecret
+*/}}
+{{- define "kubeovn.controllerPlacementValidation" -}}
+{{- if and .Values.controller.hostedTenants (ne .Values.installMode "controlPlaneOnly") -}}
+{{- fail (printf "controller.hostedTenants is only supported with installMode=controlPlaneOnly (got %s). Host the per-tenant controllers on the management cluster release." .Values.installMode) -}}
+{{- end -}}
+{{- if and (not .Values.controller.enabled) (ne .Values.installMode "dataPlaneOnly") -}}
+{{- fail (printf "controller.enabled=false is only supported with installMode=dataPlaneOnly (got %s). Host the controller on the management cluster release via controller.hostedTenants instead." .Values.installMode) -}}
+{{- end -}}
+{{- if and (eq .Values.installMode "dataPlaneOnly") (not .Values.controller.enabled) .Values.controller.hostedTenants -}}
+{{- fail "controller.hostedTenants must be empty in dataPlaneOnly installs; hosted tenants belong to the controlPlaneOnly management release" -}}
+{{- end -}}
+{{- $names := list -}}
+{{- range $tenant := .Values.controller.hostedTenants -}}
+{{- if not $tenant.name -}}
+{{- fail "controller.hostedTenants entries require a name" -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $tenant.name) -}}
+{{- fail (printf "controller.hostedTenants name %q must be a lowercase RFC-1123 label" $tenant.name) -}}
+{{- end -}}
+{{- if not $tenant.kubeconfigSecret -}}
+{{- fail (printf "controller.hostedTenants[%s] requires kubeconfigSecret (a Secret holding the tenant apiserver kubeconfig)" $tenant.name) -}}
+{{- end -}}
+{{- if has $tenant.name $names -}}
+{{- fail (printf "controller.hostedTenants: duplicate name %q" $tenant.name) -}}
+{{- end -}}
+{{- $names = append $names $tenant.name -}}
+{{- end -}}
+{{- end -}}
