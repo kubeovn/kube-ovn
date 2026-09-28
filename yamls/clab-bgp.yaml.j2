@@ -43,6 +43,16 @@ topology:
       - sed -i -e 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
       - /usr/lib/frr/frrinit.sh start
       - >-
+         sh -ec 'for i in $(seq 1 30); do
+         if test -r /var/run/frr/bgpd.pid && kill -0 "$(cat /var/run/frr/bgpd.pid)" 2>/dev/null; then
+         exit 0;
+         fi;
+         sleep 1;
+         done;
+         echo "FRR bgpd did not become ready within 30 seconds" >&2;
+         ps -ef >&2 || true;
+         exit 1'
+      - >-
          vtysh -c 'conf t'
          -c 'frr defaults datacenter'
          -c 'router bgp 65001'
@@ -72,6 +82,16 @@ topology:
 {%- endif %}
          -c 'end'
          -c 'write memory'
+      - >-
+         sh -ec 'for i in $(seq 1 30); do
+         if vtysh -c "show bgp summary json" 2>/dev/null | grep -q routerId; then
+         exit 0;
+         fi;
+         sleep 1;
+         done;
+         echo "FRR BGP instance did not become ready within 30 seconds" >&2;
+         vtysh -c "show bgp summary json" >&2 || true;
+         exit 1'
     kube-ovn-control-plane:
       kind: ext-container
       exec:
