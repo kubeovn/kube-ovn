@@ -2,6 +2,7 @@ suite: installMode support (v2)
 templates:
   - central/central-deployment.yaml
   - controller/controller-deployment.yaml
+  - controller/controller-service.yaml
   - hooks/post-delete-hook.yaml
   - hooks/upgrade-ovs-ovn.yaml
   - ovs-ovn/ovs-ovn-daemonset.yaml
@@ -79,6 +80,36 @@ tests:
     template: controller/controller-deployment.yaml
     set:
       installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render the controller in controlPlaneOnly
+    template: controller/controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render the controller in dataPlaneOnly when controller.enabled is false
+    template: controller/controller-deployment.yaml
+    set:
+      installMode: dataPlaneOnly
+      controller.enabled: false
+      externalOvnCentral.nbEndpoint: ovn-nb.example.com
+      externalOvnCentral.sbEndpoint: ovn-sb.example.com
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: does not render the controller service in dataPlaneOnly when controller.enabled is false
+    template: controller/controller-service.yaml
+    set:
+      installMode: dataPlaneOnly
+      controller.enabled: false
+      externalOvnCentral.nbEndpoint: ovn-nb.example.com
+      externalOvnCentral.sbEndpoint: ovn-sb.example.com
     asserts:
       - hasDocuments:
           count: 0

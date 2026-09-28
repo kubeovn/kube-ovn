@@ -1,4 +1,4 @@
-{{- if include "kubeovn.renderDataPlane" . }}
+{{- if and (include "kubeovn.renderDataPlane" .) .Values.controller.enabled }}
 {{- $controllerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.controller.image) | fromYaml -}}
 apiVersion: apps/v1
 kind: Deployment

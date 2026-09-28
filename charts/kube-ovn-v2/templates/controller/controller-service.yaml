@@ -1,4 +1,4 @@
-{{- if include "kubeovn.renderDataPlane" . }}
+{{- if and (include "kubeovn.renderDataPlane" .) .Values.controller.enabled }}
 kind: Service
 apiVersion: v1
 metadata:

@@ -1088,7 +1088,7 @@ false
 "full"
 </pre>
 </td>
-			<td>installMode controls which slice of the chart this Helm release renders.   full:             all components in one cluster (default, classic install).   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and                     their RBAC. Use on the management cluster of a                     split-cluster deployment that hosts ovn-central.   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +                     pinger and their RBAC. Use on tenant data-plane                     clusters that connect back to an external ovn-central via                     externalOvnCentral below.</td>
+			<td>installMode controls which slice of the chart this Helm release renders.   full:             all components in one cluster (default, classic install).   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and                     their RBAC. Use on the management cluster of a                     split-cluster deployment that hosts ovn-central.   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +                     pinger and their RBAC. Use on tenant data-plane                     clusters that connect back to an external ovn-central via                     externalOvnCentral below.  Kamaji topology: when the tenant apiservers run as pods in the management cluster, installMode=controlPlaneOnly can also host one kube-ovn-controller-<name> Deployment per tenant (see controller.hostedTenants) so the controller talks to both the tenant apiserver and ovn-central locally; set controller.enabled=false on the dataPlaneOnly release in that case.</td>
 		</tr>
 		<tr>
 			<td>masterNodes</td>
@@ -1250,6 +1250,15 @@ false
 			<td>Annotations to be added to all top-level kube-ovn-controller objects (resources under templates/controller)</td>
 		</tr>
 		<tr>
+			<td>controller.enabled</td>
+			<td>bool</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+			<td>Render kube-ovn-controller in this release (full and dataPlaneOnly installs). Set to false in dataPlaneOnly installs when the controller is hosted on the management cluster instead (Kamaji topology, see controller.hostedTenants).</td>
+		</tr>
+		<tr>
 			<td>controller.extraEnv</td>
 			<td>list</td>
 			<td><pre lang="json">
@@ -1257,6 +1266,15 @@ false
 </pre>
 </td>
 			<td>Extra environment variables to be added to kube-ovn-controller pods.</td>
+		</tr>
+		<tr>
+			<td>controller.hostedTenants</td>
+			<td>list</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+			<td>Hosted kube-ovn-controller instances for Kamaji-style split-cluster deployments. Each entry renders a kube-ovn-controller-<name> Deployment in this management cluster that authenticates to the tenant apiserver with the given kubeconfig Secret and writes to the local ovn-central Services. Only supported with installMode: controlPlaneOnly.</td>
 		</tr>
 		<tr>
 			<td>controller.image</td>
@@ -1499,7 +1517,7 @@ false
   "enableOvnInterconnections": false,
   "enableOvnIpsec": false,
   "enableSecureServing": false,
-  "enableTproxy": false,
+  "enableTproxy": true,
   "enableU2OInterconnections": false
 }
 </pre>
@@ -1618,10 +1636,10 @@ false
 			<td>features.enableTproxy</td>
 			<td>bool</td>
 			<td><pre lang="json">
-false
+true
 </pre>
 </td>
-			<td>Enable TProxy</td>
+			<td>Enable TProxy so kubelet TCP probes can reach pods in custom VPCs</td>
 		</tr>
 		<tr>
 			<td>features.enableU2OInterconnections</td>
