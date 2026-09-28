@@ -118,10 +118,17 @@ if [ "${ENABLE_EVPN}" = "true" ] && [ -n "${VNI}" ]; then
       vxlan_local_ip=$(ip -6 -o addr show dev "${external_iface}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
     fi
     if [ -n "${vxlan_local_ip}" ]; then
-      ip link add "${vxlan_name}" type vxlan id "${VNI}" dstport 4789 local "${vxlan_local_ip}"
-      ip link set "${vxlan_name}" master "${bridge_name}"
-      ip link set "${vxlan_name}" up
+      # EVPN/FRR owns the VXLAN FDB. Disable kernel source-MAC learning so
+      # transient bridge learning cannot replace the EVPN-provided entries.
+      ip link add "${vxlan_name}" type vxlan id "${VNI}" dstport 4789 local "${vxlan_local_ip}" nolearning
     fi
+  fi
+
+  if ip link show "${vxlan_name}" &>/dev/null; then
+    ip link set "${vxlan_name}" master "${bridge_name}"
+    ip link set "${vxlan_name}" type vxlan nolearning
+    bridge link set dev "${vxlan_name}" learning off
+    ip link set "${vxlan_name}" up
   fi
 
   if [ "$(ip link show dev eth0 | grep -c 'master vrf-vpn')" -eq 0 ]; then

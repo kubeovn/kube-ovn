@@ -247,6 +247,10 @@ var _ = framework.SerialDescribe("[group:veg-evpn]", func() {
 			stdout, _, err = framework.ExecShellInContainer(f, namespaceName, pod.Name, mainContainer, "ip link show eth0")
 			framework.ExpectNoError(err, "checking eth0 VRF membership in pod %s", pod.Name)
 			framework.ExpectContainSubstring(stdout, "master vrf-vpn")
+
+			stdout, _, err = framework.ExecShellInContainer(f, namespaceName, pod.Name, mainContainer, "bridge -d link show dev vxlan-vpn")
+			framework.ExpectNoError(err, "checking VXLAN bridge learning in pod %s", pod.Name)
+			framework.ExpectContainSubstring(stdout, "learning off")
 		}
 
 		ginkgo.By("Checking network connectivity from VEG pods to FRR peer " + frrPeerIP)
@@ -369,10 +373,14 @@ func setupFRRPeerNetworkingViaPod(f *framework.Framework, namespace, podName, lo
 		"ip link add br-vpn type bridge",
 		"ip link set br-vpn master vrf-vpn",
 		"ip link set br-vpn up",
-		fmt.Sprintf("ip link add vxlan-vpn type vxlan id %d dstport 4789 local %s", evpnVNI, localIP),
+		fmt.Sprintf("ip link add vxlan-vpn type vxlan id %d dstport 4789 local %s nolearning", evpnVNI, localIP),
 		"ip link set vxlan-vpn master br-vpn",
+		"ip link set vxlan-vpn type vxlan nolearning",
+		"bridge link set dev vxlan-vpn learning off",
 		"ip link set vxlan-vpn up",
-		"ip addr add " + backendIP + " dev vrf-vpn",
+		// The backend address is an EVPN SVI and must live on the bridge
+		// attached to the VRF, not on the VRF device itself.
+		"ip addr add " + backendIP + " dev br-vpn",
 	}
 
 	for _, cmd := range cmds {
