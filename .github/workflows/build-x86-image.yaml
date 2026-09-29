@@ -541,7 +541,7 @@ jobs:
             make base-tar-amd64
 
       - name: Test OVN router ARP and ND
-        if: steps.check.outputs.build-base == 1
+        if: steps.check.outputs.build-base == 1 && hashFiles('dist/images/tests/ovn-router-arp-nd.py') != ''
         run: |
           docker run --rm --network=none --read-only --tmpfs /tmp \
             --mount "type=bind,source=$PWD/dist/images/tests/ovn-router-arp-nd.py,target=/ovn-router-arp-nd.py,readonly" \
