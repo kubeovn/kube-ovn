@@ -345,6 +345,19 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 		}
 	}
 
+	// Remove the VIP mappings from this SLR's VPC load balancers directly.
+	// The LBHC cleanup above does not remove the actual VIP-to-backends entries,
+	// and relying on the backing Service delete event leaves stale mappings when
+	// that event is delayed or already processed.
+	for lbName := range vpcLBNames {
+		for _, vip := range info.Vips {
+			if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, true); err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete vip %s from load balancer %s, err: %v", vip, lbName, err)
+				return err
+			}
+		}
+	}
+
 	for vip := range vips {
 		if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
