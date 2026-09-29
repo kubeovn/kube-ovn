@@ -63,6 +63,15 @@ jobs:
           make base-${{ matrix.arch }}
           make base-tar-${{ matrix.arch }}
 
+      - name: Test OVN router ARP and ND
+        if: (github.event.inputs.branch || matrix.branch) == matrix.branch && hashFiles('dist/images/tests/ovn-router-arp-nd.py') != ''
+        run: |
+          docker run --rm --network=none --read-only --tmpfs /tmp \
+            --mount "type=bind,source=$PWD/dist/images/tests/ovn-router-arp-nd.py,target=/ovn-router-arp-nd.py,readonly" \
+            --entrypoint python3 \
+            "kubeovn/kube-ovn-base:$(cat VERSION)-${{ matrix.arch }}" \
+            -B /ovn-router-arp-nd.py
+
       - name: Upload image to artifact
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         uses: actions/upload-artifact@v7
