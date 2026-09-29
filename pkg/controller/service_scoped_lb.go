@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -567,19 +568,13 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if logicalSwitch == "" {
 			return fmt.Errorf("switch load balancer rule service %s/%s has no logical switch annotation", svc.Namespace, svc.Name)
 		}
-		logicalSwitches := []string{logicalSwitch}
 		attachSubnets, err := c.serviceScopedVipAttachSubnets(svc)
 		if err != nil {
 			return err
 		}
-		for _, subnet := range attachSubnets {
-			if !slices.Contains(logicalSwitches, subnet) {
-				logicalSwitches = append(logicalSwitches, subnet)
-			}
-		}
-		desiredSwitches := make(map[string]struct{}, len(logicalSwitches))
-		for _, switchName := range logicalSwitches {
-			desiredSwitches[switchName] = struct{}{}
+		desiredSwitches := set.New[string](logicalSwitch)
+		desiredSwitches.Insert(attachSubnets...)
+		for _, switchName := range desiredSwitches.SortedList() {
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(switchName, ovsdb.MutateOperationInsert, lbNames...); err != nil {
 				return fmt.Errorf("attach resource-scoped load balancers to logical switch %s: %w", switchName, err)
 			}
@@ -592,7 +587,7 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 			if !isOvnSubnet(subnet) {
 				continue
 			}
-			if _, ok := desiredSwitches[subnet.Name]; ok {
+			if desiredSwitches.Has(subnet.Name) {
 				continue
 			}
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbNames...); err != nil {
