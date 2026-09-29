@@ -354,4 +354,37 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{})
 		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted", subnetName)
 	})
+
+	t.Run("service already gone uses captured VPC load balancers", func(t *testing.T) {
+		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
+		svcName := generateSvcName(slrName)
+		svc, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Delete(svc))
+
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
+
+		info := &SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}, LoadBalancerNames: []string{tcpLBName}}
+		err = fc.fakeController.handleDelSwitchLBRule(info)
+		require.NoError(t, err)
+	})
+
+	t.Run("shared VIP in another service is preserved", func(t *testing.T) {
+		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
+		other := &corev1.Service{
+			Name:      "other-service",
+			Namespace: namespace,
+			Annotations: map[string]string{
+				util.SwitchLBRuleVipsAnnotation: "10.0.0.1",
+			},
+		}
+		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(other))
+
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+
+		info := &SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
+		err := fc.fakeController.handleDelSwitchLBRule(info)
+		require.NoError(t, err)
+	})
 }
