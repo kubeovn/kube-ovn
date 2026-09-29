@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.16.8 (2026-09-28)
+
+ * [f4282dad5](https://github.com/kubeovn/kube-ovn/commit/f4282dad533b8a135e0181c04ca10290d7049e9e) release v1.16.8
+ * [95130b034](https://github.com/kubeovn/kube-ovn/commit/95130b0346887365b51e17113f7076d2bc16a63b) fix(deps): update containerd to v2.2.9 (#7540)
+ * [87a7065d8](https://github.com/kubeovn/kube-ovn/commit/87a7065d8d7af5ef69e9c2d2fe8c54bb8cf201eb) fix(controller): backport pending VMI migration handling (#7535)
+ * [e4ab04abc](https://github.com/kubeovn/kube-ovn/commit/e4ab04abcde46dccc62bebd24698753606f62012) fix: serialize VIP virtual port reconciliation (#7525)
+ * [1dddc42a2](https://github.com/kubeovn/kube-ovn/commit/1dddc42a2fc3274d03ab82918b3a1e2d644a262e) support image pull secrets for vpc nat gw pod (#7326) (#7511)
+ * [bd4630d6a](https://github.com/kubeovn/kube-ovn/commit/bd4630d6ab4182bb7a22047c0c4e6139601e3ff2) fix: avoid flooding IPv6 neighbor solicitations in underlay (#7516)
+ * [925057f36](https://github.com/kubeovn/kube-ovn/commit/925057f365a93a39463d8d02156d86230a3a47f1) fix(controller): delete node router policies by owner on node deletion (#7480) (#7510)
+ * [6b283d503](https://github.com/kubeovn/kube-ovn/commit/6b283d50314e8bc6a0de1ecf23a160e09dd38bc9) [release-1.16] fix: keep a single OVN NB monitor for ACL sampling (#7509)
+ * [62ba759a3](https://github.com/kubeovn/kube-ovn/commit/62ba759a3d4aec094ad23c88b2f61bfb27333ded) fix: reconcile distributed-subnet AAP VIP ports (#7506)
+ * [af79b08f5](https://github.com/kubeovn/kube-ovn/commit/af79b08f5688b961d7f1b135dd577ab349bbd484) prepare for next release
+
+### Contributors
+
+ * Zujian Zhang
+ * zbb88888
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.7 (2026-09-22)
 
  * [71a484769](https://github.com/kubeovn/kube-ovn/commit/71a484769569163d26596a7aceacacdf6c28224a) release v1.16.7
@@ -605,6 +625,17 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.29 (2026-09-24)
+
+ * [aea8ec49a](https://github.com/kubeovn/kube-ovn/commit/aea8ec49a08da283f89c2a454d34ec15ba212302) release v1.15.29
+ * [dcd55969a](https://github.com/kubeovn/kube-ovn/commit/dcd55969ab78b3f9091e32a7d1d97b832720b459) fix: avoid flooding IPv6 neighbor solicitations in underlay (#7517)
+ * [e3b6182f4](https://github.com/kubeovn/kube-ovn/commit/e3b6182f4e83144cdb827776187823146fa11496) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
@@ -1717,6 +1748,17 @@
  * renovate[bot]
  * xieyanker
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.14.46 (2026-09-23)
+
+ * [6bc5cdfaf](https://github.com/kubeovn/kube-ovn/commit/6bc5cdfafb6e2f67fd115f3a2757e2f8e2c392f1) release v1.14.46
+ * [de2bca6bf](https://github.com/kubeovn/kube-ovn/commit/de2bca6bfccfa5e7f720e471a6a7c797dd2cb290) fix: use native OVN localnet ARP/ND responder (#7518)
+ * [16a2b8bde](https://github.com/kubeovn/kube-ovn/commit/16a2b8bde15ff705912291886cd4106fb1dd5435) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
