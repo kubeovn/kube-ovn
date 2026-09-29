@@ -311,9 +311,9 @@ func Run() error {
 		err := bringUp(ctx, cfg, kc, ls)
 		if err == nil {
 			err = runtimeLoop(ctx, cfg, kc, ls)
-			if err == nil || errors.Is(err, context.Canceled) {
-				return nil // graceful shutdown
-			}
+		}
+		if err == nil || errors.Is(err, context.Canceled) {
+			return nil // graceful shutdown
 		}
 		if !errors.Is(err, errRetry) {
 			return fmt.Errorf("attempt %d: %w", attempt, err)
@@ -568,17 +568,26 @@ func executeUnderLease(ctx context.Context, cfg *Config, kc kubernetes.Interface
 		return err
 	}
 	if err := waitForSelfReady(ctx, cfg, kc, cfg.SelfReadyTimeout); err != nil {
-		klog.Warningf("waitForSelfReady after %s: %v (releasing lease anyway)", op, err)
+		return fmt.Errorf("waitForSelfReady after %s: %w", op, err)
 	}
 	return nil
 }
 
 // waitForSelfReady blocks until our Pod's PodReady condition is True
 // (kubelet's readiness probe has confirmed our cluster is serving) or
-// the deadline expires. Used to delay lease release so peers consistently
-// observe our active+ready state before they try to recover themselves.
-func waitForSelfReady(ctx context.Context, cfg *Config, kc kubernetes.Interface, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+// ctx is cancelled (lease lost, or process shutting down). softTimeout
+// only gates a one-time diagnostic warning -- giving up early here would
+// let executeUnderLease return "success" and release the bootstrap lease
+// while this pod is still unprovably not-ready. A racing peer would then
+// see status=active (already published) with ready=false, which neither
+// anyPeerActiveAndReady (needs ready=true) nor the dataHolders check
+// (active isn't in that list) recognizes, so it could bootstrap fresh on
+// top of us. Instead we keep holding the lease past softTimeout; the
+// heartbeat watchdog's BootstrapLeaseDuration bound (ls.inRecovery) is
+// the real ceiling on how long we can be stuck here.
+func waitForSelfReady(ctx context.Context, cfg *Config, kc kubernetes.Interface, softTimeout time.Duration) error {
+	deadline := time.Now().Add(softTimeout)
+	warned := false
 	for {
 		getCtx, cancel := context.WithTimeout(ctx, apiCallTimeout)
 		pod, err := kc.CoreV1().Pods(cfg.PodNamespace).Get(getCtx, cfg.PodName, metav1.GetOptions{})
@@ -590,8 +599,9 @@ func waitForSelfReady(ctx context.Context, cfg *Config, kc kubernetes.Interface,
 				}
 			}
 		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("self Pod.Ready did not become true within %s", timeout)
+		if !warned && time.Now().After(deadline) {
+			klog.Warningf("self Pod.Ready still not true after %s; continuing to hold bootstrap lease until ready", softTimeout)
+			warned = true
 		}
 		select {
 		case <-ctx.Done():

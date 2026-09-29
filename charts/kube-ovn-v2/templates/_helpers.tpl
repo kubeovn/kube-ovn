@@ -106,7 +106,12 @@ Number of master nodes
   {{- if .Values.nodeCount -}}
     {{- .Values.nodeCount }}
   {{- else -}}
-    {{- min 3 (len (split "," ((join "," .Values.masterNodes) | default (include "kubeovn.nodeIPs" .)))) }}
+    {{- $count := len (split "," ((join "," .Values.masterNodes) | default (include "kubeovn.nodeIPs" .))) -}}
+    {{- if .Values.central.dynamicPeers.enabled -}}
+      {{- min 3 $count }}
+    {{- else -}}
+      {{- $count }}
+    {{- end -}}
   {{- end -}}
 {{- end -}}
 
