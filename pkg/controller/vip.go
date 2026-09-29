@@ -81,6 +81,35 @@ func (c *Controller) enqueueDelVirtualIP(obj any) {
 	c.delVirtualIPQueue.Add(vip)
 }
 
+// needsSwitchLBRuleMacRepair reports whether a switch_lb_rule vip's recorded mac still
+// collides with the subnet gateway mac (a vip created before the own-mac fix). When done
+// is true, handleAddVirtualIP must return immediately with err (nil or not) instead of
+// continuing the normal add flow. Pre-fix switch_lb_rule vips had their lsp mac forced to
+// the subnet gateway mac, which collides with the gateway lsp in ovn's l2 lookup; those
+// are repaired by reallocating a unique mac, while already-fixed vips just get their
+// attach subnets reconciled like any other provisioned switch_lb_rule vip.
+func (c *Controller) needsSwitchLBRuleMacRepair(key string, vip *kubeovnv1.Vip) (needsRepair, done bool, err error) {
+	if vip.Status.Mac == "" {
+		return false, false, nil
+	}
+	if vip.Spec.Type != util.SwitchLBRuleVip {
+		return false, true, nil
+	}
+	gwMac := c.ipam.GetGatewayMAC(vip.Spec.Subnet)
+	if gwMac == "" && c.ipam.HasSubnet(vip.Spec.Subnet) {
+		// Subnet is known to ipam but its gateway mac isn't recorded yet, e.g. this
+		// vip's queue entry is processed on controller startup before subnet
+		// reconciliation calls RecordGatewayMAC. Requeue instead of silently dropping
+		// the repair, since RecordGatewayMAC does not re-enqueue vips itself.
+		return false, true, fmt.Errorf("gateway mac for subnet %s not recorded yet, retrying repair of vip %s", vip.Spec.Subnet, key)
+	}
+	if gwMac != vip.Status.Mac {
+		return false, true, c.reconcileVipAttachSubnets(vip)
+	}
+	klog.Infof("repairing switch lb vip %s: recorded mac %s collides with subnet gateway mac", key, vip.Status.Mac)
+	return true, false, nil
+}
+
 func (c *Controller) handleAddVirtualIP(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
@@ -90,28 +119,9 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
-	needsMacRepair := false
-	if cachedVip.Status.Mac != "" {
-		if cachedVip.Spec.Type != util.SwitchLBRuleVip {
-			return nil
-		}
-		// Pre-fix switch_lb_rule vips had their lsp mac forced to the subnet gateway
-		// mac, which collides with the gateway lsp in ovn's l2 lookup. Repair those
-		// by reallocating a unique mac; already-fixed vips just get their attach
-		// subnets reconciled like any other provisioned switch_lb_rule vip.
-		gwMac := c.ipam.GetGatewayMAC(cachedVip.Spec.Subnet)
-		if gwMac == "" {
-			// Gateway mac not recorded yet, e.g. this vip's queue entry is processed on
-			// controller startup before subnet reconciliation calls RecordGatewayMAC.
-			// Requeue instead of silently dropping the repair, since RecordGatewayMAC
-			// does not re-enqueue vips itself.
-			return fmt.Errorf("gateway mac for subnet %s not recorded yet, retrying repair of vip %s", cachedVip.Spec.Subnet, key)
-		}
-		if gwMac != cachedVip.Status.Mac {
-			return c.reconcileVipAttachSubnets(cachedVip)
-		}
-		needsMacRepair = true
-		klog.Infof("repairing switch lb vip %s: recorded mac %s collides with subnet gateway mac", key, cachedVip.Status.Mac)
+	needsMacRepair, done, err := c.needsSwitchLBRuleMacRepair(key, cachedVip)
+	if done {
+		return err
 	}
 	klog.V(3).Infof("handle add vip %s", key)
 
@@ -127,6 +137,9 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	// macAddress is the mac to (re)allocate for this vip: the user/spec-requested one,
+	// or the freshly renewed one when repairing a mac that collided with the gateway.
+	macAddress := vip.Spec.MacAddress
 	if needsMacRepair {
 		newMac, err := c.ipam.RenewNicMac(subnet.Name, vip.Name, portName)
 		if err != nil {
@@ -135,6 +148,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 			return err
 		}
 		klog.Infof("renewed mac for switch lb vip %s: %s -> %s", key, cachedVip.Status.Mac, newMac)
+		macAddress = newMac
 	}
 	sourceV4Ip = vip.Spec.V4ip
 	sourceV6Ip = vip.Spec.V6ip
@@ -146,9 +160,9 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	}
 	var macPointer *string
 	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
-	if ipStr != "" || vip.Spec.MacAddress != "" {
-		if vip.Spec.MacAddress != "" {
-			macPointer = &vip.Spec.MacAddress
+	if ipStr != "" || macAddress != "" {
+		if macAddress != "" {
+			macPointer = &macAddress
 		}
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
 	} else {
