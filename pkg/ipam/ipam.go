@@ -582,6 +582,15 @@ func (ipam *IPAM) GetGatewayMAC(subnetName string) string {
 	return subnet.GatewayMAC
 }
 
+// HasSubnet reports whether the given subnet has been registered with ipam.
+func (ipam *IPAM) HasSubnet(subnetName string) bool {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	_, ok := ipam.Subnets[subnetName]
+	return ok
+}
+
 // RenewNicMac forces a fresh MAC onto the given nic, discarding whatever MAC (if
 // any) is currently recorded for it. Used to repair nics whose recorded MAC was
 // found to be invalid (e.g. it collides with the subnet's gateway MAC), since the

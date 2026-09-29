@@ -139,7 +139,8 @@ var _ = framework.Describe("[group:vip]", func() {
 	var namespaceName, vpcName, subnetName, cidr string
 
 	// test switch lb vip, which ip is in the vpc subnet cidr
-	// switch lb vip use gw mac to trigger lb nat flows
+	// switch lb vip uses its own ipam-assigned mac, not the gateway mac, to avoid
+	// an l2 mac collision with the gateway lsp
 	var switchLbVip1Name, switchLbVip2Name string
 
 	// test allowed address pair vip
@@ -589,8 +590,8 @@ var _ = framework.Describe("[group:vip]", func() {
 		// gateway mac, so each vip's lsp must use its own ipam-assigned mac, not the shared gw mac
 		framework.ExpectNotEqual(switchLbVip1.Status.Mac, switchLbVip2.Status.Mac)
 		lrpName := fmt.Sprintf("%s-%s", vpcName, subnetName)
-		nbctlCmd = "ovn-nbctl --format=list --data=bare --no-heading --columns=mac find Logical_Router_Port name=" + lrpName
-		output, _, err = framework.NBExec(nbctlCmd)
+		nbctlCmd := "ovn-nbctl --format=list --data=bare --no-heading --columns=mac find Logical_Router_Port name=" + lrpName
+		output, _, err := framework.NBExec(nbctlCmd)
 		framework.ExpectNoError(err)
 		gwMac := strings.TrimSpace(string(output))
 		framework.ExpectNotEmpty(gwMac)

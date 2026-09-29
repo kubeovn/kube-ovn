@@ -366,6 +366,10 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairsStaleGatewayMac(t *testing.T) {
 			Subnet:    subnet.Name,
 			Type:      util.SwitchLBRuleVip,
 			V4ip:      "10.0.1.50",
+			// A real pre-fix vip has Spec.MacAddress set to the gateway mac too, since
+			// the old createOrUpdateVipCR wrote it there; the repair must not let this
+			// stale value leak back into the reallocation.
+			MacAddress: gatewayMac,
 		},
 		Status: kubeovnv1.VipStatus{
 			V4ip: "10.0.1.50",
@@ -407,4 +411,55 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairsStaleGatewayMac(t *testing.T) {
 	require.Equal(t, got.Status.Mac, lspMac)
 	// Virtual parent (re)creation for the repaired vip is deferred to the dedicated queue.
 	require.Equal(t, 1, ctrl.updateVirtualParentsQueue.Len())
+}
+
+// TestHandleAddVirtualIP_SwitchLBRuleRepairRetriesUntilGatewayMacKnown covers a
+// controller restart where this vip's queue entry is processed before subnet
+// reconciliation has called RecordGatewayMAC. The repair must not be silently
+// skipped (RecordGatewayMAC never re-enqueues vips), so it must return an error
+// so the caller retries.
+func TestHandleAddVirtualIP_SwitchLBRuleRepairRetriesUntilGatewayMacKnown(t *testing.T) {
+	t.Parallel()
+
+	subnet := &kubeovnv1.Subnet{
+		Name: "test-subnet-repair-no-gw-mac",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.2.0/24",
+			Gateway:   "10.0.2.1",
+			Protocol:  kubeovnv1.ProtocolIPv4,
+			Provider:  util.OvnProvider,
+			Vpc:       "test-vpc",
+		},
+	}
+	const staleMac = "00:00:00:00:00:03"
+	vip := &kubeovnv1.Vip{
+		Name: "test-switch-lb-vip-repair-no-gw-mac",
+		Spec: kubeovnv1.VipSpec{
+			Namespace:  "default",
+			Subnet:     subnet.Name,
+			Type:       util.SwitchLBRuleVip,
+			V4ip:       "10.0.2.50",
+			MacAddress: staleMac,
+		},
+		Status: kubeovnv1.VipStatus{
+			V4ip: "10.0.2.50",
+			Mac:  staleMac,
+		},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Vips:    []*kubeovnv1.Vip{vip},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+	// Deliberately do not call RecordGatewayMAC, simulating subnet reconciliation
+	// not having run yet.
+
+	require.Error(t, ctrl.handleAddVirtualIP(vip.Name))
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, staleMac, got.Status.Mac)
 }
