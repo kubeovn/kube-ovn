@@ -45,7 +45,7 @@ index 2485ab5..9e525df 100644
                        "outport = \""MC_UNKNOWN "\"; output;",
                        lflow_ref);
 +        if (!bcast_arp_nd_req_flood) {
-+            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 90,
++            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 76,
 +                          "(eth.bcast && arp.op == 1) || nd_ns_mcast",
 +                          "next;",
 +                          lflow_ref);
