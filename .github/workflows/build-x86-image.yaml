@@ -53,6 +53,7 @@ jobs:
           dist/images/Dockerfile.base
           dist/images/OpenBFDD-compile.patch
           dist/images/patches/
+          dist/images/tests/
           dist/images/go-deps/download-go-deps.sh
           dist/images/go-deps/rebuild-go-deps.sh
           EOF

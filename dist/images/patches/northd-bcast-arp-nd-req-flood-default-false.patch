@@ -1,6 +1,6 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
-Date: Tue, 22 Sep 2026 02:00:00 +0000
+Date: Tue, 22 Sep 2026 07:00:00 +0000
 Subject: [PATCH] northd: add bcast_arp_nd_req_flood with default false
 
 Add the Kube-OVN NB option bcast_arp_nd_req_flood
@@ -8,35 +8,60 @@ that skips L2 flooding of broadcast ARP and IPv6 ND requests. Default the
 option to false so large underlay broadcast domains do not hit OVS' 4096
 resubmit limit.
 
+Keep router-owned ARP/ND requests above the suppression rule at priority
+95 and their GARP exceptions at priority 105. This preserves NAT and LB
+address resolution without allowing unknown IPv6 NS to hit the multicast
+snooping flood rules. When flooding is enabled or the switch has no
+unknown ports, retain the original priorities.
+
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
 
+diff --git a/northd/en-global-config.c b/northd/en-global-config.c
+index bde7806..d211f24 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -625,6 +625,11 @@
+@@ -710,6 +710,11 @@ check_nb_options_out_of_sync(
+         return true;
      }
  
-     if (config_out_of_sync(&nb->options, &config_data->nb_options,
++    if (config_out_of_sync(&nb->options, &config_data->nb_options,
 +                           "bcast_arp_nd_req_flood", false)) {
 +        return true;
 +    }
 +
-+    if (config_out_of_sync(&nb->options, &config_data->nb_options,
+     if (config_out_of_sync(&nb->options, &config_data->nb_options,
                             "install_ls_lb_from_router", false)) {
          return true;
-     }
+diff --git a/northd/northd.c b/northd/northd.c
+index e27b61f..6514078 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -107,6 +107,8 @@
- #define MAX_OVN_TAGS 4096
+@@ -119,6 +119,8 @@ static bool ls_ct_skip_dst_lport_ips = false;
  
+ #define MAX_OVN_NF_GROUP_IDS 256
  
 +static bool bcast_arp_nd_req_flood = false;
 +
  /* Due to various hard-coded priorities need to implement ACLs, the
   * northbound database supports a smaller range of ACL priorities than
   * are available to logical flows.  This value is added to an ACL
-@@ -9448,6 +9450,12 @@
+@@ -9863,6 +9865,14 @@ build_lswitch_rport_arp_req_flow(
+     struct ds m_garp  = DS_EMPTY_INITIALIZER;
+     struct ds actions = DS_EMPTY_INITIALIZER;
+
++    /* Keep router-owned ARP/ND above the priority-90 flood suppression
++     * rule. Lowering that rule would expose IPv6 NS to multicast snooping
++     * floods at priority 85. The GARP exception below uses priority + 10.
++     */
++    if (!bcast_arp_nd_req_flood && od->has_unknown) {
++        priority = 95;
++    }
++
+     arp_nd_ns_match(ips, addr_family, &m);
+     ds_clone(&match, &m);
+
+@@ -10505,6 +10515,12 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
                        "outport == \"none\"",
                        "outport = \""MC_UNKNOWN "\"; output;",
                        lflow_ref);
@@ -47,9 +72,9 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 +                          lflow_ref);
 +        }
      } else {
-         ovn_lflow_add_drop_with_desc(
-             lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50, "outport == \"none\"",
-@@ -19577,6 +19631,8 @@
+         ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
+                       "outport == \"none\"", debug_drop_action(), lflow_ref,
+@@ -21424,6 +21440,8 @@ ovnnb_db_run(struct northd_input *input_data,
  
      use_ct_inv_match = smap_get_bool(input_data->nb_options,
                                       "use_ct_inv_match", true);
@@ -57,4 +82,4 @@ Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 +                                        "bcast_arp_nd_req_flood", false);
      acl_ct_translation = smap_get_bool(input_data->nb_options,
                                         "acl_ct_translation", false);
- 
+     ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,

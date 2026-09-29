@@ -310,4 +310,8 @@ RUN --mount=type=bind,target=/packages,from=openssl-builder,source=/packages \
         -e '$a \\n.include /usr/lib/ssl/fipsmodule.cnf' \
         /usr/lib/ssl/openssl.cnf
 
+# Exercise the installed northd and trace binaries without a kernel datapath.
+RUN --mount=type=bind,source=tests/ovn-router-arp-nd.py,target=/tmp/ovn-router-arp-nd.py \
+    python3 /tmp/ovn-router-arp-nd.py
+
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
