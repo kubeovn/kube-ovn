@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.16.9 (2026-09-29)
+
+ * [ff2332825](https://github.com/kubeovn/kube-ovn/commit/ff2332825865a7bc5549dc8f726c8d0f18888067) release v1.16.9
+ * [b87d88573](https://github.com/kubeovn/kube-ovn/commit/b87d8857307ad0f56fa2aaf2ac10c0384e1b1471) fix(daemon): backport full-mask tunnel address selection to 1.16 (#7552)
+ * [6e7deda4b](https://github.com/kubeovn/kube-ovn/commit/6e7deda4be85b4fb7216aacb2f58eb181def2582) fix: reconcile attachSubnets for switch_lb_vip VIP (#6969) (#7548)
+ * [e3ebfecf0](https://github.com/kubeovn/kube-ovn/commit/e3ebfecf0702bc5062d9955c359cfb69dfb2b1c4) fix(daemon): do not require ovn-external-gw-config on external-gw nodes (#7452) (#7547)
+ * [62234f8c4](https://github.com/kubeovn/kube-ovn/commit/62234f8c4fa93d3a97d3ca0fbbcf02bbaa8847fa) fix(controller): Protect VMs from incorrect chassis settings (#7543)
+ * [413911846](https://github.com/kubeovn/kube-ovn/commit/4139118467f61f9ad4ae305eb03c594836af2722) prepare for next release
+
+### Contributors
+
+ * Zujian Zhang
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.8 (2026-09-28)
 
  * [f4282dad5](https://github.com/kubeovn/kube-ovn/commit/f4282dad533b8a135e0181c04ca10290d7049e9e) release v1.16.8
@@ -625,6 +640,18 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.30 (2026-09-29)
+
+ * [f487067ab](https://github.com/kubeovn/kube-ovn/commit/f487067ab0183c32a5c7a71e3842c55c993e1816) release v1.15.30
+ * [bf47b90d6](https://github.com/kubeovn/kube-ovn/commit/bf47b90d69a7721bd034a33b6f4fe9c43999c4d0) fix(deps): update containerd to v2.2.9 (#7554)
+ * [447e72100](https://github.com/kubeovn/kube-ovn/commit/447e72100e1e53717c82f38e887fca83e3654395) fix(daemon): backport full-mask tunnel address selection to 1.15 (#7550)
+ * [891796a01](https://github.com/kubeovn/kube-ovn/commit/891796a0171966068cd61b85406e46d603ed1f71) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
@@ -1748,6 +1775,19 @@
  * renovate[bot]
  * xieyanker
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.14.47 (2026-09-29)
+
+ * [e9904c855](https://github.com/kubeovn/kube-ovn/commit/e9904c855a94a6462890e871fbeb89f4f6e88c79) release v1.14.47
+ * [f156209ea](https://github.com/kubeovn/kube-ovn/commit/f156209eaf48af8bda032c36936fc55a60f8d247) fix(deps): update containerd to v2.2.9 (#7553)
+ * [414ed4e51](https://github.com/kubeovn/kube-ovn/commit/414ed4e51a77a1a83c68856ab22f94007c23bb88) fix(daemon): backport full-mask tunnel address selection to 1.14 (#7551)
+ * [496068d92](https://github.com/kubeovn/kube-ovn/commit/496068d926ea416f941800baf38d2a12819f8712) fix(images): use OVN branch for release-1.14 base images (#7520)
+ * [efa075fc7](https://github.com/kubeovn/kube-ovn/commit/efa075fc7a881175088a6b71e2c6f961a00071ab) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
