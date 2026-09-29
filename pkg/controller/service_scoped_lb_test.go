@@ -557,7 +557,7 @@ func TestReconcileSwitchLBRuleAttachmentsPreservesVipSubnets(t *testing.T) {
 	setServiceScopedLBOwner(svc, switchLBRuleLBOwnerKind, "rule", "rule-uid")
 	vip := &kubeovnv1.Vip{
 		Name:   "attached-vip",
-		Spec:   kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, V4ip: "10.0.0.10", AttachSubnets: []string{"attached"}},
+		Spec:   kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, Subnet: "home", V4ip: "10.0.0.10", AttachSubnets: []string{"attached"}},
 		Status: kubeovnv1.VipStatus{V4ip: "10.0.0.10"},
 	}
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})

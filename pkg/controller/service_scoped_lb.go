@@ -568,7 +568,7 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if logicalSwitch == "" {
 			return fmt.Errorf("switch load balancer rule service %s/%s has no logical switch annotation", svc.Namespace, svc.Name)
 		}
-		attachSubnets, err := c.serviceScopedVipAttachSubnets(svc)
+		attachSubnets, err := c.serviceScopedVipAttachSubnets(svc, logicalSwitch)
 		if err != nil {
 			return err
 		}
@@ -666,7 +666,7 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 	}
 }
 
-func (c *Controller) serviceScopedVipAttachSubnets(svc *v1.Service) ([]string, error) {
+func (c *Controller) serviceScopedVipAttachSubnets(svc *v1.Service, subnetName string) ([]string, error) {
 	if c.virtualIpsLister == nil {
 		return nil, nil
 	}
@@ -676,7 +676,7 @@ func (c *Controller) serviceScopedVipAttachSubnets(svc *v1.Service) ([]string, e
 	}
 	attachSubnets := make([]string, 0)
 	for _, vip := range vips {
-		if !vipMatchesService(vip, svc) {
+		if !vip.DeletionTimestamp.IsZero() || vip.Spec.Subnet != subnetName || !vipMatchesServiceAddress(vip, svc) {
 			continue
 		}
 		attachSubnets = append(attachSubnets, vip.Spec.AttachSubnets...)

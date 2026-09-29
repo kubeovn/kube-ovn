@@ -596,7 +596,7 @@ var _ = framework.Describe("[group:vip]", func() {
 	})
 
 	framework.ConformanceIt("Test switch lb vip attachSubnets", func() {
-		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 16, "VIP attachment reconciliation was backported to release-1.16")
 
 		randomSuffix := framework.RandomSuffix()
 		vipName := "attach-vip-" + randomSuffix
