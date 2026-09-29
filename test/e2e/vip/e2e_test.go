@@ -656,7 +656,10 @@ var _ = framework.Describe("[group:vip]", func() {
 			}
 			slr := framework.MakeSwitchLBRule(
 				switchLBRuleName, namespaceName, vipAddress, corev1.ServiceAffinityNone,
-				map[string]string{util.LogicalSwitchAnnotation: subnetName}, nil,
+				map[string]string{
+					util.LogicalRouterAnnotation: vpcName,
+					util.LogicalSwitchAnnotation: subnetName,
+				}, nil,
 				[]string{"192.0.2.1"}, []apiv1.SwitchLBRulePort{{Name: "tcp", Port: 80, TargetPort: 80, Protocol: "TCP"}},
 			)
 			switchLBRuleClient.CreateSync(slr, func(s *apiv1.SwitchLBRule) (bool, error) {
