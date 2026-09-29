@@ -7,6 +7,16 @@ set -eo pipefail
 # kube-ovn-leader-checker. The static (NODE_IPS-based) flow below is
 # unchanged.
 if [[ "${DYNAMIC_PEERS:-false}" == "true" ]]; then
+    # `exec` replaces this script's process image, so it must never run
+    # after that point. Start the TLS-rotation watcher backgrounded first
+    # (as the static flow below also does) -- exec only swaps the image
+    # of this process, it does not affect already-forked children, so
+    # the watcher keeps running and reconnecting ovsdb-server/northd on
+    # cert rotation even though ovn-central-controller has no reload
+    # path of its own.
+    if [[ "${ENABLE_SSL:-false}" == "true" ]]; then
+        bash /kube-ovn/kube-ovn-tls-reload.sh ovn-central &
+    fi
     exec /kube-ovn/ovn-central-controller
 fi
 
