@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -73,7 +74,8 @@ type Controller struct {
 	caSecretSynced cache.InformerSynced
 	ipsecQueue     workqueue.TypedRateLimitingInterface[string]
 
-	recorder record.EventRecorder
+	recorder               record.EventRecorder
+	exGatewayConfigMissing atomic.Bool
 
 	protocol string
 
