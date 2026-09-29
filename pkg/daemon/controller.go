@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -79,9 +80,10 @@ type Controller struct {
 	serviceCIDRSynced          cache.InformerSynced
 	serviceCIDRInformerFactory informers.SharedInformerFactory
 
-	recorder          record.EventRecorder
-	nodeFailuresMutex sync.Mutex
-	nodeFailures      map[nodeFailureKey]struct{}
+	recorder               record.EventRecorder
+	exGatewayConfigMissing atomic.Bool
+	nodeFailuresMutex      sync.Mutex
+	nodeFailures           map[nodeFailureKey]struct{}
 
 	protocol              string
 	gatewayBackendManager *gatewayBackendManager
