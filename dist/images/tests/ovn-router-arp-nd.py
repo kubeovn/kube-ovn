@@ -17,7 +17,7 @@ def arp(target, source="192.0.2.1", port="localnet.ext", mac="00:00:00:00:00:01"
     )
 
 
-def ns(suffix):
+def neighborSolicitation(suffix):
     target = int(suffix, 16)
     return (
         'inport == "localnet.ext" && eth.src == 00:00:00:00:00:01 && '
@@ -80,14 +80,22 @@ def checkFlooding(nb, trace):
                 "eth.dst == ff:ff:ff:ff:ff:ff", "eth.dst == 00:00:00:00:01:01"
             ), "arp.op = 2;")
             for target in ("100", "120"):
-                expect(ns(target), "nd_na {")
-            expect(arp("192.0.2.100", source="192.0.2.100", port="ext-hub",
-                       mac="00:00:00:00:01:01"), 'outport = "_MC_flood_l2";')
+                expect(neighborSolicitation(target), "nd_na {")
+            garp = expect(
+                arp("192.0.2.100", source="192.0.2.100", port="ext-hub",
+                    mac="00:00:00:00:01:01"),
+                'outport = "_MC_flood_l2";',
+            )
+            if flood != "true" and not any(
+                "ls_in_l2_lkup" in line and "priority 105" in line
+                for line in garp.splitlines()
+            ):
+                raise AssertionError(f"GARP did not use priority 105:\n{garp}")
             unknown = (
                 arp("192.0.2.200", source="0.0.0.0"),
                 arp("192.0.2.200", source="0.0.0.0", port="vif", mac="00:00:00:00:03:03"),
                 arp("192.0.2.200", source="192.0.2.2", port="ext-hub", mac="00:00:00:00:01:01"),
-                ns("200"),
+                neighborSolicitation("200"),
             )
             for packet in unknown:
                 output = trace(packet)
