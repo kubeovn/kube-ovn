@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
@@ -122,6 +123,56 @@ func Test_reconcileVipAttachSubnets(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "keep", updated.Annotations[util.VipAttachSubnetsAnnotation])
 	})
+}
+
+func Test_serviceScopedVipLoadBalancerNames(t *testing.T) {
+	svc := &corev1.Service{
+		Namespace: "default", Name: "slr-rule",
+		Annotations: map[string]string{util.SwitchLBRuleVipsAnnotation: "10.0.0.10"},
+		Spec:        corev1.ServiceSpec{Ports: []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}}},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*corev1.Service{svc}})
+	require.NoError(t, err)
+	vip := &kubeovnv1.Vip{
+		Name:   "vip1",
+		Spec:   kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, V4ip: "10.0.0.10"},
+		Status: kubeovnv1.VipStatus{V4ip: "10.0.0.10"},
+	}
+	names, err := fc.fakeController.serviceScopedVipLoadBalancerNames(vip)
+	require.NoError(t, err)
+	require.Len(t, names, 1)
+	assert.Equal(t, serviceScopedExternalLBName(svc, corev1.ProtocolTCP, "10.0.0.10"), names[0])
+}
+
+func Test_reconcileVipAttachSubnetsUsesServiceScopedLoadBalancer(t *testing.T) {
+	svc := &corev1.Service{
+		Namespace: "default", Name: "slr-rule",
+		Annotations: map[string]string{util.SwitchLBRuleVipsAnnotation: "10.0.0.10"},
+		Spec:        corev1.ServiceSpec{Ports: []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}}},
+	}
+	vip := &kubeovnv1.Vip{
+		Name:   "vip1",
+		Spec:   kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, Subnet: "home", V4ip: "10.0.0.10", AttachSubnets: []string{"attached"}},
+		Status: kubeovnv1.VipStatus{V4ip: "10.0.0.10"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Services: []*corev1.Service{svc},
+		Subnets:  []*kubeovnv1.Subnet{vipAttachTestSubnet("home", "vpc1")},
+		Vpcs:     []*kubeovnv1.Vpc{vipAttachTestVpc("vpc1", "")},
+	})
+	require.NoError(t, err)
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(vip))
+	fc.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(indexer)
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{})
+	require.NoError(t, err)
+	lbName := serviceScopedExternalLBName(svc, corev1.ProtocolTCP, "10.0.0.10")
+	fc.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("attached", ovsdb.MutateOperationInsert, lbName).Return(nil)
+
+	require.NoError(t, fc.fakeController.reconcileVipAttachSubnets(vip))
+	updated, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), "vip1", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "attached", updated.Annotations[util.VipAttachSubnetsAnnotation])
 }
 
 func Test_reconcileVipAttachSubnetsPreservesAnnotations(t *testing.T) {

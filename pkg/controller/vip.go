@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -798,6 +799,95 @@ func vipVpcLoadBalancerNames(vpc *kubeovnv1.Vpc) []string {
 	})
 }
 
+func vipAddresses(vip *kubeovnv1.Vip) []string {
+	addresses := make([]string, 0, 2)
+	for _, address := range []string{vip.Status.V4ip, vip.Status.V6ip, vip.Spec.V4ip, vip.Spec.V6ip} {
+		address = strings.TrimSpace(address)
+		if address == "" || slices.Contains(addresses, address) {
+			continue
+		}
+		addresses = append(addresses, address)
+	}
+	return addresses
+}
+
+func vipMatchesService(vip *kubeovnv1.Vip, svc *corev1.Service) bool {
+	if vip == nil || svc == nil || vip.Spec.Type != util.SwitchLBRuleVip {
+		return false
+	}
+	for serviceVIP := range strings.SplitSeq(svc.Annotations[util.SwitchLBRuleVipsAnnotation], ",") {
+		serviceVIP = strings.TrimSpace(serviceVIP)
+		if serviceVIP == "" {
+			continue
+		}
+		if slices.Contains(vipAddresses(vip), serviceVIP) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Controller) serviceScopedVipLoadBalancerNames(vip *kubeovnv1.Vip) ([]string, error) {
+	if c.servicesLister == nil {
+		return nil, nil
+	}
+	services, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("list services for vip %s: %w", vip.Name, err)
+	}
+	addresses := vipAddresses(vip)
+	if len(addresses) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{})
+	names := make([]string, 0)
+	for _, svc := range services {
+		if !vipMatchesService(vip, svc) {
+			continue
+		}
+		for _, port := range svc.Spec.Ports {
+			for _, address := range addresses {
+				matched := false
+				for serviceVIP := range strings.SplitSeq(svc.Annotations[util.SwitchLBRuleVipsAnnotation], ",") {
+					if strings.TrimSpace(serviceVIP) == address {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+				name := serviceScopedExternalLBName(svc, port.Protocol, address)
+				if name == "" {
+					continue
+				}
+				if _, ok := seen[name]; ok {
+					continue
+				}
+				seen[name] = struct{}{}
+				names = append(names, name)
+			}
+		}
+	}
+	return names, nil
+}
+
+func (c *Controller) enqueueServicesForVip(vip *kubeovnv1.Vip) {
+	if c.servicesLister == nil || c.addOrUpdateEndpointSliceQueue == nil {
+		return
+	}
+	services, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services for vip %s endpoint reconcile: %v", vip.Name, err)
+		return
+	}
+	for _, svc := range services {
+		if vipMatchesService(vip, svc) {
+			c.enqueueEndpointSliceService(cache.MetaObjectToName(svc).String(), svc)
+		}
+	}
+}
+
 func (c *Controller) hasOtherVipAttachSubnet(vpcName, subnetName, vipName string) bool {
 	if c.virtualIpsLister == nil {
 		return false
@@ -857,6 +947,12 @@ func (c *Controller) reconcileVipAttachSubnets(vip *kubeovnv1.Vip) error {
 		return err
 	}
 	lbs := vipVpcLoadBalancerNames(vpc)
+	serviceLBs, err := c.serviceScopedVipLoadBalancerNames(vip)
+	if err != nil {
+		return err
+	}
+	lbs = normalizeVipAttachSubnets(append(lbs, serviceLBs...))
+	c.enqueueServicesForVip(vip)
 	if len(lbs) == 0 {
 		return nil
 	}
@@ -909,6 +1005,12 @@ func (c *Controller) detachAllVipAttachSubnets(vip *kubeovnv1.Vip) error {
 		return err
 	}
 	lbs := vipVpcLoadBalancerNames(vpc)
+	serviceLBs, err := c.serviceScopedVipLoadBalancerNames(vip)
+	if err != nil {
+		return err
+	}
+	lbs = normalizeVipAttachSubnets(append(lbs, serviceLBs...))
+	c.enqueueServicesForVip(vip)
 	if len(lbs) == 0 {
 		return nil
 	}

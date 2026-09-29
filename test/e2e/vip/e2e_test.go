@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -635,20 +636,54 @@ var _ = framework.Describe("[group:vip]", func() {
 		attachSubnet2 := framework.MakeSubnet(attachSubnetName2, "", peerCIDR, "", peerVpcName, "", nil, nil, []string{namespaceName})
 		_ = subnetClient.CreateSync(attachSubnet2)
 
-		ginkgo.By("Getting VPC load balancer names")
-		vpc := vpcClient.Get(vpcName)
-		tcpLBName := vpc.Status.TCPLoadBalancer
-		framework.ExpectNotEmpty(tcpLBName, "VPC should have a TCP load balancer")
+		var lbName, vipV4, vipV6 string
+		if f.VersionPriorTo(1, 17) {
+			ginkgo.By("Getting the shared VPC load balancer")
+			vpc := vpcClient.Get(vpcName)
+			lbName = vpc.Status.TCPLoadBalancer
+			framework.ExpectNotEmpty(lbName, "VPC should have a TCP load balancer")
+		} else {
+			ginkgo.By("Creating a SwitchLBRule for the service-scoped load balancer")
+			switchLBRuleClient := f.SwitchLBRuleClient()
+			switchLBRuleName := "attach-rule-" + randomSuffix
+			vipAddress := framework.RandomIPs(cidr, ",", 1)
+			vipV4, vipV6 = util.SplitStringIP(vipAddress)
+			if vipV4 != "" {
+				vipAddress = vipV4
+				vipV6 = ""
+			} else {
+				vipAddress = vipV6
+			}
+			slr := framework.MakeSwitchLBRule(
+				switchLBRuleName, namespaceName, vipAddress, corev1.ServiceAffinityNone,
+				map[string]string{util.LogicalSwitchAnnotation: subnetName}, nil,
+				[]string{"192.0.2.1"}, []apiv1.SwitchLBRulePort{{Name: "tcp", Port: 80, TargetPort: 80, Protocol: "TCP"}},
+			)
+			switchLBRuleClient.CreateSync(slr, func(s *apiv1.SwitchLBRule) (bool, error) {
+				return s.Status.Service != "", nil
+			}, "SwitchLBRule service is ready")
+			ginkgo.DeferCleanup(func() { switchLBRuleClient.DeleteSync(switchLBRuleName) })
+			lbName = fmt.Sprintf("switchlbrule:%s/%s:tcp:external", namespaceName, switchLBRuleName)
+		}
 
-		ginkgo.By("Getting LB UUID from name " + tcpLBName)
-		cmd := fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=_uuid find Load_Balancer name=%s", tcpLBName)
-		output, _, err := framework.NBExec(cmd)
-		framework.ExpectNoError(err)
-		lbUUID := strings.TrimSpace(string(output))
+		ginkgo.By("Getting LB UUID from name " + lbName)
+		var lbUUID string
+		framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+			cmd := fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=_uuid find Load_Balancer name=%s", lbName)
+			output, _, err := framework.NBExec(cmd)
+			if err != nil {
+				return false, nil
+			}
+			lbUUID = strings.TrimSpace(string(output))
+			return lbUUID != "", nil
+		}, "load balancer is created")
 		framework.ExpectNotEmpty(lbUUID, "LB UUID should exist in OVN")
+		var cmd string
+		var output []byte
+		var err error
 
 		ginkgo.By("Creating switch lb vip " + vipName + " with AttachSubnets=[" + attachSubnetName1 + "]")
-		vip := makeOvnVip(namespaceName, vipName, subnetName, "", "", util.SwitchLBRuleVip, []string{attachSubnetName1})
+		vip := makeOvnVip(namespaceName, vipName, subnetName, vipV4, vipV6, util.SwitchLBRuleVip, []string{attachSubnetName1})
 		vip = vipClient.CreateSync(vip)
 
 		// Verify annotation is set

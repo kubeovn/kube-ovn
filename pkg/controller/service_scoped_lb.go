@@ -567,15 +567,32 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if logicalSwitch == "" {
 			return fmt.Errorf("switch load balancer rule service %s/%s has no logical switch annotation", svc.Namespace, svc.Name)
 		}
-		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(logicalSwitch, ovsdb.MutateOperationInsert, lbNames...); err != nil {
-			return fmt.Errorf("attach resource-scoped load balancers to logical switch %s: %w", logicalSwitch, err)
+		logicalSwitches := []string{logicalSwitch}
+		attachSubnets, err := c.serviceScopedVipAttachSubnets(svc)
+		if err != nil {
+			return err
+		}
+		for _, subnet := range attachSubnets {
+			if !slices.Contains(logicalSwitches, subnet) {
+				logicalSwitches = append(logicalSwitches, subnet)
+			}
+		}
+		desiredSwitches := make(map[string]struct{}, len(logicalSwitches))
+		for _, switchName := range logicalSwitches {
+			desiredSwitches[switchName] = struct{}{}
+			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(switchName, ovsdb.MutateOperationInsert, lbNames...); err != nil {
+				return fmt.Errorf("attach resource-scoped load balancers to logical switch %s: %w", switchName, err)
+			}
 		}
 		subnets, err := c.subnetsLister.List(labels.Everything())
 		if err != nil {
 			return fmt.Errorf("list logical switches for resource-scoped load balancer attachment: %w", err)
 		}
 		for _, subnet := range subnets {
-			if subnet.Name == logicalSwitch || !isOvnSubnet(subnet) {
+			if !isOvnSubnet(subnet) {
+				continue
+			}
+			if _, ok := desiredSwitches[subnet.Name]; ok {
 				continue
 			}
 			if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationDelete, lbNames...); err != nil {
@@ -652,6 +669,24 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		}
 		return c.attachServiceScopedLoadBalancersToRouter(vpcName, routerLBNames...)
 	}
+}
+
+func (c *Controller) serviceScopedVipAttachSubnets(svc *v1.Service) ([]string, error) {
+	if c.virtualIpsLister == nil {
+		return nil, nil
+	}
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("list vips for switch load balancer rule service %s/%s: %w", svc.Namespace, svc.Name, err)
+	}
+	attachSubnets := make([]string, 0)
+	for _, vip := range vips {
+		if !vipMatchesService(vip, svc) {
+			continue
+		}
+		attachSubnets = append(attachSubnets, vip.Spec.AttachSubnets...)
+	}
+	return normalizeVipAttachSubnets(attachSubnets), nil
 }
 
 func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
