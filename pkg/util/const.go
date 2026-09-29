@@ -36,6 +36,10 @@ const (
 	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
+	// VpcNatGatewayAnnotation names a vpc-nat-gw: the gateway a Pod/StatefulSet/Deployment
+	// implements, and the gateway that serves a Service handled by the nftable LB service
+	// feature (a LoadBalancer Service also carries the eip annotation its ingress IP comes
+	// from). A Service without it is not handled.
 	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
 	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
 	// VpcNatGatewayInitInstanceAnnotation records the container instance the init command
@@ -130,17 +134,21 @@ const (
 
 	OvsDpTypeLabel = "ovn.kubernetes.io/ovs_dp_type"
 
-	VpcNameLabel                       = "ovn.kubernetes.io/vpc"
-	SubnetNameLabel                    = "ovn.kubernetes.io/subnet"
-	ICGatewayLabel                     = "ovn.kubernetes.io/ic-gw"
-	ExGatewayLabel                     = "ovn.kubernetes.io/external-gw"
-	NodeExtGwLabel                     = "ovn.kubernetes.io/node-ext-gw"
-	VpcNatGatewayLabel                 = "ovn.kubernetes.io/vpc-nat-gw"
-	IPReservedLabel                    = "ovn.kubernetes.io/ip_reserved"
-	VpcNatGatewayNameLabel             = "ovn.kubernetes.io/vpc-nat-gw-name"
-	NftableLbSvcNsLabel                = "ovn.kubernetes.io/nftable-lb-svc-ns"
-	NftableLbSvcNameLabel              = "ovn.kubernetes.io/nftable-lb-svc-name"
-	NftableLbSvcManagedAnnotation      = "ovn.kubernetes.io/nftable-lb-svc-managed"
+	VpcNameLabel           = "ovn.kubernetes.io/vpc"
+	SubnetNameLabel        = "ovn.kubernetes.io/subnet"
+	ICGatewayLabel         = "ovn.kubernetes.io/ic-gw"
+	ExGatewayLabel         = "ovn.kubernetes.io/external-gw"
+	NodeExtGwLabel         = "ovn.kubernetes.io/node-ext-gw"
+	VpcNatGatewayLabel     = "ovn.kubernetes.io/vpc-nat-gw"
+	IPReservedLabel        = "ovn.kubernetes.io/ip_reserved"
+	VpcNatGatewayNameLabel = "ovn.kubernetes.io/vpc-nat-gw-name"
+	NftableLbSvcNsLabel    = "ovn.kubernetes.io/nftable-lb-svc-ns"
+	NftableLbSvcNameLabel  = "ovn.kubernetes.io/nftable-lb-svc-name"
+	// NftableLbSvcUIDLabel records the UID of the Service incarnation a generated share DNAT
+	// rule belongs to, so rules left behind by a deleted Service are not adopted by a new
+	// Service of the same name.
+	NftableLbSvcUIDLabel               = "ovn.kubernetes.io/nftable-lb-svc-uid"
+	NftableLbSvcRecordLabel            = "ovn.kubernetes.io/nftable-lb-svc-record"
 	VpcLbLabel                         = "ovn.kubernetes.io/vpc_lb"
 	VpcDNSNameLabel                    = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                           = "ovn.kubernetes.io/qos"
@@ -285,6 +293,7 @@ const (
 	EgressGatewayLocalPolicyPriority = 29150
 	NatGatewayDropPolicyPriority     = 29190
 	NatGatewayPolicyPriority         = 29200
+	NatGatewayVipPolicyPriority      = 29210 // routes VPC traffic destined for a share DNAT VIP to the gateway
 	NorthGatewayRoutePolicyPriority  = 29250
 	U2OSubnetPolicyPriority          = 29400
 	OvnICPolicyPriority              = 29500

@@ -113,9 +113,8 @@ type Controller struct {
 	// qosNatGwKeyMutex is the only QoS data-plane lock. It is keyed by NAT gateway,
 	// never by EIP or QoS policy, because every QoS rule on one gateway shares its
 	// HTB root, IFB device and ingress redirect state.
-	qosNatGwKeyMutex     keymutex.KeyMutex
-	vpcNatGwExecKeyMutex keymutex.KeyMutex
-
+	qosNatGwKeyMutex                 keymutex.KeyMutex
+	vpcNatGwExecKeyMutex             keymutex.KeyMutex
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
 	addOrUpdateVpcEgressGatewayQueue workqueue.TypedRateLimitingInterface[string]
@@ -259,7 +258,7 @@ type Controller struct {
 	updateServiceQueue workqueue.TypedRateLimitingInterface[*updateSvcObject]
 	svcKeyMutex        keymutex.KeyMutex
 
-	addOrUpdateNftableLbSvcQueue workqueue.TypedRateLimitingInterface[string]
+	addOrUpdateGwNftableLbSvcQueue workqueue.TypedRateLimitingInterface[string]
 
 	endpointSlicesLister          discoveryv1.EndpointSliceLister
 	endpointSlicesSynced          cache.InformerSynced
@@ -644,7 +643,7 @@ func Run(ctx context.Context, config *Configuration) {
 		updateServiceQueue: newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		svcKeyMutex:        keymutex.NewHashed(numKeyLocks),
 
-		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
+		addOrUpdateGwNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateGwNftableLbSvc", nil),
 
 		endpointSlicesLister:          endpointSliceInformer.Lister(),
 		endpointSlicesSynced:          endpointSliceInformer.Informer().HasSynced,
@@ -1341,7 +1340,7 @@ func (c *Controller) shutdown() {
 	c.addServiceQueue.ShutDown()
 	c.deleteServiceQueue.ShutDown()
 	c.updateServiceQueue.ShutDown()
-	c.addOrUpdateNftableLbSvcQueue.ShutDown()
+	c.addOrUpdateGwNftableLbSvcQueue.ShutDown()
 	c.addOrUpdateEndpointSliceQueue.ShutDown()
 	c.priorityEndpointSliceQueue.ShutDown()
 
@@ -1541,18 +1540,22 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
+	if c.config.EnableGwNftableLbSvc || c.config.EnableGwNftableSvcClusterIP {
+		// Gateway mode consumes Service and EndpointSlice informer events through its own queue.
+		// Service informer startup Adds replay every live or finalizing Service, so accounting
+		// records never need to trigger or recover the Service reconcile.
+		go wait.Until(runWorker("add/update gateway nftable lb service", c.addOrUpdateGwNftableLbSvcQueue, c.handleAddOrUpdateGwNftableLbService), time.Second, ctx.Done())
+	}
+
+	// TODO: Consolidate the OVN LB workers below, including the WorkerNum-scaled workers,
+	// under a single EnableOvnLB condition instead of scattering the same gate.
 	if c.config.EnableOvnLB {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
+	}
 
-		if c.config.EnableNftableLbSvc {
-			if err := c.enqueueNftableLbSvcOwnersFromRules(); err != nil {
-				util.LogFatalAndExit(err, "failed to enqueue nftable lb service owners from generated dnat rules")
-			}
-			go wait.Until(runWorker("add/update nftable lb service", c.addOrUpdateNftableLbSvcQueue, c.handleAddOrUpdateNftableLbService), time.Second, ctx.Done())
-		}
-
+	if c.config.EnableOvnLB {
 		go wait.Until(runWorker("add/update router lb rule", c.addRouterLBRuleQueue, c.handleAddOrUpdateRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete router lb rule", c.delRouterLBRuleQueue, c.handleDelRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("update router lb rule", c.updateRouterLBRuleQueue, c.handleUpdateRouterLBRule), time.Second, ctx.Done())
@@ -1582,6 +1585,8 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 		if c.config.EnableOvnLB {
 			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
+		}
+		if c.config.EnableOvnLB {
 			go wait.Until(runWorker("add/update endpoint slice", c.addOrUpdateEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 		}
 

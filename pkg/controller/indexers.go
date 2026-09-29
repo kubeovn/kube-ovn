@@ -12,13 +12,16 @@ import (
 )
 
 const (
-	IndexPodByNode             = "byNodeName"
-	IndexEPSByService          = "byServiceName"
-	IndexDNSNameResolverByName = "byDNSName"
-	IndexIPBySubnet            = "bySubnet"
-	IndexVpcByBFDPort          = "byBFDPort"
-	IndexVpcBFDPortEnabled     = "enabled"
-	IndexServiceByNftableLbEip = "byNftableLbEip"
+	IndexPodByNode               = "byNodeName"
+	IndexEPSByService            = "byServiceName"
+	IndexDNSNameResolverByName   = "byDNSName"
+	IndexIPBySubnet              = "bySubnet"
+	IndexVpcByBFDPort            = "byBFDPort"
+	IndexVpcBFDPortEnabled       = "enabled"
+	IndexGwNftableLbServiceByEip = "byGwNftableLbEip"
+	// IndexGwNftableLbServiceByGateway indexes gateway nftable LB Services by
+	// the gateway they name, so a gateway event only wakes the Services it serves.
+	IndexGwNftableLbServiceByGateway = "byGwNftableLbGateway"
 )
 
 func indexPodByNode(obj any) ([]string, error) {
@@ -84,14 +87,30 @@ func indexIPBySubnet(obj any) ([]string, error) {
 	return subnets, nil
 }
 
-// indexServiceByNftableLbEip indexes a nftable-lb-svc LoadBalancer Service by the EIP it
+// indexGwNftableLbServiceByEip indexes a gateway nftable LB LoadBalancer Service by the EIP it
 // references, so the conflict resolver can find competing services in O(matched).
-func indexServiceByNftableLbEip(obj any) ([]string, error) {
+func indexGwNftableLbServiceByEip(obj any) ([]string, error) {
 	svc, ok := obj.(*v1.Service)
-	if !ok || !nftableLbSvcQualifies(svc) {
+	if !ok || !nftableLbSvcCandidate(svc) {
+		return nil, nil
+	}
+	// Only a LoadBalancer Service depends on an EIP (its ingress IP). A ClusterIP Service has
+	// none, so it is indexed under the gateway instead (see indexGwNftableLbServiceByGateway), which is
+	// what its data plane depends on.
+	if svc.Spec.Type != v1.ServiceTypeLoadBalancer || svc.Annotations[util.EipAnnotation] == "" {
 		return nil, nil
 	}
 	return []string{svc.Annotations[util.EipAnnotation]}, nil
+}
+
+// indexGwNftableLbServiceByGateway indexes a handled Service by its gateway, so gateway
+// instance replacement can wake exactly the Services it serves, whichever kind of Service they are.
+func indexGwNftableLbServiceByGateway(obj any) ([]string, error) {
+	svc, ok := obj.(*v1.Service)
+	if !ok || !nftableLbSvcCandidate(svc) {
+		return nil, nil
+	}
+	return []string{svc.Annotations[util.VpcNatGatewayAnnotation]}, nil
 }
 
 // setupIndexers registers custom informer indexers used by hot-path
@@ -110,7 +129,10 @@ func (c *Controller) setupIndexers(vpcInformer, podInformer, epsInformer, ipInfo
 	if err := ipInformer.AddIndexers(cache.Indexers{IndexIPBySubnet: indexIPBySubnet}); err != nil {
 		return err
 	}
-	if err := svcInformer.AddIndexers(cache.Indexers{IndexServiceByNftableLbEip: indexServiceByNftableLbEip}); err != nil {
+	if err := svcInformer.AddIndexers(cache.Indexers{
+		IndexGwNftableLbServiceByEip:     indexGwNftableLbServiceByEip,
+		IndexGwNftableLbServiceByGateway: indexGwNftableLbServiceByGateway,
+	}); err != nil {
 		return err
 	}
 	c.vpcIndexer = vpcInformer.GetIndexer()

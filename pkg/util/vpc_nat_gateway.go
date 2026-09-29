@@ -28,9 +28,8 @@ const (
 )
 
 // NftableLbSvcOwnerKey returns the owning Service key (namespace/name) encoded in an nftable
-// LB service share DNAT rule's labels, or "" when the rule is not managed by the feature
-// (e.g. a manually-created share rule). It is the single decoder of the ownership labels
-// shared by the controller and the validating webhook.
+// LB Service accounting record, or "" for an object that is not a valid record. It is the
+// single decoder shared by the controller and the validating webhook.
 func NftableLbSvcOwnerKey(labels map[string]string) string {
 	ns := labels[NftableLbSvcNsLabel]
 	name := labels[NftableLbSvcNameLabel]
@@ -38,6 +37,24 @@ func NftableLbSvcOwnerKey(labels map[string]string) string {
 		return ""
 	}
 	return ns + "/" + name
+}
+
+// NftableLbSvcOwnerID returns the owning Service incarnation (namespace/name/uid) encoded in
+// the labels, or "" when the rule is not managed by the feature. Ownership decisions compare
+// this instead of NftableLbSvcOwnerKey: a Service that is deleted and recreated under the same
+// name is a different owner, and its predecessor's rules must not be treated as its own.
+func NftableLbSvcOwnerID(labels map[string]string) string {
+	key := NftableLbSvcOwnerKey(labels)
+	if key == "" {
+		return ""
+	}
+	return key + "/" + labels[NftableLbSvcUIDLabel]
+}
+
+// IsNftableLbSvcRecord identifies a share DNAT accounting record generated for a Service. Such
+// records are written by the Service controller and never own a data-plane operation.
+func IsNftableLbSvcRecord(labels map[string]string) bool {
+	return labels[NftableLbSvcRecordLabel] == "true" && NftableLbSvcOwnerKey(labels) != ""
 }
 
 // GenNatGwName returns the full name of a NAT gateway StatefulSet/Deployment
