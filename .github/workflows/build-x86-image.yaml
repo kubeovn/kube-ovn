@@ -95,6 +95,15 @@ jobs:
             make base-amd64
             make base-tar-amd64
 
+      - name: Test OVN router ARP and ND
+        if: steps.check.outputs.build-base == 1
+        run: |
+          docker run --rm --network=none --read-only --tmpfs /tmp \
+            --mount "type=bind,source=$PWD/dist/images/tests/ovn-router-arp-nd.py,target=/ovn-router-arp-nd.py,readonly" \
+            --entrypoint python3 \
+            "kubeovn/kube-ovn-base:$(cat VERSION)-amd64" \
+            -B /ovn-router-arp-nd.py
+
       - name: Upload base images to artifact
         if: steps.check.outputs.build-base == 1
         uses: actions/upload-artifact@v6
