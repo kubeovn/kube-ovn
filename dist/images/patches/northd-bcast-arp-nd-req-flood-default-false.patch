@@ -1,55 +1,34 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
-Date: Tue, 22 Sep 2026 07:00:00 +0000
-Subject: [PATCH] northd: add bcast_arp_nd_req_flood with default false
+Date: Tue, 29 Sep 2026 03:00:00 +0000
+Subject: [PATCH] northd: preserve router-owned ARP and ND with flood suppression
 
-Add the Kube-OVN NB option bcast_arp_nd_req_flood
-that skips L2 flooding of broadcast ARP and IPv6 ND requests. Default the
-option to false so large underlay broadcast domains do not hit OVS' 4096
-resubmit limit.
-
-Keep router-owned ARP/ND requests above the suppression rule at priority
-95 and their GARP exceptions at priority 105. This preserves NAT and LB
-address resolution without allowing unknown IPv6 NS to hit the multicast
-snooping flood rules. When flooding is enabled or the switch has no
-unknown ports, retain the original priorities.
+Keep router-owned ARP/ND requests above the priority-90 flood suppression
+rule at priority 95 and their GARP exceptions at priority 105. This preserves
+NAT and LB address resolution without allowing unknown IPv6 NS to hit the
+multicast snooping flood rules.
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
 
 diff --git a/northd/en-global-config.c b/northd/en-global-config.c
-index bde7806..d211f24 100644
+index 9463caf91..1a719f03d 100644
 --- a/northd/en-global-config.c
 +++ b/northd/en-global-config.c
-@@ -710,6 +710,11 @@ check_nb_options_out_of_sync(
-         return true;
-     }
- 
+@@ -626,0 +627,5 @@ check_nb_options_out_of_sync(
 +    if (config_out_of_sync(&nb->options, &config_data->nb_options,
 +                           "bcast_arp_nd_req_flood", false)) {
 +        return true;
 +    }
 +
-     if (config_out_of_sync(&nb->options, &config_data->nb_options,
-                            "install_ls_lb_from_router", false)) {
-         return true;
 diff --git a/northd/northd.c b/northd/northd.c
-index e27b61f..6514078 100644
+index f6b778222..478a1311d 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -119,6 +119,8 @@ static bool ls_ct_skip_dst_lport_ips = false;
- 
- #define MAX_OVN_NF_GROUP_IDS 256
- 
+@@ -117,0 +118,2 @@ static bool ls_dnat_mod_dl_dst = false;
 +static bool bcast_arp_nd_req_flood = false;
 +
- /* Due to various hard-coded priorities need to implement ACLs, the
-  * northbound database supports a smaller range of ACL priorities than
-  * are available to logical flows.  This value is added to an ACL
-@@ -9863,6 +9865,14 @@ build_lswitch_rport_arp_req_flow(
-     struct ds m_garp  = DS_EMPTY_INITIALIZER;
-     struct ds actions = DS_EMPTY_INITIALIZER;
-
+@@ -9402,0 +9405,8 @@ build_lswitch_rport_arp_req_flow(
 +    /* Keep router-owned ARP/ND above the priority-90 flood suppression
 +     * rule. Lowering that rule would expose IPv6 NS to multicast snooping
 +     * floods at priority 85. The GARP exception below uses priority + 10.
@@ -58,28 +37,13 @@ index e27b61f..6514078 100644
 +        priority = 95;
 +    }
 +
-     arp_nd_ns_match(ips, addr_family, &m);
-     ds_clone(&match, &m);
-
-@@ -10505,6 +10515,12 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
-                       "outport == \"none\"",
-                       "outport = \""MC_UNKNOWN "\"; output;",
-                       lflow_ref);
+@@ -10021,0 +10032,6 @@ build_lswitch_lflows_l2_unknown(struct ovn_datapath *od,
 +        if (!bcast_arp_nd_req_flood) {
 +            ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_LKUP, 90,
 +                          "(eth.bcast && arp.op == 1) || nd_ns_mcast",
 +                          "next;",
 +                          lflow_ref);
 +        }
-     } else {
-         ovn_lflow_add(lflows, od, S_SWITCH_IN_L2_UNKNOWN, 50,
-                       "outport == \"none\"", debug_drop_action(), lflow_ref,
-@@ -21424,6 +21440,8 @@ ovnnb_db_run(struct northd_input *input_data,
- 
-     use_ct_inv_match = smap_get_bool(input_data->nb_options,
-                                      "use_ct_inv_match", true);
+@@ -20261,0 +20278,2 @@ ovnnb_db_run(struct northd_input *input_data,
 +    bcast_arp_nd_req_flood = smap_get_bool(input_data->nb_options,
 +                                        "bcast_arp_nd_req_flood", false);
-     acl_ct_translation = smap_get_bool(input_data->nb_options,
-                                        "acl_ct_translation", false);
-     ls_dnat_mod_dl_dst = smap_get_bool(input_data->nb_options,
