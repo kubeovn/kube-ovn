@@ -76,6 +76,14 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		klog.Infof("enqueue update vpc %s", key)
 		c.addOrUpdateVpcQueue.Add(key)
 	}
+	if oldVpc.Status.TCPLoadBalancer != newVpc.Status.TCPLoadBalancer ||
+		oldVpc.Status.TCPSessionLoadBalancer != newVpc.Status.TCPSessionLoadBalancer ||
+		oldVpc.Status.UDPLoadBalancer != newVpc.Status.UDPLoadBalancer ||
+		oldVpc.Status.UDPSessionLoadBalancer != newVpc.Status.UDPSessionLoadBalancer ||
+		oldVpc.Status.SctpLoadBalancer != newVpc.Status.SctpLoadBalancer ||
+		oldVpc.Status.SctpSessionLoadBalancer != newVpc.Status.SctpSessionLoadBalancer {
+		c.enqueueVipAttachSubnetsForVpc(newVpc.Name)
+	}
 }
 
 func (c *Controller) enqueueDelVpc(obj any) {
