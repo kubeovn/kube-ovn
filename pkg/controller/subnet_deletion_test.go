@@ -3,10 +3,13 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"testing"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -16,6 +19,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -70,15 +74,19 @@ func TestDeletingSubnetWithInvalidVlan(t *testing.T) {
 
 func TestDeletingSubnetMulticastQuerier(t *testing.T) {
 	for _, tc := range []struct {
-		name          string
-		enabled       bool
-		occupied      bool
-		deleteFailure bool
+		name           string
+		enabled        bool
+		occupied       bool
+		deleteFailure  bool
+		cleanupFailure string
 	}{
 		{name: "disabled-empty"},
 		{name: "disabled-occupied", occupied: true},
 		{name: "enabled", enabled: true},
 		{name: "delete-retry", deleteFailure: true},
+		{name: "list-retry", occupied: true, cleanupFailure: "list"},
+		{name: "config-retry", occupied: true, cleanupFailure: "config"},
+		{name: "port-retry", occupied: true, cleanupFailure: "port"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			subnet := &kubeovnv1.Subnet{
@@ -108,21 +116,29 @@ func TestDeletingSubnetMulticastQuerier(t *testing.T) {
 			client := c.config.KubeOvnClient.(*kubeovnfake.Clientset)
 			deleteErr := errors.New("querier deletion failed")
 			failDeletion := tc.deleteFailure
+			ovn := mockDeletingSubnetMulticastOVN(t, fc, subnet, tc.cleanupFailure)
 			client.PrependReactor("delete", "ips", func(k8stesting.Action) (bool, runtime.Object, error) {
+				require.Empty(t, ovn.config, "disable OVN multicast before releasing its IP")
+				require.False(t, ovn.portExists, "delete the querier port before releasing its IP")
 				if failDeletion {
 					return true, nil, deleteErr
 				}
 				return false, nil, nil
 			})
 			err = c.handleAddOrUpdateSubnet(subnet.Name)
-			if tc.deleteFailure {
-				require.ErrorIs(t, err, deleteErr)
+			if tc.deleteFailure || tc.cleanupFailure != "" {
+				expectedErr := deleteErr
+				if tc.cleanupFailure != "" {
+					expectedErr = ovn.err
+				}
+				require.ErrorIs(t, err, expectedErr)
 				updated, getErr := client.KubeovnV1().Subnets().Get(t.Context(), subnet.Name, metav1.GetOptions{})
 				require.NoError(t, getErr)
 				require.Contains(t, updated.Finalizers, util.KubeOVNControllerFinalizer)
 				_, err = client.KubeovnV1().IPs().Get(t.Context(), querierName, metav1.GetOptions{})
 				require.NoError(t, err)
 				failDeletion = false
+				ovn.failAt = ""
 				err = c.handleAddOrUpdateSubnet(subnet.Name)
 			}
 			require.NoError(t, err)
@@ -158,4 +174,60 @@ func TestDeletingSubnetMulticastQuerier(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Track OVN state independently of IP usage so deletion tests catch an active
+// querier being left behind after its IP has been released.
+type deletingSubnetMulticastOVN struct {
+	config     map[string]string
+	portExists bool
+	failAt     string
+	err        error
+}
+
+func mockDeletingSubnetMulticastOVN(t *testing.T, fc *fakeController, subnet *kubeovnv1.Subnet, failAt string) *deletingSubnetMulticastOVN {
+	t.Helper()
+	state := &deletingSubnetMulticastOVN{
+		config: map[string]string{
+			"mcast_snoop": "true", "mcast_querier": "true",
+			"mcast_ip4_src": subnet.Status.McastQuerierIP, "mcast_eth_src": subnet.Status.McastQuerierMAC,
+		},
+		portExists: true, failAt: failAt, err: errors.New("OVN multicast cleanup failed"),
+	}
+	if subnet.Spec.EnableMulticastSnoop {
+		return state
+	}
+	fc.mockOvnClient.EXPECT().ListLogicalSwitch(false, gomock.Any()).DoAndReturn(
+		func(_ bool, filter func(*ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error) {
+			if state.failAt == "list" {
+				return nil, state.err
+			}
+			ls := ovnnb.LogicalSwitch{Name: subnet.Name, OtherConfig: maps.Clone(state.config)}
+			require.True(t, filter(&ls))
+			return []ovnnb.LogicalSwitch{ls}, nil
+		},
+	).AnyTimes()
+	fc.mockOvnClient.EXPECT().LogicalSwitchUpdateOtherConfig(subnet.Name, ovsdb.MutateOperationDelete, gomock.Any()).DoAndReturn(
+		func(_ string, _ ovsdb.Mutator, config map[string]string) error {
+			if state.failAt == "config" {
+				return state.err
+			}
+			for key, value := range config {
+				require.Equal(t, state.config[key], value)
+				delete(state.config, key)
+			}
+			return nil
+		},
+	).AnyTimes()
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(fmt.Sprintf(util.McastQuerierName, subnet.Name)).DoAndReturn(
+		func(string) error {
+			require.Empty(t, state.config)
+			if state.failAt == "port" {
+				return state.err
+			}
+			state.portExists = false
+			return nil
+		},
+	).AnyTimes()
+	return state
 }
