@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -227,7 +229,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		}
 		// Release IP from IPAM before removing finalizer
 		c.ipam.ReleaseAddressByPod(vip.Name, vip.Spec.Subnet)
-		if vip.Spec.Type == util.SwitchLBRuleVip {
+		if vip.Spec.Type == util.SwitchLBRuleVip || vip.Status.Type == util.SwitchLBRuleVip {
 			if err := c.detachAllVipAttachSubnets(vip); err != nil {
 				return err
 			}
@@ -798,6 +800,127 @@ func vipVpcLoadBalancerNames(vpc *kubeovnv1.Vpc) []string {
 	})
 }
 
+func vipAddresses(vip *kubeovnv1.Vip) []string {
+	addresses := make([]string, 0, 2)
+	for _, address := range []string{vip.Status.V4ip, vip.Status.V6ip, vip.Spec.V4ip, vip.Spec.V6ip} {
+		address = strings.TrimSpace(address)
+		if address == "" || slices.Contains(addresses, address) {
+			continue
+		}
+		addresses = append(addresses, address)
+	}
+	return addresses
+}
+
+func vipMatchesServiceAddress(vip *kubeovnv1.Vip, svc *corev1.Service) bool {
+	if vip == nil || svc == nil || vip.Spec.Type != util.SwitchLBRuleVip ||
+		vip.Spec.Subnet == "" || serviceScopedLBOwner(svc).kind != switchLBRuleLBOwnerKind {
+		return false
+	}
+	for serviceVIP := range strings.SplitSeq(svc.Annotations[util.SwitchLBRuleVipsAnnotation], ",") {
+		serviceVIP = strings.TrimSpace(serviceVIP)
+		if serviceVIP == "" {
+			continue
+		}
+		if slices.Contains(vipAddresses(vip), serviceVIP) {
+			return true
+		}
+	}
+	return false
+}
+
+// switchLBRuleServicesForVip matches the Service's home logical switch as well as
+// its address. Subnet names are cluster-scoped, so overlapping IPs in independent
+// VPCs cannot cause attachments to cross network boundaries.
+func (c *Controller) switchLBRuleServicesForVip(vip *kubeovnv1.Vip) ([]*corev1.Service, error) {
+	if c.servicesLister == nil {
+		return nil, nil
+	}
+	services, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("list services for vip %s: %w", vip.Name, err)
+	}
+	matched := make([]*corev1.Service, 0)
+	for _, svc := range services {
+		// Check the owner, type and address before resolving the Service network.
+		if !vipMatchesServiceAddress(vip, svc) {
+			continue
+		}
+		subnetName := svc.Annotations[util.LogicalSwitchAnnotation]
+		if subnetName == "" {
+			endpointSlices, err := c.endpointSlicesLister.EndpointSlices(svc.Namespace).List(labels.Set{discoveryv1.LabelServiceName: svc.Name}.AsSelector())
+			if err != nil {
+				return nil, fmt.Errorf("list endpoint slices for service %s/%s: %w", svc.Namespace, svc.Name, err)
+			}
+			endpointSlices = filterServiceEndpointSlices(svc, endpointSlices)
+			if err := c.replaceEndpointSliceSecondaryIPs(svc, endpointSlices); err != nil {
+				return nil, err
+			}
+			_, subnetName, err = c.getVpcAndSubnetForEndpoints(endpointSlices, svc)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if vip.Spec.Subnet == subnetName {
+			matched = append(matched, svc)
+		}
+	}
+	return matched, nil
+}
+
+func (c *Controller) serviceScopedVipLoadBalancerNames(vip *kubeovnv1.Vip) ([]string, error) {
+	services, err := c.switchLBRuleServicesForVip(vip)
+	if err != nil {
+		return nil, err
+	}
+	addresses := vipAddresses(vip)
+	if len(addresses) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{})
+	names := make([]string, 0)
+	for _, svc := range services {
+		for _, port := range svc.Spec.Ports {
+			for _, address := range addresses {
+				matched := false
+				for serviceVIP := range strings.SplitSeq(svc.Annotations[util.SwitchLBRuleVipsAnnotation], ",") {
+					if strings.TrimSpace(serviceVIP) == address {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+				name := serviceScopedExternalLBName(svc, port.Protocol, address)
+				if name == "" {
+					continue
+				}
+				if _, ok := seen[name]; ok {
+					continue
+				}
+				seen[name] = struct{}{}
+				names = append(names, name)
+			}
+		}
+	}
+	return names, nil
+}
+
+func (c *Controller) enqueueServicesForVip(vip *kubeovnv1.Vip) {
+	if c.servicesLister == nil || c.addOrUpdateEndpointSliceQueue == nil {
+		return
+	}
+	services, err := c.switchLBRuleServicesForVip(vip)
+	if err != nil {
+		klog.Errorf("failed to list services for vip %s endpoint reconcile: %v", vip.Name, err)
+		return
+	}
+	for _, svc := range services {
+		c.enqueueEndpointSliceService(cache.MetaObjectToName(svc).String(), svc)
+	}
+}
+
 func (c *Controller) hasOtherVipAttachSubnet(vpcName, subnetName, vipName string) bool {
 	if c.virtualIpsLister == nil {
 		return false
@@ -857,6 +980,12 @@ func (c *Controller) reconcileVipAttachSubnets(vip *kubeovnv1.Vip) error {
 		return err
 	}
 	lbs := vipVpcLoadBalancerNames(vpc)
+	serviceLBs, err := c.serviceScopedVipLoadBalancerNames(vip)
+	if err != nil {
+		return err
+	}
+	lbs = normalizeVipAttachSubnets(append(lbs, serviceLBs...))
+	c.enqueueServicesForVip(vip)
 	if len(lbs) == 0 {
 		return nil
 	}
@@ -891,8 +1020,14 @@ func (c *Controller) reconcileVipAttachSubnets(vip *kubeovnv1.Vip) error {
 }
 
 // detachAllVipAttachSubnets removes the home VPC's LBs from every subnet that was
-// listed in vip.Spec.AttachSubnets or tracked by the annotation. Called on VIP deletion.
+// listed in vip.Spec.AttachSubnets or tracked by the annotation on deletion or type changes.
 func (c *Controller) detachAllVipAttachSubnets(vip *kubeovnv1.Vip) error {
+	// A type change must still find the load balancers owned by the old type.
+	// Keep the informer object unchanged so Service reconciliation sees the new type.
+	if vip.Spec.Type != util.SwitchLBRuleVip && vip.Status.Type == util.SwitchLBRuleVip {
+		vip = vip.DeepCopy()
+		vip.Spec.Type = util.SwitchLBRuleVip
+	}
 	toDetach := vipAttachSubnets(vip)
 	if len(toDetach) == 0 {
 		return nil
@@ -909,6 +1044,12 @@ func (c *Controller) detachAllVipAttachSubnets(vip *kubeovnv1.Vip) error {
 		return err
 	}
 	lbs := vipVpcLoadBalancerNames(vpc)
+	serviceLBs, err := c.serviceScopedVipLoadBalancerNames(vip)
+	if err != nil {
+		return err
+	}
+	lbs = normalizeVipAttachSubnets(append(lbs, serviceLBs...))
+	c.enqueueServicesForVip(vip)
 	if len(lbs) == 0 {
 		return nil
 	}

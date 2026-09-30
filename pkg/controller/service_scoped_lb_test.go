@@ -12,8 +12,10 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -531,6 +533,43 @@ func TestReconcileServiceScopedLoadBalancerAttachmentsClusterIP(t *testing.T) {
 	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-b", ovsdb.MutateOperationDelete, "svc-lb").Return(nil)
 
 	if err := fake.fakeController.reconcileResourceScopedLoadBalancerAttachments(svc, util.DefaultVpc, "", "svc-lb"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReconcileSwitchLBRuleAttachmentsPreservesVipSubnets(t *testing.T) {
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{
+		{Name: "home", Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider}},
+		{Name: "attached", Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider}},
+		{Name: "other", Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := &corev1.Service{
+		Namespace: "default", Name: "slr-rule", UID: types.UID("slr-uid"),
+		Annotations: map[string]string{
+			util.SwitchLBRuleVipsAnnotation: "10.0.0.10",
+			util.LogicalSwitchAnnotation:    "home",
+		},
+		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}}},
+	}
+	setServiceScopedLBOwner(svc, switchLBRuleLBOwnerKind, "rule", "rule-uid")
+	vip := &kubeovnv1.Vip{
+		Name:   "attached-vip",
+		Spec:   kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, Subnet: "home", V4ip: "10.0.0.10", AttachSubnets: []string{"attached"}},
+		Status: kubeovnv1.VipStatus{V4ip: "10.0.0.10"},
+	}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	if err := indexer.Add(vip); err != nil {
+		t.Fatal(err)
+	}
+	fake.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(indexer)
+	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("home", ovsdb.MutateOperationInsert, "slr-lb").Return(nil)
+	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("attached", ovsdb.MutateOperationInsert, "slr-lb").Return(nil)
+	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("other", ovsdb.MutateOperationDelete, "slr-lb").Return(nil)
+
+	if err := fake.fakeController.reconcileResourceScopedLoadBalancerAttachments(svc, "", "", "slr-lb"); err != nil {
 		t.Fatal(err)
 	}
 }

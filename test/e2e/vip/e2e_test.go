@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -594,115 +595,170 @@ var _ = framework.Describe("[group:vip]", func() {
 		}
 	})
 
-	framework.ConformanceIt("Test switch lb vip attachSubnets", func() {
-		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+	ginkgo.Context("VIP attachment reconciliation", func() {
+		var vipName, switchLBRuleName, attachSubnetName1, attachSubnetName2, peerVpcName string
 
-		randomSuffix := framework.RandomSuffix()
-		vipName := "attach-vip-" + randomSuffix
-		attachSubnetName1 := "attach-subnet1-" + randomSuffix
-		attachSubnetName2 := "attach-subnet2-" + randomSuffix
-		peerVpcName := "peer-vpc-" + randomSuffix
-		peerCIDR := framework.RandomCIDR(f.ClusterIPFamily)
-
-		ginkgo.By("Creating a peered VPC for the remote attach subnet")
-		peerVpc := framework.MakeVpc(peerVpcName, "", false, false, []string{namespaceName})
-		peerVpc = vpcClient.CreateSync(peerVpc)
-		updatedVpc := vpc.DeepCopy()
-		updatedVpc.Spec.VpcPeerings = []*apiv1.VpcPeering{{RemoteVpc: peerVpcName, LocalConnectIP: "169.254.100.1/30"}}
-		updatedVpc.Spec.StaticRoutes = []*apiv1.StaticRoute{{
-			Policy:    apiv1.PolicyDst,
-			CIDR:      peerCIDR,
-			NextHopIP: "169.254.100.2",
-		}}
-		vpc = vpcClient.PatchSync(vpc, updatedVpc, 30*time.Second)
-		updatedPeerVpc := peerVpc.DeepCopy()
-		updatedPeerVpc.Spec.VpcPeerings = []*apiv1.VpcPeering{{RemoteVpc: vpcName, LocalConnectIP: "169.254.100.2/30"}}
-		updatedPeerVpc.Spec.StaticRoutes = []*apiv1.StaticRoute{{
-			Policy:    apiv1.PolicyDst,
-			CIDR:      cidr,
-			NextHopIP: "169.254.100.1",
-		}}
-		_ = vpcClient.PatchSync(peerVpc, updatedPeerVpc, 30*time.Second)
-		ginkgo.DeferCleanup(func() {
-			vpcClient.DeleteSync(peerVpcName)
+		ginkgo.BeforeEach(func() {
+			vipName, switchLBRuleName, attachSubnetName1, attachSubnetName2, peerVpcName = "", "", "", "", ""
 		})
 
-		ginkgo.By("Creating attach subnet " + attachSubnetName1)
-		attachSubnet1 := framework.MakeSubnet(attachSubnetName1, "", framework.RandomCIDR(f.ClusterIPFamily), "", vpcName, "", nil, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(attachSubnet1)
+		ginkgo.AfterEach(func() {
+			// Remove dependents before the outer AfterEach deletes the home subnet.
+			if vipName != "" {
+				vipClient.DeleteSync(vipName)
+			}
+			if switchLBRuleName != "" {
+				f.SwitchLBRuleClient().DeleteSync(switchLBRuleName)
+			}
+			for _, name := range []string{attachSubnetName1, attachSubnetName2} {
+				if name != "" {
+					subnetClient.DeleteSync(name)
+				}
+			}
+			if peerVpcName != "" {
+				vpcClient.DeleteSync(peerVpcName)
+			}
+		})
 
-		ginkgo.By("Creating attach subnet " + attachSubnetName2)
-		attachSubnet2 := framework.MakeSubnet(attachSubnetName2, "", peerCIDR, "", peerVpcName, "", nil, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(attachSubnet2)
+		framework.ConformanceIt("Test switch lb vip attachSubnets", func() {
+			f.SkipVersionPriorTo(1, 16, "VIP attachment reconciliation was backported to release-1.16")
 
-		ginkgo.By("Getting VPC load balancer names")
-		vpc := vpcClient.Get(vpcName)
-		tcpLBName := vpc.Status.TCPLoadBalancer
-		framework.ExpectNotEmpty(tcpLBName, "VPC should have a TCP load balancer")
+			randomSuffix := framework.RandomSuffix()
+			vipName = "attach-vip-" + randomSuffix
+			attachSubnetName1 = "attach-subnet1-" + randomSuffix
+			attachSubnetName2 = "attach-subnet2-" + randomSuffix
+			peerVpcName = "peer-vpc-" + randomSuffix
+			peerCIDR := framework.RandomCIDR(f.ClusterIPFamily)
 
-		ginkgo.By("Getting LB UUID from name " + tcpLBName)
-		cmd := fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=_uuid find Load_Balancer name=%s", tcpLBName)
-		output, _, err := framework.NBExec(cmd)
-		framework.ExpectNoError(err)
-		lbUUID := strings.TrimSpace(string(output))
-		framework.ExpectNotEmpty(lbUUID, "LB UUID should exist in OVN")
+			ginkgo.By("Creating a peered VPC for the remote attach subnet")
+			peerVpc := framework.MakeVpc(peerVpcName, "", false, false, []string{namespaceName})
+			peerVpc = vpcClient.CreateSync(peerVpc)
+			updatedVpc := vpc.DeepCopy()
+			updatedVpc.Spec.VpcPeerings = []*apiv1.VpcPeering{{RemoteVpc: peerVpcName, LocalConnectIP: "169.254.100.1/30"}}
+			updatedVpc.Spec.StaticRoutes = []*apiv1.StaticRoute{{
+				Policy:    apiv1.PolicyDst,
+				CIDR:      peerCIDR,
+				NextHopIP: "169.254.100.2",
+			}}
+			vpc = vpcClient.PatchSync(vpc, updatedVpc, 30*time.Second)
+			updatedPeerVpc := peerVpc.DeepCopy()
+			updatedPeerVpc.Spec.VpcPeerings = []*apiv1.VpcPeering{{RemoteVpc: vpcName, LocalConnectIP: "169.254.100.2/30"}}
+			updatedPeerVpc.Spec.StaticRoutes = []*apiv1.StaticRoute{{
+				Policy:    apiv1.PolicyDst,
+				CIDR:      cidr,
+				NextHopIP: "169.254.100.1",
+			}}
+			_ = vpcClient.PatchSync(peerVpc, updatedPeerVpc, 30*time.Second)
 
-		ginkgo.By("Creating switch lb vip " + vipName + " with AttachSubnets=[" + attachSubnetName1 + "]")
-		vip := makeOvnVip(namespaceName, vipName, subnetName, "", "", util.SwitchLBRuleVip, []string{attachSubnetName1})
-		vip = vipClient.CreateSync(vip)
+			ginkgo.By("Creating attach subnet " + attachSubnetName1)
+			attachSubnet1 := framework.MakeSubnet(attachSubnetName1, "", framework.RandomCIDR(f.ClusterIPFamily), "", vpcName, "", nil, nil, []string{namespaceName})
+			_ = subnetClient.CreateSync(attachSubnet1)
 
-		// Verify annotation is set
-		framework.ExpectEqual(vip.Annotations[util.VipAttachSubnetsAnnotation], attachSubnetName1)
+			ginkgo.By("Creating attach subnet " + attachSubnetName2)
+			attachSubnet2 := framework.MakeSubnet(attachSubnetName2, "", peerCIDR, "", peerVpcName, "", nil, nil, []string{namespaceName})
+			_ = subnetClient.CreateSync(attachSubnet2)
 
-		// Verify OVN: VPC's LB is attached to attachSubnetName1's logical switch
-		ginkgo.By("Verifying load balancer is attached to " + attachSubnetName1 + " in OVN")
-		cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=load_balancer list Logical_Switch %s", attachSubnetName1)
-		output, _, err = framework.NBExec(cmd)
-		framework.ExpectNoError(err)
-		framework.ExpectTrue(strings.Contains(string(output), lbUUID),
-			"Logical switch %q should reference VPC LB %q", attachSubnetName1, lbUUID)
+			var lbName, vipV4, vipV6 string
+			if f.VersionPriorTo(1, 17) {
+				ginkgo.By("Getting the shared VPC load balancer")
+				vpc := vpcClient.Get(vpcName)
+				lbName = vpc.Status.TCPLoadBalancer
+				framework.ExpectNotEmpty(lbName, "VPC should have a TCP load balancer")
+			} else {
+				ginkgo.By("Creating a SwitchLBRule for the service-scoped load balancer")
+				switchLBRuleClient := f.SwitchLBRuleClient()
+				switchLBRuleName = "attach-rule-" + randomSuffix
+				vipAddress := framework.RandomIPs(cidr, ",", 1)
+				vipV4, vipV6 = util.SplitStringIP(vipAddress)
+				if vipV4 != "" {
+					vipAddress = vipV4
+					vipV6 = ""
+				} else {
+					vipAddress = vipV6
+				}
+				slr := framework.MakeSwitchLBRule(
+					switchLBRuleName, namespaceName, vipAddress, corev1.ServiceAffinityNone,
+					map[string]string{
+						util.LogicalRouterAnnotation: vpcName,
+						util.LogicalSwitchAnnotation: subnetName,
+					}, nil,
+					[]string{"192.0.2.1"}, []apiv1.SwitchLBRulePort{{Name: "tcp", Port: 80, TargetPort: 80, Protocol: "TCP"}},
+				)
+				switchLBRuleClient.CreateSync(slr, func(s *apiv1.SwitchLBRule) (bool, error) {
+					return s.Status.Service != "", nil
+				}, "SwitchLBRule service is ready")
+				lbName = fmt.Sprintf("switchlbrule:%s/%s:tcp:external", namespaceName, switchLBRuleName)
+			}
 
-		// Update AttachSubnets to point to attachSubnetName2
-		ginkgo.By("Updating AttachSubnets to [" + attachSubnetName2 + "]")
-		modified := vip.DeepCopy()
-		modified.Spec.AttachSubnets = []string{attachSubnetName2}
-		vip = vipClient.Patch(vip, modified, 30*time.Second)
-		framework.ExpectEqual(vip.Spec.AttachSubnets, []string{attachSubnetName2})
+			ginkgo.By("Getting LB UUID from name " + lbName)
+			var lbUUID string
+			framework.WaitUntil(2*time.Second, time.Minute, func(_ context.Context) (bool, error) {
+				cmd := fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=_uuid find Load_Balancer name='%q'", lbName)
+				output, _, err := framework.NBExec(cmd)
+				if err != nil {
+					framework.Logf("Failed to query load balancer %s: %v", lbName, err)
+					return false, nil
+				}
+				lbUUID = strings.TrimSpace(string(output))
+				return lbUUID != "", nil
+			}, "load balancer is created")
+			framework.ExpectNotEmpty(lbUUID, "LB UUID should exist in OVN")
+			var cmd string
+			var output []byte
+			var err error
 
-		// Wait for controller to reconcile
-		time.Sleep(5 * time.Second)
+			ginkgo.By("Creating switch lb vip " + vipName + " with AttachSubnets=[" + attachSubnetName1 + "]")
+			vip := makeOvnVip(namespaceName, vipName, subnetName, vipV4, vipV6, util.SwitchLBRuleVip, []string{attachSubnetName1})
+			vip = vipClient.CreateSync(vip)
 
-		// Verify old subnet no longer has LB
-		ginkgo.By("Verifying LB is detached from " + attachSubnetName1)
-		cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=load_balancer list Logical_Switch %s", attachSubnetName1)
-		output, _, err = framework.NBExec(cmd)
-		framework.ExpectNoError(err)
-		framework.ExpectFalse(strings.Contains(string(output), lbUUID),
-			"Logical switch %q should no longer reference VPC LB %q", attachSubnetName1, lbUUID)
+			// Verify annotation is set
+			framework.ExpectEqual(vip.Annotations[util.VipAttachSubnetsAnnotation], attachSubnetName1)
 
-		// Verify new subnet has LB
-		ginkgo.By("Verifying LB is attached to " + attachSubnetName2)
-		cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=load_balancer list Logical_Switch %s", attachSubnetName2)
-		output, _, err = framework.NBExec(cmd)
-		framework.ExpectNoError(err)
-		framework.ExpectTrue(strings.Contains(string(output), lbUUID),
-			"Logical switch %q should reference VPC LB %q", attachSubnetName2, lbUUID)
+			// Verify OVN: VPC's LB is attached to attachSubnetName1's logical switch
+			ginkgo.By("Verifying load balancer is attached to " + attachSubnetName1 + " in OVN")
+			cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=load_balancer list Logical_Switch %s", attachSubnetName1)
+			output, _, err = framework.NBExec(cmd)
+			framework.ExpectNoError(err)
+			framework.ExpectTrue(strings.Contains(string(output), lbUUID),
+				"Logical switch %q should reference VPC LB %q", attachSubnetName1, lbUUID)
 
-		// Delete VIP and verify LB is detached
-		ginkgo.By("Deleting vip " + vipName)
-		vipClient.DeleteSync(vipName)
+			// Update AttachSubnets to point to attachSubnetName2
+			ginkgo.By("Updating AttachSubnets to [" + attachSubnetName2 + "]")
+			modified := vip.DeepCopy()
+			modified.Spec.AttachSubnets = []string{attachSubnetName2}
+			vip = vipClient.Patch(vip, modified, 30*time.Second)
+			framework.ExpectEqual(vip.Spec.AttachSubnets, []string{attachSubnetName2})
 
-		ginkgo.By("Verifying LB is detached from " + attachSubnetName2 + " after VIP deletion")
-		cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=load_balancer list Logical_Switch %s", attachSubnetName2)
-		output, _, err = framework.NBExec(cmd)
-		framework.ExpectNoError(err)
-		framework.ExpectFalse(strings.Contains(string(output), lbUUID),
-			"Logical switch %q should no longer reference VPC LB %q after VIP deletion", attachSubnetName2, lbUUID)
+			// Wait for controller to reconcile
+			time.Sleep(5 * time.Second)
 
-		ginkgo.By("Deleting attach subnet " + attachSubnetName1)
-		subnetClient.DeleteSync(attachSubnetName1)
-		ginkgo.By("Deleting attach subnet " + attachSubnetName2)
-		subnetClient.DeleteSync(attachSubnetName2)
+			// Verify old subnet no longer has LB
+			ginkgo.By("Verifying LB is detached from " + attachSubnetName1)
+			cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=load_balancer list Logical_Switch %s", attachSubnetName1)
+			output, _, err = framework.NBExec(cmd)
+			framework.ExpectNoError(err)
+			framework.ExpectFalse(strings.Contains(string(output), lbUUID),
+				"Logical switch %q should no longer reference VPC LB %q", attachSubnetName1, lbUUID)
+
+			// Verify new subnet has LB
+			ginkgo.By("Verifying LB is attached to " + attachSubnetName2)
+			cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=load_balancer list Logical_Switch %s", attachSubnetName2)
+			output, _, err = framework.NBExec(cmd)
+			framework.ExpectNoError(err)
+			framework.ExpectTrue(strings.Contains(string(output), lbUUID),
+				"Logical switch %q should reference VPC LB %q", attachSubnetName2, lbUUID)
+
+			// Delete VIP and verify LB is detached
+			ginkgo.By("Deleting vip " + vipName)
+			vipClient.DeleteSync(vipName)
+
+			ginkgo.By("Verifying LB is detached from " + attachSubnetName2 + " after VIP deletion")
+			cmd = fmt.Sprintf("ovn-nbctl --format=list --data=bare --no-heading --columns=load_balancer list Logical_Switch %s", attachSubnetName2)
+			output, _, err = framework.NBExec(cmd)
+			framework.ExpectNoError(err)
+			framework.ExpectFalse(strings.Contains(string(output), lbUUID),
+				"Logical switch %q should no longer reference VPC LB %q after VIP deletion", attachSubnetName2, lbUUID)
+		})
 	})
 })
 
