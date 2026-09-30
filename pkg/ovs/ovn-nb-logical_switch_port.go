@@ -484,6 +484,32 @@ func (c *OVNNbClient) SetLogicalSwitchPortVirtualParents(lsName, parents string,
 	return nil
 }
 
+// RemoveLogicalSwitchPortOption deletes a stale key from a logical switch
+// port's options column. CreateLogicalSwitchPort's update path only touches
+// Addresses, DHCP options, PortSecurity and ExternalIDs, so an option set by
+// older code (e.g. arp_proxy on pre-fix switch_lb_rule vips) survives that
+// update and must be cleared explicitly.
+func (c *OVNNbClient) RemoveLogicalSwitchPortOption(lspName, option string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil || lsp.Options == nil {
+		return nil
+	}
+	if _, ok := lsp.Options[option]; !ok {
+		return nil
+	}
+
+	delete(lsp.Options, option)
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("remove option %s from logical switch port %s: %w", option, lspName, err)
+	}
+	return nil
+}
+
 // SetVirtualLogicalSwitchPortVirtualParents updates one virtual type logical switch port virtual-parents for allowed-address-pair
 func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)

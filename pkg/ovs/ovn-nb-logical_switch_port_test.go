@@ -638,6 +638,55 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testRemoveLogicalSwitchPortOption() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	lsName := "test-remove-lsp-option-ls"
+	lspName := "test-remove-lsp-option-lsp"
+	mac := "00:00:00:AB:B4:66"
+
+	err := nbClient.CreateBareLogicalSwitch(lsName)
+	require.NoError(t, err)
+
+	err = nbClient.CreateLogicalSwitchPort(lsName, lspName, "", mac, "", "", false, "", "", false, nil, "")
+	require.NoError(t, err)
+
+	// simulate a pre-fix switch_lb_rule vip whose lsp carries the stale, never
+	// functional arp_proxy option
+	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+	require.NoError(t, err)
+	lsp.Options = map[string]string{"arp_proxy": "true"}
+	err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+	require.NoError(t, err)
+
+	t.Run("remove existing option", func(t *testing.T) {
+		err := nbClient.RemoveLogicalSwitchPortOption(lspName, "arp_proxy")
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotContains(t, lsp.Options, "arp_proxy")
+	})
+
+	t.Run("no-op when option already absent", func(t *testing.T) {
+		err := nbClient.RemoveLogicalSwitchPortOption(lspName, "arp_proxy")
+		require.NoError(t, err)
+	})
+
+	t.Run("no-op when port does not exist", func(t *testing.T) {
+		err := nbClient.RemoveLogicalSwitchPortOption("test-remove-lsp-option-nonexistent", "arp_proxy")
+		require.NoError(t, err)
+	})
+
+	t.Run("get error propagates", func(t *testing.T) {
+		err := nbClient.RemoveLogicalSwitchPortOption("", "arp_proxy")
+		require.Error(t, err)
+	})
+}
+
 func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents() {
 	t := suite.T()
 	t.Parallel()

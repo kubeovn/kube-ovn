@@ -233,6 +233,10 @@ func (suite *OvnClientTestSuite) Test_SetVirtualLogicalSwitchPortVirtualParents(
 	suite.testSetVirtualLogicalSwitchPortVirtualParents()
 }
 
+func (suite *OvnClientTestSuite) Test_RemoveLogicalSwitchPortOption() {
+	suite.testRemoveLogicalSwitchPortOption()
+}
+
 func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortSecurity() {
 	suite.testSetLogicalSwitchPortSecurity()
 }
