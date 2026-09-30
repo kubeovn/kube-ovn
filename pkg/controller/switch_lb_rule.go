@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -230,7 +231,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	if err != nil {
 		return err
 	}
-	sharedVIPs, err := c.sharedServiceVIPs(info)
+	sharedVIPs, err := c.sharedServiceVIPs(info, vpcLBNames)
 	if err != nil {
 		return err
 	}
@@ -391,19 +392,45 @@ func (c *Controller) cleanupSwitchLBRuleVIPs(info *SlrInfo, vpcLBNames set.Set[s
 	return nil
 }
 
-func (c *Controller) sharedServiceVIPs(info *SlrInfo) (set.Set[string], error) {
+func (c *Controller) sharedServiceVIPs(info *SlrInfo, vpcLBNames set.Set[string]) (set.Set[string], error) {
 	services, err := c.servicesLister.Services(metav1.NamespaceAll).List(labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list services while deleting switch lb rule %s: %w", info.Name, err)
 	}
 
 	sharedVIPs := set.New[string]()
+	targetIPs := set.New[string]()
+	for _, vip := range info.Vips {
+		targetIPs.Insert(parseVipAddr(vip))
+	}
 	serviceName := generateSvcName(info.Name)
 	for _, svc := range services {
 		if svc.Namespace == info.Namespace && svc.Name == serviceName {
 			continue
 		}
-		for _, ip := range getVipIps(svc) {
+		ips := getVipIps(svc)
+		if !slices.ContainsFunc(ips, targetIPs.Has) {
+			continue
+		}
+		// Identical addresses in different VPCs do not share load balancer state.
+		// Keep the conservative behavior only when the deleted SLR's scope is unknown.
+		if vpcLBNames != nil {
+			vpcName := cmp.Or(svc.Annotations[util.VpcAnnotation], svc.Annotations[util.LogicalRouterAnnotation], c.config.ClusterRouter)
+			vpc, err := c.vpcsLister.Get(vpcName)
+			if k8serrors.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to get VPC for service %s/%s: %w", svc.Namespace, svc.Name, err)
+			}
+			lbNames := []string{vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
+				vpc.Status.SctpLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
+				vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
+			if !slices.ContainsFunc(lbNames, vpcLBNames.Has) {
+				continue
+			}
+		}
+		for _, ip := range ips {
 			sharedVIPs.Insert(ip)
 		}
 	}

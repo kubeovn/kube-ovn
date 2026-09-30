@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -377,6 +378,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 			Namespace: namespace,
 			Annotations: map[string]string{
 				util.SwitchLBRuleVipsAnnotation: "10.0.0.1",
+				util.VpcAnnotation:              "test-vpc",
 			},
 		}
 		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(other))
@@ -387,4 +389,53 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 	})
+}
+
+// Exercise deletion with a second, live SLR Service advertising the same address.
+func Test_handleDelSwitchLBRuleVPCIsolation(t *testing.T) {
+	t.Parallel()
+	for _, annotation := range []string{util.VpcAnnotation, util.LogicalRouterAnnotation, ""} {
+		for _, sameVPC := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/sameVPC=%t", annotation, sameVPC), func(t *testing.T) {
+				fc := setupHandleDelSLRTest(t, "owner", "owner-subnet", "deleted", "default", "owner-tcp")
+				otherVPC := "other"
+				if sameVPC {
+					otherVPC = "owner"
+				}
+				annotations := map[string]string{util.SwitchLBRuleVipsAnnotation: "10.0.0.1"}
+				if annotation == "" {
+					fc.fakeController.config.ClusterRouter = otherVPC
+				} else {
+					annotations[annotation] = otherVPC
+				}
+				require.NoError(t, fc.fakeInformers.vpcInformer.Informer().GetStore().Add(&kubeovnv1.Vpc{
+					Name: "other", Status: kubeovnv1.VpcStatus{TCPLoadBalancer: "other-tcp"},
+				}))
+				require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(&corev1.Service{
+					Name: "slr-live", Namespace: "other-namespace",
+					Annotations: annotations,
+				}))
+				healthChecks := []ovnnb.LoadBalancerHealthCheck{{UUID: "owner-hc", Vip: "10.0.0.1:8080",
+					ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: "owner-subnet"}}}
+				fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(healthChecks, nil)
+				if !sameVPC {
+					fc.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{Name: "owner-tcp", HealthCheck: []string{"owner-hc"}}}, nil)
+					fc.mockOvnClient.EXPECT().LoadBalancerDeleteHealthCheck("owner-tcp", "owner-hc").Return(nil)
+					fc.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping("owner-tcp", "10.0.0.1:8080").Return(nil)
+					fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
+					fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip("owner-tcp", "10.0.0.1:8080", true).Return(nil)
+					fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(nil, nil)
+				}
+				require.NoError(t, fc.fakeController.handleDelSwitchLBRule(&SlrInfo{
+					Name: "deleted", Namespace: "default", Vips: []string{"10.0.0.1:8080"},
+				}))
+				_, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), "owner-subnet", metav1.GetOptions{})
+				if sameVPC {
+					require.NoError(t, err)
+				} else {
+					require.True(t, k8serrors.IsNotFound(err), "owner health-check VIP must disappear: %v", err)
+				}
+			})
+		}
+	}
 }
