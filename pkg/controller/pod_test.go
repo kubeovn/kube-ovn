@@ -2359,7 +2359,6 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 
 			portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 			fc.mockOvnClient.EXPECT().ListPortGroups(gomock.Any()).Return(nil, nil).AnyTimes()
-			fc.mockOvnClient.EXPECT().RemovePortFromPortGroups(portName).Return(nil)
 			fc.mockOvnClient.EXPECT().PortGroupAddPorts(gomock.Any(), portName).Return(nil)
 			fc.mockOvnClient.EXPECT().PortGroupRemovePorts(gomock.Any(), portName).Return(nil)
 			if tc.snat {
