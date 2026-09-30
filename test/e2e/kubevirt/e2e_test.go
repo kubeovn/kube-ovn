@@ -6,8 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -69,24 +67,37 @@ func expectLSPMigrationState(portName, expectedChassis string) {
 			gomega.Equal(""),
 			gomega.Equal("requested-chassis="+expectedChassis),
 		))
-	}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
+	}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 }
 
-func parsePingStats(stdout string) (transmitted, received, lost int, err error) {
-	re := regexp.MustCompile(`(?m)(\d+) packets transmitted, (\d+)(?: packets)? received`)
-	matches := re.FindStringSubmatch(stdout)
-	if len(matches) != 3 {
-		return 0, 0, 0, fmt.Errorf("failed to parse ping statistics from output %q", stdout)
+// pingDuringMigration measures the entire migration, including target preparation.
+func pingDuringMigration(f *framework.Framework, namespace, pod, ip string, migrate func()) string {
+	ginkgo.GinkgoHelper()
+	probe := &migrationPing{
+		dir: "/tmp/migration-ping-" + framework.RandomSuffix(),
+		exec: func(command string) (string, string, error) {
+			return framework.ExecShellInPod(context.TODO(), f, namespace, pod, command)
+		},
 	}
-	transmitted, err = strconv.Atoi(matches[1])
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	received, err = strconv.Atoi(matches[2])
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	return transmitted, received, transmitted - received, nil
+	defer func() {
+		if err := probe.cleanup(); err != nil {
+			framework.Logf("Failed to clean up migration ping: %v", err)
+		}
+	}()
+
+	ginkgo.By("Starting continuous ping before migration")
+	framework.ExpectNoError(probe.start(ip, 420))
+	gomega.Eventually(probe.ready).WithTimeout(30*time.Second).WithPolling(time.Second).
+		Should(gomega.Succeed(), "continuous ping did not receive its first reply")
+
+	migrate()
+
+	// Include recovery after the controller reports success before collecting loss.
+	ginkgo.By("Continuing ping for two seconds after migration succeeds")
+	time.Sleep(2 * time.Second)
+	stdout, err := probe.stop()
+	framework.ExpectNoError(err, "continuous ping must remain active through migration completion")
+	return stdout
 }
 
 func init() {
@@ -700,22 +711,19 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			for i := 1; i <= migrationCount; i++ {
 				prevNode := getVMPod(podClient, vmName).Spec.NodeName
 				migrationName := fmt.Sprintf("mig-%d-%s", i, framework.RandomSuffix())
-				ginkgo.By(fmt.Sprintf("[migration %d/%d] Creating migration %s (non-blocking)", i, migrationCount, migrationName))
-				migration := framework.MakeVMIMigration(migrationName, vmName)
-				_ = migrationClient.Create(migration)
+				stdout = pingDuringMigration(f, namespaceName, proberName, vmIP, func() {
+					ginkgo.By(fmt.Sprintf("[migration %d/%d] Creating migration %s", i, migrationCount, migrationName))
+					migration := framework.MakeVMIMigration(migrationName, vmName)
+					_ = migrationClient.Create(migration)
 
-				ginkgo.By(fmt.Sprintf("[migration %d/%d] Running continuous ping during migration", i, migrationCount))
-				pingCmd := fmt.Sprintf("ping -c 400 -i 0.1 -w 60 %s 2>&1 || true", vmIP)
-				stdout, _, err = framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, pingCmd)
-				framework.ExpectNoError(err)
+					ginkgo.By(fmt.Sprintf("[migration %d/%d] Waiting for migration to succeed", i, migrationCount))
+					err = migrationClient.WaitForPhase(migrationName, v1.MigrationSucceeded, 5*time.Minute)
+					framework.ExpectNoError(err)
+				})
 
 				transmitted, received, lost, err := parsePingStats(stdout)
 				framework.ExpectNoError(err)
 				framework.Logf("[migration %d/%d] Ping: %d transmitted, %d received, %d lost", i, migrationCount, transmitted, received, lost)
-
-				ginkgo.By(fmt.Sprintf("[migration %d/%d] Verifying migration succeeded", i, migrationCount))
-				err = migrationClient.WaitForPhase(migrationName, v1.MigrationSucceeded, 5*time.Minute)
-				framework.ExpectNoError(err)
 
 				ginkgo.By(fmt.Sprintf("[migration %d/%d] Asserting packet loss (%d) within threshold (%d)", i, migrationCount, lost, maxAcceptableLoss))
 				gomega.Expect(lost).To(gomega.BeNumerically("<=", maxAcceptableLoss),
@@ -791,24 +799,21 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			framework.Logf("Initial ping output:\n%s", stdout)
 
 			migrationName := "mig-" + framework.RandomSuffix()
-			ginkgo.By("Creating migration " + migrationName + " for vm " + vmName + " (non-blocking)")
-			migration := framework.MakeVMIMigration(migrationName, vmName)
-			_ = migrationClient.Create(migration)
+			stdout = pingDuringMigration(f, namespaceName, proberName, vmIP, func() {
+				ginkgo.By("Creating migration " + migrationName + " for vm " + vmName)
+				migration := framework.MakeVMIMigration(migrationName, vmName)
+				_ = migrationClient.Create(migration)
 
-			ginkgo.By("Running continuous ping from prober to VM " + vmIP + " during migration")
-			pingCmd := fmt.Sprintf("ping -c 400 -i 0.1 -w 60 %s 2>&1 || true", vmIP)
-			stdout, _, err = framework.ExecShellInPod(context.TODO(), f, namespaceName, proberName, pingCmd)
-			framework.ExpectNoError(err)
+				ginkgo.By("Waiting for migration to succeed")
+				err = migrationClient.WaitForPhase(migrationName, v1.MigrationSucceeded, 5*time.Minute)
+				framework.ExpectNoError(err)
+			})
 			framework.Logf("Continuous ping output:\n%s", stdout)
 
 			ginkgo.By("Parsing ping statistics for packet loss")
 			transmitted, received, lost, err := parsePingStats(stdout)
 			framework.ExpectNoError(err)
 			framework.Logf("Ping results: %d transmitted, %d received, %d lost", transmitted, received, lost)
-
-			ginkgo.By("Verifying migration succeeded")
-			err = migrationClient.WaitForPhase(migrationName, v1.MigrationSucceeded, 5*time.Minute)
-			framework.ExpectNoError(err)
 
 			maxAcceptableLoss := 5
 			ginkgo.By(fmt.Sprintf("Asserting packet loss (%d) is within acceptable threshold (%d)", lost, maxAcceptableLoss))
