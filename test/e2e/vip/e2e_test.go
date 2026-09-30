@@ -758,7 +758,6 @@ var _ = framework.Describe("[group:vip]", func() {
 			framework.ExpectNoError(err)
 			framework.ExpectFalse(strings.Contains(string(output), lbUUID),
 				"Logical switch %q should no longer reference VPC LB %q after VIP deletion", attachSubnetName2, lbUUID)
-
 		})
 	})
 })
