@@ -180,6 +180,16 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 			klog.Error(err)
 			return err
 		}
+		if needsMacRepair {
+			// pre-fix switch_lb_rule vips had arp_proxy set on their lsp; it was never
+			// functional and the CreateLogicalSwitchPort update above does not touch the
+			// options column, so it must be cleared explicitly during repair.
+			if err := c.OVNNbClient.RemoveLogicalSwitchPortOption(portName, "arp_proxy"); err != nil {
+				err = fmt.Errorf("failed to remove arp_proxy option from lsp %s: %w", portName, err)
+				klog.Error(err)
+				return err
+			}
+		}
 	}
 
 	if vip.Spec.Type == util.KubeHostVMVip {

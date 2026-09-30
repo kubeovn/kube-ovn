@@ -401,6 +401,10 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairsStaleGatewayMac(t *testing.T) {
 			lspMac = mac
 			return nil
 		})
+	// The repaired lsp may still carry the stale, never functional arp_proxy option
+	// from before the own-mac fix; it must be cleared explicitly since
+	// CreateLogicalSwitchPort's update path does not touch the options column.
+	fc.mockOvnClient.EXPECT().RemoveLogicalSwitchPortOption(portName, "arp_proxy").Return(nil)
 
 	require.NoError(t, ctrl.handleAddVirtualIP(vip.Name))
 
