@@ -192,7 +192,7 @@ func TestNetworkPolicyACLSamplingPreservesUnownedReferences(t *testing.T) {
 	createOps, err := client.Create(externalSample)
 	require.NoError(t, err)
 	acl.SampleNew = &externalSample.UUID
-	updateOps, err := client.Where(acl).Update(acl, &acl.SampleNew)
+	updateOps, err := client.Database.Where(acl).Update(acl, &acl.SampleNew)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("seed-unowned-acl-sample-reference", append(createOps, updateOps...)))
 	require.Eventually(t, func() bool {

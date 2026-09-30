@@ -35,7 +35,7 @@ func (c *Controller) inspectPod() error {
 		for _, podNet := range filterSubnets(pod, podNets) {
 			if podNet.Type != providerTypeIPAM {
 				portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-				exists, err := c.OVNNbClient.LogicalSwitchPortExists(portName)
+				exists, err := c.logicalSwitchPortExists(portName)
 				if err != nil {
 					klog.Errorf("failed to check port %s exists, %v", portName, err)
 					return err

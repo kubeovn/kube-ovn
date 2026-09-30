@@ -203,7 +203,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 	// This may cause conflict if two anp with name test-anp and test.anp, maybe hash is a better solution, but we do not want to lost the readability now.
 	// Make sure all create operations are reentrant.
 	pgName := strings.ReplaceAll(anpName, "-", ".")
-	if err = c.OVNNbClient.CreatePortGroup(pgName, map[string]string{adminNetworkPolicyKey: anpName}); err != nil {
+	if err = c.createPortGroup(pgName, map[string]string{adminNetworkPolicyKey: anpName}); err != nil {
 		klog.Errorf("failed to create port group for anp %s: %v", key, err)
 		return err
 	}
@@ -233,12 +233,16 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		return err
 	}
 
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+	if err = c.setPortGroupPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 		return err
 	}
+	aclBuilder, err := c.adminNetworkPolicyACLBuilder()
+	if err != nil {
+		return err
+	}
 
-	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
+	ingressACLOps, err := c.deletePortGroupACLOps(pgName, "to-lport", nil)
 	if err != nil {
 		klog.Errorf("failed to generate clear operations for anp %s ingress acls: %v", key, err)
 		return err
@@ -294,7 +298,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 
 		if len(v4Addrs) != 0 && (len(rulePorts) == 0 || len(numericPorts) != 0) {
 			aclName := fmt.Sprintf("anp/%s/ingress/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index)
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, numericPorts, true, false)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, true, false)
 			if err != nil {
 				klog.Errorf("failed to add v4 ingress acls for anp %s: %v", key, err)
 				return err
@@ -304,7 +308,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 
 		if len(v6Addrs) != 0 && (len(rulePorts) == 0 || len(numericPorts) != 0) {
 			aclName := fmt.Sprintf("anp/%s/ingress/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index)
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, numericPorts, true, false)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, true, false)
 			if err != nil {
 				klog.Errorf("failed to add v6 ingress acls for anp %s: %v", key, err)
 				return err
@@ -340,14 +344,14 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 	}
 
-	if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
+	if err := c.transactNB("add-ingress-acls", ingressACLOps...); err != nil {
 		return fmt.Errorf("failed to add ingress acls for anp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curIngressAddrSet, desiredIngressAddrSet); err != nil {
 		return fmt.Errorf("failed to delete unused ingress address set for anp %s: %w", key, err)
 	}
 
-	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
+	egressACLOps, err := c.deletePortGroupACLOps(pgName, "from-lport", nil)
 	if err != nil {
 		klog.Errorf("failed to generate clear operations for anp %s egress acls: %v", key, err)
 		return err
@@ -409,7 +413,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		// Domain names may not be resolved initially but will be updated later
 		if (len(v4Addrs) != 0 || hasDomainNames) && (len(rulePorts) == 0 || len(numericPorts) != 0) {
 			aclName := fmt.Sprintf("anp/%s/egress/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index)
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, numericPorts, false, false)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, false, false)
 			if err != nil {
 				klog.Errorf("failed to add v4 egress acls for anp %s: %v", key, err)
 				return err
@@ -419,7 +423,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 
 		if (len(v6Addrs) != 0 || hasDomainNames) && (len(rulePorts) == 0 || len(numericPorts) != 0) {
 			aclName := fmt.Sprintf("anp/%s/egress/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index)
-			ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, numericPorts, false, false)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, false, false)
 			if err != nil {
 				klog.Errorf("failed to add v6 egress acls for anp %s: %v", key, err)
 				return err
@@ -466,7 +470,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		}
 	}
 
-	if err := c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
+	if err := c.transactNB("add-egress-acls", egressACLOps...); err != nil {
 		return fmt.Errorf("failed to add egress acls for anp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curEgressAddrSet, desiredEgressAddrSet); err != nil {
@@ -490,7 +494,7 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 
 	// ACLs related to port_group will be deleted automatically when port_group is deleted
 	pgName := strings.ReplaceAll(anpName, "-", ".")
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		klog.Errorf("failed to delete port group for anp %s: %v", anpName, err)
 	}
 	namedPortErr := c.deletePolicyNamedPortGroups(adminNetworkPolicyKey, anpName)
@@ -498,14 +502,14 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 		klog.Errorf("failed to delete named-port port groups for anp %s: %v", anpName, namedPortErr)
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "ingress"),
 	}); err != nil {
 		klog.Errorf("failed to delete ingress address set for anp %s: %v", anpName, err)
 		return errors.Join(namedPortErr, err)
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "egress"),
 	}); err != nil {
 		klog.Errorf("failed to delete egress address set for anp %s: %v", anpName, err)
@@ -559,7 +563,7 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	// The port-group for anp should be updated
 	if fields&changedFieldSubject != 0 {
 		// The port-group must exist when update anp, this check should never be matched.
-		if ok, err := c.OVNNbClient.PortGroupExists(pgName); !ok || err != nil {
+		if ok, err := c.portGroupExists(pgName); !ok || err != nil {
 			klog.Errorf("port-group for anp %s does not exist when update anp", desiredAnp.Name)
 			return err
 		}
@@ -570,7 +574,7 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 			return err
 		}
 
-		if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+		if err = c.setPortGroupPorts(pgName, ports); err != nil {
 			klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 			return err
 		}
@@ -914,11 +918,11 @@ func (c *Controller) resolveDomainNames(domainNames []v1alpha1.DomainName) ([]st
 func (c *Controller) createAsForAnpRule(anpName, ruleName, direction, asName string, addresses []string, isBanp bool) error {
 	var err error
 	if isBanp {
-		err = c.OVNNbClient.CreateAddressSet(asName, map[string]string{
+		err = c.createAddressSet(asName, map[string]string{
 			baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, direction),
 		})
 	} else {
-		err = c.OVNNbClient.CreateAddressSet(asName, map[string]string{
+		err = c.createAddressSet(asName, map[string]string{
 			adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, direction),
 		})
 	}
@@ -927,7 +931,7 @@ func (c *Controller) createAsForAnpRule(anpName, ruleName, direction, asName str
 		return err
 	}
 
-	if err := c.OVNNbClient.AddressSetUpdateAddress(asName, addresses...); err != nil {
+	if err := c.updateAddressSetAddresses(asName, addresses...); err != nil {
 		klog.Errorf("failed to set addresses %q to address set %s: %v", strings.Join(addresses, ","), asName, err)
 		return err
 	}
@@ -943,11 +947,11 @@ func (c *Controller) getCurrentAddrSetByName(anpName string, isBanp bool) (*strs
 
 	// anp and banp can use same name, so depends on the external_ids key field to distinguish
 	if isBanp {
-		ass, err = c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err = c.listAddressSets(map[string]string{
 			baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "ingress"),
 		})
 	} else {
-		ass, err = c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err = c.listAddressSets(map[string]string{
 			adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "ingress"),
 		})
 	}
@@ -960,11 +964,11 @@ func (c *Controller) getCurrentAddrSetByName(anpName string, isBanp bool) (*strs
 	}
 
 	if isBanp {
-		ass, err = c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err = c.listAddressSets(map[string]string{
 			baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "egress"),
 		})
 	} else {
-		ass, err = c.OVNNbClient.ListAddressSets(map[string]string{
+		ass, err = c.listAddressSets(map[string]string{
 			adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "egress"),
 		})
 	}
@@ -983,7 +987,7 @@ func (c *Controller) deleteUnusedAddrSetForAnp(curAddrSet, desiredAddrSet *strse
 	toDel := strset.Difference(curAddrSet, desiredAddrSet).List()
 
 	for _, asName := range toDel {
-		if err := c.OVNNbClient.DeleteAddressSet(asName); err != nil {
+		if err := c.deleteAddressSets(asName); err != nil {
 			klog.Errorf("failed to delete address set %s, %v", asName, err)
 			return err
 		}

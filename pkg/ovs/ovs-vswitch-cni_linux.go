@@ -12,6 +12,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -19,6 +20,15 @@ import (
 // NewCNIVswitchClient uses short-lived, synchronous transactions. A CNI process
 // does not need a monitor or a node-wide cache of interfaces and QoS records.
 func NewCNIVswitchClient(addr string) (*VswitchClient, error) {
+	c, err := newCNIVswitchBackend(addr)
+	if err != nil {
+		return nil, err
+	}
+	return &VswitchClient{Database: table.NewDatabase(table.Wrap(c), 30*time.Second, table.RetryPolicy{},
+		table.WithDatabaseName("vswitchd"), table.WithTransactionObserver(ovsTransactionObserver{}))}, nil
+}
+
+func newCNIVswitchBackend(addr string) (client.Client, error) {
 	dbModel, err := model.NewClientDBModel(vswitch.DatabaseName, map[string]model.Model{
 		vswitch.BridgeTable:      &vswitch.Bridge{},
 		vswitch.InterfaceTable:   &vswitch.Interface{},
@@ -41,7 +51,7 @@ func NewCNIVswitchClient(addr string) (*VswitchClient, error) {
 		c.Close()
 		return nil, err
 	}
-	return &VswitchClient{Client: c, Timeout: 30 * time.Second}, nil
+	return c, nil
 }
 
 func selectVswitch(table string, where []ovsdb.Condition) ovsdb.Operation {

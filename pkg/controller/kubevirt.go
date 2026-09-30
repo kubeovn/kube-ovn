@@ -83,7 +83,7 @@ func (c *Controller) handleDeleteVM(key string) error {
 	}
 	vmKey := fmt.Sprintf("%s/%s", namespace, name)
 
-	ports, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(true, map[string]string{"pod": vmKey})
+	ports, err := c.listNormalLogicalSwitchPorts(true, map[string]string{"pod": vmKey})
 	if err != nil {
 		klog.Errorf("failed to list lsps of vm %s: %v", vmKey, err)
 		return err
@@ -102,7 +102,7 @@ func (c *Controller) handleDeleteVM(key string) error {
 			c.ipam.ReleaseAddressByNic(vmKey, port.Name, subnetName)
 		}
 
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(port.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(port.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", port.Name, err)
 			return err
 		}
@@ -208,7 +208,7 @@ func (c *Controller) vmiMigrationNodes(vmiMigration *kubevirtv1.VirtualMachineIn
 }
 
 func (c *Controller) vmiMigrationPortNames(vmi *kubevirtv1.VirtualMachineInstance) ([]string, error) {
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)})
+	lsps, err := c.listNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)})
 	if err != nil {
 		err = fmt.Errorf("failed to list logical switch ports for vmi %s/%s: %w", vmi.Namespace, vmi.Name, err)
 		klog.Error(err)
@@ -248,7 +248,7 @@ func (c *Controller) handleVMIMigrationPhase(vmiMigration *kubevirtv1.VirtualMac
 			return nil
 		}
 		for _, portName := range portNames {
-			if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
+			if err := c.setLogicalSwitchPortMigrateOptions(portName, sourceNode, targetPod.Spec.NodeName); err != nil {
 				return fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
 			}
 		}
@@ -266,7 +266,7 @@ func (c *Controller) handleVMIMigrationPhase(vmiMigration *kubevirtv1.VirtualMac
 		migrationFailed := vmiMigration.Status.Phase == kubevirtv1.MigrationFailed
 		if migrationFailed && (srcNodeName == "" || targetNodeName == "") {
 			for _, portName := range portNames {
-				if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(portName); err != nil {
+				if err := c.cleanLogicalSwitchPortMigrateOptions(portName); err != nil {
 					return fmt.Errorf("failed to clean migrate options for lsp %s: %w", portName, err)
 				}
 			}
@@ -335,7 +335,7 @@ func (c *Controller) setVMIMigrationOptions(vmiMigration *kubevirtv1.VirtualMach
 	klog.Infof("target launcher pod %s/%s is migrating from %s to %s (migration job UID: %s)",
 		targetLauncherPod.Namespace, targetLauncherPod.Name, sourceNode, targetNode, vmiMigration.UID)
 	for _, portName := range portNames {
-		if err := c.OVNNbClient.SetLogicalSwitchPortMigrateOptions(portName, sourceNode, targetNode); err != nil {
+		if err := c.setLogicalSwitchPortMigrateOptions(portName, sourceNode, targetNode); err != nil {
 			err = fmt.Errorf("failed to set migrate options for VM pod lsp %s: %w", portName, err)
 			klog.Error(err)
 			return err
@@ -350,7 +350,7 @@ func (c *Controller) setVMIMigrationOptions(vmiMigration *kubevirtv1.VirtualMach
 func (c *Controller) resetVMIMigrationOptions(portNames []string, srcNodeName, targetNodeName string, migrationFailed bool) error {
 	for _, portName := range portNames {
 		klog.Infof("migrate end reset options for lsp %s from %s to %s, migration failed: %t", portName, srcNodeName, targetNodeName, migrationFailed)
-		if err := c.OVNNbClient.ResetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migrationFailed); err != nil {
+		if err := c.resetLogicalSwitchPortMigrateOptions(portName, srcNodeName, targetNodeName, migrationFailed); err != nil {
 			err = fmt.Errorf("failed to clean migrate options for lsp %s, %w", portName, err)
 			klog.Error(err)
 			return err
@@ -364,7 +364,7 @@ func (c *Controller) resetVMIMigrationOptions(portNames []string, srcNodeName, t
 // options, so a leftover requested-chassis would block the next VMI on any other node.
 func (c *Controller) cleanupFailedVMIMigrationWithoutVMI(vmiMigration *kubevirtv1.VirtualMachineInstanceMigration) error {
 	vmKey := fmt.Sprintf("%s/%s", vmiMigration.Namespace, vmiMigration.Spec.VMIName)
-	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": vmKey})
+	lsps, err := c.listNormalLogicalSwitchPorts(c.config.EnableExternalVpc, map[string]string{"pod": vmKey})
 	if err != nil {
 		return fmt.Errorf("failed to list logical switch ports for VMI %s: %w", vmKey, err)
 	}
@@ -377,7 +377,7 @@ func (c *Controller) cleanupFailedVMIMigrationWithoutVMI(vmiMigration *kubevirtv
 		if len(nodes) != 2 || nodes[0] == "" || nodes[1] == "" || nodes[0] == nodes[1] {
 			continue
 		}
-		if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(lsp.Name); err != nil {
+		if err := c.cleanLogicalSwitchPortMigrateOptions(lsp.Name); err != nil {
 			return fmt.Errorf("failed to clean migrate options for LSP %s: %w", lsp.Name, err)
 		}
 	}
