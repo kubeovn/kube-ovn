@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -24,6 +26,8 @@ type SlrInfo struct {
 	Namespace  string
 	IsRecreate bool
 	Vips       []string
+	// LoadBalancerNames preserves the owning VPC's LB set if the Service disappears before deletion is handled.
+	LoadBalancerNames []string
 }
 
 func generateSvcName(name string) string {
@@ -92,7 +96,24 @@ func (c *Controller) enqueueDeleteSwitchLBRule(obj any) {
 
 	key := cache.MetaObjectToName(slr).String()
 	klog.Infof("enqueue del SwitchLBRule %s", key)
-	c.delSwitchLBRuleQueue.Add(NewSlrInfo(slr))
+	info := NewSlrInfo(slr)
+	if svc, err := c.servicesLister.Services(info.Namespace).Get(generateSvcName(info.Name)); err == nil {
+		vpcName := svc.Annotations[util.VpcAnnotation]
+		if vpcName == "" {
+			vpcName = svc.Annotations[util.LogicalRouterAnnotation]
+		}
+		if vpc, err := c.vpcsLister.Get(vpcName); err == nil {
+			info.LoadBalancerNames = []string{
+				vpc.Status.TCPLoadBalancer,
+				vpc.Status.UDPLoadBalancer,
+				vpc.Status.SctpLoadBalancer,
+				vpc.Status.TCPSessionLoadBalancer,
+				vpc.Status.UDPSessionLoadBalancer,
+				vpc.Status.SctpSessionLoadBalancer,
+			}
+		}
+	}
+	c.delSwitchLBRuleQueue.Add(info)
 }
 
 func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
@@ -206,165 +227,229 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 func (c *Controller) handleDelSwitchLBRule(info *SlrInfo) error {
 	klog.V(3).Infof("handleDelSwitchLBRule %s", info.Name)
 
-	var (
-		name  string
-		lbhcs []ovnnb.LoadBalancerHealthCheck
-		vips  map[string]struct{}
-		err   error
-	)
+	subnetForVip, vpcLBNames, err := c.prepareSwitchLBRuleDeletion(info)
+	if err != nil {
+		return err
+	}
+	sharedVIPs, err := c.sharedServiceVIPs(info, vpcLBNames)
+	if err != nil {
+		return err
+	}
+	vips, err := c.cleanupSwitchLBRuleHealthChecks(info, subnetForVip, vpcLBNames, sharedVIPs)
+	if err != nil {
+		return err
+	}
+	return c.cleanupSwitchLBRuleVIPs(info, vpcLBNames, vips, sharedVIPs)
+}
 
-	name = generateSvcName(info.Name)
-	// Read the subnet annotation before deleting the service, so we can use it as a
-	// fallback to clean up the health-check VIP when no LBHC is found (e.g. the LBHC
-	// was already removed because the service was deleted before the SLR).
+func (c *Controller) prepareSwitchLBRuleDeletion(info *SlrInfo) (string, set.Set[string], error) {
+	name := generateSvcName(info.Name)
 	subnetForVip := ""
 	vpcForSlr := ""
-	if svc, e := c.servicesLister.Services(info.Namespace).Get(name); e == nil {
+	if svc, err := c.servicesLister.Services(info.Namespace).Get(name); err == nil {
 		subnetForVip = svc.Annotations[util.LogicalSwitchAnnotation]
-		// Prefer VpcAnnotation (set by the endpoint_slice controller) but fall
-		// back to LogicalRouterAnnotation (set synchronously by the SLR
-		// controller) if the former hasn't been populated yet.
-		if vpcForSlr = svc.Annotations[util.VpcAnnotation]; vpcForSlr == "" {
+		vpcForSlr = svc.Annotations[util.VpcAnnotation]
+		if vpcForSlr == "" {
 			vpcForSlr = svc.Annotations[util.LogicalRouterAnnotation]
 		}
 	}
-	if err = c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil {
-		if !k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to delete service %s, err: %v", name, err)
-			return err
-		}
+	if err := c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to delete service %s, err: %v", name, err)
+		return "", nil, err
 	}
 
-	// Collect the set of LB names belonging to this SLR's VPC so that we only
-	// touch LBHCs associated with LBs in the correct VPC.  When the VPC is
-	// unknown (e.g. the service was already deleted), vpcLBNames stays nil and
-	// we fall back to the original (unscoped) behaviour.
-	var vpcLBNames set.Set[string]
-	if vpcForSlr != "" {
-		vpc, e := c.vpcsLister.Get(vpcForSlr)
-		switch {
-		case e == nil:
-			vpcLBNames = set.New(
-				vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
-				vpc.Status.SctpLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
-				vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer,
-			)
-			vpcLBNames.Delete("")
-		case k8serrors.IsNotFound(e):
-			klog.Warningf("VPC %s not found for SLR %s, falling back to unscoped deletion", vpcForSlr, info.Name)
-		default:
-			klog.Errorf("failed to get VPC %s for SLR %s: %v, requeueing", vpcForSlr, info.Name, e)
-			return e
+	vpcLBNames := set.New(info.LoadBalancerNames...)
+	vpcLBNames.Delete("")
+	if vpcForSlr == "" {
+		if len(vpcLBNames) == 0 {
+			vpcLBNames = nil
 		}
+		return subnetForVip, vpcLBNames, nil
 	}
+	vpc, err := c.vpcsLister.Get(vpcForSlr)
+	switch {
+	case err == nil:
+		vpcLBNames = set.New(
+			vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
+			vpc.Status.SctpLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
+			vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer,
+		)
+		vpcLBNames.Delete("")
+	case k8serrors.IsNotFound(err):
+		klog.Warningf("VPC %s not found for SLR %s, falling back to captured load balancers", vpcForSlr, info.Name)
+	default:
+		klog.Errorf("failed to get VPC %s for SLR %s: %v, requeueing", vpcForSlr, info.Name, err)
+		return "", nil, err
+	}
+	if len(vpcLBNames) == 0 {
+		vpcLBNames = nil
+	}
+	return subnetForVip, vpcLBNames, nil
+}
 
-	if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
-		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
-			return slices.Contains(info.Vips, lbhc.Vip)
-		},
-	); err != nil && !k8serrors.IsNotFound(err) {
+func (c *Controller) cleanupSwitchLBRuleHealthChecks(info *SlrInfo, subnetForVip string, vpcLBNames, sharedVIPs set.Set[string]) (map[string]struct{}, error) {
+	lbhcs, err := c.OVNNbClient.ListLoadBalancerHealthChecks(func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+		return slices.Contains(info.Vips, lbhc.Vip)
+	})
+	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to list load balancer health checks matched vips %s, err: %v", info.Vips, err)
-		return err
+		return nil, err
 	}
 
-	vips = make(map[string]struct{})
+	vips := make(map[string]struct{})
 	lbhcUUIDsToDelete := set.New[string]()
-
 	for _, lbhc := range lbhcs {
-		var lbs []ovnnb.LoadBalancer
-
-		if lbs, err = c.OVNNbClient.ListLoadBalancers(
-			func(lb *ovnnb.LoadBalancer) bool {
-				return slices.Contains(lb.HealthCheck, lbhc.UUID)
-			},
-		); err != nil && !k8serrors.IsNotFound(err) {
+		if sharedVIPs.Has(lbhc.Vip) {
+			continue
+		}
+		lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+			return slices.Contains(lb.HealthCheck, lbhc.UUID)
+		})
+		if err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to list load balancer matched vips %s, err: %v", lbhc.Vip, err)
-			return err
+			return nil, err
 		}
 
 		belongsToThisVpc := false
 		referencedByOtherVpc := false
-		if len(lbs) == 0 && vpcLBNames != nil && subnetForVip != "" {
-			// Orphaned LBHC: no LB references it anymore (e.g. the service
-			// handler already removed the LB→LBHC reference during concurrent
-			// deletion). Only claim ownership when the LBHC's subnet matches
-			// the SLR's own subnet, preventing cross-VPC mis-deletion.
-			if lbhcSubnet := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; lbhcSubnet == subnetForVip {
-				belongsToThisVpc = true
-			}
+		if len(lbs) == 0 && vpcLBNames != nil && subnetForVip != "" && lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == subnetForVip {
+			belongsToThisVpc = true
 		}
 		for _, lb := range lbs {
 			if vpcLBNames != nil && !vpcLBNames.Has(lb.Name) {
 				referencedByOtherVpc = true
-				continue // skip LBs belonging to other VPCs
+				continue
 			}
 			belongsToThisVpc = true
-
-			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
+			if err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID); err != nil && !k8serrors.IsNotFound(err) {
+				return nil, err
 			}
-
-			err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
+			if err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip); err != nil && !k8serrors.IsNotFound(err) {
+				return nil, err
 			}
 		}
-
-		// Only mark the LBHC for deletion if it is no longer referenced by
-		// any LB.  When other VPCs still reference the same LBHC, we must
-		// keep it alive.
 		if (belongsToThisVpc || vpcLBNames == nil) && !referencedByOtherVpc {
 			lbhcUUIDsToDelete.Insert(lbhc.UUID)
 		}
 		if belongsToThisVpc || vpcLBNames == nil {
-			if vip, ex := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; ex && vip != "" {
-				vips[vip] = struct{}{}
+			if subnet := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; subnet != "" {
+				vips[subnet] = struct{}{}
 			}
 		}
 	}
 
-	// Fallback: if no VIP was discovered via LBHC (e.g. LBHC was already deleted
-	// because the backing service was removed before the SLR), use the subnet that
-	// was read from the service annotation before deletion.
 	if len(vips) == 0 && subnetForVip != "" {
-		klog.Infof("handleDelSwitchLBRule %s: no LBHC found for vips %v, falling back to subnet %s from service annotation", info.Name, info.Vips, subnetForVip)
 		vips[subnetForVip] = struct{}{}
 	}
-
 	if lbhcUUIDsToDelete.Len() > 0 {
-		if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
-			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
-				return lbhcUUIDsToDelete.Has(lbhc.UUID)
-			},
-		); err != nil && !k8serrors.IsNotFound(err) {
-			klog.Errorf("delete load balancer health checks matched vip %s, err: %v", info.Vips, err)
-			return err
+		if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+			return lbhcUUIDsToDelete.Has(lbhc.UUID)
+		}); err != nil && !k8serrors.IsNotFound(err) {
+			return nil, err
 		}
 	}
+	return vips, nil
+}
 
-	for vip := range vips {
-		if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
-			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
-				return lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == vip
-			},
-		); err != nil && !k8serrors.IsNotFound(err) {
-			klog.Errorf("failed to list load balancer, err: %v", err)
-			return err
-		}
-
-		if len(lbhcs) == 0 {
-			err = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), vip, metav1.DeleteOptions{})
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete vip %s for load balancer health check, err: %v", vip, err)
+func (c *Controller) cleanupSwitchLBRuleVIPs(info *SlrInfo, vpcLBNames set.Set[string], vips map[string]struct{}, sharedVIPs set.Set[string]) error {
+	var err error
+	hasSharedVIP := false
+	for lbName := range vpcLBNames {
+		for _, vip := range info.Vips {
+			if sharedVIPs.Has(vip) {
+				hasSharedVIP = true
+				continue
+			}
+			if err = c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, true); err != nil && !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete vip %s from load balancer %s, err: %v", vip, lbName, err)
 				return err
 			}
 		}
 	}
+	if slices.ContainsFunc(info.Vips, sharedVIPs.Has) {
+		hasSharedVIP = true
+	}
+	if hasSharedVIP {
+		return nil
+	}
 
+	for subnet := range vips {
+		lbhcs, err := c.OVNNbClient.ListLoadBalancerHealthChecks(func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
+			return lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == subnet
+		})
+		if err != nil && !k8serrors.IsNotFound(err) {
+			return err
+		}
+		if len(lbhcs) == 0 {
+			if err = c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), subnet, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func (c *Controller) sharedServiceVIPs(info *SlrInfo, vpcLBNames set.Set[string]) (set.Set[string], error) {
+	services, err := c.servicesLister.Services(metav1.NamespaceAll).List(labels.Everything())
+	if err != nil {
+		return nil, fmt.Errorf("failed to list services while deleting switch lb rule %s: %w", info.Name, err)
+	}
+
+	sharedVIPs := set.New[string]()
+	targetVIPs := set.New(info.Vips...)
+	serviceName := generateSvcName(info.Name)
+	for _, svc := range services {
+		if svc.Namespace == info.Namespace && svc.Name == serviceName {
+			continue
+		}
+		// A terminating SLR Service no longer owns live load balancer state.
+		// Ignoring it lets concurrent SLR deletions complete their cleanup.
+		if svc.DeletionTimestamp != nil {
+			continue
+		}
+		// Only another SLR Service can share the load balancer VIP state. A
+		// regular ClusterIP Service may intentionally use the same address,
+		// while its endpoints and health-check VIP belong to a different
+		// lifecycle.
+		if _, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; !ok {
+			continue
+		}
+		sharedEndpoints := set.New[string]()
+		for _, ip := range getVipIps(svc) {
+			for _, port := range svc.Spec.Ports {
+				sharedEndpoints.Insert(util.JoinHostPort(ip, port.Port))
+			}
+		}
+		if !slices.ContainsFunc(info.Vips, sharedEndpoints.Has) {
+			continue
+		}
+		// Identical addresses in different VPCs do not share load balancer state.
+		// Keep the conservative behavior only when the deleted SLR's scope is unknown.
+		if vpcLBNames != nil {
+			vpcName := cmp.Or(svc.Annotations[util.VpcAnnotation], svc.Annotations[util.LogicalRouterAnnotation], c.config.ClusterRouter)
+			vpc, err := c.vpcsLister.Get(vpcName)
+			if k8serrors.IsNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to get VPC for service %s/%s: %w", svc.Namespace, svc.Name, err)
+			}
+			lbNames := []string{
+				vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
+				vpc.Status.SctpLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
+				vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer,
+			}
+			if !slices.ContainsFunc(lbNames, vpcLBNames.Has) {
+				continue
+			}
+		}
+		for vip := range sharedEndpoints {
+			if targetVIPs.Has(vip) {
+				sharedVIPs.Insert(vip)
+			}
+		}
+	}
+	return sharedVIPs, nil
 }
 
 func (c *Controller) handleUpdateSwitchLBRule(info *SlrInfo) error {
