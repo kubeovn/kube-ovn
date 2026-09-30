@@ -415,8 +415,10 @@ func Test_handleDelSwitchLBRuleVPCIsolation(t *testing.T) {
 					Name: "slr-live", Namespace: "other-namespace",
 					Annotations: annotations,
 				}))
-				healthChecks := []ovnnb.LoadBalancerHealthCheck{{UUID: "owner-hc", Vip: "10.0.0.1:8080",
-					ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: "owner-subnet"}}}
+				healthChecks := []ovnnb.LoadBalancerHealthCheck{{
+					UUID: "owner-hc", Vip: "10.0.0.1:8080",
+					ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: "owner-subnet"},
+				}}
 				fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(healthChecks, nil)
 				if !sameVPC {
 					fc.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{Name: "owner-tcp", HealthCheck: []string{"owner-hc"}}}, nil)

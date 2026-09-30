@@ -423,9 +423,11 @@ func (c *Controller) sharedServiceVIPs(info *SlrInfo, vpcLBNames set.Set[string]
 			if err != nil {
 				return nil, fmt.Errorf("failed to get VPC for service %s/%s: %w", svc.Namespace, svc.Name, err)
 			}
-			lbNames := []string{vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
+			lbNames := []string{
+				vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
 				vpc.Status.SctpLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
-				vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer}
+				vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer,
+			}
 			if !slices.ContainsFunc(lbNames, vpcLBNames.Has) {
 				continue
 			}
