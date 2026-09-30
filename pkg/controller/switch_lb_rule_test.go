@@ -362,10 +362,9 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 	t.Run("service already gone uses captured VPC load balancers", func(t *testing.T) {
 		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
 		svcName := generateSvcName(slrName)
-		svc, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
+		_, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
 		require.NoError(t, err)
-		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(context.Background(), svcName, metav1.DeleteOptions{}))
-		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Delete(svc))
+		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(t.Context(), svcName, metav1.DeleteOptions{}))
 		require.Eventually(t, func() bool {
 			_, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
 			return k8serrors.IsNotFound(err)
