@@ -336,7 +336,7 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 
 func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
-	if err := c.OVNNbClient.SetLogicalSwitchPortVlanTag(localnetPort, vlanID); err != nil {
+	if err := c.setLogicalSwitchPortVlanTag(localnetPort, vlanID); err != nil {
 		klog.Errorf("set localnet port %s vlan tag %d: %v", localnetPort, vlanID, err)
 		return err
 	}
@@ -346,7 +346,7 @@ func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 
 func (c *Controller) delLocalnet(subnet string) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
-	if err := c.OVNNbClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
+	if err := c.deleteLogicalSwitchPort(localnetPort); err != nil {
 		klog.Errorf("delete localnet port %s: %v", localnetPort, err)
 		return err
 	}

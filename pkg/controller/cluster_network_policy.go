@@ -149,6 +149,10 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 	cnpName := getCnpName(cnp.Name)
 	pgName := getCnpPortGroupName(cnp)
 	cnpACLTier := getCnpACLTier(cnp.Spec.Tier)
+	aclBuilder, err := c.clusterNetworkPolicyACLBuilder()
+	if err != nil {
+		return err
+	}
 
 	curIngressAddrSet, curEgressAddrSet, err := c.getCnpCurrentAddrSetByName(cnpName)
 	if err != nil {
@@ -160,7 +164,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 	desiredIngressAddrSet := strset.NewWithSize(len(cnp.Spec.Ingress) * 2)
 	desiredEgressAddrSet := strset.NewWithSize(len(cnp.Spec.Egress) * 2)
 
-	ingressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "to-lport", nil)
+	ingressACLOps, err := c.deletePortGroupACLOps(pgName, "to-lport", nil)
 	if err != nil {
 		klog.Errorf("failed to generate clear operations for cnp %s ingress acls: %v", cnp.Name, err)
 		return err
@@ -185,7 +189,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		if as4len != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "ingress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
+			ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v4 ingress acls for cnp %s: %v", key, err)
 				return err
@@ -195,7 +199,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		if as6len != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "ingress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
+			ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v6 ingress acls for cnp %s: %v", cnp.Name, err)
 				return err
@@ -204,14 +208,14 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		}
 	}
 
-	if err := c.OVNNbClient.Transact("add-ingress-acls", ingressACLOps); err != nil {
+	if err := c.transactNB("add-ingress-acls", ingressACLOps...); err != nil {
 		return fmt.Errorf("failed to add ingress acls for cnp %s: %w", cnp.Name, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curIngressAddrSet, desiredIngressAddrSet); err != nil {
 		return fmt.Errorf("failed to delete unused ingress address set for cnp %s: %w", cnp.Name, err)
 	}
 
-	egressACLOps, err := c.OVNNbClient.DeleteAclsOps(pgName, portGroupKey, "from-lport", nil)
+	egressACLOps, err := c.deletePortGroupACLOps(pgName, "from-lport", nil)
 	if err != nil {
 		klog.Errorf("failed to generate clear operations for cnp %s egress acls: %v", cnp.Name, err)
 		return err
@@ -249,7 +253,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		// Domain names may not be resolved initially but will be updated later
 		if as4len != 0 || hasDomainNames {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "egress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
+			ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v4 egress acls for cnp %s: %v", key, err)
 				return err
@@ -259,7 +263,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		if as6len != 0 || hasDomainNames {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "egress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
+			ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v6 egress acls for cnp %s: %v", key, err)
 				return err
@@ -268,7 +272,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		}
 	}
 
-	if err := c.OVNNbClient.Transact("add-egress-acls", egressACLOps); err != nil {
+	if err := c.transactNB("add-egress-acls", egressACLOps...); err != nil {
 		return fmt.Errorf("failed to add egress acls for cnp %s: %w", key, err)
 	}
 	if err := c.deleteUnusedAddrSetForAnp(curEgressAddrSet, desiredEgressAddrSet); err != nil {
@@ -377,13 +381,13 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 
 	// ACLs related to port_group will be deleted automatically when port_group is deleted
 	pgName := getCnpPortGroupName(cnp)
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		// Do not exit on errors, try to go as far as possible in the deletion
 		klog.Errorf("failed to delete port group for cnp %s: %v", cnp.Name, err)
 	}
 
 	// Delete all ingress address sets for this CNP
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		clusterNetworkPolicyKey: fmt.Sprintf("%s/%s", cnpName, "ingress"),
 	}); err != nil {
 		// Do not exit on errors, try to go as far as possible in the deletion
@@ -391,7 +395,7 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 	}
 
 	// Delete all egress address sets for this CNP
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		clusterNetworkPolicyKey: fmt.Sprintf("%s/%s", cnpName, "egress"),
 	}); err != nil {
 		// Do not exit on errors, try to go as far as possible in the deletion
@@ -416,7 +420,7 @@ func (c *Controller) getCnpCurrentAddrSetByName(cnpName string) (*strset.Set, *s
 
 	operations := []string{"ingress", "egress"}
 	for _, operation := range operations {
-		addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{
+		addressSets, err := c.listAddressSets(map[string]string{
 			clusterNetworkPolicyKey: fmt.Sprintf("%s/%s", cnpName, operation),
 		})
 		if err != nil {
@@ -442,7 +446,7 @@ func (c *Controller) setupCnpPortGroup(cnp *v1alpha2.ClusterNetworkPolicy) error
 	pgName := getCnpPortGroupName(cnp)
 
 	// Create port group in OVN databases
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{clusterNetworkPolicyKey: pgName}); err != nil {
+	if err := c.createPortGroup(pgName, map[string]string{clusterNetworkPolicyKey: pgName}); err != nil {
 		klog.Errorf("failed to create port group for cnp %s: %v", cnp.Name, err)
 		return err
 	}
@@ -455,7 +459,7 @@ func (c *Controller) setupCnpPortGroup(cnp *v1alpha2.ClusterNetworkPolicy) error
 	}
 
 	// Assign the logical ports to the port group
-	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
+	if err = c.setPortGroupPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports %v to port group %s: %v", ports, pgName, err)
 		return err
 	}
@@ -567,14 +571,14 @@ func (c *Controller) generateCnpEgressAddressSet(cnpName, pgName string, rule v1
 
 // createCnpAddressSet creates an address set in the OVN DBs for a particular rule
 func (c *Controller) createCnpAddressSet(cnpName, ruleName, direction, asName string, addresses []string) error {
-	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{
+	if err := c.createAddressSet(asName, map[string]string{
 		clusterNetworkPolicyKey: fmt.Sprintf("%s/%s", cnpName, direction),
 	}); err != nil {
 		klog.Errorf("failed to create ovn address set %s for cnp rule %s/%s: %v", asName, cnpName, ruleName, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.AddressSetUpdateAddress(asName, addresses...); err != nil {
+	if err := c.updateAddressSetAddresses(asName, addresses...); err != nil {
 		klog.Errorf("failed to set addresses %q to address set %s: %v", strings.Join(addresses, ","), asName, err)
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cenkalti/backoff/v7"
 	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -14,17 +15,29 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func newACLSamplingTestClient(t *testing.T, schemaName string) *OVNNbClient {
 	t.Helper()
+	nbClient, _ := newACLSamplingTestClientWithRaw(t, schemaName)
+	return nbClient
+}
+
+func newACLSamplingTestClientWithRaw(t *testing.T, schemaName string) (*OVNNbClient, client.Client) {
+	t.Helper()
 	dbModel, err := ovnnb.FullDatabaseModel()
 	require.NoError(t, err)
 	_, socket := newOVSDBServer(t, fmt.Sprintf("acl-sampling-%s-%d", schemaName, time.Now().UnixNano()), dbModel, ovnnb.Schema())
-	client, err := newOvnNbClient(t, "unix:"+socket, 3)
+	raw, err := client.NewOVSDBClient(dbModel, client.WithEndpoint("unix:"+socket), client.WithReconnect(3*time.Second, &backoff.ZeroBackOff{}))
 	require.NoError(t, err)
-	return client
+	require.NoError(t, raw.Connect(t.Context()))
+	t.Cleanup(raw.Close)
+	backend := table.Wrap(raw)
+	_, err = backend.Monitor(t.Context(), backend.NewMonitor(ovnNBMonitorOptions()...))
+	require.NoError(t, err)
+	return &OVNNbClient{Database: table.NewDatabase(backend, 3*time.Second, table.RetryPolicy{})}, raw
 }
 
 func validACLSamplingConfig() aclsampling.ControllerConfig {
@@ -273,7 +286,7 @@ func TestReconcileACLSamplingDisabledRetainsReferencedOwnedCollector(t *testing.
 	require.NoError(t, err)
 	externalACL := aclByName(t, acls, "external-reference")
 	externalACL.SampleNew = sampled.SampleNew
-	updateOps, err := client.Where(&externalACL).Update(&externalACL, &externalACL.SampleNew)
+	updateOps, err := client.Database.Where(&externalACL).Update(&externalACL, &externalACL.SampleNew)
 	require.NoError(t, err)
 	require.NoError(t, client.Transact("seed-external-sample-reference", updateOps))
 	require.Eventually(t, func() bool {
@@ -325,7 +338,8 @@ func seedSampledNetworkPolicyACL(t *testing.T, client *OVNNbClient, config aclsa
 
 type monitorCountingClient struct {
 	client.Client
-	calls int
+	calls   int
+	monitor *client.Monitor
 }
 
 func (c *monitorCountingClient) Monitor(ctx context.Context, monitor *client.Monitor) (client.MonitorCookie, error) {
@@ -333,26 +347,29 @@ func (c *monitorCountingClient) Monitor(ctx context.Context, monitor *client.Mon
 	return c.Client.Monitor(ctx, monitor)
 }
 
-func TestOvnNBMonitorOptionsIncludesSwitchPortGroupAndSampling(t *testing.T) {
-	nbClient := newACLSamplingTestClient(t, "monitor-options")
-	monitor := nbClient.NewMonitor(ovnNBMonitorOptions()...)
-	require.Empty(t, monitor.Errors)
+func (c *monitorCountingClient) NewMonitor(options ...client.MonitorOption) *client.Monitor {
+	c.monitor = c.Client.NewMonitor(options...)
+	return c.monitor
+}
 
-	tables := make([]string, 0, len(monitor.Tables))
-	for _, table := range monitor.Tables {
-		tables = append(tables, table.Table)
+func TestOvnNBMonitorOptionsIncludesSwitchPortGroupAndSampling(t *testing.T) {
+	_, raw := newACLSamplingTestClientWithRaw(t, "monitor-options")
+	counter := &monitorCountingClient{Client: raw}
+	monitor := table.Wrap(counter).NewMonitor(ovnNBMonitorOptions()...)
+	require.Empty(t, monitor.Errors)
+	tables := make([]string, 0, len(counter.monitor.Tables))
+	for _, monitoredTable := range counter.monitor.Tables {
+		tables = append(tables, monitoredTable.Table)
 	}
-	require.Contains(t, tables, ovnnb.LogicalSwitchTable)
-	require.Contains(t, tables, ovnnb.PortGroupTable)
-	require.Contains(t, tables, ovnnb.SampleTable)
-	require.Contains(t, tables, ovnnb.SampleCollectorTable)
-	require.Contains(t, tables, ovnnb.SamplingAppTable)
+	for _, tableName := range []string{ovnnb.LogicalSwitchTable, ovnnb.PortGroupTable, ovnnb.SampleTable, ovnnb.SampleCollectorTable, ovnnb.SamplingAppTable} {
+		require.Contains(t, tables, tableName)
+	}
 }
 
 func TestEnsureACLSamplingMonitorSupportDoesNotStartMonitor(t *testing.T) {
-	nbClient := newACLSamplingTestClient(t, "no-second-monitor")
-	counter := &monitorCountingClient{Client: nbClient.Client}
-	nbClient.Client = counter
+	nbClient, raw := newACLSamplingTestClientWithRaw(t, "no-second-monitor")
+	counter := &monitorCountingClient{Client: raw}
+	nbClient.Database = table.NewDatabase(table.Wrap(counter), nbClient.Timeout, table.RetryPolicy{})
 
 	require.NoError(t, nbClient.ensureACLSamplingMonitorSupport())
 	require.Equal(t, 0, counter.calls)
@@ -363,7 +380,7 @@ func TestEnsureACLSamplingMonitorSupportDoesNotStartMonitor(t *testing.T) {
 }
 
 func TestACLSamplingMonitorPreservesLogicalSwitchAfterReconnect(t *testing.T) {
-	nbClient := newACLSamplingTestClient(t, "reconnect-cache")
+	nbClient, raw := newACLSamplingTestClientWithRaw(t, "reconnect-cache")
 	require.NoError(t, nbClient.CreateBareLogicalSwitch("ovn-default"))
 	require.NoError(t, nbClient.CreatePortGroup("ovn.default.node.1", map[string]string{
 		"node":   "node-1",
@@ -375,7 +392,7 @@ func TestACLSamplingMonitorPreservesLogicalSwitchAfterReconnect(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "ovn-default", ls.Name)
 
-	nbClient.Disconnect()
+	raw.Disconnect()
 	require.Eventually(t, func() bool {
 		ls, err := nbClient.GetLogicalSwitch("ovn-default", true)
 		return err == nil && ls != nil && ls.Name == "ovn-default"
