@@ -408,6 +408,13 @@ func (c *Controller) sharedServiceVIPs(info *SlrInfo, vpcLBNames set.Set[string]
 		if svc.Namespace == info.Namespace && svc.Name == serviceName {
 			continue
 		}
+		// Only another SLR Service can share the load balancer VIP state. A
+		// regular ClusterIP Service may intentionally use the same address,
+		// while its endpoints and health-check VIP belong to a different
+		// lifecycle.
+		if _, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; !ok {
+			continue
+		}
 		ips := getVipIps(svc)
 		if !slices.ContainsFunc(ips, targetIPs.Has) {
 			continue

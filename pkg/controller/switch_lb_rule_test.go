@@ -389,6 +389,52 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 	})
+
+	t.Run("regular service with the same ClusterIP is not shared SLR state", func(t *testing.T) {
+		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
+		_, err := fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Create(context.Background(), &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "regular-service",
+				Namespace: namespace,
+				Annotations: map[string]string{
+					util.VpcAnnotation: vpcName,
+				},
+			},
+			Spec: corev1.ServiceSpec{ClusterIPs: []string{"10.0.0.1"}},
+		}, metav1.CreateOptions{})
+		require.NoError(t, err)
+		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "regular-service",
+				Namespace: namespace,
+				Annotations: map[string]string{
+					util.VpcAnnotation: vpcName,
+				},
+			},
+			Spec: corev1.ServiceSpec{ClusterIPs: []string{"10.0.0.1"}},
+		}))
+
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(
+			[]ovnnb.LoadBalancerHealthCheck{{
+				UUID:        "regular-service-hc",
+				Vip:         vip1,
+				ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: subnetName},
+			}}, nil,
+		)
+		fc.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return(
+			[]ovnnb.LoadBalancer{{Name: tcpLBName, HealthCheck: []string{"regular-service-hc"}}}, nil,
+		)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteHealthCheck(tcpLBName, "regular-service-hc").Return(nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping(tcpLBName, vip1).Return(nil)
+		fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(nil, nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
+
+		err = fc.fakeController.handleDelSwitchLBRule(&SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}})
+		require.NoError(t, err)
+		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{})
+		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted", subnetName)
+	})
 }
 
 // Exercise deletion with a second, live SLR Service advertising the same address.
