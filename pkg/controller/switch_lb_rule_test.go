@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -363,7 +364,12 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		svcName := generateSvcName(slrName)
 		svc, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
 		require.NoError(t, err)
+		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(context.Background(), svcName, metav1.DeleteOptions{}))
 		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Delete(svc))
+		require.Eventually(t, func() bool {
+			_, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
+			return k8serrors.IsNotFound(err)
+		}, time.Second, 10*time.Millisecond)
 
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
 		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
