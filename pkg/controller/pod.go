@@ -994,9 +994,11 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			!subnet.Spec.LogicalGateway {
 			// remove lsp from other port groups
 			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
-				klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
-				return err
+			if len(subnetPortGroups) != 0 {
+				if err := c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
+					klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
+					return err
+				}
 			}
 			// add lsp to the port group
 			if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
@@ -1008,9 +1010,11 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
 			// remove lsp from other port groups
 			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, nodePortGroups...); err != nil {
-				klog.Errorf("failed to remove port %s from port groups %v: %v", portName, nodePortGroups, err)
-				return err
+			if len(nodePortGroups) != 0 {
+				if err := c.OVNNbClient.RemovePortFromPortGroups(portName, nodePortGroups...); err != nil {
+					klog.Errorf("failed to remove port %s from port groups %v: %v", portName, nodePortGroups, err)
+					return err
+				}
 			}
 			// add lsp to the port group
 			if err = c.OVNNbClient.PortGroupAddPorts(nodePortGroup, portName); err != nil {
@@ -1087,9 +1091,11 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 
 							// remove lsp from other port groups
 							// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-							if err = c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
-								klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
-								return err
+							if len(subnetPortGroups) != 0 {
+								if err := c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
+									klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
+									return err
+								}
 							}
 							if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
 								klog.Errorf("failed to add port %s to port group %s: %v", portName, pgName, err)
