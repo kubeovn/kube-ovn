@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -494,10 +495,11 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		// Simulate a racing service-delete event that removed the backing service
 		// from both the informer cache and the API before the SLR delete worker ran.
 		svcName := generateSvcName(slrName)
-		svc, err := fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Get(context.Background(), svcName, metav1.GetOptions{})
-		require.NoError(t, err)
-		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Delete(svc))
-		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(context.Background(), svcName, metav1.DeleteOptions{}))
+		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(t.Context(), svcName, metav1.DeleteOptions{}))
+		require.Eventually(t, func() bool {
+			_, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
+			return k8serrors.IsNotFound(err)
+		}, time.Second, 10*time.Millisecond)
 
 		// With no LBHC matching info.Vips and the service gone, the handler must
 		// still clean up the VIP via the subnet recorded on info.Subnet.
@@ -511,7 +513,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 			Subnet:    subnetName,
 			Vips:      []string{vip1},
 		}
-		err = fc.fakeController.handleDelSwitchLBRule(info)
+		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
 		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{})
@@ -522,10 +524,11 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
 
 		svcName := generateSvcName(slrName)
-		svc, err := fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Get(context.Background(), svcName, metav1.GetOptions{})
-		require.NoError(t, err)
-		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Delete(svc))
-		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(context.Background(), svcName, metav1.DeleteOptions{}))
+		require.NoError(t, fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Delete(t.Context(), svcName, metav1.DeleteOptions{}))
+		require.Eventually(t, func() bool {
+			_, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
+			return k8serrors.IsNotFound(err)
+		}, time.Second, 10*time.Millisecond)
 
 		// Matching LBHC is referenced by a DIFFERENT VPC's LB; without info.VPC the
 		// handler would fall back to unscoped deletion and remove a health check
@@ -561,7 +564,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 			VPC:       vpcName,
 			Vips:      []string{vip1},
 		}
-		err = fc.fakeController.handleDelSwitchLBRule(info)
+		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
 
 		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnetName, metav1.GetOptions{})
