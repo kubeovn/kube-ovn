@@ -393,23 +393,19 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 	t.Run("regular service with the same ClusterIP is not shared SLR state", func(t *testing.T) {
 		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
 		_, err := fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Create(context.Background(), &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "regular-service",
-				Namespace: namespace,
-				Annotations: map[string]string{
-					util.VpcAnnotation: vpcName,
-				},
+			Name:      "regular-service",
+			Namespace: namespace,
+			Annotations: map[string]string{
+				util.VpcAnnotation: vpcName,
 			},
 			Spec: corev1.ServiceSpec{ClusterIPs: []string{"10.0.0.1"}},
 		}, metav1.CreateOptions{})
 		require.NoError(t, err)
 		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(&corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "regular-service",
-				Namespace: namespace,
-				Annotations: map[string]string{
-					util.VpcAnnotation: vpcName,
-				},
+			Name:      "regular-service",
+			Namespace: namespace,
+			Annotations: map[string]string{
+				util.VpcAnnotation: vpcName,
 			},
 			Spec: corev1.ServiceSpec{ClusterIPs: []string{"10.0.0.1"}},
 		}))
