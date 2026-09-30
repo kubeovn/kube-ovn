@@ -17,29 +17,41 @@ import (
 
 // CreateLogicalRouter create logical router in ovn
 func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
-	exist, err := c.LogicalRouterExists(lrName)
-	if err != nil {
-		klog.Error(err)
-		return err
+	if lrName == "" {
+		return errors.New("empty logical router name")
 	}
 
-	// found, ignore
-	if exist {
+	// Fast path: return early if any row with this name already exists.
+	// Unlike LogicalRouterExists, this tolerates pre-existing duplicates.
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	var existing []ovnnb.LogicalRouter
+	if err := c.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
+		return lr.Name == lrName
+	}).List(ctx, &existing); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("check existence of logical router %s: %w", lrName, err)
+	}
+	if len(existing) > 0 {
 		return nil
 	}
 
+	// Slow path: atomic Wait + Insert to prevent concurrent duplicate creation.
 	lr := &ovnnb.LogicalRouter{
 		Name:        lrName,
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.Create(lr)
+	createOps, err := c.Create(lr)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical router %s: %w", lrName, err)
 	}
 
-	if err := c.Transact("lr-add", op); err != nil {
+	waitOp := ConstructWaitForNameNotExistsOperation(lrName, "Logical_Router")
+	ops := append([]ovsdb.Operation{waitOp}, createOps...)
+
+	if _, err := c.TransactConditional("lr-add", ops); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("create logical router %s: %w", lrName, err)
 	}
