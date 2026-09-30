@@ -380,6 +380,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 				util.SwitchLBRuleVipsAnnotation: "10.0.0.1",
 				util.VpcAnnotation:              "test-vpc",
 			},
+			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
 		}
 		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(other))
 
@@ -388,6 +389,39 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		info := &SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}}
 		err := fc.fakeController.handleDelSwitchLBRule(info)
 		require.NoError(t, err)
+	})
+
+	t.Run("service sharing only the frontend IP does not preserve the health check", func(t *testing.T) {
+		fc := setupHandleDelSLRTest(t, vpcName, subnetName, slrName, namespace, tcpLBName)
+		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(&corev1.Service{
+			Name: "other-service", Namespace: namespace,
+			Annotations: map[string]string{
+				util.SwitchLBRuleVipsAnnotation: "10.0.0.1",
+				util.VpcAnnotation:              vpcName,
+			},
+			Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8092}}},
+		}))
+
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(
+			[]ovnnb.LoadBalancerHealthCheck{{
+				UUID:        "owner-hc",
+				Vip:         vip1,
+				ExternalIDs: map[string]string{util.SwitchLBRuleSubnet: subnetName},
+			}}, nil,
+		)
+		fc.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return(
+			[]ovnnb.LoadBalancer{{Name: tcpLBName, HealthCheck: []string{"owner-hc"}}}, nil,
+		)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteHealthCheck(tcpLBName, "owner-hc").Return(nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteIPPortMapping(tcpLBName, vip1).Return(nil)
+		fc.mockOvnClient.EXPECT().DeleteLoadBalancerHealthChecks(gomock.Any()).Return(nil)
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(nil, nil)
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(tcpLBName, vip1, true).Return(nil)
+
+		err := fc.fakeController.handleDelSwitchLBRule(&SlrInfo{Name: slrName, Namespace: namespace, Vips: []string{vip1}})
+		require.NoError(t, err)
+		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), subnetName, metav1.GetOptions{})
+		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted", subnetName)
 	})
 
 	t.Run("regular service with the same ClusterIP is not shared SLR state", func(t *testing.T) {
@@ -456,6 +490,7 @@ func Test_handleDelSwitchLBRuleVPCIsolation(t *testing.T) {
 				require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(&corev1.Service{
 					Name: "slr-live", Namespace: "other-namespace",
 					Annotations: annotations,
+					Spec:        corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
 				}))
 				healthChecks := []ovnnb.LoadBalancerHealthCheck{{
 					UUID: "owner-hc", Vip: "10.0.0.1:8080",

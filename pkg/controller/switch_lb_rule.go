@@ -299,7 +299,7 @@ func (c *Controller) cleanupSwitchLBRuleHealthChecks(info *SlrInfo, subnetForVip
 	vips := make(map[string]struct{})
 	lbhcUUIDsToDelete := set.New[string]()
 	for _, lbhc := range lbhcs {
-		if sharedVIPs.Has(parseVipAddr(lbhc.Vip)) {
+		if sharedVIPs.Has(lbhc.Vip) {
 			continue
 		}
 		lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
@@ -356,7 +356,7 @@ func (c *Controller) cleanupSwitchLBRuleVIPs(info *SlrInfo, vpcLBNames set.Set[s
 	hasSharedVIP := false
 	for lbName := range vpcLBNames {
 		for _, vip := range info.Vips {
-			if sharedVIPs.Has(parseVipAddr(vip)) {
+			if sharedVIPs.Has(vip) {
 				hasSharedVIP = true
 				continue
 			}
@@ -366,11 +366,8 @@ func (c *Controller) cleanupSwitchLBRuleVIPs(info *SlrInfo, vpcLBNames set.Set[s
 			}
 		}
 	}
-	for _, vip := range info.Vips {
-		if sharedVIPs.Has(parseVipAddr(vip)) {
-			hasSharedVIP = true
-			break
-		}
+	if slices.ContainsFunc(info.Vips, sharedVIPs.Has) {
+		hasSharedVIP = true
 	}
 	if hasSharedVIP {
 		return nil
@@ -399,13 +396,15 @@ func (c *Controller) sharedServiceVIPs(info *SlrInfo, vpcLBNames set.Set[string]
 	}
 
 	sharedVIPs := set.New[string]()
-	targetIPs := set.New[string]()
-	for _, vip := range info.Vips {
-		targetIPs.Insert(parseVipAddr(vip))
-	}
+	targetVIPs := set.New(info.Vips...)
 	serviceName := generateSvcName(info.Name)
 	for _, svc := range services {
 		if svc.Namespace == info.Namespace && svc.Name == serviceName {
+			continue
+		}
+		// A terminating SLR Service no longer owns live load balancer state.
+		// Ignoring it lets concurrent SLR deletions complete their cleanup.
+		if svc.DeletionTimestamp != nil {
 			continue
 		}
 		// Only another SLR Service can share the load balancer VIP state. A
@@ -415,8 +414,13 @@ func (c *Controller) sharedServiceVIPs(info *SlrInfo, vpcLBNames set.Set[string]
 		if _, ok := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; !ok {
 			continue
 		}
-		ips := getVipIps(svc)
-		if !slices.ContainsFunc(ips, targetIPs.Has) {
+		sharedEndpoints := set.New[string]()
+		for _, ip := range getVipIps(svc) {
+			for _, port := range svc.Spec.Ports {
+				sharedEndpoints.Insert(util.JoinHostPort(ip, port.Port))
+			}
+		}
+		if !slices.ContainsFunc(info.Vips, sharedEndpoints.Has) {
 			continue
 		}
 		// Identical addresses in different VPCs do not share load balancer state.
@@ -439,8 +443,10 @@ func (c *Controller) sharedServiceVIPs(info *SlrInfo, vpcLBNames set.Set[string]
 				continue
 			}
 		}
-		for _, ip := range ips {
-			sharedVIPs.Insert(ip)
+		for vip := range sharedEndpoints {
+			if targetVIPs.Has(vip) {
+				sharedVIPs.Insert(vip)
+			}
 		}
 	}
 	return sharedVIPs, nil
