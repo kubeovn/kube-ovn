@@ -498,6 +498,7 @@ jobs:
           dist/images/Dockerfile.base
           dist/images/OpenBFDD-compile.patch
           dist/images/patches/
+          dist/images/tests/
           dist/images/go-deps/download-go-deps.sh
           dist/images/go-deps/rebuild-go-deps.sh
           EOF
@@ -538,6 +539,15 @@ jobs:
         run: |
             make base-amd64
             make base-tar-amd64
+
+      - name: Test OVN router ARP and ND
+        if: steps.check.outputs.build-base == 1 && hashFiles('dist/images/tests/ovn-router-arp-nd.py') != ''
+        run: |
+          docker run --rm --network=none --read-only --tmpfs /tmp \
+            --mount "type=bind,source=$PWD/dist/images/tests/ovn-router-arp-nd.py,target=/ovn-router-arp-nd.py,readonly" \
+            --entrypoint python3 \
+            "kubeovn/kube-ovn-base:$(cat VERSION)-amd64" \
+            -B /ovn-router-arp-nd.py
 
       - name: Upload base images to artifact
         if: steps.check.outputs.build-base == 1
