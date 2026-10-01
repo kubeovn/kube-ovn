@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -1888,4 +1890,50 @@ func testLoadBalancerDisableHealthCheck(t *testing.T, nbClient *OVNNbClient, met
 	lb, err = nbClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
 	require.Len(t, lb.HealthCheck, 2)
+}
+
+type recordingOVSDBClient struct {
+	client.Client
+	transactions [][]ovsdb.Operation
+}
+
+func (c *recordingOVSDBClient) Transact(ctx context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	c.transactions = append(c.transactions, slices.Clone(operations))
+	return c.Client.Transact(ctx, operations...)
+}
+
+func TestLoadBalancerAddHealthCheckDisableIsAtomic(t *testing.T) {
+	dbModel, err := ovnnb.FullDatabaseModel()
+	require.NoError(t, err)
+	_, socket := newOVSDBServer(t, fmt.Sprintf("disable-hc-atomic-%d", time.Now().UnixNano()), dbModel, ovnnb.Schema())
+	nbClient, err := newOvnNbClient(t, "unix:"+socket, 10)
+	require.NoError(t, err)
+	t.Cleanup(nbClient.Close)
+
+	const (
+		lbName  = "disable-hc-atomic"
+		vip     = "10.96.0.30:80"
+		backend = "10.0.0.2:8080"
+	)
+	oldMapping := map[string]string{"10.0.0.2": "old-backend.default"}
+	newMapping := map[string]string{"10.0.0.2": "new-backend.default"}
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.LoadBalancerAddVip(lbName, vip, backend))
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, false, oldMapping, nil))
+
+	recorder := &recordingOVSDBClient{Client: nbClient.Client}
+	nbClient.Client = recorder
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, true, newMapping, nil))
+	require.Len(t, recorder.transactions, 1, "disabling a health check should use one transaction")
+	var hasMappingMutation, hasHealthCheckDelete bool
+	for _, op := range recorder.transactions[0] {
+		if op.Op == ovsdb.OperationMutate && op.Table == ovnnb.LoadBalancerTable {
+			hasMappingMutation = true
+		}
+		if op.Op == ovsdb.OperationDelete && op.Table == ovnnb.LoadBalancerHealthCheckTable {
+			hasHealthCheckDelete = true
+		}
+	}
+	require.True(t, hasMappingMutation, "the transaction should update IP port mappings")
+	require.True(t, hasHealthCheckDelete, "the transaction should delete the health check row")
 }

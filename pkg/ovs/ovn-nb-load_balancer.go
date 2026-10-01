@@ -1293,12 +1293,25 @@ func (c *OVNNbClient) LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(lbName
 // LoadBalancerAddHealthCheck adds health check
 func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error {
 	klog.Infof("lb %s health check use ip port mapping %v", lbName, ipPortMapping)
+	if ignoreHealthCheck {
+		ops, err := c.loadBalancerDisableHealthCheckOps(lbName, vipEndpoint, ipPortMapping)
+		if err != nil {
+			klog.Errorf("failed to generate operations for disabling lb health check: %v", err)
+			return err
+		}
+		if len(ops) == 0 {
+			return nil
+		}
+		if err := c.Transact("lb-hc-disable", ops); err != nil {
+			klog.Errorf("failed to disable lb health check: %v", err)
+			return err
+		}
+		return nil
+	}
+
 	if err := c.LoadBalancerUpdateIPPortMapping(lbName, vipEndpoint, ipPortMapping); err != nil {
 		klog.Errorf("failed to update lb ip port mapping: %v", err)
 		return err
-	}
-	if ignoreHealthCheck {
-		return c.DeleteLoadBalancerHealthCheck(lbName, vipEndpoint)
 	}
 	klog.Infof("add health check for lb %s with vip %s and health check vip maps %v", lbName, vipEndpoint, ipPortMapping)
 	if err := c.AddLoadBalancerHealthCheck(lbName, vipEndpoint, externals); err != nil {
@@ -1306,6 +1319,18 @@ func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ign
 		return err
 	}
 	return nil
+}
+
+func (c *OVNNbClient) loadBalancerDisableHealthCheckOps(lbName, vipEndpoint string, ipPortMapping map[string]string) ([]ovsdb.Operation, error) {
+	mappingOps, err := c.loadBalancerUpdateIPPortMappingOps(lbName, vipEndpoint, ipPortMapping)
+	if err != nil {
+		return nil, err
+	}
+	healthCheckOps, err := c.DeleteLoadBalancerHealthCheckOp(lbName, vipEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("generate operations for deleting health check for vip %s: %w", vipEndpoint, err)
+	}
+	return append(mappingOps, healthCheckOps...), nil
 }
 
 // LoadBalancerDeleteHealthCheck delete load balancer health check
