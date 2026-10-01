@@ -671,6 +671,7 @@ func (c *OVNNbClient) reconcileChassisTemplateVariablesOps(chassis, prefix strin
 // becoming active before its chassis-specific variables are available.
 func (c *OVNNbClient) ReconcileTemplateVIPAndChassisVariables(migrations []TemplateVIPMigration, staleVIPs []TemplateVIPDeletion, variables []ChassisTemplateVariableReconciliation) error {
 	var ops []ovsdb.Operation
+	deletedVIPs := make(map[string][]string)
 	for _, migration := range migrations {
 		migrationOps, err := c.loadBalancerMigrateVIPOps(
 			migration.LoadBalancer,
@@ -684,6 +685,14 @@ func (c *OVNNbClient) ReconcileTemplateVIPAndChassisVariables(migrations []Templ
 			return fmt.Errorf("generate template VIP migration for %s: %w", migration.LoadBalancer, err)
 		}
 		ops = append(ops, migrationOps...)
+		if migration.OldVIP != migration.VIP {
+			deletedVIPs[migration.LoadBalancer] = append(deletedVIPs[migration.LoadBalancer], migration.OldVIP)
+		}
+		for _, oldLB := range migration.OldLoadBalancers {
+			if oldLB != "" && oldLB != migration.LoadBalancer {
+				deletedVIPs[oldLB] = append(deletedVIPs[oldLB], migration.OldVIP)
+			}
+		}
 	}
 	for _, deletion := range staleVIPs {
 		deletionOps, err := c.loadBalancerDeleteVIPOps(deletion.LoadBalancer, deletion.VIP, true)
@@ -691,6 +700,14 @@ func (c *OVNNbClient) ReconcileTemplateVIPAndChassisVariables(migrations []Templ
 			return fmt.Errorf("generate stale template VIP deletion for %s: %w", deletion.LoadBalancer, err)
 		}
 		ops = append(ops, deletionOps...)
+		deletedVIPs[deletion.LoadBalancer] = append(deletedVIPs[deletion.LoadBalancer], deletion.VIP)
+	}
+	for lbName, vips := range deletedVIPs {
+		mappingOps, err := c.loadBalancerDeleteUnusedVIPMappingsOps(lbName, vips)
+		if err != nil {
+			return err
+		}
+		ops = append(ops, mappingOps...)
 	}
 	for _, reconciliation := range variables {
 		variableOps, err := c.reconcileChassisTemplateVariablesOps(reconciliation.Chassis, reconciliation.Prefix, reconciliation.Variables)
@@ -706,6 +723,43 @@ func (c *OVNNbClient) ReconcileTemplateVIPAndChassisVariables(migrations []Templ
 		return fmt.Errorf("reconcile template VIPs and chassis variables: %w", err)
 	}
 	return nil
+}
+
+// loadBalancerDeleteUnusedVIPMappingsOps accounts for all VIPs removed in a
+// transaction. Per-VIP deletion alone retains mappings shared by deleted VIPs
+// because each operation is generated from the same pre-transaction state.
+func (c *OVNNbClient) loadBalancerDeleteUnusedVIPMappingsOps(lbName string, deletedVIPs []string) ([]ovsdb.Operation, error) {
+	lb, err := c.GetLoadBalancer(lbName, true)
+	if err != nil {
+		return nil, err
+	}
+	if lb == nil || len(lb.IPPortMappings) == 0 {
+		return nil, nil
+	}
+	remaining := *lb
+	remaining.Vips = maps.Clone(lb.Vips)
+	backendIPs := make(map[string]bool)
+	for _, vip := range deletedVIPs {
+		ips, err := c.extractBackendIPsFromVIP(lb, vip)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(backendIPs, ips)
+		delete(remaining.Vips, vip)
+	}
+	unused := c.findUnusedBackendIPs(&remaining, "", backendIPs)
+	if len(unused) == 0 {
+		return nil, nil
+	}
+	ops, err := c.ovsDbClient.Where(lb).Mutate(lb, model.Mutation{
+		Field:   &lb.IPPortMappings,
+		Value:   unused,
+		Mutator: ovsdb.MutateOperationDelete,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("generate unused backend mapping deletion for load balancer %s: %w", lbName, err)
+	}
+	return ops, nil
 }
 
 // DeleteChassisTemplateVariables removes matching variable keys without affecting other owners.

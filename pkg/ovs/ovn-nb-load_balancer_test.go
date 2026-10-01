@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -589,52 +591,145 @@ func (suite *OvnClientTestSuite) testReconcileTemplateVIPAndChassisVariables() {
 	t := suite.T()
 	t.Parallel()
 
-	const (
-		oldLBName = "test-template-vip-vars-old"
-		newLBName = "test-template-vip-vars-new"
-		oldVIP    = "10.96.0.30:80"
-		newVIP    = "^service_vip:80"
-		prefix    = "kube_ovn_template_vars_"
-	)
 	nbClient := suite.ovnNBClient
-	require.NoError(t, nbClient.CreateLoadBalancer(oldLBName, "tcp"))
-	require.NoError(t, nbClient.CreateLoadBalancer(newLBName, "tcp"))
-	require.NoError(t, nbClient.LoadBalancerAddVip(oldLBName, oldVIP, "10.0.0.2:8080"))
-
-	require.NoError(t, nbClient.ReconcileTemplateVIPAndChassisVariables(
-		[]TemplateVIPMigration{{
-			LoadBalancer:     newLBName,
-			VIP:              newVIP,
-			Backends:         []string{"^service_backends"},
-			OldVIP:           oldVIP,
-			OldLoadBalancers: []string{oldLBName},
-		}},
-		nil,
-		[]ChassisTemplateVariableReconciliation{{
-			Chassis:   "chassis-a",
-			Prefix:    prefix,
-			Variables: map[string]string{prefix + "vip": "10.96.0.30", prefix + "backends": "10.0.0.2:8080"},
-		}},
-	))
-
-	oldLB, err := nbClient.GetLoadBalancer(oldLBName, false)
+	fixture := newTemplateVIPTransactionFixture(t, nbClient)
+	beforeOld, err := nbClient.GetLoadBalancer(fixture.oldLB, false)
 	require.NoError(t, err)
-	require.NotContains(t, oldLB.Vips, oldVIP)
-	newLB, err := nbClient.GetLoadBalancer(newLBName, false)
+	beforeNew, err := nbClient.GetLoadBalancer(fixture.newLB, false)
 	require.NoError(t, err)
-	require.Equal(t, "^service_backends", newLB.Vips[newVIP])
+	beforeVariables := templateVIPVariables(t, nbClient, fixture.variables[0].Chassis)
+	interceptor := &templateVIPTransactionClient{Client: nbClient.Client, fail: true}
+	transactionClient := &OVNNbClient{Client: interceptor, Timeout: nbClient.Timeout}
 
-	var rows []ovnnb.ChassisTemplateVar
+	err = transactionClient.ReconcileTemplateVIPAndChassisVariables(fixture.migrations, fixture.staleVIPs, fixture.variables)
+	require.ErrorContains(t, err, "timed out")
+	require.Len(t, interceptor.transactions, 1)
+	requireTemplateVIPTransaction(t, interceptor.transactions[0])
+	oldLB, err := nbClient.GetLoadBalancer(fixture.oldLB, false)
+	require.NoError(t, err)
+	require.Equal(t, beforeOld, oldLB)
+	newLB, err := nbClient.GetLoadBalancer(fixture.newLB, false)
+	require.NoError(t, err)
+	require.Equal(t, beforeNew, newLB)
+	require.Equal(t, beforeVariables, templateVIPVariables(t, nbClient, fixture.variables[0].Chassis))
+	require.Empty(t, templateVIPVariables(t, nbClient, fixture.variables[1].Chassis))
+
+	interceptor.fail = false
+	require.NoError(t, transactionClient.ReconcileTemplateVIPAndChassisVariables(fixture.migrations, fixture.staleVIPs, fixture.variables))
+	require.Len(t, interceptor.transactions, 2)
+	requireTemplateVIPTransaction(t, interceptor.transactions[1])
 	require.Eventually(t, func() bool {
-		rows = nil
-		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
-			return item.Chassis == "chassis-a"
-		}).List(t.Context(), &rows)
-		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
-			prefix + "vip":      "10.96.0.30",
-			prefix + "backends": "10.0.0.2:8080",
-		})
+		oldLB, err = nbClient.GetLoadBalancer(fixture.oldLB, false)
+		if err != nil || len(oldLB.Vips) != 1 || len(oldLB.HealthCheck) != 0 {
+			return false
+		}
+		newLB, err = nbClient.GetLoadBalancer(fixture.newLB, false)
+		return err == nil && maps.Equal(newLB.Vips, fixture.desiredVIPs)
 	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, map[string]string{"10.96.0.31:90": "10.0.0.3:9090"}, oldLB.Vips)
+	require.Equal(t, map[string]string{"10.0.0.3": "retained-port:10.0.0.254"}, oldLB.IPPortMappings)
+	for _, migration := range fixture.migrations {
+		require.NotContains(t, oldLB.ExternalIDs, localExternalVIPKeyPrefix+migration.OldVIP)
+	}
+	for index, reconciliation := range fixture.variables {
+		expected := maps.Clone(reconciliation.Variables)
+		if index == 0 {
+			expected["other_keep"] = "value"
+		}
+		require.Eventually(t, func() bool {
+			rows := templateVIPVariables(t, nbClient, reconciliation.Chassis)
+			return len(rows) == 1 && maps.Equal(rows[0].Variables, expected)
+		}, time.Second, 10*time.Millisecond)
+	}
+}
+
+type templateVIPTransactionFixture struct {
+	oldLB, newLB string
+	migrations   []TemplateVIPMigration
+	staleVIPs    []TemplateVIPDeletion
+	variables    []ChassisTemplateVariableReconciliation
+	desiredVIPs  map[string]string
+}
+
+func newTemplateVIPTransactionFixture(t *testing.T, nbClient *OVNNbClient) templateVIPTransactionFixture {
+	t.Helper()
+	const prefix = "kube_ovn_template_atomic_"
+	fixture := templateVIPTransactionFixture{
+		oldLB: "test-template-atomic-old", newLB: "test-template-atomic-new",
+		desiredVIPs: make(map[string]string),
+	}
+	require.NoError(t, nbClient.CreateLoadBalancer(fixture.oldLB, "tcp"))
+	require.NoError(t, nbClient.CreateLoadBalancer(fixture.newLB, "tcp"))
+	oldLB, err := nbClient.GetLoadBalancer(fixture.oldLB, false)
+	require.NoError(t, err)
+	oldLB.Vips = map[string]string{"10.96.0.31:90": "10.0.0.3:9090"}
+	oldLB.IPPortMappings = map[string]string{"10.0.0.2": "removed-port:10.0.0.254", "10.0.0.3": "retained-port:10.0.0.254"}
+	variables := make(map[string]string)
+	for _, port := range []string{"80", "81"} {
+		vip := "10.96.0.30:" + port
+		vipVariable, backendVariable := prefix+"vip_"+port, prefix+"backends_"+port
+		oldLB.Vips[vip] = "10.0.0.2:8080,10.0.0.3:8080"
+		oldLB.ExternalIDs[localExternalVIPKeyPrefix+vip] = "old-node-port"
+		fixture.migrations = append(fixture.migrations, TemplateVIPMigration{
+			LoadBalancer: fixture.newLB, VIP: "^" + vipVariable + ":" + port,
+			Backends: []string{"^" + backendVariable}, OldVIP: vip, OldLoadBalancers: []string{fixture.oldLB},
+		})
+		fixture.desiredVIPs["^"+vipVariable+":"+port] = "^" + backendVariable
+		variables[vipVariable], variables[backendVariable] = "10.96.0.30", "10.0.0.2:8080,10.0.0.3:8080"
+	}
+	require.NoError(t, nbClient.UpdateLoadBalancer(oldLB, &oldLB.Vips, &oldLB.IPPortMappings, &oldLB.ExternalIDs))
+	for _, migration := range fixture.migrations {
+		require.NoError(t, nbClient.AddLoadBalancerHealthCheck(fixture.oldLB, migration.OldVIP, nil))
+	}
+	staleVIP := "^" + prefix + "stale:82"
+	require.NoError(t, nbClient.LoadBalancerAddVip(fixture.newLB, staleVIP, "^"+prefix+"stale_backends"))
+	fixture.staleVIPs = []TemplateVIPDeletion{{LoadBalancer: fixture.newLB, VIP: staleVIP}}
+	for _, chassis := range []string{"test-template-atomic-existing", "test-template-atomic-new"} {
+		fixture.variables = append(fixture.variables, ChassisTemplateVariableReconciliation{Chassis: chassis, Prefix: prefix, Variables: variables})
+	}
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(fixture.variables[0].Chassis, "", map[string]string{
+		prefix + "vip_80": "10.96.0.99", prefix + "stale": "old", "other_keep": "value",
+	}))
+	return fixture
+}
+
+type templateVIPTransactionClient struct {
+	client.Client
+	fail         bool
+	transactions [][]ovsdb.Operation
+}
+
+func (c *templateVIPTransactionClient) Transact(ctx context.Context, ops ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	c.transactions = append(c.transactions, slices.Clone(ops))
+	if c.fail {
+		// A final unsatisfied wait rejects the transaction after all writes.
+		ops = append(slices.Clone(ops), ovsdb.Operation{
+			Op: ovsdb.OperationWait, Table: ovnnb.ChassisTemplateVarTable,
+			Timeout: new(0), Until: "==", Columns: []string{"chassis"},
+			Where: []ovsdb.Condition{ovsdb.NewCondition("chassis", ovsdb.ConditionEqual, "test-template-atomic-missing")},
+			Rows:  []ovsdb.Row{{"chassis": "test-template-atomic-missing"}},
+		})
+	}
+	return c.Client.Transact(ctx, ops...)
+}
+
+func requireTemplateVIPTransaction(t *testing.T, ops []ovsdb.Operation) {
+	t.Helper()
+	var tables []string
+	for _, op := range ops {
+		tables = append(tables, op.Table)
+	}
+	require.Contains(t, tables, ovnnb.LoadBalancerTable)
+	require.Contains(t, tables, ovnnb.ChassisTemplateVarTable)
+}
+
+func templateVIPVariables(t *testing.T, nbClient *OVNNbClient, chassis string) []ovnnb.ChassisTemplateVar {
+	t.Helper()
+	var rows []ovnnb.ChassisTemplateVar
+	require.NoError(t, nbClient.WhereCache(func(row *ovnnb.ChassisTemplateVar) bool {
+		return row.Chassis == chassis
+	}).List(t.Context(), &rows))
+	return rows
 }
 
 func (suite *OvnClientTestSuite) testDeleteChassisTemplateVariables() {
