@@ -933,7 +933,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -1977,7 +1977,7 @@ jobs:
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -2657,7 +2657,7 @@ jobs:
       - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
