@@ -79,29 +79,41 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 
 // CreateBareLogicalSwitch create logical switch with basic configuration
 func (c *OVNNbClient) CreateBareLogicalSwitch(lsName string) error {
-	exist, err := c.LogicalSwitchExists(lsName)
-	if err != nil {
-		klog.Error(err)
-		return err
+	if lsName == "" {
+		return errors.New("empty logical switch name")
 	}
 
-	// ignore
-	if exist {
+	// Fast path: return early if any row with this name already exists.
+	// Unlike LogicalSwitchExists, this tolerates pre-existing duplicates.
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	var existing []ovnnb.LogicalSwitch
+	if err := c.WhereCache(func(ls *ovnnb.LogicalSwitch) bool {
+		return ls.Name == lsName
+	}).List(ctx, &existing); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("check existence of logical switch %s: %w", lsName, err)
+	}
+	if len(existing) > 0 {
 		return nil
 	}
 
+	// Slow path: atomic Wait + Insert to prevent concurrent duplicate creation.
 	ls := &ovnnb.LogicalSwitch{
 		Name:        lsName,
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
-	op, err := c.Create(ls)
+	createOps, err := c.Create(ls)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for creating logical switch %s: %w", lsName, err)
 	}
 
-	if err := c.Transact("ls-add", op); err != nil {
+	waitOp := ConstructWaitForNameNotExistsOperation(lsName, "Logical_Switch")
+	ops := append([]ovsdb.Operation{waitOp}, createOps...)
+
+	if _, err := c.TransactConditional("ls-add", ops); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("create logical switch %s: %w", lsName, err)
 	}

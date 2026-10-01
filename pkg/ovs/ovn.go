@@ -260,6 +260,21 @@ func ConstructWaitForNameNotExistsOperation(name, table string) ovsdb.Operation 
 	return ConstructWaitForUniqueOperation(table, "name", name)
 }
 
+// ConstructWaitForUniqueOperation builds a Wait that blocks when any row with
+// the given column value exists.  The condition uses Until:"!=" with
+// Rows:[{column:value}], so it passes immediately when zero rows match (good
+// for insert) and times out when one or more matches are found.
+//
+// Production OVSDB servers project the matched rows onto the specified columns
+// and deduplicate, so any positive number of same-name rows compares equal to
+// the single-element Rows and the Wait correctly times out.
+//
+// NOTE: The libovsdb in-memory test server does not deduplicate projected rows
+// the same way.  When two or more duplicate rows exist in the test server the
+// result set has multiple elements, which differs from the single-element Rows
+// and causes the Wait to pass.  Callers use a cache-level existence check
+// before the transaction so that pre-existing rows (including duplicates) are
+// handled without reaching the Wait.
 func ConstructWaitForUniqueOperation(table, column string, value any) ovsdb.Operation {
 	timeout := OVSDBWaitTimeout
 	return ovsdb.Operation{
@@ -274,9 +289,34 @@ func ConstructWaitForUniqueOperation(table, column string, value any) ovsdb.Oper
 }
 
 func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) error {
+	_, _, err := c.transact(method, operations)
+	return err
+}
+
+// TransactConditional executes a transaction that may include a Wait operation
+// for conditional insert. It returns (true, nil) on success, (false, nil) when
+// a Wait condition fails (indicating the row already exists), and (false, err)
+// on real errors.
+func (c *ovsDbClient) TransactConditional(method string, operations []ovsdb.Operation) (bool, error) {
+	created, opErrs, err := c.transact(method, operations)
+	if err != nil {
+		for _, opErr := range opErrs {
+			if _, ok := errors.AsType[*ovsdb.TimedOut](opErr); ok {
+				klog.V(5).Infof("wait condition not met in %s transaction (row already exists), treating as idempotent success", method)
+				return false, nil
+			}
+		}
+		return false, err
+	}
+	return created, nil
+}
+
+// transact is the shared transaction implementation. It returns (true, nil, nil)
+// on success, or (false, operationErrors, err) on failure.
+func (c *ovsDbClient) transact(method string, operations []ovsdb.Operation) (bool, []ovsdb.OperationError, error) {
 	if len(operations) == 0 {
 		klog.V(6).Info("operations should not be empty")
-		return nil
+		return true, nil, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
@@ -302,20 +342,20 @@ func (c *ovsDbClient) Transact(method string, operations []ovsdb.Operation) erro
 	if err != nil {
 		code = "1"
 		klog.Errorf("error occurred in transact with %s operations: %+v in %vms", dbType, operations, elapsed)
-		return err
+		return false, nil, err
 	}
 
 	if elapsed > 500 {
 		klog.Warningf("%s operations took too long: %+v in %vms", dbType, operations, elapsed)
 	}
 
-	errors, err := ovsdb.CheckOperationResults(results, operations)
+	opErrs, err := ovsdb.CheckOperationResults(results, operations)
 	if err != nil {
-		klog.Errorf("error occurred in transact with operations %+v with operation errors %+v: %v", operations, errors, err)
-		return err
+		klog.Errorf("error occurred in transact with operations %+v with operation errors %+v: %v", operations, opErrs, err)
+		return false, opErrs, err
 	}
 
-	return nil
+	return true, nil, nil
 }
 
 // GetEntityInfo get entity info by column which is the index,
