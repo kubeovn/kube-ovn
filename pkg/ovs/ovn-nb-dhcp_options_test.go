@@ -111,6 +111,91 @@ func (suite *OvnClientTestSuite) testUpdateDHCPOptions() {
 	})
 }
 
+func (suite *OvnClientTestSuite) testDisableSubnetDHCPPreservesPortOptions() {
+	for _, tc := range []struct {
+		name, protocol, cidr, gateway, v4Options, v6Options string
+	}{
+		{"IPv4", kubeovnv1.ProtocolIPv4, "10.244.0.0/16", "10.244.0.1", "dns_server=192.0.2.53", ""},
+		{"IPv6", kubeovnv1.ProtocolIPv6, "fc00::af4:0/112", "fc00::af4:1", "", "dns_server=2001:db8::53"},
+		{"Dual", kubeovnv1.ProtocolDual, "10.244.0.0/16,fc00::af4:0/112", "10.244.0.1,fc00::af4:1", "dns_server=192.0.2.53", "dns_server=2001:db8::53"},
+		{"Dual-v4-only", kubeovnv1.ProtocolDual, "10.244.0.0/16,fc00::af4:0/112", "10.244.0.1,fc00::af4:1", "dns_server=192.0.2.53", ""},
+		{"Dual-v6-only", kubeovnv1.ProtocolDual, "10.244.0.0/16,fc00::af4:0/112", "10.244.0.1,fc00::af4:1", "", "dns_server=2001:db8::53"},
+	} {
+		for _, enabled := range []bool{false, true} {
+			suite.T().Run(fmt.Sprintf("%s/initially-enabled-%t", tc.name, enabled), func(t *testing.T) {
+				subnet := mockSubnet(fmt.Sprintf("preserve-port-dhcp-%s-%t", tc.name, enabled), enabled)
+				subnet.Spec.Protocol = tc.protocol
+				subnet.Spec.CIDRBlock = tc.cidr
+				subnet.Spec.Gateway = tc.gateway
+				checkDisabledSubnetDHCP(t, suite.ovnNBClient, subnet, tc.v4Options, tc.v6Options)
+			})
+		}
+	}
+}
+
+func checkDisabledSubnetDHCP(t *testing.T, nbClient *OVNNbClient, subnet *kubeovnv1.Subnet, v4Options, v6Options string) {
+	t.Helper()
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(subnet.Name))
+	subnetDHCP, err := nbClient.UpdateDHCPOptions(subnet, 1500)
+	require.NoError(t, err)
+
+	portName := subnet.Name + "-port"
+	require.NoError(t, nbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, "", ""))
+	_, hasPerPort, err := nbClient.ReconcilePortDHCPOptions(
+		subnet.Name, portName, subnetDHCP, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, v4Options, v6Options, 1500,
+	)
+	require.NoError(t, err)
+	require.True(t, hasPerPort)
+	portBefore, err := nbClient.GetLogicalSwitchPort(portName, false)
+	require.NoError(t, err)
+	rowsBefore, err := nbClient.ListDHCPOptions(true, map[string]string{PortKey: portName})
+	require.NoError(t, err)
+	require.NotEmpty(t, rowsBefore)
+	if v4Options != "" {
+		require.NotNil(t, portBefore.Dhcpv4Options)
+	}
+	if v6Options != "" {
+		require.NotNil(t, portBefore.Dhcpv6Options)
+	}
+
+	subnet.Spec.EnableDHCP = false
+	for range 2 {
+		uuids, err := nbClient.UpdateDHCPOptions(subnet, 1500)
+		require.NoError(t, err)
+		require.Equal(t, &DHCPOptionsUUIDs{}, uuids)
+		rows, err := nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: subnet.Name})
+		require.NoError(t, err)
+		// Only the original per-port rows, including their server identity and options, remain.
+		require.ElementsMatch(t, rowsBefore, rows)
+		port, err := nbClient.GetLogicalSwitchPort(portName, false)
+		require.NoError(t, err)
+		if v4Options != "" {
+			require.Equal(t, portBefore.Dhcpv4Options, port.Dhcpv4Options)
+		}
+		if v6Options != "" {
+			require.Equal(t, portBefore.Dhcpv6Options, port.Dhcpv6Options)
+		}
+	}
+
+	// Port deletion must still remove its root-table DHCP rows.
+	require.NoError(t, nbClient.DeleteLogicalSwitchPort(portName))
+	rows, err := nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: subnet.Name})
+	require.NoError(t, err)
+	require.Empty(t, rows)
+
+	// Switch teardown must remove both subnet-level and per-port rows.
+	subnet.Spec.EnableDHCP = true
+	_, err = nbClient.UpdateDHCPOptions(subnet, 1500)
+	require.NoError(t, err)
+	_, err = nbClient.UpdateDHCPOptionsForPort(subnet.Name, portName, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, v4Options, v6Options, 1500)
+	require.NoError(t, err)
+	require.NoError(t, nbClient.DeleteDHCPOptions(subnet.Name, kubeovnv1.ProtocolDual))
+	rows, err = nbClient.ListDHCPOptions(true, map[string]string{LogicalSwitchKey: subnet.Name})
+	require.NoError(t, err)
+	require.Empty(t, rows)
+	require.NoError(t, nbClient.DeleteLogicalSwitch(subnet.Name))
+}
+
 func (suite *OvnClientTestSuite) testUpdateDHCPv4Options() {
 	t := suite.T()
 	t.Parallel()
