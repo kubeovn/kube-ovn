@@ -991,6 +991,38 @@ func TestDeleteServiceScopedLBExternalTraffic(t *testing.T) {
 	}
 }
 
+func TestDeleteServiceScopedLBExternalTrafficDeletesFamilyScopedLBs(t *testing.T) {
+	fake := newFakeController(t)
+	svc := &corev1.Service{
+		Namespace: "default", Name: "web", UID: types.UID("uid-delete-family-scoped"),
+		Spec: corev1.ServiceSpec{
+			Type:       corev1.ServiceTypeLoadBalancer,
+			ClusterIPs: []string{"10.96.0.10", "fd00::10"},
+			Ports:      []corev1.ServicePort{{Protocol: corev1.ProtocolTCP}},
+		},
+	}
+	base := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+	ipv4 := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv4")
+	ipv6 := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv6")
+	internal := serviceScopedLBName(svc, corev1.ProtocolTCP)
+	ownerIDs := serviceScopedLBExternalIDs(svc, util.DefaultVpc, serviceLBExternalTraffic)
+	fake.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
+		for _, name := range []string{base, ipv4, ipv6} {
+			if !filter(&ovnnb.LoadBalancer{Name: name, ExternalIDs: ownerIDs}) {
+				t.Fatalf("external load balancer %q should be deleted", name)
+			}
+		}
+		if filter(&ovnnb.LoadBalancer{Name: internal, ExternalIDs: ownerIDs}) {
+			t.Fatalf("internal load balancer %q should be preserved", internal)
+		}
+		return nil
+	}).Return(nil)
+
+	if err := fake.fakeController.deleteServiceScopedLBExternalTraffic(svc); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDeleteStaleServiceScopedLoadBalancers(t *testing.T) {
 	fake := newFakeController(t)
 	svc := &corev1.Service{
