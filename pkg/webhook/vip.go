@@ -42,16 +42,38 @@ func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Reques
 	}
 
 	if !reflect.DeepEqual(vipNew.Spec, vipOld.Spec) {
-		if vipOld.Status.Mac == "" {
+		switch {
+		case vipOld.Status.Mac == "":
 			if err := v.ValidateVip(ctx, &vipNew); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
-		} else {
+		case v.isLegacySwitchLBVipMacRepair(req, &vipOld, &vipNew):
+			// allow: the controller is renewing the mac of a switch_lb_rule vip created
+			// before the own-mac fix, whose mac was forced to the subnet gateway mac
+		default:
 			err := errors.New("vip has been assigned, does not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 	return ctrlwebhook.Allowed("bypass")
+}
+
+// isLegacySwitchLBVipMacRepair reports whether req is the kube-ovn controller performing
+// the one-time repair of a switch_lb_rule vip whose mac was forced to the subnet gateway
+// mac by a historical bug (see handleAddVirtualIP/needsSwitchLBRuleMacRepair). It only
+// admits requests authenticated as the controller's own service account, and only when
+// MacAddress is the sole spec field being changed, so the normal immutability contract
+// still applies to every other caller and every other field.
+func (v *ValidatingHook) isLegacySwitchLBVipMacRepair(req admission.Request, vipOld, vipNew *ovnv1.Vip) bool {
+	if v.controllerUserName == "" || req.UserInfo.Username != v.controllerUserName {
+		return false
+	}
+	if vipOld.Spec.Type != util.SwitchLBRuleVip || vipNew.Spec.Type != util.SwitchLBRuleVip {
+		return false
+	}
+	specWithRenewedMac := vipOld.Spec.DeepCopy()
+	specWithRenewedMac.MacAddress = vipNew.Spec.MacAddress
+	return reflect.DeepEqual(*specWithRenewedMac, vipNew.Spec)
 }
 
 func (v *ValidatingHook) ValidateVip(ctx context.Context, vip *ovnv1.Vip) error {
