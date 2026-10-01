@@ -607,6 +607,10 @@ func (suite *OvnClientTestSuite) Test_ReconcileChassisTemplateVariables() {
 	suite.testReconcileChassisTemplateVariables()
 }
 
+func (suite *OvnClientTestSuite) Test_ReconcileTemplateVIPAndChassisVariables() {
+	suite.testReconcileTemplateVIPAndChassisVariables()
+}
+
 func (suite *OvnClientTestSuite) Test_DeleteChassisTemplateVariables() {
 	suite.testDeleteChassisTemplateVariables()
 }

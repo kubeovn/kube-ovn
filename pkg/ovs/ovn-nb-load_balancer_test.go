@@ -585,6 +585,58 @@ func (suite *OvnClientTestSuite) testReconcileChassisTemplateVariables() {
 	}, time.Second, 10*time.Millisecond)
 }
 
+func (suite *OvnClientTestSuite) testReconcileTemplateVIPAndChassisVariables() {
+	t := suite.T()
+	t.Parallel()
+
+	const (
+		oldLBName = "test-template-vip-vars-old"
+		newLBName = "test-template-vip-vars-new"
+		oldVIP    = "10.96.0.30:80"
+		newVIP    = "^service_vip:80"
+		prefix    = "kube_ovn_template_vars_"
+	)
+	nbClient := suite.ovnNBClient
+	require.NoError(t, nbClient.CreateLoadBalancer(oldLBName, "tcp"))
+	require.NoError(t, nbClient.CreateLoadBalancer(newLBName, "tcp"))
+	require.NoError(t, nbClient.LoadBalancerAddVip(oldLBName, oldVIP, "10.0.0.2:8080"))
+
+	require.NoError(t, nbClient.ReconcileTemplateVIPAndChassisVariables(
+		[]TemplateVIPMigration{{
+			LoadBalancer:     newLBName,
+			VIP:              newVIP,
+			Backends:         []string{"^service_backends"},
+			OldVIP:           oldVIP,
+			OldLoadBalancers: []string{oldLBName},
+		}},
+		nil,
+		[]ChassisTemplateVariableReconciliation{{
+			Chassis:   "chassis-a",
+			Prefix:    prefix,
+			Variables: map[string]string{prefix + "vip": "10.96.0.30", prefix + "backends": "10.0.0.2:8080"},
+		}},
+	))
+
+	oldLB, err := nbClient.GetLoadBalancer(oldLBName, false)
+	require.NoError(t, err)
+	require.NotContains(t, oldLB.Vips, oldVIP)
+	newLB, err := nbClient.GetLoadBalancer(newLBName, false)
+	require.NoError(t, err)
+	require.Equal(t, "^service_backends", newLB.Vips[newVIP])
+
+	var rows []ovnnb.ChassisTemplateVar
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == "chassis-a"
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
+			prefix + "vip":      "10.96.0.30",
+			prefix + "backends": "10.0.0.2:8080",
+		})
+	}, time.Second, 10*time.Millisecond)
+}
+
 func (suite *OvnClientTestSuite) testDeleteChassisTemplateVariables() {
 	t := suite.T()
 	t.Parallel()
