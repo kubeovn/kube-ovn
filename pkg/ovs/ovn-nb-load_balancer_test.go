@@ -1811,3 +1811,81 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateHealthCheckOp() {
 		require.Nil(t, ops)
 	})
 }
+
+func TestLoadBalancerDisableHealthCheck(t *testing.T) {
+	for _, method := range []string{"reconcile", "add"} {
+		for _, vip := range []string{"10.96.0.30:80", "[fd00::30]:80"} {
+			t.Run(method+"/"+vip, func(t *testing.T) {
+				dbModel, err := ovnnb.FullDatabaseModel()
+				require.NoError(t, err)
+				_, socket := newOVSDBServer(t, fmt.Sprintf("disable-hc-%d", time.Now().UnixNano()), dbModel, ovnnb.Schema())
+				nbClient, err := newOvnNbClient(t, "unix:"+socket, 10)
+				require.NoError(t, err)
+				t.Cleanup(nbClient.Close)
+				testLoadBalancerDisableHealthCheck(t, nbClient, method, vip)
+			})
+		}
+	}
+}
+
+func testLoadBalancerDisableHealthCheck(t *testing.T, nbClient *OVNNbClient, method, vip string) {
+	t.Helper()
+	const (
+		lbName      = "disable-hc"
+		otherLBName = "keep-hc"
+		backend     = "10.0.0.2:8080"
+		otherVIP    = "10.96.0.31:80"
+	)
+	mapping := map[string]string{"10.0.0.2": "backend.default:10.0.0.254"}
+	for _, name := range []string{lbName, otherLBName} {
+		require.NoError(t, nbClient.CreateLoadBalancer(name, "tcp"))
+		require.NoError(t, nbClient.LoadBalancerAddVip(name, vip, backend))
+		require.NoError(t, nbClient.LoadBalancerAddHealthCheck(name, vip, false, mapping, nil))
+	}
+	require.NoError(t, nbClient.LoadBalancerAddVip(lbName, otherVIP, backend))
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, otherVIP, false, mapping, nil))
+	_, oldHC, err := nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	require.NoError(t, err)
+	_, otherHC, err := nbClient.GetLoadBalancerHealthCheck(lbName, otherVIP, false)
+	require.NoError(t, err)
+	_, otherLBHC, err := nbClient.GetLoadBalancerHealthCheck(otherLBName, vip, false)
+	require.NoError(t, err)
+
+	reconcile := func(ignoreHealthCheck bool) {
+		t.Helper()
+		if method == "add" {
+			require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, ignoreHealthCheck, mapping, nil))
+		} else {
+			require.NoError(t, nbClient.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
+				lbName, vip, []string{backend}, vip, nil, nil, mapping, ignoreHealthCheck, nil,
+			))
+		}
+	}
+	for range 2 {
+		reconcile(true)
+		lb, hc, err := nbClient.GetLoadBalancerHealthCheck(lbName, vip, true)
+		require.NoError(t, err)
+		require.Nil(t, hc, "disabling health checks must remove the existing VIP health check")
+		require.Equal(t, []string{otherHC.UUID}, lb.HealthCheck)
+		require.Equal(t, backend, lb.Vips[vip])
+		require.Equal(t, backend, lb.Vips[otherVIP])
+		require.Equal(t, mapping, lb.IPPortMappings)
+		healthChecks, err := nbClient.ListLoadBalancerHealthChecks(func(hc *ovnnb.LoadBalancerHealthCheck) bool {
+			return hc.UUID == oldHC.UUID
+		})
+		require.NoError(t, err)
+		require.Empty(t, healthChecks, "the stale health check row must also be deleted")
+		_, hc, err = nbClient.GetLoadBalancerHealthCheck(otherLBName, vip, false)
+		require.NoError(t, err)
+		require.Equal(t, otherLBHC.UUID, hc.UUID)
+	}
+	reconcile(false)
+	lb, hc, err := nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	require.NoError(t, err)
+	require.NotEqual(t, oldHC.UUID, hc.UUID)
+	require.Len(t, lb.HealthCheck, 2)
+	reconcile(false)
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Len(t, lb.HealthCheck, 2)
+}

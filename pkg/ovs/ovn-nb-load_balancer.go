@@ -1257,7 +1257,13 @@ func (c *OVNNbClient) LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(lbName
 		return err
 	}
 	ops = append(ops, mappingOps...)
-	if !ignoreHealthCheck {
+	if ignoreHealthCheck {
+		healthCheckOps, err := c.DeleteLoadBalancerHealthCheckOp(lbName, vip)
+		if err != nil {
+			return fmt.Errorf("generate operations for deleting health check for vip %s: %w", vip, err)
+		}
+		ops = append(ops, healthCheckOps...)
+	} else {
 		lbhc, err := c.newLoadBalancerHealthCheck(lbName, vip, externals)
 		if err != nil {
 			return err
@@ -1291,12 +1297,13 @@ func (c *OVNNbClient) LoadBalancerAddHealthCheck(lbName, vipEndpoint string, ign
 		klog.Errorf("failed to update lb ip port mapping: %v", err)
 		return err
 	}
-	if !ignoreHealthCheck {
-		klog.Infof("add health check for lb %s with vip %s and health check vip maps %v", lbName, vipEndpoint, ipPortMapping)
-		if err := c.AddLoadBalancerHealthCheck(lbName, vipEndpoint, externals); err != nil {
-			klog.Errorf("failed to create lb health check: %v", err)
-			return err
-		}
+	if ignoreHealthCheck {
+		return c.DeleteLoadBalancerHealthCheck(lbName, vipEndpoint)
+	}
+	klog.Infof("add health check for lb %s with vip %s and health check vip maps %v", lbName, vipEndpoint, ipPortMapping)
+	if err := c.AddLoadBalancerHealthCheck(lbName, vipEndpoint, externals); err != nil {
+		klog.Errorf("failed to create lb health check: %v", err)
+		return err
 	}
 	return nil
 }
