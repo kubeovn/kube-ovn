@@ -1027,6 +1027,10 @@ func (suite *OvnClientTestSuite) Test_UpdateDHCPOptions() {
 	suite.testUpdateDHCPOptions()
 }
 
+func (suite *OvnClientTestSuite) Test_DisableSubnetDHCPPreservesPortOptions() {
+	suite.testDisableSubnetDHCPPreservesPortOptions()
+}
+
 func (suite *OvnClientTestSuite) Test_updateDHCPv4Options() {
 	suite.testUpdateDHCPv4Options()
 }
