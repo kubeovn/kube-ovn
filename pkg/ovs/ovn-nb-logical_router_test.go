@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
@@ -56,9 +57,9 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
 		require.NoError(t, err)
 	})
 
-	t.Run("test create logical router with more than one existing logical router", func(t *testing.T) {
+	t.Run("test create logical router is idempotent with pre-existing entry", func(t *testing.T) {
 		t.Parallel()
-		name := "test-create-lr-more-than-one"
+		name := "test-create-lr-preexisting"
 
 		lr := &ovnnb.LogicalRouter{
 			Name:        name,
@@ -67,11 +68,109 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
 
 		err := createLogicalRouter(nbClient, lr)
 		require.NoError(t, err)
+
+		err = nbClient.CreateLogicalRouter(name)
+		require.NoError(t, err)
+	})
+
+	t.Run("test create logical router with empty name", func(t *testing.T) {
+		t.Parallel()
+		err := nbClient.CreateLogicalRouter("")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "empty logical router name")
+	})
+}
+
+func (suite *OvnClientTestSuite) testCreateLogicalRouterDuplicateGuard() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	t.Run("does not add to pre-existing duplicates", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lr-duplicates"
+
+		lr := &ovnnb.LogicalRouter{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
+		}
+		err := createLogicalRouter(nbClient, lr)
+		require.NoError(t, err)
 		err = createLogicalRouter(nbClient, lr)
 		require.NoError(t, err)
 
 		err = nbClient.CreateLogicalRouter(name)
-		require.ErrorContains(t, err, fmt.Sprintf("more than one logical router with same name %q", name))
+		require.NoError(t, err)
+
+		lrs, err := nbClient.ListLogicalRouter(false, func(r *ovnnb.LogicalRouter) bool {
+			return r.Name == name
+		})
+		require.NoError(t, err)
+		require.Len(t, lrs, 2)
+	})
+
+	t.Run("concurrent creates produce exactly one logical router", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lr-concurrent"
+
+		const goroutines = 10
+		errs := make([]error, goroutines)
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
+		for i := range goroutines {
+			go func() {
+				defer wg.Done()
+				errs[i] = nbClient.CreateLogicalRouter(name)
+			}()
+		}
+		wg.Wait()
+
+		for i, err := range errs {
+			require.NoError(t, err, "goroutine %d returned error", i)
+		}
+
+		lrs, err := nbClient.ListLogicalRouter(false, func(r *ovnnb.LogicalRouter) bool {
+			return r.Name == name
+		})
+		require.NoError(t, err)
+		require.Len(t, lrs, 1)
+	})
+
+	t.Run("wait blocks insert when row already exists", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lr-wait-block"
+
+		// Insert a row directly, bypassing the cache pre-check
+		lr := &ovnnb.LogicalRouter{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
+		}
+		err := createLogicalRouter(nbClient, lr)
+		require.NoError(t, err)
+
+		// Build a Wait+Insert transaction and execute it directly via
+		// TransactConditional, bypassing the cache pre-check entirely
+		lr2 := &ovnnb.LogicalRouter{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+		}
+		createOps, err := nbClient.Create(lr2)
+		require.NoError(t, err)
+
+		waitOp := ConstructWaitForNameNotExistsOperation(name, "Logical_Router")
+		ops := append([]ovsdb.Operation{waitOp}, createOps...)
+
+		created, err := nbClient.TransactConditional("lr-add", ops)
+		require.NoError(t, err)
+		require.False(t, created, "expected Wait to block insert for existing row")
+
+		// Still exactly one row
+		lrs, err := nbClient.ListLogicalRouter(false, func(r *ovnnb.LogicalRouter) bool {
+			return r.Name == name
+		})
+		require.NoError(t, err)
+		require.Len(t, lrs, 1)
 	})
 }
 

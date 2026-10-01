@@ -192,6 +192,10 @@ func (suite *OvnClientTestSuite) Test_CreateBareLogicalSwitch() {
 	suite.testCreateBareLogicalSwitch()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateBareLogicalSwitchDuplicateGuard() {
+	suite.testCreateBareLogicalSwitchDuplicateGuard()
+}
+
 func (suite *OvnClientTestSuite) Test_LogicalSwitchUpdateOtherConfig() {
 	suite.testLogicalSwitchUpdateOtherConfig()
 }
@@ -328,6 +332,10 @@ func (suite *OvnClientTestSuite) Test_testCleanLogicalSwitchPortMigrateOptions()
 /* logical_router unit test */
 func (suite *OvnClientTestSuite) Test_CreateLogicalRouter() {
 	suite.testCreateLogicalRouter()
+}
+
+func (suite *OvnClientTestSuite) Test_CreateLogicalRouterDuplicateGuard() {
+	suite.testCreateLogicalRouterDuplicateGuard()
 }
 
 func (suite *OvnClientTestSuite) Test_UpdateLogicalRouter() {
