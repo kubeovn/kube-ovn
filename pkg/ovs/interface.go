@@ -158,6 +158,7 @@ type LoadBalancer interface {
 	SetLoadBalancerTemplate(lbName string, template bool) error
 	SetLoadBalancerAddressFamily(lbName, family string) error
 	SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error
+	ReconcileTemplateVIPAndChassisVariables(migrations []TemplateVIPMigration, staleVIPs []TemplateVIPDeletion, variables []ChassisTemplateVariableReconciliation) error
 	ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error
 	DeleteChassisTemplateVariables(filter func(name string) bool) error
 	SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error

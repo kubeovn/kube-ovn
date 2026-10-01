@@ -732,14 +732,6 @@ func TestReconcileServiceTrafficDistribution(t *testing.T) {
 	staleVIP := "^" + prefix + "stale_vip:81"
 
 	fake.mockOvnSbClient.EXPECT().ListChassis().Return(&chassises, nil)
-	fake.mockOvnClient.EXPECT().LoadBalancerMigrateVIP(
-		lbName,
-		templateVIP,
-		[]string{"^" + backendVariable},
-		"10.96.0.10:80",
-		serviceScopedLBName(svc, corev1.ProtocolTCP),
-		lbName,
-	).Return(nil)
 	fake.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{
 		Name:        lbName,
 		ExternalIDs: map[string]string{serviceLBOwnerExternalID: string(svc.UID)},
@@ -748,19 +740,21 @@ func TestReconcileServiceTrafficDistribution(t *testing.T) {
 			staleVIP:    "^old_backends",
 		},
 	}}, nil)
-	fake.mockOvnClient.EXPECT().LoadBalancerDeleteVip(lbName, staleVIP, true).Return(nil)
-	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-a", prefix, gomock.Eq(map[string]string{
-		vipVariable:     "10.96.0.10",
-		backendVariable: "10.0.0.2:8080",
-	})).Return(nil)
-	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-x", prefix, gomock.Eq(map[string]string{
-		vipVariable:     "10.96.0.10",
-		backendVariable: "10.0.0.2:8080,10.0.0.3:8080",
-	})).Return(nil)
-	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-y", prefix, gomock.Eq(map[string]string{
-		vipVariable:     "10.96.0.10",
-		backendVariable: "10.0.0.2:8080,10.0.0.3:8080,10.0.0.4:8080",
-	})).Return(nil)
+	fake.mockOvnClient.EXPECT().ReconcileTemplateVIPAndChassisVariables(
+		[]ovs.TemplateVIPMigration{{
+			LoadBalancer:     lbName,
+			VIP:              templateVIP,
+			Backends:         []string{"^" + backendVariable},
+			OldVIP:           "10.96.0.10:80",
+			OldLoadBalancers: []string{serviceScopedLBName(svc, corev1.ProtocolTCP), lbName},
+		}},
+		[]ovs.TemplateVIPDeletion{{LoadBalancer: lbName, VIP: staleVIP}},
+		[]ovs.ChassisTemplateVariableReconciliation{
+			{Chassis: "chassis-a", Prefix: prefix, Variables: map[string]string{vipVariable: "10.96.0.10", backendVariable: "10.0.0.2:8080"}},
+			{Chassis: "chassis-x", Prefix: prefix, Variables: map[string]string{vipVariable: "10.96.0.10", backendVariable: "10.0.0.2:8080,10.0.0.3:8080"}},
+			{Chassis: "chassis-y", Prefix: prefix, Variables: map[string]string{vipVariable: "10.96.0.10", backendVariable: "10.0.0.2:8080,10.0.0.3:8080,10.0.0.4:8080"}},
+		},
+	).Return(nil)
 
 	if err := fake.fakeController.reconcileServiceTrafficDistribution(
 		svc,
@@ -1491,14 +1485,6 @@ func TestReconcileServiceExternalLocalTemplate(t *testing.T) {
 	staleVIP := "^" + prefix + "stale_vip:81"
 
 	fake.mockOvnSbClient.EXPECT().ListChassis().Return(&chassises, nil)
-	fake.mockOvnClient.EXPECT().LoadBalancerMigrateVIP(
-		lbName,
-		templateVIP,
-		[]string{"^" + backendVariable},
-		"172.19.0.100:80",
-		serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic),
-		lbName,
-	).Return(nil)
 	fake.mockOvnClient.EXPECT().ListLoadBalancers(gomock.Any()).Return([]ovnnb.LoadBalancer{{
 		Name:        lbName,
 		ExternalIDs: map[string]string{serviceLBOwnerExternalID: string(svc.UID)},
@@ -1507,12 +1493,20 @@ func TestReconcileServiceExternalLocalTemplate(t *testing.T) {
 			staleVIP:    "^old_backends",
 		},
 	}}, nil)
-	fake.mockOvnClient.EXPECT().LoadBalancerDeleteVip(lbName, staleVIP, true).Return(nil)
-	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-a", prefix, gomock.Eq(map[string]string{
-		vipVariable:     "172.19.0.100",
-		backendVariable: "10.0.0.2:8080",
-	})).Return(nil)
-	fake.mockOvnClient.EXPECT().ReconcileChassisTemplateVariables("chassis-x", prefix, gomock.Eq(map[string]string{})).Return(nil)
+	fake.mockOvnClient.EXPECT().ReconcileTemplateVIPAndChassisVariables(
+		[]ovs.TemplateVIPMigration{{
+			LoadBalancer:     lbName,
+			VIP:              templateVIP,
+			Backends:         []string{"^" + backendVariable},
+			OldVIP:           "172.19.0.100:80",
+			OldLoadBalancers: []string{serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic), lbName},
+		}},
+		[]ovs.TemplateVIPDeletion{{LoadBalancer: lbName, VIP: staleVIP}},
+		[]ovs.ChassisTemplateVariableReconciliation{
+			{Chassis: "chassis-a", Prefix: prefix, Variables: map[string]string{vipVariable: "172.19.0.100", backendVariable: "10.0.0.2:8080"}},
+			{Chassis: "chassis-x", Prefix: prefix, Variables: map[string]string{}},
+		},
+	).Return(nil)
 
 	if err := fake.fakeController.reconcileServiceExternalLocalTemplate(&endpointSliceReconcileContext{
 		service:        svc,

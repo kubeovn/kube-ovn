@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strconv"
@@ -1359,6 +1360,7 @@ func (c *Controller) reconcileServiceExternalLocalTemplate(reconcileCtx *endpoin
 	prefix := serviceExternalLocalTemplatePrefix(svc)
 	variablesByChassis := make(map[string]map[string]string, len(*chassises))
 	desiredTemplateVIPs := make(map[string]map[string]string)
+	var migrations []ovs.TemplateVIPMigration
 	for _, chassis := range *chassises {
 		variablesByChassis[chassis.Name] = make(map[string]string)
 	}
@@ -1380,9 +1382,13 @@ func (c *Controller) reconcileServiceExternalLocalTemplate(reconcileCtx *endpoin
 			vipVariable, backendVariable := base+"_vip", base+"_backends"
 			templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.Port))
 			candidates := c.serviceLBMigrationCandidates(svc, port.Protocol, reconcileCtx.vpc, serviceLBExternalTraffic)
-			if err := c.OVNNbClient.LoadBalancerMigrateVIP(lbName, templateVIP, []string{"^" + backendVariable}, vip, candidates...); err != nil {
-				return fmt.Errorf("set external local template for service %s/%s: %w", svc.Namespace, svc.Name, err)
-			}
+			migrations = append(migrations, ovs.TemplateVIPMigration{
+				LoadBalancer:     lbName,
+				VIP:              templateVIP,
+				Backends:         []string{"^" + backendVariable},
+				OldVIP:           vip,
+				OldLoadBalancers: candidates,
+			})
 			if desiredTemplateVIPs[lbName] == nil {
 				desiredTemplateVIPs[lbName] = make(map[string]string)
 			}
@@ -1401,30 +1407,8 @@ func (c *Controller) reconcileServiceExternalLocalTemplate(reconcileCtx *endpoin
 		}
 	}
 
-	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
-	})
-	if err != nil {
-		return fmt.Errorf("list load balancers for service %s/%s external local template: %w", svc.Namespace, svc.Name, err)
-	}
-	for _, lb := range lbs {
-		desired := desiredTemplateVIPs[lb.Name]
-		for templateVIP := range lb.Vips {
-			if !strings.HasPrefix(templateVIP, "^"+prefix) {
-				continue
-			}
-			if _, ok := desired[templateVIP]; ok {
-				continue
-			}
-			if err := c.OVNNbClient.LoadBalancerDeleteVip(lb.Name, templateVIP, true); err != nil {
-				return fmt.Errorf("delete stale external local template VIP %s from load balancer %s: %w", templateVIP, lb.Name, err)
-			}
-		}
-	}
-	for chassis, variables := range variablesByChassis {
-		if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables); err != nil {
-			return err
-		}
+	if err := c.reconcileServiceTemplateState(svc, prefix, migrations, desiredTemplateVIPs, variablesByChassis); err != nil {
+		return fmt.Errorf("reconcile external local template for service %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
 	return nil
 }
@@ -1470,6 +1454,7 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 	prefix := serviceTrafficDistributionVariablePrefix(svc)
 	variablesByChassis := make(map[string]map[string]string, len(*chassises))
 	desiredTemplateVIPs := make(map[string]map[string]string)
+	var migrations []ovs.TemplateVIPMigration
 	for _, chassis := range *chassises {
 		variablesByChassis[chassis.Name] = make(map[string]string)
 	}
@@ -1490,9 +1475,13 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 				vipVariable, backendVariable := base+"_vip", base+"_backends"
 				templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.Port))
 				candidates := c.serviceLBMigrationCandidates(svc, port.Protocol, vpc, serviceLBInternalTraffic)
-				if err := c.OVNNbClient.LoadBalancerMigrateVIP(lbName, templateVIP, []string{"^" + backendVariable}, vip, candidates...); err != nil {
-					return fmt.Errorf("set traffic distribution template for service %s/%s: %w", svc.Namespace, svc.Name, err)
-				}
+				migrations = append(migrations, ovs.TemplateVIPMigration{
+					LoadBalancer:     lbName,
+					VIP:              templateVIP,
+					Backends:         []string{"^" + backendVariable},
+					OldVIP:           vip,
+					OldLoadBalancers: candidates,
+				})
 				if desiredTemplateVIPs[lbName] == nil {
 					desiredTemplateVIPs[lbName] = make(map[string]string)
 				}
@@ -1514,12 +1503,20 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 			}
 		}
 	}
+	if err := c.reconcileServiceTemplateState(svc, prefix, migrations, desiredTemplateVIPs, variablesByChassis); err != nil {
+		return fmt.Errorf("reconcile traffic distribution for service %s/%s: %w", svc.Namespace, svc.Name, err)
+	}
+	return nil
+}
+
+func (c *Controller) reconcileServiceTemplateState(svc *v1.Service, prefix string, migrations []ovs.TemplateVIPMigration, desiredTemplateVIPs, variablesByChassis map[string]map[string]string) error {
 	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
 		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
 	})
 	if err != nil {
-		return fmt.Errorf("list traffic distribution load balancers for service %s/%s: %w", svc.Namespace, svc.Name, err)
+		return fmt.Errorf("list template load balancers: %w", err)
 	}
+	var staleVIPs []ovs.TemplateVIPDeletion
 	for _, lb := range lbs {
 		desired := desiredTemplateVIPs[lb.Name]
 		for templateVIP := range lb.Vips {
@@ -1529,17 +1526,18 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 			if _, ok := desired[templateVIP]; ok {
 				continue
 			}
-			if err := c.OVNNbClient.LoadBalancerDeleteVip(lb.Name, templateVIP, true); err != nil {
-				return fmt.Errorf("delete stale traffic distribution VIP %s from load balancer %s: %w", templateVIP, lb.Name, err)
-			}
+			staleVIPs = append(staleVIPs, ovs.TemplateVIPDeletion{LoadBalancer: lb.Name, VIP: templateVIP})
 		}
 	}
-	for chassis, variables := range variablesByChassis {
-		if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables); err != nil {
-			return err
-		}
+	variables := make([]ovs.ChassisTemplateVariableReconciliation, 0, len(variablesByChassis))
+	for _, chassis := range slices.Sorted(maps.Keys(variablesByChassis)) {
+		variables = append(variables, ovs.ChassisTemplateVariableReconciliation{
+			Chassis:   chassis,
+			Prefix:    prefix,
+			Variables: variablesByChassis[chassis],
+		})
 	}
-	return nil
+	return c.OVNNbClient.ReconcileTemplateVIPAndChassisVariables(migrations, staleVIPs, variables)
 }
 
 // endpointReady returns whether an endpoint can receive traffic
