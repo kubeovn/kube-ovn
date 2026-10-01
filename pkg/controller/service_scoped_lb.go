@@ -712,7 +712,7 @@ func (c *Controller) deleteServiceScopedLBTrafficClass(svc *v1.Service, protocol
 	}
 	name := serviceScopedLBNameForTrafficClass(svc, protocol, trafficClass)
 	if err := c.OVNNbClient.DeleteLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.Name == name && owner.ownsLoadBalancer(lb)
+		return owner.ownsLoadBalancer(lb) && (lb.Name == name || strings.HasPrefix(lb.Name, name+":"))
 	}); err != nil {
 		return fmt.Errorf("delete %s service-scoped load balancer for %s/%s: %w", trafficClass, svc.Namespace, svc.Name, err)
 	}
