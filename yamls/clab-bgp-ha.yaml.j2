@@ -27,6 +27,10 @@ topology:
       - ip link delete eth0
       - ip address add 10.0.1.1/24 dev net1
       - ip address add 10.0.2.1/24 dev net2
+      - >-
+         sh -ec 'for daemon in bgpd staticd; do
+         install -o frr -g frr -m 640 /dev/null "/etc/frr/${daemon}.conf";
+         done'
       - touch /etc/frr/vtysh.conf
       - sed -i -e 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
       - /usr/lib/frr/frrinit.sh start
@@ -56,6 +60,10 @@ topology:
          -c 'end'
          -c 'write memory'
       - >-
+         sh -ec 'test -s /etc/frr/bgpd.conf &&
+         grep -q "^router bgp " /etc/frr/bgpd.conf ||
+         { echo "FRR bgpd configuration was not persisted" >&2; exit 1; }'
+      - >-
          sh -ec 'for i in $(seq 1 30); do
          if vtysh -c "show bgp summary json" 2>/dev/null | grep -q routerId; then
          exit 0;
@@ -74,6 +82,10 @@ topology:
       - ip link delete eth0
       - ip address add 10.0.1.2/24 dev net1
       - ip address add 10.0.2.2/24 dev net2
+      - >-
+         sh -ec 'for daemon in bgpd staticd; do
+         install -o frr -g frr -m 640 /dev/null "/etc/frr/${daemon}.conf";
+         done'
       - touch /etc/frr/vtysh.conf
       - sed -i -e 's/bgpd=no/bgpd=yes/g' /etc/frr/daemons
       - /usr/lib/frr/frrinit.sh start
@@ -102,6 +114,10 @@ topology:
          -c '  exit-address-family'
          -c 'end'
          -c 'write memory'
+      - >-
+         sh -ec 'test -s /etc/frr/bgpd.conf &&
+         grep -q "^router bgp " /etc/frr/bgpd.conf ||
+         { echo "FRR bgpd configuration was not persisted" >&2; exit 1; }'
       - >-
          sh -ec 'for i in $(seq 1 30); do
          if vtysh -c "show bgp summary json" 2>/dev/null | grep -q routerId; then
