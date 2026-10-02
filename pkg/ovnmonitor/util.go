@@ -42,7 +42,7 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result["ovsdb-server-southbound"] = parseDbStatus(output)
 
 	// get ovn-northd status
-	if output, err = ovs.Appctl("ovn-northd", "status"); err != nil {
+	if output, err = ovs.Appctl(ovs.OvnNorthd, "status"); err != nil {
 		klog.Errorf("get ovn-northd status failed, err %v", err)
 		result["ovn-northd"] = 0
 	} else if len(strings.Split(output, ":")) != 2 {

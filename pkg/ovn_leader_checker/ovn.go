@@ -39,7 +39,6 @@ import (
 
 const (
 	OvnNorthdServiceName           = "ovn-northd"
-	OvnNorthdPid                   = "/var/run/ovn/ovn-northd.pid"
 	DefaultProbeInterval           = 5
 	MaxFailCount                   = 3
 	maxDuplicateLeaderObservations = 3
@@ -263,7 +262,7 @@ func isDBLeader(address, database string) (bool, error) {
 }
 
 func checkNorthdActive() bool {
-	output, err := ovs.Appctl("ovn-northd", "status")
+	output, err := ovs.Appctl(ovs.OvnNorthd, "status")
 	if err != nil {
 		klog.Errorf("checkNorthdActive execute err %v error msg %v", err, output)
 		return false
