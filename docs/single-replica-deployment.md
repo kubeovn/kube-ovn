@@ -88,7 +88,7 @@ kubectl delete pod -n kube-system -l app=ovn-central
 # Wait for the new pod to come up on a different node and the DB to respond
 kubectl wait pod -n kube-system -l app=ovn-central \
   --for=condition=Ready --timeout=5m
-kubectl exec -n kube-system -l app=ovn-central -- ovn-nbctl show
+kubectl exec -n kube-system deployment/ovn-central -- ovn-nbctl show
 ```
 
 For a real host-loss test (rather than `cordon` + delete), the CSI driver must
