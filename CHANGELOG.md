@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.16.10 (2026-10-01)
+
+ * [cb4076adc](https://github.com/kubeovn/kube-ovn/commit/cb4076adc7176a594989d5f25b343f2f06cdc612) release v1.16.10
+ * [95bb94791](https://github.com/kubeovn/kube-ovn/commit/95bb9479109d9b271de50e3b6fccfc1f822b54c2) fix(ovs): preserve per-port DHCP options during subnet reconciliation (#7578)
+ * [ba817ee41](https://github.com/kubeovn/kube-ovn/commit/ba817ee41ce02c7e6302dbd98eb1379fbfc41c59) fix(ovs): use atomic Wait+Insert to prevent duplicate logical switches and routers (#7542) (#7572)
+ * [9aa83d81c](https://github.com/kubeovn/kube-ovn/commit/9aa83d81cfdfaed37537a5ff333684b77c5aca80) test: wait for informer service deletion (#7570)
+ * [604a825bf](https://github.com/kubeovn/kube-ovn/commit/604a825bf1dc5bbb6a6a9752b2f7396e6b733d17) fix: preserve security groups when routing pods (#7567)
+ * [30365b86e](https://github.com/kubeovn/kube-ovn/commit/30365b86e915497ccb4d954dee6a61b4e2b428a6) fix(ovn): preserve router-owned ARP and ND with flood suppression (#7555)
+ * [5c2ff8135](https://github.com/kubeovn/kube-ovn/commit/5c2ff813583b4b2965bb74ef34f1f5734065c75c) fix: clear stale SLR load balancer VIP mappings (#7559)
+ * [8fa558658](https://github.com/kubeovn/kube-ovn/commit/8fa55865835686bbf560646b58ee84c3810165ec) fix(crd): restore vpc egress gateway validations (#7558)
+ * [4779e27f2](https://github.com/kubeovn/kube-ovn/commit/4779e27f234325a694b6a95bcd861a841a1f2a8c) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.9 (2026-09-29)
 
  * [ff2332825](https://github.com/kubeovn/kube-ovn/commit/ff2332825865a7bc5549dc8f726c8d0f18888067) release v1.16.9
