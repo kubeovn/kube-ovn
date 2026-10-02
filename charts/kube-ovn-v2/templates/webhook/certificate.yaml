@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- if .Values.validatingWebhook.enabled }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -38,4 +39,5 @@ metadata:
   {{- end }}
 spec:
   selfSigned: {}
+{{- end }}
 {{- end }}
