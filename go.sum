@@ -69,8 +69,8 @@ github.com/containerd/errdefs/pkg v0.3.0 h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151X
 github.com/containerd/errdefs/pkg v0.3.0/go.mod h1:NJw6s9HwNuRhnjJhM7pylWwMyAkmCQvQ4GpJHEqRLVk=
 github.com/containerd/log v0.2.0 h1:BewD/umNgVnoczglOpX8eRMyEy5t5iPlu5AIpnWDONc=
 github.com/containerd/log v0.2.0/go.mod h1:/M7L7CXKcPTfNC74XzaK+5H5KbO5+4lJVpuVI6vRLoM=
-github.com/containerd/nerdctl/v2 v2.4.0 h1:5m7uhiSwivsd1C5tWbtQTnULviGLNCb67N3FTjhle4E=
-github.com/containerd/nerdctl/v2 v2.4.0/go.mod h1:y0RNirYkqoZuKoSZiXYmNVUnyisCJl9BbtjHWOvyus4=
+github.com/containerd/nerdctl/v2 v2.4.1 h1:wyZx4IIhTloYrXgjBbhJB5fKRsjcOrVBoQJlWGEsvPI=
+github.com/containerd/nerdctl/v2 v2.4.1/go.mod h1:LdNA4q9Z3zUTLReFVCKgytR8r8zvMcJ+mvTmgbVR3YU=
 github.com/containerd/ttrpc v1.2.9 h1:ha0ak962T0s3CA/RoZ6S6xiWZQF24GrBaEpiGX1uihg=
 github.com/containerd/ttrpc v1.2.9/go.mod h1:jjtQRwXm4DL3KsHKW8vDiUOV6wO0hi6IPhmJhxU7aEs=
 github.com/containerd/typeurl/v2 v2.3.0 h1:HZHPhRWo5XMy3QGQoPrUzbW/2ckwjfweHmOwlkIrPAQ=
@@ -327,8 +327,8 @@ github.com/kelseyhightower/envconfig v1.4.0 h1:Im6hONhd3pLkfDFsbRgu68RDNkGF1r3dv
 github.com/kelseyhightower/envconfig v1.4.0/go.mod h1:cccZRl6mQpaq41TPp5QxidR+Sa3axMbJDNb//FQX6Gg=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
-github.com/klauspost/compress v1.20.0 h1:a3C1ke2ohxFymNlb2HWAHjDeKCI90scRskErZkR0ezA=
-github.com/klauspost/compress v1.20.0/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
+github.com/klauspost/compress v1.20.1 h1:T7kKElXUMXrUJ2E9QhQhxFtcK5rPyLdsGZvdbLMPdiQ=
+github.com/klauspost/compress v1.20.1/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/pretty v0.2.0/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
 github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
