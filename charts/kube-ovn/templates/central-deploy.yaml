@@ -111,6 +111,8 @@ spec:
               {{- if index .Values "ovn-central" "hcp" "enabled" }}
               add:
                 - CHOWN
+                - DAC_OVERRIDE
+                - DAC_READ_SEARCH
               {{- end }}
               drop:
                 - ALL
