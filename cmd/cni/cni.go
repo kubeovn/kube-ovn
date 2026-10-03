@@ -54,9 +54,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	applyDefaultProvider(netConf, args)
 
-	if err = prepareExecutionTools(); err != nil {
-		return err
-	}
 	if err = sysctlEnableIPv6(args.Netns); err != nil {
 		return err
 	}
@@ -118,9 +115,6 @@ func cmdDel(args *skel.CmdArgs) error {
 		return err
 	}
 	applyDefaultProvider(netConf, args)
-	if err = prepareExecutionTools(); err != nil {
-		return err
-	}
 	response, err := client.PrepareDelete(request.CniRequest{
 		CniType:                    netConf.Type,
 		PodName:                    podName,

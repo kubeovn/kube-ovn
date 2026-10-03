@@ -19,14 +19,13 @@ The CNI server runs with the chart's unprivileged service user (root is retained
 ## Upgrade and rollback
 
 The installer publishes `kube-ovn` as an atomic symlink to an immutable execution
-bundle under the CNI bin directory. Each bundle includes `ovs-vsctl`, `ethtool`,
-their ELF loader, and shared libraries from the image. CNI resolves tools beside
-its actual executable and does not require these packages on the node. The tools
-run in the CNI process environment with the runtime's privileges; no daemon RPC
-executes their commands. Installation verifies both tools with `--version` before
-publishing the bundle. Previous bundles are retained for running invocations and
-rollback; operators may retire them after those invocations have exited and the
-rollback window has closed.
+bundle under the CNI bin directory. The statically linked CNI uses libovsdb to
+access `/run/openvswitch/db.sock` and ethtool ioctls in the current network
+namespace. It does not execute external binaries or scripts, and needs no host
+shell, tool packages, ELF loader, or shared libraries. Installation checks the
+CNI VERSION command before publishing the bundle. Previous bundles are retained
+for running invocations and rollback; operators may retire them after those
+invocations have exited and the rollback window has closed.
 
 1. Install the new image and CNI binary on a node.
 2. Verify the CNI binary can reach the daemon socket and that a test ADD receives a plan.

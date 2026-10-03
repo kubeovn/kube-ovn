@@ -39,9 +39,15 @@ func (e *Executor) Add(plan *request.CNIPlan) (*request.CNIExecutionResult, erro
 		return &request.CNIExecutionResult{Routes: plan.Routes}, nil
 	}
 
+	client, err := ovs.NewCNIVswitchClient("unix:/run/openvswitch/db.sock")
+	if err != nil {
+		return nil, fmt.Errorf("connect CNI to OVSDB: %w", err)
+	}
+	defer client.Close()
+	e.handler.ovsClient = client
+
 	execution := &request.CNIExecutionResult{}
 	var routes []request.Route
-	var err error
 	if plan.NicType == util.DpdkType {
 		if plan.ShortSharedDir == "" || plan.OriginSharedDir == "" {
 			return nil, errors.New("DPDK CNI plan has no shared directory paths")
@@ -58,7 +64,7 @@ func (e *Executor) Add(plan *request.CNIPlan) (*request.CNIExecutionResult, erro
 	}
 
 	ifaceID := ovs.PodNameToPortName(plan.PodName, plan.PodNamespace, plan.Provider)
-	if err := ovs.ConfigInterfaceMirror(plan.MirrorEnabled, plan.MirrorControl, ifaceID); err != nil {
+	if err := client.ConfigureCNIMirror(plan.MirrorEnabled, plan.MirrorControl, ifaceID); err != nil {
 		return nil, fmt.Errorf("configure interface mirror: %w", err)
 	}
 	execution.Routes = routes
@@ -73,6 +79,13 @@ func (e *Executor) Delete(plan *request.CNIPlan) error {
 	if plan.IPAMOnly {
 		return nil
 	}
+	client, err := ovs.NewCNIVswitchClient("unix:/run/openvswitch/db.sock")
+	if err != nil {
+		return fmt.Errorf("connect CNI to OVSDB: %w", err)
+	}
+	defer client.Close()
+	e.handler.ovsClient = client
+
 	if plan.NicType == util.DpdkType && plan.ShortSharedDir != "" {
 		if err := removeShortSharedDirAt(plan.ShortSharedDir, plan.VhostUserSocketConsumption); err != nil {
 			return fmt.Errorf("remove DPDK shared directory: %w", err)

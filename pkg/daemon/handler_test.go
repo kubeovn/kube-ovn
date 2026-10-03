@@ -227,6 +227,32 @@ func TestLegacyCNIDelIsRejectedBeforeNetworkChanges(t *testing.T) {
 	require.Contains(t, response.Body.String(), "unsupported legacy CNI API")
 }
 
+func TestHandleDelPlanExecutesOVNCleanup(t *testing.T) {
+	for _, tc := range []struct {
+		name, provider string
+		pod            *v1.Pod
+		ipamOnly       bool
+	}{
+		{name: "OVN missing pod", provider: util.OvnProvider},
+		{name: "OVN existing pod", provider: util.OvnProvider, pod: &v1.Pod{Name: "pod", Namespace: "ns"}},
+		{name: "chained IPAM", provider: "macvlan.ns", ipamOnly: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := cniEventTestHandler(t, tc.pod, nil, &cniEventRecorder{})
+			response := serveCNIRequest(t, handler, "/api/v1/del", request.CniRequest{
+				PodName: "pod", PodNamespace: "ns", Provider: tc.provider, CniType: util.CniTypeName,
+				ContainerID: "container", IfName: "eth0", PrepareOnly: true,
+			})
+			require.Equal(t, http.StatusOK, response.Code)
+			var reply request.CniResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &reply))
+			require.NotNil(t, reply.Plan)
+			require.True(t, reply.Plan.Delete)
+			require.Equal(t, tc.ipamOnly, reply.Plan.IPAMOnly)
+		})
+	}
+}
+
 func TestHandleDelNoNetNSHasNoEvent(t *testing.T) {
 	recorder := &cniEventRecorder{}
 	handler := cniEventTestHandler(t, nil, nil, recorder)

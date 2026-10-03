@@ -6,7 +6,6 @@ import (
 	"maps"
 	"net"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -27,13 +26,17 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/net/yusur"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type (
 	executionConfig  struct{ EnableArpDetectIPConflict bool }
-	executionHandler struct{ Config *executionConfig }
+	executionHandler struct {
+		Config    *executionConfig
+		ovsClient *ovs.VswitchClient
+	}
 )
 
 var (
@@ -51,19 +54,6 @@ const (
 	gatewayCheckModeArpingNotConcerned
 )
 const gatewayCheckMaxRetry = 200
-
-func TurnOffNicTxChecksum(nicName string) error {
-	start := time.Now()
-	args := []string{"-K", nicName, "tx", "off"}
-	output, err := exec.Command("ethtool", args...).CombinedOutput()
-	elapsed := float64(time.Since(start) / time.Millisecond)
-	klog.V(4).Infof("command %s %s in %vms", "ethtool", strings.Join(args, " "), elapsed)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to turn off nic tx checksum, output %s, err %s", string(output), err.Error())
-	}
-	return nil
-}
 
 func (csh executionHandler) checkGatewayReady(_, _ string, gwCheckMode int, intr, ipAddr, gateway string, verbose bool) error {
 	if gwCheckMode == gatewayCheckModeArpingNotConcerned || gwCheckMode == gatewayCheckModePingNotConcerned {
@@ -98,7 +88,7 @@ func (csh executionHandler) configureContainerNic(podName, podNamespace, nicName
 			return err
 		}
 
-		if err = configureNic(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, true, false); err != nil {
+		if err = csh.configureLink(ifName, ipAddr, macAddr, mtu, detectIPv4Conflict, ipv6DAD, true, false); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -248,26 +238,22 @@ func (csh executionHandler) configureDpdkNic(podName, podNamespace, provider, ne
 
 	ipStr := util.GetIPWithoutMask(ip)
 	ifaceID := ovs.PodNameToPortName(podName, podNamespace, provider)
-	ovs.CleanDuplicatePort(ifaceID, hostNicName)
+	if err := csh.ovsClient.CleanDuplicateCNIPort(ifaceID, hostNicName); err != nil {
+		return err
+	}
 
 	vhostServerPath := path.Join(sharedDir, socketName)
 	if socketConsumption == util.ConsumptionKubevirt {
 		vhostServerPath = path.Join(sharedDir, ifName)
 	}
 
-	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-		"set", "interface", hostNicName,
-		"type=dpdkvhostuserclient",
-		"options:vhost-server-path="+vhostServerPath,
-		"external_ids:iface-id="+ifaceID,
-		"external_ids:pod_name="+podName,
-		"external_ids:pod_namespace="+podNamespace,
-		"external_ids:ip="+ipStr,
-		"external_ids:pod_netns="+netns)
-	if err != nil {
-		return fmt.Errorf("add nic to ovs failed %w: %q", err, output)
+	if err := csh.ovsClient.AddCNIPort(&vswitch.Interface{
+		Name: hostNicName, Type: "dpdkvhostuserclient", Options: map[string]string{"vhost-server-path": vhostServerPath},
+		ExternalIDs: map[string]string{"iface-id": ifaceID, "pod_name": podName, "pod_namespace": podNamespace, "ip": ipStr, "pod_netns": netns},
+	}); err != nil {
+		return fmt.Errorf("add DPDK nic to OVS: %w", err)
 	}
-	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst)
+	return csh.ovsClient.SetCNIBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst)
 }
 
 func configureHostNic(nicName string) error {
@@ -288,7 +274,7 @@ func configureHostNic(nicName string) error {
 	return nil
 }
 
-func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, ipv6DAD, setUfoOff, ipv6LinkLocalOn bool) error {
+func (csh executionHandler) configureLink(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4Conflict, ipv6DAD, setUfoOff, ipv6LinkLocalOn bool) error {
 	nodeLink, err := netlink.LinkByName(link)
 	if err != nil {
 		klog.Error(err)
@@ -302,7 +288,7 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 
 	if mtu > 0 {
 		if nodeLink.Type() == "openvswitch" {
-			_, err = ovs.Exec("set", "interface", link, fmt.Sprintf(`mtu_request=%d`, mtu))
+			err = csh.ovsClient.SetCNIInterfaceMTU(link, mtu)
 		} else {
 			err = netlink.LinkSetMTU(nodeLink, mtu)
 		}
@@ -408,23 +394,8 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 	}
 
 	if setUfoOff {
-		probe, probeErr := exec.Command("ethtool", "-k", link).CombinedOutput()
-		if probeErr != nil {
-			klog.Warningf("failed to query offload features of device %s, skip disabling ufo: %v, %s", link, probeErr, probe)
-		} else {
-			var hasUFO bool
-			for line := range strings.SplitSeq(string(probe), "\n") {
-				if strings.HasPrefix(strings.TrimSpace(line), "udp-fragmentation-offload") {
-					hasUFO = true
-					break
-				}
-			}
-			if hasUFO {
-				if output, err := exec.Command("ethtool", "-K", link, "ufo", "off").CombinedOutput(); err != nil {
-					klog.Error(err)
-					return fmt.Errorf("failed to disable udp-fragmentation-offload feature of device %s to off: %w, %s", link, err, output)
-				}
-			}
+		if err := disableUFO(link); err != nil {
+			return err
 		}
 	}
 
@@ -476,50 +447,25 @@ func (csh executionHandler) configureNic(podName, podNamespace, provider, netns,
 	if appendIfName {
 		ifaceID = fmt.Sprintf("%s.%s", ifaceID, ifName)
 	}
-	ovs.CleanDuplicatePort(ifaceID, hostNicName)
+	if err = csh.ovsClient.CleanDuplicateCNIPort(ifaceID, hostNicName); err != nil {
+		return nil, err
+	}
+	iface := &vswitch.Interface{Name: hostNicName, ExternalIDs: map[string]string{
+		"iface-id": ifaceID, "vendor": util.CniTypeName, "pod_name": podName, "pod_namespace": podNamespace, "pod_netns": netns,
+	}}
+	if ip != "" {
+		iface.ExternalIDs["ip"] = ipStr
+	}
+	if encapIP != "" {
+		iface.ExternalIDs["encap-ip"] = encapIP
+	}
 	if yusur.IsYusurSmartNic(deviceID) {
-		klog.Infof("add Yusur smartnic vfr %s to ovs", hostNicName)
-
-		args := []string{
-			ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-			"set", "interface", hostNicName, "type=dpdk",
-			fmt.Sprintf("options:dpdk-devargs=%s,representor=[%d]", pfPci, vfID),
-			fmt.Sprintf("mtu_request=%d", mtu),
-			"external_ids:iface-id=" + ifaceID,
-			"external_ids:vendor=" + util.CniTypeName,
-			"external_ids:pod_name=" + podName,
-			"external_ids:pod_namespace=" + podNamespace,
-			"external_ids:pod_netns=" + netns,
-		}
-		if ip != "" {
-			args = append(args, "external_ids:ip="+ipStr)
-		}
-		if encapIP != "" {
-			args = append(args, "external_ids:encap-ip="+encapIP)
-		}
-		output, err := ovs.Exec(args...)
-		if err != nil {
-			return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
-		}
-	} else {
-		args := []string{
-			ovs.MayExist, "add-port", "br-int", hostNicName, "--",
-			"set", "interface", hostNicName, "external_ids:iface-id=" + ifaceID,
-			"external_ids:vendor=" + util.CniTypeName,
-			"external_ids:pod_name=" + podName,
-			"external_ids:pod_namespace=" + podNamespace,
-			"external_ids:pod_netns=" + netns,
-		}
-		if ip != "" {
-			args = append(args, "external_ids:ip="+ipStr)
-		}
-		if encapIP != "" {
-			args = append(args, "external_ids:encap-ip="+encapIP)
-		}
-		output, err := ovs.Exec(args...)
-		if err != nil {
-			return nil, fmt.Errorf("add nic to ovs failed %w: %q", err, output)
-		}
+		iface.Type = "dpdk"
+		iface.Options = map[string]string{"dpdk-devargs": fmt.Sprintf("%s,representor=[%d]", pfPci, vfID)}
+		iface.MTURequest = new(mtu)
+	}
+	if err = csh.ovsClient.AddCNIPort(iface); err != nil {
+		return nil, fmt.Errorf("add nic to OVS: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -550,12 +496,12 @@ func (csh executionHandler) configureNic(podName, podNamespace, provider, netns,
 			return nil, err
 		}
 	}
-	if err = ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst); err != nil {
+	if err = csh.ovsClient.SetCNIBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
 
-	if err = ovs.SetNetemQos(podName, podNamespace, ifaceID, latency, limit, loss, jitter); err != nil {
+	if err = csh.ovsClient.SetCNINetem(podName, podNamespace, ifaceID, latency, limit, loss, jitter); err != nil {
 		klog.Error(err)
 		return nil, err
 	}
@@ -563,7 +509,7 @@ func (csh executionHandler) configureNic(podName, podNamespace, provider, netns,
 	if containerNicName == "" {
 		return nil, nil
 	}
-	isUserspaceDP, err := ovs.IsUserspaceDataPath()
+	isUserspaceDP, err := csh.ovsClient.CNIUserspaceDataPath()
 	if err != nil {
 		klog.Error(err)
 		return nil, err
@@ -585,12 +531,12 @@ func (csh executionHandler) configureNic(podName, podNamespace, provider, netns,
 			ch <- struct{}{}
 			return
 		}
-		output, err := ovs.Exec(ovs.IfExists, "get", "interface", hostNicName, "external-ids:ovn-installed")
+		iface, err := csh.ovsClient.CNIInterface(hostNicName)
 		if err != nil {
-			klog.Errorf("failed to get ovn-installed for ovs port %s: %v, %q", hostNicName, err, output)
+			klog.Errorf("failed to read OVS interface %s: %v", hostNicName, err)
 			return
 		}
-		if strings.Trim(strings.TrimSpace(output), `"`) == "true" {
+		if iface != nil && iface.ExternalIDs["ovn-installed"] == "true" {
 			klog.Infof("ovs interface %s is ready", hostNicName)
 			ch <- struct{}{}
 			ready = true
@@ -603,7 +549,7 @@ func (csh executionHandler) configureNic(podName, podNamespace, provider, netns,
 	}
 
 	if localnetSubnet != "" {
-		if err := waitForLocalnetPatchPort(localnetSubnet); err != nil {
+		if err := csh.waitForLocalnetPatchPort(localnetSubnet); err != nil {
 			klog.Error(err)
 			return nil, err
 		}
@@ -682,17 +628,10 @@ func (csh executionHandler) deleteNic(podName, podNamespace, containerID, netns,
 		}
 	}
 
-	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", nicName)
-	if err != nil {
-		return fmt.Errorf("failed to delete ovs port %w, %q", err, output)
+	if err := csh.ovsClient.DeleteCNIPort(nicName); err != nil {
+		return fmt.Errorf("delete OVS port: %w", err)
 	}
-
-	if err = ovs.ClearPodBandwidth(podName, podNamespace, ""); err != nil {
-		klog.Error(err)
-		return err
-	}
-	if err = ovs.ClearHtbQosQueue(podName, podNamespace, ""); err != nil {
-		klog.Error(err)
+	if err := csh.ovsClient.ClearCNIQoS(podName, podNamespace, ""); err != nil {
 		return err
 	}
 
@@ -878,13 +817,8 @@ func rollBackVethPair(nicName string) error {
 	return nil
 }
 
-func (csh executionHandler) rollbackOvsPort(hostNicName string) (err error) {
-	output, err := ovs.Exec(ovs.IfExists, "--with-iface", "del-port", "br-int", hostNicName)
-	if err != nil {
-		klog.Warningf("failed to delete down ovs port %v, %q", err, output)
-	}
-	klog.Infof("rollback ovs port success %s", hostNicName)
-	return err
+func (csh executionHandler) rollbackOvsPort(hostNicName string) error {
+	return csh.ovsClient.DeleteCNIPort(hostNicName)
 }
 
 func setVfMac(deviceID string, vfIndex int, mac string) error {
@@ -1047,11 +981,22 @@ func setupVethPair(containerID, ifName string, mtu int) (string, string, error) 
 	return hostNicName, containerNicName, nil
 }
 
-func waitForLocalnetPatchPort(subnetName string) error {
+func (csh executionHandler) waitForLocalnetPatchPort(subnetName string) error {
 	patchPort := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
 	klog.Infof("waiting for localnet patch port %s to be ready", patchPort)
-	if _, err := ovs.Exec("wait-until", "interface", patchPort, "name="+patchPort); err != nil {
-		return fmt.Errorf("failed waiting for localnet patch port %s: %w", patchPort, err)
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		iface, err := csh.ovsClient.CNIInterface(patchPort)
+		if err != nil {
+			return fmt.Errorf("read localnet patch port %s: %w", patchPort, err)
+		}
+		if iface != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("localnet patch port %s not ready after 30s", patchPort)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	klog.Infof("localnet patch port %s is ready", patchPort)
 	return nil

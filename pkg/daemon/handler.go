@@ -830,7 +830,7 @@ func (csh cniServerHandler) handleDel(req *restful.Request, resp *restful.Respon
 
 	// Proceed to delete the NIC regardless of whether the Pod was found or not.
 	if podRequest.PrepareOnly {
-		plan := newCNIPlan(podRequest, nicType, "", "", "", "", "", "", 0, false, false, false, true, gatewayCheckModeDisabled, "", oldPodName, "", "", false, nil, "", "", "", "", "", "", "", "")
+		plan := newCNIPlan(podRequest, nicType, "", "", "", "", "", "", 0, false, false, false, !strings.HasSuffix(podRequest.Provider, util.OvnProvider), gatewayCheckModeDisabled, "", oldPodName, "", "", false, nil, "", "", "", "", "", "", "", "")
 		plan.IfName = podRequest.IfName
 		if plan.IfName == "" {
 			plan.IfName = "eth0"
