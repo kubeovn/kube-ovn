@@ -23,6 +23,14 @@ func (csh cniServerHandler) validatePodRequest(_ *request.CniRequest) error {
 }
 
 func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir string) (err error) {
+	originSharedDir, err := shortSharedDirOrigin(pod, volumeName, kubeletDir)
+	if err != nil {
+		return err
+	}
+	return createShortSharedDirAt(getShortSharedDir(pod.UID, volumeName), originSharedDir, socketConsumption)
+}
+
+func shortSharedDirOrigin(pod *v1.Pod, volumeName, kubeletDir string) (string, error) {
 	var volume *v1.Volume
 	for index, v := range pod.Spec.Volumes {
 		if v.Name == volumeName {
@@ -31,13 +39,15 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 		}
 	}
 	if volume == nil {
-		return fmt.Errorf("cannot find volume %s in pod %s", volumeName, pod.Name)
+		return "", fmt.Errorf("cannot find volume %s in pod %s", volumeName, pod.Name)
 	}
 	if volume.EmptyDir == nil {
-		return fmt.Errorf("volume %s is not empty dir", volume.Name)
+		return "", fmt.Errorf("volume %s is not empty dir", volume.Name)
 	}
-	originSharedDir := fmt.Sprintf("%s/pods/%s/volumes/kubernetes.io~empty-dir/%s", kubeletDir, pod.UID, volumeName)
-	newSharedDir := getShortSharedDir(pod.UID, volumeName)
+	return fmt.Sprintf("%s/pods/%s/volumes/kubernetes.io~empty-dir/%s", kubeletDir, pod.UID, volumeName), nil
+}
+
+func createShortSharedDirAt(newSharedDir, originSharedDir, socketConsumption string) (err error) {
 	// set vhostuser dir 777 for qemu has the permission to create sock
 	mask := syscall.Umask(0)
 	defer syscall.Umask(mask)
@@ -63,14 +73,17 @@ func createShortSharedDir(pod *v1.Pod, volumeName, socketConsumption, kubeletDir
 	}
 
 	if socketConsumption != util.ConsumptionKubevirt {
-		return fmt.Errorf("createShortSharedDir: volume %s already exists", volumeName)
+		return fmt.Errorf("createShortSharedDir: shared directory %s already exists", newSharedDir)
 	}
 
 	return nil
 }
 
 func removeShortSharedDir(pod *v1.Pod, volumeName, socketConsumption string) (err error) {
-	sharedDir := getShortSharedDir(pod.UID, volumeName)
+	return removeShortSharedDirAt(getShortSharedDir(pod.UID, volumeName), socketConsumption)
+}
+
+func removeShortSharedDirAt(sharedDir, socketConsumption string) (err error) {
 	if _, err = os.Stat(sharedDir); os.IsNotExist(err) {
 		klog.Infof("shared directory %s does not exist to unmount, %s", sharedDir, err)
 		return nil

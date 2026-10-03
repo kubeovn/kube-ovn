@@ -53,7 +53,7 @@ IPVLAN_BIN_DST=/opt/cni/bin/ipvlan
 
 install_binary "$LOOPBACK_BIN_SRC" "$LOOPBACK_BIN_DST"
 install_binary "$PORTMAP_BIN_SRC" "$PORTMAP_BIN_DST"
-install_binary "$CNI_BIN_SRC" "$CNI_BIN_DST"
+bash /kube-ovn/install-cni-bundle.sh "$CNI_BIN_SRC" "$CNI_BIN_DST"
 install_binary "$MACVLAN_BIN_SRC" "$MACVLAN_BIN_DST"
 install_binary "$IPVLAN_BIN_SRC" "$IPVLAN_BIN_DST"
 

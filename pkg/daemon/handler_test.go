@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -117,43 +115,83 @@ func TestRecordCNIPodEventHandlesUnsafeDerivedNameInputs(t *testing.T) {
 	require.Contains(t, requireSingleCNIEvent(t, recorder).message, "error=boom")
 }
 
-func TestHandleAddSuccessEvent(t *testing.T) {
+func TestHandleAddPrepareOnlyReturnsPlanWithoutExecutingHostNetworking(t *testing.T) {
 	const (
 		provider = "macvlan.default"
 		subnet   = "underlay"
-		ip       = "10.0.0.2"
-		mac      = "00:00:00:00:00:02"
 	)
 	pod := &v1.Pod{
 		Name: "pod", Namespace: "ns", UID: types.UID("real-uid"),
 		Annotations: map[string]string{
-			fmt.Sprintf(util.IPAddressAnnotationTemplate, provider):     ip,
+			fmt.Sprintf(util.IPAddressAnnotationTemplate, provider):     "10.0.0.2",
 			fmt.Sprintf(util.CidrAnnotationTemplate, provider):          "10.0.0.0/24",
-			fmt.Sprintf(util.MacAddressAnnotationTemplate, provider):    mac,
+			fmt.Sprintf(util.MacAddressAnnotationTemplate, provider):    "00:00:00:00:00:02",
 			fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnet,
 		},
 	}
-	podSubnet := &kubeovnv1.Subnet{Name: subnet, Spec: kubeovnv1.SubnetSpec{Provider: provider}}
-	recorder := &cniEventRecorder{}
-	handler := cniEventTestHandler(t, pod, podSubnet, recorder)
-	ipCRName := ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
+	handler := cniEventTestHandler(t, pod, &kubeovnv1.Subnet{Name: subnet, Spec: kubeovnv1.SubnetSpec{Provider: provider}}, &cniEventRecorder{})
 	handler.KubeOvnClient = kubeovnfake.NewSimpleClientset(&kubeovnv1.IP{
-		Name: ipCRName,
+		Name: ovs.PodNameToPortName(pod.Name, pod.Namespace, provider),
 		Spec: kubeovnv1.IPSpec{NodeName: "node-a"},
 	})
 
 	response := serveCNIRequest(t, handler, "/api/v1/add", request.CniRequest{
 		CniType: util.CniTypeName, PodName: pod.Name, PodNamespace: pod.Namespace,
-		Provider: provider, IfName: "net1",
+		Provider: provider, IfName: "net1", ContainerID: "1234567890abcdef",
+		NetNs: "/missing/netns", PrepareOnly: true,
 	})
 	require.Equal(t, http.StatusOK, response.Code)
+	var cniResponse request.CniResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &cniResponse))
+	require.NotNil(t, cniResponse.Plan)
+	require.Equal(t, "net1", cniResponse.Plan.IfName)
+	require.Equal(t, "10.0.0.2", cniResponse.Plan.IP)
+	require.Empty(t, cniResponse.Plan.Subnet)
+}
+
+func TestHandleCommitRecordsSuccessEvent(t *testing.T) {
+	pod := &v1.Pod{Name: "pod", Namespace: "ns", UID: types.UID("real-uid")}
+	recorder := &cniEventRecorder{}
+	handler := cniEventTestHandler(t, pod, nil, recorder)
+
+	response := serveCNIRequest(t, handler, "/api/v1/commit", request.CniRequest{Plan: &request.CNIPlan{
+		PodName: pod.Name, PodNamespace: pod.Namespace, Provider: util.OvnProvider,
+		IfName: "net1", IP: "10.0.0.2", MacAddress: "00:00:00:00:00:02",
+	}})
+	require.Equal(t, http.StatusNoContent, response.Code)
 	event := requireSingleCNIEvent(t, recorder)
 	require.Equal(t, v1.EventTypeNormal, event.eventType)
 	require.Equal(t, "PodNetworkConfigured", event.reason)
 	require.Same(t, pod, event.object)
-	for _, part := range []string{"subnet=" + subnet, "ip=" + ip, "mac=" + mac, "provider=" + provider, "interface=net1", "node=node-a"} {
-		require.Contains(t, event.message, part)
+	require.Contains(t, event.message, "ip=10.0.0.2")
+}
+
+func TestHandleCommitEnqueuesUnderlayServicesAfterExecution(t *testing.T) {
+	pod := &v1.Pod{Name: "pod", Namespace: "ns", UID: types.UID("real-uid")}
+	handler := cniEventTestHandler(t, pod, nil, &cniEventRecorder{})
+	serviceIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	matching := &v1.Service{
+		Namespace: "ns",
+		Name:      "underlay-service",
+		Annotations: map[string]string{
+			util.ServiceExternalIPFromSubnetAnnotation: "underlay",
+		},
 	}
+	require.NoError(t, serviceIndexer.Add(matching))
+	handler.Controller.servicesLister = listerv1.NewServiceLister(serviceIndexer)
+	handler.Controller.serviceQueue = newTypedRateLimitingQueue[*serviceEvent]("Service", nil)
+
+	response := serveCNIRequest(t, handler, "/api/v1/commit", request.CniRequest{
+		Plan: &request.CNIPlan{
+			PodName:        pod.Name,
+			PodNamespace:   pod.Namespace,
+			Provider:       "underlay.default",
+			LocalnetSubnet: "underlay",
+		},
+		Execution: &request.CNIExecutionResult{},
+	})
+	require.Equal(t, http.StatusNoContent, response.Code)
+	require.Equal(t, 1, handler.Controller.serviceQueue.Len())
 }
 
 func TestHandleAddFailureEvent(t *testing.T) {
@@ -161,7 +199,7 @@ func TestHandleAddFailureEvent(t *testing.T) {
 	handler := cniEventTestHandler(t, nil, nil, recorder)
 
 	response := serveCNIRequest(t, handler, "/api/v1/add", request.CniRequest{
-		PodName: "missing", PodNamespace: "ns", Provider: util.OvnProvider,
+		PodName: "missing", PodNamespace: "ns", Provider: util.OvnProvider, PrepareOnly: true,
 	})
 	require.Equal(t, http.StatusInternalServerError, response.Code)
 	event := requireSingleCNIEvent(t, recorder)
@@ -175,53 +213,44 @@ func TestHandleAddFailureEvent(t *testing.T) {
 	require.Equal(t, "ns", pod.Namespace)
 }
 
-func TestHandleDelSuccessEventPreservesPodReference(t *testing.T) {
-	useFakeOVSVsctl(t, true)
-	pod := &v1.Pod{
-		Name: "virt-launcher", Namespace: "ns", UID: types.UID("real-uid"),
-		Annotations: map[string]string{
-			fmt.Sprintf(util.VMAnnotationTemplate, util.OvnProvider): "vm-name",
-		},
-	}
-	recorder := &cniEventRecorder{}
-	handler := cniEventTestHandler(t, pod, nil, recorder)
-
-	response := serveCNIRequest(t, handler, "/api/v1/del", request.CniRequest{
-		CniType: util.CniTypeName, PodName: pod.Name, PodNamespace: pod.Namespace,
-		ContainerID: "1234567890abcdef", NetNs: "/missing/netns", Provider: util.OvnProvider,
-	})
-	require.Equal(t, http.StatusNoContent, response.Code)
-	event := requireSingleCNIEvent(t, recorder)
-	require.Equal(t, v1.EventTypeNormal, event.eventType)
-	require.Equal(t, "PodNetworkRemoved", event.reason)
-	require.Same(t, pod, event.object)
-	require.Equal(t, "virt-launcher", event.object.(*v1.Pod).Name)
-	require.NotContains(t, event.message, "vm-name")
-	for _, part := range []string{"provider=ovn", "interface=eth0", "node=node-a"} {
-		require.Contains(t, event.message, part)
-	}
+func TestLegacyCNIAddIsRejectedBeforeNetworkChanges(t *testing.T) {
+	handler := cniEventTestHandler(t, nil, nil, &cniEventRecorder{})
+	response := serveCNIRequest(t, handler, "/api/v1/add", request.CniRequest{PodName: "pod", PodNamespace: "ns"})
+	require.Equal(t, http.StatusUpgradeRequired, response.Code)
+	require.Contains(t, response.Body.String(), "unsupported legacy CNI API")
 }
 
-func TestHandleDelFailureEvent(t *testing.T) {
-	useFakeOVSVsctl(t, false)
-	recorder := &cniEventRecorder{}
-	handler := cniEventTestHandler(t, nil, nil, recorder)
+func TestLegacyCNIDelIsRejectedBeforeNetworkChanges(t *testing.T) {
+	handler := cniEventTestHandler(t, nil, nil, &cniEventRecorder{})
+	response := serveCNIRequest(t, handler, "/api/v1/del", request.CniRequest{PodName: "pod", PodNamespace: "ns"})
+	require.Equal(t, http.StatusUpgradeRequired, response.Code)
+	require.Contains(t, response.Body.String(), "unsupported legacy CNI API")
+}
 
-	response := serveCNIRequest(t, handler, "/api/v1/del", request.CniRequest{
-		PodName: "deleted", PodNamespace: "ns", ContainerID: "1234567890abcdef",
-		NetNs: "/missing/netns", Provider: util.OvnProvider, IfName: "net1",
-	})
-	require.Equal(t, http.StatusInternalServerError, response.Code)
-	event := requireSingleCNIEvent(t, recorder)
-	require.Equal(t, v1.EventTypeWarning, event.eventType)
-	require.Equal(t, "PodNetworkRemoveFailed", event.reason)
-	require.Contains(t, event.message, "stage=delete-nic")
-	require.Contains(t, event.message, "exit status 1")
-	require.NotContains(t, event.message, "12345678_net1_h")
-	require.NotContains(t, event.message, "12345678")
-	pod := event.object.(*v1.Pod)
-	require.Equal(t, "deleted", pod.Name)
-	require.Equal(t, "ns", pod.Namespace)
+func TestHandleDelPlanExecutesOVNCleanup(t *testing.T) {
+	for _, tc := range []struct {
+		name, provider string
+		pod            *v1.Pod
+		ipamOnly       bool
+	}{
+		{name: "OVN missing pod", provider: util.OvnProvider},
+		{name: "OVN existing pod", provider: util.OvnProvider, pod: &v1.Pod{Name: "pod", Namespace: "ns"}},
+		{name: "chained IPAM", provider: "macvlan.ns", ipamOnly: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := cniEventTestHandler(t, tc.pod, nil, &cniEventRecorder{})
+			response := serveCNIRequest(t, handler, "/api/v1/del", request.CniRequest{
+				PodName: "pod", PodNamespace: "ns", Provider: tc.provider, CniType: util.CniTypeName,
+				ContainerID: "container", IfName: "eth0", PrepareOnly: true,
+			})
+			require.Equal(t, http.StatusOK, response.Code)
+			var reply request.CniResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &reply))
+			require.NotNil(t, reply.Plan)
+			require.True(t, reply.Plan.Delete)
+			require.Equal(t, tc.ipamOnly, reply.Plan.IPAMOnly)
+		})
+	}
 }
 
 func TestHandleDelNoNetNSHasNoEvent(t *testing.T) {
@@ -229,9 +258,9 @@ func TestHandleDelNoNetNSHasNoEvent(t *testing.T) {
 	handler := cniEventTestHandler(t, nil, nil, recorder)
 
 	response := serveCNIRequest(t, handler, "/api/v1/del", request.CniRequest{
-		PodName: "deleted", PodNamespace: "ns", Provider: util.OvnProvider,
+		PodName: "deleted", PodNamespace: "ns", Provider: util.OvnProvider, PrepareOnly: true,
 	})
-	require.Equal(t, http.StatusNoContent, response.Code)
+	require.Equal(t, http.StatusOK, response.Code)
 	require.Empty(t, recorder.events)
 }
 
@@ -287,15 +316,4 @@ func requireSingleCNIEvent(t *testing.T, recorder *cniEventRecorder) recordedCNI
 	t.Helper()
 	require.Len(t, recorder.events, 1)
 	return recorder.events[0]
-}
-
-func useFakeOVSVsctl(t *testing.T, succeed bool) {
-	t.Helper()
-	target := "/bin/false"
-	if succeed {
-		target = "/bin/true"
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.Symlink(target, filepath.Join(dir, "ovs-vsctl")))
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
