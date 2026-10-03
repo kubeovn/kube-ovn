@@ -19,6 +19,7 @@ import (
 	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/cnp"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -1990,7 +1991,7 @@ func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol, aclName stri
 }
 
 // UpdateCnpRuleACLOps return operation that creates an ingress/egress ACL
-func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyPort, isIngress bool, tier int) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0, 10)
 
 	options := func(acl *ovnnb.ACL) {
@@ -2021,7 +2022,10 @@ func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName stri
 		direction = ovnnb.ACLDirectionFromLport
 	}
 
-	matches := newCnpACLMatch(pgName, asName, protocol, direction, rulePorts)
+	matches, err := newCnpACLMatch(pgName, asName, protocol, direction, rulePorts)
+	if err != nil {
+		return nil, err
+	}
 	for _, m := range matches {
 		strPriority := strconv.Itoa(priority)
 		setACL, err := c.newACLWithoutCheck(pgName, direction, strPriority, m, aclAction, tier, options)
@@ -2101,7 +2105,7 @@ func newAnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 	return matches
 }
 
-func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha2.ClusterNetworkPolicyPort) []string {
+func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol) ([]string, error) {
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
@@ -2127,37 +2131,24 @@ func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 		NewACLMatch(ipKey, "==", "$"+asName, ""),
 	)
 	if len(rulePorts) == 0 {
-		return []string{selectIPMatch.String()}
+		return []string{selectIPMatch.String()}, nil
 	}
 
 	matches := make([]string, 0, 10)
-	for _, port := range rulePorts {
-		// Exactly one field must be set.
-		// Do not support NamedPort now
-		switch {
-		case port.PortNumber != nil:
-			protocol := strings.ToLower(string(port.PortNumber.Protocol))
-			protocolKey := protocol + ".dst"
-
-			oneMatch := NewAndACLMatch(
-				selectIPMatch,
-				NewACLMatch(protocolKey, "==", strconv.Itoa(int(port.PortNumber.Port)), ""),
-			)
-			matches = append(matches, oneMatch.String())
-		case port.PortRange != nil:
-			protocol := strings.ToLower(string(port.PortRange.Protocol))
-			protocolKey := protocol + ".dst"
-
-			severalMatch := NewAndACLMatch(
-				selectIPMatch,
-				NewACLMatch(protocolKey, "<=", strconv.Itoa(int(port.PortRange.Start)), strconv.Itoa(int(port.PortRange.End))),
-			)
-			matches = append(matches, severalMatch.String())
-		default:
-			klog.Errorf("failed to check port for cnp ingress rule, pg %s, as %s", pgName, asName)
+	for _, p := range rulePorts {
+		transport, port, err := cnp.ProtocolPort(p)
+		if err != nil {
+			return nil, err
 		}
+		var portMatch ACLMatch
+		if port.Range == nil {
+			portMatch = NewACLMatch(transport+".dst", "==", strconv.Itoa(int(port.Number)), "")
+		} else {
+			portMatch = NewACLMatch(transport+".dst", "<=", strconv.Itoa(int(port.Range.Start)), strconv.Itoa(int(port.Range.End)))
+		}
+		matches = append(matches, NewAndACLMatch(selectIPMatch, portMatch).String())
 	}
-	return matches
+	return matches, nil
 }
 
 func (c *OVNNbClient) MigrateACLTier() error {

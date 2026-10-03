@@ -2591,7 +2591,7 @@ func (mr *MockACLMockRecorder) UpdateAnpRuleACLOps(pgName, asName, protocol, acl
 }
 
 // UpdateCnpRuleACLOps mocks base method.
-func (m *MockACL) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyPort, isIngress bool, tier int) ([]ovsdb.Operation, error) {
+func (m *MockACL) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateCnpRuleACLOps", pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, tier)
 	ret0, _ := ret[0].([]ovsdb.Operation)
@@ -6514,7 +6514,7 @@ func (mr *MockNbClientMockRecorder) UpdateBFD(bfd any, fields ...any) *gomock.Ca
 }
 
 // UpdateCnpRuleACLOps mocks base method.
-func (m *MockNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyPort, isIngress bool, tier int) ([]ovsdb.Operation, error) {
+func (m *MockNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateCnpRuleACLOps", pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, tier)
 	ret0, _ := ret[0].([]ovsdb.Operation)

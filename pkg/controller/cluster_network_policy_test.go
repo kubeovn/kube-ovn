@@ -579,11 +579,10 @@ func TestShouldRecreateCnpACLs(t *testing.T) {
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
 					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
 						{
-							Ports: &[]v1alpha2.ClusterNetworkPolicyPort{
+							Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{
 								{
-									PortNumber: &v1alpha2.Port{
-										Protocol: "TCP",
-										Port:     1000,
+									TCP: &v1alpha2.ClusterNetworkPolicyProtocolTCP{
+										DestinationPort: &v1alpha2.Port{Number: 1000},
 									},
 								},
 							},
@@ -595,11 +594,10 @@ func TestShouldRecreateCnpACLs(t *testing.T) {
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
 					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{
 						{
-							Ports: &[]v1alpha2.ClusterNetworkPolicyPort{
+							Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{
 								{
-									PortNumber: &v1alpha2.Port{
-										Protocol: "TCP",
-										Port:     2000,
+									TCP: &v1alpha2.ClusterNetworkPolicyProtocolTCP{
+										DestinationPort: &v1alpha2.Port{Number: 2000},
 									},
 								},
 							},
@@ -615,11 +613,10 @@ func TestShouldRecreateCnpACLs(t *testing.T) {
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
 					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
 						{
-							Ports: &[]v1alpha2.ClusterNetworkPolicyPort{
+							Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{
 								{
-									PortNumber: &v1alpha2.Port{
-										Protocol: "TCP",
-										Port:     1000,
+									TCP: &v1alpha2.ClusterNetworkPolicyProtocolTCP{
+										DestinationPort: &v1alpha2.Port{Number: 1000},
 									},
 								},
 							},
@@ -631,11 +628,10 @@ func TestShouldRecreateCnpACLs(t *testing.T) {
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
 					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
 						{
-							Ports: &[]v1alpha2.ClusterNetworkPolicyPort{
+							Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{
 								{
-									PortNumber: &v1alpha2.Port{
-										Protocol: "TCP",
-										Port:     2000,
+									TCP: &v1alpha2.ClusterNetworkPolicyProtocolTCP{
+										DestinationPort: &v1alpha2.Port{Number: 2000},
 									},
 								},
 							},
