@@ -289,7 +289,7 @@ require (
 )
 
 replace (
-	github.com/go-ini/ini => github.com/go-ini/ini v1.67.0
+	github.com/go-ini/ini => github.com/go-ini/ini v1.67.3
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20260528080449-dad82eb4dedd
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
