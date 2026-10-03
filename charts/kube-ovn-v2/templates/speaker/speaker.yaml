@@ -1,9 +1,11 @@
 {{- if .Values.bgpSpeaker.enabled }}
 {{- $bgpSpeakerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.bgpSpeaker.image) | fromYaml -}}
+{{- $speakerName := include "kubeovn.speakerName" . -}}
+{{- $ovnServiceAccountName := include "kubeovn.ovnServiceAccountName" . -}}
 kind: DaemonSet
 apiVersion: apps/v1
 metadata:
-  name: kube-ovn-speaker
+  name: {{ $speakerName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.bgpSpeaker.annotations }}
   annotations:
@@ -16,7 +18,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-speaker
+      app.kubernetes.io/name: {{ $speakerName }}
       app.kubernetes.io/part-of: kube-ovn
   template:
     metadata:
@@ -25,7 +27,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-speaker
+        app.kubernetes.io/name: {{ $speakerName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.bgpSpeaker.podLabels }}
         {{- toYaml . | nindent 8 }}
@@ -39,11 +41,11 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app.kubernetes.io/name: kube-ovn-speaker
+                  app.kubernetes.io/name: {{ $speakerName }}
                   app.kubernetes.io/part-of: kube-ovn
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-node-critical
-      serviceAccountName: ovn
+      serviceAccountName: {{ $ovnServiceAccountName }}
       automountServiceAccountToken: true
       hostNetwork: true
       securityContext:

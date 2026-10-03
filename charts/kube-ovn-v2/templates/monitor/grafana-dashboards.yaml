@@ -1,6 +1,7 @@
 {{- if .Values.grafanaDashboards.enabled }}
 {{- $ns := default .Values.namespace .Values.grafanaDashboards.namespace }}
 {{- $datasource := .Values.grafanaDashboards.datasource }}
+{{- $dashboardPrefix := include "kubeovn.resourceName" (dict "context" . "suffix" "dashboard") }}
 {{- if not (regexMatch "^[A-Za-z0-9_.-]+$" $datasource) }}
 {{- fail (printf "grafanaDashboards.datasource %q must match ^[A-Za-z0-9_.-]+$; it is interpolated verbatim into dashboard JSON, and characters like quotes, backslashes or newlines would produce invalid JSON." $datasource) }}
 {{- end }}
@@ -9,10 +10,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kube-ovn-dashboard-{{ trimSuffix ".json" (base $path) }}
+  name: {{ $dashboardPrefix }}-{{ trimSuffix ".json" (base $path) }}
   namespace: {{ $ns }}
   labels:
-    app.kubernetes.io/name: kube-ovn
+    app.kubernetes.io/name: {{ include "kubeovn.fullname" $ }}
     app.kubernetes.io/part-of: kube-ovn
     {{- with $.Values.grafanaDashboards.labels }}
     {{- toYaml . | nindent 4 }}

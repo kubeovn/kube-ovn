@@ -2,12 +2,21 @@ package controller
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func vpcNatConfigName() string {
+	if name := strings.TrimSpace(os.Getenv(util.EnvVpcNatConfig)); name != "" {
+		return name
+	}
+	return util.VpcNatConfig
+}
 
 var (
 	vpcNatImage             = ""
@@ -17,7 +26,8 @@ var (
 )
 
 func (c *Controller) resyncVpcNatConfig() {
-	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatConfig)
+	configName := vpcNatConfigName()
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(configName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			err = fmt.Errorf("failed to get ovn-vpc-nat-config, %w", err)
@@ -38,7 +48,7 @@ func (c *Controller) resyncVpcNatConfig() {
 	// Image we're using to provision the NAT gateways
 	image, exist := cm.Data["image"]
 	if !exist {
-		err = fmt.Errorf("%s should have image field", util.VpcNatConfig)
+		err = fmt.Errorf("%s should have image field", configName)
 		klog.Error(err)
 		return
 	}

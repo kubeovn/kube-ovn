@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,13 @@ import (
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func vpcNatGatewayConfigName() string {
+	if name := strings.TrimSpace(os.Getenv(util.EnvVpcNatGatewayConfig)); name != "" {
+		return name
+	}
+	return util.VpcNatGatewayConfig
+}
 
 var (
 	vpcNatGatewayGVK = ovnv1.SchemeGroupVersion.WithKind(util.KindVpcNatGateway)
@@ -521,7 +529,8 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 
 func (v *ValidatingHook) getNatGwNamePrefix(ctx context.Context) (string, error) {
 	cm := &corev1.ConfigMap{}
-	cmKey := cli.ObjectKey{Namespace: metav1.NamespaceSystem, Name: util.VpcNatConfig}
+	configName := vpcNatConfigName()
+	cmKey := cli.ObjectKey{Namespace: metav1.NamespaceSystem, Name: configName}
 	if err := v.cache.Get(ctx, cmKey, cm); err != nil {
 		return "", err
 	}
@@ -535,16 +544,17 @@ func (v *ValidatingHook) getNatGwNamePrefix(ctx context.Context) (string, error)
 
 func (v *ValidatingHook) ValidateVpcNatGatewayConfig(ctx context.Context) error {
 	cm := &corev1.ConfigMap{}
-	cmKey := cli.ObjectKey{Namespace: metav1.NamespaceSystem, Name: util.VpcNatGatewayConfig}
+	configName := vpcNatGatewayConfigName()
+	cmKey := cli.ObjectKey{Namespace: metav1.NamespaceSystem, Name: configName}
 	if err := v.cache.Get(ctx, cmKey, cm); err != nil {
 		if k8serrors.IsNotFound(err) {
-			return fmt.Errorf("configMap \"%s\" not configured", util.VpcNatGatewayConfig)
+			return fmt.Errorf("configMap \"%s\" not configured", configName)
 		}
 		return err
 	}
 
 	if cm.Data["enable-vpc-nat-gw"] != "true" {
-		err := fmt.Errorf("parameter \"enable-vpc-nat-gw\" in ConfigMap \"%s\" not true", util.VpcNatGatewayConfig)
+		err := fmt.Errorf("parameter \"enable-vpc-nat-gw\" in ConfigMap \"%s\" not true", configName)
 		return err
 	}
 

@@ -1,7 +1,9 @@
+{{- $natConfigName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-config") -}}
+{{- $natGwConfigName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-gw-config") -}}
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: ovn-vpc-nat-config
+  name: {{ $natConfigName }}
   namespace: {{ .Values.namespace }}
 data:
   image: {{ .Values.natGw.image.repository }}:{{ .Values.natGw.image.tag }}
@@ -19,7 +21,7 @@ data:
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: ovn-vpc-nat-gw-config
+  name: {{ $natGwConfigName }}
   namespace: {{ .Values.namespace }}
 data:
   enable-vpc-nat-gw: "{{ .Values.features.enableNatGateways }}"
