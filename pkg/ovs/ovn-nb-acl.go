@@ -2141,7 +2141,9 @@ func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 			return nil, err
 		}
 		var portMatch ACLMatch
-		if port.Range == nil {
+		if port == nil {
+			portMatch = NewACLMatch(transport, "", "", "")
+		} else if port.Range == nil {
 			portMatch = NewACLMatch(transport+".dst", "==", strconv.Itoa(int(port.Number)), "")
 		} else {
 			portMatch = NewACLMatch(transport+".dst", "<=", strconv.Itoa(int(port.Range.Start)), strconv.Itoa(int(port.Range.End)))

@@ -1055,6 +1055,10 @@ func checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterN
 func checkNetworkAndDomainRules(cnp *v1alpha2.ClusterNetworkPolicy) error {
 	for _, egressRule := range cnp.Spec.Egress {
 		for _, peer := range egressRule.To {
+			if len(peer.DomainNames) > 0 && egressRule.Action != v1alpha2.ClusterNetworkPolicyRuleActionAccept {
+				return errors.New("domain names are only supported for Accept rules")
+			}
+
 			if len(peer.DomainNames) > util.CnpMaxDomains {
 				return fmt.Errorf("cnp egress peers can have a maximum of %d domains, got %d", util.CnpMaxDomains, len(peer.DomainNames))
 			}

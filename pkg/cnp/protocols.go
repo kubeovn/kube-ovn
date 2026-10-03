@@ -7,7 +7,7 @@ import (
 	"sigs.k8s.io/network-policy-api/apis/v1alpha2"
 )
 
-// ProtocolPort returns the transport and numeric destination match.
+// ProtocolPort returns the transport and optional numeric destination match.
 // Named ports must be rejected before changing any existing OVN resources.
 func ProtocolPort(p v1alpha2.ClusterNetworkPolicyProtocol) (string, *v1alpha2.Port, error) {
 	count, transport := 0, ""
@@ -27,8 +27,11 @@ func ProtocolPort(p v1alpha2.ClusterNetworkPolicyProtocol) (string, *v1alpha2.Po
 	if p.DestinationNamedPort != "" {
 		return "", nil, errors.New("destinationNamedPort is not supported by Kube-OVN CNP")
 	}
-	if count != 1 || port == nil {
-		return "", nil, errors.New("exactly one transport with destinationPort is required")
+	if count != 1 {
+		return "", nil, errors.New("exactly one transport is required")
+	}
+	if port == nil {
+		return transport, nil, nil
 	}
 	if port.Range == nil {
 		if port.Number < 1 || port.Number > 65535 {

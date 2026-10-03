@@ -978,6 +978,7 @@ func TestCheckNetworkAndDomainRules(t *testing.T) {
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
 					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
 						{
+							Action: v1alpha2.ClusterNetworkPolicyRuleActionAccept,
 							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
 								{
 									DomainNames: tooManyDomains,
@@ -1012,6 +1013,7 @@ func TestCheckNetworkAndDomainRules(t *testing.T) {
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
 					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
 						{
+							Action: v1alpha2.ClusterNetworkPolicyRuleActionAccept,
 							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
 								{
 									DomainNames: tooManyDomains,
@@ -1030,6 +1032,7 @@ func TestCheckNetworkAndDomainRules(t *testing.T) {
 				Spec: v1alpha2.ClusterNetworkPolicySpec{
 					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
 						{
+							Action: v1alpha2.ClusterNetworkPolicyRuleActionAccept,
 							To: []v1alpha2.ClusterNetworkPolicyEgressPeer{
 								{
 									DomainNames: tooManyDomains[:util.CnpMaxDomains],
@@ -1046,6 +1049,20 @@ func TestCheckNetworkAndDomainRules(t *testing.T) {
 			name:  "no domains and networks",
 			cnp:   &v1alpha2.ClusterNetworkPolicy{},
 			error: false,
+		},
+		{
+			name: "domain names require accept action",
+			cnp: &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{
+					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{
+						{
+							Action: v1alpha2.ClusterNetworkPolicyRuleActionDeny,
+							To:     []v1alpha2.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1alpha2.DomainName{"example.test."}}},
+						},
+					},
+				},
+			},
+			error: true,
 		},
 	}
 
