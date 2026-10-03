@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -19,6 +18,7 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -544,7 +544,7 @@ func (suite *OvnClientTestSuite) testReconcileChassisTemplateVariables() {
 	var rows []ovnnb.ChassisTemplateVar
 	require.Eventually(t, func() bool {
 		rows = nil
-		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+		err := nbClient.Database.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
 			return item.Chassis == chassis
 		}).List(t.Context(), &rows)
 		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, variables)
@@ -554,7 +554,7 @@ func (suite *OvnClientTestSuite) testReconcileChassisTemplateVariables() {
 	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, "other_", map[string]string{"other_keep": "value"}))
 	require.Eventually(t, func() bool {
 		rows = nil
-		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+		err := nbClient.Database.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
 			return item.Chassis == chassis
 		}).List(t.Context(), &rows)
 		return err == nil && len(rows) == 1 && rows[0].Variables["other_keep"] == "value"
@@ -567,7 +567,7 @@ func (suite *OvnClientTestSuite) testReconcileChassisTemplateVariables() {
 	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables))
 	require.Eventually(t, func() bool {
 		rows = nil
-		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+		err := nbClient.Database.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
 			return item.Chassis == chassis
 		}).List(t.Context(), &rows)
 		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
@@ -580,7 +580,7 @@ func (suite *OvnClientTestSuite) testReconcileChassisTemplateVariables() {
 	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, nil))
 	require.Eventually(t, func() bool {
 		rows = nil
-		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+		err := nbClient.Database.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
 			return item.Chassis == chassis
 		}).List(t.Context(), &rows)
 		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{"other_keep": "value"})
@@ -599,7 +599,7 @@ func (suite *OvnClientTestSuite) testReconcileTemplateVIPAndChassisVariables() {
 	require.NoError(t, err)
 	beforeVariables := templateVIPVariables(t, nbClient, fixture.variables[0].Chassis)
 	interceptor := &templateVIPTransactionClient{Client: nbClient.Client, fail: true}
-	transactionClient := &OVNNbClient{Client: interceptor, Timeout: nbClient.Timeout}
+	transactionClient := &OVNNbClient{Database: table.NewDatabase(interceptor, nbClient.Timeout, table.RetryPolicy{})}
 
 	err = transactionClient.ReconcileTemplateVIPAndChassisVariables(fixture.migrations, fixture.staleVIPs, fixture.variables)
 	require.ErrorContains(t, err, "timed out")
@@ -694,7 +694,7 @@ func newTemplateVIPTransactionFixture(t *testing.T, nbClient *OVNNbClient) templ
 }
 
 type templateVIPTransactionClient struct {
-	client.Client
+	*table.Client
 	fail         bool
 	transactions [][]ovsdb.Operation
 }
@@ -710,7 +710,7 @@ func (c *templateVIPTransactionClient) Transact(ctx context.Context, ops ...ovsd
 			Rows:  []ovsdb.Row{{"chassis": "test-template-atomic-missing"}},
 		})
 	}
-	return c.Client.Transact(ctx, ops...)
+	return c.TransactResults(ctx, ops...)
 }
 
 func requireTemplateVIPTransaction(t *testing.T, ops []ovsdb.Operation) {
@@ -751,7 +751,7 @@ func (suite *OvnClientTestSuite) testDeleteChassisTemplateVariables() {
 	require.NoError(t, nbClient.Transact("chassis-template-var-add", ops))
 	require.Eventually(t, func() bool {
 		var rows []ovnnb.ChassisTemplateVar
-		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+		err := nbClient.Database.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
 			return item.Chassis == row.Chassis
 		}).List(t.Context(), &rows)
 		return err == nil && len(rows) == 1
@@ -763,7 +763,7 @@ func (suite *OvnClientTestSuite) testDeleteChassisTemplateVariables() {
 	var rows []ovnnb.ChassisTemplateVar
 	require.Eventually(t, func() bool {
 		rows = nil
-		err = nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+		err = nbClient.Database.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
 			return item.Chassis == row.Chassis
 		}).List(t.Context(), &rows)
 		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
@@ -2038,13 +2038,13 @@ func testLoadBalancerDisableHealthCheck(t *testing.T, nbClient *OVNNbClient, met
 }
 
 type recordingOVSDBClient struct {
-	client.Client
+	*table.Client
 	transactions [][]ovsdb.Operation
 }
 
 func (c *recordingOVSDBClient) Transact(ctx context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
 	c.transactions = append(c.transactions, slices.Clone(operations))
-	return c.Client.Transact(ctx, operations...)
+	return c.TransactResults(ctx, operations...)
 }
 
 func TestLoadBalancerAddHealthCheckDisableIsAtomic(t *testing.T) {
@@ -2067,7 +2067,7 @@ func TestLoadBalancerAddHealthCheckDisableIsAtomic(t *testing.T) {
 	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, false, oldMapping, nil))
 
 	recorder := &recordingOVSDBClient{Client: nbClient.Client}
-	nbClient.Client = recorder
+	nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, true, newMapping, nil))
 	require.Len(t, recorder.transactions, 1, "disabling a health check should use one transaction")
 	var hasMappingMutation, hasHealthCheckDelete bool

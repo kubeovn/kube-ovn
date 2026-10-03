@@ -1,0 +1,248 @@
+package table
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"reflect"
+	"time"
+
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+)
+
+const (
+	cachePollInterval = 10 * time.Millisecond
+	cacheWaitTimeout  = 5 * time.Second
+)
+
+// tableFor resolves a provider once for package-level helpers. Keeping this
+// validation in one place gives callers the same error behavior as Table.
+func tableFor(provider Provider, prototype model.Model) (Handle, error) {
+	if provider == nil {
+		return nil, errors.New("ovsdb table provider is nil")
+	}
+	if prototype == nil {
+		return nil, errors.New("ovsdb table prototype is nil")
+	}
+	table := provider.Table(prototype)
+	if table == nil {
+		return nil, errors.New("ovsdb table handle is nil")
+	}
+	return table, nil
+}
+
+// Query returns rows selected by an indexed model.
+func (d *Database) Query[T any](ctx context.Context, prototype, selector model.Model) ([]T, error) {
+	return Query[T](ctx, d, prototype, selector)
+}
+
+// Filter returns monitored rows matching predicate.
+func (d *Database) Filter[T any](ctx context.Context, prototype model.Model, predicate func(*T) bool) ([]T, error) {
+	return Filter[T](ctx, d, prototype, predicate)
+}
+
+// GetByName returns the unique named row matching nameOf.
+func (d *Database) GetByName[T any](ctx context.Context, prototype model.Model, name, kind string, ignoreNotFound bool, nameOf func(*T) string) (*T, error) {
+	return GetByName[T](ctx, d, prototype, name, kind, ignoreNotFound, nameOf)
+}
+
+// FilterByUUIDs returns monitored rows matching predicate and UUIDs.
+func (d *Database) FilterByUUIDs[T any](ctx context.Context, prototype model.Model, predicate func(*T) bool, uuids ...string) ([]T, error) {
+	return FilterByUUIDs[T](ctx, d, prototype, predicate, uuids...)
+}
+
+// WaitForRows waits until a cache predicate returns at least one row.
+func (d *Database) WaitForRows(ctx context.Context, prototype model.Model, predicate, result any) error {
+	return WaitForRows(ctx, d, prototype, predicate, result)
+}
+
+// List returns all monitored rows for prototype. T is the non-pointer row
+// type, matching the []Row convention used by generated OVN models.
+func List[T any](ctx context.Context, provider Provider, prototype model.Model) ([]T, error) {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return nil, err
+	}
+	rows := []T{}
+	if err := table.List(ctx, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// Query returns rows selected by an indexed model.
+func Query[T any](ctx context.Context, provider Provider, prototype, selector model.Model) ([]T, error) {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return nil, err
+	}
+	rows := []T{}
+	if err := table.Query(ctx, selector, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// Filter returns monitored rows matching predicate.
+func Filter[T any](ctx context.Context, provider Provider, prototype model.Model, predicate any) ([]T, error) {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return nil, err
+	}
+	rows := []T{}
+	if err := table.Filter(ctx, predicate, &rows); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// Unique returns the unique row from a cache listing. Callers supply the
+// not-found and duplicate errors so composite-key lookups can keep their
+// existing messages.
+func Unique[T any](rows []T, ignoreNotFound bool, notFound, duplicated error) (*T, error) {
+	switch len(rows) {
+	case 0:
+		if ignoreNotFound {
+			return nil, nil
+		}
+		return nil, notFound
+	case 1:
+		return &rows[0], nil
+	default:
+		return nil, duplicated
+	}
+}
+
+// UniqueByName returns the unique named row from a cache listing. It preserves
+// the not-found and duplicate-name errors used by named OVN tables.
+func UniqueByName[T any](rows []T, name, kind string, ignoreNotFound bool) (*T, error) {
+	return Unique(rows, ignoreNotFound, fmt.Errorf("not found %s %q", kind, name), fmt.Errorf("more than one %s with same name %q", kind, name))
+}
+
+// GetByName returns the unique named row matching nameOf.
+func GetByName[T any](ctx context.Context, provider Provider, prototype model.Model, name, kind string, ignoreNotFound bool, nameOf func(*T) string) (*T, error) {
+	rows, err := Filter[T](ctx, provider, prototype, func(row *T) bool {
+		return nameOf(row) == name
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list %s %q: %w", kind, name, err)
+	}
+	return UniqueByName(rows, name, kind, ignoreNotFound)
+}
+
+// FilterByUUIDs returns monitored rows matching predicate and UUIDs.
+func FilterByUUIDs[T any](ctx context.Context, provider Provider, prototype model.Model, predicate any, uuids ...string) ([]T, error) {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return nil, err
+	}
+	rows := []T{}
+	if err := table.FilterByUUIDs(ctx, predicate, &rows, uuids...); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// WaitForRows waits until a cache predicate returns at least one row. OVSDB
+// transaction replies can arrive before the monitor update has been applied
+// to the local cache, so callers that continue with a cache read immediately
+// after a write should use this helper as the synchronization point.
+func WaitForRows(ctx context.Context, provider Provider, prototype model.Model, predicate, result any) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	value := reflect.ValueOf(result)
+	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Slice {
+		return errors.New("ovsdb wait result must be a non-nil pointer to a slice")
+	}
+
+	waitCtx := ctx
+	cancel := func() {}
+	if _, ok := ctx.Deadline(); !ok {
+		waitCtx, cancel = context.WithTimeout(ctx, cacheWaitTimeout)
+	}
+	defer cancel()
+
+	ticker := time.NewTicker(cachePollInterval)
+	defer ticker.Stop()
+	for {
+		value.Elem().Set(reflect.Zero(value.Elem().Type()))
+		if err := table.Filter(waitCtx, predicate, result); err != nil {
+			return err
+		}
+		if value.Elem().Len() != 0 {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return waitCtx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// Get reads the row identified by result. The result must be a pointer to the
+// generated row type; the prototype selects the table and indexed schema.
+func Get(ctx context.Context, provider Provider, prototype, result model.Model) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	return table.Get(ctx, result)
+}
+
+// Create inserts rows and submits one transaction.
+func Create(ctx context.Context, provider Provider, prototype model.Model, method string, rows ...model.Model) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	return table.Create(ctx, method, rows...)
+}
+
+// Update changes selected fields on one row and submits one transaction.
+func Update(ctx context.Context, provider Provider, prototype model.Model, method string, selector, update model.Model, fields ...any) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	return table.Update(ctx, method, selector, update, fields...)
+}
+
+// Mutate applies mutations to one row and submits one transaction.
+func Mutate(ctx context.Context, provider Provider, prototype model.Model, method string, selector model.Model, mutations ...model.Mutation) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	return table.Mutate(ctx, method, selector, mutations...)
+}
+
+// Delete deletes rows selected by their indexed models.
+func Delete(ctx context.Context, provider Provider, prototype model.Model, method string, selectors ...model.Model) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	return table.Delete(ctx, method, selectors...)
+}
+
+// DeleteFilter deletes all monitored rows matching predicate.
+func DeleteFilter(ctx context.Context, provider Provider, prototype model.Model, method string, predicate any) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	return table.DeleteFilter(ctx, method, predicate)
+}
+
+// Transact submits pre-built operations through the selected table policy.
+func Transact(ctx context.Context, provider Provider, prototype model.Model, method string, operations ...ovsdb.Operation) error {
+	table, err := tableFor(provider, prototype)
+	if err != nil {
+		return err
+	}
+	return table.Transact(ctx, method, operations...)
+}

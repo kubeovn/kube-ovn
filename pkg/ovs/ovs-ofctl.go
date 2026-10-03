@@ -1,6 +1,8 @@
 package ovs
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"slices"
@@ -9,6 +11,7 @@ import (
 	"github.com/digitalocean/go-openvswitch/ovs"
 	"k8s.io/klog/v2"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -50,17 +53,20 @@ func ReplaceFlows(bridgeName string, flows []string) error {
 }
 
 // ClearU2OFlows clears obsolete U2O flows
-func ClearU2OFlows(client *ovs.Client) error {
-	bridges, err := Bridges()
+func ClearU2OFlows(client *ovs.Client, provider table.Provider) error {
+	if provider == nil {
+		return errors.New("vswitch table provider is nil")
+	}
+	bridgeRows, err := kubeOvnVswitchBridges(context.Background(), provider)
 	if err != nil {
 		klog.Errorf("failed to get ovs bridges: %v", err)
 		return err
 	}
 
-	for bridge := range slices.Values(bridges) {
-		flows, err := client.OpenFlow.DumpFlows(bridge)
+	for _, bridgeRow := range bridgeRows {
+		flows, err := client.OpenFlow.DumpFlows(bridgeRow.Name)
 		if err != nil {
-			klog.Errorf("failed to dump flows on bridge %s: %v", bridge, err)
+			klog.Errorf("failed to dump flows on bridge %s: %v", bridgeRow.Name, err)
 			return err
 		}
 
@@ -69,15 +75,15 @@ func ClearU2OFlows(client *ovs.Client) error {
 				continue
 			}
 
-			klog.Infof("deleting obsolete U2O keep src mac flow from bridge %s: %+v", bridge, flow)
-			if err = client.OpenFlow.DelFlows(bridge, &ovs.MatchFlow{
+			klog.Infof("deleting obsolete U2O keep src mac flow from bridge %s: %+v", bridgeRow.Name, flow)
+			if err = client.OpenFlow.DelFlows(bridgeRow.Name, &ovs.MatchFlow{
 				Protocol: flow.Protocol,
 				InPort:   flow.InPort,
 				Matches:  flow.Matches,
 				Table:    flow.Table,
 				Cookie:   flow.Cookie,
 			}); err != nil {
-				klog.Errorf("failed to delete obsolete U2O keep src mac flow from bridge %s: %v", bridge, err)
+				klog.Errorf("failed to delete obsolete U2O keep src mac flow from bridge %s: %v", bridgeRow.Name, err)
 				return err
 			}
 		}
