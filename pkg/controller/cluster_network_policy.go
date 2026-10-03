@@ -17,6 +17,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	cnputil "github.com/kubeovn/kube-ovn/pkg/cnp"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 
@@ -178,10 +179,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		desiredIngressAddrSet.Add(v4AddressSetName, v6AddressSetName)
 
 		aclPriority := getCnpACLPriority(cnp, index)
-		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
-		if rule.Ports != nil {
-			rulePorts = *rule.Ports
-		}
+		rulePorts := rule.Protocols
 
 		if as4len != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "ingress", index)
@@ -240,10 +238,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		desiredEgressAddrSet.Add(v4AddressSetName, v6AddressSetName)
 
 		aclPriority := getCnpACLPriority(cnp, index)
-		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
-		if rule.Ports != nil {
-			rulePorts = *rule.Ports
-		}
+		rulePorts := rule.Protocols
 
 		// Create ACL rules if we have IP addresses OR domain names.
 		// Domain names may not be resolved initially but will be updated later
@@ -904,7 +899,7 @@ func shouldRecreateCnpACLs(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) bool {
 	// so a renamed rule requires the acls to be recreated together with the address sets.
 	for index, rule := range newCnp.Spec.Ingress {
 		oldRule := oldCnp.Spec.Ingress[index]
-		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
+		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Protocols, rule.Protocols) {
 			return true
 		}
 	}
@@ -912,7 +907,7 @@ func shouldRecreateCnpACLs(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) bool {
 	// ACLs must be re-created if egress rules name, action or ports have changed
 	for index, rule := range newCnp.Spec.Egress {
 		oldRule := oldCnp.Spec.Egress[index]
-		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Ports, rule.Ports) {
+		if oldRule.Name != rule.Name || oldRule.Action != rule.Action || !reflect.DeepEqual(oldRule.Protocols, rule.Protocols) {
 			return true
 		}
 	}
@@ -990,6 +985,12 @@ func (c *Controller) wipeCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPolic
 
 // validateCnpConfig verifies a CNP is correctly written and doesn't conflict with any other
 func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error {
+	if err := cnputil.ValidateProtocols(cnp); err != nil {
+		return err
+	}
+	if hasCnpDomainNames(cnp) && !c.config.EnableDNSNameResolver {
+		return errors.New("DNSNameResolver is disabled but domain names are specified")
+	}
 	// Get the priority map of the CNP
 	priorityNameMap, _, err := c.getCnpPriorityMaps(cnp.Spec.Tier)
 	if err != nil {
@@ -1054,6 +1055,10 @@ func checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterN
 func checkNetworkAndDomainRules(cnp *v1alpha2.ClusterNetworkPolicy) error {
 	for _, egressRule := range cnp.Spec.Egress {
 		for _, peer := range egressRule.To {
+			if len(peer.DomainNames) > 0 && egressRule.Action != v1alpha2.ClusterNetworkPolicyRuleActionAccept {
+				return errors.New("domain names are only supported for Accept rules")
+			}
+
 			if len(peer.DomainNames) > util.CnpMaxDomains {
 				return fmt.Errorf("cnp egress peers can have a maximum of %d domains, got %d", util.CnpMaxDomains, len(peer.DomainNames))
 			}

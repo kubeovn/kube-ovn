@@ -68,7 +68,7 @@ func MakeAdminNetworkPolicyEgressRule(name string, action netpolv1alpha1.AdminNe
 }
 
 // MakeClusterNetworkPolicyEgressRule creates an egress rule with domain names
-func MakeClusterNetworkPolicyEgressRule(name string, action netpolv1alpha2.ClusterNetworkPolicyRuleAction, ports []netpolv1alpha2.ClusterNetworkPolicyPort, domainNames []netpolv1alpha2.DomainName) netpolv1alpha2.ClusterNetworkPolicyEgressRule {
+func MakeClusterNetworkPolicyEgressRule(name string, action netpolv1alpha2.ClusterNetworkPolicyRuleAction, ports []netpolv1alpha2.ClusterNetworkPolicyProtocol, domainNames []netpolv1alpha2.DomainName) netpolv1alpha2.ClusterNetworkPolicyEgressRule {
 	rule := netpolv1alpha2.ClusterNetworkPolicyEgressRule{
 		Name:   name,
 		Action: action,
@@ -77,9 +77,7 @@ func MakeClusterNetworkPolicyEgressRule(name string, action netpolv1alpha2.Clust
 				DomainNames: domainNames,
 			},
 		},
-	}
-	if len(ports) > 0 {
-		rule.Ports = &ports
+		Protocols: ports,
 	}
 	return rule
 }
@@ -95,12 +93,18 @@ func MakeAdminNetworkPolicyPort(port int32, protocol corev1.Protocol) netpolv1al
 }
 
 // MakeClusterNetworkPolicyPort creates a port specification
-func MakeClusterNetworkPolicyPort(port int32, protocol corev1.Protocol) netpolv1alpha2.ClusterNetworkPolicyPort {
-	return netpolv1alpha2.ClusterNetworkPolicyPort{
-		PortNumber: &netpolv1alpha2.Port{
-			Port:     port,
-			Protocol: protocol,
-		},
+func MakeClusterNetworkPolicyPort(port int32, protocol corev1.Protocol) netpolv1alpha2.ClusterNetworkPolicyProtocol {
+	destination := &netpolv1alpha2.Port{Number: port}
+	switch protocol {
+	case corev1.ProtocolTCP:
+		return netpolv1alpha2.ClusterNetworkPolicyProtocol{TCP: &netpolv1alpha2.ClusterNetworkPolicyProtocolTCP{DestinationPort: destination}}
+	case corev1.ProtocolUDP:
+		return netpolv1alpha2.ClusterNetworkPolicyProtocol{UDP: &netpolv1alpha2.ClusterNetworkPolicyProtocolUDP{DestinationPort: destination}}
+	case corev1.ProtocolSCTP:
+		return netpolv1alpha2.ClusterNetworkPolicyProtocol{SCTP: &netpolv1alpha2.ClusterNetworkPolicyProtocolSCTP{DestinationPort: destination}}
+	default:
+		Failf("unsupported CNP protocol %s", protocol)
+		return netpolv1alpha2.ClusterNetworkPolicyProtocol{}
 	}
 }
 

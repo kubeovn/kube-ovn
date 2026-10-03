@@ -3182,7 +3182,7 @@ func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
 		priority := 1000
 		aclAction := ovnnb.ACLActionAllow
 		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionAllow}
-		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
+		rulePorts := []v1alpha2.ClusterNetworkPolicyProtocol{}
 		isIngress := true
 
 		err := nbClient.DeletePortGroup(pgName)
@@ -3203,7 +3203,7 @@ func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
 		priority := 2000
 		aclAction := ovnnb.ACLActionDrop
 		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionDrop}
-		rulePorts := []v1alpha2.ClusterNetworkPolicyPort{}
+		rulePorts := []v1alpha2.ClusterNetworkPolicyProtocol{}
 		isIngress := false
 
 		err := nbClient.DeletePortGroup(pgName)
