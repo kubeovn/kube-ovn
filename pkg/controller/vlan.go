@@ -49,6 +49,13 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 	klog.V(3).Infof("enqueue update vlan %s", key)
 	c.updateVlanQueue.Add(key)
 
+	if oldVlan.Spec.ID != newVlan.Spec.ID || oldVlan.Spec.Provider != newVlan.Spec.Provider {
+		if err := c.enqueueRelatedVlans(oldVlan, newVlan); err != nil {
+			klog.Errorf("failed to enqueue related vlans for %s: %v", key, err)
+			c.recordVlanEvent(newVlan, corev1.EventTypeWarning, "ListVlansFailed", err.Error())
+		}
+	}
+
 	if oldVlan.Spec.Provider == newVlan.Spec.Provider {
 		return
 	}
@@ -66,6 +73,28 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 		}
 	}
+}
+
+// enqueueRelatedVlans rechecks both the old and new conflict groups after a
+// VLAN changes or disappears. Status-only updates must not call this helper,
+// otherwise conflicting VLANs would continuously enqueue each other.
+func (c *Controller) enqueueRelatedVlans(changed ...*kubeovnv1.Vlan) error {
+	vlans, err := c.vlansLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, vlan := range vlans {
+		for _, oldOrNew := range changed {
+			if oldOrNew.Spec.ID != 0 && vlan.Name != oldOrNew.Name &&
+				vlan.Spec.ID == oldOrNew.Spec.ID && vlan.Spec.Provider == oldOrNew.Spec.Provider {
+				// The add handler also registers VLANs whose initial reconciliation
+				// failed before they were added to the provider network.
+				c.addVlanQueue.Add(vlan.Name)
+				break
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Controller) enqueueDelVlan(obj any) {
@@ -179,10 +208,6 @@ func (c *Controller) handleAddVlan(key string) error {
 }
 
 func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
-	if vlan.Spec.ID == 0 {
-		// no conflict if vlan id is 0
-		return nil
-	}
 	// todo: check if vlan conflict in webhook
 	vlans, err := c.vlansLister.List(labels.Everything())
 	if err != nil {
@@ -194,7 +219,7 @@ func (c *Controller) checkVlanConflict(vlan *kubeovnv1.Vlan) error {
 	var conflictErr error
 	for _, v := range vlans {
 		// different provider allow to have same vlan
-		if vlan.Spec.Provider == v.Spec.Provider && vlan.Spec.ID == v.Spec.ID && vlan.Name != v.Name {
+		if vlan.Spec.ID != 0 && vlan.Spec.Provider == v.Spec.Provider && vlan.Spec.ID == v.Spec.ID && vlan.Name != v.Name {
 			conflictErr = fmt.Errorf("provider %s new vlan %s conflict with old vlan %s", vlan.Spec.Provider, vlan.Name, v.Name)
 			klog.Error(conflictErr)
 			conflict = true
@@ -239,6 +264,16 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		}
 		vlan = updatedVlan
 	}
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets: %v", err)
+		return c.recordVlanError(vlan, "ListSubnetsFailed", err)
+	}
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan == vlan.Name {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		}
+	}
 	newVlan := vlan.DeepCopy()
 	if err = c.checkVlanConflict(newVlan); err != nil {
 		klog.Errorf("failed to check vlan %s: %v", vlan.Name, err)
@@ -263,12 +298,6 @@ func (c *Controller) handleUpdateVlan(key string) error {
 		}
 	}
 
-	subnets, err := c.subnetsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list subnets: %v", err)
-		return c.recordVlanError(vlan, "ListSubnetsFailed", err)
-	}
-
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
 			if err = c.setLocalnetTag(subnet.Name, vlan.Spec.ID); err != nil {
@@ -288,6 +317,11 @@ func (c *Controller) handleDelVlan(vlan *kubeovnv1.Vlan) error {
 	c.vlanKeyMutex.LockKey(key)
 	defer func() { _ = c.vlanKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete vlan %s", key)
+
+	if err := c.enqueueRelatedVlans(vlan); err != nil {
+		klog.Errorf("failed to enqueue related vlans for %s: %v", key, err)
+		return c.recordVlanError(vlan, "ListVlansFailed", err)
+	}
 
 	subnet, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
