@@ -17,6 +17,9 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].securityContext.runAsGroup
           value: 65534
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: true
       - contains:
           path: spec.template.spec.containers[0].securityContext.capabilities.add
           content: NET_ADMIN

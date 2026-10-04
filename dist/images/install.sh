@@ -9239,6 +9239,7 @@ ${TPROXY_SECURITY_CONTEXT}
           runAsGroup: ${RUN_AS_USER}
           runAsUser: ${RUN_AS_USER}
           privileged: false
+          allowPrivilegeEscalation: true
           capabilities:
             add:
 ${CNI_SERVER_CAPABILITIES}
