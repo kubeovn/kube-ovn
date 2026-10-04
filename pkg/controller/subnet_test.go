@@ -115,6 +115,26 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 	}
 }
 
+func TestEnqueueUpdateSubnetOnDeletionTimestamp(t *testing.T) {
+	queue := newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil)
+	defer queue.ShutDown()
+
+	deletionTimestamp := metav1.Now()
+	oldSubnet := &kubeovnv1.Subnet{Name: "subnet-a"}
+	newSubnet := oldSubnet.DeepCopy()
+	newSubnet.DeletionTimestamp = &deletionTimestamp
+	newSubnet.Status.V4UsingIPs = internal.NewBigInt(1)
+
+	ctrl := &Controller{addOrUpdateSubnetQueue: queue}
+	ctrl.enqueueUpdateSubnet(oldSubnet, newSubnet)
+
+	require.Equal(t, 1, queue.Len())
+	key, shutdown := queue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, oldSubnet.Name, key)
+	queue.Done(key)
+}
+
 func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 	t.Parallel()
 
