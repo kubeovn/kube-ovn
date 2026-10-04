@@ -37,6 +37,9 @@ the helper container and its shared socket volume must also be present. Upgrade
 the image and Pod template together. The custom VPC probe E2E covers this setup,
 while `python3 hack/test-tproxy-container.py` checks enabled/disabled rendering
 for both charts, DPDK and the installer without applying any cluster resources.
+The E2E adds the helper only for v1.17 and newer (`E2E_BRANCH` determines the
+tested release). For v1.12 through v1.16, it enables the original daemon flag
+and runs the same HTTP/TCP assertions without adding a missing helper binary.
 
 This refactor is a prerequisite for CNI privilege separation in PR #7593.
 Other daemon paths still require their existing capabilities; this change alone

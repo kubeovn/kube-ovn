@@ -90,10 +90,10 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		}
 		newArgs = append(newArgs, "--enable-tproxy=true")
 		modifyDs.Spec.Template.Spec.Containers[0].Args = newArgs
-		// Enabling TProxy also requires the optional namespace helper and
-		// its Pod-local socket volume.
+		// Since v1.17, enabling TProxy also requires the optional namespace
+		// helper and its Pod-local socket volume. Older images dial in the daemon.
 		server := &modifyDs.Spec.Template.Spec.Containers[0]
-		if !slices.ContainsFunc(modifyDs.Spec.Template.Spec.Containers, func(c corev1.Container) bool { return c.Name == "tproxy" }) {
+		if !f.VersionPriorTo(1, 17) && !slices.ContainsFunc(modifyDs.Spec.Template.Spec.Containers, func(c corev1.Container) bool { return c.Name == "tproxy" }) {
 			server.VolumeMounts = append(server.VolumeMounts, corev1.VolumeMount{Name: "tproxy-socket", MountPath: "/run/kube-ovn-tproxy"})
 			modifyDs.Spec.Template.Spec.Volumes = append(modifyDs.Spec.Template.Spec.Volumes, corev1.Volume{
 				Name:     "tproxy-socket",
