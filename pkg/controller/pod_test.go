@@ -2896,3 +2896,68 @@ func TestAcquireAddressIgnoresVipAnnotation(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, got.Labels, util.IPReservedLabel)
 }
+
+// TestReleaseUncoveredPorts covers deleted pods whose ports outlive the network they were created for.
+func TestReleaseUncoveredPorts(t *testing.T) {
+	const (
+		podKey         = "default/virt-launcher-vm1"
+		subnetName     = "blue"
+		subnetCIDR     = "10.10.0.0/24"
+		subnetGateway  = "10.10.0.1"
+		subnetProvider = "blue.default.ovn"
+		otherProvider  = "red.default.ovn"
+	)
+	pod := &corev1.Pod{Name: "virt-launcher-vm1", Namespace: metav1.NamespaceDefault}
+	subnet := &kubeovnv1.Subnet{Name: subnetName, Spec: kubeovnv1.SubnetSpec{CIDRBlock: subnetCIDR, Gateway: subnetGateway, Provider: subnetProvider}}
+	primaryPort := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+	withCR := ovs.PodNameToPortName(pod.Name, pod.Namespace, subnetProvider)
+	withoutCR := ovs.PodNameToPortName(pod.Name, pod.Namespace, otherProvider)
+	ports := []ovnnb.LogicalSwitchPort{
+		{Name: primaryPort, ExternalIDs: map[string]string{ovs.LogicalSwitchKey: subnetName}},
+		{Name: withCR, ExternalIDs: map[string]string{ovs.LogicalSwitchKey: subnetName}},
+		{Name: withoutCR, ExternalIDs: map[string]string{ovs.LogicalSwitchKey: subnetName}},
+	}
+	podNets := []*kubeovnNet{{ProviderName: util.OvnProvider, Subnet: subnet}}
+
+	setup := func(t *testing.T) *Controller {
+		t.Helper()
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Subnets: []*kubeovnv1.Subnet{subnet},
+			IPs:     []*kubeovnv1.IP{{Name: withCR, Spec: kubeovnv1.IPSpec{Subnet: subnetName, PodName: pod.Name, Namespace: pod.Namespace}}},
+		})
+		require.NoError(t, err)
+		ctrl := fc.fakeController
+		require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnetName, subnetCIDR, subnetGateway, nil))
+		for i, port := range []string{primaryPort, withCR, withoutCR} {
+			_, _, _, err := ctrl.ipam.GetStaticAddress(podKey, port, fmt.Sprintf("10.10.0.%d", i+10), nil, subnetName, true)
+			require.NoError(t, err)
+		}
+		return ctrl
+	}
+
+	t.Run("releases uncovered ports with and without ip CR", func(t *testing.T) {
+		ctrl := setup(t)
+		released, err := ctrl.releaseUncoveredPorts(pod, pod.Name, podKey, podNets, ports, false, nil)
+		require.NoError(t, err)
+		require.Contains(t, released, "ipCR="+withCR+" subnet=blue")
+		require.Contains(t, released, "ipam="+withCR+" subnet=blue")
+		require.Contains(t, released, "ipam="+withoutCR+" subnet=blue")
+
+		_, err = ctrl.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), withCR, metav1.GetOptions{})
+		require.True(t, k8serrors.IsNotFound(err))
+		// Only the covered primary nic keeps its address.
+		addresses := ctrl.ipam.GetPodAddress(podKey)
+		require.Len(t, addresses, 1)
+		require.Equal(t, "10.10.0.10", addresses[0].IP)
+	})
+
+	t.Run("keeps addresses of a persisting vm owner", func(t *testing.T) {
+		ctrl := setup(t)
+		released, err := ctrl.releaseUncoveredPorts(pod, pod.Name, podKey, podNets, ports, true, []string{withoutCR})
+		require.NoError(t, err)
+		require.Equal(t, []string{"ipam=" + withoutCR + " subnet=blue"}, released)
+		_, err = ctrl.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), withCR, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Len(t, ctrl.ipam.GetPodAddress(podKey), 2)
+	})
+}

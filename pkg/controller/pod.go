@@ -1352,6 +1352,72 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 	return nil
 }
 
+// releaseUncoveredPortIP deletes the ip CR named after a deleted pod port and releases its
+// address. It is used for ports whose network could no longer be resolved for the pod.
+func (c *Controller) releaseUncoveredPortIP(podKey string, port ovnnb.LogicalSwitchPort) ([]string, error) {
+	// The port records its logical switch, so the address can be released even without an ip CR.
+	subnet := port.ExternalIDs[ovs.LogicalSwitchKey]
+	var released []string
+	ipCR, err := c.ipsLister.Get(port.Name)
+	switch {
+	case err == nil:
+		if ipCR.Labels[util.IPReservedLabel] == "true" {
+			return nil, nil
+		}
+		if ipCR.Spec.Subnet != "" {
+			subnet = ipCR.Spec.Subnet
+		}
+		klog.Infof("delete ip CR %s of port without resolvable network", ipCR.Name)
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCR.Name, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", ipCR.Name, err)
+				return nil, err
+			}
+		} else {
+			released = append(released, fmt.Sprintf("ipCR=%s subnet=%s", ipCR.Name, subnet))
+		}
+	case !k8serrors.IsNotFound(err):
+		klog.Errorf("failed to get ip %s, %v", port.Name, err)
+		return nil, err
+	}
+	if subnet == "" {
+		return released, nil
+	}
+
+	addressCount := len(c.ipam.GetPodAddress(podKey))
+	c.ipam.ReleaseAddressByNic(podKey, port.Name, subnet)
+	if len(c.ipam.GetPodAddress(podKey)) < addressCount {
+		released = append(released, fmt.Sprintf("ipam=%s subnet=%s", port.Name, subnet))
+	}
+	c.updateSubnetStatusQueue.Add(subnet)
+	return released, nil
+}
+
+// releaseUncoveredPorts releases the ip CRs and addresses of a deleted pod's ports whose network is
+// missing from podNets because their network's source is already gone (e.g. a deleted NAD whose subnet
+// cannot be determined), while their ports are still listed by pod. keepOwnerIPCR keeps the addresses
+// of statefulset and vm pods whose owner persists, except for the ports in ipcrToDelete.
+func (c *Controller) releaseUncoveredPorts(pod *v1.Pod, podName, podKey string, podNets []*kubeovnNet, ports []ovnnb.LogicalSwitchPort,
+	keepOwnerIPCR bool, ipcrToDelete []string,
+) ([]string, error) {
+	covered := strset.NewWithSize(len(podNets))
+	for _, podNet := range podNets {
+		covered.Add(ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
+	}
+	var released []string
+	for _, port := range ports {
+		if covered.Has(port.Name) || (keepOwnerIPCR && !slices.Contains(ipcrToDelete, port.Name)) {
+			continue
+		}
+		portReleased, err := c.releaseUncoveredPortIP(podKey, port)
+		if err != nil {
+			return released, err
+		}
+		released = append(released, portReleased...)
+	}
+	return released, nil
+}
+
 func (c *Controller) handleDeletePod(key string) (err error) {
 	pod, ok := c.deletingPodObjMap.Load(key)
 	if !ok {
@@ -1663,6 +1729,16 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				// This is needed when IP CR is deleted without finalizer (race condition)
 				c.updateSubnetStatusQueue.Add(podNet.Subnet.Name)
 			}
+		}
+		stage = "releaseUncoveredPorts"
+		keepOwnerIPCR := (isStsPod || isVMPod) && !isOwnerRefToDel && !isOwnerRefDeleted
+		portsReleased, err := c.releaseUncoveredPorts(pod, podName, podKey, podNets, ports, keepOwnerIPCR, ipcrToDelete)
+		if len(portsReleased) != 0 {
+			changed = true
+			released = append(released, portsReleased...)
+		}
+		if err != nil {
+			return err
 		}
 	}
 	for _, podNet := range podNets {
