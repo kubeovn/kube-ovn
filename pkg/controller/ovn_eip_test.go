@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,6 +12,94 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestMakeOvnEipStatusPatchOmitsStaleAllocationFields(t *testing.T) {
+	patch, err := makeOvnEipStatusPatch(true, "")
+	require.NoError(t, err)
+
+	var body struct {
+		Status map[string]any `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal(patch, &body))
+	require.Equal(t, true, body.Status["ready"])
+	require.Equal(t, "", body.Status["nat"])
+	_, hasV4IP := body.Status["v4Ip"]
+	_, hasV6IP := body.Status["v6Ip"]
+	_, hasMAC := body.Status["macAddress"]
+	require.False(t, hasV4IP)
+	require.False(t, hasV6IP)
+	require.False(t, hasMAC)
+}
+
+func TestMakeOvnEipStatusPatchIncludesReadyAndNat(t *testing.T) {
+	patch, err := makeOvnEipStatusPatch(true, util.SnatUsingEip)
+	require.NoError(t, err)
+
+	var body struct {
+		Status kubeovnv1.OvnEipStatus `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal(patch, &body))
+	require.True(t, body.Status.Ready)
+	require.Equal(t, util.SnatUsingEip, body.Status.Nat)
+	require.Empty(t, body.Status.Type)
+	require.Empty(t, body.Status.V4Ip)
+	require.Empty(t, body.Status.V6Ip)
+	require.Empty(t, body.Status.MacAddress)
+}
+
+func TestMakeOvnEipStatusPatchPreservesReadyState(t *testing.T) {
+	patch, err := makeOvnEipStatusPatch(false, "")
+	require.NoError(t, err)
+
+	var body struct {
+		Status map[string]any `json:"status"`
+	}
+	require.NoError(t, json.Unmarshal(patch, &body))
+	_, hasReady := body.Status["ready"]
+	require.False(t, hasReady)
+}
+
+func TestCreateOrUpdateOvnEipCRPersistsAllocatedStatus(t *testing.T) {
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{{ObjectMeta: metav1.ObjectMeta{Name: "external"}}},
+	})
+	require.NoError(t, err)
+
+	const (
+		name = "allocated-eip"
+		v4   = "172.19.0.17"
+		mac  = "fa:7c:96:7b:1a:58"
+	)
+	require.NoError(t, fc.fakeController.createOrUpdateOvnEipCR(name, "external", v4, "", mac, util.OvnEipTypeNAT))
+
+	eip, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().OvnEips().Get(
+		context.Background(), name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Equal(t, v4, eip.Status.V4Ip)
+	require.Equal(t, mac, eip.Status.MacAddress)
+	require.Equal(t, util.OvnEipTypeNAT, eip.Status.Type)
+}
+
+func TestPatchOvnEipStatusDoesNotClearReadyOrAddress(t *testing.T) {
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		OvnEips: []*kubeovnv1.OvnEip{{
+			ObjectMeta: metav1.ObjectMeta{Name: "ready-eip"},
+			Spec:       kubeovnv1.OvnEipSpec{V4Ip: "172.19.0.17"},
+			Status:     kubeovnv1.OvnEipStatus{Ready: true, Nat: util.SnatUsingEip, V4Ip: "172.19.0.17"},
+		}},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, fc.fakeController.patchOvnEipStatus("ready-eip", false))
+	eip, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().OvnEips().Get(
+		context.Background(), "ready-eip", metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.True(t, eip.Status.Ready)
+	require.Equal(t, "172.19.0.17", eip.Status.V4Ip)
+	require.Empty(t, eip.Status.Nat)
+}
 
 func Test_getOvnEipNat(t *testing.T) {
 	// NAT rules always carry an eip_v4_ip label, so a pure-IPv6 rule still has
