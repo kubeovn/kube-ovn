@@ -217,6 +217,16 @@ kube-ovn-non-primary-cni-e2e:
 	$(GINKGO_E2E_RUN_PARALLEL) --timeout=15m \
 		--focus="$(or $(NON_PRIMARY_CNI_E2E_FOCUS),group:non-primary-cni)" ./test/e2e/non-primary-cni/non-primary-cni.test -- $(TEST_BIN_ARGS)
 
+# Requires kube-ovn installed with ENABLE_DRA_NIC=true, e.g. ENABLE_DRA_NIC=true make kind-install
+.PHONY: kube-ovn-dra-e2e
+kube-ovn-dra-e2e:
+	$(GINKGO_E2E_BUILD) ./test/e2e/dra
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=15m \
+		--focus="group:dra" ./test/e2e/dra/dra.test -- $(TEST_BIN_ARGS)
+
 .PHONY: kube-ovn-bgp-speaker-e2e
 kube-ovn-bgp-speaker-e2e:
 	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
