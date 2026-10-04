@@ -11,6 +11,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	kubeletevents "k8s.io/kubernetes/pkg/kubelet/events"
@@ -89,6 +90,39 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		}
 		newArgs = append(newArgs, "--enable-tproxy=true")
 		modifyDs.Spec.Template.Spec.Containers[0].Args = newArgs
+		// Enabling TProxy also requires the optional namespace helper and
+		// its Pod-local socket volume.
+		server := &modifyDs.Spec.Template.Spec.Containers[0]
+		if !slices.ContainsFunc(modifyDs.Spec.Template.Spec.Containers, func(c corev1.Container) bool { return c.Name == "tproxy" }) {
+			server.VolumeMounts = append(server.VolumeMounts, corev1.VolumeMount{Name: "tproxy-socket", MountPath: "/run/kube-ovn-tproxy"})
+			modifyDs.Spec.Template.Spec.Volumes = append(modifyDs.Spec.Template.Spec.Volumes, corev1.Volume{
+				Name:     "tproxy-socket",
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			})
+			modifyDs.Spec.Template.Spec.Containers = append(modifyDs.Spec.Template.Spec.Containers, corev1.Container{
+				Name: "tproxy", Image: server.Image, ImagePullPolicy: server.ImagePullPolicy,
+				Command: []string{"/kube-ovn/kube-ovn-tproxy"},
+				SecurityContext: &corev1.SecurityContext{
+					RunAsUser: new(int64(0)), RunAsGroup: new(int64(65534)), Privileged: new(false), AllowPrivilegeEscalation: new(false),
+					Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"SYS_ADMIN"}},
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{Name: "tproxy-socket", MountPath: "/run/kube-ovn-tproxy"},
+					{Name: "host-run-ovs", MountPath: "/run/openvswitch", ReadOnly: true},
+					{Name: "host-ns", MountPath: "/var/run/netns", ReadOnly: true, MountPropagation: new(corev1.MountPropagationHostToContainer)},
+				},
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("10m"), corev1.ResourceMemory: resource.MustParse("32Mi")},
+					Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m"), corev1.ResourceMemory: resource.MustParse("128Mi")},
+				},
+			})
+		}
+		ginkgo.DeferCleanup(func() {
+			current := daemonSetClient.Get(originDs.Name)
+			restored := current.DeepCopy()
+			restored.Spec.Template = originDs.Spec.Template
+			daemonSetClient.PatchSync(current, restored)
+		})
 		daemonSetClient.PatchSync(originDs, modifyDs)
 
 		ginkgo.By("Creating VPC " + vpcName)
@@ -119,6 +153,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
+		// Use a new name so readiness events cannot belong to a previous Pod.
+		podName = "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod with HTTP readiness probe that port is not accessible " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
@@ -148,6 +184,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
+		podName = "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod with TCP readiness probe that port is accessible " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
@@ -163,6 +200,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		ginkgo.By("Deleting pod " + podName)
 		podClient.DeleteSync(podName)
 
+		podName = "pod-" + framework.RandomSuffix()
 		ginkgo.By("Creating pod with TCP readiness probe that port is not accessible " + podName)
 		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
 		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{

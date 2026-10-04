@@ -185,6 +185,10 @@ spec:
           - name: DBUS_SYSTEM_BUS_ADDRESS
             value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
+          {{- if .Values.func.ENABLE_TPROXY }}
+          - name: tproxy-socket
+            mountPath: /run/kube-ovn-tproxy
+          {{- end }}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
           - name: host-modules
@@ -249,9 +253,47 @@ spec:
             cpu: {{ index .Values "kube-ovn-cni" "limits" "cpu" }}
             memory: {{ index .Values "kube-ovn-cni" "limits" "memory" }}
             ephemeral-storage: {{ index .Values "kube-ovn-cni" "limits" "ephemeral-storage" }}
+      {{- if .Values.func.ENABLE_TPROXY }}
+      - name: tproxy
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - /kube-ovn/kube-ovn-tproxy
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 65534
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - SYS_ADMIN
+        volumeMounts:
+          - name: tproxy-socket
+            mountPath: /run/kube-ovn-tproxy
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+          - name: host-ns
+            mountPath: /var/run/netns
+            readOnly: true
+            mountPropagation: HostToContainer
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+      {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        {{- if .Values.func.ENABLE_TPROXY }}
+        - name: tproxy-socket
+          emptyDir: {}
+        {{- end }}
         - name: usr-local-sbin
           emptyDir: {}
         - name: host-modules
