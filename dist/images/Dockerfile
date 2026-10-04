@@ -21,6 +21,7 @@ RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-ic-controller && \
     ln -s /kube-ovn/kube-ovn /kube-ovn/kube-ovn-acl-sample && \
     ln -s /kube-ovn/kube-ovn-controller /kube-ovn/kube-ovn-pinger && \
+    setcap CAP_SYS_ADMIN+ep /kube-ovn/kube-ovn-tproxy && \
     setcap CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-cmd && \
     setcap CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-controller && \
     setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip /kube-ovn/kube-ovn-daemon && \
@@ -32,6 +33,7 @@ COPY --chmod=0644 logrotate/* /etc/logrotate.d/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 
 COPY --from=setcap /kube-ovn /kube-ovn
-RUN /kube-ovn/iptables-wrapper-installer.sh --no-sanity-check
+RUN test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep" && \
+    /kube-ovn/iptables-wrapper-installer.sh --no-sanity-check
 
 WORKDIR /kube-ovn

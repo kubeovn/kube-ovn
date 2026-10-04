@@ -8818,9 +8818,11 @@ echo ""
 echo "[Step 3/6] Install Kube-OVN"
 
 TPROXY_CONTAINER=""
+TPROXY_SECURITY_CONTEXT=""
 TPROXY_SOCKET_MOUNT=""
 TPROXY_SOCKET_VOLUME=""
 if [[ "$ENABLE_TPROXY" == "true" ]]; then
+  TPROXY_SECURITY_CONTEXT="        fsGroup: 65534"
   TPROXY_CONTAINER=$(cat <<EOF
       - name: tproxy
         image: "$REGISTRY/kube-ovn:$VERSION"
@@ -8828,7 +8830,8 @@ if [[ "$ENABLE_TPROXY" == "true" ]]; then
         command:
           - /kube-ovn/kube-ovn-tproxy
         securityContext:
-          runAsUser: 0
+          runAsUser: 65534
+          runAsNonRoot: true
           runAsGroup: 65534
           privileged: false
           allowPrivilegeEscalation: false
@@ -9139,6 +9142,7 @@ spec:
       hostNetwork: true
       hostPID: true
       securityContext:
+${TPROXY_SECURITY_CONTEXT}
         seccompProfile:
           type: RuntimeDefault
       initContainers:

@@ -12,15 +12,25 @@ When disabled, the helper container, shared socket mounts and socket volume are
 absent. The daemon retains route/rule cleanup so disabling the feature does not
 depend on a container that has already been removed.
 
-The helper is a standalone binary from the same image. It runs as root with the
-nobody service group, drops all capabilities except `SYS_ADMIN`, and disables
-privilege escalation. OVSDB and runtime namespace directories are mounted
+The helper is a standalone binary from the same image. It runs as the
+nobody service user and group (UID/GID 65534), declares `runAsNonRoot`, and drops
+all container capabilities except `SYS_ADMIN`. The binary carries
+`cap_sys_admin=ep`; the final image build verifies that the file capability
+survives the copy between build stages. The container keeps
+`allowPrivilegeEscalation: false`; candidate-image E2E must verify that the
+runtime preserves the capability through exec with `no_new_privs`. The container
+capability keeps `SYS_ADMIN` in the bounding set; the file capability cannot bypass it.
+OVSDB and runtime namespace directories are mounted
 read-only; netns mounts use `HostToContainer` propagation. The group permits
 access to the OVSDB socket owned by the unprivileged OVS service. The helper
-binary has no file capability and is not launched or supervised by OVS.
+is not launched or supervised by OVS.
 
 The Unix socket `/run/kube-ovn-tproxy/tproxy.sock` resides in a Pod-local
-`emptyDir` mounted only by the daemon and helper. Requests must come from root
+`emptyDir` mounted only by the daemon and helper. When TProxy is enabled, the
+Pod sets `fsGroup: 65534` so the helper can create and remove its socket in that
+volume. Disabling TProxy omits this group setting together with the IPC volume.
+HostPath ownership is not changed by `fsGroup`; OVSDB and namespace paths must
+already be accessible to the service user/group. Requests must come from root
 or the nobody service user. The helper validates the namespace path and TCP
 destination, then synchronously checks that an OVS interface records the target
 Pod IP, namespace and Kube-OVN ownership. It does not monitor or cache all node

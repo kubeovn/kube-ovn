@@ -47,6 +47,9 @@ spec:
       hostNetwork: true
       hostPID: true
       securityContext:
+        {{- if .Values.features.enableTproxy }}
+        fsGroup: 65534
+        {{- end }}
         seccompProfile:
           type: RuntimeDefault
       initContainers:
@@ -283,7 +286,8 @@ spec:
         command:
           - /kube-ovn/kube-ovn-tproxy
         securityContext:
-          runAsUser: 0
+          runAsUser: 65534
+          runAsNonRoot: true
           runAsGroup: 65534
           privileged: false
           allowPrivilegeEscalation: false

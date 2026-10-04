@@ -23,12 +23,16 @@ def validate(manifest, enabled):
     assert ("tproxy-socket" in volumes) == enabled
     daemon_mounts = {item["name"]: item for item in daemon["volumeMounts"]}
     assert ("tproxy-socket" in daemon_mounts) == enabled
+    assert ("fsGroup" in pod["securityContext"]) == enabled
+    if enabled:
+        assert pod["securityContext"]["fsGroup"] == 65534
     for init in pod.get("initContainers", []):
         assert all(mount["name"] != "tproxy-socket" for mount in init.get("volumeMounts", []))
     if enabled:
         helper = containers["tproxy"]
         security = helper["securityContext"]
-        assert security["runAsUser"] == 0
+        assert security["runAsUser"] == 65534
+        assert security["runAsNonRoot"] is True
         assert security["runAsGroup"] == 65534
         assert security["privileged"] is False
         assert security["allowPrivilegeEscalation"] is False
@@ -80,7 +84,8 @@ def main():
     for name in ("start-ovs.sh", "start-ovs-dpdk-v2.sh"):
         assert "kube-ovn-tproxy" not in (ROOT / "dist/images" / name).read_text()
     dockerfile = (ROOT / "dist/images/Dockerfile").read_text()
-    assert not any("setcap" in line and "kube-ovn-tproxy" in line for line in dockerfile.splitlines())
+    assert "setcap CAP_SYS_ADMIN+ep /kube-ovn/kube-ovn-tproxy" in dockerfile
+    assert 'getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep"' in dockerfile
     print("TProxy enabled/disabled, DPDK, installer and capability separation checks passed.")
 
 

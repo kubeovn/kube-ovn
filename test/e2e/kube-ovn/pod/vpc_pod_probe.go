@@ -94,6 +94,10 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		// helper and its Pod-local socket volume. Older images dial in the daemon.
 		server := &modifyDs.Spec.Template.Spec.Containers[0]
 		if !f.VersionPriorTo(1, 17) && !slices.ContainsFunc(modifyDs.Spec.Template.Spec.Containers, func(c corev1.Container) bool { return c.Name == "tproxy" }) {
+			if modifyDs.Spec.Template.Spec.SecurityContext == nil {
+				modifyDs.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{}
+			}
+			modifyDs.Spec.Template.Spec.SecurityContext.FSGroup = new(int64(65534))
 			server.VolumeMounts = append(server.VolumeMounts, corev1.VolumeMount{Name: "tproxy-socket", MountPath: "/run/kube-ovn-tproxy"})
 			modifyDs.Spec.Template.Spec.Volumes = append(modifyDs.Spec.Template.Spec.Volumes, corev1.Volume{
 				Name:     "tproxy-socket",
@@ -103,7 +107,8 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 				Name: "tproxy", Image: server.Image, ImagePullPolicy: server.ImagePullPolicy,
 				Command: []string{"/kube-ovn/kube-ovn-tproxy"},
 				SecurityContext: &corev1.SecurityContext{
-					RunAsUser: new(int64(0)), RunAsGroup: new(int64(65534)), Privileged: new(false), AllowPrivilegeEscalation: new(false),
+					RunAsUser: new(int64(65534)), RunAsGroup: new(int64(65534)), RunAsNonRoot: new(true),
+					Privileged: new(false), AllowPrivilegeEscalation: new(false),
 					Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"SYS_ADMIN"}},
 				},
 				VolumeMounts: []corev1.VolumeMount{
