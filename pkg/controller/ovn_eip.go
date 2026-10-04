@@ -84,8 +84,14 @@ func (c *Controller) handleAddOvnEip(key string) error {
 		klog.Error(err)
 		return err
 	}
+	if !cachedEip.DeletionTimestamp.IsZero() {
+		return nil
+	}
 	if cachedEip.Status.MacAddress != "" {
-		// already ok
+		// Allocation may finish before the add worker runs. LSP readiness belongs to the node.
+		if cachedEip.Spec.Type != util.OvnEipTypeLSP && !cachedEip.Status.Ready {
+			return c.patchOvnEipStatus(key, true)
+		}
 		return nil
 	}
 	klog.Infof("handle add ovn eip %s", cachedEip.Name)
@@ -299,8 +305,8 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 	cachedEip, err := c.ovnEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			// Create CR with finalizer, labels and status all at once
-			_, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Create(context.Background(), &kubeovnv1.OvnEip{
+			// Create metadata and spec, then persist allocation through the status subresource.
+			ovnEip := &kubeovnv1.OvnEip{
 				Name:       key,
 				Finalizers: []string{util.KubeOVNControllerFinalizer},
 				Labels: map[string]string{
@@ -316,18 +322,23 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 					MacAddress:     mac,
 					Type:           usageType,
 				},
-				Status: kubeovnv1.OvnEipStatus{
-					V4Ip:       v4ip,
-					V6Ip:       v6ip,
-					MacAddress: mac,
-					Type:       usageType,
-					Nat:        "",
-					Ready:      false,
-				},
-			}, metav1.CreateOptions{})
+			}
+			_, err := c.config.KubeOvnClient.KubeovnV1().OvnEips().Create(context.Background(), ovnEip, metav1.CreateOptions{})
 			if err != nil {
 				err := fmt.Errorf("failed to create crd ovn eip '%s', %w", key, err)
 				klog.Error(err)
+				return err
+			}
+			bytes, err := json.Marshal(map[string]any{"status": map[string]string{
+				"v4Ip": v4ip, "v6Ip": v6ip, "macAddress": mac, "type": usageType,
+			}})
+			if err != nil {
+				klog.Errorf("failed to marshal ovn eip %s status, %v", key, err)
+				return err
+			}
+			if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), key,
+				types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+				klog.Errorf("failed to patch ovn eip %s status, %v", key, err)
 				return err
 			}
 			// wait local cache ready
@@ -373,25 +384,21 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 				return errMsg
 			}
 		}
-		needPatch := false
-		if ovnEip.Status.V4Ip == "" && ovnEip.Status.V4Ip != v4ip {
-			ovnEip.Status.V4Ip = v4ip
-			needPatch = true
+		statusPatch := map[string]string{}
+		if cachedEip.Status.V4Ip == "" && v4ip != "" {
+			statusPatch["v4Ip"] = v4ip
 		}
-		if ovnEip.Status.V6Ip == "" && ovnEip.Status.V6Ip != v6ip {
-			ovnEip.Status.V6Ip = v6ip
-			needPatch = true
+		if cachedEip.Status.V6Ip == "" && v6ip != "" {
+			statusPatch["v6Ip"] = v6ip
 		}
-		if ovnEip.Status.MacAddress == "" && ovnEip.Status.MacAddress != mac {
-			ovnEip.Status.MacAddress = mac
-			needPatch = true
+		if cachedEip.Status.MacAddress == "" && mac != "" {
+			statusPatch["macAddress"] = mac
 		}
-		if ovnEip.Status.Type == "" && ovnEip.Status.Type != usageType {
-			ovnEip.Status.Type = usageType
-			needPatch = true
+		if cachedEip.Status.Type == "" && usageType != "" {
+			statusPatch["type"] = usageType
 		}
-		if needPatch {
-			bytes, err := ovnEip.Status.Bytes()
+		if len(statusPatch) != 0 {
+			bytes, err := json.Marshal(map[string]any{"status": statusPatch})
 			if err != nil {
 				klog.Errorf("failed to marshal ovn eip %s, %v", key, err)
 				return err
@@ -417,50 +424,42 @@ func (c *Controller) patchOvnEipStatus(key string, markEIPAsReady bool) error {
 		klog.Errorf("failed to get cached ovn eip '%s', %v", key, err)
 		return err
 	}
-	ovnEip := cachedOvnEip.DeepCopy()
-	changed := false
-	if markEIPAsReady {
-		if !ovnEip.Status.Ready {
-			ovnEip.Status.Ready = true
-			changed = true
-		}
-	}
-	if ovnEip.Status.MacAddress == "" {
-		// not support change ip
-		ovnEip.Status.V4Ip = cachedOvnEip.Spec.V4Ip
-		ovnEip.Status.V6Ip = cachedOvnEip.Spec.V6Ip
-		ovnEip.Status.MacAddress = cachedOvnEip.Spec.MacAddress
-		changed = true
-	}
-	if ovnEip.Spec.Type != "" && ovnEip.Spec.Type != ovnEip.Status.Type {
-		ovnEip.Status.Type = ovnEip.Spec.Type
-		changed = true
-	}
-	nat, err := c.getOvnEipNat(ovnEip.Spec.V4Ip)
+	changed := markEIPAsReady && !cachedOvnEip.Status.Ready
+	nat, err := c.getOvnEipNat(cachedOvnEip.Spec.V4Ip)
 	if err != nil {
 		err = fmt.Errorf("failed to get ovn eip nat: %w", err)
 		klog.Error(err)
 		return err
 	}
 	// nat record all kinds of nat rules using this eip
-	klog.V(3).Infof("nat of ovn eip %s is %s", ovnEip.Name, nat)
-	if ovnEip.Status.Nat != nat {
-		ovnEip.Status.Nat = nat
+	klog.V(3).Infof("nat of ovn eip %s is %s", cachedOvnEip.Name, nat)
+	if cachedOvnEip.Status.Nat != nat {
 		changed = true
 	}
 	if changed {
-		bytes, err := ovnEip.Status.Bytes()
+		// Patch only the fields changed by this reconciliation. Sending the
+		// informer object's complete status can overwrite an address written by
+		// createOrUpdateOvnEipCR when the add and status events race.
+		bytes, err := makeOvnEipStatusPatch(markEIPAsReady, nat)
 		if err != nil {
 			klog.Errorf("failed to marshal ovn eip status '%s', %v", key, err)
 			return err
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), ovnEip.Name,
+		if _, err = c.config.KubeOvnClient.KubeovnV1().OvnEips().Patch(context.Background(), cachedOvnEip.Name,
 			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Errorf("failed to patch status for ovn eip '%s', %v", key, err)
 			return err
 		}
 	}
 	return nil
+}
+
+func makeOvnEipStatusPatch(markEIPAsReady bool, nat string) ([]byte, error) {
+	statusPatch := map[string]any{"nat": nat}
+	if markEIPAsReady {
+		statusPatch["ready"] = true
+	}
+	return json.Marshal(map[string]any{"status": statusPatch})
 }
 
 func (c *Controller) natLabelAndAnnoOvnEip(eipName, natName, vpcName string) error {
