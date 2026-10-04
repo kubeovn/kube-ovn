@@ -84,6 +84,7 @@ CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
 ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
 SET_GENEVE_TX_OFF=${SET_GENEVE_TX_OFF:-false}
+ENABLE_DRA_NIC=${ENABLE_DRA_NIC:-false} # experimental
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 HOST_TUNNEL_SRC=${HOST_TUNNEL_SRC:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
@@ -7952,6 +7953,21 @@ rules:
       - list
       - watch
   - apiGroups:
+      - "resource.k8s.io"
+    resources:
+      - resourceclaims
+      - resourceslices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "resource.k8s.io"
+    resources:
+      - resourceclaims
+    verbs:
+      - patch
+  - apiGroups:
       - "policy.networking.k8s.io"
     resources:
       - adminnetworkpolicies
@@ -9342,6 +9358,7 @@ spec:
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
           - --enable-dns-name-resolver=$ENABLE_DNS_NAME_RESOLVER
+          - --enable-dra-nic=$ENABLE_DRA_NIC
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE

@@ -139,6 +139,8 @@ func:
   OVSDB_CON_TIMEOUT: 3
   OVSDB_INACTIVITY_TIMEOUT: 10
   ENABLE_LIVE_MIGRATION_OPTIMIZE: true
+  # Experimental: treat devices allocated by the kube-ovn DRA NIC driver as pod network attachments
+  ENABLE_DRA_NIC: false
 
 # Experimental OVN ACL sampling for NetworkPolicy events.
 aclSampling:
