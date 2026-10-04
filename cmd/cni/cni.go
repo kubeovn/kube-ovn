@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,11 +10,10 @@ import (
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
-	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
 
 	"github.com/kubeovn/kube-ovn/cmd/acl_sample"
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	cniexec "github.com/kubeovn/kube-ovn/pkg/cni"
 	"github.com/kubeovn/kube-ovn/pkg/netconf"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -76,65 +74,29 @@ func cmdAdd(args *skel.CmdArgs) error {
 		VhostUserSocketVolumeName:  netConf.VhostUserSocketVolumeName,
 		VhostUserSocketName:        netConf.VhostUserSocketName,
 		VhostUserSocketConsumption: netConf.VhostUserSocketConsumption,
+		PrepareOnly:                true,
 	})
 	if err != nil {
 		return types.NewError(types.ErrTryAgainLater, "RPC failed", err.Error())
 	}
 
-	result, err := generateCNIResult(response, args.Netns)
+	if response.Plan == nil {
+		return types.NewError(types.ErrTryAgainLater, "RPC failed", "daemon returned no CNI plan")
+	}
+	executor := cniexec.NewExecutor(cniexec.ExecutorConfig{EnableArpDetectIPConflict: response.Plan.EnableArpDetectIPConflict})
+	execution, err := executor.Add(response.Plan)
+	if err != nil {
+		return types.NewError(types.ErrTryAgainLater, "CNI execution failed", err.Error())
+	}
+	if err = client.Commit(request.CniRequest{Plan: response.Plan, Execution: execution}); err != nil {
+		return types.NewError(types.ErrTryAgainLater, "CNI commit failed", err.Error())
+	}
+
+	result, err := cniexec.ResultFromPlan(response.Plan, execution)
 	if err != nil {
 		return err
 	}
 	return types.PrintResult(&result, cniVersion)
-}
-
-func generateCNIResult(cniResponse *request.CniResponse, netns string) (current.Result, error) {
-	result := current.Result{
-		CNIVersion: current.ImplementedSpecVersion,
-		DNS:        cniResponse.DNS,
-		Routes:     parseRoutes(cniResponse.Routes),
-	}
-	podIface := current.Interface{
-		Name:    cniResponse.PodNicName,
-		Mac:     cniResponse.MacAddress,
-		Mtu:     cniResponse.Mtu,
-		Sandbox: netns,
-	}
-
-	addRoutes := len(result.Routes) == 0
-	for _, ipCfg := range cniResponse.IPs {
-		ip, route, err := assignAddress(ipCfg)
-		if err != nil {
-			return result, fmt.Errorf("failed to assign address: %w", err)
-		}
-		result.IPs = append(result.IPs, ip)
-		if addRoutes && route != nil {
-			result.Routes = append(result.Routes, route)
-		}
-	}
-	result.Interfaces = []*current.Interface{&podIface}
-	return result, nil
-}
-
-func parseRoutes(routes []request.Route) []*types.Route {
-	parsedRoutes := make([]*types.Route, len(routes))
-	for i, r := range routes {
-		if r.Destination == "" {
-			if util.CheckProtocol(r.Gateway) == kubeovnv1.ProtocolIPv4 {
-				r.Destination = "0.0.0.0/0"
-			} else {
-				r.Destination = "::/0"
-			}
-		}
-		parsedRoutes[i] = &types.Route{}
-		if gw := net.ParseIP(r.Gateway); gw != nil {
-			parsedRoutes[i].GW = gw
-		}
-		if _, cidr, err := net.ParseCIDR(r.Destination); err == nil {
-			parsedRoutes[i].Dst = *cidr
-		}
-	}
-	return parsedRoutes
 }
 
 func cmdDel(args *skel.CmdArgs) error {
@@ -153,8 +115,7 @@ func cmdDel(args *skel.CmdArgs) error {
 		return err
 	}
 	applyDefaultProvider(netConf, args)
-
-	err = client.Del(request.CniRequest{
+	response, err := client.PrepareDelete(request.CniRequest{
 		CniType:                    netConf.Type,
 		PodName:                    podName,
 		PodNamespace:               podNamespace,
@@ -165,9 +126,20 @@ func cmdDel(args *skel.CmdArgs) error {
 		DeviceID:                   netConf.DeviceID,
 		VhostUserSocketVolumeName:  netConf.VhostUserSocketVolumeName,
 		VhostUserSocketConsumption: netConf.VhostUserSocketConsumption,
+		PrepareOnly:                true,
 	})
 	if err != nil {
 		return types.NewError(types.ErrTryAgainLater, "RPC failed", err.Error())
+	}
+	if response.Plan == nil {
+		return types.NewError(types.ErrTryAgainLater, "RPC failed", "daemon returned no CNI delete plan")
+	}
+	executor := cniexec.NewExecutor(cniexec.ExecutorConfig{EnableArpDetectIPConflict: response.Plan.EnableArpDetectIPConflict})
+	if err = executor.Delete(response.Plan); err != nil {
+		return types.NewError(types.ErrTryAgainLater, "CNI deletion failed", err.Error())
+	}
+	if err = client.Commit(request.CniRequest{Plan: response.Plan}); err != nil {
+		return types.NewError(types.ErrTryAgainLater, "CNI commit failed", err.Error())
 	}
 	return nil
 }
@@ -212,55 +184,4 @@ func parseValueFromArgs(key, argString string) (string, error) {
 		}
 	}
 	return "", types.NewError(types.ErrInvalidNetworkConfig, "Invalid Configuration", key+" is required in CNI_ARGS")
-}
-
-func assignAddress(cfg request.IPConfig) (*current.IPConfig, *types.Route, error) {
-	_, cidr, err := net.ParseCIDR(cfg.CIDR)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse CIDR %q: %w", cfg.CIDR, err)
-	}
-
-	var ipAddr, gwIP net.IP
-	var defaultDst net.IPNet
-	if cfg.Protocol == kubeovnv1.ProtocolIPv6 {
-		if parsed := net.ParseIP(cfg.IP); parsed != nil {
-			ipAddr = parsed.To16()
-		} else {
-			return nil, nil, fmt.Errorf("failed to parse IP %q", cfg.IP)
-		}
-		if cfg.Gateway != "" {
-			if parsed := net.ParseIP(cfg.Gateway); parsed != nil {
-				gwIP = parsed.To16()
-			} else {
-				return nil, nil, fmt.Errorf("failed to parse gateway %q", cfg.Gateway)
-			}
-		}
-		defaultDst = net.IPNet{IP: net.IPv6zero, Mask: net.CIDRMask(0, 128)}
-	} else {
-		if parsed := net.ParseIP(cfg.IP); parsed != nil {
-			ipAddr = parsed.To4()
-		} else {
-			return nil, nil, fmt.Errorf("failed to parse IP %q", cfg.IP)
-		}
-		if cfg.Gateway != "" {
-			if parsed := net.ParseIP(cfg.Gateway); parsed != nil {
-				gwIP = parsed.To4()
-			} else {
-				return nil, nil, fmt.Errorf("failed to parse gateway %q", cfg.Gateway)
-			}
-		}
-		defaultDst = net.IPNet{IP: net.IPv4zero.To4(), Mask: net.CIDRMask(0, 32)}
-	}
-
-	ip := &current.IPConfig{
-		Address:   net.IPNet{IP: ipAddr, Mask: cidr.Mask},
-		Gateway:   gwIP,
-		Interface: new(0),
-	}
-
-	var route *types.Route
-	if gwIP != nil {
-		route = &types.Route{Dst: defaultDst, GW: gwIP}
-	}
-	return ip, route, nil
 }

@@ -75,7 +75,7 @@ func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, ne
 	return ovs.SetInterfaceBandwidth(podName, podNamespace, ifaceID, egress, ingress, egressBurst, ingressBurst)
 }
 
-func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, ingressBurst, egressBurst, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string, appendIfName, routedSubnet bool) ([]request.Route, error) {
+func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns, containerID, vfDriver, ifName, mac string, mtu int, ip, gateway string, isDefaultRoute, vmMigration bool, routes []request.Route, _, _ []string, ingress, egress, ingressBurst, egressBurst, deviceID, latency, limit, loss, jitter string, gwCheckMode int, u2oInterconnectionIP, oldPodName, encapIP, localnetSubnet string, appendIfName, routedSubnet bool, execution *request.CNIExecutionResult) ([]request.Route, error) {
 	var err error
 	var hostNicName, containerNicName, pfPci string
 	var vfID int
@@ -110,6 +110,10 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 				}
 			}
 		}()
+	}
+	if execution != nil {
+		execution.HostNicName = hostNicName
+		execution.ContainerNicName = containerNicName
 	}
 
 	ipStr := util.GetIPWithoutMask(ip)
@@ -188,9 +192,11 @@ func (csh cniServerHandler) configureNic(podName, podNamespace, provider, netns,
 			fmt.Sprintf(util.VfNameTemplate, provider):            containerNicName,
 			fmt.Sprintf(util.PodNicAnnotationTemplate, provider):  util.SriovNicType,
 		}
-		if err = util.PatchAnnotations(csh.Config.KubeClient.CoreV1().Pods(podNamespace), podNameNew, patch); err != nil {
-			klog.Errorf("failed to patch pod %s/%s: %v", podNamespace, podNameNew, err)
-			return nil, err
+		if csh.Config.KubeClient != nil {
+			if err = util.PatchAnnotations(csh.Config.KubeClient.CoreV1().Pods(podNamespace), podNameNew, patch); err != nil {
+				klog.Errorf("failed to patch pod %s/%s: %v", podNamespace, podNameNew, err)
+				return nil, err
+			}
 		}
 	}
 
@@ -667,6 +673,10 @@ func (csh cniServerHandler) checkGatewayReady(podName, podNamespace string, gwCh
 		// ignore error if disableGatewayCheck=true
 		_ = waitNetworkReady(intr, ipAddr, gateway, true, verbose, 1, nil)
 		return nil
+	}
+
+	if csh.KubeClient == nil {
+		return waitNetworkReady(intr, ipAddr, gateway, gwCheckMode == gatewayCheckModeArping, verbose, gatewayCheckMaxRetry, nil)
 	}
 
 	done := make(chan struct{}, 1)
