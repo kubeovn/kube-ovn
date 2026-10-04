@@ -8,7 +8,17 @@ IMAGE_DOCKERFILE="$SCRIPT_DIR/Dockerfile"
 ! grep -q 'DISABLE_LEGACY_CNI_EXECUTION' "$INSTALL_SCRIPT"
 ! grep -q -- '--disable-legacy-cni-execution' "$INSTALL_SCRIPT"
 grep -q 'runAsUser: ${RUN_AS_USER}' "$INSTALL_SCRIPT"
-! grep -Eq 'setcap .*CAP_SYS_ADMIN.*kube-ovn-daemon' "$IMAGE_DOCKERFILE"
+cni_server_template=$(sed -n '/^      - name: cni-server$/,/^        env:$/p' "$INSTALL_SCRIPT")
+grep -q 'allowPrivilegeEscalation: true' <<<"$cni_server_template"
+
+final_stage=$(sed -n '/^FROM kubeovn\/kube-ovn-base:\$BASE_TAG$/,$p' "$IMAGE_DOCKERFILE")
+grep -q 'setcap CAP_SYS_ADMIN+ep /kube-ovn/kube-ovn-tproxy' <<<"$final_stage"
+grep -q 'getcap /kube-ovn/kube-ovn-tproxy).*cap_sys_admin=ep' <<<"$final_stage"
+grep -q 'setcap CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-cmd' <<<"$final_stage"
+grep -q 'setcap CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-controller' <<<"$final_stage"
+grep -q 'setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-daemon' <<<"$final_stage"
+grep -q 'setcap CAP_NET_ADMIN+eip /kube-ovn/vpc-egress-gateway-observer' <<<"$final_stage"
+! grep -Eq 'setcap .*CAP_SYS_ADMIN.*kube-ovn-daemon' <<<"$final_stage"
 
 # Evaluate the installer inputs and the generated capability selection without
 # running the installer (which applies resources to the current Kubernetes

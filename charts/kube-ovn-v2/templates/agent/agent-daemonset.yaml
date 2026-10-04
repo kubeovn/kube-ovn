@@ -177,6 +177,7 @@ spec:
           runAsGroup: {{ include "kubeovn.runAsUser" . }}
           runAsUser: {{ include "kubeovn.runAsUser" . }}
           privileged: false
+          allowPrivilegeEscalation: true
           capabilities:
             add:
               - NET_ADMIN
