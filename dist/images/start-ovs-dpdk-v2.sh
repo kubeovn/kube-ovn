@@ -48,8 +48,8 @@ if ! test -f "$CONFIG_FILE"; then
 	printf %s\\n {dpdk-socket-mem=\"1024\",dpdk-init=true,dpdk-hugepage-dir=/dev/hugepages} > $CONFIG_FILE
 fi
 
-# Start ovsdb
-ovs-ctl restart --no-ovs-vswitchd --system-id=random
+# Keep root-owned OVSDB sockets group-writable, including after monitor restarts.
+ovs-ctl restart --no-ovs-vswitchd --system-id=random --ovsdb-server-umask=0007
 
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
 # amount of RSS it uses on hosts with many cores

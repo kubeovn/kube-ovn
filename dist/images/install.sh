@@ -8817,6 +8817,60 @@ echo ""
 
 echo "[Step 3/6] Install Kube-OVN"
 
+TPROXY_CONTAINER=""
+TPROXY_SECURITY_CONTEXT=""
+TPROXY_SOCKET_MOUNT=""
+TPROXY_SOCKET_VOLUME=""
+if [[ "$ENABLE_TPROXY" == "true" ]]; then
+  TPROXY_SECURITY_CONTEXT="        fsGroup: 65534"
+  TPROXY_CONTAINER=$(cat <<EOF
+      - name: tproxy
+        image: "$REGISTRY/kube-ovn:$VERSION"
+        imagePullPolicy: $IMAGE_PULL_POLICY
+        command:
+          - /kube-ovn/kube-ovn-tproxy
+        securityContext:
+          runAsUser: 65534
+          runAsNonRoot: true
+          runAsGroup: 0
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - SYS_ADMIN
+        volumeMounts:
+          - name: tproxy-socket
+            mountPath: /run/kube-ovn-tproxy
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+          - name: host-ns
+            mountPath: /var/run/netns
+            readOnly: true
+            mountPropagation: HostToContainer
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+EOF
+  )
+  TPROXY_SOCKET_MOUNT=$(cat <<EOF
+          - name: tproxy-socket
+            mountPath: /run/kube-ovn-tproxy
+EOF
+  )
+  TPROXY_SOCKET_VOLUME=$(cat <<EOF
+        - name: tproxy-socket
+          emptyDir: {}
+EOF
+  )
+fi
+
 cat <<EOF > kube-ovn.yaml
 ---
 kind: ConfigMap
@@ -9088,6 +9142,7 @@ spec:
       hostNetwork: true
       hostPID: true
       securityContext:
+${TPROXY_SECURITY_CONTEXT}
         seccompProfile:
           type: RuntimeDefault
       initContainers:
@@ -9214,6 +9269,7 @@ spec:
           - name: DBUS_SYSTEM_BUS_ADDRESS
             value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
+${TPROXY_SOCKET_MOUNT}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
           - name: host-modules
@@ -9276,9 +9332,11 @@ spec:
             cpu: 1000m
             memory: 1Gi
             ephemeral-storage: 1Gi
+${TPROXY_CONTAINER}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+${TPROXY_SOCKET_VOLUME}
         - name: usr-local-sbin
           emptyDir: {}
         - name: host-modules
