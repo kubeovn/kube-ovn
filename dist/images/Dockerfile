@@ -24,7 +24,7 @@ RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     setcap CAP_SYS_ADMIN+ep /kube-ovn/kube-ovn-tproxy && \
     setcap CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-cmd && \
     setcap CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-controller && \
-    setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip /kube-ovn/kube-ovn-daemon && \
+    setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-daemon && \
     setcap CAP_NET_ADMIN+eip /kube-ovn/vpc-egress-gateway-observer
 
 FROM kubeovn/kube-ovn-base:$BASE_TAG
