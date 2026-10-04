@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -78,4 +79,48 @@ func TestNamespaceSocketHandoffAndValidation(t *testing.T) {
 	request.NetNS = "/proc/1/ns/net"
 	_, err = DialNamespace(socket, request)
 	require.ErrorContains(t, err, "invalid Pod network namespace")
+}
+
+func TestNamespaceHelperRejectsUnauthorizedPeer(t *testing.T) {
+	if uid := os.Geteuid(); uid == 0 || uid == 65534 {
+		t.Skip("root and nobody are authorized namespace helper peers")
+	}
+	dir, err := os.MkdirTemp("", "tproxy-auth-")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(dir)) })
+	socket := filepath.Join(dir, "helper.sock")
+	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: socket, Net: "unixpacket"})
+	require.NoError(t, err)
+	require.NoError(t, listener.SetDeadline(time.Now().Add(5*time.Second)))
+	var validateCalled, dialCalled atomic.Bool
+	serverDone := make(chan error, 1)
+	go func() {
+		serverDone <- serveNamespaceConnections(listener, func(_ NamespaceRequest) error {
+			validateCalled.Store(true)
+			return nil
+		}, func(_ NamespaceRequest) (*net.TCPConn, error) {
+			dialCalled.Store(true)
+			return nil, errors.New("unauthorized peer reached namespace dial")
+		})
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		select {
+		case err := <-serverDone:
+			require.ErrorIs(t, err, net.ErrClosed)
+		case <-time.After(10 * time.Second):
+			t.Fatal("namespace helper did not exit")
+		}
+	})
+	conn, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{Name: socket, Net: "unixpacket"})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+	// Authentication must reject this UID before reading any request payload.
+	data := make([]byte, 4096)
+	n, err := conn.Read(data)
+	require.NoError(t, err)
+	require.Equal(t, "unauthorized namespace dial peer", string(data[:n]))
+	require.False(t, validateCalled.Load(), "unauthorized peers must not reach OVS validation")
+	require.False(t, dialCalled.Load(), "unauthorized peers must not open a namespace")
 }
