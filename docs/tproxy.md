@@ -23,7 +23,13 @@ capability keeps `SYS_ADMIN` in the bounding set; the file capability cannot byp
 OVSDB and runtime namespace directories are mounted
 read-only; netns mounts use `HostToContainer` propagation. UID 65534 accesses
 the socket when OVS runs as nobody. GID 0 also permits access to the root-owned
-0770 OVSDB socket used by IPsec, debug, or DPDK configurations. The helper
+OVSDB socket used by IPsec, debug, or DPDK configurations. The OVS startup
+scripts set `--ovsdb-server-umask=0007` for the OVSDB daemon, including its
+monitor restarts: Linux `bind()` applies the inherited umask, so the socket's
+intended `0770` mode can otherwise become `0750`, denying connections from the
+helper even with GID 0. This daemon-specific mask permits group access while
+denying access to other users; it also applies to files created by that daemon
+and does not change the startup script's umask. The helper
 is not launched or supervised by OVS.
 
 The Unix socket `/run/kube-ovn-tproxy/tproxy.sock` resides in a Pod-local

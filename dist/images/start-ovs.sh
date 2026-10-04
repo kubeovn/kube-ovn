@@ -74,8 +74,9 @@ trap quit EXIT
 # update links to point to the iptables binaries
 iptables -V
 
-# Start ovsdb
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random --ovsdb-server-wrapper="${DEBUG_WRAPPER}"
+# Keep OVSDB sockets group-writable for the non-root TProxy helper, including
+# after monitor restarts. bind() applies the umask even after OVS sets FD mode 0770.
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random --ovsdb-server-umask=0007 --ovsdb-server-wrapper="${DEBUG_WRAPPER}"
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
 # amount of RSS it uses on hosts with many cores
 # https://bugzilla.redhat.com/show_bug.cgi?id=1571379

@@ -123,6 +123,9 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 			})
 		}
 		ginkgo.DeferCleanup(func() {
+			if ginkgo.CurrentSpecReport().Failed() {
+				dumpTProxyLogs(f)
+			}
 			current := daemonSetClient.Get(originDs.Name)
 			restored := current.DeepCopy()
 			restored.Spec.Template = originDs.Spec.Template
@@ -234,6 +237,39 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		checkTProxyRules(f, pod, port-1, true)
 	})
 })
+
+func dumpTProxyLogs(f *framework.Framework) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pods := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace)
+	list, err := pods.List(ctx, metav1.ListOptions{LabelSelector: "app=kube-ovn-cni"})
+	if err != nil {
+		framework.Logf("Failed to list CNI pods for TProxy diagnostics: %v", err)
+		return
+	}
+	for _, pod := range list.Items {
+		for _, status := range pod.Status.ContainerStatuses {
+			if status.Name != "tproxy" {
+				continue
+			}
+			framework.Logf("TProxy container in %s/%s on %s: state=%+v lastState=%+v restarts=%d",
+				pod.Namespace, pod.Name, pod.Spec.NodeName, status.State, status.LastTerminationState, status.RestartCount)
+			for _, previous := range []bool{false, true} {
+				if previous && status.RestartCount == 0 {
+					continue
+				}
+				logs, err := pods.GetLogs(pod.Name, &corev1.PodLogOptions{
+					Container: "tproxy", Previous: previous, TailLines: new(int64(100)), LimitBytes: new(int64(16 * 1024)),
+				}).DoRaw(ctx)
+				if err != nil {
+					framework.Logf("Failed to read TProxy logs for %s (previous=%t): %v", pod.Name, previous, err)
+					continue
+				}
+				framework.Logf("TProxy logs for %s (previous=%t):\n%s", pod.Name, previous, logs)
+			}
+		}
+	}
+}
 
 func checkTProxyRules(f *framework.Framework, pod *corev1.Pod, probePort int32, exist bool) {
 	ginkgo.GinkgoHelper()
