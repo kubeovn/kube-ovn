@@ -263,6 +263,46 @@ func mockKubevirtList(t *testing.T, list *kubevirtv1.VirtualMachineList, listErr
 func TestGetVMLsps(t *testing.T) {
 	t.Parallel()
 
+	t.Run("keeps the ip CR ports of a stopped vm with a dra network", func(t *testing.T) {
+		dra := kubevirtv1.Network{
+			Name:          "nic0",
+			ResourceClaim: &kubevirtv1.ClaimRequest{ClaimName: "nic0-claim", RequestName: "nic0"},
+		}
+		vms := &kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
+			{Name: "vm-dra", Namespace: "ns1", Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{dra}, nil)}},
+			{Name: "vm-plain", Namespace: "ns1", Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, nil)}},
+		}}
+		draPort := ovs.PodNameToPortName("vm-dra", "ns1", "blue.ns1.ovn")
+		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+		for _, ip := range []*kubeovnv1.IP{
+			{Name: ovs.PodNameToPortName("vm-dra", "ns1", util.OvnProvider), Spec: kubeovnv1.IPSpec{PodName: "vm-dra", Namespace: "ns1", PodType: util.KindVirtualMachine}},
+			{Name: draPort, Spec: kubeovnv1.IPSpec{PodName: "vm-dra", Namespace: "ns1", PodType: util.KindVirtualMachine}},
+			{Name: ovs.PodNameToPortName("vm-plain", "ns1", "blue.ns1.ovn"), Spec: kubeovnv1.IPSpec{PodName: "vm-plain", Namespace: "ns1", PodType: util.KindVirtualMachine}},
+			{Name: ovs.PodNameToPortName("vm-dra", "ns2", "blue.ns2.ovn"), Spec: kubeovnv1.IPSpec{PodName: "vm-dra", Namespace: "ns2"}},
+		} {
+			require.NoError(t, indexer.Add(ip))
+		}
+
+		c := &Controller{
+			config:    &Configuration{EnableKeepVMIP: true, EnableDRANic: true, KubevirtClient: mockKubevirtList(t, vms, nil)},
+			ipsLister: kubeovnlisters.NewIPLister(indexer),
+		}
+		lsps, err := c.getVMLsps()
+		require.NoError(t, err)
+		require.ElementsMatch(t, []string{
+			ovs.PodNameToPortName("vm-dra", "ns1", util.OvnProvider),
+			ovs.PodNameToPortName("vm-dra", "ns1", util.OvnProvider),
+			draPort,
+			ovs.PodNameToPortName("vm-plain", "ns1", util.OvnProvider),
+		}, lsps)
+
+		c.config.EnableDRANic = false
+		c.config.KubevirtClient = mockKubevirtList(t, vms, nil)
+		lsps, err = c.getVMLsps()
+		require.NoError(t, err)
+		require.NotContains(t, lsps, draPort)
+	})
+
 	t.Run("disabled keeps no vm lsp and never lists", func(t *testing.T) {
 		// KubevirtClient is intentionally a mock with no expectations: if getVMLsps
 		// touched the apiserver while disabled, gomock would fail the test.

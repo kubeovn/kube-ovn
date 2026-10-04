@@ -1462,7 +1462,19 @@ func (c *Controller) getVMLsps() ([]string, error) {
 		return nil, fmt.Errorf("failed to list vms: %w", err)
 	}
 
+	var vmIPs map[string][]string
 	for _, vm := range vms.Items {
+		if c.config.EnableDRANic && hasDRANetwork(vm.Spec.Template.Spec.Networks) {
+			// The provider of a DRA network is only known while the VM has a pod with an allocated
+			// claim, so keep the ports of the VM's existing ip CRs while it is stopped.
+			if vmIPs == nil {
+				if vmIPs, err = c.vmIPNames(); err != nil {
+					return nil, err
+				}
+			}
+			vmLsps = append(vmLsps, vmIPs[cache.NewObjectName(vm.Namespace, vm.Name).String()]...)
+		}
+
 		defaultMultus := false
 		for _, network := range vm.Spec.Template.Spec.Networks {
 			if network.Multus != nil && network.Multus.Default {

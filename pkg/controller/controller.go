@@ -383,6 +383,11 @@ type Controller struct {
 	netAttachSynced          cache.InformerSynced
 	netAttachInformerFactory netAttach.SharedInformerFactory
 
+	resourceClaimIndexer cache.Indexer
+	resourceClaimSynced  cache.InformerSynced
+	resourceSliceIndexer cache.Indexer
+	resourceSliceSynced  cache.InformerSynced
+
 	serviceCIDRStore           *util.ServiceCIDRStore
 	serviceCIDRLister          netv1.ServiceCIDRLister
 	serviceCIDRSynced          cache.InformerSynced
@@ -569,6 +574,19 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 	dnsNameResolverInformer := kubeovnInformerFactory.Kubeovn().V1().DNSNameResolvers()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
+
+	// DRA informers are only requested when enabled so clusters without resource.k8s.io/v1 are unaffected.
+	var resourceClaimInformer, resourceSliceInformer cache.SharedIndexInformer
+	if config.EnableDRANic {
+		resourceClaimInformer = informerFactory.Resource().V1().ResourceClaims().Informer()
+		if err = resourceClaimInformer.AddIndexers(cache.Indexers{draClaimPodIndex: draClaimPodIndexFunc}); err != nil {
+			util.LogFatalAndExit(err, "failed to add resource claim indexer")
+		}
+		resourceSliceInformer = informerFactory.Resource().V1().ResourceSlices().Informer()
+		if err = resourceSliceInformer.AddIndexers(cache.Indexers{draSlicePoolIndex: draSlicePoolIndexFunc}); err != nil {
+			util.LogFatalAndExit(err, "failed to add resource slice indexer")
+		}
+	}
 
 	numKeyLocks := max(runtime.NumCPU()*2, config.WorkerNum*2)
 	controller := &Controller{
@@ -781,6 +799,12 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		kubeovnInformerFactory: kubeovnInformerFactory,
 		anpInformerFactory:     anpInformerFactory,
 	}
+	if config.EnableDRANic {
+		controller.resourceClaimIndexer = resourceClaimInformer.GetIndexer()
+		controller.resourceClaimSynced = resourceClaimInformer.HasSynced
+		controller.resourceSliceIndexer = resourceSliceInformer.GetIndexer()
+		controller.resourceSliceSynced = resourceSliceInformer.HasSynced
+	}
 
 	var nbClient *ovs.OVNNbClient
 	if nbClient, err = ovs.NewOvnNbClient(
@@ -973,11 +997,24 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		cacheSyncs = append(cacheSyncs, controller.dnsNameResolversSynced)
 	}
 
+	if controller.config.EnableDRANic {
+		cacheSyncs = append(cacheSyncs, controller.resourceClaimSynced, controller.resourceSliceSynced)
+	}
+
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 	if err := controller.rebuildPolicyEventIndex(); err != nil {
 		util.LogFatalAndExit(err, "failed to build network policy event index")
+	}
+
+	if resourceClaimInformer != nil {
+		if _, err = resourceClaimInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddResourceClaim,
+			UpdateFunc: controller.enqueueUpdateResourceClaim,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add resource claim event handler")
+		}
 	}
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
