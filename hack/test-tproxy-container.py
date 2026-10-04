@@ -33,7 +33,7 @@ def validate(manifest, enabled):
         security = helper["securityContext"]
         assert security["runAsUser"] == 65534
         assert security["runAsNonRoot"] is True
-        assert security["runAsGroup"] == 65534
+        assert security["runAsGroup"] == 0
         assert security["privileged"] is False
         assert security["allowPrivilegeEscalation"] is False
         assert security["capabilities"] == {"drop": ["ALL"], "add": ["SYS_ADMIN"]}
@@ -55,7 +55,7 @@ def validate(manifest, enabled):
             assert all(mount["mountPath"] != "/var/run/netns" for mount in container.get("volumeMounts", []))
 
 
-def installer_manifest(enabled):
+def installer_manifest(enabled, run_as_user=65534):
     text = (ROOT / "dist/images/install.sh").read_text()
     start = text.index('TPROXY_CONTAINER=""')
     end = text.index("cat <<EOF > kube-ovn.yaml", start)
@@ -67,20 +67,23 @@ def installer_manifest(enabled):
     # Do not source install.sh: it invokes kubectl and modifies the cluster.
     script = rendering + "cat <<EOF\n" + cni + "\nEOF\n"
     env = dict(os.environ, ENABLE_TPROXY=str(enabled).lower(), REGISTRY="registry.test/kubeovn", VERSION="test",
-               IMAGE_PULL_POLICY="IfNotPresent", RUN_AS_USER="65534", KUBELET_DIR="/var/lib/kubelet",
+               IMAGE_PULL_POLICY="IfNotPresent", RUN_AS_USER=str(run_as_user), KUBELET_DIR="/var/lib/kubelet",
                CNI_SERVER_CAPABILITIES="                - NET_ADMIN\n                - NET_BIND_SERVICE\n                - NET_RAW")
     return subprocess.check_output(["bash", "-c", script], env=env, text=True)
 
 
 def main():
-    for chart, switch in (("kube-ovn", "func.ENABLE_TPROXY"), ("kube-ovn-v2", "features.enableTproxy")):
+    for chart, switch, ipsec_switch in (("kube-ovn", "func.ENABLE_TPROXY", "func.ENABLE_OVN_IPSEC"),
+                                         ("kube-ovn-v2", "features.enableTproxy", "features.enableOvnIpsec")):
         for enabled in (False, True):
             command = ["helm", "template", "tproxy-test", str(ROOT / "charts" / chart), "--set", f"{switch}={str(enabled).lower()}"]
             validate(subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL), enabled)
+            validate(subprocess.check_output(command + ["--set", f"{ipsec_switch}=true"], text=True, stderr=subprocess.DEVNULL), enabled)
             if chart == "kube-ovn-v2":
                 validate(subprocess.check_output(command + ["--set", "ovsOvn.dpdkHybrid.enabled=true"], text=True, stderr=subprocess.DEVNULL), enabled)
     for enabled in (False, True):
-        validate(installer_manifest(enabled), enabled)
+        for run_as_user in (0, 65534):
+            validate(installer_manifest(enabled, run_as_user), enabled)
     for name in ("start-ovs.sh", "start-ovs-dpdk-v2.sh"):
         assert "kube-ovn-tproxy" not in (ROOT / "dist/images" / name).read_text()
     dockerfile = (ROOT / "dist/images/Dockerfile").read_text()

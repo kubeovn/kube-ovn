@@ -8832,7 +8832,7 @@ if [[ "$ENABLE_TPROXY" == "true" ]]; then
         securityContext:
           runAsUser: 65534
           runAsNonRoot: true
-          runAsGroup: 65534
+          runAsGroup: 0
           privileged: false
           allowPrivilegeEscalation: false
           capabilities:

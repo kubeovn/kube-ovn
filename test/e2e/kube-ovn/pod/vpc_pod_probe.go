@@ -107,7 +107,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 				Name: "tproxy", Image: server.Image, ImagePullPolicy: server.ImagePullPolicy,
 				Command: []string{"/kube-ovn/kube-ovn-tproxy"},
 				SecurityContext: &corev1.SecurityContext{
-					RunAsUser: new(int64(65534)), RunAsGroup: new(int64(65534)), RunAsNonRoot: new(true),
+					RunAsUser: new(int64(65534)), RunAsGroup: new(int64(0)), RunAsNonRoot: new(true),
 					Privileged: new(false), AllowPrivilegeEscalation: new(false),
 					Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"SYS_ADMIN"}},
 				},
