@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -14,7 +12,6 @@ import (
 	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
 
-	"github.com/kubeovn/kube-ovn/cmd/acl_sample"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/netconf"
 	"github.com/kubeovn/kube-ovn/pkg/request"
@@ -23,11 +20,6 @@ import (
 )
 
 func main() {
-	if filepath.Base(os.Args[0]) == acl_sample.CommandName {
-		acl_sample.CmdMain()
-		return
-	}
-
 	// this ensures that main runs only on main thread (thread group leader).
 	// since namespace ops (unshare, setns) are done for a single thread, we
 	// must ensure that the goroutine does not jump from OS thread to thread
