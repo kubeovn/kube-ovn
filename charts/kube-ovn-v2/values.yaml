@@ -1340,3 +1340,19 @@ extraObjects: []
 #           }
 #         ]
 #       }
+
+# Dedicated node IPsec container, rendered when the existing IPsec feature is enabled.
+ipsec:
+  certManager:
+    enabled: false
+    issuerName: kube-ovn
+  certificateDuration: 63072000
+  requestTimeout: 300s
+  priority: -5
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 1000m
+      memory: 256Mi

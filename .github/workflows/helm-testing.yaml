@@ -48,6 +48,7 @@ jobs:
         run: |
           python3 hack/test-tproxy-container.py
           python3 hack/test-kubectl-ko-chart.py
+          python3 hack/test-ipsec-container.py
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
           # Lint the legacy chart separately; it is intentionally not installed in the shared Kind cluster.
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn/ct.yaml

@@ -860,15 +860,20 @@ kind-install-cert-manager:
 
 .PHONY: kind-install-ovn-ipsec-cert-manager
 kind-install-ovn-ipsec-cert-manager:
-	@$(MAKE) CERT_MANAGER_IPSEC_CERT=true kind-install-ovn-ipsec
+	# Install the ordinary Pod network and issuer before enabling IPsec.
+	@$(MAKE) ENABLE_OVN_IPSEC=false CERT_MANAGER_IPSEC_CERT=false kind-install
 	@$(MAKE) kind-install-cert-manager
 
-	docker run --rm -v "$(CURDIR)":/etc/ovn $(REGISTRY)/kube-ovn:$(VERSION) bash generate-ssl.sh
-
-	kubectl create secret generic -n cert-manager kube-ovn-ca --from-file=tls.key=cakey.pem --from-file=tls.crt=cacert.pem
-	kubectl create secret generic -n kube-system ovn-ipsec-ca --from-file=cacert=cacert.pem
+	@set -eu; \
+	ipsec_ca_dir=$$(mktemp -d); \
+	trap 'rm -rf "$$ipsec_ca_dir"' EXIT; \
+	docker run --rm --user "$$(id -u):$$(id -g)" -v "$$ipsec_ca_dir":/etc/ovn $(REGISTRY)/kube-ovn:$(VERSION) bash generate-ipsec-ca.sh /etc/ovn; \
+	kubectl create secret generic -n cert-manager kube-ovn-ca --from-file=tls.key="$$ipsec_ca_dir/ipsec-cakey.pem" --from-file=tls.crt="$$ipsec_ca_dir/ipsec-cacert.pem"; \
+	kubectl create secret generic -n kube-system ovn-ipsec-ca --from-file=cacert="$$ipsec_ca_dir/ipsec-cacert.pem"
 	echo '{"apiVersion": "cert-manager.io/v1", "kind": "ClusterIssuer", "metadata": {"name": "kube-ovn"}, "spec": {"ca": {"secretName": "kube-ovn-ca"}}}' | \
 		kubectl apply -f -
+	kubectl wait clusterissuer/kube-ovn --for=condition=Ready --timeout=120s
+	@$(MAKE) CERT_MANAGER_IPSEC_CERT=true kind-install-ovn-ipsec
 
 .PHONY: kind-install-anp
 kind-install-anp: kind-load-image
