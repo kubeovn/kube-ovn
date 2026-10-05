@@ -17,21 +17,19 @@ import (
 
 func TestEnqueueUpdatePodWhenRoutedChanges(t *testing.T) {
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            "selected",
-			Namespace:       metav1.NamespaceDefault,
-			ResourceVersion: "1",
-			Labels:          map[string]string{"app": "selected"},
-			Annotations: map[string]string{
-				util.LogicalSwitchAnnotation:                                    util.DefaultSubnet,
-				fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider): "true",
-			},
+		Name:            "selected",
+		Namespace:       metav1.NamespaceDefault,
+		ResourceVersion: "1",
+		Labels:          map[string]string{"app": "selected"},
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation:                                    util.DefaultSubnet,
+			fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider): "true",
 		},
 	}
 	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Pods: []*corev1.Pod{pod},
 		Subnets: []*kubeovnv1.Subnet{{
-			ObjectMeta: metav1.ObjectMeta{Name: util.DefaultSubnet},
+			Name: util.DefaultSubnet,
 		}},
 	})
 	require.NoError(t, err)
@@ -43,8 +41,9 @@ func TestEnqueueUpdatePodWhenRoutedChanges(t *testing.T) {
 
 	npIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	require.NoError(t, npIndexer.Add(&networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "default-deny", Namespace: metav1.NamespaceDefault},
-		Spec:       networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "selected"}}},
+		Name:      "default-deny",
+		Namespace: metav1.NamespaceDefault,
+		Spec:      networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "selected"}}},
 	}))
 	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
 
