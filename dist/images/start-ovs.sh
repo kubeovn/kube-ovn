@@ -5,6 +5,7 @@ set -euo pipefail
 
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
+ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
 OVN_SB_ADDR=${OVN_SB_ADDR:-}
 TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
@@ -178,6 +179,30 @@ function restoreProviderBridgeDefaultFlow() {
 }
 
 handle_underlay_bridges
+
+# Persisted marked intent also gates a restart when an old deployment has
+# removed the sidecar. Only the coordinated cleanup may remove that intent.
+ovs-vsctl --no-wait set Open_vSwitch . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
+protection_mark=$(ovs-vsctl --if-exists get Open_vSwitch . external_ids:ovn-ipsec-protection-mark)
+if [[ "$ENABLE_OVN_IPSEC" == true || "$protection_mark" != '[]' && -n "$protection_mark" || -e /run/kube-ovn-ipsec-protection/required || -L /run/kube-ovn-ipsec-protection/required ]]; then
+  ovn-controller --version | grep -Fx 'IPsec output protection version 1'
+  echo 'Waiting for IPsec preparation or live protection before restoring the OVS datapath'
+  while true; do
+    protection_ovs_uuid=$(ovs-vsctl get Open_vSwitch . _uuid)
+    if /kube-ovn/kube-ovn-ipsec --check=startup --ovs-uuid="$protection_ovs_uuid"; then
+      break
+    fi
+    # A finite cleanup init may have released protection and exited between
+    # our first read and the probe. Recheck the disabled startup condition.
+    if [[ "$ENABLE_OVN_IPSEC" != true && ! -e /run/kube-ovn-ipsec-protection/required && ! -L /run/kube-ovn-ipsec-protection/required ]]; then
+      protection_mark=$(ovs-vsctl --if-exists get Open_vSwitch . external_ids:ovn-ipsec-protection-mark)
+      if [[ "$protection_mark" == '[]' || -z "$protection_mark" ]]; then
+        break
+      fi
+    fi
+    sleep 1
+  done
+fi
 
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall --ovs-vswitchd-wrapper="$DEBUG_WRAPPER"

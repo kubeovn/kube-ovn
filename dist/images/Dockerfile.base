@@ -49,6 +49,7 @@ ADD patches/ovsdb-tool-add-command-fix-cluster.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-commands-db-raft-header-rejoin-cluster.patch $SRC_DIR
 ADD patches/increase-the-default-probe-to-60s.patch $SRC_DIR
 ADD patches/update-ovs-sandbox-for-docker-run.patch $SRC_DIR
+ADD patches/ovs-monitor-ipsec-owned-runtime.patch $SRC_DIR
 ADD patches/modify-src-route-priority.patch $SRC_DIR
 ADD patches/ovn-northd-skip-conntrack.patch $SRC_DIR
 ADD patches/ovn-northd-dnat-lsp.patch $SRC_DIR
@@ -59,6 +60,7 @@ ADD patches/set-dl-src-for-packets-redirected-by-router-port.patch $SRC_DIR
 ADD patches/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch $SRC_DIR
 ADD patches/scope-ecmp-source-hashing-to-policy-routes.patch $SRC_DIR
 ADD patches/northd-bcast-arp-nd-req-flood-default-false.patch $SRC_DIR
+ADD patches/ovn-controller-propagate-ipsec-protection.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -87,6 +89,8 @@ RUN cd /usr/src/ && \
     git apply --unidiff-zero $SRC_DIR/increase-the-default-probe-to-60s.patch && \
     # update ovs-sandbox for docker run
     git apply --unidiff-zero $SRC_DIR/update-ovs-sandbox-for-docker-run.patch && \
+    # scope IPsec connections and acknowledge configuration in the packaged monitor
+    git apply $SRC_DIR/ovs-monitor-ipsec-owned-runtime.patch && \
     ovs_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?openvswitch\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovs_commit}\2\3/" configure.ac
 
@@ -112,6 +116,8 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     git apply --unidiff-zero $SRC_DIR/scope-ecmp-source-hashing-to-policy-routes.patch && \
     # northd: skip underlay ARP/ND request flood by default
     git apply --unidiff-zero $SRC_DIR/northd-bcast-arp-nd-req-flood-default-false.patch && \
+    # retain marked IPsec output protection through IKE and SB transitions
+    git apply $SRC_DIR/ovn-controller-propagate-ipsec-protection.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 
