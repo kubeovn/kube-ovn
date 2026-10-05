@@ -105,6 +105,10 @@ sets make sampling unavailable and leave those objects unchanged.
 
 ## Decode and listen
 
+The image includes a standalone `/kube-ovn/kube-ovn-acl-sample` binary for
+both subcommands. It is built separately from the `kube-ovn` CNI plugin.
+`kubectl ko acl-sample` invokes this binary in the selected Pod.
+
 Decode a decimal or `0x`-prefixed hexadecimal sample metadata value or OVS
 user cookie:
 
