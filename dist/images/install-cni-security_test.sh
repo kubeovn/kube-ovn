@@ -11,14 +11,21 @@ grep -q 'runAsUser: ${RUN_AS_USER}' "$INSTALL_SCRIPT"
 cni_server_template=$(sed -n '/^      - name: cni-server$/,/^        env:$/p' "$INSTALL_SCRIPT")
 grep -q 'allowPrivilegeEscalation: true' <<<"$cni_server_template"
 
+setcap_stage=$(sed '/^FROM kubeovn\/kube-ovn-base:\$BASE_TAG$/,$d' "$IMAGE_DOCKERFILE")
+grep -Fq 'setcap CAP_SYS_ADMIN+ep /kube-ovn/kube-ovn-tproxy' <<<"$setcap_stage"
+grep -Fq 'setcap CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-cmd' <<<"$setcap_stage"
+grep -Fq 'setcap CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-controller' <<<"$setcap_stage"
+grep -Fq 'setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-daemon' <<<"$setcap_stage"
+grep -Fq 'setcap CAP_NET_ADMIN+eip /kube-ovn/vpc-egress-gateway-observer' <<<"$setcap_stage"
+! grep -Eq 'setcap .*CAP_SYS_ADMIN.*kube-ovn-daemon' <<<"$setcap_stage"
+
 final_stage=$(sed -n '/^FROM kubeovn\/kube-ovn-base:\$BASE_TAG$/,$p' "$IMAGE_DOCKERFILE")
-grep -q 'setcap CAP_SYS_ADMIN+ep /kube-ovn/kube-ovn-tproxy' <<<"$final_stage"
-grep -q 'getcap /kube-ovn/kube-ovn-tproxy).*cap_sys_admin=ep' <<<"$final_stage"
-grep -q 'setcap CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-cmd' <<<"$final_stage"
-grep -q 'setcap CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-controller' <<<"$final_stage"
-grep -q 'setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-daemon' <<<"$final_stage"
-grep -q 'setcap CAP_NET_ADMIN+eip /kube-ovn/vpc-egress-gateway-observer' <<<"$final_stage"
-! grep -Eq 'setcap .*CAP_SYS_ADMIN.*kube-ovn-daemon' <<<"$final_stage"
+! grep -Eq '(^|[[:space:]])setcap[[:space:]]' <<<"$final_stage"
+grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep"' <<<"$final_stage"
+grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-cmd)" = "/kube-ovn/kube-ovn-cmd cap_net_bind_service=eip"' <<<"$final_stage"
+grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-controller)" = "/kube-ovn/kube-ovn-controller cap_net_bind_service,cap_net_raw=eip"' <<<"$final_stage"
+grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-daemon)" = "/kube-ovn/kube-ovn-daemon cap_net_bind_service,cap_net_admin,cap_net_raw=eip"' <<<"$final_stage"
+grep -Fq 'test "$(getcap /kube-ovn/vpc-egress-gateway-observer)" = "/kube-ovn/vpc-egress-gateway-observer cap_net_admin=eip"' <<<"$final_stage"
 
 # Evaluate the installer inputs and the generated capability selection without
 # running the installer (which applies resources to the current Kubernetes
