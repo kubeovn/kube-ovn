@@ -120,8 +120,12 @@ fi
 
 # debug
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
+CNI_RUN_AS_USER=65534
+if [ -n "$DEBUG_WRAPPER" ]; then
+  CNI_RUN_AS_USER=0
+fi
 RUN_AS_USER=65534 # run as nobody
-if [ "$ENABLE_OVN_IPSEC" = "true" -o -n "$DEBUG_WRAPPER" ]; then
+if [ -n "$DEBUG_WRAPPER" ]; then
   RUN_AS_USER=0
 fi
 
@@ -7647,6 +7651,10 @@ metadata:
     rbac.authorization.k8s.io/system-only: "true"
   name: system:ovn
 rules:
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingadmissionpolicies, validatingadmissionpolicybindings]
+    resourceNames: [kube-ovn-ipsec-issuer]
+    verbs: [get]
   - apiGroups:
       - "kubeovn.io"
     resources:
@@ -7783,6 +7791,7 @@ rules:
       - apps
     resources:
       - daemonsets
+      - replicasets
     verbs:
       - get
   - apiGroups:
@@ -7911,21 +7920,6 @@ rules:
     resources:
     - certificatesigningrequests/status
     - certificatesigningrequests/approval
-    verbs:
-    - update
-  - apiGroups:
-    - ""
-    resources:
-    - secrets
-    verbs:
-    - get
-    - create
-  - apiGroups:
-    - ""
-    resourceNames:
-    - kube-ovn-tls
-    resources:
-    - secrets
     verbs:
     - update
   - apiGroups:
@@ -8112,6 +8106,37 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
+  name: kube-ovn-controller-secrets
+  namespace: kube-system
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [kube-ovn-tls, ovn-ipsec-ca, ovn-ipsec-signer]
+    verbs: [get, update]
+  - apiGroups: [cert-manager.io]
+    resources: [certificaterequests]
+    verbs: [get, list, watch, create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-ovn-controller-secrets
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kube-ovn-controller-secrets
+subjects:
+  - kind: ServiceAccount
+    name: ovn
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
   name: secret-reader-ovn-ipsec
   namespace: kube-system
 rules:
@@ -8125,15 +8150,6 @@ rules:
     - "get"
     - "list"
     - "watch"
-- apiGroups:
-    - "cert-manager.io"
-  resources:
-    - "certificaterequests"
-  verbs:
-    - "get"
-    - "list"
-    - "create"
-    - "delete"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -8535,6 +8551,8 @@ spec:
             - |
               chmod +t /usr/local/sbin
               chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
+              chown 0:${RUN_AS_USER} /run/kube-ovn-ipsec-protection
+              chmod 0750 /run/kube-ovn-ipsec-protection
               iptables -V
               /usr/share/openvswitch/scripts/ovs-ctl load-kmod
           securityContext:
@@ -8556,6 +8574,8 @@ spec:
               name: host-run-ovn
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
+            - mountPath: /run/kube-ovn-ipsec-protection
+              name: ipsec-protection
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
             - mountPath: /var/log/openvswitch
@@ -8568,6 +8588,7 @@ spec:
           - /kube-ovn/start-ovs.sh
           securityContext:
             runAsUser: ${RUN_AS_USER}
+            runAsGroup: ${RUN_AS_USER}
             privileged: false
             capabilities:
               add:
@@ -8577,6 +8598,8 @@ spec:
                 - SYS_NICE
                 - SYS_ADMIN
           env:
+            - name: ENABLE_OVN_IPSEC
+              value: "$ENABLE_OVN_IPSEC"
             - name: ENABLE_SSL
               value: "$ENABLE_SSL"
             - name: POD_IP
@@ -8612,6 +8635,9 @@ spec:
               name: usr-local-sbin
             - mountPath: /lib/modules
               name: host-modules
+              readOnly: true
+            - mountPath: /run/kube-ovn-ipsec-protection
+              name: ipsec-protection
               readOnly: true
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
@@ -8659,6 +8685,10 @@ spec:
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: ipsec-protection
+          hostPath:
+            path: /run/kube-ovn-ipsec-protection
+            type: DirectoryOrCreate
         - name: usr-local-sbin
           emptyDir: {}
         - name: host-modules
@@ -8863,11 +8893,184 @@ EOF
 kubectl apply -f ovs-ovn-dpdk-ds.yaml
 fi
 kubectl rollout status deployment/ovn-central -n kube-system --timeout 300s
-kubectl rollout status daemonset/ovs-ovn -n kube-system --timeout 120s
+# OVS waits for the IPsec agent (or cleanup init container) to restore protection.
+# Apply both DaemonSets before waiting for either of them to become ready.
 echo "-------------------------------"
 echo ""
 
 echo "[Step 3/6] Install Kube-OVN"
+
+IPSEC_ISSUER_POLICY=""
+if [[ "$CERT_MANAGER_IPSEC_CERT" == "true" ]]; then
+  if [[ ! "$CERT_MANAGER_ISSUER_NAME" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
+    echo 'IPsec ClusterIssuer name is invalid' >&2
+    exit 1
+  fi
+  if ! kubectl api-resources --api-group=admissionregistration.k8s.io -o name | grep -qx 'validatingadmissionpolicies.admissionregistration.k8s.io'; then
+    echo 'IPsec cert-manager authorization requires ValidatingAdmissionPolicy (Kubernetes >= 1.30)' >&2
+    exit 1
+  fi
+  IPSEC_ISSUER_POLICY=$(cat <<EOF
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kube-ovn-ipsec-issuer
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [cert-manager.io]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [certificaterequests]
+  matchConditions:
+    - name: dedicated-ipsec-issuer
+      expression: >-
+        object.spec.issuerRef.name == "$CERT_MANAGER_ISSUER_NAME" &&
+        has(object.spec.issuerRef.kind) && object.spec.issuerRef.kind == "ClusterIssuer" &&
+        (!has(object.spec.issuerRef.group) || object.spec.issuerRef.group == "cert-manager.io")
+  validations:
+    - expression: >-
+        (request.operation == "UPDATE" && object.spec == oldObject.spec) ||
+        request.userInfo.username == "system:serviceaccount:kube-system:ovn" &&
+        object.metadata.namespace == "kube-system"
+      message: The IPsec ClusterIssuer accepts only authorized kube-ovn-controller requests
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: kube-ovn-ipsec-issuer
+spec:
+  policyName: kube-ovn-ipsec-issuer
+  validationActions: [Deny]
+EOF
+)
+fi
+
+IPSEC_CONTAINER=""
+if [[ "$ENABLE_OVN_IPSEC" == "true" ]]; then
+  IPSEC_CONTAINER=$(cat <<EOF
+      - name: ipsec
+        image: "$REGISTRY/kube-ovn:$VERSION"
+        imagePullPolicy: $IMAGE_PULL_POLICY
+        command:
+          - /kube-ovn/kube-ovn-ipsec
+        args:
+          - --ovn-ipsec-cert-duration=$IPSEC_CERT_DURATION
+          - --request-timeout=300s
+          - --priority=-5
+        securityContext:
+          runAsUser: 0
+          runAsGroup: ${RUN_AS_USER}
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+              - SYS_NICE
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+        volumeMounts:
+          - name: ipsec-protection
+            mountPath: /run/kube-ovn-ipsec-protection
+          - name: ovs-ipsec-keys
+            mountPath: /etc/ovs_ipsec_keys
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+        startupProbe:
+          exec:
+            command: [/kube-ovn/kube-ovn-ipsec, --check=livez]
+          failureThreshold: 60
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command: [/kube-ovn/kube-ovn-ipsec, --check=livez]
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          exec:
+            command: [/kube-ovn/kube-ovn-ipsec, --check=readyz]
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+EOF
+)
+fi
+
+IPSEC_CLEANUP_INIT=""
+if [[ "$ENABLE_OVN_IPSEC" != "true" ]]; then
+  IPSEC_CLEANUP_INIT=$(cat <<EOF
+      - name: ipsec-cleanup
+        image: "$REGISTRY/kube-ovn:$VERSION"
+        imagePullPolicy: $IMAGE_PULL_POLICY
+        command:
+          - /kube-ovn/kube-ovn-ipsec
+        args:
+          - --cleanup-only
+        securityContext:
+          runAsUser: 0
+          runAsGroup: ${RUN_AS_USER}
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+        volumeMounts:
+          - name: ipsec-protection
+            mountPath: /run/kube-ovn-ipsec-protection
+          - name: ovs-ipsec-keys
+            mountPath: /etc/ovs_ipsec_keys
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+EOF
+)
+fi
 
 TPROXY_CONTAINER=""
 TPROXY_SECURITY_CONTEXT=""
@@ -8924,6 +9127,7 @@ EOF
 fi
 
 cat <<EOF > kube-ovn.yaml
+$IPSEC_ISSUER_POLICY
 ---
 kind: ConfigMap
 apiVersion: v1
@@ -9065,6 +9269,7 @@ spec:
           - --skip-conntrack-dst-cidrs=$SKIP_CONNTRACK_DST_CIDRS
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
+          - --cert-manager-issuer-name=$CERT_MANAGER_ISSUER_NAME
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
           - --enable-dns-name-resolver=$ENABLE_DNS_NAME_RESOLVER
@@ -9171,6 +9376,11 @@ metadata:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
 spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: kube-ovn-cni
@@ -9206,6 +9416,9 @@ ${TPROXY_SECURITY_CONTEXT}
           - |
             chmod +t /usr/local/sbin
             chown -R nobody: /var/log/kube-ovn
+            chown 0:${RUN_AS_USER} /run/kube-ovn-ipsec-protection
+            chmod 0750 /run/kube-ovn-ipsec-protection
+
             iptables -V
         securityContext:
           allowPrivilegeEscalation: true
@@ -9215,6 +9428,8 @@ ${TPROXY_SECURITY_CONTEXT}
           privileged: true
           runAsUser: 0
         volumeMounts:
+          - name: ipsec-protection
+            mountPath: /run/kube-ovn-ipsec-protection
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
           - mountPath: /run/xtables.lock
@@ -9247,6 +9462,7 @@ ${TPROXY_SECURITY_CONTEXT}
             name: cni-conf
           - mountPath: /usr/local/bin
             name: local-bin
+${IPSEC_CLEANUP_INIT}
       containers:
       - name: cni-server
         image: "$REGISTRY/kube-ovn:$VERSION"
@@ -9276,21 +9492,19 @@ ${TPROXY_SECURITY_CONTEXT}
           - --enable-recompute=$ENABLE_RECOMPUTE
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
-          - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
-          - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
-          - --ovn-ipsec-cert-duration=$IPSEC_CERT_DURATION
-          - --cert-manager-issuer-name=$CERT_MANAGER_ISSUER_NAME
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
           - --host-tunnel-src=$HOST_TUNNEL_SRC
           - --enable-acl-sampling=$ENABLE_ACL_SAMPLING
           - --acl-sampling-set-id=$ACL_SAMPLING_SET_ID
           - --acl-sampling-local-group-id=$ACL_SAMPLING_LOCAL_GROUP_ID
         securityContext:
-          runAsGroup: ${RUN_AS_USER}
-          runAsUser: ${RUN_AS_USER}
+          runAsGroup: ${CNI_RUN_AS_USER}
+          runAsUser: ${CNI_RUN_AS_USER}
           privileged: false
           allowPrivilegeEscalation: true
           capabilities:
+            drop:
+              - SYS_NICE
             add:
 ${CNI_SERVER_CAPABILITIES}
         env:
@@ -9335,8 +9549,6 @@ ${TPROXY_SOCKET_MOUNT}
           - mountPath: /etc/openvswitch
             name: systemid
             readOnly: true
-          - mountPath: /etc/ovs_ipsec_keys
-            name: ovs-ipsec-keys
           - mountPath: /run/openvswitch
             name: host-run-ovs
             mountPropagation: HostToContainer
@@ -9385,9 +9597,14 @@ ${TPROXY_SOCKET_MOUNT}
             memory: 1Gi
             ephemeral-storage: 1Gi
 ${TPROXY_CONTAINER}
+${IPSEC_CONTAINER}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: ipsec-protection
+          hostPath:
+            path: /run/kube-ovn-ipsec-protection
+            type: DirectoryOrCreate
 ${TPROXY_SOCKET_VOLUME}
         - name: usr-local-sbin
           emptyDir: {}
@@ -9407,6 +9624,7 @@ ${TPROXY_SOCKET_VOLUME}
         - name: ovs-ipsec-keys
           hostPath:
             path: /etc/origin/ovs_ipsec_keys
+            type: DirectoryOrCreate
         - name: host-run-ovs
           hostPath:
             path: /run/openvswitch
@@ -9663,6 +9881,7 @@ EOF
 
 kubectl apply -f kube-ovn.yaml
 kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout 300s
+kubectl rollout status daemonset/ovs-ovn -n kube-system --timeout 300s
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout 300s
 
 if $ENABLE_IC; then
