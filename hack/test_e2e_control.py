@@ -244,7 +244,7 @@ class E2EControlTest(unittest.TestCase):
             infraTitles=[
                 "Build kube-ovn",
                 "Build E2E Binaries",
-                "Prepare private Kind node image (${{ matrix.k8s-version }})",
+                "Prepare Kind node image (${{ matrix.k8s-version }})",
             ],
         )
         byName = {payload["name"]: payload for payload in payloads}
@@ -1731,7 +1731,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 5)
         self.assertNotIn('entry["selection"] != "smoke"', workflow)
         self.assertIn("contents: read", workflow)
-        self.assertIn("packages: read", workflow)
+        self.assertNotIn("packages: read", workflow)
         self.assertIn("-u ACTIONS_RUNTIME_TOKEN", workflow)
         self.assertIn("-u ACTIONS_RESULTS_URL", workflow)
         self.assertIn("-u LD_PRELOAD", workflow)
@@ -1742,11 +1742,10 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("actions: write", workflow)
         self.assertEqual(workflow.count("statuses: write"), 1)
         self.assertIn("name: Publish x86 E2E checks on the pull request", workflow)
-        self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
-        self.assertIn(
-            "Pull private Kind node image with trusted token",
-            workflow,
-        )
+        self.assertNotIn("GHCR_TOKEN", workflow)
+        self.assertIn("Pull Kind node image from Docker Hub", workflow)
+        self.assertIn('docker pull "kindest/node:$K8S_VERSION"', workflow)
+        self.assertNotIn("ghcr.io/kubeovn/kindest-node", workflow)
         self.assertIn("kind-node-v1.37.0.tar", workflow)
         self.assertNotIn("kind-node-v1.29.14.tar", workflow)
         self.assertNotIn("kind-ghcr-pull", workflow)

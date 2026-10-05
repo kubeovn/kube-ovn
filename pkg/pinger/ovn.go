@@ -41,7 +41,7 @@ func checkOvs(config *Configuration, setMetrics bool) error {
 }
 
 func checkOvnController(config *Configuration, setMetrics bool) error {
-	_, err := ovs.Appctl(ovs.OvnController, "-T", "1", "version")
+	_, err := pingerAppctl(ovs.OvnController, "-T", "1", "version")
 	if err != nil {
 		klog.Errorf("failed to get status of %s: %v", ovs.OvnController, err)
 		if setMetrics {

@@ -18,7 +18,7 @@ restore_controller_collector_ownership() {
   if [ -z "$CONFLICT_COLLECTOR_UUID" ]; then
     return
   fi
-  if ! kubectl ko nbctl set Sample_Collector "$CONFLICT_COLLECTOR_UUID" \
+  if ! kubectl ko exec nbctl -- set Sample_Collector "$CONFLICT_COLLECTOR_UUID" \
     external_ids:vendor=kube-ovn \
     'external_ids:kube-ovn.io/feature=acl-sampling' \
     'external_ids:kube-ovn.io/acl-sampling-kind=collector' \
@@ -36,7 +36,7 @@ cleanup() {
     wait "$LISTENER_PID" 2>/dev/null || true
   fi
   if [ "$DATAPATH_CAPABILITY_OVERRIDDEN" = true ] && [ -n "$NODE_NAME" ] && [ -n "$DATAPATH_UUID" ]; then
-    if ! kubectl ko vsctl "$NODE_NAME" set Datapath "$DATAPATH_UUID" capabilities:psample=true >/dev/null; then
+    if ! kubectl ko exec vsctl --node "$NODE_NAME" -- set Datapath "$DATAPATH_UUID" capabilities:psample=true >/dev/null; then
       echo "failed to restore psample capability on node $NODE_NAME" >&2
     fi
   fi
@@ -86,7 +86,7 @@ endpoint_for_ip() {
 start_sample_listener() {
   : >"$SAMPLE_OUTPUT"
   : >"$LISTENER_LOG"
-  kubectl ko acl-sample listen --node "$NODE_NAME" >"$SAMPLE_OUTPUT" 2>"$LISTENER_LOG" &
+  kubectl ko acl listen --node "$NODE_NAME" >"$SAMPLE_OUTPUT" 2>"$LISTENER_LOG" &
   LISTENER_PID=$!
 }
 
@@ -99,7 +99,7 @@ stop_sample_listener() {
 sampling_references_ready() {
   local policy_uid=$1
   local rows
-  rows=$(kubectl ko nbctl --format=csv --data=bare --no-heading \
+  rows=$(kubectl ko exec nbctl -- --format=csv --data=bare --no-heading \
     --columns=action,sample_new,sample_est find ACL \
     "external_ids:kube-ovn.io/policy-uid=$policy_uid")
   awk -F, '
@@ -155,7 +155,7 @@ wait_for_expected_samples() {
 policy_enforcement_acls_ready() {
   local policy_parent=$1
   local actions
-  actions=$(kubectl ko nbctl --data=bare --no-heading --columns=action find ACL \
+  actions=$(kubectl ko exec nbctl -- --data=bare --no-heading --columns=action find ACL \
     "external_ids:parent=$policy_parent")
   grep -Fxq allow-related <<< "$actions" && grep -Fxq drop <<< "$actions"
 }
@@ -163,10 +163,10 @@ policy_enforcement_acls_ready() {
 policy_sampling_references_absent() {
   local policy_parent=$1
   local references
-  references=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid find ACL \
+  references=$(kubectl ko exec nbctl -- --data=bare --no-heading --columns=_uuid find ACL \
     "external_ids:parent=$policy_parent" 'sample_new!=[]') || return 1
   [ -z "$references" ] || return 1
-  references=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid find ACL \
+  references=$(kubectl ko exec nbctl -- --data=bare --no-heading --columns=_uuid find ACL \
     "external_ids:parent=$policy_parent" 'sample_est!=[]') || return 1
   [ -z "$references" ]
 }
@@ -174,7 +174,7 @@ policy_sampling_references_absent() {
 policy_sampling_disabled() {
   local policy_parent=$1
   local rows
-  rows=$(kubectl ko nbctl --format=csv --data=bare --no-heading \
+  rows=$(kubectl ko exec nbctl -- --format=csv --data=bare --no-heading \
     --columns=action,sample_new,sample_est find ACL \
     "external_ids:parent=$policy_parent") || return 1
   awk -F, '
@@ -210,7 +210,7 @@ verify_policy_connectivity() {
 }
 
 node_collector_set_uuids() {
-  kubectl ko vsctl "$NODE_NAME" --data=bare --no-heading --columns=_uuid \
+  kubectl ko exec vsctl --node "$NODE_NAME" -- --data=bare --no-heading --columns=_uuid \
     find Flow_Sample_Collector_Set 'external_ids:kube-ovn.io/feature=acl-sampling'
 }
 
@@ -262,17 +262,17 @@ sampling_cleanup_complete() {
   local sampled_acls applications collectors node_sets nodes node
   policy_sampling_disabled "$POLICY_PARENT" || return 1
   policy_sampling_disabled "$FAILURE_PORT_GROUP" || return 1
-  sampled_acls=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
+  sampled_acls=$(kubectl ko exec nbctl -- --data=bare --no-heading --columns=_uuid \
     find ACL 'external_ids:kube-ovn.io/sample-feature=network-policy') || return 1
-  applications=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
+  applications=$(kubectl ko exec nbctl -- --data=bare --no-heading --columns=_uuid \
     find Sampling_App 'external_ids:kube-ovn.io/feature=acl-sampling') || return 1
-  collectors=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
+  collectors=$(kubectl ko exec nbctl -- --data=bare --no-heading --columns=_uuid \
     find Sample_Collector 'external_ids:kube-ovn.io/feature=acl-sampling') || return 1
   nodes=$(kubectl get nodes -o name) || return 1
   [ -n "$nodes" ] || return 1
   while IFS= read -r node; do
     node=${node#node/}
-    node_sets=$(kubectl ko vsctl "$node" --data=bare --no-heading --columns=_uuid \
+    node_sets=$(kubectl ko exec vsctl --node "$node" -- --data=bare --no-heading --columns=_uuid \
       find Flow_Sample_Collector_Set 'external_ids:kube-ovn.io/feature=acl-sampling') || return 1
     [ -z "$node_sets" ] || return 1
   done <<< "$nodes"
@@ -364,13 +364,13 @@ start_sample_listener
 wait_for_expected_samples
 stop_sample_listener
 
-CONFLICT_COLLECTOR_UUID=$(kubectl ko nbctl --data=bare --no-heading --columns=_uuid \
+CONFLICT_COLLECTOR_UUID=$(kubectl ko exec nbctl -- --data=bare --no-heading --columns=_uuid \
   find Sample_Collector id=1 'external_ids:kube-ovn.io/feature=acl-sampling')
 if [ -z "$CONFLICT_COLLECTOR_UUID" ]; then
   echo 'cannot locate the owned controller sampling collector to inject a conflict' >&2
   exit 1
 fi
-kubectl ko nbctl clear Sample_Collector "$CONFLICT_COLLECTOR_UUID" external_ids
+kubectl ko exec nbctl -- clear Sample_Collector "$CONFLICT_COLLECTOR_UUID" external_ids
 kubectl rollout restart deployment/kube-ovn-controller -n kube-system
 kubectl rollout status deployment/kube-ovn-controller -n kube-system --timeout=2m
 
@@ -430,23 +430,23 @@ if [ -z "$NODE_COLLECTOR_UUID" ]; then
   echo 'cannot locate the owned node ACL sampling collector set' >&2
   exit 1
 fi
-DATAPATH_UUID=$(kubectl ko vsctl "$NODE_NAME" --data=bare --no-heading --columns=_uuid \
+DATAPATH_UUID=$(kubectl ko exec vsctl --node "$NODE_NAME" -- --data=bare --no-heading --columns=_uuid \
   find Datapath capabilities:psample=true | sed -n '1p')
 if [ -z "$DATAPATH_UUID" ]; then
   echo 'cannot locate the active psample-capable OVS datapath' >&2
   exit 1
 fi
 
-kubectl ko vsctl "$NODE_NAME" set Datapath "$DATAPATH_UUID" capabilities:psample=false
+kubectl ko exec vsctl --node "$NODE_NAME" -- set Datapath "$DATAPATH_UUID" capabilities:psample=false
 DATAPATH_CAPABILITY_OVERRIDDEN=true
-kubectl ko vsctl "$NODE_NAME" destroy Flow_Sample_Collector_Set "$NODE_COLLECTOR_UUID"
+kubectl ko exec vsctl --node "$NODE_NAME" -- destroy Flow_Sample_Collector_Set "$NODE_COLLECTOR_UUID"
 kubectl rollout restart daemonset/kube-ovn-cni -n kube-system
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout=2m
 wait_for 'unsupported node capability warning' 90 node_capability_failure_observed
 wait_for 'collector set to remain absent on the unsupported node' 30 node_collector_set_absent
 verify_policy_connectivity "$TARGET_ENDPOINT"
 
-kubectl ko vsctl "$NODE_NAME" set Datapath "$DATAPATH_UUID" capabilities:psample=true
+kubectl ko exec vsctl --node "$NODE_NAME" -- set Datapath "$DATAPATH_UUID" capabilities:psample=true
 DATAPATH_CAPABILITY_OVERRIDDEN=false
 kubectl rollout restart daemonset/kube-ovn-cni -n kube-system
 kubectl rollout status daemonset/kube-ovn-cni -n kube-system --timeout=2m

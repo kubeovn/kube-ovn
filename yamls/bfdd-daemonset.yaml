@@ -69,11 +69,11 @@
 #
 # OVN-level BFD (managed by kube-ovn controller, for reference):
 #   # List OVN BFD entries
-#   kubectl ko nbctl list bfd
+#   kubectl ko exec nbctl -- list bfd
 #   # Find BFD by logical router port
-#   kubectl ko nbctl find bfd logical_port=<lrp-name>
+#   kubectl ko exec nbctl -- find bfd logical_port=<lrp-name>
 #   # Delete OVN BFD entry by UUID
-#   kubectl ko nbctl destroy bfd <uuid>
+#   kubectl ko exec nbctl -- destroy bfd <uuid>
 #
 # Reference: pkg/daemon/ovs_linux.go:checkNodeGwNicInNs,loopOvnExt0Check
 #            pkg/controller/vpc_egress_gateway.go:reconcileVpcEgressGatewayOVNRoutes

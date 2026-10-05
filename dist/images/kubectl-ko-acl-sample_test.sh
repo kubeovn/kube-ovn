@@ -58,12 +58,12 @@ assert_contains() {
 }
 
 decode_output=$(PATH="$FAKE_BIN:$PATH" FAKE_LOG="$FAKE_LOG" \
-  bash "$SCRIPT_DIR/kubectl-ko" acl-sample decode 0x640abcde000000c8)
+  bash "$SCRIPT_DIR/kubectl-ko-legacy" acl-sample decode 0x640abcde000000c8)
 assert_contains "$decode_output" 'schemaVersion: v1'
 assert_contains "$decode_output" 'cookie: 0x640abcde000000c8'
 
 listen_output=$(PATH="$FAKE_BIN:$PATH" FAKE_LOG="$FAKE_LOG" \
-  bash "$SCRIPT_DIR/kubectl-ko" acl-sample listen --node node-a)
+  bash "$SCRIPT_DIR/kubectl-ko-legacy" acl-sample listen --node node-a)
 assert_contains "$listen_output" 'cookie: 0x640abcde000000c8'
 assert_contains "$listen_output" 'cookie: 0x670abcde000000c9'
 if [[ $(grep -c '^---$' <<< "$listen_output") -ne 2 ]]; then
@@ -72,7 +72,7 @@ if [[ $(grep -c '^---$' <<< "$listen_output") -ne 2 ]]; then
 fi
 
 if PATH="$FAKE_BIN:$PATH" FAKE_LOG="$FAKE_LOG" FAKE_ACL_ENABLED=false \
-  bash "$SCRIPT_DIR/kubectl-ko" acl-sample listen --node node-a \
+  bash "$SCRIPT_DIR/kubectl-ko-legacy" acl-sample listen --node node-a \
   >"$TEST_DIR/disabled.out" 2>"$TEST_DIR/disabled.err"; then
   echo 'expected disabled ACL sampling listen to fail' >&2
   exit 1

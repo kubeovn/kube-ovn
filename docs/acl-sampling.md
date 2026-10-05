@@ -113,14 +113,14 @@ Decode a decimal or `0x`-prefixed hexadecimal sample metadata value or OVS
 user cookie:
 
 ```bash
-kubectl ko acl-sample decode 0x640abcde000000c8
+kubectl ko acl decode 0x640abcde000000c8
 ```
 
 Listen on one node and decode each received event through the OVN northbound
 leader:
 
 ```bash
-kubectl ko acl-sample listen --node worker-1
+kubectl ko acl listen --node worker-1
 ```
 
 The listener reads the enabled CNI DaemonSet's `localGroupID`, selects a
@@ -158,7 +158,7 @@ uses `policyOwner`, sets `reason: network-policy-default-deny` and
 Linux psample messages include captured packet bytes. The current debug
 command only emits the cookie and decoded policy event, but the node-local
 process still receives packet data from the kernel. Access to
-`kubectl ko acl-sample listen` therefore grants a packet-observation
+`kubectl ko acl listen` therefore grants a packet-observation
 capability and should be limited to authorized operators. Use the lowest
 practical sampling probabilities, protect command output as sensitive data,
 and stop the listener when troubleshooting is complete.

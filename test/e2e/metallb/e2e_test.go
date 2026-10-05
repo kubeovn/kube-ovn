@@ -885,8 +885,8 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			if util.CheckProtocol(ingress.IP) == apiv1.ProtocolIPv4 {
 				lbsvcIP := ingress.IP
 				bridgeName := util.ExternalBridgeName(providerNetworkName)
-				cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep 'mod_dl_dst:%s' | grep %s",
-					nodeNames[0], bridgeName, u2oMAC, lbsvcIP)
+				cmd := fmt.Sprintf("kubectl %s dump-flows %s | grep 'mod_dl_dst:%s' | grep %s",
+					strings.Join(framework.KubectlKoArgs("ko", "ofctl", nodeNames[0]), " "), bridgeName, u2oMAC, lbsvcIP)
 				output, err := exec.Command("bash", "-c", cmd).CombinedOutput()
 				framework.ExpectNoError(err, "OpenFlow rule with u2oInterconnection MAC not found, output: %s", string(output))
 				framework.Logf("Found OpenFlow rule with u2oInterconnection MAC: %s", strings.TrimSpace(string(output)))
@@ -1539,12 +1539,14 @@ func dumpUnderlayVIPRelatedLFlows(flows []logicalFlow) string {
 
 func listLogicalFlows() ([]logicalFlow, error) {
 	output, err := exec.Command(
-		"kubectl", "ko", "sbctl",
-		"--format=csv",
-		"--data=bare",
-		"--no-heading",
-		"--columns=pipeline,table_id,priority,match,actions",
-		"find", "Logical_Flow",
+		"kubectl", framework.KubectlKoArgs(
+			"ko", "sbctl",
+			"--format=csv",
+			"--data=bare",
+			"--no-heading",
+			"--columns=pipeline,table_id,priority,match,actions",
+			"find", "Logical_Flow",
+		)...,
 	).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("listing OVN logical flows: %w, output: %s", err, output)
@@ -2186,8 +2188,8 @@ func waitUnderlayServiceFlow(nodeName, providerNetworkName, serviceIP string, se
 
 	bridgeName := util.ExternalBridgeName(providerNetworkName)
 	cookie, matchPort := underlayServiceFlowMatch(serviceIP, servicePort)
-	cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
-		nodeName, bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
+	cmd := fmt.Sprintf("kubectl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
+		strings.Join(framework.KubectlKoArgs("ko", "ofctl", nodeName), " "), bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
 
 	var flowFound bool
 	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
@@ -2207,8 +2209,8 @@ func waitUnderlayServiceFlowOnAnyNode(nodeNames []string, providerNetworkName, s
 
 	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
 		for _, nodeName := range nodeNames {
-			cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
-				nodeName, bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
+			cmd := fmt.Sprintf("kubectl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
+				strings.Join(framework.KubectlKoArgs("ko", "ofctl", nodeName), " "), bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
 			if _, err := exec.Command("bash", "-c", cmd).CombinedOutput(); err == nil {
 				return true, nil
 			}
@@ -2225,8 +2227,8 @@ func waitUnderlayServiceFlowCleaned(nodeNames []string, providerNetworkName, ser
 
 	framework.WaitUntil(1*time.Second, timeout, func(_ context.Context) (bool, error) {
 		for _, nodeName := range nodeNames {
-			cmd := fmt.Sprintf("kubectl ko ofctl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
-				nodeName, bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
+			cmd := fmt.Sprintf("kubectl %s dump-flows %s | grep -w %s | grep -w %s | grep -w %s | grep -w priority=%d",
+				strings.Join(framework.KubectlKoArgs("ko", "ofctl", nodeName), " "), bridgeName, cookie, serviceIP, matchPort, util.UnderlaySvcLocalOpenFlowPriority)
 			if _, err := exec.Command("bash", "-c", cmd).CombinedOutput(); err == nil {
 				return false, nil // flow still exists on this node
 			}

@@ -1,0 +1,168 @@
+name: kubectl-ko
+
+on:
+  pull_request:
+    paths:
+      - cmd/kubectl-ko/**
+      - cmd/ko-helper/**
+      - pkg/ko/**
+      - pkg/kohelper/**
+      - pkg/pinger/**
+      - test/e2e/framework/kubectlko/**
+      - test/e2e/ha/kubectl_ko_test.go
+      - go.mod
+      - go.sum
+      - makefiles/build.mk
+      - charts/kube-ovn/templates/kubectl-ko-node-agent.yaml
+      - charts/kube-ovn-v2/templates/diagnostics/**
+      - hack/kubectl-ko-chart-test.sh
+      - .github/workflows/helm-testing.yaml
+      - dist/images/Dockerfile
+      - dist/images/install.sh
+      - .github/workflows/kubectl-ko.yaml
+  push:
+    tags: [v*]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubectl-ko-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Unit and real streaming protocol tests
+        run: go test -race -count=1 ./pkg/ko/... ./pkg/kohelper/... ./cmd/kubectl-ko/... ./cmd/ko-helper/... ./test/e2e/framework/kubectlko/...
+      - name: Pinger control socket regression
+        run: go test -count=1 ./pkg/pinger/...
+      - name: Verify legacy fallback
+        run: bash dist/images/kubectl-ko-acl-sample_test.sh
+      - name: Check formatting
+        run: test -z "$(gofmt -l cmd/kubectl-ko cmd/ko-helper pkg/ko pkg/kohelper)"
+
+  windows-test:
+    defaults:
+      run:
+        shell: pwsh
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: windows-2025
+          - arch: arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          architecture: ${{ matrix.arch == 'amd64' && 'x64' || matrix.arch }}
+      - name: Verify native architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          if ((go env GOOS) -ne 'windows' -or (go env GOARCH) -ne $env:EXPECTED_ARCH) {
+            throw 'The Windows tests must run on the native target architecture'
+          }
+      - name: Native file and streaming protocol tests
+        run: go test -count=1 ./pkg/ko/... ./pkg/kohelper/... ./cmd/kubectl-ko/... ./cmd/ko-helper/... ./test/e2e/framework/kubectlko/...
+      - name: Build native executable
+        run: go build -o kubectl-ko.exe ./cmd/kubectl-ko
+      - name: Run without local kubectl or Bash
+        run: |
+          $env:PATH = ''
+          .\kubectl-ko.exe version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\kubectl-ko.exe --help
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14.0
+          args: --help
+      - name: Repository lint and generated-file gate
+        run: make lint
+        env:
+          CI: true
+
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build standalone plugin
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+        run: make build-kubectl-ko
+      - name: Package
+        env:
+          TARGET_OS: ${{ matrix.os }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p dist/kubectl-ko
+          binary=kubectl-ko
+          if [ "$TARGET_OS" = windows ]; then
+            binary=kubectl-ko.exe
+          fi
+          cp "dist/images/$binary" LICENSE docs/kubectl-ko.md dist/kubectl-ko/
+          archive="kubectl-ko-${TARGET_OS}-${TARGET_ARCH}"
+          if [ "$TARGET_OS" = windows ]; then
+            archive+=.zip
+            zip -j "$archive" "dist/kubectl-ko/$binary" dist/kubectl-ko/LICENSE dist/kubectl-ko/kubectl-ko.md
+          else
+            archive+=.tar.gz
+            tar -C dist/kubectl-ko -czf "$archive" "$binary" LICENSE kubectl-ko.md
+          fi
+          sha256sum "$archive" > "kubectl-ko-${TARGET_OS}-${TARGET_ARCH}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kubectl-ko-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            kubectl-ko-*.tar.gz
+            kubectl-ko-*.zip
+            kubectl-ko-*.sha256
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, windows-test, lint, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: kubectl-ko-*
+          merge-multiple: true
+      - name: Attach binaries to the versioned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat kubectl-ko-*.sha256 > kubectl-ko-checksums.txt
+          gh release view "$TAG" --repo "$REPOSITORY" || gh release create "$TAG" --repo "$REPOSITORY" --verify-tag --generate-notes
+          gh release upload "$TAG" --repo "$REPOSITORY" kubectl-ko-*.tar.gz kubectl-ko-*.zip kubectl-ko-checksums.txt
