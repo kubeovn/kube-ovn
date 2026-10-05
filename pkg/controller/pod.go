@@ -347,7 +347,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		for _, podNet := range podNets {
 			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
-			if oldAllocated != newAllocated {
+			oldRouted := oldPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
+			newRouted := newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
+			if oldAllocated != newAllocated || oldRouted != newRouted {
 				for _, np := range newNp {
 					klog.V(3).Infof("enqueue update network policy %s for pod %s", np, key)
 					c.updateNpQueue.Add(np)
@@ -367,7 +369,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		for _, podNet := range podNets {
 			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
-			if oldAllocated != newAllocated {
+			oldRouted := oldPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
+			newRouted := newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
+			if oldAllocated != newAllocated || oldRouted != newRouted {
 				c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
 				c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
 				break
