@@ -198,6 +198,7 @@ install-chart:
 		--set image.pullPolicy=$(or $(IMAGE_PULL_POLICY),IfNotPresent) \
 		--set OVN_DIR=$(or $(OVN_DIR),/etc/origin/ovn) \
 		--set OPENVSWITCH_DIR=$(or $(OPENVSWITCH_DIR),/etc/origin/openvswitch) \
+		--set OVN_IPSEC_KEY_DIR=$(or $(OVN_IPSEC_KEY_DIR),/etc/origin/ovs_ipsec_keys) \
 		--set DISABLE_MODULES_MANAGEMENT=$(or $(DISABLE_MODULES_MANAGEMENT),false) \
 		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(or $(MOUNT_LOCAL_BIN_DIR),true) \
 		--set networking.ENABLE_SSL=$(or $(ENABLE_SSL),false) \
@@ -230,6 +231,7 @@ upgrade-chart:
 		--set image.pullPolicy=$(or $(IMAGE_PULL_POLICY),IfNotPresent) \
 		--set OVN_DIR=$(or $(OVN_DIR),/etc/origin/ovn) \
 		--set OPENVSWITCH_DIR=$(or $(OPENVSWITCH_DIR),/etc/origin/openvswitch) \
+		--set OVN_IPSEC_KEY_DIR=$(or $(OVN_IPSEC_KEY_DIR),/etc/origin/ovs_ipsec_keys) \
 		--set DISABLE_MODULES_MANAGEMENT=$(or $(DISABLE_MODULES_MANAGEMENT),false) \
 		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(or $(MOUNT_LOCAL_BIN_DIR),true) \
 		--set networking.ENABLE_SSL=$(or $(ENABLE_SSL),false) \

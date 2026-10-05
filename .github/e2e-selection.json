@@ -165,7 +165,7 @@
       "reason": "security suite executed by the high availability job"
     },
     {
-      "patterns": ["pkg/webhook/**", "cmd/webhook/**", "pkg/controller/ipsec*.go"],
+      "patterns": ["pkg/webhook/**", "cmd/webhook/**", "pkg/controller/ipsec*.go", "pkg/ipsec/**", "cmd/ipsec/**", "hack/test-ipsec-*"],
       "groups": ["security-webhook"],
       "owner": "networking-e2e",
       "reason": "webhook and IPsec production paths"

@@ -169,6 +169,8 @@ spec:
           {{- include "kubeovn.componentTLSArgs" . | nindent 10 }}
           {{- end }}
           - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
+          - --cert-manager-ipsec-cert={{ .Values.ipsec.certManager.enabled }}
+          - --cert-manager-issuer-name={{ .Values.ipsec.certManager.issuerName }}
           - --enable-anp={{- .Values.func.ENABLE_ANP }}
           - --enable-dns-name-resolver={{- .Values.func.ENABLE_DNS_NAME_RESOLVER }}
           - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
