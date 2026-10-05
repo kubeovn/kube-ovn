@@ -2,6 +2,7 @@ package pinger
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -19,7 +20,17 @@ import (
 var sbServiceAddress string
 
 func init() {
-	sbHost, sbPort := util.InjectedServiceVariables("ovn-sb")
+	serviceName := os.Getenv(util.EnvOvnSBServiceName)
+	if serviceName == "" {
+		serviceName = "ovn-sb"
+	}
+	sbHost, sbPort := util.InjectedServiceVariables(serviceName)
+	if sbHost == "" {
+		sbHost = os.Getenv("OVN_SB_SERVICE_HOST")
+	}
+	if sbPort == "" {
+		sbPort = os.Getenv("OVN_SB_SERVICE_PORT")
+	}
 	sbServiceAddress = ovs.OvsdbServerAddress(sbHost, intstr.FromString(sbPort))
 }
 

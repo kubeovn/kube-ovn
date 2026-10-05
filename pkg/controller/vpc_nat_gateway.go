@@ -35,6 +35,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func vpcNatGatewayConfigName() string {
+	if name := strings.TrimSpace(os.Getenv(util.EnvVpcNatGatewayConfig)); name != "" {
+		return name
+	}
+	return util.VpcNatGatewayConfig
+}
+
 var (
 	vpcNatEnabled   = "unknown"
 	VpcNatCmVersion = ""
@@ -91,9 +98,10 @@ func (c *Controller) natGwNamespaceByName(gwName string) string {
 }
 
 func (c *Controller) resyncVpcNatGwConfig() {
-	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcNatGatewayConfig)
+	configName := vpcNatGatewayConfigName()
+	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(configName)
 	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to get ovn-vpc-nat-gw-config, %v", err)
+		klog.Errorf("failed to get %s, %v", configName, err)
 		return
 	}
 

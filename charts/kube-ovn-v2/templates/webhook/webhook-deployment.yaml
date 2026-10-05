@@ -1,9 +1,14 @@
 {{- if .Values.validatingWebhook.enabled }}
 {{- $webhookImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.validatingWebhook.image) | fromYaml -}}
+{{- $webhookName := include "kubeovn.webhookName" . -}}
+{{- $ovnServiceAccountName := include "kubeovn.ovnServiceAccountName" . -}}
+{{- $webhookSecretName := include "kubeovn.resourceName" (dict "context" . "suffix" "webhook-secret") -}}
+{{- $natConfigName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-config") -}}
+{{- $natGwConfigName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-gw-config") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kube-ovn-webhook
+  name: {{ $webhookName }}
   namespace: {{ .Values.namespace }}
   {{- with .Values.validatingWebhook.annotations }}
   annotations:
@@ -17,7 +22,7 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-webhook
+      app.kubernetes.io/name: {{ $webhookName }}
       app.kubernetes.io/part-of: kube-ovn
   template:
     metadata:
@@ -26,7 +31,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-webhook
+        app.kubernetes.io/name: {{ $webhookName }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.validatingWebhook.podLabels }}
         {{- toYaml . | nindent 8 }}
@@ -40,11 +45,11 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app.kubernetes.io/name: kube-ovn-webhook
+                  app.kubernetes.io/name: {{ $webhookName }}
                   app.kubernetes.io/part-of: kube-ovn
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn
+      serviceAccountName: {{ $ovnServiceAccountName }}
       automountServiceAccountToken: true
       securityContext:
         seccompProfile:
@@ -65,6 +70,10 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: status.podIP
+            - name: KUBE_OVN_VPC_NAT_CONFIG
+              value: {{ $natConfigName | quote }}
+            - name: KUBE_OVN_VPC_NAT_GATEWAY_CONFIG
+              value: {{ $natGwConfigName | quote }}
             {{- with .Values.validatingWebhook.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -101,7 +110,7 @@ spec:
         - name: cert
           secret:
             defaultMode: 420
-            secretName: kube-ovn-webhook-secret
+            secretName: {{ $webhookSecretName }}
       nodeSelector:
         kubernetes.io/os: "linux"
 {{- end }}

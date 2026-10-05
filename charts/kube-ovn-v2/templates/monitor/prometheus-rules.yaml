@@ -1,11 +1,12 @@
 {{- if .Values.prometheusRule.enabled }}
+{{- $fullname := include "kubeovn.fullname" . -}}
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: kube-ovn
+  name: {{ $fullname }}
   namespace: {{ default .Values.namespace .Values.prometheusRule.namespace }}
   labels:
-    app.kubernetes.io/name: kube-ovn
+    app.kubernetes.io/name: {{ $fullname }}
     app.kubernetes.io/part-of: kube-ovn
     {{- with .Values.prometheusRule.labels }}
     {{- toYaml . | nindent 4 }}
@@ -19,7 +20,7 @@ spec:
     - name: kube-ovn.controller
       rules:
         - alert: KubeOvnControllerDown
-          expr: up{job="kube-ovn-controller"} == 0
+          expr: up{job=~".*{{ $fullname }}-controller"} == 0
           for: 5m
           labels:
             severity: critical
@@ -27,7 +28,7 @@ spec:
             summary: 'kube-ovn-controller {{`{{ $labels.instance }}`}} is down'
             description: 'kube-ovn-controller instance {{`{{ $labels.instance }}`}} has been failing scrape for more than 5 minutes.'
         - alert: KubeOvnControllerAbsent
-          expr: absent(up{job="kube-ovn-controller"})
+          expr: absent(up{job=~".*{{ $fullname }}-controller"})
           for: 15m
           labels:
             severity: critical

@@ -1,9 +1,12 @@
+{{- $natRoleName := include "kubeovn.resourceName" (dict "context" . "suffix" "system-vpc-nat-gw") -}}
+{{- $natBindingName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-gw") -}}
+{{- $natServiceAccountName := include "kubeovn.resourceName" (dict "context" . "suffix" "vpc-nat-gw") -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     kubernetes.io/bootstrapping: rbac-defaults
-  name: system:vpc-nat-gw
+  name: {{ $natRoleName }}
 rules:
   - apiGroups:
       - ""
@@ -30,19 +33,19 @@ metadata:
     rbac.authorization.kubernetes.io/autoupdate: "true"
   labels:
     kubernetes.io/bootstrapping: rbac-defaults
-  name: vpc-nat-gw
+  name: {{ $natBindingName }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: system:vpc-nat-gw
+  name: {{ $natRoleName }}
 subjects:
   - kind: ServiceAccount
-    name: vpc-nat-gw
+    name: {{ $natServiceAccountName }}
     namespace: {{ .Values.namespace }}
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: vpc-nat-gw
+  name: {{ $natServiceAccountName }}
   namespace: {{ .Values.namespace }}
 automountServiceAccountToken: false
