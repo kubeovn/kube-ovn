@@ -9,6 +9,7 @@ COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 
 COPY kube-ovn /kube-ovn/kube-ovn
 COPY kube-ovn-acl-sample /kube-ovn/kube-ovn-acl-sample
+COPY kube-ovn-acl-sample /kube-ovn/kube-ovn-acl-sample-listener
 COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-bfdd-supervisor /kube-ovn/kube-ovn-bfdd-supervisor
 COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
@@ -22,9 +23,10 @@ RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
     ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-ic-controller && \
     ln -s /kube-ovn/kube-ovn-controller /kube-ovn/kube-ovn-pinger && \
     setcap CAP_SYS_ADMIN+ep /kube-ovn/kube-ovn-tproxy && \
+    setcap CAP_NET_ADMIN,CAP_NET_RAW+eip /kube-ovn/kube-ovn-acl-sample-listener && \
     setcap CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-cmd && \
     setcap CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-controller && \
-    setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip /kube-ovn/kube-ovn-daemon && \
+    setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-daemon && \
     setcap CAP_NET_ADMIN+eip /kube-ovn/vpc-egress-gateway-observer
 
 FROM kubeovn/kube-ovn-base:$BASE_TAG
@@ -34,6 +36,14 @@ COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 
 COPY --from=setcap /kube-ovn /kube-ovn
 RUN test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep" && \
-    /kube-ovn/iptables-wrapper-installer.sh --no-sanity-check
+    test "$(getcap /kube-ovn/kube-ovn)" = "" && \
+    test "$(getcap /kube-ovn/kube-ovn-acl-sample)" = "" && \
+    test "$(getcap /kube-ovn/kube-ovn-acl-sample-listener)" = "/kube-ovn/kube-ovn-acl-sample-listener cap_net_admin,cap_net_raw=eip" && \
+    test "$(getcap /kube-ovn/kube-ovn-cmd)" = "/kube-ovn/kube-ovn-cmd cap_net_bind_service=eip" && \
+    test "$(getcap /kube-ovn/kube-ovn-controller)" = "/kube-ovn/kube-ovn-controller cap_net_bind_service,cap_net_raw=eip" && \
+    test "$(getcap /kube-ovn/kube-ovn-daemon)" = "/kube-ovn/kube-ovn-daemon cap_net_bind_service,cap_net_admin,cap_net_raw=eip" && \
+    test "$(getcap /kube-ovn/vpc-egress-gateway-observer)" = "/kube-ovn/vpc-egress-gateway-observer cap_net_admin=eip"
+
+RUN /kube-ovn/iptables-wrapper-installer.sh --no-sanity-check
 
 WORKDIR /kube-ovn

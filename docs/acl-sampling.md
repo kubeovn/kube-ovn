@@ -128,6 +128,10 @@ running `kube-ovn-cni` Pod on the requested node, and emits one YAML document
 per decoded event. A sample that no longer resolves in NBDB is reported to
 standard error without stopping the listener.
 
+The node listener runs through a dedicated capability-enabled executable in the
+CNI image. The regular `kube-ovn-acl-sample` path remains capability-free so
+that NBDB-side decoding can run safely in the `ovn-central` container.
+
 An OVN local-sampling cookie is encoded as:
 
 ```text

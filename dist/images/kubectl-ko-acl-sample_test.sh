@@ -32,7 +32,7 @@ if [[ " $* " == *" get pod "*"ovn-nb-leader=true"* ]]; then
   exit 0
 fi
 
-if [[ " $* " == *" exec -i kube-ovn-cni-node-a "*" /kube-ovn/kube-ovn-acl-sample listen "* ]]; then
+if [[ " $* " == *" exec -i kube-ovn-cni-node-a "*" /kube-ovn/kube-ovn-acl-sample-listener listen "* ]]; then
   printf '%s\n' '0x640abcde000000c8' '0x670abcde000000c9'
   exit 0
 fi
@@ -82,5 +82,7 @@ assert_contains "$(<"$TEST_DIR/disabled.err")" 'ACL sampling is not enabled'
 assert_contains "$(<"$FAKE_LOG")" '--group-id=5000'
 assert_contains "$(<"$FAKE_LOG")" '--ovn-nb-addr=unix:/var/run/ovn/ovnnb_db.sock'
 assert_contains "$(<"$FAKE_LOG")" 'go-template={{range .spec.template.spec.containers}}{{if eq .name "cni-server"}}'
+assert_contains "$(<"$FAKE_LOG")" '/kube-ovn/kube-ovn-acl-sample-listener listen --group-id=5000'
+assert_contains "$(<"$FAKE_LOG")" '/kube-ovn/kube-ovn-acl-sample decode --ovn-nb-addr=unix:/var/run/ovn/ovnnb_db.sock 0x640abcde000000c8'
 
 echo 'kubectl-ko ACL sample tests passed'

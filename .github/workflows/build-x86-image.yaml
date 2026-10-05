@@ -664,6 +664,16 @@ jobs:
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
 
+      - name: Install OVSDB test server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openvswitch-common
+          mkdir -p "$RUNNER_TEMP/cni-ovsdb-bin"
+          for binary in ovsdb-tool ovsdb-server; do
+            ln -s "$(command -v "$binary")" "$RUNNER_TEMP/cni-ovsdb-bin/$binary"
+          done
+          echo "OVSDB_CNI_TEST_BIN_DIR=$RUNNER_TEMP/cni-ovsdb-bin" >> "$GITHUB_ENV"
+
       - name: Unit test
         run: make ut
 

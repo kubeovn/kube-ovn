@@ -1,0 +1,31 @@
+suite: CNI daemon security mode (v1)
+templates:
+  - ovncni-ds.yaml
+tests:
+  - it: runs the new CNI execution mode without legacy-only privileges
+    template: ovncni-ds.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --disable-legacy-cni-execution
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsUser
+          value: 65534
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsGroup
+          value: 65534
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: true
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.add
+          content: NET_ADMIN
+      - notContains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.add
+          content: SYS_ADMIN
+      - notContains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.add
+          content: SYS_PTRACE

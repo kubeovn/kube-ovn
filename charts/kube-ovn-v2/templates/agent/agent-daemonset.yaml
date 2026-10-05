@@ -61,6 +61,7 @@ spec:
           - -xec
           - |
             chmod +t /usr/local/sbin
+            chown -R nobody: /var/log/kube-ovn
             iptables -V
         securityContext:
           allowPrivilegeEscalation: true
@@ -173,17 +174,15 @@ spec:
           - --acl-sampling-local-group-id={{- .Values.aclSampling.localGroupID }}
           {{- end }}
         securityContext:
-          runAsGroup: 0
-          runAsUser: 0
+          runAsGroup: {{ include "kubeovn.runAsUser" . }}
+          runAsUser: {{ include "kubeovn.runAsUser" . }}
           privileged: false
+          allowPrivilegeEscalation: true
           capabilities:
             add:
               - NET_ADMIN
               - NET_BIND_SERVICE
               - NET_RAW
-              - SYS_ADMIN
-              - SYS_PTRACE
-              - SYS_NICE
         env:
           - name: ENABLE_SSL
             value: "{{ .Values.networking.enableSsl }}"

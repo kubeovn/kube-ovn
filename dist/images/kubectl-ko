@@ -924,7 +924,7 @@ aclSampleListen(){
 
   OVN_NB_POD=$(getLeaderPod "ovn-nb-leader" "nb")
   kubectl exec -i "$cniPod" -n "$KUBE_OVN_NS" -c cni-server -- \
-    /kube-ovn/kube-ovn-acl-sample listen --group-id="$groupID" |
+    /kube-ovn/kube-ovn-acl-sample-listener listen --group-id="$groupID" |
     while IFS= read -r cookie; do
       if [ -z "$cookie" ]; then
         continue
