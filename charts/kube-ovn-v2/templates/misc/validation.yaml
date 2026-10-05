@@ -1,0 +1,6 @@
+{{/*
+Always-rendered validation guard. Fails the install on invalid controller
+placement combinations (see kubeovn.controllerPlacementValidation in
+_helpers.tpl); produces no resources on success.
+*/}}
+{{- include "kubeovn.controllerPlacementValidation" . }}

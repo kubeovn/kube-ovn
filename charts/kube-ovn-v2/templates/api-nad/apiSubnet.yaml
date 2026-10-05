@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- if .Values.apiNad.enabled }}
 apiVersion: kubeovn.io/v1
 kind: Subnet
@@ -8,4 +9,5 @@ spec:
   protocol: {{ .Values.apiNad.subnet.protocol }}
   cidrBlock: {{ .Values.apiNad.subnet.cidrBlock }}
   provider: {{ tpl .Values.apiNad.provider . }}
+{{- end }}
 {{- end }}

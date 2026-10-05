@@ -1,4 +1,4 @@
-{{- if .Values.ovsOvn.upgrade.enabled -}}
+{{- if and .Values.ovsOvn.upgrade.enabled (include "kubeovn.renderDataPlane" .) -}}
 ---
 apiVersion: v1
 kind: ServiceAccount

@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- if .Values.apiNad.enabled }}
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
@@ -11,4 +12,5 @@ spec:
       "server_socket": "/run/openvswitch/kube-ovn-daemon.sock",
       "provider": "{{ tpl .Values.apiNad.provider . }}"
     }'
+{{- end }}
 {{- end }}

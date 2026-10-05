@@ -17,6 +17,35 @@ image:
   # @section -- Global parameters
   pullPolicy: IfNotPresent
 
+# -- installMode controls which slice of the chart this Helm release renders.
+#   full:             all components in one cluster (default, classic install).
+#   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
+#                     their RBAC. Use on the management cluster of a
+#                     split-cluster deployment that hosts ovn-central.
+#   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +
+#                     pinger and their RBAC. Use on tenant data-plane
+#                     clusters that connect back to an external ovn-central via
+#                     externalOvnCentral below.
+#
+# Kamaji topology: when the tenant apiservers run as pods in the management
+# cluster, installMode=controlPlaneOnly can also host one
+# kube-ovn-controller-<name> Deployment per tenant (see controller.hostedTenants)
+# so the controller talks to both the tenant apiserver and ovn-central locally;
+# set controller.enabled=false on the dataPlaneOnly release in that case.
+# @section -- Global parameters
+installMode: full
+
+# -- When installMode=dataPlaneOnly, the agents and controller cannot rely on a
+# local ovn-central Service. Set nbEndpoint/sbEndpoint to the addresses that
+# expose the management cluster's ovn-nb / ovn-sb Services.
+# @section -- Global parameters
+# @default -- "{}"
+externalOvnCentral:
+  nbEndpoint: ""
+  sbEndpoint: ""
+  nbPort: 6641
+  sbPort: 6642
+
 # -- Name override.
 # @section -- Global parameters
 nameOverride: ""
@@ -240,9 +269,9 @@ features:
   # -- Enable underlay to overlay interconnections
   # @section -- Opt-in/out Features
   enableU2OInterconnections: false
-  # -- Enable TProxy
+  # -- Enable TProxy so kubelet TCP probes can reach pods in custom VPCs
   # @section -- Opt-in/out Features
-  enableTproxy: false
+  enableTproxy: true
   # -- Enable OVN interconnections
   # @section -- Opt-in/out Features
   enableOvnInterconnections: false
@@ -928,6 +957,28 @@ monitor:
 # @section -- Kube-OVN controller configuration
 # @default -- "{}"
 controller:
+  # -- Render kube-ovn-controller in this release (full and dataPlaneOnly
+  # installs). Set to false in dataPlaneOnly installs when the controller is
+  # hosted on the management cluster instead (Kamaji topology, see
+  # controller.hostedTenants).
+  # @section -- Kube-OVN controller configuration
+  enabled: true
+
+  # -- Hosted kube-ovn-controller instances for Kamaji-style split-cluster
+  # deployments. Each entry renders a kube-ovn-controller-<name> Deployment in
+  # this management cluster that authenticates to the tenant apiserver with the
+  # given kubeconfig Secret and writes to the local ovn-central Services.
+  # Only supported with installMode: controlPlaneOnly.
+  # @section -- Kube-OVN controller configuration
+  hostedTenants: []
+  #  - name: tenant-a
+  #    kubeconfigSecret: tenant-a-kubeconfig  # Secret holding the tenant apiserver kubeconfig
+  #    kubeconfigKey: kubeconfig              # key inside the Secret (default: kubeconfig)
+  #    namespace: kube-system                 # tenant-side namespace (default: release namespace)
+  #    replicas: 2                            # default: 2
+  #    networking: {}                         # deep-merged over the release networking values for this tenant's args
+  #    features: {}                           # deep-merged over the release features values for this tenant's args
+
   # -- Leader election timing configuration.
   # @section -- Kube-OVN controller configuration
   leaderElection:
