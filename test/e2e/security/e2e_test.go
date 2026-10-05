@@ -66,13 +66,11 @@ func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports 
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Parsing environment variable")
-	var envValue string
-	for _, env := range pods[0].Spec.Containers[0].Env {
-		if env.Name == "ENABLE_BIND_LOCAL_IP" {
-			envValue = env.Value
-			break
-		}
+	containerName := process
+	if process == "kube-ovn-daemon" {
+		containerName = "cni-server"
 	}
+	envValue := containerEnvValues(pods, containerName)["ENABLE_BIND_LOCAL_IP"]
 	if envValue == "" {
 		envValue = "false"
 	}

@@ -14,6 +14,12 @@ metadata:
     rbac.authorization.k8s.io/system-only: "true"
   name: system:ovn
 rules:
+{{- if .Values.ipsec.certManager.enabled }}
+  - apiGroups: [admissionregistration.k8s.io]
+    resources: [validatingadmissionpolicies, validatingadmissionpolicybindings]
+    resourceNames: [kube-ovn-ipsec-issuer]
+    verbs: [get]
+{{- end }}
   - apiGroups:
       - "kubeovn.io"
     resources:
@@ -150,6 +156,7 @@ rules:
       - apps
     resources:
       - daemonsets
+      - replicasets
     verbs:
       - get
   - apiGroups:
@@ -278,21 +285,6 @@ rules:
     resources:
     - certificatesigningrequests/status
     - certificatesigningrequests/approval
-    verbs:
-    - update
-  - apiGroups:
-    - ""
-    resources:
-    - secrets
-    verbs:
-    - get
-    - create
-  - apiGroups:
-    - ""
-    resources:
-    - secrets
-    resourceNames:
-    - kube-ovn-tls
     verbs:
     - update
   - apiGroups:

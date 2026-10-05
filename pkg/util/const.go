@@ -376,6 +376,7 @@ const (
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
 	DefaultOVNIPSecCA       = "ovn-ipsec-ca"
+	DefaultOVNIPSecSigner   = "ovn-ipsec-signer"
 	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
 	DefaultOVSCACertKeyPath = "/var/lib/openvswitch/pki/switchca/private/cakey.pem"
 
