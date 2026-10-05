@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Match literal shell/template expressions rather than expand them in this test.
+# shellcheck disable=SC2016
 set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -34,19 +36,24 @@ grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-controller)" = "/kube-ovn/kube-ovn-c
 grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-daemon)" = "/kube-ovn/kube-ovn-daemon cap_net_bind_service,cap_net_admin,cap_net_raw=eip"' <<<"$final_stage"
 grep -Fq 'test "$(getcap /kube-ovn/vpc-egress-gateway-observer)" = "/kube-ovn/vpc-egress-gateway-observer cap_net_admin=eip"' <<<"$final_stage"
 
-# Evaluate the installer inputs and the generated capability selection without
-# running the installer (which applies resources to the current Kubernetes
-# context). ENABLE_IC is supplied so the prefix does not probe kubectl.
-new_config=$(
-  ENABLE_IC=false bash -c '
-    source <(sed -n "1,130p" "$1")
-    printf "%s\n%s" "$RUN_AS_USER" "$CNI_SERVER_CAPABILITIES"
-  ' bash "$INSTALL_SCRIPT"
-)
-new_user=${new_config%%$'\n'*}
-new_caps=${new_config#*$'\n'}
-[[ "$new_user" == 65534 ]]
-[[ "$new_caps" != *SYS_ADMIN* ]]
-[[ "$new_caps" != *SYS_PTRACE* ]]
+# Evaluate only the complete UID/capability initialization block. Never source
+# the whole installer or a fixed line prefix that can cut a multiline string.
+grep -q '^# debug$' "$INSTALL_SCRIPT"
+grep -q '^KUBELET_DIR=' "$INSTALL_SCRIPT"
+for ipsec_enabled in false true; do
+  new_config=$(
+    ENABLE_OVN_IPSEC="$ipsec_enabled" DEBUG_WRAPPER="" bash -c '
+      set -euo pipefail
+      source <(sed -n "/^# debug$/,/^KUBELET_DIR=/{ /^KUBELET_DIR=/q; p; }" "$1")
+      printf "%s\n%s" "$RUN_AS_USER" "$CNI_SERVER_CAPABILITIES"
+    ' bash "$INSTALL_SCRIPT"
+  )
+  new_user=${new_config%%$'\n'*}
+  new_caps=${new_config#*$'\n'}
+  [[ "$new_user" == 65534 ]]
+  [[ "$new_caps" != *SYS_ADMIN* ]]
+  [[ "$new_caps" != *SYS_PTRACE* ]]
+  [[ "$new_caps" != *SYS_NICE* ]]
+done
 
 echo 'install.sh CNI security checks passed'

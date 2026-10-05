@@ -17,6 +17,7 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-logr/zapr v1.3.0
+	github.com/google/cel-go v0.31.0
 	github.com/google/gopacket v1.1.19
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
 	github.com/k8snetworkplumbingwg/sriovnet v1.3.0
@@ -68,6 +69,7 @@ require (
 	k8s.io/cli-runtime v0.37.1
 	k8s.io/client-go v0.37.1
 	k8s.io/component-base v0.37.1
+	k8s.io/component-helpers v0.37.1
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.37.1
 	k8s.io/kubernetes v1.37.1
@@ -160,7 +162,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/cadvisor/lib v0.60.5 // indirect
-	github.com/google/cel-go v0.31.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/nftables v0.3.0 // indirect
@@ -263,7 +264,6 @@ require (
 	k8s.io/cloud-provider v0.37.0 // indirect
 	k8s.io/cluster-bootstrap v0.37.0 // indirect
 	k8s.io/code-generator v0.37.1 // indirect
-	k8s.io/component-helpers v0.37.1 // indirect
 	k8s.io/controller-manager v0.37.1 // indirect
 	k8s.io/cri-api v0.37.1 // indirect
 	k8s.io/cri-client v0.37.0 // indirect

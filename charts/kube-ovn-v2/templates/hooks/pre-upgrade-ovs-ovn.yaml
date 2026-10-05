@@ -1,3 +1,4 @@
+{{- $hookImage := include "kubeovn.imageSpec" (dict "root" .) | fromYaml -}}
 {{- if .Values.ovsOvn.upgrade.enabled -}}
 ---
 apiVersion: v1
@@ -107,7 +108,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ovs-ovn-pre-upgrade
-          image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"
+          image: "{{ $hookImage.prefix }}{{ $hookImage.repository }}:{{ $hookImage.tag }}"
+          imagePullPolicy: {{ $hookImage.pullPolicy }}
           env:
             - name: POD_NAMESPACE
               valueFrom:

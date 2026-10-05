@@ -461,6 +461,21 @@ class E2ESelectorTest(unittest.TestCase):
                     self.assertEqual(len(result["matrix"]), self.expectedRunnerJobs())
                     self.assertIn("selection error", result["fullReason"])
 
+    def testIPsecProductionAndHarnessChangesSelectExistingSecurityJobs(self):
+        for path in (
+            "pkg/ipsec/agent.go",
+            "cmd/ipsec/main.go",
+            "hack/test-ipsec-runtime.sh",
+            "hack/test-ipsec-monitor.py",
+            "hack/test-ipsec-overlay.sh",
+        ):
+            with self.subTest(path=path):
+                plan = self.select([path])
+                self.assertFalse(plan["full"])
+                self.assertEqual(plan["selectedGroups"], ["security-webhook"])
+                jobs = {entry["job"] for entry in plan["matrix"]}
+                self.assertTrue({"kube-ovn-ipsec-e2e", "kube-ovn-ipsec-cert-mgr-e2e"} <= jobs)
+
     def testPlanIsJsonSerializableAndBoundToHead(self):
         plan = self.select(["test/e2e/ipsec/e2e_test.go"])
 

@@ -25,6 +25,7 @@ type Vswitch interface {
 }
 
 type NBGlobal interface {
+	GetIPsecGlobal(context.Context) (*IPsecGlobalState, error)
 	UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...any) error
 	SetAzName(azName string) error
 	SetUseCtInvMatch() error
@@ -320,6 +321,7 @@ type NbClient interface {
 type SbClient interface {
 	Chassis
 	Common
+	GetIPsecGlobal(context.Context) (*IPsecGlobalState, error)
 }
 
 type Common interface {

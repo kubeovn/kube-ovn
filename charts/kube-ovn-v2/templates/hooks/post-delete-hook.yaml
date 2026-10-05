@@ -1,3 +1,4 @@
+{{- $hookImage := include "kubeovn.imageSpec" (dict "root" .) | fromYaml -}}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -110,7 +111,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: remove-subnet-finalizer
-          image: "{{ .Values.global.registry.address}}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}"
+          image: "{{ $hookImage.prefix }}{{ $hookImage.repository }}:{{ $hookImage.tag }}"
+          imagePullPolicy: {{ $hookImage.pullPolicy }}
           env:
             - name: POD_NAMESPACE
               valueFrom:
