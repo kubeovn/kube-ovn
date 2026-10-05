@@ -122,6 +122,10 @@ if [ "$ENABLE_OVN_IPSEC" = "true" -o -n "$DEBUG_WRAPPER" ]; then
   RUN_AS_USER=0
 fi
 
+CNI_SERVER_CAPABILITIES="                - NET_ADMIN
+                - NET_BIND_SERVICE
+                - NET_RAW"
+
 KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 LOG_DIR=${LOG_DIR:-/var/log}
 
@@ -9153,6 +9157,7 @@ ${TPROXY_SECURITY_CONTEXT}
           - -xec
           - |
             chmod +t /usr/local/sbin
+            chown -R nobody: /var/log/kube-ovn
             iptables -V
         securityContext:
           allowPrivilegeEscalation: true
@@ -9231,16 +9236,13 @@ ${TPROXY_SECURITY_CONTEXT}
           - --acl-sampling-set-id=$ACL_SAMPLING_SET_ID
           - --acl-sampling-local-group-id=$ACL_SAMPLING_LOCAL_GROUP_ID
         securityContext:
-          runAsUser: 0
+          runAsGroup: ${RUN_AS_USER}
+          runAsUser: ${RUN_AS_USER}
           privileged: false
+          allowPrivilegeEscalation: true
           capabilities:
             add:
-              - NET_ADMIN
-              - NET_BIND_SERVICE
-              - NET_RAW
-              - SYS_ADMIN
-              - SYS_NICE
-              - SYS_PTRACE
+${CNI_SERVER_CAPABILITIES}
         env:
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"

@@ -268,8 +268,12 @@ func (c *VswitchClient) transactVswitchOperations(operations []ovsdb.Operation) 
 	if err != nil {
 		return nil, err
 	}
-	if _, err := ovsdb.CheckOperationResults(results, operations); err != nil {
-		return nil, err
+	if opErrors, err := ovsdb.CheckOperationResults(results, operations); err != nil {
+		errorsToJoin := []error{err}
+		for _, opErr := range opErrors {
+			errorsToJoin = append(errorsToJoin, opErr)
+		}
+		return nil, errors.Join(errorsToJoin...)
 	}
 	if len(results) != len(operations) {
 		return nil, fmt.Errorf("expected %d OVSDB operation results, got %d", len(operations), len(results))
