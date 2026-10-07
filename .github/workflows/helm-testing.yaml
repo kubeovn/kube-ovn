@@ -58,7 +58,7 @@ jobs:
             -f dist/images/Dockerfile dist/images/
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true

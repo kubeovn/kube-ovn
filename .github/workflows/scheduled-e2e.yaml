@@ -82,7 +82,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -190,7 +190,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -259,7 +259,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -341,7 +341,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -423,7 +423,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -485,7 +485,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -542,7 +542,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -601,7 +601,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -680,7 +680,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -760,7 +760,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -839,7 +839,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -899,7 +899,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -981,7 +981,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1077,7 +1077,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1186,7 +1186,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ env.VERSION_TO }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1257,7 +1257,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1340,7 +1340,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1418,7 +1418,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1489,7 +1489,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1584,7 +1584,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
