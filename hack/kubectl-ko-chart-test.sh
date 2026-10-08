@@ -4,17 +4,12 @@ set -euo pipefail
 build_image() {
   local ko_tag="ko-chart-${GITHUB_SHA:?}"
   local ko_image="docker.io/kubeovn/kube-ovn:${ko_tag}"
-  local ko_base_image
-  ko_base_image="docker.io/kubeovn/kube-ovn:$(cat VERSION)"
-  make build-kubectl-ko
-  docker build --build-arg "KO_BASE_IMAGE=${ko_base_image}" --tag "$ko_image" --file - dist/images <<'EOF'
-ARG KO_BASE_IMAGE
-FROM ${KO_BASE_IMAGE}
-COPY kubectl-ko /usr/local/bin/kubectl-ko
-COPY kubectl-ko /kube-ovn/kubectl-ko
-COPY kubectl-ko-node-agent /kube-ovn/kubectl-ko-node-agent
-COPY env-check.sh /kube-ovn/env-check.sh
-EOF
+  # Build every image binary from this checkout so the image's file
+  # capabilities match the chart's security contexts.
+  make build-go
+  docker build --build-arg "VERSION=$(cat VERSION)" \
+    --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+    --tag "$ko_image" --file dist/images/Dockerfile dist/images/
   local ko_clusters
   mapfile -t ko_clusters < <(kind get clusters)
   if [[ ${#ko_clusters[@]} != 1 ]]; then
