@@ -467,3 +467,48 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairRetriesUntilGatewayMacKnown(t *tes
 	require.NoError(t, err)
 	require.Equal(t, staleMac, got.Status.Mac)
 }
+
+func TestHandleAddVirtualIP_SwitchLBRuleRepairNotSilentlySkippedWhenIPAMSubnetUnregistered(t *testing.T) {
+	t.Parallel()
+
+	const staleMac = "00:00:00:00:00:04"
+	subnet := &kubeovnv1.Subnet{
+		Name: "test-subnet-repair-ipam-unregistered",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.3.0/24",
+			Gateway:   "10.0.3.1",
+			Protocol:  kubeovnv1.ProtocolIPv4,
+			Provider:  util.OvnProvider,
+			Vpc:       "test-vpc",
+		},
+		Status: kubeovnv1.SubnetStatus{GatewayMAC: staleMac},
+	}
+	vip := &kubeovnv1.Vip{
+		Name: "test-switch-lb-vip-repair-ipam-unregistered",
+		Spec: kubeovnv1.VipSpec{
+			Namespace:  "default",
+			Subnet:     subnet.Name,
+			Type:       util.SwitchLBRuleVip,
+			V4ip:       "10.0.3.50",
+			MacAddress: staleMac,
+		},
+		Status: kubeovnv1.VipStatus{
+			V4ip: "10.0.3.50",
+			Mac:  staleMac,
+		},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Vips:    []*kubeovnv1.Vip{vip},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	// no ctrl.ipam.AddOrUpdateSubnet call: ipam hasn't registered this subnet yet.
+
+	require.Error(t, ctrl.handleAddVirtualIP(vip.Name))
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, staleMac, got.Status.Mac)
+}

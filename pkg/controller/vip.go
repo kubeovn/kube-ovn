@@ -96,11 +96,18 @@ func (c *Controller) needsSwitchLBRuleMacRepair(key string, vip *kubeovnv1.Vip) 
 		return false, true, nil
 	}
 	gwMac := c.ipam.GetGatewayMAC(vip.Spec.Subnet)
+	if gwMac == "" {
+		// ipam may lag a restart; fall back to the mac already persisted on the
+		// Subnet CR (see patchSubnetGatewayMAC) before concluding there's no collision.
+		if subnet, err := c.subnetsLister.Get(vip.Spec.Subnet); err == nil {
+			gwMac = subnet.Status.GatewayMAC
+		} else if !k8serrors.IsNotFound(err) {
+			return false, true, fmt.Errorf("failed to get subnet %s to check gateway mac for vip %s: %w", vip.Spec.Subnet, key, err)
+		}
+	}
 	if gwMac == "" && c.ipam.HasSubnet(vip.Spec.Subnet) {
-		// Subnet is known to ipam but its gateway mac isn't recorded yet, e.g. this
-		// vip's queue entry is processed on controller startup before subnet
-		// reconciliation calls RecordGatewayMAC. Requeue instead of silently dropping
-		// the repair, since RecordGatewayMAC does not re-enqueue vips itself.
+		// Known to ipam but no gateway mac recorded yet; retry instead of silently
+		// dropping the repair, since RecordGatewayMAC does not re-enqueue vips itself.
 		return false, true, fmt.Errorf("gateway mac for subnet %s not recorded yet, retrying repair of vip %s", vip.Spec.Subnet, key)
 	}
 	if gwMac != vip.Status.Mac {

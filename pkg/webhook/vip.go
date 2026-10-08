@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -88,6 +89,7 @@ func (v *ValidatingHook) isLegacySwitchLBVipMacRepair(ctx context.Context, req a
 
 	subnet := &ovnv1.Subnet{}
 	if err := v.cache.Get(ctx, client.ObjectKey{Name: vipOld.Spec.Subnet}, subnet); err != nil {
+		klog.Errorf("failed to get subnet %s to validate legacy mac repair for vip %s: %v", vipOld.Spec.Subnet, vipOld.Name, err)
 		return false
 	}
 	return subnet.Status.GatewayMAC != "" && subnet.Status.GatewayMAC == vipOld.Status.Mac
