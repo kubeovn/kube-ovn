@@ -286,8 +286,11 @@ namespaces. Daemon status checks connect to the socket named by the recorded
 PID, avoiding appctl's namespace-dependent PID-file lock lookup. Service and
 port-binding checks remain enabled, and failed probes return a nonzero status.
 
-This rewrite intentionally replaces the old command interface. There are no
-compatibility aliases in the Go executable. Migrate scripts using this table:
+This rewrite replaces most of the old command interface. The Go executable
+retains `log COMPONENT` for existing log collectors, including CI Valgrind
+checks; it collects the same files as `logs --component COMPONENT`. Consecutive
+component collections preserve files already collected in the output directory.
+Migrate other commands using this table:
 
 | Previous form | New form |
 | --- | --- |
