@@ -286,11 +286,10 @@ namespaces. Daemon status checks connect to the socket named by the recorded
 PID, avoiding appctl's namespace-dependent PID-file lock lookup. Service and
 port-binding checks remain enabled, and failed probes return a nonzero status.
 
-This rewrite replaces most of the old command interface. The Go executable
-retains `log COMPONENT` for existing log collectors, including CI Valgrind
-checks; it collects the same files as `logs --component COMPONENT`. Consecutive
-component collections preserve files already collected in the output directory.
-Migrate other commands using this table:
+This rewrite replaces the old command interface. Use
+`logs --component COMPONENT --output-dir DIR` in CI and support collectors.
+Consecutive component collections preserve files already collected in the
+output directory. Migrate commands using this table:
 
 | Previous form | New form |
 | --- | --- |
@@ -333,13 +332,15 @@ make lint
 
 The dedicated workflow tests real exec streams, builds all six workstation
 platforms and runs file/streaming tests natively on Windows amd64 and arm64.
-Chart CI overlays the current Go client, node agent and environment checker
-onto the published component image, loads it into Kind and installs the v2
-chart with that image. It checks credential-free agent readiness on every
-Linux node, environment output and actual Pod interface statistics. It also
-executes the installer's CLI bootstrap phase with a temporary local destination,
+Chart CI builds the complete image from the current checkout, loads it into
+Kind and installs the v2 chart with that image. It checks credential-free agent
+readiness on every Linux node, environment output and actual Pod interface
+statistics. It also executes the installer's CLI bootstrap phase with a
+temporary local destination,
 verifies the copy uses the `agent` container, and compares the copied binary
-with the current build.
+with the current build. It collects OVN and OVS logs with the current CLI's
+`logs --component` interface, verifies files on every Linux node, and checks
+that OVS collection preserves the earlier OVN files.
 Existing `[group:kubectl-ko]` E2E exercises trace, capture, logs,
 diagnostics and backup against a cluster. Environment coverage also installs
 credential-free agents in a namespace without CNI Pods and verifies every Linux

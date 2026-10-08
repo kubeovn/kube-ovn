@@ -69,6 +69,18 @@ verify_agent() {
     (.netns | length) > 0 and (.interfaces | length) > 0 and
     all(.interfaces[]; .statistics.rx.bytes >= 0 and .statistics.tx.bytes >= 0)
   ' "$ko_directory/network.json"
+  local ko_logs="$ko_directory/logs" ko_node
+  dist/images/kubectl-ko --timeout=2m --kube-ovn-namespace "$ko_namespace" logs --component ovn --output-dir "$ko_logs" --strict
+  find "$ko_logs" -type f -exec sha256sum {} + > "$ko_directory/ovn-checksums.txt"
+  dist/images/kubectl-ko --timeout=2m --kube-ovn-namespace "$ko_namespace" logs --component ovs --output-dir "$ko_logs" --strict
+  # The second component collection must retain the first one's host log files.
+  # Each collection writes its own manifest, so exclude that per-call metadata.
+  grep -v '/manifest.json$' "$ko_directory/ovn-checksums.txt" | sha256sum --check
+  kubectl get nodes -l kubernetes.io/os=linux -o json | jq -r '.items[].metadata.name' |
+    while IFS= read -r ko_node; do
+      test -s "$ko_logs/$ko_node/ovn/ovn-controller.log"
+      test -s "$ko_logs/$ko_node/openvswitch/ovs-vswitchd.log"
+    done
 }
 
 case "${1:-}" in

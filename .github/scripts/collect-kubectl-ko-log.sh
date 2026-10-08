@@ -6,7 +6,7 @@ ko_binary=dist/images/kubectl-ko
 if [[ ! -x "$ko_binary" ]]; then
   ko_binary=$(command -v kubectl-ko || true)
 fi
-if [[ -z "$ko_binary" ]] || ! "$ko_binary" logs; then
+if [[ -z "$ko_binary" ]] || ! "$ko_binary" logs --component all --output-dir kubectl-ko-log; then
   echo "Warning: kubectl-ko log collection failed; continuing with Docker node fallback"
 fi
 

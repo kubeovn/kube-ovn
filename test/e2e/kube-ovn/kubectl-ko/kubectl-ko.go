@@ -592,7 +592,7 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 		}
 	})
 
-	framework.ConformanceIt(`should support "kubectl ko log kube-ovn all"`, func() {
+	framework.ConformanceIt(`should support "kubectl ko logs --component COMPONENT"`, func() {
 		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
 		components := [...]string{"kube-ovn", "ovn", "ovs", "linux", "all"}
 		for _, component := range components {

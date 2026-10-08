@@ -23,86 +23,79 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func TestLegacyLogCallsCollectAndPreserveValgrindFiles(t *testing.T) {
-	for _, legacy := range []bool{true, false} {
-		t.Run("legacy="+strconv.FormatBool(legacy), func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			pods := map[string]*corev1.Pod{
-				"app=ovs":                   readyPod("ovs-a", "worker", "openvswitch", map[string]string{"app": "ovs"}),
-				"app=ovn-central":           readyPod("central-a", "worker", "ovn-central", map[string]string{"app": "ovn-central"}),
-				"app=kubectl-ko-node-agent": readyPod("agent-a", "worker", "agent", map[string]string{"app": "kubectl-ko-node-agent"}),
-			}
-			for _, pod := range pods {
-				pod.Status.ContainerStatuses[0].State.Running.StartedAt = metav1.Now()
-			}
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if strings.HasSuffix(r.URL.Path, "/log") {
-					_, _ = io.WriteString(w, "container stdout\n")
-					return
-				}
-				pod := pods[r.URL.Query().Get("labelSelector")]
-				if pod == nil {
-					t.Errorf("unexpected discovery: %s", r.URL)
-					http.Error(w, "bad request", http.StatusBadRequest)
-					return
-				}
-				w.Header().Set("Content-Type", "application/json")
-				_ = json.MarshalWrite(w, &corev1.PodList{Items: []corev1.Pod{*pod}})
-			}))
-			defer server.Close()
-			kube, err := kubernetes.NewForConfig(&rest.Config{Host: server.URL})
-			require.NoError(t, err)
-			files := map[string][]byte{
-				"/var/log/ovn":         archive(t, "ovn-controller.valgrind.log.123", tar.TypeReg, "OVN valgrind\n"),
-				"/var/log/openvswitch": archive(t, "ovs-vswitchd.valgrind.log.456", tar.TypeReg, "OVS valgrind\n"),
-			}
-			var sources []string
-			executor := &recordingExecutor{run: func(_ context.Context, target Target, argv []string, streams Streams) error {
-				require.Equal(t, "agent-a", target.Pod)
-				require.Equal(t, "agent", target.Container)
-				require.Equal(t, []string{"tar", "-C", argv[2], "-cf", "-", "."}, argv)
-				sources = append(sources, argv[2])
-				_, err := streams.Out.Write(files[argv[2]])
-				return err
-			}}
-			client := &Client{Kubernetes: kube, Executor: executor, Namespace: "ovn-system", ComponentFree: true, DiscoveryTimeout: time.Second}
-			for _, component := range []string{"ovn", "ovs"} {
-				app, _, _, _ := testApplication(t)
-				app.newClient = func() (*Client, error) { return client, nil }
-				args := []string{"log", component}
-				if !legacy {
-					args = []string{"logs", "--component", component}
-				}
-				args = append(args, "--concurrency=1", "--strict")
-				require.NoError(t, app.Execute(t.Context(), args))
-				ovn, err := os.ReadFile(filepath.Join("kubectl-ko-log", "worker", "ovn", "ovn-controller.valgrind.log.123"))
-				require.NoError(t, err)
-				require.Equal(t, "OVN valgrind\n", string(ovn))
-				if component == "ovn" {
-					require.NotContains(t, sources, "/var/log/openvswitch")
-					continue
-				}
-				ovs, err := os.ReadFile(filepath.Join("kubectl-ko-log", "worker", "openvswitch", "ovs-vswitchd.valgrind.log.456"))
-				require.NoError(t, err)
-				require.Equal(t, "OVS valgrind\n", string(ovs))
-			}
-			require.Contains(t, sources, "/var/log/openvswitch")
-		})
+func TestLogsCollectAndPreserveValgrindFiles(t *testing.T) {
+	t.Chdir(t.TempDir())
+	pods := map[string]*corev1.Pod{
+		"app=ovs":                   readyPod("ovs-a", "worker", "openvswitch", map[string]string{"app": "ovs"}),
+		"app=ovn-central":           readyPod("central-a", "worker", "ovn-central", map[string]string{"app": "ovn-central"}),
+		"app=kubectl-ko-node-agent": readyPod("agent-a", "worker", "agent", map[string]string{"app": "kubectl-ko-node-agent"}),
 	}
+	for _, pod := range pods {
+		pod.Status.ContainerStatuses[0].State.Running.StartedAt = metav1.Now()
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/log") {
+			_, _ = io.WriteString(w, "container stdout\n")
+			return
+		}
+		pod := pods[r.URL.Query().Get("labelSelector")]
+		if pod == nil {
+			t.Errorf("unexpected discovery: %s", r.URL)
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.MarshalWrite(w, &corev1.PodList{Items: []corev1.Pod{*pod}})
+	}))
+	defer server.Close()
+	kube, err := kubernetes.NewForConfig(&rest.Config{Host: server.URL})
+	require.NoError(t, err)
+	files := map[string][]byte{
+		"/var/log/ovn":         archive(t, "ovn-controller.valgrind.log.123", tar.TypeReg, "OVN valgrind\n"),
+		"/var/log/openvswitch": archive(t, "ovs-vswitchd.valgrind.log.456", tar.TypeReg, "OVS valgrind\n"),
+	}
+	var sources []string
+	executor := &recordingExecutor{run: func(_ context.Context, target Target, argv []string, streams Streams) error {
+		require.Equal(t, "agent-a", target.Pod)
+		require.Equal(t, "agent", target.Container)
+		require.Equal(t, []string{"tar", "-C", argv[2], "-cf", "-", "."}, argv)
+		sources = append(sources, argv[2])
+		_, err := streams.Out.Write(files[argv[2]])
+		return err
+	}}
+	client := &Client{Kubernetes: kube, Executor: executor, Namespace: "ovn-system", ComponentFree: true, DiscoveryTimeout: time.Second}
+	for _, component := range []string{"ovn", "ovs"} {
+		app, _, _, _ := testApplication(t)
+		app.newClient = func() (*Client, error) { return client, nil }
+		args := []string{"logs", "--component", component}
+		args = append(args, "--concurrency=1", "--strict")
+		require.NoError(t, app.Execute(t.Context(), args))
+		ovn, err := os.ReadFile(filepath.Join("kubectl-ko-log", "worker", "ovn", "ovn-controller.valgrind.log.123"))
+		require.NoError(t, err)
+		require.Equal(t, "OVN valgrind\n", string(ovn))
+		if component == "ovn" {
+			require.NotContains(t, sources, "/var/log/openvswitch")
+			continue
+		}
+		ovs, err := os.ReadFile(filepath.Join("kubectl-ko-log", "worker", "openvswitch", "ovs-vswitchd.valgrind.log.456"))
+		require.NoError(t, err)
+		require.Equal(t, "OVS valgrind\n", string(ovs))
+	}
+	require.Contains(t, sources, "/var/log/openvswitch")
 }
 
-func TestLegacyLogAcceptsAllSupportedComponents(t *testing.T) {
+func TestLogsAcceptsAllSupportedComponents(t *testing.T) {
 	for _, component := range []string{"ovn", "ovs", "all", "kube-ovn", "linux"} {
 		t.Run(component, func(t *testing.T) {
 			app, _, _, _ := testApplication(t)
 			failure := errors.New("cluster unavailable")
 			app.newClient = func() (*Client, error) { return nil, failure }
-			require.ErrorIs(t, app.Execute(t.Context(), []string{"log", component}), failure)
+			require.ErrorIs(t, app.Execute(t.Context(), []string{"logs", "--component", component}), failure)
 		})
 	}
 }
 
-func TestLegacyLogFailuresDoNotFabricateValgrindFiles(t *testing.T) {
+func TestLogsFailuresDoNotFabricateValgrindFiles(t *testing.T) {
 	for _, strict := range []bool{false, true} {
 		t.Run("strict="+strconv.FormatBool(strict), func(t *testing.T) {
 			app, executor, _, stderr := testApplication(
@@ -119,7 +112,7 @@ func TestLegacyLogFailuresDoNotFabricateValgrindFiles(t *testing.T) {
 				return errors.New("host archive unavailable")
 			}
 			directory := t.TempDir()
-			err = app.Execute(t.Context(), []string{"log", "ovn", "--output-dir", directory, "--concurrency=1", "--strict=" + strconv.FormatBool(strict)})
+			err = app.Execute(t.Context(), []string{"logs", "--component", "ovn", "--output-dir", directory, "--concurrency=1", "--strict=" + strconv.FormatBool(strict)})
 			if strict {
 				require.ErrorContains(t, err, "host archive unavailable")
 			} else {

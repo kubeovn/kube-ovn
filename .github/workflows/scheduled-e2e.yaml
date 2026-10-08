@@ -1660,7 +1660,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}/hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics.tar.gz
           if-no-files-found: ignore
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
@@ -1670,7 +1670,7 @@ jobs:
             mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
           fi
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:

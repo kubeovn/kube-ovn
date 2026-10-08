@@ -37,7 +37,7 @@ type collectionTask struct {
 func (a *Application) addLogCommand() {
 	options := collectionOptions{}
 	var component string
-	command := &cobra.Command{Use: "logs", Aliases: []string{"log"}, Short: "Collect component logs and node state into a local directory"}
+	command := &cobra.Command{Use: "logs", Short: "Collect component logs and node state into a local directory"}
 	command.Flags().StringVar(&component, "component", "all", "Component: all, kube-ovn, ovn, ovs or linux")
 	command.Flags().StringVar(&options.output, "output-dir", "kubectl-ko-log", "Output directory")
 	command.Flags().IntVar(&options.concurrency, "concurrency", 4, "Maximum concurrent collection requests")
@@ -45,15 +45,7 @@ func (a *Application) addLogCommand() {
 	command.Flags().Int64Var(&options.maxBytes, "max-bytes", 256<<20, "Maximum bytes per collection item")
 	command.Flags().BoolVar(&options.strict, "strict", false, "Return a nonzero status if any collection item fails")
 	command.Args = func(cmd *cobra.Command, args []string) error {
-		if cmd.CalledAs() == "log" {
-			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
-				return err
-			}
-			if cmd.Flags().Changed("component") {
-				return errors.New("log COMPONENT cannot be combined with --component; use logs --component COMPONENT")
-			}
-			component = args[0]
-		} else if err := cobra.NoArgs(cmd, args); err != nil {
+		if err := cobra.NoArgs(cmd, args); err != nil {
 			return err
 		}
 		if options.output == "" {
