@@ -236,7 +236,7 @@ func (a *Application) servicePerformance(ctx context.Context, run *resourceRun, 
 
 func (a *Application) leaderRecoveryPerformance(ctx context.Context, client *Client) error {
 	for _, role := range []string{"nb", "sb", "northd"} {
-		target, err := client.leader(ctx, role)
+		target, err := client.leaderPod(ctx, role)
 		if err != nil {
 			return err
 		}
