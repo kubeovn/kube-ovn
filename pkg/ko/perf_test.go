@@ -20,9 +20,11 @@ func TestLeaderRecoveryDisruptsCentralPodsAndPreservesAgent(t *testing.T) {
 			roles := []string{"nb", "sb", "northd"}
 			objects := []runtime.Object{
 				readyPod("agent", "node", "agent", map[string]string{"app": "kubectl-ko-node-agent"}),
-				&appsv1.Deployment{Name: "ovn-central", Namespace: "ovn-system",
+				&appsv1.Deployment{
+					Name: "ovn-central", Namespace: "ovn-system",
 					Spec:   appsv1.DeploymentSpec{Replicas: new(int32(3))},
-					Status: appsv1.DeploymentStatus{Replicas: 3, UpdatedReplicas: 3, ReadyReplicas: 3, AvailableReplicas: 3}},
+					Status: appsv1.DeploymentStatus{Replicas: 3, UpdatedReplicas: 3, ReadyReplicas: 3, AvailableReplicas: 3},
+				},
 			}
 			for _, role := range roles {
 				objects = append(objects, readyPod(role+"-leader", "node", "ovn-central", map[string]string{"ovn-" + role + "-leader": "true"}))
