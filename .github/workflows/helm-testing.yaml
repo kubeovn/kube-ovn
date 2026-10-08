@@ -70,7 +70,8 @@ jobs:
           # TODO: When PR changes both kube-ovn and kube-ovn-v2 charts, ct install runs them sequentially.
           # Since skip-clean-up: true is set, the second chart installation will fail due to resource ownership conflicts.
           # We should split this into two independent test pipelines or separate clusters in the future.
-          ct install --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml --helm-extra-set-args "--set=global.images.kubeovn.tag=$KO_CHART_TAG"
+          ct install --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml \
+            --helm-extra-set-args "--set-string global.images.kubeovn.tag=$KO_CHART_TAG --set image.pullPolicy=Never"
 
       - name: Verify independent node agent and CLI against the installed chart
         run: bash hack/kubectl-ko-chart-test.sh verify
