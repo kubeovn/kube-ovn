@@ -1731,7 +1731,20 @@ class E2EControlTest(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 5)
         self.assertNotIn('entry["selection"] != "smoke"', workflow)
         self.assertIn("contents: read", workflow)
-        self.assertNotIn("packages: read", workflow)
+        self.assertNotIn("packages: read", workflow.split("\njobs:", 1)[0])
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        for jobId, block in blocks.items():
+            with self.subTest(jobId=jobId):
+                if jobId != "prepare-kind-node-images":
+                    self.assertNotIn("packages: read", block)
+        prepare = blocks["prepare-kind-node-images"]
+        self.assertRegex(
+            prepare,
+            r"(?m)^    if: >-\n      \(github.event_name == 'workflow_dispatch' && "
+            r"github.actor == 'github-actions\[bot\]'\) \|\|\n      github.event_name == 'push'\n    needs:",
+        )
+        self.assertNotIn("actions/checkout", prepare)
+        self.assertRegex(prepare, r"(?m)^    permissions:\n      contents: read\n      packages: read\n    runs-on:")
         self.assertIn("-u ACTIONS_RUNTIME_TOKEN", workflow)
         self.assertIn("-u ACTIONS_RESULTS_URL", workflow)
         self.assertIn("-u LD_PRELOAD", workflow)
