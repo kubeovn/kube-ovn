@@ -403,10 +403,12 @@ const (
 	EnvHostIP       = "HOST_IP"
 	EnvHostIPs      = "HOST_IPS"
 
-	// OvnServiceAccountName is the service account kube-ovn-controller, kube-ovn-webhook,
-	// ic-controller and speaker run as (see charts/kube-ovn-v2/templates/*/*.yaml). The
-	// validating webhook uses it to recognize requests from the controller itself.
-	OvnServiceAccountName = "ovn"
+	// KubeOvnControllerServiceAccountName is the service account only kube-ovn-controller
+	// runs as (see charts/kube-ovn-v2/templates/rbac/ovn-sa.yaml and
+	// controller/controller-deployment.yaml); it is distinct from the "ovn" service
+	// account shared by the webhook, ic-controller and speaker. The validating webhook
+	// uses it to recognize requests from the controller itself.
+	KubeOvnControllerServiceAccountName = "kube-ovn-controller"
 
 	EnvSSLEnabled                 = "ENABLE_SSL"
 	EnvKubeOVNTLSRotationInterval = "KUBE_OVN_TLS_ROTATION_INTERVAL"

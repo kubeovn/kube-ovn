@@ -676,9 +676,9 @@ func (suite *OvnClientTestSuite) testRemoveLogicalSwitchPortOption() {
 		require.NoError(t, err)
 	})
 
-	t.Run("no-op when port does not exist", func(t *testing.T) {
+	t.Run("errors when port does not exist", func(t *testing.T) {
 		err := nbClient.RemoveLogicalSwitchPortOption("test-remove-lsp-option-nonexistent", "arp_proxy")
-		require.NoError(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("get error propagates", func(t *testing.T) {

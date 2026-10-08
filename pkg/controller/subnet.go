@@ -715,12 +715,21 @@ func (c *Controller) prepareOvnSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc,
 		return nil, c.recordResourceError(subnet, "CreateLogicalSwitchFailed", err)
 	}
 
-	// Record the gateway MAC in ipam if router port exists
+	// Record the gateway MAC in ipam, and persist it to subnet status so the validating
+	// webhook can verify a switch_lb_rule vip mac repair without access to the
+	// controller's in-memory IPAM (see pkg/webhook/vip.go).
 	if needRouter {
 		routerPortName := ovs.LogicalRouterPortName(vpc.Status.Router, subnet.Name)
 		if lrp, err := c.OVNNbClient.GetLogicalRouterPort(routerPortName, true); err == nil && lrp != nil && lrp.MAC != "" {
 			if err := c.ipam.RecordGatewayMAC(subnet.Name, lrp.MAC); err != nil {
 				klog.Warningf("failed to record gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
+			}
+			if subnet.Status.GatewayMAC != lrp.MAC {
+				if err := c.patchSubnetGatewayMAC(subnet.Name, lrp.MAC); err != nil {
+					klog.Warningf("failed to patch gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
+				} else {
+					subnet.Status.GatewayMAC = lrp.MAC
+				}
 			}
 		} else {
 			klog.V(3).Infof("router port %s not found or has no MAC, skipping gateway MAC record", routerPortName)

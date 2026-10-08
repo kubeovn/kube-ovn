@@ -47,7 +47,7 @@ func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Reques
 			if err := v.ValidateVip(ctx, &vipNew); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
-		case v.isLegacySwitchLBVipMacRepair(req, &vipOld, &vipNew):
+		case v.isLegacySwitchLBVipMacRepair(ctx, req, &vipOld, &vipNew):
 			// allow: the controller is renewing the mac of a switch_lb_rule vip created
 			// before the own-mac fix, whose mac was forced to the subnet gateway mac
 		default:
@@ -60,11 +60,17 @@ func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Reques
 
 // isLegacySwitchLBVipMacRepair reports whether req is the kube-ovn controller performing
 // the one-time repair of a switch_lb_rule vip whose mac was forced to the subnet gateway
-// mac by a historical bug (see handleAddVirtualIP/needsSwitchLBRuleMacRepair). It only
-// admits requests authenticated as the controller's own service account, and only when
-// MacAddress is the sole spec field being changed, so the normal immutability contract
-// still applies to every other caller and every other field.
-func (v *ValidatingHook) isLegacySwitchLBVipMacRepair(req admission.Request, vipOld, vipNew *ovnv1.Vip) bool {
+// mac by a historical bug (see handleAddVirtualIP/needsSwitchLBRuleMacRepair). Three
+// independent conditions must all hold, so the normal immutability contract still applies
+// to every other caller, field, vip type, and once a vip has been repaired:
+//   - the request is authenticated as the controller's own service account (not any of
+//     the other kube-ovn components that share identities with it);
+//   - MacAddress is the sole spec field being changed;
+//   - the vip's old mac actually is the subnet's gateway mac, i.e. it genuinely is a
+//     pre-fix collision and not an arbitrary mac change. Subnet.Status.GatewayMAC no
+//     longer equals vip.Status.Mac once the repair lands, which makes the exemption
+//     self-expiring without any separate one-time marker.
+func (v *ValidatingHook) isLegacySwitchLBVipMacRepair(ctx context.Context, req admission.Request, vipOld, vipNew *ovnv1.Vip) bool {
 	if v.controllerUserName == "" || req.UserInfo.Username != v.controllerUserName {
 		return false
 	}
@@ -73,7 +79,18 @@ func (v *ValidatingHook) isLegacySwitchLBVipMacRepair(req admission.Request, vip
 	}
 	specWithRenewedMac := vipOld.Spec.DeepCopy()
 	specWithRenewedMac.MacAddress = vipNew.Spec.MacAddress
-	return reflect.DeepEqual(*specWithRenewedMac, vipNew.Spec)
+	if !reflect.DeepEqual(*specWithRenewedMac, vipNew.Spec) {
+		return false
+	}
+	if vipNew.Spec.MacAddress == "" || vipNew.Spec.MacAddress == vipOld.Spec.MacAddress {
+		return false
+	}
+
+	subnet := &ovnv1.Subnet{}
+	if err := v.cache.Get(ctx, client.ObjectKey{Name: vipOld.Spec.Subnet}, subnet); err != nil {
+		return false
+	}
+	return subnet.Status.GatewayMAC != "" && subnet.Status.GatewayMAC == vipOld.Status.Mac
 }
 
 func (v *ValidatingHook) ValidateVip(ctx context.Context, vip *ovnv1.Vip) error {

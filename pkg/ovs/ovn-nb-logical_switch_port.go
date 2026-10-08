@@ -495,7 +495,12 @@ func (c *OVNNbClient) RemoveLogicalSwitchPortOption(lspName, option string) erro
 		klog.Error(err)
 		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
 	}
-	if lsp == nil || lsp.Options == nil {
+	if lsp == nil {
+		err := fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+	if lsp.Options == nil {
 		return nil
 	}
 	if _, ok := lsp.Options[option]; !ok {

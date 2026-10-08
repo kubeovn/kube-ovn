@@ -82,6 +82,22 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 	return nil
 }
 
+// patchSubnetGatewayMAC persists the subnet's gateway mac to status on its own, independent
+// of the wider patchSubnetStatus flow, since it must be visible to the validating webhook
+// (which only reads the Subnet CR) as soon as prepareOvnSubnet records it in ipam.
+func (c *Controller) patchSubnetGatewayMAC(subnetName, gatewayMAC string) error {
+	patch, err := json.Marshal(map[string]any{"status": map[string]any{"gatewayMAC": gatewayMAC}})
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnetName, types.MergePatchType, patch, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Errorf("failed to patch gateway mac status for subnet %s, %v", subnetName, err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	c.subnetKeyMutex.LockKey(key)
 	defer func() { _ = c.subnetKeyMutex.UnlockKey(key) }()

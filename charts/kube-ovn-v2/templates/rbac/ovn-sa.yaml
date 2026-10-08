@@ -17,6 +17,26 @@ imagePullSecrets:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  # Dedicated identity for kube-ovn-controller, distinct from the "ovn" SA shared by
+  # the webhook, ic-controller and speaker, so the validating webhook can recognize
+  # requests that only the controller is trusted to make (e.g. the switch_lb_rule vip
+  # mac repair in pkg/webhook/vip.go).
+  name: kube-ovn-controller
+  namespace: {{ .Values.namespace }}
+automountServiceAccountToken: true
+{{-  if .Values.global.registry.imagePullSecrets }}
+imagePullSecrets:
+{{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
+{{- if $secret }}
+- name: {{ $secret | quote}}
+{{- end }}
+{{- end }}
+{{- end }}
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
   name: ovn-ovs
   namespace: {{ .Values.namespace }}
 automountServiceAccountToken: false
