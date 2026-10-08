@@ -88,12 +88,14 @@ func (c *OVNNbClient) ReconcileLoadBalancer(config LoadBalancerConfig) error {
 			ExternalIDs:     maps.Clone(config.ExternalIDs),
 			Options:         maps.Clone(config.Options),
 		}
-		ops, err := c.Create(lb)
+		created, err := c.createLoadBalancerIfNotExists("lb-reconcile", lb)
 		if err != nil {
-			return fmt.Errorf("generate operations for creating load balancer %s: %w", config.Name, err)
+			return err
 		}
-		if err := c.Transact("lb-reconcile", ops); err != nil {
-			return fmt.Errorf("create load balancer %s: %w", config.Name, err)
+		if !created {
+			// the load balancer was created concurrently, return an error so that
+			// the caller retries and reconciles the fields of the existing one
+			return fmt.Errorf("load balancer %s was created concurrently, retry to reconcile it", config.Name)
 		}
 		return nil
 	}
@@ -141,28 +143,58 @@ func (c *OVNNbClient) ReconcileLoadBalancer(config LoadBalancerConfig) error {
 	return nil
 }
 
+// loadBalancerNameExists reports whether any load balancer with the given name
+// is present in the cache. Unlike LoadBalancerExists, it tolerates pre-existing
+// duplicates.
+func (c *OVNNbClient) loadBalancerNameExists(lbName string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	var existing []ovnnb.LoadBalancer
+	if err := c.WhereCache(func(lb *ovnnb.LoadBalancer) bool {
+		return lb.Name == lbName
+	}).List(ctx, &existing); err != nil {
+		klog.Error(err)
+		return false, fmt.Errorf("check existence of load balancer %s: %w", lbName, err)
+	}
+	return len(existing) > 0, nil
+}
+
+// createLoadBalancerIfNotExists inserts lb with an atomic Wait+Insert transaction.
+// The Wait asserts that no load balancer with the same name exists on the server,
+// which closes the check-then-create race caused by a stale client cache, retries
+// after a lost reply, or concurrent creators. It returns false when the Wait blocked
+// the insert because the load balancer already exists.
+func (c *OVNNbClient) createLoadBalancerIfNotExists(method string, lb *ovnnb.LoadBalancer) (bool, error) {
+	createOps, err := c.Create(lb)
+	if err != nil {
+		klog.Error(err)
+		return false, fmt.Errorf("generate operations for creating load balancer %s: %w", lb.Name, err)
+	}
+
+	waitOp := ConstructWaitForNameNotExistsOperation(lb.Name, "Load_Balancer")
+	ops := append([]ovsdb.Operation{waitOp}, createOps...)
+
+	created, err := c.TransactConditional(method, ops)
+	if err != nil {
+		klog.Error(err)
+		return false, fmt.Errorf("create load balancer %s: %w", lb.Name, err)
+	}
+	return created, nil
+}
+
 // CreateLoadBalancer create loadbalancer
 func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields ...string) error {
-	var (
-		exist bool
-		err   error
-	)
-
-	if exist, err = c.LoadBalancerExists(lbName); err != nil {
-		klog.Errorf("failed to get lb: %v", err)
+	// Fast path: return early if any load balancer with this name already exists.
+	exist, err := c.loadBalancerNameExists(lbName)
+	if err != nil {
 		return err
 	}
-	// found, ignore
 	if exist {
 		return nil
 	}
 
-	var (
-		ops []ovsdb.Operation
-		lb  *ovnnb.LoadBalancer
-	)
-
-	lb = &ovnnb.LoadBalancer{
+	lb := &ovnnb.LoadBalancer{
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
 		Protocol: &protocol,
@@ -175,16 +207,9 @@ func (c *OVNNbClient) CreateLoadBalancer(lbName, protocol string, selectFields .
 		lb.SelectionFields = selectFields
 	}
 
-	if ops, err = c.Create(lb); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("generate operations for creating load balancer %s: %w", lbName, err)
-	}
-
-	if err = c.Transact("lb-add", ops); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("create load balancer %s: %w", lbName, err)
-	}
-	return nil
+	// Slow path: atomic Wait + Insert to prevent concurrent duplicate creation.
+	_, err = c.createLoadBalancerIfNotExists("lb-add", lb)
+	return err
 }
 
 // SetLoadBalancerSelectionFields updates the fields OVN uses to select a backend.
