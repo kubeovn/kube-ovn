@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.26.8
+go 1.27.2
 
 require (
 	github.com/brianvoe/gofakeit/v7 v7.14.1
@@ -47,10 +47,10 @@ require (
 	go.uber.org/zap v1.28.0
 	go.universe.tf/metallb v0.16.1
 	golang.org/x/mod v0.41.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/time v0.16.0
-	golang.org/x/tools v0.50.0
+	golang.org/x/tools v0.51.0
 	google.golang.org/grpc v1.83.2
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.2.4
 	k8s.io/api v0.35.8
