@@ -2,7 +2,6 @@ name: Build x86 Image
 
 run-name: ${{ github.event_name == 'workflow_dispatch' && format('x86-e2e pr={0} head={1} approval={2} generation={3} mode={4} groups={5} labels={6} full={7} base={8}', inputs.prNumber, inputs.headSHA, inputs.approvalGeneration, inputs.dispatchGeneration, inputs.automatic && 'automatic' || 'approved', inputs.requestedGroupNames, inputs.controlledLabelNames, inputs.full && '1' || '0', inputs.baseSHA) || '' }}
 
-# Keep x86 jobs on the Ubuntu 24.04 hosted runner.
 permissions:
   contents: read
 
@@ -435,7 +434,7 @@ jobs:
         run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py hack/test_e2e_pr_router.py
 
   prepare-kind-node-images:
-    name: Prepare Kind node image (${{ matrix.k8s-version }})
+    name: Prepare private Kind node image (${{ matrix.k8s-version }})
     if: >-
       (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]') ||
       github.event_name == 'push'
@@ -450,15 +449,21 @@ jobs:
         k8s-version:
           - v1.37.0
     steps:
-      - name: Pull Kind node image from Docker Hub
+      - name: Pull private Kind node image with trusted token
         env:
+          GHCR_TOKEN: ${{ github.token }}
           K8S_VERSION: ${{ matrix.k8s-version }}
         run: |
           set -euo pipefail
-          docker pull "kindest/node:$K8S_VERSION"
+          dockerConfig=$(mktemp -d)
+          trap 'rm -rf "$dockerConfig"' EXIT
+          export DOCKER_CONFIG="$dockerConfig"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u github-actions --password-stdin
+          docker pull "ghcr.io/kubeovn/kindest-node:$K8S_VERSION"
+          docker tag "ghcr.io/kubeovn/kindest-node:$K8S_VERSION" "kindest/node:$K8S_VERSION"
           docker save "kindest/node:$K8S_VERSION" -o "kind-node-$K8S_VERSION.tar"
 
-      - name: Upload Kind node image
+      - name: Upload private Kind node image without credentials
         uses: actions/upload-artifact@v7
         with:
           name: kind-node-${{ matrix.k8s-version }}
@@ -1025,12 +1030,12 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -1173,12 +1178,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -1330,12 +1335,12 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -1508,12 +1513,12 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -1701,12 +1706,12 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -1888,12 +1893,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -2056,12 +2061,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -2226,12 +2231,12 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -2396,12 +2401,12 @@ jobs:
           docker load --input kube-ovn.tar
           docker load --input vpc-nat-gateway.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -2558,12 +2563,12 @@ jobs:
       - name: Load kube-ovn image
         run: docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create BGP kind and containerlab topology
@@ -2854,12 +2859,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -2933,12 +2938,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -3010,12 +3015,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -3089,12 +3094,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -3217,12 +3222,12 @@ jobs:
           docker load -i kube-ovn.tar
           docker load -i vpc-nat-gateway.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -3367,12 +3372,12 @@ jobs:
         run: |
           docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -3598,12 +3603,12 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -3759,12 +3764,12 @@ jobs:
             echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -3927,12 +3932,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -4095,12 +4100,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -4217,12 +4222,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -4348,12 +4353,12 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -4543,12 +4548,12 @@ jobs:
           docker load -i kube-ovn.tar
           docker load -i vpc-nat-gateway.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -4692,12 +4697,12 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -4848,12 +4853,12 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -4999,12 +5004,12 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -5154,12 +5159,12 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -5279,12 +5284,12 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster
@@ -5429,12 +5434,12 @@ jobs:
       - name: Load images
         run: docker load -i kube-ovn.tar
 
-      - name: Download Kind node image
+      - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
           name: kind-node-v1.37.0
 
-      - name: Load Kind node image
+      - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
 
       - name: Create kind cluster

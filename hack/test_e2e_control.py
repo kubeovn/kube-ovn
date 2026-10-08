@@ -1737,6 +1737,8 @@ class E2EControlTest(unittest.TestCase):
             with self.subTest(jobId=jobId):
                 if jobId != "prepare-kind-node-images":
                     self.assertNotIn("packages: read", block)
+                    self.assertNotIn("GHCR_TOKEN", block)
+                    self.assertNotIn("docker login ghcr.io", block)
         prepare = blocks["prepare-kind-node-images"]
         self.assertRegex(
             prepare,
@@ -1755,10 +1757,18 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("actions: write", workflow)
         self.assertEqual(workflow.count("statuses: write"), 1)
         self.assertIn("name: Publish x86 E2E checks on the pull request", workflow)
-        self.assertNotIn("GHCR_TOKEN", workflow)
-        self.assertIn("Pull Kind node image from Docker Hub", workflow)
-        self.assertIn('docker pull "kindest/node:$K8S_VERSION"', workflow)
-        self.assertNotIn("ghcr.io/kubeovn/kindest-node", workflow)
+        self.assertNotIn("GHCR_TOKEN", workflow.replace(prepare, ""))
+        self.assertNotIn("GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}", workflow)
+        self.assertIn("GHCR_TOKEN: ${{ github.token }}", prepare)
+        self.assertIn("Pull private Kind node image with trusted token", prepare)
+        self.assertIn('dockerConfig=$(mktemp -d)', prepare)
+        self.assertIn('trap \'rm -rf "$dockerConfig"\' EXIT', prepare)
+        self.assertIn('export DOCKER_CONFIG="$dockerConfig"', prepare)
+        self.assertIn("printf '%s' \"$GHCR_TOKEN\" | docker login ghcr.io -u github-actions --password-stdin", prepare)
+        self.assertIn('docker pull "ghcr.io/kubeovn/kindest-node:$K8S_VERSION"', prepare)
+        self.assertIn('docker tag "ghcr.io/kubeovn/kindest-node:$K8S_VERSION" "kindest/node:$K8S_VERSION"', prepare)
+        self.assertIn('docker save "kindest/node:$K8S_VERSION" -o "kind-node-$K8S_VERSION.tar"', prepare)
+        self.assertIn("Upload private Kind node image without credentials", prepare)
         self.assertIn("kind-node-v1.37.0.tar", workflow)
         self.assertNotIn("kind-node-v1.29.14.tar", workflow)
         self.assertNotIn("kind-ghcr-pull", workflow)
