@@ -7,6 +7,11 @@ on:
       - 'charts/kube-ovn-v2/**'
       - '.github/workflows/helm-testing.yaml'
       - 'hack/kubectl-ko-chart-test.sh'
+      - 'hack/test-non-root-nft.sh'
+      - 'dist/images/Dockerfile'
+      - 'dist/images/Dockerfile.base'
+      - 'pkg/daemon/ovs_linux.go'
+      - 'pkg/daemon/vlan_interfaces_linux_test.go'
 
 
 permissions: {}
@@ -57,6 +62,14 @@ jobs:
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             -t "kubeovn/kube-ovn:$KUBE_OVN_IMAGE_TAG" \
             -f dist/images/Dockerfile dist/images/
+
+      - name: Verify nft and VLAN operations with the non-root daemon UID
+        run: |
+          bash hack/test-non-root-nft.sh "kubeovn/kube-ovn:$KUBE_OVN_IMAGE_TAG"
+          go test -c -o "$RUNNER_TEMP/nonroot-daemon.test" ./pkg/daemon
+          sudo env KUBE_OVN_NONROOT_VLAN_TEST_HELPER=1 \
+            unshare --user --map-user=65534 --map-group=65534 --net --keep-caps \
+            "$RUNNER_TEMP/nonroot-daemon.test" -test.run='^TestNonRootVlanLifecycle$' -test.v
 
       - name: Install kind
         uses: helm/kind-action@v1.15.1
