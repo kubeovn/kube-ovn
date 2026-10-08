@@ -1,25 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-build_image() {
-  local ko_tag="ko-chart-${GITHUB_SHA:?}"
-  local ko_image="docker.io/kubeovn/kube-ovn:${ko_tag}"
-  # Build every image binary from this checkout so the image's file
-  # capabilities match the chart's security contexts.
-  make build-go
-  docker build --build-arg "VERSION=$(cat VERSION)" \
-    --label "org.opencontainers.image.revision=$GITHUB_SHA" \
-    --tag "$ko_image" --file dist/images/Dockerfile dist/images/
-  local ko_clusters
-  mapfile -t ko_clusters < <(kind get clusters)
-  if [[ ${#ko_clusters[@]} != 1 ]]; then
-    echo "Expected one chart-test Kind cluster, found ${#ko_clusters[@]}" >&2
-    return 1
-  fi
-  kind load docker-image "$ko_image" --name "${ko_clusters[0]}"
-  printf 'KO_CHART_TAG=%s\n' "$ko_tag" >> "${GITHUB_ENV:?}"
-}
-
 verify_bootstrap() (
   set -euo pipefail
   ko_bootstrap_results=$1
@@ -50,7 +31,7 @@ verify_agent() {
     $s.containers[0].name == "agent" and
     $s.containers[0].command == ["/kube-ovn/kubectl-ko-node-agent"]
   ' "$ko_directory/agent.json"
-  [[ $(jq -r '.spec.template.spec.containers[0].image' "$ko_directory/agent.json") == "docker.io/kubeovn/kube-ovn:${KO_CHART_TAG:?}" ]]
+  [[ $(jq -r '.spec.template.spec.containers[0].image' "$ko_directory/agent.json") == "docker.io/kubeovn/kube-ovn:${KUBE_OVN_IMAGE_TAG:?}" ]]
   local ko_node_count ko_ready_count ko_pod
   ko_node_count=$(kubectl get nodes -l kubernetes.io/os=linux -o json | jq '.items | length')
   ko_ready_count=$(jq '.status.numberReady' "$ko_directory/agent.json")
@@ -84,7 +65,6 @@ verify_agent() {
 }
 
 case "${1:-}" in
-  build) build_image ;;
   verify) verify_agent ;;
-  *) echo "Usage: $0 build|verify" >&2; exit 2 ;;
+  *) echo "Usage: $0 verify" >&2; exit 2 ;;
 esac
