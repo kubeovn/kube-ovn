@@ -66,10 +66,14 @@ jobs:
       - name: Verify nft and VLAN operations with the non-root daemon UID
         run: |
           bash hack/test-non-root-nft.sh "kubeovn/kube-ovn:$KUBE_OVN_IMAGE_TAG"
-          go test -c -o "$RUNNER_TEMP/nonroot-daemon.test" ./pkg/daemon
+          nonroot_test_dir=$(mktemp -d /tmp/kube-ovn-nonroot.XXXXXX)
+          trap 'rm -rf "$nonroot_test_dir"' EXIT
+          go test -c -o "$nonroot_test_dir/daemon.test" ./pkg/daemon
+          # UID 65534 must be able to traverse the directory and run the binary.
+          chmod 0755 "$nonroot_test_dir" "$nonroot_test_dir/daemon.test"
           sudo env KUBE_OVN_NONROOT_VLAN_TEST_HELPER=1 \
             unshare --user --map-user=65534 --map-group=65534 --net --keep-caps \
-            "$RUNNER_TEMP/nonroot-daemon.test" -test.run='^TestNonRootVlanLifecycle$' -test.v
+            "$nonroot_test_dir/daemon.test" -test.run='^TestNonRootVlanLifecycle$' -test.v
 
       - name: Install kind
         uses: helm/kind-action@v1.15.1
