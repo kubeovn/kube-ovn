@@ -106,6 +106,9 @@ func (c *Client) vmiLauncher(ctx context.Context, vmi *unstructured.Unstructured
 		if status.Migration.Completed && !status.Migration.Failed {
 			preferred = status.Migration.TargetPod
 		}
+		if preferred == "" {
+			return nil, fmt.Errorf("VMI %s/%s has incomplete migration launcher state; retry", vmi.GetNamespace(), vmi.GetName())
+		}
 	}
 	pods, err := c.Kubernetes.CoreV1().Pods(vmi.GetNamespace()).List(ctx, metav1.ListOptions{
 		LabelSelector: "kubevirt.io=virt-launcher,kubevirt.io/created-by=" + string(vmi.GetUID()),
@@ -121,7 +124,7 @@ func (c *Client) vmiLauncher(ctx context.Context, vmi *unstructured.Unstructured
 		if pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning || pod.Spec.NodeName != status.NodeName || pod.UID == "" || owner == nil || owner.Kind != "VirtualMachineInstance" || owner.Name != vmi.GetName() || owner.UID != vmi.GetUID() {
 			continue
 		}
-		if len(status.ActivePods) != 0 && status.ActivePods[string(pod.UID)] != status.NodeName {
+		if status.ActivePods != nil && status.ActivePods[string(pod.UID)] != status.NodeName {
 			continue
 		}
 		if preferred != "" && pod.Name != preferred {
