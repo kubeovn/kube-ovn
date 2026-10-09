@@ -1,4 +1,3 @@
-{{- if include "kubeovn.renderDataPlane" . }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -25,6 +24,12 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       automountServiceAccountToken: false
+      {{- with compact .Values.global.registry.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
       containers:
         - name: agent
           image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
@@ -96,4 +101,3 @@ spec:
           hostPath:
             path: /proc
             type: Directory
-{{- end }}

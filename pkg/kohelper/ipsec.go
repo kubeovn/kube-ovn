@@ -22,10 +22,11 @@ func OpenPodIPsecRoot(ctx context.Context, procRoot, uid string) (*os.File, erro
 		return nil, fmt.Errorf("read host proc: %w", err)
 	}
 	var selected *os.File
+	var failures []error
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			if selected != nil {
-				_ = selected.Close()
+				return nil, errors.Join(err, selected.Close())
 			}
 			return nil, err
 		}
@@ -34,35 +35,55 @@ func OpenPodIPsecRoot(ctx context.Context, procRoot, uid string) (*os.File, erro
 			continue
 		}
 		process := filepath.Join(procRoot, entry.Name())
-		if !isPodCharon(process, uid) {
+		matches, err := isPodCharon(process, uid)
+		if err != nil {
+			if !processGone(err) {
+				failures = append(failures, err)
+			}
+			continue
+		}
+		if !matches {
 			continue
 		}
 		root, err := os.Open(filepath.Join(process, "root"))
 		if err != nil {
-			continue // A process may exit while scanning proc.
+			if !processGone(err) {
+				failures = append(failures, err)
+			}
+			continue
 		}
-		if !isPodCharon(process, uid) {
-			_ = root.Close()
+		matches, err = isPodCharon(process, uid)
+		if err != nil || !matches {
+			if err != nil && !processGone(err) {
+				failures = append(failures, err)
+			}
+			if err := root.Close(); err != nil {
+				failures = append(failures, err)
+			}
 			continue
 		}
 		if selected != nil {
-			_ = root.Close()
-			_ = selected.Close()
-			return nil, errors.New("multiple charon processes match the pod UID")
+			return nil, errors.Join(errors.New("multiple charon processes match the pod UID"), root.Close(), selected.Close())
 		}
 		selected = root
 	}
 	if selected == nil {
+		if len(failures) != 0 {
+			return nil, fmt.Errorf("cannot discover pod IPsec process: %w", errors.Join(failures...))
+		}
 		return nil, errors.New("no live charon process matches the pod UID (IPsec may be disabled)")
 	}
 	return selected, nil
 }
 
-func isPodCharon(process, uid string) bool {
+func isPodCharon(process, uid string) (bool, error) {
 	comm, err := os.ReadFile(filepath.Join(process, "comm"))
-	if err != nil || strings.TrimSpace(string(comm)) != "charon" {
-		return false
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(string(comm)) != "charon" {
+		return false, nil
 	}
 	cgroup, err := os.ReadFile(filepath.Join(process, "cgroup"))
-	return err == nil && hasPodCgroup(string(cgroup), uid)
+	return err == nil && hasPodCgroup(string(cgroup), uid), err
 }

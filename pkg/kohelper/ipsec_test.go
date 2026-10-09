@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -44,4 +45,44 @@ func TestOpenPodIPsecRoot(t *testing.T) {
 	require.ErrorContains(t, err, "multiple charon")
 	_, err = OpenPodIPsecRoot(t.Context(), proc, "../other")
 	require.ErrorContains(t, err, "pod UID")
+}
+
+func TestOpenPodIPsecRootReportsUnexpectedProcessErrors(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("host proc directory descriptors are Linux-only")
+	}
+	for _, operation := range []string{"comm", "cgroup", "root"} {
+		t.Run(operation, func(t *testing.T) {
+			proc := t.TempDir()
+			process := filepath.Join(proc, "10")
+			require.NoError(t, os.Mkdir(process, 0o700))
+			for _, file := range []string{"comm", "cgroup"} {
+				if file == operation {
+					require.NoError(t, os.Mkdir(filepath.Join(process, file), 0o700))
+					continue
+				}
+				value := "charon"
+				if file == "cgroup" {
+					value = "0::/kubepods/pod" + netnsTestUID
+				}
+				require.NoError(t, os.WriteFile(filepath.Join(process, file), []byte(value), 0o600))
+			}
+			failure := syscall.EISDIR
+			if operation == "root" {
+				require.NoError(t, os.Symlink("root", filepath.Join(process, "root")))
+				failure = syscall.ELOOP
+			}
+			_, err := OpenPodIPsecRoot(t.Context(), proc, netnsTestUID)
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, filepath.Join(process, operation))
+			// An unreadable unrelated process must not hide a usable match.
+			valid := filepath.Join(proc, "11")
+			require.NoError(t, os.MkdirAll(filepath.Join(valid, "root"), 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(valid, "comm"), []byte("charon"), 0o600))
+			require.NoError(t, os.WriteFile(filepath.Join(valid, "cgroup"), []byte("0::/kubepods/pod"+netnsTestUID), 0o600))
+			root, err := OpenPodIPsecRoot(t.Context(), proc, netnsTestUID)
+			require.NoError(t, err)
+			require.NoError(t, root.Close())
+		})
+	}
 }

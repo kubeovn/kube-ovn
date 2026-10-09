@@ -46,7 +46,11 @@ For a source checkout, run `make build-kubectl-ko`; the results are
 Install the chart's `kubectl-ko-node-agent` DaemonSet before using commands
 that need node access. The module uses replacements, so installing release
 binaries is preferred to `go install ...@version`.
-Both Helm charts deploy the independent agent. The v2 chart uses its global
+Both Helm charts deploy the independent agent and use
+`global.registry.imagePullSecrets` for private image pulls. The legacy chart
+includes the agent in `full`, `controlPlaneOnly` and `dataPlaneOnly` installations,
+so management clusters can execute database commands through the agent too.
+The v2 chart uses its global
 image and pull policy, `ovsOvn.ovnDirectory`, `logging.directory` and
 `cni.configDirectory` to mount the same host data as the running components.
 The agent is scheduled only on Linux nodes; Windows client support covers the

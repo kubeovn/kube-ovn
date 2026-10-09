@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -43,4 +44,36 @@ func TestResolvePodNetns(t *testing.T) {
 	cancel()
 	_, err = ResolvePodNetns(ctx, root, netnsTestUID)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestResolvePodNetnsReportsUnexpectedProcessErrors(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("host proc namespace resolution is Linux-only")
+	}
+	for _, operation := range []string{"cgroup", "ns/net"} {
+		t.Run(operation, func(t *testing.T) {
+			root := t.TempDir()
+			process := filepath.Join(root, "10")
+			require.NoError(t, os.MkdirAll(filepath.Join(process, "ns"), 0o700))
+			failure := syscall.EISDIR
+			if operation == "cgroup" {
+				require.NoError(t, os.Mkdir(filepath.Join(process, "cgroup"), 0o700))
+			} else {
+				require.NoError(t, os.WriteFile(filepath.Join(process, "cgroup"), []byte("0::/kubepods/pod"+netnsTestUID), 0o600))
+				require.NoError(t, os.WriteFile(filepath.Join(process, "ns/net"), nil, 0o600))
+				failure = syscall.EINVAL
+			}
+			_, err := ResolvePodNetns(t.Context(), root, netnsTestUID)
+			require.ErrorIs(t, err, failure)
+			require.ErrorContains(t, err, filepath.Join(process, operation))
+			// An unreadable unrelated process must not hide a usable match.
+			valid := filepath.Join(root, "11")
+			require.NoError(t, os.MkdirAll(filepath.Join(valid, "ns"), 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(valid, "cgroup"), []byte("0::/kubepods/pod"+netnsTestUID), 0o600))
+			require.NoError(t, os.Symlink("net:[42]", filepath.Join(valid, "ns/net")))
+			path, err := ResolvePodNetns(t.Context(), root, netnsTestUID)
+			require.NoError(t, err)
+			require.Equal(t, "/proc/11/ns/net", path)
+		})
+	}
 }
