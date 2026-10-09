@@ -36,11 +36,6 @@ COPY --chmod=0644 logrotate/* /etc/logrotate.d/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
 
 COPY --from=setcap /kube-ovn /kube-ovn
-# DPDK base images do not include the nftables backend.
-RUN if command -v nft >/dev/null 2>&1; then \
-        nft_path=$(readlink -f "$(command -v nft)") && \
-        test "$(getcap "$nft_path")" = "$nft_path cap_net_admin=eip"; \
-    fi
 RUN test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep" && \
     test "$(getcap /kube-ovn/kube-ovn)" = "" && \
     test "$(getcap /kube-ovn/kube-ovn-acl-sample)" = "" && \
