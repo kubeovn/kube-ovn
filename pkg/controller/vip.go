@@ -79,6 +79,42 @@ func (c *Controller) enqueueDelVirtualIP(obj any) {
 	c.delVirtualIPQueue.Add(vip)
 }
 
+// needsSwitchLBRuleMacRepair reports whether a switch_lb_rule vip's recorded mac still
+// collides with the subnet gateway mac (a vip created before the own-mac fix). When done
+// is true, handleAddVirtualIP must return immediately with err (nil or not) instead of
+// continuing the normal add flow. Pre-fix switch_lb_rule vips had their lsp mac forced to
+// the subnet gateway mac, which collides with the gateway lsp in ovn's l2 lookup; those
+// are repaired by reallocating a unique mac, while already-fixed vips just get their
+// attach subnets reconciled like any other provisioned switch_lb_rule vip.
+func (c *Controller) needsSwitchLBRuleMacRepair(key string, vip *kubeovnv1.Vip) (needsRepair, done bool, err error) {
+	if vip.Status.Mac == "" {
+		return false, false, nil
+	}
+	if vip.Spec.Type != util.SwitchLBRuleVip {
+		return false, true, nil
+	}
+	gwMac := c.ipam.GetGatewayMAC(vip.Spec.Subnet)
+	if gwMac == "" {
+		// ipam may lag a restart; fall back to the mac already persisted on the
+		// Subnet CR (see patchSubnetGatewayMAC) before concluding there's no collision.
+		if subnet, err := c.subnetsLister.Get(vip.Spec.Subnet); err == nil {
+			gwMac = subnet.Status.GatewayMAC
+		} else if !k8serrors.IsNotFound(err) {
+			return false, true, fmt.Errorf("failed to get subnet %s to check gateway mac for vip %s: %w", vip.Spec.Subnet, key, err)
+		}
+	}
+	if gwMac == "" && c.ipam.HasSubnet(vip.Spec.Subnet) {
+		// Known to ipam but no gateway mac recorded yet; retry instead of silently
+		// dropping the repair, since RecordGatewayMAC does not re-enqueue vips itself.
+		return false, true, fmt.Errorf("gateway mac for subnet %s not recorded yet, retrying repair of vip %s", vip.Spec.Subnet, key)
+	}
+	if gwMac != vip.Status.Mac {
+		return false, true, c.reconcileVipAttachSubnets(vip)
+	}
+	klog.Infof("repairing switch lb vip %s: recorded mac %s collides with subnet gateway mac", key, vip.Status.Mac)
+	return true, false, nil
+}
+
 func (c *Controller) handleAddVirtualIP(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
@@ -88,88 +124,35 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedVip.Status.Mac != "" {
-		if cachedVip.Spec.Type == util.SwitchLBRuleVip {
-			return c.reconcileVipAttachSubnets(cachedVip)
-		}
-		return nil
+	needsMacRepair, done, err := c.needsSwitchLBRuleMacRepair(key, cachedVip)
+	if done {
+		return err
 	}
 	klog.V(3).Infof("handle add vip %s", key)
 
 	vip := cachedVip.DeepCopy()
-	var sourceV4Ip, sourceV6Ip, v4ip, v6ip, mac, subnetName string
-	subnetName = vip.Spec.Subnet
-	if subnetName == "" {
+	if vip.Spec.Subnet == "" {
 		return fmt.Errorf("failed to create vip '%s', subnet should be set", key)
 	}
-	subnet, err := c.subnetsLister.Get(subnetName)
+	subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
 	if err != nil {
-		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+		klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
 		return err
 	}
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-	sourceV4Ip = vip.Spec.V4ip
-	sourceV6Ip = vip.Spec.V6ip
-	// v6 ip address can not use upper case
-	if util.ContainsUppercase(vip.Spec.V6ip) {
-		err := fmt.Errorf("vip %s v6 ip address %s can not contain upper case", vip.Name, vip.Spec.V6ip)
-		klog.Error(err)
-		return err
-	}
-	var macPointer *string
-	ipStr := util.GetStringIP(sourceV4Ip, sourceV6Ip)
-	if ipStr != "" || vip.Spec.MacAddress != "" {
-		if vip.Spec.MacAddress != "" {
-			macPointer = &vip.Spec.MacAddress
-		}
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
-	} else {
-		// Random allocate
-		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
-	}
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if vip.Spec.Type == util.SwitchLBRuleVip {
-		// create a lsp use subnet gw mac, and set it option as arp_proxy
-		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		klog.Infof("get logical router port %s", lrpName)
-		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, false)
-		if err != nil {
-			klog.Errorf("failed to get lrp %s: %v", lrpName, err)
-			return err
-		}
-		if lrp.MAC == "" {
-			err = fmt.Errorf("logical router port %s should have mac", lrpName)
-			klog.Error(err)
-			return err
-		}
-		mac = lrp.MAC
-		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
-			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
-			klog.Error(err)
-			return err
-		}
-		if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(portName, true); err != nil {
-			err = fmt.Errorf("failed to enable lsp arp proxy for vip %s: %w", portName, err)
-			klog.Error(err)
-			return err
-		}
-	}
 
-	if vip.Spec.Type == util.KubeHostVMVip {
-		// k8s host network pod vm use vip for its nic ip
-		klog.Infof("create lsp for host network pod vm nic ip %s", vip.Name)
-		ipStr := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
-			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
-			klog.Error(err)
-			return err
-		}
+	macAddress, err := c.resolveVipMacAddress(key, vip, subnet, portName, needsMacRepair)
+	if err != nil {
+		return err
 	}
-	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac); err != nil {
+	v4ip, v6ip, mac, err := c.acquireVipAddress(vip, subnet, portName, macAddress)
+	if err != nil {
+		return err
+	}
+	if err := c.ensureVipLogicalSwitchPort(vip, subnet, portName, v4ip, v6ip, mac, needsMacRepair); err != nil {
+		return err
+	}
+	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, needsMacRepair); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
@@ -190,7 +173,77 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 
 	// Trigger subnet status update after IPAM allocation and VIP persistence.
 	// Parent reconciliation is queued above and runs independently.
-	c.updateSubnetStatusQueue.Add(subnetName)
+	c.updateSubnetStatusQueue.Add(subnet.Name)
+	return nil
+}
+
+// resolveVipMacAddress returns the mac to (re)allocate for vip: the user/spec-requested
+// one, or a freshly renewed one when repairing a mac that collided with the gateway.
+func (c *Controller) resolveVipMacAddress(key string, vip *kubeovnv1.Vip, subnet *kubeovnv1.Subnet, portName string, needsMacRepair bool) (string, error) {
+	if !needsMacRepair {
+		return vip.Spec.MacAddress, nil
+	}
+	newMac, err := c.ipam.RenewNicMac(subnet.Name, vip.Name, portName)
+	if err != nil {
+		err = fmt.Errorf("failed to renew mac for vip %s: %w", key, err)
+		klog.Error(err)
+		return "", err
+	}
+	klog.Infof("renewed mac for switch lb vip %s: %s -> %s", key, vip.Status.Mac, newMac)
+	return newMac, nil
+}
+
+// acquireVipAddress allocates vip's v4/v6 ip and mac from ipam: statically, if an ip or
+// mac was requested, or at random otherwise.
+func (c *Controller) acquireVipAddress(vip *kubeovnv1.Vip, subnet *kubeovnv1.Subnet, portName, macAddress string) (v4ip, v6ip, mac string, err error) {
+	// v6 ip address can not use upper case
+	if util.ContainsUppercase(vip.Spec.V6ip) {
+		err := fmt.Errorf("vip %s v6 ip address %s can not contain upper case", vip.Name, vip.Spec.V6ip)
+		klog.Error(err)
+		return "", "", "", err
+	}
+	ipStr := util.GetStringIP(vip.Spec.V4ip, vip.Spec.V6ip)
+	if ipStr != "" || macAddress != "" {
+		var macPointer *string
+		if macAddress != "" {
+			macPointer = &macAddress
+		}
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
+	} else {
+		// Random allocate
+		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
+	}
+	if err != nil {
+		klog.Error(err)
+		return "", "", "", err
+	}
+	return v4ip, v6ip, mac, nil
+}
+
+// ensureVipLogicalSwitchPort creates vip's lsp for the types that need one directly
+// addressable on the subnet: switch_lb_rule (routed vip, lsp only for bookkeeping, since
+// the lb DNATs by ip/port and delivery goes through the gateway mac) and kube_host_vm_vip
+// (the lsp is the vm's real nic).
+func (c *Controller) ensureVipLogicalSwitchPort(vip *kubeovnv1.Vip, subnet *kubeovnv1.Subnet, portName, v4ip, v6ip, mac string, needsMacRepair bool) error {
+	if vip.Spec.Type != util.SwitchLBRuleVip && vip.Spec.Type != util.KubeHostVMVip {
+		return nil
+	}
+	ipStr := util.GetStringIP(v4ip, v6ip)
+	if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+		err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
+		klog.Error(err)
+		return err
+	}
+	if vip.Spec.Type == util.SwitchLBRuleVip && needsMacRepair {
+		// pre-fix switch_lb_rule vips had arp_proxy set on their lsp; it was never
+		// functional and the CreateLogicalSwitchPort update above does not touch the
+		// options column, so it must be cleared explicitly during repair.
+		if err := c.OVNNbClient.RemoveLogicalSwitchPortOption(portName, "arp_proxy"); err != nil {
+			err = fmt.Errorf("failed to remove arp_proxy option from lsp %s: %w", portName, err)
+			klog.Error(err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -265,7 +318,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	// should update
 	if vip.Status.Mac == "" {
 		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
-			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress); err != nil {
+			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress, false); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -542,7 +595,7 @@ func (c *Controller) deleteVirtualVipPorts(vip *kubeovnv1.Vip) error {
 	return nil
 }
 
-func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string) error {
+func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string, macRepair bool) error {
 	vipCR, err := c.virtualIpsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -589,9 +642,10 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 
 		if vip.Status.Mac == "" && mac != "" ||
 			vip.Status.V4ip == "" && v4ip != "" ||
-			vip.Status.V6ip == "" && v6ip != "" {
-			// vip spec mac or ip not support to update
-			// only set once during creation
+			vip.Status.V6ip == "" && v6ip != "" ||
+			(macRepair && vip.Status.Mac != mac) {
+			// vip spec/status ip is only set once during creation; mac is too, except
+			// for a one-time repair of a mac previously corrupted by a bug (macRepair)
 			vip.Spec.Namespace = ns
 			vip.Spec.V4ip = v4ip
 			vip.Spec.V6ip = v6ip

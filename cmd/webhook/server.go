@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	"github.com/spf13/pflag"
@@ -81,7 +82,8 @@ func CmdMain() {
 		panic(err)
 	}
 
-	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetClient(), mgr.GetScheme(), mgr.GetCache())
+	controllerUserName := fmt.Sprintf("system:serviceaccount:%s:%s", os.Getenv(util.EnvPodNamespace), util.KubeOvnControllerServiceAccountName)
+	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetClient(), mgr.GetScheme(), mgr.GetCache(), controllerUserName)
 	if err != nil {
 		panic(err)
 	}
