@@ -227,12 +227,28 @@ func publishStatus(ctx context.Context, kc kubernetes.Interface, ns, name string
 	return err
 }
 
+// bootstrapRetryPeriod is the lease acquire/renew poll interval. A var so
+// tests can shorten it.
+var bootstrapRetryPeriod = 5 * time.Second
+
+// errLeaseLost is returned when the bootstrap lease stopped being renewed
+// while the destructive action was still running. It wraps errRetry so Run
+// restarts preflight/bringUp instead of treating it as fatal or as a
+// graceful shutdown.
+var errLeaseLost = fmt.Errorf("bootstrap lease lost: %w", errRetry)
+
 // withBootstrapLease runs fn while holding the cluster-wide bootstrap
 // lease. Only one pod may be inside fn at a time -- this is the
 // invariant that keeps concurrent reconvert/create-cluster from forming
 // split-brain. Lease durations come from cfg: must comfortably exceed
 // the worst-case destructive op (reconvert on a multi-GB DB can take
 // minutes) so an apiserver hiccup doesn't release the lease mid-op.
+//
+// client-go runs OnStartedLeading in its own goroutine and RunOrDie does
+// not wait for it, so we join the callback before returning: the lease is
+// never released (and the next holder never starts) while fn is still
+// executing. The ctx handed to fn is cancelled the moment renewal stops;
+// fn must treat that as a fence and abort before its next destructive step.
 func withBootstrapLease(ctx context.Context, kc kubernetes.Interface, cfg *Config,
 	fn func(context.Context) error,
 ) error {
@@ -245,19 +261,38 @@ func withBootstrapLease(ctx context.Context, kc kubernetes.Interface, cfg *Confi
 	defer cancel()
 
 	var (
-		mu    sync.Mutex
-		fnErr error
+		mu      sync.Mutex
+		started bool
+		fnErr   error
+		done    = make(chan struct{})
 	)
 	leaderelection.RunOrDie(leCtx, leaderelection.LeaderElectionConfig{
 		Lock:            lock,
 		ReleaseOnCancel: true,
 		LeaseDuration:   cfg.BootstrapLeaseDuration,
 		RenewDeadline:   cfg.BootstrapRenewDeadline,
-		RetryPeriod:     5 * time.Second,
+		RetryPeriod:     bootstrapRetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(c context.Context) {
+				// Decide atomically whether we run at all: if RunOrDie
+				// already returned (c is cancelled), the main goroutine
+				// has stopped waiting for us, so fn must not start.
+				mu.Lock()
+				if c.Err() != nil {
+					mu.Unlock()
+					return
+				}
+				started = true
+				mu.Unlock()
+				defer close(done)
+
 				klog.Infof("acquired bootstrap lease, running action")
 				err := fn(c)
+				if err != nil && c.Err() != nil && ctx.Err() == nil {
+					// Renewal stopped under fn: report it as such, keeping fn's
+					// own error (typically context.Canceled) for the log.
+					err = fmt.Errorf("%w: %w", errLeaseLost, err)
+				}
 				mu.Lock()
 				fnErr = err
 				mu.Unlock()
@@ -266,6 +301,15 @@ func withBootstrapLease(ctx context.Context, kc kubernetes.Interface, cfg *Confi
 			OnStoppedLeading: func() { klog.Infof("released bootstrap lease") },
 		},
 	})
+
+	mu.Lock()
+	ran := started
+	mu.Unlock()
+	if !ran {
+		// Never acquired the lease: leCtx ended first (shutdown).
+		return ctx.Err()
+	}
+	<-done
 	mu.Lock()
 	defer mu.Unlock()
 	return fnErr

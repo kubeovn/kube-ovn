@@ -19,7 +19,10 @@ import (
 // Per-class exec timeouts. Callers pick a class by:
 //   - ctx = parent ctx (SIGTERM-killable) for health / corrective ops
 //   - ctx = context.Background() (detached) for mutational / ovn-ctl ops
-//     where SIGTERM mid-flight risks partial on-disk state
+//     where SIGTERM mid-flight risks partial on-disk state. Callers under
+//     the bootstrap lease fence on the lease ctx before each such step;
+//     reconvert is the exception: it only writes temp files until its final
+//     rename, so it runs on the lease ctx and is killed on lease loss.
 //   - timeout constant matched to op cost:
 //     health=5s (read-only probes), corrective=10s (kick/compact/steal),
 //     mutational=60s (initStub, writeLocalConfigDB, set NB/SB Global),
@@ -113,13 +116,36 @@ func dbAge(d dbInfo) time.Duration {
 	return time.Since(st.ModTime())
 }
 
-// wipeDB removes db_file and hdr_file. Idempotent.
-func wipeDB(d dbInfo) error {
-	if err := os.Remove(d.dbFile); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove %s: %w", d.dbFile, err)
+// removeFile deletes path; "already gone" is success.
+func removeFile(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove %s: %w", path, err)
 	}
-	_ = os.Remove(d.hdrFile)
 	return nil
+}
+
+// removeFilesBestEffort deletes paths for cleanup on paths that are already
+// failing or whose leftovers are harmless; failures are logged, not returned.
+func removeFilesBestEffort(paths ...string) {
+	for _, p := range paths {
+		if err := removeFile(p); err != nil {
+			klog.Warningf("cleanup: %v", err)
+		}
+	}
+}
+
+// wipeDB removes db_file and hdr_file. Idempotent. Fenced on ctx: it
+// refuses to delete anything once the caller's lease is gone.
+func wipeDB(ctx context.Context, d dbInfo) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// A stale hdr left next to a fresh db would make initStub rejoin with
+	// the old server ID, so a failed hdr removal is an error too.
+	if err := removeFile(d.dbFile); err != nil {
+		return err
+	}
+	return removeFile(d.hdrFile)
 }
 
 // initStub creates a fresh db file: create-cluster (if no remotes),
@@ -138,8 +164,10 @@ func initStub(d dbInfo, localAddr string, remotes []string) (bootstrapped bool, 
 			return false, nil
 		}
 		// rejoin failed (corrupt header etc.) -- wipe and try plain join below.
-		_ = os.Remove(d.dbFile)
-		_ = os.Remove(d.hdrFile)
+		klog.Warningf("%s: rejoin-cluster failed, falling back to join-cluster: %v", d.short, err)
+		if err := wipeDB(context.Background(), d); err != nil {
+			return false, err
+		}
 	}
 	args = []string{"join-cluster", d.dbFile, d.name, localAddr}
 	args = append(args, remotes...)
@@ -151,31 +179,39 @@ func initStub(d dbInfo, localAddr string, remotes []string) (bootstrapped bool, 
 // d.dbFile. At every crash point the original DB is still on disk
 // until the rename, so a half-finished reconvert never loses data.
 // Leftover .sa-tmp/.new are swept by preflight on startup.
-// Heavy mutational: detached from parent ctx; cluster-to-standalone uses
-// reconvertTimeout (can be minutes on multi-GB DBs).
-func reconvert(d dbInfo, localAddr string, remotes []string, reconvertTimeout time.Duration) error {
-	if !readDBState(context.Background(), d).exists {
+// Because nothing touches d.dbFile before the rename, every step is bound
+// to ctx (the bootstrap-lease ctx) and is killed the moment the lease is
+// lost; ctx is re-checked right before the rename, the only commit point.
+// cluster-to-standalone uses reconvertTimeout (can be minutes on multi-GB DBs).
+func reconvert(ctx context.Context, d dbInfo, localAddr string, remotes []string, reconvertTimeout time.Duration) error {
+	if !readDBState(ctx, d).exists {
 		return fmt.Errorf("reconvert: %s missing", d.dbFile)
 	}
 	sa := d.dbFile + ".sa-tmp"
 	newDB := d.dbFile + ".new"
-	cleanup := func() { _ = os.Remove(sa); _ = os.Remove(newDB) }
+	cleanup := func() { removeFilesBestEffort(sa, newDB) }
 	cleanup()
-	if err := run(context.Background(), reconvertTimeout, "ovsdb-tool", "cluster-to-standalone", sa, d.dbFile); err != nil {
+	if err := run(ctx, reconvertTimeout, "ovsdb-tool", "cluster-to-standalone", sa, d.dbFile); err != nil {
 		cleanup()
 		return fmt.Errorf("cluster-to-standalone %s: %w", d.dbFile, err)
 	}
 	args := append([]string{"create-cluster", newDB, sa, localAddr}, remotes...)
-	if err := run(context.Background(), execTimeoutMutational, "ovsdb-tool", args...); err != nil {
+	if err := run(ctx, execTimeoutMutational, "ovsdb-tool", args...); err != nil {
 		cleanup()
 		return fmt.Errorf("create-cluster: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		cleanup()
+		return fmt.Errorf("reconvert %s aborted before commit: %w", d.dbFile, err)
 	}
 	if err := os.Rename(newDB, d.dbFile); err != nil {
 		cleanup()
 		return fmt.Errorf("rename %s -> %s: %w", newDB, d.dbFile, err)
 	}
-	_ = os.Remove(sa)
-	_ = os.Remove(d.hdrFile)
+	// The rename above is the commit point, so failing here would only wedge
+	// a finished reconvert. The old hdr (pre-reconvert server ID) is
+	// rewritten by the next backupHeader tick if it can't be removed now.
+	removeFilesBestEffort(sa, d.hdrFile)
 	return nil
 }
 
@@ -204,7 +240,10 @@ func startNBSBOvsdb(cfg *Config, peers []string) error {
 
 func stopNBSBOvsdb() {
 	for _, sub := range []string{"stop_nb_ovsdb", "stop_sb_ovsdb", "stop_northd"} {
-		_ = run(context.Background(), execTimeoutOvnCtl, "/usr/share/ovn/scripts/ovn-ctl", sub)
+		// Keep going on failure: the remaining components still need stopping.
+		if err := run(context.Background(), execTimeoutOvnCtl, "/usr/share/ovn/scripts/ovn-ctl", sub); err != nil {
+			klog.Warningf("ovn-ctl %s: %v", sub, err)
+		}
 	}
 }
 
@@ -268,9 +307,14 @@ func postOvsdbStart(ctx context.Context, cfg *Config) {
 			klog.Warningf("memory-trim-on-compaction %s: %v", d.short, err)
 		}
 	}
-	matches, _ := filepath.Glob(filepath.Join(cfg.OVNDir, "*"))
+	matches, err := filepath.Glob(filepath.Join(cfg.OVNDir, "*"))
+	if err != nil {
+		klog.Warningf("list %s for chmod: %v", cfg.OVNDir, err)
+	}
 	for _, p := range matches {
-		_ = os.Chmod(p, 0o600)
+		if err := os.Chmod(p, 0o600); err != nil {
+			klog.Warningf("chmod %s: %v", p, err)
+		}
 	}
 }
 
@@ -433,7 +477,9 @@ func backupHeader(ctx context.Context, d dbInfo) error {
 // --remote=db:Local_Config,Config,connections reads this on every start.
 // Mutational: detached from parent ctx.
 func writeLocalConfigDB(d dbInfo, listenAddrs []string) error {
-	_ = os.Remove(d.localCfgFile)
+	if err := removeFile(d.localCfgFile); err != nil {
+		return err
+	}
 	if err := run(context.Background(), execTimeoutMutational, "ovsdb-tool", "create", d.localCfgFile, "/usr/share/openvswitch/local-config.ovsschema"); err != nil {
 		return err
 	}
@@ -498,6 +544,8 @@ func buildOvnCtlArgs(cfg *Config, peers []string) []string {
 			"--db-nb-cluster-remote-proto=ssl",
 			"--db-sb-cluster-remote-proto=ssl",
 		)
+		// Validated in parseConfig, so tlsArgs is already known good.
+		args = append(args, cfg.tlsArgs...)
 	} else {
 		args = append(args,
 			"--db-nb-create-insecure-remote=yes",
@@ -520,6 +568,101 @@ func buildOvnCtlArgs(cfg *Config, peers []string) []string {
 		"--ovn-northd-sb-db="+sbConn,
 	)
 	return args
+}
+
+// tlsVersionIndex maps a TLS_{MIN,MAX}_VERSION value to an index into
+// tlsProtocols. Accepted spellings match dist/images/ovn-db-ssl-options.sh.
+func tlsVersionIndex(v string) (int, error) {
+	switch v {
+	case "1.0", "TLS 1.0", "TLS10":
+		return 0, nil
+	case "1.1", "TLS 1.1", "TLS11":
+		return 1, nil
+	case "1.2", "TLS 1.2", "TLS12":
+		return 2, nil
+	case "1.3", "TLS 1.3", "TLS13":
+		return 3, nil
+	}
+	return 0, fmt.Errorf("unsupported TLS version: %s", v)
+}
+
+var tlsProtocols = []string{"TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"}
+
+// tlsCiphers maps IANA names (TLS <= 1.2 suites) to OpenSSL cipher names,
+// and tlsCipherSuites lists the TLS 1.3 suites, which OpenSSL takes via a
+// separate option. Same sets as dist/images/ovn-db-ssl-options.sh.
+var (
+	tlsCiphers = map[string]string{
+		"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA":          "ECDHE-ECDSA-AES128-SHA",
+		"TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA":          "ECDHE-ECDSA-AES256-SHA",
+		"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA":            "ECDHE-RSA-AES128-SHA",
+		"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA":            "ECDHE-RSA-AES256-SHA",
+		"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256":       "ECDHE-ECDSA-AES128-GCM-SHA256",
+		"TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384":       "ECDHE-ECDSA-AES256-GCM-SHA384",
+		"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256":         "ECDHE-RSA-AES128-GCM-SHA256",
+		"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384":         "ECDHE-RSA-AES256-GCM-SHA384",
+		"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256":   "ECDHE-RSA-CHACHA20-POLY1305",
+		"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256": "ECDHE-ECDSA-CHACHA20-POLY1305",
+	}
+	tlsCipherSuites = map[string]bool{
+		"TLS_AES_128_GCM_SHA256":       true,
+		"TLS_AES_256_GCM_SHA384":       true,
+		"TLS_CHACHA20_POLY1305_SHA256": true,
+	}
+)
+
+// tlsPolicyArgs returns the ovn-ctl --ovn-{nb,sb}-db-ssl-{protocols,ciphers,
+// ciphersuites} flags for the configured TLS policy, mirroring
+// ovn_db_ssl_args in dist/images/ovn-db-ssl-options.sh so DYNAMIC_PEERS
+// enforces the same policy as the static start-db.sh path. Empty when no
+// policy is configured.
+func tlsPolicyArgs(minVersion, maxVersion, suites string) ([]string, error) {
+	var args []string
+	if minVersion != "" || maxVersion != "" {
+		lo, hi := 0, len(tlsProtocols)-1
+		var err error
+		if minVersion != "" {
+			if lo, err = tlsVersionIndex(minVersion); err != nil {
+				return nil, err
+			}
+		}
+		if maxVersion != "" {
+			if hi, err = tlsVersionIndex(maxVersion); err != nil {
+				return nil, err
+			}
+		}
+		if lo > hi {
+			return nil, fmt.Errorf("TLS_MIN_VERSION (%s) must be less than or equal to TLS_MAX_VERSION (%s)", minVersion, maxVersion)
+		}
+		protocols := strings.Join(tlsProtocols[lo:hi+1], ",")
+		args = append(args,
+			"--ovn-nb-db-ssl-protocols="+protocols,
+			"--ovn-sb-db-ssl-protocols="+protocols,
+		)
+	}
+
+	var ciphers, ciphersuites []string
+	for suite := range strings.SplitSeq(suites, ",") {
+		suite = strings.TrimSpace(suite)
+		switch {
+		case suite == "":
+		case tlsCipherSuites[suite]:
+			ciphersuites = append(ciphersuites, suite)
+		case tlsCiphers[suite] != "":
+			ciphers = append(ciphers, tlsCiphers[suite])
+		default:
+			return nil, fmt.Errorf("unsupported TLS cipher suite: %s", suite)
+		}
+	}
+	if len(ciphers) > 0 {
+		v := strings.Join(ciphers, ":")
+		args = append(args, "--ovn-nb-db-ssl-ciphers="+v, "--ovn-sb-db-ssl-ciphers="+v)
+	}
+	if len(ciphersuites) > 0 {
+		v := strings.Join(ciphersuites, ":")
+		args = append(args, "--ovn-nb-db-ssl-ciphersuites="+v, "--ovn-sb-db-ssl-ciphersuites="+v)
+	}
+	return args, nil
 }
 
 func commaJoin(format string, peers []string, ssl bool) string {
