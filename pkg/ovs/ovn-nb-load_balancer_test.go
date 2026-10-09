@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
@@ -38,6 +39,82 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 	// should no err create lb repeatedly
 	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
+}
+
+func (suite *OvnClientTestSuite) testCreateLoadBalancerDuplicateGuard() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	listByName := func(t *testing.T, name string) []ovnnb.LoadBalancer {
+		t.Helper()
+		lbs, err := nbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+			return lb.Name == name
+		})
+		require.NoError(t, err)
+		return lbs
+	}
+
+	t.Run("does not add to pre-existing duplicates", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lb-duplicates"
+
+		for range 2 {
+			ops, err := nbClient.Create(&ovnnb.LoadBalancer{
+				UUID:     ovsclient.NamedUUID(),
+				Name:     name,
+				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+			})
+			require.NoError(t, err)
+			require.NoError(t, nbClient.Transact("lb-add", ops))
+		}
+
+		require.NoError(t, nbClient.CreateLoadBalancer(name, "tcp"))
+		require.Len(t, listByName(t, name), 2)
+	})
+
+	t.Run("concurrent creates produce exactly one load balancer", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lb-concurrent"
+
+		const goroutines = 10
+		errs := make([]error, goroutines)
+		var wg sync.WaitGroup
+		for i := range goroutines {
+			wg.Go(func() {
+				errs[i] = nbClient.CreateLoadBalancer(name, "tcp")
+			})
+		}
+		wg.Wait()
+
+		for i, err := range errs {
+			require.NoError(t, err, "goroutine %d returned error", i)
+		}
+		require.Len(t, listByName(t, name), 1)
+	})
+
+	t.Run("wait blocks insert when row already exists", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lb-wait-block"
+
+		ops, err := nbClient.Create(&ovnnb.LoadBalancer{
+			UUID:     ovsclient.NamedUUID(),
+			Name:     name,
+			Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+		})
+		require.NoError(t, err)
+		require.NoError(t, nbClient.Transact("lb-add", ops))
+
+		created, err := nbClient.createLoadBalancerIfNotExists("lb-add", &ovnnb.LoadBalancer{
+			UUID:     ovsclient.NamedUUID(),
+			Name:     name,
+			Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+		})
+		require.NoError(t, err)
+		require.False(t, created, "expected Wait to block insert for existing row")
+		require.Len(t, listByName(t, name), 1)
+	})
 }
 
 func (suite *OvnClientTestSuite) testUpdateLoadBalancer() {
