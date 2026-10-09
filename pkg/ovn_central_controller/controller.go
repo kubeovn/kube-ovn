@@ -152,6 +152,7 @@ type Config struct {
 	DBAddr                                 string   // single db addr passed to --db-{nb,sb}-addr
 	DBAddresses                            []string // listen addrs for db client port (dual-stack capable)
 	EnableSSL                              bool
+	tlsArgs                                []string // TLS_{MIN,MAX}_VERSION / TLS_CIPHER_SUITES as ovn-ctl flags; set when EnableSSL
 	NBPort, SBPort                         int
 	NBClusterPort, SBClusterPort           int
 	OVNNorthdNThreads                      int
@@ -238,6 +239,13 @@ func parseConfig() (*Config, error) {
 			return nil, fmt.Errorf("%s=%d out of range (1..65535)", p.name, p.val)
 		}
 	}
+	if c.EnableSSL {
+		var err error
+		c.tlsArgs, err = tlsPolicyArgs(getenv("TLS_MIN_VERSION", ""), getenv("TLS_MAX_VERSION", ""), getenv("TLS_CIPHER_SUITES", ""))
+		if err != nil {
+			return nil, err
+		}
+	}
 	c.DBClusterAddr = c.PodIP
 
 	// ENABLE_BIND_LOCAL_IP=true makes ovsdb-server bind only this pod's
@@ -312,7 +320,9 @@ func Run() error {
 		if err == nil {
 			err = runtimeLoop(ctx, cfg, kc, ls)
 		}
-		if err == nil || errors.Is(err, context.Canceled) {
+		// A Canceled error only means shutdown if OUR ctx was cancelled; a
+		// lost bootstrap lease also surfaces as Canceled but must retry.
+		if err == nil || (errors.Is(err, context.Canceled) && ctx.Err() != nil) {
 			return nil // graceful shutdown
 		}
 		if !errors.Is(err, errRetry) {
@@ -340,8 +350,7 @@ func preflight(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *li
 		// real db file is always either the pre-reconvert original or
 		// the post-reconvert new one -- never missing -- so these
 		// leftovers are always safe to drop.
-		_ = os.Remove(d.dbFile + ".sa-tmp")
-		_ = os.Remove(d.dbFile + ".new")
+		removeFilesBestEffort(d.dbFile+".sa-tmp", d.dbFile+".new")
 
 		st := readDBState(ctx, d)
 		switch {
@@ -349,14 +358,14 @@ func preflight(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *li
 			// nothing to validate
 		case st.kicked:
 			klog.Warningf("%s: kicked from cluster, wiping (%s)", d.short, d.dbFile)
-			if err := wipeDB(d); err != nil {
+			if err := wipeDB(ctx, d); err != nil {
 				return err
 			}
 			ls.dbInherited = false
 			ls.hasCommittedData = false
 		case st.notJoined && dbAge(d) >= cfg.StaleStubTimeout:
 			klog.Warningf("%s: stale join-stub (>%s old), wiping", d.short, cfg.StaleStubTimeout)
-			if err := wipeDB(d); err != nil {
+			if err := wipeDB(ctx, d); err != nil {
 				return err
 			}
 			ls.dbInherited = false
@@ -481,7 +490,7 @@ func recoverUnderLease(ctx context.Context, cfg *Config, kc kubernetes.Interface
 	if anyPeerActiveAndReady(others) {
 		klog.Warningf("recover: peer active+ready; wiping local DB for fresh join")
 		for _, d := range []dbInfo{nbDB(cfg), sbDB(cfg)} {
-			if err := wipeDB(d); err != nil {
+			if err := wipeDB(ctx, d); err != nil {
 				return fmt.Errorf("wipe %s: %w", d.short, err)
 			}
 		}
@@ -502,10 +511,15 @@ func recoverUnderLease(ctx context.Context, cfg *Config, kc kubernetes.Interface
 		}
 	}
 	klog.Infof("recover: no peer has cluster data; bootstrapping fresh (mySt=%q)", mySt)
-	return executeUnderLease(ctx, cfg, kc, ls, "bootstrap", peers, func(_ context.Context) error {
+	return executeUnderLease(ctx, cfg, kc, ls, "bootstrap", peers, func(ctx context.Context) error {
 		for _, d := range []dbInfo{nbDB(cfg), sbDB(cfg)} {
-			if err := wipeDB(d); err != nil {
+			if err := wipeDB(ctx, d); err != nil {
 				return fmt.Errorf("wipe %s: %w", d.short, err)
+			}
+			// initStub's ovsdb-tool is detached (a killed create-cluster
+			// would leave a torn db file), so fence on the lease ctx first.
+			if err := ctx.Err(); err != nil {
+				return err
 			}
 			if _, err := initStub(d,
 				connAddr(cfg.DBClusterAddr, d.clusterPort, cfg.EnableSSL), nil); err != nil {
@@ -521,9 +535,9 @@ func recoverUnderLease(ctx context.Context, cfg *Config, kc kubernetes.Interface
 // reconvertFn runs cluster-to-standalone + create-cluster on both NB
 // and SB. Preserves data; cid is regenerated.
 func reconvertFn(cfg *Config) func(context.Context) error {
-	return func(_ context.Context) error {
+	return func(ctx context.Context) error {
 		for _, d := range []dbInfo{nbDB(cfg), sbDB(cfg)} {
-			if err := reconvert(d, connAddr(cfg.DBClusterAddr, d.clusterPort, cfg.EnableSSL), nil, cfg.ReconvertTimeout); err != nil {
+			if err := reconvert(ctx, d, connAddr(cfg.DBClusterAddr, d.clusterPort, cfg.EnableSSL), nil, cfg.ReconvertTimeout); err != nil {
 				return err
 			}
 		}
@@ -667,27 +681,40 @@ func isOvsdbSocketMissing(err error) bool {
 		strings.Contains(s, "connection refused")
 }
 
+// dbObservation is what one runtimeTick learned from NB+SB cluster/status.
+type dbObservation struct {
+	nbLeader, sbLeader bool
+	noLeaderTimedOut   bool
+}
+
 func runtimeTick(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *lifecycleState, st *runtimeState) error {
-	nbLeader, sbLeader := false, false
-	noLeaderTimedOut := false
+	obs, err := observeDBs(ctx, cfg, kc, st)
+	if err != nil {
+		return err
+	}
+	syncLeaderState(ctx, cfg, kc, obs)
+	runMaintenance(ctx, cfg, kc, ls, st, obs)
+
+	// No-leader watchdog. recoverCluster() always under the lease
+	// decides what to do; we never short-circuit on "peer claims
+	// active" because that would let us sit forever with stale local
+	// membership the cluster has moved past.
+	if obs.noLeaderTimedOut {
+		return recoverNoLeader(ctx, cfg, kc, ls, st)
+	}
+	return nil
+}
+
+// observeDBs reads cluster/status for NB and SB, runs the per-DB watchdogs
+// (ovsdb crash, no-leader), stamps the NB cluster ID on the node and, on
+// leaders, kicks dead members. A non-nil error is fatal (pod restart).
+func observeDBs(ctx context.Context, cfg *Config, kc kubernetes.Interface, st *runtimeState) (dbObservation, error) {
+	var obs dbObservation
 	for _, d := range []dbInfo{nbDB(cfg), sbDB(cfg)} {
 		cs, err := readClusterStatus(ctx, d)
 		if err != nil {
-			// Reached runtimeTick only after bringUp + waitForLeader
-			// succeeded, so a missing socket here means ovsdb-server
-			// crashed mid-run. Tolerate transient errors for
-			// OvsdbCrashTimeout (apiserver hiccup, slow host), then
-			// fail fatal so kubelet restarts the pod -- a fresh
-			// container goes through preflight again, which is the
-			// right path for a crashed ovsdb (in-place restart can
-			// hit the same corrupt-DB crash).
-			if isOvsdbSocketMissing(err) {
-				if t, ok := st.socketGoneSince[d.short]; !ok {
-					st.socketGoneSince[d.short] = time.Now()
-					klog.Warningf("%s: ovsdb-server socket gone; tolerating up to %s before pod restart", d.short, cfg.OvsdbCrashTimeout)
-				} else if time.Since(t) >= cfg.OvsdbCrashTimeout {
-					return fmt.Errorf("ovsdb-server %s unreachable for %s, exiting for pod restart", d.short, time.Since(t).Round(time.Second))
-				}
+			if err := checkOvsdbCrash(cfg, d, st, err); err != nil {
+				return obs, err
 			}
 			klog.Warningf("cluster/status %s: %v", d.short, err)
 			continue
@@ -700,51 +727,88 @@ func runtimeTick(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *
 				st.patchedClusterID = cs.clusterID
 			}
 		}
-		// Watchdog: prolonged no-leader is the sole quorum-loss signal we
-		// can read locally (raft only elects/keeps a leader with majority).
-		if isKnownLeader(cs.leader) {
-			delete(st.noLeaderSince, d.short)
-		} else {
-			if t, ok := st.noLeaderSince[d.short]; !ok {
-				st.noLeaderSince[d.short] = time.Now()
-				klog.Warningf("%s reports no leader (will check %s for recovery)", d.short, cfg.NoLeaderTimeout)
-			} else if time.Since(t) >= cfg.NoLeaderTimeout {
-				noLeaderTimedOut = true
-			}
+		if trackNoLeader(cfg, d, cs, st) {
+			obs.noLeaderTimedOut = true
 		}
 		if cs.role == "leader" {
 			kickStaleMembers(ctx, d, cs, cfg.DeadMemberTimeout, st)
 			if d.short == "nb" {
-				nbLeader = true
+				obs.nbLeader = true
 			} else {
-				sbLeader = true
+				obs.sbLeader = true
 			}
 		}
 	}
+	return obs, nil
+}
 
-	// Pod labels signal which pod is the NB / SB / northd leader so the
-	// kube-ovn-controller's Service selectors route to the right one.
-	// The northd-leader label is keyed on LOCAL ovn-northd state because
-	// only the pod whose own northd holds the SB lock should be in the
-	// Service endpoint.
+// checkOvsdbCrash handles a failed cluster/status read. Reached only after
+// bringUp + waitForLeader succeeded, so a missing socket here means
+// ovsdb-server crashed mid-run. Transient errors are tolerated for
+// OvsdbCrashTimeout (apiserver hiccup, slow host), then it returns a fatal
+// error so kubelet restarts the pod -- a fresh container goes through
+// preflight again, which is the right path for a crashed ovsdb (in-place
+// restart can hit the same corrupt-DB crash).
+func checkOvsdbCrash(cfg *Config, d dbInfo, st *runtimeState, err error) error {
+	if !isOvsdbSocketMissing(err) {
+		return nil
+	}
+	t, ok := st.socketGoneSince[d.short]
+	if !ok {
+		st.socketGoneSince[d.short] = time.Now()
+		klog.Warningf("%s: ovsdb-server socket gone; tolerating up to %s before pod restart", d.short, cfg.OvsdbCrashTimeout)
+		return nil
+	}
+	if time.Since(t) >= cfg.OvsdbCrashTimeout {
+		return fmt.Errorf("ovsdb-server %s unreachable for %s, exiting for pod restart", d.short, time.Since(t).Round(time.Second))
+	}
+	return nil
+}
+
+// trackNoLeader is the no-leader watchdog: prolonged no-leader is the sole
+// quorum-loss signal we can read locally (raft only elects/keeps a leader
+// with majority). Returns true once d has been leaderless past NoLeaderTimeout.
+func trackNoLeader(cfg *Config, d dbInfo, cs clusterStatus, st *runtimeState) bool {
+	if isKnownLeader(cs.leader) {
+		delete(st.noLeaderSince, d.short)
+		return false
+	}
+	t, ok := st.noLeaderSince[d.short]
+	if !ok {
+		st.noLeaderSince[d.short] = time.Now()
+		klog.Warningf("%s reports no leader (will check %s for recovery)", d.short, cfg.NoLeaderTimeout)
+		return false
+	}
+	return time.Since(t) >= cfg.NoLeaderTimeout
+}
+
+// syncLeaderState publishes the NB / SB / northd leader pod labels so the
+// kube-ovn-controller's Service selectors route to the right pod, then
+// steals the northd lock if nobody holds it.
+//
+// The northd-leader label is keyed on LOCAL ovn-northd state because only
+// the pod whose own northd holds the SB lock should be in the Service
+// endpoint. The SB leader steals the lock only if NO pod anywhere has an
+// active northd: the previous holder probably died without releasing, so
+// blasting the lock lets a standby take over. We must NOT steal when an
+// active northd already exists -- doing so just kicks it out and creates a
+// churn loop.
+func syncLeaderState(ctx context.Context, cfg *Config, kc kubernetes.Interface, obs dbObservation) {
 	if err := patchLeaderLabels(ctx, kc, cfg.PodNamespace, cfg.PodName,
-		nbLeader, sbLeader, localNorthdActive(ctx)); err != nil {
+		obs.nbLeader, obs.sbLeader, localNorthdActive(ctx)); err != nil {
 		klog.Warningf("patchLeaderLabels: %v", err)
 	}
-
-	// SB leader steals the ovn-northd lock only if NO pod anywhere has
-	// an active northd (nobody is in the Service endpoint set). The
-	// previous holder probably died without releasing, so blasting the
-	// lock lets a standby take over. We must NOT steal when an active
-	// northd already exists -- doing so just kicks it out and creates
-	// a churn loop.
-	if sbLeader && !anyNorthdActive(ctx, kc, cfg.PodNamespace) {
+	if obs.sbLeader && !anyNorthdActive(ctx, kc, cfg.PodNamespace) {
 		klog.Warningf("no active northd anywhere, stealing lock")
 		if err := stealLock(ctx, cfg); err != nil {
 			klog.Errorf("stealLock: %v", err)
 		}
 	}
+}
 
+// runMaintenance does the periodic best-effort chores: header backup,
+// status-label transitions, and (leaders only) raft compaction.
+func runMaintenance(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *lifecycleState, st *runtimeState, obs dbObservation) {
 	if time.Since(st.lastBackup) >= cfg.BackupInterval {
 		for _, d := range []dbInfo{nbDB(cfg), sbDB(cfg)} {
 			if err := backupHeader(ctx, d); err != nil {
@@ -766,38 +830,37 @@ func runtimeTick(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *
 	if cfg.EnableCompact && time.Since(st.lastCompact) >= cfg.CompactInterval {
 		// Run on whoever's the current leader of each DB; compact is a
 		// raft-replicated snapshot operation that other members follow.
-		if nbLeader {
+		if obs.nbLeader {
 			if err := compactDB(ctx, nbDB(cfg)); err != nil {
 				klog.Warningf("compactDB nb: %v", err)
 			}
 		}
-		if sbLeader {
+		if obs.sbLeader {
 			if err := compactDB(ctx, sbDB(cfg)); err != nil {
 				klog.Warningf("compactDB sb: %v", err)
 			}
 		}
 		st.lastCompact = time.Now()
 	}
+}
 
-	// No-leader watchdog. recoverCluster() always under the lease
-	// decides what to do; we never short-circuit on "peer claims
-	// active" because that would let us sit forever with stale local
-	// membership the cluster has moved past.
-	if noLeaderTimedOut {
-		klog.Warningf("no leader past timeout; running recovery")
-		stopNBSBOvsdb()
-		peers, err := pickPeerIPs(ctx, kc, cfg.PodNamespace, cfg.PodIP)
-		if err != nil {
-			klog.Warningf("pickPeerIPs in no-leader path: %v", err)
-			return errRetry
-		}
-		if err := recoverCluster(ctx, cfg, kc, ls, peers); err != nil {
-			return err // errRetry → Run() retries; other errors fatal
-		}
-		// Reconvert/bootstrap succeeded: ovsdb is back, we're leader.
-		delete(st.noLeaderSince, "nb")
-		delete(st.noLeaderSince, "sb")
+// recoverNoLeader stops the local ovsdb and runs lease-guarded recovery
+// after the no-leader watchdog fired. errRetry bubbles up to Run(), other
+// errors are fatal.
+func recoverNoLeader(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *lifecycleState, st *runtimeState) error {
+	klog.Warningf("no leader past timeout; running recovery")
+	stopNBSBOvsdb()
+	peers, err := pickPeerIPs(ctx, kc, cfg.PodNamespace, cfg.PodIP)
+	if err != nil {
+		klog.Warningf("pickPeerIPs in no-leader path: %v", err)
+		return errRetry
 	}
+	if err := recoverCluster(ctx, cfg, kc, ls, peers); err != nil {
+		return err
+	}
+	// Reconvert/bootstrap succeeded: ovsdb is back, we're leader.
+	delete(st.noLeaderSince, "nb")
+	delete(st.noLeaderSince, "sb")
 	return nil
 }
 

@@ -14,10 +14,10 @@
 # check, stub-only pods would briefly pass readiness, peers would treat
 # them as authoritative, and we'd lose data via case-1 wipe-rejoin.
 
-set -u
+set -euo pipefail
 
 check_db() {
-    local sock=$1 name=$2 out leader role lo hi
+    local sock=$1 name=$2 out="" leader="" role="" lo="" hi=""
     if ! out=$(ovs-appctl -t "$sock" cluster/status "$name" 2>/dev/null); then
         return 1
     fi
@@ -31,8 +31,11 @@ check_db() {
     # Follower: ensure Log range shows committed entries beyond the
     # initial stub. "Log: [N, M]" -- need M > N. Use -F so we work
     # under BusyBox awk (no gawk match()-with-array extension).
-    read -r lo hi < <(awk -F'[][, ]+' '/^Log:/ {print $2, $3; exit}' <<<"$out")
-    [[ -n "$lo" && -n "$hi" && "$hi" -gt "$lo" ]]
+    # read exits non-zero when awk printed nothing (no Log line); that is a
+    # plain "not ready", so swallow it and let the numeric check below decide.
+    read -r lo hi < <(awk -F'[][, ]+' '/^Log:/ {print $2, $3; exit}' <<<"$out") || true
+    [[ "$lo" =~ ^[0-9]+$ && "$hi" =~ ^[0-9]+$ ]] || return 1
+    (( hi > lo ))
 }
 
 check_db /var/run/ovn/ovnnb_db.ctl OVN_Northbound || exit 1

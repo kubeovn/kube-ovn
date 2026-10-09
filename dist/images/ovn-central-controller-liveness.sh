@@ -15,7 +15,7 @@
 # member": readiness drops legitimately during recovery and recovery is
 # itself bounded by heartbeat-staleness rather than by readiness.
 
-set -u
+set -euo pipefail
 
 HEARTBEAT_FILE=${HEARTBEAT_FILE:-/var/run/ovn/ovn-central-controller.alive}
 HEARTBEAT_STALE_THRESHOLD_SEC=${HEARTBEAT_STALE_THRESHOLD_SEC:-30}
