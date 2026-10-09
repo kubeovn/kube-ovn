@@ -15,14 +15,18 @@ func validateResourceName(kind, value string) error {
 }
 
 func validatePodReference(value string) error {
+	return validateNamespacedReference("pod", value)
+}
+
+func validateNamespacedReference(kind, value string) error {
 	parts := strings.Split(value, "/")
 	if len(parts) > 2 {
-		return fmt.Errorf("pod must be NAME or NAMESPACE/NAME, got %q", value)
+		return fmt.Errorf("%s must be NAME or NAMESPACE/NAME, got %q", kind, value)
 	}
 	if len(parts) == 2 {
 		if problems := validation.IsDNS1123Label(parts[0]); len(problems) != 0 {
-			return fmt.Errorf("invalid pod namespace %q: %s", parts[0], strings.Join(problems, "; "))
+			return fmt.Errorf("invalid %s namespace %q: %s", kind, parts[0], strings.Join(problems, "; "))
 		}
 	}
-	return validateResourceName("pod", parts[len(parts)-1])
+	return validateResourceName(kind, parts[len(parts)-1])
 }

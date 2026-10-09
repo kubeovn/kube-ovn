@@ -33,20 +33,35 @@ type podInterface struct {
 }
 
 func (a *Application) addNetworkCommands() {
-	var pod string
+	options := captureOptions{}
 	capture := &cobra.Command{
-		Use: "capture --pod [NAMESPACE/]POD [flags] -- [TCPDUMP_ARGS...]", DisableFlagsInUseLine: true, Short: "Capture packets in a pod network namespace",
+		Use: "capture (--pod POD | --vm VM | --vmi VMI) [flags] -- [TCPDUMP_ARGS...]", DisableFlagsInUseLine: true, Short: "Capture packets in a Pod or KubeVirt network namespace",
 		Args: func(cmd *cobra.Command, args []string) error {
-			if err := validatePodReference(pod); err != nil {
+			kind, reference, err := options.reference()
+			if err != nil {
+				return err
+			}
+			if err := validateNamespacedReference(kind, reference); err != nil {
 				return err
 			}
 			return remoteArguments(cmd, args)
 		},
 		RunE: a.run(func(ctx context.Context, client *Client, args []string) error {
-			return a.tcpdump(ctx, client, append([]string{pod}, args...))
+			target, err := client.captureTarget(ctx, options)
+			if err != nil {
+				return err
+			}
+			if target.vmi != nil {
+				if _, err := fmt.Fprintf(a.streams.ErrOut, "Capturing VMI %s/%s through Pod %s on node %s\n", target.vmi.GetNamespace(), target.vmi.GetName(), target.pod.Name, target.pod.Spec.NodeName); err != nil {
+					return err
+				}
+			}
+			return a.tcpdump(ctx, client, target, args)
 		}),
 	}
-	capture.Flags().StringVar(&pod, "pod", "", "Pod to capture, optionally qualified by namespace")
+	capture.Flags().StringVar(&options.pod, "pod", "", "Pod to capture, optionally qualified by namespace")
+	capture.Flags().StringVar(&options.vm, "vm", "", "KubeVirt VM to capture, optionally qualified by namespace")
+	capture.Flags().StringVar(&options.vmi, "vmi", "", "KubeVirt VMI to capture, optionally qualified by namespace")
 	a.root.AddCommand(capture)
 	a.addNetworkInspectCommand()
 	a.addTraceCommand()
@@ -163,6 +178,10 @@ func (c *Client) networkSource(ctx context.Context, reference string) (*networkS
 	if pod.Spec.HostNetwork {
 		return c.nodeSource(ctx, pod.Spec.NodeName)
 	}
+	return podNetworkSource(pod), nil
+}
+
+func podNetworkSource(pod *corev1.Pod) *networkSource {
 	name := pod.Name
 	for _, owner := range pod.OwnerReferences {
 		if owner.Kind == "VirtualMachineInstance" {
@@ -174,7 +193,7 @@ func (c *Client) networkSource(ctx context.Context, reference string) (*networkS
 		node: pod.Spec.NodeName, lsp: name + "." + pod.Namespace,
 		annotations: pod.Annotations, pod: pod,
 		addresses: strings.Split(pod.Annotations[annotationPrefix+"ip_address"], ","),
-	}, nil
+	}
 }
 
 func (c *Client) nodeSource(ctx context.Context, name string) (*networkSource, error) {
@@ -298,23 +317,20 @@ func namespaceCommand(netns string, argv ...string) []string {
 	return append([]string{"nsenter", "--net=" + netns, "--"}, argv...)
 }
 
-func (a *Application) tcpdump(ctx context.Context, client *Client, args []string) error {
-	pod, err := client.pod(ctx, args[0])
-	if err != nil {
-		return err
-	}
+func (a *Application) tcpdump(ctx context.Context, client *Client, target captureTarget, args []string) error {
+	pod := target.pod
 	ovs, err := client.nodeTarget(ctx, pod.Spec.NodeName, "ovs")
 	if err != nil {
 		return err
 	}
-	argv := append([]string{"tcpdump", "-nn"}, args[1:]...)
+	argv := append([]string{"tcpdump", "-nn"}, args...)
 	if pod.Spec.HostNetwork {
+		if err := client.checkCaptureTarget(ctx, target); err != nil {
+			return err
+		}
 		return client.Executor.Exec(ctx, ovs, argv, a.outputStreams())
 	}
-	source, err := client.networkSource(ctx, args[0])
-	if err != nil {
-		return err
-	}
+	source := podNetworkSource(pod)
 	nic, err := client.podInterface(ctx, ovs, source.lsp)
 	if err != nil {
 		return err
@@ -330,8 +346,8 @@ func (a *Application) tcpdump(ctx context.Context, client *Client, args []string
 	if pod.Annotations[annotationPrefix+"pod_nic_type"] == "internal-port" {
 		name = nic.name
 	}
-	argv = namespaceCommand(nic.netns, append([]string{"tcpdump", "-nn", "-i", name}, args[1:]...)...)
-	if err := client.checkSource(ctx, source); err != nil {
+	argv = namespaceCommand(nic.netns, append([]string{"tcpdump", "-nn", "-i", name}, args...)...)
+	if err := client.checkCaptureTarget(ctx, target); err != nil {
 		return err
 	}
 	return client.Executor.Exec(ctx, cni, argv, a.outputStreams())
