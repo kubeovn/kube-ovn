@@ -680,8 +680,9 @@ install_control_plane() {
   helm install --kube-context="kind-$MGMT_KIND_NAME" \
     kube-ovn "$CHART_DIR" \
     -n kube-system -f "$JOB_DIR/mgmt-values.yaml"
-  if ! kubectl --context="kind-$MGMT_KIND_NAME" wait --for=condition=Ready \
-    pod -n "$HCP_NAMESPACE" -l app=ovn-central --timeout=300s; then
+  # Pod creation is asynchronous; an empty selector makes kubectl wait fail immediately.
+  if ! kubectl --context="kind-$MGMT_KIND_NAME" -n "$HCP_NAMESPACE" rollout status \
+    statefulset/ovn-central --timeout=300s; then
     diagnose_mgmt_cluster
     return 1
   fi
