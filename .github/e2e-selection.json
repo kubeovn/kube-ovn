@@ -42,6 +42,8 @@
     "test/e2e/framework/**",
     "test/e2e/single-replica/**",
     "cmd/cni/**",
+    "cmd/kubectl-ko/**",
+    "pkg/ko/**",
     "cmd/controller/**",
     "cmd/daemon/**",
     "cmd/cmdmain.go",

@@ -9953,6 +9953,109 @@ kubectl wait pod --for=condition=Ready -l app=kube-ovn-pinger -n kube-system --t
 echo "-------------------------------"
 echo ""
 
+# Node operations use an independent agent, including install-time diagnostics.
+cat <<EOF > kubectl-ko-node-agent.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kubectl-ko-node-agent
+  namespace: kube-system
+  labels:
+    app: kubectl-ko-node-agent
+    component: diagnostics
+spec:
+  selector:
+    matchLabels:
+      app: kubectl-ko-node-agent
+  template:
+    metadata:
+      labels:
+        app: kubectl-ko-node-agent
+        component: diagnostics
+    spec:
+      hostNetwork: true
+      hostPID: true
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        kubernetes.io/os: linux
+      automountServiceAccountToken: false
+      containers:
+        - name: agent
+          image: $REGISTRY/kube-ovn:$VERSION
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/kubectl-ko-node-agent"]
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: host-run-ovn
+              mountPath: /var/run/ovn
+            - name: host-run-ovs
+              mountPath: /var/run/openvswitch
+              mountPropagation: HostToContainer
+            - name: host-netns
+              mountPath: /var/run/netns
+              mountPropagation: HostToContainer
+            - name: host-etc-ovn
+              mountPath: /etc/ovn
+            - name: host-logs-ovn
+              mountPath: /var/log/ovn
+              readOnly: true
+            - name: host-logs-ovs
+              mountPath: /var/log/openvswitch
+              readOnly: true
+            - name: host-logs-kube-ovn
+              mountPath: /var/log/kube-ovn
+              readOnly: true
+            - name: host-cni-conf
+              mountPath: /etc/cni/net.d
+              readOnly: true
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+      volumes:
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+            type: DirectoryOrCreate
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+            type: DirectoryOrCreate
+        - name: host-netns
+          hostPath:
+            path: /var/run/netns
+            type: DirectoryOrCreate
+        - name: host-etc-ovn
+          hostPath:
+            path: /etc/origin/ovn
+            type: DirectoryOrCreate
+        - name: host-logs-ovn
+          hostPath:
+            path: $LOG_DIR/ovn
+            type: DirectoryOrCreate
+        - name: host-logs-ovs
+          hostPath:
+            path: $LOG_DIR/openvswitch
+            type: DirectoryOrCreate
+        - name: host-logs-kube-ovn
+          hostPath:
+            path: $LOG_DIR/kube-ovn
+            type: DirectoryOrCreate
+        - name: host-cni-conf
+          hostPath:
+            path: $CNI_CONF_DIR
+            type: DirectoryOrCreate
+        - name: host-proc
+          hostPath:
+            path: /proc
+            type: Directory
+EOF
+kubectl apply -f kubectl-ko-node-agent.yaml
+kubectl rollout status daemonset/kubectl-ko-node-agent -n kube-system --timeout 120s
+
 echo "[Step 5/6] Add kubectl plugin PATH"
 
 if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
@@ -9963,11 +10066,13 @@ if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
 fi
 
 echo "[Step 6/6] Run network diagnose"
-kubectl cp kube-system/"$(kubectl -n kube-system get pods -o wide | grep cni | awk '{print $1}' | awk 'NR==1{print}')":/kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
+KO_AGENT_POD=$(kubectl -n kube-system get pods -l app=kubectl-ko-node-agent --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+: "${KO_AGENT_POD:?No running kubectl-ko-node-agent Pod found}"
+kubectl cp -c agent "kube-system/${KO_AGENT_POD}:/kube-ovn/kubectl-ko" /usr/local/bin/kubectl-ko
 chmod +x /usr/local/bin/kubectl-ko
 # show pod status in kube-system namespace before diagnose
 kubectl get pod -n kube-system -o wide
-kubectl ko diagnose all
+kubectl ko diagnose cluster
 
 echo "-------------------------------"
 echo "

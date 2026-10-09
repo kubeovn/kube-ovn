@@ -29,8 +29,9 @@ OVN_CENTRAL_MODE: "cluster"
 
 # installMode controls which slice of the chart this Helm release renders.
 #   full:             all components in one cluster (default, classic install).
-#   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
-#                     their RBAC. Use on the management cluster of a
+#   controlPlaneOnly: ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
+#                     their RBAC, plus the independent diagnostics agent.
+#                     Use on the management cluster of a
 #                     split-cluster deployment that hosts ovn-central.
 #   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +
 #                     pinger and their RBAC. Use on tenant data-plane

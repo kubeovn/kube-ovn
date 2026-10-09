@@ -2165,18 +2165,18 @@ func (c *Controller) createVlanSubinterfaces(vlanInterfaces []string, baseInterf
 	if baseInterface == "" {
 		return errors.New("base interface is empty")
 	}
-	if !util.CheckInterfaceExists(baseInterface) {
-		return fmt.Errorf("base interface %s does not exist", baseInterface)
+	baseLink, err := netlink.LinkByName(baseInterface)
+	if err != nil {
+		return fmt.Errorf("failed to find base interface %s: %w", baseInterface, err)
 	}
 
 	for _, vlanIfName := range vlanInterfaces {
 		klog.V(3).Infof("Processing VLAN interface creation for %s", vlanIfName)
 
-		parts := strings.SplitN(vlanIfName, ".", 2)
-		if len(parts) != 2 {
+		parentIf, _, found := strings.Cut(vlanIfName, ".")
+		if !found {
 			return fmt.Errorf("invalid VLAN interface name format: %s (expected <interface>.<vlanid>)", vlanIfName)
 		}
-		parentIf := parts[0]
 		if parentIf != baseInterface {
 			return fmt.Errorf("vlan interface %s uses parent %s, which does not match default interface %s", vlanIfName, parentIf, baseInterface)
 		}
@@ -2192,24 +2192,26 @@ func (c *Controller) createVlanSubinterfaces(vlanInterfaces []string, baseInterf
 		}
 
 		klog.Infof("Creating VLAN interface %s (ID: %d) on %s", vlanIfName, vlanID, baseInterface)
-		output, err := exec.Command("ip", "link", "add", "link", baseInterface, "name", vlanIfName, "type", "vlan", "id", strconv.Itoa(vlanID)).CombinedOutput()
-		if err != nil {
-			klog.Errorf("Failed to create VLAN interface %s: %v, output: %s", vlanIfName, err, string(output))
+		// iproute2 drops NET_ADMIN for non-root callers without inheritable
+		// capabilities. Use the daemon's effective capability directly instead.
+		link := &netlink.Vlan{Name: vlanIfName, ParentIndex: baseLink.Attrs().Index, VlanId: vlanID}
+		if err := netlink.LinkAdd(link); err != nil {
+			klog.Errorf("Failed to create VLAN interface %s: %v", vlanIfName, err)
 			return fmt.Errorf("failed to create VLAN interface %s: %w", vlanIfName, err)
 		}
 
-		if err := util.SetLinkUp(vlanIfName); err != nil {
+		if err := netlink.LinkSetUp(link); err != nil {
 			klog.Errorf("Failed to set VLAN interface %s up: %v", vlanIfName, err)
-			if _, delErr := exec.Command("ip", "link", "delete", vlanIfName).CombinedOutput(); delErr != nil {
+			if delErr := netlink.LinkDel(link); delErr != nil {
 				klog.Errorf("Failed to clean up VLAN interface %s: %v", vlanIfName, delErr)
 			}
 			return fmt.Errorf("failed to set VLAN interface %s up: %w", vlanIfName, err)
 		}
 
 		alias := fmt.Sprintf("kube-ovn:%s", providerName)
-		if output, err := exec.Command("ip", "link", "set", vlanIfName, "alias", alias).CombinedOutput(); err != nil {
-			klog.Errorf("Failed to set alias for interface %s: %v, output: %s", vlanIfName, err, string(output))
-			if _, delErr := exec.Command("ip", "link", "delete", vlanIfName).CombinedOutput(); delErr != nil {
+		if err := netlink.LinkSetAlias(link, alias); err != nil {
+			klog.Errorf("Failed to set alias for interface %s: %v", vlanIfName, err)
+			if delErr := netlink.LinkDel(link); delErr != nil {
 				klog.Errorf("Failed to clean up VLAN interface %s after alias set failure: %v", vlanIfName, delErr)
 			}
 			return fmt.Errorf("failed to set alias for interface %s: %w", vlanIfName, err)
@@ -2258,9 +2260,13 @@ func (c *Controller) cleanupAutoCreatedVlanInterfaces(providerName, nic string, 
 
 	for _, ifaceName := range gcVlanIfaces {
 		klog.Infof("Cleaning up auto-created VLAN interface %s", ifaceName)
-		output, err := exec.Command("ip", "link", "delete", ifaceName).CombinedOutput()
+		link, err := netlink.LinkByName(ifaceName)
 		if err != nil {
-			klog.Warningf("Failed to delete auto-created VLAN interface %s: %v, output: %s", ifaceName, err, string(output))
+			klog.Warningf("Failed to find auto-created VLAN interface %s: %v", ifaceName, err)
+			continue
+		}
+		if err := netlink.LinkDel(link); err != nil {
+			klog.Warningf("Failed to delete auto-created VLAN interface %s: %v", ifaceName, err)
 		} else {
 			klog.Infof("Successfully deleted auto-created VLAN interface %s", ifaceName)
 		}
