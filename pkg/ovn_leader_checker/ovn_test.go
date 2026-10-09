@@ -1,16 +1,25 @@
 package ovn_leader_checker
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/require"
+	discoveryv1 "k8s.io/api/discovery/v1"
+	"k8s.io/client-go/kubernetes/fake"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const (
@@ -625,4 +634,67 @@ func extractShellFunction(script, name string) (string, error) {
 	}
 	end += start + len("\n}")
 	return script[start:end], nil
+}
+
+func TestCheckNorthdEpAliveResolutionFailure(t *testing.T) {
+	t.Setenv(util.EnvPodIP, "ovn-central-0.ovn-central.kube-system.svc")
+	client := fake.NewClientset(&discoveryv1.EndpointSlice{
+		Name: "northd-ipv6", Namespace: "kube-system",
+		Labels:      map[string]string{discoveryv1.LabelServiceName: OvnNorthdServiceName},
+		AddressType: discoveryv1.AddressTypeIPv6,
+		Endpoints:   []discoveryv1.Endpoint{{Addresses: []string{"::1"}}},
+	})
+	lookupErr := errors.New("DNS temporarily unavailable")
+	resolve := func(ctx context.Context, address string) (string, error) {
+		require.Equal(t, os.Getenv(util.EnvPodIP), address)
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok, "DNS lookup must have a deadline")
+		require.WithinDuration(t, time.Now().Add(northdResolveTimeout), deadline, time.Second)
+		return "", lookupErr
+	}
+
+	alive, err := checkNorthdEpAlive(&Configuration{KubeClient: client}, "kube-system", OvnNorthdServiceName, resolve)
+	require.False(t, alive)
+	require.ErrorIs(t, err, lookupErr)
+	require.Empty(t, client.Actions(), "unknown address family must skip endpoint checks")
+}
+
+func TestCheckNorthdEpAliveResolutionTimeout(t *testing.T) {
+	client := fake.NewClientset()
+	resolve := func(ctx context.Context, _ string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+
+	_, err := checkNorthdEpAlive(&Configuration{KubeClient: client}, "kube-system", OvnNorthdServiceName, resolve)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Empty(t, client.Actions())
+}
+
+func TestCheckNorthdEpAliveResolvedFamily(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		protocol    string
+		addressType discoveryv1.AddressType
+		address     string
+	}{
+		{"IPv4", kubeovnv1.ProtocolIPv4, discoveryv1.AddressTypeIPv4, "127.0.0.1"},
+		{"IPv6", kubeovnv1.ProtocolIPv6, discoveryv1.AddressTypeIPv6, "::1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			listener, err := net.Listen("tcp", util.JoinHostPort(tc.address, util.NBRaftPort))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, listener.Close()) })
+			client := fake.NewClientset(&discoveryv1.EndpointSlice{
+				Name: "northd", Namespace: "kube-system",
+				Labels:      map[string]string{discoveryv1.LabelServiceName: OvnNorthdServiceName},
+				AddressType: tc.addressType,
+				Endpoints:   []discoveryv1.Endpoint{{Addresses: []string{tc.address}}},
+			})
+			resolve := func(context.Context, string) (string, error) { return tc.protocol, nil }
+			alive, err := checkNorthdEpAlive(&Configuration{KubeClient: client}, "kube-system", OvnNorthdServiceName, resolve)
+			require.NoError(t, err)
+			require.True(t, alive, "resolved family must select the healthy northd endpoint")
+		})
+	}
 }

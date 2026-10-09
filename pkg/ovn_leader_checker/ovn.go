@@ -43,6 +43,7 @@ const (
 	MaxFailCount                   = 3
 	maxDuplicateLeaderObservations = 3
 	northdDialTimeout              = 3 * time.Second
+	northdResolveTimeout           = time.Second
 )
 
 var failCount int
@@ -325,11 +326,24 @@ func checkNorthdEpAvailable(ip string) bool {
 	return true
 }
 
-func checkNorthdEpAlive(cfg *Configuration, namespace, service string, expectedAddrType discoveryv1.AddressType) bool {
+func checkNorthdEpAlive(cfg *Configuration, namespace, service string, resolveProtocol func(context.Context, string) (string, error)) (bool, error) {
+	// HCP uses a headless-Service hostname for POD_IP. Resolve it only when
+	// checking HA northd endpoints, and never guess a family on DNS failure.
+	ctx, cancel := context.WithTimeout(context.Background(), northdResolveTimeout)
+	defer cancel()
+	podIP := os.Getenv(util.EnvPodIP)
+	protocol, err := resolveProtocol(ctx, podIP)
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve POD_IP %q: %w", podIP, err)
+	}
+	expectedAddrType := discoveryv1.AddressTypeIPv4
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		expectedAddrType = discoveryv1.AddressTypeIPv6
+	}
 	epsList, err := cfg.KubeClient.DiscoveryV1().EndpointSlices(namespace).List(context.Background(), metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		klog.Errorf("failed to list endpoint slices for service %s/%s: %v", namespace, service, err)
-		return false
+		return false, err
 	}
 
 	for _, eps := range epsList.Items {
@@ -346,14 +360,14 @@ func checkNorthdEpAlive(cfg *Configuration, namespace, service string, expectedA
 			for _, address := range ep.Addresses {
 				klog.V(5).Infof("found address %s in endpoint slice %s/%s for service %s, checking availability", address, eps.Namespace, eps.Name, service)
 				if checkNorthdEpAvailable(address) {
-					return true
+					return true, nil
 				}
 			}
 		}
 	}
 
 	klog.V(5).Infof("no address found in any endpoint slices for service %s/%s with AddressType %s", namespace, service, expectedAddrType)
-	return false
+	return false, nil
 }
 
 func compactOvnDatabase(db string) {
@@ -565,15 +579,6 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 		util.LogFatalAndExit(nil, "preValidChkCfg: invalid cfg")
 	}
 
-	// Determine the expected AddressType based on pod IP protocol
-	podIP := os.Getenv(util.EnvPodIP)
-	var expectedAddrType discoveryv1.AddressType
-	if util.CheckProtocol(podIP) == kubeovnv1.ProtocolIPv6 {
-		expectedAddrType = discoveryv1.AddressTypeIPv6
-	} else {
-		expectedAddrType = discoveryv1.AddressTypeIPv4
-	}
-
 	if !cfg.IsICDBServer && !checkOvnIsAlive() {
 		klog.Errorf("ovn is not alive")
 		return
@@ -617,7 +622,9 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 			return
 		}
 		if sbLeader && checkNorthdSvcExist(cfg, podNamespace, "ovn-northd") {
-			if !checkNorthdEpAlive(cfg, podNamespace, "ovn-northd", expectedAddrType) {
+			if alive, err := checkNorthdEpAlive(cfg, podNamespace, "ovn-northd", util.ResolveProtocol); err != nil {
+				klog.Warningf("skipping northd lock check: %v", err)
+			} else if !alive {
 				klog.Warning("no available northd leader, try to release the lock")
 				stealLock()
 			}
