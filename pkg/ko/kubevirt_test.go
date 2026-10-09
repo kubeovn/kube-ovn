@@ -45,7 +45,9 @@ func TestVMILauncherMigrationSelection(t *testing.T) {
 		{"explicit false", "node-a", "source", map[string]any{"sourcePod": "source", "targetPod": "target", "completed": false}},
 		{"completed", "node-b", "target", map[string]any{"sourcePod": "source", "targetPod": "target", "completed": true}},
 		{"failed", "node-a", "source", map[string]any{"sourcePod": "source", "targetPod": "target", "completed": true, "failed": true}},
-		{"missing Pod names", "node-a", "source", map[string]any{"completed": false}},
+		{"missing Pod names", "node-a", "", map[string]any{"completed": false}},
+		{"missing source Pod", "node-a", "", map[string]any{"targetPod": "target", "completed": false}},
+		{"missing target Pod", "node-b", "", map[string]any{"sourcePod": "source", "completed": true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			vmi := captureVMI()
@@ -59,6 +61,10 @@ func TestVMILauncherMigrationSelection(t *testing.T) {
 			client, err := app.newClient()
 			require.NoError(t, err)
 			pod, err := client.vmiLauncher(t.Context(), vmi)
+			if tc.expected == "" {
+				require.Error(t, err)
+				return
+			}
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, pod.Name)
 		})
@@ -92,6 +98,10 @@ func TestVMILauncherRejectsInvalidCandidates(t *testing.T) {
 		}},
 		{"inactive Pod", func(v *unstructured.Unstructured, _ *corev1.Pod) []*corev1.Pod {
 			v.Object["status"].(map[string]any)["activePods"] = map[string]any{"stale-uid": "node-a"}
+			return nil
+		}},
+		{"empty active Pods", func(v *unstructured.Unstructured, _ *corev1.Pod) []*corev1.Pod {
+			v.Object["status"].(map[string]any)["activePods"] = map[string]any{}
 			return nil
 		}},
 		{"ambiguous", func(_ *unstructured.Unstructured, _ *corev1.Pod) []*corev1.Pod {
