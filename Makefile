@@ -284,8 +284,8 @@ uninstall-chart:
 	helm uninstall kubeovn
 
 .PHONY: kubectl-ko-log
-kubectl-ko-log:
-	bash dist/images/kubectl-ko log all
+kubectl-ko-log: build-kubectl-ko
+	dist/images/kubectl-ko logs --component all --output-dir kubectl-ko-log
 	tar -zcvf kubectl-ko-log.tar.gz kubectl-ko-log/
 
 .PHONY: clean

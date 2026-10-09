@@ -6,6 +6,13 @@ on:
       - 'charts/kube-ovn/**'
       - 'charts/kube-ovn-v2/**'
       - '.github/workflows/helm-testing.yaml'
+      - 'hack/kubectl-ko-chart-test.sh'
+      - 'hack/test-kubectl-ko-chart.py'
+      - 'hack/test-non-root-nft.sh'
+      - 'dist/images/Dockerfile'
+      - 'dist/images/Dockerfile.base'
+      - 'pkg/daemon/ovs_linux.go'
+      - 'pkg/daemon/vlan_interfaces_linux_test.go'
 
 
 permissions: {}
@@ -40,6 +47,7 @@ jobs:
       - name: Run chart-testing (lint)
         run: |
           python3 hack/test-tproxy-container.py
+          python3 hack/test-kubectl-ko-chart.py
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
           # Lint the legacy chart separately; it is intentionally not installed in the shared Kind cluster.
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn/ct.yaml
@@ -56,6 +64,18 @@ jobs:
             --label "org.opencontainers.image.revision=$GITHUB_SHA" \
             -t "kubeovn/kube-ovn:$KUBE_OVN_IMAGE_TAG" \
             -f dist/images/Dockerfile dist/images/
+
+      - name: Verify nft and VLAN operations with the non-root daemon UID
+        run: |
+          bash hack/test-non-root-nft.sh "kubeovn/kube-ovn:$KUBE_OVN_IMAGE_TAG"
+          nonroot_test_dir=$(mktemp -d /tmp/kube-ovn-nonroot.XXXXXX)
+          trap 'rm -rf "$nonroot_test_dir"' EXIT
+          go test -c -o "$nonroot_test_dir/daemon.test" ./pkg/daemon
+          # UID 65534 must be able to traverse the directory and run the binary.
+          chmod 0755 "$nonroot_test_dir" "$nonroot_test_dir/daemon.test"
+          sudo env KUBE_OVN_NONROOT_VLAN_TEST_HELPER=1 \
+            unshare --user --map-user=65534 --map-group=65534 --net --keep-caps \
+            "$nonroot_test_dir/daemon.test" -test.run='^TestNonRootVlanLifecycle$' -test.v
 
       - name: Install kind
         uses: helm/kind-action@v1.15.1
@@ -81,6 +101,16 @@ jobs:
           # Test this checkout's image; published images may require different capabilities.
           ct install --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml \
             --helm-extra-set-args "--set-string global.images.kubeovn.tag=$KUBE_OVN_IMAGE_TAG --set image.pullPolicy=Never"
+
+      - name: Verify independent node agent and CLI against the installed chart
+        run: bash hack/kubectl-ko-chart-test.sh verify
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kubectl-ko-chart-${{ matrix.ip-family }}
+          path: kubectl-ko-chart-results/
+          if-no-files-found: ignore
 
       - name: Check kube ovn pod restarts
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}

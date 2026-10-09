@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
+	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
@@ -178,6 +180,39 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 		ginkgo.By("Checking whether pod ips are changed")
 		framework.ExpectEqual(ips, pod.Status.PodIPs)
+	})
+
+	framework.ConformanceIt("should trace VM logical ports with kubectl ko", func() {
+		f.SkipVersionPriorTo(1, 17, "The structured Go plugin was introduced in v1.17")
+		pod := getVMPod(podClient, vmName)
+		expectVMAnnotations(pod, vmName)
+		ginkgo.By("Creating a peer Pod in the VM subnet")
+		peerName := "trace-peer-" + framework.RandomSuffix()
+		peer := framework.MakePod(namespaceName, peerName, nil, nil, framework.AgnhostImage, nil, []string{"pause"})
+		peer = podClient.CreateSync(peer)
+		ginkgo.DeferCleanup(func() { podClient.DeleteSync(peerName) })
+		port := ovs.PodNameToPortName(peerName, namespaceName, util.OvnProvider)
+		testConfig := e2ekubectl.NewTestKubeconfig(k8sframework.TestContext.CertDir,
+			k8sframework.TestContext.Host, k8sframework.TestContext.KubeConfig,
+			k8sframework.TestContext.KubeContext, k8sframework.TestContext.KubectlPath, "")
+		for _, engine := range []string{"ovn", "all"} {
+			ginkgo.By("Tracing from the VM through " + engine)
+			command := testConfig.KubectlCmd()
+			// kubectl requires connection flags to follow the plugin name.
+			args := append([]string{"ko"}, command.Args[1:]...)
+			args = append(args, "--timeout", "1m", "trace", "--pod", namespaceName+"/"+pod.Name,
+				"--dst-ip", peer.Status.PodIP, "--engine", engine)
+			ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
+			output, err := exec.CommandContext(ctx, command.Path, args...).CombinedOutput()
+			cancel()
+			framework.ExpectNoError(err, "VM %s trace failed: %s", engine, output)
+			framework.Logf("VM %s trace output:\n%s", engine, output)
+			framework.ExpectContainSubstring(string(output), fmt.Sprintf("output to %q", port))
+			if engine == "all" {
+				framework.ExpectContainSubstring(string(output), "Start OVS Tracing")
+				framework.ExpectContainSubstring(string(output), "Datapath actions:")
+			}
+		}
 	})
 
 	framework.ConformanceIt("should be able to keep pod ips after the vm is restarted", func() {

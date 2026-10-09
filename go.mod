@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/brianvoe/gofakeit/v7 v7.17.1
@@ -12,7 +12,7 @@ require (
 	github.com/containernetworking/cni v1.3.1
 	github.com/containernetworking/plugins v1.9.1
 	github.com/digitalocean/go-openvswitch v0.0.0-20251118231545-85aec29b8ee6
-	github.com/emicklei/go-restful/v3 v3.13.0
+	github.com/emicklei/go-restful/v3 v3.14.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-logr/logr v1.4.4
 	github.com/go-logr/stdr v1.2.2
@@ -30,7 +30,7 @@ require (
 	github.com/mdlayher/netx v0.0.0-20230430222610-7e21880baee8
 	github.com/mdlayher/packet v1.2.0
 	github.com/moby/moby/api v1.56.1
-	github.com/moby/moby/client v0.6.1
+	github.com/moby/moby/client v0.6.2
 	github.com/moby/sys/mountinfo v0.7.2
 	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.44.0
@@ -38,11 +38,12 @@ require (
 	github.com/ovn-kubernetes/libovsdb v0.8.2-0.20260710115425-adb4e0375fb5
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.9.1
-	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_golang v1.25.0
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
 	github.com/safchain/ethtool v0.7.0
 	github.com/scylladb/go-set v1.0.2
 	github.com/sirupsen/logrus v1.10.2
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
 	github.com/ti-mo/conntrack v0.6.0
@@ -53,22 +54,25 @@ require (
 	go.uber.org/zap v1.28.0
 	go.universe.tf/metallb v0.16.1
 	golang.org/x/mod v0.41.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/time v0.16.0
 	golang.org/x/tools v0.51.0
 	google.golang.org/grpc v1.84.0
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.3.1
 	k8s.io/api v0.37.1
 	k8s.io/apiextensions-apiserver v0.37.1
 	k8s.io/apimachinery v0.37.1
 	k8s.io/apiserver v0.37.1
+	k8s.io/cli-runtime v0.37.1
 	k8s.io/client-go v0.37.1
 	k8s.io/component-base v0.37.1
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.37.1
 	k8s.io/kubernetes v1.37.1
 	k8s.io/pod-security-admission v0.37.1
+	k8s.io/streaming v0.37.1
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.78
 	kubevirt.io/api v1.9.0
@@ -83,7 +87,7 @@ require (
 require (
 	cel.dev/expr v0.25.3 // indirect
 	cyphar.com/go-pathrs v0.2.5 // indirect
-	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
+	github.com/Azure/go-ansiterm v0.0.0-20261006220739-8c912ac31dd4 // indirect
 	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
@@ -115,7 +119,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/docker/go-connections v0.8.1 // indirect
+	github.com/docker/go-connections v0.8.2 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/eapache/channels v1.1.0 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
@@ -211,7 +215,7 @@ require (
 	github.com/projectcalico/libcalico-go v0.0.0-20190305235709-3d935c3b8b86 // indirect
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.93.1 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
-	github.com/prometheus/common v0.71.0 // indirect
+	github.com/prometheus/common v0.72.0 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -220,7 +224,6 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
@@ -254,11 +257,9 @@ require (
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260831171406-18b4a7587f8a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a // indirect
-	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	k8s.io/cli-runtime v0.37.1 // indirect
 	k8s.io/cloud-provider v0.37.0 // indirect
 	k8s.io/cluster-bootstrap v0.37.0 // indirect
 	k8s.io/code-generator v0.37.1 // indirect
@@ -275,7 +276,6 @@ require (
 	k8s.io/kube-scheduler v0.37.0 // indirect
 	k8s.io/kubelet v0.37.1 // indirect
 	k8s.io/mount-utils v0.37.0 // indirect
-	k8s.io/streaming v0.37.1 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.78 // indirect
 	kubevirt.io/containerized-data-importer-api v1.66.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
