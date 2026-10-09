@@ -19,6 +19,10 @@ VERSION = $(shell echo $${VERSION:-$(RELEASE_TAG)})
 
 GINKGO = go tool github.com/onsi/ginkgo/v2/ginkgo
 
+.PHONY: image-list
+image-list:
+	@python3 hack/image-list.py $(IMAGE_LIST_ARGS)
+
 CONTROL_PLANE_TAINTS = node-role.kubernetes.io/master node-role.kubernetes.io/control-plane
 
 FRR_VERSION = 9.1.3
