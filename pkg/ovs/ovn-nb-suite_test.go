@@ -531,6 +531,10 @@ func (suite *OvnClientTestSuite) Test_CreateLoadBalancer() {
 	suite.testCreateLoadBalancer()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateLoadBalancerDuplicateGuard() {
+	suite.testCreateLoadBalancerDuplicateGuard()
+}
+
 func (suite *OvnClientTestSuite) Test_UpdateLoadBalancer() {
 	suite.testUpdateLoadBalancer()
 }
