@@ -197,6 +197,10 @@ type SubnetStatus struct {
 	ActivateGateway    string          `json:"activateGateway"`
 	DHCPv4OptionsUUID  string          `json:"dhcpV4OptionsUUID"`
 	DHCPv6OptionsUUID  string          `json:"dhcpV6OptionsUUID"`
+	// GatewayMAC is the mac address of the subnet's logical router port, recorded so
+	// the validating webhook can independently verify a switch_lb_rule vip mac repair
+	// (see pkg/webhook/vip.go) without needing access to the controller's in-memory IPAM.
+	GatewayMAC string `json:"gatewayMAC,omitempty"`
 	// Underlay to overlay interconnection IP.
 	U2OInterconnectionIP  string `json:"u2oInterconnectionIP"`
 	U2OInterconnectionMAC string `json:"u2oInterconnectionMAC"`

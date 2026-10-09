@@ -91,6 +91,7 @@ func alwaysReady() bool { return true }
 
 // FakeControllerOptions holds optional parameters for creating a fake controller
 type FakeControllerOptions struct {
+	Vips               []*kubeovnv1.Vip
 	Subnets            []*kubeovnv1.Subnet
 	Vpcs               []*kubeovnv1.Vpc
 	VpcNatGateways     []*kubeovnv1.VpcNatGateway
@@ -198,6 +199,12 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}
 	}
 
+	for _, vip := range opts.Vips {
+		if _, err := kubeovnClient.KubeovnV1().Vips().Create(t.Context(), vip, metav1.CreateOptions{}); err != nil {
+			return nil, err
+		}
+	}
+
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
 		informers.WithTransform(util.TrimManagedFields),
@@ -235,6 +242,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
+	vipInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -256,37 +264,41 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 
 	// Create controller with all informers
 	ctrl := &Controller{
-		servicesLister:          serviceInformer.Lister(),
-		endpointSlicesLister:    endpointSliceInformer.Lister(),
-		namespacesLister:        namespaceInformer.Lister(),
-		nodesLister:             nodeInformer.Lister(),
-		podsLister:              podInformer.Lister(),
-		configMapsLister:        configMapInformer.Lister(),
-		vpcsLister:              vpcInformer.Lister(),
-		vpcSynced:               alwaysReady,
-		subnetsLister:           subnetInformer.Lister(),
-		subnetSynced:            alwaysReady,
-		ippoolLister:            ippoolInformer.Lister(),
-		ippoolSynced:            alwaysReady,
-		ipsLister:               ipInformer.Lister(),
-		ipSynced:                alwaysReady,
-		vlansLister:             vlanInformer.Lister(),
-		providerNetworksLister:  providerNetworkInformer.Lister(),
-		netAttachLister:         nadInformer.Lister(),
-		netAttachSynced:         alwaysReady,
-		vpcNatGatewayLister:     vpcNatGwInformer.Lister(),
-		OVNNbClient:             mockOvnClient,
-		OVNSbClient:             mockOvnSbClient,
-		ipam:                    ovnipam.NewIPAM(),
-		recorder:                record.NewFakeRecorder(100),
-		podKeyMutex:             keymutex.NewHashed(0),
-		subnetKeyMutex:          keymutex.NewHashed(0),
-		nsKeyMutex:              keymutex.NewHashed(0),
-		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
-		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
-		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
-		configMapsSynced:        alwaysReady,
-		vpcNatGwKeyMutex:        keymutex.NewHashed(0),
+		servicesLister:            serviceInformer.Lister(),
+		endpointSlicesLister:      endpointSliceInformer.Lister(),
+		namespacesLister:          namespaceInformer.Lister(),
+		nodesLister:               nodeInformer.Lister(),
+		podsLister:                podInformer.Lister(),
+		configMapsLister:          configMapInformer.Lister(),
+		vpcsLister:                vpcInformer.Lister(),
+		vpcSynced:                 alwaysReady,
+		subnetsLister:             subnetInformer.Lister(),
+		subnetSynced:              alwaysReady,
+		virtualIpsLister:          vipInformer.Lister(),
+		virtualIpsSynced:          alwaysReady,
+		ippoolLister:              ippoolInformer.Lister(),
+		ippoolSynced:              alwaysReady,
+		ipsLister:                 ipInformer.Lister(),
+		ipSynced:                  alwaysReady,
+		vlansLister:               vlanInformer.Lister(),
+		providerNetworksLister:    providerNetworkInformer.Lister(),
+		netAttachLister:           nadInformer.Lister(),
+		netAttachSynced:           alwaysReady,
+		vpcNatGatewayLister:       vpcNatGwInformer.Lister(),
+		OVNNbClient:               mockOvnClient,
+		OVNSbClient:               mockOvnSbClient,
+		ipam:                      ovnipam.NewIPAM(),
+		recorder:                  record.NewFakeRecorder(100),
+		vpcKeyMutex:               keymutex.NewHashed(0),
+		podKeyMutex:               keymutex.NewHashed(0),
+		subnetKeyMutex:            keymutex.NewHashed(0),
+		nsKeyMutex:                keymutex.NewHashed(0),
+		addOrUpdateSubnetQueue:    newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
+		syncVirtualPortsQueue:     newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
+		updateVirtualParentsQueue: newTypedRateLimitingQueue[string]("UpdateVirtualParents", nil),
+		updateSubnetStatusQueue:   newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		configMapsSynced:          alwaysReady,
+		vpcNatGwKeyMutex:          keymutex.NewHashed(0),
 	}
 
 	// the kubevirt informer is created without a client: tests populate its indexer directly
