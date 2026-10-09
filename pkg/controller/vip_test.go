@@ -2,6 +2,7 @@ package controller
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -11,6 +12,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -283,4 +285,88 @@ func TestHandleUpdateVirtualParentsSkipsAddressesWithoutMAC(t *testing.T) {
 	mockOvnClient.EXPECT().PortGroupAddPorts("public.subnet.node.1", primaryPort).Return(nil)
 
 	require.NoError(t, ctrl.handleUpdateVirtualParents(vipName))
+}
+
+func newSwitchLBVipTestController(t *testing.T, subnet *kubeovnv1.Subnet, vips ...*kubeovnv1.Vip) *fakeController {
+	t.Helper()
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	vipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	for _, vip := range vips {
+		require.NoError(t, vipIndexer.Add(vip))
+	}
+	fakeController.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(vipIndexer)
+	return fakeController
+}
+
+func switchLBVip(name, subnet, v4ip, v6ip string) *kubeovnv1.Vip {
+	return &kubeovnv1.Vip{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec:       kubeovnv1.VipSpec{Namespace: "ns", Subnet: subnet, Type: util.SwitchLBRuleVip},
+		Status:     kubeovnv1.VipStatus{V4ip: v4ip, V6ip: v6ip, Mac: "00:00:00:00:00:01"},
+	}
+}
+
+func TestSyncSwitchLBVipArpProxyCollectsSwitchLBVipsOfSubnet(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Spec:       kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	deleting := switchLBVip("deleting", subnetName, "10.0.1.9", "")
+	deleting.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+	otherType := switchLBVip("other-type", subnetName, "10.0.1.8", "")
+	otherType.Spec.Type = ""
+
+	fakeController := newSwitchLBVipTestController(t, subnet,
+		switchLBVip("b", subnetName, "10.0.1.3", "fd00::3"),
+		switchLBVip("a", subnetName, "10.0.1.2", ""),
+		switchLBVip("other-subnet", "bar-subnet", "10.0.2.2", ""),
+		deleting,
+		otherType,
+	)
+	fakeController.mockOvnClient.EXPECT().
+		SetLogicalSwitchPortArpProxy("foo-subnet-foo-vpc", []string{"10.0.1.2", "10.0.1.3", "fd00::3"}).
+		Return(nil)
+
+	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+}
+
+func TestSyncSwitchLBVipArpProxyClearsOptionWithoutVips(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Spec:       kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	fakeController := newSwitchLBVipTestController(t, subnet)
+	mockOvnClient := fakeController.mockOvnClient
+
+	t.Run("router port exists", func(t *testing.T) {
+		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-vpc").Return(true, nil)
+		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-vpc", []string(nil)).Return(nil)
+		require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+	})
+
+	t.Run("router port does not exist", func(t *testing.T) {
+		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-vpc").Return(false, nil)
+		require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+	})
+}
+
+func TestReconcileSwitchLBVipPortSetsProxyBeforeDeletingStalePort(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
+		Spec:       kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	vip := switchLBVip("a", subnetName, "10.0.1.2", "")
+	fakeController := newSwitchLBVipTestController(t, subnet, vip)
+	mockOvnClient := fakeController.mockOvnClient
+
+	gomock.InOrder(
+		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-vpc", []string{"10.0.1.2"}).Return(nil),
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)).Return(nil),
+	)
+
+	require.NoError(t, fakeController.fakeController.reconcileSwitchLBVipPort(vip))
 }

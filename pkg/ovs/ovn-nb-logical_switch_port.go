@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
@@ -517,7 +516,10 @@ func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents
 	return nil
 }
 
-func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
+// SetLogicalSwitchPortArpProxy sets the arp_proxy option of a router type logical switch port.
+// OVN answers ARP/ND requests for the given addresses with the MAC of the peer logical router port.
+// An empty address list removes the option.
+func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, proxyIPs []string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, false)
 	if err != nil {
 		klog.Error(err)
@@ -528,13 +530,22 @@ func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProx
 		klog.Error(err)
 		return err
 	}
-	if lsp.Options == nil {
-		lsp.Options = make(map[string]string)
+
+	arpProxy := strings.Join(proxyIPs, " ")
+	if lsp.Options["arp_proxy"] == arpProxy {
+		return nil
 	}
-	lsp.Options["arp_proxy"] = strconv.FormatBool(enableArpProxy)
-	if !enableArpProxy {
-		delete(lsp.Options, "arp_proxy")
+
+	options := maps.Clone(lsp.Options)
+	if options == nil {
+		options = make(map[string]string)
 	}
+	if arpProxy == "" {
+		delete(options, "arp_proxy")
+	} else {
+		options["arp_proxy"] = arpProxy
+	}
+	lsp.Options = options
 
 	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
 	if err != nil {
