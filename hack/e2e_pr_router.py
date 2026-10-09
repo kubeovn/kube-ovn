@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -26,7 +27,12 @@ class GitHub:
         if payload is not None:
             args.extend(["--input", "-"])
             data = json.dumps(payload).encode()
-        result = subprocess.run(args, input=data, capture_output=True, check=True)
+        try:
+            result = subprocess.run(args, input=data, capture_output=True, check=True)
+        except subprocess.CalledProcessError as error:
+            if error.stderr:
+                print(error.stderr.decode(errors="replace").rstrip(), file=sys.stderr)
+            raise
         if raw:
             return result.stdout
         return json.loads(result.stdout) if result.stdout.strip() else None
