@@ -1,13 +1,6 @@
 name: Dispatch x86 E2E from PR comments
 
 on:
-  issue_comment:
-    types: [created]
-  pull_request_target:
-    types: [opened, reopened, synchronize, labeled, unlabeled, closed]
-  push:
-    branches:
-      - 'release-*'
   workflow_dispatch:
     inputs:
       prNumber:
@@ -22,36 +15,81 @@ on:
         description: Exact durable approval generation
         required: true
         type: number
+      sourceEventName:
+        description: Original GitHub event forwarded by the PR router
+        required: false
+        default: ''
+        type: string
+      sourceEvent:
+        description: Canonical minimal original event JSON
+        required: false
+        default: '{}'
+        type: string
+      sourceHeadSHA:
+        description: Exact candidate workflow HEAD for the original event
+        required: false
+        default: ''
+        type: string
+
+env:
+  CANDIDATE_HEAD: ${{ inputs.sourceHeadSHA || inputs.headSHA || github.sha }}
+  SOURCE_EVENT_NAME: ${{ inputs.sourceEventName || '' }}
+  SOURCE_EVENT: ${{ inputs.sourceEvent || '{}' }}
+  PYTHONDONTWRITEBYTECODE: '1'
 
 permissions:
-  contents: read
+  contents: write
   actions: write
   checks: read
   pull-requests: write
   issues: write
 
 jobs:
-  record-controlled-label:
-    name: Record trusted x86 E2E controlled labels
-    if: >-
-      github.event_name == 'pull_request_target' &&
-      (github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
-      startsWith(github.event.label.name, 'e2e:')
+  validate-source:
+    name: Validate candidate dispatcher source event
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
     runs-on: ubuntu-24.04
     env:
-      ACTION: ${{ github.event.action }}
       GH_TOKEN: ${{ github.token }}
-      LABEL_NAME: ${{ github.event.label.name }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      PYTHONPATH: hack
-      PYTHONDONTWRITEBYTECODE: "1"
-      SENDER: ${{ github.actor }}
+      PR_NUMBER: ${{ inputs.prNumber || 0 }}
     steps:
-      - name: Check out trusted control logic
+      - name: Check out the exact candidate dispatcher
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ inputs.sourceHeadSHA || inputs.headSHA || github.sha }}
           persist-credentials: false
+      - name: Authenticate the forwarded event and current HEAD
+        run: python3 hack/e2e_pr_router.py validate-source --output-file source-event.json
+
+  record-controlled-label:
+    name: Record trusted x86 E2E controlled labels
+    needs: validate-source
+    if: >-
+      (inputs.sourceEventName || github.event_name) == 'pull_request_target' &&
+      ((fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'labeled' || (fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'unlabeled') &&
+      startsWith((fromJSON(inputs.sourceEvent || '{}').label.name || github.event.label.name), 'e2e:')
+    runs-on: ubuntu-24.04
+    env:
+      ACTION: ${{ (fromJSON(inputs.sourceEvent || '{}').action || github.event.action) }}
+      GH_TOKEN: ${{ github.token }}
+      LABEL_NAME: ${{ (fromJSON(inputs.sourceEvent || '{}').label.name || github.event.label.name) }}
+      PR_NUMBER: ${{ (fromJSON(inputs.sourceEvent || '{}').pull_request.number || github.event.pull_request.number) }}
+      PYTHONPATH: hack
+      PYTHONDONTWRITEBYTECODE: "1"
+      SENDER: ${{ fromJSON(inputs.sourceEvent || '{}').sender.login || github.actor }}
+    steps:
+      - name: Check out the exact candidate control logic
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.sourceHeadSHA || inputs.headSHA || github.sha }}
+          persist-credentials: false
+
+      - name: Materialize the original GitHub event
+        run: python3 hack/e2e_pr_router.py materialize-source --output-file source-event.json
 
       - name: Validate and record the controlled label transition
         run: |
@@ -61,7 +99,7 @@ jobs:
           if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
             exit 0
           fi
-          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$CANDIDATE_HEAD" \
             --jq '.content' | base64 --decode > label-catalog.json
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
@@ -138,11 +176,12 @@ jobs:
 
   cancel-stale:
     name: Cancel obsolete x86 E2E executors
-    if: github.event_name == 'pull_request_target'
+    needs: validate-source
+    if: (inputs.sourceEventName || github.event_name) == 'pull_request_target'
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ (fromJSON(inputs.sourceEvent || '{}').pull_request.number || github.event.pull_request.number) }}
     steps:
       - name: Cancel executors for obsolete pull request HEADs
         run: |
@@ -192,22 +231,23 @@ jobs:
   automatic:
     name: Start trusted automatic x86 E2E coverage
     needs:
+      - validate-source
       - record-controlled-label
       - cancel-stale
     if: >-
-      always() &&
-      github.event_name == 'pull_request_target' &&
+      always() && needs.validate-source.result == 'success' &&
+      (inputs.sourceEventName || github.event_name) == 'pull_request_target' &&
       (
-        github.event.action == 'opened' ||
-        github.event.action == 'reopened' ||
-        github.event.action == 'synchronize' ||
+        (fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'opened' ||
+        (fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'reopened' ||
+        (fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'synchronize' ||
         (
-          (github.event.action == 'labeled' || github.event.action == 'unlabeled') &&
-          startsWith(github.event.label.name, 'e2e:')
+          ((fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'labeled' || (fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'unlabeled') &&
+          startsWith((fromJSON(inputs.sourceEvent || '{}').label.name || github.event.label.name), 'e2e:')
         )
       )
     concurrency:
-      group: x86-e2e-automatic-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      group: x86-e2e-automatic-${{ (fromJSON(inputs.sourceEvent || '{}').pull_request.number || github.event.pull_request.number) }}-${{ (fromJSON(inputs.sourceEvent || '{}').pull_request.head.sha || github.event.pull_request.head.sha) }}
       cancel-in-progress: true
     permissions:
       actions: write
@@ -219,15 +259,18 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ (fromJSON(inputs.sourceEvent || '{}').pull_request.number || github.event.pull_request.number) }}
       PYTHONPATH: hack
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Check out trusted automatic dispatcher logic
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ inputs.sourceHeadSHA || inputs.headSHA || github.sha }}
           persist-credentials: false
+
+      - name: Materialize the original GitHub event
+        run: python3 hack/e2e_pr_router.py materialize-source --output-file source-event.json
 
       - name: Dispatch automatic smoke or fail-closed full coverage
         id: coverage
@@ -240,6 +283,7 @@ jobs:
             exit 0
           fi
           headSHA=$(jq -r '.head.sha' automatic-pull-request.json)
+          [ "$headSHA" = "$CANDIDATE_HEAD" ] || { echo 'Candidate HEAD changed before automatic dispatch.'; exit 1; }
           baseRef=$(jq -r '.base.ref' automatic-pull-request.json)
           if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
             exit 0
@@ -248,7 +292,7 @@ jobs:
           jq --arg baseSHA "$baseSHA" '.base.sha = $baseSHA' automatic-pull-request.json \
             > live-automatic-pull-request.json
           mv live-automatic-pull-request.json automatic-pull-request.json
-          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$CANDIDATE_HEAD" \
             --jq '.content' | base64 --decode > automatic-catalog.json
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
@@ -278,20 +322,21 @@ jobs:
             controlledLabels=$(jq -c '.approvedRequest.controlledLabels // []' automatic-context.json)
             full=$(jq -r '.approvedRequest.full' automatic-context.json)
             catalogRevision=$(jq -r '.catalogRevision' automatic-context.json)
-            defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
-            gh api --method POST \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
-              -f ref="$defaultBranch" \
-              -f "inputs[prNumber]=$PR_NUMBER" \
-              -f "inputs[headSHA]=$headSHA" \
-              -f "inputs[baseSHA]=$baseSHA" \
-              -f "inputs[approvalGeneration]=$approvalGeneration" \
-              -f "inputs[catalogRevision]=$catalogRevision" \
-              -f "inputs[requestedGroups]=$requestedGroups" \
-              -f "inputs[controlledLabels]=$controlledLabels" \
-              -f "inputs[full]=$full" \
-              -f 'inputs[recordIntent]=false' \
-              -f 'inputs[baseRefresh]=false'
+            jq -n \
+              --arg prNumber "$PR_NUMBER" \
+              --arg headSHA "$headSHA" \
+              --arg baseSHA "$baseSHA" \
+              --arg approvalGeneration "$approvalGeneration" \
+              --arg catalogRevision "$catalogRevision" \
+              --arg requestedGroups "$requestedGroups" \
+              --arg controlledLabels "$controlledLabels" \
+              --arg full "$full" \
+              --arg recordIntent "false" \
+              --arg baseRefresh "false" \
+              '$ARGS.named' > candidate-gate-inputs.json
+            python3 hack/e2e_pr_router.py dispatch \
+              --pr-number "$PR_NUMBER" --head-sha "$headSHA" \
+              --workflow x86-e2e-gate.yaml --inputs-file candidate-gate-inputs.json
             echo 'durableApproval=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -337,7 +382,7 @@ jobs:
           refPath="refs/heads/$executorRef"
           gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$executorRef" \
             > automatic-executor-ref.json || true
-          refAction=$(python3 - "$baseSHA" <<'PY'
+          refAction=$(python3 - "$headSHA" <<'PY'
           import sys
           from pathlib import Path
           import e2e_control as e2eControl
@@ -355,7 +400,7 @@ jobs:
           createdRef=false
           if [ "$refAction" = create ]; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f ref="$refPath" -f sha="$baseSHA"
+              -f ref="$refPath" -f sha="$headSHA"
             createdRef=true
           fi
           if ! gh api --method POST \
@@ -378,12 +423,12 @@ jobs:
               "repos/$GITHUB_REPOSITORY/git/refs/heads/$executorRef"
             exit 1
           fi
-          expectedTitle="x86-e2e pr=$PR_NUMBER head=$headSHA approval=$approvalGeneration generation=$DISPATCH_GENERATION mode=automatic groups=- labels=$controlledLabelNames full=0"
+          expectedTitle="x86-e2e pr=$PR_NUMBER head=$headSHA approval=$approvalGeneration generation=$DISPATCH_GENERATION mode=automatic groups=- labels=$controlledLabelNames full=0 base=$baseSHA"
           runVisible=false
           for _ in $(seq 1 24); do
             runVisible=$(gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&branch=$executorRef&per_page=100" \
-              | jq -r --arg branch "$executorRef" --arg sha "$baseSHA" --arg title "$expectedTitle" \
+              | jq -r --arg branch "$executorRef" --arg sha "$headSHA" --arg title "$expectedTitle" \
                 'any(.[].workflow_runs[]; .path == ".github/workflows/build-x86-image.yaml" and
                   .actor.login == "github-actions[bot]" and .head_branch == $branch and
                   .head_sha == $sha and .display_title == $title)')
@@ -398,20 +443,27 @@ jobs:
 
   invalidate-base:
     name: Invalidate x86 E2E gates after a base update
-    if: github.event_name == 'push'
+    needs: validate-source
+    if: (inputs.sourceEventName || github.event_name) == 'push'
     outputs:
       approvedPullRequests: ${{ steps.invalidate.outputs.approvedPullRequests }}
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
+      BASE_REF: ${{ fromJSON(inputs.sourceEvent || '{}').ref }}
+      BASE_PUSH_SHA: ${{ fromJSON(inputs.sourceEvent || '{}').after }}
+      PR_NUMBER: ${{ inputs.prNumber }}
       PYTHONPATH: hack
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - name: Check out the updated trusted base
+      - name: Check out the exact candidate base refresh logic
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.sourceHeadSHA || inputs.headSHA || github.sha }}
           persist-credentials: false
+
+      - name: Materialize the original GitHub event
+        run: python3 hack/e2e_pr_router.py materialize-source --output-file source-event.json
 
       - name: Block fixed gates bound to the previous base revision
         id: invalidate
@@ -419,9 +471,9 @@ jobs:
           set -euo pipefail
           : > approved-pulls.txt
           liveBaseSHA=$(gh api \
-            "repos/$GITHUB_REPOSITORY/git/ref/heads/$GITHUB_REF_NAME" \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/${BASE_REF#refs/heads/}" \
             --jq '.object.sha')
-          if [ "$liveBaseSHA" != "$GITHUB_SHA" ]; then
+          if [ "$liveBaseSHA" != "$BASE_PUSH_SHA" ]; then
             echo 'approvedPullRequests=[]' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -435,9 +487,7 @@ jobs:
           print(e2eSelector.catalogRevision(catalog))
           PY
           )
-          gh api --paginate \
-            "repos/$GITHUB_REPOSITORY/pulls?state=open&base=$GITHUB_REF_NAME&per_page=100" \
-            --jq '.[] | [.number, .head.sha] | @tsv' > open-pulls.tsv
+          printf '%s\t%s\n' "$PR_NUMBER" "$CANDIDATE_HEAD" > open-pulls.tsv
           while IFS=$'\t' read -r prNumber headSHA; do
             [ -n "$prNumber" ] || continue
             hasGate=$(gh api \
@@ -473,33 +523,37 @@ jobs:
               refreshRequestedGroups=$(jq -c '.requestedGroups' refresh-request.json)
               refreshControlledLabels=$(jq -c '.controlledLabels // []' refresh-request.json)
               refreshFull=$(jq -r '.full' refresh-request.json)
-              gh api --method POST \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
-                -f ref="$GITHUB_REF_NAME" \
-                -f "inputs[prNumber]=$prNumber" \
-                -f "inputs[headSHA]=$refreshHeadSHA" \
-                -f "inputs[baseSHA]=$refreshBaseSHA" \
-                -f "inputs[approvalGeneration]=$refreshApprovalGeneration" \
-                -f "inputs[catalogRevision]=$refreshCatalogRevision" \
-                -f "inputs[requestedGroups]=$refreshRequestedGroups" \
-                -f "inputs[controlledLabels]=$refreshControlledLabels" \
-                -f "inputs[full]=$refreshFull" \
-                -f 'inputs[recordIntent]=false' \
-                -f 'inputs[baseRefresh]=false'
+              jq -n \
+                --arg prNumber "$prNumber" \
+                --arg headSHA "$refreshHeadSHA" \
+                --arg baseSHA "$refreshBaseSHA" \
+                --arg approvalGeneration "$refreshApprovalGeneration" \
+                --arg catalogRevision "$refreshCatalogRevision" \
+                --arg requestedGroups "$refreshRequestedGroups" \
+                --arg controlledLabels "$refreshControlledLabels" \
+                --arg full "$refreshFull" \
+                --arg recordIntent "false" \
+                --arg baseRefresh "false" \
+                '$ARGS.named' > candidate-gate-inputs.json
+              python3 hack/e2e_pr_router.py dispatch \
+                --pr-number "$prNumber" --head-sha "$refreshHeadSHA" \
+                --workflow x86-e2e-gate.yaml --inputs-file candidate-gate-inputs.json
             else
-              gh api --method POST \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
-                -f ref="$GITHUB_REF_NAME" \
-                -f "inputs[prNumber]=$prNumber" \
-                -f "inputs[headSHA]=$headSHA" \
-                -f "inputs[baseSHA]=$GITHUB_SHA" \
-                -f 'inputs[approvalGeneration]=1' \
-                -f "inputs[catalogRevision]=$catalogRevision" \
-                -f 'inputs[requestedGroups]=[]' \
-                -f 'inputs[controlledLabels]=[]' \
-                -f 'inputs[full]=false' \
-                -f 'inputs[recordIntent]=false' \
-                -f 'inputs[baseRefresh]=true'
+              jq -n \
+                --arg prNumber "$prNumber" \
+                --arg headSHA "$headSHA" \
+                --arg baseSHA "$BASE_PUSH_SHA" \
+                --arg approvalGeneration "1" \
+                --arg catalogRevision "$catalogRevision" \
+                --arg requestedGroups "[]" \
+                --arg controlledLabels "[]" \
+                --arg full "false" \
+                --arg recordIntent "false" \
+                --arg baseRefresh "true" \
+                '$ARGS.named' > candidate-gate-inputs.json
+              python3 hack/e2e_pr_router.py dispatch \
+                --pr-number "$prNumber" --head-sha "$headSHA" \
+                --workflow x86-e2e-gate.yaml --inputs-file candidate-gate-inputs.json
             fi
           done < open-pulls.tsv
           approvedPullRequests=$(jq -Rsc \
@@ -509,14 +563,15 @@ jobs:
 
   dispatch:
     name: Validate and record x86 E2E commands
+    needs: validate-source
     if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request &&
-      (startsWith(github.event.comment.body, '/test e2e') ||
-       startsWith(github.event.comment.body, '/retest e2e-failed'))
+      (inputs.sourceEventName || github.event_name) == 'issue_comment' &&
+      (fromJSON(inputs.sourceEvent || '{}').issue.pull_request || github.event.issue.pull_request) &&
+      (startsWith((fromJSON(inputs.sourceEvent || '{}').comment.body || github.event.comment.body), '/test e2e') ||
+       startsWith((fromJSON(inputs.sourceEvent || '{}').comment.body || github.event.comment.body), '/retest e2e-failed'))
     permissions:
       actions: write
-      contents: read
+      contents: write
       issues: write
       pull-requests: write
     outputs:
@@ -528,24 +583,28 @@ jobs:
       PYTHONPATH: hack
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - name: Check out the trusted default branch
+      - name: Check out the exact candidate dispatcher
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ inputs.sourceHeadSHA || inputs.headSHA || github.sha }}
           persist-credentials: false
+
+      - name: Materialize the original GitHub event
+        run: python3 hack/e2e_pr_router.py materialize-source --output-file source-event.json
 
       - name: Validate command, permission, and current HEAD
         id: decision
         env:
-          COMMENT_ID: ${{ github.event.comment.id }}
-          COMMENTER: ${{ github.event.comment.user.login }}
-          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ (fromJSON(inputs.sourceEvent || '{}').comment.id || github.event.comment.id) }}
+          COMMENTER: ${{ (fromJSON(inputs.sourceEvent || '{}').comment.user.login || github.event.comment.user.login) }}
+          PR_NUMBER: ${{ (fromJSON(inputs.sourceEvent || '{}').issue.number || github.event.issue.number) }}
         run: |
           set -euo pipefail
           permission=$(gh api \
             "repos/$GITHUB_REPOSITORY/collaborators/$COMMENTER/permission" \
             --jq '.permission' 2>/dev/null || printf 'none')
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
+          [ "$(jq -r '.head.sha' pull-request.json)" = "$CANDIDATE_HEAD" ] || { echo 'Candidate HEAD changed before command admission.'; exit 1; }
           if ! gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID" > live-comment.json; then
             printf 'null\n' > live-comment.json
           fi
@@ -558,7 +617,7 @@ jobs:
           jq --arg baseSHA "$baseSHA" '.base.sha = $baseSHA' pull-request.json \
             > live-pull-request.json
           mv live-pull-request.json pull-request.json
-          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$CANDIDATE_HEAD" \
             --jq '.content' | base64 --decode > trusted-catalog.json
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
@@ -578,7 +637,7 @@ jobs:
             "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
             --jq '.head.sha')
           python3 hack/e2e_control.py dispatch \
-            --event-file "$GITHUB_EVENT_PATH" \
+            --event-file source-event.json \
             --catalog trusted-catalog.json \
             --permission "$permission" \
             --pull-request-file pull-request.json \
@@ -602,7 +661,7 @@ jobs:
       - name: Reply with rejection reason
         if: steps.decision.outputs.recognized == 'true' && steps.decision.outputs.accepted != 'true'
         env:
-          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ (fromJSON(inputs.sourceEvent || '{}').issue.number || github.event.issue.number) }}
         run: |
           reason=$(jq -r '.reason' dispatch-decision.json)
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
@@ -677,11 +736,11 @@ jobs:
               request["headSHA"],
               request["baseRef"],
               request["catalogRevision"],
+              request["headSHA"],
               request["baseSHA"],
           )
           if latest is not None:
               metadata = e2eControl.parseExecutorRunName(latest["display_title"])
-              metadata["baseSHA"] = request["baseSHA"]
               metadata["catalogRevision"] = request["catalogRevision"]
               status = latest.get("status")
               conclusion = latest.get("conclusion")
@@ -706,7 +765,6 @@ jobs:
             fi
           fi
           if [ "$action" = dispatch ]; then
-            defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
             approvalGeneration=$(jq -r '.approvalGeneration' dispatch-decision.json)
             catalogRevision=$(jq -r '.catalogRevision' dispatch-decision.json)
             requestedGroups=$(jq -c '.requestedGroups' dispatch-decision.json)
@@ -714,19 +772,21 @@ jobs:
             full=$(jq -r '.full' dispatch-decision.json)
             dispatchGate() {
               local recordIntent=$1
-              gh api --method POST \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
-                -f ref="$defaultBranch" \
-                -f "inputs[prNumber]=$prNumber" \
-                -f "inputs[headSHA]=$headSHA" \
-                -f "inputs[baseSHA]=$baseSHA" \
-                -f "inputs[approvalGeneration]=$approvalGeneration" \
-                -f "inputs[catalogRevision]=$catalogRevision" \
-                -f "inputs[requestedGroups]=$requestedGroups" \
-                -f "inputs[controlledLabels]=$controlledLabels" \
-                -f "inputs[full]=$full" \
-                -f "inputs[recordIntent]=$recordIntent" \
-                -f 'inputs[baseRefresh]=false'
+              jq -n \
+                --arg prNumber "$prNumber" \
+                --arg headSHA "$headSHA" \
+                --arg baseSHA "$baseSHA" \
+                --arg approvalGeneration "$approvalGeneration" \
+                --arg catalogRevision "$catalogRevision" \
+                --arg requestedGroups "$requestedGroups" \
+                --arg controlledLabels "$controlledLabels" \
+                --arg full "$full" \
+                --arg recordIntent "$recordIntent" \
+                --arg baseRefresh "false" \
+                '$ARGS.named' > candidate-gate-inputs.json
+              python3 hack/e2e_pr_router.py dispatch \
+                --pr-number "$prNumber" --head-sha "$headSHA" \
+                --workflow x86-e2e-gate.yaml --inputs-file candidate-gate-inputs.json
             }
             if ! dispatchGate false; then
               gh api "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments" \
@@ -842,11 +902,11 @@ jobs:
               sys.argv[2],
               sys.argv[3],
               sys.argv[4],
+              sys.argv[2],
               sys.argv[5],
           )
           if latestRun is not None and latestRun.get("conclusion") == "failure":
               metadata = e2eControl.parseExecutorRunName(latestRun["display_title"])
-              metadata["baseSHA"] = sys.argv[5]
               metadata["catalogRevision"] = sys.argv[4]
               if e2eControl.executorRequestKey(metadata) == sys.argv[6]:
                   print(latestRun["id"])
@@ -987,28 +1047,29 @@ jobs:
   reduce:
     name: Reduce recorded x86 E2E approvals
     needs:
+      - validate-source
       - dispatch
       - automatic
       - invalidate-base
     if: >-
-      always() &&
+      always() && needs.validate-source.result == 'success' &&
       (
         (
-          github.event_name == 'workflow_dispatch' &&
+          (inputs.sourceEventName || github.event_name) == 'workflow_dispatch' &&
           github.actor == 'github-actions[bot]'
         ) ||
         (
-          github.event_name == 'issue_comment' &&
+          (inputs.sourceEventName || github.event_name) == 'issue_comment' &&
           needs.dispatch.outputs.accepted == 'true' &&
           needs.dispatch.outputs.action == 'dispatch'
         ) ||
         (
-          github.event_name == 'pull_request_target' &&
+          (inputs.sourceEventName || github.event_name) == 'pull_request_target' &&
           needs.automatic.result == 'success' &&
           needs.automatic.outputs.durableApproval == 'true'
         ) ||
         (
-          github.event_name == 'push' &&
+          (inputs.sourceEventName || github.event_name) == 'push' &&
           needs.invalidate-base.result == 'success' &&
           needs.invalidate-base.outputs.approvedPullRequests != '[]'
         )
@@ -1025,7 +1086,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        prNumber: ${{ fromJSON(github.event_name == 'push' && needs.invalidate-base.outputs.approvedPullRequests || format('[{0}]', inputs.prNumber || github.event.issue.number || github.event.pull_request.number)) }}
+        prNumber: ${{ fromJSON((inputs.sourceEventName || github.event_name) == 'push' && needs.invalidate-base.outputs.approvedPullRequests || format('[{0}]', inputs.prNumber || (fromJSON(inputs.sourceEvent || '{}').issue.number || github.event.issue.number) || (fromJSON(inputs.sourceEvent || '{}').pull_request.number || github.event.pull_request.number))) }}
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -1033,21 +1094,25 @@ jobs:
       PYTHONPATH: hack
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - name: Check out the trusted default branch
+      - name: Check out the exact candidate dispatcher
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ inputs.sourceHeadSHA || inputs.headSHA || github.sha }}
           persist-credentials: false
+
+      - name: Materialize the original GitHub event
+        run: python3 hack/e2e_pr_router.py materialize-source --output-file source-event.json
 
       - name: Build the current cumulative request
         id: request
         env:
           BRIDGE_APPROVAL_GENERATION: ${{ inputs.approvalGeneration }}
           BRIDGE_HEAD_SHA: ${{ inputs.headSHA }}
-          EVENT_NAME: ${{ github.event_name }}
+          EVENT_NAME: ${{ (inputs.sourceEventName || github.event_name) }}
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
+          [ "$(jq -r '.head.sha' pull-request.json)" = "$CANDIDATE_HEAD" ] || { echo 'Candidate HEAD changed before reduction.'; exit 1; }
           baseRef=$(jq -r '.base.ref' pull-request.json)
           if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
             echo 'hasApprovals=false' >> "$GITHUB_OUTPUT"
@@ -1061,7 +1126,7 @@ jobs:
           jq --arg baseSHA "$baseSHA" '.base.sha = $baseSHA' pull-request.json \
             > live-pull-request.json
           mv live-pull-request.json pull-request.json
-          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$CANDIDATE_HEAD" \
             --jq '.content' | base64 --decode > trusted-catalog.json
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
@@ -1154,11 +1219,11 @@ jobs:
               sys.argv[2],
               sys.argv[3],
               sys.argv[5],
+              sys.argv[2],
               sys.argv[6],
           )
           if latestRun is not None:
               metadata = e2eControl.parseExecutorRunName(latestRun["display_title"])
-              metadata["baseSHA"] = sys.argv[6]
               metadata["catalogRevision"] = sys.argv[5]
               metadataRequestKey = e2eControl.executorRequestKey(metadata)
               conclusion = latestRun.get("conclusion")
@@ -1265,7 +1330,7 @@ jobs:
           refPath="refs/heads/$executorRef"
           gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$executorRef" \
             > approved-executor-ref.json || true
-          refAction=$(python3 - "$BASE_SHA" <<'PY'
+          refAction=$(python3 - "$HEAD_SHA" <<'PY'
           import sys
           from pathlib import Path
           import e2e_control as e2eControl
@@ -1283,7 +1348,7 @@ jobs:
           createdRef=false
           if [ "$refAction" = create ]; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f ref="$refPath" -f sha="$BASE_SHA"
+              -f ref="$refPath" -f sha="$HEAD_SHA"
             createdRef=true
           fi
           if ! gh api --method POST \
@@ -1308,12 +1373,12 @@ jobs:
               -f body='The trusted x86 E2E executor could not be started; retry the authorized command.'
             exit 1
           fi
-          expectedTitle="x86-e2e pr=$PR_NUMBER head=$HEAD_SHA approval=$APPROVAL_GENERATION generation=$DISPATCH_GENERATION mode=approved groups=$REQUESTED_GROUP_NAMES labels=- full=$([ "$FULL" = true ] && echo 1 || echo 0)"
+          expectedTitle="x86-e2e pr=$PR_NUMBER head=$HEAD_SHA approval=$APPROVAL_GENERATION generation=$DISPATCH_GENERATION mode=approved groups=$REQUESTED_GROUP_NAMES labels=- full=$([ "$FULL" = true ] && echo 1 || echo 0) base=$BASE_SHA"
           runVisible=false
           for _ in $(seq 1 24); do
             runVisible=$(gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&branch=$executorRef&per_page=100" \
-              | jq -r --arg branch "$executorRef" --arg sha "$BASE_SHA" --arg title "$expectedTitle" \
+              | jq -r --arg branch "$executorRef" --arg sha "$HEAD_SHA" --arg title "$expectedTitle" \
                 'any(.[].workflow_runs[]; .path == ".github/workflows/build-x86-image.yaml" and
                   .actor.login == "github-actions[bot]" and .head_branch == $branch and
                   .head_sha == $sha and .display_title == $title)')
