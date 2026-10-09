@@ -7,7 +7,6 @@ on:
       - cmd/ko-helper/**
       - pkg/ko/**
       - pkg/kohelper/**
-      - pkg/pinger/**
       - test/e2e/framework/kubectlko/**
       - test/e2e/ha/kubectl_ko_test.go
       - go.mod
@@ -41,8 +40,6 @@ jobs:
           go-version-file: go.mod
       - name: Unit and real streaming protocol tests
         run: go test -race -count=1 ./pkg/ko/... ./pkg/kohelper/... ./cmd/kubectl-ko/... ./cmd/ko-helper/... ./test/e2e/framework/kubectlko/...
-      - name: Pinger control socket regression
-        run: go test -count=1 ./pkg/pinger/...
       - name: Check formatting
         run: test -z "$(gofmt -l cmd/kubectl-ko cmd/ko-helper pkg/ko pkg/kohelper)"
 

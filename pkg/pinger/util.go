@@ -2,7 +2,6 @@ package pinger
 
 import (
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -21,23 +20,11 @@ func (e *Exporter) IncrementErrorCounter() {
 	atomic.AddInt64(&e.errors, 1)
 }
 
-func pingerAppctl(target, command string, args ...string) (string, error) {
-	dir := "/var/run/openvswitch"
-	if strings.HasPrefix(target, "ovn") {
-		dir = "/var/run/ovn"
-	}
-	socket, err := appctlSocket(filepath.Join(dir, target+".pid"))
-	if err != nil {
-		return "", err
-	}
-	return ovs.Appctl(socket, command, args...)
-}
-
 func getOvsStatus() map[string]error {
 	components := [...]string{ovs.OvsdbServer, ovs.OvsVswitchd}
 	result := make(map[string]error, len(components))
 	for _, component := range components {
-		_, err := pingerAppctl(component, "-T", "1", "version")
+		_, err := ovs.Appctl(component, "-T", "1", "version")
 		if err != nil {
 			klog.Errorf("failed to get %s status: %v", component, err)
 		}
@@ -48,7 +35,7 @@ func getOvsStatus() map[string]error {
 }
 
 func (e *Exporter) getOvsDatapath() ([]string, error) {
-	output, err := pingerAppctl(ovs.OvsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/dump-dps")
+	output, err := ovs.Appctl(ovs.OvsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/dump-dps")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get output of dpctl/dump-dps: %w", err)
 	}
@@ -73,7 +60,7 @@ func (e *Exporter) getOvsDatapath() ([]string, error) {
 }
 
 func (e *Exporter) setOvsDpIfMetric(datapathName string) error {
-	output, err := pingerAppctl(ovs.OvsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/show", datapathName)
+	output, err := ovs.Appctl(ovs.OvsVswitchd, "-T", strconv.Itoa(e.timeout), "dpctl/show", datapathName)
 	if err != nil {
 		return fmt.Errorf("failed to get output of dpctl/show %s: %w", datapathName, err)
 	}

@@ -285,11 +285,6 @@ logs need pods/log, probes need create/delete, and
 rollout/recovery need workload patch/scale permissions. Exec access is not a
 read-only database permission.
 
-The matching image also fixes pinger control-socket discovery across PID
-namespaces. Daemon status checks connect to the socket named by the recorded
-PID, avoiding appctl's namespace-dependent PID-file lock lookup. Service and
-port-binding checks remain enabled, and failed probes return a nonzero status.
-
 This rewrite replaces the old command interface. Use
 `logs --component COMPONENT --output-dir DIR` in CI and support collectors.
 Consecutive component collections preserve files already collected in the
