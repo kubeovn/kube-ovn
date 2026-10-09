@@ -37,9 +37,29 @@ type updateSvcObject struct {
 	oldExternalLocalTemplate bool
 }
 
+func (c *Controller) usesGwNftableLbService(svc *v1.Service) bool {
+	return c.config != nil && c.config.EnableGwNftableLbSvc && svc != nil &&
+		svc.Spec.Type == v1.ServiceTypeLoadBalancer && svc.Annotations[util.VpcNatGatewayAnnotation] != "" &&
+		svc.Annotations[util.EipAnnotation] != ""
+}
+
+// podLbSvcEnabled reports whether the per-Service forwarding Pod lifecycle must run. The Pod DNATs
+// the external address to the Service ClusterIP, so it needs a ClusterIP data plane behind it:
+// either the OVN load balancers (--enable-lb) or the gateway ClusterIP share DNAT.
+// TODO: move the Pod LB add/update/delete lifecycle onto its own handlers and workers instead of
+// gating the shared OVN LB workers, so the two data planes stop sharing event paths.
+func (c *Controller) podLbSvcEnabled() bool {
+	return c.config != nil && c.config.EnablePodLbSvc &&
+		(c.config.EnableOvnLB || c.config.EnableGwNftableSvcClusterIP)
+}
+
 func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
+
+	if c.config.EnableGwNftableLbSvc || c.config.EnableGwNftableSvcClusterIP {
+		c.enqueueGwNftableLbService(key)
+	}
 
 	// the queue consumers only run when EnableOvnLB is set, so skip
 	// enqueueing to avoid unbounded accumulation when it is not
@@ -48,20 +68,13 @@ func (c *Controller) enqueueAddService(obj any) {
 		c.enqueueEndpointSliceService(key, svc)
 	}
 
-	// the add service worker also only runs when EnableOvnLB is set
-	if c.config.EnableOvnLB && c.config.EnablePodLbSvc {
+	if c.podLbSvcEnabled() {
 		klog.V(3).Infof("enqueue add lb service %s", key)
 		c.addServiceQueue.Add(key)
 	}
-
-	c.enqueueNftableLbService(key)
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
-	if !c.config.EnableOvnLB {
-		return
-	}
-
 	var svc *v1.Service
 	switch t := obj.(type) {
 	case *v1.Service:
@@ -78,9 +91,19 @@ func (c *Controller) enqueueDeleteService(obj any) {
 		return
 	}
 
-	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
+	key := cache.MetaObjectToName(svc).String()
+	if c.config.EnableGwNftableLbSvc || c.config.EnableGwNftableSvcClusterIP {
+		c.enqueueGwNftableLbService(key)
+	}
+	if c.usesGwNftableLbService(svc) {
+		return
+	}
+	// Without the OVN LB data plane only the per-Service forwarding Pod is left to delete.
+	if !c.config.EnableOvnLB && (!c.podLbSvcEnabled() || svc.Spec.Type != v1.ServiceTypeLoadBalancer) {
+		return
+	}
 
-	c.enqueueNftableLbService(cache.MetaObjectToName(svc).String())
+	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
 
 	ips := getVipIps(svc)
 	if len(ips) != 0 {
@@ -104,12 +127,29 @@ func (c *Controller) enqueueDeleteService(obj any) {
 }
 
 func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
-	if !c.config.EnableOvnLB {
-		return
-	}
-
 	oldSvc := oldObj.(*v1.Service)
 	newSvc := newObj.(*v1.Service)
+	if c.config.EnableGwNftableLbSvc || c.config.EnableGwNftableSvcClusterIP {
+		if newSvc.ResourceVersion != oldSvc.ResourceVersion && gwNftableLbSvcChanged(oldSvc, newSvc) {
+			c.enqueueGwNftableLbService(cache.MetaObjectToName(newSvc).String())
+		}
+	}
+	if !c.config.EnableOvnLB {
+		// The Pod LB lifecycle still reuses this handler, but it only consumes the Service ports;
+		// the OVN load balancer reconcile below is skipped.
+		if c.podLbSvcEnabled() && newSvc.Spec.Type == v1.ServiceTypeLoadBalancer &&
+			newSvc.ResourceVersion != oldSvc.ResourceVersion {
+			c.updateServiceQueue.Add(&updateSvcObject{
+				key:      cache.MetaObjectToName(newSvc).String(),
+				oldPorts: oldSvc.Spec.Ports,
+				newPorts: newSvc.Spec.Ports,
+			})
+		}
+		return
+	}
+	if c.usesGwNftableLbService(newSvc) {
+		return
+	}
 	if oldSvc.ResourceVersion == newSvc.ResourceVersion {
 		return
 	}
@@ -121,11 +161,17 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	// e.g. status noise or third-party annotation churn bumping the resource version.
 	// LoadBalancer services are always enqueued: their reconcile also depends on
 	// status.loadBalancer.ingress and the lb-svc attachment deployment.
+	//
+	// The nftable LB service annotations are compared too: they are all that changes when a
+	// ClusterIP Service opts in or out, so without them such a Service would never be reconciled
+	// and its rules would be neither created nor released.
 	if newSvc.Spec.Type != v1.ServiceTypeLoadBalancer &&
 		oldSvc.DeletionTimestamp.Equal(newSvc.DeletionTimestamp) &&
 		oldSvc.Annotations[util.VpcAnnotation] == newSvc.Annotations[util.VpcAnnotation] &&
 		oldSvc.Annotations[util.LogicalRouterAnnotation] == newSvc.Annotations[util.LogicalRouterAnnotation] &&
 		oldSvc.Annotations[util.LogicalSwitchAnnotation] == newSvc.Annotations[util.LogicalSwitchAnnotation] &&
+		oldSvc.Annotations[util.VpcNatGatewayAnnotation] == newSvc.Annotations[util.VpcNatGatewayAnnotation] &&
+		oldSvc.Annotations[util.EipAnnotation] == newSvc.Annotations[util.EipAnnotation] &&
 		slices.Equal(oldClusterIps, newClusterIps) &&
 		reflect.DeepEqual(oldSvc.Spec, newSvc.Spec) {
 		return
@@ -140,8 +186,6 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 
 	key := cache.MetaObjectToName(newSvc).String()
 	klog.V(3).Infof("enqueue update service %s", key)
-
-	c.enqueueNftableLbService(key)
 
 	if len(ipsToDel) != 0 {
 		ipsToDelStr := strings.Join(ipsToDel, ",")
@@ -161,7 +205,9 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	endpointReconcile := !reflect.DeepEqual(oldSpec, newSpec) ||
 		oldSvc.Annotations[util.VpcAnnotation] != newSvc.Annotations[util.VpcAnnotation] ||
 		oldSvc.Annotations[util.LogicalRouterAnnotation] != newSvc.Annotations[util.LogicalRouterAnnotation] ||
-		oldSvc.Annotations[util.LogicalSwitchAnnotation] != newSvc.Annotations[util.LogicalSwitchAnnotation]
+		oldSvc.Annotations[util.LogicalSwitchAnnotation] != newSvc.Annotations[util.LogicalSwitchAnnotation] ||
+		oldSvc.Annotations[util.VpcNatGatewayAnnotation] != newSvc.Annotations[util.VpcNatGatewayAnnotation] ||
+		oldSvc.Annotations[util.EipAnnotation] != newSvc.Annotations[util.EipAnnotation]
 	if endpointReconcile && (serviceUsesScopedLB(oldSvc) || serviceUsesScopedLB(newSvc)) && c.addOrUpdateEndpointSliceQueue != nil {
 		c.enqueueEndpointSliceService(cache.MetaObjectToName(newSvc).String(), oldSvc, newSvc)
 	}
@@ -188,6 +234,29 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		return c.deleteServiceScopedLoadBalancers(service.Svc)
 	}
 
+	if c.config.EnableOvnLB {
+		if err := c.deleteOvnLbServiceVips(service); err != nil {
+			return err
+		}
+	}
+	if err := c.deleteServiceScopedLoadBalancers(service.Svc); err != nil {
+		return err
+	}
+
+	// The forwarding Pod is independent of the OVN LB data plane (see podLbSvcEnabled).
+	if service.Svc.Spec.Type == v1.ServiceTypeLoadBalancer && c.config.EnablePodLbSvc {
+		if err := c.deleteLbSvc(service.Svc); err != nil {
+			klog.Errorf("failed to delete service %s, %v", service.Svc.Name, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// deleteOvnLbServiceVips removes the Service VIPs from the fixed VPC load balancers. Resource-scoped
+// (SwitchLBRule/RouterLBRule) load balancers are handled by deleteServiceScopedLoadBalancers.
+func (c *Controller) deleteOvnLbServiceVips(service *vpcService) error {
 	svcs, err := c.servicesLister.Services(v1.NamespaceAll).List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list svc, %v", err)
@@ -211,12 +280,8 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	}
 
 	for _, vip := range service.Vips {
-		var (
-			ip    string
-			found bool
-		)
-		ip = parseVipAddr(vip)
-
+		ip := parseVipAddr(vip)
+		found := false
 		for _, svc := range svcs {
 			if slices.Contains(util.ServiceClusterIPs(*svc), ip) {
 				found = true
@@ -251,17 +316,6 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 			}
 		}
 	}
-	if err := c.deleteServiceScopedLoadBalancers(service.Svc); err != nil {
-		return err
-	}
-
-	if service.Svc.Spec.Type == v1.ServiceTypeLoadBalancer && c.config.EnablePodLbSvc {
-		if err := c.deleteLbSvc(service.Svc); err != nil {
-			klog.Errorf("failed to delete service %s, %v", service.Svc.Name, err)
-			return err
-		}
-	}
-
 	return nil
 }
 
@@ -293,6 +347,12 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		}
 		klog.Error(err)
 		return err
+	}
+	if !c.config.EnableOvnLB {
+		return c.updatePodLbSvcWorkload(svc, svcObject, key)
+	}
+	if c.usesGwNftableLbService(svc) {
+		return nil
 	}
 	if svcObject.oldTrafficDistribution && (!serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc)) {
 		if err := c.cleanupServiceTrafficDistributionState(svc); err != nil {
@@ -448,37 +508,43 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		}
 	}
 
-	if c.config.EnablePodLbSvc && svc.Spec.Type == v1.ServiceTypeLoadBalancer {
-		changed, err := c.checkLbSvcDeployAnnotationChanged(svc)
-		if err != nil {
-			klog.Errorf("failed to check annotation change for lb svc %s: %v", key, err)
-			return err
-		}
+	return c.updatePodLbSvcWorkload(svc, svcObject, key)
+}
 
-		// only process svc.spec.ports update
-		if !changed {
-			klog.Infof("update loadbalancer service %s", key)
-			pod, err := c.getLbSvcPod(name, namespace)
-			if err != nil {
-				klog.Errorf("failed to get pod for lb svc %s: %v", key, err)
-				if strings.Contains(err.Error(), "not found") {
-					return nil
-				}
-				return err
-			}
-
-			toDel := diffSvcPorts(svcObject.oldPorts, svcObject.newPorts)
-			if err := c.delDnatRules(pod, toDel, svc); err != nil {
-				klog.Errorf("failed to delete dnat rules, err: %v", err)
-				return err
-			}
-			if err = c.updatePodAttachNets(pod, svc); err != nil {
-				klog.Errorf("failed to update pod attachment network for lb svc %s: %v", key, err)
-				return err
-			}
-		}
+// updatePodLbSvcWorkload reconciles the forwarding Deployment/Pod of a LoadBalancer Service. It is
+// independent of the OVN LB data plane: the Pod DNATs the external address to the Service
+// ClusterIP, which --enable-lb or --enable-gw-nftable-svc-cluster-ip then serves.
+func (c *Controller) updatePodLbSvcWorkload(svc *v1.Service, svcObject *updateSvcObject, key string) error {
+	if !c.config.EnablePodLbSvc || svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+		return nil
 	}
-
+	changed, err := c.checkLbSvcDeployAnnotationChanged(svc)
+	if err != nil {
+		klog.Errorf("failed to check annotation change for lb svc %s: %v", key, err)
+		return err
+	}
+	// only process svc.spec.ports update
+	if changed {
+		return nil
+	}
+	klog.Infof("update loadbalancer service %s", key)
+	pod, err := c.getLbSvcPod(svc.Name, svc.Namespace)
+	if err != nil {
+		klog.Errorf("failed to get pod for lb svc %s: %v", key, err)
+		if strings.Contains(err.Error(), "not found") {
+			return nil
+		}
+		return err
+	}
+	toDel := diffSvcPorts(svcObject.oldPorts, svcObject.newPorts)
+	if err := c.delDnatRules(pod, toDel, svc); err != nil {
+		klog.Errorf("failed to delete dnat rules, err: %v", err)
+		return err
+	}
+	if err = c.updatePodAttachNets(pod, svc); err != nil {
+		klog.Errorf("failed to update pod attachment network for lb svc %s: %v", key, err)
+		return err
+	}
 	return nil
 }
 
@@ -523,7 +589,6 @@ func (c *Controller) handleAddService(key string) error {
 	if _, ok := svc.Annotations[util.AttachmentProvider]; !ok {
 		return nil
 	}
-
 	klog.Infof("handle add loadbalancer service %s", key)
 
 	if err = c.validateSvc(svc); err != nil {

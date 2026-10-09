@@ -149,6 +149,14 @@ webhooks:
       resources:
         - pods
     - operations:
+        - UPDATE
+      apiGroups:
+        - ""
+      apiVersions:
+        - v1
+      resources:
+        - services
+    - operations:
         - CREATE
         - UPDATE
         - DELETE
