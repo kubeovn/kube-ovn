@@ -248,8 +248,11 @@ func resolveProtocol(ctx context.Context, lookup func(ctx context.Context, host 
 	}
 
 	addrs, err := lookup(ctx, address)
-	if err != nil || len(addrs) == 0 {
+	if err != nil {
 		return "", fmt.Errorf("failed to resolve address %q: %w", address, err)
+	}
+	if len(addrs) == 0 {
+		return "", fmt.Errorf("no addresses found for %q", address)
 	}
 	var v4, v6 bool
 	for _, addr := range addrs {
@@ -272,8 +275,8 @@ func resolveProtocol(ctx context.Context, lookup func(ctx context.Context, host 
 // ResolveProtocol returns the address family of the given IP address or
 // hostname. Unlike CheckProtocol, which only accepts literal IP addresses,
 // hostnames are resolved via DNS.
-func ResolveProtocol(address string) (string, error) {
-	return resolveProtocol(context.Background(), func(ctx context.Context, host string) ([]net.IP, error) {
+func ResolveProtocol(ctx context.Context, address string) (string, error) {
+	return resolveProtocol(ctx, func(ctx context.Context, host string) ([]net.IP, error) {
 		addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 		if err != nil {
 			return nil, err

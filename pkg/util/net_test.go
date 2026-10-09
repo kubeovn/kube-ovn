@@ -497,6 +497,7 @@ func TestResolveProtocol(t *testing.T) {
 		lookErr error
 		want    string
 		wantErr bool
+		errText string
 	}{
 		{
 			name:    "literalIPv4",
@@ -543,6 +544,7 @@ func TestResolveProtocol(t *testing.T) {
 			address: "empty.svc.cluster.local",
 			addrs:   []net.IP{},
 			wantErr: true,
+			errText: `no addresses found for "empty.svc.cluster.local"`,
 		},
 		{
 			name:    "emptyAddress",
@@ -555,9 +557,15 @@ func TestResolveProtocol(t *testing.T) {
 			lookup := func(_ context.Context, _ string) ([]net.IP, error) {
 				return c.addrs, c.lookErr
 			}
-			got, err := resolveProtocol(context.Background(), lookup, c.address)
+			got, err := resolveProtocol(t.Context(), lookup, c.address)
 			if c.wantErr {
 				require.Error(t, err)
+				if c.errText != "" {
+					require.EqualError(t, err, c.errText)
+				}
+				if c.lookErr != nil {
+					require.ErrorIs(t, err, c.lookErr)
+				}
 				return
 			}
 			require.NoError(t, err)
