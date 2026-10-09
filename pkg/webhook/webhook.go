@@ -23,13 +23,19 @@ type ValidatingHook struct {
 	client  client.Client
 	decoder admission.Decoder
 	cache   cache.Cache
+
+	// controllerUserName is the identity (system:serviceaccount:<ns>:<name>) kube-ovn
+	// components authenticate as. It is used to recognize requests from the controller
+	// itself, e.g. for the one-time switch_lb_rule vip mac repair in VipUpdateHook.
+	controllerUserName string
 }
 
-func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache.Cache) (*ValidatingHook, error) {
+func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache.Cache, controllerUserName string) (*ValidatingHook, error) {
 	v := &ValidatingHook{
-		client:  client,
-		decoder: admission.NewDecoder(scheme),
-		cache:   cache,
+		client:             client,
+		decoder:            admission.NewDecoder(scheme),
+		cache:              cache,
+		controllerUserName: controllerUserName,
 	}
 
 	// initialize hook handlers mapping

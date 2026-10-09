@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"reflect"
 
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -42,16 +43,56 @@ func (v *ValidatingHook) VipUpdateHook(ctx context.Context, req admission.Reques
 	}
 
 	if !reflect.DeepEqual(vipNew.Spec, vipOld.Spec) {
-		if vipOld.Status.Mac == "" {
+		switch {
+		case vipOld.Status.Mac == "":
 			if err := v.ValidateVip(ctx, &vipNew); err != nil {
 				return ctrlwebhook.Errored(http.StatusBadRequest, err)
 			}
-		} else {
+		case v.isLegacySwitchLBVipMacRepair(ctx, req, &vipOld, &vipNew):
+			// allow: the controller is renewing the mac of a switch_lb_rule vip created
+			// before the own-mac fix, whose mac was forced to the subnet gateway mac
+		default:
 			err := errors.New("vip has been assigned, does not support change")
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
 		}
 	}
 	return ctrlwebhook.Allowed("bypass")
+}
+
+// isLegacySwitchLBVipMacRepair reports whether req is the kube-ovn controller performing
+// the one-time repair of a switch_lb_rule vip whose mac was forced to the subnet gateway
+// mac by a historical bug (see handleAddVirtualIP/needsSwitchLBRuleMacRepair). Three
+// independent conditions must all hold, so the normal immutability contract still applies
+// to every other caller, field, vip type, and once a vip has been repaired:
+//   - the request is authenticated as the controller's own service account (not any of
+//     the other kube-ovn components that share identities with it);
+//   - MacAddress is the sole spec field being changed;
+//   - the vip's old mac actually is the subnet's gateway mac, i.e. it genuinely is a
+//     pre-fix collision and not an arbitrary mac change. Subnet.Status.GatewayMAC no
+//     longer equals vip.Status.Mac once the repair lands, which makes the exemption
+//     self-expiring without any separate one-time marker.
+func (v *ValidatingHook) isLegacySwitchLBVipMacRepair(ctx context.Context, req admission.Request, vipOld, vipNew *ovnv1.Vip) bool {
+	if v.controllerUserName == "" || req.UserInfo.Username != v.controllerUserName {
+		return false
+	}
+	if vipOld.Spec.Type != util.SwitchLBRuleVip || vipNew.Spec.Type != util.SwitchLBRuleVip {
+		return false
+	}
+	specWithRenewedMac := vipOld.Spec.DeepCopy()
+	specWithRenewedMac.MacAddress = vipNew.Spec.MacAddress
+	if !reflect.DeepEqual(*specWithRenewedMac, vipNew.Spec) {
+		return false
+	}
+	if vipNew.Spec.MacAddress == "" || vipNew.Spec.MacAddress == vipOld.Spec.MacAddress {
+		return false
+	}
+
+	subnet := &ovnv1.Subnet{}
+	if err := v.cache.Get(ctx, client.ObjectKey{Name: vipOld.Spec.Subnet}, subnet); err != nil {
+		klog.Errorf("failed to get subnet %s to validate legacy mac repair for vip %s: %v", vipOld.Spec.Subnet, vipOld.Name, err)
+		return false
+	}
+	return subnet.Status.GatewayMAC != "" && subnet.Status.GatewayMAC == vipOld.Status.Mac
 }
 
 func (v *ValidatingHook) ValidateVip(ctx context.Context, vip *ovnv1.Vip) error {

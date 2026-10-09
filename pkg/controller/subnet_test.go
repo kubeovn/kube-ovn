@@ -16,8 +16,11 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -1264,4 +1267,40 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "delete lsp failed")
 	})
+}
+
+func TestRecordSubnetGatewayMACRetriesAfterFailedPatch(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet-gw-mac",
+		Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, CIDRBlock: "10.20.0.0/24", Gateway: "10.20.0.1"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+
+	const routerPortName = "lrp-subnet-gw-mac"
+	const gatewayMAC = "00:00:00:00:00:09"
+	fc.mockOvnClient.EXPECT().GetLogicalRouterPort(routerPortName, true).
+		Return(&ovnnb.LogicalRouterPort{MAC: gatewayMAC}, nil).Times(2)
+
+	patchErr := errors.New("status patch failed")
+	failNext := true
+	ctrl.config.KubeOvnClient.(*kubeovnfake.Clientset).PrependReactor("patch", "subnets", func(action ktesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" || !failNext {
+			return false, nil, nil
+		}
+		failNext = false
+		return true, nil, patchErr
+	})
+
+	require.ErrorIs(t, ctrl.recordSubnetGatewayMAC(subnet, routerPortName), patchErr)
+	require.Empty(t, subnet.Status.GatewayMAC)
+
+	require.NoError(t, ctrl.recordSubnetGatewayMAC(subnet, routerPortName))
+	require.Equal(t, gatewayMAC, subnet.Status.GatewayMAC)
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), subnet.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, gatewayMAC, got.Status.GatewayMAC)
 }

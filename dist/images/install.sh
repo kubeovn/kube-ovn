@@ -3339,6 +3339,12 @@ spec:
                 type: string
               dhcpV6OptionsUUID:
                 type: string
+              gatewayMAC:
+                description: |-
+                  GatewayMAC is the mac address of the subnet's logical router port, recorded so
+                  the validating webhook can independently verify a switch_lb_rule vip mac repair
+                  (see pkg/webhook/vip.go) without needing access to the controller's in-memory IPAM.
+                type: string
               mcastQuerierIP:
                 type: string
               mcastQuerierMAC:
@@ -7964,6 +7970,40 @@ subjects:
   - kind: ServiceAccount
     name: ovn
     namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-ovn-controller
+  namespace: kube-system
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-ovn-controller
+roleRef:
+  name: system:ovn
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: kube-ovn-controller
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-ovn-controller
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: kube-ovn-controller
+    namespace: kube-system
 EOF
 
 cat <<EOF > kube-ovn-cni-sa.yaml
@@ -8943,7 +8983,7 @@ spec:
                   app: kube-ovn-controller
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn
+      serviceAccountName: kube-ovn-controller
       automountServiceAccountToken: true
       hostNetwork: true
       securityContext:
