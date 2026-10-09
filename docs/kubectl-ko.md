@@ -80,7 +80,7 @@ kubectl ko
     sb
       status | backup | kick SERVER_ID
   trace --pod POD|--node NODE --dst-ip IP [OPTIONS]
-  capture --pod POD -- [TCPDUMP_ARGS...]
+  capture (--pod POD | --vm VM | --vmi VMI) -- [TCPDUMP_ARGS...]
   network
     inspect --pod POD [--output table|json]
   diagnose
@@ -112,7 +112,7 @@ kubectl ko
 | `db nb kick SERVER_ID`, `db sb kick SERVER_ID` | Remove a stale cluster member. `--dry-run` prints the database leader Pod and exact command without requiring an agent or applying the change; actual removal runs through the agent on that leader's node. |
 | `db nb restore` | Reconstruct the central NB/SB cluster from the NB database already present on the explicit bootstrap node. Verify the shared hostPath, use temporary per-node helpers when OVS does not mount the databases, stop central, preserve originals and RAFT headers, rebuild, verify storage and restart OVS. Helpers use the central image and security context and are cleaned up by UID. This is not local-file import; SB-only restore is not supported. |
 | `trace` | Resolve Pod/Node addresses, MACs and logical ports, trace through OVN, then OVS. Supports IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports. `--engine ovn` runs only OVN trace. |
-| `capture` | Execute tcpdump in a Pod's network namespace, including hostNetwork and internal-port paths. A remote `-w PATH` stays remote; `-w -` streams the original pcap bytes locally. |
+| `capture` | Execute tcpdump in a Pod or KubeVirt launcher network namespace, including hostNetwork and internal-port paths. Use exactly one of `--pod`, `--vm`, or `--vmi`. A remote `-w PATH` stays remote; `-w -` streams the original pcap bytes locally. |
 | `network inspect` | Show the Pod network namespace path, every interface's index, kind, MAC, MTU, state and addresses, plus the host-side veth peer when one exists. For `macvlan`/`ipvlan`, also show the parent host NIC with its link details. `--output=json` emits machine-readable data. Host-network Pods use the host namespace and expose peer indexes for host links. |
 | `diagnose cluster` | Check cluster configuration, component rollout and leaders; create a unique temporary NodePort Service and run active checks from independent temporary probe Pods in the original pinger network namespaces. |
 | `diagnose node NODE` | Perform configuration checks and restrict the independent active probes to one node. |
@@ -137,14 +137,14 @@ addresses for an allocated family are reported as errors.
 Standard Kubernetes connection flags are accepted before or after subcommands,
 up to the explicit `--` remote-argument separator. The kubeconfig loader supports
 `--kubeconfig`, `KUBECONFIG`, context, TLS, authentication plugins and impersonation.
-Workload namespace selection is `namespace/pod`, then `--namespace/-n`, then
+Workload namespace selection is `namespace/name`, then `--namespace/-n`, then
 kubeconfig namespace, then `default`. The deployment namespace is independently
 selected by `--kube-ovn-namespace`, `KUBE_OVN_NS`, then `kube-system`.
 
 | Scope | Parameters and defaults |
 | --- | --- |
 | Global | `--timeout=0` bounds the whole invocation; zero allows long streams. `--discovery-timeout=10s` bounds target selection. Kubernetes `--request-timeout` does not truncate an established exec stream. |
-| Raw tools / capture | `exec` OVS tools require `--node`; `capture` requires `--pod`. All remote arguments must follow `--`. |
+| Raw tools / capture | `exec` OVS tools require `--node`; `capture` requires exactly one of `--pod`, `--vm`, or `--vmi`. All remote arguments must follow `--`. |
 | Network inspection | `network inspect` requires `--pod`; `--output=table` is the default and `--output=json` is intended for automation. |
 | Trace | Exactly one of `--pod` / `--node`; required `--dst-ip`; `--protocol=icmp`, `--engine=all`, optional `--dst-mac`. TCP/UDP require `--dst-port=1..65535`. ARP uses `--arp-op=request|reply` and IPv4. |
 | Database backup | `--output FILE`; otherwise a unique DB-specific filename. |
@@ -161,6 +161,8 @@ kubectl ko exec vsctl --node worker-a -- --timeout=5 show
 kubectl ko trace --pod app/web --dst-ip 10.0.0.8 --protocol tcp --dst-port 443
 kubectl ko trace --node worker-a --dst-ip 2001:db8::8 --engine ovn
 kubectl ko capture --namespace app --pod web -- -w - > capture.pcap
+kubectl ko capture --vm app/database -- -w - > vm.pcap
+kubectl ko capture --namespace app --vmi database -- -c 10
 kubectl ko network inspect --pod app/web
 kubectl ko network inspect --pod app/web --output json
 kubectl ko diagnose subnet ovn-default --tcp-port 8100 --udp-port 8101
@@ -175,6 +177,19 @@ after it, including another `--`, `--help`, `--timeout`, `-n`, `-c`, whitespace 
 quotes within a single argument, belongs to the remote tool and is preserved.
 `exec nbctl --help` shows local help; `exec nbctl -- --help` shows remote help.
 `exec nbctl show` is rejected instead of guessing the argument boundary.
+
+KubeVirt capture resolves a running VMI's current launcher using its controller
+UID, node and active Pod status. `--vm` additionally verifies that the VMI is
+controlled by the requested VM; `--vmi` also supports standalone VMIs. A stopped
+VM or unavailable VMI returns an error. During migration, the source launcher
+is selected until migration succeeds; a completed failed migration still uses
+the source. A successful migration selects the target launcher. The selected
+Pod must be Running and not terminating. Missing or ambiguous launchers and a
+VMI/Pod change detected before capture fail explicitly; retry after status
+settles or use `--pod` to select a launcher yourself. An established capture
+stays in that launcher's network namespace and does not follow later migrations.
+Target diagnostics go to stderr, so `-w -` preserves pcap stdout. The caller
+needs permission to get VMIs, list launcher Pods and, for `--vm`, get VMs.
 
 UDP endpoint probes send a `health check` datagram and require a response.
 Use a responding health/echo service for UDP; this is not a DNS query or a
