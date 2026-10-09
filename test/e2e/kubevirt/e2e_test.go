@@ -215,6 +215,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		}
 	})
 
+	framework.ConformanceIt("should capture VM and VMI launcher interfaces with kubectl ko", func() {
+		f.SkipVersionPriorTo(1, 17, "KubeVirt capture was introduced in v1.17")
+		expectVMCaptureInterfaces(namespaceName, vmName, getVMPod(podClient, vmName))
+	})
+
 	framework.ConformanceIt("should be able to keep pod ips after the vm is restarted", func() {
 		ginkgo.By("Getting pod of vm " + vmName)
 		pod := getVMPod(podClient, vmName)
@@ -571,6 +576,18 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			ginkgo.By("Creating live-migratable bridge vm " + vmName)
 			vm := framework.MakeVMLiveMigratableBridge(vmName, image, "small")
 			_ = vmClient.CreateSync(vm)
+		})
+
+		framework.ConformanceIt("should capture the current VM launcher before and after live migration", func() {
+			f.SkipVersionPriorTo(1, 17, "KubeVirt capture was introduced in v1.17")
+			pod := getVMPod(podClient, vmName)
+			expectVMCaptureInterfaces(namespaceName, vmName, pod)
+			migration := migrationClient.Create(framework.MakeVMIMigration("mig-"+framework.RandomSuffix(), vmName))
+			framework.ExpectNoError(migrationClient.WaitForPhase(migration.Name, v1.MigrationSucceeded, 5*time.Minute))
+			framework.ExpectNoError(vmClient.WaitToBeReady(vmName, 2*time.Minute))
+			migrated := getVMPod(podClient, vmName)
+			framework.ExpectNotEqual(migrated.Spec.NodeName, pod.Spec.NodeName)
+			expectVMCaptureInterfaces(namespaceName, vmName, migrated)
 		})
 
 		framework.ConformanceIt("should keep pod ip and mac unchanged after live migration", func() {
