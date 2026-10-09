@@ -2,7 +2,6 @@
 """Forward GitHub events to the workflows at an exact pull request HEAD."""
 
 import argparse
-import base64
 import io
 import json
 import os
@@ -12,7 +11,6 @@ import zipfile
 from pathlib import Path
 
 import e2e_control as e2eControl
-import e2e_selector as e2eSelector
 
 
 ROUTER_PATH = ".github/workflows/x86-e2e-pr-router.yaml"
@@ -217,17 +215,12 @@ def prepare(eventName, event, repository, actor, runId, runAttempt, *, github=No
     if (run.get("head_sha") != headSHA
             or run.get("head_branch") != e2eControl.executorHeadBranch(metadata)):
         raise ValueError("source executor did not execute the exact candidate HEAD")
-    pull = livePullRequest(github, repository, prNumber, headSHA)
-    baseRef = pull["base"]["ref"]
+    livePullRequest(github, repository, prNumber, headSHA)
     base = metadata["baseSHA"]
     if not base:
         raise ValueError("source executor is missing its actual base identity")
-    content = github.api(f"repos/{repository}/contents/.github/e2e-selection.json?ref={headSHA}")
-    catalog = json.loads(base64.b64decode(content["content"]))
-    e2eSelector.validateCatalog(catalog)
     inputs = {"prNumber": str(prNumber), "headSHA": headSHA, "baseSHA": base,
               "approvalGeneration": str(metadata["approvalGeneration"]),
-              "catalogRevision": e2eSelector.catalogRevision(catalog),
               "requestedGroups": json.dumps(metadata["requestedGroups"]),
               "controlledLabels": json.dumps(metadata["controlledLabels"]),
               "full": str(metadata["full"]).lower(), "recordIntent": "false", "baseRefresh": "false",

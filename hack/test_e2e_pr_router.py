@@ -239,6 +239,15 @@ class E2EPRRouterTest(unittest.TestCase):
         self.assertEqual(route["inputs"]["executorRunId"], "99")
         self.assertEqual(route["inputs"]["baseSHA"], self.baseSHA)
 
+    def testCompletedExecutorLeavesCatalogValidationToCandidateGate(self):
+        _, event = self.executor()
+        catalogPath = f"repos/{self.repository}/contents/.github/e2e-selection.json?ref={self.headSHA}"
+        self.github.responses[catalogPath] = {
+            "content": base64.b64encode(json.dumps({"schemaVersion": 2}).encode()).decode()}
+        route = self.prepare("workflow_run", event)
+        self.assertNotIn("catalogRevision", route["inputs"])
+        self.assertFalse(any(path == catalogPath for path, _ in self.github.calls))
+
     def testCompletedExecutorPreservesActualBaseAfterBaseAdvance(self):
         _, event = self.executor()
         self.github.responses[f"repos/{self.repository}/git/ref/heads/release-1.15"] = {

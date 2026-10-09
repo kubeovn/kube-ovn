@@ -20,8 +20,9 @@ on:
         required: true
         type: number
       catalogRevision:
-        description: Trusted catalog revision
-        required: true
+        description: Candidate catalog revision; completion callbacks resolve it at HEAD
+        required: false
+        default: ''
         type: string
       requestedGroups:
         description: JSON array of approved stable groups
