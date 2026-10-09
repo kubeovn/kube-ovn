@@ -6,7 +6,6 @@ FROM kubeovn/kube-ovn-base:$BASE_TAG AS setcap
 COPY *.sh /kube-ovn/
 COPY kubectl-ko /kube-ovn/kubectl-ko
 COPY kubectl-ko-node-agent /kube-ovn/kubectl-ko-node-agent
-COPY kubectl-ko-legacy /kube-ovn/kubectl-ko-legacy
 COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
 
 COPY kube-ovn /kube-ovn/kube-ovn

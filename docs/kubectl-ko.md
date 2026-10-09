@@ -321,9 +321,8 @@ Bare pod names honor kubeconfig namespace; multiple ready leaders fail instead
 of selecting arbitrarily; failures retain nonzero exit codes; binary streams
 do not use a TTY. UDP offered bandwidth defaults to 1G instead of 1000G.
 
-The original script remains a separate `kubectl-ko-legacy` executable for an
-explicit rollback; the Go executable never invokes it. Legacy syntax exists
-only in that script and version-specific E2E fixtures for older releases.
+Only the Go executable is shipped and installed. Legacy syntax exists only
+in version-specific E2E fixtures for older releases.
 Build scripts and CI invoke the Go binary directly, never through Bash.
 
 ## Development checks

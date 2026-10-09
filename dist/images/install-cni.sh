@@ -23,7 +23,6 @@ install_binary(){
 
 mkdir -p /usr/local/bin
 install_binary /kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
-install_binary /kube-ovn/kubectl-ko-legacy /usr/local/bin/kubectl-ko-legacy
 chmod +x /usr/local/bin/kubectl-ko
 
 for ip in $(echo "${POD_IPS}" | tr ',' ' '); do
