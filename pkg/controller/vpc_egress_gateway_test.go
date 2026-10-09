@@ -805,3 +805,51 @@ func TestReconcileVpcEgressGatewayWorkloadMutuallyExclusiveIPFields(t *testing.T
 		})
 	}
 }
+
+func TestReconcileVpcEgressGatewayWorkloadNonPrimaryCNIAnnotations(t *testing.T) {
+	intSubnet := &kubeovnv1.Subnet{
+		Name: "int-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "172.20.10.0/24",
+			Gateway:   "172.20.10.1",
+			Provider:  "vswitchinternal.default.ovn",
+		},
+	}
+	extSubnet := &kubeovnv1.Subnet{
+		Name: "ext-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "192.168.0.10/24",
+			Gateway:   "192.168.0.1",
+			Provider:  "vswitchexternal.default.ovn",
+		},
+	}
+	intNad := &nadv1.NetworkAttachmentDefinition{Name: "vswitchinternal", Namespace: "default"}
+	extNad := &nadv1.NetworkAttachmentDefinition{Name: "vswitchexternal", Namespace: "default"}
+	ippools := []*kubeovnv1.IPPool{
+		{Name: "int-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "int-subnet"}},
+		{Name: "ext-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "ext-subnet"}},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:            []*kubeovnv1.Subnet{intSubnet, extSubnet},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{intNad, extNad},
+		IPPools:            ippools,
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.config.EnableNonPrimaryCNI = true
+
+	gw := newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet)
+	gw.Spec.InternalIPPool = "int-pool"
+	gw.Spec.ExternalIPPool = "ext-pool"
+
+	attachmentNetworkName, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+	require.NoError(t, err)
+	require.Equal(t, "default/vswitchexternal", attachmentNetworkName)
+
+	require.Equal(t, "default/vswitchinternal", deploy.Spec.Template.Annotations[util.DefaultNetworkAnnotation])
+	require.Equal(t, "default/vswitchexternal", deploy.Spec.Template.Annotations[nadv1.NetworkAttachmentAnnot])
+	require.Equal(t, intSubnet.Name, deploy.Spec.Template.Annotations[util.LogicalSwitchAnnotation])
+	require.Equal(t, "int-pool", deploy.Spec.Template.Annotations[util.IPPoolAnnotation])
+	require.Equal(t, "ext-pool", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)])
+}
