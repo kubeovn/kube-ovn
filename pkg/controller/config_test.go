@@ -106,3 +106,51 @@ func TestLeaderElectionConfigurationValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigurationValidateServiceFeatureGates(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		config  Configuration
+		wantErr string
+	}{
+		{name: "all disabled"},
+		{name: "ovn and gateway load balancer coexist", config: Configuration{EnableOvnLB: true, EnableGwNftableLbSvc: true}},
+		{name: "both gateway identities coexist", config: Configuration{EnableGwNftableLbSvc: true, EnableGwNftableSvcClusterIP: true}},
+		{
+			name:    "pod and gateway load balancer conflict",
+			config:  Configuration{EnableOvnLB: true, EnablePodLbSvc: true, EnableGwNftableLbSvc: true},
+			wantErr: "--enable-lb-svc and --enable-gw-nftable-lb-svc are mutually exclusive",
+		},
+		{
+			// no direct conflict: the lb-svc Pod DNATs to the ClusterIP, which the gateway
+			// ClusterIP mode can serve; only a warning is logged when no ClusterIP data
+			// plane is left at all (neither --enable-lb nor the gateway mode)
+			name:   "pod load balancer combines with gateway cluster ip",
+			config: Configuration{EnablePodLbSvc: true, EnableGwNftableSvcClusterIP: true},
+		},
+		{
+			// with --enable-lb pinned on, the remaining conflict is between the two
+			// ClusterIP implementations, not between lb-svc and the gateway mode
+			name:    "pod load balancer and gateway cluster ip conflict only through enable-lb",
+			config:  Configuration{EnableOvnLB: true, EnablePodLbSvc: true, EnableGwNftableSvcClusterIP: true},
+			wantErr: "--enable-gw-nftable-svc-cluster-ip and --enable-lb are mutually exclusive",
+		},
+		{
+			name:    "ovn and gateway cluster ip conflict",
+			config:  Configuration{EnableOvnLB: true, EnableGwNftableSvcClusterIP: true},
+			wantErr: "--enable-gw-nftable-svc-cluster-ip and --enable-lb are mutually exclusive",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.validateServiceFeatureGates()
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tt.wantErr)
+			}
+		})
+	}
+}

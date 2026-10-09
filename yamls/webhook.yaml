@@ -52,6 +52,11 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: status.podIP
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
           volumeMounts:
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
@@ -143,6 +148,14 @@ webhooks:
         - v1
       resources:
         - pods
+    - operations:
+        - UPDATE
+      apiGroups:
+        - ""
+      apiVersions:
+        - v1
+      resources:
+        - services
     - operations:
         - CREATE
         - UPDATE
