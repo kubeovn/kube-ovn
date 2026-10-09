@@ -1,6 +1,6 @@
 name: Build x86 Image
 
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('x86-e2e pr={0} head={1} approval={2} generation={3} mode={4} groups={5} labels={6} full={7}', inputs.prNumber, inputs.headSHA, inputs.approvalGeneration, inputs.dispatchGeneration, inputs.automatic && 'automatic' || 'approved', inputs.requestedGroupNames, inputs.controlledLabelNames, inputs.full && '1' || '0') || '' }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('x86-e2e pr={0} head={1} approval={2} generation={3} mode={4} groups={5} labels={6} full={7} base={8}', inputs.prNumber, inputs.headSHA, inputs.approvalGeneration, inputs.dispatchGeneration, inputs.automatic && 'automatic' || 'approved', inputs.requestedGroupNames, inputs.controlledLabelNames, inputs.full && '1' || '0', inputs.baseSHA) || '' }}
 
 permissions:
   contents: read
@@ -98,7 +98,7 @@ concurrency:
 
 env:
   EXECUTION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
-  # The trusted selector validates inputs.headSHA against the live pull request before dispatch.
+  # Every PR job uses the immutable candidate revision validated against the live pull request.
   E2E_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.repository.default_branch }}
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.33.0
@@ -129,7 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
           fetch-depth: 0
 
@@ -171,8 +171,8 @@ jobs:
           baseSHA="$GITHUB_SHA"
           prNumber=0
           checkedOutSHA=$(git rev-parse HEAD)
-          if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$checkedOutSHA" != "$INPUT_BASE_SHA" ]; then
-            echo 'trusted selector checkout does not match the approved base revision' >&2
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$checkedOutSHA" != "$INPUT_HEAD_SHA" ]; then
+            echo 'candidate selector checkout does not match the requested HEAD revision' >&2
             exit 1
           fi
           if [ "$EVENT_NAME" = pull_request ]; then
@@ -246,9 +246,9 @@ jobs:
                   "dispatchGeneration": int(sys.argv[7]),
               },
           ):
-              raise SystemExit("executor must run from the pull request base branch")
-          if sys.argv[4] != sys.argv[2]:
-              raise SystemExit("executor workflow revision does not match the approved base")
+              raise SystemExit("executor must run from its isolated candidate ref")
+          if sys.argv[4] != sys.argv[1]:
+              raise SystemExit("executor workflow revision does not match the requested HEAD")
           controlledLabels = json.loads(os.environ["INPUT_CONTROLLED_LABELS"])
           if not isinstance(controlledLabels, list) or any(
               not isinstance(label, str) for label in controlledLabels
@@ -428,11 +428,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.sha }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Run control module tests
-        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
+        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py hack/test_e2e_pr_router.py
 
   prepare-kind-node-images:
     name: Prepare private Kind node image (${{ matrix.k8s-version }})
@@ -5581,14 +5581,18 @@ jobs:
       - e2e-executor-result
     permissions:
       actions: write
-      contents: read
+      contents: write
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.EXECUTION_SHA }}
+          persist-credentials: false
+
       - name: Dispatch the completed executor to the trusted gate
         env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           PR_NUMBER: ${{ inputs.prNumber }}
           HEAD_SHA: ${{ inputs.headSHA }}
           BASE_SHA: ${{ inputs.baseSHA }}
@@ -5604,22 +5608,19 @@ jobs:
           executorRunAttempt=$(gh api \
             "repos/$GITHUB_REPOSITORY/actions/runs/$EXECUTOR_RUN_ID" \
             --jq '.run_attempt')
-          gh api --method POST \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
-            -f ref="$DEFAULT_BRANCH" \
-            -f "inputs[prNumber]=$PR_NUMBER" \
-            -f "inputs[headSHA]=$HEAD_SHA" \
-            -f "inputs[baseSHA]=$BASE_SHA" \
-            -f "inputs[approvalGeneration]=$APPROVAL_GENERATION" \
-            -f "inputs[catalogRevision]=$CATALOG_REVISION" \
-            -f "inputs[requestedGroups]=$REQUESTED_GROUPS" \
-            -f "inputs[controlledLabels]=$CONTROLLED_LABELS" \
-            -f "inputs[full]=$FULL" \
-            -f 'inputs[recordIntent]=false' \
-            -f 'inputs[baseRefresh]=false' \
-            -f "inputs[executorRunId]=$EXECUTOR_RUN_ID" \
-            -f "inputs[executorRunAttempt]=$executorRunAttempt" \
-            -f "inputs[executorConclusion]=$EXECUTOR_CONCLUSION"
+          python3 - "$PR_NUMBER" "$HEAD_SHA" "$BASE_SHA" "$APPROVAL_GENERATION" "$CATALOG_REVISION" "$REQUESTED_GROUPS" "$CONTROLLED_LABELS" "$FULL" "false" "false" "$EXECUTOR_RUN_ID" "$executorRunAttempt" "$EXECUTOR_CONCLUSION" <<'PY' > candidate-dispatch-inputs.json
+          import json
+          import sys
+          from pathlib import Path
+
+          fields = ['prNumber', 'headSHA', 'baseSHA', 'approvalGeneration', 'catalogRevision', 'requestedGroups', 'controlledLabels', 'full', 'recordIntent', 'baseRefresh', 'executorRunId', 'executorRunAttempt', 'executorConclusion']
+          Path("candidate-dispatch-inputs.json").write_text(
+              json.dumps(dict(zip(fields, sys.argv[1:], strict=True)))
+          )
+          PY
+          python3 hack/e2e_pr_router.py dispatch \
+            --pr-number "$PR_NUMBER" --head-sha "$HEAD_SHA" \
+            --workflow x86-e2e-gate.yaml --inputs-file candidate-dispatch-inputs.json
 
   publish-pr-e2e-checks:
     name: Publish x86 E2E checks on the pull request
@@ -5641,7 +5642,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.baseSHA }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Stream selected executor jobs onto the pull request HEAD

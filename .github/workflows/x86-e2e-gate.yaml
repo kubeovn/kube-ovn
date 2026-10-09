@@ -1,9 +1,6 @@
 name: Update x86 E2E gate
 
 on:
-  workflow_run:
-    workflows: [Build x86 Image]
-    types: [completed]
   workflow_dispatch:
     inputs:
       prNumber:
@@ -62,6 +59,9 @@ on:
         default: ''
         type: string
 
+env:
+  EXECUTION_SHA: ${{ inputs.headSHA || github.sha }}
+
 permissions:
   contents: read
   actions: read
@@ -73,7 +73,6 @@ jobs:
   gate:
     name: Evaluate x86-e2e / required-gate
     if: >-
-      github.event_name == 'workflow_run' ||
       (github.event_name == 'workflow_dispatch' &&
        github.actor == 'github-actions[bot]' &&
        inputs.executorRunId != 0)
@@ -111,7 +110,7 @@ jobs:
       - name: Check out trusted control logic
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Resolve executor metadata and current PR
@@ -129,11 +128,16 @@ jobs:
           RUN_PULL_REQUESTS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
           RUN_TRIGGERING_ACTOR: ${{ github.event.workflow_run.triggering_actor.login }}
           RUN_WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_BASE_SHA: ${{ inputs.baseSHA }}
           EXECUTOR_RUN_ID: ${{ inputs.executorRunId || 0 }}
           EXECUTOR_RUN_ATTEMPT: ${{ inputs.executorRunAttempt || 0 }}
           EXECUTOR_RUN_CONCLUSION: ${{ inputs.executorConclusion || '' }}
         run: |
           set -euo pipefail
+          if [ "$GITHUB_SHA" != "$EXECUTION_SHA" ]; then
+            echo 'gate workflow revision does not match the requested HEAD' >&2
+            exit 1
+          fi
           notifiedCompletion=false
           if [ "$EXECUTOR_RUN_ID" != 0 ]; then
             gh api "repos/$GITHUB_REPOSITORY/actions/runs/$EXECUTOR_RUN_ID" > context-run-state.json
@@ -188,7 +192,11 @@ jobs:
             prNumber=$(jq -r '.prNumber' executor-metadata.json)
             expectedExecutorRef=$(jq -r '.executorHeadBranch' executor-metadata.json)
             expectedHead=$(jq -r '.headSHA' executor-metadata.json)
-            expectedBase="$RUN_WORKFLOW_SHA"
+            expectedBase=$(jq -r '.baseSHA // empty' executor-metadata.json)
+            if [ -z "$expectedBase" ] || [ "$expectedBase" != "$INPUT_BASE_SHA" ]; then
+              echo 'Executor base identity is missing or does not match the callback.' >&2
+              exit 1
+            fi
             approvalGeneration=$(jq -r '.approvalGeneration' executor-metadata.json)
             dispatchGeneration=$(jq -r '.dispatchGeneration' executor-metadata.json)
             requestedGroups=$(jq -c '.requestedGroups' executor-metadata.json)
@@ -196,7 +204,7 @@ jobs:
             automatic=$(jq -r '.automatic' executor-metadata.json)
             requestKey=''
             expectedCatalogRevision=''
-            trustedRef="$RUN_WORKFLOW_SHA"
+            trustedRef="$expectedHead"
             full=$(jq -r '.full' executor-metadata.json)
             approved=$([ "$automatic" = true ] && echo false || echo true)
             trustedExecution=true
@@ -255,6 +263,10 @@ jobs:
               exit 0
             fi
           fi
+          if [ "$expectedHead" != "$EXECUTION_SHA" ]; then
+            echo 'gate and executor candidate revisions do not match' >&2
+            exit 1
+          fi
           if ! [[ "$trustedRef" =~ ^[0-9a-f]{40}$ ]]; then
             echo 'Trusted workflow revision is invalid.' >&2
             exit 1
@@ -275,18 +287,18 @@ jobs:
             exit 1
           fi
           if [ "$RUN_EVENT" = workflow_dispatch ] && {
-            [ "$trustedRef" != "$currentBaseSHA" ] || [ "$expectedBase" != "$currentBaseSHA" ];
+            [ "$RUN_WORKFLOW_SHA" != "$expectedHead" ] || [ "$expectedBase" != "$currentBaseSHA" ];
           }; then
             trustedExecution=false
           fi
-          trustedRef="$currentBaseSHA"
+          trustedRef="$expectedHead"
           if [ "$RUN_EVENT" = workflow_dispatch ] && {
             [ "$RUN_ACTOR" != 'github-actions[bot]' ] || [ "$RUN_HEAD_BRANCH" != "$expectedExecutorRef" ];
           }; then
             echo 'Executor dispatch did not originate from the trusted dispatcher and isolated ref.' >&2
             exit 1
           fi
-          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$currentHead" \
             --jq '.content' | base64 --decode > current-catalog.json
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$prNumber/comments?per_page=100" \
@@ -376,7 +388,6 @@ jobs:
           import e2e_control as e2eControl
 
           metadata = json.loads(Path("executor-metadata.json").read_text())
-          metadata["baseSHA"] = sys.argv[1]
           metadata["catalogRevision"] = sys.argv[2]
           print(e2eControl.executorRequestKey(metadata))
           PY
@@ -430,7 +441,7 @@ jobs:
             gh api --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
               > executor-run-pages.json
-            latestRun=$(python3 - "$prNumber" "$expectedHead" "$baseRef" "$expectedCatalogRevision" "$trustedRef" <<'PY'
+            latestRun=$(python3 - "$prNumber" "$expectedHead" "$baseRef" "$expectedCatalogRevision" "$trustedRef" "$expectedBase" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -445,6 +456,7 @@ jobs:
               sys.argv[3],
               sys.argv[4] or None,
               sys.argv[5],
+              sys.argv[6],
           )
           if latestRun is not None:
               print(latestRun["id"])
@@ -738,7 +750,7 @@ jobs:
       runId: "0"
       runURL: ${{ steps.request.outputs.runURL }}
       runEvent: workflow_dispatch
-      trustedRef: ${{ steps.request.outputs.baseSHA }}
+      trustedRef: ${{ inputs.headSHA }}
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -748,7 +760,7 @@ jobs:
       - name: Check out trusted control logic
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Resolve the durable approval
@@ -766,6 +778,10 @@ jobs:
           CONTROLLED_LABELS: ${{ inputs.controlledLabels }}
         run: |
           set -euo pipefail
+          if [ "$GITHUB_SHA" != "$EXECUTION_SHA" ]; then
+            echo 'gate workflow revision does not match the requested HEAD' >&2
+            exit 1
+          fi
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > pull-request.json
           if [ "$(jq -r '.state' pull-request.json)" != open ] || \
              [ "$(jq -r '.head.sha' pull-request.json)" != "$HEAD_SHA" ]; then
@@ -789,7 +805,7 @@ jobs:
           jq --arg baseSHA "$liveBaseSHA" '.base.sha = $baseSHA' pull-request.json \
             > live-pull-request.json
           mv live-pull-request.json pull-request.json
-          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$baseRef" \
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$HEAD_SHA" \
             --jq '.content' | base64 --decode > trusted-catalog.json
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
@@ -857,11 +873,11 @@ jobs:
               request["headSHA"],
               sys.argv[1],
               request["catalogRevision"],
+              request["headSHA"],
               request["baseSHA"],
           )
           if latest is not None:
               metadata = e2eControl.parseExecutorRunName(latest["display_title"])
-              metadata["baseSHA"] = request["baseSHA"]
               metadata["catalogRevision"] = request["catalogRevision"]
               authorizedAttempt = e2eControl.isAuthorizedRunAttempt(
                   latest,
@@ -955,12 +971,16 @@ jobs:
       - name: Check out trusted mutation logic
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ env.EXECUTION_SHA }}
           persist-credentials: false
 
       - name: Reconcile the fixed gate from durable state
         run: |
           set -euo pipefail
+          if [ "$GITHUB_SHA" != "$EXECUTION_SHA" ]; then
+            echo 'gate workflow revision does not match the requested HEAD' >&2
+            exit 1
+          fi
           runState='{}'
           if [ "$RUN_ACTION" != approval ] && [ "$RUN_ACTION" != reservation ] && \
              [ "$RUN_ACTION" != base_refresh ]; then
@@ -989,9 +1009,9 @@ jobs:
             RUN_URL="https://github.com/$GITHUB_REPOSITORY/pull/$PR_NUMBER"
             BASE_REF="$currentBaseRef"
             export BASE_SHA="$currentBaseSHA"
-            export TRUSTED_REF="$currentBaseSHA"
+            export TRUSTED_REF="$HEAD_SHA"
           fi
-          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$BASE_REF" \
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/e2e-selection.json?ref=$HEAD_SHA" \
             --jq '.content' | base64 --decode > final-catalog.json
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
@@ -1100,6 +1120,7 @@ jobs:
               os.environ["BASE_REF"],
               os.environ["CATALOG_REVISION"] or None,
               os.environ["TRUSTED_REF"],
+              os.environ["BASE_SHA"],
           )
           if latest is not None and not e2eControl.isAuthorizedRunAttempt(
               latest,
@@ -1124,7 +1145,6 @@ jobs:
               print("")
           else:
               metadata = e2eControl.parseExecutorRunName(run["display_title"])
-              metadata["baseSHA"] = os.environ["BASE_SHA"]
               metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
               print(e2eControl.executorRequestKey(metadata))
           PY
@@ -1152,23 +1172,24 @@ jobs:
               artifactName="x86-e2e-gate-decision-$recoveryRunId-$recoveryRunAttempt"
               trustedGateWorkflowId=$(gh api \
                 "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml" --jq '.id')
-              defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+              candidateRef=$(python3 -c 'import os,e2e_pr_router as router; print(router.candidateWorkflowRef(int(os.environ["PR_NUMBER"]), os.environ["HEAD_SHA"]))')
               artifactId=''
               for _ in $(seq 1 12); do
                 gh api --paginate --slurp \
-                  "repos/$GITHUB_REPOSITORY/actions/workflows/$trustedGateWorkflowId/runs?event=workflow_run&branch=$defaultBranch&actor=github-actions%5Bbot%5D&per_page=100" \
+                  "repos/$GITHUB_REPOSITORY/actions/workflows/$trustedGateWorkflowId/runs?event=workflow_dispatch&branch=$candidateRef&actor=github-actions%5Bbot%5D&per_page=100" \
                   > trusted-gate-run-pages.json
                 jq -r \
                   --argjson workflowId "$trustedGateWorkflowId" \
                   --arg repository "$GITHUB_REPOSITORY" \
-                  --arg defaultBranch "$defaultBranch" \
+                  --arg candidateRef "$candidateRef" \
+                  --arg headSHA "$HEAD_SHA" \
                   '[.[].workflow_runs[] | select(
                     .workflow_id == $workflowId and
                     .path == ".github/workflows/x86-e2e-gate.yaml" and
-                    .event == "workflow_run" and
+                    .event == "workflow_dispatch" and
                     .actor.login == "github-actions[bot]" and
                     .head_repository.full_name == $repository and
-                    .head_branch == $defaultBranch)]
+                    .head_branch == $candidateRef and .head_sha == $headSHA)]
                    | sort_by(.created_at) | reverse[] | .id' trusted-gate-run-pages.json \
                   > trusted-gate-runs.txt
                 while IFS= read -r ownerRunId; do
@@ -1200,7 +1221,6 @@ jobs:
           decision = json.loads(Path("recovered-mutation.json").read_text())
           run = json.loads(Path("recovery-latest-run.json").read_text())
           metadata = e2eControl.parseExecutorRunName(run["display_title"])
-          metadata["baseSHA"] = os.environ["BASE_SHA"]
           metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
           expected = {
               "prNumber": int(os.environ["PR_NUMBER"]),
@@ -1326,6 +1346,7 @@ jobs:
               os.environ["BASE_REF"],
               os.environ["CATALOG_REVISION"] or None,
               os.environ["TRUSTED_REF"],
+              os.environ["BASE_SHA"],
           )
           Path("latest-matching-run.json").write_text(json.dumps(latest or {}))
           if latest is not None and not e2eControl.isAuthorizedRunAttempt(
@@ -1349,7 +1370,6 @@ jobs:
 
           run = json.loads(Path("latest-run.json").read_text())
           metadata = e2eControl.parseExecutorRunName(run["display_title"])
-          metadata["baseSHA"] = os.environ["BASE_SHA"]
           metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
           print(e2eControl.executorRequestKey(metadata))
           PY
@@ -1375,7 +1395,6 @@ jobs:
 
           run = json.loads(Path("latest-matching-run.json").read_text())
           metadata = e2eControl.parseExecutorRunName(run["display_title"])
-          metadata["baseSHA"] = os.environ["BASE_SHA"]
           metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
           print(e2eControl.executorRequestKey(metadata))
           PY
@@ -1417,23 +1436,24 @@ jobs:
                   artifactName="x86-e2e-gate-decision-$matchingRunId-$latestAuthorizedAttempt"
                   trustedGateWorkflowId=$(gh api \
                     "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml" --jq '.id')
-                  defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+                  candidateRef=$(python3 -c 'import os,e2e_pr_router as router; print(router.candidateWorkflowRef(int(os.environ["PR_NUMBER"]), os.environ["HEAD_SHA"]))')
                   artifactId=''
                   for _ in $(seq 1 12); do
                     gh api --paginate --slurp \
-                      "repos/$GITHUB_REPOSITORY/actions/workflows/$trustedGateWorkflowId/runs?event=workflow_run&branch=$defaultBranch&actor=github-actions%5Bbot%5D&per_page=100" \
+                      "repos/$GITHUB_REPOSITORY/actions/workflows/$trustedGateWorkflowId/runs?event=workflow_dispatch&branch=$candidateRef&actor=github-actions%5Bbot%5D&per_page=100" \
                       > high-water-gate-run-pages.json
                     jq -r \
                       --argjson workflowId "$trustedGateWorkflowId" \
                       --arg repository "$GITHUB_REPOSITORY" \
-                      --arg defaultBranch "$defaultBranch" \
+                      --arg candidateRef "$candidateRef" \
+                      --arg headSHA "$HEAD_SHA" \
                       '[.[].workflow_runs[] | select(
                         .workflow_id == $workflowId and
                         .path == ".github/workflows/x86-e2e-gate.yaml" and
-                        .event == "workflow_run" and
+                        .event == "workflow_dispatch" and
                         .actor.login == "github-actions[bot]" and
                         .head_repository.full_name == $repository and
-                        .head_branch == $defaultBranch)]
+                        .head_branch == $candidateRef and .head_sha == $headSHA)]
                        | sort_by(.created_at) | reverse[] | .id' high-water-gate-run-pages.json \
                       > high-water-gate-runs.txt
                     while IFS= read -r ownerRunId; do
@@ -1467,7 +1487,6 @@ jobs:
           decision = json.loads(Path("high-water-mutation.json").read_text())
           run = json.loads(Path("candidate-attempt-state.json").read_text())
           metadata = e2eControl.parseExecutorRunName(run["display_title"])
-          metadata["baseSHA"] = os.environ["BASE_SHA"]
           metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
           expected = {
               "prNumber": int(os.environ["PR_NUMBER"]),
@@ -1526,6 +1545,7 @@ jobs:
               os.environ["BASE_REF"],
               os.environ["CATALOG_REVISION"] or None,
               os.environ["TRUSTED_REF"],
+              os.environ["BASE_SHA"],
           )
           print(json.dumps(latest or {}))
           PY
@@ -1539,7 +1559,6 @@ jobs:
 
           run = json.loads(Path("pre-write-latest-run.json").read_text())
           metadata = e2eControl.parseExecutorRunName(run["display_title"])
-          metadata["baseSHA"] = os.environ["BASE_SHA"]
           metadata["catalogRevision"] = os.environ["CATALOG_REVISION"]
           print(e2eControl.executorRequestKey(metadata))
           PY
@@ -1646,10 +1665,10 @@ jobs:
             intent=$(cat approval-intent.txt)
             body=$(printf "Queued x86 E2E approval intent for current HEAD %s.\n\n%s" "$HEAD_SHA" "$intent")
             gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body"
-            defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+            candidateRef=$(python3 -c 'import os,e2e_pr_router as router; print(router.candidateWorkflowRef(int(os.environ["PR_NUMBER"]), os.environ["HEAD_SHA"]))')
             if ! gh api --method POST \
               "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
-              -f ref="$defaultBranch" \
+              -f ref="$candidateRef" \
               -f "inputs[prNumber]=$PR_NUMBER" \
               -f "inputs[headSHA]=$HEAD_SHA" \
               -f "inputs[baseSHA]=$BASE_SHA" \
@@ -1684,10 +1703,10 @@ jobs:
             marker=$(cat request-marker.txt)
             body=$(printf "Recorded x86 E2E approval for current HEAD %s.\n\n%s" "$HEAD_SHA" "$marker")
             gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body"
-            defaultBranch=$(jq -r '.repository.default_branch' "$GITHUB_EVENT_PATH")
+            candidateRef=$(python3 -c 'import os,e2e_pr_router as router; print(router.candidateWorkflowRef(int(os.environ["PR_NUMBER"]), os.environ["HEAD_SHA"]))')
             if ! gh api --method POST \
               "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-dispatcher.yaml/dispatches" \
-              -f ref="$defaultBranch" \
+              -f ref="$candidateRef" \
               -f "inputs[prNumber]=$PR_NUMBER" \
               -f "inputs[headSHA]=$HEAD_SHA" \
               -f "inputs[approvalGeneration]=$APPROVAL_GENERATION"; then

@@ -1055,6 +1055,34 @@ class E2EControlTest(unittest.TestCase):
             )
         )
 
+    def testCandidateExecutorIdentitySeparatesBasesForSameHead(self):
+        head, oldBase, newBase = "a" * 40, "b" * 40, "d" * 40
+        title = (f"x86-e2e pr=7231 head={head} approval=1001 generation=2001 "
+                 "mode=approved groups=policy labels=- full=0")
+        run = {
+            "id": 1, "path": ".github/workflows/build-x86-image.yaml",
+            "actor": {"login": "github-actions[bot]"}, "head_sha": head,
+            "head_branch": "x86-e2e/pr-7231-a-1001-d-2001",
+            "display_title": f"{title} base={oldBase}", "status": "completed",
+        }
+        for conclusion in ["success", "failure", "cancelled"]:
+            with self.subTest(conclusion=conclusion):
+                old = {**run, "conclusion": conclusion}
+                self.assertIsNone(e2eControl.latestExecutorRun(
+                    [old], 7231, head, "master", workflowSHA=head, baseSHA=newBase))
+                current = {**old, "id": 2, "display_title": f"{title} base={newBase}"}
+                self.assertEqual(e2eControl.latestExecutorRun(
+                    [old, current], 7231, head, "master", workflowSHA=head,
+                    baseSHA=newBase)["id"], 2)
+        self.assertIsNone(e2eControl.latestExecutorRun(
+            [{**run, "display_title": title}], 7231, head, "master",
+            workflowSHA=head, baseSHA=newBase))
+        metadata = e2eControl.parseExecutorRunName(run["display_title"])
+        self.assertEqual(metadata["baseSHA"], oldBase)
+        metadata["catalogRevision"] = "c" * 64
+        self.assertNotEqual(e2eControl.executorRequestKey(metadata),
+                            e2eControl.executorRequestKey({**metadata, "baseSHA": newBase}))
+
     def testLatestExecutorRunPrefersApprovedCoverageOverAutomaticProbe(self):
         head = "a" * 40
         base = "d" * 40
@@ -1284,15 +1312,19 @@ class E2EControlTest(unittest.TestCase):
     def testDispatcherWorkflowUsesOnlyTrustedWritePermissions(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
 
-        self.assertIn("issue_comment:\n    types: [created]", workflow)
+        router = (repoRoot / ".github/workflows/x86-e2e-pr-router.yaml").read_text()
+        self.assertIn("issue_comment:\n    types: [created]", router)
+        self.assertNotIn("issue_comment:", workflow)
+        self.assertIn("validate-source", workflow)
+        self.assertIn("ref: ${{ inputs.sourceHeadSHA || inputs.headSHA || github.sha }}", workflow)
         self.assertIn(
             "pull_request_target:\n    types: [opened, reopened, synchronize, labeled, unlabeled, closed]",
-            workflow,
+            router,
         )
-        self.assertIn("push:\n    branches:\n      - 'release-*'", workflow)
+        self.assertIn("branches: ['release-*']", router)
         self.assertIn("name: Invalidate x86 E2E gates after a base update", workflow)
-        self.assertIn("inputs[baseRefresh]=true", workflow)
-        self.assertIn("inputs[baseSHA]=$GITHUB_SHA", workflow)
+        self.assertIn('--arg baseRefresh "true"', workflow)
+        self.assertIn('--arg baseSHA "$BASE_PUSH_SHA"', workflow)
         self.assertIn("actions: write", workflow)
         self.assertIn("checks: read", workflow)
         self.assertNotIn("checks: write", workflow)
@@ -1302,7 +1334,7 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("--catalog trusted-catalog.json", workflow)
         self.assertIn("--live-comment-file live-comment.json", workflow)
         self.assertIn("issues/comments/$COMMENT_ID", workflow)
-        self.assertIn("e2e-selection.json?ref=$baseRef", workflow)
+        self.assertIn("e2e-selection.json?ref=$CANDIDATE_HEAD", workflow)
         self.assertIn("Cancel obsolete x86 E2E executors", workflow)
         self.assertIn("Record trusted x86 E2E controlled labels", workflow)
         self.assertIn("collaborators/$SENDER/permission", workflow)
@@ -1324,12 +1356,12 @@ class E2EControlTest(unittest.TestCase):
             workflow,
         )
         self.assertIn(
-            "needs:\n      - dispatch\n      - automatic\n      - invalidate-base",
+            "needs:\n      - validate-source\n      - dispatch\n      - automatic\n      - invalidate-base",
             workflow,
         )
         self.assertIn("no approval was recorded", workflow)
-        self.assertIn("actions/workflows/x86-e2e-gate.yaml/dispatches", workflow)
-        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn("--workflow x86-e2e-gate.yaml", workflow)
+        self.assertIn("(inputs.sourceEventName || github.event_name) == 'workflow_dispatch'", workflow)
         self.assertIn("inputs[baseSHA]=$BASE_SHA", workflow)
         self.assertIn("inputs[approvalGeneration]=$APPROVAL_GENERATION", workflow)
         self.assertIn("inputs[dispatchGeneration]=$DISPATCH_GENERATION", workflow)
@@ -1379,22 +1411,22 @@ class E2EControlTest(unittest.TestCase):
         workflow = (repoRoot / ".github/workflows/x86-e2e-dispatcher.yaml").read_text()
         automatic = e2eSelector.workflowJobBlocks(workflow)["automatic"]
 
-        self.assertIn("github.event.action == 'opened'", automatic)
-        self.assertIn("github.event.action == 'reopened'", automatic)
-        self.assertIn("github.event.action == 'synchronize'", automatic)
-        self.assertIn("github.event.action == 'labeled'", automatic)
-        self.assertIn("github.event.action == 'unlabeled'", automatic)
-        self.assertIn("startsWith(github.event.label.name, 'e2e:')", automatic)
-        self.assertNotIn("github.event.action != 'closed'", automatic)
+        self.assertIn("(fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'opened'", automatic)
+        self.assertIn("(fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'reopened'", automatic)
+        self.assertIn("(fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'synchronize'", automatic)
+        self.assertIn("(fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'labeled'", automatic)
+        self.assertIn("(fromJSON(inputs.sourceEvent || '{}').action || github.event.action) == 'unlabeled'", automatic)
+        self.assertIn("startsWith((fromJSON(inputs.sourceEvent || '{}').label.name || github.event.label.name), 'e2e:')", automatic)
+        self.assertNotIn("(fromJSON(inputs.sourceEvent || '{}').action || github.event.action) != 'closed'", automatic)
         self.assertIn(
-            "group: x86-e2e-automatic-${{ github.event.pull_request.number }}-"
-            "${{ github.event.pull_request.head.sha }}",
+            "group: x86-e2e-automatic-${{ (fromJSON(inputs.sourceEvent || '{}').pull_request.number || github.event.pull_request.number) }}-"
+            "${{ (fromJSON(inputs.sourceEvent || '{}').pull_request.head.sha || github.event.pull_request.head.sha) }}",
             automatic,
         )
         self.assertIn("cancel-in-progress: true", automatic)
         self.assertIn("inProgressAutomaticExecutorRunIds", automatic)
         self.assertIn("approvedRequest", automatic)
-        self.assertIn("actions/workflows/x86-e2e-gate.yaml/dispatches", automatic)
+        self.assertIn("--workflow x86-e2e-gate.yaml", automatic)
         self.assertIn("actions/runs/$runId/cancel", automatic)
         self.assertIn('requestKey="automatic-$PR_NUMBER-$headSHA"', automatic)
         self.assertNotIn('requestKey="automatic-$DISPATCH_GENERATION"', automatic)
@@ -1404,13 +1436,13 @@ class E2EControlTest(unittest.TestCase):
         reduce = e2eSelector.workflowJobBlocks(workflow)["reduce"]
 
         self.assertIn(
-            "needs:\n      - dispatch\n      - automatic\n      - invalidate-base",
+            "needs:\n      - validate-source\n      - dispatch\n      - automatic\n      - invalidate-base",
             reduce,
         )
-        self.assertIn("github.event_name == 'issue_comment'", reduce)
+        self.assertIn("(inputs.sourceEventName || github.event_name) == 'issue_comment'", reduce)
         self.assertIn("needs.dispatch.outputs.accepted == 'true'", reduce)
         self.assertIn("needs.dispatch.outputs.action == 'dispatch'", reduce)
-        self.assertIn("github.event_name == 'pull_request_target'", reduce)
+        self.assertIn("(inputs.sourceEventName || github.event_name) == 'pull_request_target'", reduce)
         self.assertIn("needs.automatic.result == 'success'", reduce)
         self.assertIn("needs.automatic.outputs.durableApproval == 'true'", reduce)
         self.assertIn("github.event.issue.number", reduce)
@@ -1427,18 +1459,18 @@ class E2EControlTest(unittest.TestCase):
         reduce = blocks["reduce"]
 
         self.assertIn("invalidate-base", blocks)
-        self.assertIn("github.event_name == 'push'", reduce)
-        self.assertNotIn("- master", workflow.split("\non:\n", 1)[1].split("\n  workflow_dispatch:", 1)[0])
+        self.assertIn("(inputs.sourceEventName || github.event_name) == 'push'", reduce)
+        self.assertNotIn("- master", (repoRoot / ".github/workflows/x86-e2e-pr-router.yaml").read_text().split("\non:\n", 1)[1].split("\npermissions:", 1)[0])
         self.assertIn(
-            "needs:\n      - dispatch\n      - automatic\n      - invalidate-base",
+            "needs:\n      - validate-source\n      - dispatch\n      - automatic\n      - invalidate-base",
             reduce,
         )
         self.assertIn("needs.invalidate-base.outputs.approvedPullRequests", reduce)
         self.assertIn(
-            "github.event_name == 'push' && "
+            "(inputs.sourceEventName || github.event_name) == 'push' && "
             "needs.invalidate-base.outputs.approvedPullRequests || "
-            "format('[{0}]', inputs.prNumber || github.event.issue.number || "
-            "github.event.pull_request.number)",
+            "format('[{0}]', inputs.prNumber || (fromJSON(inputs.sourceEvent || '{}').issue.number || github.event.issue.number) || "
+            "(fromJSON(inputs.sourceEvent || '{}').pull_request.number || github.event.pull_request.number))",
             reduce,
         )
         self.assertIn("PR_NUMBER: ${{ matrix.prNumber }}", reduce)
@@ -1470,8 +1502,9 @@ class E2EControlTest(unittest.TestCase):
     def testGateWorkflowCanOnlyReadRunsAndWriteChecks(self):
         workflow = (repoRoot / ".github/workflows/x86-e2e-gate.yaml").read_text()
 
-        self.assertIn("workflow_run:", workflow)
-        self.assertIn("types: [completed]", workflow)
+        self.assertNotIn("workflow_run:", workflow)
+        self.assertIn("ref: ${{ env.EXECUTION_SHA }}", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("actions: read", workflow)
         self.assertIn("checks: write", workflow)
         self.assertIn("actions: write", workflow)
@@ -1583,7 +1616,8 @@ class E2EControlTest(unittest.TestCase):
         gateHeader = gate.split("outputs:", 1)[0]
         resolve = gate.split("Download the executed SelectionPlan", 1)[0]
 
-        self.assertIn("github.event_name == 'workflow_run' ||", gateHeader)
+        self.assertNotIn("github.event_name == 'workflow_run'", gateHeader)
+        self.assertIn("github.actor == 'github-actions[bot]'", gateHeader)
         self.assertIn("inputs.executorRunId != 0", gateHeader)
         self.assertNotIn("github.event.workflow_run.event", gateHeader)
         self.assertIn(
@@ -1604,11 +1638,11 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("needs.e2e-executor-result.result != 'skipped'", executor)
         self.assertIn("github.actor == 'github-actions[bot]'", executor)
         self.assertIn(
-            'actions/workflows/x86-e2e-gate.yaml/dispatches',
+            '--workflow x86-e2e-gate.yaml --inputs-file candidate-dispatch-inputs.json',
             executor,
         )
-        self.assertIn('inputs[executorRunId]', executor)
-        self.assertIn('inputs[executorRunAttempt]', executor)
+        self.assertIn("'executorRunId'", executor)
+        self.assertIn("'executorRunAttempt'", executor)
         self.assertIn('EXECUTOR_RUN_ID: ${{ inputs.executorRunId || 0 }}', gate)
         self.assertIn(
             'The notified executor run is not the requested completed attempt.',
@@ -1642,7 +1676,9 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("recovered gate decision is not current durable coverage", workflow)
         self.assertIn(".workflow_id == $workflowId", workflow)
         self.assertIn(".path == \".github/workflows/x86-e2e-gate.yaml\"", workflow)
-        self.assertIn(".event == \"workflow_run\"", workflow)
+        self.assertIn(".event == \"workflow_dispatch\"", workflow)
+        self.assertIn(".head_sha == $headSHA", workflow)
+        self.assertIn("gate workflow revision does not match the requested HEAD", workflow)
         self.assertIn(".actor.login == \"github-actions[bot]\"", workflow)
         self.assertIn("trusted-gate-run-pages.json", workflow)
         self.assertIn("actions/runs/$ownerRunId/artifacts?per_page=100", workflow)
@@ -1661,7 +1697,7 @@ class E2EControlTest(unittest.TestCase):
             workflow,
         )
         self.assertIn("EXECUTION_EVENT: ${{ steps.context.outputs.approved == 'true'", workflow)
-        self.assertIn("ref: ${{ github.event.repository.default_branch }}", workflow)
+        self.assertIn("ref: ${{ env.EXECUTION_SHA }}", workflow)
         self.assertIn("ref: ${{ steps.context.outputs.trustedRef }}", workflow)
         self.assertNotIn("ref: ${{ steps.context.outputs.baseRef }}", workflow)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
@@ -1681,7 +1717,7 @@ class E2EControlTest(unittest.TestCase):
         )
         self.assertIn("unknown requested E2E group", workflow)
         self.assertIn("executor catalog revision does not match dispatcher", workflow)
-        self.assertIn("executor workflow revision does not match the approved base", workflow)
+        self.assertIn("executor workflow revision does not match the requested HEAD", workflow)
         self.assertIn("isTrustedExecutorRef", workflow)
         self.assertIn('git/ref/heads/$baseRef', workflow)
         self.assertIn("'.base.sha = $baseSHA' pull-request.json", workflow)
@@ -1689,8 +1725,9 @@ class E2EControlTest(unittest.TestCase):
             'if pullRequest["base"]["ref"] != sys.argv[3]:',
             workflow,
         )
-        self.assertIn("trusted selector checkout does not match the approved base revision", workflow)
-        self.assertIn("ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA", workflow)
+        self.assertIn("candidate selector checkout does not match the requested HEAD revision", workflow)
+        self.assertIn("ref: ${{ env.EXECUTION_SHA }}", workflow)
+        self.assertIn('if sys.argv[4] != sys.argv[1]:', workflow)
         self.assertGreaterEqual(workflow.count("github.actor == 'github-actions[bot]'"), 5)
         self.assertNotIn('entry["selection"] != "smoke"', workflow)
         self.assertIn("contents: read", workflow)
@@ -1839,6 +1876,11 @@ class E2EControlTest(unittest.TestCase):
         self.assertNotIn("e2eSelector.expandWorkflow(workflow)", workflow)
         validationBlock = blocks["e2e-control-validation"]
         self.assertIn("permissions:\n      contents: read", validationBlock)
+        self.assertIn("ref: ${{ env.EXECUTION_SHA }}", validationBlock)
+        self.assertIn("persist-credentials: false", validationBlock)
+        self.assertNotIn("inputs.baseSHA", validationBlock)
+        self.assertIn("ref: ${{ env.EXECUTION_SHA }}", blocks["e2e-selection"])
+        self.assertIn('[ "$checkedOutSHA" != "$INPUT_HEAD_SHA" ]', blocks["e2e-selection"])
         self.assertIn("python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py", validationBlock)
         resultBlock = blocks["e2e-executor-result"]
         self.assertIn("if: always() && github.event_name != 'pull_request'", resultBlock)
