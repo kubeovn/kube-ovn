@@ -98,6 +98,29 @@ func (c *Controller) patchSubnetGatewayMAC(subnetName, gatewayMAC string) error 
 	return nil
 }
 
+// recordSubnetGatewayMAC records subnet's router port mac in ipam and persists it to
+// subnet.Status.GatewayMAC. A failed status patch is returned as an error so the subnet
+// retries, since the webhook relies on the persisted value, not ipam, to see it.
+func (c *Controller) recordSubnetGatewayMAC(subnet *kubeovnv1.Subnet, routerPortName string) error {
+	lrp, err := c.OVNNbClient.GetLogicalRouterPort(routerPortName, true)
+	if err != nil || lrp == nil || lrp.MAC == "" {
+		klog.V(3).Infof("router port %s not found or has no MAC, skipping gateway MAC record", routerPortName)
+		return nil
+	}
+	if err := c.ipam.RecordGatewayMAC(subnet.Name, lrp.MAC); err != nil {
+		klog.Warningf("failed to record gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
+	}
+	if subnet.Status.GatewayMAC == lrp.MAC {
+		return nil
+	}
+	if err := c.patchSubnetGatewayMAC(subnet.Name, lrp.MAC); err != nil {
+		klog.Errorf("failed to patch gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
+		return err
+	}
+	subnet.Status.GatewayMAC = lrp.MAC
+	return nil
+}
+
 func (c *Controller) handleUpdateSubnetStatus(key string) error {
 	c.subnetKeyMutex.LockKey(key)
 	defer func() { _ = c.subnetKeyMutex.UnlockKey(key) }()
