@@ -7,6 +7,7 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -380,6 +381,8 @@ func Test_handleAddVirtualIPRetriesAttachAfterStatusAllocation(t *testing.T) {
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	require.NoError(t, indexer.Add(vip))
 	fc.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(indexer)
+	fc.mockOvnClient.EXPECT().LogicalSwitchPortExists("home-vpc1").Return(false, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil)
 	fc.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("target", ovsdb.MutateOperationInsert, "tcp-lb").Return(nil)
 	require.NoError(t, fc.fakeController.handleAddVirtualIP(vip.Name))
 }
@@ -407,6 +410,7 @@ func Test_handleUpdateVirtualIPTypeChangeDetachesAttachSubnets(t *testing.T) {
 	fc.mockOvnClient.EXPECT().
 		LogicalSwitchUpdateLoadBalancers("target", ovsdb.MutateOperationDelete, "tcp-lb").
 		Return(nil)
+	fc.mockOvnClient.EXPECT().LogicalSwitchPortExists("home-vpc1").Return(false, nil)
 
 	require.NoError(t, fc.fakeController.handleUpdateVirtualIP(vip.Name))
 }
@@ -516,6 +520,7 @@ func TestVipTypeChangeDetachesScopedLoadBalancer(t *testing.T) {
 	t.Cleanup(ctrl.addOrUpdateEndpointSliceQueue.ShutDown)
 	lbName := serviceScopedExternalLBName(svc, corev1.ProtocolTCP, vip.Spec.V4ip)
 	fc.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("target", ovsdb.MutateOperationDelete, lbName).Return(nil)
+	fc.mockOvnClient.EXPECT().LogicalSwitchPortExists("home-vpc1").Return(false, nil)
 
 	require.NoError(t, ctrl.handleUpdateVirtualIP(vip.Name))
 	updated, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
