@@ -110,6 +110,9 @@ func (c *Controller) needsSwitchLBRuleMacRepair(key string, vip *kubeovnv1.Vip) 
 		return false, true, fmt.Errorf("gateway mac for subnet %s not recorded yet, retrying repair of vip %s", vip.Spec.Subnet, key)
 	}
 	if gwMac != vip.Status.Mac {
+		if err := c.reconcileSwitchLBVipPort(vip); err != nil {
+			return false, true, err
+		}
 		return false, true, c.reconcileVipAttachSubnets(vip)
 	}
 	klog.Infof("repairing switch lb vip %s: recorded mac %s collides with subnet gateway mac", key, vip.Status.Mac)
@@ -148,9 +151,6 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	}
 	v4ip, v6ip, mac, err := c.acquireVipAddress(vip, subnet, portName, macAddress)
 	if err != nil {
-		return err
-	}
-	if err := c.ensureVipLogicalSwitchPort(vip, subnet, portName, v4ip, v6ip, mac, needsMacRepair); err != nil {
 		return err
 	}
 	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, needsMacRepair); err != nil {
@@ -214,32 +214,6 @@ func (c *Controller) acquireVipAddress(vip *kubeovnv1.Vip, subnet *kubeovnv1.Sub
 		return "", "", "", err
 	}
 	return v4ip, v6ip, mac, nil
-}
-
-// ensureVipLogicalSwitchPort creates vip's lsp for switch_lb_rule vips, the only type
-// that needs one directly addressable on the subnet (routed vip, lsp only for bookkeeping,
-// since the lb DNATs by ip/port and delivery goes through the gateway mac).
-func (c *Controller) ensureVipLogicalSwitchPort(vip *kubeovnv1.Vip, subnet *kubeovnv1.Subnet, portName, v4ip, v6ip, mac string, needsMacRepair bool) error {
-	if vip.Spec.Type != util.SwitchLBRuleVip {
-		return nil
-	}
-	ipStr := util.GetStringIP(v4ip, v6ip)
-	if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
-		err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
-		klog.Error(err)
-		return err
-	}
-	if needsMacRepair {
-		// pre-fix switch_lb_rule vips had arp_proxy set on their lsp; it was never
-		// functional and the CreateLogicalSwitchPort update above does not touch the
-		// options column, so it must be cleared explicitly during repair.
-		if err := c.OVNNbClient.RemoveLogicalSwitchPortOption(portName, "arp_proxy"); err != nil {
-			err = fmt.Errorf("failed to remove arp_proxy option from lsp %s: %w", portName, err)
-			klog.Error(err)
-			return err
-		}
-	}
-	return nil
 }
 
 func (c *Controller) handleUpdateVirtualIP(key string) error {
@@ -324,6 +298,9 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		return err
 	}
 	if vip.Spec.Type == util.SwitchLBRuleVip {
+		if err := c.reconcileSwitchLBVipPort(vip); err != nil {
+			return err
+		}
 		if err := c.reconcileVipAttachSubnets(vip); err != nil {
 			return err
 		}
@@ -332,6 +309,9 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			return err
 		}
 		if err := c.clearVipAttachSubnetsAnnotation(vip); err != nil {
+			return err
+		}
+		if err := c.syncSwitchLBVipArpProxy(vip.Spec.Subnet); err != nil {
 			return err
 		}
 	}
@@ -346,9 +326,83 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 	// For VIPs deleted without finalizer (race condition or direct deletion),
 	// we need to ensure subnet status is updated as a safety net.
 	if vip.Spec.Subnet != "" {
+		if vip.Spec.Type == util.SwitchLBRuleVip {
+			if err := c.syncSwitchLBVipArpProxy(vip.Spec.Subnet); err != nil {
+				return err
+			}
+		}
 		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
 	}
 
+	return nil
+}
+
+// reconcileSwitchLBVipPort makes the subnet router port answer ARP/ND for the vip and
+// removes the logical switch port that older versions created for it.
+func (c *Controller) reconcileSwitchLBVipPort(vip *kubeovnv1.Vip) error {
+	subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s for vip %s: %v", vip.Spec.Subnet, vip.Name, err)
+		return err
+	}
+	// The proxy must be in place before the stale port is removed, otherwise
+	// there is a window in which nobody answers ARP for the vip.
+	if err := c.syncSwitchLBVipArpProxy(subnet.Name); err != nil {
+		return err
+	}
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+		return fmt.Errorf("failed to delete stale lsp %s of vip %s: %w", portName, vip.Name, err)
+	}
+	return nil
+}
+
+// syncSwitchLBVipArpProxy sets the arp_proxy option of the router type port of the subnet to the
+// addresses of all its switch_lb_vip vips. The switch then answers ARP/ND for them with the gateway
+// MAC, so frames DNATed by the switch load balancer reach the router port instead of an unbound
+// port owning the vip MAC. The gateway MAC stays owned by the router port alone.
+func (c *Controller) syncSwitchLBVipArpProxy(subnetName string) error {
+	subnet, err := c.subnetsLister.Get(subnetName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+		return err
+	}
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list vips: %v", err)
+		return err
+	}
+	var proxyIPs []string
+	for _, v := range vips {
+		if v.Spec.Subnet != subnetName || v.Spec.Type != util.SwitchLBRuleVip || !v.DeletionTimestamp.IsZero() {
+			continue
+		}
+		for _, ip := range []string{v.Status.V4ip, v.Status.V6ip} {
+			if ip != "" {
+				proxyIPs = append(proxyIPs, ip)
+			}
+		}
+	}
+	slices.Sort(proxyIPs)
+
+	lspName := fmt.Sprintf("%s-%s", subnet.Name, subnet.Spec.Vpc)
+	if len(proxyIPs) == 0 {
+		exists, err := c.OVNNbClient.LogicalSwitchPortExists(lspName)
+		if err != nil {
+			klog.Errorf("failed to check router port %s: %v", lspName, err)
+			return err
+		}
+		if !exists {
+			return nil
+		}
+	}
+	if err := c.OVNNbClient.SetLogicalSwitchPortArpProxy(lspName, proxyIPs); err != nil {
+		klog.Errorf("failed to set arp proxy %v on router port %s: %v", proxyIPs, lspName, err)
+		return err
+	}
 	return nil
 }
 
