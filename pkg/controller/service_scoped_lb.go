@@ -182,15 +182,20 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
-func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol) []string {
+func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol, timeout int) []string {
 	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
 		return nil
 	}
 
 	// Datagram clients create a new flow for every request. Keep their fallback
 	// selection keyed by source address so each request reaches the affinity
-	// learning flow's backend, while TCP keeps OVN's flow hash for timeout expiry.
-	if protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
+	// learning flow's backend. The default TCP timeout also needs source-based
+	// selection because every HTTP request opens a new connection. Explicit TCP
+	// timeouts keep OVN's flow hash so the backend can change after expiry.
+	if protocol == v1.ProtocolTCP && timeout != util.DefaultServiceSessionStickinessTimeout {
+		return nil
+	}
+	if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
 		return nil
 	}
 	return []string{
@@ -371,7 +376,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	} else {
 		deleteOptions = append(deleteOptions, "distributed")
 	}
-	selectionFields := serviceScopedLBSelectionFields(svc, protocol)
+	selectionFields := serviceScopedLBSelectionFields(svc, protocol, timeout)
 	if serviceLB, ok := c.OVNNbClient.(interface {
 		ReconcileLoadBalancer(config ovs.LoadBalancerConfig) error
 	}); ok {
