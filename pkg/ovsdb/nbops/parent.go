@@ -45,7 +45,7 @@ func getNamed[T any](ctx context.Context, t rowTable, name, kind string, nameOf 
 // Logical_Switch_Port and Logical_Router_Port. ACL stays out because it has
 // two parent tables.
 type namedParentSpec[Child, Parent any] struct {
-	executor   table.Executor
+	committer  table.Committer
 	children   rowTable
 	parents    rowTable
 	method     string
@@ -61,7 +61,7 @@ type namedParentSpec[Child, Parent any] struct {
 
 func (s namedParentSpec[Child, Parent]) ensure(ctx context.Context, childName, parentName string) (table.CommitResult, error) {
 	result := table.CommitResult{Method: s.method}
-	if s.children == nil || s.parents == nil || s.executor == nil {
+	if s.children == nil || s.parents == nil || s.committer == nil {
 		return result, errors.New(s.nilErr)
 	}
 	if childName == "" || parentName == "" {
@@ -111,5 +111,5 @@ func (s namedParentSpec[Child, Parent]) ensure(ctx context.Context, childName, p
 		}
 		plan.Add(operations...)
 	}
-	return table.CommitPlan(ctx, s.executor, plan)
+	return s.committer.Commit(ctx, plan)
 }

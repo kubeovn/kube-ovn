@@ -13,20 +13,20 @@ import (
 // It hides model selectors, mutation fields, and detach-before-attach ordering
 // from callers while retaining schema-generated models inside this package.
 type LogicalSwitchPorts struct {
-	ports    rowTable
-	switches rowTable
-	executor table.Executor
+	ports     rowTable
+	switches  rowTable
+	committer table.Committer
 }
 
 // NewLogicalSwitchPorts creates a typed facade over an NB table provider.
-func NewLogicalSwitchPorts(provider table.Provider, executor table.Executor) *LogicalSwitchPorts {
+func NewLogicalSwitchPorts(provider table.Provider, committer table.Committer) *LogicalSwitchPorts {
 	if provider == nil {
-		return &LogicalSwitchPorts{executor: executor}
+		return &LogicalSwitchPorts{committer: committer}
 	}
 	return &LogicalSwitchPorts{
-		ports:    provider.Table(&ovnnb.LogicalSwitchPort{}),
-		switches: provider.Table(&ovnnb.LogicalSwitch{}),
-		executor: executor,
+		ports:     provider.Table(&ovnnb.LogicalSwitchPort{}),
+		switches:  provider.Table(&ovnnb.LogicalSwitch{}),
+		committer: committer,
 	}
 }
 
@@ -46,7 +46,7 @@ func (p *LogicalSwitchPorts) EnsureParentResult(ctx context.Context, portName, s
 		return result, errors.New("logical switch port facade is nil")
 	}
 	return namedParentSpec[ovnnb.LogicalSwitchPort, ovnnb.LogicalSwitch]{
-		executor:   p.executor,
+		committer:  p.committer,
 		children:   p.ports,
 		parents:    p.switches,
 		method:     "lsp-parent",

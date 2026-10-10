@@ -24,15 +24,15 @@ func filterRows[T any](candidates []T) func(any, any) error {
 	}
 }
 
-func newACLFacade(switchRows []ovnnb.LogicalSwitch, pgRows []ovnnb.PortGroup) (*ACLs, *recordingTable, *recordingTable, *recordingExecutor) {
+func newACLFacade(switchRows []ovnnb.LogicalSwitch, pgRows []ovnnb.PortGroup) (*ACLs, *recordingTable, *recordingTable, *recordingCommitter) {
 	aclTable := &recordingTable{get: func(row model.Model) error {
 		row.(*ovnnb.ACL).UUID = "acl-uuid"
 		return nil
 	}}
 	switchTable := &recordingTable{filter: filterRows(switchRows)}
 	pgTable := &recordingTable{filter: filterRows(pgRows)}
-	executor := &recordingExecutor{}
-	return &ACLs{acl: aclTable, switches: switchTable, portGroups: pgTable, executor: executor}, switchTable, pgTable, executor
+	committer := &recordingCommitter{}
+	return &ACLs{acl: aclTable, switches: switchTable, portGroups: pgTable, committer: committer}, switchTable, pgTable, committer
 }
 
 func TestEnsureACLParentDetachesStaleSwitchBeforePortGroup(t *testing.T) {
