@@ -535,16 +535,6 @@ func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents
 	}, wrapErr("set logical switch port virtual-parents %w"))
 }
 
-func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
-	value := ""
-	if enableArpProxy {
-		value = "true"
-	}
-	return c.transactLSPOptionUpdate(lspName, false, func(lsp *ovnnb.LogicalSwitchPort) {
-		applyLSPOption(lsp, "arp_proxy", value)
-	}, wrapErr("failed to set logical switch port option arp_proxy %w"))
-}
-
 // SetLogicalSwitchPortSecurity set logical switch port port_security
 func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
 	lsp, err := c.getLogicalSwitchPortOrErr(lspName, false)
