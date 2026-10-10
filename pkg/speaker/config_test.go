@@ -17,9 +17,6 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// boolPtr returns a pointer to a bool value.
-func boolPtr(b bool) *bool { p := new(bool); *p = b; return p }
-
 func TestValidateRequiredFlags(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -104,7 +101,7 @@ func TestValidateRequiredFlags(t *testing.T) {
 				NeighborAddresses: []IP{{IP: net.ParseIP("192.168.1.1")}},
 				ClusterAs:         65000,
 				NeighborAs:        65001,
-				NatGwMode:         boolPtr(true),
+				NatGwMode:         new(true),
 			},
 			expectError: false,
 		},
@@ -1085,27 +1082,27 @@ func TestConfiguration_MergeFileConfig_BooleanPrecedence(t *testing.T) {
 	}{
 		{
 			name: "omitted booleans preserve CLI",
-			base: Configuration{AnnounceClusterIP: boolPtr(true), GracefulRestart: boolPtr(true), PassiveMode: boolPtr(true)},
+			base: Configuration{AnnounceClusterIP: new(true), GracefulRestart: new(true), PassiveMode: new(true)},
 			file: Configuration{GrpcHost: IP{IP: net.ParseIP("10.0.0.1")}},
-			want: Configuration{AnnounceClusterIP: boolPtr(true), GracefulRestart: boolPtr(true), PassiveMode: boolPtr(true), GrpcHost: IP{IP: net.ParseIP("10.0.0.1")}},
+			want: Configuration{AnnounceClusterIP: new(true), GracefulRestart: new(true), PassiveMode: new(true), GrpcHost: IP{IP: net.ParseIP("10.0.0.1")}},
 		},
 		{
 			name: "false overrides true",
-			base: Configuration{AnnounceClusterIP: boolPtr(true), GracefulRestart: boolPtr(true)},
-			file: Configuration{AnnounceClusterIP: boolPtr(false), GracefulRestart: boolPtr(false)},
-			want: Configuration{AnnounceClusterIP: boolPtr(false), GracefulRestart: boolPtr(false)},
+			base: Configuration{AnnounceClusterIP: new(true), GracefulRestart: new(true)},
+			file: Configuration{AnnounceClusterIP: new(false), GracefulRestart: new(false)},
+			want: Configuration{AnnounceClusterIP: new(false), GracefulRestart: new(false)},
 		},
 		{
 			name: "true overrides false",
-			base: Configuration{PassiveMode: boolPtr(false)},
-			file: Configuration{PassiveMode: boolPtr(true)},
-			want: Configuration{PassiveMode: boolPtr(true)},
+			base: Configuration{PassiveMode: new(false)},
+			file: Configuration{PassiveMode: new(true)},
+			want: Configuration{PassiveMode: new(true)},
 		},
 		{
 			name: "mixed set and omitted",
-			base: Configuration{AnnounceClusterIP: boolPtr(true), GracefulRestart: boolPtr(false), PassiveMode: boolPtr(true)},
-			file: Configuration{GracefulRestart: boolPtr(true)},
-			want: Configuration{AnnounceClusterIP: boolPtr(true), GracefulRestart: boolPtr(true), PassiveMode: boolPtr(true)},
+			base: Configuration{AnnounceClusterIP: new(true), GracefulRestart: new(false), PassiveMode: new(true)},
+			file: Configuration{GracefulRestart: new(true)},
+			want: Configuration{AnnounceClusterIP: new(true), GracefulRestart: new(true), PassiveMode: new(true)},
 		},
 	}
 	for _, tt := range tests {
@@ -1227,7 +1224,7 @@ func TestConfiguration_MergeFileConfig_YAMLBooleans(t *testing.T) {
 			for _, value := range []string{"omitted", "false", "true", "null"} {
 				t.Run(value, func(t *testing.T) {
 					config := Configuration{ConfigFile: filepath.Join(t.TempDir(), "speaker.yaml")}
-					*field.get(&config) = boolPtr(true)
+					*field.get(&config) = new(true)
 					content := fmt.Sprintf("%s: %s\n", field.name, value)
 					if value == "omitted" {
 						content = "{}"

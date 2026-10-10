@@ -169,7 +169,7 @@ func TestGetPathRequest(t *testing.T) {
 					ipv4Neighbor: net.ParseIP(ipv4NextHop),
 					ipv6Neighbor: net.ParseIP(ipv6NextHop),
 				},
-				ExtendedNexthop: boolPtr(tt.extendedNexthop),
+				ExtendedNexthop: new(tt.extendedNexthop),
 			}}
 
 			paths, err := controller.getPathRequest(tt.route)

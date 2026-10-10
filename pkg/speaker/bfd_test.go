@@ -18,14 +18,14 @@ func TestNewBFDPeerConfig(t *testing.T) {
 		{
 			name: "BFD disabled returns nil",
 			config: &Configuration{
-				EnableBFD: boolPtr(false),
+				EnableBFD: new(false),
 			},
 			expected: nil,
 		},
 		{
 			name: "default values converts ms to us",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               1000,
 				BFDMinRX:               1000,
 				BFDDetectionMultiplier: 3,
@@ -40,7 +40,7 @@ func TestNewBFDPeerConfig(t *testing.T) {
 		{
 			name: "custom values converts ms to us",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               300,
 				BFDMinRX:               500,
 				BFDDetectionMultiplier: 5,
@@ -55,7 +55,7 @@ func TestNewBFDPeerConfig(t *testing.T) {
 		{
 			name: "aggressive timers",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               100,
 				BFDMinRX:               100,
 				BFDDetectionMultiplier: 3,
@@ -114,7 +114,7 @@ func TestValidateBFDFlags(t *testing.T) {
 		{
 			name: "valid BFD config",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               1000,
 				BFDMinRX:               1000,
 				BFDDetectionMultiplier: 3,
@@ -128,7 +128,7 @@ func TestValidateBFDFlags(t *testing.T) {
 			// Upper bound (255) is enforced by the uint8 type, so no >255 test case is needed.
 			name: "detection multiplier zero",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               1000,
 				BFDMinRX:               1000,
 				BFDDetectionMultiplier: 0,
@@ -141,7 +141,7 @@ func TestValidateBFDFlags(t *testing.T) {
 		{
 			name: "zero min-tx",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               0,
 				BFDMinRX:               1000,
 				BFDDetectionMultiplier: 3,
@@ -154,7 +154,7 @@ func TestValidateBFDFlags(t *testing.T) {
 		{
 			name: "zero min-rx",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               1000,
 				BFDMinRX:               0,
 				BFDDetectionMultiplier: 3,
@@ -167,7 +167,7 @@ func TestValidateBFDFlags(t *testing.T) {
 		{
 			name: "BFD disabled skips validation",
 			config: &Configuration{
-				EnableBFD:              boolPtr(false),
+				EnableBFD:              new(false),
 				BFDDetectionMultiplier: 255,
 				NeighborAs:             65001,
 				ClusterAs:              65000,
@@ -178,7 +178,7 @@ func TestValidateBFDFlags(t *testing.T) {
 		{
 			name: "min-tx at overflow boundary is valid",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               math.MaxUint32 / 1000,
 				BFDMinRX:               1000,
 				BFDDetectionMultiplier: 3,
@@ -191,7 +191,7 @@ func TestValidateBFDFlags(t *testing.T) {
 		{
 			name: "min-tx exceeds overflow boundary",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               math.MaxUint32/1000 + 1,
 				BFDMinRX:               1000,
 				BFDDetectionMultiplier: 3,
@@ -204,7 +204,7 @@ func TestValidateBFDFlags(t *testing.T) {
 		{
 			name: "min-rx exceeds overflow boundary",
 			config: &Configuration{
-				EnableBFD:              boolPtr(true),
+				EnableBFD:              new(true),
 				BFDMinTX:               1000,
 				BFDMinRX:               math.MaxUint32/1000 + 1,
 				BFDDetectionMultiplier: 3,
