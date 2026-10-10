@@ -275,6 +275,8 @@ def runSuite(suite, directory, interval):
         f"--json-report={shlex.quote(str(directory / 'ginkgo.json'))} "
         f"--junit-report={shlex.quote(str(directory / 'junit.xml'))}",
         f"TEST_BIN_ARGS=-kubeconfig {shlex.quote(os.environ.get('KUBECONFIG', str(Path.home() / '.kube/config')))} "
+        # Kubernetes repo-only log-dump.sh is unavailable; retain API-based failure dumps.
+        f"-disable-log-dump=true -dump-logs-on-failure=true "
         f"-num-nodes {len(count)} -report-dir={shlex.quote(str(directory / 'kubernetes'))} -v=5"]
     process = None
     interrupted = 0
