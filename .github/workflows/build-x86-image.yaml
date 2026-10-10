@@ -1024,13 +1024,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # Run the debug image as root.
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -1329,13 +1322,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # Run the debug image as root.
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -1506,13 +1492,6 @@ jobs:
 
       - name: Load image
         run: docker load --input kube-ovn.tar
-
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # Run the debug image as root.
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-          fi
 
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
@@ -1699,13 +1678,6 @@ jobs:
 
       - name: Load image
         run: docker load --input kube-ovn.tar
-
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # Run the debug image as root.
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-          fi
 
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
@@ -3597,13 +3569,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # Run the debug image as root.
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -3756,13 +3721,6 @@ jobs:
 
       - name: Load image
         run: docker load --input kube-ovn.tar
-
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # Run the debug image as root.
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-          fi
 
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
@@ -4370,7 +4328,7 @@ jobs:
         id: install
         env:
           UNTAINT_CONTROL_PLANE: "false"
-        run: make kind-install-debug-${{ matrix.ip-family }}
+        run: make kind-install-${{ matrix.ip-family }}
 
       - name: Install Multus
         run: make kind-install-multus
