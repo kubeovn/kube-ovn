@@ -95,6 +95,7 @@ type Streams struct {
 	In     io.Reader
 	Out    io.Writer
 	ErrOut io.Writer
+	TTY    bool
 }
 
 // Executor runs a single remote command. Implementations must not replay failures.
@@ -125,7 +126,7 @@ func (r *remoteExecutor) Exec(ctx context.Context, target Target, argv []string,
 		Resource("pods").Name(target.Pod).SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{
 			Container: target.Container, Command: argv, Stdin: streams.In != nil,
-			Stdout: streams.Out != nil, Stderr: streams.ErrOut != nil,
+			Stdout: streams.Out != nil, Stderr: streams.ErrOut != nil, TTY: streams.TTY,
 		}, scheme.ParameterCodec)
 	cfg := rest.CopyConfig(r.config)
 	// A streaming session is bounded by its context, not an HTTP request timeout.
@@ -143,7 +144,7 @@ func (r *remoteExecutor) Exec(ctx context.Context, target Target, argv []string,
 		return fmt.Errorf("create exec transport: %w", err)
 	}
 	return executor.StreamWithContext(ctx, remotecommand.StreamOptions{
-		Stdin: streams.In, Stdout: streams.Out, Stderr: streams.ErrOut,
+		Stdin: streams.In, Stdout: streams.Out, Stderr: streams.ErrOut, Tty: streams.TTY,
 	})
 }
 
