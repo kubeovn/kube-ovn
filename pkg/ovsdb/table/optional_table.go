@@ -44,7 +44,7 @@ func (t *OptionalTable) ensure() (ovsdb.TableSchema, error) {
 		return ovsdb.TableSchema{}, errors.New("ovsdb optional table name is empty")
 	}
 	if t.prototype == nil {
-		return ovsdb.TableSchema{}, errors.New("ovsdb optional table prototype is nil")
+		return ovsdb.TableSchema{}, fmt.Errorf("%w: ovsdb optional table prototype is nil", ErrInvalidModel)
 	}
 	table, ok := t.db.Schema().Tables[t.tableName]
 	if !ok {
@@ -192,7 +192,7 @@ func (t *OptionalTable) Transact(ctx context.Context, method string, operations 
 func validateSliceResult(result any) error {
 	value := reflect.ValueOf(result)
 	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Slice {
-		return errors.New("ovsdb optional table result must be a non-nil pointer to a slice")
+		return fmt.Errorf("%w: ovsdb optional table result must be a non-nil pointer to a slice", ErrInvalidResult)
 	}
 	return nil
 }

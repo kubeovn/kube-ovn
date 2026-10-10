@@ -31,8 +31,16 @@ func NewLogicalRouterPorts(provider table.Provider, executor table.Executor) *Lo
 // stale parent references are removed before the desired parent is attached
 // in one transaction.
 func (p *LogicalRouterPorts) EnsureParent(ctx context.Context, portName, routerName string) error {
+	_, err := p.EnsureParentResult(ctx, portName, routerName)
+	return err
+}
+
+// EnsureParentResult is the result-bearing form of EnsureParent. It exposes
+// only commit metadata while keeping model mutations private to this facade.
+func (p *LogicalRouterPorts) EnsureParentResult(ctx context.Context, portName, routerName string) (table.CommitResult, error) {
+	result := table.CommitResult{Method: "lrp-parent"}
 	if p == nil {
-		return errors.New("logical router port facade is nil")
+		return result, errors.New("logical router port facade is nil")
 	}
 	return namedParentSpec[ovnnb.LogicalRouterPort, ovnnb.LogicalRouter]{
 		executor:   p.executor,
