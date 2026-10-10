@@ -41,7 +41,7 @@ func (c *Controller) syncSubnetRoutes() {
 		return
 	}
 
-	if c.config.AnnounceClusterIP {
+	if c.config.AnnounceClusterIP != nil && *c.config.AnnounceClusterIP {
 		services, err := c.servicesLister.List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list services, %v", err)

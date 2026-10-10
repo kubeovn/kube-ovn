@@ -108,6 +108,10 @@ spec:
               add:
                 - NET_BIND_SERVICE
           volumeMounts:
+            {{- if .Values.bgpSpeaker.configMap }}
+            - mountPath: {{ .Values.bgpSpeaker.configMapMountPath }}
+              name: kube-ovn-bgp-speaker-config
+            {{- end }}
             - mountPath: /var/log/kube-ovn
               name: kube-ovn-log
       {{- with .Values.bgpSpeaker.nodeSelector }}
@@ -115,6 +119,11 @@ spec:
         {{- toYaml . | trim | nindent 8 }}
       {{- end }}
       volumes:
+        {{- if .Values.bgpSpeaker.configMap }}
+        - name: kube-ovn-bgp-speaker-config
+          configMap:
+            name: {{ .Values.bgpSpeaker.configMap }}
+        {{- end }}
         - name: kube-ovn-log
           hostPath:
             path: {{ .Values.logging.directory }}/kube-ovn
