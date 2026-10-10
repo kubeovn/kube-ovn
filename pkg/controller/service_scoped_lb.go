@@ -357,8 +357,8 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	selectionFields := []string(nil)
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		selectionFields = []string{
-			string(ovnnb.LoadBalancerSelectionFieldsIPSrc),
-			string(ovnnb.LoadBalancerSelectionFieldsIpv6Src),
+			ovnnb.LoadBalancerSelectionFieldsIPSrc,
+			ovnnb.LoadBalancerSelectionFieldsIpv6Src,
 		}
 	}
 	if serviceLB, ok := c.OVNNbClient.(interface {
