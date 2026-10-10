@@ -83,6 +83,12 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	newSubnet := newObj.(*kubeovnv1.Subnet)
 	key := cache.MetaObjectToName(newSubnet).String()
 
+	if oldSubnet.DeletionTimestamp.IsZero() && !newSubnet.DeletionTimestamp.IsZero() {
+		klog.Infof("enqueue update subnet %s triggered by deletion timestamp", key)
+		c.addOrUpdateSubnetQueue.Add(key)
+		return
+	}
+
 	if readyToRemoveFinalizer(newSubnet) {
 		klog.Infof("enqueue update subnet %s triggered by ready to remove finalizer", key)
 		c.addOrUpdateSubnetQueue.Add(key)

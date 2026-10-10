@@ -115,6 +115,78 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 	}
 }
 
+func TestEnqueueUpdateSubnetOnDeletionTimestamp(t *testing.T) {
+	deletionTimestamp := metav1.Now()
+	tests := []struct {
+		name           string
+		v4UsingIPs     int64
+		v6UsingIPs     int64
+		alreadyDeleted bool
+		markDeleted    bool
+		updateStatus   bool
+		wantQueued     bool
+	}{
+		{
+			name: "IPv4 deletion timestamp added", v4UsingIPs: 1,
+			markDeleted: true, wantQueued: true,
+		},
+		{
+			name: "IPv6 deletion timestamp added", v6UsingIPs: 1,
+			markDeleted: true, wantQueued: true,
+		},
+		{
+			name: "dual-stack deletion timestamp added", v4UsingIPs: 1, v6UsingIPs: 1,
+			markDeleted: true, wantQueued: true,
+		},
+		{
+			name: "live subnet status-only update", v4UsingIPs: 1,
+			updateStatus: true,
+		},
+		{
+			name: "terminating subnet with IPs in use", v4UsingIPs: 1,
+			alreadyDeleted: true, markDeleted: true, updateStatus: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			queue := newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil)
+			t.Cleanup(queue.ShutDown)
+
+			oldSubnet := &kubeovnv1.Subnet{
+				Name: "subnet-a",
+				Status: kubeovnv1.SubnetStatus{
+					V4UsingIPs: internal.NewBigInt(tc.v4UsingIPs),
+					V6UsingIPs: internal.NewBigInt(tc.v6UsingIPs),
+				},
+			}
+			if tc.alreadyDeleted {
+				oldSubnet.DeletionTimestamp = new(deletionTimestamp)
+			}
+			newSubnet := oldSubnet.DeepCopy()
+			if tc.markDeleted {
+				newSubnet.DeletionTimestamp = new(deletionTimestamp)
+			}
+			if tc.updateStatus {
+				newSubnet.Status.V4UsingIPs = internal.NewBigInt(tc.v4UsingIPs + 1)
+			}
+
+			ctrl := &Controller{addOrUpdateSubnetQueue: queue}
+			ctrl.enqueueUpdateSubnet(oldSubnet, newSubnet)
+
+			if !tc.wantQueued {
+				require.Zero(t, queue.Len())
+				return
+			}
+			require.Equal(t, 1, queue.Len())
+			key, shutdown := queue.Get()
+			require.False(t, shutdown)
+			require.Equal(t, oldSubnet.Name, key)
+			queue.Done(key)
+		})
+	}
+}
+
 func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 	t.Parallel()
 
