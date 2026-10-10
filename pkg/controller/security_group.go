@@ -8,7 +8,6 @@ import (
 	"maps"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/cnf/structhash"
@@ -440,53 +439,11 @@ func (c *Controller) updateSgACL(sg *kubeovnv1.SecurityGroup, direction ovnnb.AC
 }
 
 func buildSecurityGroupRuleACL(sgName string, direction ovnnb.ACLDirection, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
-	ipSuffix := "ip4"
-	if rule.IPVersion == "ipv6" {
-		ipSuffix = "ip6"
-	}
-	pgName := ovs.GetSgPortGroupName(sgName)
-	localSrcOrDst, remoteSrcOrDst, portDirection := "dst", "src", "outport"
-	if direction == ovnnb.ACLDirectionFromLport {
-		remoteSrcOrDst, localSrcOrDst, portDirection = "dst", "src", "inport"
-	}
-	remoteKey, localKey := ipSuffix+"."+remoteSrcOrDst, ipSuffix+"."+localSrcOrDst
-	match := ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch(ipSuffix, "", "", ""), ovs.NewACLMatch(remoteKey, "==", rule.RemoteAddress, ""))
-	if rule.RemoteType == kubeovnv1.SgRemoteTypeSg {
-		remotePG := ovs.GetSgV4AssociatedName(rule.RemoteSecurityGroup)
-		if rule.IPVersion == "ipv6" {
-			remotePG = ovs.GetSgV6AssociatedName(rule.RemoteSecurityGroup)
-		}
-		match = ovs.NewAndACLMatch(ovs.NewACLMatch(portDirection, "==", "@"+pgName, ""), ovs.NewACLMatch(ipSuffix, "", "", ""), ovs.NewACLMatch(remoteKey, "==", "$"+remotePG, ""))
-	}
-	if rule.LocalAddress != "" {
-		match = ovs.NewAndACLMatch(match, ovs.NewACLMatch(localKey, "==", rule.LocalAddress, ""))
-	}
-	switch rule.Protocol {
-	case kubeovnv1.SgProtocolICMP:
-		proto := "icmp4"
-		if ipSuffix == "ip6" {
-			proto = "icmp6"
-		}
-		match = ovs.NewAndACLMatch(match, ovs.NewACLMatch(proto, "", "", ""))
-	case kubeovnv1.SgProtocolTCP, kubeovnv1.SgProtocolUDP:
-		protocol := string(rule.Protocol)
-		match = ovs.NewAndACLMatch(match, ovs.NewACLMatch(protocol+".dst", "<=", strconv.Itoa(rule.PortRangeMin), strconv.Itoa(rule.PortRangeMax)))
-		if rule.LocalAddress != "" {
-			match = ovs.NewAndACLMatch(match, ovs.NewACLMatch(protocol+".src", "<=", strconv.Itoa(rule.SourcePortRangeMin), strconv.Itoa(rule.SourcePortRangeMax)))
-		}
-	}
-	action := ovnnb.ACLActionDrop
-	switch rule.Policy {
-	case kubeovnv1.SgPolicyAllow:
-		action = ovnnb.ACLActionAllowRelated
-	case kubeovnv1.SgPolicyPass:
-		action = ovnnb.ACLActionPass
-	}
-	highestPriority, err := strconv.Atoi(util.SecurityGroupHighestPriority)
+	acl, err := ovs.SecurityGroupRuleACL(sgName, direction, rule, tier)
 	if err != nil {
-		return nil, fmt.Errorf("parse security group highest priority: %w", err)
+		return nil, err
 	}
-	return securityGroupACL(pgName, direction, highestPriority-rule.Priority, match.String(), action, tier), nil
+	return securityGroupACL(ovs.GetSgPortGroupName(sgName), acl.Direction, acl.Priority, acl.Match, acl.Action, acl.Tier), nil
 }
 
 func (c *Controller) createMissingSecurityGroupACLs(pgName string, desired ...*ovnnb.ACL) error {
