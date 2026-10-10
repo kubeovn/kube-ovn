@@ -123,7 +123,14 @@ func NewOvsDbClient(
 	dbLogger := logger.WithValues("db", db)
 	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
 	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
-	options = append(options, client.WithLeaderOnly(true), client.WithLogger(&dbLogger))
+	// A single endpoint cannot fail over to another clustered leader. Enabling
+	// leader-only mode in that case starts an unnecessary _Server monitor whose
+	// cache handler can contend with transactions during reconnects. Keep the
+	// leader watcher for the multi-endpoint HA configuration only.
+	if len(options) > 1 {
+		options = append(options, client.WithLeaderOnly(true))
+	}
+	options = append(options, client.WithLogger(&dbLogger))
 	if inactivityTimeout > 0 {
 		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
 		// take longer than a normal ovsdb operation. Give it a bit more time so
