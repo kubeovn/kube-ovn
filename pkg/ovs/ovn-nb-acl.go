@@ -1163,12 +1163,6 @@ func (c *OVNNbClient) newACLWithoutCheck(parent, direction, priority, match, act
 	return newACLRecord(parent, direction, priority, match, action, tier, options...), nil
 }
 
-// createSgRuleACL create security group rule acl
-func sgRuleACLPriority(rule kubeovnv1.SecurityGroupRule) string {
-	highestPriority, _ := strconv.Atoi(util.SecurityGroupHighestPriority)
-	return strconv.Itoa(highestPriority - rule.Priority)
-}
-
 func sgRuleACLMatch(sgName, direction string, rule kubeovnv1.SecurityGroupRule) (string, ACLMatch) {
 	ipSuffix := aclIPSuffix(rule.IPVersion)
 	pgName := GetSgPortGroupName(sgName)
@@ -1222,24 +1216,37 @@ func sgRuleACLMatch(sgName, direction string, rule kubeovnv1.SecurityGroupRule) 
 	return pgName, match
 }
 
-func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
-	pgName, match := sgRuleACLMatch(sgName, direction, rule)
-
-	var action string
+// SecurityGroupRuleACL converts a security group rule to ACL fields without
+// querying the database or assigning row identity and parent ownership.
+func SecurityGroupRuleACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
+	_, match := sgRuleACLMatch(sgName, direction, rule)
+	action := ovnnb.ACLActionDrop
 	switch rule.Policy {
 	case kubeovnv1.SgPolicyAllow:
 		action = ovnnb.ACLActionAllowRelated
 	case kubeovnv1.SgPolicyPass:
 		action = ovnnb.ACLActionPass
-	default:
-		action = ovnnb.ACLActionDrop
 	}
+	highestPriority, err := strconv.Atoi(util.SecurityGroupHighestPriority)
+	if err != nil {
+		return nil, fmt.Errorf("parse security group highest priority: %w", err)
+	}
+	return &ovnnb.ACL{
+		Direction: direction,
+		Priority:  highestPriority - rule.Priority,
+		Match:     match.String(),
+		Action:    action,
+		Tier:      tier,
+	}, nil
+}
 
-	acl, err := c.newACLLogged(pgName, direction, sgRuleACLPriority(rule), match.String(), action, tier, wrapErr("new security group acl for port group %s: %w", pgName))
+func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
+	acl, err := SecurityGroupRuleACL(sgName, direction, rule, tier)
 	if err != nil {
 		return nil, err
 	}
-	return acl, nil
+	pgName := GetSgPortGroupName(sgName)
+	return c.newACLLogged(pgName, acl.Direction, strconv.Itoa(acl.Priority), acl.Match, acl.Action, acl.Tier, wrapErr("new security group acl for port group %s: %w", pgName))
 }
 
 func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direction string, npp []netv1.NetworkPolicyPort, namedPortMap map[string]*util.NamedPortInfo) []string {
@@ -1408,8 +1415,11 @@ func (c *OVNNbClient) DeleteAclsOps(parentName, parentType, direction string, ex
 
 // sgRuleNoACL check if security group rule has acl in a tier
 func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (bool, error) {
-	pgName, match := sgRuleACLMatch(sgName, direction, rule)
-	exists, err := c.ACLExists(pgName, direction, sgRuleACLPriority(rule), match.String(), tier)
+	acl, err := SecurityGroupRuleACL(sgName, direction, rule, tier)
+	if err != nil {
+		return false, err
+	}
+	exists, err := c.ACLExists(GetSgPortGroupName(sgName), acl.Direction, strconv.Itoa(acl.Priority), acl.Match, acl.Tier)
 	if err != nil {
 		return false, logFmt("failed to check acl rule for security group %s: %w", sgName, err)
 	}

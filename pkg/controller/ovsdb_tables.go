@@ -184,7 +184,9 @@ func normalizeAddressSetAddresses(addresses []string) []string {
 	unique := make(map[string]struct{}, len(addresses))
 	for _, address := range addresses {
 		if strings.ContainsRune(address, '/') {
-			if _, network, err := net.ParseCIDR(address); err == nil {
+			if _, network, err := net.ParseCIDR(address); err != nil {
+				klog.Warningf("failed to parse CIDR %q: %v", address, err)
+			} else {
 				address = network.String()
 			}
 		}
