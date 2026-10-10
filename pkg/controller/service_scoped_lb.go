@@ -182,6 +182,23 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
+func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol) []string {
+	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
+		return nil
+	}
+
+	// Datagram clients create a new flow for every request. Keep their fallback
+	// selection keyed by source address so each request reaches the affinity
+	// learning flow's backend, while TCP keeps OVN's flow hash for timeout expiry.
+	if protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
+		return nil
+	}
+	return []string{
+		ovnnb.LoadBalancerSelectionFieldsIPSrc,
+		ovnnb.LoadBalancerSelectionFieldsIpv6Src,
+	}
+}
+
 func serviceScopedLBName(svc *v1.Service, protocol v1.Protocol) string {
 	return serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, serviceLBInternalTraffic, "")
 }
@@ -354,13 +371,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	} else {
 		deleteOptions = append(deleteOptions, "distributed")
 	}
-	selectionFields := []string(nil)
-	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		selectionFields = []string{
-			ovnnb.LoadBalancerSelectionFieldsIPSrc,
-			ovnnb.LoadBalancerSelectionFieldsIpv6Src,
-		}
-	}
+	selectionFields := serviceScopedLBSelectionFields(svc, protocol)
 	if serviceLB, ok := c.OVNNbClient.(interface {
 		ReconcileLoadBalancer(config ovs.LoadBalancerConfig) error
 	}); ok {
