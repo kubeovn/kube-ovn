@@ -154,7 +154,54 @@ func (a *Application) outputStreams() Streams {
 }
 
 func (a *Application) addControlCommands() {
-	parent := &cobra.Command{Use: "exec", Short: "Run an OVN or OVS tool through the node agent"}
+	var container, selector string
+	var stdin, tty, quiet bool
+	var podRunningTimeout time.Duration
+	parent := &cobra.Command{
+		Use:   "exec (POD | TYPE/NAME) [-c CONTAINER] [flags] -- COMMAND [args...]",
+		Short: "Execute a command in a container or run a Kube-OVN tool",
+		Args: func(cmd *cobra.Command, args []string) error {
+			dash := cmd.ArgsLenAtDash()
+			if dash < 0 {
+				return errors.New("put the command after --")
+			}
+			if len(args[dash:]) == 0 {
+				return errors.New("you must specify at least one command for the container")
+			}
+			if selector != "" {
+				if dash != 0 {
+					return errors.New("--selector cannot be combined with a resource reference")
+				}
+			} else if dash != 1 {
+				return errors.New("pod or type/name must be specified before --")
+			}
+			if podRunningTimeout <= 0 {
+				return errors.New("pod-running-timeout must be positive")
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dash := cmd.ArgsLenAtDash()
+			return a.run(func(ctx context.Context, client *Client, args []string) error {
+				reference := ""
+				if selector == "" {
+					reference = args[0]
+				}
+				streams := a.outputStreams()
+				if stdin {
+					streams.In = a.streams.In
+				}
+				streams.TTY = tty
+				return client.exec(ctx, reference, selector, container, quiet, podRunningTimeout, streams, args[dash:])
+			})(cmd, args)
+		},
+	}
+	parent.Flags().StringVarP(&container, "container", "c", "", "Container name. If omitted, use the first container")
+	parent.Flags().StringVarP(&selector, "selector", "l", "", "Selector (label query) to filter Pods")
+	parent.Flags().BoolVarP(&stdin, "stdin", "i", false, "Pass stdin to the container")
+	parent.Flags().BoolVarP(&tty, "tty", "t", false, "Stdin is a TTY")
+	parent.Flags().BoolVarP(&quiet, "quiet", "q", false, "Only print output from the remote session")
+	parent.Flags().DurationVar(&podRunningTimeout, "pod-running-timeout", time.Minute, "The length of time to wait until at least one Pod is running")
 	for _, role := range []string{"nb", "sb", "ic-nb", "ic-sb"} {
 		name := role + "ctl"
 		binary := "ovn-" + name
