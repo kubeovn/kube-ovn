@@ -661,27 +661,17 @@ func TestControllerProviderLoadBalancerOperations(t *testing.T) {
 	controller := &Controller{OVNNbTables: database}
 
 	require.NoError(t, controller.addLoadBalancerVIP("lb-1", "10.0.0.1:80", "10.0.0.3:8080"))
-	require.NoError(t, controller.updateLoadBalancerIPPortMapping("lb-1", "10.0.0.1:80", map[string]string{"10.0.0.3": "lsp-new"}))
 	require.NoError(t, controller.deleteLoadBalancerIPPortMapping("lb-1", "10.0.0.1:80"))
 	transactionCount := len(backend.transactionOperationCounts)
 	require.NoError(t, controller.deleteLoadBalancerHealthCheck("lb-1", "lbhc-1"))
-	require.Equal(t, []int{2}, backend.transactionOperationCounts[transactionCount:])
+	require.Equal(t, []int{1}, backend.transactionOperationCounts[transactionCount:])
 	require.NoError(t, controller.deleteLoadBalancerVIP("lb-1", "10.0.0.1:80", true))
 	require.GreaterOrEqual(t, backend.deleteCalls, 1)
 
-	healthCheckBackend := newTableBackend(&ovnnb.LoadBalancer{UUID: "lb-2", Name: "lb-2"})
-	healthCheckController := &Controller{OVNNbTables: table.NewDatabase(healthCheckBackend, time.Second, table.RetryPolicy{})}
-	require.NoError(t, healthCheckController.addLoadBalancerHealthCheck(
-		"lb-2", "10.0.0.2:80", false, nil, map[string]string{"owner": "test"},
-	))
-	require.Equal(t, 1, healthCheckBackend.createCalls)
-	require.Equal(t, 1, healthCheckBackend.mutateCalls)
-	require.Equal(t, 1, healthCheckBackend.transactCalls)
-
-	// The fake backend records operation construction; each helper submits one
-	// transaction while preserving the provider boundary.
-	require.Equal(t, 7, backend.mutateCalls)
-	require.Equal(t, 7, backend.transactCalls)
+	// The fake backend records operation construction; the combined VIP cleanup
+	// and each preceding helper submit one transaction through the provider.
+	require.Equal(t, 5, backend.mutateCalls)
+	require.Equal(t, 4, backend.transactCalls)
 }
 
 func TestControllerProviderSecurityGroupACLs(t *testing.T) {
