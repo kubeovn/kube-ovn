@@ -41,7 +41,48 @@ class NetworkDiagnosticsTest(unittest.TestCase):
     def testInterruptedSuiteKeepsPartialArtifactsAndStopsChildProcesses(self):
         self.runWithStubs(143, interrupt=True)
 
-    def runWithStubs(self, exitCode, interrupt=False):
+    def testGinkgoImmediateFailureFreezesBeforeCleanup(self):
+        self.runWithStubs(7, failureLine="[FAILED] Timed out after 120.000s.")
+
+    def testLateFailureRetainsItsWindowAfterEightEarlierSignals(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            collector = diagnostics.Diagnostics(Path(temporary), interval=0)
+
+            def snapshot(directory, full=False, cancel=None):
+                directory.mkdir(parents=True, exist_ok=True)
+                index = snapshot.calls
+                (directory / "marker.json").write_text(json.dumps({"index": index}))
+                snapshot.calls += 1
+                if index == 10:
+                    collector.stop.set()
+                else:
+                    collector.failure.set()
+
+            snapshot.calls = 0
+            collector.failure.set()
+            with mock.patch.object(diagnostics, "collectSnapshot", snapshot):
+                collector.sample()
+            windows = list(Path(temporary).glob("failures/*/preceding-snapshots.json"))
+            self.assertEqual(len(windows), 8)
+            latest = max(json.loads(sample["marker.json"])["index"]
+                         for window in windows for sample in json.loads(window.read_text()))
+            self.assertEqual(latest, 10)
+
+    def testRuntimeCollectionOnlyTargetsBoundedTrafficDistributionClients(self):
+        listing = "default client-private\ntraffic-distribution-1 server-0\n"
+        listing += "".join(f"traffic-distribution-1 client-{i}\n" for i in range(10))
+        with mock.patch.object(diagnostics, "podNames", return_value=["controller"]), \
+                mock.patch.object(diagnostics, "capture", return_value={"stdout": listing}) as capture:
+            jobs = diagnostics.runtimeJobs(["central"])
+        clients = [command for name, command in jobs.items() if name.startswith("client-")]
+        self.assertEqual(len(clients), 12)
+        self.assertFalse(any("default" in command for command in clients))
+        self.assertTrue(all("traffic-distribution-1" in command for command in clients))
+        self.assertTrue(all("--tail=40" in command for command in clients if "logs" in command))
+        self.assertIn('{"\\n"}', capture.call_args.args[0][-1])
+
+    def runWithStubs(self, exitCode, interrupt=False,
+                     failureLine="Validation of netpol-x/a -> netpol-y/b FAILED !!!"):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             binary = root / "bin"
@@ -83,7 +124,7 @@ while not (output / 'samples/0/pods.json').exists() or not (output / 'watch-pods
     time.sleep(0.02)
 print('test output', flush=True)
 if {exitCode}:
-    print('Validation of netpol-x/a -> netpol-y/b FAILED !!!', flush=True)
+    print({failureLine!r}, flush=True)
     while not (output / 'failures/0/preceding-snapshots.json').exists():
         if time.monotonic() > deadline: sys.exit(98)
         time.sleep(0.02)
