@@ -20,7 +20,6 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-	"k8s.io/utils/ptr"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -456,7 +455,7 @@ var _ = framework.SerialDescribe("[group:bgp-speaker] BGP speaker", func() {
 		}
 		serviceClient := f.ServiceClient()
 		if f.IsDual() {
-			service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyRequireDualStack)
+			service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicyRequireDualStack)
 		}
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(util.ServiceClusterIPs(*s)) == len(bgpFamilies(f)), nil

@@ -21,7 +21,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -759,7 +758,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 						Name:     "usr-local-sbin",
 						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					}},
-					TerminationGracePeriodSeconds: ptr.To[int64](0),
+					TerminationGracePeriodSeconds: new(int64(0)),
 				},
 			},
 		},
@@ -1294,7 +1293,7 @@ func configureVpcEgressGatewayBFDWorkload(deploy *appsv1.Deployment, container c
 		Name:     vegBFDDStateVolume,
 		EmptyDir: &corev1.EmptyDirVolumeSource{},
 	})
-	deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To[int64](30)
+	deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(30))
 	return nil
 }
 

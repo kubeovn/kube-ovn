@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	appsv1listers "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -115,7 +114,7 @@ func genGatewayBFDDContainer(image, bfdIP string, minTX, minRX, multiplier int32
 		},
 		SecurityContext: &corev1.SecurityContext{
 			Privileged: new(false),
-			RunAsUser:  ptr.To[int64](65534),
+			RunAsUser:  new(int64(65534)),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"},
 				Drop: []corev1.Capability{"ALL"},
@@ -152,7 +151,7 @@ func genGatewaySleepContainer(image string) corev1.Container {
 		},
 		SecurityContext: &corev1.SecurityContext{
 			Privileged: new(false),
-			RunAsUser:  ptr.To[int64](65534),
+			RunAsUser:  new(int64(65534)),
 			Capabilities: &corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
 				Drop: []corev1.Capability{"ALL"},

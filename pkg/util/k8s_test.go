@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	"github.com/stretchr/testify/require"
 
@@ -553,7 +552,7 @@ func TestDeploymentIsReady(t *testing.T) {
 			deploy: &appsv1.Deployment{
 				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
-					Replicas: ptr.To[int32](1),
+					Replicas: new(int32(1)),
 				},
 				Status: appsv1.DeploymentStatus{
 					ObservedGeneration: 2,
@@ -579,7 +578,7 @@ func TestDeploymentIsReady(t *testing.T) {
 			deploy: &appsv1.Deployment{
 				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
-					Replicas: ptr.To[int32](1),
+					Replicas: new(int32(1)),
 				},
 				Status: appsv1.DeploymentStatus{
 					ObservedGeneration: 2,
@@ -616,7 +615,7 @@ func TestDeploymentIsReady(t *testing.T) {
 			deploy: &appsv1.Deployment{
 				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
-					Replicas: ptr.To[int32](2),
+					Replicas: new(int32(2)),
 				},
 				Status: appsv1.DeploymentStatus{
 					ObservedGeneration: 2,
@@ -632,7 +631,7 @@ func TestDeploymentIsReady(t *testing.T) {
 			deploy: &appsv1.Deployment{
 				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
-					Replicas: ptr.To[int32](1),
+					Replicas: new(int32(1)),
 				},
 				Status: appsv1.DeploymentStatus{
 					ObservedGeneration: 2,
@@ -648,7 +647,7 @@ func TestDeploymentIsReady(t *testing.T) {
 			deploy: &appsv1.Deployment{
 				Generation: 2,
 				Spec: appsv1.DeploymentSpec{
-					Replicas: ptr.To[int32](2),
+					Replicas: new(int32(2)),
 				},
 				Status: appsv1.DeploymentStatus{
 					ObservedGeneration: 2,
@@ -680,7 +679,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 			sts: &appsv1.StatefulSet{
 				Generation: 2,
 				Spec: appsv1.StatefulSetSpec{
-					Replicas: ptr.To[int32](3),
+					Replicas: new(int32(3)),
 				},
 				Status: appsv1.StatefulSetStatus{
 					ObservedGeneration: 2,
@@ -707,7 +706,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 			sts: &appsv1.StatefulSet{
 				Generation: 2,
 				Spec: appsv1.StatefulSetSpec{
-					Replicas: ptr.To[int32](3),
+					Replicas: new(int32(3)),
 				},
 				Status: appsv1.StatefulSetStatus{
 					ObservedGeneration: 2,
@@ -724,7 +723,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 			sts: &appsv1.StatefulSet{
 				Generation: 2,
 				Spec: appsv1.StatefulSetSpec{
-					Replicas: ptr.To[int32](3),
+					Replicas: new(int32(3)),
 				},
 				Status: appsv1.StatefulSetStatus{
 					ObservedGeneration: 2,
@@ -741,7 +740,7 @@ func TestStatefulSetIsReady(t *testing.T) {
 			sts: &appsv1.StatefulSet{
 				Generation: 2,
 				Spec: appsv1.StatefulSetSpec{
-					Replicas: ptr.To[int32](3),
+					Replicas: new(int32(3)),
 				},
 				Status: appsv1.StatefulSetStatus{
 					ObservedGeneration: 2,
@@ -908,11 +907,11 @@ func fullyPopulatedPod() *corev1.Pod {
 			ServiceAccountName:           "demo-sa",
 			SchedulerName:                "default-scheduler",
 			PriorityClassName:            "system-cluster-critical",
-			Priority:                     ptr.To[int32](2000000000),
+			Priority:                     new(int32(2000000000)),
 			Hostname:                     "demo",
 			Subdomain:                    "demo-svc",
 			AutomountServiceAccountToken: new(true),
-			SecurityContext:              &corev1.PodSecurityContext{RunAsUser: ptr.To[int64](1000)},
+			SecurityContext:              &corev1.PodSecurityContext{RunAsUser: new(int64(1000))},
 			NodeSelector:                 map[string]string{"kubernetes.io/os": "linux"},
 			Tolerations: []corev1.Toleration{
 				{Key: "node-role.kubernetes.io/control-plane", Operator: corev1.TolerationOpExists},
