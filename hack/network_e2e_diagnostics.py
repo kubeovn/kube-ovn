@@ -19,6 +19,9 @@ import time
 
 resources = ("pods", "namespaces", "services", "endpointslices", "networkpolicies", "events")
 failurePattern = re.compile(r"\[FAIL(?:ED)?\]|Unexpected endpoints|Validation of .* FAILED")
+terminalFailurePattern = re.compile(r"(?:\[(?:FAIL|FAILED)\] in \[It\]|\[FAIL\] \[|^FAIL!|--- FAIL)")
+failureSnapshotCooldown = 30
+fastFailureCooldown = 10
 
 
 def timestamp():
@@ -298,6 +301,68 @@ class Diagnostics:
         self.processes = []
         self.remoteStreams = []
         self.lock = threading.Lock()
+        self.failureStateLock = threading.Lock()
+        self.failureSequence = 0
+        self.pendingFailure = None
+        self.pendingFastFailure = None
+        self.lastFailureSnapshot = 0.0
+        self.lastFastFailure = 0.0
+
+    def recordFailure(self, line, kind):
+        """Record every failure line, while sampling only a bounded subset."""
+        with self.failureStateLock:
+            self.failureSequence += 1
+            event = {"phase": "observed", "sequence": self.failureSequence,
+                     "observed": timestamp(), "kind": kind,
+                     "line": line.rstrip()[:8192], "snapshot": None,
+                     "snapshotStarted": None, "snapshotFinished": None}
+            self.pendingFailure = event
+            self.pendingFastFailure = event
+            with (self.directory / "failure-events.jsonl").open("a") as output:
+                output.write(json.dumps(event) + "\n")
+        self.failure.set()
+        if kind == "test":
+            self.fastFailure.set()
+
+    def _consumeFailure(self, fast=False):
+        event = None
+        now = time.monotonic()
+        with self.failureStateLock:
+            marker = self.lastFastFailure if fast else self.lastFailureSnapshot
+            cooldown = fastFailureCooldown if fast else failureSnapshotCooldown
+            signal = self.fastFailure if fast else self.failure
+            pending = self.pendingFastFailure if fast else self.pendingFailure
+            if signal.is_set():
+                signal.clear()
+                if pending is not None and now - marker >= cooldown:
+                    event = pending
+                    if fast:
+                        self.pendingFastFailure = None
+                    else:
+                        self.pendingFailure = None
+                    if fast:
+                        self.lastFastFailure = now
+                    else:
+                        self.lastFailureSnapshot = now
+                elif pending is None and now - marker >= cooldown:
+                    event = {"phase": "signal", "observed": timestamp(),
+                             "kind": "unknown", "line": None}
+                elif pending is not None:
+                    if fast:
+                        self.pendingFastFailure = None
+                    else:
+                        self.pendingFailure = None
+        return event
+
+    def _recordFailureSnapshot(self, event, directory, started, finished, error=None):
+        record = dict(event or {})
+        record.update({"phase": "snapshot", "snapshot": str(directory),
+                       "snapshotStarted": started, "snapshotFinished": finished})
+        if error:
+            record["error"] = str(error)
+        with self.failureStateLock:
+            with (self.directory / "failure-events.jsonl").open("a") as output:
+                output.write(json.dumps(record) + "\n")
 
     def stream(self, name, command, maxBytes=4 * 1024 * 1024):
         """Retain four bounded segments of live logs, including packet headers only."""
@@ -398,9 +463,8 @@ fi
         index = 0
         failures = 0
         while not self.stop.is_set():
-            full = self.fastFailure.is_set()
-            self.fastFailure.clear()
-            if full:
+            event = self._consumeFailure(fast=True)
+            if event:
                 failureDir = self.directory / "probe-failures" / str(failures % 8)
                 failureDir.mkdir(parents=True, exist_ok=True)
                 for source in (self.directory / "streams").glob("*/*"):
@@ -415,7 +479,7 @@ fi
             directory.mkdir(parents=True, exist_ok=True)
             (directory / f"{index % 12}.json").write_text(json.dumps(sample))
             history.append(sample)
-            if full:
+            if event:
                 (failureDir / "preceding-probes.json").write_text(json.dumps(list(history)))
                 failures += 1
             index += 1
@@ -467,10 +531,16 @@ fi
         index = 0
         failures = 0
         while not self.stop.is_set():
-            full = self.failure.is_set()
-            self.failure.clear()
+            event = self._consumeFailure()
+            full = event is not None
             snapshot = self.directory / "samples" / f"{index % 8}"
-            collectSnapshot(snapshot, full=full, cancel=self.stop)
+            snapshotStarted = timestamp()
+            snapshotError = None
+            try:
+                collectSnapshot(snapshot, full=full, cancel=self.stop)
+            except Exception as error:
+                snapshotError = error
+            snapshotFinished = timestamp()
             # Freeze the pre-failure window before periodic collection overwrites it.
             history.append({p.name: p.read_text() for p in snapshot.glob("*.json")})
             if full:
@@ -478,6 +548,8 @@ fi
                 failureDir = self.directory / "failures" / str(failures % 8)
                 failureDir.mkdir(parents=True, exist_ok=True)
                 (failureDir / "preceding-snapshots.json").write_text(json.dumps(list(history)))
+                self._recordFailureSnapshot(event, failureDir.name, snapshotStarted,
+                                            snapshotFinished, snapshotError)
                 failures += 1
             index += 1
             self.failure.wait(self.interval)
@@ -583,9 +655,8 @@ def runSuite(suite, directory, interval):
                     log.write(line)
                     log.flush()
                     if failurePattern.search(line):
-                        diagnostics.failure.set()
-                        if re.search(r"\[FAIL(?:ED)?\]", line):
-                            diagnostics.fastFailure.set()
+                        kind = "test" if terminalFailurePattern.search(line) else "probe"
+                        diagnostics.recordFailure(line, kind)
             result = process.wait()
     except OSError as error:
         (directory / "suite-start-error.txt").write_text(str(error))
