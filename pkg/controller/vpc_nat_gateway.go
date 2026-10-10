@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -1497,7 +1496,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway) (*v1.State
 		Namespace: c.natGwNamespace(gw),
 		Labels:    labels,
 		Spec: v1.StatefulSetSpec{
-			Replicas: ptr.To[int32](1),
+			Replicas: new(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels,
 			},
@@ -1505,7 +1504,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway) (*v1.State
 				Labels:      labels,
 				Annotations: templateAnnotations,
 				Spec: corev1.PodSpec{
-					TerminationGracePeriodSeconds: ptr.To[int64](0),
+					TerminationGracePeriodSeconds: new(int64(0)),
 					ImagePullSecrets:              util.GetImagePullSecrets(vpcNatImagePullSecret),
 					Containers: []corev1.Container{
 						{
@@ -1678,7 +1677,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 				Labels:      labels,
 				Annotations: templateAnnotations,
 				Spec: corev1.PodSpec{
-					TerminationGracePeriodSeconds: ptr.To[int64](0),
+					TerminationGracePeriodSeconds: new(int64(0)),
 					ImagePullSecrets:              util.GetImagePullSecrets(vpcNatImagePullSecret),
 					Containers: []corev1.Container{
 						{

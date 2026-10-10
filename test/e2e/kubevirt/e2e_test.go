@@ -20,7 +20,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 
 	"github.com/onsi/ginkgo/v2"
@@ -140,7 +139,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ipClient = f.IPClient()
 
 		ginkgo.By("Creating vm " + vmName)
-		vm := framework.MakeVM(vmName, image, "small", ptr.To(v1.RunStrategyAlways))
+		vm := framework.MakeVM(vmName, image, "small", new(v1.RunStrategyAlways))
 		_ = vmClient.CreateSync(vm)
 	})
 	ginkgo.AfterEach(func() {
@@ -213,6 +212,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 				framework.ExpectContainSubstring(string(output), "Datapath actions:")
 			}
 		}
+	})
+
+	framework.ConformanceIt("should capture VM and VMI launcher interfaces with kubectl ko", func() {
+		f.SkipVersionPriorTo(1, 17, "KubeVirt capture was introduced in v1.17")
+		expectVMCaptureInterfaces(namespaceName, vmName, getVMPod(podClient, vmName))
 	})
 
 	framework.ConformanceIt("should be able to keep pod ips after the vm is restarted", func() {
@@ -434,7 +438,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = nadClient.Create(nadA)
 
 		ginkgo.By("Creating vm " + vmName + " with multus network " + nadNameA)
-		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", ptr.To(v1.RunStrategyAlways), nadNameA)
+		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", new(v1.RunStrategyAlways), nadNameA)
 		_ = vmClient.CreateSync(vm)
 
 		ginkgo.By("Getting pod of vm " + vmName)
@@ -485,7 +489,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = nadClient.Create(nadB)
 
 		ginkgo.By("Creating vm " + vmName + " with multus network " + nadNameA)
-		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", ptr.To(v1.RunStrategyAlways), nadNameA)
+		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", new(v1.RunStrategyAlways), nadNameA)
 		_ = vmClient.CreateSync(vm)
 
 		ginkgo.By("Getting pod of vm " + vmName)
@@ -571,6 +575,18 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			ginkgo.By("Creating live-migratable bridge vm " + vmName)
 			vm := framework.MakeVMLiveMigratableBridge(vmName, image, "small")
 			_ = vmClient.CreateSync(vm)
+		})
+
+		framework.ConformanceIt("should capture the current VM launcher before and after live migration", func() {
+			f.SkipVersionPriorTo(1, 17, "KubeVirt capture was introduced in v1.17")
+			pod := getVMPod(podClient, vmName)
+			expectVMCaptureInterfaces(namespaceName, vmName, pod)
+			migration := migrationClient.Create(framework.MakeVMIMigration("mig-"+framework.RandomSuffix(), vmName))
+			framework.ExpectNoError(migrationClient.WaitForPhase(migration.Name, v1.MigrationSucceeded, 5*time.Minute))
+			framework.ExpectNoError(vmClient.WaitToBeReady(vmName, 2*time.Minute))
+			migrated := getVMPod(podClient, vmName)
+			framework.ExpectNotEqual(migrated.Spec.NodeName, pod.Spec.NodeName)
+			expectVMCaptureInterfaces(namespaceName, vmName, migrated)
 		})
 
 		framework.ConformanceIt("should keep pod ip and mac unchanged after live migration", func() {

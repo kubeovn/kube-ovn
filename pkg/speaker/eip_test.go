@@ -20,9 +20,9 @@ func TestAnnounceEIPsFiltersAndDeduplicatesPrefixes(t *testing.T) {
 	)
 
 	controller := &Controller{config: &Configuration{
-		RouterID:              net.ParseIP(routerID),
-		NeighborAddresses:     []net.IP{net.ParseIP(ipv4Neighbor)},
-		NeighborIPv6Addresses: []net.IP{net.ParseIP(ipv6Neighbor)},
+		RouterID:              IP{IP: net.ParseIP(routerID)},
+		NeighborAddresses:     []IP{{IP: net.ParseIP(ipv4Neighbor)}},
+		NeighborIPv6Addresses: []IP{{IP: net.ParseIP(ipv6Neighbor)}},
 		NeighborLocalAddresses: map[string]net.IP{
 			ipv4Neighbor: net.ParseIP(routerID),
 			ipv6Neighbor: net.ParseIP(ipv6NextHop),

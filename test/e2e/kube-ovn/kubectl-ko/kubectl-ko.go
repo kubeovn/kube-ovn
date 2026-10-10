@@ -21,7 +21,6 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -487,10 +486,10 @@ var _ = framework.Describe("[group:kubectl-ko]", func() {
 				PolicyTypes: []netv1.PolicyType{netv1.PolicyTypeEgress},
 				Egress: []netv1.NetworkPolicyEgressRule{{
 					Ports: []netv1.NetworkPolicyPort{{
-						Protocol: ptr.To(corev1.ProtocolTCP),
+						Protocol: new(corev1.ProtocolTCP),
 						Port:     new(intstr.FromInt32(tcpPort)),
 					}, {
-						Protocol: ptr.To(corev1.ProtocolUDP),
+						Protocol: new(corev1.ProtocolUDP),
 						Port:     new(intstr.FromInt32(udpPort)),
 					}},
 					To: []netv1.NetworkPolicyPeer{{

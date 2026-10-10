@@ -25,7 +25,6 @@ import (
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	"k8s.io/utils/ptr"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -479,7 +478,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			Protocol:   corev1.ProtocolTCP,
 		}}
 		service := framework.MakeService(externalServiceName, corev1.ServiceTypeLoadBalancer, nil, internalPodLabels, ports, "")
-		service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
+		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicySingleStack)
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
 			return len(s.Status.LoadBalancer.Ingress) != 0, nil
@@ -691,9 +690,9 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		}
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
 		if f.IsDual() {
-			service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyPreferDualStack)
+			service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicyPreferDualStack)
 		} else {
-			service.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
+			service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicySingleStack)
 		}
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) {
@@ -703,9 +702,9 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		ginkgo.By("Creating the second service for the same deployment")
 		service2 := framework.MakeService(serviceName2, corev1.ServiceTypeLoadBalancer, nil, podLabels, ports, "")
 		if f.IsDual() {
-			service2.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicyPreferDualStack)
+			service2.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicyPreferDualStack)
 		} else {
-			service2.Spec.IPFamilyPolicy = ptr.To(corev1.IPFamilyPolicySingleStack)
+			service2.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicySingleStack)
 		}
 		service2.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		_ = serviceClient.CreateSync(service2, func(s *corev1.Service) (bool, error) {

@@ -2,13 +2,19 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -49,6 +55,72 @@ func Test_handleUpdateIP_deletedSubnet(t *testing.T) {
 	require.Equal(t, 1, ctrl.updateSubnetStatusQueue.Len())
 }
 
+func TestEnqueueUpdateIPRecordsSubnetChangeEvent(t *testing.T) {
+	oldIP := &kubeovnv1.IP{Name: "test-ip", Spec: kubeovnv1.IPSpec{Subnet: "subnet-a"}}
+	newIP := oldIP.DeepCopy()
+	newIP.Spec.Subnet = "subnet-b"
+	recorder := record.NewFakeRecorder(1)
+	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	t.Cleanup(queue.ShutDown)
+	controller := &Controller{recorder: recorder, updateSubnetStatusQueue: queue}
+
+	controller.enqueueUpdateIP(oldIP, newIP)
+
+	require.Equal(t, "Warning UpdateIPFailed ip test-ip subnet changed from subnet-a to subnet-b", requireRecorderEvent(t, recorder))
+	require.Equal(t, 2, queue.Len())
+	for _, expected := range []string{"subnet-a", "subnet-b"} {
+		key, shutdown := queue.Get()
+		require.False(t, shutdown)
+		require.Equal(t, expected, key)
+		queue.Done(key)
+	}
+}
+
+func TestEnqueueUpdateIPNoOpDoesNotRecordFailureEvent(t *testing.T) {
+	for _, ipv6 := range []string{"fd00::2", "FD00::2"} {
+		t.Run(ipv6, func(t *testing.T) {
+			oldIP := &kubeovnv1.IP{Name: "test-ip", Spec: kubeovnv1.IPSpec{V6IPAddress: ipv6}}
+			newIP := oldIP.DeepCopy()
+			newIP.Labels = map[string]string{"updated": "true"}
+			recorder := record.NewFakeRecorder(1)
+			controller := &Controller{recorder: recorder}
+
+			controller.enqueueUpdateIP(oldIP, newIP)
+
+			require.Empty(t, recorder.Events, "metadata-only updates must not emit failure events")
+		})
+	}
+}
+
+func TestHandleUpdateIPFinalizerFailureEvents(t *testing.T) {
+	for _, name := range []string{"test-ip", "u2o-interconnection.subnet-a.vpc-a", "mcast-querier.subnet-a"} {
+		t.Run(name, func(t *testing.T) {
+			ip := &kubeovnv1.IP{
+				Name: name, DeletionTimestamp: new(metav1.Now()),
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
+				Spec:       kubeovnv1.IPSpec{Subnet: "deleted-subnet"},
+			}
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPs: []*kubeovnv1.IP{ip}})
+			require.NoError(t, err)
+			controller := fc.fakeController
+			patchErr := errors.New("finalizer patch failed")
+			controller.config.KubeOvnClient.(*kubeovnfake.Clientset).PrependReactor("patch", "ips", func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, patchErr
+			})
+
+			err = controller.handleUpdateIP(ip.Name)
+
+			require.ErrorIs(t, err, patchErr)
+			recorder := controller.recorder.(*record.FakeRecorder)
+			if name == "test-ip" {
+				require.Equal(t, "Warning UpdateIPFailed finalizer patch failed", requireRecorderEvent(t, recorder))
+			} else {
+				require.Empty(t, recorder.Events, "internal IP failures must not emit events")
+			}
+		})
+	}
+}
+
 func TestCreateOrUpdateIPCRPersistsReplacementNodeOwner(t *testing.T) {
 	t.Parallel()
 
@@ -82,4 +154,88 @@ func TestCreateOrUpdateIPCRPersistsReplacementNodeOwner(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, updated.OwnerReferences, 1)
 	require.Equal(t, node.UID, updated.OwnerReferences[0].UID, "the node ip CR must be owned by the replacement node")
+}
+
+func TestHandleAddReservedIPRecordsFailureEvent(t *testing.T) {
+	t.Parallel()
+
+	ip := &kubeovnv1.IP{Name: "test-ip"}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		IPs: []*kubeovnv1.IP{ip},
+	})
+	require.NoError(t, err)
+
+	err = fakeCtrl.fakeController.handleAddReservedIP(ip.Name)
+
+	require.EqualError(t, err, "subnet parameter cannot be empty")
+	require.Equal(t, "Warning AddIPFailed subnet parameter cannot be empty", requireRecorderEvent(t, fakeCtrl.fakeController.recorder.(*record.FakeRecorder)))
+}
+
+func TestHandleUpdateIPRecordsFailureEvent(t *testing.T) {
+	t.Parallel()
+
+	now := metav1.Now()
+	ip := &kubeovnv1.IP{
+		Name:              "test-ip",
+		DeletionTimestamp: &now,
+		Finalizers:        []string{util.KubeOVNControllerFinalizer},
+		Spec:              kubeovnv1.IPSpec{Subnet: "test-subnet"},
+	}
+	subnet := &kubeovnv1.Subnet{
+		Name: ip.Spec.Subnet,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+	}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		IPs:     []*kubeovnv1.IP{ip},
+		Subnets: []*kubeovnv1.Subnet{subnet},
+	})
+	require.NoError(t, err)
+	injectedErr := errors.New("get logical switch port failed")
+	fakeCtrl.mockOvnClient.EXPECT().GetLogicalSwitchPort(ip.Name, true).Return(nil, injectedErr)
+
+	err = fakeCtrl.fakeController.handleUpdateIP(ip.Name)
+
+	require.ErrorIs(t, err, injectedErr)
+	require.Equal(t, "Warning UpdateIPFailed "+injectedErr.Error(), requireRecorderEvent(t, fakeCtrl.fakeController.recorder.(*record.FakeRecorder)))
+}
+
+func TestEnqueueUpdateIPRecordsImmutableFieldChangeEvent(t *testing.T) {
+	original := &kubeovnv1.IP{
+		Name: "test-ip",
+		Spec: kubeovnv1.IPSpec{
+			Subnet:      "subnet-a",
+			Namespace:   "default",
+			PodName:     "pod-a",
+			PodType:     util.KindStatefulSet,
+			MacAddress:  "00:00:00:AA:BB:CC",
+			V4IPAddress: "10.0.0.2",
+			V6IPAddress: "fd00::2",
+		},
+	}
+	tests := []struct {
+		name    string
+		mutate  func(*kubeovnv1.IP)
+		message string
+	}{
+		{name: "namespace", mutate: func(ip *kubeovnv1.IP) { ip.Spec.Namespace = "other" }, message: "ip test-ip namespace can not change"},
+		{name: "pod name", mutate: func(ip *kubeovnv1.IP) { ip.Spec.PodName = "pod-b" }, message: "ip test-ip podName can not change"},
+		{name: "pod type", mutate: func(ip *kubeovnv1.IP) { ip.Spec.PodType = util.KindVirtualMachine }, message: "ip test-ip podType can not change"},
+		{name: "MAC address", mutate: func(ip *kubeovnv1.IP) { ip.Spec.MacAddress = "00:00:00:DD:EE:FF" }, message: "ip test-ip macAddress can not change"},
+		{name: "IPv4 address", mutate: func(ip *kubeovnv1.IP) { ip.Spec.V4IPAddress = "10.0.0.3" }, message: "ip test-ip v4IPAddress can not change"},
+		{name: "uppercase IPv6 address", mutate: func(ip *kubeovnv1.IP) { ip.Spec.V6IPAddress = "FD00::2" }, message: "ip test-ip v6 ip address FD00::2 can not contain upper case"},
+		{name: "IPv6 address", mutate: func(ip *kubeovnv1.IP) { ip.Spec.V6IPAddress = "fd00::3" }, message: "ip test-ip v6IPAddress can not change"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updated := original.DeepCopy()
+			tt.mutate(updated)
+			recorder := record.NewFakeRecorder(1)
+			controller := &Controller{recorder: recorder}
+
+			controller.enqueueUpdateIP(original, updated)
+
+			require.Equal(t, "Warning UpdateIPFailed "+tt.message, requireRecorderEvent(t, recorder))
+		})
+	}
 }

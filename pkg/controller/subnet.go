@@ -83,6 +83,12 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	newSubnet := newObj.(*kubeovnv1.Subnet)
 	key := cache.MetaObjectToName(newSubnet).String()
 
+	if oldSubnet.DeletionTimestamp.IsZero() && !newSubnet.DeletionTimestamp.IsZero() {
+		klog.Infof("enqueue update subnet %s triggered by deletion timestamp", key)
+		c.addOrUpdateSubnetQueue.Add(key)
+		return
+	}
+
 	if readyToRemoveFinalizer(newSubnet) {
 		klog.Infof("enqueue update subnet %s triggered by ready to remove finalizer", key)
 		c.addOrUpdateSubnetQueue.Add(key)
@@ -715,15 +721,10 @@ func (c *Controller) prepareOvnSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc,
 		return nil, c.recordResourceError(subnet, "CreateLogicalSwitchFailed", err)
 	}
 
-	// Record the gateway MAC in ipam if router port exists
 	if needRouter {
 		routerPortName := ovs.LogicalRouterPortName(vpc.Status.Router, subnet.Name)
-		if lrp, err := c.OVNNbClient.GetLogicalRouterPort(routerPortName, true); err == nil && lrp != nil && lrp.MAC != "" {
-			if err := c.ipam.RecordGatewayMAC(subnet.Name, lrp.MAC); err != nil {
-				klog.Warningf("failed to record gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
-			}
-		} else {
-			klog.V(3).Infof("router port %s not found or has no MAC, skipping gateway MAC record", routerPortName)
+		if err := c.recordSubnetGatewayMAC(subnet, routerPortName); err != nil {
+			return nil, c.recordResourceError(subnet, "UpdateGatewayMACStatusFailed", err)
 		}
 	}
 

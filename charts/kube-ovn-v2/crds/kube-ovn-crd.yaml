@@ -2910,6 +2910,12 @@ spec:
                 type: string
               dhcpV6OptionsUUID:
                 type: string
+              gatewayMAC:
+                description: |-
+                  GatewayMAC is the mac address of the subnet's logical router port, recorded so
+                  the validating webhook can independently verify a switch_lb_rule vip mac repair
+                  (see pkg/webhook/vip.go) without needing access to the controller's in-memory IPAM.
+                type: string
               mcastQuerierIP:
                 type: string
               mcastQuerierMAC:
