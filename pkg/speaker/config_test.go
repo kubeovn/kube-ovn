@@ -997,8 +997,8 @@ func TestConfiguration_LoadFileConfig(t *testing.T) {
 		{name: "known fields", yamlContent: "cluster-as: 65000\nholdtime: 90s\nneighbor-address: [192.0.2.1]\n"},
 		{
 			name:          "unknown field",
-			yamlContent:   "cluster-as: 65000\nneighbor-adress: [192.0.2.1]\n",
-			errorContains: "field neighbor-adress not found",
+			yamlContent:   "cluster-as: 65000\nneighbor-address-extra: [192.0.2.1]\n",
+			errorContains: "field neighbor-address-extra not found",
 		},
 		{
 			name:          "runtime field is not configurable",
