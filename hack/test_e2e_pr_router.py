@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,6 +41,16 @@ class E2EPRRouterTest(unittest.TestCase):
     headSHA = "a" * 40
     baseSHA = "b" * 40
     number = 7617
+
+    def testAPIReportsHTTPFailureAndPreservesOriginalException(self):
+        message = b"gh: Resource not accessible by integration (HTTP 403)\n"
+        failure = subprocess.CalledProcessError(1, ["gh"], stderr=message)
+        output = io.StringIO()
+        with patch.object(router.subprocess, "run", side_effect=failure), redirect_stderr(output):
+            with self.assertRaises(subprocess.CalledProcessError) as caught:
+                router.GitHub().api("repos/kubeovn/kube-ovn/git/refs", method="POST", payload={"sha": self.headSHA})
+        self.assertIs(caught.exception, failure)
+        self.assertIn(message.decode().strip(), output.getvalue())
 
     def setUp(self):
         self.pull = {"number": self.number, "state": "open", "head": {"sha": self.headSHA,
