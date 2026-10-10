@@ -21,7 +21,6 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/ptr"
 
 	"github.com/stretchr/testify/require"
 
@@ -35,14 +34,14 @@ func TestAddVpcEgressGatewayObserverUsesRestartableNonRootSidecar(t *testing.T) 
 	require.Len(t, podSpec.InitContainers, 1)
 	container := podSpec.InitContainers[0]
 	require.Equal(t, vpcEgressObserverContainerName, container.Name)
-	require.Equal(t, ptr.To(corev1.ContainerRestartPolicyAlways), container.RestartPolicy)
+	require.Equal(t, new(corev1.ContainerRestartPolicyAlways), container.RestartPolicy)
 	require.Contains(t, container.Command[2], "exec sleep infinity")
 	require.Equal(t, "20m", container.Resources.Requests.Cpu().String())
 	require.Equal(t, "64Mi", container.Resources.Requests.Memory().String())
 	require.Equal(t, "200m", container.Resources.Limits.Cpu().String())
 	require.Equal(t, "256Mi", container.Resources.Limits.Memory().String())
-	require.Equal(t, ptr.To[int64](65534), container.SecurityContext.RunAsUser)
-	require.Equal(t, ptr.To[int64](65534), container.SecurityContext.RunAsGroup)
+	require.Equal(t, new(int64(65534)), container.SecurityContext.RunAsUser)
+	require.Equal(t, new(int64(65534)), container.SecurityContext.RunAsGroup)
 	require.Equal(t, new(true), container.SecurityContext.RunAsNonRoot)
 	require.Equal(t, new(true), container.SecurityContext.AllowPrivilegeEscalation)
 	require.Equal(t, new(true), container.SecurityContext.ReadOnlyRootFilesystem)

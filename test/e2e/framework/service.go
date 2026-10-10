@@ -14,7 +14,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"k8s.io/utils/ptr"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -169,7 +168,7 @@ func MakeService(name string, svcType corev1.ServiceType, annotations, selector 
 		Name:        name,
 		Annotations: annotations,
 		Spec: corev1.ServiceSpec{
-			IPFamilyPolicy:  ptr.To(corev1.IPFamilyPolicyPreferDualStack),
+			IPFamilyPolicy:  new(corev1.IPFamilyPolicyPreferDualStack),
 			Ports:           ports,
 			Selector:        selector,
 			SessionAffinity: affinity,

@@ -20,7 +20,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	"k8s.io/utils/ptr"
 	v1 "kubevirt.io/api/core/v1"
 
 	"github.com/onsi/ginkgo/v2"
@@ -140,7 +139,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ipClient = f.IPClient()
 
 		ginkgo.By("Creating vm " + vmName)
-		vm := framework.MakeVM(vmName, image, "small", ptr.To(v1.RunStrategyAlways))
+		vm := framework.MakeVM(vmName, image, "small", new(v1.RunStrategyAlways))
 		_ = vmClient.CreateSync(vm)
 	})
 	ginkgo.AfterEach(func() {
@@ -439,7 +438,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = nadClient.Create(nadA)
 
 		ginkgo.By("Creating vm " + vmName + " with multus network " + nadNameA)
-		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", ptr.To(v1.RunStrategyAlways), nadNameA)
+		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", new(v1.RunStrategyAlways), nadNameA)
 		_ = vmClient.CreateSync(vm)
 
 		ginkgo.By("Getting pod of vm " + vmName)
@@ -490,7 +489,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		_ = nadClient.Create(nadB)
 
 		ginkgo.By("Creating vm " + vmName + " with multus network " + nadNameA)
-		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", ptr.To(v1.RunStrategyAlways), nadNameA)
+		vm := framework.MakeVMWithMultusNetwork(vmName, image, "small", new(v1.RunStrategyAlways), nadNameA)
 		_ = vmClient.CreateSync(vm)
 
 		ginkgo.By("Getting pod of vm " + vmName)
