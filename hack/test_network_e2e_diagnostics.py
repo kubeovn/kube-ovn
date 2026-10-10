@@ -46,7 +46,7 @@ class NetworkDiagnosticsTest(unittest.TestCase):
     def testGinkgoImmediateFailureFreezesBeforeCleanup(self):
         self.runWithStubs(7, failureLine="[FAILED] Timed out after 120.000s.")
 
-    def testLateFailureRetainsItsWindowAfterEightEarlierSignals(self):
+    def testRepeatedFailuresAreDebouncedAndEventsPersist(self):
         with tempfile.TemporaryDirectory() as temporary:
             collector = diagnostics.Diagnostics(Path(temporary), interval=0)
 
@@ -55,20 +55,24 @@ class NetworkDiagnosticsTest(unittest.TestCase):
                 index = snapshot.calls
                 (directory / "marker.json").write_text(json.dumps({"index": index}))
                 snapshot.calls += 1
-                if index == 10:
+                if index == 3:
                     collector.stop.set()
-                else:
-                    collector.failure.set()
 
             snapshot.calls = 0
-            collector.failure.set()
+            collector.recordFailure("Validation fixture FAILED", "probe")
+            collector.recordFailure("Validation fixture FAILED again", "probe")
             with mock.patch.object(diagnostics, "collectSnapshot", snapshot):
                 collector.sample()
             windows = list(Path(temporary).glob("failures/*/preceding-snapshots.json"))
-            self.assertEqual(len(windows), 8)
-            latest = max(json.loads(sample["marker.json"])["index"]
-                         for window in windows for sample in json.loads(window.read_text()))
-            self.assertEqual(latest, 10)
+            self.assertEqual(len(windows), 1)
+            events = [json.loads(line) for line in
+                      (Path(temporary) / "failure-events.jsonl").read_text().splitlines()]
+            self.assertEqual(len([event for event in events if event["phase"] == "observed"]), 2)
+            snapshots = [event for event in events if event["phase"] == "snapshot"]
+            self.assertEqual(len(snapshots), 1)
+            self.assertEqual(snapshots[0]["snapshot"], "0")
+            self.assertIn("snapshotStarted", snapshots[0])
+            self.assertIn("snapshotFinished", snapshots[0])
 
     def testRuntimeCollectionOnlyTargetsBoundedTrafficDistributionClients(self):
         listing = "default client-private\ntraffic-distribution-1 server-0\n"
@@ -262,6 +266,11 @@ sys.exit({exitCode})
                 preceding = (output / "failures/0/preceding-snapshots.json").read_text()
                 self.assertIn("10.16.0.2", preceding)
                 self.assertIn("partial OVS evidence", preceding)
+                events = [json.loads(line) for line in
+                          (output / "failure-events.jsonl").read_text().splitlines()]
+                self.assertTrue(any(event["phase"] == "observed" for event in events))
+                self.assertTrue(any(event["phase"] == "snapshot" and
+                                    event["snapshot"] == "0" for event in events))
             for artifact in output.rglob("*.json*"):
                 self.assertNotIn("PRIVATE-FIXTURE", artifact.read_text())
             watches = [json.loads(line) for line in (output / "watch-pods.jsonl").read_text().splitlines()]
