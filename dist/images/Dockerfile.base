@@ -210,10 +210,10 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt update && apt upgrade -y && \
-    apt install ca-certificates netbase ethtool iproute2 ncat libunbound8 \
-        kmod iptables nftables python3-netifaces python3-sortedcontainers tcpdump ipvsadm ipset curl \
+    apt install ca-certificates netbase ethtool iproute2 libunbound8 \
+        kmod iptables nftables python3-netifaces python3-sortedcontainers ipvsadm ipset curl \
         uuid-runtime openssl inetutils-ping arping ndisc6 conntrack traceroute iputils-tracepath \
-        gzip logrotate dnsutils net-tools strongswan strongswan-pki strongswan-starter libcharon-extra-plugins \
+        gzip logrotate dnsutils strongswan strongswan-pki strongswan-starter libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
         -y --no-install-recommends --auto-remove && \
     apt remove -y --allow-remove-essential --auto-remove login && \
@@ -227,7 +227,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     setcap CAP_NET_ADMIN,CAP_NET_RAW+eip $(readlink -f $(which xtables-nft-multi)) && \
     setcap CAP_NET_RAW+eip $(readlink -f $(which arping)) && \
     setcap CAP_NET_RAW+eip $(readlink -f $(which ndisc6)) && \
-    setcap CAP_NET_RAW+eip $(readlink -f $(which tcpdump)) && \
     setcap CAP_SYS_ADMIN+eip $(readlink -f $(which nsenter)) && \
     setcap CAP_SYS_ADMIN+eip $(readlink -f $(which sysctl)) && \
     setcap CAP_SYS_MODULE+eip $(readlink -f $(which modprobe)) && \
@@ -267,9 +266,14 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
         setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)) && \
         dpkg --purge gpgv apt; \
     else \
-        apt update && apt install -y --no-install-recommends gdb valgrind && \
+        apt update && apt install -y --no-install-recommends gdb valgrind tcpdump ncat && \
+        setcap CAP_NET_RAW+eip $(readlink -f $(which tcpdump)) && \
         rm -rf /var/lib/apt/lists/* && \
         dpkg -i /packages/*.ddeb; \
+    fi
+
+RUN if [ "${DEBUG}" != "true" ]; then \
+        test ! -e /usr/bin/tcpdump && test ! -e /usr/bin/ncat && test ! -e /usr/bin/nc; \
     fi
 
 RUN --mount=type=bind,target=/packages,from=openssl-builder,source=/packages \

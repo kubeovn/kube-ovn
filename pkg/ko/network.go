@@ -318,17 +318,24 @@ func namespaceCommand(netns string, argv ...string) []string {
 }
 
 func (a *Application) tcpdump(ctx context.Context, client *Client, target captureTarget, args []string) error {
+	options, err := parseCaptureArguments(args)
+	if err != nil {
+		return err
+	}
 	pod := target.pod
 	ovs, err := client.nodeTarget(ctx, pod.Spec.NodeName, "ovs")
 	if err != nil {
 		return err
 	}
-	argv := append([]string{"tcpdump", "-nn"}, args...)
+	name, netns := "eth0", "/proc/1/ns/net"
+	if options.iface != "" {
+		name = options.iface
+	}
 	if pod.Spec.HostNetwork {
 		if err := client.checkCaptureTarget(ctx, target); err != nil {
 			return err
 		}
-		return client.Executor.Exec(ctx, ovs, argv, a.outputStreams())
+		return client.Executor.Exec(ctx, ovs, captureCommand(netns, name, options), a.outputStreams())
 	}
 	source := podNetworkSource(pod)
 	nic, err := client.podInterface(ctx, ovs, source.lsp)
@@ -338,19 +345,30 @@ func (a *Application) tcpdump(ctx context.Context, client *Client, target captur
 	if nic.netns == "" {
 		return errors.New("OVS interface has no pod_netns external ID")
 	}
-	cni, err := client.nodeTarget(ctx, source.node, "kube-ovn-cni")
-	if err != nil {
-		return err
-	}
-	name := "eth0"
+	netns = nic.netns
 	if pod.Annotations[annotationPrefix+"pod_nic_type"] == "internal-port" {
-		name = nic.name
+		if options.iface == "" {
+			name = nic.name
+		}
 	}
-	argv = namespaceCommand(nic.netns, append([]string{"tcpdump", "-nn", "-i", name}, args...)...)
 	if err := client.checkCaptureTarget(ctx, target); err != nil {
 		return err
 	}
-	return client.Executor.Exec(ctx, cni, argv, a.outputStreams())
+	return client.Executor.Exec(ctx, ovs, captureCommand(netns, name, options), a.outputStreams())
+}
+
+func captureCommand(netns, iface string, options packetCaptureOptions) []string {
+	argv := []string{"capture", "--netns", netns, "--interface", iface}
+	if options.count != 0 {
+		argv = append(argv, "--count", strconv.Itoa(options.count))
+	}
+	if options.snaplen != defaultCaptureSnaplen {
+		argv = append(argv, "--snaplen", strconv.Itoa(options.snaplen))
+	}
+	if options.pcap {
+		argv = append(argv, "--pcap")
+	}
+	return argv
 }
 
 type traceRequest struct {

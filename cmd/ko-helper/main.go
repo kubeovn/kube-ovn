@@ -94,6 +94,20 @@ func runHelper() int {
 		}
 		return 0
 	}
+	if len(os.Args) == 2 && os.Args[1] == "environment" {
+		if err := kohelper.RunEnvironment(ctx, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "capture" {
+		if err := kohelper.RunCapture(ctx, os.Args[2:], os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
 	if len(os.Args) != 2 || os.Args[1] != "--stdio" {
 		return 2
 	}

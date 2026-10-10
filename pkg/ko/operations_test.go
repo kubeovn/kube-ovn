@@ -121,7 +121,7 @@ func TestEnvironmentChecksAllRunningCNIsAndPreservesFailures(t *testing.T) {
 	failures := map[string]error{"a": errors.New("checker unavailable"), "b": errors.New("checker failed")}
 	executor.run = func(_ context.Context, target Target, argv []string, _ Streams) error {
 		require.Equal(t, "cni-server", target.Container)
-		require.Equal(t, []string{"bash", "/kube-ovn/env-check.sh"}, argv)
+		require.Equal(t, []string{"environment"}, argv)
 		return failures[target.Node]
 	}
 	err := app.Execute(t.Context(), []string{"diagnose", "environment"})
@@ -150,7 +150,7 @@ func TestEnvironmentChecksLinuxNodesWithoutCNI(t *testing.T) {
 	failure := errors.New("checker failed")
 	executor.run = func(_ context.Context, target Target, argv []string, _ Streams) error {
 		require.Equal(t, "agent", target.Container)
-		require.Equal(t, []string{"bash", "/kube-ovn/env-check.sh"}, argv)
+		require.Equal(t, []string{"environment"}, argv)
 		if target.Node == "a" {
 			return failure
 		}
