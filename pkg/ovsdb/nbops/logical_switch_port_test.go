@@ -2,6 +2,7 @@ package nbops
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
@@ -31,13 +32,45 @@ func (t *recordingTable) MutateOps(_ model.Model, mutations ...model.Mutation) (
 	return []ovsdb.Operation{{Op: ovsdb.OperationMutate}}, nil
 }
 
-type recordingExecutor struct {
+type recordingCommitter struct {
 	plans []*table.TxPlan
+	err   error
 }
 
-func (e *recordingExecutor) Execute(_ context.Context, plan *table.TxPlan) error {
+func (e *recordingCommitter) Commit(_ context.Context, plan *table.TxPlan) (table.CommitResult, error) {
 	e.plans = append(e.plans, plan)
-	return nil
+	if e.err != nil {
+		return table.CommitResult{Method: plan.Method(), OperationCount: len(plan.Operations())}, e.err
+	}
+	return table.CommitResult{
+		Method:         plan.Method(),
+		OperationCount: len(plan.Operations()),
+		Applied:        !plan.Empty(),
+	}, nil
+}
+
+func TestEnsureParentPropagatesCommitError(t *testing.T) {
+	portTable := &recordingTable{get: func(row model.Model) error {
+		row.(*ovnnb.LogicalSwitchPort).UUID = "lsp-uuid"
+		return nil
+	}}
+	switchTable := &recordingTable{filter: func(predicate, result any) error {
+		rows := result.(*[]ovnnb.LogicalSwitch)
+		candidates := []ovnnb.LogicalSwitch{{Name: "target"}}
+		filter := predicate.(func(*ovnnb.LogicalSwitch) bool)
+		for i := range candidates {
+			if filter(&candidates[i]) {
+				*rows = append(*rows, candidates[i])
+			}
+		}
+		return nil
+	}}
+	commitErr := errors.New("commit failed")
+	committer := &recordingCommitter{err: commitErr}
+	facade := &LogicalSwitchPorts{ports: portTable, switches: switchTable, committer: committer}
+
+	_, err := facade.EnsureParentResult(t.Context(), "port", "target")
+	require.ErrorIs(t, err, commitErr)
 }
 
 func TestEnsureParentDetachesStaleParentsBeforeAttach(t *testing.T) {
@@ -60,15 +93,15 @@ func TestEnsureParentDetachesStaleParentsBeforeAttach(t *testing.T) {
 		}
 		return nil
 	}
-	executor := &recordingExecutor{}
-	facade := &LogicalSwitchPorts{ports: portTable, switches: switchTable, executor: executor}
+	committer := &recordingCommitter{}
+	facade := &LogicalSwitchPorts{ports: portTable, switches: switchTable, committer: committer}
 
 	result, err := facade.EnsureParentResult(t.Context(), "port", "target")
 	require.NoError(t, err)
 	require.Equal(t, table.CommitResult{Method: "lsp-parent", OperationCount: 2, Applied: true}, result)
-	require.Len(t, executor.plans, 1)
-	require.Len(t, executor.plans[0].Operations(), 2)
-	require.Equal(t, "lsp-parent", executor.plans[0].Method())
+	require.Len(t, committer.plans, 1)
+	require.Len(t, committer.plans[0].Operations(), 2)
+	require.Equal(t, "lsp-parent", committer.plans[0].Method())
 	require.Len(t, switchTable.mutations, 2)
 	require.Equal(t, ovsdb.MutateOperationDelete, switchTable.mutations[0][0].Mutator)
 	require.Equal(t, ovsdb.MutateOperationInsert, switchTable.mutations[1][0].Mutator)
@@ -94,13 +127,13 @@ func TestEnsureRouterParentDetachesStaleParentsBeforeAttach(t *testing.T) {
 		}
 		return nil
 	}
-	executor := &recordingExecutor{}
-	facade := &LogicalRouterPorts{ports: portTable, routers: routerTable, executor: executor}
+	committer := &recordingCommitter{}
+	facade := &LogicalRouterPorts{ports: portTable, routers: routerTable, committer: committer}
 
 	require.NoError(t, facade.EnsureParent(t.Context(), "port", "target"))
-	require.Len(t, executor.plans, 1)
-	require.Len(t, executor.plans[0].Operations(), 2)
-	require.Equal(t, "lrp-parent", executor.plans[0].Method())
+	require.Len(t, committer.plans, 1)
+	require.Len(t, committer.plans[0].Operations(), 2)
+	require.Equal(t, "lrp-parent", committer.plans[0].Method())
 	require.Len(t, routerTable.mutations, 2)
 	require.Equal(t, ovsdb.MutateOperationDelete, routerTable.mutations[0][0].Mutator)
 	require.Equal(t, ovsdb.MutateOperationInsert, routerTable.mutations[1][0].Mutator)
@@ -110,16 +143,16 @@ func TestEnsureParentKeepsTableSpecificErrors(t *testing.T) {
 	require.EqualError(t, (*LogicalSwitchPorts)(nil).EnsureParent(t.Context(), "port", "target"), "logical switch port facade is nil")
 	require.EqualError(t, (&LogicalSwitchPorts{}).EnsureParent(t.Context(), "port", "target"), "logical switch port facade is nil")
 	require.EqualError(t, (&LogicalSwitchPorts{
-		ports:    &recordingTable{},
-		switches: &recordingTable{},
-		executor: &recordingExecutor{},
+		ports:     &recordingTable{},
+		switches:  &recordingTable{},
+		committer: &recordingCommitter{},
 	}).EnsureParent(t.Context(), "", "target"), "logical switch port and switch names are required")
 
 	require.EqualError(t, (*LogicalRouterPorts)(nil).EnsureParent(t.Context(), "port", "target"), "logical router port facade is nil")
 	require.EqualError(t, (&LogicalRouterPorts{}).EnsureParent(t.Context(), "port", "target"), "logical router port facade is nil")
 	require.EqualError(t, (&LogicalRouterPorts{
-		ports:    &recordingTable{},
-		routers:  &recordingTable{},
-		executor: &recordingExecutor{},
+		ports:     &recordingTable{},
+		routers:   &recordingTable{},
+		committer: &recordingCommitter{},
 	}).EnsureParent(t.Context(), "port", ""), "logical router port and router names are required")
 }

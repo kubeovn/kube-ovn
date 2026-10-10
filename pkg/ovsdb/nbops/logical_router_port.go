@@ -10,20 +10,20 @@ import (
 
 // LogicalRouterPorts provides resource-level parent ownership operations.
 type LogicalRouterPorts struct {
-	ports    rowTable
-	routers  rowTable
-	executor table.Executor
+	ports     rowTable
+	routers   rowTable
+	committer table.Committer
 }
 
 // NewLogicalRouterPorts creates a typed facade over an NB table provider.
-func NewLogicalRouterPorts(provider table.Provider, executor table.Executor) *LogicalRouterPorts {
+func NewLogicalRouterPorts(provider table.Provider, committer table.Committer) *LogicalRouterPorts {
 	if provider == nil {
-		return &LogicalRouterPorts{executor: executor}
+		return &LogicalRouterPorts{committer: committer}
 	}
 	return &LogicalRouterPorts{
-		ports:    provider.Table(&ovnnb.LogicalRouterPort{}),
-		routers:  provider.Table(&ovnnb.LogicalRouter{}),
-		executor: executor,
+		ports:     provider.Table(&ovnnb.LogicalRouterPort{}),
+		routers:   provider.Table(&ovnnb.LogicalRouter{}),
+		committer: committer,
 	}
 }
 
@@ -43,7 +43,7 @@ func (p *LogicalRouterPorts) EnsureParentResult(ctx context.Context, portName, r
 		return result, errors.New("logical router port facade is nil")
 	}
 	return namedParentSpec[ovnnb.LogicalRouterPort, ovnnb.LogicalRouter]{
-		executor:   p.executor,
+		committer:  p.committer,
 		children:   p.ports,
 		parents:    p.routers,
 		method:     "lrp-parent",

@@ -25,19 +25,19 @@ type ACLs struct {
 	acl        rowTable
 	switches   rowTable
 	portGroups rowTable
-	executor   table.Executor
+	committer  table.Committer
 }
 
 // NewACLs creates a typed facade over an NB table provider.
-func NewACLs(provider table.Provider, executor table.Executor) *ACLs {
+func NewACLs(provider table.Provider, committer table.Committer) *ACLs {
 	if provider == nil {
-		return &ACLs{executor: executor}
+		return &ACLs{committer: committer}
 	}
 	return &ACLs{
 		acl:        provider.Table(&ovnnb.ACL{}),
 		switches:   provider.Table(&ovnnb.LogicalSwitch{}),
 		portGroups: provider.Table(&ovnnb.PortGroup{}),
-		executor:   executor,
+		committer:  committer,
 	}
 }
 
@@ -53,7 +53,7 @@ func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID
 // only commit metadata while keeping model mutations private to this facade.
 func (a *ACLs) EnsureParentResult(ctx context.Context, parentName, parentType, aclUUID string) (table.CommitResult, error) {
 	result := table.CommitResult{Method: "acl-parent"}
-	if a == nil || a.acl == nil || a.switches == nil || a.portGroups == nil || a.executor == nil {
+	if a == nil || a.acl == nil || a.switches == nil || a.portGroups == nil || a.committer == nil {
 		return result, errors.New("acl facade is nil")
 	}
 	if parentName == "" || aclUUID == "" {
@@ -146,5 +146,5 @@ func (a *ACLs) EnsureParentResult(ctx context.Context, parentName, parentType, a
 			plan.Add(operations...)
 		}
 	}
-	return table.CommitPlan(ctx, a.executor, plan)
+	return a.committer.Commit(ctx, plan)
 }
