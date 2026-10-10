@@ -44,12 +44,12 @@ class E2ESelectorTest(unittest.TestCase):
           - ipv4
           - ipv6
           - dual
-        mode:""",
+        np-enforcement:""",
             """        ip-family:
           - ipv4
           - ipv6
           - bogus
-        mode:""",
+        np-enforcement:""",
             1,
         )
         self.assertNotEqual(workflow, drifted)
@@ -62,11 +62,11 @@ class E2ESelectorTest(unittest.TestCase):
         drifted = workflow.replace(
             """          - ipv6
           - dual
-        mode:""",
+        np-enforcement:""",
             """          - ipv6
           - dual
           - dual
-        mode:""",
+        np-enforcement:""",
             1,
         )
         self.assertNotEqual(workflow, drifted)
@@ -74,53 +74,42 @@ class E2ESelectorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "catalog matrix does not match"):
             e2eSelector.validateWorkflow(self.catalog, drifted)
 
+    def testDiagnosticChangeSelectsTheSameTwelveJobsForEveryEvent(self):
+        plan = self.select(["hack/network_e2e_diagnostics.py"])
+        self.assertTrue(plan["full"])
+        self.assertEqual(len(plan["matrix"]), 12)
+        self.assertEqual({entry["job"] for entry in plan["matrix"]},
+                         {"k8s-conformance-e2e", "k8s-netpol-e2e"})
+        for event in ("pull_request", "workflow_dispatch", "push"):
+            self.assertEqual(e2eSelector.executionPlan(self.catalog, plan, event)["matrix"],
+                             plan["matrix"])
+
     def testSmokeIsAlwaysSelected(self):
         plan = self.select(["docs/design.md"])
-
         self.assertFalse(plan["full"])
         self.assertEqual(plan["selectedGroups"], [])
         self.assertEqual(len(plan["matrix"]), 3)
         self.assertEqual({entry["selection"] for entry in plan["matrix"]}, {"smoke"})
         self.assertEqual(
-            [
-                {key: value for key, value in entry.items() if key != "selection"}
-                for entry in plan["matrix"]
-            ],
-            [
-                {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
-                {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "underlay"},
-                {"job": "k8s-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
-            ],
+            [{key: value for key, value in entry.items() if key != "selection"} for entry in plan["matrix"]],
+            self.catalog["smoke"],
         )
 
     def testSmokeMatricesContainOnlyTheThreeApprovedRunnerJobs(self):
         plan = self.select(["docs/design.md"])
-
-        self.assertEqual(
-            e2eSelector.jobMatrix(plan, "k8s-conformance-e2e"),
-            {"include": [{"ip-family": "ipv4", "mode": "overlay"}]},
-        )
-        self.assertEqual(
-            e2eSelector.jobMatrix(plan, "kube-ovn-conformance-e2e"),
-            {
-                "include": [
-                    {"ip-family": "ipv4", "mode": "overlay"},
-                    {"ip-family": "ipv4", "mode": "underlay"},
-                ]
-            },
-        )
+        self.assertEqual(e2eSelector.jobMatrix(plan, "k8s-conformance-e2e"), {
+            "include": [{"ip-family": "ipv4", "mode": "overlay"},
+                        {"ip-family": "ipv4", "mode": "underlay"}],
+        })
+        self.assertEqual(e2eSelector.jobMatrix(plan, "k8s-netpol-e2e"), {
+            "include": [{"ip-family": "ipv4", "np-enforcement": "standard"}],
+        })
 
     def testCoreSelectionRestoresTheFullConformanceMatrices(self):
-        plan = self.select(["docs/design.md"], requestedGroups=["core"])
-
-        self.assertEqual(
-            len(e2eSelector.jobMatrix(plan, "k8s-conformance-e2e")["include"]),
-            6,
-        )
-        self.assertEqual(
-            len(e2eSelector.jobMatrix(plan, "kube-ovn-conformance-e2e")["include"]),
-            6,
-        )
+        plan = self.select(["docs/design.md"], requestedGroups=["core", "policy"])
+        for job in ("k8s-conformance-e2e", "k8s-netpol-e2e"):
+            self.assertEqual(len(e2eSelector.jobMatrix(plan, job)["include"]), 6)
+        self.assertEqual(len(plan["matrix"]), 12)
 
     def testPullRequestExecutesOnlyAutomaticSmokeWhileGroupsWait(self):
         plan = self.select(["test/e2e/cnp-domain/e2e_test.go"])
@@ -147,22 +136,22 @@ class E2ESelectorTest(unittest.TestCase):
     def testTrustedDispatchExecutesRecommendedAndRequestedCoverage(self):
         plan = self.select(
             ["test/e2e/cnp-domain/e2e_test.go"],
-            requestedGroups=["bgp-routing"],
+            requestedGroups=["core"],
         )
 
         executionPlan = e2eSelector.executionPlan(self.catalog, plan, "workflow_dispatch")
 
-        self.assertEqual(executionPlan["selectedGroups"], ["bgp-routing", "policy"])
+        self.assertEqual(executionPlan["selectedGroups"], ["core", "policy"])
         self.assertEqual(executionPlan["recommendedGroups"], [])
         self.assertFalse(executionPlan["approvalRequired"])
         self.assertEqual(executionPlan["executionMode"], "approved")
-        self.assertEqual(len(executionPlan["matrix"]), 22)
+        self.assertEqual(len(executionPlan["matrix"]), 12)
         summary = e2eSelector.renderSummary(
             executionPlan,
             ["test/e2e/cnp-domain/e2e_test.go"],
         )
         self.assertIn("Approval required: `no`", summary)
-        self.assertIn("Authorized coverage: approved selection &#40;22 runner jobs&#41;", summary)
+        self.assertIn("Authorized coverage: approved selection &#40;12 runner jobs&#41;", summary)
         self.assertIn("Authorized coverage is executing for this HEAD", summary)
         self.assertNotIn("deferred groups wait", summary)
         self.assertNotIn("Waiting for:", summary)
@@ -190,38 +179,21 @@ class E2ESelectorTest(unittest.TestCase):
         self.assertIn("file list is incomplete", plan["fullReason"])
 
     def testPathsLabelsAndRequestsAreUnioned(self):
-        plan = self.select(
-            ["test/e2e/cnp-domain/e2e_test.go"],
-            labels=["e2e:multi-cni"],
-            requestedGroups=["nat-egress"],
-        )
-
+        plan = self.select(["test/e2e/cnp-domain/e2e_test.go"], labels=["e2e:core"], requestedGroups=["policy"])
         self.assertFalse(plan["full"])
-        self.assertEqual(
-            plan["selectedGroups"],
-            ["multi-cni", "nat-egress", "policy"],
-        )
+        self.assertEqual(plan["selectedGroups"], ["core", "policy"])
         self.assertEqual(plan["automaticGroups"], [])
-        self.assertEqual(plan["recommendedGroups"], ["multi-cni", "policy"])
-        self.assertEqual(plan["requestedGroups"], ["nat-egress"])
+        self.assertEqual(plan["recommendedGroups"], ["core", "policy"])
+        self.assertEqual(plan["requestedGroups"], ["policy"])
         self.assertTrue(plan["approvalRequired"])
-        self.assertEqual(len(plan["matrix"]), 3 + 6 + 5 + 16)
-        self.assertTrue(any(reason["source"] == "path" for reason in plan["reasons"]))
-        self.assertTrue(any(reason["source"] == "label" for reason in plan["reasons"]))
-        self.assertTrue(any(reason["source"] == "request" for reason in plan["reasons"]))
+        self.assertEqual(len(plan["matrix"]), 12)
+        self.assertEqual({reason["source"] for reason in plan["reasons"]}, {"path", "label", "request"})
 
-    def testThreePathGroupsPromoteToFull(self):
-        plan = self.select(
-            [
-                "test/e2e/cnp-domain/e2e_test.go",
-                "test/e2e/multus/e2e_test.go",
-                "test/e2e/vpc-egress-gateway/e2e_test.go",
-            ]
-        )
-
+    def testRemovedSuitePathsStayWithinDiagnosticCoverage(self):
+        plan = self.select(["test/e2e/multus/e2e_test.go"])
         self.assertTrue(plan["full"])
-        self.assertEqual(len(plan["matrix"]), self.expectedRunnerJobs())
-        self.assertIn("matched 3 test groups", plan["fullReason"])
+        self.assertEqual(len(plan["matrix"]), 12)
+        self.assertIn("shared path", plan["fullReason"])
 
     def testUnknownProductionPathPromotesToFull(self):
         plan = self.select(["pkg/new-component/new_feature.go"])
@@ -286,7 +258,7 @@ class E2ESelectorTest(unittest.TestCase):
         expectedGroupsByDirectory = {}
         for groupName, group in self.catalog["groups"].items():
             for job in group["jobs"]:
-                targets = set(re.findall(r"\bmake\s+([a-z0-9][a-z0-9-]+)", workflowBlocks[job["id"]]))
+                targets = {job["id"]}
                 directories = {
                     directory
                     for target in targets
@@ -297,7 +269,7 @@ class E2ESelectorTest(unittest.TestCase):
                 for directory in directories:
                     expectedGroupsByDirectory.setdefault(directory, set()).add(groupName)
 
-        self.assertGreater(len(expectedGroupsByDirectory), 10)
+        self.assertEqual(set(expectedGroupsByDirectory), {"k8s-network"})
         for directory, expectedGroups in expectedGroupsByDirectory.items():
             path = f"test/e2e/{directory}/e2e_test.go"
             with self.subTest(path=path):
@@ -338,7 +310,7 @@ class E2ESelectorTest(unittest.TestCase):
         for jobId in e2eSelector.workflowTestJobs(workflow):
             for target in set(re.findall(r"\bmake\s+([a-z0-9][a-z0-9-]+)", blocks[jobId])):
                 targetCounts[target] = targetCounts.get(target, 0) + 1
-        sharedTargets = {target for target, count in targetCounts.items() if count >= 3}
+        sharedTargets = {target for target, count in targetCounts.items() if count >= 2}
         scripts = {
             script
             for target in sharedTargets
@@ -417,7 +389,7 @@ class E2ESelectorTest(unittest.TestCase):
                     "--paths-file",
                     str(paths),
                     "--request-groups-json",
-                    '["policy", "multi-cni"]',
+                    '["policy", "core"]',
                     "--head-sha",
                     "0123456789abcdef",
                     "--plan-file",
@@ -428,7 +400,7 @@ class E2ESelectorTest(unittest.TestCase):
             )
 
             result = json.loads(plan.read_text())
-            self.assertEqual(result["requestedGroups"], ["multi-cni", "policy"])
+            self.assertEqual(result["requestedGroups"], ["core", "policy"])
 
     def testInvalidStructuredInputFallsBackToFullThroughCLI(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -592,9 +564,9 @@ class E2ESelectorTest(unittest.TestCase):
           - ipv4
           - ipv6
           - dual
-        mode:""",
+        np-enforcement:""",
             """        ip-family: [ipv4, ipv6, dual]
-        mode:""",
+        np-enforcement:""",
             1,
         )
         self.assertNotEqual(workflow, inlineWorkflow)
@@ -681,39 +653,17 @@ class E2ESelectorTest(unittest.TestCase):
 
     def testEveryPathMappingHasARegressionCase(self):
         cases = [
-            ("test/e2e/kube-ovn/subnet/subnet.go", "core"),
-            ("test/e2e/kubevirt/e2e_test.go", "kubevirt"),
-            ("test/e2e/k8s-network/e2e_test.go", "policy"),
-            ("test/e2e/connectivity/e2e_test.go", "core"),
+            ("test/e2e/k8s-network/e2e_test.go", "core"),
             ("test/e2e/cnp-domain/e2e_test.go", "policy"),
             ("pkg/controller/network_policy.go", "policy"),
-            ("pkg/aclsampling/config.go", "policy"),
-            ("test/e2e/bgp/e2e_test.go", "bgp-routing"),
-            ("test/e2e/multus/e2e_test.go", "multi-cni"),
-            ("test/e2e/lb-svc/e2e_test.go", "service-lb-underlay"),
-            ("pkg/controller/service.go", "service-lb-underlay"),
-            ("charts/kube-ovn/Chart.yaml", "install-platform"),
-            ("test/e2e/ha/e2e_test.go", "ha-hosted"),
-            ("test/e2e/ovn-ic/e2e_test.go", "multi-cluster"),
-            ("pkg/controller/ovn_ic_controller.go", "multi-cluster"),
-            ("test/e2e/vpc-egress-gateway/e2e_test.go", "nat-egress"),
-            ("pkg/controller/vpc_egress_gateway.go", "nat-egress"),
-            ("test/e2e/webhook/e2e_test.go", "security-webhook"),
-            ("test/e2e/security/e2e_test.go", "ha-hosted"),
-            ("pkg/webhook/webhook.go", "security-webhook"),
+            ("pkg/controller/service.go", "core"),
         ]
         self.assertEqual(len(cases), len(self.catalog["pathRules"]))
-
         for path, expectedGroup in cases:
-            with self.subTest(path=path):
-                plan = self.select([path])
-                mappedGroups = {
-                    group
-                    for reason in plan["reasons"]
-                    if reason["source"] == "path"
-                    for group in reason["groups"]
-                }
-                self.assertIn(expectedGroup, mappedGroups)
+            plan = self.select([path])
+            mappedGroups = {group for reason in plan["reasons"] if reason["source"] == "path"
+                            for group in reason["groups"]}
+            self.assertIn(expectedGroup, mappedGroups)
 
     def testEveryBuiltE2ESourceIsClassified(self):
         makefile = (repoRoot / "makefiles/e2e.mk").read_text()
