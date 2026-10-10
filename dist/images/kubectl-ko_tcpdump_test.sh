@@ -26,6 +26,10 @@ if [[ "$command_line" == *" get vmi "* ]]; then
     echo 'Error from server (Forbidden): virtualmachineinstances is forbidden' >&2
     exit 1
   fi
+  if [[ "${FAKE_MODE:-}" == no-vmi-api ]]; then
+    echo "error: the server doesn't have a resource type \"vmi\"" >&2
+    exit 1
+  fi
   if [[ "${FAKE_MODE:-}" == vm ]]; then
     if [[ "$command_line" == *'ownerReferences[?(@.kind == "VirtualMachine")].kind'* ]]; then
       printf 'VirtualMachine\n'
@@ -136,6 +140,9 @@ assert_contains "$(<"$FAKE_LOG")" 'get pod virt-launcher-target -n ns2'
 run_dump pod none ns2/pod1 "$TEST_DIR/pod.err"
 assert_contains "$(<"$FAKE_LOG")" 'get pod pod1 -n ns2'
 assert_contains "$(<"$FAKE_LOG")" 'nsenter --net=/var/run/netns/cni-test tcpdump -nn -i pod1.ns2_h'
+
+run_dump no-vmi-api none ns2/pod1 "$TEST_DIR/no-vmi-api.err"
+assert_contains "$(<"$FAKE_LOG")" 'get vmi pod1 -n ns2 --ignore-not-found'
 
 : > "$FAKE_LOG"
 if PATH="$FAKE_BIN:$PATH" FAKE_LOG="$FAKE_LOG" FAKE_MODE=rbac \
