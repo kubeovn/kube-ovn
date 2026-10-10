@@ -112,7 +112,7 @@ kubectl ko
 | `db nb kick SERVER_ID`, `db sb kick SERVER_ID` | Remove a stale cluster member. `--dry-run` prints the database leader Pod and exact command without requiring an agent or applying the change; actual removal runs through the agent on that leader's node. |
 | `db nb restore` | Reconstruct the central NB/SB cluster from the NB database already present on the explicit bootstrap node. Verify the shared hostPath, use temporary per-node helpers when OVS does not mount the databases, stop central, preserve originals and RAFT headers, rebuild, verify storage and restart OVS. Helpers use the central image and security context and are cleaned up by UID. This is not local-file import; SB-only restore is not supported. |
 | `trace` | Resolve Pod/Node addresses, MACs and logical ports, trace through OVN, then OVS. Supports IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports. `--engine ovn` runs only OVN trace. |
-| `capture` | Execute tcpdump in a Pod or KubeVirt launcher network namespace, including hostNetwork and internal-port paths. Use exactly one of `--pod`, `--vm`, or `--vmi`. A remote `-w PATH` stays remote; `-w -` streams the original pcap bytes locally. |
+| `capture` | Capture packets in a Pod or KubeVirt launcher network namespace through the independent Go node agent. Use exactly one of `--pod`, `--vm`, or `--vmi`. Supported capture flags are `-i`, `-c`, `-s`, `-nn` and `-w -`; the last option streams a pcap locally. |
 | `network inspect` | Show the Pod network namespace path, every interface's index, kind, MAC, MTU, state and addresses, plus the host-side veth peer when one exists. For `macvlan`/`ipvlan`, also show the parent host NIC with its link details. `--output=json` emits machine-readable data. Host-network Pods use the host namespace and expose peer indexes for host links. |
 | `diagnose cluster` | Check cluster configuration, component rollout and leaders; create a unique temporary NodePort Service and run active checks from independent temporary probe Pods in the original pinger network namespaces. |
 | `diagnose node NODE` | Perform configuration checks and restrict the independent active probes to one node. |
@@ -205,7 +205,9 @@ No public Internet endpoint is required for the default cluster health check.
 Each node operation uses Kubernetes `pods/exec` to start an isolated helper
 process in the independent agent. A versioned gRPC stream runs over that
 process's stdin/stdout. Concurrent operations have separate streams and do not
-restart the agent. It does not execute in Kube-OVN component Pods.
+restart the agent. It does not execute in Kube-OVN component Pods. Packet
+capture uses the agent's native Linux `AF_PACKET` socket and `setns(2)`;
+it does not start `tcpdump`, `nsenter`, or a shell.
 `network inspect` resolves the Pod netns from OVSDB through the agent, with a
 Pod-UID lookup in host process cgroups when no OVS interface exists, then
 reads Pod and host links with `ip -s -j -d addr show`; it reports the host-side veth peer by
