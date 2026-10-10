@@ -24,21 +24,19 @@ infrastructureJobs = {
     "publish-pr-e2e-checks",
     "push",
 }
-expectedX86RunnerJobs = 85
+expectedX86RunnerJobs = 12
 mandatorySmoke = [
-    {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
-    {"job": "kube-ovn-conformance-e2e", "ip-family": "ipv4", "mode": "underlay"},
     {"job": "k8s-conformance-e2e", "ip-family": "ipv4", "mode": "overlay"},
+    {"job": "k8s-conformance-e2e", "ip-family": "ipv4", "mode": "underlay"},
+    {"job": "k8s-netpol-e2e", "ip-family": "ipv4", "np-enforcement": "standard"},
 ]
+
 dynamicWorkflowMatrices = {
     "k8s-conformance-e2e": {
         "output": "k8sConformanceMatrix",
         "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]},
     },
-    "kube-ovn-conformance-e2e": {
-        "output": "kubeOvnConformanceMatrix",
-        "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]},
-    },
+
 }
 
 
