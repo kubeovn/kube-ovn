@@ -121,6 +121,12 @@ jobs:
           docker pull "kubeovn/kube-ovn:$version"
           VERSION="$version" make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
+      - name: Enable networking debug logs before E2E
+        timeout-minutes: 5
+        run: >-
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare
+          "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation"
+
       - name: Run E2E
         env:
           E2E_BRANCH: ${{ matrix.branch }}
@@ -233,6 +239,12 @@ jobs:
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
           docker pull "kubeovn/kube-ovn:$version"
           VERSION="$version" make kind-install-${{ matrix.ip-family }}
+
+      - name: Enable networking debug logs before E2E
+        timeout-minutes: 5
+        run: >-
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare
+          "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation"
 
       - name: Run E2E
         env:
