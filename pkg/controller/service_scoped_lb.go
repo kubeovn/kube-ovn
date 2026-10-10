@@ -354,6 +354,13 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	} else {
 		deleteOptions = append(deleteOptions, "distributed")
 	}
+	selectionFields := []string(nil)
+	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+		selectionFields = []string{
+			string(ovnnb.LoadBalancerSelectionFieldsIPSrc),
+			string(ovnnb.LoadBalancerSelectionFieldsIpv6Src),
+		}
+	}
 	if serviceLB, ok := c.OVNNbClient.(interface {
 		ReconcileLoadBalancer(config ovs.LoadBalancerConfig) error
 	}); ok {
@@ -374,7 +381,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		if err := serviceLB.ReconcileLoadBalancer(ovs.LoadBalancerConfig{
 			Name:            name,
 			Protocol:        strings.ToLower(string(protocol)),
-			SelectionFields: nil,
+			SelectionFields: selectionFields,
 			ExternalIDs:     serviceScopedLBExternalIDs(svc, vpcName, trafficClass),
 			Options:         options,
 			DeleteOptions:   deleteOptions,
@@ -386,7 +393,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol))); err != nil {
 		return "", fmt.Errorf("create service-scoped load balancer %s: %w", name, err)
 	}
-	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, nil); err != nil {
+	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, selectionFields); err != nil {
 		return "", fmt.Errorf("set selection fields on service-scoped load balancer %s: %w", name, err)
 	}
 	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, vpcName, trafficClass)); err != nil {
