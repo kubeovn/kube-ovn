@@ -73,6 +73,42 @@ func TestReconcileRouteSubnetsPortGroups(t *testing.T) {
 	}
 }
 
+func TestReconcileRouteSubnetsPortGroupsProvider(t *testing.T) {
+	for _, gateway := range []string{kubeovnv1.GWCentralizedType, kubeovnv1.GWDistributedType, "u2o"} {
+		t.Run(gateway, func(t *testing.T) {
+			fc, pod, subnet := newRoutePortGroupFixture(t, gateway)
+			client := newInMemoryOVNNbClient(t)
+			fc.fakeController.OVNNbTables = client
+			const portName = "protected.sg-repro"
+			require.NoError(t, client.CreateBareLogicalSwitch(subnet.Name))
+			require.NoError(t, client.CreateBareLogicalSwitchPort(subnet.Name, portName, "10.244.1.10", "00:00:00:00:00:02"))
+			port, err := client.GetLogicalSwitchPort(portName, false)
+			require.NoError(t, err)
+			for _, pg := range []ovnnb.PortGroup{
+				{Name: "node.one", ExternalIDs: map[string]string{"node": "one", networkPolicyKey: "node"}},
+				{Name: "ovn.default.one", ExternalIDs: map[string]string{"node": "one", networkPolicyKey: "subnet", "subnet": subnet.Name}},
+				{Name: "security.group"},
+				{Name: "deny.all"},
+			} {
+				require.NoError(t, client.CreatePortGroup(pg.Name, pg.ExternalIDs))
+				require.NoError(t, client.PortGroupAddPorts(pg.Name, portName))
+			}
+
+			// No stale routing groups exist. An unguarded empty removal would
+			// also erase security-group and deny-all membership through Provider.
+			require.NoError(t, fc.fakeController.reconcileRouteSubnets(pod, []*kubeovnNet{{ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}}))
+			for _, name := range []string{"node.one", "ovn.default.one", "security.group", "deny.all"} {
+				pg, err := client.GetPortGroup(name, false)
+				require.NoError(t, err)
+				require.Contains(t, pg.Ports, port.UUID, "port group %s must retain its member", name)
+			}
+			routed, err := fc.kubeClient.CoreV1().Pods(pod.Namespace).Get(t.Context(), pod.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, "true", routed.Annotations[util.RoutedAnnotation])
+		})
+	}
+}
+
 func newRoutePortGroupFixture(t *testing.T, gateway string) (*fakeController, *corev1.Pod, *kubeovnv1.Subnet) {
 	t.Helper()
 	pod := &corev1.Pod{

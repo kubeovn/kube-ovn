@@ -15,17 +15,25 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func newTestCNIVswitchClient(t *testing.T) *VswitchClient {
 	t.Helper()
+	c, _ := newTestCNIVswitchClientWithBackend(t)
+	return c
+}
+
+func newTestCNIVswitchClientWithBackend(t *testing.T) (*VswitchClient, client.Client) {
+	t.Helper()
 	dbModel, err := vswitch.FullDatabaseModel()
 	require.NoError(t, err)
 	sock := newCNITestOVSDBServer(t, dbModel, vswitch.Schema())
-	c, err := NewCNIVswitchClient("unix:" + sock)
+	backend, err := newCNIVswitchBackend("unix:" + sock)
 	require.NoError(t, err)
+	c := &VswitchClient{Database: table.NewDatabase(table.Wrap(backend), 30*time.Second, table.RetryPolicy{})}
 	t.Cleanup(c.Close)
 	t.Setenv("PATH", "/missing-host-tools")
 	bridge := &vswitch.Bridge{UUID: "bridge", Name: "br-int"}
@@ -37,7 +45,7 @@ func newTestCNIVswitchClient(t *testing.T) *VswitchClient {
 	ops = append(ops, rootOps...)
 	_, err = c.transactVswitchOperations(ops)
 	require.NoError(t, err)
-	return c
+	return c, backend
 }
 
 func addTestCNIPort(t *testing.T, c *VswitchClient, name, ifaceID string) *vswitch.Interface {
@@ -51,12 +59,12 @@ func addTestCNIPort(t *testing.T, c *VswitchClient, name, ifaceID string) *vswit
 }
 
 func TestCNIVswitchReconnect(t *testing.T) {
-	c := newTestCNIVswitchClient(t)
+	c, backend := newTestCNIVswitchClientWithBackend(t)
 	iface := addTestCNIPort(t, c, "pod_h", "pod.ns")
 	require.NoError(t, c.patchCNIMap(vswitch.InterfaceTable, iface.UUID, "external_ids", map[string]string{
 		"vendor": util.CniTypeName, "ip": "10.16.0.2", "pod_netns": "/var/run/netns/cni-pod",
 	}, nil))
-	c.Disconnect()
+	backend.Disconnect()
 	require.Eventually(t, c.Connected, 3*time.Second, 10*time.Millisecond)
 	got, err := c.CNIInterface(iface.Name)
 	require.NoError(t, err)
@@ -214,8 +222,16 @@ func TestCNIVswitchDPDKAndLegacySchema(t *testing.T) {
 	require.NoError(t, c.ClearCNIQoS("pod", "ns", ""))
 }
 
+type cniTableBackend struct {
+	*table.Database
+}
+
+func (b cniTableBackend) Transact(ctx context.Context, ops ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	return b.TransactResults(ctx, ops...)
+}
+
 type beforeCNIQoSWaitClient struct {
-	client.Client
+	table.Backend
 	beforeWait func()
 	waits      int
 }
@@ -229,7 +245,7 @@ func (c *beforeCNIQoSWaitClient) Transact(ctx context.Context, ops ...ovsdb.Oper
 			before()
 		}
 	}
-	return c.Client.Transact(ctx, ops...)
+	return c.Backend.Transact(ctx, ops...)
 }
 
 func TestCNIQoSCleanupConcurrentBinding(t *testing.T) {
@@ -240,13 +256,13 @@ func TestCNIQoSCleanupConcurrentBinding(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, qos, 1)
 	require.NoError(t, c.bindCNIQoS(iface.Name, nil))
-	original := c.Client
-	hook := &beforeCNIQoSWaitClient{Client: original, beforeWait: func() {
+	original := c.Database
+	hook := &beforeCNIQoSWaitClient{Backend: cniTableBackend{Database: original}, beforeWait: func() {
 		// Bind after the cleanup snapshot, but before its atomic guards.
-		other := &VswitchClient{ovsDbClient{Client: original, Timeout: c.Timeout}}
+		other := &VswitchClient{Database: original}
 		require.NoError(t, other.bindCNIQoS(iface.Name, new(qos[0].UUID)))
 	}}
-	c.Client = hook
+	c.Database = table.NewDatabase(hook, c.Timeout, table.RetryPolicy{})
 	require.NoError(t, c.ClearCNIQoS("pod", "ns", "pod.ns"))
 	qos, queues, err := c.cniQoSState()
 	require.NoError(t, err)
@@ -262,13 +278,13 @@ func TestCNIQoSCleanupIgnoresConfigurationChanges(t *testing.T) {
 	qos, queues, err := c.cniQoSState()
 	require.NoError(t, err)
 	require.NoError(t, c.bindCNIQoS(iface.Name, nil))
-	original := c.Client
-	hook := &beforeCNIQoSWaitClient{Client: original, beforeWait: func() {
-		other := &VswitchClient{ovsDbClient{Client: original, Timeout: c.Timeout}}
+	original := c.Database
+	hook := &beforeCNIQoSWaitClient{Backend: cniTableBackend{Database: original}, beforeWait: func() {
+		other := &VswitchClient{Database: original}
 		require.NoError(t, other.patchCNIMap(vswitch.QoSTable, qos[0].UUID, "other_config", map[string]string{"max-rate": "10"}, nil))
 		require.NoError(t, other.patchCNIMap(vswitch.QueueTable, queues[0].UUID, "other_config", map[string]string{"priority": "7"}, nil))
 	}}
-	c.Client = hook
+	c.Database = table.NewDatabase(hook, c.Timeout, table.RetryPolicy{})
 	require.NoError(t, c.ClearCNIQoS("pod", "ns", "pod.ns"))
 	qos, queues, err = c.cniQoSState()
 	require.NoError(t, err)

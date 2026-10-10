@@ -1,29 +1,24 @@
 package ovs
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v7"
-	"github.com/go-logr/stdr"
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/database/inmemory"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb/serverdb"
 	"github.com/ovn-kubernetes/libovsdb/server"
-	"k8s.io/klog/v2"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 type OvnClientTestSuite struct {
@@ -1320,50 +1315,6 @@ func (suite *OvnClientTestSuite) Test_CheckAndUpdateHtbQos() {
 	suite.testCheckAndUpdateHtbQos()
 }
 
-func (suite *OvnClientTestSuite) Test_UpdateOVSVsctlLimiter() {
-	suite.testUpdateOVSVsctlLimiter()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsExec() {
-	suite.testOvsExec()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsCreate() {
-	suite.testOvsCreate()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsDestroy() {
-	suite.testOvsDestroy()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsSet() {
-	suite.testOvsSet()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsAdd() {
-	suite.testOvsAdd()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsFind() {
-	suite.testOvsFind()
-}
-
-func (suite *OvnClientTestSuite) Test_ParseOvsFindOutput() {
-	suite.testParseOvsFindOutput()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsRemove() {
-	suite.testOvsRemove()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsClear() {
-	suite.testOvsClear()
-}
-
-func (suite *OvnClientTestSuite) Test_OvsGet() {
-	suite.testOvsGet()
-}
-
 func (suite *OvnClientTestSuite) Test_OvsFindBridges() {
 	suite.testOvsFindBridges()
 }
@@ -1467,8 +1418,7 @@ func newOvnNbClient(t testing.TB, ovnNbAddr string, ovnNbTimeout int) (*OVNNbCli
 	require.NoError(t, err)
 
 	return &OVNNbClient{
-		Client:  nbClient,
-		Timeout: time.Duration(ovnNbTimeout) * time.Second,
+		Database: table.NewDatabase(nbClient, time.Duration(ovnNbTimeout)*time.Second, table.RetryPolicy{}, table.WithDatabaseName("ovn-nb")),
 	}, nil
 }
 
@@ -1479,10 +1429,9 @@ func newLegacyClient(timeout int) *LegacyClient {
 	}
 }
 
-func newNbClient(addr string, timeout int) (client.Client, error) {
+func newNbClient(addr string, timeout int) (table.Backend, error) {
 	dbModel, err := ovnnb.FullDatabaseModel()
 	if err != nil {
-		klog.Error(err)
 		return nil, err
 	}
 
@@ -1493,38 +1442,8 @@ func newNbClient(addr string, timeout int) (client.Client, error) {
 		}}, {Columns: []model.ColumnKey{{Column: "priority"}}}, {Columns: []model.ColumnKey{{Column: "match"}}}},
 	})
 
-	logger := stdr.New(log.New(os.Stderr, "", log.LstdFlags)).
-		WithName("libovsdb").
-		WithValues("database", dbModel.Name())
-	stdr.SetVerbosity(1)
-
-	options := []client.Option{
-		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
-		client.WithLeaderOnly(false),
-		client.WithLogger(&logger),
-	}
-
-	for ep := range strings.SplitSeq(addr, ",") {
-		options = append(options, client.WithEndpoint(ep))
-	}
-
-	c, err := client.NewOVSDBClient(dbModel, options...)
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	if err = c.Connect(context.TODO()); err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	if _, err = c.Monitor(context.TODO(), c.NewMonitor(ovnNBMonitorOptions()...)); err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	return c, nil
+	monitorOpts := ovnNBMonitorOptions()
+	return ovsclient.NewOvsDbClient(ovnnb.DatabaseName, addr, dbModel, monitorOpts, timeout, 0)
 }
 
 func newOvnSbClient(t *testing.T, ovnSbAddr string, ovnSbTimeout int) (*OVNSbClient, error) {
@@ -1532,51 +1451,17 @@ func newOvnSbClient(t *testing.T, ovnSbAddr string, ovnSbTimeout int) (*OVNSbCli
 	require.NoError(t, err)
 
 	return &OVNSbClient{
-		Client:  nbClient,
-		Timeout: time.Duration(ovnSbTimeout) * time.Second,
+		Database: table.NewDatabase(nbClient, time.Duration(ovnSbTimeout)*time.Second, table.RetryPolicy{}, table.WithDatabaseName("ovn-sb")),
 	}, nil
 }
 
-func newSbClient(addr string, timeout int) (client.Client, error) {
+func newSbClient(addr string, timeout int) (table.Backend, error) {
 	dbModel, err := ovnsb.FullDatabaseModel()
 	if err != nil {
-		klog.Error(err)
 		return nil, err
 	}
 
-	logger := stdr.New(log.New(os.Stderr, "", log.LstdFlags)).
-		WithName("libovsdb").
-		WithValues("database", dbModel.Name())
-	stdr.SetVerbosity(1)
-
-	options := []client.Option{
-		client.WithReconnect(time.Duration(timeout)*time.Second, &backoff.ZeroBackOff{}),
-		client.WithLeaderOnly(false),
-		client.WithLogger(&logger),
-	}
-
-	for ep := range strings.SplitSeq(addr, ",") {
-		options = append(options, client.WithEndpoint(ep))
-	}
-
-	c, err := client.NewOVSDBClient(dbModel, options...)
-	if err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	if err = c.Connect(context.TODO()); err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	monitorOpts := []client.MonitorOption{
-		client.WithTable(&ovnsb.Chassis{}),
-	}
-	if _, err = c.Monitor(context.TODO(), c.NewMonitor(monitorOpts...)); err != nil {
-		klog.Error(err)
-		return nil, err
-	}
-
-	return c, nil
+	return ovsclient.NewOvsDbClient(ovnsb.DatabaseName, addr, dbModel, []table.MonitorOption{
+		table.WithTable(&ovnsb.Chassis{}),
+	}, timeout, 0)
 }
