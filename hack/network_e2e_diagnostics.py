@@ -17,7 +17,7 @@ import time
 
 
 resources = ("pods", "namespaces", "services", "endpointslices", "networkpolicies", "events")
-failurePattern = re.compile(r"\[FAIL\]|Unexpected endpoints|Validation of .* FAILED")
+failurePattern = re.compile(r"\[FAIL(?:ED)?\]|Unexpected endpoints|Validation of .* FAILED")
 
 
 def timestamp():
@@ -80,6 +80,46 @@ def podNames(selector, cancel=None):
     return result.get("stdout", "").split()
 
 
+def runtimeJobs(central, cancel=None):
+    # Sample both ends of NB transactions to distinguish server/client starvation.
+    runtime = """
+date -u
+ps -eo pid,comm,pcpu,pmem,stat,wchan
+cat /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/memory.events
+cat /sys/fs/cgroup/cpu.pressure /sys/fs/cgroup/io.pressure /sys/fs/cgroup/memory.pressure
+cat /proc/net/tcp /proc/net/tcp6
+for proc in /proc/[0-9]*; do
+  case "$(cat "$proc/comm" 2>/dev/null)" in
+    kube-ovn-contro*|ovsdb-server|ovn-northd)
+      echo "=== $proc ==="
+      cat "$proc/stat" "$proc/schedstat" "$proc/io"
+      ;;
+  esac
+done
+"""
+    jobs = {}
+    for selector, container, pods in (
+        ("central", "ovn-central", central),
+        ("controller", "kube-ovn-controller", podNames("app=kube-ovn-controller", cancel)),
+    ):
+        for pod in pods[:3]:
+            jobs[f"runtime-{selector}-{pod}"] = kubectl(
+                "exec", "-n", "kube-system", pod, "-c", container, "--", "sh", "-c", runtime)
+    # The PreferSameNode probe uses sequential curl without a request deadline.
+    # Capture only those clients, with bounded output, while endpoints still exist.
+    result = capture(kubectl("get", "pods", "-A", "-o",
+        'jsonpath={range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\\n"}{end}'), cancel=cancel)
+    clients = [line.split() for line in result.get("stdout", "").splitlines()]
+    clients = [pair for pair in clients if len(pair) == 2
+               and pair[0].startswith("traffic-distribution-") and pair[1].startswith("client-")]
+    for namespace, pod in clients[:6]:
+        name = f"client-{namespace}-{pod}"
+        jobs[f"{name}-logs"] = kubectl("logs", "-n", namespace, pod, "--timestamps", "--tail=40")
+        jobs[f"{name}-sockets"] = kubectl("exec", "-n", namespace, pod, "--", "sh", "-c",
+            "date -u; ps -eo pid,comm,stat,wchan; cat /proc/net/tcp /proc/net/tcp6")
+    return jobs
+
+
 def collectSnapshot(directory, full=False, cancel=None):
     directory.mkdir(parents=True, exist_ok=True)
     for old in directory.glob("*.json"):
@@ -95,8 +135,9 @@ def collectSnapshot(directory, full=False, cancel=None):
             'for table in "$@"; do echo "=== $table ==="; '
             'timeout 3 ovn-nbctl --timeout=2 list "$table"; done', "sh", *tables.split())
         jobs["ovn-sb"] = kubectl("exec", "-n", "kube-system", central[0], "-c", "ovn-central", "--", "sh", "-c",
-            'for table in SB_Global Chassis_Private Port_Binding; do echo "=== $table ==="; '
+            'for table in SB_Global Chassis_Private Chassis_Template_Var Port_Binding; do echo "=== $table ==="; '
             'timeout 3 ovn-sbctl --timeout=2 list "$table"; done')
+    jobs.update(runtimeJobs(central, cancel))
     for pod in podNames("app=ovs", cancel):
         # Cookie zero includes learned affinity flows; full snapshots also record ACL flows.
         flowFilter = "" if full else "cookie=0x0/-1"
@@ -211,8 +252,9 @@ class Diagnostics:
             collectSnapshot(snapshot, full=full, cancel=self.stop)
             # Freeze the pre-failure window before periodic collection overwrites it.
             history.append({p.name: p.read_text() for p in snapshot.glob("*.json")})
-            if full and failures < 8:
-                failureDir = self.directory / "failures" / str(failures)
+            if full:
+                # Rotate windows: transient probe retries must not exhaust the budget.
+                failureDir = self.directory / "failures" / str(failures % 8)
                 failureDir.mkdir(parents=True, exist_ok=True)
                 (failureDir / "preceding-snapshots.json").write_text(json.dumps(list(history)))
                 failures += 1
