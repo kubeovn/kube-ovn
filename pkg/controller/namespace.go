@@ -66,7 +66,7 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
 		if c.config.EnableNP {
 			oldNp := c.namespaceMatchNetworkPolicies(oldNs)
 			newNp := c.namespaceMatchNetworkPolicies(newNs)
-			for _, np := range util.DiffStringSlice(oldNp, newNp) {
+			for _, np := range util.UnionStringSlice(oldNp, newNp) {
 				c.updateNpQueue.Add(np)
 			}
 		}

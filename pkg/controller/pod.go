@@ -363,7 +363,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		newNp := c.podMatchNetworkPolicies(newPod)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
 			oldNp := c.podMatchNetworkPolicies(oldPod)
-			for _, np := range util.DiffStringSlice(oldNp, newNp) {
+			for _, np := range util.UnionStringSlice(oldNp, newNp) {
 				c.updateNpQueue.Add(np)
 			}
 		}
