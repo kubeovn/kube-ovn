@@ -31,6 +31,10 @@ const (
 )
 
 func (c *Controller) recordIPError(ip *kubeovnv1.IP, reason string, err error) {
+	if strings.HasPrefix(ip.Name, util.U2OInterconnName[:20]) ||
+		strings.HasPrefix(ip.Name, util.McastQuerierName[:14]) {
+		return
+	}
 	if c.recorder != nil {
 		c.recorder.Eventf(ip, corev1.EventTypeWarning, reason, "%s", err.Error())
 	}
@@ -59,7 +63,9 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 	newIP := newObj.(*kubeovnv1.IP)
 	// ip can not change these specs below
 	if oldIP.Spec.Subnet != "" && newIP.Spec.Subnet != oldIP.Spec.Subnet {
-		klog.Warningf("ip %s subnet changed from %s to %s", newIP.Name, oldIP.Spec.Subnet, newIP.Spec.Subnet)
+		err := fmt.Errorf("ip %s subnet changed from %s to %s", newIP.Name, oldIP.Spec.Subnet, newIP.Spec.Subnet)
+		klog.Warning(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		c.updateSubnetStatusQueue.Add(oldIP.Spec.Subnet)
 		c.updateSubnetStatusQueue.Add(newIP.Spec.Subnet)
 		return
@@ -99,7 +105,9 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 		if util.ContainsUppercase(newIP.Spec.V6IPAddress) {
 			err := fmt.Errorf("ip %s v6 ip address %s can not contain upper case", newIP.Name, newIP.Spec.V6IPAddress)
 			klog.Error(err)
-			c.recordIPError(newIP, reasonUpdateIPFailed, err)
+			if newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
+				c.recordIPError(newIP, reasonUpdateIPFailed, err)
+			}
 			return
 		}
 		if newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
