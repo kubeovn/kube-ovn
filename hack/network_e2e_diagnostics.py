@@ -94,11 +94,14 @@ def prepareDebug(directory):
     except (ValueError, StopIteration, KeyError):
         (directory / "controller-error.json").write_text(json.dumps({"error": "cannot read controller deployment", "stderr": result.get("stderr")}))
         return 1
-    flags = ("--v=5", "--vmodule=network_policy=6,endpoint_slice=6,ovn*=6", "--enable-pprof=true", "--pprof-port=10660")
+    # Keep the steady-state test path at a useful diagnostic level without
+    # turning every OVSDB notification into a synchronous log write.  The
+    # failure sampler raises the OVN vlog levels after a failure is observed.
+    flags = ("--v=4", "--vmodule=network_policy=5,endpoint_slice=5,ovn*=5", "--enable-pprof=true", "--pprof-port=10660")
     args = [arg for arg in controller.get("args", [])
             if not arg.startswith(("--v=", "--vmodule=", "--enable-pprof=", "--pprof-port="))]
     patch = {"spec": {"template": {"spec": {"containers": [{"name": "kube-ovn-controller",
-        "args": args + list(flags), "env": [{"name": "KUBE_OVN_LIBOVSDB_LOG_VERBOSITY", "value": "5"}]}]}}}}
+        "args": args + list(flags), "env": [{"name": "KUBE_OVN_LIBOVSDB_LOG_VERBOSITY", "value": "4"}]}]}}}}
     result = capture(kubectl("patch", "deployment", "kube-ovn-controller", "-n", "kube-system",
                              "--type=strategic", "-p", json.dumps(patch)))
     result.pop("command", None)
@@ -119,7 +122,7 @@ def prepareDebug(directory):
 date -u
 echo '=== NB vlog before ==='
 ovs-appctl -T 2 -t /var/run/ovn/ovnnb_db.ctl vlog/list
-ovs-appctl -T 2 -t /var/run/ovn/ovnnb_db.ctl vlog/set file:dbg
+ovs-appctl -T 2 -t /var/run/ovn/ovnnb_db.ctl vlog/set file:info
 echo '=== NB vlog after ==='
 ovs-appctl -T 2 -t /var/run/ovn/ovnnb_db.ctl vlog/list
 '''))
@@ -133,7 +136,7 @@ for socket in /var/run/ovn/ovn-controller*.ctl; do
   printf '%s\n' "$levels"
   for module in binding lflow ofctrl reconnect; do
     if printf '%s\n' "$levels" | awk -v m="$module" '$1==m {found=1} END {exit !found}'; then
-      ovs-appctl -T 2 -t "$socket" vlog/set "$module:file:dbg"
+      ovs-appctl -T 2 -t "$socket" vlog/set "$module:file:info"
     fi
   done
   echo "=== $socket after ==="
@@ -435,6 +438,26 @@ fi
             with self.lock:
                 self.processes.remove(process)
 
+    def enableFailureVlogs(self, failureDir):
+        """Raise OVN file logging only after a failure is observed."""
+        commands = {}
+        for pod in podNames("app=ovn-central", self.stop)[:3]:
+            commands[f"nb-vlog-{pod}"] = kubectl(
+                "exec", "-n", "kube-system", pod, "-c", "ovn-central", "--",
+                "sh", "-ec", "ovs-appctl -T 2 -t /var/run/ovn/ovnnb_db.ctl vlog/set file:dbg")
+        for pod in podNames("app=ovs", self.stop):
+            commands[f"ovn-controller-vlog-{pod}"] = kubectl(
+                "exec", "-n", "kube-system", pod, "-c", "openvswitch", "--", "sh", "-ec", '''
+for socket in /var/run/ovn/ovn-controller*.ctl; do
+  for module in binding lflow ofctrl reconnect; do
+    ovs-appctl -T 2 -t "$socket" vlog/set "$module:file:dbg" || true
+  done
+done
+''')
+        for name, command in commands.items():
+            result = capture(command, seconds=10, cancel=self.stop)
+            (failureDir / f"{name}.json").write_text(json.dumps(result, indent=2))
+
     def liveLogs(self):
         targets = []
         for pod in podNames("app=kube-ovn-controller", self.stop)[:3]:
@@ -467,6 +490,7 @@ fi
             if event:
                 failureDir = self.directory / "probe-failures" / str(failures % 8)
                 failureDir.mkdir(parents=True, exist_ok=True)
+                self.enableFailureVlogs(failureDir)
                 for source in (self.directory / "streams").glob("*/*"):
                     destination = failureDir / "streams" / source.parent.name / source.name
                     destination.parent.mkdir(parents=True, exist_ok=True)

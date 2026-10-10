@@ -87,7 +87,7 @@ class NetworkDiagnosticsTest(unittest.TestCase):
         self.assertTrue(all("--tail=40" in command for command in clients if "logs" in command))
         self.assertIn('{"\\n"}', capture.call_args.args[0][-1])
 
-    def testPreparationKeepsExistingOptionsAndEnablesNBFileDebugBeforeE2E(self):
+    def testPreparationKeepsExistingOptionsAndUsesBoundedBaselineLogging(self):
         deployment = {"spec": {"template": {"spec": {"containers": [{
             "name": "kube-ovn-controller", "args": ["--np-enforcement=lax", "--v=2"],
             "env": [{"name": "PRIVATE", "value": "PRIVATE-FIXTURE"}],
@@ -109,11 +109,11 @@ class NetworkDiagnosticsTest(unittest.TestCase):
         self.assertIn("--np-enforcement=lax", container["args"])
         self.assertNotIn("--v=2", container["args"])
         self.assertIn("--enable-pprof=true", container["args"])
-        self.assertEqual(container["env"], [{"name": "KUBE_OVN_LIBOVSDB_LOG_VERBOSITY", "value": "5"}])
+        self.assertEqual(container["env"], [{"name": "KUBE_OVN_LIBOVSDB_LOG_VERBOSITY", "value": "4"}])
         rolloutIndex = next(index for index, command in enumerate(calls) if "rollout" in command)
         vlogIndex = next(index for index, command in enumerate(calls) if "exec" in command)
         self.assertLess(rolloutIndex, vlogIndex)
-        self.assertIn("vlog/set file:dbg", calls[vlogIndex][-1])
+        self.assertIn("vlog/set file:info", calls[vlogIndex][-1])
 
     def testPreparationFailurePreventsRunningAgainstAnUnreadyController(self):
         with tempfile.TemporaryDirectory() as temporary, \
